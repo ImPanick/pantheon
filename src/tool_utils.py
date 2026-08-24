@@ -52,6 +52,12 @@ def _truncate(text: str, limit: int = MAX_OUTPUT_CHARS) -> str:
     """
     if not isinstance(text, str):
         text = "" if text is None else str(text)
+    try:
+        from src.runtime_limits import unlimited as _rl_unlimited
+        if _rl_unlimited():
+            return text
+    except Exception:
+        pass
     if len(text) > limit:
         return text[:limit] + f"\n... (truncated, {len(text)} chars total)"
     return text

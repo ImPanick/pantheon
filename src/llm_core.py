@@ -408,7 +408,8 @@ class _DegenerateStreamGuard:
             if grams:
                 top_gram = max(set(grams), key=grams.count)
                 gram_count = grams.count(top_gram)
-                if gram_count >= 10:
+                _min = int(os.getenv("ODYSSEUS_PHRASE_LOOP_MIN", "0") or "0")  # 0 = OFF: avoid false-positives on templated code/markup
+                if _min and gram_count >= _min:
                     reason = f"repeated phrase '{' '.join(top_gram)}' {gram_count} times"
 
         if not reason:

@@ -102,3 +102,8 @@ compound.config.json
 *.error.log
 _scratch/
 /odysseus/
+
+# cybertooth local backups
+*.cyberbak
+*.bak
+.env.bak-*

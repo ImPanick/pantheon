@@ -4761,6 +4761,16 @@ async def stream_agent_loop(
         )
         _approved_result_injected = True
 
+    # --- cybertooth custom: lift guardrail caps for local/self-hosted inference ---
+    try:
+        from src.runtime_limits import set_local_mode, unlimited as _cyber_unlimited
+        set_local_mode(_is_local_openai_compat_url(endpoint_url))
+    except Exception:
+        def _cyber_unlimited():
+            return False
+    if _cyber_unlimited() and max_rounds and max_rounds < 100_000:
+        max_rounds = 100_000  # ~unlimited rounds for long autonomous local runs
+    # --- end cybertooth custom ---
     for round_num in range(1, max_rounds + 1):
         round_response = ""
         round_reasoning = ""  # reasoning_content deltas (DeepSeek-thinking, vLLM --reasoning-parser)
@@ -4785,6 +4795,8 @@ async def stream_agent_loop(
             _active_route_state["request_messages"] = _initial_route_request_messages
         all_tool_schemas = _tool_schemas_for_route(_active_route_state)
         agent_stream_timeout = int(get_setting("agent_stream_timeout_seconds", 300) or 300)
+        if _cyber_unlimited():
+            agent_stream_timeout = max(agent_stream_timeout, 86_400)  # cybertooth: ~no per-round timeout for local inference
 
         _tool_names_sent = [t.get("function", {}).get("name") for t in (all_tool_schemas or []) if t.get("function")]
         logger.info(f"[agent-debug] round={round_num} model={model} _is_api_model={_is_api_model} tools_sent={len(_tool_names_sent)} tool_names={_tool_names_sent[:15]} relevant_tools={sorted(_relevant_tools)[:15] if _relevant_tools else 'ALL'}")
