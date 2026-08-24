@@ -101,6 +101,48 @@ def _is_local_host(host: Optional[str]) -> bool:
     return ip in ipaddress.ip_network("100.64.0.0/10")
 
 
+def _probe_auth_headers(url: str) -> dict:
+    """Authorization header for a configured endpoint matching ``url``.
+
+    Mirrors the chat-completions path: match an enabled ModelEndpoint by its
+    stored base_url, resolve its runtime credentials the same way, and send
+    ``Authorization: Bearer <key>`` only when a key is configured. Returns an
+    empty dict when nothing matches or no key is set, so keyless local servers
+    are still probed unauthenticated (and behavior is unchanged for them)."""
+    raw = (url or "").strip()
+    if not raw:
+        return {}
+    try:
+        from core.database import SessionLocal, ModelEndpoint
+        from src.endpoint_resolver import resolve_endpoint_runtime, normalize_base
+    except Exception:
+        return {}
+    keys = []
+    for base in (raw, normalize_base(raw) if raw else ""):
+        for cand in (base, (base or "").rstrip("/"), (base or "").rstrip("/") + "/"):
+            if cand and cand not in keys:
+                keys.append(cand)
+    try:
+        db = SessionLocal()
+    except Exception:
+        return {}
+    try:
+        for key in keys:
+            ep = db.query(ModelEndpoint).filter(ModelEndpoint.base_url == key).first()
+            if ep is None:
+                continue
+            try:
+                _base, api_key = resolve_endpoint_runtime(ep, owner=getattr(ep, "owner", None))
+            except Exception:
+                api_key = getattr(ep, "api_key", None)
+            return {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    except Exception:
+        return {}
+    finally:
+        db.close()
+    return {}
+
+
 def _probe_lmstudio_models(url: str) -> Optional[list]:
     """Return LM Studio's native /api/v1/models list, or None when the endpoint
     isn't LM Studio or is unreachable (short-TTL cached; transient errors uncached)."""
@@ -114,7 +156,7 @@ def _probe_lmstudio_models(url: str) -> Optional[list]:
     authority = host if parsed.port is None else f"{host}:{parsed.port}"
     probe_url = f"{parsed.scheme or 'http'}://{authority}/api/v1/models"
     try:
-        r = httpx.get(probe_url, timeout=1.0)
+        r = httpx.get(probe_url, timeout=1.0, headers=_probe_auth_headers(url) or None)
     except Exception:
         return None
     try:

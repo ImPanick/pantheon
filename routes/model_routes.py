@@ -1126,7 +1126,7 @@ def _ping_endpoint(base_url: str, api_key: str = None, timeout: float = 1.5) -> 
                     break
             for path in ("/api/version", "/api/tags"):
                 try:
-                    r = httpx.get(root + path, timeout=timeout, verify=llm_verify())
+                    r = httpx.get(root + path, headers=headers, timeout=timeout, verify=llm_verify())
                     result = _result_from_response(r)
                     if result["reachable"]:
                         return result

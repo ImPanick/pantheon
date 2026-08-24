@@ -434,6 +434,7 @@ _AGENT_RULES = """\
 - After a tool fails, retry with a concrete fix or state what is blocking you.
 - Finish only when the user's concrete request is actually done, or clearly state that you are blocked.
 - User identity facts/preferences ("my name is X", "call me X", "I live in X") use `manage_memory`, not contacts.
+- Working memory (long/large tasks): on multi-step or large-data work, journal progress and findings to `manage_notes` as you go. When a tool returns a large result you must retain, store it via `manage_rag` (action=add_text) or `write_file` and retrieve it later with `manage_rag` (action=search) instead of holding it all in context. Use `manage_memory` ONLY for durable facts about the USER — those are auto-extracted, so do NOT also copy them into notes. Route to these existing tools only; do NOT invent a new store.
 """
 
 _API_AGENT_RULES = """\
@@ -448,6 +449,7 @@ _API_AGENT_RULES = """\
 - After a tool fails, retry with a concrete fix or state what is blocking you.
 - Finish only when the user's concrete request is actually done, or clearly state that you are blocked.
 - User identity facts/preferences ("my name is X", "call me X", "I live in X") use `manage_memory`, not contacts.
+- Working memory (long/large tasks): on multi-step or large-data work, journal progress and findings to `manage_notes` as you go. When a tool returns a large result you must retain, store it via `manage_rag` (action=add_text) or `write_file` and retrieve it later with `manage_rag` (action=search) instead of holding it all in context. Use `manage_memory` ONLY for durable facts about the USER — those are auto-extracted, so do NOT also copy them into notes. Route to these existing tools only; do NOT invent a new store.
 """
 
 _LINK_RULES = """\
@@ -4770,6 +4772,8 @@ async def stream_agent_loop(
             return False
     if _cyber_unlimited() and max_rounds and max_rounds < 100_000:
         max_rounds = 100_000  # ~unlimited rounds for long autonomous local runs
+        if _cyber_unlimited() and max_tokens and max_tokens < 1_000_000:
+            max_tokens = 1_000_000  # ~unbounded generation for local inference
     # --- end cybertooth custom ---
     for round_num in range(1, max_rounds + 1):
         round_response = ""

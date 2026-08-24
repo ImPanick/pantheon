@@ -281,7 +281,14 @@ def _get_public_url(
     """Capped streaming GET with SSRF-guarded, DNS-pinned redirects."""
     resolve_public_ips = resolve_public_ips or _resolve_public_ips
     transport_factory = transport_factory or _PinnedTransport
-    cap = min(max_bytes or WEB_FETCH_SOFT_MAX_BYTES, WEB_FETCH_HARD_MAX_BYTES)
+    try:
+        from src.runtime_limits import unlimited as _unlimited
+        _no_cap = _unlimited()
+    except Exception:
+        _no_cap = False
+    _ceiling = (1 << 62) if _no_cap else WEB_FETCH_HARD_MAX_BYTES
+    _default = (1 << 62) if _no_cap else WEB_FETCH_SOFT_MAX_BYTES
+    cap = min(max_bytes or _default, _ceiling)
     current = url
     for _ in range(max_redirects + 1):
         ips = resolve_public_ips(current)
@@ -323,7 +330,7 @@ def _get_public_url(
                 if raw_len and raw_len.isdigit():
                     declared = int(raw_len)
 
-                if declared is not None and declared > WEB_FETCH_HARD_MAX_BYTES:
+                if declared is not None and declared > _ceiling:
                     raise BodyTooLargeError(current, declared)
 
                 chunks = []

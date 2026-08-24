@@ -32,3 +32,25 @@ Env overrides:
 Deliberately NOT lifted (follow-ups): web_fetch byte caps, read_file MAX_READ_CHARS,
 per-response max_tokens, and the input-token context budget (kept - it prevents the
 context-overflow that caused earlier HTTP 500s on local models).
+
+### 3. Phase 1 - finish local-unlimited surface
+web_tools.py / outbound_fetch.py / filesystem_tools.py: web_search+web_fetch char truncation,
+web-fetch byte caps (soft/hard + declared-length guard), and read_file char cap are lifted when
+runtime_limits.unlimited() is true (local self-hosted). max_tokens (4096) also lifted to 1,000,000
+for local, inside the Phase-0 block in agent_loop.py. Cloud endpoints keep every default.
+
+### 4. Phase 2 - agent working memory (RAG add_text/search + guidance)
+mcp_servers/rag_server.py: manage_rag gains two agent-callable actions - add_text (ingest arbitrary
+text into the ChromaDB vector store) and search (semantic query). Owner resolved from injected arg or
+ODYSSEUS_MCP_RAG_OWNER/ODYSSEUS_DOCUMENT_OWNER env (single-user box => ownerless/global, fine).
+agent_loop.py: a "Working memory (long/large tasks)" rule added to BOTH _AGENT_RULES and
+_API_AGENT_RULES (native function-calling path) - journal to manage_notes, offload big results to
+manage_rag add_text/search instead of holding them in context; manage_memory only for durable USER
+facts (no double-storage with auto-memory).
+
+### 5. Phase 3 - local-inference probe auth
+chat_helpers.py (_probe_auth_headers) + model_context.py (_endpoint_auth_headers): the /slots,
+/v1/models and llama.cpp models probes now attach Authorization: Bearer <key> for a matching enabled
+ModelEndpoint (empty dict when keyless => unchanged for keyless servers). routes/model_routes.py:
+_ping_endpoint passes its in-scope headers to the Ollama reachability probe. Fixes the 401 spam from
+LM Studio's API-token server. (Known follow-ups: two Ollama /api/tags fallbacks still keyless - benign.)

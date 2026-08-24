@@ -21,6 +21,24 @@ _rag_manager = None
 _personal_docs_manager = None
 _initialized = False
 
+# Owner-scoping arg (injected by the tool dispatcher, mirroring the email MCP)
+# plus env fallbacks, so add_text/search can scope like chat_processor's
+# rag_manager.search(..., owner=owner). Ownerless callers get owner=None,
+# which matches the existing directory-indexing behavior.
+_MCP_OWNER_ARG = "_odysseus_owner"
+
+
+def _owner_from_args(arguments: dict) -> str | None:
+    """Resolve the owner for owner-scoped RAG calls (injected arg or env)."""
+    val = arguments.get(_MCP_OWNER_ARG)
+    if isinstance(val, str) and val.strip():
+        return val.strip()
+    for env_key in ("ODYSSEUS_MCP_RAG_OWNER", "ODYSSEUS_DOCUMENT_OWNER"):
+        env_val = os.environ.get(env_key, "").strip()
+        if env_val:
+            return env_val
+    return None
+
 
 def _ensure_init():
     """Lazy-init RAG managers on first use."""
@@ -48,16 +66,21 @@ async def list_tools() -> list[Tool]:
     return [
         Tool(
             name="manage_rag",
-            description="Manage RAG indexed documents. List indexed files, add directories, or remove directories.",
+            description="Manage RAG indexed documents. List indexed files, add or remove directories, store arbitrary text (add_text), or search the vector store (search).",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "action": {
                         "type": "string",
-                        "enum": ["list", "add_directory", "remove_directory"],
+                        "enum": ["list", "add_directory", "remove_directory", "add_text", "search"],
                         "description": "The action to perform",
                     },
                     "directory": {"type": "string", "description": "Directory path (for add/remove)"},
+                    "text": {"type": "string", "description": "Text to store in the RAG vector store (for add_text)"},
+                    "title": {"type": "string", "description": "Optional title/source label for stored text (for add_text)"},
+                    "source": {"type": "string", "description": "Optional source label for stored text (for add_text)"},
+                    "query": {"type": "string", "description": "Search query (for search)"},
+                    "k": {"type": "integer", "description": "Number of matches to return (for search, default 5)"},
                 },
                 "required": ["action"],
             },
@@ -147,8 +170,67 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         except Exception as e:
             return [TextContent(type="text", text=f"Error: Failed to remove directory: {e}")]
 
+    elif action == "add_text":
+        _text = arguments.get("text")
+        text = _text.strip() if isinstance(_text, str) else ""
+        if not text:
+            return [TextContent(type="text", text="Error: add_text needs text")]
+        if not _rag_manager:
+            return [TextContent(type="text", text="Error: RAG manager not available")]
+        owner = _owner_from_args(arguments)
+        _title = arguments.get("title")
+        _source = arguments.get("source")
+        title = _title.strip() if isinstance(_title, str) and _title.strip() else ""
+        source = _source.strip() if isinstance(_source, str) and _source.strip() else ""
+        metadata = {"source": source or title or "agent_text"}
+        if title:
+            metadata["title"] = title
+            metadata["filename"] = title
+        if owner:
+            metadata["owner"] = owner
+        try:
+            ok = _rag_manager.add_document(text, metadata)
+            if ok:
+                return [TextContent(type="text", text=f"Stored text into RAG (1 chunk, source '{metadata['source']}')")]
+            return [TextContent(type="text", text="Error: Failed to store text into RAG")]
+        except Exception as e:
+            return [TextContent(type="text", text=f"Error: Failed to store text: {e}")]
+
+    elif action == "search":
+        _query = arguments.get("query")
+        query = _query.strip() if isinstance(_query, str) else ""
+        if not query:
+            return [TextContent(type="text", text="Error: search needs a query")]
+        if not _rag_manager:
+            return [TextContent(type="text", text="Error: RAG manager not available")]
+        try:
+            k = int(arguments.get("k", 5))
+        except (TypeError, ValueError):
+            k = 5
+        if k <= 0:
+            k = 5
+        owner = _owner_from_args(arguments)
+        try:
+            results = _rag_manager.search(query, k=k, owner=owner)
+        except Exception as e:
+            return [TextContent(type="text", text=f"Error: Search failed: {e}")]
+        if not results:
+            return [TextContent(type="text", text=f"No matches found for '{query}'.")]
+        lines = [f"**Top {len(results)} matches for '{query}':**"]
+        for i, r in enumerate(results, 1):
+            meta = r.get("metadata") if isinstance(r, dict) else None
+            meta = meta if isinstance(meta, dict) else {}
+            src = meta.get("filename") or meta.get("title") or meta.get("source") or "unknown"
+            snippet = (r.get("document") or "").strip().replace("\n", " ")
+            if len(snippet) > 300:
+                snippet = snippet[:300] + "…"
+            sim = r.get("similarity")
+            sim_txt = f" (similarity {sim})" if sim is not None else ""
+            lines.append(f"{i}. [{src}]{sim_txt}\n   {snippet}")
+        return [TextContent(type="text", text="\n".join(lines))]
+
     else:
-        return [TextContent(type="text", text=f"Error: Unknown action '{action}'. Use: list, add_directory, remove_directory")]
+        return [TextContent(type="text", text=f"Error: Unknown action '{action}'. Use: list, add_directory, remove_directory, add_text, search")]
 
 
 async def run():

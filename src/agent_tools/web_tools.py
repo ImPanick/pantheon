@@ -73,7 +73,12 @@ class WebSearchTool:
                 "elapsed_s": 30,
                 "tail": "Search completed; preparing sources.",
             })
-        output = text[:MAX_OUTPUT_CHARS] if len(text) > MAX_OUTPUT_CHARS else text
+        try:
+            from src.runtime_limits import unlimited as _unlimited
+            _no_cap = _unlimited()
+        except Exception:
+            _no_cap = False
+        output = text if _no_cap else (text[:MAX_OUTPUT_CHARS] if len(text) > MAX_OUTPUT_CHARS else text)
         if sources:
             output += "\n\n<!-- SOURCES:" + json.dumps(sources) + " -->"
         return {"output": output, "exit_code": 0}
@@ -166,6 +171,11 @@ class WebFetchTool:
             title = title[:300] + "..."
         header = (f"# {title}\n" if title else "") + f"Source: {url}\n\n"
         output = size_note + header + text
-        if len(output) > MAX_OUTPUT_CHARS:
+        try:
+            from src.runtime_limits import unlimited as _unlimited
+            _no_cap = _unlimited()
+        except Exception:
+            _no_cap = False
+        if not _no_cap and len(output) > MAX_OUTPUT_CHARS:
             output = output[:MAX_OUTPUT_CHARS] + "\n\n[...truncated]"
         return {"output": output, "exit_code": 0}

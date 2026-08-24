@@ -53,6 +53,42 @@ def _normalize_base_for_compare(url: str) -> str:
     return url
 
 
+def _endpoint_auth_headers(url: str) -> Dict[str, str]:
+    """Authorization header for a configured endpoint matching ``url``.
+
+    Mirrors the chat-completions path: match an enabled ModelEndpoint by its
+    normalized base_url, resolve its runtime credentials the same way, and send
+    ``Authorization: Bearer <key>`` only when a key is configured. Returns {}
+    when nothing matches, no key is set, or the DB layer isn't loaded — so
+    keyless local servers (LM Studio/llama.cpp without a token) are still probed
+    unauthenticated and behavior is unchanged for them."""
+    target = _normalize_base_for_compare(url)
+    if not target or "core.database" not in sys.modules:
+        return {}
+    try:
+        from core.database import SessionLocal, ModelEndpoint
+        from src.endpoint_resolver import resolve_endpoint_runtime
+        db = SessionLocal()
+        try:
+            rows = db.query(ModelEndpoint).filter(ModelEndpoint.is_enabled == True).all()
+            for ep in rows:
+                base = _normalize_base_for_compare(getattr(ep, "base_url", "") or "")
+                if not base:
+                    continue
+                if target != base and not target.startswith(base + "/"):
+                    continue
+                try:
+                    _b, api_key = resolve_endpoint_runtime(ep, owner=getattr(ep, "owner", None))
+                except Exception:
+                    api_key = getattr(ep, "api_key", None)
+                return {"Authorization": f"Bearer {api_key}"} if api_key else {}
+        finally:
+            db.close()
+    except Exception:
+        return {}
+    return {}
+
+
 def _configured_endpoint_kind(url: str) -> Optional[str]:
     """Return configured endpoint kind for a chat/base URL when available."""
     target = _normalize_base_for_compare(url)
@@ -364,7 +400,7 @@ def _proxy_catalog_context(endpoint_url: str, model: str) -> Optional[int]:
     if cat is None:
         from src.endpoint_resolver import build_models_url
         try:
-            r = httpx.get(build_models_url(endpoint_url), timeout=REQUEST_TIMEOUT)
+            r = httpx.get(build_models_url(endpoint_url), timeout=REQUEST_TIMEOUT, headers=_endpoint_auth_headers(endpoint_url) or None)
         except Exception as e:
             logger.debug(f"Failed to fetch proxy catalog for context length: {e}")
             return None
@@ -421,7 +457,7 @@ def _query_context_length(endpoint_url: str, model: str) -> Tuple[int, bool]:
     if is_local_endpoint(endpoint_url):
         try:
             base = endpoint_url.split("/v1")[0] if "/v1" in endpoint_url else endpoint_url.rsplit("/", 1)[0]
-            r = httpx.get(f"{base}/slots", timeout=REQUEST_TIMEOUT)
+            r = httpx.get(f"{base}/slots", timeout=REQUEST_TIMEOUT, headers=_endpoint_auth_headers(endpoint_url) or None)
             if r.is_success:
                 slots = r.json()
                 if isinstance(slots, list) and slots:
@@ -447,7 +483,7 @@ def _query_context_length(endpoint_url: str, model: str) -> Tuple[int, bool]:
 
     models_url = build_models_url(endpoint_url)
     try:
-        r = httpx.get(models_url, timeout=REQUEST_TIMEOUT)
+        r = httpx.get(models_url, timeout=REQUEST_TIMEOUT, headers=_endpoint_auth_headers(endpoint_url) or None)
         if r.is_success:
             data = r.json()
             models_list = data.get("data") or []

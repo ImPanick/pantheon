@@ -148,10 +148,15 @@ class ReadFileTool:
         except ValueError as e:
             return {"error": f"read_file: {e}", "exit_code": 1}
         try:
+            from src.runtime_limits import unlimited as _unlimited
+            _read_cap = None if _unlimited() else MAX_READ_CHARS
+        except Exception:
+            _read_cap = MAX_READ_CHARS
+        try:
             def _read():
                 if offset > 0 or limit > 0:
                     start = max(offset, 1)
-                    out, n, budget = [], 0, MAX_READ_CHARS
+                    out, n, budget = [], 0, (MAX_READ_CHARS if _read_cap is not None else (1 << 62))
                     with open(path, "r", encoding="utf-8", errors="replace") as f:
                         for i, line in enumerate(f, 1):
                             if i < start:
@@ -166,7 +171,7 @@ class ReadFileTool:
                                 break
                     return "".join(out)
                 with open(path, "r", encoding="utf-8", errors="replace") as f:
-                    return f.read(MAX_READ_CHARS + 1)
+                    return f.read((MAX_READ_CHARS + 1) if _read_cap is not None else -1)
             data = await asyncio.to_thread(_read)
         except FileNotFoundError:
             return {"error": f"read_file: {path}: not found", "exit_code": 1}
@@ -176,7 +181,7 @@ class ReadFileTool:
             return {"error": f"read_file: {path}: is a directory (use ls)", "exit_code": 1}
         except OSError as e:
             return {"error": f"read_file: {path}: {e}", "exit_code": 1}
-        if not (offset > 0 or limit > 0) and len(data) > MAX_READ_CHARS:
+        if _read_cap is not None and not (offset > 0 or limit > 0) and len(data) > MAX_READ_CHARS:
             data = data[:MAX_READ_CHARS] + f"\n... [truncated at {MAX_READ_CHARS} chars]"
         return {"output": data, "exit_code": 0}
 
