@@ -60,9 +60,10 @@ soon as its dependency lands.
 | P10 | Accessibility & release | 12 | 12 | 0 | 0 |
 | **Total** | | **231** | **200** | **1** | **30** | | **231** | **211** | **0** | **20** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
 
-**Ten P2 tasks landed in run 01.** What is left in P2 needs you, not an agent: eleven tasks are
-marked DECIDE in `P2-CORRECTED.md` § C, and `P2-09` and `P2-13` each carry one open question on
-their line. Answer those and P2 finishes in one more run.
+**Everything now waits on eighteen decisions**, collected into one sheet with a recommendation
+each — see § Progress for the link. Nine of them finish P2, five gate the public flip. Nothing
+new should start until they are answered: implementing around an open decision is how a phase
+gets built twice.
 
 **`P1` is the next phase to run** — everything visual depends on the token layer, and `P1-01` is
 now specified correctly (per theme, never `:root`).
@@ -86,6 +87,12 @@ upstream's artwork under Pantheon's filenames.
 *The one progress area. Newest first. One entry per completed section — two lines, a
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
+
+### Decision ledger — 18 open calls collected, awaiting answers
+Everything blocked on a product call rather than a code question, gathered into one sheet with
+measured findings, options and a recommendation each: nine finish P2, two re-land what run 01
+pulled back, five gate the public flip, two are UI couplings. Nothing implemented pending answers.
+→ https://claude.ai/code/artifact/021da439-f620-4d16-948d-36e30c314f53
 
 ### P2 run 01 — 10 implemented, 1 reverted, 1 blocked
 Upload blocklist deleted, upload CSP sandboxed in the middleware, four dead config blocks and a
