@@ -117,8 +117,36 @@ More visible change than any redesign step, and zero markup touched.
 # P2 · Un-nerf
 *Area: `unnerf` · Depends: nothing · Runs in parallel from day one*
 
-29 arbitrary findings. Read `FORBIDDEN.md` § Never Lift before starting — ~30 controls
-on the other side of the line stay exactly where they are.
+> ### Scouted. Read `P2-CORRECTED.md` first — the task text below is superseded.
+>
+> Six scouts and six adversarial reviewers checked all 26 premises against the source.
+> The reviewers overturned the scouts on **twelve of twelve** contested calls. What the
+> pass changed:
+>
+> - **26 findings, not 29.** The count below was unsupported.
+> - **P2-01 is blocked on a decision, not ready.** libmagic does *not* refuse every `.js`
+>   — plain `function`/`console.log` files sniff as `text/plain` and upload fine today;
+>   only IIFE, UMD, `"use strict"`, shebang and React-import shapes trip it. And deleting
+>   the function also deletes the only block on `.exe .dll .bat .cmd .vbs .ps1`.
+> - **P2-02 as written is a no-op.** A route cannot set a CSP in this app — the security
+>   middleware overwrites it. The route it "mirrors" is already dead at the wire.
+> - **P2-06 is bigger than stated.** Files that fail the check do not lose a code fence;
+>   they return a literal `[Attached document file]` banner and **zero bytes reach the
+>   model** — `.go .bash .tsx .jsx .php .yaml .rs .sql .rb .xml`.
+> - **P2-19 and half of P2-20 are missing *wiring*, not missing markup.** Five entries are
+>   omitted from `admin.js`'s `inits` and `refreshAll`. Adding HTML alone yields a panel
+>   that renders empty and never fetches.
+> - **P2-25's safe prune count is zero**, and a second admin gate the roadmap never named
+>   (`_ADMIN_TOOLS`, checked *before* the blocklist) means a wrong prune can pass a manual
+>   test and still be wrong.
+> - **P2-13 and P2-09 need the fork head.** Both sit in the guardrail-caps commit's
+>   subject area; editing them against upstream would redo or silently revert it.
+>
+> Eighteen cross-cutting surprises are listed there too. Several apply outside P2.
+
+Read `FORBIDDEN.md` § Never Lift before starting — ~30 controls on the other side of the
+line stay exactly where they are, and `P2-CORRECTED.md` § A names the five tasks that will
+cross one if implemented carelessly.
 
 ### The archetype
 - [ ] **P2-01** **Delete the upload type check whole** — `is_safe_file_type()` and its call site. The blocked-MIME set contains `application/javascript`, so libmagic refuses every real `.js` file; `.js` isn't even in the extension list. **Nothing on the server executes an upload**, and every download carries `Content-Disposition: attachment` + `nosniff` ×2 + CSP. `.svg` — the actual stored-XSS vector — was never blocked. `CI:` none; no test references either constant. `Verify:` uploading `static/js/chat.js` succeeds.
