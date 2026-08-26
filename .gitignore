@@ -107,3 +107,7 @@ _scratch/
 *.cyberbak
 *.bak
 .env.bak-*
+
+# ── Pantheon ────────────────────────────────────────────────────────────────
+.pantheon/scratch/
+docker-compose.override.yml
