@@ -1,0 +1,43 @@
+Pantheon
+Copyright (c) 2026 Panick
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE.  See the GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License along
+with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+--------------------------------------------------------------------------------
+MODIFICATION NOTICE  (AGPL-3.0 §5(a))
+--------------------------------------------------------------------------------
+
+Pantheon is a MODIFIED VERSION of Odysseus.
+
+    Upstream project : Odysseus
+    Upstream source  : https://github.com/pewdiepie-archdaemon/odysseus
+    Forked from      : commit b4d1293 (branch dev)
+    Date of fork     : 2026-08-24
+    Modified by      : Panick
+
+Odysseus is licensed under the GNU Affero General Public License v3.  Pantheon is
+released under the same licence.  The original authors retain copyright over the
+portions of this work that originate with them.
+
+Pantheon is not affiliated with, endorsed by, or supported by the Odysseus
+project or its authors.  Please do not report Pantheon issues to them.
+
+Summary of modifications is maintained in CHANGELOG.md.  A complete record is
+available in the commit history of this repository.
+
+--------------------------------------------------------------------------------
+THIRD-PARTY NOTICES
+--------------------------------------------------------------------------------
+
+This distribution includes third-party software under separate licences.  Their
+copyright and licence notices are preserved in CREDITS.md and licenses/.
