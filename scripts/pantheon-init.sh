@@ -134,7 +134,10 @@ say "[4/6] Restore upstream provenance links"
 if [[ "$MODE" == "apply" ]]; then
   # This script's own source contains the sentinel strings as literals, so it
   # must be excluded or it reports itself and aborts a sweep that worked.
-  LEFT=$(git grep -lE '@@UP(ORG|REPO)@@' -- . ':!scripts/pantheon-init.sh' 2>/dev/null | wc -l)
+  # `git grep` exits 1 when it finds nothing, and `set -o pipefail` propagates
+  # that through the pipe — so the SUCCESS case was killing the script silently
+  # under `set -e`, one line after the check it was meant to pass.
+  LEFT=$(git grep -lE '@@UP(ORG|REPO)@@' -- . ':!scripts/pantheon-init.sh' 2>/dev/null | wc -l || true)
   [[ "$LEFT" -eq 0 ]] || die "    $LEFT files still hold a sentinel. Something went wrong — 'git checkout .' and stop."
   say "    clean — no sentinels remain"
 else
