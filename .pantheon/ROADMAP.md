@@ -92,7 +92,8 @@ Upload blocklist deleted, upload CSP sandboxed in the middleware, four dead conf
 dead validator removed, `_is_text_file` widened 10 → 28, email decode fallback, a real `MAX_FILES`
 cap, the heredoc contradiction, the grammar bug, and a 413 on the admin import. Suite: 5,742 pass
 against 5,731 at baseline, same 44 pre-existing failures, zero regressions. Four bugs filed.
-`1f5ec17 … HEAD`
+Rebuilt and live — app serving, `PANTHEON_BACKUP_IMPORT_MAX_BYTES` confirmed inside the
+container. `1f5ec17 … 67decb5`
 
 ### R-06 closed + first implementation run launched
 Pantheon's real tree is now in the cloud container at `/work/pantheon`, staged from cybertooth
