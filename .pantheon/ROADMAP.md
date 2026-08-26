@@ -47,7 +47,7 @@ soon as its dependency lands.
 | Phase | Area | Tasks | Ready | Blocked | Done |
 |---|---|---|---|---|---|
 | Setup | Fork, rename, rebuild | 6 | 0 | 0 | **6** |
-| P0 | Fork identity & licence | 29 | 14 | 1 | **14** |
+| P0 | Fork identity & licence | 29 | 15 | 0 | **14** |
 | P1 | Token layer — the free wins | 14 | 14 | 0 | 0 |
 | P2 | Un-nerf | 26 | 26 | 0 | 0 |
 | P3 | Mechanical hygiene | 12 | 12 | 0 | 0 |
@@ -56,14 +56,13 @@ soon as its dependency lands.
 | P6 | Queue & Plan | 17 | 17 | 0 | 0 |
 | P7 | Trust ladder & control plane | 11 | 11 | 0 | 0 |
 | P8 | The Workshop | 48 | 48 | 0 | 0 |
-| P9 | Feature surfaces | 14 | 14 | 0 | 0 |
+| P9 | Feature surfaces | 16 | 16 | 0 | 0 |
 | P10 | Accessibility & release | 12 | 12 | 0 | 0 |
-| **Total** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
+| **Total** | | **231** | **211** | **0** | **20** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
 
-**Do `P0-05` first.** It is the only blocked row and the app is degraded until it lands:
-the sweep renamed the six ChromaDB collections in code, the volume still holds the old
-ones, so memory, RAG and the tool index are returning nothing right now. Drop and
-re-index — the data is disposable, there is no migration.
+**Nothing is blocked.** `P0-05` turned out to be smaller than it looked once the live instance
+was queried — see its line. `P2` is the phase to run first: it is the only one with a work-list
+that has been verified against the source.
 
 **Then the licence gaps** — they are the gate on going public (`DECISIONS.md`
 D-2026-08-26-02), and `P0-17` is the only one that is a genuine legal obligation rather
@@ -84,6 +83,13 @@ upstream's artwork under Pantheon's filenames.
 *The one progress area. Newest first. One entry per completed section — two lines, a
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
+
+### R-06 closed + first implementation run launched
+Pantheon's real tree is now in the cloud container at `/work/pantheon`, staged from cybertooth
+as a 15 MB archive, checksum-verified, and baselined under git at `f4364bf` — 1,516 files,
+confirmed identical to the fork on the accent counts (799 / 205 / 101). Agents edit the fork
+itself now instead of reading upstream; `/work/base` stays as the b4d1293 reference. Seven
+P2 file-ownership batches running, each with a refuter. `62bf5d2 … HEAD`
 
 ### Theme protection — P1-01 corrected before it shipped
 The themes and their 7 canvas background animators are protected (`DECISIONS.md`
@@ -221,7 +227,7 @@ purge, re-index, log back in. The only manual step is one line in your `.env`.
 - [x] **P0-02** Rename cosmetic surfaces: page titles, wordmark text in `index.html` + `login.html`, 111 UI strings across `static/js/`, tray menu in `launcher.py`, `setup.py` banner. `Verify:` grep for case-insensitive `odysseus` in `static/` returns only attribution strings. — **done:** verified — `git grep -icI odysseus -- static/` returns one hit, the protected provenance link in `cookbook.js`.
 - [x] **P0-03** Rename env prefix `ODYSSEUS_*` → `PANTHEON_*` (99 distinct names, 560 refs). Update `.env.example`, `docker-compose*.yml`, `Dockerfile`, `docs/`, **and your live `.env` on the host** — that one file is the entire migration. No shim. `Verify:` app boots with only `PANTHEON_*` set. — **done:** code and live `.env`; only `PANTHEON_ADMIN_USER`/`PASSWORD` existed on the host, and both are read solely at first-boot admin creation.
 - [x] **P0-04** Rename browser storage keys (113 distinct, 206 refs in `static/`). Costs you one theme re-pick and a layout reset. `CI:` none. — **done:** verified — no `ody-`/`ody.` keys remain in `static/`.
-- [~] **P0-05** **BROKEN RIGHT NOW — highest-priority P0.** The sweep renamed the six collection names in code (`pantheon_memories`, `pantheon_rag`, `pantheon_tool_index`, `pantheon_doc_messages`, +2) but the ChromaDB volume still holds the `odysseus_*` ones. Memory, RAG and the tool index are silently returning nothing today. **Data is disposable — do not migrate.** Drop the old collections and re-index. `Verify:` memories, RAG and tool index all return results after a re-index. `Unblocks:` nothing else — but the app is degraded until it lands.
+- [ ] **P0-05** **Corrected — there is nothing to drop.** The previous entry claimed the volume still held `odysseus_*` collections. Queried the live instance: one tenant, one database, and only two collections exist — `pantheon_rag_fastembed` (0 docs) and `pantheon_memories_fastembed` (**8 docs**). The app created them under the new names on first boot and memory is already writing to them. No orphans anywhere, so nothing was stranded and nothing needs migrating. What is left is smaller: **RAG is empty and `pantheon_tool_index` does not exist yet** — add the directories back through the RAG UI, and the tool index builds itself on first tool search. `Verify:` RAG search returns results after re-adding a directory; `GET :8100/api/v2/tenants/default_tenant/databases/default_database/collections` lists a tool index. *(Caught by Law 9 — the entry described what I assumed, not what was there.)*
 - [x] **P0-06** Rename session cookie `odysseus_session` → `pantheon_session`. You log in again once. — **done:** swept.
 - [x] **P0-07** Rename outbound HTTP headers (`X-Odysseus-Origin/Kind/Ref/Event/Signature/Owner`) and the four User-Agent strings. No downstream consumers exist yet — do it now, before any do. — **done:** swept.
 - [x] **P0-08** Rename Docker compose service, container user (`ODY_USER`), and the SearXNG settings sentinel `odysseus-local-searxng-json-2026-05-30`. `Verify:` a clean `docker compose up` produces a working SearXNG. — **done:** swept; a clean rebuild produced a healthy SearXNG.
@@ -534,6 +540,20 @@ Three authoring surfaces over three engines that already run.
 
 # P9 · Feature surfaces
 *Area: `surfaces` · Depends: P5*
+
+### Theme expansion — additive, no dependency on anything
+- [ ] **P9-15** **New themes.** The system takes them cleanly: five colours plus an optional
+  `advanced` block, one entry in `THEMES`, one line in `THEME_DEFAULT_PATTERN`. Nothing else
+  changes. `Depends:` P1-01, so a new theme can ship its own `accent` from day one.
+- [ ] **P9-16** **ASCII-art backgrounds as a ninth pattern class.** Subtle, per-theme, behind
+  everything — `terminal` wants something very different from `ume`. Slots into the existing
+  machinery: one entry in `_BG_CLASSES`, one in `_CANVAS_PATTERNS`, one init function beside the
+  seven that already exist, and `--bg-effect-color/intensity/size` come free. It can be a canvas
+  animator like the other seven, or CSS-only like `dots` if the art is static. **Read
+  `FORBIDDEN.md` § The theme system first** — this extends that machinery, it does not replace it.
+  `Depends:` nothing. `Verify:` selecting a theme with an ASCII pattern renders it behind the app
+  at the configured intensity, and `prefers-reduced-motion` stops any animation without hiding
+  the art.
 
 - [ ] **P9-01** **Command palette**, framed as extending the existing search rather than a parallel component. Every data source is already a registry: slash commands, settings panels with keywords, the modal auto-wire map, the route table. **`#search-overlay`, `#search-input` and `#search-results` must stay in the DOM** — five call sites including the rail button and `/find`.
 - [ ] **P9-02** Render the settings nav from its own registry. Two sources of truth for one information architecture; the registry was built for this and is consumed only by search. **Keep the class name and data attribute identical** — four modules query them. There is also a `getSettingsRegistryIssues()` self-check that diffs registry against DOM — run it while you work.
