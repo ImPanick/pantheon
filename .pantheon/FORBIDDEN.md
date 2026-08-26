@@ -38,6 +38,40 @@ Style them freely. Do not rename them.
 | The approval cache-buster string | **Must be bumped across all six approval-path modules together**, or a browser pairs new code with a cached interceptor and the approval click lands on the New-chat branch. |
 | `static/lib/**` | `.gitattributes` requires byte-identical bundles so upstream licence banners survive. Never reformat. |
 
+### The theme system — protected by decision, not by fragility
+
+`DECISIONS.md` D-2026-08-26-03 keeps Odysseus's themes and their animated backgrounds.
+These names carry that decision. Restyle around them; do not rename or remove them.
+
+```
+THEMES                    the 16 built-in entries — static/js/theme.js:11
+THEME_DEFAULT_PATTERN     which background each theme gets. This map IS the feature.
+_BG_CLASSES               the 8 bg-pattern-* class names
+_CANVAS_PATTERNS          pattern → init-function registry
+
+bg-pattern-dots           the CSS-only one — style.css:209
+bg-pattern-rain           bg-pattern-synapse        bg-pattern-constellations
+bg-pattern-perlin-flow    bg-pattern-petals         bg-pattern-sparkles
+bg-pattern-embers
+
+rain-canvas               synapse-canvas            constellations-canvas
+perlin-flow-canvas        petals-canvas             sparkles-canvas
+embers-canvas
+
+--bg-effect-color   --bg-effect-intensity   --bg-effect-size
+odysseus-theme / odysseus-custom-themes     (renamed to pantheon-* by P0-04; the KEYS
+                                             stay one-to-one, the values are unchanged)
+```
+
+**`--accent` must never be defined in `:root`.** 508 of the 799 `var(--accent…)` sites in
+`style.css` are `var(--accent, var(--red))` and resolve to the active theme's `red`. A
+`:root` definition beats the fallback and collapses all 16 themes onto one colour. Set it
+per theme inside `applyTheme()` instead — see `P1-01`, which was rewritten for exactly
+this reason after being written the wrong way round.
+
+**A reduced-motion guard is not a removal.** `P10-05` adds one over the seven canvas
+animators. It respects an operating-system setting. The animation stays.
+
 ### Renames that ARE happening (P0) — and what they cost
 
 These are deliberate, one-time, and documented as a break. Everything else above stays.

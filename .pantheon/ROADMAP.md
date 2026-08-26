@@ -85,6 +85,11 @@ upstream's artwork under Pantheon's filenames.
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
 
+### Theme protection — P1-01 corrected before it shipped
+The themes and their 7 canvas background animators are protected (`DECISIONS.md`
+D-2026-08-26-03). Auditing that found P1-01 would have collapsed all 16 themes to one
+accent colour; rewritten to set `--accent` per theme instead. `3bd293d … HEAD`
+
 ### Datastore audit — no change made, two decisions recorded
 Measured the ChromaDB coupling (130 call sites, 2,110 LOC, 24 tests) and decided against a
 swap: `DEFERRED.md` D-04. Filed D-05 — telemetry is the real TimescaleDB case — and B01,
@@ -252,7 +257,8 @@ purge, re-index, log back in. The only manual step is one line in your `.env`.
 
 More visible change than any redesign step, and zero markup touched.
 
-- [ ] **P1-01** **Define `--accent` in `:root` + the light variant.** 799 references; **205 are bare with no fallback** and currently resolve to `unset`. **This repaints all 799 sites at once — do it as its own step with the app open.** `Verify:` rail hover backgrounds appear; both resize handles become visible; the session rename input gets a border; the scroll-to-bottom button gets its colour.
+- [ ] **P1-01** **Define `--accent` PER THEME, not in `:root`. Defining it in `:root` breaks all 16 themes.** Measured: of the 799 `var(--accent…)` sites in `style.css`, **508 are `var(--accent, var(--red))`** and resolve today to the theme's own `red`, which `applyTheme()` sets at `static/js/theme.js:263`. A `:root` definition wins over that fallback, so all 508 would flip to one global colour and every theme would lose its identity in a single commit. **The themes are protected — see `DECISIONS.md` D-2026-08-26-03.**
+  **Do instead:** one line in `applyTheme()` beside `s.setProperty('--red', colors.red)` — `s.setProperty('--accent', colors.accent || colors.red)`. The 508 fallback sites then resolve to exactly what they resolve to now (zero visual change), the bare sites resolve for the first time (pure gain), each theme keeps its own accent, and the 8 custom-theme slots get it free because they run through the same function. Add an optional `accent:` key to `THEMES` for any theme that should differ from its `red`. `CI:` none. `Verify:` cycle all 16 themes and diff screenshots — only the previously-unstyled elements change. Then: rail hover backgrounds appear; both resize handles become visible; the session rename input gets a border; the scroll-to-bottom button gets its colour.
 - [ ] **P1-02** Define `--accent-primary` (121 uses, never defined) — or replace those uses with `--accent`.
 - [ ] **P1-03** **Define `--fg-muted`** (93 bare uses, zero definitions). Every one of those elements was authored as secondary text and renders at full strength. `Depends:` P1-01.
 - [ ] **P1-04** **Delete `#sidebar-backdrop { display:none !important }`** at top-level nesting depth 0 — it beats the media-query rule everywhere. Thirteen call sites across four modules already toggle the element. `Verify:` mobile drawer dims the page and tap-to-close works.

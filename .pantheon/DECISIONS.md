@@ -68,3 +68,49 @@ the audit was written to prevent.
 
 **What would reopen this.** Nothing in the plan. The flip is a P0 completion event,
 not a decision to revisit.
+
+---
+
+## D-2026-08-26-03 · The themes stay, and so do the animated backgrounds
+
+**Decided:** Odysseus's theme system is kept intact — all 16 built-in themes, the 8 custom
+slots, and the per-theme animated backgrounds. This is a **keep**, and it constrains
+everything downstream that touches colour.
+
+**What is protected, precisely.**
+
+- The 16 entries in `THEMES` (`static/js/theme.js:11`) and their `bg / fg / panel / border
+  / red` values. Tune a value if it is genuinely wrong; do not restyle a theme wholesale
+  and do not remove one.
+- `THEME_DEFAULT_PATTERN` — the map that gives each theme its own background. This is the
+  feature that makes the themes feel authored rather than recoloured: `midnight` gets
+  rain, `cyberpunk` gets synapse, `forest` gets petals, `ocean` gets constellations,
+  `terminal` gets perlin-flow, `retrowave` gets embers, `cute` gets sparkles.
+- The 8 patterns and their machinery: `_BG_CLASSES`, `_CANVAS_PATTERNS`, the seven
+  `createElement('canvas')` animators, the `bg-pattern-*` classes and the `*-canvas`
+  element ids. `dots` is the CSS-only one (`style.css:209`); the other seven are canvas.
+- The per-theme controls layered on top: `--bg-effect-color`, `--bg-effect-intensity`,
+  `--bg-effect-size`, and the frosted toggle.
+
+**What this cost — and it was worth finding.** `P1-01`, the headline task of the entire
+token phase, was written as *"define `--accent` in `:root`"*. Auditing it against this
+decision showed it would have destroyed the thing being protected:
+
+Of the 799 `var(--accent…)` sites in `style.css`, **508 are `var(--accent, var(--red))`**.
+They resolve today to the theme's own `red`, which `applyTheme()` sets at
+`static/js/theme.js:263`. A `:root` definition beats a fallback — so all 508 would have
+flipped to one global colour, and all 16 themes would have converged on it in one commit.
+The task would have reported success. Every screenshot would have looked deliberate.
+
+`P1-01` now sets `--accent` **per theme**, seeded from that theme's `red`, one line inside
+`applyTheme()`. The 508 fallback sites resolve to exactly what they resolve to now, the
+bare sites resolve for the first time, and each theme keeps its identity. Strictly better
+than the original plan, and it costs less.
+
+**Still allowed.** `P10-04` (contrast audit across all 16 themes) and `P10-05`
+(reduced-motion guard over the 7 animators) both stand. A reduced-motion guard **respects
+an operating-system setting** — it does not disable the feature, and an agent that reads
+it that way has misread it. New themes may be added; new patterns may be added.
+
+**What would reopen this.** Nothing. This is a product decision, not a technical one.
+
