@@ -95,3 +95,101 @@ Which closes the loop: **P8's MCP Creator is how the VM station gets added witho
 building one.**
 
 **Revisit when.** Someone has a concrete task that a container demonstrably cannot do.
+
+---
+
+## D-04 · The vector store — keep ChromaDB for now
+
+**The question.** Should Pantheon swap ChromaDB while the platform is already open?
+
+**Decided: no, not now.** Not because Chroma is the best choice — because the swap that
+would be worth doing is bigger than the one being proposed, and none of it is on the path
+to anything a user sees.
+
+**Measured coupling.** `chroma_client.py` is a 72-line singleton and looks trivially
+swappable. It is not the coupling. The real surface is **130 direct collection-API call
+sites across 2,110 lines** in six modules, with **24 tests** referencing Chroma, the
+embedding lanes or the collections built on them:
+
+    src/embedding_lanes.py      39 call sites   ← the deepest coupling
+    src/rag_vector.py           37
+    services/memory/…           27
+    src/memory_vector.py        23
+    src/service_health.py       16
+    src/tool_index.py           15
+
+`embedding_lanes.py` is the hard part: per-embedding-model collections with dimension
+tracking and HNSW config. It does not map onto one table.
+
+**What makes a swap actually pay.** Today there are two datastores — SQLite through
+SQLAlchemy for six models, and ChromaDB as a separate HTTP service. Two failure modes, a
+network hop per vector query, no transaction spanning them, and a startup probe in
+`chroma_client.py` that exists purely because an unreachable Chroma used to hang boot for
+30–60 seconds.
+
+Swapping Chroma → pgvector while keeping SQLite pays the whole migration cost and buys
+almost nothing. **The move that pays is Postgres replacing BOTH at once** — one datastore,
+one backup, one connection, and a memory row and its vector written in a single
+transaction. If this is ever done, that is the shape.
+
+**Not TimescaleDB, for this.** TimescaleDB is Postgres plus hypertables, compression and
+continuous aggregates — it is a time-series extension and it does not do vector search.
+The vector extension is **pgvector**, optionally with Timescale's own **pgvectorscale**
+(StreamingDiskANN plus statistical binary quantisation) layered on for scale. They ship
+from the same company, which is where the association comes from. See D-05: TimescaleDB
+has a real place here, just not under the vectors.
+
+**Two things checked that turned out not to be blockers.**
+
+- The one `$contains` reference in `rag_vector.py:563` is in a **comment explaining why
+  they do not use it**. There is no `where_document` hybrid-search dependency to port.
+- Upstream has migrated this layer before — `scripts/migrate_faiss_to_chroma.py` exists.
+  The path is known.
+
+**Revisit when any of these is true.**
+
+- Chroma actually becomes a bottleneck. It is not one at single-user, home-LAN scale.
+- The relational store moves to Postgres for its own reasons — then the vectors follow
+  for free and D-04 collapses into that work.
+- A memory-vs-vector divergence bug is observed in the wild. That is the consistency
+  argument becoming concrete rather than theoretical.
+- D-05 lands. If Postgres arrives for telemetry, the marginal cost of moving vectors onto
+  it drops sharply.
+
+**Do not** start this before P1. Everything visible depends on the token layer, and a
+datastore migration delivers zero visible improvement while consuming the attention that
+would have gone to 799 reference sites that currently resolve to nothing.
+
+---
+
+## D-05 · Telemetry — the real case for TimescaleDB
+
+**The gap.** `core/database.py:219-221` stores `message_count`, `total_input_tokens` and
+`total_output_tokens` as **running totals on a session row**. The time dimension is
+discarded at write time. The app therefore cannot answer *what did I spend on Tuesday*,
+*which model is getting more expensive*, *how long do agent rounds take now versus last
+month*, or *did that prompt change help*. Not because the query is hard — because the
+events were never recorded.
+
+**Why this matters more than it looks.** Pantheon is intended as a harness and
+orchestration layer for a GPU server. A harness that cannot report on itself is a harness
+you have to babysit. Token cost per model, round latency, tool failure rate, queue depth,
+GPU utilisation during a serve — these are the numbers that make an orchestrator
+trustworthy, and every one of them is a timestamped measurement.
+
+**This is what TimescaleDB is for.** Hypertables, native compression on old partitions,
+and continuous aggregates that keep a rolling daily rollup current without a cron job.
+A telemetry table is append-only, high-cardinality on time, and queried almost exclusively
+by range — the exact shape it was built for.
+
+**Why it is an addition, not a replacement.** It touches nothing that exists. No
+migration, no coupling to unpick, no risk to the six models or the six collections. It is
+a new table and a write call in `llm_core.py` where the usage delta is already parsed and
+then folded into a running total.
+
+**Sequencing.** Cheapest useful version first: record the events. One append-only table,
+written where the totals are already computed. Dashboards, rollups and the Timescale
+extension itself only earn their place once there is data worth compressing.
+
+**Revisit when** the GPU-harness use case becomes real, or the first time a question about
+usage over time cannot be answered.

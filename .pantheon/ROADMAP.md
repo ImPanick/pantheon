@@ -85,6 +85,11 @@ upstream's artwork under Pantheon's filenames.
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
 
+### Datastore audit — no change made, two decisions recorded
+Measured the ChromaDB coupling (130 call sites, 2,110 LOC, 24 tests) and decided against a
+swap: `DEFERRED.md` D-04. Filed D-05 — telemetry is the real TimescaleDB case — and B01,
+the unpinned datastore image. Nothing in the source changed.
+
 ### Tracker consolidation + README — implemented
 Sixteen empty handoff files and a stale duplicate note deleted; one tracker, one progress
 area, and a `check-tracker.py` that fails on table drift. Twelve laws in `AGENTS.md`, eight
@@ -566,13 +571,29 @@ the only lane through which the theme file gets touched.
 
 - **D-01 · The approval card's new markup.** Effect chips, fingerprint badge, expiry countdown, taint trail. Two CI tests assert literal source strings from that file and the upstream cluster around it is the hottest code in the project — 15 commits in 4 weeks, a revert inside the most recent PR. **Style through existing selectors only; add no markup.** Revisit when the upstream commits stop landing daily. *(P4-04 and P7-06/07/08 are the style-only subset and can proceed.)*
 - **D-02 · Container station.** Full entry in `DEFERRED.md`. The strongest framing is as the sandbox the threat model says does not exist, not as a deploy feature. ~70% of the machinery is in Cookbook.
+- **D-04 · The vector store.** Keep ChromaDB for now. The coupling is 130 call sites over
+  2,110 lines, not the 72-line client that makes it look easy, and the swap that would
+  actually pay is Postgres replacing SQLite **and** Chroma at once — not Chroma alone.
+  Full entry in `DEFERRED.md`. `Depends:` do not start before P1.
+- **D-05 · Telemetry.** The app stores token totals as running counters and throws the
+  time dimension away at write time, so it cannot report on its own usage over time. One
+  append-only table where the totals are already computed. This is the real case for
+  TimescaleDB — an addition, touching nothing that exists. Full entry in `DEFERRED.md`.
 - **D-03 · VM station.** Held. If the need proves real, wire to Proxmox or libvirt through an MCP server rather than building a hypervisor. `Depends:` P8 complete.
 
 ---
 
 # Bugs found during implementation
 
-*Agents append here. Format: `- [ ] **B01** … — found during P4-07 — agent:`id``*
+*Agents append here. Format: `- [ ] **Bxx** … — found during Px-yy — agent:`id``*
+
+- [ ] **B01** **The datastore image is unpinned.** `chromadb/chroma:latest` in all three
+  compose files, and `binwiederhier/ntfy` with no tag at all in the same three. A
+  breaking Chroma release lands on the next `--build` and the collections stop loading —
+  silently, since nothing validates the schema on connect. `searxng` is pinned to
+  `2026.5.31-7159b8aed`, so the convention already exists in the file; these two just
+  missed it. Six one-line changes. `Verify:` `grep -c ':latest\|ntfy$' docker-compose*.yml`
+  returns 0. — found during the datastore audit
 
 ---
 
