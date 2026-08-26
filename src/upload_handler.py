@@ -210,6 +210,23 @@ def count_recent_uploads(timestamps, now: float, window: float = 10.0) -> int:
     return sum(1 for t in timestamps if t > cutoff)
 
 
+# Server-side cap on how many files one POST /api/upload request may carry.
+# The browser has its own cap (MAX_FILES in static/js/fileHandler.js) but that is
+# advisory: the route accepted an unbounded list, so the only real ceilings were
+# starlette's form parser (max_files=1000) and UploadHandler.upload_rate_limit
+# below — and the rate limit only fires part-way through a batch, after earlier
+# files are already on disk.
+#
+# The value has to sit inside a window, and tests/test_upload_multifile.py pins
+# both ends:
+#   >= the browser's MAX_FILES         or a legitimate full batch gets a 400
+#   <= UploadHandler.upload_rate_limit or the tail of an accepted batch 429s
+# The browser cap is 10 today and 25 is the ceiling P2-11 plans for it, so the
+# server cap is set at 25 and the frontend can be raised to it without a
+# coordinated server change. Raising MAX_FILES past 25 fails the pinning test.
+MAX_FILES_PER_REQUEST = 25
+
+
 class UploadHandler:
     def __init__(self, base_dir: str, upload_dir: str):
         self.base_dir = base_dir
@@ -362,29 +379,6 @@ class UploadHandler:
             return True
             
         return False
-    
-    def is_safe_file_type(self, content_type: str, filename: str) -> bool:
-        """Check if file type is safe to store and serve."""
-        dangerous_types = {
-            'application/x-executable', 'application/x-sharedlib',
-            'application/x-dll', 'application/x-msdownload',
-            'application/x-sh', 'application/x-bat', 'application/x-vbs',
-            'application/javascript', 'application/x-javascript'
-        }
-        
-        dangerous_extensions = {
-            '.exe', '.dll', '.bat', '.cmd', '.vbs', 
-            '.ps1', '.jsp', '.asp', '.aspx'
-        }
-        
-        if content_type in dangerous_types:
-            return False
-        
-        _, ext = os.path.splitext(filename.lower())
-        if ext in dangerous_extensions:
-            return False
-        
-        return True
     
     @staticmethod
     def _parse_upload_timestamp(value: Any) -> Optional[datetime]:
@@ -1248,14 +1242,29 @@ class UploadHandler:
         
         # Detect content type
         content_type = self.detect_content_type(file_obj, safe_filename)
-        
-        # Check if file type is safe
-        if not self.is_safe_file_type(content_type, safe_filename):
-            raise HTTPException(
-                status_code=400,
-                detail=f"File type not allowed: {content_type}"
-            )
-        
+
+        # There is deliberately no upload type blocklist here. is_safe_file_type()
+        # and both of its 9-entry lists (MIME and extension) were deleted under
+        # .pantheon/DECISIONS.md D-2026-08-26-01: nothing on the server executes an
+        # upload, UPLOAD_DIR is not under the only static mount (app.py mounts
+        # /static alone), a named download forces Content-Disposition: attachment,
+        # and X-Content-Type-Options: nosniff plus the app CSP apply. `.svg` — the
+        # one real stored-XSS vector in this area — was never in either list, so the
+        # check was not buying what it looked like it bought. What that costs is
+        # written down in the decision: the extension half was libmagic-independent
+        # and did catch `.exe` on every install.
+        #
+        # One caveat, stated because it is already true rather than hypothetical:
+        # the `?thumb=1` branch (routes/upload_routes.py) returns a FileResponse
+        # with no `filename=`, so it forces no disposition. It is not a live vector
+        # — the bytes are a PIL-regenerated JPEG, nosniff is set, and uploads now
+        # carry a sandbox CSP from core/middleware.py — but "every download forces
+        # attachment" is true of the named-file path only.
+        #
+        # Reopen the decision — and restore the check with `.svg` in it — if a
+        # second user account appears, if an exec path over UPLOAD_DIR appears, or
+        # if any route starts serving unmodified upload bytes without disposition.
+
         # Calculate file hash for deduplication
         file_hash = self.calculate_file_hash(file_obj)
         

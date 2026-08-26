@@ -18,14 +18,18 @@ import types
 from pathlib import Path
 
 import pytest
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import NullPool
 
 import core.database as cdb
 from core.database import GalleryImage
-from src.upload_handler import count_recent_uploads, UploadHandler
+from src.upload_handler import (
+    MAX_FILES_PER_REQUEST,
+    count_recent_uploads,
+    UploadHandler,
+)
 import routes.upload_routes as up
 
 _REPO = Path(__file__).resolve().parent.parent
@@ -41,15 +45,24 @@ def test_count_recent_uploads_ignores_batch_size():
     assert count_recent_uploads([now - 11], now, window=10) == 0
 
 
-def _fake_handler():
+def _fake_handler(reject=None, status=429, detail="Upload rate limit exceeded. Please try again later."):
+    """A stand-in UploadHandler.
+
+    ``reject`` is a set of filenames whose save_upload raises HTTPException,
+    standing in for the real per-file rejections (429 rate limit, 400 empty /
+    oversized file) that save_upload can raise part-way through a batch.
+    """
+    reject = set(reject or ())
     h = types.SimpleNamespace()
     h.upload_rate_log = {}
     h.max_concurrent_uploads = 3
 
     def save_upload(u, client_ip, owner=None):
+        name = getattr(u, "filename", "f")
+        if name in reject:
+            raise HTTPException(status_code=status, detail=detail)
         # Mimic the real handler: every saved file logs a timestamp.
         h.upload_rate_log.setdefault(client_ip, []).append(_NOW)
-        name = getattr(u, "filename", "f")
         return {
             "id": "0" * 32 + "." + "txt",
             "name": name,
@@ -172,6 +185,153 @@ def test_six_file_batch_is_not_rate_limited(tmp_path):
         assert meta and meta.get("id")
         saved += 1
     assert saved == 6
+
+
+# ── P2-11: the batch cap and the partial-write hazard ────────────────────────
+# Before this, POST /api/upload had no server-side len(files) cap at all — the
+# only ceilings were starlette's form parser (max_files=1000) and the per-IP
+# rate limit, and the rate limit only fires part-way through a batch. The route
+# then re-raised that per-file HTTPException, so the request failed with 429
+# while the files saved before it stayed on disk and in the index.
+
+
+def test_batch_cap_sits_between_the_frontend_cap_and_the_rate_limit():
+    """Derived-state check: the server cap has to live inside a window.
+
+    Below the browser's MAX_FILES and a legitimate full batch gets a 400.
+    Above upload_rate_limit and the tail of an accepted batch 429s mid-write.
+    Raising either end without moving MAX_FILES_PER_REQUEST fails here.
+    """
+    h = UploadHandler.__new__(UploadHandler)
+    UploadHandler.__init__(h, base_dir="/tmp", upload_dir="/tmp/_pantheon_test_uploads_cfg")
+    assert MAX_FILES_PER_REQUEST >= _max_files_from_frontend()
+    assert MAX_FILES_PER_REQUEST <= h.upload_rate_limit
+
+
+async def test_a_full_frontend_batch_is_accepted_by_the_server():
+    h = _fake_handler()
+    up.setup_upload_routes(h)
+    endpoint = _endpoint(up.router)
+
+    result = await endpoint(_request(), _files(_max_files_from_frontend()))
+
+    assert len(result["files"]) == _max_files_from_frontend()
+
+
+async def test_oversized_batch_is_rejected_before_anything_is_written():
+    h = _fake_handler()
+    up.setup_upload_routes(h)
+    endpoint = _endpoint(up.router)
+
+    with pytest.raises(HTTPException) as ei:
+        await endpoint(_request(), _files(MAX_FILES_PER_REQUEST + 1))
+
+    assert ei.value.status_code == 400
+    assert str(MAX_FILES_PER_REQUEST) in str(ei.value.detail)
+    # Rejected whole: save_upload was never reached, so nothing was logged.
+    assert h.upload_rate_log == {}
+
+
+async def test_batch_at_the_cap_is_accepted():
+    h = _fake_handler()
+    up.setup_upload_routes(h)
+    endpoint = _endpoint(up.router)
+
+    result = await endpoint(_request(), _files(MAX_FILES_PER_REQUEST))
+
+    assert len(result["files"]) == MAX_FILES_PER_REQUEST
+
+
+async def test_one_rejected_file_does_not_discard_the_files_already_written():
+    """The partial-write hazard: file 3 429s after files 1-2 are on disk."""
+    h = _fake_handler(reject={"f2.txt"})
+    up.setup_upload_routes(h)
+    endpoint = _endpoint(up.router)
+
+    result = await endpoint(_request(), _files(4))
+
+    assert [f["name"] for f in result["files"]] == ["f0.txt", "f1.txt", "f3.txt"]
+    assert [r["name"] for r in result["rejected"]] == ["f2.txt"]
+    assert result["rejected"][0]["status"] == 429
+
+
+async def test_a_clean_batch_reports_no_rejections():
+    h = _fake_handler()
+    up.setup_upload_routes(h)
+    endpoint = _endpoint(up.router)
+
+    result = await endpoint(_request(), _files(3))
+
+    assert "rejected" not in result
+
+
+async def test_when_every_file_is_rejected_the_original_status_survives():
+    """Nothing was written, so there is no partial state to protect — the
+    caller keeps the precise reason instead of a blanket 500."""
+    h = _fake_handler(reject={"f0.txt"}, status=429)
+    up.setup_upload_routes(h)
+    endpoint = _endpoint(up.router)
+
+    with pytest.raises(HTTPException) as ei:
+        await endpoint(_request(), _files(1))
+
+    assert ei.value.status_code == 429
+    assert "rate limit" in str(ei.value.detail).lower()
+
+
+async def test_a_400_rejection_also_survives_when_nothing_was_written():
+    h = _fake_handler(reject={"f0.txt", "f1.txt"}, status=400, detail="File is empty")
+    up.setup_upload_routes(h)
+    endpoint = _endpoint(up.router)
+
+    with pytest.raises(HTTPException) as ei:
+        await endpoint(_request(), _files(2))
+
+    assert ei.value.status_code == 400
+    assert ei.value.detail == "File is empty"
+
+
+# ── P2-01 (DECISIONS.md D-2026-08-26-01): the upload type blocklist is gone ──
+
+
+def test_upload_type_blocklist_is_deleted():
+    """is_safe_file_type and both 9-entry lists were deleted deliberately.
+
+    Pinned so a later agent restoring "just the .exe entry" has to read the
+    decision (and its reopen conditions) first rather than reflexively re-adding
+    a check the audit proved was not buying what it looked like it bought.
+    """
+    assert not hasattr(UploadHandler, "is_safe_file_type")
+    src = (_REPO / "src/upload_handler.py").read_text(encoding="utf-8")
+    assert "dangerous_types" not in src
+    assert "dangerous_extensions" not in src
+
+
+def test_executable_named_upload_is_saved(tmp_path):
+    """The cost the decision names out loud: the extension half really did
+    catch .exe, and now does not."""
+    h = UploadHandler(base_dir=str(tmp_path), upload_dir=str(tmp_path / "uploads"))
+    u = types.SimpleNamespace(
+        file=io.BytesIO(b"MZ\x90\x00\x03 not really a PE but enough bytes"),
+        filename="installer.exe",
+    )
+
+    meta = h.save_upload(u, client_ip="9.9.9.8", owner="tester")
+
+    assert meta and meta.get("id")
+
+
+def test_javascript_upload_is_saved(tmp_path):
+    """The headline case: application/javascript was in the blocked MIME set."""
+    h = UploadHandler(base_dir=str(tmp_path), upload_dir=str(tmp_path / "uploads"))
+    u = types.SimpleNamespace(
+        file=io.BytesIO(b'(function () {\n  "use strict";\n  console.log("hi");\n})();\n'),
+        filename="chat.js",
+    )
+
+    meta = h.save_upload(u, client_ip="9.9.9.7", owner="tester")
+
+    assert meta and meta.get("id")
 
 
 async def test_chat_image_upload_is_added_to_gallery(tmp_path, monkeypatch):

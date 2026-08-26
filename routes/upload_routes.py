@@ -25,6 +25,7 @@ from src.auth_helpers import effective_user
 from src.attachment_refs import attachment_refs_from_metadata
 from src.constants import GENERATED_IMAGES_DIR
 from src.upload_handler import (
+    MAX_FILES_PER_REQUEST,
     UploadCleanupSafetyError,
     count_recent_uploads,
     extract_upload_ids,
@@ -265,9 +266,21 @@ def setup_upload_routes(upload_handler):
             session_id = None
         if not files:
             raise HTTPException(400, "No files uploaded")
-            
+
+        # Batch-size cap. The browser's MAX_FILES (static/js/fileHandler.js) is
+        # advisory — it bounds the composer, not the endpoint — so bound the
+        # request here too, before any bytes are written. Cheapest check first:
+        # an oversized batch is rejected whole, with nothing left on disk.
+        if len(files) > MAX_FILES_PER_REQUEST:
+            raise HTTPException(
+                400,
+                f"Too many files in one request (max {MAX_FILES_PER_REQUEST})",
+            )
+
         client_ip = request.client.host if request.client else "unknown"
         out = []
+        rejected = []
+        first_rejection: Optional[HTTPException] = None
 
         # Limit concurrent uploads per IP. Count genuine recent upload events —
         # NOT the number of files in this batch. The previous check summed over
@@ -306,16 +319,45 @@ def setup_upload_routes(upload_handler):
                 if gallery_id:
                     item["gallery_id"] = gallery_id
                 out.append(item)
-            except HTTPException:
-                raise
+            except HTTPException as e:
+                # A per-file rejection must not abort the batch. save_upload()
+                # charges upload_rate_limit once per file, so file N can 429
+                # after files 1..N-1 are already written to disk and indexed —
+                # re-raising here returned an error body while leaving those
+                # bytes committed, and the browser (which reads `files`) threw
+                # the successful ones away. Report the failures next to the
+                # successes instead of discarding both.
+                if first_rejection is None:
+                    first_rejection = e
+                logger.warning("Upload rejected for %s: %s", u.filename, e.detail)
+                rejected.append({
+                    "name": u.filename,
+                    "status": e.status_code,
+                    "error": str(e.detail),
+                })
+                continue
             except Exception as e:
                 logger.error(f"Failed to process upload {u.filename}: {str(e)}")
+                # Keep the response free of internal detail; the log has it.
+                rejected.append({
+                    "name": u.filename,
+                    "status": 500,
+                    "error": "Upload failed",
+                })
                 continue
-        
+
         if not out:
+            # Nothing was written, so there is no partial state to preserve:
+            # surface the first per-file rejection verbatim (429/400/…) so a
+            # single-file caller still gets the precise reason and status.
+            if first_rejection is not None:
+                raise first_rejection
             raise HTTPException(500, "All file uploads failed")
-            
-        return {"files": out}
+
+        response = {"files": out}
+        if rejected:
+            response["rejected"] = rejected
+        return response
     
     @router.post("/cleanup")
     async def manual_cleanup(request: Request):

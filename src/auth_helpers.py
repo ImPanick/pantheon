@@ -121,6 +121,31 @@ def require_user(request: Request) -> str:
     raise HTTPException(401, "Not authenticated")
 
 
+_PRIVILEGE_KEY_PREFIX = "can_"
+
+
+def privilege_denied_message(key: str) -> str:
+    """The 403 detail for a denied privilege `key`, as a readable sentence.
+
+    Privilege keys are named `can_<verb phrase>` — `can_use_research`,
+    `can_generate_images`, `can_manage_memory`, `can_use_documents`. Dropping
+    the raw key into "Your account is not allowed to …" produced "Your account
+    is not allowed to can use research." Strip the `can_` first so the sentence
+    reads "…is not allowed to use research."
+
+    Wording only: nothing here decides anything. Keys that don't carry the
+    prefix are still rendered, with underscores turned into spaces, so a new
+    or misspelled key degrades to a readable sentence rather than a blank one.
+    """
+    phrase = str(key or "").strip()
+    if phrase.startswith(_PRIVILEGE_KEY_PREFIX):
+        phrase = phrase[len(_PRIVILEGE_KEY_PREFIX):]
+    phrase = phrase.replace("_", " ").strip()
+    if not phrase:
+        return "Your account is not allowed to perform this action."
+    return f"Your account is not allowed to {phrase}."
+
+
 def require_privilege(request: Request, key: str) -> str:
     """Reject callers whose `auth.json` privilege flag for `key` is False.
     Returns the username so the route handler can keep using it.
@@ -145,7 +170,7 @@ def require_privilege(request: Request, key: str) -> str:
     # True = permitted; missing key defaults to permitted (unknown privileges
     # fail open — the UI gates display-side).
     if not privs.get(key, True):
-        raise HTTPException(403, f"Your account is not allowed to {key.replace('_', ' ')}.")
+        raise HTTPException(403, privilege_denied_message(key))
     return user
 
 

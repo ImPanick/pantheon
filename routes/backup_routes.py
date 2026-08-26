@@ -9,8 +9,73 @@ from core.middleware import require_admin
 from services.memory import MemoryStoreUnreadable
 from src.auth_helpers import get_current_user
 from src.settings import load_settings, save_settings, load_features, save_features
+from src.upload_limits import format_byte_limit, read_byte_limit_env
 
 logger = logging.getLogger(__name__)
+
+# Hard ceiling on the /api/import request body. Read through the house helper
+# (src/upload_limits.py) so it is validated and env-overridable —
+# PANTHEON_BACKUP_IMPORT_MAX_BYTES, an integer byte count; a non-integer or a
+# value below 1 fails fast at import rather than mid-request. Deliberately not
+# a raw int(os.getenv(...)) literal.
+#
+# 25 MB: a backup is a strict superset of a memory import
+# (MEMORY_IMPORT_MAX_BYTES, 10 MB) since it also carries presets, skills,
+# settings and preferences, and it is well under the ~100 MB point where the
+# whole-payload-in-memory read would have to become streaming-to-disk.
+BACKUP_IMPORT_MAX_BYTES = read_byte_limit_env(
+    "PANTHEON_BACKUP_IMPORT_MAX_BYTES", 25 * 1024 * 1024
+)
+
+
+def _declared_body_length(request: Request):
+    """The client-declared Content-Length as an int, or None if absent or junk."""
+    try:
+        raw = request.headers.get("content-length")
+    except Exception:
+        return None
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+async def _load_import_body(request: Request, limit: int):
+    """Parse the /api/import JSON body under a hard byte ceiling.
+
+    ``Request.json()`` goes through ``Request.body()``, which concatenates the
+    entire stream into memory with no ceiling, and this app installs no
+    request-body-size middleware, so the only bound on an /api/import POST is
+    available RAM. Stream instead and stop one byte past ``limit``.
+
+    Content-Length is a cheap early reject only: it is client-supplied and
+    absent on chunked bodies, so the streamed byte count is the real control.
+
+    This bounds an *already authorized* request — ``require_admin`` runs before
+    it and is not replaced by it. The ceiling matters most where
+    ``require_admin`` short-circuits (AUTH_ENABLED=false), because there it is
+    the only thing between /api/import and an unbounded read.
+    """
+    stream = getattr(request, "stream", None)
+    if stream is None:
+        # A Request-like object with no ASGI stream (in-process callers that
+        # pass the handler a double). There is nothing to meter, so defer to
+        # whatever parser it offers.
+        return await request.json()
+
+    declared = _declared_body_length(request)
+    too_large = f"Import body exceeds {format_byte_limit(limit)} limit"
+    if declared is not None and declared > limit:
+        raise HTTPException(413, too_large)
+
+    raw = bytearray()
+    async for chunk in stream():
+        raw.extend(chunk)
+        if len(raw) > limit:
+            raise HTTPException(413, too_large)
+    return json.loads(bytes(raw))
 
 
 def setup_backup_routes(memory_manager, preset_manager, skills_manager) -> APIRouter:
@@ -65,8 +130,11 @@ def setup_backup_routes(memory_manager, preset_manager, skills_manager) -> APIRo
         """Import user data from a previously exported JSON file. Merges with existing data."""
         require_admin(request)
         user = get_current_user(request)
+        # Size ceiling goes AFTER the admin gate, never in place of it.
         try:
-            body = await request.json()
+            body = await _load_import_body(request, BACKUP_IMPORT_MAX_BYTES)
+        except HTTPException:
+            raise  # 413 must not be laundered into "Invalid JSON" below
         except Exception:
             raise HTTPException(400, "Invalid JSON")
 

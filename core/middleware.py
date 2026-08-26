@@ -99,6 +99,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         is_document_pdf_preview = path.startswith("/api/document/") and path.endswith("/render-pdf")
         # Visual report pages are self-contained HTML — need inline scripts + external images
         is_report = path.startswith("/api/research/report/")
+        # Served-back uploads: `GET /api/upload/{file_id}` (and `?thumb=1`),
+        # plus the sibling stats/cleanup/vision routes. Matched on the same
+        # `path` form as the three above; see the NOTE on prefix deployments
+        # in the `elif is_upload` branch below.
+        is_upload = path.startswith("/api/upload/")
 
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
@@ -129,6 +134,53 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             response.headers["Content-Security-Policy"] = (
                 "default-src 'none'; "
                 "frame-ancestors 'self'"
+            )
+        elif is_upload:
+            # Uploads are user-supplied bytes replayed from this app's own
+            # origin. If one is ever opened as a top-level document it must
+            # not be able to script against the session, so it gets a sandbox
+            # instead of the app CSP below.
+            #
+            # This branch cannot live at the route. `UPLOAD_RESPONSE_HEADERS`
+            # (routes/upload_routes.py) is applied by the handler, this
+            # middleware runs after it, and starlette's
+            # `MutableHeaders.__setitem__` replaces rather than appends — so a
+            # `Content-Security-Policy` key added there is overwritten here and
+            # never reaches the wire.
+            #
+            # `sandbox` with no other token means an opaque origin with
+            # scripting, forms, popups, plugins and top-level navigation all
+            # off. `allow-downloads` is granted deliberately: the chat
+            # attachment UI does `window.open('/api/upload/<id>')`
+            # (static/js/chatRenderer.js, static/js/chat.js) and that response
+            # carries `Content-Disposition: attachment`, which a sandbox
+            # lacking `allow-downloads` blocks. CSP is not applied to
+            # subresource loads, so the inline `?thumb=1` previews are
+            # unaffected either way.
+            #
+            # Defence in depth *behind* the route's `Content-Disposition:
+            # attachment` and the nosniff set above — neither of which moves.
+            #
+            # NOTE: like the three branches above, this matches on
+            # `request.url.path`, which still carries any ASGI `root_path`
+            # prefix. Under a prefixed deployment the match misses and the
+            # response falls through to the app CSP in the else-branch. The
+            # whole method has that property; switching it to
+            # `get_application_route_path(request.scope)` (the form
+            # `AuthMiddleware` in app.py uses) is the fix, but this dispatch is
+            # pinned by the `_FakeRequest` stub in
+            # tests/test_document_render_pdf_iframe.py, which has no `.scope`
+            # — so the two have to move together.
+            response.headers["X-Frame-Options"] = "DENY"
+            response.headers["Content-Security-Policy"] = (
+                # `default-src 'none'` costs nothing here and is strictly
+                # tighter: an upload is served as a leaf document, so it has no
+                # legitimate subresource to fetch. It cannot affect `?thumb=1`
+                # either — CSP is not applied to subresources, only to the
+                # document that loads them.
+                "default-src 'none'; "
+                "sandbox allow-downloads; "
+                "frame-ancestors 'none'"
             )
         else:
             response.headers["X-Frame-Options"] = "DENY"

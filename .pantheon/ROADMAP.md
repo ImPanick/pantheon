@@ -49,7 +49,7 @@ soon as its dependency lands.
 | Setup | Fork, rename, rebuild | 6 | 0 | 0 | **6** |
 | P0 | Fork identity & licence | 29 | 15 | 0 | **14** |
 | P1 | Token layer — the free wins | 14 | 14 | 0 | 0 |
-| P2 | Un-nerf | 26 | 26 | 0 | 0 |
+| P2 | Un-nerf | 26 | 15 | 1 | **10** |
 | P3 | Mechanical hygiene | 12 | 12 | 0 | 0 |
 | P4 | The wire — the real glass box | 24 | 24 | 0 | 0 |
 | P5 | Trace & composer restyle | 16 | 16 | 0 | 0 |
@@ -58,11 +58,14 @@ soon as its dependency lands.
 | P8 | The Workshop | 48 | 48 | 0 | 0 |
 | P9 | Feature surfaces | 16 | 16 | 0 | 0 |
 | P10 | Accessibility & release | 12 | 12 | 0 | 0 |
-| **Total** | | **231** | **211** | **0** | **20** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
+| **Total** | | **231** | **200** | **1** | **30** | | **231** | **211** | **0** | **20** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
 
-**Nothing is blocked.** `P0-05` turned out to be smaller than it looked once the live instance
-was queried — see its line. `P2` is the phase to run first: it is the only one with a work-list
-that has been verified against the source.
+**Ten P2 tasks landed in run 01.** What is left in P2 needs you, not an agent: eleven tasks are
+marked DECIDE in `P2-CORRECTED.md` § C, and `P2-09` and `P2-13` each carry one open question on
+their line. Answer those and P2 finishes in one more run.
+
+**`P1` is the next phase to run** — everything visual depends on the token layer, and `P1-01` is
+now specified correctly (per theme, never `:root`).
 
 **Then the licence gaps** — they are the gate on going public (`DECISIONS.md`
 D-2026-08-26-02), and `P0-17` is the only one that is a genuine legal obligation rather
@@ -83,6 +86,13 @@ upstream's artwork under Pantheon's filenames.
 *The one progress area. Newest first. One entry per completed section — two lines, a
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
+
+### P2 run 01 — 10 implemented, 1 reverted, 1 blocked
+Upload blocklist deleted, upload CSP sandboxed in the middleware, four dead config blocks and a
+dead validator removed, `_is_text_file` widened 10 → 28, email decode fallback, a real `MAX_FILES`
+cap, the heredoc contradiction, the grammar bug, and a 413 on the admin import. Suite: 5,742 pass
+against 5,731 at baseline, same 44 pre-existing failures, zero regressions. Four bugs filed.
+`1f5ec17 … HEAD`
 
 ### R-06 closed + first implementation run launched
 Pantheon's real tree is now in the cloud container at `/work/pantheon`, staged from cybertooth
@@ -316,30 +326,30 @@ line stay exactly where they are, and `P2-CORRECTED.md` § A names the five task
 cross one if implemented carelessly.
 
 ### The archetype
-- [ ] **P2-01** **Delete the upload type check whole** — **decided, see `DECISIONS.md`
+- [x] **P2-01** **Delete the upload type check whole** — **decided, see `DECISIONS.md` — **done:** blocklist and call site deleted whole per D-2026-08-26-01; rationale comment at `src/upload_handler.py:1246`.
   D-2026-08-26-01: delete the function entirely, both blocklists.** Read that entry for the
   two things this genuinely costs before you write the diff. Original text follows; two of
-  its claims are wrong, see `P2-CORRECTED.md` § C. — `is_safe_file_type()` and its call site. The blocked-MIME set contains `application/javascript`, so libmagic refuses every real `.js` file; `.js` isn't even in the extension list. **Nothing on the server executes an upload**, and every download carries `Content-Disposition: attachment` + `nosniff` ×2 + CSP. `.svg` — the actual stored-XSS vector — was never blocked. `CI:` none; no test references either constant. `Verify:` uploading `static/js/chat.js` succeeds.
-- [ ] **P2-02** Optional belt-and-braces: add `Content-Security-Policy: sandbox` to `UPLOAD_RESPONSE_HEADERS`. One line, mirrors the emoji route. `Depends:` P2-01.
-- [ ] **P2-03** **Delete four dead config blocks** (two allowlists, two blocklists) with zero readers. One blocks `.py`, `.sh` and `.js` — a live landmine if anyone wires it up.
-- [ ] **P2-04** Delete the dead chat-upload validator that advertises a policy with no route callers.
+  its claims are wrong, see `P2-CORRECTED.md` § C. — `is_safe_file_type()` and its call site. The blocked-MIME set contains `application/javascript`, so libmagic refuses every real `.js` file; `.js` isn't even in the extension list. **Nothing on the server executes an upload**, and every download carries `Content-Disposition: attachment` + `nosniff` ×2 + CSP. `.svg` — the actual stored-XSS vector — was never blocked. `CI:` none; no test references either constant. `Verify:` **not** `chat.js` — that always worked. `mimetypes.guess_type('f.js')` is `text/javascript`, which was never in the blocked MIME set, and `.js` was never in the extension list. The real delta is the extension half: `installer.exe` guesses to `application/x-msdos-program` (never MIME-blocked) but *was* extension-blocked, so it 400'd and now saves.
+- [x] **P2-02** **That one line is a no-op and this task is not optional.** No route in this app can set a CSP — the middleware runs after the handler and starlette's `MutableHeaders.__setitem__` replaces rather than appends. The branch lives in `core/middleware.py`. The emoji route it was to mirror ships the same dead header. `Depends:` P2-01. — **done:** sandbox CSP branch at `core/middleware.py:138`, with `default-src 'none'`; the three pre-existing branches byte-identical.
+- [x] **P2-03** **Delete four dead config blocks** (two allowlists, two blocklists) with zero readers. One blocks `.py`, `.sh` and `.js` — a live landmine if anyone wires it up. — **done:** four zero-reader blocks deleted, `src/config.py:34` and `:103`; the module-scope `validate_config()` side effect verified intact.
+- [x] **P2-04** Delete the dead chat-upload validator that advertises a policy with no route callers. — **done:** `validate_file_upload` deleted, `src/chat_helpers.py:226`; live-path cap coverage retained in the test.
 
 ### Widen
-- [ ] **P2-05** Memory import allowlist → add `.yaml .yml .ts .tsx .jsx .sh .xml .toml .ini .sql .rs .go .java .c .cpp .rb .php .docx`, or replace with a size+decodability check. Content is decoded to text and fed to an LLM; nothing is served back. Update the frontend `accept` to match.
-- [ ] **P2-06** `_is_text_file` → add `.ts .tsx .jsx .css .scss .yaml .yml .sh .bash .sql .toml .ini .c .cpp .h .go .rs .rb .php .java .xml .vue .svelte` — matching the fence-language set already in the same file.
-- [ ] **P2-07** Email attachment-as-doc → add a text fallback for any decodable attachment instead of `Unsupported attachment type`. The editor renders every language already.
+- [ ] **P2-05** Memory import allowlist → add `.yaml .yml .ts .tsx .jsx .sh .xml .sql .rs .go .java .c .cpp .rb .php .docx` — **not** `.scss .toml .ini .vue .svelte`: none of those is in `is_document_file`'s `document_extensions`, so adding them here is unreachable code, or replace with a size+decodability check. Content is decoded to text and fed to an LLM; nothing is served back. Update the frontend `accept` to match.
+- [x] **P2-06** `_is_text_file` → add `.ts .tsx .jsx .css .scss .yaml .yml .sh .bash .sql .toml .ini .c .cpp .h .go .rs .rb .php .java .xml .vue .svelte` — matching the fence-language set already in the same file. — **done:** `_is_text_file` 10 → 28 suffixes at `src/document_processor.py:45`; 11 extensions verified to flip from banner to content.
+- [x] **P2-07** Email attachment-as-doc → add a text fallback for any decodable attachment instead of `Unsupported attachment type`. The editor renders every language already. — **done:** **backend only** — decode fallback at `routes/email_routes.py:3728`. Unreachable from the UI until `emailLibrary.js:6807` moves, see B02.
 - [ ] **P2-08** Raise `MAX_INLINE_ATTACHMENT_CHARS` (24,000 shared across **all** attachments in a turn — with 10 files that is 2.4 K each). Make it per-attachment or scale it off the input token budget.
-- [ ] **P2-09** Make `skill_max_injected` (default 3) context-window-scaled instead of a flat cap. **Fork-head check done — no conflict, this is ready.** The fork commits touch `agent_loop.py` nowhere near the skill-injection block at `:2657-2660`. Note the undocumented ceiling `max(0, min(12, …))` at `:2660` paired with `max="12"` at `index.html:495` — raising the setting alone silently does nothing above 12, so both move together.
+- [ ] **P2-09** **Implemented once and REVERTED — read this before re-landing.** Scaling `skill_max_injected` off the context window is right in principle and wrong as first built: the value reaches `_build_system_prompt` from `get_context_length()`, which returns `DEFAULT_CONTEXT = 128000` for any endpoint whose window cannot be proven **and discards the `known` flag**. `compute_skill_injection_limit(3, 128000, explicit=False)` is **12**. A local llama.cpp box holding 8K would have been injected 12 skill blocks of user-editable untrusted content instead of 3 — the exact failure `src/model_context.py:313-315` warns about. A user who deliberately typed `3` into the `max="12"` input at `index.html:495` would also have got 12. **Re-land:** call `budget_context_for_model(url, model, fallback=0)` at `agent_loop.py:4342` — returns 0 for an unproven window, shares the existing cache, adds no probe, restores the flat 3. **Decide first:** `0` is already the documented off switch, so *auto* needs its own sentinel or an explicit UI affordance. The pure functions written for it were correct in isolation and are worth keeping for the re-land.
 
 ### Fix
 - [ ] **P2-10** **The fake concurrency limit.** "max concurrent uploads: 3" is enforced as "≤3 uploads in the last ten seconds" and fires on a normal multi-file drag. Drop it; the 60/min rate limit already exists. `CI:` the test sets it locally, so the default is not pinned.
-- [ ] **P2-11** Raise `MAX_FILES` (10 → 25) **and** add a server-side `len(files)` cap, which does not exist. **`CI:` a test regex-parses this literal** and asserts `upload_rate_limit >= MAX_FILES`.
+- [x] **P2-11** Raise `MAX_FILES` (10 → 25) **and** add a server-side `len(files)` cap, which does not exist. **`CI:` a test regex-parses this literal** and asserts `upload_rate_limit >= MAX_FILES`. — **done:** `MAX_FILES_PER_REQUEST = 25` at `src/upload_handler.py:227`, enforced pre-loop at `routes/upload_routes.py:274`; partial-write hazard fixed.
 - [ ] **P2-12** **Stop hiding small email attachments.** The signature heuristic also returns true for *any* image under 30 KB — a real screenshot is silently invisible **and** excluded from the ZIP. Keep the filename patterns, drop the size clause.
-- [ ] **P2-13** Relax the two per-model sampling clamps that silently overwrite user presets (one also forces top-p, top-k, penalties and stop tokens). Make them defaults, not caps. **Keep** the cloud-provider clamp — that API 400s above the ceiling. **Fork-head check done — no conflict, this is ready.** `git diff b4d1293..pre-rename-backup` touches `agent_loop.py` at lines 434, 449, 4763 and 4799 (`max_rounds`, `max_tokens`, `agent_stream_timeout`) and `llm_core.py` at line 408 (`_DegenerateStreamGuard`). It does **not** touch `_apply_local_generation_stability` (`llm_core.py:1070-1094`) or the qwen temperature cap (`agent_loop.py:2210-2221`). Different code. Nothing to redo or revert.
+- [~] **P2-13** **BLOCKED — correctly, on something the spec never named.** Premise verified true: both clamps exist at `src/llm_core.py:1071` and `src/agent_loop.py:2212`, and the Anthropic cloud clamp at `:1572` is untouched. But **four assertions in two unowned test files pin the cap** — `tests/test_llm_core_temperature_reasoning.py:104` and `tests/test_pr6020_rebase_regressions.py:182/:201/:216`. The two qwen tests exist to prove a mixed fallback chain leaks temperature in neither direction, and that property must survive any rewrite. **Also needs a decision:** `_apply_local_generation_stability` receives only a payload dict and cannot tell *the user asked for 0.9* from *0.9 is a default*, so a faithful "default, not cap" needs an explicitness signal threaded from the builder. The agent refused to ship a hidden env escape hatch with no UI — right call.
 - [ ] **P2-14** Loosen the guide-only trigger: seven regexes fire on any mention of the phrasing and then strip every tool **and all MCP** for the turn. Require whole-message match, or an explicit toggle.
-- [ ] **P2-15** Fix the self-contradicting bash prompt — one line forbids heredocs, seven lines later another instructs the model to use one. Prompt-only; enforces nothing.
-- [ ] **P2-16** Fix the grammar bug producing `Your account is not allowed to can use research.`
-- [ ] **P2-17** Cap the backup import — `await request.json()` with no size limit on an admin route.
+- [x] **P2-15** Fix the self-contradicting bash prompt — one line forbids heredocs, seven lines later another instructs the model to use one. Prompt-only; enforces nothing. — **done:** heredoc instruction removed at `src/agent_loop.py:574` — 10 ban sites, 0 instruction sites.
+- [x] **P2-16** Fix the grammar bug producing `Your account is not allowed to can use research.` — **done:** `privilege_denied_message` at `src/auth_helpers.py:127`; the fail-open `privs.get(key, True)` deliberately untouched.
+- [x] **P2-17** Cap the backup import — `await request.json()` with no size limit on an admin route. — **done:** 413 cap at `routes/backup_routes.py:134`, **after** `require_admin` at `:131`; env var wired into all three compose files and `.env.example`.
 - [ ] **P2-18** Fix the feature-flag story: `deep_research` defaults off, the frontend hides four buttons, and **no server route checks it**. Either enforce server-side or delete the three flags with zero consumers. Flip `deep_research` on.
 
 ### Re-surface what was built and never wired
@@ -613,6 +623,10 @@ the only lane through which the theme file gets touched.
 
 *Agents append here. Format: `- [ ] **Bxx** … — found during Px-yy — agent:`id``*
 
+- [ ] **B02** **P2-07's decode fallback cannot be reached from the UI.** `static/js/emailLibrary.js:6807` gates the "Open in document editor" button on `_OPENABLE_RE = /\.(pdf|docx|txt|md|markdown|eml)$/i` — the six pre-existing suffixes. No `.log`, `.csv`, `.json`, `.yaml` or extensionless attachment can reach the new branch. Suggested fix: drop the extension gate entirely and let the backend sniff be the single decision point. `Verify:` a `.log` attachment opens in the editor. — found during P2 run 01
+- [ ] **B03** **P2-11's rejected files vanish silently.** Partial-failure batches now return 200 with `files` + `rejected`, where they previously returned a failure status. `static/js/fileHandler.js:325` clears `pendingFiles` on any 2xx, so the rejected subset disappears from the composer with no message. One toast reading `rejected` closes it. `Verify:` drop 30 files, see a message naming the 5 that did not upload. — found during P2 run 01
+- [ ] **B04** **The two new controls have no test coverage.** The P2-17 413 cap, its boundary, and its ordering behind `require_admin` have zero tests; `attachment_as_doc` has zero and always did. Both implementing agents owned no test files. Promote the two scratch harnesses into `tests/`. — found during P2 run 01
+- [ ] **B05** **An unenforced cross-file invariant.** `src/upload_handler.py`'s `document_extensions` must stay a subset of `src/document_processor.py`'s `_is_text_file`, or an upload is accepted and then silently discarded at ingest. The invariant is now in a docstring; nothing checks it. A three-line test would. — found during P2 run 01
 - [ ] **B01** **The datastore image is unpinned.** `chromadb/chroma:latest` in all three
   compose files, and `binwiederhier/ntfy` with no tag at all in the same three. A
   breaking Chroma release lands on the next `--build` and the collections stop loading —

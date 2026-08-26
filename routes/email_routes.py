@@ -3433,12 +3433,17 @@ def setup_email_routes():
         """Extract an email attachment and open it in the document editor.
 
         Supported extensions:
-          - .pdf   → rendered as PDF Document (existing flow)
-          - .docx  → text extracted to markdown Document
-          - .txt / .md → loaded directly as a markdown Document
+          - .pdf                    → rendered as PDF Document (existing flow)
+          - .eml                    → attached message summarised to markdown
+          - .docx                   → text extracted to markdown Document
+          - .txt / .md / .markdown  → loaded directly as a markdown Document
+          - anything else that decodes as text (.log .csv .json .yaml .py
+            .html …, and extensionless files) → loaded as a markdown Document
+            via the decode fallback below
 
         Returns {doc_id} so the frontend can open it as a tab in the doc panel.
-        Other types are rejected — caller should fall back to download.
+        Attachments whose bytes are binary are rejected — caller should fall
+        back to download.
         """
         try:
             with _imap(account_id, owner=owner) as conn:
@@ -3700,6 +3705,66 @@ def setup_email_routes():
                 except Exception as e:
                     return {"error": f"Failed to read text file: {e}", "filename": base}
                 doc_id = _create_markdown_doc(content, "Imported from email attachment")
+                return {"doc_id": doc_id, "filename": filepath.name}
+
+            # ── Decode fallback: any other attachment that is really text ──
+            # The four branches above accept 6 suffixes. Everything else used
+            # to hit the unconditional rejection below, even when it was plain
+            # text — .log, .csv, .json, .yaml, .py, .html, .ini and files with
+            # no extension at all. Sniff a prefix of the bytes; if it reads as
+            # text, open it with exactly the primitive the .txt branch just
+            # above already relies on — read_text(errors="replace") cannot
+            # raise on arbitrary bytes. Genuinely binary attachments still
+            # fall through to the unsupported-type rejection, unchanged.
+            #
+            # The sniff is stdlib-only on purpose: detect_content_type() is a
+            # libmagic call and python-magic ships only in the Docker image, so
+            # reusing it would make this branch accept different files on a
+            # Docker install than on a pip/venv one.
+            #
+            # Ordering note: this sits BELOW the commonpath containment check
+            # and the dotfile rejection above, which still gate every path
+            # that can reach here. Do not hoist it above them.
+            def _looks_like_text(path_obj, probe_bytes: int = 8192) -> bool:
+                try:
+                    with path_obj.open("rb") as fh:
+                        head = fh.read(probe_bytes)
+                except Exception as _e:
+                    logger.warning("attachment text sniff failed for %s: %s", base, _e)
+                    return False
+                if not head:
+                    return True  # empty file — nothing binary about it
+                if b"\x00" in head:
+                    # NUL byte: the classic binary tell, and the check doing
+                    # the real work here — png/jpeg/zip/gzip prefixes all
+                    # carry one. (A zip of ASCII scores only 0.02 on the
+                    # ratio below, so the ratio alone would let it through.)
+                    # Cost: UTF-16/32 text reads as binary and keeps the
+                    # rejection it already gets today.
+                    return False
+                decoded = head.decode("utf-8", errors="replace")
+                if not decoded:
+                    return False
+                # Backstop for binary carrying no NUL in its first KiBs: such
+                # a prefix is mostly U+FFFD. Measured 0.43 for NUL-free random
+                # bytes, so 0.30 clears binary. It does NOT clear all text:
+                # legacy single-byte prose scores far higher than one number
+                # suggests — German 0.148, Spanish 0.125, French 0.193,
+                # Icelandic 0.229, and Polish cp1250 at 0.396 is rejected today,
+                # as is every non-Western legacy encoding (cp1251 Russian 0.815)
+                # along with UTF-16/32. Those attachments fall through to the
+                # unchanged rejection below, which is the pre-existing behaviour
+                # and therefore safe — but this is a UTF-8-and-Western-latin
+                # fallback, not a general one. Widening it means sniffing the
+                # encoding, not raising this number.
+                return decoded.count("\ufffd") / len(decoded) <= 0.30
+
+            if _looks_like_text(filepath):
+                try:
+                    content = filepath.read_text(encoding="utf-8", errors="replace")
+                except Exception as e:
+                    return {"error": f"Failed to read text file: {e}", "filename": base}
+                doc_id = _create_markdown_doc(content, "Imported from email attachment (decoded as text)")
                 return {"doc_id": doc_id, "filename": filepath.name}
 
             return {"error": f"Unsupported attachment type: {ext}", "filename": base}

@@ -31,14 +31,14 @@ class DataConfig(BaseSettings):
     runbook_dir: Path = Field(default=Path(_DATA_DIR_CONST) / "personal_docs" / "runbook", description="Runbook directory")
     
     # Upload settings
+    # NOTE (P2-03): an `allowed_extensions` upload allowlist used to live here and
+    # was duplicated as a literal inside AppConfig.set_data_paths below. Nothing
+    # ever read either copy — the live upload path is UploadHandler.save_upload,
+    # which never sees this object. Both copies were deleted rather than wired up:
+    # the real enforcement points are src/upload_limits.py (byte caps) and the
+    # write-time allowlist on the font upload path (P2-24). Do not re-add a
+    # zero-reader allowlist here; it reads as a control while enforcing nothing.
     max_upload_size: int = Field(default=10 * 1024 * 1024, description="Maximum upload size in bytes (10MB)")
-    allowed_extensions: List[str] = Field(
-        default=[
-            '.txt', '.py', '.html', '.md', '.json', '.csv',
-            '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff', '.pdf'
-        ],
-        description="Allowed file extensions for uploads"
-    )
     chunk_size: int = Field(default=1000, description="Chunk size for document processing")
     chunk_overlap: int = Field(default=200, description="Overlap between chunks for document processing")
     cleanup_days: int = Field(default=30, description="Number of days after which to clean up old uploads")
@@ -100,23 +100,14 @@ class SecurityConfig(BaseSettings):
     # Security settings
     allowed_origins: List[str] = Field(default=["*"], description="Allowed origins for CORS")
     max_file_size: int = Field(default=10 * 1024 * 1024, description="Maximum file size in bytes")
-    dangerous_file_types: List[str] = Field(
-        default=[
-            'application/x-executable', 'application/x-sharedlib',
-            'application/x-dll', 'application/x-msdownload',
-            'application/x-sh', 'application/x-bat', 'application/x-vbs',
-            'application/javascript', 'application/x-javascript'
-        ],
-        description="Potentially dangerous MIME types to block"
-    )
-    dangerous_extensions: List[str] = Field(
-        default=[
-            '.exe', '.dll', '.bat', '.cmd', '.sh', '.bash', 
-            '.js', '.vbs', '.ps1', '.py', '.php', '.jsp', '.asp', '.aspx'
-        ],
-        description="Potentially dangerous file extensions to block"
-    )
-    
+    # NOTE (P2-03): `dangerous_file_types` (9 MIME types) and `dangerous_extensions`
+    # (14 extensions, incl. .sh/.bash/.js/.py) used to live here. Neither was ever
+    # read: no module imports this class's fields, so these were a decorative copy
+    # of the blocklists that really lived in UploadHandler.is_safe_file_type — which
+    # P2-01/D-2026-08-26-01 removed on its own evidence. Deleting a zero-reader copy
+    # lifts no control. If the reopen conditions in D-2026-08-26-01 are ever met, the
+    # check comes back at the upload path where it can actually run, not here.
+
     model_config = SettingsConfigDict(env_prefix="SECURITY_")
 
 class AppConfig(BaseSettings):
@@ -145,13 +136,6 @@ class AppConfig(BaseSettings):
         
         # Get values from the input dict or use defaults
         max_upload_size = v.get("max_upload_size", 10 * 1024 * 1024) if isinstance(v, dict) else 10 * 1024 * 1024
-        allowed_extensions = v.get("allowed_extensions", [
-            '.txt', '.py', '.html', '.md', '.json', '.csv',
-            '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff', '.pdf'
-        ]) if isinstance(v, dict) else [
-            '.txt', '.py', '.html', '.md', '.json', '.csv',
-            '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff', '.pdf'
-        ]
         chunk_size = v.get("chunk_size", 1000) if isinstance(v, dict) else 1000
         chunk_overlap = v.get("chunk_overlap", 200) if isinstance(v, dict) else 200
         cleanup_days = v.get("cleanup_days", 30) if isinstance(v, dict) else 30
@@ -164,7 +148,6 @@ class AppConfig(BaseSettings):
             "personal_dir": data_dir / "personal_docs",
             "runbook_dir": data_dir / "personal_docs" / "runbook",
             "max_upload_size": max_upload_size,
-            "allowed_extensions": allowed_extensions,
             "chunk_size": chunk_size,
             "chunk_overlap": chunk_overlap,
             "cleanup_days": cleanup_days

@@ -17,17 +17,42 @@ MIN_INLINE_ATTACHMENT_SLICE = 500
 
 
 def _is_text_file(path: str) -> bool:
-    """Check if file has text extension."""
+    """Check if file has text extension.
+
+    This is an *ingestion gate*, not a security check. ``build_user_content``
+    calls it as the fallback arm of ``mime.startswith("text/") or
+    _is_text_file(path)``; anything that fails both falls through to
+    ``_process_office_document``, which returns the literal
+    ``[Attached document file]`` banner for a non-markitdown format — zero bytes
+    of the file reach the model.
+
+    ``upload_handler.is_document_file`` admits 34 extensions, and the mime it is
+    compared against is a libmagic sniff of the first 1 KiB with
+    ``mimetypes.guess_type`` as the fallback (``upload_handler.detect_content_type``).
+    python-magic ships only in the Docker image, so on a pip/venv install the
+    ``mimetypes`` table alone decides — and it maps ``.go .bash .tsx .jsx .php``
+    to ``None`` and ``.yaml .yml .rs .sql .rb .xml`` to non-``text/*`` types.
+    Those eleven were silently discarded.
+
+    Keep this set a superset of the ``language_map`` / ``code_extensions`` fence
+    sets in ``_process_text_file`` below: an extension that has a fence label but
+    never reaches the fencer is a contradiction. ``.h`` is here for determinism
+    only — ``mimetypes.guess_type`` already resolves it to ``text/x-chdr``.
+    """
     return any(
         path.lower().endswith(ext)
-        for ext in (".txt", ".py", ".html", ".htm", ".md", ".json", ".csv", ".log", ".js", ".nix")
+        for ext in (
+            ".txt", ".py", ".html", ".htm", ".md", ".json", ".csv", ".log", ".js", ".nix",
+            ".bash", ".c", ".cpp", ".css", ".go", ".h", ".java", ".jsx", ".php", ".rb",
+            ".rs", ".sh", ".sql", ".ts", ".tsx", ".xml", ".yaml", ".yml",
+        )
     )
 
 
 def _process_text_file(path: str) -> str:
     """Process text file with enhanced formatting and metadata."""
     language_map = {
-        ".py": "python", ".js": "javascript", ".html": "html", ".css": "css",
+        ".py": "python", ".js": "javascript", ".html": "html", ".htm": "html", ".css": "css",
         ".json": "json", ".md": "markdown", ".txt": "text", ".csv": "csv",
         ".log": "log", ".sh": "bash", ".bash": "bash", ".nix": "nix",
         ".yml": "yaml", ".yaml": "yaml",
@@ -92,7 +117,7 @@ def _process_text_file(path: str) -> str:
     header += f"[Type: {language}, Lines: {line_count}, Size: {size_str} bytes]"
 
     code_extensions = {
-        ".py", ".js", ".html", ".css", ".json", ".md", ".sh", ".bash", ".nix",
+        ".py", ".js", ".html", ".htm", ".css", ".json", ".md", ".sh", ".bash", ".nix",
         ".yml", ".yaml", ".xml", ".sql", ".cpp", ".c", ".java", ".go", ".rs", ".php", ".rb",
         ".ts", ".jsx", ".tsx",
     }

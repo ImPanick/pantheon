@@ -1,8 +1,7 @@
 # src/chat_helpers.py
-"""URL extraction, message/upload validation, request parsing."""
+"""URL extraction, message validation, request parsing."""
 
 import re
-import os
 import json
 import time
 import ipaddress
@@ -10,10 +9,7 @@ import logging
 import httpx
 from urllib.parse import urlparse
 from fastapi import HTTPException
-from fastapi import UploadFile
 from typing import List, Optional
-
-from src.upload_limits import format_byte_limit, get_chat_upload_max_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -227,67 +223,14 @@ def validate_message(message: str) -> str:
     return message
 
 
-def validate_file_upload(file: UploadFile) -> UploadFile:
-    """Validate uploaded file meets requirements."""
-    if not file or not file.filename:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "error": "INVALID_FILE",
-                "message": "No file uploaded or invalid filename"
-            }
-        )
-
-    try:
-        file.file.seek(0, 2)
-        file_size = file.file.tell()
-        file.file.seek(0)
-
-        if file_size == 0:
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "error": "EMPTY_FILE",
-                    "message": "File is empty"
-                }
-            )
-
-        upload_limit = get_chat_upload_max_bytes()
-        if file_size > upload_limit:
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "error": "FILE_TOO_LARGE",
-                    "message": f"File size exceeds {format_byte_limit(upload_limit)} limit"
-                }
-            )
-    except IOError as e:
-        logger.error(f"Error reading file size for {file.filename}: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "error": "FILE_READ_ERROR",
-                "message": "Error reading uploaded file"
-            }
-        )
-
-    allowed_extensions = {'.txt', '.py', '.html', '.md', '.json', '.csv', '.js',
-                         '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.pdf',
-                         '.webm', '.wav', '.mp3', '.m4a', '.ogg'}
-
-    _, ext = os.path.splitext(file.filename.lower())
-
-    if ext not in allowed_extensions:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "error": "UNSUPPORTED_FILE_TYPE",
-                "message": f"File type '{ext}' not allowed",
-                "allowed_types": sorted(allowed_extensions)
-            }
-        )
-
-    return file
+# NOTE (P2-04): `validate_file_upload(file)` used to live here. It advertised a
+# 19-extension allowlist and an "UNSUPPORTED_FILE_TYPE" error shape that no route
+# ever enforced — the live chat upload path is routes/upload_routes.py, which calls
+# UploadHandler.save_upload directly. Its only two references in the whole tree were
+# an import and a call inside tests/test_chat_upload_limit_config.py, so it validated
+# nothing but itself. Deleted rather than wired in: the checks that actually run are
+# UploadHandler.save_upload's empty-file check and the PANTHEON_CHAT_UPLOAD_MAX_BYTES
+# cap (src/upload_limits.py), which that test still pins through the live path.
 
 
 def coerce_message_and_session(req_json: dict | None, message: str | None,

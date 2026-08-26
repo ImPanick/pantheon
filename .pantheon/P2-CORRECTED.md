@@ -117,7 +117,17 @@ Exactly 3 ids (`docs-view` `rag.js:27`, `rag-upload-zone` `:111/:140`, `rag-file
 
 ---
 
-## D. UNVERIFIABLE from this tree — needs the fork head first
+## D. ~~UNVERIFIABLE~~ — RESOLVED 2026-08-26, both entries superseded
+
+> **This section is out of date and kept only for its measurements.** Both entries below say
+> P2-09 and P2-13 cannot be checked without the fork head. They were checked:
+> `git diff b4d1293..pre-rename-backup` touches `agent_loop.py` at lines 434, 449, 4763 and 4799
+> and `llm_core.py` at 408 — nowhere near either site. Neither task conflicts with the fork
+> commits. The current status of both is on their **`ROADMAP.md` task line**, which is newer than
+> this document: P2-09 was implemented, reverted, and carries an open question; P2-13 is blocked
+> on four test assertions this document never named.
+>
+> The measurements below are still accurate and still worth reading. The verdicts are not.
 
 This tree is upstream `b4d1293` and does **not** contain the three fork-only commits (guardrail caps for self-hosted vs cloud inference; agent RAG scratchpad; probe auth). Everything above was verified against `b4d1293` as-is. These two cannot be:
 

@@ -183,6 +183,18 @@ blocklists trimmed. `a1c6f2c … 9e40b17`
 
 ## Ground truth, in order
 
+**A contradiction between two programme documents is a bug. Resolve it; do not rank it.**
+The list below breaks ties for a question nobody has answered yet. It is not a licence to
+implement from a document you can see is contradicted by another one. If two files disagree,
+stop, work out which is newer and better evidenced, fix the loser **in place** so the next
+agent never meets the same fork in the road, and say in your report that you did.
+
+> **Incident.** `P2-CORRECTED.md` § D said P2-09 and P2-13 could not be verified without the
+> fork head. The roadmap task lines said the fork-head check was done and cited the diff. Both
+> were in the repo; nothing said which won. Seven agents each silently assumed P2-CORRECTED
+> superseded, and the integrator had to surface the contradiction as an open question after the
+> work was already done.
+
 1. **The source.** Beats everything. See rule 3.
 2. **`P2-CORRECTED.md`** for anything in P2 — it was verified against the source by
    thirteen agents and it supersedes P2's task text.
