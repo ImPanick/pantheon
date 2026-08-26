@@ -24,16 +24,59 @@
 
 ## ⚑ ON RECONNECT — do this first
 
-The desktop bridge dropped mid-session. Nothing below can start until it is back.
+**Machine map — the thing that was wrong in the first plan.** There are three machines,
+not two, and the tools do not reach the same one:
 
-- [ ] **R-01** Confirm the bridge: `git rev-parse --abbrev-ref HEAD` in the repo returns `custom`.
-- [ ] **R-02** `./scripts/pantheon-repo-setup.sh --dry-run` → read it → `--apply`. Creates the private repo, renames `origin`→`upstream`, `custom`→`main`, pushes the scaffolding.
-- [ ] **R-03** `./scripts/pantheon-init.sh --dry-run` → read the diff → `--apply`. Covers P0-02/03/04/06/07/08/10/11.
-- [ ] **R-04** Edit the live `.env` on the host: `ODYSSEUS_*` → `PANTHEON_*`.
-- [ ] **R-05** `docker compose up -d --build`, then confirm the app boots and you can log in.
-- [ ] **R-06** **Clone the pushed repo into the build container.** From that point the agents work in the cloud against a real clone and push branches; the desktop only pulls and rebuilds. This is what unblocks parallel agent work — see `ORCHESTRATION.md`.
+| Where | Reached by | Has | Lacks |
+|---|---|---|---|
+| Cloud build container | `Bash` | git, docker, network, `/work/base` | the fork's credentials |
+| Cowork device VM | `device_bash` | the repo mounted r/w, git, python, node | network, docker, gh, **and it cannot delete files** |
+| cybertooth (Windows) | `Windows-MCP__PowerShell` → Git Bash | **git, gh (auth'd), docker, network** | — |
 
-Once R-06 lands, the bridge stops being on the critical path.
+**Use `device_bash` to edit files, `Windows-MCP` for everything git, gh or docker.**
+`device_bash` cannot unlink, so `sed -i`, `git commit` and `git gc` all fail there — a
+`git add` from that side leaves stray `.git/objects/*/tmp_obj_*` behind.
+
+- [x] **R-01** Bridge confirmed. Branch `custom`, HEAD `ac65b63`.
+- [x] **R-02** Private repo live at **`github.com/ImPanick/pantheon`**, branch `main`, pushed.
+      Upstream kept as the `upstream` remote. Three fixes were needed on the way:
+      the preflight refused every dirty tree including its own scaffolding; the secret-scan
+      regex matched `ta`+`sk-form-…` class names and Slack's own help text; and the clone was
+      **shallow** (grafted at `b4d1293`, 5 commits), which is what made the first push fail
+      with `did not receive expected object`. `git fetch --unshallow upstream` brought the
+      full 2,077-commit history across.
+- [x] **R-03** `./scripts/pantheon-init.sh --dry-run` → read the diff → `--apply`.
+      **The script was rewritten and is uncommitted on cybertooth — commit it first.**
+      The original would have corrupted the fork: it swept `CHANGELOG.md` and
+      `CYBERTOOTH_CHANGES.md` (rewriting "forked from Odysseus" into "forked from
+      Pantheon"), swept its own source (turning `OLD_LC="odysseus"` into
+      `OLD_LC="pantheon"`), and rewrote every `odysseus-dev` reference into a `pantheon-dev`
+      org that does not exist. Covers P0-02/03/04/06/07/08/10/11 — 2,929 occurrences.
+- [x] **R-04** Edit the live `.env` on the host: `ODYSSEUS_*` → `PANTHEON_*`.
+- [x] **R-05** `docker compose up -d --build` on **Windows**, then confirm the app boots.
+      Five containers currently up: app, searxng, chromadb, ntfy, plus open-seo.
+- [x] **R-06 (half)** `/work/base` in the cloud container holds upstream at exactly
+      `b4d1293`, the fork point — enough for scouts to verify premises today.
+- [x] **R-06 (rest)** — **decided, see `DECISIONS.md` D-2026-08-26-02.** The repo stays
+      private. `P0-14 … P0-27` close first; public comes after, on our timing. Until the
+      flip, agents read `/work/base` and hand back patches that cybertooth applies. The
+      bridge stays on the write path deliberately — it has dropped three times, so work
+      lands as reviewable patches rather than live edits.
+
+### Two upstream identities — decide before P0-14
+The repo was cloned from **`pewdiepie-archdaemon/odysseus`**, but its own docs, code and CI
+fixtures reference **`odysseus-dev/odysseus`** — 47 occurrences across 16 files, including
+the OpenRouter `HTTP-Referer` header in `src/endpoint_resolver.py` and `src/llm_core.py`,
+the star-history chart in `README.md`, and the `owner:`/`repo:` fixtures in two CI tests.
+`NOTICE` and `CREDITS.md` currently name only the first. Confirm which is canonical before
+the attribution files are final. The rewritten sweep treats `odysseus-dev` as the org to
+replace with `ImPanick`, while preserving any link to a specific upstream issue, PR or
+discussion — those are provenance and must keep pointing upstream. There are exactly
+three of those, and the sweep sentinels them before the rename and restores them after:
+
+    specs/architecture-runtime-inventory.md:4   issues/4082
+    static/js/cookbook.js:3177                  discussions/1962
+    tests/test_sanitize_preserves_reasoning.py:7  issues/3118
 
 ---
 
@@ -117,7 +160,7 @@ More visible change than any redesign step, and zero markup touched.
 # P2 · Un-nerf
 *Area: `unnerf` · Depends: nothing · Runs in parallel from day one*
 
-> ### Scouted. Read `P2-CORRECTED.md` first — the task text below is superseded.
+> ### ⚠ Scouted. Read `P2-CORRECTED.md` first — the task text below is superseded.
 >
 > Six scouts and six adversarial reviewers checked all 26 premises against the source.
 > The reviewers overturned the scouts on **twelve of twelve** contested calls. What the
@@ -149,7 +192,10 @@ line stay exactly where they are, and `P2-CORRECTED.md` § A names the five task
 cross one if implemented carelessly.
 
 ### The archetype
-- [ ] **P2-01** **Delete the upload type check whole** — `is_safe_file_type()` and its call site. The blocked-MIME set contains `application/javascript`, so libmagic refuses every real `.js` file; `.js` isn't even in the extension list. **Nothing on the server executes an upload**, and every download carries `Content-Disposition: attachment` + `nosniff` ×2 + CSP. `.svg` — the actual stored-XSS vector — was never blocked. `CI:` none; no test references either constant. `Verify:` uploading `static/js/chat.js` succeeds.
+- [ ] **P2-01** **Delete the upload type check whole** — **decided, see `DECISIONS.md`
+  D-2026-08-26-01: delete the function entirely, both blocklists.** Read that entry for the
+  two things this genuinely costs before you write the diff. Original text follows; two of
+  its claims are wrong, see `P2-CORRECTED.md` § C. — `is_safe_file_type()` and its call site. The blocked-MIME set contains `application/javascript`, so libmagic refuses every real `.js` file; `.js` isn't even in the extension list. **Nothing on the server executes an upload**, and every download carries `Content-Disposition: attachment` + `nosniff` ×2 + CSP. `.svg` — the actual stored-XSS vector — was never blocked. `CI:` none; no test references either constant. `Verify:` uploading `static/js/chat.js` succeeds.
 - [ ] **P2-02** Optional belt-and-braces: add `Content-Security-Policy: sandbox` to `UPLOAD_RESPONSE_HEADERS`. One line, mirrors the emoji route. `Depends:` P2-01.
 - [ ] **P2-03** **Delete four dead config blocks** (two allowlists, two blocklists) with zero readers. One blocks `.py`, `.sh` and `.js` — a live landmine if anyone wires it up.
 - [ ] **P2-04** Delete the dead chat-upload validator that advertises a policy with no route callers.
