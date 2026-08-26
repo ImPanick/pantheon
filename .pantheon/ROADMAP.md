@@ -1,82 +1,188 @@
-# Pantheon — Implementation Roadmap
+# Pantheon — Master Tracker
 
 > Fork of **Odysseus** (`pewdiepie-archdaemon/odysseus`, AGPL-3.0-or-later).
 > Elevation, not rewrite. Read `AGENTS.md` before starting anything.
 
-**Tick format:** `- [x] **P1-03** … — agent:`abc123` — 2026-08-25`
+> ## ⬛ LAW 4 — this file is updated **every single turn**. No exceptions.
+>
+> Not at the end of a phase. Not when there is something impressive to report. Every
+> turn. Ticked a task, corrected a premise, found a bug, got blocked, did nothing — it
+> goes in, and then `python3 .pantheon/check-tracker.py` runs. A tracker updated
+> *sometimes* is worse than no tracker, because people trust it.
+>
+> The other eleven laws are in `AGENTS.md`. Eight of them are anti-drift laws, and each
+> one cites the incident that produced it.
 
-| Phase | Area | Tasks | Done |
-|---|---|---|---|
-| P0 | Fork identity & licence | 28 | 0 |
-| P1 | Token layer — the free wins | 14 | 0 |
-| P2 | Un-nerf | 26 | 0 |
-| P3 | Mechanical hygiene | 12 | 0 |
-| P4 | The wire — the real glass box | 24 | 0 |
-| P5 | Trace & composer restyle | 16 | 0 |
-| P6 | Queue & Plan | 17 | 0 |
-| P7 | Trust ladder & control plane | 11 | 0 |
-| P8 | The Workshop | 48 | 0 |
-| P9 | Feature surfaces | 14 | 0 |
-| P10 | Accessibility & release | 12 | 0 |
-| **Total** | | **222** | **0** |
+**This file is the only place work is tracked.** One list, one progress area. There are
+no per-area handoff files — there were sixteen, all empty, and they are gone. An agent
+that finishes a phase writes one entry in **§ Progress**, below. Nothing else.
+
+The other files in `.pantheon/` are *reference*, never tracking:
+
+| File | What it is |
+|---|---|
+| `AGENTS.md` | working agreement — read first |
+| `FORBIDDEN.md` | names that cannot move; controls that never lift |
+| `DECISIONS.md` | settled calls, with what each one costs |
+| `P2-CORRECTED.md` | the scouted P2 detail — supersedes P2's task text below |
+| `DEFERRED.md` | decided, not scheduled — and why |
+| `ORCHESTRATION.md` | how agents are batched and run |
+| `check-tracker.py` | recounts the ticks and fails if the status table has drifted |
+| `design/pantheon-v10.html` | the mockup. Reference, not source. |
 
 ---
 
-## ⚑ ON RECONNECT — do this first
+## Status
 
-**Machine map — the thing that was wrong in the first plan.** There are three machines,
-not two, and the tools do not reach the same one:
+| Mark | Meaning |
+|---|---|
+| `[ ]` | **ready** — premise holds, nothing blocks it, pick it up |
+| `[~]` | **blocked** — the reason is on the line; unblock before starting |
+| `[·]` | **claimed** — an agent is on it; the id is on the line |
+| `[x]` | **done** — traced in § Progress |
+
+Dependencies are ordering, not blocking. A task marked ready with `Depends:` is ready as
+soon as its dependency lands.
+
+| Phase | Area | Tasks | Ready | Blocked | Done |
+|---|---|---|---|---|---|
+| Setup | Fork, rename, rebuild | 6 | 0 | 0 | **6** |
+| P0 | Fork identity & licence | 29 | 14 | 1 | **14** |
+| P1 | Token layer — the free wins | 14 | 14 | 0 | 0 |
+| P2 | Un-nerf | 26 | 26 | 0 | 0 |
+| P3 | Mechanical hygiene | 12 | 12 | 0 | 0 |
+| P4 | The wire — the real glass box | 24 | 24 | 0 | 0 |
+| P5 | Trace & composer restyle | 16 | 16 | 0 | 0 |
+| P6 | Queue & Plan | 17 | 17 | 0 | 0 |
+| P7 | Trust ladder & control plane | 11 | 11 | 0 | 0 |
+| P8 | The Workshop | 48 | 48 | 0 | 0 |
+| P9 | Feature surfaces | 14 | 14 | 0 | 0 |
+| P10 | Accessibility & release | 12 | 12 | 0 | 0 |
+| **Total** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
+
+**Do `P0-05` first.** It is the only blocked row and the app is degraded until it lands:
+the sweep renamed the six ChromaDB collections in code, the volume still holds the old
+ones, so memory, RAG and the tool index are returning nothing right now. Drop and
+re-index — the data is disposable, there is no migration.
+
+**Then the licence gaps** — they are the gate on going public (`DECISIONS.md`
+D-2026-08-26-02), and `P0-17` is the only one that is a genuine legal obligation rather
+than tidying: the AGPL §13 source link, which does not exist anywhere in the UI today.
+After that, `P0-19 … P0-26` — seven vendored libraries ship with no licence text, one
+bundle's banner points at a file that is not in the repo, and the twenty KaTeX font faces
+are credited as MIT when they are OFL with Reserved Font Names.
+
+`P0-13` (the mark) also blocks the flip: the wordmark and screenshot in `docs/` are still
+upstream's artwork under Pantheon's filenames.
+
+`P2` has no dependencies at all and runs in parallel with any of it.
+
+---
+
+## Progress
+
+*The one progress area. Newest first. One entry per completed section — two lines, a
+commit range, and nothing else. The detail lives in the commit messages, which is what
+they are for.*
+
+### Tracker consolidation + README — implemented
+Sixteen empty handoff files and a stale duplicate note deleted; one tracker, one progress
+area, and a `check-tracker.py` that fails on table drift. Twelve laws in `AGENTS.md`, eight
+of them anti-drift, each citing its incident. README rewritten around the audit. `930bfb9 … HEAD`
+
+### Setup · R-01 … R-06 — implemented
+Repo created private at `ImPanick/pantheon`, upstream kept as a remote, full 2,077-commit
+history. Rename swept, stack rebuilt, app serving as Pantheon. `ac65b63 … 930bfb9`
+
+---
+
+## Where things run
+
+Three machines, and the tools do not reach the same one. This bit the first plan.
 
 | Where | Reached by | Has | Lacks |
 |---|---|---|---|
 | Cloud build container | `Bash` | git, docker, network, `/work/base` | the fork's credentials |
-| Cowork device VM | `device_bash` | the repo mounted r/w, git, python, node | network, docker, gh, **and it cannot delete files** |
-| cybertooth (Windows) | `Windows-MCP__PowerShell` → Git Bash | **git, gh (auth'd), docker, network** | — |
+| Cowork device VM | `device_bash` | the repo mounted r/w, git, python, node | network, docker, gh, **cannot delete files** |
+| cybertooth (Windows) | `Windows-MCP` → Git Bash | **git, gh (auth), docker, network** | — |
 
-**Use `device_bash` to edit files, `Windows-MCP` for everything git, gh or docker.**
-`device_bash` cannot unlink, so `sed -i`, `git commit` and `git gc` all fail there — a
-`git add` from that side leaves stray `.git/objects/*/tmp_obj_*` behind.
+**Edit files with `device_bash`. Do everything git, gh or docker through `Windows-MCP`.**
+`device_bash` cannot unlink, so `sed -i`, `git commit` and `git gc` all fail there.
 
-- [x] **R-01** Bridge confirmed. Branch `custom`, HEAD `ac65b63`.
-- [x] **R-02** Private repo live at **`github.com/ImPanick/pantheon`**, branch `main`, pushed.
-      Upstream kept as the `upstream` remote. Three fixes were needed on the way:
-      the preflight refused every dirty tree including its own scaffolding; the secret-scan
-      regex matched `ta`+`sk-form-…` class names and Slack's own help text; and the clone was
-      **shallow** (grafted at `b4d1293`, 5 commits), which is what made the first push fail
-      with `did not receive expected object`. `git fetch --unshallow upstream` brought the
-      full 2,077-commit history across.
-- [x] **R-03** `./scripts/pantheon-init.sh --dry-run` → read the diff → `--apply`.
-      **The script was rewritten and is uncommitted on cybertooth — commit it first.**
-      The original would have corrupted the fork: it swept `CHANGELOG.md` and
-      `CYBERTOOTH_CHANGES.md` (rewriting "forked from Odysseus" into "forked from
-      Pantheon"), swept its own source (turning `OLD_LC="odysseus"` into
-      `OLD_LC="pantheon"`), and rewrote every `odysseus-dev` reference into a `pantheon-dev`
-      org that does not exist. Covers P0-02/03/04/06/07/08/10/11 — 2,929 occurrences.
-- [x] **R-04** Edit the live `.env` on the host: `ODYSSEUS_*` → `PANTHEON_*`.
-- [x] **R-05** `docker compose up -d --build` on **Windows**, then confirm the app boots.
-      Five containers currently up: app, searxng, chromadb, ntfy, plus open-seo.
-- [x] **R-06 (half)** `/work/base` in the cloud container holds upstream at exactly
-      `b4d1293`, the fork point — enough for scouts to verify premises today.
-- [x] **R-06 (rest)** — **decided, see `DECISIONS.md` D-2026-08-26-02.** The repo stays
-      private. `P0-14 … P0-27` close first; public comes after, on our timing. Until the
-      flip, agents read `/work/base` and hand back patches that cybertooth applies. The
-      bridge stays on the write path deliberately — it has dropped three times, so work
-      lands as reviewable patches rather than live edits.
+The fork is private, so agents cannot clone it. They read `/work/base` — upstream at
+exactly `b4d1293`, the fork point — and hand back patches that cybertooth applies.
 
-### Two upstream identities — decide before P0-14
-The repo was cloned from **`pewdiepie-archdaemon/odysseus`**, but its own docs, code and CI
-fixtures reference **`odysseus-dev/odysseus`** — 47 occurrences across 16 files, including
-the OpenRouter `HTTP-Referer` header in `src/endpoint_resolver.py` and `src/llm_core.py`,
-the star-history chart in `README.md`, and the `owner:`/`repo:` fixtures in two CI tests.
-`NOTICE` and `CREDITS.md` currently name only the first. Confirm which is canonical before
-the attribution files are final. The rewritten sweep treats `odysseus-dev` as the org to
-replace with `ImPanick`, while preserving any link to a specific upstream issue, PR or
-discussion — those are provenance and must keep pointing upstream. There are exactly
-three of those, and the sweep sentinels them before the rename and restores them after:
+### Two upstream identities — settle before P0-14
+Cloned from **`pewdiepie-archdaemon/odysseus`**; the code and docs referenced
+**`odysseus-dev/odysseus`** (47 occurrences across 16 files). The sweep rewrote the second
+to `ImPanick` and left the first alone. `NOTICE` and `CREDITS.md` name only the first.
+Confirm which is canonical before the attribution files are final.
 
-    specs/architecture-runtime-inventory.md:4   issues/4082
-    static/js/cookbook.js:3177                  discussions/1962
-    tests/test_sanitize_preserves_reasoning.py:7  issues/3118
+---
+
+## How an agent picks up work
+
+Read `AGENTS.md` first — it is the working agreement and it is short. This section is the
+mechanical part.
+
+**Task line format.** Every task is one line, parseable:
+
+```
+- [ ] **Px-yy** <what to do>. `Depends:` Px-aa. `CI:` <test that pins this>. `Verify:` <how you know it worked>.
+```
+
+`Depends:` is ordering. `CI:` names a test that asserts on this code — often on its
+*source text* rather than its behaviour, so read the test before refactoring. `Verify:` is
+the acceptance check, and it is the definition of done.
+
+Ids in examples are always `Px-yy`, never a real one, so that counting the list never
+picks up an illustration. `python3 .pantheon/check-tracker.py` recounts every tick,
+checks each task sits under its own phase header, and fails if the status table has
+drifted. Run it after any batch of ticks — a table that disagrees with the list sends
+agents to redo finished work.
+
+**Before starting a task**
+
+1. Re-read the task against the source. If the premise is false, **stop and correct the
+   line** — do not implement a task whose premise does not hold. This is `AGENTS.md`
+   rule 3, and the P2 scout pass found it false often enough to matter.
+2. Check `FORBIDDEN.md` Part 1 (names that cannot move) and Part 2 (controls that never
+   lift). Check `DECISIONS.md` for a settled call on this task.
+3. Claim it by flipping `[ ]` → `[·]` with your agent id. Release it if you stop.
+
+**While working**
+
+- Add, never subtract. If something has to go, say why on the task line.
+- `static/` has **no bind mount**. A restart serves the old files —
+  `docker compose up -d --build`, and bump the service-worker `CACHE_NAME`.
+- Inline scripts need the CSP nonce. Add zero external requests.
+- **No route in this app can set a CSP header** — the security middleware overwrites it.
+  If a task tells you to set one at a handler, it is wrong.
+
+**Definition of done**
+
+A task is done when all four hold:
+
+- [ ] the `Verify:` check passes
+- [ ] `pytest -q` is green, or the failures are pre-existing and named
+- [ ] `py_compile` across `app.py routes/ src/`, `node --check` on every touched module
+- [ ] the tick is flipped to `[x]` with a one-clause trace on the line
+
+**When a whole phase is done**
+
+Write **one** entry in § Progress. Two lines and a commit range. Not a report — the
+commit messages carry the detail, which is what they are for. Then set the phase's row in
+the status table.
+
+**Where things go**
+
+| What | Where |
+|---|---|
+| A finished phase | one § Progress entry |
+| A bug you found in passing | § Bugs, at the bottom |
+| A premise that turned out false | corrected on the task line itself |
+| A judgement call someone might re-litigate | `DECISIONS.md` |
+| Anything else | the commit message |
 
 ---
 
@@ -100,22 +206,22 @@ purge, re-index, log back in. The only manual step is one line in your `.env`.
 
 `scripts/pantheon-init.sh` does the mechanical sweep. Review its diff before committing.
 
-- [ ] **P0-01** Create `.pantheon/` with `AGENTS.md`, `ROADMAP.md`, `FORBIDDEN.md`, `DEFERRED.md`, `handoff/`. Seed one empty handoff file per area.
-- [ ] **P0-01b** Run `scripts/pantheon-init.sh --dry-run`, read the diff, then run it for real. It does P0-02, P0-03, P0-04, P0-06, P0-07, P0-08, P0-10 and P0-11 as one reviewable sweep, with the attribution files excluded. Everything after it is by hand.
-- [ ] **P0-02** Rename cosmetic surfaces: page titles, wordmark text in `index.html` + `login.html`, 111 UI strings across `static/js/`, tray menu in `launcher.py`, `setup.py` banner. `Verify:` grep for case-insensitive `odysseus` in `static/` returns only attribution strings.
-- [ ] **P0-03** Rename env prefix `ODYSSEUS_*` → `PANTHEON_*` (99 distinct names, 560 refs). Update `.env.example`, `docker-compose*.yml`, `Dockerfile`, `docs/`, **and your live `.env` on the host** — that one file is the entire migration. No shim. `Verify:` app boots with only `PANTHEON_*` set.
-- [ ] **P0-04** Rename browser storage keys (113 distinct, 206 refs in `static/`). Costs you one theme re-pick and a layout reset. `CI:` none.
-- [ ] **P0-05** Rename the six ChromaDB collections. **Data is disposable — do not migrate.** Drop the old collections and let the app re-index. `Verify:` memories, RAG and tool index all return results after a re-index.
-- [ ] **P0-06** Rename session cookie `odysseus_session` → `pantheon_session`. You log in again once.
-- [ ] **P0-07** Rename outbound HTTP headers (`X-Odysseus-Origin/Kind/Ref/Event/Signature/Owner`) and the four User-Agent strings. No downstream consumers exist yet — do it now, before any do.
-- [ ] **P0-08** Rename Docker compose service, container user (`ODY_USER`), and the SearXNG settings sentinel `odysseus-local-searxng-json-2026-05-30`. `Verify:` a clean `docker compose up` produces a working SearXNG.
+- [x] **P0-01** Create `.pantheon/` with `AGENTS.md`, `ROADMAP.md`, `FORBIDDEN.md`, `DEFERRED.md`, `handoff/`. Seed one empty handoff file per area. — **done:** the directory exists; the sixteen empty handoff files were deleted in favour of § Progress.
+- [x] **P0-01b** Run `scripts/pantheon-init.sh --dry-run`, read the diff, then run it for real. It does P0-02, P0-03, P0-04, P0-06, P0-07, P0-08, P0-10 and P0-11 as one reviewable sweep, with the attribution files excluded. Everything after it is by hand. — **done:** swept, 373 files, 2,615 in / 2,615 out, 37 path renames.
+- [x] **P0-02** Rename cosmetic surfaces: page titles, wordmark text in `index.html` + `login.html`, 111 UI strings across `static/js/`, tray menu in `launcher.py`, `setup.py` banner. `Verify:` grep for case-insensitive `odysseus` in `static/` returns only attribution strings. — **done:** verified — `git grep -icI odysseus -- static/` returns one hit, the protected provenance link in `cookbook.js`.
+- [x] **P0-03** Rename env prefix `ODYSSEUS_*` → `PANTHEON_*` (99 distinct names, 560 refs). Update `.env.example`, `docker-compose*.yml`, `Dockerfile`, `docs/`, **and your live `.env` on the host** — that one file is the entire migration. No shim. `Verify:` app boots with only `PANTHEON_*` set. — **done:** code and live `.env`; only `PANTHEON_ADMIN_USER`/`PASSWORD` existed on the host, and both are read solely at first-boot admin creation.
+- [x] **P0-04** Rename browser storage keys (113 distinct, 206 refs in `static/`). Costs you one theme re-pick and a layout reset. `CI:` none. — **done:** verified — no `ody-`/`ody.` keys remain in `static/`.
+- [~] **P0-05** **BROKEN RIGHT NOW — highest-priority P0.** The sweep renamed the six collection names in code (`pantheon_memories`, `pantheon_rag`, `pantheon_tool_index`, `pantheon_doc_messages`, +2) but the ChromaDB volume still holds the `odysseus_*` ones. Memory, RAG and the tool index are silently returning nothing today. **Data is disposable — do not migrate.** Drop the old collections and re-index. `Verify:` memories, RAG and tool index all return results after a re-index. `Unblocks:` nothing else — but the app is degraded until it lands.
+- [x] **P0-06** Rename session cookie `odysseus_session` → `pantheon_session`. You log in again once. — **done:** swept.
+- [x] **P0-07** Rename outbound HTTP headers (`X-Odysseus-Origin/Kind/Ref/Event/Signature/Owner`) and the four User-Agent strings. No downstream consumers exist yet — do it now, before any do. — **done:** swept.
+- [x] **P0-08** Rename Docker compose service, container user (`ODY_USER`), and the SearXNG settings sentinel `odysseus-local-searxng-json-2026-05-30`. `Verify:` a clean `docker compose up` produces a working SearXNG. — **done:** swept; a clean rebuild produced a healthy SearXNG.
 - [ ] **P0-09** Rename data dir default (`~/.odysseus/data`), systemd unit + installer, PyInstaller spec, macOS `CFBundleIdentifier`, PWA manifest name, service-worker cache name. **Docker mounts `./data` explicitly, so the default path change does not move your live data** — verify that before restarting.
-- [ ] **P0-10** Rename the 19 `scripts/odysseus-*` CLI scripts (`git mv`). If you have a crontab or systemd timer pointing at any of them, update it — otherwise nothing references them.
-- [ ] **P0-11** Rename Swift package + two executables, the two integration plugin ids (`integrations/{claude,codex}/skills/odysseus/`), `_EMAIL_MCP_OWNER_ARG`, and the 3 custom DOM events. `Depends:` P0-02.
-- [ ] **P0-12** Remove or re-point every upstream-identity reference that would misattribute the fork: repology badge, star-history block, 24 `odysseus-dev` URLs, `package.json` repository, `.github/` templates, `cookbook.js:3177`.
+- [x] **P0-10** Rename the 19 `scripts/odysseus-*` CLI scripts (`git mv`). If you have a crontab or systemd timer pointing at any of them, update it — otherwise nothing references them. — **done:** all 19 `git mv`-d.
+- [x] **P0-11** Rename Swift package + two executables, the two integration plugin ids (`integrations/{claude,codex}/skills/odysseus/`), `_EMAIL_MCP_OWNER_ARG`, and the 3 custom DOM events. `Depends:` P0-02. — **done:** swept.
+- [x] **P0-12** **The sweep rewrote two badges to dead targets — they need removing, not renaming.** `README.md:17` now points at `repology.org/project/pantheon-ai`, which does not exist; `README.md:71-75` now points the star-history chart at `ImPanick/pantheon`, which is private and will 404 for every reader. Delete both blocks. The rest of this task is done: the 47 `odysseus-dev` references, `package.json`, `.github/` templates and `cookbook.js:3177` were handled by the sweep, and the three links to specific upstream issues and discussions were deliberately preserved. `Verify:` no README image URL 404s. — **done:** both dead badges removed in the README rewrite; the sweep had already handled the 47 `odysseus-dev` references, `package.json`, `.github/` and `cookbook.js:3177`.
 - [ ] **P0-13** Design the Pantheon mark. **Do not reuse the red sailing boat, the wordmark, or the per-route favicon shapes** — the licence grants them but they are upstream's identity. Replace `static/icon.ico`, the favicon registry, the inline boat SVG (5 copies), and the programmatic tray drawing. **Keep the ASCII wave loader** — it's a loader, not a logo.
-- [ ] **P0-14** **§5(a) + §5(b) notices.** Add to `README.md` and a new `NOTICE`: a prominent statement that this is a modified version of Odysseus, **with a date**, and that it is released under the AGPL. Neither exists today.
-- [ ] **P0-15** **§4 copyright line.** There is **no project copyright notice anywhere in the repo today**. Add Pantheon's and preserve any upstream one that can be established.
+- [x] **P0-14** **§5(a) + §5(b) notices.** Add to `README.md` and a new `NOTICE`: a prominent statement that this is a modified version of Odysseus, **with a date**, and that it is released under the AGPL. Neither exists today. — **done:** `NOTICE` carries the §5(a) modification notice with the fork commit and date; the README carries the same statement in its status block.
+- [x] **P0-15** **§4 copyright line.** There is **no project copyright notice anywhere in the repo today**. Add Pantheon's and preserve any upstream one that can be established. — **done:** `NOTICE` line 2 — `Copyright (c) 2026 Panick`. There was no upstream copyright line in the repo to preserve.
 - [ ] **P0-16** **Apache-2.0 §4(b) change notices** on the research-derived files (`services/research/`, `src/research_handler.py`, `routes/research/`, `services/search/`) — "You changed the files". Absent today.
 - [ ] **P0-17** **§13 Source link.** Single footer button in the UI. `href` → the public repo. `title="Built on Odysseus — click to see where Pantheon originated from!"`. Must be present on the logged-in shell and the login page. This is the one licence obligation that is genuinely required and genuinely missing. `Depends:` P0-12.
 - [ ] **P0-18** Decide `AGPL-3.0-only` vs `AGPL-3.0-or-later` and state it in `LICENSE`, `README`, and SPDX headers. Today the qualifier lives in exactly one README line with zero SPDX headers.
@@ -131,7 +237,8 @@ purge, re-index, log back in. The only manual step is one line in your `.env`.
 - [ ] **P0-24** Add undisclosed deps to credits: `nh3`, `python-dateutil`, `httpcore`, `httpx2`, `python-magic`, Real-ESRGAN wheels, the two MLX Swift packages. Update `duckduckgo-search` → `ddgs`.
 - [ ] **P0-25** Correct the PyMuPDF scope statement — it is documented as form-filling only; it also backs the PDF viewer's page render and the annotation-fill endpoint (three route handlers). Fix the stale docstring at `routes/email_helpers.py:1453` that credits it for text extraction it does not perform.
 - [ ] **P0-26** Reconcile the credits file's "the core ships fully permissive (MIT-compatible)" framing against the AGPL `LICENSE`, or state which is authoritative for Pantheon.
-- [ ] **P0-27** README statement of intent: *"Pantheon is free software under the AGPL. I don't sell it, and I'd rather you didn't."* **Social, not legal — do not add a non-commercial clause.** AGPL §10 prohibits further restrictions and §7 lets any recipient strip one.
+- [x] **P0-27** README statement of intent: *"Pantheon is free software under the AGPL. I don't sell it, and I'd rather you didn't."* **Social, not legal — do not add a non-commercial clause.** AGPL §10 prohibits further restrictions and §7 lets any recipient strip one. — **done:** in the README licence section, phrased as intent and explicitly not as a clause.
+- [ ] **P0-28** **The root `ROADMAP.md` is upstream's, and the sweep put Pantheon's name on it.** It now opens *"Pantheon is on a voyage, but not home yet... (I don't know what I'm doing, help)"* — upstream's words, upstream's self-deprecation, attributed to this project. It also collides with the real tracker at `.pantheon/ROADMAP.md`, which the README links as "Tracker". Replace it with a short pointer to `.pantheon/ROADMAP.md`, or delete it. `Verify:` a reader following either link lands somewhere that is true.
 
 ---
 
@@ -205,13 +312,13 @@ cross one if implemented carelessly.
 - [ ] **P2-06** `_is_text_file` → add `.ts .tsx .jsx .css .scss .yaml .yml .sh .bash .sql .toml .ini .c .cpp .h .go .rs .rb .php .java .xml .vue .svelte` — matching the fence-language set already in the same file.
 - [ ] **P2-07** Email attachment-as-doc → add a text fallback for any decodable attachment instead of `Unsupported attachment type`. The editor renders every language already.
 - [ ] **P2-08** Raise `MAX_INLINE_ATTACHMENT_CHARS` (24,000 shared across **all** attachments in a turn — with 10 files that is 2.4 K each). Make it per-attachment or scale it off the input token budget.
-- [ ] **P2-09** Make `skill_max_injected` (default 3) context-window-scaled instead of a flat cap.
+- [ ] **P2-09** Make `skill_max_injected` (default 3) context-window-scaled instead of a flat cap. **Fork-head check done — no conflict, this is ready.** The fork commits touch `agent_loop.py` nowhere near the skill-injection block at `:2657-2660`. Note the undocumented ceiling `max(0, min(12, …))` at `:2660` paired with `max="12"` at `index.html:495` — raising the setting alone silently does nothing above 12, so both move together.
 
 ### Fix
 - [ ] **P2-10** **The fake concurrency limit.** "max concurrent uploads: 3" is enforced as "≤3 uploads in the last ten seconds" and fires on a normal multi-file drag. Drop it; the 60/min rate limit already exists. `CI:` the test sets it locally, so the default is not pinned.
 - [ ] **P2-11** Raise `MAX_FILES` (10 → 25) **and** add a server-side `len(files)` cap, which does not exist. **`CI:` a test regex-parses this literal** and asserts `upload_rate_limit >= MAX_FILES`.
 - [ ] **P2-12** **Stop hiding small email attachments.** The signature heuristic also returns true for *any* image under 30 KB — a real screenshot is silently invisible **and** excluded from the ZIP. Keep the filename patterns, drop the size clause.
-- [ ] **P2-13** Relax the two per-model sampling clamps that silently overwrite user presets (one also forces top-p, top-k, penalties and stop tokens). Make them defaults, not caps. **Keep** the cloud-provider clamp — that API 400s above the ceiling.
+- [ ] **P2-13** Relax the two per-model sampling clamps that silently overwrite user presets (one also forces top-p, top-k, penalties and stop tokens). Make them defaults, not caps. **Keep** the cloud-provider clamp — that API 400s above the ceiling. **Fork-head check done — no conflict, this is ready.** `git diff b4d1293..pre-rename-backup` touches `agent_loop.py` at lines 434, 449, 4763 and 4799 (`max_rounds`, `max_tokens`, `agent_stream_timeout`) and `llm_core.py` at line 408 (`_DegenerateStreamGuard`). It does **not** touch `_apply_local_generation_stability` (`llm_core.py:1070-1094`) or the qwen temperature cap (`agent_loop.py:2210-2221`). Different code. Nothing to redo or revert.
 - [ ] **P2-14** Loosen the guide-only trigger: seven regexes fire on any mention of the phrasing and then strip every tool **and all MCP** for the turn. Require whole-message match, or an explicit toggle.
 - [ ] **P2-15** Fix the self-contradicting bash prompt — one line forbids heredocs, seven lines later another instructs the model to use one. Prompt-only; enforces nothing.
 - [ ] **P2-16** Fix the grammar bug producing `Your account is not allowed to can use research.`
@@ -458,7 +565,7 @@ the only lane through which the theme file gets touched.
 # Deferred
 
 - **D-01 · The approval card's new markup.** Effect chips, fingerprint badge, expiry countdown, taint trail. Two CI tests assert literal source strings from that file and the upstream cluster around it is the hottest code in the project — 15 commits in 4 weeks, a revert inside the most recent PR. **Style through existing selectors only; add no markup.** Revisit when the upstream commits stop landing daily. *(P4-04 and P7-06/07/08 are the style-only subset and can proceed.)*
-- **D-02 · Container station.** See `FRONTIER-NOTES.md`. The strongest framing is as the sandbox the threat model says does not exist, not as a deploy feature. ~70% of the machinery is in Cookbook.
+- **D-02 · Container station.** Full entry in `DEFERRED.md`. The strongest framing is as the sandbox the threat model says does not exist, not as a deploy feature. ~70% of the machinery is in Cookbook.
 - **D-03 · VM station.** Held. If the need proves real, wire to Proxmox or libvirt through an MCP server rather than building a hypervisor. `Depends:` P8 complete.
 
 ---
