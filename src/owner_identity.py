@@ -6,7 +6,7 @@ import os
 from typing import Optional
 
 
-DEFAULT_LOCAL_OWNER = "__odysseus_local__"
+DEFAULT_LOCAL_OWNER = "__pantheon_local__"
 DEFAULT_LOCAL_OWNER_LABEL = "Local"
 INTERNAL_TOOL_USER = "internal-tool"
 

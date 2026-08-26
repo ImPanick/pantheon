@@ -2,7 +2,7 @@
 //
 // Per-item visibility for the sidebar and collapsed icon rail. Drives the
 // Settings → Appearance ("Customize UI") checkboxes, persisted in localStorage
-// under `odysseus-ui-visibility` (loaded/saved by app.js).
+// under `pantheon-ui-visibility` (loaded/saved by app.js).
 //
 // Each key maps to the CSS selector(s) it controls. Tool/section selectors pair
 // the full-sidebar element with its #rail-* launcher so a tab hidden in the

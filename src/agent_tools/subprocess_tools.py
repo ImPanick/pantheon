@@ -32,7 +32,7 @@ async def _create_bash_subprocess(command: str, **kwargs):
         if not bash:
             raise RuntimeError(
                 "Git Bash is required for the Bash tool on Windows; "
-                "install Git for Windows and restart Odysseus"
+                "install Git for Windows and restart Pantheon"
             )
         return await asyncio.create_subprocess_exec(bash, "-c", command, **kwargs)
     return await asyncio.create_subprocess_shell(command, **kwargs)
@@ -143,8 +143,8 @@ async def _run_tmux_bash(
     await _ensure_tmux_session(name, cwd, env)
 
     stamp = f"{int(time.time() * 1000)}-{abs(hash(content)) % 1000000}"
-    start_marker = f"__ODYSSEUS_CMD_START_{stamp}__"
-    end_prefix = f"__ODYSSEUS_CMD_END_{stamp}__:"
+    start_marker = f"__PANTHEON_CMD_START_{stamp}__"
+    end_prefix = f"__PANTHEON_CMD_END_{stamp}__:"
     wrapped = (
         f"printf '\\n{start_marker}\\n'\n"
         f"{content}\n"

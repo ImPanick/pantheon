@@ -219,16 +219,16 @@ function _diagnosisTargetMeta(task) {
 
 function _gpuCleanupCommand() {
   return `set -u
-echo "[odysseus] Clearing GPU compute processes..."
+echo "[pantheon] Clearing GPU compute processes..."
 if command -v nvidia-smi >/dev/null 2>&1; then
   pids="$(nvidia-smi --query-compute-apps=pid --format=csv,noheader,nounits 2>/dev/null | tr -d " " | grep -E "^[0-9]+$" | sort -u)"
   if [ -z "$pids" ]; then
-    echo "[odysseus] No NVIDIA compute processes found."
+    echo "[pantheon] No NVIDIA compute processes found."
     exit 0
   fi
-  echo "[odysseus] GPU PIDs: $pids"
+  echo "[pantheon] GPU PIDs: $pids"
   ps -fp $pids 2>/dev/null || true
-  echo "[odysseus] Sending TERM..."
+  echo "[pantheon] Sending TERM..."
   kill -TERM $pids || true
   sleep 3
   alive=""
@@ -236,23 +236,23 @@ if command -v nvidia-smi >/dev/null 2>&1; then
     if kill -0 "$pid" 2>/dev/null; then alive="$alive $pid"; fi
   done
   if [ -n "$alive" ]; then
-    echo "[odysseus] Force killing remaining GPU PIDs:$alive"
+    echo "[pantheon] Force killing remaining GPU PIDs:$alive"
     kill -KILL $alive || true
   fi
   sleep 1
   remaining="$(nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader,nounits 2>/dev/null | sed "/^$/d" || true)"
   if [ -n "$remaining" ]; then
-    echo "[odysseus] GPU processes still remain:"
+    echo "[pantheon] GPU processes still remain:"
     echo "$remaining"
     exit 2
   fi
-  echo "[odysseus] GPU cleanup complete. No NVIDIA compute processes remain."
+  echo "[pantheon] GPU cleanup complete. No NVIDIA compute processes remain."
 else
-  echo "[odysseus] nvidia-smi not found; falling back to common model-server process cleanup."
+  echo "[pantheon] nvidia-smi not found; falling back to common model-server process cleanup."
   pkill -TERM -f "sglang.launch_server|vllm|llama-server|text-generation-launcher|aphrodite" || true
   sleep 3
   pkill -KILL -f "sglang.launch_server|vllm|llama-server|text-generation-launcher|aphrodite" || true
-  echo "[odysseus] Fallback cleanup complete."
+  echo "[pantheon] Fallback cleanup complete."
 fi`;
 }
 
@@ -361,7 +361,7 @@ export const ERROR_PATTERNS = [
       { label: 'Open Dependencies', action: () => _openCookbookDependencies('vllm') },
       {
         label: 'Copy upgrade hint',
-        action: () => _copyText('Upgrade the vLLM environment that provides the selected vllm CLI, or use a compatible checkpoint. Do not assume Odysseus owns PATH/system/source/Docker installs.'),
+        action: () => _copyText('Upgrade the vLLM environment that provides the selected vllm CLI, or use a compatible checkpoint. Do not assume Pantheon owns PATH/system/source/Docker installs.'),
       },
     ],
   },
@@ -529,7 +529,7 @@ export const ERROR_PATTERNS = [
   {
     pattern: /sgl_kernel[\s\S]*(Python\.h|libnuma\.so\.1|common_ops|libnvrtc\.so)|(?:Python\.h|libnuma\.so\.1|common_ops|libnvrtc\.so)[\s\S]*sgl_kernel|Could not load any common_ops library|Please ensure sgl_kernel is properly installed/i,
     message: 'SGLang native kernel/runtime is missing or mismatched on this server.',
-    suggestion: 'Suggested action: relaunch with Odysseus’ venv CUDA library path fix. If the venv does not contain the matching NVIDIA runtime libs, run Repair sglang-kernel.',
+    suggestion: 'Suggested action: relaunch with Pantheon’ venv CUDA library path fix. If the venv does not contain the matching NVIDIA runtime libs, run Repair sglang-kernel.',
     fixes: [
       { label: 'Edit / relaunch serve', action: (panel) => _openServeEditFromDiagnosis(panel) },
       { label: 'Repair sglang-kernel', action: (panel) => _repairSglangKernel(panel) },
@@ -568,7 +568,7 @@ export const ERROR_PATTERNS = [
   {
     pattern: /Unable to quantize model of type <class ['"]mlx_lm\.models\.switch_layers\.QuantizedSwitchLinear['"]>|QuantizedSwitchLinear/i,
     message: 'MLX-LM tried to quantize an already-quantized DeepSeek switch layer.',
-    suggestion: 'Suggested action: relaunch from the cached local snapshot path. Odysseus now rewrites MLX repo-id launches to the newest local Hugging Face snapshot when it exists on the selected Mac.',
+    suggestion: 'Suggested action: relaunch from the cached local snapshot path. Pantheon now rewrites MLX repo-id launches to the newest local Hugging Face snapshot when it exists on the selected Mac.',
     fixes: [
       { label: 'Edit / relaunch serve', action: (panel) => _openServeEditFromDiagnosis(panel) },
       { label: 'Open Dependencies', action: () => _openCookbookDependencies('mlx_lm') },
@@ -875,7 +875,7 @@ export function _diagnose(text) {
 }
 
 function _diagnosisCopyBundle(task, diagnosis, sourceText, suggestionText) {
-  const lines = ['## Odysseus Cookbook troubleshooting'];
+  const lines = ['## Pantheon Cookbook troubleshooting'];
   if (task) {
     lines.push(
       '',

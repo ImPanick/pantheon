@@ -25,7 +25,7 @@ _initialized = False
 # plus env fallbacks, so add_text/search can scope like chat_processor's
 # rag_manager.search(..., owner=owner). Ownerless callers get owner=None,
 # which matches the existing directory-indexing behavior.
-_MCP_OWNER_ARG = "_odysseus_owner"
+_MCP_OWNER_ARG = "_pantheon_owner"
 
 
 def _owner_from_args(arguments: dict) -> str | None:
@@ -33,7 +33,7 @@ def _owner_from_args(arguments: dict) -> str | None:
     val = arguments.get(_MCP_OWNER_ARG)
     if isinstance(val, str) and val.strip():
         return val.strip()
-    for env_key in ("ODYSSEUS_MCP_RAG_OWNER", "ODYSSEUS_DOCUMENT_OWNER"):
+    for env_key in ("PANTHEON_MCP_RAG_OWNER", "PANTHEON_DOCUMENT_OWNER"):
         env_val = os.environ.get(env_key, "").strip()
         if env_val:
             return env_val

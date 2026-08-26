@@ -15,7 +15,7 @@ This document maps the current runtime module structure, identifies high-risk bo
 ### 1.1 Top-Level Layout
 
 ```
-odysseus/
+pantheon/
 ├── app.py                    # FastAPI app entrypoint (1,145 lines)
 ├── conf/                     # Configuration (config.py, settings.py, settings_scrub.py)
 ├── src/                      # 95 flat .py files + 2 subdirectories

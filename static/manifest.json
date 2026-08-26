@@ -1,6 +1,6 @@
 {
-  "name": "Odysseus",
-  "short_name": "Odysseus",
+  "name": "Pantheon",
+  "short_name": "Pantheon",
   "description": "Self-hosted AI chat with memory, documents, and tools",
   "start_url": "/",
   "scope": "/",

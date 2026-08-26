@@ -28,7 +28,7 @@
 // Written by login.html immediately before it redirects to '/', so the first
 // load after a login can skip the request entirely. Consumed once per page
 // load, by whichever module asks for settings first.
-const PREFETCH_KEY = 'ody-prefetch-settings';
+const PREFETCH_KEY = 'pan-prefetch-settings';
 
 const _URLS = { settings: '/api/auth/settings', tools: '/api/tools' };
 const _cache = { settings: null, tools: null };

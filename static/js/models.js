@@ -19,10 +19,10 @@ let _lastFetchTime = 0;
 let _fetchInflight = null;
 let _fetchSeq = 0;
 const _FETCH_CACHE_TTL = 30000; // 30s client-side cache for /api/models
-const COLLAPSE_KEY = 'odysseus-models-collapsed';
-const FAVORITES_KEY = 'odysseus-model-favorites';
-const USAGE_KEY = 'odysseus-model-usage';
-const SORT_KEY = 'odysseus-model-sort';
+const COLLAPSE_KEY = 'pantheon-models-collapsed';
+const FAVORITES_KEY = 'pantheon-model-favorites';
+const USAGE_KEY = 'pantheon-model-usage';
+const SORT_KEY = 'pantheon-model-sort';
 
 export function init(apiBase) {
   API_BASE = apiBase;

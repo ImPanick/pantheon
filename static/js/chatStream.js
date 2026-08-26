@@ -15,7 +15,7 @@ import documentModule from './document.js?v=20260815approvalsave1';
 // button is polymorphic: with an empty composer it can mean New chat or Record
 // voice instead of Send. Intercept only the programmatic approval click and
 // route it through the form submit path, which already reaches chat.js directly.
-document.addEventListener('odysseus:tool-approval', () => {
+document.addEventListener('pantheon:tool-approval', () => {
   const sendButton = document.querySelector('.send-btn');
   const chatForm = document.getElementById('chat-form');
   if (!sendButton || !chatForm) return;
@@ -136,15 +136,15 @@ export function handleUIControl(uiData) {
       }
 
     } else if (uiEvent === 'highlight' || uiData.ui_event === 'highlight') {
-      document.querySelectorAll('.odysseus-highlight').forEach(function(e) { e.classList.remove('odysseus-highlight'); });
-      document.querySelectorAll('.odysseus-hl-label').forEach(function(e) { e.remove(); });
+      document.querySelectorAll('.pantheon-highlight').forEach(function(e) { e.classList.remove('pantheon-highlight'); });
+      document.querySelectorAll('.pantheon-hl-label').forEach(function(e) { e.remove(); });
       var target = document.querySelector(uiData.selector);
       if (target) {
-        target.classList.add('odysseus-highlight');
+        target.classList.add('pantheon-highlight');
         target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         if (uiData.label) {
           var lbl = document.createElement('div');
-          lbl.className = 'odysseus-hl-label';
+          lbl.className = 'pantheon-hl-label';
           lbl.textContent = uiData.label;
           if (!target.style.position) target.style.position = 'relative';
           target.appendChild(lbl);
@@ -152,8 +152,8 @@ export function handleUIControl(uiData) {
       }
 
     } else if (uiEvent === 'clear_highlight' || uiData.ui_event === 'clear_highlight') {
-      document.querySelectorAll('.odysseus-highlight').forEach(function(e) { e.classList.remove('odysseus-highlight'); });
-      document.querySelectorAll('.odysseus-hl-label').forEach(function(e) { e.remove(); });
+      document.querySelectorAll('.pantheon-highlight').forEach(function(e) { e.classList.remove('pantheon-highlight'); });
+      document.querySelectorAll('.pantheon-hl-label').forEach(function(e) { e.remove(); });
 
     } else if (uiEvent === 'research_started' || uiData.ui_event === 'research_started') {
       // Agent kicked off deep research — adopt the session into the

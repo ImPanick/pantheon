@@ -122,8 +122,8 @@ def _run_scheduler_scenario(scenario: str):
       }}
       const document = eventTarget({{ visibilityState: 'visible' }});
       const window = {{
-        __odysseusChatBusy: false,
-        __odysseusChatBusyUntil: 0,
+        __pantheonChatBusy: false,
+        __pantheonChatBusyUntil: 0,
         requestIdleCallback(callback) {{
           const handle = nextHandle++;
           idleRequestCount += 1;
@@ -198,7 +198,7 @@ def test_prewarm_is_genuine_idle_only_and_single_flight():
 
 def test_temporary_chat_priority_retries_one_single_flight_until_idle():
     out = _run_scheduler_scenario("""
-      window.__odysseusChatBusyUntil = 10000;
+      window.__pantheonChatBusyUntil = 10000;
       let taskCalls = 0;
       const task = async () => { taskCalls += 1; return true; };
       const first = _scheduleEmailPrewarm(task, { delay: 1800 });
@@ -253,14 +253,14 @@ def test_cancelled_prewarm_cannot_issue_a_delayed_duplicate():
 @pytest.mark.parametrize("transition", ["busy", "hidden"])
 def test_active_prewarm_is_aborted_and_retried_once_after_priority_transition(transition):
     block = (
-        "window.__odysseusChatBusy = true; "
-        "window.dispatchEvent({ type: 'odysseus:chat-busy-change' });"
+        "window.__pantheonChatBusy = true; "
+        "window.dispatchEvent({ type: 'pantheon:chat-busy-change' });"
         if transition == "busy"
         else "document.visibilityState = 'hidden'; document.dispatchEvent({ type: 'visibilitychange' });"
     )
     unblock = (
-        "window.__odysseusChatBusy = false; window.__odysseusChatBusyUntil = now; "
-        "window.dispatchEvent({ type: 'odysseus:chat-busy-change' });"
+        "window.__pantheonChatBusy = false; window.__pantheonChatBusyUntil = now; "
+        "window.dispatchEvent({ type: 'pantheon:chat-busy-change' });"
         if transition == "busy"
         else "document.visibilityState = 'visible'; document.dispatchEvent({ type: 'visibilitychange' });"
     )
@@ -289,7 +289,7 @@ def test_active_prewarm_is_aborted_and_retried_once_after_priority_transition(tr
         result, aborted, callsBeforeLateResult, taskCalls,
         stillPendingAfterLateResult,
         timers: timers.size, idleCallbacks: idleCallbacks.size,
-        chatListeners: window.listenerCount('odysseus:chat-busy-change'),
+        chatListeners: window.listenerCount('pantheon:chat-busy-change'),
         visibilityListeners: document.listenerCount('visibilitychange'),
       }}));
     """)

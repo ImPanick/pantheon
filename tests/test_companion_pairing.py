@@ -120,11 +120,11 @@ def test_pairing_payload_shape():
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
-        ("http://odysseus", ("odysseus", 80)),
-        ("http://odysseus:7000", ("odysseus", 7000)),
+        ("http://pantheon", ("pantheon", 80)),
+        ("http://pantheon:7000", ("pantheon", 7000)),
         ("http://localhost:7000", ("localhost", 7000)),
-        ("http://odysseus.local", ("odysseus.local", 80)),
-        ("http://api.odysseus.local:7000", ("api.odysseus.local", 7000)),
+        ("http://pantheon.local", ("pantheon.local", 80)),
+        ("http://api.pantheon.local:7000", ("api.pantheon.local", 7000)),
         ("http://10.0.0.1:7000", ("10.0.0.1", 7000)),
         ("http://100.64.0.1:7000", ("100.64.0.1", 7000)),
         ("http://100.127.255.254:7000", ("100.127.255.254", 7000)),
@@ -143,26 +143,26 @@ def test_parse_companion_base_url_accepts_v1_client_addresses(value, expected):
     "value",
     [
         "",
-        "odysseus.example",
-        "ftp://odysseus.example",
-        "https://odysseus.local",
-        "http://user:password@odysseus.local",
-        "http://odysseus.local/",
-        "http://odysseus.local/path",
-        "http://odysseus.local?query=1",
-        "http://odysseus.local#fragment",
-        "http://odysseus.local:not-a-port",
-        "http://odysseus.local:0",
-        "http://odysseus.local:65536",
-        "http://odysseus.local:07000",
-        "HTTP://odysseus.local:7000",
-        "http://Odysseus.local:7000",
-        " http://odysseus.local",
-        "http://odysseus.local ",
-        "http://odysseus\\local",
-        "http://odysseus.local\n",
-        "http://odysseus.local\t",
-        "http://odysseus.local\x7f",
+        "pantheon.example",
+        "ftp://pantheon.example",
+        "https://pantheon.local",
+        "http://user:password@pantheon.local",
+        "http://pantheon.local/",
+        "http://pantheon.local/path",
+        "http://pantheon.local?query=1",
+        "http://pantheon.local#fragment",
+        "http://pantheon.local:not-a-port",
+        "http://pantheon.local:0",
+        "http://pantheon.local:65536",
+        "http://pantheon.local:07000",
+        "HTTP://pantheon.local:7000",
+        "http://Pantheon.local:7000",
+        " http://pantheon.local",
+        "http://pantheon.local ",
+        "http://pantheon\\local",
+        "http://pantheon.local\n",
+        "http://pantheon.local\t",
+        "http://pantheon.local\x7f",
         "http://example.com:7000",
         "http://1.1.1.1:7000",
         "http://100.63.255.255:7000",
@@ -187,15 +187,15 @@ def test_parse_companion_base_url_accepts_v1_client_addresses(value, expected):
         "http://b\N{LATIN SMALL LETTER U WITH DIAERESIS}cher.local:7000",
         "http://xn--bcher-kva.local:7000",
         "http://xn--bcher-kva:7000",
-        "http://odysseus%2elocal:7000",
+        "http://pantheon%2elocal:7000",
         "http://%31%39%32.168.1.9:7000",
-        "http://odysseus%40local:7000",
+        "http://pantheon%40local:7000",
         "http://.local:7000",
-        "http://odysseus..local:7000",
-        "http://odysseus.local.:7000",
-        "http://-odysseus:7000",
-        "http://odysseus-:7000",
-        "http://odysseus_name:7000",
+        "http://pantheon..local:7000",
+        "http://pantheon.local.:7000",
+        "http://-pantheon:7000",
+        "http://pantheon-:7000",
+        "http://pantheon_name:7000",
         f"http://{'a' * 64}:7000",
         f"http://{'a' * 250}.local:7000",
     ],
@@ -356,7 +356,7 @@ def test_pair_post_json_returns_pairing_payload(monkeypatch):
 
 
 def test_pair_post_json_prefers_configured_origin(monkeypatch):
-    monkeypatch.setenv("COMPANION_BASE_URL", "http://odysseus.local:7000")
+    monkeypatch.setenv("COMPANION_BASE_URL", "http://pantheon.local:7000")
     mint = MagicMock(return_value=("tok123", "ody_raw"))
     discovery = MagicMock(side_effect=AssertionError("configured origin must skip LAN discovery"))
     monkeypatch.setattr(R, "require_admin", lambda request: None, raising=False)
@@ -368,9 +368,9 @@ def test_pair_post_json_prefers_configured_origin(monkeypatch):
     request = _fake_pair_request(format="json", port=7000)
     response = _pair_route("POST")(request)
 
-    assert response["host"] == "odysseus.local"
+    assert response["host"] == "pantheon.local"
     assert response["port"] == 7000
-    assert response["hosts"] == ["odysseus.local"]
+    assert response["hosts"] == ["pantheon.local"]
     assert set(response) == {
         "host",
         "port",
@@ -382,7 +382,7 @@ def test_pair_post_json_prefers_configured_origin(monkeypatch):
     }
     assert response["payload"] == {
         "v": 1,
-        "host": "odysseus.local",
+        "host": "pantheon.local",
         "port": 7000,
         "token": "ody_raw",
     }
@@ -393,7 +393,7 @@ def test_pair_post_rejects_invalid_config_before_mint_without_echoing_it(monkeyp
     configured_secret = "secret-password"
     monkeypatch.setenv(
         "COMPANION_BASE_URL",
-        f"http://admin:{configured_secret}@odysseus.local",
+        f"http://admin:{configured_secret}@pantheon.local",
     )
     mint = MagicMock(side_effect=AssertionError("invalid config must not mint a token"))
     monkeypatch.setattr(R, "require_admin", lambda request: None, raising=False)

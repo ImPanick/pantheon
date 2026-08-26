@@ -13,21 +13,21 @@ Imports nothing from the project (stdlib only), so it is safe to import anywhere
 including lazily from src.tool_utils (which forbids project imports to avoid cycles).
 
 Env overrides:
-  ODYSSEUS_UNLIMITED_LOCAL=0   -> keep caps even for local inference
-  ODYSSEUS_FORCE_UNLIMITED=1   -> lift caps for ALL endpoints (use with care)
+  PANTHEON_UNLIMITED_LOCAL=0   -> keep caps even for local inference
+  PANTHEON_FORCE_UNLIMITED=1   -> lift caps for ALL endpoints (use with care)
 """
 import contextvars
 import os
 
-_local_mode = contextvars.ContextVar("odysseus_local_mode", default=False)
+_local_mode = contextvars.ContextVar("pantheon_local_mode", default=False)
 
 
 def _truthy(name: str, default: str) -> bool:
     return os.getenv(name, default).strip().lower() not in ("0", "false", "no", "off", "")
 
 
-_LIFT_WHEN_LOCAL = _truthy("ODYSSEUS_UNLIMITED_LOCAL", "1")
-_FORCE_UNLIMITED = _truthy("ODYSSEUS_FORCE_UNLIMITED", "0")
+_LIFT_WHEN_LOCAL = _truthy("PANTHEON_UNLIMITED_LOCAL", "1")
+_FORCE_UNLIMITED = _truthy("PANTHEON_FORCE_UNLIMITED", "0")
 
 
 def set_local_mode(is_local: bool):

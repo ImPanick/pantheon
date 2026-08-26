@@ -29,7 +29,7 @@ async def test_windows_bash_uses_git_bash_with_structural_cwd(monkeypatch):
     result = await subprocess_tools._create_bash_subprocess(
         "pwd; cat package.json",
         cwd=workspace,
-        env={"HOME": r"C:\Odysseus\data"},
+        env={"HOME": r"C:\Pantheon\data"},
     )
 
     assert result is process

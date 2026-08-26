@@ -37,7 +37,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
   let _emailStreamTargetBody = '';
   let _emailLocalDraftDebounce = null;
   let _emailRichbodySaveDebounce = null;
-  const _EMAIL_LOCAL_DRAFT_PREFIX = 'odysseus.email.replyDraft.v1:';
+  const _EMAIL_LOCAL_DRAFT_PREFIX = 'pantheon.email.replyDraft.v1:';
 
   // Diff mode state
   let _diffModeActive = false;
@@ -102,7 +102,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
   }
 
   async function _resolveComposeSendAccountId() {
-    const activeAccountId = window.__odysseusActiveEmailAccount || null;
+    const activeAccountId = window.__pantheonActiveEmailAccount || null;
     if (!activeAccountId) return null;
     const accounts = await _getEmailAccountsCached();
     const activeAccount = accounts.find(a => String(a.id) === String(activeAccountId));
@@ -125,8 +125,8 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
   const docs = new Map();           // docId -> { id, title, language, content, version, sessionId }
   let _emailSendInFlight = false;
 
-  const _docOpenKey = (sessionId) => 'odysseus-doc-open-' + sessionId;
-  const _docMinimizedKey = (sessionId) => 'odysseus-doc-minimized-' + sessionId;
+  const _docOpenKey = (sessionId) => 'pantheon-doc-open-' + sessionId;
+  const _docMinimizedKey = (sessionId) => 'pantheon-doc-minimized-' + sessionId;
 
   function _markDocVisibleState(sessionId, state) {
     if (!sessionId) return;
@@ -3201,27 +3201,27 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     await _uploadComposeFiles(files);
   }
 
-  let _odysseusAttachMenu = null;
+  let _pantheonAttachMenu = null;
 
-  function _closeOdysseusAttachMenu() {
-    if (_odysseusAttachMenu) {
-      _odysseusAttachMenu.remove();
-      _odysseusAttachMenu = null;
+  function _closePantheonAttachMenu() {
+    if (_pantheonAttachMenu) {
+      _pantheonAttachMenu.remove();
+      _pantheonAttachMenu = null;
     }
     document.removeEventListener('click', _attachMenuOutsideClick, true);
     document.removeEventListener('keydown', _attachMenuEscape, true);
   }
 
   function _attachMenuOutsideClick(e) {
-    if (_odysseusAttachMenu && !_odysseusAttachMenu.contains(e.target)) _closeOdysseusAttachMenu();
+    if (_pantheonAttachMenu && !_pantheonAttachMenu.contains(e.target)) _closePantheonAttachMenu();
   }
 
   function _attachMenuEscape(e) {
     if (e.key !== 'Escape') return;
-    _closeOdysseusAttachMenu();
+    _closePantheonAttachMenu();
   }
 
-  function _positionOdysseusAttachMenu(anchor, menu) {
+  function _positionPantheonAttachMenu(anchor, menu) {
     const r = anchor?.getBoundingClientRect?.();
     if (!r) return;
     menu.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - 310))}px`;
@@ -3234,18 +3234,18 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     });
   }
 
-  function _odysseusAttachLabel(item, kind) {
+  function _pantheonAttachLabel(item, kind) {
     if (kind === 'gallery') {
       return item.caption || item.prompt || item.filename || 'Gallery image';
     }
     return item.title || 'Untitled document';
   }
 
-  async function _stageOdysseusAttachment(kind, id) {
+  async function _stagePantheonAttachment(kind, id) {
     const doc = docs.get(activeDocId);
     if (!doc || doc.language !== 'email') return null;
     if (!doc._composeAtts) doc._composeAtts = [];
-    const res = await fetch(`${API_BASE}/api/email/compose-from-odysseus`, {
+    const res = await fetch(`${API_BASE}/api/email/compose-from-pantheon`, {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
@@ -3262,11 +3262,11 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     return data;
   }
 
-  async function _stageOdysseusZip(items) {
+  async function _stagePantheonZip(items) {
     const doc = docs.get(activeDocId);
     if (!doc || doc.language !== 'email') return null;
     if (!doc._composeAtts) doc._composeAtts = [];
-    const res = await fetch(`${API_BASE}/api/email/compose-from-odysseus-zip`, {
+    const res = await fetch(`${API_BASE}/api/email/compose-from-pantheon-zip`, {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
@@ -3283,43 +3283,43 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     return data;
   }
 
-  function _afterOdysseusAttachmentsAdded(count, label) {
+  function _afterPantheonAttachmentsAdded(count, label) {
     _renderComposeAttachments();
     clearTimeout(_autoSaveDebounce);
     _autoSaveDebounce = setTimeout(() => { saveDocument({ silent: true }); }, 800);
     if (uiModule) uiModule.showToast(count > 1 ? `Attached ${count} items` : `Attached ${label || 'item'}`);
   }
 
-  async function _attachOdysseusItem(kind, id, label, opts = {}) {
+  async function _attachPantheonItem(kind, id, label, opts = {}) {
     try {
-      const data = await _stageOdysseusAttachment(kind, id);
+      const data = await _stagePantheonAttachment(kind, id);
       if (!data) return;
-      _afterOdysseusAttachmentsAdded(1, label || data.filename);
-      if (!opts.keepOpen) _closeOdysseusAttachMenu();
+      _afterPantheonAttachmentsAdded(1, label || data.filename);
+      if (!opts.keepOpen) _closePantheonAttachMenu();
     } catch (err) {
-      console.error('Failed to attach Odysseus item:', err);
-      if (uiModule) uiModule.showError('Failed to attach from Odysseus');
+      console.error('Failed to attach Pantheon item:', err);
+      if (uiModule) uiModule.showError('Failed to attach from Pantheon');
     }
   }
 
-  function _selectedOdysseusAttachRows(menu) {
-    return Array.from(menu?.querySelectorAll?.('.email-odysseus-attach-row.is-selected') || []);
+  function _selectedPantheonAttachRows(menu) {
+    return Array.from(menu?.querySelectorAll?.('.email-pantheon-attach-row.is-selected') || []);
   }
 
-  function _syncOdysseusAttachSelection(menu) {
-    const selected = _selectedOdysseusAttachRows(menu);
-    const bar = menu?.querySelector?.('.email-odysseus-attach-actions');
-    const count = menu?.querySelector?.('.email-odysseus-attach-count');
-    const attachBtn = menu?.querySelector?.('.email-odysseus-attach-selected');
+  function _syncPantheonAttachSelection(menu) {
+    const selected = _selectedPantheonAttachRows(menu);
+    const bar = menu?.querySelector?.('.email-pantheon-attach-actions');
+    const count = menu?.querySelector?.('.email-pantheon-attach-count');
+    const attachBtn = menu?.querySelector?.('.email-pantheon-attach-selected');
     if (bar) bar.style.display = '';
     if (count) count.textContent = selected.length ? `${selected.length} selected` : 'Select items to attach';
     if (attachBtn) attachBtn.disabled = selected.length === 0;
   }
 
-  async function _attachSelectedOdysseusItems(menu) {
-    const rows = _selectedOdysseusAttachRows(menu);
+  async function _attachSelectedPantheonItems(menu) {
+    const rows = _selectedPantheonAttachRows(menu);
     if (!rows.length) return;
-    const btn = menu.querySelector('.email-odysseus-attach-selected');
+    const btn = menu.querySelector('.email-pantheon-attach-selected');
     if (btn) {
       btn.disabled = true;
       btn.classList.add('is-loading');
@@ -3335,19 +3335,19 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
           : window.confirm(`Attach ${items.length} files as one zip?`);
       }
       if (zip) {
-        await _stageOdysseusZip(items);
+        await _stagePantheonZip(items);
         added = 1;
       } else {
         for (const item of items) {
-          await _stageOdysseusAttachment(item.kind, item.id);
+          await _stagePantheonAttachment(item.kind, item.id);
           added += 1;
         }
       }
-      _afterOdysseusAttachmentsAdded(added, zip ? 'odysseus-attachments.zip' : undefined);
-      _closeOdysseusAttachMenu();
+      _afterPantheonAttachmentsAdded(added, zip ? 'pantheon-attachments.zip' : undefined);
+      _closePantheonAttachMenu();
     } catch (err) {
-      console.error('Failed to attach selected Odysseus items:', err);
-      if (uiModule) uiModule.showError(added ? `Attached ${added}, then failed` : 'Failed to attach from Odysseus');
+      console.error('Failed to attach selected Pantheon items:', err);
+      if (uiModule) uiModule.showError(added ? `Attached ${added}, then failed` : 'Failed to attach from Pantheon');
       _renderComposeAttachments();
     } finally {
       if (btn) {
@@ -3357,15 +3357,15 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     }
   }
 
-  async function _loadOdysseusAttachItems(menu, kind) {
-    const list = menu.querySelector('.email-odysseus-attach-list');
+  async function _loadPantheonAttachItems(menu, kind) {
+    const list = menu.querySelector('.email-pantheon-attach-list');
     if (!list) return;
     menu.dataset.odyAttachKind = kind;
     list.replaceChildren(spinnerModule.createLoadingRow('Loading…', 14));
     menu.querySelectorAll('[data-ody-attach-kind]').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.odyAttachKind === kind);
     });
-    const q = (menu.querySelector('.email-odysseus-attach-search')?.value || '').trim();
+    const q = (menu.querySelector('.email-pantheon-attach-search')?.value || '').trim();
     try {
       const params = new URLSearchParams({ sort: 'recent', limit: '20' });
       if (q) params.set('search', q);
@@ -3379,50 +3379,50 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
         ? (Array.isArray(data?.items) ? data.items : Array.isArray(data?.images) ? data.images : [])
         : (Array.isArray(data?.documents) ? data.documents : Array.isArray(data?.items) ? data.items : []);
       if (!items.length) {
-        list.innerHTML = `<div class="email-odysseus-attach-empty">${q ? 'No matches' : `No ${kind === 'gallery' ? 'images' : 'documents'}`}</div>`;
-        _syncOdysseusAttachSelection(menu);
+        list.innerHTML = `<div class="email-pantheon-attach-empty">${q ? 'No matches' : `No ${kind === 'gallery' ? 'images' : 'documents'}`}</div>`;
+        _syncPantheonAttachSelection(menu);
         return;
       }
       list.innerHTML = '';
       for (const item of items) {
-        const label = _odysseusAttachLabel(item, kind);
+        const label = _pantheonAttachLabel(item, kind);
         const row = document.createElement('button');
         row.type = 'button';
-        row.className = `email-odysseus-attach-row ${kind === 'gallery' ? 'is-gallery' : ''}`;
+        row.className = `email-pantheon-attach-row ${kind === 'gallery' ? 'is-gallery' : ''}`;
         row.dataset.id = item.id || '';
         row.dataset.kind = kind;
         if (kind === 'gallery') {
           const src = item.url ? `${API_BASE}${item.url}` : '';
           row.innerHTML = `
-            <span class="email-odysseus-attach-dot" aria-hidden="true"></span>
-            <span class="email-odysseus-attach-thumb">${src ? `<img src="${_escHtml(src)}" alt="">` : ''}</span>
-            <span class="email-odysseus-attach-main">
-              <span class="email-odysseus-attach-title">${_escHtml(label)}</span>
-              <span class="email-odysseus-attach-meta">${_escHtml(item.filename || 'image')}</span>
+            <span class="email-pantheon-attach-dot" aria-hidden="true"></span>
+            <span class="email-pantheon-attach-thumb">${src ? `<img src="${_escHtml(src)}" alt="">` : ''}</span>
+            <span class="email-pantheon-attach-main">
+              <span class="email-pantheon-attach-title">${_escHtml(label)}</span>
+              <span class="email-pantheon-attach-meta">${_escHtml(item.filename || 'image')}</span>
             </span>
           `;
         } else {
           row.innerHTML = `
-            <span class="email-odysseus-attach-dot" aria-hidden="true"></span>
-            <span class="email-odysseus-attach-icon">${langIcon(item.language || 'text', 14, { style: 'opacity:0.8;' })}</span>
-            <span class="email-odysseus-attach-main">
-              <span class="email-odysseus-attach-title">${_escHtml(label)}</span>
-              <span class="email-odysseus-attach-meta">${_escHtml(item.language || 'text')}</span>
+            <span class="email-pantheon-attach-dot" aria-hidden="true"></span>
+            <span class="email-pantheon-attach-icon">${langIcon(item.language || 'text', 14, { style: 'opacity:0.8;' })}</span>
+            <span class="email-pantheon-attach-main">
+              <span class="email-pantheon-attach-title">${_escHtml(label)}</span>
+              <span class="email-pantheon-attach-meta">${_escHtml(item.language || 'text')}</span>
             </span>
           `;
         }
         row.addEventListener('click', (ev) => {
           ev.preventDefault();
           row.classList.toggle('is-selected');
-          _syncOdysseusAttachSelection(menu);
+          _syncPantheonAttachSelection(menu);
         });
-        row.addEventListener('dblclick', () => _attachOdysseusItem(kind, item.id, label, { keepOpen: false }));
+        row.addEventListener('dblclick', () => _attachPantheonItem(kind, item.id, label, { keepOpen: false }));
         list.appendChild(row);
       }
-      _syncOdysseusAttachSelection(menu);
+      _syncPantheonAttachSelection(menu);
     } catch (err) {
-      console.error('Failed to load Odysseus attach items:', err);
-      list.innerHTML = '<div class="email-odysseus-attach-empty">Could not load</div>';
+      console.error('Failed to load Pantheon attach items:', err);
+      list.innerHTML = '<div class="email-pantheon-attach-empty">Could not load</div>';
     }
   }
 
@@ -3431,15 +3431,15 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
       document.getElementById('doc-md-image-input')?.click();
       return;
     }
-    _closeOdysseusAttachMenu();
+    _closePantheonAttachMenu();
     const menu = document.createElement('div');
-    menu.className = 'email-odysseus-attach-menu';
+    menu.className = 'email-pantheon-attach-menu';
     menu.innerHTML = `
-      <button type="button" class="email-odysseus-attach-local">
+      <button type="button" class="email-pantheon-attach-local">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
         Upload file
       </button>
-      <div class="email-odysseus-attach-tabs">
+      <div class="email-pantheon-attach-tabs">
         <button type="button" data-ody-attach-kind="document" class="active">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h6"/></svg>
           <span>Documents</span>
@@ -3449,42 +3449,42 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
           <span>Gallery</span>
         </button>
       </div>
-      <label class="email-odysseus-attach-search-wrap">
+      <label class="email-pantheon-attach-search-wrap">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-        <input type="search" class="email-odysseus-attach-search" placeholder="Search attachments">
+        <input type="search" class="email-pantheon-attach-search" placeholder="Search attachments">
       </label>
-      <div class="email-odysseus-attach-list"></div>
-      <div class="email-odysseus-attach-actions">
-        <span class="email-odysseus-attach-count"></span>
-        <button type="button" class="email-odysseus-attach-selected" disabled>
+      <div class="email-pantheon-attach-list"></div>
+      <div class="email-pantheon-attach-actions">
+        <span class="email-pantheon-attach-count"></span>
+        <button type="button" class="email-pantheon-attach-selected" disabled>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 17.93 8.8l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
           <span>Attach</span>
         </button>
       </div>
     `;
     document.body.appendChild(menu);
-    _odysseusAttachMenu = menu;
-    _positionOdysseusAttachMenu(anchor, menu);
-    menu.querySelector('.email-odysseus-attach-local')?.addEventListener('click', () => {
-      _closeOdysseusAttachMenu();
+    _pantheonAttachMenu = menu;
+    _positionPantheonAttachMenu(anchor, menu);
+    menu.querySelector('.email-pantheon-attach-local')?.addEventListener('click', () => {
+      _closePantheonAttachMenu();
       document.getElementById('doc-email-file-input')?.click();
     });
     menu.querySelectorAll('[data-ody-attach-kind]').forEach(btn => {
-      btn.addEventListener('click', () => _loadOdysseusAttachItems(menu, btn.dataset.odyAttachKind));
+      btn.addEventListener('click', () => _loadPantheonAttachItems(menu, btn.dataset.odyAttachKind));
     });
     let attachSearchTimer = null;
-    menu.querySelector('.email-odysseus-attach-search')?.addEventListener('input', () => {
+    menu.querySelector('.email-pantheon-attach-search')?.addEventListener('input', () => {
       clearTimeout(attachSearchTimer);
       attachSearchTimer = setTimeout(() => {
-        _loadOdysseusAttachItems(menu, menu.dataset.odyAttachKind || 'document');
+        _loadPantheonAttachItems(menu, menu.dataset.odyAttachKind || 'document');
       }, 220);
     });
-    menu.querySelector('.email-odysseus-attach-selected')?.addEventListener('click', () => _attachSelectedOdysseusItems(menu));
+    menu.querySelector('.email-pantheon-attach-selected')?.addEventListener('click', () => _attachSelectedPantheonItems(menu));
     setTimeout(() => {
       document.addEventListener('click', _attachMenuOutsideClick, true);
       document.addEventListener('keydown', _attachMenuEscape, true);
     }, 0);
-    _loadOdysseusAttachItems(menu, 'document');
+    _loadPantheonAttachItems(menu, 'document');
   }
 
   function _isMarkdownImageFile(file) {
@@ -4035,7 +4035,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
           body_html: bodyHtml,
           in_reply_to: inReplyTo || null,
           references: references || null,
-          account_id: window.__odysseusActiveEmailAccount || null,
+          account_id: window.__pantheonActiveEmailAccount || null,
         }),
       });
       const data = await res.json();
@@ -4093,7 +4093,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
   // Mirrors the email reader's AI reply choice popover: textarea for an
   // optional steering note, then one Submit button.
   let _docAiReplyChoiceMenu = null;
-  const _AI_REPLY_CONTEXT_STORE_PREFIX = 'odysseus:email-ai-reply-context:v1:';
+  const _AI_REPLY_CONTEXT_STORE_PREFIX = 'pantheon:email-ai-reply-context:v1:';
   function _docAiReplyContextKey() {
     try {
       const sourceUid = document.getElementById('doc-email-source-uid')?.value?.trim() || '';
@@ -4219,7 +4219,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     const inReplyTo = document.getElementById('doc-email-in-reply-to')?.value?.trim() || '';
     const sourceUid = document.getElementById('doc-email-source-uid')?.value?.trim() || '';
     const sourceFolder = document.getElementById('doc-email-source-folder')?.value?.trim() || 'INBOX';
-    const sourceAccountId = docs.get(activeDocId)?.sourceEmailAccountId || window.__odysseusActiveEmailAccount || '';
+    const sourceAccountId = docs.get(activeDocId)?.sourceEmailAccountId || window.__pantheonActiveEmailAccount || '';
     const cleanAiReplyText = (text) => {
       if (!text) return '';
       let t = String(text);
@@ -4979,8 +4979,8 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
         <button id="doc-email-discard-btn" class="email-discard-btn" title="Close email" style="display:inline-flex;align-items:center;gap:5px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg><span>Close</span></button>
         <span style="flex:1"></span>
         <div class="email-send-split">
-          <button type="button" id="doc-email-send-btn" class="email-send-btn email-send-main" title="Send email (Ctrl+Enter)" onpointerdown="window.odysseusEmailSendIntent&&window.odysseusEmailSendIntent(event)" onmousedown="window.odysseusEmailSendIntent&&window.odysseusEmailSendIntent(event)" onclick="window.odysseusEmailSendIntent&&window.odysseusEmailSendIntent(event)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>Send</button>
-          <button type="button" id="doc-email-send-caret" class="email-send-btn email-send-caret" title="More send options" aria-haspopup="true" aria-expanded="false" onpointerdown="window.odysseusEmailCaretIntent&&window.odysseusEmailCaretIntent(event)" onmousedown="window.odysseusEmailCaretIntent&&window.odysseusEmailCaretIntent(event)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg></button>
+          <button type="button" id="doc-email-send-btn" class="email-send-btn email-send-main" title="Send email (Ctrl+Enter)" onpointerdown="window.pantheonEmailSendIntent&&window.pantheonEmailSendIntent(event)" onmousedown="window.pantheonEmailSendIntent&&window.pantheonEmailSendIntent(event)" onclick="window.pantheonEmailSendIntent&&window.pantheonEmailSendIntent(event)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>Send</button>
+          <button type="button" id="doc-email-send-caret" class="email-send-btn email-send-caret" title="More send options" aria-haspopup="true" aria-expanded="false" onpointerdown="window.pantheonEmailCaretIntent&&window.pantheonEmailCaretIntent(event)" onmousedown="window.pantheonEmailCaretIntent&&window.pantheonEmailCaretIntent(event)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg></button>
           <div id="doc-email-more-menu" class="email-more-menu" style="display:none">
             <div class="dropdown-item-compact" id="doc-email-draft-btn"><span class="dropdown-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg></span>Save Draft</div>
             <div class="dropdown-item-compact" id="doc-email-schedule-btn"><span class="dropdown-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>Schedule Send...</div>
@@ -5423,7 +5423,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     };
 
     const handleSendIntent = (e) => {
-      if (e && e.__odysseusEmailSendHandled) return;
+      if (e && e.__pantheonEmailSendHandled) return;
       const rawTarget = e && e.target;
       const target = rawTarget && rawTarget.nodeType === Node.TEXT_NODE ? rawTarget.parentElement : rawTarget;
       const sendButtons = Array.from(document.querySelectorAll('#doc-email-send-btn'));
@@ -5434,14 +5434,14 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
       if (e) {
         e.preventDefault();
         e.stopPropagation();
-        e.__odysseusEmailSendHandled = true;
+        e.__pantheonEmailSendHandled = true;
       }
       const _m = document.getElementById('doc-email-more-menu');
       if (_m) _m.style.display = 'none';
       document.getElementById('doc-email-send-caret')?.setAttribute('aria-expanded', 'false');
       _sendEmail();
     };
-    window.odysseusEmailSendIntent = handleSendIntent;
+    window.pantheonEmailSendIntent = handleSendIntent;
     if (!window._emailSendDelegatedBoundV3) {
       window._emailSendDelegatedBoundV3 = true;
       ['pointerdown', 'mousedown', 'pointerup', 'click'].forEach((type) => {
@@ -5459,12 +5459,12 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
       if (caret) caret.setAttribute('aria-expanded', String(opening));
     };
     const handleCaretIntent = (e) => {
-      if (e && e.__odysseusEmailCaretHandled) return;
+      if (e && e.__pantheonEmailCaretHandled) return;
       const now = Date.now();
       if (e && e.type === 'click' && now - lastCaretToggleAt < 350) {
         e.preventDefault();
         e.stopPropagation();
-        e.__odysseusEmailCaretHandled = true;
+        e.__pantheonEmailCaretHandled = true;
         return;
       }
       const rawTarget = e && e.target;
@@ -5477,12 +5477,12 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
       if (e) {
         e.preventDefault();
         e.stopPropagation();
-        e.__odysseusEmailCaretHandled = true;
+        e.__pantheonEmailCaretHandled = true;
       }
       lastCaretToggleAt = now;
       toggleSendMenu(caret);
     };
-    window.odysseusEmailCaretIntent = handleCaretIntent;
+    window.pantheonEmailCaretIntent = handleCaretIntent;
     if (!window._emailCaretDelegatedBoundV1) {
       window._emailCaretDelegatedBoundV1 = true;
       ['pointerdown', 'mousedown', 'click'].forEach((type) => {
@@ -5717,7 +5717,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     const editorWrap = document.getElementById('doc-editor-wrap');
     const _fontSizes = ['s', 'm', 'l'];
     const _iconSizes = [12, 14, 16];
-    let _fontIdx = parseInt(localStorage.getItem('odysseus-doc-fontsize') || '0', 10);
+    let _fontIdx = parseInt(localStorage.getItem('pantheon-doc-fontsize') || '0', 10);
     if (!(_fontIdx >= 0 && _fontIdx < 3)) _fontIdx = 0;
     function _applyDocFont() {
       const richEmailBody = document.getElementById('doc-email-richbody');
@@ -5737,7 +5737,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
           el.style.display = active ? '' : 'none';
         });
       }
-      localStorage.setItem('odysseus-doc-fontsize', _fontIdx);
+      localStorage.setItem('pantheon-doc-fontsize', _fontIdx);
     }
     _applyDocFont();
     // Click cycles through the sizes (S → M → L → S).
@@ -6695,7 +6695,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
   }
 
   /** Collapse action buttons into overflow "..." menu (3 most-used visible) */
-  const _DOC_RECENTS_KEY = 'odysseus-doc-actions-recent';
+  const _DOC_RECENTS_KEY = 'pantheon-doc-actions-recent';
   const _DOC_MAX_VISIBLE = 2;
 
   function _getDocRecent() {
@@ -8221,16 +8221,16 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     if (!activeDocId) return;
     const data = _activeSuggestions.map(s => ({ id: s.id, find: s.find, replace: s.replace, reason: s.reason }));
     if (data.length) {
-      localStorage.setItem('odysseus-suggestions-' + activeDocId, JSON.stringify(data));
+      localStorage.setItem('pantheon-suggestions-' + activeDocId, JSON.stringify(data));
     } else {
-      localStorage.removeItem('odysseus-suggestions-' + activeDocId);
+      localStorage.removeItem('pantheon-suggestions-' + activeDocId);
     }
   }
 
   /** Restore suggestions from localStorage for a doc */
   function _restoreSuggestionsFromStorage(docId) {
     try {
-      const raw = localStorage.getItem('odysseus-suggestions-' + docId);
+      const raw = localStorage.getItem('pantheon-suggestions-' + docId);
       if (!raw) return;
       const data = JSON.parse(raw);
       if (!Array.isArray(data) || !data.length) return;

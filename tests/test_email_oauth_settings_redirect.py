@@ -15,5 +15,5 @@ def test_oauth_redirect_uses_the_module_local_settings_api():
 
     assert "open('integrations');" in handler
     assert "window.settingsModule" not in handler
-    assert "window.__odysseusAppStarted" not in handler
+    assert "window.__pantheonAppStarted" not in handler
     assert "document.addEventListener('DOMContentLoaded', _showResult, { once: true })" in handler

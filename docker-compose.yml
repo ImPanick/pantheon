@@ -1,19 +1,19 @@
 services:
-  odysseus:
+  pantheon:
     build: .
     ports:
       - "${APP_BIND:-127.0.0.1}:${APP_PORT:-7000}:7000"
     volumes:
       - ${APP_DATA_DIR:-./data}:/app/data:z
       - ${APP_LOGS_DIR:-./logs}:/app/logs:z
-      # Cookbook remote-server SSH identity. Odysseus can generate a key here;
+      # Cookbook remote-server SSH identity. Pantheon can generate a key here;
       # add the shown public key to each remote server's authorized_keys.
       - ${APP_DATA_DIR:-./data}/ssh:/app/.ssh:z
-      # Cookbook local model cache. Inside Docker, "Local" means the Odysseus
+      # Cookbook local model cache. Inside Docker, "Local" means the Pantheon
       # container, so persist its HuggingFace cache under ./data/huggingface.
       - ${APP_DATA_DIR:-./data}/huggingface:/app/.cache/huggingface:z
       # Cookbook-installed Python CLIs/packages (vLLM, llama-cpp-python, etc.)
-      # land under /app/.local for the odysseus user. Persist them so a
+      # land under /app/.local for the pantheon user. Persist them so a
       # container recreate does not silently remove installed serve engines.
       - ${APP_DATA_DIR:-./data}/local:/app/.local:z
     extra_hosts:
@@ -35,8 +35,8 @@ services:
       - AUTH_ENABLED=${AUTH_ENABLED:-true}
       - LOCALHOST_BYPASS=${LOCALHOST_BYPASS:-false}
       - COMPANION_BASE_URL=${COMPANION_BASE_URL:-}
-      - ODYSSEUS_ADMIN_USER=${ODYSSEUS_ADMIN_USER:-admin}
-      - ODYSSEUS_ADMIN_PASSWORD=${ODYSSEUS_ADMIN_PASSWORD:-}
+      - PANTHEON_ADMIN_USER=${PANTHEON_ADMIN_USER:-admin}
+      - PANTHEON_ADMIN_PASSWORD=${PANTHEON_ADMIN_PASSWORD:-}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost,http://127.0.0.1}
       - SECURE_COOKIES=${SECURE_COOKIES:-}
       - EMBEDDING_URL=${EMBEDDING_URL:-}
@@ -45,18 +45,18 @@ services:
       - FASTEMBED_MODEL=${FASTEMBED_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
       - FASTEMBED_CACHE_PATH=${FASTEMBED_CACHE_PATH:-}
       - CLEANUP_INTERVAL_HOURS=${CLEANUP_INTERVAL_HOURS:-24}
-      - ODYSSEUS_INPROCESS_POLLERS=${ODYSSEUS_INPROCESS_POLLERS:-1}
-      - ODYSSEUS_INPROCESS_TASKS=${ODYSSEUS_INPROCESS_TASKS:-1}
-      - ODYSSEUS_SCRIPT_HOST=${ODYSSEUS_SCRIPT_HOST:-localhost}
-      - ODYSSEUS_CHAT_UPLOAD_MAX_BYTES=${ODYSSEUS_CHAT_UPLOAD_MAX_BYTES:-10485760}
-      - ODYSSEUS_GALLERY_UPLOAD_MAX_BYTES=${ODYSSEUS_GALLERY_UPLOAD_MAX_BYTES:-104857600}
-      - ODYSSEUS_GALLERY_TRANSFORM_UPLOAD_MAX_BYTES=${ODYSSEUS_GALLERY_TRANSFORM_UPLOAD_MAX_BYTES:-26214400}
-      - ODYSSEUS_MEMORY_IMPORT_MAX_BYTES=${ODYSSEUS_MEMORY_IMPORT_MAX_BYTES:-10485760}
-      - ODYSSEUS_PERSONAL_UPLOAD_MAX_BYTES=${ODYSSEUS_PERSONAL_UPLOAD_MAX_BYTES:-26214400}
-      - ODYSSEUS_EMAIL_COMPOSE_UPLOAD_MAX_BYTES=${ODYSSEUS_EMAIL_COMPOSE_UPLOAD_MAX_BYTES:-26214400}
-      - ODYSSEUS_STT_MAX_AUDIO_BYTES=${ODYSSEUS_STT_MAX_AUDIO_BYTES:-26214400}
-      - ODYSSEUS_ICS_MAX_BYTES=${ODYSSEUS_ICS_MAX_BYTES:-10485760}
-      - ODYSSEUS_TTS_CACHE_MAX_BYTES=${ODYSSEUS_TTS_CACHE_MAX_BYTES}
+      - PANTHEON_INPROCESS_POLLERS=${PANTHEON_INPROCESS_POLLERS:-1}
+      - PANTHEON_INPROCESS_TASKS=${PANTHEON_INPROCESS_TASKS:-1}
+      - PANTHEON_SCRIPT_HOST=${PANTHEON_SCRIPT_HOST:-localhost}
+      - PANTHEON_CHAT_UPLOAD_MAX_BYTES=${PANTHEON_CHAT_UPLOAD_MAX_BYTES:-10485760}
+      - PANTHEON_GALLERY_UPLOAD_MAX_BYTES=${PANTHEON_GALLERY_UPLOAD_MAX_BYTES:-104857600}
+      - PANTHEON_GALLERY_TRANSFORM_UPLOAD_MAX_BYTES=${PANTHEON_GALLERY_TRANSFORM_UPLOAD_MAX_BYTES:-26214400}
+      - PANTHEON_MEMORY_IMPORT_MAX_BYTES=${PANTHEON_MEMORY_IMPORT_MAX_BYTES:-10485760}
+      - PANTHEON_PERSONAL_UPLOAD_MAX_BYTES=${PANTHEON_PERSONAL_UPLOAD_MAX_BYTES:-26214400}
+      - PANTHEON_EMAIL_COMPOSE_UPLOAD_MAX_BYTES=${PANTHEON_EMAIL_COMPOSE_UPLOAD_MAX_BYTES:-26214400}
+      - PANTHEON_STT_MAX_AUDIO_BYTES=${PANTHEON_STT_MAX_AUDIO_BYTES:-26214400}
+      - PANTHEON_ICS_MAX_BYTES=${PANTHEON_ICS_MAX_BYTES:-10485760}
+      - PANTHEON_TTS_CACHE_MAX_BYTES=${PANTHEON_TTS_CACHE_MAX_BYTES}
       - DATA_BRAVE_API_KEY=${DATA_BRAVE_API_KEY:-}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
       - GOOGLE_PSE_CX=${GOOGLE_PSE_CX:-}
@@ -66,7 +66,7 @@ services:
       # Externally reachable origin for MCP OAuth callbacks. The container
       # always listens on 7000 and cannot see the host port map above, so
       # remote MCP OAuth needs this set whenever the browser reaches
-      # Odysseus on anything other than http://localhost:7000.
+      # Pantheon on anything other than http://localhost:7000.
       - OAUTH_REDIRECT_BASE_URL=${OAUTH_REDIRECT_BASE_URL:-}
       - TAVILY_API_KEY=${TAVILY_API_KEY:-}
       - SERPER_API_KEY=${SERPER_API_KEY:-}
@@ -98,7 +98,7 @@ services:
     restart: unless-stopped
 
   searxng:
-    # Pinned, not :latest — odysseus waits on searxng's healthcheck
+    # Pinned, not :latest — pantheon waits on searxng's healthcheck
     # (depends_on: condition: service_healthy), so a broken upstream `latest`
     # tag blocks the whole app from starting. 2026.6.2 crashes on boot with
     # `KeyError: 'default_doi_resolver'`, failing the healthcheck (issue #1414).
@@ -109,7 +109,7 @@ services:
       - -c
       - |
         set -eu
-        if [ ! -s /etc/searxng/settings.yml ] || grep -q 'odysseus-local-searxng-json-2026-05-30\|__SEARXNG_SECRET__' /etc/searxng/settings.yml; then
+        if [ ! -s /etc/searxng/settings.yml ] || grep -q 'pantheon-local-searxng-json-2026-05-30\|__SEARXNG_SECRET__' /etc/searxng/settings.yml; then
           secret="$${SEARXNG_SECRET:-}"
           if [ -z "$$secret" ]; then
             secret="$$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"

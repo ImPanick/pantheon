@@ -54,11 +54,11 @@ export function initKeyboardShortcuts(modules) {
     _closeCompareIfActive, _deactivateIncognito, API_BASE
   } = modules;
 
-  window._odysseusKeybinds = { ..._defaultKeybinds };
+  window._pantheonKeybinds = { ..._defaultKeybinds };
 
   // Load saved keybinds
   getSettings()
-    .then(s => { if (s.keybinds) window._odysseusKeybinds = { ..._defaultKeybinds, ...s.keybinds }; })
+    .then(s => { if (s.keybinds) window._pantheonKeybinds = { ..._defaultKeybinds, ...s.keybinds }; })
     .catch(() => {});
 
   // ── Esc cancels select mode (capture phase, before modal-close) ──
@@ -142,7 +142,7 @@ export function initKeyboardShortcuts(modules) {
   };
 
   document.addEventListener('keydown', (e) => {
-    const kb = window._odysseusKeybinds;
+    const kb = window._pantheonKeybinds;
 
     if (_matchesCombo(e, kb.search)) {
       e.preventDefault();
@@ -211,7 +211,7 @@ export function initKeyboardShortcuts(modules) {
           } else {
             sessionModule.setCurrentSessionId(null);
             el('chat-history').innerHTML = '';
-            el('current-meta').textContent = 'Odysseus Chat';
+            el('current-meta').textContent = 'Pantheon Chat';
             Storage.remove('lastSessionId');
             if (chatModule && chatModule.showWelcomeScreen) chatModule.showWelcomeScreen();
           }

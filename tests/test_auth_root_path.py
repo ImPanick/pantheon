@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_login_page_uses_mount_aware_urls():
     html = (ROOT / "static/login.html").read_text(encoding="utf-8")
 
-    assert "window.__odysseusLoginAppUrl" in html
+    assert "window.__pantheonLoginAppUrl" in html
     for api_path in (
         "/api/version",
         "/api/auth/policy",
@@ -39,7 +39,7 @@ def test_login_page_uses_mount_aware_urls():
 
     assert "window.location.replace(appUrl('/'))" in html
     assert (
-        "__odysseusLoginAppUrl || ((path) => path))('/static/js/theme.js')"
+        "__pantheonLoginAppUrl || ((path) => path))('/static/js/theme.js')"
         in html
     )
 
@@ -57,17 +57,17 @@ def test_login_page_static_assets_resolve_under_mount_path():
     ):
         assert forbidden not in html
 
-    mounted_login_url = "https://example.test/odysseus/login"
+    mounted_login_url = "https://example.test/pantheon/login"
     for relative_asset, mounted_path in (
-        ("static/manifest.json", "/odysseus/static/manifest.json"),
-        ("static/icons/icon-192.png", "/odysseus/static/icons/icon-192.png"),
+        ("static/manifest.json", "/pantheon/static/manifest.json"),
+        ("static/icons/icon-192.png", "/pantheon/static/icons/icon-192.png"),
         (
             "static/fonts/FiraCode-Regular.woff2",
-            "/odysseus/static/fonts/FiraCode-Regular.woff2",
+            "/pantheon/static/fonts/FiraCode-Regular.woff2",
         ),
         (
             "static/fonts/FiraCode-SemiBold.woff2",
-            "/odysseus/static/fonts/FiraCode-SemiBold.woff2",
+            "/pantheon/static/fonts/FiraCode-SemiBold.woff2",
         ),
     ):
         assert relative_asset in html
@@ -78,12 +78,12 @@ def test_login_page_static_assets_resolve_under_mount_path():
     ("root_path", "path", "expected"),
     [
         ("", "/api/models", "/api/models"),
-        ("/odysseus", "/odysseus/api/models", "/api/models"),
-        ("/odysseus/", "/odysseus//api/models", "/api/models"),
+        ("/pantheon", "/pantheon/api/models", "/api/models"),
+        ("/pantheon/", "/pantheon//api/models", "/api/models"),
         ("/", "//api/models", "/api/models"),
-        ("/odysseus", "/odyssey/api/models", "/odyssey/api/models"),
+        ("/pantheon", "/odyssey/api/models", "/odyssey/api/models"),
         ("/app", "/application/api/models", "/application/api/models"),
-        ("/odysseus", "/odysseus", ""),
+        ("/pantheon", "/pantheon", ""),
     ],
 )
 def test_application_route_path_matches_starlette_semantics(
@@ -101,8 +101,8 @@ def test_application_route_path_matches_starlette_semantics(
     ("root_path", "expected"),
     [
         ("", "/login"),
-        ("/odysseus", "/odysseus/login"),
-        ("/odysseus/", "/odysseus/login"),
+        ("/pantheon", "/pantheon/login"),
+        ("/pantheon/", "/pantheon/login"),
         ("/", "/login"),
     ],
 )
@@ -125,8 +125,8 @@ def test_real_auth_middleware_uses_application_relative_path(tmp_path):
         "CHROMADB_PORT": "9",
         "DATABASE_URL": f"sqlite:///{tmp_path / 'app.db'}",
         "LOCALHOST_BYPASS": "false",
-        "ODYSSEUS_DATA_DIR": str(tmp_path),
-        "ODYSSEUS_DISABLE_MCP": "1",
+        "PANTHEON_DATA_DIR": str(tmp_path),
+        "PANTHEON_DISABLE_MCP": "1",
         "OPENAI_API_KEY": "",
         "PYTHONPATH": str(ROOT),
         "PYTHON_DOTENV_DISABLED": "1",
@@ -211,21 +211,21 @@ def test_real_auth_middleware_uses_application_relative_path(tmp_path):
 
 
         async def main():
-            setup = await _case("/odysseus", "/api/auth/setup", configured=False)
-            mounted_api = await _case("/odysseus", "/api/models", configured=True)
-            mounted_browser = await _case("/odysseus", "/notes", configured=True)
+            setup = await _case("/pantheon", "/api/auth/setup", configured=False)
+            mounted_api = await _case("/pantheon", "/api/models", configured=True)
+            mounted_browser = await _case("/pantheon", "/notes", configured=True)
             webhook = await _case(
-                "/odysseus",
+                "/pantheon",
                 "/api/tasks/task-1/webhook/secret-token",
                 configured=True,
             )
             static_child = await _case(
-                "/odysseus",
+                "/pantheon",
                 "/static/app.js",
                 configured=True,
             )
             static_lookalike = await _case(
-                "/odysseus",
+                "/pantheon",
                 "/static-v2/app.js",
                 configured=True,
             )
@@ -271,12 +271,12 @@ def test_real_auth_middleware_uses_application_relative_path(tmp_path):
     }
     assert payload["static_lookalike"] == {
         "status": 302,
-        "location": "/odysseus/login",
+        "location": "/pantheon/login",
         "called": 0,
     }
     assert payload["mounted_browser"] == {
         "status": 302,
-        "location": "/odysseus/login",
+        "location": "/pantheon/login",
         "called": 0,
     }
     for name in ("mounted_api", "default_api"):

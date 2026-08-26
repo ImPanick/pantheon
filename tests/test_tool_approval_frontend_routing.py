@@ -74,7 +74,7 @@ def test_ask_user_renderer_accepts_scoped_root_and_submit_callback():
     assert "kind: 'answer'" in renderer
     assert "kind: 'tool_approval'" in renderer
     assert "if (accepted !== false) card.remove();" in renderer
-    assert "document.dispatchEvent(new CustomEvent('odysseus:tool-approval', { detail }))" in renderer
+    assert "document.dispatchEvent(new CustomEvent('pantheon:tool-approval', { detail }))" in renderer
 
 
 def test_every_changed_approval_module_is_cache_busted_together():

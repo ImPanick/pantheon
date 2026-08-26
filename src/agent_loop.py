@@ -1,7 +1,7 @@
 """
 agent_loop.py
 
-Streaming agent loop for odysseus-ui.
+Streaming agent loop for pantheon-ui.
 Wraps stream_llm() with multi-round tool execution.
 The LLM decides when to use tools by writing fenced code blocks.
 """
@@ -386,7 +386,7 @@ _API_AGENT_RULES = """\
 - Plain "list/show/check my inbox/emails" means latest inbox mail, including read messages. Do not set `unread_only: true` unless the user explicitly asks for unread/needs attention.
 - Multiple email accounts: if tool output says "Other accounts" or the user asks "my Gmail?", "other inbox?", "work mail?", "custom domain mail?", or names any mailbox/account, DO NOT answer from memory or infer it is the same inbox. Call `list_email_accounts` if needed, then call `list_emails`/`read_email`/`bulk_email` with the exact `account` value for that mailbox. Account names are user-defined labels; if the user typo-matches a known account, use the closest listed account instead of claiming it does not exist. NEVER use `app_api` or `/api/email/accounts` to discover email accounts; that route is owner-filtered in tool context and can falsely return empty.
 - User identity facts/preferences ("my name is <name>", "I live in <place>", "I prefer concise replies", "call me <name>") → use `manage_memory` with action=add. NEVER use `manage_contact` for facts about the user unless the user explicitly says to create/update a contact and provides contact details such as an email or phone.
-- You are running INSIDE Odysseus — there is no OpenWebUI, ChatGPT, or external chat backend to query. All chats/sessions live in THIS app and are accessed via `list_sessions` (or `manage_session` with `action=list`), and deleted via `manage_session` with `action=delete`. Do NOT shell out to find sqlite files, curl localhost:8080, or grep for routers — those don't exist here. If `list_sessions` returns rows, that IS the source of truth.
+- You are running INSIDE Pantheon — there is no OpenWebUI, ChatGPT, or external chat backend to query. All chats/sessions live in THIS app and are accessed via `list_sessions` (or `manage_session` with `action=list`), and deleted via `manage_session` with `action=delete`. Do NOT shell out to find sqlite files, curl localhost:8080, or grep for routers — those don't exist here. If `list_sessions` returns rows, that IS the source of truth.
 - After `list_sessions`, preserve the returned `[Chat title](#session-<id>)` links in your user-facing reply. Do not rewrite chat lists as plain tables with non-clickable titles.
 - "Cookbook" = the LLM-serving subsystem (NOT chat sessions, NOT a recipe app). Routing:
   • "What's running" / "what's serving" / "show my cookbook" / "is anything up" → **first action MUST be `list_served_models` (no args)**. The tool is ALWAYS available. Do not run `ps aux`, do not `curl localhost:8000`, do not `which vllm`. Even if you don't remember seeing the tool listed, it IS available — call it. The output IS the source of truth (it tracks diffusion models, vLLM, SGLang, llama.cpp, Ollama, etc. — anything spawned via the cookbook, including remote hosts that `ps aux` here can't see).
@@ -503,7 +503,7 @@ _DOMAIN_RULES = {
 - Tool toggles like "turn off shell/search/research" use `ui_control toggle <name> <on|off>`, not memory.""",
     "sessions": """\
 ## Chat/session rules
-- Odysseus chats are sessions. Use `list_sessions`/`manage_session`; do not shell out looking for chat files.
+- Pantheon chats are sessions. Use `list_sessions`/`manage_session`; do not shell out looking for chat files.
 - Preserve clickable session links from tool output in your final answer.""",
     "files": """\
 ## File rules
@@ -570,7 +570,7 @@ For LONG-running commands (package installs, pip/npm, ffmpeg, model downloads, t
 #!bg
 pip install openai-whisper
 ```
-SANDBOX LIMITS: stdin/stdout are pipes, so there is NO interactive terminal — `input()`, `curses`, `termios`, `pygame`, and `tkinter` will all fail. Don't try to RUN interactive terminal games or GUI apps here — verify syntax (`python -c "import py_compile; py_compile.compile('x.py')"`) and tell the user to run it themselves in their own terminal. For anything the USER should play/use interactively (games, UIs, demos), prefer a single self-contained HTML file with `<canvas>` + inline JS — save it via `create_document` with language="html" and tell the user to hit the Run / Preview button (▶) in the document editor toolbar; it renders inline in a sandboxed iframe so the game is playable right there. Works from any machine that can reach the Odysseus UI — no need to copy files out.
+SANDBOX LIMITS: stdin/stdout are pipes, so there is NO interactive terminal — `input()`, `curses`, `termios`, `pygame`, and `tkinter` will all fail. Don't try to RUN interactive terminal games or GUI apps here — verify syntax (`python -c "import py_compile; py_compile.compile('x.py')"`) and tell the user to run it themselves in their own terminal. For anything the USER should play/use interactively (games, UIs, demos), prefer a single self-contained HTML file with `<canvas>` + inline JS — save it via `create_document` with language="html" and tell the user to hit the Run / Preview button (▶) in the document editor toolbar; it renders inline in a sandboxed iframe so the game is playable right there. Works from any machine that can reach the Pantheon UI — no need to copy files out.
 NEVER pipe multi-line Python through `python -c "..."` — shell quoting eats real newlines and `\\n` arrives as literal backslash-n, which Python parses as a line-continuation error on line 1. To run multi-line code, either use the dedicated `python` tool block above, or save to a file first with a quoted HEREDOC (`cat > /tmp/x.py << 'EOF' ... EOF`) and then `python /tmp/x.py`.""",
 
     "python": """\
@@ -770,7 +770,7 @@ If the user asks for a reminder/alarm before the event, pass `reminder_minutes` 
 ```app_api
 {"action": "call", "method": "GET", "path": "/api/cookbook/gpus"}
 ```
-GENERIC LOOPBACK to allowed Odysseus internal endpoints. Use this whenever the user wants something the UI can do but there's NO named tool for it. Many UI buttons hit /api/* endpoints — you can hit allowed ones. Auth is handled automatically.
+GENERIC LOOPBACK to allowed Pantheon internal endpoints. Use this whenever the user wants something the UI can do but there's NO named tool for it. Many UI buttons hit /api/* endpoints — you can hit allowed ones. Auth is handled automatically.
 
 **Discovery first.** If you're not sure of the path, call `{"action":"endpoints","filter":"<keyword>"}` (e.g. filter='calendar' or 'gallery' or 'theme') to list available endpoints with their methods + summaries. Then call with action='call'.
 
@@ -1217,7 +1217,7 @@ def _explicitly_references_missing_workspace(text: str, workspace: Optional[str]
 
 def _local_computer_rules() -> str:
     return (
-        "\n\n## Odysseus Terminus local-machine mode\n"
+        "\n\n## Pantheon Terminus local-machine mode\n"
         "- The user referred to this computer/local machine or a named computer. Treat this as a machine-targeted agent task, not ordinary chat.\n"
         "- Configured Cookbook server names and SSH aliases are target machines. When the user names one, keep actions scoped to that machine.\n"
         "- For model-serving/download/cached-model tasks on a named machine, use Cookbook tools and pass the named host. Start with `list_cookbook_servers` if the exact configured host is unclear.\n"
@@ -1601,11 +1601,11 @@ def _minimal_saved_memory_message(messages: List[Dict]) -> Optional[Dict]:
             break
     if not facts:
         return None
-    logger.info("[agent-intent] odysseus doc minimal memory facts=%s", len(facts))
+    logger.info("[agent-intent] pantheon doc minimal memory facts=%s", len(facts))
     return untrusted_context_message(
         "saved memory: minimal context",
         (
-            "Saved user memory facts from Odysseus Brain. These are the same "
+            "Saved user memory facts from Pantheon Brain. These are the same "
             "user facts available in the normal prompt path. Use them when "
             "the user asks for personalization, identity, background, "
             "preferences, or anything about \"me\" or \"my\":\n"
@@ -1712,7 +1712,7 @@ def _minimal_recent_notes_tool_context_message(messages: List[Dict]) -> Optional
     return untrusted_context_message(
         "recent tool context",
         (
-            "Recent Odysseus tool context for follow-up references only. "
+            "Recent Pantheon tool context for follow-up references only. "
             "Use concrete note ids, calendar event uids, and email UIDs from "
             "here when the user says that note/event/reminder/appointment/"
             "email/first one/that one/it:\n"
@@ -1743,13 +1743,13 @@ def _compact_email_draft_context(raw: str, *, max_own_chars: int = 1200, max_his
     if len(own) > max_own_chars:
         own = own[:max_own_chars].rstrip() + "\n...[draft body truncated]"
     if len(history) > max_history_chars:
-        history = history[:max_history_chars].rstrip() + "\n...[quoted history truncated; full history is preserved by Odysseus]"
+        history = history[:max_history_chars].rstrip() + "\n...[quoted history truncated; full history is preserved by Pantheon]"
     if history:
         body_out = (
             f"{own}\n\n" if own else ""
         ) + (
             "QUOTED HISTORY EXCERPT FOR CONTEXT ONLY -- do not rewrite or include this excerpt in your tool output; "
-            "Odysseus preserves the full quoted thread below the reply automatically.\n"
+            "Pantheon preserves the full quoted thread below the reply automatically.\n"
             f"{history}"
         )
     else:
@@ -1757,8 +1757,8 @@ def _compact_email_draft_context(raw: str, *, max_own_chars: int = 1200, max_his
     return header.rstrip() + "\n---\n" + body_out.strip()
 
 
-def _minimal_odysseus_doc_messages(messages: List[Dict], active_document, stream_create: bool = False) -> List[Dict]:
-    """Tiny prompt path for the Odysseus document LoRA.
+def _minimal_pantheon_doc_messages(messages: List[Dict], active_document, stream_create: bool = False) -> List[Dict]:
+    """Tiny prompt path for the Pantheon document LoRA.
 
     This model is trained on document tool behavior, so avoid the normal agent
     rule stack and send only the task plus the active document when editing.
@@ -1766,7 +1766,7 @@ def _minimal_odysseus_doc_messages(messages: List[Dict], active_document, stream
     latest = _extract_last_user_message(messages)
     if stream_create:
         system = (
-            "You are Odysseus. Create the requested document by streaming exactly one fenced block:\n"
+            "You are Pantheon. Create the requested document by streaming exactly one fenced block:\n"
             "```document\n"
             "Title\n"
             "markdown\n"
@@ -1778,7 +1778,7 @@ def _minimal_odysseus_doc_messages(messages: List[Dict], active_document, stream
         )
     else:
         system = (
-            "You are Odysseus. Edit or suggest changes to the active document using exactly one fenced tool block when needed.\n"
+            "You are Pantheon. Edit or suggest changes to the active document using exactly one fenced tool block when needed.\n"
             "The active document content is authoritative. Apply the user's request to that content; do not append the user's instruction as document text.\n"
             "Preserve the current title, language, structure, and existing meaning unless the user explicitly asks to change them.\n"
             "If the user asks for ALL CAPS/uppercase/lowercase, transform the existing document text itself.\n"
@@ -1810,7 +1810,7 @@ def _minimal_odysseus_doc_messages(messages: List[Dict], active_document, stream
             "Do not use native function-call JSON or <tool_calls> markup. "
             "FIND text must be copied exactly from the active document with no labels like content:, title:, or markdown. "
             "Use only the fenced tool blocks above. Do not write anything before the fenced block. "
-            "After the tool succeeds, Odysseus will answer Done."
+            "After the tool succeeds, Pantheon will answer Done."
         )
     out = [{"role": "system", "content": system, "_agent_injected": "prompt"}]
     memory_message = _minimal_saved_memory_message(messages)
@@ -1864,15 +1864,15 @@ def _looks_like_notes_calendar_followup(text: str) -> bool:
     )
 
 
-def _minimal_odysseus_notes_messages(messages: List[Dict]) -> List[Dict]:
-    """Tiny prompt path for Odysseus notes/calendar/tasks LoRAs.
+def _minimal_pantheon_notes_messages(messages: List[Dict]) -> List[Dict]:
+    """Tiny prompt path for Pantheon notes/calendar/tasks LoRAs.
 
-    The finetune is trained to emit Odysseus notes/calendar/task tool calls
+    The finetune is trained to emit Pantheon notes/calendar/task tool calls
     without receiving the full tool schema or saved-context wrapper stack.
     """
     latest = _extract_last_user_message(messages)
     system = (
-        "You are Odysseus. Handle notes, reminders, calendar events, and scheduled tasks.\n"
+        "You are Pantheon. Handle notes, reminders, calendar events, and scheduled tasks.\n"
         "Use manage_notes for notes, todos, checklists, note searches, and one-off reminders. One-off reminders need due_date.\n"
         "Use manage_calendar for calendar events, meetings, appointments, event lists, and event reminders. For event reminders, use reminder_minutes and do not also create a note.\n"
         "Use manage_tasks for recurring/background automations like every morning, daily, weekly, or scheduled AI jobs.\n"
@@ -1906,12 +1906,12 @@ def _looks_like_memory_identity_turn(text: str) -> bool:
     ))
 
 
-def _minimal_odysseus_general_messages(messages: List[Dict], include_memory: bool = False) -> List[Dict]:
-    """Minimal fallback for Odysseus finetunes outside domain-specific paths."""
+def _minimal_pantheon_general_messages(messages: List[Dict], include_memory: bool = False) -> List[Dict]:
+    """Minimal fallback for Pantheon finetunes outside domain-specific paths."""
     latest = _extract_last_user_message(messages)
     system = (
-        "You are Odysseus. Answer directly and briefly.\n"
-        "Use Odysseus tool-call format only when the user explicitly asks you to take an action.\n"
+        "You are Pantheon. Answer directly and briefly.\n"
+        "Use Pantheon tool-call format only when the user explicitly asks you to take an action.\n"
         "For explicit remember/forget/preference requests, use manage_memory.\n"
         "If the user asks for their email address, email account, or connected emails, call mcp__email__list_email_accounts.\n"
         "If the user asks to read/check/show their inbox or latest emails, call mcp__email__list_emails.\n"
@@ -1976,9 +1976,9 @@ _ODY_QWEN_TEXT_FIXES = (
 
 
 def _normalize_ody_qwen_text_artifacts(text: str) -> str:
-    """Repair common dropped-final-letter artifacts from small Odysseus LoRAs.
+    """Repair common dropped-final-letter artifacts from small Pantheon LoRAs.
 
-    This is intentionally scoped to the odysseus-qwen3 runtime path. It is not
+    This is intentionally scoped to the pantheon-qwen3 runtime path. It is not
     a general grammar corrector; it only fixes high-confidence standalone
     tokens that make the assistant look broken while the next data pass is
     trained.
@@ -2205,12 +2205,12 @@ def _prepend_agent_directive(messages: List[Dict], directive: str) -> List[Dict]
     return messages
 
 
-def _is_odysseus_qwen_model(model: str) -> bool:
-    return (model or "").lower().startswith("odysseus-qwen3")
+def _is_pantheon_qwen_model(model: str) -> bool:
+    return (model or "").lower().startswith("pantheon-qwen3")
 
 
 def _ody_qwen_temperature_cap(temperature):
-    """Force-cap odysseus-qwen3 sampling; the finetune destabilizes above 0.2.
+    """Force-cap pantheon-qwen3 sampling; the finetune destabilizes above 0.2.
 
     Applied per route, not just to the selected model: a non-qwen primary can
     fall back to a qwen candidate, which must not inherit the caller's
@@ -2345,7 +2345,7 @@ def _build_system_prompt(
                 f'This is the current email compose window, not a normal document library item. If the user says "write", "draft", "reply", "make it say", or "write the email" without naming another target, edit THIS email draft.\n\n'
                 f'When the user asks you to write, reply to, or improve this email:\n'
                 f'1. Use `update_document` to update this email draft — keep all header lines (To, Subject, In-Reply-To, References, X-Source-UID, X-Source-Folder, X-Attachments) and the `---` separator EXACTLY as they are.\n'
-                f'2. Replace ONLY the new reply text above `---------- Previous message ----------`. You may omit the quoted history from your tool output; Odysseus preserves everything from that separator downward automatically.\n'
+                f'2. Replace ONLY the new reply text above `---------- Previous message ----------`. You may omit the quoted history from your tool output; Pantheon preserves everything from that separator downward automatically.\n'
                 f'3. Write the reply body above the quoted original. Use the saved email writing style when present.\n'
                 f'4. Identity is critical: write as the logged-in user / mailbox owner only. NEVER sign as the recipient, original sender, quoted sender, spouse, assistant, company, or any third party. If adding a signature, use only the name/signature implied by the saved email writing style.\n'
                 f'5. Mechanical style is critical: never use em dash/en dash; use --. Never use curly apostrophes. For English emails, use Hi/Hiya from the saved style rather than Hey unless the user explicitly asks for Hey.\n'
@@ -3158,7 +3158,7 @@ def _compute_final_metrics(
         tps = backend_gen_tps
     else:
         tps = output_tokens / total_duration if total_duration > 0 else 0
-    # Context % should describe the prompt Odysseus assembled, not provider
+    # Context % should describe the prompt Pantheon assembled, not provider
     # billing/usage counters. Some providers report only the final agent round
     # or cache-adjusted input, which made the displayed context jump from e.g.
     # 44% to 5% even when the session history had not meaningfully changed.
@@ -3513,7 +3513,7 @@ async def stream_agent_loop(
     _t0 = time.time()
     _needs_admin = _detect_admin_intent(messages)
     _last_user = _extract_last_user_message(messages)
-    _ody_qwen_finetune_model = _is_odysseus_qwen_model(model)
+    _ody_qwen_finetune_model = _is_pantheon_qwen_model(model)
     # The caller's temperature survives for non-qwen routes; the qwen cap is
     # applied per candidate (here for the primary, in the candidate request
     # factories for fallbacks), so neither direction of a mixed qwen/non-qwen
@@ -3588,7 +3588,7 @@ async def stream_agent_loop(
     if _direct_low_signal:
         logger.info("[agent] direct low-signal reply path for latest=%r", _last_user[:80])
         direct_messages = (
-            _minimal_odysseus_general_messages(
+            _minimal_pantheon_general_messages(
                 messages,
                 include_memory=True,
             )
@@ -3609,9 +3609,9 @@ async def stream_agent_loop(
         direct_has_real_usage = False
 
         def _direct_candidate_request(_index, _url, candidate_model, _headers):
-            candidate_is_qwen = _is_odysseus_qwen_model(candidate_model)
+            candidate_is_qwen = _is_pantheon_qwen_model(candidate_model)
             candidate_messages = (
-                _minimal_odysseus_general_messages(messages, include_memory=True)
+                _minimal_pantheon_general_messages(messages, include_memory=True)
                 if candidate_is_qwen
                 else [{"role": "user", "content": _last_user}]
             )
@@ -3981,7 +3981,7 @@ async def stream_agent_loop(
             and not active_email
         ):
             _relevant_tools = set(_WORKSPACE_TERMINUS_TOOLS)
-            logger.info("[tool-rag] Workspace file/terminal request; using Odysseus Terminus toolset")
+            logger.info("[tool-rag] Workspace file/terminal request; using Pantheon Terminus toolset")
 
     # If this turn targets the open document, keep editing tools available
     # regardless of which selection path (RAG, keyword, caller-provided) ran.
@@ -4068,7 +4068,7 @@ async def stream_agent_loop(
     _runtime_skill_tools: Set[str] = set()
 
     def _route_finetune_modes(candidate_model: str):
-        is_ody = _is_odysseus_qwen_model(candidate_model)
+        is_ody = _is_pantheon_qwen_model(candidate_model)
         doc_mode = (
             is_ody
             and not _runtime_skill_tools
@@ -4145,19 +4145,19 @@ async def stream_agent_loop(
     ) = _route_finetune_modes(model)
     _relevant_tools = _route_relevant_tools(model)
     if _ody_doc_finetune_mode and _relevant_tools is not None:
-        logger.info("[agent-intent] odysseus doc finetune tool clamp=%s", sorted(_relevant_tools))
+        logger.info("[agent-intent] pantheon doc finetune tool clamp=%s", sorted(_relevant_tools))
     elif _ody_notes_finetune_mode and _relevant_tools is not None:
         disabled_tools.difference_update({
             "manage_notes", "manage_calendar", "manage_tasks",
         })
-        logger.info("[agent-intent] odysseus notes finetune tool clamp=%s", sorted(_relevant_tools))
+        logger.info("[agent-intent] pantheon notes finetune tool clamp=%s", sorted(_relevant_tools))
     elif _ody_general_no_tool_mode:
         try:
             from src.tool_policy import known_tool_names
             disabled_tools.update(known_tool_names())
         except Exception:
             pass
-        logger.info("[agent-intent] odysseus general no-tool clamp active")
+        logger.info("[agent-intent] pantheon general no-tool clamp active")
 
     if (
         _relevant_tools is not None
@@ -4312,14 +4312,14 @@ async def stream_agent_loop(
             workspace=workspace,
         )
         if doc_mode and not plan_mode and not approved_plan and not guide_only:
-            route_messages = _minimal_odysseus_doc_messages(
+            route_messages = _minimal_pantheon_doc_messages(
                 route_messages,
                 _prompt_active_document,
                 stream_create=stream_create_mode,
             )
             route_mcp_schemas = []
         elif notes_mode and not plan_mode and not approved_plan and not guide_only:
-            route_messages = _minimal_odysseus_notes_messages(route_messages)
+            route_messages = _minimal_pantheon_notes_messages(route_messages)
             route_mcp_schemas = []
         elif (
             is_ody
@@ -4328,7 +4328,7 @@ async def stream_agent_loop(
             and not approved_plan
             and not guide_only
         ):
-            route_messages = _minimal_odysseus_general_messages(route_messages, include_memory=True)
+            route_messages = _minimal_pantheon_general_messages(route_messages, include_memory=True)
             route_mcp_schemas = []
         if plan_mode and not guide_only:
             _prepend_agent_directive(route_messages, PLAN_MODE_DIRECTIVE)
@@ -4870,7 +4870,7 @@ async def stream_agent_loop(
                     "tool_choice_none": state["ody_doc_finetune_mode"],
                     "temperature": (
                         _ody_qwen_temperature_cap(_requested_temperature)
-                        if _is_odysseus_qwen_model(candidate_model)
+                        if _is_pantheon_qwen_model(candidate_model)
                         else _requested_temperature
                     ),
                 },
@@ -5266,7 +5266,7 @@ async def stream_agent_loop(
             )
             if create_idx is None:
                 logger.info(
-                    "[agent] odysseus doc stream-create discarded non-create tool call(s): %s",
+                    "[agent] pantheon doc stream-create discarded non-create tool call(s): %s",
                     [block.tool_type for block in tool_blocks],
                 )
                 tool_blocks = []
@@ -5274,7 +5274,7 @@ async def stream_agent_loop(
             else:
                 if len(tool_blocks) > 1 or create_idx != 0:
                     logger.info(
-                        "[agent] odysseus doc stream-create keeping first create_document and dropping extras: %s",
+                        "[agent] pantheon doc stream-create keeping first create_document and dropping extras: %s",
                         [block.tool_type for block in tool_blocks],
                     )
                 tool_blocks = [tool_blocks[create_idx]]
@@ -5319,7 +5319,7 @@ async def stream_agent_loop(
                     _dropped_memory_lookup = True
             if _dropped_memory_lookup:
                 logger.info(
-                    "[agent-intent] odysseus qwen dropped manage_memory lookup; answering from compact memory"
+                    "[agent-intent] pantheon qwen dropped manage_memory lookup; answering from compact memory"
                 )
                 tool_blocks = _filtered_tool_blocks
                 converted_calls = _filtered_converted_calls
@@ -6274,18 +6274,18 @@ async def stream_agent_loop(
             if not full_response.strip():
                 full_response = "Done."
                 yield 'data: ' + json.dumps({"delta": "Done."}) + '\n\n'
-            logger.info("[agent] odysseus doc stream-create completed after one create_document")
+            logger.info("[agent] pantheon doc stream-create completed after one create_document")
             break
 
         if _ody_doc_tool_completed:
             if not full_response.strip() or full_response.strip().startswith("```"):
                 full_response = "Done."
                 yield 'data: ' + json.dumps({"delta": "Done."}) + '\n\n'
-            logger.info("[agent] odysseus doc tool completed after one textual tool block")
+            logger.info("[agent] pantheon doc tool completed after one textual tool block")
             break
 
         if (_ody_notes_finetune_mode or _ody_qwen_finetune_model) and _ody_notes_tool_completed:
-            logger.info("[agent] odysseus completed from deterministic tool output")
+            logger.info("[agent] pantheon completed from deterministic tool output")
             break
 
         # Feed results back to LLM for next round

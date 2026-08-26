@@ -13,8 +13,8 @@ const API_BASE = window.location.origin;
 // Recent is auto-tracked (last 5 picks, most-recent-first) and lives in its
 // own key. Favorites is the SAME key the sidebar Models section uses, so a
 // favorite toggled here shows up there and vice-versa.
-const RECENT_KEY = 'odysseus-model-recent';
-const FAVORITES_KEY = 'odysseus-model-favorites';
+const RECENT_KEY = 'pantheon-model-recent';
+const FAVORITES_KEY = 'pantheon-model-favorites';
 const RECENT_MAX = 5;
 // Catalogs at or below this size are small enough that hiding everything
 // behind search would be a regression — keep listing them in browse mode.
@@ -134,7 +134,7 @@ async function _ensureDefaultPendingChat() {
   try {
     let dc = null;
     try {
-      dc = window.__odysseusDefaultChat || null;
+      dc = window.__pantheonDefaultChat || null;
     } catch (_) {}
     if (!dc || !dc.endpoint_url || !dc.model) {
       try {
@@ -147,8 +147,8 @@ async function _ensureDefaultPendingChat() {
       const latest = _deps.getPendingChat && _deps.getPendingChat();
       if (latest && latest.modelId && latest.source !== 'default' && latest.source !== 'fallback') return;
       try {
-        window.__odysseusDefaultChat = dc;
-        localStorage.setItem('odysseus-default-chat-cache', JSON.stringify(dc));
+        window.__pantheonDefaultChat = dc;
+        localStorage.setItem('pantheon-default-chat-cache', JSON.stringify(dc));
       } catch (_) {}
       const pendingUrl = String((latest && latest.url) || '').replace(/\/+$/, '');
       const defaultUrl = String(dc.endpoint_url || '').replace(/\/+$/, '');
@@ -261,7 +261,7 @@ function _initModelPickerDropdown() {
 
   async function _refreshLocalProbe() {
     try {
-      if (window.__odysseusChatBusy || Date.now() < (window.__odysseusChatBusyUntil || 0)) return;
+      if (window.__pantheonChatBusy || Date.now() < (window.__pantheonChatBusyUntil || 0)) return;
     } catch (_) {}
     const now = Date.now();
     if (now - _localProbeFetchedAt < _LOCAL_PROBE_TTL_MS) return;
@@ -424,7 +424,7 @@ function _initModelPickerDropdown() {
     let slug = slash > 0 ? mid.substring(0, slash) : 'other';
     return _PROVIDER_ALIAS[slug] || slug;
   }
-  const _collapsedProviders = new Set(_loadList('odysseus-model-collapsed'));
+  const _collapsedProviders = new Set(_loadList('pantheon-model-collapsed'));
   let _justExpandedProvider = null;
 
   function _populate(filter) {
@@ -620,7 +620,7 @@ function _initModelPickerDropdown() {
             _collapsedProviders.add(provider);
             _justExpandedProvider = null;
           }
-          _saveList('odysseus-model-collapsed', [..._collapsedProviders]);
+          _saveList('pantheon-model-collapsed', [..._collapsedProviders]);
           const st = listEl.scrollTop;
           _populate('');
           listEl.scrollTop = st;
@@ -644,7 +644,7 @@ function _initModelPickerDropdown() {
 async function _pick(m) {
     _defaultPendingSeq++;
     try {
-      window.__odysseusLastPickedRoute = {
+      window.__pantheonLastPickedRoute = {
         model: m.mid || '',
         endpoint_url: m.url || '',
         endpoint_id: m.endpointId || '',
@@ -654,11 +654,11 @@ async function _pick(m) {
     } catch (_) {}
     let switchDone = null;
     const switchPromise = new Promise(resolve => { switchDone = resolve; });
-    try { window.__odysseusModelSwitchPromise = switchPromise; } catch (_) {}
+    try { window.__pantheonModelSwitchPromise = switchPromise; } catch (_) {}
     const finishSwitch = () => {
       try {
         if (switchDone) switchDone();
-        if (window.__odysseusModelSwitchPromise === switchPromise) delete window.__odysseusModelSwitchPromise;
+        if (window.__pantheonModelSwitchPromise === switchPromise) delete window.__pantheonModelSwitchPromise;
       } catch (_) {}
     };
     const currentSessionId = _deps.getCurrentSessionId();
@@ -670,7 +670,7 @@ async function _pick(m) {
 
     // Broadcast immediately so listeners (e.g. the tour) can advance without
     // waiting for the async session-create/PATCH that follows.
-    try { document.dispatchEvent(new CustomEvent('odysseus:model-picked', { detail: m })); } catch {}
+    try { document.dispatchEvent(new CustomEvent('pantheon:model-picked', { detail: m })); } catch {}
 
     // Blur search input before closing to dismiss keyboard on mobile
     if (document.activeElement) document.activeElement.blur();
@@ -728,7 +728,7 @@ async function _pick(m) {
     finishSwitch();
   }
 
-  document.addEventListener('odysseus:auto-select-model', async (e) => {
+  document.addEventListener('pantheon:auto-select-model', async (e) => {
     const detail = (e && e.detail) || {};
     const currentSessionId = _deps.getCurrentSessionId();
     const sessions = _deps.getSessions();
@@ -885,11 +885,11 @@ export function updateModelPicker() {
   if (!modelId && !currentSessionId && !_pendingChat && _deps.setPendingChat) {
     let cachedDefault = null;
     try {
-      cachedDefault = window.__odysseusDefaultChat || null;
+      cachedDefault = window.__pantheonDefaultChat || null;
     } catch (_) {}
     if (!cachedDefault || !cachedDefault.endpoint_url || !cachedDefault.model) {
       try {
-        cachedDefault = JSON.parse(localStorage.getItem('odysseus-default-chat-cache') || 'null');
+        cachedDefault = JSON.parse(localStorage.getItem('pantheon-default-chat-cache') || 'null');
       } catch (_) {}
     }
     if (cachedDefault && cachedDefault.endpoint_url && cachedDefault.model) {
@@ -902,7 +902,7 @@ export function updateModelPicker() {
       });
     }
   }
-  // SECURITY: deliberately NOT auto-injecting `odysseus-model-favorites[0]`
+  // SECURITY: deliberately NOT auto-injecting `pantheon-model-favorites[0]`
   // here. localStorage favorites are per-browser, not per-user, so on a
   // shared browser the previous account's first favorited model would
   // silently pre-populate the chatbox of the next user that signed in. If

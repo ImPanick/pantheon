@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content, viewport-fit=cover" />
-  <title>Odysseus Chat</title>
+  <title>Pantheon Chat</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 4L16 22L6 22Z' fill='%23e06c75'/%3E%3Cpath d='M16 8L16 22L24 22Z' fill='%23e06c75' opacity='0.6'/%3E%3Cpath d='M4 24Q10 20 16 24Q22 28 28 24' stroke='%23e06c75' stroke-width='2.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
   <link rel="manifest" href="/static/manifest.json">
   <meta name="theme-color" content="#282c34">
@@ -11,14 +11,14 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <!-- Disable iOS / Android auto-linkifying of numbers (phone/date/address)
        in email bodies — was wrapping random digits in <a href="tel:..."> with
-       browser-default styling that didn't match the Odysseus theme. -->
+       browser-default styling that didn't match the Pantheon theme. -->
   <meta name="format-detection" content="telephone=no, date=no, address=no, email=no">
   <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
   <script nonce="{{CSP_NONCE}}">
-  window._odysseusLoadTime = Date.now();
+  window._pantheonLoadTime = Date.now();
   (function(){
     try {
-      var t = JSON.parse(localStorage.getItem('odysseus-theme'));
+      var t = JSON.parse(localStorage.getItem('pantheon-theme'));
       if (t && t.colors) {
         var s = document.documentElement.style;
         var c = t.colors;
@@ -88,7 +88,7 @@
       // Apply UI text-size scale early (global accessibility pref, independent
       // of the active theme) so there's no flash on load.
       try {
-        var _us = localStorage.getItem('odysseus-ui-scale');
+        var _us = localStorage.getItem('pantheon-ui-scale');
         if (_us && _us !== '100') document.documentElement.classList.add('ui-scale-' + _us);
       } catch(e){}
       // Restore the sidebar mode before first paint. Otherwise the icon rail
@@ -96,11 +96,11 @@
       try {
         var _mobileStartup = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
         if (_mobileStartup) {
-          document.documentElement.classList.add('ody-sidebar-off', 'ody-mobile-startup-sidebar-hidden');
+          document.documentElement.classList.add('pan-sidebar-off', 'pan-mobile-startup-sidebar-hidden');
         } else {
-          var _sm = localStorage.getItem('odysseus-sidebar-mode') || 'full';
-          if (_sm === 'mini') document.documentElement.classList.add('ody-sidebar-mini');
-          else if (_sm === 'off') document.documentElement.classList.add('ody-sidebar-off');
+          var _sm = localStorage.getItem('pantheon-sidebar-mode') || 'full';
+          if (_sm === 'mini') document.documentElement.classList.add('pan-sidebar-mini');
+          else if (_sm === 'off') document.documentElement.classList.add('pan-sidebar-off');
         }
       } catch(e){}
       // Apply background pattern on body once available
@@ -119,7 +119,7 @@
   (function(){
     try {
       var path = (window.location.pathname || '').toLowerCase();
-      var theme = (function(){ try { return JSON.parse(localStorage.getItem('odysseus-theme')); } catch(_) { return null; } })();
+      var theme = (function(){ try { return JSON.parse(localStorage.getItem('pantheon-theme')); } catch(_) { return null; } })();
       var ac = (theme && (theme.red || theme.colors && theme.colors.red)) || '#e06c75';
       // Shapes are line-stroke SVGs (no emoji glyphs). Each entry returns
       // the inner SVG markup rendered against currentColor=`ac`.
@@ -169,14 +169,14 @@
       apple.href = href;
       // Also customize the page title so the bookmark inherits a useful name.
       var titles = {
-        '/calendar': 'Calendar — Odysseus',
-        '/notes': 'Notes — Odysseus',
-        '/cookbook': 'Cookbook — Odysseus',
-        '/email': 'Email — Odysseus',
-        '/memory': 'Memory — Odysseus',
-        '/gallery': 'Gallery — Odysseus',
-        '/tasks': 'Tasks — Odysseus',
-        '/library': 'Library — Odysseus',
+        '/calendar': 'Calendar — Pantheon',
+        '/notes': 'Notes — Pantheon',
+        '/cookbook': 'Cookbook — Pantheon',
+        '/email': 'Email — Pantheon',
+        '/memory': 'Memory — Pantheon',
+        '/gallery': 'Gallery — Pantheon',
+        '/tasks': 'Tasks — Pantheon',
+        '/library': 'Library — Pantheon',
       };
       if (titles[path]) document.title = titles[path];
       // Per-route Android home-screen icon. We swap the <link rel="manifest">
@@ -186,8 +186,8 @@
       try {
         if (inner && typeof Blob !== 'undefined') {
           var pwa = {
-            name: (titles[path] || 'Odysseus'),
-            short_name: (titles[path] || 'Odysseus').split('—')[0].trim(),
+            name: (titles[path] || 'Pantheon'),
+            short_name: (titles[path] || 'Pantheon').split('—')[0].trim(),
             start_url: path,
             scope: '/',
             display: 'standalone',
@@ -285,7 +285,7 @@
     },150);
     // startupShell.js hides the loader as soon as the shell is wired; it calls
     // back here to stop the wave because this interval is owned by this script.
-    window.__odysseusLoaderWaveStop=function(){clearInterval(iv)};
+    window.__pantheonLoaderWaveStop=function(){clearInterval(iv)};
     // Last-resort fallback for a boot that never reaches app.js at all. Must
     // still REMOVE the node: sessions.js reads its presence as "startup in
     // progress" and stops clearing the composer while it is around.
@@ -558,7 +558,7 @@
         <div class="theme-adv-group">
           <div class="theme-adv-group-label">Sidebar</div>
           <div class="theme-custom">
-            <div class="color-row"><label>Odysseus Logo</label><input type="color" id="adv-brandColor"><button class="color-reset-btn" data-reset-adv="brandColor" title="Reset this color" aria-label="Reset color">&#x21BA;</button></div>
+            <div class="color-row"><label>Pantheon Logo</label><input type="color" id="adv-brandColor"><button class="color-reset-btn" data-reset-adv="brandColor" title="Reset this color" aria-label="Reset color">&#x21BA;</button></div>
             <div class="color-row"><label title="Hamburger menu"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="vertical-align:-2px;"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></label><input type="color" id="adv-hamburgerColor"><button class="color-reset-btn" data-reset-adv="hamburgerColor" title="Reset this color" aria-label="Reset color">&#x21BA;</button></div>
           </div>
         </div>
@@ -753,7 +753,7 @@
     <div class="sidebar-header">
       <button class="sidebar-hamburger" id="sidebar-toggle-btn" title="Toggle sidebar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
       <div class="sidebar-brand" id="sidebar-brand-btn" style="cursor:pointer;" title="New chat">
-        <span class="sidebar-brand-title">Odysseus</span>
+        <span class="sidebar-brand-title">Pantheon</span>
       </div>
     </div>
     <div class="sidebar-inner">
@@ -976,12 +976,12 @@
          never affects layout, but always present inside the main landmark
          (the sidebar that shows the visible brand is hidden off-canvas on
          mobile) so the page always exposes a single level-1 heading. -->
-    <h1 class="a11y-visually-hidden">Odysseus</h1>
+    <h1 class="a11y-visually-hidden">Pantheon</h1>
     <div class="chat-top-bar">
       <button type="button" class="incognito-indicator" id="incognito-indicator" title="Nobody mode active — click to deactivate" style="display:none;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><line x1="8" y1="16" x2="16" y2="8"/><line x1="8" y1="8" x2="16" y2="16"/></svg></button>
-      <div class="chat-meta-overlay"><span id="current-meta">Odysseus Chat</span><span id="current-meta-count" class="chat-meta-count" aria-hidden="true"></span><span id="session-cost-display" class="session-cost-display" style="display:none;"></span><button type="button" class="chat-context-pill" id="chat-context-pill" title="Chat context" hidden><span class="chat-context-dot"></span><span id="chat-context-pill-label">0%</span></button><span class="export-dropdown-wrap" id="export-dropdown-wrap"><button type="button" class="export-dl-btn" id="export-dl-btn" title="More"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button><div class="export-dropdown-menu" id="export-dropdown-menu"><div class="export-dropdown-item" id="export-rename-btn"><span class="dropdown-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></span><span>Rename</span></div><div class="export-dropdown-item" id="export-compact-btn"><span class="dropdown-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M7 12h10"/><path d="M10 17h4"/></svg></span><span class="export-compact-pill">Compact</span></div><div class="export-dropdown-item" id="export-copy-btn"><span class="dropdown-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span><span>Copy Chat</span></div><div class="export-dropdown-item" id="export-pdf-btn"><span class="dropdown-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15v-2h2a1.5 1.5 0 0 1 0 3H9z"/></svg></span><span>PDF</span></div><div class="export-dropdown-item" id="export-doc-btn"><span class="dropdown-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span><span>Save to Documents</span></div><div class="export-dropdown-item dropdown-item-danger" id="export-delete-btn"><span class="dropdown-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></span><span>Delete Chat</span></div></div></span></div>    </div>
+      <div class="chat-meta-overlay"><span id="current-meta">Pantheon Chat</span><span id="current-meta-count" class="chat-meta-count" aria-hidden="true"></span><span id="session-cost-display" class="session-cost-display" style="display:none;"></span><button type="button" class="chat-context-pill" id="chat-context-pill" title="Chat context" hidden><span class="chat-context-dot"></span><span id="chat-context-pill-label">0%</span></button><span class="export-dropdown-wrap" id="export-dropdown-wrap"><button type="button" class="export-dl-btn" id="export-dl-btn" title="More"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button><div class="export-dropdown-menu" id="export-dropdown-menu"><div class="export-dropdown-item" id="export-rename-btn"><span class="dropdown-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></span><span>Rename</span></div><div class="export-dropdown-item" id="export-compact-btn"><span class="dropdown-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M7 12h10"/><path d="M10 17h4"/></svg></span><span class="export-compact-pill">Compact</span></div><div class="export-dropdown-item" id="export-copy-btn"><span class="dropdown-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span><span>Copy Chat</span></div><div class="export-dropdown-item" id="export-pdf-btn"><span class="dropdown-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15v-2h2a1.5 1.5 0 0 1 0 3H9z"/></svg></span><span>PDF</span></div><div class="export-dropdown-item" id="export-doc-btn"><span class="dropdown-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span><span>Save to Documents</span></div><div class="export-dropdown-item dropdown-item-danger" id="export-delete-btn"><span class="dropdown-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></span><span>Delete Chat</span></div></div></span></div>    </div>
     <div id="welcome-screen">
-      <div class="welcome-name"><svg class="welcome-boat" viewBox="0 0 32 32"><path d="M16 4L16 22L6 22Z" fill="currentColor"/><path d="M16 8L16 22L24 22Z" fill="currentColor" opacity="0.6"/><path d="M4 24Q10 20 16 24Q22 28 28 24" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round"/></svg>Odysseus</div>
+      <div class="welcome-name"><svg class="welcome-boat" viewBox="0 0 32 32"><path d="M16 4L16 22L6 22Z" fill="currentColor"/><path d="M16 8L16 22L24 22Z" fill="currentColor" opacity="0.6"/><path d="M4 24Q10 20 16 24Q22 28 28 24" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round"/></svg>Pantheon</div>
       <div class="welcome-sub" id="welcome-sub">New chat ready.</div>
       <div class="welcome-tip" id="welcome-tip"></div>
       <button type="button" class="incognito-btn" id="incognito-btn" title="Enable Nobody mode — no memory, no history saved">
@@ -1037,7 +1037,7 @@
     <div class="chat-input-bar">
       <div class="chat-input-top">
         <div id="message-ghost" class="ghost-text-overlay" aria-hidden="true"></div>
-        <textarea id="message" placeholder="Message Odysseus..." required autocomplete="off" aria-label="Message input" rows="1" autofocus></textarea>
+        <textarea id="message" placeholder="Message Pantheon..." required autocomplete="off" aria-label="Message input" rows="1" autofocus></textarea>
         <div id="plan-mode-status" class="plan-mode-status" hidden>
           <span class="plan-mode-status-label">Plan mode</span>
           <button type="button" id="plan-mode-status-toggle" class="plan-mode-status-toggle" aria-label="Turn off plan mode" aria-pressed="true">
@@ -1066,7 +1066,7 @@
         (function(){
           function applyDefault(dc) {
             if (!dc || !dc.model) return false;
-            window.__odysseusDefaultChat = dc;
+            window.__pantheonDefaultChat = dc;
             var label = document.getElementById('model-picker-label');
             if (!label) return false;
             label.textContent = String(dc.model).split('/').pop();
@@ -1074,14 +1074,14 @@
             return true;
           }
           try {
-            var dc = JSON.parse(localStorage.getItem('odysseus-default-chat-cache') || 'null');
+            var dc = JSON.parse(localStorage.getItem('pantheon-default-chat-cache') || 'null');
             if (applyDefault(dc)) return;
           } catch (_) {}
           fetch('/api/default-chat', { credentials: 'same-origin' })
             .then(function(r){ return r.ok ? r.json() : null; })
             .then(function(dc){
               if (!applyDefault(dc)) return;
-              try { localStorage.setItem('odysseus-default-chat-cache', JSON.stringify(dc)); } catch (_) {}
+              try { localStorage.setItem('pantheon-default-chat-cache', JSON.stringify(dc)); } catch (_) {}
             })
             .catch(function(){});
         })();
@@ -1823,7 +1823,7 @@
             <div class="vis-toggles">
               <label class="vis-row">
                 <span class="vis-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 12l2.5 2.5L16 9"/></svg></span>
-                <span class="vis-label">Odysseus <span class="vis-hint">Brand name</span></span>
+                <span class="vis-label">Pantheon <span class="vis-hint">Brand name</span></span>
                 <input type="checkbox" checked data-ui-key="sidebar-brand"><span class="vis-switch"></span>
               </label>
               <label class="vis-row">
@@ -2139,7 +2139,7 @@
           </div>
           <div class="admin-card">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Public App URL</h2>
-            <div class="admin-toggle-sub" style="margin-bottom:8px">Used to build clickable links back to Odysseus inside outgoing reminder / urgent-email emails (e.g. <code>https://chat.yourdomain.com</code>). Leave blank to omit links.</div>
+            <div class="admin-toggle-sub" style="margin-bottom:8px">Used to build clickable links back to Pantheon inside outgoing reminder / urgent-email emails (e.g. <code>https://chat.yourdomain.com</code>). Leave blank to omit links.</div>
             <div class="settings-col">
               <div class="settings-row">
                 <label class="settings-label">URL</label>
@@ -2397,7 +2397,7 @@
               </svg>
               Terminal Logs
             </h2>
-            <div class="admin-toggle-sub settings-system-logs-toggle-sub">Live diagnostic logs and system output from the Odysseus process.</div>
+            <div class="admin-toggle-sub settings-system-logs-toggle-sub">Live diagnostic logs and system output from the Pantheon process.</div>
 
             <div class="settings-col settings-system-logs-col">
               <!-- Controls row -->

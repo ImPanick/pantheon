@@ -271,7 +271,7 @@ def test_stop_before_response_headers_waits_for_exact_run_identity():
     )
     header_capture = _extract_source(
         _CHAT,
-        "const streamRunId = res.headers.get('X-Odysseus-Run-Id')",
+        "const streamRunId = res.headers.get('X-Pantheon-Run-Id')",
         "// Mark the chat log busy",
     )
     script = f"""
@@ -286,7 +286,7 @@ def test_stop_before_response_headers_waits_for_exact_run_identity():
         const streamGeneration = 1;
         _streamGenerations.set(streamSessionId, streamGeneration);
         const res = {{ headers: {{ get(name) {{
-          return name === 'X-Odysseus-Run-Id' ? 'normal-run' : null;
+          return name === 'X-Pantheon-Run-Id' ? 'normal-run' : null;
         }} }} }};
         {header_capture}
       }}
@@ -300,7 +300,7 @@ def test_stop_before_response_headers_waits_for_exact_run_identity():
         _stopExactRun(streamSessionId);
         beforeHeaders = calls.length;
         const res = {{ headers: {{ get(name) {{
-          return name === 'X-Odysseus-Run-Id' ? 'run-1' : null;
+          return name === 'X-Pantheon-Run-Id' ? 'run-1' : null;
         }} }} }};
         {header_capture}
       }}
@@ -311,7 +311,7 @@ def test_stop_before_response_headers_waits_for_exact_run_identity():
         calls: calls.map(call => ({{
           url: call.url,
           method: call.options.method,
-          runId: call.options.headers['X-Odysseus-Run-Id'],
+          runId: call.options.headers['X-Pantheon-Run-Id'],
         }})),
       }}));
     """
@@ -343,7 +343,7 @@ def test_timeout_before_response_headers_also_waits_for_exact_run_identity():
         beforeHeaders,
         afterHeaders: {{
           aborted: abortCtrl.signal.aborted,
-          runId: calls[0] && calls[0].options.headers['X-Odysseus-Run-Id'],
+          runId: calls[0] && calls[0].options.headers['X-Pantheon-Run-Id'],
         }},
       }}));
     """
@@ -374,7 +374,7 @@ def test_resend_preserves_queued_stop_until_old_run_identity_arrives():
     )
     header_capture = _extract_source(
         _CHAT,
-        "const streamRunId = res.headers.get('X-Odysseus-Run-Id')",
+        "const streamRunId = res.headers.get('X-Pantheon-Run-Id')",
         "// Mark the chat log busy",
     )
     script = f"""
@@ -422,7 +422,7 @@ def test_resend_preserves_queued_stop_until_old_run_identity_arrives():
         const streamSessionId = 'session-1';
         const streamGeneration = oldGeneration;
         const res = {{ headers: {{ get(name) {{
-          return name === 'X-Odysseus-Run-Id' ? 'old-run' : null;
+          return name === 'X-Pantheon-Run-Id' ? 'old-run' : null;
         }} }} }};
         {header_capture}
       }}
@@ -439,7 +439,7 @@ def test_resend_preserves_queued_stop_until_old_run_identity_arrives():
           currentRunIdPolluted: _streamRunIds.has('session-1'),
           stopCalls: calls.map(call => ({{
             url: call.url,
-            runId: call.options.headers['X-Odysseus-Run-Id'],
+            runId: call.options.headers['X-Pantheon-Run-Id'],
           }})),
         }},
       }}));
@@ -785,7 +785,7 @@ def test_stop_during_replacement_preflight_never_borrows_old_controller():
         normal: {{
           ownAborted: ownCtrl.signal.aborted,
           oldStillUntouched: oldCtrl.signal.aborted,
-          stopRunId: calls[0] && calls[0].options.headers['X-Odysseus-Run-Id'],
+          stopRunId: calls[0] && calls[0].options.headers['X-Pantheon-Run-Id'],
         }},
       }}));
     """

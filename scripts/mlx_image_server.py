@@ -2,7 +2,7 @@
 """OpenAI-compatible image API wrapper for MLX image models.
 
 This is intentionally small: it exposes the same `/v1/images/generations`
-shape Odysseus already uses for local image endpoints, then delegates to the
+shape Pantheon already uses for local image endpoints, then delegates to the
 MLX image CLI for the actual generation. Text MLX models still use
 `mlx_lm.server`; image MLX models should use this wrapper.
 """
@@ -45,7 +45,7 @@ class HarmonizeRequest(BaseModel):
     strength: float = 0.35
 
 
-app = FastAPI(title="Odysseus MLX Image Server")
+app = FastAPI(title="Pantheon MLX Image Server")
 _args: argparse.Namespace
 
 
@@ -120,15 +120,15 @@ def _unsupported_swift_mlx_runtime(model: str) -> HTTPException:
     if _is_ddcolor(model):
         return HTTPException(
             503,
-            "DDColor MLX models require an Odysseus-compatible mlx-ddcolor-swift bridge. "
-            "Build/install a bridge binary named odysseus-mlx-colorize or mlx-ddcolor-serve "
+            "DDColor MLX models require an Pantheon-compatible mlx-ddcolor-swift bridge. "
+            "Build/install a bridge binary named pantheon-mlx-colorize or mlx-ddcolor-serve "
             "on the Apple Silicon host PATH. Upstream currently ships Swift libraries and "
             "smoke executables, not a stable colorize CLI.",
         )
     return HTTPException(
         503,
-        "LaMa / MI-GAN MLX inpainting models require an Odysseus-compatible mlx-lama-swift bridge. "
-        "Build/install a bridge binary named odysseus-mlx-inpaint or mlx-lama-serve "
+        "LaMa / MI-GAN MLX inpainting models require an Pantheon-compatible mlx-lama-swift bridge. "
+        "Build/install a bridge binary named pantheon-mlx-inpaint or mlx-lama-serve "
         "on the Apple Silicon host PATH. Upstream currently ships Swift libraries and "
         "smoke executables, not a stable image-edit CLI.",
     )
@@ -212,10 +212,10 @@ def _run_bridge(cmd: list[str]) -> None:
 
 
 def _run_ddcolor_bridge(model: str, image_raw: bytes, out_path: Path) -> None:
-    bridge = _resolve_bridge(["odysseus-mlx-colorize", "mlx-ddcolor-serve"])
+    bridge = _resolve_bridge(["pantheon-mlx-colorize", "mlx-ddcolor-serve"])
     if not bridge:
         raise _unsupported_swift_mlx_runtime(model)
-    with tempfile.TemporaryDirectory(prefix="odysseus-ddcolor-") as td:
+    with tempfile.TemporaryDirectory(prefix="pantheon-ddcolor-") as td:
         inp = Path(td) / "input.png"
         _write_bridge_input_image(image_raw, inp)
         weights = _weights_path(model)
@@ -233,12 +233,12 @@ def _run_inpaint_bridge(model: str, image_raw: bytes, mask_raw: bytes | None, ou
     if not mask_raw:
         raise HTTPException(
             422,
-            "LaMa / MI-GAN inpainting requires an image mask. Use the editor inpaint/object-removal tool so Odysseus can send the mask.",
+            "LaMa / MI-GAN inpainting requires an image mask. Use the editor inpaint/object-removal tool so Pantheon can send the mask.",
         )
-    bridge = _resolve_bridge(["odysseus-mlx-inpaint", "mlx-lama-serve"])
+    bridge = _resolve_bridge(["pantheon-mlx-inpaint", "mlx-lama-serve"])
     if not bridge:
         raise _unsupported_swift_mlx_runtime(model)
-    with tempfile.TemporaryDirectory(prefix="odysseus-mlx-inpaint-") as td:
+    with tempfile.TemporaryDirectory(prefix="pantheon-mlx-inpaint-") as td:
         inp = Path(td) / "input.png"
         mask = Path(td) / "mask.png"
         _write_bridge_input_image(image_raw, inp)
@@ -296,12 +296,12 @@ def _generate_boogu(model: str, prompt: str, out_path: Path, width: int, height:
         ) from e
 
     model_path = _snapshot_path(model)
-    vlm_model = (_args.vlm_model or os.environ.get("ODYSSEUS_MLX_IMAGE_VLM_MODEL") or "").strip()
+    vlm_model = (_args.vlm_model or os.environ.get("PANTHEON_MLX_IMAGE_VLM_MODEL") or "").strip()
     if not vlm_model:
         raise HTTPException(
             422,
             "This MLX image pipeline requires a companion vision-language model. "
-            "Relaunch with --vlm-model <repo_or_path> or set ODYSSEUS_MLX_IMAGE_VLM_MODEL.",
+            "Relaunch with --vlm-model <repo_or_path> or set PANTHEON_MLX_IMAGE_VLM_MODEL.",
         )
     try:
         pipe = BooguImagePipeline.from_pretrained(
@@ -332,7 +332,7 @@ def generate(req: ImageRequest):
     out_images = []
     count = max(1, min(int(req.n or 1), 4))
     for _ in range(count):
-        with tempfile.TemporaryDirectory(prefix="odysseus-mlx-image-") as td:
+        with tempfile.TemporaryDirectory(prefix="pantheon-mlx-image-") as td:
             out_path = Path(td) / "image.png"
             if _is_hidream(model):
                 _generate_hidream(model, req.prompt, out_path, width, height, _steps(req.quality))
@@ -400,7 +400,7 @@ async def edit_image(
         out_images = []
         count = max(1, min(int(n or 1), 4))
         for _ in range(count):
-            with tempfile.TemporaryDirectory(prefix="odysseus-mlx-edit-") as td:
+            with tempfile.TemporaryDirectory(prefix="pantheon-mlx-edit-") as td:
                 out_path = Path(td) / "image.png"
                 if _is_ddcolor(active_model):
                     _run_ddcolor_bridge(active_model, image_raw, out_path)
@@ -427,7 +427,7 @@ def harmonize_image(req: HarmonizeRequest):
             mask_raw = base64.b64decode(mask_b64.split(",", 1)[-1]) if mask_b64 else None
         except Exception as e:
             raise HTTPException(400, f"Invalid base64 image payload: {e}") from e
-        with tempfile.TemporaryDirectory(prefix="odysseus-mlx-harmonize-") as td:
+        with tempfile.TemporaryDirectory(prefix="pantheon-mlx-harmonize-") as td:
             out_path = Path(td) / "image.png"
             if _is_ddcolor(active_model):
                 _run_ddcolor_bridge(active_model, image_raw, out_path)

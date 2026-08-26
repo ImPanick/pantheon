@@ -319,9 +319,9 @@ def test_prompt_recall_is_not_duplicated_in_app_js():
     """
     app_js = (_REPO / "static" / "app.js").read_text(encoding="utf-8")
     for marker in (
-        "_odysseusPromptRecallCapture",
+        "_pantheonPromptRecallCapture",
         "_readComposerPromptHistory",
-        "odysseusRecallIndex",
+        "pantheonRecallIndex",
     ):
         assert marker not in app_js, (
             f"static/app.js reintroduces prompt recall ({marker!r}); "

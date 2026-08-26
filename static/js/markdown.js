@@ -22,7 +22,7 @@ const KATEX_CSS = '/static/lib/katex/katex.min.css';
 // Marks math emitted before KaTeX finished loading; renderMath() swaps these
 // for typeset output. The source stays as readable text inside the span, so a
 // load that never completes degrades to plain text rather than to nothing.
-const MATH_PENDING_CLASS = 'ody-math-pending';
+const MATH_PENDING_CLASS = 'pan-math-pending';
 
 // KaTeX has no entity syntax: it reads a bare "&" as an alignment marker and
 // errors out on anything that is not a valid column break, so "a &lt; b" comes
@@ -1011,7 +1011,7 @@ export default markdownModule;
 // the inner text content instead — same content reproduces the same hash on
 // reload. LocalStorage holds a Set of expanded hashes; we observe the chat
 // history and re-expand matching sections as they're inserted.
-const THINK_EXPANDED_KEY = 'odysseus-thinking-expanded';
+const THINK_EXPANDED_KEY = 'pantheon-thinking-expanded';
 function _loadExpandedSet() {
   try { return new Set(JSON.parse(localStorage.getItem(THINK_EXPANDED_KEY) || '[]')); }
   catch { return new Set(); }

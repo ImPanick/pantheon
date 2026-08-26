@@ -26,17 +26,17 @@ const SIDEBAR_MAX_VISIBLE = 10;
 const FOLDER_MAX_VISIBLE = 5;
 let _showAllSessions = false;
 let _expandedFolders = {};  // folderName -> true if "show more" clicked
-let _sortMode = Storage.get('odysseus-session-sort') || 'active'; // default to last active
-const DATE_SECTION_COLLAPSE_KEY = 'ody-session-date-section-collapsed';
+let _sortMode = Storage.get('pantheon-session-sort') || 'active'; // default to last active
+const DATE_SECTION_COLLAPSE_KEY = 'pan-session-date-section-collapsed';
 let _autoCreateInProgress = false; // guard against recursive auto-create
-const _INCOGNITO_SESSIONS_KEY = 'ody-incognito-sessions'; // sessionStorage key for incognito session IDs
+const _INCOGNITO_SESSIONS_KEY = 'pan-incognito-sessions'; // sessionStorage key for incognito session IDs
 const _isMac = /Mac|iPhone|iPad/.test(navigator.platform);
 const _mod = _isMac ? '⌘' : 'Ctrl';
 let _historyPager = null;
 
 function _shouldPreserveStartupComposer(msgInput) {
   if (!msgInput || !msgInput.value) return false;
-  if (window.__odysseusComposerUserEdited) return true;
+  if (window.__pantheonComposerUserEdited) return true;
   return !!document.getElementById('app-loader') && document.activeElement === msgInput;
 }
 
@@ -286,7 +286,7 @@ function _deselectCurrentSession(sid) {
   if (currentSessionId !== sid) return;
   currentSessionId = null;
   uiModule.el('chat-history').innerHTML = '';
-  uiModule.el('current-meta').textContent = 'Odysseus Chat';
+  uiModule.el('current-meta').textContent = 'Pantheon Chat';
   Storage.remove('lastSessionId');
   history.replaceState(null, '', window.location.pathname);
   if (window.chatModule && window.chatModule.showWelcomeScreen) {
@@ -342,8 +342,8 @@ function _normalizeSessionsList(fetched) {
 export function initDependencies() {}
 
 // ── Folder state persistence ──
-const FOLDER_STATE_KEY = 'odysseus-folder-state';
-const FOLDER_ORDER_KEY = 'odysseus-folder-order';
+const FOLDER_STATE_KEY = 'pantheon-folder-state';
+const FOLDER_ORDER_KEY = 'pantheon-folder-order';
 
 function loadFolderState() {
   return Storage.getJSON(FOLDER_STATE_KEY, {});
@@ -1448,10 +1448,10 @@ function _initSwipeToDelete(list) {
 }
 
 function _showSwipeHint(list) {
-  if ('ontouchstart' in window && !localStorage.getItem('ody-swipe-hint-shown')) {
+  if ('ontouchstart' in window && !localStorage.getItem('pan-swipe-hint-shown')) {
     const firstItem = list.querySelector('.session-item');
     if (firstItem) {
-      localStorage.setItem('ody-swipe-hint-shown', '1');
+      localStorage.setItem('pan-swipe-hint-shown', '1');
       const hint = document.createElement('div');
       hint.className = 'swipe-hint';
       hint.innerHTML = '<span class="swipe-hint-arrow">\u2190</span> swipe to delete';
@@ -1672,10 +1672,10 @@ export async function loadSessions() {
     await _cleanupIncognitoSessions();
 
     // Use prefetched data from login page if available (first load only)
-    const prefetched = sessionStorage.getItem('ody-prefetch-sessions');
+    const prefetched = sessionStorage.getItem('pan-prefetch-sessions');
     let fetched;
     if (prefetched) {
-      sessionStorage.removeItem('ody-prefetch-sessions');
+      sessionStorage.removeItem('pan-prefetch-sessions');
       fetched = JSON.parse(prefetched);
     } else {
       let url = `${API_BASE}/api/sessions`;
@@ -1719,7 +1719,7 @@ export async function loadSessions() {
     if (/^(document|note|image|email|event|task|skill|research)-/.test(hashId) || /^open=notes&note=/.test(hashId)) {
       hashId = '';
     }
-    const _isFirstLoad = !sessionStorage.getItem('ody-session-active');
+    const _isFirstLoad = !sessionStorage.getItem('pan-session-active');
     const _freshRootLoad = !_rootFreshChatApplied && !hashId && !currentSessionId && !_pendingChat;
     if (_freshRootLoad) {
       _rootFreshChatApplied = true;
@@ -1772,7 +1772,7 @@ export async function loadSessions() {
     // picker would still show the old model's name from cached state). See
     // the targetId resolution above (hash → currentSession → lastSessionId →
     // most-recent).
-    if (_isFirstLoad) sessionStorage.setItem('ody-session-active', '1');
+    if (_isFirstLoad) sessionStorage.setItem('pan-session-active', '1');
     if ((_isFirstLoad || _freshRootLoad) && !targetId) {
       // Land on a visually fresh chat without creating hidden pending session
       // state. The send path can create the default-backed session when the
@@ -1856,10 +1856,10 @@ export async function selectSession(id, { keepSidebar = false, showLoading = tru
       try { window.documentModule.clearSelection(); } catch {}
     }
     currentSessionId = id;
-    try { window.__odysseusLastSelectedSessionId = id; } catch (_) {}
+    try { window.__pantheonLastSelectedSessionId = id; } catch (_) {}
     // Identify Assistant / task-output sessions so we don't "trap" the user
     // there on return. Skipped from both `lastSessionId` persistence and the
-    // URL hash — the user complained that coming back to Odysseus kept
+    // URL hash — the user complained that coming back to Pantheon kept
     // landing them on the auto-firing task-log chat instead of their last
     // real conversation.
     const _meta = sessions.find(s => s.id === id);
@@ -1937,7 +1937,7 @@ export async function selectSession(id, { keepSidebar = false, showLoading = tru
 
     const currentMetaEl = uiModule.el('current-meta');
     if (currentMetaEl) {
-      currentMetaEl.textContent = meta ? meta.name : 'Odysseus Chat';
+      currentMetaEl.textContent = meta ? meta.name : 'Pantheon Chat';
     }
     // Update model picker visibility
     updateModelPicker();
@@ -2114,7 +2114,7 @@ export async function selectSession(id, { keepSidebar = false, showLoading = tru
     if (window.documentModule) {
       const docBtn = document.getElementById('overflow-doc-btn');
       const meta = sessions.find(s => s.id === id);
-      const shouldOpen = localStorage.getItem('odysseus-doc-open-' + id) === '1';
+      const shouldOpen = localStorage.getItem('pantheon-doc-open-' + id) === '1';
       const hasDocs = !!(meta && meta.has_documents);
       if (docBtn) {
         docBtn.classList.remove('active');
@@ -2149,8 +2149,8 @@ export async function selectSession(id, { keepSidebar = false, showLoading = tru
     // is idle.
     if (window.memoryModule && window.memoryModule.loadMemories) {
       setTimeout(() => {
-        const busy = !!window.__odysseusChatBusy
-          || Date.now() < (window.__odysseusChatBusyUntil || 0)
+        const busy = !!window.__pantheonChatBusy
+          || Date.now() < (window.__pantheonChatBusyUntil || 0)
           || !!document.querySelector('.send-btn[data-mode="streaming"], .send-btn.send-pending');
         if (!busy) window.memoryModule.loadMemories().catch(() => {});
       }, 2500);
@@ -2174,11 +2174,11 @@ let _pendingMaterializePromise = null;
 async function _getPreferredDefaultChat() {
   let dc = null;
   try {
-    dc = window.__odysseusDefaultChat || null;
+    dc = window.__pantheonDefaultChat || null;
   } catch (_) {}
   if (!dc || !dc.endpoint_url || !dc.model) {
     try {
-      dc = JSON.parse(localStorage.getItem('odysseus-default-chat-cache') || 'null');
+      dc = JSON.parse(localStorage.getItem('pantheon-default-chat-cache') || 'null');
     } catch (_) {}
   }
   if (dc && dc.endpoint_url && dc.model) return dc;
@@ -2187,8 +2187,8 @@ async function _getPreferredDefaultChat() {
     dc = await dcRes.json();
     if (dc && dc.endpoint_url && dc.model) {
       try {
-        window.__odysseusDefaultChat = dc;
-        localStorage.setItem('odysseus-default-chat-cache', JSON.stringify(dc));
+        window.__pantheonDefaultChat = dc;
+        localStorage.setItem('pantheon-default-chat-cache', JSON.stringify(dc));
       } catch (_) {}
       return dc;
     }
@@ -2225,7 +2225,7 @@ export function createDirectChat(url, modelId, endpointId, opts = {}) {
   _skipAutoSelect = true;
   _suppressNextSessionLoading = true;
   currentSessionId = null;
-  try { window.__odysseusLastSelectedSessionId = ''; } catch (_) {}
+  try { window.__pantheonLastSelectedSessionId = ''; } catch (_) {}
   Storage.remove('lastSessionId');
   history.replaceState(null, '', window.location.pathname);
   document.querySelectorAll('.list-item.active-session, .session-item.active').forEach(el => {
@@ -2405,7 +2405,7 @@ export function getCurrentEndpointUrl() {
 export function setCurrentSessionId(id) {
   _sessionNavToken++;
   currentSessionId = id;
-  try { window.__odysseusLastSelectedSessionId = id || ''; } catch (_) {}
+  try { window.__pantheonLastSelectedSessionId = id || ''; } catch (_) {}
   if (!id) {
     _suppressNextSessionLoading = true;
     Storage.remove('lastSessionId');
@@ -3637,8 +3637,8 @@ export function closeArchive() {
 export function getSortMode() { return _sortMode; }
 export function setSortMode(mode) {
   _sortMode = mode || null;
-  if (mode) Storage.set('odysseus-session-sort', mode);
-  else Storage.remove('odysseus-session-sort');
+  if (mode) Storage.set('pantheon-session-sort', mode);
+  else Storage.remove('pantheon-session-sort');
   renderSessionList();
 }
 

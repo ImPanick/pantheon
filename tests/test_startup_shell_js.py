@@ -68,7 +68,7 @@ function makeWorld() {
     pendingTimers() { return timers.length; },
   };
   globalThis.document = { getElementById: (id) => byId.get(id) || null };
-  globalThis.window = { __odysseusLoaderWaveStop: () => { world.waveStops += 1; } };
+  globalThis.window = { __pantheonLoaderWaveStop: () => { world.waveStops += 1; } };
   globalThis.requestAnimationFrame = (fn) => { frames.push(fn); return frames.length; };
   globalThis.setTimeout = (fn, ms) => { timers.push({ fn, ms }); return timers.length; };
   return world;

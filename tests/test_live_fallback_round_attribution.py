@@ -106,7 +106,7 @@ def test_detached_resume_reloads_canonical_terminal_failures():
     assert "rich = true" in resume
     assert "Network drop or parse failure: fall through to the canonical reload" in resume
     assert "if (onThisSession && !rich && roundText.trim())" in resume
-    assert "res.headers.get('X-Odysseus-Run-Id')" in resume
+    assert "res.headers.get('X-Pantheon-Run-Id')" in resume
     assert "chatRenderer.recordSessionMetricsCost(metricsData, sessionId)" in resume
 
 
@@ -235,12 +235,12 @@ def test_terminal_then_session_switch_preserves_completed_background_state():
 
 def test_detached_run_identity_is_attached_to_live_metrics():
     routes = Path("routes/chat_routes.py").read_text(encoding="utf-8")
-    assert "headers={\"X-Odysseus-Run-Id\": _detached_run.run_id}" in routes
+    assert "headers={\"X-Pantheon-Run-Id\": _detached_run.run_id}" in routes
     assert "agent_runs.subscribe(session, _detached_run)" in routes
     assert "agent_runs.subscribe(session_id, _active_run)" in routes
-    assert "const streamRunId = res.headers.get('X-Odysseus-Run-Id')" in CHAT_JS
+    assert "const streamRunId = res.headers.get('X-Pantheon-Run-Id')" in CHAT_JS
     assert "metrics._costRecordId = _metricsCostRecordId(streamRunId, json)" in CHAT_JS
-    assert "'X-Odysseus-Run-Id': runId" in CHAT_JS
+    assert "'X-Pantheon-Run-Id': runId" in CHAT_JS
     assert "agent_runs.stop(session_id, _expected_run_id)" in routes
     assert "_stopExactRun(streamSessionId)" in CHAT_JS
     timeout_block = CHAT_JS.split("timeoutId = setTimeout", 1)[1].split(

@@ -88,9 +88,9 @@ RUN pip install --no-cache-dir python-magic==0.4.27
 # pulled only when realesrgan is actually installed). With these dists already
 # satisfied, the Cookbook's plain `pip install realesrgan` resolves them from
 # wheels instead of rebuilding the sdists that fail on Python 3.14.
-COPY --from=realesrgan-wheels /wheels/ /tmp/odysseus-wheels/
-RUN pip install --no-cache-dir --no-deps /tmp/odysseus-wheels/*.whl \
-    && rm -rf /tmp/odysseus-wheels
+COPY --from=realesrgan-wheels /wheels/ /tmp/pantheon-wheels/
+RUN pip install --no-cache-dir --no-deps /tmp/pantheon-wheels/*.whl \
+    && rm -rf /tmp/pantheon-wheels
 
 # Copy app code
 COPY . .

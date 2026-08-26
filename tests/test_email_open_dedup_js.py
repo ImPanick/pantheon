@@ -121,8 +121,8 @@ def test_inbox_late_read_response_cannot_apply_after_newer_open():
     harness = f"""
 const realLog = console.log;
 console.error = () => {{}};
-const API_BASE = 'https://odysseus.invalid';
-const window = {{ __odysseusActiveEmailAccount: 'acct-a' }};
+const API_BASE = 'https://pantheon.invalid';
+const window = {{ __pantheonActiveEmailAccount: 'acct-a' }};
 let _currentFolder = 'INBOX';
 const _acct = () => '&account_id=acct-a';
 let _openEmailRequestSeq = 0;
@@ -174,7 +174,7 @@ def test_inbox_late_read_response_cannot_apply_after_mailbox_switch(context_chan
     function = _extract_between(source, "async function _openEmail", "\nfunction _showEmailMenu")
 
     changes = {
-        "account": "window.__odysseusActiveEmailAccount = 'acct-b';",
+        "account": "window.__pantheonActiveEmailAccount = 'acct-b';",
         "folder": "_currentFolder = 'Archive';",
         "library": "libraryCurrent = false;",
     }
@@ -187,8 +187,8 @@ def test_inbox_late_read_response_cannot_apply_after_mailbox_switch(context_chan
     harness = f"""
 const realLog = console.log;
 console.error = () => {{}};
-const API_BASE = 'https://odysseus.invalid';
-const window = {{ __odysseusActiveEmailAccount: 'acct-a' }};
+const API_BASE = 'https://pantheon.invalid';
+const window = {{ __pantheonActiveEmailAccount: 'acct-a' }};
 let _currentFolder = 'INBOX';
 const _acct = () => '&account_id=acct-a';
 let _openEmailRequestSeq = 0;

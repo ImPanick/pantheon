@@ -58,7 +58,7 @@ UPLOAD_ID_TOKEN_RE = re.compile(
     r"(?<![0-9a-fA-F])([0-9a-fA-F]{32}(?:\.[A-Za-z0-9]+)?)(?![A-Za-z0-9])"
 )
 INTERNAL_UPLOAD_URL_RE = re.compile(
-    r"(?:odysseus://attachment/|/api/upload/)"
+    r"(?:pantheon://attachment/|/api/upload/)"
     r"([0-9a-fA-F]{32}(?:\.[A-Za-z0-9]+)?)"
     r"(?=$|[\s\"'<>\[\](){},;!?:&#]|\.(?![A-Za-z0-9]))"
 )
@@ -1009,7 +1009,7 @@ class UploadHandler:
         if file_hash:
             return f"{new_owner}:{file_hash}"
 
-        # Fallback for rows without an explicit hash (should not happen in modern Odysseus)
+        # Fallback for rows without an explicit hash (should not happen in modern Pantheon)
         if isinstance(key, str) and ":" in key:
             # Join all but the last part if there are multiple colons
             parts = key.rsplit(":", 1)

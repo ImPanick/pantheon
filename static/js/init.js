@@ -1,4 +1,4 @@
-// Odysseus UI — Initialization Scripts
+// Pantheon UI — Initialization Scripts
 // ES6 module — extracted from index.html inline scripts
 
 import Storage from './storage.js';
@@ -8,7 +8,7 @@ function markComposerUserEdited() {
   if (!msgInput || msgInput.dataset.startupPreserveBound === '1') return;
   msgInput.dataset.startupPreserveBound = '1';
   msgInput.addEventListener('input', () => {
-    window.__odysseusComposerUserEdited = !!msgInput.value;
+    window.__pantheonComposerUserEdited = !!msgInput.value;
   });
 }
 
@@ -21,7 +21,7 @@ function clearFreshComposerRestore() {
     || /^#open=notes&note=/.test(hash);
   const hasSessionTarget = !!(hash && !isEntityHash);
   if (hasSessionTarget) return;
-  if (window.__odysseusComposerUserEdited || document.activeElement === msgInput) return;
+  if (window.__pantheonComposerUserEdited || document.activeElement === msgInput) return;
   if (msgInput.value) {
     msgInput.value = '';
     msgInput.dispatchEvent(new Event('input', { bubbles: true }));
@@ -47,10 +47,10 @@ document.addEventListener('DOMContentLoaded', markComposerUserEdited, { once: tr
     const data = await res.json().catch(() => ({}));
     const liveUser = (data && data.username) || '';
     if (!liveUser) return;
-    const KEY = 'odysseus-auth-user';
+    const KEY = 'pantheon-auth-user';
     const cachedUser = localStorage.getItem(KEY);
     if (cachedUser && cachedUser !== liveUser) {
-      const _keepKeys = new Set(['odysseus-last-user', KEY]);
+      const _keepKeys = new Set(['pantheon-last-user', KEY]);
       const toRemove = [];
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);

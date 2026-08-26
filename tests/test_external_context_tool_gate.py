@@ -463,9 +463,9 @@ def test_native_untrusted_tool_result_keeps_cross_turn_provenance():
 def test_minimal_document_prompt_arms_gate_for_untrusted_content():
     from types import SimpleNamespace
 
-    from src.agent_loop import _minimal_odysseus_doc_messages
+    from src.agent_loop import _minimal_pantheon_doc_messages
 
-    messages = _minimal_odysseus_doc_messages(
+    messages = _minimal_pantheon_doc_messages(
         [{"role": "user", "content": "edit this"}],
         SimpleNamespace(title="Doc", language="markdown", current_content="injected"),
     )
@@ -1300,7 +1300,7 @@ def test_frontend_tool_approval_uses_opaque_id_and_fixed_decisions():
 
     assert "fd.append('tool_approval_id'" in chat
     assert "fd.append('tool_approval_decision'" in chat
-    assert "odysseus:tool-approval" in chat
+    assert "pantheon:tool-approval" in chat
     assert "aq.kind === 'tool_approval'" in renderer
     assert "aq.action.content" in renderer
     assert "decision: String((opt && opt.value)" in renderer
