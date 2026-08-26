@@ -71,11 +71,10 @@ fi
 
 say "=== Pantheon init · mode: $MODE · new org: $NEW_ORG ==="
 
-mapfile -t FILES < <(git ls-files -- "${EXCLUDES[@]}" | while read -r f; do
-  [[ -f "$f" ]] || continue
-  grep -Iq . "$f" 2>/dev/null || continue          # skip binaries
-  grep -IqiE "${OLD_LC}|${UP_ORG}" "$f" 2>/dev/null && echo "$f"
-done)
+# One git grep, not a per-file loop. On Windows each process spawn costs ~20ms,
+# so scanning 1,900 tracked files two greps at a time took minutes. -I already
+# skips binaries.
+mapfile -t FILES < <(git grep -lIiE "${OLD_LC}|${UP_ORG}" -- "${EXCLUDES[@]}" 2>/dev/null || true)
 
 # ── 1. protect links that must keep pointing at upstream ─────────────────────
 # A link to a specific upstream issue, PR or discussion is provenance. Rewriting
@@ -86,11 +85,7 @@ PROT_RE="${UP_ORG}/${UP_REPO}(/(issues|pull|discussions)/[0-9]+)"
 say "    Links matching $UP_ORG/$UP_REPO/{issues,pull,discussions}/<n> stay upstream:"
 git grep -InE "$PROT_RE" -- "${EXCLUDES[@]}" 2>/dev/null | sed 's/^/      /' || say "      none"
 
-if [[ "$MODE" == "apply" ]]; then
-  for f in "${FILES[@]}"; do
-    [[ -n "$f" ]] && sed -i -E "s#${PROT_RE}#@@UPORG@@/@@UPREPO@@\1#g" "$f"
-  done
-fi
+if [[ "$MODE" == "apply" ]]; then say "    (sentinelled in the single rewrite pass below)"; fi
 
 # ── 2. org rename — every other reference to the upstream org is now ours ─────
 say ""
@@ -100,9 +95,7 @@ say "    HTTP-Referer header, the star-history chart, and CI test fixtures."
 if [[ "$MODE" == "dry-run" ]]; then
   git grep -cI "$UP_ORG" -- "${EXCLUDES[@]}" 2>/dev/null | sed 's/^/      /' || say "      none"
 else
-  for f in "${FILES[@]}"; do
-    [[ -n "$f" ]] && sed -i "s/${UP_ORG}/${NEW_ORG}/g" "$f"
-  done
+  say "    (applied in the single rewrite pass below)"
 fi
 
 # ── 3. content sweep ─────────────────────────────────────────────────────────
@@ -111,17 +104,25 @@ say "[3/6] Content sweep — odysseus/Odysseus/ODYSSEUS → pantheon/Pantheon/PA
 say "    ${#FILES[@]} files contain a match."
 
 if [[ "$MODE" == "dry-run" ]]; then
-  say "    Top 20 by occurrence:"
-  for f in "${FILES[@]}"; do
-    [[ -n "$f" ]] && printf '%6d  %s\n' "$(grep -oi "$OLD_LC" "$f" | wc -l)" "$f"
-  done | sort -rn | head -20
+  say "    Top 20 by matching lines:"
+  git grep -cIi "$OLD_LC" -- "${EXCLUDES[@]}" 2>/dev/null \
+    | awk -F: '{printf "%6d  %s\n", $NF, substr($0,1,length($0)-length($NF)-1)}' \
+    | sort -rn | head -20 || true
 else
+  # sed applies -e expressions in order, per line, so protect → org → rename →
+  # restore all happen in ONE invocation per file. Four separate passes meant
+  # four process spawns per file; on Windows that was the difference between
+  # thirty seconds and several minutes.
   for f in "${FILES[@]}"; do
     [[ -n "$f" ]] || continue
-    sed -i \
+    sed -i -E \
+      -e "s#${PROT_RE}#@@UPORG@@/@@UPREPO@@\1#g" \
+      -e "s/${UP_ORG}/${NEW_ORG}/g" \
       -e "s/${OLD_UC}/${NEW_UC}/g" \
       -e "s/${OLD_TC}/${NEW_TC}/g" \
       -e "s/${OLD_LC}/${NEW_LC}/g" \
+      -e "s/@@UPORG@@/${UP_ORG}/g" \
+      -e "s/@@UPREPO@@/${UP_REPO}/g" \
       "$f"
   done
   say "    Rewritten."
@@ -131,9 +132,6 @@ fi
 say ""
 say "[4/6] Restore upstream provenance links"
 if [[ "$MODE" == "apply" ]]; then
-  for f in "${FILES[@]}"; do
-    [[ -n "$f" ]] && sed -i -e "s/@@UPORG@@/${UP_ORG}/g" -e "s/@@UPREPO@@/${UP_REPO}/g" "$f"
-  done
   LEFT=$(git grep -lE '@@UP(ORG|REPO)@@' -- . 2>/dev/null | wc -l)
   [[ "$LEFT" -eq 0 ]] || die "    $LEFT files still hold a sentinel. Something went wrong — 'git checkout .' and stop."
   say "    clean — no sentinels remain"
@@ -144,9 +142,7 @@ fi
 # ── 5. short-prefix storage keys ─────────────────────────────────────────────
 say ""
 say "[5/6] Short-prefix storage keys — 'ody-' / 'ody.' → 'pan-' / 'pan.'"
-mapfile -t SHORTFILES < <(git ls-files -- 'static/**' "${EXCLUDES[@]}" | while read -r f; do
-  [[ -f "$f" ]] && grep -Eq "['\"]${OLD_SHORT}[-.]" "$f" 2>/dev/null && echo "$f"
-done || true)
+mapfile -t SHORTFILES < <(git grep -lIE "['\"]${OLD_SHORT}[-.]" -- 'static/**' "${EXCLUDES[@]}" 2>/dev/null || true)
 say "    ${#SHORTFILES[@]} files."
 if [[ "$MODE" == "apply" ]]; then
   for f in "${SHORTFILES[@]}"; do
