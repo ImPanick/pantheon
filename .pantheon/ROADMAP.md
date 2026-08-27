@@ -61,14 +61,17 @@ soon as its dependency lands.
 | P10 | Accessibility & release | 12 | 12 | 0 | 0 |
 | P11 | Identity & access | 13 | 13 | 0 | 0 |
 | P12 | Limits & the control plane | 10 | 10 | 0 | 0 |
-| P13 | The Brain | 11 | 11 | 0 | 0 |
+| P13 | The Brain | 12 | 12 | 0 | 0 |
 | P14 | Measurement | 7 | 7 | 0 | 0 |
-| **Total** | | **287** | **256** | **1** | **30** | | **266** | **235** | **1** | **30** | | **253** | **222** | **1** | **30** | | **250** | **219** | **1** | **30** | | **231** | **200** | **1** | **30** | | **231** | **211** | **0** | **20** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
+| **Total** | | **288** | **257** | **1** | **30** | | **287** | **256** | **1** | **30** | | **266** | **235** | **1** | **30** | | **253** | **222** | **1** | **30** | | **250** | **219** | **1** | **30** | | **231** | **200** | **1** | **30** | | **231** | **211** | **0** | **20** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
 
-**Everything now waits on eighteen decisions**, collected into one sheet with a recommendation
-each — see § Progress for the link. Nine of them finish P2, five gate the public flip. Nothing
-new should start until they are answered: implementing around an open decision is how a phase
-gets built twice.
+**Nothing is waiting on a decision.** All eighteen are answered and recorded in `DECISIONS.md`
+D-2026-08-26-06, and each task line carries its own call. `P2-13` is the only blocked row in the
+programme, on four test assertions.
+
+**Run `P2` to finish it** — every remaining task now has a settled answer on its line, and the
+work-list was verified against the source before any of it. Then `P1`, because everything visual
+depends on the token layer and `P1-01` is finally specified correctly.
 
 **`P1` is the next phase to run** — everything visual depends on the token layer, and `P1-01` is
 now specified correctly (per theme, never `:root`).
@@ -92,6 +95,15 @@ upstream's artwork under Pantheon's filenames.
 *The one progress area. Newest first. One entry per completed section — two lines, a
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
+
+### All eighteen decisions answered; the Brain loses its graph
+`DECISIONS.md` D-2026-08-26-06 settles every open call and each task line now carries its own.
+Five shifted under the scaling track — `P2-10` most of all, which flips from *delete the
+concurrency guard* to *make it an admin control*, because "one operator cannot denial-of-service
+themselves" stops being true the moment there is a second account. And `P13` loses the
+force-directed graph entirely: permanence is the feature, a picture of it is not, and the
+constellation was the exact part of a competitor's version that made it go unused. Edges stay as
+data — an edge that only exists to be drawn is not worth storing.
 
 ### Two more laws, and a competitor's scar tissue turned into tasks
 `Law 14` — extend the primary scaffolding, never build a second one — applied to this roadmap
@@ -300,12 +312,12 @@ purge, re-index, log back in. The only manual step is one line in your `.env`.
 - [x] **P0-10** Rename the 19 `scripts/odysseus-*` CLI scripts (`git mv`). If you have a crontab or systemd timer pointing at any of them, update it — otherwise nothing references them. — **done:** all 19 `git mv`-d.
 - [x] **P0-11** Rename Swift package + two executables, the two integration plugin ids (`integrations/{claude,codex}/skills/odysseus/`), `_EMAIL_MCP_OWNER_ARG`, and the 3 custom DOM events. `Depends:` P0-02. — **done:** swept.
 - [x] **P0-12** **The sweep rewrote two badges to dead targets — they need removing, not renaming.** `README.md:17` now points at `repology.org/project/pantheon-ai`, which does not exist; `README.md:71-75` now points the star-history chart at `ImPanick/pantheon`, which is private and will 404 for every reader. Delete both blocks. The rest of this task is done: the 47 `odysseus-dev` references, `package.json`, `.github/` templates and `cookbook.js:3177` were handled by the sweep, and the three links to specific upstream issues and discussions were deliberately preserved. `Verify:` no README image URL 404s. — **done:** both dead badges removed in the README rewrite; the sweep had already handled the 47 `odysseus-dev` references, `package.json`, `.github/` and `cookbook.js:3177`.
-- [ ] **P0-13** Design the Pantheon mark. **Do not reuse the red sailing boat, the wordmark, or the per-route favicon shapes** — the licence grants them but they are upstream's identity. Replace `static/icon.ico`, the favicon registry, the inline boat SVG (5 copies), and the programmatic tray drawing. **Keep the ASCII wave loader** — it's a loader, not a logo.
+- [ ] **P0-13** Design the Pantheon mark. **Do not reuse the red sailing boat, the wordmark, or the per-route favicon shapes** — the licence grants them but they are upstream's identity. Replace `static/icon.ico`, the favicon registry, the inline boat SVG (5 copies), and the programmatic tray drawing. **Keep the ASCII wave loader** — it's a loader, not a logo. — **DECIDED — its own session: three or four directions, pick one, then favicon, tray icon and the five inline SVG copies follow** (D-2026-08-26-06).
 - [x] **P0-14** **§5(a) + §5(b) notices.** Add to `README.md` and a new `NOTICE`: a prominent statement that this is a modified version of Odysseus, **with a date**, and that it is released under the AGPL. Neither exists today. — **done:** `NOTICE` carries the §5(a) modification notice with the fork commit and date; the README carries the same statement in its status block.
 - [x] **P0-15** **§4 copyright line.** There is **no project copyright notice anywhere in the repo today**. Add Pantheon's and preserve any upstream one that can be established. — **done:** `NOTICE` line 2 — `Copyright (c) 2026 Panick`. There was no upstream copyright line in the repo to preserve.
 - [ ] **P0-16** **Apache-2.0 §4(b) change notices** on the research-derived files (`services/research/`, `src/research_handler.py`, `routes/research/`, `services/search/`) — "You changed the files". Absent today.
 - [ ] **P0-17** **§13 Source link.** Single footer button in the UI. `href` → the public repo. `title="Built on Odysseus — click to see where Pantheon originated from!"`. Must be present on the logged-in shell and the login page. This is the one licence obligation that is genuinely required and genuinely missing. `Depends:` P0-12.
-- [ ] **P0-18** Decide `AGPL-3.0-only` vs `AGPL-3.0-or-later` and state it in `LICENSE`, `README`, and SPDX headers. Today the qualifier lives in exactly one README line with zero SPDX headers.
+- [ ] **P0-18** Decide `AGPL-3.0-only` vs `AGPL-3.0-or-later` and state it in `LICENSE`, `README`, and SPDX headers. Today the qualifier lives in exactly one README line with zero SPDX headers. — **DECIDED — `AGPL-3.0-or-later`, matching upstream, with real SPDX headers** (D-2026-08-26-06).
 
 ### P0 · Credits — the licence gaps you inherit
 *Do not publish before these close.*
@@ -314,12 +326,12 @@ purge, re-index, log back in. The only manual step is one line in your `.env`.
 - [ ] **P0-20** Add missing licence bodies to `licenses/`: highlight.js (BSD-3), SheetJS/xlsx (Apache-2.0 — check upstream for a `NOTICE`), docx (MIT), mammoth.js (BSD-2), jsPDF (MIT), html2canvas (MIT), node-qrcode (MIT). MIT and both BSDs require the notice to travel with redistributed copies.
 - [ ] **P0-21** Fetch the missing `html2pdf.bundle.min.js.LICENSE.txt` — the bundle's own banner references a file that is not in the repo.
 - [ ] **P0-22** Add OFL text for Fira Code and Inter, and list the **20 KaTeX font faces** — all carry Reserved Font Names and are currently credited as MIT-only. Do not subset any font, or OFL §3 bites.
-- [ ] **P0-23** **Resolve `static/fonts/custom/GohuFont.ttf`.** The shipped file is 1,468 bytes / 3 glyphs, metadata reads `Untitled1 / Copyright (c) 2025, Unknown`. It is not GohuFont. Replace with the real WTFPL font + licence, or remove it and drop the credits row.
+- [ ] **P0-23** **Resolve `static/fonts/custom/GohuFont.ttf`.** The shipped file is 1,468 bytes / 3 glyphs, metadata reads `Untitled1 / Copyright (c) 2025, Unknown`. It is not GohuFont. Replace with the real WTFPL font + licence, or remove it and drop the credits row. — **DECIDED — delete the file and its credits row** (D-2026-08-26-06).
 - [ ] **P0-24** Add undisclosed deps to credits: `nh3`, `python-dateutil`, `httpcore`, `httpx2`, `python-magic`, Real-ESRGAN wheels, the two MLX Swift packages. Update `duckduckgo-search` → `ddgs`.
 - [ ] **P0-25** Correct the PyMuPDF scope statement — it is documented as form-filling only; it also backs the PDF viewer's page render and the annotation-fill endpoint (three route handlers). Fix the stale docstring at `routes/email_helpers.py:1453` that credits it for text extraction it does not perform.
 - [ ] **P0-26** Reconcile the credits file's "the core ships fully permissive (MIT-compatible)" framing against the AGPL `LICENSE`, or state which is authoritative for Pantheon.
 - [x] **P0-27** README statement of intent: *"Pantheon is free software under the AGPL. I don't sell it, and I'd rather you didn't."* **Social, not legal — do not add a non-commercial clause.** AGPL §10 prohibits further restrictions and §7 lets any recipient strip one. — **done:** in the README licence section, phrased as intent and explicitly not as a clause.
-- [ ] **P0-28** **The root `ROADMAP.md` is upstream's, and the sweep put Pantheon's name on it.** It now opens *"Pantheon is on a voyage, but not home yet... (I don't know what I'm doing, help)"* — upstream's words, upstream's self-deprecation, attributed to this project. It also collides with the real tracker at `.pantheon/ROADMAP.md`, which the README links as "Tracker". Replace it with a short pointer to `.pantheon/ROADMAP.md`, or delete it. `Verify:` a reader following either link lands somewhere that is true.
+- [ ] **P0-28** **The root `ROADMAP.md` is upstream's, and the sweep put Pantheon's name on it.** It now opens *"Pantheon is on a voyage, but not home yet... (I don't know what I'm doing, help)"* — upstream's words, upstream's self-deprecation, attributed to this project. It also collides with the real tracker at `.pantheon/ROADMAP.md`, which the README links as "Tracker". Replace it with a short pointer to `.pantheon/ROADMAP.md`, or delete it. `Verify:` a reader following either link lands somewhere that is true. — **DECIDED — delete it; point everything at `.pantheon/ROADMAP.md`** (D-2026-08-26-06).
 - [ ] **P0-29** **Rename Cookbook → Forge** (`DECISIONS.md` D-2026-08-26-05). It reads as a recipe box; it is a model-serving control plane — remote host registry with SSH keys, GPU detection and hardware fit, weight downloads from HuggingFace and Ollama, vLLM / llama.cpp / Ollama launches held open in tmux, process kill, and task-status polling. 17 routes. **Surface: 3,533 occurrences across 172 files and 43 paths — larger than the Odysseus→Pantheon sweep was** (2,929). Use the same tool: `scripts/pantheon-init.sh` is proven and parameterises cleanly. Decide the name first (`DECISIONS.md`, pending) and whether *recipe* survives — 242 occurrences, and a vLLM recipe genuinely is a parameterised launch config, so it may earn its keep even if Cookbook does not. `Verify:` no user-visible string says Cookbook; `rail-*`, `tool-*-btn` and modal ids move together with their CSS.
 
 ---
@@ -391,32 +403,32 @@ cross one if implemented carelessly.
 - [x] **P2-04** Delete the dead chat-upload validator that advertises a policy with no route callers. — **done:** `validate_file_upload` deleted, `src/chat_helpers.py:226`; live-path cap coverage retained in the test.
 
 ### Widen
-- [ ] **P2-05** Memory import allowlist → add `.yaml .yml .ts .tsx .jsx .sh .xml .sql .rs .go .java .c .cpp .rb .php .docx` — **not** `.scss .toml .ini .vue .svelte`: none of those is in `is_document_file`'s `document_extensions`, so adding them here is unreachable code, or replace with a size+decodability check. Content is decoded to text and fed to an LLM; nothing is served back. Update the frontend `accept` to match.
+- [ ] **P2-05** Memory import allowlist → add `.yaml .yml .ts .tsx .jsx .sh .xml .sql .rs .go .java .c .cpp .rb .php .docx` — **not** `.scss .toml .ini .vue .svelte`: none of those is in `is_document_file`'s `document_extensions`, so adding them here is unreachable code, or replace with a size+decodability check. Content is decoded to text and fed to an LLM; nothing is served back. Update the frontend `accept` to match. — **DECIDED — drop the allowlist entirely; decode and reject only what fails. Keep the PDF extractor and `.json` fast path as branches. Size and rate become the real control, per-role under `P12-01`/`P12-05`** (D-2026-08-26-06).
 - [x] **P2-06** `_is_text_file` → add `.ts .tsx .jsx .css .scss .yaml .yml .sh .bash .sql .toml .ini .c .cpp .h .go .rs .rb .php .java .xml .vue .svelte` — matching the fence-language set already in the same file. — **done:** `_is_text_file` 10 → 28 suffixes at `src/document_processor.py:45`; 11 extensions verified to flip from banner to content.
 - [x] **P2-07** Email attachment-as-doc → add a text fallback for any decodable attachment instead of `Unsupported attachment type`. The editor renders every language already. — **done:** **backend only** — decode fallback at `routes/email_routes.py:3728`. Unreachable from the UI until `emailLibrary.js:6807` moves, see B02.
-- [ ] **P2-08** Raise `MAX_INLINE_ATTACHMENT_CHARS` (24,000 shared across **all** attachments in a turn — with 10 files that is 2.4 K each). Make it per-attachment or scale it off the input token budget.
-- [ ] **P2-09** **Implemented once and REVERTED — read this before re-landing.** Scaling `skill_max_injected` off the context window is right in principle and wrong as first built: the value reaches `_build_system_prompt` from `get_context_length()`, which returns `DEFAULT_CONTEXT = 128000` for any endpoint whose window cannot be proven **and discards the `known` flag**. `compute_skill_injection_limit(3, 128000, explicit=False)` is **12**. A local llama.cpp box holding 8K would have been injected 12 skill blocks of user-editable untrusted content instead of 3 — the exact failure `src/model_context.py:313-315` warns about. A user who deliberately typed `3` into the `max="12"` input at `index.html:495` would also have got 12. **Re-land:** call `budget_context_for_model(url, model, fallback=0)` at `agent_loop.py:4342` — returns 0 for an unproven window, shares the existing cache, adds no probe, restores the flat 3. **Decide first:** `0` is already the documented off switch, so *auto* needs its own sentinel or an explicit UI affordance. The pure functions written for it were correct in isolation and are worth keeping for the re-land.
+- [ ] **P2-08** Raise `MAX_INLINE_ATTACHMENT_CHARS` (24,000 shared across **all** attachments in a turn — with 10 files that is 2.4 K each). Make it per-attachment or scale it off the input token budget. — **DECIDED — scale off the context window via `budget_context_for_model(…, fallback=0)`, keep first-come-first-served, per-role ceiling under `P12-04`. Reconcile all three numbers together** (D-2026-08-26-06).
+- [ ] **P2-09** **Implemented once and REVERTED — read this before re-landing.** Scaling `skill_max_injected` off the context window is right in principle and wrong as first built: the value reaches `_build_system_prompt` from `get_context_length()`, which returns `DEFAULT_CONTEXT = 128000` for any endpoint whose window cannot be proven **and discards the `known` flag**. `compute_skill_injection_limit(3, 128000, explicit=False)` is **12**. A local llama.cpp box holding 8K would have been injected 12 skill blocks of user-editable untrusted content instead of 3 — the exact failure `src/model_context.py:313-315` warns about. A user who deliberately typed `3` into the `max="12"` input at `index.html:495` would also have got 12. **Re-land:** call `budget_context_for_model(url, model, fallback=0)` at `agent_loop.py:4342` — returns 0 for an unproven window, shares the existing cache, adds no probe, restores the flat 3. **Decide first:** `0` is already the documented off switch, so *auto* needs its own sentinel or an explicit UI affordance. The pure functions written for it were correct in isolation and are worth keeping for the re-land. **DECIDED — a checkbox, "scale to the model's context window", disabling the number field when ticked; the number becomes the ceiling** (D-2026-08-26-06).
 
 ### Fix
-- [ ] **P2-10** **The fake concurrency limit.** "max concurrent uploads: 3" is enforced as "≤3 uploads in the last ten seconds" and fires on a normal multi-file drag. Drop it; the 60/min rate limit already exists. `CI:` the test sets it locally, so the default is not pinned.
+- [ ] **P2-10** **The fake concurrency limit.** "max concurrent uploads: 3" is enforced as "≤3 uploads in the last ten seconds" and fires on a normal multi-file drag. Drop it; the 60/min rate limit already exists. `CI:` the test sets it locally, so the default is not pinned. — ****DECIDED — AMENDED. Do NOT delete.** The "one operator cannot DoS themselves" reasoning does not survive `P11`. Becomes an admin control, default off — `P12-06`** (D-2026-08-26-06).
 - [x] **P2-11** Raise `MAX_FILES` (10 → 25) **and** add a server-side `len(files)` cap, which does not exist. **`CI:` a test regex-parses this literal** and asserts `upload_rate_limit >= MAX_FILES`. — **done:** `MAX_FILES_PER_REQUEST = 25` at `src/upload_handler.py:227`, enforced pre-loop at `routes/upload_routes.py:274`; partial-write hazard fixed.
-- [ ] **P2-12** **Stop hiding small email attachments.** The signature heuristic also returns true for *any* image under 30 KB — a real screenshot is silently invisible **and** excluded from the ZIP. Keep the filename patterns, drop the size clause.
-- [~] **P2-13** **BLOCKED — correctly, on something the spec never named.** Premise verified true: both clamps exist at `src/llm_core.py:1071` and `src/agent_loop.py:2212`, and the Anthropic cloud clamp at `:1572` is untouched. But **four assertions in two unowned test files pin the cap** — `tests/test_llm_core_temperature_reasoning.py:104` and `tests/test_pr6020_rebase_regressions.py:182/:201/:216`. The two qwen tests exist to prove a mixed fallback chain leaks temperature in neither direction, and that property must survive any rewrite. **Also needs a decision:** `_apply_local_generation_stability` receives only a payload dict and cannot tell *the user asked for 0.9* from *0.9 is a default*, so a faithful "default, not cap" needs an explicitness signal threaded from the builder. The agent refused to ship a hidden env escape hatch with no UI — right call.
-- [ ] **P2-14** Loosen the guide-only trigger: seven regexes fire on any mention of the phrasing and then strip every tool **and all MCP** for the turn. Require whole-message match, or an explicit toggle.
+- [ ] **P2-12** **Stop hiding small email attachments.** The signature heuristic also returns true for *any* image under 30 KB — a real screenshot is silently invisible **and** excluded from the ZIP. Keep the filename patterns, drop the size clause. — **DECIDED — drop the size clause in **both** files, pin `_has_visible_attachments` to the old predicate, keep the two filename patterns. Write the first test** (D-2026-08-26-06).
+- [~] **P2-13** **BLOCKED — correctly, on something the spec never named.** Premise verified true: both clamps exist at `src/llm_core.py:1071` and `src/agent_loop.py:2212`, and the Anthropic cloud clamp at `:1572` is untouched. But **four assertions in two unowned test files pin the cap** — `tests/test_llm_core_temperature_reasoning.py:104` and `tests/test_pr6020_rebase_regressions.py:182/:201/:216`. The two qwen tests exist to prove a mixed fallback chain leaks temperature in neither direction, and that property must survive any rewrite. **Also needs a decision:** `_apply_local_generation_stability` receives only a payload dict and cannot tell *the user asked for 0.9* from *0.9 is a default*, so a faithful "default, not cap" needs an explicitness signal threaded from the builder. The agent refused to ship a hidden env escape hatch with no UI — right call. **DECIDED — thread an `explicit_params` set from the payload builder; the clamp becomes a setdefault for everything else. Keep the Anthropic ceiling** (D-2026-08-26-06).
+- [ ] **P2-14** Loosen the guide-only trigger: seven regexes fire on any mention of the phrasing and then strip every tool **and all MCP** for the turn. Require whole-message match, or an explicit toggle. — **DECIDED — anchor patterns 1–6 to whole-message match; convert pattern 7 into a confirmation mode that arms the approval gate rather than stripping tools** (D-2026-08-26-06).
 - [x] **P2-15** Fix the self-contradicting bash prompt — one line forbids heredocs, seven lines later another instructs the model to use one. Prompt-only; enforces nothing. — **done:** heredoc instruction removed at `src/agent_loop.py:574` — 10 ban sites, 0 instruction sites.
 - [x] **P2-16** Fix the grammar bug producing `Your account is not allowed to can use research.` — **done:** `privilege_denied_message` at `src/auth_helpers.py:127`; the fail-open `privs.get(key, True)` deliberately untouched.
 - [x] **P2-17** Cap the backup import — `await request.json()` with no size limit on an admin route. — **done:** 413 cap at `routes/backup_routes.py:134`, **after** `require_admin` at `:131`; env var wired into all three compose files and `.env.example`.
-- [ ] **P2-18** Fix the feature-flag story: `deep_research` defaults off, the frontend hides four buttons, and **no server route checks it**. Either enforce server-side or delete the three flags with zero consumers. Flip `deep_research` on.
+- [ ] **P2-18** Fix the feature-flag story: `deep_research` defaults off, the frontend hides four buttons, and **no server route checks it**. Either enforce server-side or delete the three flags with zero consumers. Flip `deep_research` on. — **DECIDED — fix the precedence bug generally, delete the three consumerless flags, flip `deep_research` on. **No server-side enforcement** — the endpoint is auth-exempt and was never a boundary** (D-2026-08-26-06).
 
 ### Re-surface what was built and never wired
 - [ ] **P2-19** **Webhooks admin panel** — backend complete, **no UI whatsoever**. Add `adm-whList` / `adm-whAddBtn` markup. Add the null guards at the two functions that currently throw on `null.innerHTML` inside a silent `try` — which is why nobody noticed.
-- [ ] **P2-20** MCP admin panel markup (`adm-mcp*`) — this also makes the OAuth-file registration path reachable for the first time. Feature toggles (`adm-featureToggles`), API tokens (`adm-tokenList`), RAG (`adm-rag*`). All four backends exist.
-- [ ] **P2-21** Built-in skills editor: flip `showBuiltin = false` → `true`. `_buildBuiltinCards()` and its three admin endpoints are fully implemented, including a per-tool instruction-block override editor.
-- [ ] **P2-22** Re-attach the gallery upscaler controls (`ge-upscale-*`). Backend + local Real-ESRGAN both implemented, zero UI.
-- [ ] **P2-23** Give RAG upload a UI — the module expects three elements that do not exist. The endpoint works and has **no extension restriction at all**.
+- [ ] **P2-20** MCP admin panel markup (`adm-mcp*`) — this also makes the OAuth-file registration path reachable for the first time. Feature toggles (`adm-featureToggles`), API tokens (`adm-tokenList`), RAG (`adm-rag*`). All four backends exist. — **DECIDED — build only RAG and feature toggles; skip MCP and tokens, which already have live UIs in settings (`Law 14`). Wire both into `inits` and `refreshAll`** (D-2026-08-26-06).
+- [ ] **P2-21** Built-in skills editor: flip `showBuiltin = false` → `true`. `_buildBuiltinCards()` and its three admin endpoints are fully implemented, including a per-tool instruction-block override editor. — **DECIDED — gate the two GETs, write the list loader, then flip the flag. **Amended from optional to required** by `P11-10`** (D-2026-08-26-06).
+- [ ] **P2-22** Re-attach the gallery upscaler controls (`ge-upscale-*`). Backend + local Real-ESRGAN both implemented, zero UI. — **DECIDED — target `/api/image/upscale-local` (local Real-ESRGAN). A backend selector waits for a real GPU host** (D-2026-08-26-06).
+- [ ] **P2-23** Give RAG upload a UI — the module expects three elements that do not exist. The endpoint works and has **no extension restriction at all**. — **DECIDED — resurface the **user-facing** `rag.js` module, not the admin one. Three ids plus wiring, on a module already called every boot** (D-2026-08-26-06).
 - [ ] **P2-24** Add a custom-font upload route. **Keep the extension allowlist here** — these files land under the static mount and are served with no forced disposition. This is the exception that proves the rule.
-- [ ] **P2-25** Prune `NON_ADMIN_BLOCKED_TOOLS` of owner-scoped read-only tools. **Must stay:** shell, python, all filesystem tools, vault, settings, tokens, endpoints, MCP, webhooks, api_call, app_api, and the `mcp__*` prefix rule. **`CI:` two tests cover this partition.**
-- [ ] **P2-26** Trim the "use the nicer tool" half of the app-API blocklist. **Must stay:** the cookbook install/rebuild/kill entries and every prefix rule.
+- [ ] **P2-25** Prune `NON_ADMIN_BLOCKED_TOOLS` of owner-scoped read-only tools. **Must stay:** shell, python, all filesystem tools, vault, settings, tokens, endpoints, MCP, webhooks, api_call, app_api, and the `mcp__*` prefix rule. **`CI:` two tests cover this partition.** — **DECIDED — prune nothing. Confirmed** (D-2026-08-26-06).
+- [ ] **P2-26** Trim the "use the nicer tool" half of the app-API blocklist. **Must stay:** the cookbook install/rebuild/kill entries and every prefix rule. — **DECIDED — prune nothing. Correct the must-stay documentation and close it. Gets **stronger** under `P11`, not weaker** (D-2026-08-26-06).
 
 ---
 
@@ -850,7 +862,21 @@ is mostly moving values into a system that exists, then layering roles on top.
 ---
 
 # P13 · The Brain
-*Area: `brain` · Depends: P1 for the visual · Independent of everything else*
+*Area: `brain` · Depends: nothing · Independent of everything else*
+
+> ### The graph visual is cut. Decided 2026-08-26.
+> **What matters is permanence, not a picture of it.** Long-term knowledge of projects that
+> survives sessions, gets better rather than noisier, and can be trusted — that is the whole
+> feature. The force-directed constellation is the part of a competitor's version that looked
+> impressive and was the reason it went unused (`Law 15`).
+>
+> **Edges survive; the drawing does not.** A `supersedes` edge makes retrieval correct whether
+> or not anyone ever looks at it, and a recorded `contradicts` is worth having even if it is
+> only ever read by a query. Keep the data model. Drop the canvas, the node layout, the
+> starburst and the confetti.
+>
+> The Brain surface becomes something a person can **read and search** — filter, sort, inspect,
+> correct — not something they navigate by dragging.
 
 **What is actually there today.** `memories` is a flat table — `id, text, category, source,
 owner, session_id, timestamp` — behind a vector index. **No confidence, no edges, no
@@ -893,11 +919,18 @@ closest thing to this that exists — with what it teaches:
   live index. That is a reasonable choice and worth copying — but it should say so in those
   words, because a stale graph presented as current is a lie of omission.
 
+- [ ] **P13-00b** **Project-scoped permanence is the point of this phase.** Memory today is
+  owner-scoped and session-linked; there is no notion of a *project* that outlives either. Long
+  term knowledge — this stack, these conventions, this decision and why — should attach to the
+  thing it is about and survive every session boundary, model swap and restart. `Verify:` start
+  a new session months later, ask about a project, and the answer carries what was learned
+  before without being re-explained.
 - [ ] **P13-01** **Confidence on memories.** Lift the skill extractor's 0..1 score and floor
   onto memory extraction. Same shape, same tuning surface, one fewer concept to learn.
-- [ ] **P13-02** **Typed edges between memories.** `supersedes`, `contradicts`,
-  `derived_from`, `co_occurs`. A contradiction that is *recorded* is worth more than one
-  silently resolved — it is the thing a person most needs to see.
+- [ ] **P13-02** **Typed edges between memories** — as data, not as a picture. `supersedes`,
+  `contradicts`, `derived_from`, `co_occurs`. Each one changes what retrieval returns: a
+  superseded memory stops surfacing, a contradiction surfaces *both* sides with the conflict
+  named. **An edge that only exists to be drawn is not worth storing.** That is the test.
 - [ ] **P13-03** **Provenance.** Which session, which message, which tool produced this — and
   what has confirmed or contradicted it since. `session_id` exists; the rest does not.
 - [ ] **P13-04** **Reinforcement and decay.** A memory retrieved and acted on gets stronger; one
@@ -914,13 +947,17 @@ closest thing to this that exists — with what it teaches:
   the curve was too steep. The capability was real; the adoption was zero. Nothing in `P13`
   ships until someone who has never seen the surface can tell what it is for and what to do
   next, from the surface alone. **If it needs a tutorial, it is not finished.**
-- [ ] **P13-07** **The Brain page.** A dedicated navigable surface, **not on the main path and
-  not on open** — reached from a small card via *Explore more*. Graph of memories and their
-  edges, filterable by confidence, category, age and session. Needs a no-acceleration fallback
-  (`P3-19`) and a plain statement of how fresh the analysis is.
-- [ ] **P13-08** **Observable skill growth.** Skills already carry confidence and a timeline
-  exists for memories; extend it so a person can watch a capability form, strengthen, and
-  either get used or fall away. This is the feature nobody else self-hosted has.
+- [ ] **P13-07** **The Brain page — readable, not navigable-by-dragging.** A dedicated surface,
+  **not on the main path and not on open**, reached from a small card via *Explore more*. Lists
+  and filters: by project, confidence, category, age, session, and edge type. Open a memory, see
+  what it supersedes and what contradicts it, correct it, retire it. Search that finds a thing
+  in one query rather than a thing you spot in a cloud. State plainly how fresh the analysis is.
+  **No canvas. No force layout.** (`P3-19` is therefore moot unless another surface needs it.)
+- [ ] **P13-08** **Observable skill growth, as a list with dates.** Skills already carry
+  confidence and `/memory/timeline` already exists; extend it so a person can see a capability
+  form, strengthen, get used, or fall away — in a table they can read, sort and act on. The
+  value is knowing *what the system learned this week and whether it was right*, which is a
+  reading task, not a viewing one.
 - [ ] **P13-09** **Wire `audit` to confidence.** The consolidation pass exists and is blind —
   it should raise confidence where sources agree and record a contradiction edge where they
   do not, rather than picking a winner quietly.
@@ -996,8 +1033,8 @@ nothing ever recorded the event.
 
 *Agents append here. Format: `- [ ] **Bxx** … — found during Px-yy — agent:`id``*
 
-- [ ] **B02** **P2-07's decode fallback cannot be reached from the UI.** `static/js/emailLibrary.js:6807` gates the "Open in document editor" button on `_OPENABLE_RE = /\.(pdf|docx|txt|md|markdown|eml)$/i` — the six pre-existing suffixes. No `.log`, `.csv`, `.json`, `.yaml` or extensionless attachment can reach the new branch. Suggested fix: drop the extension gate entirely and let the backend sniff be the single decision point. `Verify:` a `.log` attachment opens in the editor. — found during P2 run 01
-- [ ] **B03** **P2-11's rejected files vanish silently.** Partial-failure batches now return 200 with `files` + `rejected`, where they previously returned a failure status. `static/js/fileHandler.js:325` clears `pendingFiles` on any 2xx, so the rejected subset disappears from the composer with no message. One toast reading `rejected` closes it. `Verify:` drop 30 files, see a message naming the 5 that did not upload. — found during P2 run 01
+- [ ] **B02** **P2-07's decode fallback cannot be reached from the UI.** `static/js/emailLibrary.js:6807` gates the "Open in document editor" button on `_OPENABLE_RE = /\.(pdf|docx|txt|md|markdown|eml)$/i` — the six pre-existing suffixes. No `.log`, `.csv`, `.json`, `.yaml` or extensionless attachment can reach the new branch. Suggested fix: drop the extension gate entirely and let the backend sniff be the single decision point. `Verify:` a `.log` attachment opens in the editor. **DECIDED — drop the extension gate entirely; the backend sniff is the single decision point** (D-2026-08-26-06). — found during P2 run 01
+- [ ] **B03** **P2-11's rejected files vanish silently.** Partial-failure batches now return 200 with `files` + `rejected`, where they previously returned a failure status. `static/js/fileHandler.js:325` clears `pendingFiles` on any 2xx, so the rejected subset disappears from the composer with no message. One toast reading `rejected` closes it. `Verify:` drop 30 files, see a message naming the 5 that did not upload. **DECIDED — one toast naming what was rejected and why** (D-2026-08-26-06). — found during P2 run 01
 - [ ] **B04** **The two new controls have no test coverage.** The P2-17 413 cap, its boundary, and its ordering behind `require_admin` have zero tests; `attachment_as_doc` has zero and always did. Both implementing agents owned no test files. Promote the two scratch harnesses into `tests/`. — found during P2 run 01
 - [ ] **B05** **An unenforced cross-file invariant.** `src/upload_handler.py`'s `document_extensions` must stay a subset of `src/document_processor.py`'s `_is_text_file`, or an upload is accepted and then silently discarded at ingest. The invariant is now in a docstring; nothing checks it. A three-line test would. — found during P2 run 01
 - [ ] **B01** **The datastore image is unpinned.** `chromadb/chroma:latest` in all three

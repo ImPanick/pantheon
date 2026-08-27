@@ -175,3 +175,56 @@ churn for its own sake.
 was at 2,929. `scripts/pantheon-init.sh` is proven and parameterises cleanly, and it now
 carries four fixes learned the hard way. Use it; do not hand-roll a second sweep.
 
+---
+
+## D-2026-08-26-06 · The decision ledger, answered — all eighteen
+
+**All eighteen open calls are settled.** Recommendations taken, hybridised with the scaling
+track that opened after the ledger was written. Five answers shifted because the deployment
+assumption changed mid-conversation; those are marked **amended** and the reason is on each.
+
+The ledger itself is superseded by this entry.
+
+### Finishing P2
+
+| | Answer | Note |
+|---|---|---|
+| **P2-05** | **Drop the allowlist entirely.** Decode; reject only what fails. Keep the PDF extractor and the `.json` fast path as branches. | Nothing is persisted or re-served, so extension filtering guards nothing. **Amended:** size and rate become the real control, which makes them `P12-01` / `P12-05` per-role settings rather than constants. |
+| **P2-08** | **Scale the budget off the model's context window**, falling back to today's 24,000 when the window cannot be proven. Keep first-come-first-served. | **Amended:** gets a per-role ceiling under `P12-04`. Must use `budget_context_for_model(…, fallback=0)` — the same function `P2-09` got wrong. Reconcile all three numbers together: shared 24,000, PDF 15,000, per-file 30,000. |
+| **P2-10** | **AMENDED — do not delete it. Make it an admin control, default off.** | The original recommendation was delete, reasoned on "one operator cannot denial-of-service themselves". That reasoning does not survive `P11`. Lands as `P12-06`. |
+| **P2-12** | **Drop the size clause in both files, and pin `_has_visible_attachments` to the old predicate.** Keep the two filename patterns. | Fixes the visible bug and changes nothing else. The related-thread lookup is out of scope and stays out. Write the first test — there is no coverage anywhere. |
+| **P2-14** | **Anchor patterns 1–6 to a whole-message match; convert pattern 7 into a confirmation mode** that arms the approval gate instead of stripping tools. | "Ask me before using tools" currently costs 81 tools plus all MCP. That is not an over-eager filter, it is an inverted one. `blocks()` and `block_all_tool_calls` stay intact. |
+| **P2-18** | **Fix the precedence bug generally, delete the three consumerless flags, flip `deep_research` on.** Flags stay UI hints. | No server-side enforcement: `/api/auth/features` is auth-exempt, so flag state is world-readable and never was a boundary. Leave `sensitive_filter` and the `can_use_research` privilege alone. |
+| **P2-20 + P2-23** | **Build only what is genuinely dead — RAG and feature toggles — and resurface the user-facing RAG module**, not the admin one. Wire both into `inits` and `refreshAll`. | MCP and tokens already have live UIs in settings; rebuilding them in the admin panel is `Law 14` in miniature. Three ids and a wiring fix turn a module that already runs every boot into a working feature. |
+| **P2-21** | **Gate the two GETs, write the missing list loader, then flip the flag.** | **Amended from "cheap insurance" to required** — `P11-10`. Any logged-in non-admin can currently read all 60 built-in tool instruction blocks. |
+| **P2-22** | **Target `/api/image/upscale-local`** — local Real-ESRGAN. Add the `controls.js` section and the `toolbar.js` entry. | Self-hosted is the premise; a feature that silently needs a second server is not shipped. A backend selector is the right destination once a GPU host exists — file it then, defaulting to local. |
+| **P2-25 · P2-26** | **Prune nothing.** Correct the must-stay documentation and close both. | The measured prunable set was effectively empty, and both lists match with `startswith`, so removing one pair silently unprotects its children. **These get stronger under `P11`, not weaker** — every argument for them assumed a trusted operator. |
+
+### Re-landing run 01
+
+| | Answer | Note |
+|---|---|---|
+| **P2-09** | **A checkbox — "scale to the model's context window"** — that disables the number field when ticked. The number becomes the ceiling. | A magic `-1` in a field labelled "Max" is something you rediscover by reading source. Re-land via `budget_context_for_model(url, model, fallback=0)` at `agent_loop.py:4342`. The ceiling matters: skills arrive as untrusted context. |
+| **P2-13** | **Thread an `explicit_params` set from the payload builder.** The clamp becomes a setdefault for everything else. | Dropping both clamps was the purer un-nerf and is not crazy, but that model family genuinely degenerates above 0.2. The explicitness signal is worth having for every future "default, not cap" question. **Keep the Anthropic ceiling** — that API 400s above 1.0. |
+
+### Before the repo goes public
+
+| | Answer | Note |
+|---|---|---|
+| **P0-18** | **`AGPL-3.0-or-later`**, with real SPDX headers. | Matches upstream. Narrowing below the parent creates a compatibility puzzle for anyone combining the two, in exchange for control over a future revision there is no reason to fear. |
+| **P0-14 prereq** | **Name both, and say which is which** — forked from the clone source, upstream project referenced as the other. | Unless the operator knows one is a mirror or a rename, in which case say so and this becomes simpler. The git remote is verifiable evidence; so are the 47 in-code references. An attribution that reports both cannot be wrong. |
+| **P0-23** | **Delete the file and its credits row.** | 1,468 bytes, three glyphs, metadata reading `Untitled1 / Copyright (c) 2025, Unknown`. The only licensing item that is affirmatively false rather than merely incomplete. Nothing uses three glyphs. |
+| **P0-28** | **Delete the root `ROADMAP.md`.** Point everything at `.pantheon/ROADMAP.md`. | Two files with the same name saying different things is `Law 7`'s exact failure mode — it is how `FRONTIER-NOTES.md` ended up still calling the project Odysseus. A public "help wanted" page is a real thing to want and `CONTRIBUTING.md` already is it. |
+| **P0-13** | **Its own session.** Three or four directions, pick one, then favicon, tray icon and the five inline SVG copies follow. | The identity is what people see before reading a line of the README, it is cheapest to get right while nothing depends on it, and it is a different kind of work from everything else here. A placeholder reliably becomes permanent. |
+
+### The two couplings
+
+| | Answer | Note |
+|---|---|---|
+| **B02** | **Drop the extension gate entirely.** The backend sniff becomes the single decision point. | Two lists that must agree is the bug we keep having. Worst case the button opens something that turns out not to be text, and the backend says so. |
+| **B03** | **One toast naming what was rejected and why.** | Silent data loss is the worst failure mode — the person believes something happened that did not. Keeping rejected files in the composer is nicer and is a follow-up, not a blocker. |
+
+**What did not change under the scaling track.** `P2-01`'s deletion stands for today's deployment
+and is restored under `P11-09`, with `.svg` in it — the condition it named has arrived, not
+passed. `P2-25` and `P2-26` get stronger. Everything else is as recommended.
+
