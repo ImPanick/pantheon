@@ -583,7 +583,8 @@ FUNCTION_TOOL_SCHEMAS = [
                     "trigger_event": {"type": "string", "enum": ["session_created", "message_sent", "document_created", "memory_added", "research_completed", "email_received", "skill_added"],
                                       "description": "Event name (for trigger_type=event)"},
                     "trigger_count": {"type": "integer", "description": "Fire every N events (for trigger_type=event)"},
-                    "output_target": {"type": "string", "description": "Where results go. Defaults to 'session' (results land in a dedicated chat session the user reads) — this is the right choice for 'summarize for me' / 'send to me'. Do NOT go hunting for the user's email address; only use an email MCP tool name here if the user explicitly asked to be emailed AND an address is already known."}
+                    "output_target": {"type": "string", "description": "Where results go. Defaults to 'session' (results land in a dedicated chat session the user reads) — this is the right choice for 'summarize for me' / 'send to me'. Do NOT go hunting for the user's email address; only use an email MCP tool name here if the user explicitly asked to be emailed AND an address is already known."},
+                    "crew_member_id": {"type": "string", "description": "Assign the task to a crew member (an assistant/persona the user has set up). The task then runs with that crew member's persona, model, endpoint, tool allowlist and timezone. Only use an id the user has actually given you or that came back from a crew listing — never invent one. Pass an empty string on edit to unassign."}
                 },
                 "required": ["action"]
             }

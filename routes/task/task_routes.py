@@ -10,7 +10,7 @@ from typing import Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from core.database import SessionLocal, ScheduledTask, TaskRun
+from core.database import SessionLocal, ScheduledTask, TaskRun, CrewMember
 from core.constants import internal_api_base
 from src.auth_helpers import get_current_user
 from src.constants import DATA_DIR, EMAIL_URGENCY_CACHE_DIR
@@ -157,6 +157,16 @@ class TaskCreate(BaseModel):
     then_task_id: Optional[str] = None            # chain: run this task after success
     notifications_enabled: Optional[bool] = None  # None lets action-specific defaults apply
     character_id: Optional[str] = None             # built-in persona id (PERSONAS) — biases output voice
+    # Assign the task to a crew member (personal assistant / custom crew).
+    # The executor already honours this — verified against the source, not
+    # assumed: `_execute_llm_task` loads the row and takes its `personality`
+    # as the system prompt, plus `model`, `endpoint_url` and the
+    # `enabled_tools` allowlist (src/task_scheduler.py:1625-1636, :1685-1686,
+    # :1719-1727); `_deliver_task_result` resolves the delivery session's
+    # model/endpoint from it (:1817-1824); `_resolve_task_timezone` reads its
+    # IANA timezone so the schedule fires in the crew member's local time
+    # (:316-327). Empty string clears the link.
+    crew_member_id: Optional[str] = None
 
 
 class TaskUpdate(BaseModel):
@@ -178,6 +188,7 @@ class TaskUpdate(BaseModel):
     then_task_id: Optional[str] = None
     notifications_enabled: Optional[bool] = None
     character_id: Optional[str] = None
+    crew_member_id: Optional[str] = None          # see TaskCreate.crew_member_id
 
 
 def _display_task_name(t: ScheduledTask) -> str:
@@ -448,6 +459,27 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             raise HTTPException(404, "Chained task not found")
         return target.id
 
+    def _validate_crew_member_id(db, crew_member_id: Optional[str], user: Optional[str]) -> Optional[str]:
+        """Resolve an assignee crew member, scoped to the caller.
+
+        Owner-scoped for the same reason `_validate_then_task_id` is: the
+        executor loads this row and runs the task with the crew member's
+        `personality` (its system prompt), `model`, `endpoint_url` and
+        `enabled_tools`. An unscoped id would let any authenticated user run a
+        task under another user's persona and read their prompt back out of
+        the task's own session. Empty string clears the assignment.
+        """
+        target_id = (crew_member_id or "").strip()
+        if not target_id:
+            return None
+        q = db.query(CrewMember).filter(CrewMember.id == target_id)
+        if user:
+            q = q.filter(CrewMember.owner == user)
+        crew = q.first()
+        if not crew:
+            raise HTTPException(404, "Crew member not found")
+        return crew.id
+
     @router.post("")
     async def create_task(request: Request, req: TaskCreate):
         user = _owner(request)
@@ -511,6 +543,7 @@ def setup_task_routes(task_scheduler) -> APIRouter:
         db = SessionLocal()
         try:
             then_task_id = _validate_then_task_id(db, req.then_task_id, user)
+            crew_member_id = _validate_crew_member_id(db, req.crew_member_id, user)
             notifications_enabled = (
                 False if req.task_type == "action" and req.notifications_enabled is None
                 else bool(req.notifications_enabled) if req.notifications_enabled is not None
@@ -550,6 +583,7 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                 webhook_token=webhook_token,
                 notifications_enabled=notifications_enabled,
                 character_id=(req.character_id or None),
+                crew_member_id=crew_member_id,
             )
             db.add(task)
             db.commit()
@@ -708,6 +742,10 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             if req.character_id is not None:
                 # Empty string clears the persona; non-empty stores the id.
                 task.character_id = req.character_id or None
+            if req.crew_member_id is not None:
+                # Empty string clears the assignment; non-empty must resolve to
+                # a crew member this caller owns.
+                task.crew_member_id = _validate_crew_member_id(db, req.crew_member_id, user)
             if req.cron_expression is not None:
                 if req.cron_expression:
                     try:

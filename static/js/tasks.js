@@ -2129,9 +2129,21 @@ async function _renderActivityView() {
   let _solo = null;  // 'cat:<Category>' | 'status:error' | null
 
   const _entryCat = (e) => _categoryLabel(e.taskName);
-  const _entryStatus = (e) =>
-    (e.status === 'success' || _classifyResult(e.result) === 'ok') ? 'ok'
-    : (e.status === 'error' || e.status === 'failed' || _classifyResult(e.result) === 'error') ? 'error' : 'info';
+  // Prefer the run's own status over a text-scan of its output, matching the
+  // renderer below. The old form fell through to _classifyResult, a regex over
+  // `result` for /error|failed|exception|traceback/ — so an `aborted` run (user
+  // stop, server restart) whose partial output mentioned an error was filed
+  // under Errors. core/database.py's status block says folding infrastructure
+  // events into `error` corrupts every error-rate statistic; this is where it
+  // was happening. Text-scan remains the fallback for older rows with no status.
+  const _entryStatus = (e) => {
+    if (e.status === 'success') return 'ok';
+    if (e.status === 'error' || e.status === 'failed') return 'error';
+    if (e.status === 'skipped' || e.status === 'aborted') return 'info';
+    if (e.status === 'queued' || e.status === 'running') return 'info';
+    const scanned = _classifyResult(e.result);
+    return scanned === 'ok' ? 'ok' : scanned === 'error' ? 'error' : 'info';
+  };
   const _isNotification = (e) => e.output_target === 'notification';
 
   const _matchesSolo = (e) => {

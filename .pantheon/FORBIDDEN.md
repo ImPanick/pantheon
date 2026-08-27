@@ -117,7 +117,7 @@ why that block goes. For everything below, something is.
 | `require_admin` | Privilege escalation. |
 | Host-Docker flag off · localhost bypass off | Host root-equivalence; auth bypass. |
 | Outbound-email confirmation on by default | Prompt injection → real sent mail. |
-| The plan-mode read-only allowlist (24 tools) | Fail-safe by construction — a newly added tool is blocked by default. Shell is excluded deliberately, with a written rationale. |
+| The plan-mode read-only allowlist (25 tools) | Fail-safe by construction — a newly added tool is blocked by default. Shell is excluded deliberately, with a written rationale. |
 | The approval store's seal, TTL, single-use consumption and owner binding | Dismissing a card retires it but preserves the taint, so it cannot launder an action. |
 
 ### Widen only with the stated control kept

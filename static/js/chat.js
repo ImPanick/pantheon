@@ -832,6 +832,10 @@ import { loadPanel } from './panels.js';
       try { requestAnimationFrame(() => _wireArrowUpRecall(document.getElementById('message'))); } catch (_) {}
       setTimeout(() => _wireArrowUpRecall(document.getElementById('message')), 250);
     }
+
+    // Restore the persisted message queue and start watching #chat-history so
+    // queued bubbles are re-drawn after every session switch (P6-01, P6-02).
+    _initQueuedRequests();
   }
 
   // addMessage, createMsgFooter, displayMetrics, hideWelcomeScreen, showWelcomeScreen
@@ -911,7 +915,21 @@ import { loadPanel } from './panels.js';
   let _queuedPromoteTimer = null;
   let _queuedRequestSeq = 0;
   let _queuedBubbleHost = null;
+  let _queuedRerenderTimer = null;
+  let _queuedHistoryObserver = null;
+  let _queuedRestoreDone = false;
   let _pendingApprovedPlan = '';
+  // Attachment meta for a send whose bytes were uploaded earlier (a queue
+  // drain). Consumed in the same place, and by the same rule, as
+  // `_pendingRegenAttachments` — one attachment path, not two.
+  let _pendingSendAttachInfo = null;
+
+  // P6-02 — the queue survives a reload. Stored through the same `Storage`
+  // helper every other per-session browser preference in this app already uses
+  // (`lastSessionId` in sessions.js, PLAN_STORAGE_KEY above). No second store.
+  const QUEUE_STORAGE_KEY = 'pantheon-queued-requests';
+  const QUEUE_MAX_PERSISTED = 20;          // bound the row; a queue is not an archive
+  const QUEUE_MAX_AGE_MS = 24 * 60 * 60 * 1000;  // a day-old prompt is stale, not queued
 
   function _extractPlanText(text) {
     const raw = String(text || '').trim();
@@ -971,6 +989,78 @@ import { loadPanel } from './panels.js';
     return String(s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
+  // ── Queue identity + persistence (P6-01, P6-02) ─────────────────────────
+
+  function _currentSessionIdSafe() {
+    try {
+      return (sessionModule && sessionModule.getCurrentSessionId && sessionModule.getCurrentSessionId()) || '';
+    } catch (_) { return ''; }
+  }
+
+  function _queuedItemsForSession(sid) {
+    return sid ? _queuedAgentRequests.filter(it => it && it.sessionId === sid) : [];
+  }
+
+  /** Write the queue to localStorage. `previewUrl` is a blob: URL and is dead
+   *  the moment the page reloads, so it is deliberately not stored; an item
+   *  still uploading is not stored either, because its ids do not exist yet. */
+  function _persistQueuedRequests() {
+    try {
+      const rows = _queuedAgentRequests
+        .filter(it => it && it.sessionId && !it.pendingUpload)
+        .slice(0, QUEUE_MAX_PERSISTED)
+        .map(it => ({
+          sessionId: it.sessionId,
+          message: it.message,
+          createdAt: it.createdAt,
+          attachmentIds: Array.isArray(it.attachmentIds) ? it.attachmentIds.slice() : [],
+          attachments: (it.attachments || []).map(a => ({
+            name: a.name || '', size: a.size || 0, mime: a.mime || '',
+            id: a.id || '', width: a.width || 0, height: a.height || 0,
+          })),
+        }));
+      if (rows.length) Storage.setJSON(QUEUE_STORAGE_KEY, rows);
+      else Storage.remove(QUEUE_STORAGE_KEY);
+    } catch (_) { /* best-effort — the live queue still works without it */ }
+  }
+
+  /** Read the queue back after a reload. Restored items are marked `restored`
+   *  and NEVER auto-fire: the stream they were waiting behind belongs to a page
+   *  load that no longer exists, so firing them would replay a stale prompt.
+   *  They re-arm only when a stream for their own session ends in THIS load
+   *  (see `_drainQueuedAgentRequests`); otherwise they wait for a click. */
+  function _restoreQueuedRequests() {
+    if (_queuedRestoreDone) return;
+    _queuedRestoreDone = true;
+    let rows = [];
+    try { rows = Storage.getJSON(QUEUE_STORAGE_KEY, []) || []; } catch (_) { rows = []; }
+    if (!Array.isArray(rows) || !rows.length) return;
+    const now = Date.now();
+    let dropped = false;
+    for (const row of rows.slice(0, QUEUE_MAX_PERSISTED)) {
+      const sid = row && String(row.sessionId || '');
+      const msg = row && String(row.message || '');
+      const created = Number(row && row.createdAt) || 0;
+      const atts = (row && Array.isArray(row.attachmentIds)) ? row.attachmentIds.filter(Boolean) : [];
+      if (!sid || (!msg.trim() && !atts.length) || !created || now - created > QUEUE_MAX_AGE_MS) {
+        dropped = true;
+        continue;
+      }
+      _queuedAgentRequests.push({
+        id: `q${++_queuedRequestSeq}`,
+        sessionId: sid,
+        message: msg,
+        createdAt: created,
+        attachmentIds: atts,
+        attachments: Array.isArray(row.attachments) ? row.attachments : [],
+        pendingUpload: false,
+        restored: true,
+        el: null,
+      });
+    }
+    if (dropped) _persistQueuedRequests();
+  }
+
   function _ensureQueuedBubbleHost() {
     const chatBox = document.getElementById('chat-history');
     if (!chatBox) return null;
@@ -986,21 +1076,100 @@ import { loadPanel } from './panels.js';
     return host;
   }
 
+  /** The bubble's inner markup. `.msg`/`.msg-user`/`.body`/`.queued-pill` are
+   *  load-bearing names (FORBIDDEN.md) and the pill markup is reproduced
+   *  exactly; the attachment count reuses `.queued-pill` so it needs no new CSS. */
+  function _queuedBubbleHtml(item) {
+    const n = (item.attachments && item.attachments.length) || 0;
+    const play = '<svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>';
+    const clip = '<svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M21 12.8L12.2 21.6a5 5 0 0 1-7-7L14 5.7a3.3 3.3 0 0 1 4.7 4.7l-8.8 8.8a1.7 1.7 0 0 1-2.4-2.4l8.2-8.1"/></svg>';
+    let label;
+    if (item.pendingUpload) label = `<span class="queued-pill">Uploading…</span>`;
+    else if (item.restored) label = `<span class="queued-pill">${play}Queued · click to send</span>`;
+    else label = `<span class="queued-pill">${play}Queued</span>`;
+    const attach = n ? ` <span class="queued-pill">${clip}${n}</span>` : '';
+    return `<div class="role">You ${label}${attach}</div><div class="body">${_escapeQueueText(item.message)}</div>`;
+  }
+
+  function _paintQueuedBubble(item) {
+    if (!item || !item.el || !item.el.isConnected) return;
+    item.el.innerHTML = _queuedBubbleHtml(item);
+    item.el.title = item.pendingUpload
+      ? 'Uploading attachment - this sends when the current response finishes'
+      : (item.restored
+        ? 'Queued before a reload - click to send it now'
+        : 'Queued - click to send now and stop the current response');
+  }
+
   function _createQueuedBubble(item) {
     const host = _ensureQueuedBubbleHost();
     if (!host) return null;
     const wrap = document.createElement('div');
     wrap.className = 'msg msg-user msg-user-queued';
     wrap.dataset.queueId = item.id;
-    wrap.title = 'Queued - click to send now and stop the current response';
-    wrap.innerHTML = `<div class="role">You <span class="queued-pill"><svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>Queued</span></div><div class="body">${_escapeQueueText(item.message)}</div>`;
     wrap.addEventListener('click', (ev) => {
       if (ev.target && ev.target.closest && ev.target.closest('button, a, textarea, input')) return;
       _promoteQueuedRequest(item.id);
     });
     host.appendChild(wrap);
+    item.el = wrap;
+    _paintQueuedBubble(item);
     uiModule.scrollHistory();
     return wrap;
+  }
+
+  /** P6-01: bubbles live in `#chat-history`, which every session switch wipes.
+   *  Re-draw this session's queue and drop any bubble belonging to another. */
+  function _renderQueuedRequestsForCurrentSession() {
+    const sid = _currentSessionIdSafe();
+    for (const it of _queuedAgentRequests) {
+      if (!it) continue;
+      if (it.el && it.sessionId !== sid && it.el.parentNode) it.el.remove();
+      if (it.el && !it.el.isConnected) it.el = null;
+    }
+    const mine = _queuedItemsForSession(sid);
+    if (!mine.length) return;
+    if (!document.getElementById('chat-history')) return;
+    for (const it of mine) {
+      if (it.el && it.el.isConnected) continue;
+      _createQueuedBubble(it);
+    }
+  }
+
+  /** Nothing in this app broadcasts a session switch, and `#chat-history` is
+   *  owned by sessions.js. Watching its child list is the one hook chat.js has
+   *  that catches every wipe — switch, new chat, delete, history re-page. */
+  function _watchChatHistoryForQueue() {
+    if (_queuedHistoryObserver) return true;
+    const box = document.getElementById('chat-history');
+    if (!box || typeof MutationObserver !== 'function') return false;
+    _queuedHistoryObserver = new MutationObserver(() => {
+      if (!_queuedAgentRequests.length) return;
+      const sid = _currentSessionIdSafe();
+      const mine = _queuedItemsForSession(sid);
+      const strays = _queuedAgentRequests.some(it => it && it.el && it.el.isConnected && it.sessionId !== sid);
+      if (!strays && mine.every(it => it.el && it.el.isConnected)) return;
+      if (_queuedRerenderTimer) return;
+      _queuedRerenderTimer = setTimeout(() => {
+        _queuedRerenderTimer = null;
+        if (!_queuedBubbleHost || !_queuedBubbleHost.isConnected) _queuedBubbleHost = null;
+        _renderQueuedRequestsForCurrentSession();
+        _drainQueuedAgentRequests();
+      }, 60);
+    });
+    _queuedHistoryObserver.observe(box, { childList: true });
+    return true;
+  }
+
+  function _initQueuedRequests() {
+    _restoreQueuedRequests();
+    _watchChatHistoryForQueue();
+    _renderQueuedRequestsForCurrentSession();
+    // Two short retries, unconditionally: #chat-history can be templated in
+    // after init, and the startup session restore can render into an already
+    // empty node — which produces no mutation record for the observer to see.
+    setTimeout(() => { _watchChatHistoryForQueue(); _renderQueuedRequestsForCurrentSession(); }, 400);
+    setTimeout(() => { _watchChatHistoryForQueue(); _renderQueuedRequestsForCurrentSession(); }, 2000);
   }
 
   function _removeQueuedRequest(id) {
@@ -1008,12 +1177,50 @@ import { loadPanel } from './panels.js';
     if (idx < 0) return null;
     const [item] = _queuedAgentRequests.splice(idx, 1);
     if (item && item.el && item.el.parentNode) item.el.remove();
+    _persistQueuedRequests();
     return item;
   }
 
-  function _setComposerAndSend(message) {
+  function _clearComposerAfterQueue(input) {
+    if (!input) return;
+    input.value = '';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    if (uiModule.autoResize) uiModule.autoResize(input);
+    try { window._updateSendBtnIcon && window._updateSendBtnIcon(); } catch (_) {}
+  }
+
+  /** Put a queued item's text back where the user typed it. Used when the
+   *  queue cannot honour the item — never drop the text on the floor. */
+  function _restoreComposerFromQueueItem(item) {
+    const input = uiModule.el('message');
+    if (!input || !item) return;
+    const typed = input.value || '';
+    input.value = (item.message || '') + (typed.trim() ? '\n' + typed : '');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    if (uiModule.autoResize) uiModule.autoResize(input);
+    try { window._updateSendBtnIcon && window._updateSendBtnIcon(); } catch (_) {}
+  }
+
+  function _setComposerAndSend(message, item) {
     const input = uiModule.el('message');
     if (!input) return false;
+    // Every path that carries a queued item must arrive here already checked.
+    // This is the backstop, not the guard: a queued item is addressed to one
+    // session and posting it anywhere else is the P6-01 defect.
+    if (item && item.sessionId && item.sessionId !== _currentSessionIdSafe()) {
+      _requeueAfterSessionChange(item);
+      return false;
+    }
+    if (item && Array.isArray(item.attachmentIds) && item.attachmentIds.length) {
+      // P6-03: the files were uploaded when the item was queued. Re-carry their
+      // ids through the slot a resend/regenerate already uses, so the queued
+      // send goes down exactly one attachment path.
+      _pendingRegenAttachments = (_pendingRegenAttachments || []).concat(item.attachmentIds);
+      const stillPending = (fileHandlerModule.getPendingCount && fileHandlerModule.getPendingCount()) || 0;
+      if (!stillPending && item.attachments && item.attachments.length) {
+        _pendingSendAttachInfo = item.attachments;
+      }
+    }
     input.value = message;
     input.dispatchEvent(new Event('input', { bubbles: true }));
     if (uiModule.autoResize) uiModule.autoResize(input);
@@ -1034,17 +1241,48 @@ import { loadPanel } from './panels.js';
         return;
       }
       _queuedPromoteTimer = null;
-      _setComposerAndSend(item.message);
+      // The click-time guard in _promoteQueuedRequest is not enough. This poller
+      // waits out the whole abort round trip — first retry at +320ms, then every
+      // 220ms — and the user can switch chats inside that window. Send time is
+      // the only moment worth trusting, so check again here.
+      if (item.sessionId && item.sessionId !== _currentSessionIdSafe()) {
+        _requeueAfterSessionChange(item);
+        return;
+      }
+      _setComposerAndSend(item.message, item);
     };
     if (_queuedPromoteTimer) clearTimeout(_queuedPromoteTimer);
     _queuedPromoteTimer = setTimeout(trySend, 320);
   }
 
+  /** The item was promoted out of the queue and then its session went away
+   *  before it could send. Put it back where it came from rather than dropping
+   *  it — it is still the user's message, and it is still addressed to a real
+   *  conversation. It re-renders when they return to that session. */
+  function _requeueAfterSessionChange(item) {
+    if (!item) return;
+    item.el = null;
+    if (!_queuedAgentRequests.some(q => q && q.id === item.id)) {
+      _queuedAgentRequests.push(item);
+      _persistQueuedRequests();
+    }
+    _renderQueuedRequestsForCurrentSession();
+  }
+
   function _promoteQueuedRequest(id) {
+    const peek = _queuedAgentRequests.find(it => it && it.id === id);
+    if (!peek) return;
+    if (peek.pendingUpload) {
+      try { uiModule.showToast && uiModule.showToast('Still uploading the attachment…'); } catch (_) {}
+      return;
+    }
+    // A bubble is only ever drawn inside its own session, but the click can
+    // still land during a switch. Never post one session's text into another.
+    if (peek.sessionId && peek.sessionId !== _currentSessionIdSafe()) return;
     const item = _removeQueuedRequest(id);
     if (!item) return;
     if (!isStreaming && !_sendInFlight) {
-      _setComposerAndSend(item.message);
+      _setComposerAndSend(item.message, item);
       return;
     }
     try { uiModule.showToast && uiModule.showToast('Sending queued request now'); } catch (_) {}
@@ -1058,44 +1296,122 @@ import { loadPanel } from './panels.js';
     _sendQueuedWhenIdle(item);
   }
 
-  function _queueAgentRequest(message) {
+  /** Returns the created item, or null. (It used to return a boolean; the
+   *  caller now needs the item to finish an in-flight attachment upload.) */
+  function _queueAgentRequest(message, opts = {}) {
     const msg = String(message || '').trim();
-    if (!msg) return false;
-    const item = { id: `q${++_queuedRequestSeq}`, message: msg, createdAt: Date.now(), el: null };
-    item.el = _createQueuedBubble(item);
+    const attachments = Array.isArray(opts.attachments) ? opts.attachments : [];
+    if (!msg && !attachments.length) return null;
+    const sid = _currentSessionIdSafe();
+    if (!sid) {
+      // No session to bind to means no way to know where this belongs later.
+      // Refuse rather than queue an item that could fire into another chat.
+      return null;
+    }
+    const item = {
+      id: `q${++_queuedRequestSeq}`,
+      sessionId: sid,
+      message: msg,
+      createdAt: Date.now(),
+      attachments,
+      attachmentIds: Array.isArray(opts.attachmentIds) ? opts.attachmentIds : [],
+      pendingUpload: !!opts.pendingUpload,
+      restored: false,
+      el: null,
+    };
+    _createQueuedBubble(item);
     _queuedAgentRequests.push(item);
-    try { uiModule.showToast && uiModule.showToast(_queuedAgentRequests.length === 1 ? 'Queued for after this response' : `${_queuedAgentRequests.length} requests queued`); } catch (_) {}
-    return true;
+    _persistQueuedRequests();
+    const mine = _queuedItemsForSession(sid).length;
+    try { uiModule.showToast && uiModule.showToast(mine === 1 ? 'Queued for after this response' : `${mine} requests queued`); } catch (_) {}
+    return item;
   }
 
   export function queueStreamingComposerRequest() {
     if (!isStreaming) return false;
     const queuedInput = uiModule.el('message');
     const queuedText = (queuedInput && queuedInput.value || '').trim();
-    if (!queuedText) return false;
-    if (fileHandlerModule.getPendingCount && fileHandlerModule.getPendingCount()) {
-      try { uiModule.showError && uiModule.showError('Finish the current response before queueing messages with attachments.'); } catch (_) {}
-      return true;
-    }
-    if (_queueAgentRequest(queuedText)) {
-      queuedInput.value = '';
-      queuedInput.dispatchEvent(new Event('input', { bubbles: true }));
-      if (uiModule.autoResize) uiModule.autoResize(queuedInput);
-      try { window._updateSendBtnIcon && window._updateSendBtnIcon(); } catch (_) {}
-    }
+    const pendingCount = (fileHandlerModule.getPendingCount && fileHandlerModule.getPendingCount()) || 0;
+    if (!queuedText && !pendingCount) return false;
+
+    // P6-03. This used to refuse outright — an error toast, `return true`, and
+    // every caller then skipped the submit, so Enter sent nothing at all. The
+    // attachment now rides the queue: upload it here, keep the ids on the item,
+    // and re-carry them at drain. Snapshot the meta BEFORE the upload, because
+    // uploadPending() empties the pending list on success.
+    const attachInfo = (pendingCount && fileHandlerModule.getPendingInfo)
+      ? fileHandlerModule.getPendingInfo()
+      : [];
+    const item = _queueAgentRequest(queuedText, {
+      attachments: attachInfo,
+      pendingUpload: pendingCount > 0,
+    });
+    if (!item) return false;
+    _clearComposerAfterQueue(queuedInput);
+    if (!pendingCount) return true;
+
+    Promise.resolve()
+      .then(() => fileHandlerModule.uploadPending({ sessionId: item.sessionId }))
+      .then((ids) => {
+        if (!Array.isArray(ids) || !ids.length) throw new Error('attachment upload returned no ids');
+        const meta = (fileHandlerModule.getLastUploadedMeta && fileHandlerModule.getLastUploadedMeta()) || [];
+        for (let i = 0; i < attachInfo.length && i < ids.length; i++) {
+          attachInfo[i].id = ids[i];
+          const m = meta[i];
+          if (m) {
+            if (m.width) attachInfo[i].width = m.width;
+            if (m.height) attachInfo[i].height = m.height;
+          }
+        }
+        item.attachmentIds = ids;
+        item.pendingUpload = false;
+        _paintQueuedBubble(item);
+        _persistQueuedRequests();
+        _drainQueuedAgentRequests();
+      })
+      .catch(() => {
+        // Never swallow the send. uploadPending() keeps pendingFiles on
+        // failure, so the strip still holds the files; put the text back too
+        // and the user can simply press Enter again.
+        _removeQueuedRequest(item.id);
+        _restoreComposerFromQueueItem(item);
+        try {
+          uiModule.showError && uiModule.showError('Attachment upload failed - your message and files were put back, try again.');
+        } catch (_) {}
+      });
     return true;
   }
 
-  function _drainQueuedAgentRequests() {
-    if (isStreaming || _sendInFlight || !_queuedAgentRequests.length) return;
+  /** `endedSessionId` names the session whose stream just finished in THIS page
+   *  load. It re-arms that session's restored items — their wait is genuinely
+   *  over — and nothing else. The drain itself only ever fires an item into the
+   *  session it was queued from (P6-01). */
+  function _drainQueuedAgentRequests(endedSessionId = null) {
+    if (endedSessionId) {
+      let rearmed = false;
+      for (const it of _queuedAgentRequests) {
+        if (it && it.restored && it.sessionId === endedSessionId) { it.restored = false; rearmed = true; }
+      }
+      if (rearmed) {
+        _persistQueuedRequests();
+        if (endedSessionId === _currentSessionIdSafe()) {
+          _queuedItemsForSession(endedSessionId).forEach(_paintQueuedBubble);
+        }
+      }
+    }
+    if (!_queuedAgentRequests.length) return;
     if (_queuedDrainTimer) return;
     _queuedDrainTimer = setTimeout(() => {
       _queuedDrainTimer = null;
       if (isStreaming || _sendInFlight || !_queuedAgentRequests.length) return;
-      const next = _queuedAgentRequests[0];
+      const sid = _currentSessionIdSafe();
+      if (!sid) return;
+      const next = _queuedAgentRequests.find(
+        it => it && it.sessionId === sid && !it.pendingUpload && !it.restored
+      );
       if (!next) return;
       _removeQueuedRequest(next.id);
-      _setComposerAndSend(next.message);
+      _setComposerAndSend(next.message, next);
     }, 180);
   }
 
@@ -1182,7 +1498,7 @@ import { loadPanel } from './panels.js';
         const messageInput = uiModule.el('message');
         if (messageInput) messageInput.disabled = false;
         currentAccumulated = '';
-        _drainQueuedAgentRequests();
+        _drainQueuedAgentRequests(sessionId);
         return;
       }
       // Render whatever was accumulated so far
@@ -1596,7 +1912,13 @@ import { loadPanel } from './panels.js';
       else if (_autoContinuePending) { _autoContinuePending = false; }
       const _pendingAttachInfo = !approvalForSend && fileHandlerModule.getPendingCount()
         ? fileHandlerModule.getPendingInfo()
-        : null;
+        // A queue drain uploaded its files back when the item was queued, so
+        // there is nothing pending to read the meta from: it travels on the
+        // item instead, through the slot `_setComposerAndSend` filled.
+        : (!approvalForSend && _pendingSendAttachInfo && _pendingSendAttachInfo.length
+          ? _pendingSendAttachInfo
+          : null);
+      if (!approvalForSend) _pendingSendAttachInfo = null;
       // Pre-read importable file contents before upload clears pending files
       const IMPORTABLE_EXT = /\.(txt|py|js|ts|html|htm|css|md|json|csv|yml|yaml|sh|sql|rs|go|java|c|cpp|h|rb|php|xml|jsx|tsx|log|toml|ini|conf|env|vue|svelte|scss|sass|less)$/i;
       const _importableFiles = [];
@@ -1688,9 +2010,12 @@ import { loadPanel } from './panels.js';
         for (let i = 0; i < _pendingAttachInfo.length && i < ids.length; i++) {
           _pendingAttachInfo[i].id = ids[i];
           const _m = _meta[i];
+          // Never overwrite a dimension the info already carries: on a queue
+          // drain it was stamped from that item's own upload, and
+          // getLastUploadedMeta() now describes some later upload.
           if (_m) {
-            if (_m.width)  _pendingAttachInfo[i].width  = _m.width;
-            if (_m.height) _pendingAttachInfo[i].height = _m.height;
+            if (_m.width && !_pendingAttachInfo[i].width)   _pendingAttachInfo[i].width  = _m.width;
+            if (_m.height && !_pendingAttachInfo[i].height) _pendingAttachInfo[i].height = _m.height;
           }
         }
         chatRenderer.updateMessageAttachments(_userMsgEl, _pendingAttachInfo);
@@ -4669,7 +4994,9 @@ import { loadPanel } from './panels.js';
           sessionModule.loadSessions();
         }
       }, 3000);
-      _drainQueuedAgentRequests();
+      // Name the session whose stream just ended: the drain fires only items
+      // queued from it, never whichever chat happens to be open now (P6-01).
+      _drainQueuedAgentRequests(streamSessionId);
     }
   }
 
@@ -4814,7 +5141,7 @@ import { loadPanel } from './panels.js';
       if (submitBtn) updateSubmitButton('idle', submitBtn);
       const messageInput = uiModule.el('message');
       if (messageInput) messageInput.disabled = false;
-      _drainQueuedAgentRequests();
+      _drainQueuedAgentRequests(sid);
     } catch (err) {
       console.warn('[stream-watchdog] Stream status probe failed:', err);
     } finally {
@@ -6686,6 +7013,11 @@ import { loadPanel } from './panels.js';
     addMessage: chatRenderer.addMessage,
     displayMetrics: chatRenderer.displayMetrics,
     handleChatSubmit,
+    // app.js calls this at three composer-Enter sites through the default
+    // export. It was only ever a named export, so all three guards
+    // (`chatModule.queueStreamingComposerRequest && ...`) silently resolved to
+    // undefined and fell through — Law 13, a handler with no reachable caller.
+    queueStreamingComposerRequest,
     abortCurrentRequest,
     detachCurrentStream,
     checkBackgroundStream,

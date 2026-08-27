@@ -3375,7 +3375,12 @@ PLAN_MODE_DIRECTIVE = (
     "- [ ] next action\n"
     "Each item = one concrete action (file to create/edit, command to run, side "
     "effect). Do not execute. Do not end with 'Done' or anything implying the work "
-    "is finished. End your turn with the checklist."
+    "is finished. End your turn with the checklist.\n"
+    "\n"
+    "IF THE REQUEST IS AMBIGUOUS, ASK. `ask_user` is available in plan mode and is "
+    "read-only — it pauses and waits for a person. A plan built on a guess about "
+    "what was meant is worse than a question, because the guess is invisible once "
+    "the plan is approved. Ask first, then plan."
 )
 
 
@@ -4406,6 +4411,24 @@ async def stream_agent_loop(
     _effectful_used = False
     _verifier_rounds = 0
     _verifier_instruction = _extract_last_user_message(messages)
+    # Plan execution: the last user message is the bare trigger the Execute
+    # button sends ("Execute the approved plan."), which names no deliverables,
+    # so the verifier would be judging the work against nothing and pass every
+    # time. On these turns the approved checklist IS the request — the frontend
+    # posts it back as `approved_plan` — so verify against that instead. The
+    # trigger line is kept (short, capped) because a user can type their own
+    # words over it before hitting send. Slices keep the composed instruction
+    # inside _run_verifier_subagent's 4000-char prompt budget.
+    if approved_plan and approved_plan.strip():
+        _plan_turn_msg = (_verifier_instruction or "").strip()
+        _verifier_instruction = (
+            "The user approved the plan below and asked for it to be executed, "
+            "so the plan IS the request: judge the work against every step of "
+            "it.\n\n"
+            + (f"User's message this turn: {_plan_turn_msg[:400]}\n\n" if _plan_turn_msg else "")
+            + "Approved plan:\n"
+            + approved_plan.strip()[:3000]
+        )
     real_input_tokens = 0   # Accumulated real usage from API
     real_output_tokens = 0
     last_round_input_tokens = 0  # Last round's input tokens (for context % peak)
@@ -5495,8 +5518,29 @@ async def stream_agent_loop(
             # promise: short response (<400 chars), no fenced code/answer,
             # and an action-intent phrase was matched. Long answers that
             # happen to contain "let me know" are not stalls.
+            # Plan mode is exempt: describing un-taken actions IS the job there.
+            # PLAN_MODE_DIRECTIVE orders a checklist of things the agent has NOT
+            # done, so a plan that opens "I'll check the config, then …" matches
+            # _INTENT_RE and gets nudged to "DO IT NOW: emit the actual function
+            # call" — an instruction to break the mode it is currently in.
+            #
+            # Corrected 2026-08-27: an earlier version of this comment justified
+            # the exemption with "every mutating tool is denied for the turn, so
+            # the nudge aims at tools the gate would reject anyway". That is not
+            # true and the distinction matters. Plan mode is an ALLOWLIST — 25
+            # read-only tools stay enabled (PLAN_MODE_READONLY_TOOLS in
+            # src/tool_security.py), and PLAN_MODE_DIRECTIVE explicitly orders
+            # the model to use them to ground the plan. So the nudge is not
+            # harmless-because-blocked; it is harmful because it pushes the model
+            # from planning into acting on tools that DO work. The exemption is
+            # right. The old reason for it was wrong, and anyone re-deriving the
+            # decision from that sentence would have reached the wrong answer.
+            #
+            # Execution turns (approved_plan) are NOT exempt: once the plan is
+            # approved, acting is the job and a promise without a call is a stall.
             _looks_like_promise = (
                 not guide_only
+                and not plan_mode
                 and _intent_match is not None
                 and len(_intent_text) < 400
                 and "```" not in _intent_text

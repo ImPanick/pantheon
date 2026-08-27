@@ -54,7 +54,7 @@ soon as its dependency lands.
 | P3 | Mechanical hygiene | 19 | 14 | **3** | **2** |
 | P4 | The wire — the real glass box | 28 | 28 | 0 | 0 |
 | P5 | Trace & composer restyle | 16 | 16 | 0 | 0 |
-| P6 | Queue & Plan | 18 | 18 | 0 | 0 |
+| P6 | Queue & Plan | 18 | 8 | 0 | **10** |
 | P7 | Trust ladder & control plane | 11 | 9 | **1** | **1** |
 | P8 | The Workshop | 48 | 44 | **3** | **1** |
 | P9 | Feature surfaces | 18 | 17 | 0 | **1** |
@@ -63,7 +63,7 @@ soon as its dependency lands.
 | P12 | Limits & the control plane | 10 | 10 | 0 | 0 |
 | P13 | The Brain | 12 | 12 | 0 | 0 |
 | P14 | Measurement | 7 | 7 | 0 | 0 |
-| **Total** | | **291** | **231** | **11** | **49** | | **288** | **239** | **11** | **38** | | **288** | **253** | **1** | **34** | | **288** | **255** | **1** | **32** | | **288** | **257** | **1** | **30** | | **287** | **256** | **1** | **30** | | **266** | **235** | **1** | **30** | | **253** | **222** | **1** | **30** | | **250** | **219** | **1** | **30** | | **231** | **200** | **1** | **30** | | **231** | **211** | **0** | **20** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
+| **Total** | | **291** | **221** | **11** | **59** | | **291** | **231** | **11** | **49** | | **288** | **239** | **11** | **38** | | **288** | **253** | **1** | **34** | | **288** | **255** | **1** | **32** | | **288** | **257** | **1** | **30** | | **287** | **256** | **1** | **30** | | **266** | **235** | **1** | **30** | | **253** | **222** | **1** | **30** | | **250** | **219** | **1** | **30** | | **231** | **200** | **1** | **30** | | **231** | **211** | **0** | **20** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -88,12 +88,19 @@ Ten of its rows landed on 2026-08-27 — see § Progress. What is left of it:
 - **`P0-21b`, `P0-31`** — new, from the run: twelve bundled packages with no notice anywhere, and
   49 unaudited `ody-` storage-key hits.
 
-### Run `P6` next — queue and plan mode
+### `P6` wave 1 is done; wave 2 is the plan surface
 
-13 of 18 rows verified accurate against the source, contained to `chat.js`, `app.js` and two
-scheduler files, and no cross-phase gate. `P6-01/02/03` is one coherent user-facing bug cluster:
-queued messages fire into the wrong chat, vanish on reload, and silently swallow a send with
-attachments. That is the first thing in this tracker a user would notice being fixed.
+Eight rows remain, and they are one coherent piece of work rather than eight errands: **the
+docked plan window (`P6-11`), its entry control (`P6-12`), a step model with ids (`P6-13`), and
+the agent's own todo renderer (`P6-17`).** `P6-11` is the anchor — three prompt strings tell the
+model the window exists and a code comment claims it renders, and nothing has ever rendered it.
+Mid-execution `update_plan` writes to browser storage with no visible effect, which means the
+prompt is currently telling the model something false about its own interface.
+
+That wave is UI-heavy and lands in `static/index.html`, `static/style.css` and a new module, so
+it does not contend with wave 1's files. `P6-04`, `P6-06` and `P6-07` sit behind it: all three
+say "reuse the thing that already exists" (the research job engine, its sequential/parallel
+picker, the Tasks activity view), and reuse is only judgeable once the plan surface is real.
 
 **Still out of scope on its own:** `P0-29`. The Cookbook → Forge sweep is 3,529 occurrences
 across 171 files and 43 paths — the largest blast radius in the programme, coupled to
@@ -117,6 +124,53 @@ unblocks five rows and its stated write location was wrong.
 *The one progress area. Newest first. One entry per completed section — two lines, a
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
+
+### P6 wave 1 — the queue bug cluster closed, and two fixes that needed a second pass
+**Ten rows done.** A queued message no longer fires into whichever chat happens to be open, the
+queue survives a reload, queueing with an attachment works instead of swallowing the send, and
+ten clicks on "solve with an agent" no longer start ten unbounded agent loops. Plan mode can ask
+a clarifying question, its verifier judges against the approved checklist instead of the literal
+string *"Execute the approved plan."*, and `crew_member_id` reaches the executor.
+
+**Refutation caught two things that would have shipped as green ticks, and both are the same
+shape: the fix was right and incomplete.**
+
+- **`P6-01` still leaked on a second path.** The auto-drain was genuinely fixed; the
+  click-to-promote path was not. It guarded at *click* time, then handed the item to a poller
+  retrying every 220ms with no check — so switching chats during the abort round trip still
+  posted one session's text into another. Guarded at *send* time instead, and a mismatched item
+  goes **back into the queue** rather than being dropped. Verified with the refuter's own attack
+  script: never fires into B, kept and addressed to A, still sends on returning to A.
+- **`P6-10` shipped half-wired.** The tool schema advertised `crew_member_id` while the executor
+  had never heard of it, so the model would accept the argument, report the task assigned, and
+  the value would vanish — the model confidently telling someone their task runs as Research Bot
+  when it does not. Now resolved through an owner-scoped lookup, with six tests pinning the
+  round trip, the cross-owner refusal, and schema-versus-executor agreement.
+
+**Four premises were wrong, including one this tracker itself wrote.** The run brief warned the
+integrator about a `P6-15` seam at `chat.js:961`; there was no seam — `chat.js` has posted
+`approved_plan` since before this phase and that line is the trigger, not the payload. `P6-14`'s
+mechanism was wrong (the tool was stripped from the prompt, not rejected by the gate — plan mode
+was mute, not lying). `P6-08`'s quoted comment was wrong twice over. And an implementer proposed
+a wording correction to `P6-03` that refutation showed was itself false; it was not applied.
+
+**Two comments were asserting things the tree contradicted, and both are corrected in place.**
+`P6-16`'s exemption was justified with "every mutating tool is denied anyway" — but plan mode is
+an *allowlist* with 25 read-only tools enabled and a directive ordering their use, so the nudge
+was harmful rather than harmless. And `core/database.py`'s new status block said `error` was the
+only status counting against a task's error rate while `static/js/tasks.js` text-scanned run
+output for the word "error" and filed aborted runs under Errors — fixed, with the one remaining
+violation named in the block and filed as `B07`.
+
+`AGENTS.md`'s Law 13 still said the wiring count was **78**. It has been **2** since the wiring
+run — the law against carrying numbers, carrying a number. Both refuters found it independently,
+which is how you know it was misleading rather than merely stale.
+
+**Suite: 5,779 passing, 19 failing, all 19 pre-existing and verified unchanged.** One of my own
+edits broke three tests on the way — adding the concurrency env var to `docker-compose.yml` alone
+tripped `test_gpu_compose_standalone.py`, which pins the standalone GPU files as base-plus-overlay.
+That is the suite doing its job, and it is why the setting now lands in all four places it has to
+exist rather than the one that was obvious.
 
 ### P0 licence run — ten rows closed, and the notices now travel
 **Eleven agents: five implementers on disjoint files, five refuters told to break the work, one
@@ -749,22 +803,22 @@ discards them. A receipt is that data kept instead of thrown away.
   steering redirects the one in flight. Two different verbs, and only one exists. Prior art has
   both on one key pair — Enter queues, Cmd/Ctrl+Enter steers — which is the right shape because
   it is the same intent at two urgencies. `Depends:` P6-01.
-- [ ] **P6-01** **Session-bind the queue — live bug.** Queue items carry no session id. Switching chats wipes the message list, destroying every queued bubble's element while the array keeps the items; when the old stream ends the prompt **fires into whichever chat is now open**, invisibly. Add the field, filter the drain on it, re-render bubbles on session switch.
-- [ ] **P6-02** Persist the queue. `_queuedAgentRequests` is a bare module array — a reload loses it silently.
-- [ ] **P6-03** Allow queueing with attachments — currently refused with an error that swallows the send.
+- [x] **P6-01** **Session-bind the queue — live bug.** Queue items carry no session id. Switching chats wipes the message list, destroying every queued bubble's element while the array keeps the items; when the old stream ends the prompt **fires into whichever chat is now open**, invisibly. Add the field, filter the drain on it, re-render bubbles on session switch. — **done:** queue items carry `sessionId`, set at queue time; the drain filters on it and bubbles re-render on session switch. **The fix needed a second pass:** refutation proved the click-to-promote path still leaked — `_promoteQueuedRequest` guarded at click time and then handed the item to a poller that retried every 220ms with no check, so switching chats during the abort round trip still posted one session's text into another. Guarded at *send* time instead (`chat.js` `trySend` plus a backstop in `_setComposerAndSend`), and a mismatched item is **put back in the queue** rather than dropped — it is still the user's message. Verified with the refuter's own attack: fires into B never, kept and addressed to A, and still sends correctly on returning to A.
+- [x] **P6-02** Persist the queue. `_queuedAgentRequests` is a bare module array — a reload loses it silently. — **done:** queue persisted through the app's existing `Storage` helper — no second store (`Law 14`). Restored items never auto-replay: they re-arm only on their own session's next ended stream, expire at 24h, and cap at 20 rows, so a reload cannot resurrect a stale prompt.
+- [x] **P6-03** Allow queueing with attachments — currently refused with an error that swallows the send. — **done:** attachments are uploaded at queue time and re-carried through the slot resend/regenerate already uses, so a queued send goes down exactly one attachment path. A failed upload returns the text **and** the files to the composer instead of eating them. *(The implementer proposed a wording correction to this line; refutation showed the line was already accurate and the correction was not applied — the tracker says "swallows the send" in all four places and nothing claimed the message disappears.)*
 - [ ] **P6-04** Build the queue panel: drag-reorder, edit in place, per-item mode/model/trust rung, start-now force bypass, pause, remove. **Clone the research job engine** (382 self-contained lines) rather than writing a new one — but **not "only two lines are research-specific"**. Re-measured 2026-08-27: **roughly 16 research-specific references across 7 endpoints** (scope: case-insensitive `research` in `research/jobs.js`). Still worth cloning; budget a generalisation pass rather than a find-and-replace.
-- [ ] **P6-05** Adopt the shipped status vocabulary: `queued → running → success | error | skipped | aborted`. `skipped` and `aborted` are load-bearing — `aborted` keeps infrastructure events out of error-rate stats. **The gap is a documentation gap, and it is the reason this row exists** (2026-08-27): `db.py:818`'s comment documents **3** statuses while `task_scheduler.py` actually writes **6**. Three real states are undocumented, so anything reading the comment instead of the code mis-handles them.
+- [x] **P6-05** Adopt the shipped status vocabulary: `queued → running → success | error | skipped | aborted`. `skipped` and `aborted` are load-bearing — `aborted` keeps infrastructure events out of error-rate stats. **The gap is a documentation gap, and it is the reason this row exists** (2026-08-27): `db.py:818`'s comment documents **3** statuses while `task_scheduler.py` actually writes **6**. Three real states are undocumented, so anything reading the comment instead of the code mis-handles them. — **done:** the six-value `TaskRun.status` vocabulary is documented at `core/database.py:810+` — what each means, which writer sets it, and why folding `aborted` into `error` corrupts error-rate statistics. **Refutation caught the block asserting something the tree contradicted**, so the audit came with it: `static/js/tasks.js` `_entryStatus` text-scanned run output for `/error|failed|exception|traceback/` and filed an `aborted` run under Errors whenever its partial output mentioned one — fixed to prefer the row's own status, matching its correct sibling in the same file. One violation stays open and is named in the block: the scheduler writes `error` on an admin-privilege refusal where the task never ran, which is `skipped` by these definitions. Changing a persisted status value earns its own row.
 - [ ] **P6-06** Sequential-vs-parallel picker. **Already built** in the research panel — reuse it. Parallel must allocate a session per item: one agent run per session is enforced.
 - [ ] **P6-07** Point the existing Tasks activity view at queue items rather than building a second queue UI. It already renders every status with shared elapsed timers, a force button and a stop button.
-- [ ] **P6-08** Make `_concurrency_cap` actually configurable — it sits next to `Semaphore(1)` and is documented as "a hard guarantee, not configurable".
-- [ ] **P6-09** Rewrite the todo "solve with an agent" button to enqueue instead of firing an unbounded raw stream. **Click ten todos and ten agent loops run at once**, with no progress and no cancel.
-- [ ] **P6-10** Expose `crew_member_id` in the task create/update schemas and the `manage_tasks` tool. It is read-only today and honoured by the executor — **this one field closes the roadmap's "todos assignable to an agent from the UI" item at the API layer.**
+- [x] **P6-08** Make `_concurrency_cap` actually configurable — it sits next to `Semaphore(1)` and is documented as "a hard guarantee, not configurable". — **done:** `_concurrency_cap` resolves through instance setting → env → built-in default, clamped to [1,16], re-read on settings change without a restart. **Registered in all four places it has to exist** — `DEFAULT_SETTINGS`, `.env.example`, and *all three* compose files: adding it only to `docker-compose.yml` broke `test_gpu_compose_standalone.py`, which pins the standalone GPU files as base-plus-overlay, and the suite caught it. The comment claiming the cap upheld "exactly one task at a time" was wrong twice over and is corrected in place: two paths already bypassed the semaphore, and `run_task_now(force=True)` neither checks nor adds `_executing`, so a forced trigger can overlap a task with itself. That is what `force` means; it is now written down.
+- [x] **P6-09** Rewrite the todo "solve with an agent" button to enqueue instead of firing an unbounded raw stream. **Click ten todos and ten agent loops run at once**, with no progress and no cancel. — **done:** both todo agent-solve entry points enqueue through a bounded one-at-a-time queue with visible position, live status and a real server-side stop. Baseline reproduced before the fix: ten clicks, **ten concurrent streams**, no progress and no cancel.
+- [x] **P6-10** Expose `crew_member_id` in the task create/update schemas and the `manage_tasks` tool. It is read-only today and honoured by the executor — **this one field closes the roadmap's "todos assignable to an agent from the UI" item at the API layer.** — **done:** `crew_member_id` exposed in the task create/update schemas and in `manage_tasks`. **It shipped half-wired and refutation caught it:** the tool schema advertised the field while `src/tools/system.py` had never heard of it, so the model would accept the argument, report the task assigned, and the value would be discarded — the model confidently telling a user their task runs as Research Bot when it does not. Now resolved through an owner-scoped lookup mirroring the route layer's, because the executor runs the task with that crew member's persona, model, endpoint and tool allowlist. `tests/test_manage_tasks_crew_member.py` (6 tests) pins the round trip, the cross-owner refusal, and the schema-versus-executor agreement.
 - [ ] **P6-11** **Build the docked plan window.** Three prompt strings tell the model it exists and a code comment claims it renders. **Nothing has ever rendered it** — mid-execution `update_plan` writes to browser storage with zero visible effect, and the prompt is telling the model something false about its own interface. Structured steps with per-step status, bound tool, effect, elapsed and result.
 - [ ] **P6-12** Give plan mode a real entry control. The toggle button resolves to nothing — the element does not exist; entry is Tab-in-composer or a mobile swipe, and the status pill can only turn it **off**. Its CSS is written and dead. **Do not use the three-up mode toggle** — it belongs to the model-serving panel.
 - [ ] **P6-13** Add a step model with ids. A plan is an opaque markdown string everywhere — storage, form field, prompt, tool argument — and progress is computed by counting ticked boxes in that string. `Depends:` P6-11.
-- [ ] **P6-14** **Let planning mode ask a question.** The clarifying-question tool is absent from the read-only allowlist, so the gate blocks it. A planning mode that cannot ask what you meant is planning blind.
-- [ ] **P6-15** **Pass the plan to the verifier.** It judges against the last user message, which during plan execution is literally the string *"Execute the approved plan"* — naming no deliverables. **The verifier is blind for the entire run.** One line.
-- [ ] **P6-16** Guard the narrating-without-acting supervisor against plan mode, where narrating **is** the job. One line.
+- [x] **P6-14** **Let planning mode ask a question.** The clarifying-question tool is absent from the read-only allowlist, so the gate blocks it. A planning mode that cannot ask what you meant is planning blind. — **done:** `ask_user` added to `PLAN_MODE_READONLY_TOOLS` (24 → 25), and `PLAN_MODE_DIRECTIVE` now tells the model the tool is there and to prefer asking over guessing — refutation caught that half missing, and an allowlist entry the prompt never mentions is a tool the model does not know it has. *(Premise mechanism corrected: the gate did not reject the call. `_assemble_prompt` computes `included = tool_names - disabled`, so the tool was stripped from the prompt entirely — plan mode was mute, not half-wired-and-lying.)*
+- [x] **P6-15** **Pass the plan to the verifier.** It judges against the last user message, which during plan execution is literally the string *"Execute the approved plan"* — naming no deliverables. **The verifier is blind for the entire run.** One line. — **done:** the verifier now judges plan-execution turns against the approved checklist instead of the bare trigger string. *(The roadmap's claimed cross-batch seam did not exist: `chat.js` has posted `approved_plan` since before this phase, and `chat.js:961` is the trigger, not the payload. `P6-15` was self-contained in `src/agent_loop.py` after all.)*
+- [x] **P6-16** Guard the narrating-without-acting supervisor against plan mode, where narrating **is** the job. One line. — **done:** the narrating-without-acting supervisor is exempt in plan mode, where describing un-taken actions is the job. **The code was right and the reasoning under it was false** — it justified the exemption with "every mutating tool is denied anyway", but plan mode is an *allowlist* with 25 read-only tools enabled and a directive that orders their use, so the nudge was not harmless-because-blocked, it was harmful because it pushed the model from planning into acting on tools that work. Corrected in place, because anyone re-deriving the decision from that sentence would have reached the wrong answer.
 - [ ] **P6-17** Render the agent's own todo list. A structured todo tool exists, persists to disk, is instructed for multi-step work, and **has no renderer** — it surfaces only as raw tool output text.
 
 ---
@@ -1290,6 +1344,10 @@ nothing ever recorded the event.
 - [ ] **B03** **P2-11's rejected files vanish silently.** Partial-failure batches now return 200 with `files` + `rejected`, where they previously returned a failure status. `static/js/fileHandler.js:325` clears `pendingFiles` on any 2xx, so the rejected subset disappears from the composer with no message. One toast reading `rejected` closes it. `Verify:` drop 30 files, see a message naming the 5 that did not upload. **DECIDED — one toast naming what was rejected and why** (D-2026-08-26-06). — found during P2 run 01
 - [ ] **B04** **The two new controls have no test coverage.** The P2-17 413 cap, its boundary, and its ordering behind `require_admin` have zero tests; `attachment_as_doc` has zero and always did. Both implementing agents owned no test files. Promote the two scratch harnesses into `tests/`. — found during P2 run 01
 - [ ] **B05** **An unenforced cross-file invariant.** `src/upload_handler.py`'s `document_extensions` must stay a subset of `src/document_processor.py`'s `_is_text_file`, or an upload is accepted and then silently discarded at ingest. The invariant is now in a docstring; nothing checks it. A three-line test would. — found during P2 run 01
+- [ ] **B06** **The verifier goes blind again after the first round of a long plan run.** `static/js/chat.js` blanks `_pendingApprovedPlan` immediately after appending it to the first request, so `P6-15`'s fix — judging the run against the approved checklist — only covers round one. Every continuation turn falls back to the bare trigger string. Either keep the plan for the life of the execution or re-send it per round. `Verify:` a plan run that takes four rounds has the checklist in the verifier's instruction on all four. — found during P6-15 — agent:`impl:agent-loop`
+- [ ] **B07** **The scheduler files an admin-privilege refusal as `error`.** `src/task_scheduler.py` sets `status = "error"` where the task never ran and is then paused. By the vocabulary documented at `core/database.py:810+` that is `skipped` — "deliberately did not run", not a failure — so every privilege refusal currently counts against the task's error rate. Changing a persisted status value is why this is its own row rather than part of `P6-05`: decide whether old rows are migrated or left. `Verify:` a task whose owner lacks the privilege records `skipped` and does not appear under Errors. — found during P6-05 — agent:`integrator`
+- [ ] **B08** **A stale `agent_status: running` outlives the run that set it.** `static/js/notes.js` reads `agentLive || item.agent_status`, so a `running` value persisted before a reload — or written when the tab closed mid-run, which is exactly the `P6-09` scenario — survives with no live job behind it. The tooltip then says "open the menu to stop it" while `_agentSolveState` is live-only, so no Stop entry renders. Related: `grep is-agent-running|is-agent-queued static/style.css` returns **0** — the class the button's visibility depends on has no rule, so it stays at `opacity:0`. `Verify:` reload with a stale `running` todo; either it offers a working stop or it stops claiming to. — found during P6-09 — agent:`refute:queue`
+- [ ] **B09** **`static/js/chat.js` is loaded under two different cache-buster strings.** `static/index.html:250` preloads it as `?v=20260815toolapproval4` while `static/index.html:2620` and `static/app.js:13` request `?v=20260819approvalcontrol1`. The modulepreload therefore warms a URL the page never asks for — the preload is wasted and the module is fetched twice on a cold load. Pre-existing, not this run's. `Verify:` one string, three sites. — found during P6 wave 1 — agent:`integrator`
 - [ ] **B01** **The datastore image is unpinned.** `chromadb/chroma:latest` in all three
   compose files, and `binwiederhier/ntfy` with no tag at all in the same three. A
   breaking Chroma release lands on the next `--build` and the collections stop loading —

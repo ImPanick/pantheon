@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import os
 import re
 import time
 import uuid
@@ -22,6 +23,106 @@ logger = logging.getLogger(__name__)
 def _utcnow() -> datetime:
     """Return naive UTC for task DB fields without using deprecated APIs."""
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+# ── Run-slot concurrency (P6-08) ────────────────────────────────────────────
+# How many *model-backed* task runs may hold the run slot at once. Was a bare
+# `Semaphore(1)` with `_concurrency_cap = 1` beside it, commented "a hard
+# guarantee, not configurable".
+#
+# What the semaphore actually guarantees, measured against this file: it bounds
+# how many runs share the inference backend. It is NOT what stops a task from
+# running twice — two paths already skip it entirely (`_task_needs_model_slot`
+# lets pure housekeeping actions through, and `run_task_now(force=True)` passes
+# `bypass_model_slot=True`), so "exactly one task runs at a time" was already
+# untrue before this knob existed.
+#
+# THE INVARIANT THAT IS PRESERVED, and it is a different one: **a single task
+# never runs twice concurrently.** That is held by `_executing` under
+# `_executing_lock` — claimed in `_check_due_tasks` and `_run_chained`,
+# released in `_execute_task`'s `finally` — and is completely independent of
+# this cap. Raising the cap lets *different* tasks overlap; it cannot make one
+# task overlap itself.
+#
+# ONE EXCEPTION, and it predates this knob: `run_task_now(force=True)` neither
+# checks nor adds to `_executing` and passes `release_executing=False`, so a
+# forced manual trigger CAN overlap the same task with itself. That is what
+# `force` means, and the button that reaches it is deliberate. Recorded here
+# because an earlier version of this comment listed `run_task_now` among the
+# claimants, which made the invariant read as absolute when it is not.
+#
+# Resolution order is the one P12-01 sets out in .pantheon/ROADMAP.md:
+#   role profile → instance setting → env → built-in default
+# The role-profile layer does not exist yet (it is P11/P12's to build, and
+# Law 14 says extend that scaffolding when it lands rather than start a second
+# one here) — `_role_concurrency_cap` is the single place it plugs in.
+TASK_CONCURRENCY_CAP_SETTING = "task_concurrency_cap"
+TASK_CONCURRENCY_CAP_ENV = "PANTHEON_TASK_CONCURRENCY_CAP"
+TASK_CONCURRENCY_CAP_DEFAULT = 1
+# Upper bound. Each concurrent run holds a model slot on the inference backend,
+# so an unbounded value is a self-inflicted outage on a single-GPU host.
+TASK_CONCURRENCY_CAP_MAX = 16
+
+
+def _coerce_concurrency_cap(raw: Any, source: str) -> int | None:
+    """Parse one candidate value; None means 'not set / unusable, try next'."""
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        raw = raw.strip()
+        if not raw:
+            return None
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        logger.warning(
+            "Ignoring %s task concurrency cap %r — not an integer", source, raw
+        )
+        return None
+    clamped = max(1, min(value, TASK_CONCURRENCY_CAP_MAX))
+    if clamped != value:
+        logger.warning(
+            "Task concurrency cap %d from %s clamped to %d (allowed 1..%d)",
+            value, source, clamped, TASK_CONCURRENCY_CAP_MAX,
+        )
+    return clamped
+
+
+def _role_concurrency_cap(owner: str | None) -> int | None:
+    """Role-profile layer of the resolution order. Returns None until P11/P12
+    ships role profiles — the hook exists so that lands as one edit here
+    instead of a second settings path elsewhere."""
+    return None
+
+
+def resolve_task_concurrency_cap(owner: str | None = None) -> Tuple[int, str]:
+    """Return (cap, source) for the scheduler's model-run slot.
+
+    Order: role profile → instance setting → env → built-in default.
+    Always returns a value in [1, TASK_CONCURRENCY_CAP_MAX].
+    """
+    role_cap = _coerce_concurrency_cap(_role_concurrency_cap(owner), "role profile")
+    if role_cap is not None:
+        return role_cap, "role profile"
+
+    try:
+        from src.settings import get_setting
+        setting_cap = _coerce_concurrency_cap(
+            get_setting(TASK_CONCURRENCY_CAP_SETTING, None), "instance setting"
+        )
+    except Exception:
+        logger.debug("Task concurrency cap: settings read failed", exc_info=True)
+        setting_cap = None
+    if setting_cap is not None:
+        return setting_cap, "instance setting"
+
+    env_cap = _coerce_concurrency_cap(
+        os.getenv(TASK_CONCURRENCY_CAP_ENV), TASK_CONCURRENCY_CAP_ENV
+    )
+    if env_cap is not None:
+        return env_cap, TASK_CONCURRENCY_CAP_ENV
+
+    return TASK_CONCURRENCY_CAP_DEFAULT, "built-in default"
 
 
 # Shell/file tools a scheduled task's agent should be offered by default,
@@ -344,24 +445,40 @@ class TaskScheduler:
         self._executing_lock = asyncio.Lock()
         self._pending_notifications = []  # completed task notifications
         self._task_defer_counts = {}
-        # Strict serial execution — exactly one task runs at a time. Anything
-        # else (manual trigger, scheduled dispatch, task chain) waits behind
-        # the semaphore as "queued" and starts when the current run finishes.
-        # This is a hard guarantee, not configurable.
-        self._run_semaphore = asyncio.Semaphore(1)
-        self._concurrency_cap = 1
+        # Model-run slot. At the default cap of 1 this is the historical
+        # behaviour: one model-backed run at a time, everything else (manual
+        # trigger, scheduled dispatch, task chain) waits behind it as "queued"
+        # and starts when the current run finishes. Configurable since P6-08 —
+        # see the resolver above for the order, and for which invariant this
+        # does and does not hold. Re-read in start() so an operator does not
+        # need a process restart to change it.
+        self._concurrency_cap, self._concurrency_cap_source = resolve_task_concurrency_cap()
+        self._run_semaphore = asyncio.Semaphore(self._concurrency_cap)
         self._task_handles = {}
+
+    def _refresh_concurrency_cap(self) -> int:
+        """Re-resolve the cap and rebuild the slot if it changed.
+
+        Safe only while no run holds the semaphore — call it from start(),
+        before the loop begins dispatching. Rebuilding under load would drop
+        the waiters already parked on the old object.
+        """
+        cap, source = resolve_task_concurrency_cap()
+        if cap != self._concurrency_cap:
+            self._run_semaphore = asyncio.Semaphore(cap)
+        self._concurrency_cap, self._concurrency_cap_source = cap, source
+        return cap
 
     def _set_run_progress(self, run_id: str, message: str):
         """Persist short live progress text for Activity while a run is active."""
         if not run_id:
             return
         try:
-            from core.database import SessionLocal, TaskRun
+            from core.database import SessionLocal, TaskRun, TASK_RUN_ACTIVE_STATUSES
             db = SessionLocal()
             try:
                 run = db.query(TaskRun).filter(TaskRun.id == run_id).first()
-                if run and run.status in ("queued", "running"):
+                if run and run.status in TASK_RUN_ACTIVE_STATUSES:
                     run.result = (message or "")[:4000]
                     db.commit()
             finally:
@@ -372,7 +489,7 @@ class TaskScheduler:
     def _mark_run_aborted(self, task_id: str, run_id: str | None = None, message: str = "Stopped by user") -> bool:
         """Mark an active run as aborted. Used by stop/cancel paths."""
         try:
-            from core.database import SessionLocal, TaskRun
+            from core.database import SessionLocal, TaskRun, TASK_RUN_ACTIVE_STATUSES
             db = SessionLocal()
             try:
                 q = db.query(TaskRun)
@@ -381,10 +498,10 @@ class TaskScheduler:
                 else:
                     q = q.filter(
                         TaskRun.task_id == task_id,
-                        TaskRun.status.in_(("queued", "running")),
+                        TaskRun.status.in_(TASK_RUN_ACTIVE_STATUSES),
                     ).order_by(TaskRun.started_at.desc())
                 run = q.first()
-                if not run or run.status not in ("queued", "running"):
+                if not run or run.status not in TASK_RUN_ACTIVE_STATUSES:
                     return False
                 run.status = "aborted"
                 run.error = message
@@ -442,18 +559,23 @@ class TaskScheduler:
         return take
 
     async def start(self):
-        # On startup, mark any leftover "running" task_runs as errored. Without
+        # Re-read the concurrency cap here, not just in __init__: the scheduler
+        # is constructed at import/wiring time, so a settings change made after
+        # boot would otherwise need a full process restart to take effect.
+        # Nothing holds the semaphore yet at this point.
+        self._refresh_concurrency_cap()
+        # On startup, mark any leftover "running" task_runs as aborted. Without
         # this, a server crash leaves rows stuck running indefinitely and the
         # _executing in-memory set forgets them, so the UI shows phantoms.
         try:
-            from core.database import SessionLocal, TaskRun
+            from core.database import SessionLocal, TaskRun, TASK_RUN_ACTIVE_STATUSES
             db = SessionLocal()
             try:
                 # Zombies from a prior server crash. Tagged "aborted" (not
                 # "error") so the Activity view + error-rate stats don't
                 # falsely blame the task for what was an infrastructure event.
                 stale = db.query(TaskRun).filter(
-                    TaskRun.status.in_(("running", "queued"))
+                    TaskRun.status.in_(TASK_RUN_ACTIVE_STATUSES)
                 ).all()
                 if stale:
                     now = _utcnow()
@@ -546,7 +668,10 @@ class TaskScheduler:
         # old event scanner too caused duplicate emails/notifications for the
         # same calendar event.
         self._note_pings_task = asyncio.create_task(self._note_pings_loop())
-        logger.info(f"Task scheduler started (concurrency cap: {self._concurrency_cap})")
+        logger.info(
+            "Task scheduler started (concurrency cap: %d, from %s)",
+            self._concurrency_cap, self._concurrency_cap_source,
+        )
         # Audit clusters: show any minute-of-day where >1 active scheduled
         # tasks land. Helps spot "all my tasks fire at 9am" patterns the user
         # may want to spread out.
@@ -1135,8 +1260,9 @@ class TaskScheduler:
                     from datetime import timedelta as _td
                     _recover_db = SessionLocal()
                     try:
+                        from core.database import TASK_RUN_ACTIVE_STATUSES
                         _r = _recover_db.query(TaskRun).filter(TaskRun.id == run_id).first()
-                        if _r and _r.status in ("running", "queued"):
+                        if _r and _r.status in TASK_RUN_ACTIVE_STATUSES:
                             _r.status = "aborted"
                             _r.error = f"commit_failed: {type(commit_err).__name__}: {commit_err}"[:2000]
                             _r.finished_at = _utcnow()

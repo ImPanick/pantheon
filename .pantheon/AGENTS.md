@@ -281,10 +281,16 @@ drift**, and calling it velocity is how it accumulates. If you cannot finish the
 same change, the task is not done: it stays open with a note saying what is missing, and the
 unwired half does not merge.
 
-`python3 .pantheon/check-wiring.py` counts it. The number is currently **78** unresolved
+`python3 .pantheon/check-wiring.py` counts it. The number is **2** unresolved
 `getElementById` targets — measured as: static-string lookups across `static/js/**` excluding
 `static/lib/**`, minus ids present in any tracked HTML, minus ids the JS itself creates at
 runtime. **It may go down. It may not go up.**
+
+*It said 78 until 2026-08-27, which was the count before wiring run 01 cleared them — the law
+against carrying numbers, carrying a number. Both remaining entries are checker artifacts, not
+drift, and the CI ceiling is `--max 2`. The checker has two known blind spots, written up on
+`P3-15`: it scans neither `static/app.js` nor `static/sw.js`, and it sees only literal
+`getElementById`, so helper lookups like `el('adm-*')` are invisible to it.*
 
 > **Incident.** An audit of one phase found a complete webhooks backend with no UI at all, a
 > skills editor behind a flag whose list was never fetched, a Real-ESRGAN upscaler with no

@@ -44,6 +44,13 @@ DEFAULT_SETTINGS = {
     # have been observed inventing signatures and sending to real
     # recipients without confirmation.
     "agent_email_confirm": True,
+    # How many scheduled tasks may hold the model slot at once. 1 preserves the
+    # behaviour this was hardcoded to; the resolver in src/task_scheduler.py
+    # clamps to [1, 16] and reads this layer between the env var and the
+    # built-in default. Raising it lets DIFFERENT tasks overlap — a single task
+    # still never runs twice concurrently, which `_executing` guarantees
+    # separately. See P6-08.
+    "task_concurrency_cap": 1,
     "image_gen_enabled": False,
     "image_model": "",
     "image_quality": "medium",

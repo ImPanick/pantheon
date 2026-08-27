@@ -393,6 +393,24 @@ let _loading = false;
 // only entries that survive a panel reload are in-memory anyway.
 const _undoStack = [];
 const _NOTE_UNDO_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><polyline points="9 14 4 9 9 4"/><path d="M4 9h11a5 5 0 0 1 5 5v0a5 5 0 0 1-5 5H9"/></svg>';
+
+// ── Agent-solve run queue (P6-09) ──────────────────────────────────
+// Every click used to POST /api/chat_stream on the spot: ten todos meant ten
+// agent loops running at once, with no progress and no cancel. Requests now
+// enter a bounded queue that runs AGENT_SOLVE_MAX_CONCURRENT at a time and
+// reports itself through the checklist item's EXISTING `agent_status` field —
+// extended with the shipped vocabulary's `queued`, plus `error` / `aborted`.
+// The engine itself is further down, next to _runAgentSolveJob; only the state
+// lives here, so a render during module evaluation cannot hit its dead zone.
+//
+// This is deliberately NOT the composer queue in chat.js: that one drains by
+// writing into the message box of the session the user is looking at, while an
+// agent-solve has to start a brand-new session and keep running while the user
+// stays in notes. Routing this through the composer would break the
+// "works in the background" behaviour that already ships.
+const AGENT_SOLVE_MAX_CONCURRENT = 1;
+const _agentSolveQueue = [];          // pending jobs, FIFO
+const _agentSolveRuns = new Map();    // key -> { abort, sid, runId }
 function _pushUndo(entry) {
   _undoStack.push(entry);
   if (_undoStack.length > 20) _undoStack.shift();
@@ -1849,19 +1867,43 @@ function _renderNotes() {
       for (let i = 0; i < note.items.length; i++) {
         const item = note.items[i];
         const doneClass = item.done ? ' done' : '';
-        const agentStatus = (item.agent_status || '').toLowerCase();
-        const agentDoneClass = agentStatus === 'stream_complete' ? ' is-agent-stream-complete' : '';
+        // Live queue state wins over the stored one: `queued` and a stopped
+        // `running` only exist in this page's queue (P6-09).
+        const agentLive = _agentSolveState(note.id, i);
+        const agentStatus = agentLive || (item.agent_status || '').toLowerCase();
+        const agentQueuePos = agentLive === 'queued' ? _agentSolveQueuePosition(_agentSolveKey(note.id, i)) : 0;
+        const agentDoneClass = agentStatus === 'stream_complete'
+          ? ' is-agent-stream-complete'
+          : (agentStatus === 'queued' ? ' is-agent-queued'
+            : (agentStatus === 'running' ? ' is-agent-running' : ''));
+        // `.note-checkbox-agent` is `opacity:0; width:14px` until the row is
+        // hovered, so a queued/running badge has to force itself visible and
+        // widen the button. Inline, because style.css is not this batch's file
+        // — `.is-agent-queued` / `.is-agent-running` are emitted alongside so
+        // the rules can move into the stylesheet later without touching this.
+        const agentBadge = agentLive === 'queued'
+          ? `<span class="note-agent-queue-pos" style="font-size:9px;line-height:1">${agentQueuePos}</span>`
+          : (agentLive === 'running'
+            ? '<span class="note-agent-queue-pos" style="font-size:9px;line-height:1">•••</span>'
+            : '');
+        const agentStyleAttr = agentLive
+          ? ' style="opacity:.9;width:auto;min-width:14px;gap:2px"'
+          : '';
         const agentTitle = agentStatus === 'stream_complete'
           ? 'Agent stream finished for this todo'
-          : (agentStatus === 'running' ? 'Agent is working on this todo' : 'Solve this todo with the agent');
+          : (agentStatus === 'running' ? 'Agent is working on this todo - open the menu to stop it'
+            : (agentStatus === 'queued' ? `Waiting for the agent (#${agentQueuePos}) - open the menu to remove it`
+              : (agentStatus === 'error' ? 'The last agent run for this todo failed'
+                : (agentStatus === 'aborted' ? 'The last agent run for this todo was stopped'
+                  : 'Solve this todo with the agent'))));
         const agentSessionAttr = item.agent_session_id ? ` data-session-id="${_attrEsc(item.agent_session_id)}"` : '';
         const agentMenuTitle = item.agent_session_title || `Agent: ${(item.text || '').slice(0, 40)}`;
         const indent = Math.min(item.indent || 0, 3);
         contentHtml += `<div class="note-checkbox${doneClass}" data-note-id="${note.id}" data-idx="${i}" style="padding-left:${indent * 16}px">
           <span class="note-check-dot" title="Mark done"></span>
           <span class="note-check-text">${_linkify(item.text)}</span>
-          <button class="note-checkbox-agent${agentDoneClass}" data-note-id="${_attrEsc(note.id)}" data-idx="${i}"${agentSessionAttr} data-agent-title="${_attrEsc(agentMenuTitle)}" title="${_attrEsc(agentTitle)}">
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M2 14h2M20 14h2M15 13v2M9 13v2"/></svg>
+          <button class="note-checkbox-agent${agentDoneClass}" data-note-id="${_attrEsc(note.id)}" data-idx="${i}"${agentSessionAttr} data-agent-title="${_attrEsc(agentMenuTitle)}" title="${_attrEsc(agentTitle)}"${agentStyleAttr}>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M2 14h2M20 14h2M15 13v2M9 13v2"/></svg>${agentBadge}
           </button>
           <button class="note-checkbox-edit" data-note-id="${note.id}" data-idx="${i}" title="Edit item">
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
@@ -4391,6 +4433,7 @@ function _openNoteCornerMenu(btn) {
   const id = btn.dataset.noteId;
   const note = _notes.find(n => n.id === id);
   if (!note) return;
+  const _noteAgentState = _agentSolveState(id, null);   // '' | 'queued' | 'running'
   const menu = document.createElement('div');
   menu.className = 'note-corner-menu-dropdown';
   menu.innerHTML = `
@@ -4400,8 +4443,12 @@ function _openNoteCornerMenu(btn) {
     </button>
     <button type="button" class="ncm-item" data-act="agent">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M2 14h2M20 14h2M15 13v2M9 13v2"/></svg>
-      <span>${note.agent_session_id ? 'Re-run agent' : 'Agent: solve this'}</span>
-    </button>`;
+      <span>${_noteAgentState === 'running' ? 'Agent running…' : (_noteAgentState === 'queued' ? `Queued (#${_agentSolveQueuePosition(_agentSolveKey(id, null))})` : (note.agent_session_id ? 'Re-run agent' : 'Agent: solve this'))}</span>
+    </button>
+    ${_noteAgentState ? `<button type="button" class="ncm-item" data-act="agent-cancel">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+      <span>${_noteAgentState === 'queued' ? 'Remove from queue' : 'Stop this run'}</span>
+    </button>` : ''}`;
   document.body.appendChild(menu);
   const r = btn.getBoundingClientRect();
   // Right-align to the ⋯ button, clamped to the viewport.
@@ -4417,6 +4464,10 @@ function _openNoteCornerMenu(btn) {
   const close = bindMenuDismiss(menu, () => { menu.remove(); });
   menu.querySelector('[data-act="copy"]').addEventListener('click', () => { close(); _copyNote(id, btn); });
   menu.querySelector('[data-act="agent"]').addEventListener('click', () => { close(); _agentSolveNote(id); });
+  const _agentCancelBtn = menu.querySelector('[data-act="agent-cancel"]');
+  if (_agentCancelBtn) {
+    _agentCancelBtn.addEventListener('click', () => { close(); _cancelAgentSolve(id, null); });
+  }
 }
 
 function _positionNoteMenu(menu, btn, width = 196) {
@@ -4441,6 +4492,7 @@ function _openTodoAgentMenu(btn) {
   const noteId = btn.dataset.noteId;
   const idx = parseInt(btn.dataset.idx);
   const sid = btn.dataset.sessionId || '';
+  const state = _agentSolveState(noteId, idx);   // '' | 'queued' | 'running'
   const menu = document.createElement('div');
   menu.className = 'note-corner-menu-dropdown note-agent-item-menu';
   menu.innerHTML = `
@@ -4448,9 +4500,13 @@ function _openTodoAgentMenu(btn) {
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14L21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
       <span>Open</span>
     </button>` : ''}
+    ${state ? `<button type="button" class="ncm-item" data-act="cancel">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+      <span>${state === 'queued' ? `Remove from queue (#${_agentSolveQueuePosition(_agentSolveKey(noteId, idx))})` : 'Stop this run'}</span>
+    </button>` : ''}
     <button type="button" class="ncm-item" data-act="run">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M2 14h2M20 14h2M15 13v2M9 13v2"/></svg>
-      <span>${sid ? 'Run again' : 'Run Agent'}</span>
+      <span>${state === 'running' ? 'Running…' : (state === 'queued' ? 'Queued…' : (sid ? 'Run again' : 'Run Agent'))}</span>
     </button>`;
   _positionNoteMenu(menu, btn);
   const openBtn = menu.querySelector('[data-act="open"]');
@@ -4459,6 +4515,13 @@ function _openTodoAgentMenu(btn) {
       menu.remove();
       const _sm = window.sessionModule;
       if (sid && _sm && _sm.selectSession) { closePanel(); _sm.selectSession(sid); }
+    });
+  }
+  const cancelBtn = menu.querySelector('[data-act="cancel"]');
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', () => {
+      menu.remove();
+      _cancelAgentSolve(noteId, idx);
     });
   }
   menu.querySelector('[data-act="run"]').addEventListener('click', () => {
@@ -4481,103 +4544,164 @@ function _noteToAgentPrompt(note) {
   return body ? `Help me get this done:\n\n${body}\n\nThe source note is read-only. Do not edit, replace, or update it.` : '';
 }
 
+// ── Agent-solve run queue (P6-09) — state declared with the other module
+// state near the top of this file, so a render that runs during module
+// evaluation cannot hit its temporal dead zone.
+
+function _agentSolveKey(noteId, idx) {
+  return (idx === null || idx === undefined) ? `note:${noteId}` : `item:${noteId}#${idx}`;
+}
+
+/** '' | 'queued' | 'running' — live, in-memory only. Never patched to the
+ *  server, so a reload cannot leave a note stuck showing a queue that is gone. */
+function _agentSolveState(noteId, idx) {
+  const key = _agentSolveKey(noteId, idx);
+  if (_agentSolveRuns.has(key)) return 'running';
+  if (_agentSolveQueue.some(j => j.key === key)) return 'queued';
+  return '';
+}
+
+function _agentSolveQueuePosition(key) {
+  const i = _agentSolveQueue.findIndex(j => j.key === key);
+  return i < 0 ? 0 : i + 1;
+}
+
+function _agentSolvePending() {
+  return _agentSolveRuns.size + _agentSolveQueue.length;
+}
+
+function _pumpAgentSolveQueue() {
+  // _runAgentSolveJob registers itself in _agentSolveRuns before its first
+  // await, so this size check is accurate inside the loop.
+  while (_agentSolveRuns.size < AGENT_SOLVE_MAX_CONCURRENT && _agentSolveQueue.length) {
+    _runAgentSolveJob(_agentSolveQueue.shift());
+  }
+}
+
+/** Remove a queued job, or stop a running one. */
+function _cancelAgentSolve(noteId, idx) {
+  const key = _agentSolveKey(noteId, idx);
+  const qi = _agentSolveQueue.findIndex(j => j.key === key);
+  if (qi >= 0) {
+    _agentSolveQueue.splice(qi, 1);
+    _renderNotes();
+    uiModule.showToast?.('Removed from the agent queue');
+    return;
+  }
+  const run = _agentSolveRuns.get(key);
+  if (!run) return;
+  // Dropping the SSE only removes a subscriber — the run is detached and keeps
+  // going (routes/chat_routes.py, chat_stream). The real stop needs the run id:
+  // /api/chat/stop fails closed without it (src/agent_runs.py:266).
+  _postAgentSolveStop(run);
+  try { run.abort.abort(); } catch (_) {}
+  uiModule.showToast?.('Stopping the agent run…');
+}
+
+function _postAgentSolveStop(run) {
+  if (!run || !run.sid || !run.runId) return false;
+  fetch(`${API_BASE}/api/chat/stop/${encodeURIComponent(run.sid)}`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'X-Pantheon-Run-Id': run.runId },
+  }).catch(() => {});
+  return true;
+}
+
+/** Cancelled before the chat_stream POST returned its headers, so the run id
+ *  never reached us and /api/chat/stop would fail closed. /api/chat/resume
+ *  re-advertises the same header for a still-detached run (404s when there is
+ *  nothing running, which is also the answer we want). */
+async function _recoverAgentRunIdAndStop(sid) {
+  if (!sid) return;
+  try {
+    const ctrl = new AbortController();
+    const res = await fetch(`${API_BASE}/api/chat/resume/${encodeURIComponent(sid)}`, {
+      credentials: 'same-origin', signal: ctrl.signal,
+    });
+    const runId = res.ok ? (res.headers.get('X-Pantheon-Run-Id') || '') : '';
+    try { ctrl.abort(); } catch (_) {}     // the header was all we wanted
+    if (runId) _postAgentSolveStop({ sid, runId });
+  } catch (_) { /* nothing further we can do from here */ }
+}
+
+/** Build the job for a note-level or item-level solve and put it in the queue. */
+function _enqueueAgentSolve(noteId, idx) {
+  const note = _notes.find(n => n.id === noteId);
+  if (!note) return;
+  const isItem = idx !== null && idx !== undefined;
+  let prompt = '';
+  let label = '';
+  if (isItem) {
+    if (!Array.isArray(note.items)) return;
+    const item = note.items[idx];
+    const itemText = (item && (item.text || '').trim()) || '';
+    if (!itemText) { uiModule.showToast('Nothing to solve — item is empty'); return; }
+    const titleCtx = (note.title || '').trim();
+    prompt = titleCtx
+      ? `Context (from note "${titleCtx}").\n\nHelp me with this todo: ${itemText}\n\nThe source note is read-only. Do not edit, replace, or update it.`
+      : `Help me with this todo: ${itemText}\n\nThe source note is read-only. Do not edit, replace, or update it.`;
+    label = itemText.slice(0, 40);
+  } else {
+    prompt = _noteToAgentPrompt(note);
+    if (!prompt) { uiModule.showToast('Nothing to solve — note is empty'); return; }
+    label = (note.title || (Array.isArray(note.items) && note.items[0]?.text) || 'todo').slice(0, 40);
+  }
+  const key = _agentSolveKey(noteId, isItem ? idx : null);
+  if (_agentSolveRuns.has(key)) { uiModule.showToast?.('The agent is already on this one'); return; }
+  if (_agentSolveQueue.some(j => j.key === key)) { uiModule.showToast?.('Already queued for the agent'); return; }
+
+  _agentSolveQueue.push({ key, noteId, idx: isItem ? idx : null, prompt, label });
+  const willWait = _agentSolveRuns.size >= AGENT_SOLVE_MAX_CONCURRENT;
+  _pumpAgentSolveQueue();
+  _renderNotes();
+  if (willWait) {
+    uiModule.showToast?.(`Queued — ${_agentSolvePending()} agent runs waiting, ${AGENT_SOLVE_MAX_CONCURRENT} at a time`);
+  } else {
+    uiModule.showToast?.(isItem
+      ? 'Agent working on this item — tap the Agent tag when ready'
+      : 'Agent working in background — tap the Agent tag when ready');
+  }
+}
+
 // Agent-solve: create a chat session server-side, kick off an agent run
 // on it IN THE BACKGROUND (the user stays in notes), and link the session
 // to the note via a clickable tag. Tapping the tag later opens the chat.
-async function _agentSolveNote(id) {
-  const note = _notes.find(n => n.id === id);
-  if (!note) return;
-  const prompt = _noteToAgentPrompt(note);
-  if (!prompt) { uiModule.showToast('Nothing to solve — note is empty'); return; }
+// The work itself is unchanged; what changed is that it is reached through
+// the queue above instead of being fired straight off a click.
+async function _runAgentSolveJob(job) {
+  const { key, noteId, idx, prompt, label } = job;
+  const isItem = idx !== null && idx !== undefined;
+  const abort = new AbortController();
+  const run = { abort, sid: '', runId: '' };
+  _agentSolveRuns.set(key, run);
+  _renderNotes();
   try {
     const dc = await (await fetch(`${API_BASE}/api/default-chat`, { credentials: 'same-origin' })).json();
     if (!dc.endpoint_url || !dc.model) { uiModule.showError('No default chat model configured'); return; }
 
     // 1. Create the session server-side (no UI switch). skip_validation
     //    avoids re-probing — the default-chat endpoint is already known good.
-    const label = (note.title || (Array.isArray(note.items) && note.items[0]?.text) || 'todo').slice(0, 40);
     const csFd = new FormData();
     csFd.append('name', 'Agent: ' + label);
     csFd.append('endpoint_url', dc.endpoint_url);
     csFd.append('model', dc.model);
     if (dc.endpoint_id) csFd.append('endpoint_id', dc.endpoint_id);
     csFd.append('skip_validation', 'true');
-    const csRes = await fetch(`${API_BASE}/api/session`, { method: 'POST', credentials: 'same-origin', body: csFd });
+    const csRes = await fetch(`${API_BASE}/api/session`, {
+      method: 'POST', credentials: 'same-origin', body: csFd, signal: abort.signal,
+    });
     if (!csRes.ok) { uiModule.showError('Could not create agent session'); return; }
     const sess = await csRes.json();
     const sid = sess.id;
-
-    // 2. Link the session to the note right away so the tag appears.
-    const n = _notes.find(x => x.id === id);
-    if (n) n.agent_session_id = sid;
-    _renderNotes();
-    _patchNote(id, { agent_session_id: sid }).catch(() => {});
-
-    // 3. Kick off the agent run in the background. POST to chat_stream in
-    //    agent mode and drain the SSE so the server runs the loop to
-    //    completion + saves — without rendering anything in the chat UI.
-    const fd = new FormData();
-    fd.append('message', prompt);
-    fd.append('session', sid);
-    fd.append('mode', 'agent');
-    fd.append('disabled_tools', JSON.stringify(['manage_notes']));
-    fetch(`${API_BASE}/api/chat_stream`, { method: 'POST', credentials: 'same-origin', body: fd })
-      .then(async (res) => {
-        if (!res.ok || !res.body) return;
-        const reader = res.body.getReader();
-        // Drain to completion (server finishes + persists the run).
-        while (true) { const { done } = await reader.read(); if (done) break; }
-        if (window.sessionModule && window.sessionModule.markStreamComplete) {
-          try { window.sessionModule.markStreamComplete(sid); } catch {}
-        }
-      })
-      .catch(() => {});
-
-    uiModule.showToast('Agent working in background — tap the Agent tag when ready');
-  } catch (e) {
-    uiModule.showError('Agent failed: ' + (e.message || e));
-  }
-}
-
-// Per-item version of _agentSolveNote. Scoped to a single checklist item;
-// the note title (if any) is included as context, but only this one item's
-// text is the work the agent is asked to do. agent_session_id is set on the
-// PARENT note (latest-wins) so the Agent tag still surfaces the most recent
-// run from this note — same UX as a per-note solve.
-async function _agentSolveTodoItem(noteId, idx) {
-  const note = _notes.find(n => n.id === noteId);
-  if (!note || !Array.isArray(note.items)) return;
-  const item = note.items[idx];
-  const itemText = (item && (item.text || '').trim()) || '';
-  if (!itemText) {
-    uiModule.showToast('Nothing to solve — item is empty');
-    return;
-  }
-  const titleCtx = (note.title || '').trim();
-  const prompt = titleCtx
-    ? `Context (from note "${titleCtx}").\n\nHelp me with this todo: ${itemText}\n\nThe source note is read-only. Do not edit, replace, or update it.`
-    : `Help me with this todo: ${itemText}\n\nThe source note is read-only. Do not edit, replace, or update it.`;
-  try {
-    const dc = await (await fetch(`${API_BASE}/api/default-chat`, { credentials: 'same-origin' })).json();
-    if (!dc.endpoint_url || !dc.model) { uiModule.showError('No default chat model configured'); return; }
-
-    const label = itemText.slice(0, 40);
-    const csFd = new FormData();
-    csFd.append('name', 'Agent: ' + label);
-    csFd.append('endpoint_url', dc.endpoint_url);
-    csFd.append('model', dc.model);
-    if (dc.endpoint_id) csFd.append('endpoint_id', dc.endpoint_id);
-    csFd.append('skip_validation', 'true');
-    const csRes = await fetch(`${API_BASE}/api/session`, { method: 'POST', credentials: 'same-origin', body: csFd });
-    if (!csRes.ok) { uiModule.showError('Could not create agent session'); return; }
-    const sess = await csRes.json();
-    const sid = sess.id;
+    run.sid = sid;
     const sessionTitle = 'Agent: ' + label;
 
+    // 2. Link the session to the note right away so the tag appears.
     const n = _notes.find(x => x.id === noteId);
     if (n) {
       n.agent_session_id = sid;
-      if (Array.isArray(n.items) && n.items[idx]) {
+      if (isItem && Array.isArray(n.items) && n.items[idx]) {
         n.items[idx].agent_session_id = sid;
         n.items[idx].agent_session_title = sessionTitle;
         n.items[idx].agent_status = 'running';
@@ -4585,39 +4709,87 @@ async function _agentSolveTodoItem(noteId, idx) {
       }
     }
     _renderNotes();
-    _patchNote(noteId, { items: n && Array.isArray(n.items) ? n.items : note.items, agent_session_id: sid }).catch(() => {});
+    if (isItem) {
+      _patchNote(noteId, {
+        items: n && Array.isArray(n.items) ? n.items : (_notes.find(x => x.id === noteId) || {}).items,
+        agent_session_id: sid,
+      }).catch(() => {});
+    } else {
+      _patchNote(noteId, { agent_session_id: sid }).catch(() => {});
+    }
 
+    // 3. Kick off the agent run. POST to chat_stream in agent mode and drain
+    //    the SSE so the server runs the loop to completion + saves — without
+    //    rendering anything in the chat UI.
     const fd = new FormData();
     fd.append('message', prompt);
     fd.append('session', sid);
     fd.append('mode', 'agent');
     fd.append('disabled_tools', JSON.stringify(['manage_notes']));
-    fetch(`${API_BASE}/api/chat_stream`, { method: 'POST', credentials: 'same-origin', body: fd })
-      .then(async (res) => {
-        if (!res.ok || !res.body) return;
-        const reader = res.body.getReader();
-        while (true) { const { done } = await reader.read(); if (done) break; }
-        if (window.sessionModule && window.sessionModule.markStreamComplete) {
-          try { window.sessionModule.markStreamComplete(sid); } catch {}
-        }
-        const doneNote = _notes.find(x => x.id === noteId);
-        if (doneNote && Array.isArray(doneNote.items) && doneNote.items[idx]) {
-          doneNote.agent_session_id = sid;
-          doneNote.items[idx].agent_session_id = sid;
-          doneNote.items[idx].agent_session_title = sessionTitle;
-          doneNote.items[idx].agent_status = 'stream_complete';
-          doneNote.items[idx].agent_stream_completed_at = new Date().toISOString();
-          _renderNotes();
-          _patchNote(noteId, { items: doneNote.items, agent_session_id: sid }).catch(() => {});
-        }
-      })
-      .catch(() => {});
-
-    uiModule.showToast('Agent working on this item — tap the Agent tag when ready');
+    const res = await fetch(`${API_BASE}/api/chat_stream`, {
+      method: 'POST', credentials: 'same-origin', body: fd, signal: abort.signal,
+    });
+    run.runId = res.headers.get('X-Pantheon-Run-Id') || '';
+    // Cancelled between the POST and its headers: the run id only exists now,
+    // so this is the first moment the detached run can actually be stopped.
+    if (abort.signal.aborted) { _postAgentSolveStop(run); return; }
+    if (!res.ok || !res.body) {
+      if (isItem) _markTodoAgentStatus(noteId, idx, 'error');
+      uiModule.showError('Agent run failed to start (HTTP ' + res.status + ')');
+      return;
+    }
+    const reader = res.body.getReader();
+    // Drain to completion (server finishes + persists the run).
+    while (true) { const { done } = await reader.read(); if (done) break; }
+    if (window.sessionModule && window.sessionModule.markStreamComplete) {
+      try { window.sessionModule.markStreamComplete(sid); } catch {}
+    }
+    const doneNote = _notes.find(x => x.id === noteId);
+    if (doneNote) {
+      doneNote.agent_session_id = sid;
+      if (isItem && Array.isArray(doneNote.items) && doneNote.items[idx]) {
+        doneNote.items[idx].agent_session_id = sid;
+        doneNote.items[idx].agent_session_title = sessionTitle;
+        doneNote.items[idx].agent_status = 'stream_complete';
+        doneNote.items[idx].agent_stream_completed_at = new Date().toISOString();
+        _patchNote(noteId, { items: doneNote.items, agent_session_id: sid }).catch(() => {});
+      }
+    }
   } catch (e) {
-    uiModule.showError('Agent failed: ' + (e.message || e));
+    if (abort.signal.aborted || (e && e.name === 'AbortError')) {
+      // `aborted` keeps an operator-initiated stop out of the error counts.
+      if (isItem) _markTodoAgentStatus(noteId, idx, 'aborted');
+      // Stopped between the POST and its headers: recover the run id so the
+      // detached server run is actually cancelled, not merely unsubscribed.
+      if (run.sid && !run.runId) _recoverAgentRunIdAndStop(run.sid);
+    } else {
+      if (isItem) _markTodoAgentStatus(noteId, idx, 'error');
+      uiModule.showError('Agent failed: ' + (e.message || e));
+    }
+  } finally {
+    _agentSolveRuns.delete(key);
+    _renderNotes();
+    _pumpAgentSolveQueue();
   }
 }
+
+/** Terminal status for one checklist item, persisted alongside the run's own
+ *  bookkeeping so a stopped or failed run does not look like it is still going. */
+function _markTodoAgentStatus(noteId, idx, status) {
+  const n = _notes.find(x => x.id === noteId);
+  if (!n || !Array.isArray(n.items) || !n.items[idx]) return;
+  n.items[idx].agent_status = status;
+  _patchNote(noteId, { items: n.items }).catch(() => {});
+}
+
+function _agentSolveNote(id) { _enqueueAgentSolve(id, null); }
+
+// Per-item version of _agentSolveNote. Scoped to a single checklist item;
+// the note title (if any) is included as context, but only this one item's
+// text is the work the agent is asked to do. agent_session_id is set on the
+// PARENT note (latest-wins) so the Agent tag still surfaces the most recent
+// run from this note — same UX as a per-note solve.
+function _agentSolveTodoItem(noteId, idx) { _enqueueAgentSolve(noteId, idx); }
 
 async function _copyNote(noteId, btnEl) {
   const note = _notes.find(n => n.id === noteId);

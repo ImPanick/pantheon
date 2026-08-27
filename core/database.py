@@ -807,6 +807,51 @@ class EditorDraft(TimestampMixin, Base):
     )
 
 
+# ── TaskRun.status vocabulary ───────────────────────────────────────────────
+# The shipped vocabulary is SIX values, not three. `src/task_scheduler.py`
+# writes all six, at 14 sites; a consumer that only knows the first three
+# mis-handles the rest. These are stored row values (FORBIDDEN.md, "Task/run
+# enum values"), so they are documented here rather than renamed.
+#
+#     queued → running → success | error | skipped | aborted
+#
+#   queued   Row exists; the run is waiting for the scheduler's run slot.
+#            NOT finished — code that treats "not running" as "done" is wrong
+#            here, and a manually triggered run is in this state for as long
+#            as the slot is busy. Written by `_execute_task`.
+#   running  Executing now. Written by `_execute_task_locked`.
+#   success  Finished; output in `result`. `_execute_task_locked`. Only this
+#            status delivers the result and advances a `then_task_id` chain.
+#   error    The task itself failed; message in `error`.
+#            `_execute_task_locked`.
+#            INTENDED to be the only status counting against a task's error
+#            rate. Two known violations, both real, both open — do not read
+#            this line as a description of current behaviour:
+#              (a) `static/js/tasks.js` `_entryStatus` text-scanned `result`
+#                  for /error|failed|exception|traceback/ and scored an
+#                  `aborted` run as an error if its partial output happened to
+#                  contain one of those words. Fixed 2026-08-27 to prefer the
+#                  row's own status, matching its correct sibling in the same
+#                  file.
+#              (b) `src/task_scheduler.py` sets `error` on an admin-privilege
+#                  refusal where the task never ran and is then paused. By the
+#                  definitions in this block that is `skipped`. Still open —
+#                  changing a persisted status value earns its own row.
+#   skipped  Deliberately did not run — the task was paused or deleted while
+#            the run sat queued, or the action raised TaskNoop ("nothing to
+#            do"). Not a failure. `_execute_task_locked`.
+#   aborted  An infrastructure event ended the run: user stop, foreground
+#            takeover, server restart, or a failed commit. Not a failure.
+#            **Folding `aborted` into `error` corrupts every error-rate
+#            statistic** — keeping infra events out of those numbers is the
+#            whole reason this value exists. Written by `_mark_run_aborted`,
+#            `start` (the restart sweep) and `_execute_task_locked`.
+#
+# Only `queued` and `running` mean "still in flight"; the other four are
+# terminal.
+TASK_RUN_ACTIVE_STATUSES = ("queued", "running")
+
+
 class TaskRun(Base):
     """Record of a single execution of a ScheduledTask."""
     __tablename__ = "task_runs"
@@ -815,7 +860,9 @@ class TaskRun(Base):
     task_id     = Column(String, ForeignKey("scheduled_tasks.id", ondelete="CASCADE"), nullable=False)
     started_at  = Column(DateTime, nullable=False, default=utcnow_naive)
     finished_at = Column(DateTime, nullable=True)
-    status      = Column(String, default="running")  # "running", "success", "error"
+    # queued | running | success | error | skipped | aborted — see the block
+    # above this class for what each one means and which ones are failures.
+    status      = Column(String, default="running")
     result      = Column(Text, nullable=True)
     error       = Column(Text, nullable=True)
     tokens_used = Column(Integer, nullable=True)

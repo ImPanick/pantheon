@@ -271,10 +271,40 @@ def _skill_dump(sk) -> Dict:
 # Task management tool
 # ---------------------------------------------------------------------------
 
+def _resolve_crew_member_id(db, crew_member_id, owner):
+    """Resolve an assignee crew member for a task, scoped to the caller.
+
+    Mirrors ``_validate_crew_member_id`` in ``routes/task/task_routes.py`` and
+    must keep mirroring it. The owner scoping is the security property, not a
+    tidiness one: the executor runs the task with this crew member's
+    ``personality`` (its system prompt), ``model``, ``endpoint_url`` and
+    ``enabled_tools``, so an unscoped id would let any caller run a task under
+    another user's persona and read that prompt back out of the task's own
+    session.
+
+    An empty string clears the assignment; ``None`` means "not mentioned".
+    Raises ``ValueError`` on an unknown id — the caller turns that into a tool
+    error rather than dropping it, because silently ignoring the field is the
+    exact defect this function exists to close.
+    """
+    from core.database import CrewMember
+
+    target_id = (crew_member_id or "").strip()
+    if not target_id:
+        return None
+    q = db.query(CrewMember).filter(CrewMember.id == target_id)
+    if owner:
+        q = q.filter(CrewMember.owner == owner)
+    crew = q.first()
+    if not crew:
+        raise ValueError(f"Crew member {target_id} not found")
+    return crew.id
+
+
 async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
     """Handle manage_tasks tool calls: CRUD on scheduled tasks."""
     import uuid as _uuid
-    from core.database import SessionLocal, ScheduledTask
+    from core.database import SessionLocal, ScheduledTask, CrewMember
     from src.task_scheduler import compute_next_run
 
     try:
@@ -352,6 +382,11 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
             # None when the key is present but null, and None[:50] raises.
             name = args.get("name") or (args.get("prompt") or args.get("action_name") or "Task")[:50]
 
+            try:
+                crew_id = _resolve_crew_member_id(db, args.get("crew_member_id"), owner)
+            except ValueError as e:
+                return {"error": str(e), "exit_code": 1}
+
             task = ScheduledTask(
                 id=task_id,
                 owner=owner,
@@ -369,6 +404,7 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
                 next_run=next_run,
                 status="active",
                 output_target=args.get("output_target", "session"),
+                crew_member_id=crew_id,
             )
             db.add(task)
             db.commit()
@@ -408,6 +444,15 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
             if args.get("trigger_count") is not None:
                 task.trigger_count = args["trigger_count"]
                 changed.append("trigger_count")
+            if args.get("crew_member_id") is not None:
+                # Deliberately not in the loop above: "" is falsy but meaningful
+                # here — it is how the model unassigns a crew member.
+                try:
+                    task.crew_member_id = _resolve_crew_member_id(
+                        db, args["crew_member_id"], owner)
+                except ValueError as e:
+                    return {"error": str(e), "exit_code": 1}
+                changed.append("crew_member_id")
 
             schedule_changed = False
             for field in ("schedule", "scheduled_time", "scheduled_day"):

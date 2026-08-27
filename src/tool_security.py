@@ -123,6 +123,10 @@ PLAN_MODE_READONLY_TOOLS = {
     "resolve_contact",
     "chat_with_model",
     "ask_teacher",
+    # A planning mode that cannot ask what you meant is planning blind (P6-14).
+    # `ask_user` mutates nothing — it pauses and waits for a person — so it
+    # belongs here on the same grounds as every other read-only entry.
+    "ask_user",
 }
 
 
