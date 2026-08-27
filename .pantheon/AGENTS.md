@@ -13,7 +13,7 @@ per-area handoff files — there were sixteen, all empty, and they are gone.
 
 ## The Laws
 
-Three about the work. Eight about drift. All of them came from something that actually
+Three about the work. Ten about drift and discipline. All of them came from something that actually
 went wrong — every anti-drift law below cites the incident that produced it, because a
 law with no scar behind it gets ignored.
 
@@ -113,24 +113,6 @@ either, and propagate in one explicit step. Never assume an edit landed on both.
 
 > **Incident.** `ROADMAP.md` existed in the build package and in the repo. Two consecutive
 > edits went to different copies. The second silently reverted part of the first.
-
-### Law 13 — Nothing ships half-wired.
-A backend with no caller, an element id with no markup, a flag with no consumer, a module
-loaded on every boot that returns early on a missing element — **that is not "built", it is
-drift**, and calling it velocity is how it accumulates. If you cannot finish the wiring in the
-same change, the task is not done: it stays open with a note saying what is missing, and the
-unwired half does not merge.
-
-`python3 .pantheon/check-wiring.py` counts it. The number is currently **78** unresolved
-`getElementById` targets — measured as: static-string lookups across `static/js/**` excluding
-`static/lib/**`, minus ids present in any tracked HTML, minus ids the JS itself creates at
-runtime. **It may go down. It may not go up.**
-
-> **Incident.** An audit of one phase found a complete webhooks backend with no UI at all, a
-> skills editor behind a flag whose list was never fetched, a Real-ESRGAN upscaler with no
-> button, a RAG module called on every single startup that bails on a missing element, and
-> plan mode whose docked window three prompt strings promise and nobody ever drew. None of it
-> was broken. All of it passed CI. Nothing measured whether it was reachable.
 
 ### Law 12 — Adversarial review is the default, not the escalation.
 An agent that checks its own work confirms it. Findings get a reviewer whose job is to
@@ -272,3 +254,54 @@ Full table in `ROADMAP.md` § Where things run.
 - You are about to remove a security control. Read `FORBIDDEN.md` § Never Lift first;
   if it is on that list, the answer is no.
 - Two tasks conflict and the roadmap does not say which wins.
+
+
+### Law 13 — Nothing ships half-wired.
+A backend with no caller, an element id with no markup, a flag with no consumer, a module
+loaded on every boot that returns early on a missing element — **that is not "built", it is
+drift**, and calling it velocity is how it accumulates. If you cannot finish the wiring in the
+same change, the task is not done: it stays open with a note saying what is missing, and the
+unwired half does not merge.
+
+`python3 .pantheon/check-wiring.py` counts it. The number is currently **78** unresolved
+`getElementById` targets — measured as: static-string lookups across `static/js/**` excluding
+`static/lib/**`, minus ids present in any tracked HTML, minus ids the JS itself creates at
+runtime. **It may go down. It may not go up.**
+
+> **Incident.** An audit of one phase found a complete webhooks backend with no UI at all, a
+> skills editor behind a flag whose list was never fetched, a Real-ESRGAN upscaler with no
+> button, a RAG module called on every single startup that bails on a missing element, and
+> plan mode whose docked window three prompt strings promise and nobody ever drew. None of it
+> was broken. All of it passed CI. Nothing measured whether it was reachable.
+
+### Law 14 — Extend the primary scaffolding. Never build a second one.
+Before adding anything, ask: **does this create a second way to do something that already
+works?** If it does, the answer is to extend the first one. A second implementation is not
+redundancy, it is a fork in the maintenance path where one side goes stale and nobody notices
+which.
+
+This applies to plans as much as to code. A new capability that fits an existing phase belongs
+in that phase, not in a phase of its own — receipts belong in `P4` because `P4` already exists
+to render what the backend computes and discards; a visible context budget belongs in `P12`
+because `P12` already exists to make limits legible and adjustable. Inventing `P14 · Receipts`
+would be the same mistake in a different medium.
+
+> **Incident.** This codebase carries **two** dead RAG interfaces, an admin MCP form duplicating
+> a working one in settings, two files named `ROADMAP.md` saying different things, and two
+> `_ADMIN_TOOLS` constants with **opposite** meanings. Not one of those was a bad idea. Each was
+> a second way to do something that already had a first way.
+
+### Law 15 — If it needs a tutorial, it is not finished.
+Power that cannot be operated is worth less than a modest thing that can. A feature whose
+learning curve requires documentation nobody wrote has not shipped — it has been *placed*.
+
+The test: **can someone who has never seen this surface tell, from the surface alone, what it
+is for and what to do next?** If the answer needs a paragraph of explanation, the surface is
+the thing to fix.
+
+> **Incident.** A competitor's memory-graph feature — genuinely more advanced than anything
+> here — was abandoned by an interested beta user who wanted it to work, because there were no
+> tutorials and the curve was too steep for the time available. The capability was real. The
+> adoption was zero. That is the whole lesson.
+
+

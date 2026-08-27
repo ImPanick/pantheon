@@ -51,18 +51,19 @@ soon as its dependency lands.
 | P0 | Fork identity & licence | 30 | 16 | 0 | **14** |
 | P1 | Token layer — the free wins | 14 | 14 | 0 | 0 |
 | P2 | Un-nerf | 26 | 15 | 1 | **10** |
-| P3 | Mechanical hygiene | 15 | 15 | 0 | 0 |
-| P4 | The wire — the real glass box | 24 | 24 | 0 | 0 |
+| P3 | Mechanical hygiene | 19 | 19 | 0 | 0 |
+| P4 | The wire — the real glass box | 28 | 28 | 0 | 0 |
 | P5 | Trace & composer restyle | 16 | 16 | 0 | 0 |
-| P6 | Queue & Plan | 17 | 17 | 0 | 0 |
+| P6 | Queue & Plan | 18 | 18 | 0 | 0 |
 | P7 | Trust ladder & control plane | 11 | 11 | 0 | 0 |
 | P8 | The Workshop | 48 | 48 | 0 | 0 |
-| P9 | Feature surfaces | 16 | 16 | 0 | 0 |
+| P9 | Feature surfaces | 18 | 18 | 0 | 0 |
 | P10 | Accessibility & release | 12 | 12 | 0 | 0 |
 | P11 | Identity & access | 13 | 13 | 0 | 0 |
-| P12 | Limits & the control plane | 8 | 8 | 0 | 0 |
-| P13 | The Brain | 10 | 10 | 0 | 0 |
-| **Total** | | **266** | **235** | **1** | **30** | | **253** | **222** | **1** | **30** | | **250** | **219** | **1** | **30** | | **231** | **200** | **1** | **30** | | **231** | **211** | **0** | **20** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
+| P12 | Limits & the control plane | 10 | 10 | 0 | 0 |
+| P13 | The Brain | 11 | 11 | 0 | 0 |
+| P14 | Measurement | 7 | 7 | 0 | 0 |
+| **Total** | | **287** | **256** | **1** | **30** | | **266** | **235** | **1** | **30** | | **253** | **222** | **1** | **30** | | **250** | **219** | **1** | **30** | | **231** | **200** | **1** | **30** | | **231** | **211** | **0** | **20** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
 
 **Everything now waits on eighteen decisions**, collected into one sheet with a recommendation
 each — see § Progress for the link. Nine of them finish P2, five gate the public flip. Nothing
@@ -91,6 +92,16 @@ upstream's artwork under Pantheon's filenames.
 *The one progress area. Newest first. One entry per completed section — two lines, a
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
+
+### Two more laws, and a competitor's scar tissue turned into tasks
+`Law 14` — extend the primary scaffolding, never build a second one — applied to this roadmap
+first: receipts went into `P4` because `P4` already exists to render what the wire discards, and
+the context budget into `P12`. `Law 15` — if it needs a tutorial, it is not finished — came from
+a beta user abandoning a more advanced version of `P13` because the curve was too steep, and is
+now `P13-00`, the acceptance criterion for that whole phase. Training parked (`D-06`), a
+marketplace closed for good (`D-07`), `D-05` promoted to `P14 · Measurement` because four things
+now block on it. Four hardening tasks mined from PandaOS's public changelog — the sharpest being
+a silent decrypt failure followed by a destructive save that permanently lost user API keys.
 
 ### Law 13 written, the drift measured, the Brain scoped
 The complaint was right and now it has a number: **78 `getElementById` targets resolve to
@@ -429,6 +440,28 @@ Provably safe, and each one removes a trap the restyle would otherwise fall into
 
 ---
 
+### Hardening — failure modes another product shipped, that this one can still ship
+Mined from a competitor's public changelog. Their private repo hit these; ours has the same
+shapes. Each is an audit, not a guess.
+
+- [ ] **P3-16** **Audit every read-then-write path for the destructive-save pattern.** PandaOS
+  permanently lost user API keys when a locked keychain caused a **silent decrypt failure
+  followed by a destructive save** — the read returned empty, the empty overwrote the good data.
+  Pantheon stores MCP env vars unencrypted, has an admin backup import, and writes `auth.json`,
+  settings and skill files in place. `Verify:` no writer persists a value derived from a read
+  that failed; a failed read aborts the write.
+- [ ] **P3-17** **Fail loudly.** They fixed "several paths where the app could quit silently
+  instead of surfacing an error." This codebase already has the same disease documented — the
+  webhook admin functions that throw on `null.innerHTML` inside a silent `try` are the reason
+  nobody noticed the panel was missing for years. `Verify:` no bare `except: pass` around a
+  user-visible operation.
+- [ ] **P3-18** **Stacking order: menus above modals.** They shipped dropdowns and context menus
+  rendering *behind* open dialogs. Pantheon has a window system, a tile manager, modal chrome
+  and popovers. `Verify:` every popover opened from inside a modal is visible.
+- [ ] **P3-19** **Graph and canvas surfaces need a no-acceleration fallback.** Their Brain graph
+  crashed outright on machines with hardware acceleration disabled. `P13-07` is a graph.
+  `Depends:` P13-07.
+
 ### Drift control — Law 13's enforcement
 - [ ] **P3-13** **Wire `check-wiring.py` into CI at `--max 78`.** It counts `getElementById`
   targets that resolve to nothing: 78 today, across 16 prefixes and seven subsystems. The
@@ -483,6 +516,21 @@ serialised, sent to the browser and never read.** None of this needs backend wor
 - [ ] **P4-23** Live tool-budget and round meter — a progress bar instead of a surprise stop at the limit. The agent already streams step events.
 - [ ] **P4-24** **Background sessions get none of this.** When a stream is resumed after navigating away, a second and much poorer dispatch chain collapses every tool, research and source payload to a single "this was rich" boolean. A background agent run is currently unobservable after the fact. `Depends:` P4-01.
 
+### Run receipts — Law 14: this is P4's job, not a phase of its own
+The wire already computes model, parameters, tools offered, skills injected and RAG hits, then
+discards them. A receipt is that data kept instead of thrown away.
+
+- [ ] **P4-25** **Capture a receipt per agent run** — model and endpoint, resolved sampling
+  parameters, the tool schemas actually sent, which skills were injected and at what confidence,
+  which memories and documents were retrieved, round count, token usage, and every approval
+  decision with its outcome. All of it is already on the wire; none of it is kept.
+- [ ] **P4-26** **Make a receipt re-runnable.** Same inputs, same configuration, new run —
+  which is the only honest way to answer "did that change help". `Depends:` P4-25.
+- [ ] **P4-27** **Make a receipt portable.** One file, exportable, readable by a person who was
+  not there. This is what turns "it did something weird" into a bug report. `Depends:` P4-25.
+- [ ] **P4-28** **Diff two receipts.** What changed between the run that worked and the one that
+  did not. `Depends:` P4-26.
+
 ---
 
 # P5 · Trace & composer restyle
@@ -510,6 +558,10 @@ serialised, sent to the browser and never read.** None of this needs backend wor
 # P6 · Queue & Plan
 *Area: `queue`, `plan` · Depends: P4-01*
 
+- [ ] **P6-18** **Steer mid-response, not only queue.** The queue holds the *next* message;
+  steering redirects the one in flight. Two different verbs, and only one exists. Prior art has
+  both on one key pair — Enter queues, Cmd/Ctrl+Enter steers — which is the right shape because
+  it is the same intent at two urgencies. `Depends:` P6-01.
 - [ ] **P6-01** **Session-bind the queue — live bug.** Queue items carry no session id. Switching chats wipes the message list, destroying every queued bubble's element while the array keeps the items; when the old stream ends the prompt **fires into whichever chat is now open**, invisibly. Add the field, filter the drain on it, re-render bubbles on session switch.
 - [ ] **P6-02** Persist the queue. `_queuedAgentRequests` is a bare module array — a reload loses it silently.
 - [ ] **P6-03** Allow queueing with attachments — currently refused with an error that swallows the send.
@@ -633,6 +685,11 @@ Three authoring surfaces over three engines that already run.
 - [ ] **P9-04** Consolidate email settings — they live in three places. Highest-priority IA fix. **Keep compose-in-document-editor** (it is why AI drafting works); present it as a composer.
 - [ ] **P9-05** Full views for Calendar and Compare — a month grid and an N-way comparison inside ~780px draggable boxes. **Compare deliberately shows/hides the original container's children rather than replacing markup**, so listeners on the input bar and mode toggle survive; any rework must honour that.
 - [ ] **P9-06** Promote Skills out of the Brain modal — different object, different lifecycle (draft → audit → publish). `Depends:` P8-01.
+- [ ] **P9-15b** **Freeform answers on the ask-user card.** When the model offers choices, a
+  person should be able to type something that is not on the list. `.ask-user-card` is in
+  `FORBIDDEN.md` Part 1 — extend it, do not rebuild it.
+- [ ] **P9-15c** **Hybrid chat search — keyword and meaning in one box.** The vector half exists;
+  exact-match does not, and "find the message where I pasted that error" is a keyword query.
 - [ ] **P9-07** **Empty states.** A named roadmap item, and **not one empty state exists anywhere.** Include the cookbook's, which should show the actual command and output instead of "crashed".
 - [ ] **P9-08** Honest error messages, same lane. `Depends:` P9-07.
 - [ ] **P9-09** Provenance on everything the model produced — memories, skills, tidy results, research reports, calendar parses, generated images. Chat bubbles show it; nothing else does. The formatter already exists.
@@ -777,6 +834,15 @@ is mostly moving values into a system that exists, then layering roles on top.
   it becomes a per-role setting with the default off.
 - [ ] **P12-07** **An admin surface for all of it** — one panel, not eleven env vars in a
   compose file. Depends on `P2-20` landing the admin markup pattern first.
+- [ ] **P12-09** **Make the context budget visible while you work, not in a settings tab.**
+  What is consuming the window right now — system prompt, skills, retrieved memory, attachments,
+  history — as a live breakdown at the composer. Nobody self-hosted does this well, and it turns
+  every abstract limit in this phase into something a person can see themselves hitting.
+  `Depends:` P12-04.
+- [ ] **P12-10** **Auto-deny pending approvals on timeout rather than leaving them open.**
+  The approval store already has a TTL; expiry and denial are not the same event. A prompt left
+  hanging while nobody is at the keyboard should close as *denied*, and the timeout should be an
+  operator setting. Prior art: PandaOS shipped exactly this after the same problem.
 - [ ] **P12-08** **Show operators what is actually being consumed** before asking them to set
   a number. Blocked on `D-05` — you cannot tune a limit you cannot measure, and today token
   usage is stored as a running total with the time dimension discarded at write.
@@ -804,6 +870,29 @@ proven, which is why this is a smaller phase than it looks:
 **What genuinely does not exist: edges.** One grep hit for link/related/edge/graph across the
 whole memory subsystem. That is the phase.
 
+**Evidence from a shipped implementation.** A beta screenshot of PandaOS's *PandAtlas* — the
+closest thing to this that exists — with what it teaches:
+
+- **616 entries, 614 connections.** That is **≈1.0 edges per node**, and the render shows why:
+  one enormous hub with a starburst of spokes, and a periphery of dots connected to almost
+  nothing. A graph at that ratio is a star with confetti, not a network. **The lesson is that
+  edges are not free** — they have to be *earned* by a real relation, or the visual promises a
+  structure the data does not have. `P13-02`'s typed edges exist partly to make that failure
+  impossible: an edge you cannot name is an edge you should not draw.
+- **A node reading `CONFIDENCE 66%` and `1 mentions`.** Confidence there is the extractor's own
+  self-report, not corroboration. Two-thirds certainty from a single unconfirmed mention is a
+  number that *looks* like evidence. `P13-01` should separate **how sure the extractor was**
+  from **how much has confirmed it since** — they are different columns and only the second
+  should move on its own.
+- **Their "Avoid" list contains raw venting, promoted to a rule at 95%.** Verbatim entries like
+  *"not a single person I have had look at it knows what the fuck is going on"* are sitting in a
+  behavioural policy list at high confidence. A bad afternoon became a durable instruction.
+  **This is the single strongest argument for `P13-05`'s explicit commitment gate** — extraction
+  should propose; only promotion should bind.
+- **"Last analyzed 5m ago · Covering last 3 months."** It is a batch job over a window, not a
+  live index. That is a reasonable choice and worth copying — but it should say so in those
+  words, because a stale graph presented as current is a lie of omission.
+
 - [ ] **P13-01** **Confidence on memories.** Lift the skill extractor's 0..1 score and floor
   onto memory extraction. Same shape, same tuning surface, one fewer concept to learn.
 - [ ] **P13-02** **Typed edges between memories.** `supersedes`, `contradicts`,
@@ -819,9 +908,16 @@ whole memory subsystem. That is the phase.
 - [ ] **P13-06** **Provider import** — ChatGPT, Claude, Gemini conversation exports. Every
   imported memory carries its origin and enters at a lower confidence than something learned
   first-hand, because it was.
+- [ ] **P13-00** **Legibility is the acceptance criterion for this entire phase — `Law 15`.**
+  The competitor's version of this feature is more advanced than anything planned here, and an
+  interested beta user who *wanted it to work* abandoned it because there were no tutorials and
+  the curve was too steep. The capability was real; the adoption was zero. Nothing in `P13`
+  ships until someone who has never seen the surface can tell what it is for and what to do
+  next, from the surface alone. **If it needs a tutorial, it is not finished.**
 - [ ] **P13-07** **The Brain page.** A dedicated navigable surface, **not on the main path and
   not on open** — reached from a small card via *Explore more*. Graph of memories and their
-  edges, filterable by confidence, category, age and session.
+  edges, filterable by confidence, category, age and session. Needs a no-acceleration fallback
+  (`P3-19`) and a plain statement of how fresh the analysis is.
 - [ ] **P13-08** **Observable skill growth.** Skills already carry confidence and a timeline
   exists for memories; extend it so a person can watch a capability form, strengthen, and
   either get used or fall away. This is the feature nobody else self-hosted has.
@@ -833,11 +929,51 @@ whole memory subsystem. That is the phase.
 
 ---
 
+# P14 · Measurement
+*Area: `measurement` · Depends: nothing · Blocks: P12-08, and everything adaptive*
+
+**Promoted out of `DEFERRED.md` D-05, because too much now depends on it.** `P12` cannot ask an
+operator to set a limit it cannot show them consuming. `D-06` cannot gate a training run on an
+evaluation nobody records. And the platform cannot answer the most basic question anyone asks
+of a harness — *did that change help?* — because the events were never written down.
+
+`core/database.py:219-221` stores `message_count` and token totals as **running counters on a
+session row**. The time dimension is discarded at write. Not because the query is hard; because
+nothing ever recorded the event.
+
+- [ ] **P14-01** **One append-only events table.** Written where the totals are already
+  computed in `llm_core.py`. Timestamp, session, owner, model, endpoint, tokens in and out,
+  duration, outcome. Everything else in this phase reads from it.
+- [ ] **P14-02** **Instrument the rest of the loop** — round latency, tool call and failure
+  counts, queue depth, approval outcomes, retrieval hit rates. Same table.
+- [ ] **P14-03** **An eval harness.** Save a set of cases, run them against a configuration,
+  get a number. This is the missing organ: every prompt change, model swap, skill edit and
+  retrieval tweak in this codebase is currently evaluated by vibes.
+- [ ] **P14-04** **Wire eval to receipts.** A saved case is a receipt (`P4-27`); a run is a
+  re-run (`P4-26`); a result is a diff (`P4-28`). Law 14 — no second scaffolding.
+- [ ] **P14-05** **Usage over time, per model and per owner.** The question that started this
+  phase. Cheap once `P14-01` exists.
+- [ ] **P14-06** **Decide the store.** SQLite is fine until it is not. `DEFERRED.md` D-05 makes
+  the case for TimescaleDB — hypertables, native compression, continuous aggregates — and it
+  only earns its place once there is data worth compressing. Do not start here.
+- [ ] **P14-07** **Pace and bound every indexing job.** Not measurement, but it belongs to the
+  same discipline: background work that nobody watches. PandaOS shipped an out-of-memory crash
+  that closed the app with no warning while building a search index, then fixed it with a
+  single lazy bounded index and paced background work. Pantheon indexes ChromaDB, the tool
+  index and RAG on the same machine a person is using.
+
+---
+
 # Deferred
 
 - **D-01 · The approval card's new markup.** Effect chips, fingerprint badge, expiry countdown, taint trail. Two CI tests assert literal source strings from that file and the upstream cluster around it is the hottest code in the project — 15 commits in 4 weeks, a revert inside the most recent PR. **Style through existing selectors only; add no markup.** Revisit when the upstream commits stop landing daily. *(P4-04 and P7-06/07/08 are the style-only subset and can proceed.)*
 - **D-02 · Container station.** Full entry in `DEFERRED.md`. The strongest framing is as the sandbox the threat model says does not exist, not as a deploy feature. ~70% of the machinery is in Cookbook.
-- **D-06 · Training and fine-tuning.** Fits the platform — ~70% of a training station is the
+- **D-07 · No marketplace.** Closed, not deferred. MCP already is one, and a store would be a
+  second way to install a capability with the moderation and supply-chain burden of a platform
+  and none of the network. Full entry in `DEFERRED.md`.
+- **D-06 · Training and fine-tuning — PARKED, skip for now.** Not scheduled, not counted,
+  nothing blocks on it. The analysis is kept because its constraints are the reason it would
+  ever be safe. Fits the platform — ~70% of a training station is the
   serving station the Forge already is, and Pantheon is sitting on the scarce input, which is
   the dataset. **Constrained to LoRA/QLoRA adapters, never full fine-tuning**, because every
   other adaptation path here is reversible and inspectable and a baked weight is neither. An

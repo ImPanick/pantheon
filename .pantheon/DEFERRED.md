@@ -196,7 +196,19 @@ usage over time cannot be answered.
 
 ---
 
-## D-06 · Training and fine-tuning — not scope creep, if it stays adapters
+## D-06 · Training and fine-tuning — **PARKED. Skip for now.**
+
+> **Status: parked by decision, 2026-08-26.** Not rejected, not scheduled, not counted in any
+> phase. The analysis below stands and is worth keeping — if this is ever picked up, the
+> constraints in it are the reason it would be safe. But nothing in the roadmap depends on it,
+> nothing blocks on it, and no agent should start it. If you are reading this looking for work,
+> keep going.
+>
+> **Why parked rather than dropped.** Every prerequisite it needs — the Forge rename, `P11`,
+> `P12`, measurement — is being built anyway for its own reasons. The cost of leaving the door
+> open is zero. The cost of walking through it early is a GPU nobody can reclaim.
+
+### The original analysis, retained
 
 **The ask.** Pantheon already serves models. Could it also train them — so that alongside
 self-adapting skills, RAG, and LLM-assisted MCP and automation building, the models themselves
@@ -269,4 +281,29 @@ This is also why `D-05` telemetry comes first. You cannot gate on a measurement 
 training job can be quota'd and permissioned, `D-05` telemetry exists so eval has somewhere to
 report, and there is a real GPU host to run on. In that order. None of those is a stalling
 tactic — each one is a thing that must exist for the feature to be safe rather than impressive.
+
+---
+
+## D-07 · No marketplace. Not now, not later.
+
+**Decided: closed, not deferred.** Pantheon will not ship a plugin marketplace, extension
+store, template gallery, or any other install-things-from-a-catalogue surface.
+
+**Why it is a closed question rather than an open one.** MCP already is that. A server is
+installable, discoverable and shareable today, through a protocol with an ecosystem behind it
+that Pantheon does not have to build, moderate, host or secure. A marketplace would be a
+**second way to install a capability** — `Law 14` — and the weaker of the two, because it would
+carry the moderation and supply-chain burden of a store without the network of one.
+
+**And it points the product the wrong way.** A marketplace is a growth surface. It implies
+users to acquire, publishers to court, and a catalogue to keep warm. This is a self-hosted
+tool that its operator owns outright, and the README says so — the honest offer is *use it
+internally, for free, forever*, not *browse our store*.
+
+**What we build instead when the itch appears:** make the MCP Creator (`P8`) good enough that
+building a server is easier than shopping for one, and make `import`/`export` on skills,
+automations and MCP configs clean enough that sharing is a file, not a platform.
+
+**Revisit when.** Never. If this needs reopening, the product has become something else, and
+that is a bigger conversation than a feature.
 
