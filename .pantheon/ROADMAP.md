@@ -328,6 +328,20 @@ Three machines, and the tools do not reach the same one. This bit the first plan
 The fork is private, so agents cannot clone it. They read `/work/base` — upstream at
 exactly `b4d1293`, the fork point — and hand back patches that cybertooth applies.
 
+**Verifying a sync: compare `git rev-parse HEAD^{tree}` on both machines.** Two commits
+with different messages, authors or timestamps still produce the same tree hash if the
+files match, which makes it the right check for "did everything arrive". A checksum on
+the tarball proves the transfer; the tree hash proves the *result*.
+
+*Confirmed useful on 2026-08-27.* It disagreed after a sync that had in fact worked:
+1,532 files, **zero differing blobs**, and 1,484 files whose only difference was the
+executable bit — the container mirror had been seeded from a tarball that set `+x` on
+everything, so its index recorded `100755` where cybertooth has `100644`. Nothing wrong
+was ever pushed, because cybertooth is the push source. `core.fileMode false` is now set
+in the container so the seed cannot reintroduce it. **Do not skip this check because it
+disagreed once for a boring reason** — the same disagreement with a differing *blob* is
+the one that matters, and you cannot tell them apart without looking.
+
 ### Two upstream identities — settle before P0-14
 Cloned from **`pewdiepie-archdaemon/odysseus`**; the code and docs referenced
 **`odysseus-dev/odysseus`** (47 occurrences across 16 files). The sweep rewrote the second
