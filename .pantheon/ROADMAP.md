@@ -96,6 +96,14 @@ upstream's artwork under Pantheon's filenames.
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
 
+### Wiring run 01 in flight — all 78 under classification
+Every unresolved lookup inventoried and batched by owning file: documents 19, gallery editor 17,
+Forge 12, skills+RAG 8, email+gallery 8, shell singletons 14. Six agents classifying each id as
+rename victim, dead code, or missing markup — with the rule that a deletion needs evidence the
+code is unreachable and a build needs evidence no working UI already does it (`Law 1`, `Law 14`).
+No agent may edit `index.html`; markup is emitted as fragment specs and applied serially by one
+agent afterwards, so the one shared file cannot collide.
+
 ### All eighteen decisions answered; the Brain loses its graph
 `DECISIONS.md` D-2026-08-26-06 settles every open call and each task line now carries its own.
 Five shifted under the scaling track — `P2-10` most of all, which flips from *delete the

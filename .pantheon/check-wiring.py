@@ -16,6 +16,7 @@ Dynamic lookups built from variables are invisible to this and always will be â€
 this is a floor on the drift, never a ceiling.
 """
 import re
+import signal
 import sys
 import pathlib
 import subprocess
@@ -81,4 +82,9 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    # `| head` closes the pipe; that is not an error worth a traceback.
+    try:
+        signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+    except (AttributeError, ValueError):
+        pass
     sys.exit(main())
