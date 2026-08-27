@@ -148,8 +148,8 @@ async def _run_tmux_bash(
     wrapped = (
         f"printf '\\n{start_marker}\\n'\n"
         f"{content}\n"
-        f"__ody_rc=$?\n"
-        f"printf '\\n{end_prefix}%s\\n' \"$__ody_rc\"\n"
+        f"__pan_rc=$?\n"
+        f"printf '\\n{end_prefix}%s\\n' \"$__pan_rc\"\n"
     )
     for line in wrapped.splitlines():
         await _tmux_send_line(name, line)
@@ -196,7 +196,7 @@ def _clean_tmux_command_output(text: str, wrapped_command: str) -> str:
             continue
         if stripped in wrapped_lines:
             continue
-        if stripped.startswith("__ody_rc=") or stripped.startswith("printf "):
+        if stripped.startswith("__pan_rc=") or stripped.startswith("printf "):
             continue
         if re.fullmatch(r"(?:bash|sh)-[\d.]+\$ ?", stripped):
             continue

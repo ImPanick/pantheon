@@ -31,6 +31,12 @@ secrets.env~
 dev-docs/
 docs/
 *.md
+# ...but the attribution files must ship. NOTICE designates CREDITS.md as the
+# third-party notice for this distribution, so `*.md` silently dropping it means
+# the image redistributes MIT/BSD/OFL code with no notice attached.
+!CREDITS.md
+!NOTICE
+!LICENSE
 *.db
 *.sqlite
 *.sqlite3

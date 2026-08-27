@@ -68,6 +68,10 @@ Pantheon is a fork of [Odysseus](https://github.com/pewdiepie-archdaemon/odysseu
 AI workspace with about two thousand commits behind it. We installed it, used it for real work,
 and liked it.
 
+Odysseus goes by two names. We cloned `pewdiepie-archdaemon/odysseus`; its own code and docs point
+at `odysseus-dev/odysseus`. Both are the same upstream project and we credit both — see
+[`NOTICE`](NOTICE).
+
 Then we tried to change something small and ended up reading all 41,401 lines of the stylesheet.
 
 `--accent` — the colour behind every highlight, hover state and drag handle — is referenced 799
@@ -170,7 +174,7 @@ task.
 
 ## Security
 
-- Keep `AUTH_ENABLED=true` on anything reachable over a network.
+- Keep `AUTH_ENABLED=true` for any network-accessible deployment.
 - Keep `LOCALHOST_BYPASS=false` outside local development.
 - Don't expose raw model or service ports publicly.
 
@@ -208,5 +212,4 @@ Pantheon is a modified version of Odysseus, forked from commit `b4d1293` on 24 A
 released under the same licence. It is not affiliated with or endorsed by the Odysseus project,
 so please don't send them issues from here.
 
-Credits and third-party licences: [`CREDITS.md`](CREDITS.md),
-[`ACKNOWLEDGMENTS.md`](ACKNOWLEDGMENTS.md), [`NOTICE`](NOTICE).
+Credits and third-party licences: [`CREDITS.md`](CREDITS.md), [`NOTICE`](NOTICE).

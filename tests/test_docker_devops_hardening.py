@@ -97,8 +97,8 @@ def test_docker_entrypoint_does_not_resolve_root_commands_from_app_local_path():
     path_export = script.index('export PATH="/app/.local/bin:$PATH"')
     gosu_capture = script.index('GOSU_BIN="$(command -v gosu)"')
     python_capture = script.index('PYTHON_BIN="$(command -v python)"')
-    setup_call = script.index('"$GOSU_BIN" "$ODY_USER" "$PYTHON_BIN" /app/setup.py')
-    final_exec = script.index('exec "$GOSU_BIN" "$ODY_USER" "$@"')
+    setup_call = script.index('"$GOSU_BIN" "$PANTHEON_USER" "$PYTHON_BIN" /app/setup.py')
+    final_exec = script.index('exec "$GOSU_BIN" "$PANTHEON_USER" "$@"')
 
     assert gosu_capture < path_export < setup_call
     assert python_capture < path_export < setup_call

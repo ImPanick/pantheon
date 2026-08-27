@@ -26,8 +26,8 @@ if ! getent passwd "$PUID" >/dev/null 2>&1; then
     useradd -u "$PUID" -g "$PGID" -M -s /bin/sh -d /app pantheon
 fi
 
-ODY_USER="$(getent passwd "$PUID" | cut -d: -f1)"
-[ -z "$ODY_USER" ] && ODY_USER=pantheon
+PANTHEON_USER="$(getent passwd "$PUID" | cut -d: -f1)"
+[ -z "$PANTHEON_USER" ] && PANTHEON_USER=pantheon
 
 # Docker-socket group plumbing for the explicit host-Docker overlay. When
 # opted in, the socket is owned by root:<host docker gid>. Add the app user
@@ -42,7 +42,7 @@ if [ "${PANTHEON_ENABLE_HOST_DOCKER:-}" = "true" ] && [ -S "$DOCKER_SOCK" ]; the
         fi
         SOCK_GROUP="$(getent group "$SOCK_GID" | cut -d: -f1)"
         if [ -n "$SOCK_GROUP" ]; then
-            usermod -aG "$SOCK_GROUP" "$ODY_USER" 2>/dev/null || true
+            usermod -aG "$SOCK_GROUP" "$PANTHEON_USER" 2>/dev/null || true
         fi
     fi
 fi
@@ -138,9 +138,9 @@ export PATH="/app/.local/bin:$PATH"
 # Run first-time setup as the app user so data/ files get the right ownership.
 # setup.py is idempotent — skips auth.json / .env if they already exist.
 # || true so a setup failure never prevents the container from starting.
-"$GOSU_BIN" "$ODY_USER" "$PYTHON_BIN" /app/setup.py || true
+"$GOSU_BIN" "$PANTHEON_USER" "$PYTHON_BIN" /app/setup.py || true
 
 # Drop root and run the actual app. `gosu` is preferred over `su` /
 # `sudo` because it cleans up the process tree (no extra shell layer)
 # so signals (SIGTERM from `docker stop`) reach uvicorn directly.
-exec "$GOSU_BIN" "$ODY_USER" "$@"
+exec "$GOSU_BIN" "$PANTHEON_USER" "$@"

@@ -1450,10 +1450,15 @@ def _imap_move(uid, dest, src="INBOX", account_id: str | None = None, owner: str
 
 
 def _extract_attachment_text(msg, max_chars: int = 6000) -> str:
-    """Pull readable text out of an email's attachments — PDF (via PyMuPDF),
-    plain text, markdown, csv, log. Caps total at `max_chars`. Returns a
+    """Pull readable text out of an email's attachments — PDF, plain text,
+    markdown, csv, log. Caps total at `max_chars`. Returns a
     formatted string with `[Attachment: filename]\\n<content>` blocks
     separated by `---`. Empty string if there's nothing useful.
+
+    PDF text is extracted by `src.personal_docs.extract_pdf_text`, which uses
+    **pypdf** (BSD-3-Clause). PyMuPDF is not used on this path and is not
+    required for it; this docstring previously credited PyMuPDF, which was
+    wrong. See CREDITS.md § "PyMuPDF — scope and licence".
 
     Used by the summarize/reply pipeline so an email like "see attached
     invoice" produces a summary that actually references the invoice.

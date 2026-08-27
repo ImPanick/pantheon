@@ -1944,7 +1944,7 @@ def _strip_doc_model_artifacts(text: str) -> str:
     return _DOC_MODEL_ARTIFACT_RE.sub("", text or "")
 
 
-_ODY_QWEN_TEXT_FIXES = (
+_PAN_QWEN_TEXT_FIXES = (
     (re.compile(r"\bassistan\b", re.IGNORECASE), "assistant"),
     (re.compile(r"\bdon'\b", re.IGNORECASE), "don't"),
     (re.compile(r"\bcan'\b", re.IGNORECASE), "can't"),
@@ -1975,7 +1975,7 @@ _ODY_QWEN_TEXT_FIXES = (
 )
 
 
-def _normalize_ody_qwen_text_artifacts(text: str) -> str:
+def _normalize_pan_qwen_text_artifacts(text: str) -> str:
     """Repair common dropped-final-letter artifacts from small Pantheon LoRAs.
 
     This is intentionally scoped to the pantheon-qwen3 runtime path. It is not
@@ -1986,14 +1986,14 @@ def _normalize_ody_qwen_text_artifacts(text: str) -> str:
     if not text:
         return text
     fixed = text
-    for pattern, replacement in _ODY_QWEN_TEXT_FIXES:
+    for pattern, replacement in _PAN_QWEN_TEXT_FIXES:
         if replacement is None:
             continue
         fixed = pattern.sub(replacement, fixed)
     return fixed
 
 
-def _ody_qwen_terminal_tool_summary(tool_event: dict[str, Any]) -> str:
+def _pan_qwen_terminal_tool_summary(tool_event: dict[str, Any]) -> str:
     """Return a deterministic user-facing answer for tools we can render safely."""
     tool_name = _resolved_tool_event_name(tool_event)
     output = str(tool_event.get("output") or "")
@@ -2209,7 +2209,7 @@ def _is_pantheon_qwen_model(model: str) -> bool:
     return (model or "").lower().startswith("pantheon-qwen3")
 
 
-def _ody_qwen_temperature_cap(temperature):
+def _pan_qwen_temperature_cap(temperature):
     """Force-cap pantheon-qwen3 sampling; the finetune destabilizes above 0.2.
 
     Applied per route, not just to the selected model: a non-qwen primary can
@@ -3513,15 +3513,15 @@ async def stream_agent_loop(
     _t0 = time.time()
     _needs_admin = _detect_admin_intent(messages)
     _last_user = _extract_last_user_message(messages)
-    _ody_qwen_finetune_model = _is_pantheon_qwen_model(model)
+    _pan_qwen_finetune_model = _is_pantheon_qwen_model(model)
     # The caller's temperature survives for non-qwen routes; the qwen cap is
     # applied per candidate (here for the primary, in the candidate request
     # factories for fallbacks), so neither direction of a mixed qwen/non-qwen
     # fallback chain inherits the other's value.
     _requested_temperature = temperature
-    if _ody_qwen_finetune_model:
-        temperature = _ody_qwen_temperature_cap(temperature)
-    _ody_memory_identity_turn = _looks_like_memory_identity_turn(_last_user)
+    if _pan_qwen_finetune_model:
+        temperature = _pan_qwen_temperature_cap(temperature)
+    _pan_memory_identity_turn = _looks_like_memory_identity_turn(_last_user)
     _intent = _classify_agent_request(messages, _last_user)
     _low_signal_turn = bool(_intent.get("low_signal"))
     _casual_low_signal_turn = _is_casual_low_signal(_last_user)
@@ -3592,7 +3592,7 @@ async def stream_agent_loop(
                 messages,
                 include_memory=True,
             )
-            if _ody_qwen_finetune_model
+            if _pan_qwen_finetune_model
             else [{"role": "user", "content": _last_user}]
         )
         direct_response = ""
@@ -3620,7 +3620,7 @@ async def stream_agent_loop(
                 "messages": candidate_messages,
                 "kwargs": {
                     "temperature": (
-                        _ody_qwen_temperature_cap(_requested_temperature)
+                        _pan_qwen_temperature_cap(_requested_temperature)
                         if candidate_is_qwen
                         else _requested_temperature
                     ),
@@ -4137,21 +4137,21 @@ async def stream_agent_loop(
         return route_tools
 
     (
-        _ody_qwen_finetune_model,
-        _ody_doc_finetune_mode,
-        _ody_notes_finetune_mode,
-        _ody_doc_stream_create_mode,
-        _ody_general_no_tool_mode,
+        _pan_qwen_finetune_model,
+        _pan_doc_finetune_mode,
+        _pan_notes_finetune_mode,
+        _pan_doc_stream_create_mode,
+        _pan_general_no_tool_mode,
     ) = _route_finetune_modes(model)
     _relevant_tools = _route_relevant_tools(model)
-    if _ody_doc_finetune_mode and _relevant_tools is not None:
+    if _pan_doc_finetune_mode and _relevant_tools is not None:
         logger.info("[agent-intent] pantheon doc finetune tool clamp=%s", sorted(_relevant_tools))
-    elif _ody_notes_finetune_mode and _relevant_tools is not None:
+    elif _pan_notes_finetune_mode and _relevant_tools is not None:
         disabled_tools.difference_update({
             "manage_notes", "manage_calendar", "manage_tasks",
         })
         logger.info("[agent-intent] pantheon notes finetune tool clamp=%s", sorted(_relevant_tools))
-    elif _ody_general_no_tool_mode:
+    elif _pan_general_no_tool_mode:
         try:
             from src.tool_policy import known_tool_names
             disabled_tools.update(known_tool_names())
@@ -4343,10 +4343,10 @@ async def stream_agent_loop(
             "is_api_model": is_api,
             "is_ollama_native": is_native_ollama,
             "ollama_openai_compat": is_ollama_compat,
-            "ody_qwen_finetune_model": is_ody,
-            "ody_doc_finetune_mode": doc_mode,
-            "ody_notes_finetune_mode": notes_mode,
-            "ody_doc_stream_create_mode": stream_create_mode,
+            "pan_qwen_finetune_model": is_ody,
+            "pan_doc_finetune_mode": doc_mode,
+            "pan_notes_finetune_mode": notes_mode,
+            "pan_doc_stream_create_mode": stream_create_mode,
             "compaction_state": compaction_state,
             "was_compacted": was_compacted,
         }
@@ -4419,7 +4419,7 @@ async def stream_agent_loop(
     actual_endpoint_cost_tracked = requested_endpoint_cost_tracked
     usage_buckets = []
     total_tool_calls = 0  # for budget enforcement
-    _ody_notes_tool_completed = False
+    _pan_notes_tool_completed = False
     _pinned_fallback_candidate = None
     _pinned_fallback_route = None
     _last_route_request_messages = _initial_route_request_messages
@@ -4462,7 +4462,7 @@ async def stream_agent_loop(
     _awaiting_user = False  # set by ask_user → end the turn and wait for a choice
 
     _doc_stream_create_completed = False
-    _ody_doc_tool_completed = False
+    _pan_doc_tool_completed = False
 
     # Set when the loop runs out of rounds while the agent was still actively
     # using tools — i.e. it was cut off, not finished. Drives a "Continue" event
@@ -4501,7 +4501,7 @@ async def stream_agent_loop(
                     if schema.get("function", {}).get("name") not in _ADMIN_SCHEMA_NAMES
                 ]
                 schemas = base_schemas + route_mcp_schemas
-            if route_state["ody_qwen_finetune_model"]:
+            if route_state["pan_qwen_finetune_model"]:
                 schemas = []
             if disabled_tools:
                 schemas = [
@@ -4787,10 +4787,10 @@ async def stream_agent_loop(
             "is_api_model": _is_api_model,
             "is_ollama_native": _is_ollama_native,
             "ollama_openai_compat": _ollama_openai_compat,
-            "ody_qwen_finetune_model": _ody_qwen_finetune_model,
-            "ody_doc_finetune_mode": _ody_doc_finetune_mode,
-            "ody_notes_finetune_mode": _ody_notes_finetune_mode,
-            "ody_doc_stream_create_mode": _ody_doc_stream_create_mode,
+            "pan_qwen_finetune_model": _pan_qwen_finetune_model,
+            "pan_doc_finetune_mode": _pan_doc_finetune_mode,
+            "pan_notes_finetune_mode": _pan_notes_finetune_mode,
+            "pan_doc_stream_create_mode": _pan_doc_stream_create_mode,
             "compaction_state": (
                 _route_state.get("compaction_state", {}) if round_num == 1 else {}
             ),
@@ -4867,9 +4867,9 @@ async def stream_agent_loop(
                 "messages": request_messages,
                 "kwargs": {
                     "tools": candidate_tools or None,
-                    "tool_choice_none": state["ody_doc_finetune_mode"],
+                    "tool_choice_none": state["pan_doc_finetune_mode"],
                     "temperature": (
-                        _ody_qwen_temperature_cap(_requested_temperature)
+                        _pan_qwen_temperature_cap(_requested_temperature)
                         if _is_pantheon_qwen_model(candidate_model)
                         else _requested_temperature
                     ),
@@ -4955,7 +4955,7 @@ async def stream_agent_loop(
             max_tokens=max_tokens,
             prompt_type=prompt_type if round_num == 1 else None,
             tools=all_tool_schemas if all_tool_schemas else None,
-            tool_choice_none=_ody_doc_finetune_mode,
+            tool_choice_none=_pan_doc_finetune_mode,
             timeout=agent_stream_timeout,
             session_id=session_id,
             workload=workload,
@@ -5019,7 +5019,7 @@ async def stream_agent_loop(
                             and not guide_only
                         ),
                     ).strip()
-                    if _ody_qwen_finetune_model:
+                    if _pan_qwen_finetune_model:
                         partial_round = _strip_doc_model_artifacts(partial_round).strip()
                     failure_note = f"[Agent stopped: {terminal_error['message']}]"
                     terminal_round = (
@@ -5149,11 +5149,11 @@ async def stream_agent_loop(
                             _is_api_model = answering_state["is_api_model"]
                             _is_ollama_native = answering_state["is_ollama_native"]
                             _ollama_openai_compat = answering_state["ollama_openai_compat"]
-                            _ody_qwen_finetune_model = answering_state["ody_qwen_finetune_model"]
-                            _ody_doc_finetune_mode = answering_state["ody_doc_finetune_mode"]
-                            _ody_notes_finetune_mode = answering_state["ody_notes_finetune_mode"]
-                            _ody_doc_stream_create_mode = answering_state["ody_doc_stream_create_mode"]
-                            if _ody_notes_finetune_mode:
+                            _pan_qwen_finetune_model = answering_state["pan_qwen_finetune_model"]
+                            _pan_doc_finetune_mode = answering_state["pan_doc_finetune_mode"]
+                            _pan_notes_finetune_mode = answering_state["pan_notes_finetune_mode"]
+                            _pan_doc_stream_create_mode = answering_state["pan_doc_stream_create_mode"]
+                            if _pan_notes_finetune_mode:
                                 # Mirror the primary-route clamp: the answering
                                 # candidate's notes mode must re-enable the
                                 # personal managers in the shared execution
@@ -5212,15 +5212,15 @@ async def stream_agent_loop(
                         else:
                             _delta_text = (
                                 _strip_doc_model_artifacts(data["delta"])
-                                if _ody_qwen_finetune_model
+                                if _pan_qwen_finetune_model
                                 else data["delta"]
                             )
-                            if _ody_qwen_finetune_model:
-                                _delta_text = _normalize_ody_qwen_text_artifacts(_delta_text)
+                            if _pan_qwen_finetune_model:
+                                _delta_text = _normalize_pan_qwen_text_artifacts(_delta_text)
                             round_response += _delta_text
                             full_response += _delta_text
                             data["delta"] = _delta_text
-                        if not _ody_qwen_finetune_model or data.get("thinking"):
+                        if not _pan_qwen_finetune_model or data.get("thinking"):
                             yield f"data: {json.dumps(data)}\n\n"
                     elif data.get("error"):
                         err_msg = data.get("error", "unknown")
@@ -5247,9 +5247,9 @@ async def stream_agent_loop(
         _normalized_doc_round = (
             _normalize_stream_document_fences(
                 round_response,
-                "create_document" if _ody_doc_stream_create_mode else "update_document",
+                "create_document" if _pan_doc_stream_create_mode else "update_document",
             )
-            if _ody_doc_finetune_mode
+            if _pan_doc_finetune_mode
             else round_response
         )
         tool_blocks, used_native, converted_calls = _resolve_tool_blocks(
@@ -5257,9 +5257,9 @@ async def stream_agent_loop(
             native_tool_calls,
             round_num,
             is_api_model=(_is_api_model and not guide_only),
-            allow_fenced_for_api=_ody_doc_finetune_mode,
+            allow_fenced_for_api=_pan_doc_finetune_mode,
         )
-        if _ody_doc_stream_create_mode and tool_blocks:
+        if _pan_doc_stream_create_mode and tool_blocks:
             create_idx = next(
                 (idx for idx, block in enumerate(tool_blocks) if block.tool_type == "create_document"),
                 None,
@@ -5284,7 +5284,7 @@ async def stream_agent_loop(
                     else converted_calls[:1]
                 )
 
-        if _ody_qwen_finetune_model and tool_blocks:
+        if _pan_qwen_finetune_model and tool_blocks:
             _allowed_memory_write_actions = {"add", "edit", "update", "delete", "delete_all"}
             _explicit_memory_browse = bool(re.search(
                 r"\b(search|list|show|open|view)\b.{0,40}\b(memories|memory|brain)\b",
@@ -5434,7 +5434,7 @@ async def stream_agent_loop(
         round_models.append(_round_actual_model)
         round_endpoint_ids.append(_round_actual_endpoint_id)
         round_endpoint_labels.append(_round_actual_endpoint_label)
-        if _ody_qwen_finetune_model and not tool_blocks and cleaned_round:
+        if _pan_qwen_finetune_model and not tool_blocks and cleaned_round:
             yield f'data: {json.dumps({"delta": cleaned_round})}\n\n'
 
         if not tool_blocks:
@@ -5656,8 +5656,8 @@ async def stream_agent_loop(
                 block.tool_type,
                 block.content,
             )
-            _ody_clamped_tool_allowed = (
-                _ody_notes_finetune_mode
+            _pan_clamped_tool_allowed = (
+                _pan_notes_finetune_mode
                 and block.tool_type in {"manage_notes", "manage_calendar", "manage_tasks"}
             )
             policy_names = email_tool_policy_names(block.tool_type)
@@ -5670,7 +5670,7 @@ async def stream_agent_loop(
             )
             if (
                 (blocked_by_tool_policy or blocked_by_disabled_tools)
-                and not _ody_clamped_tool_allowed
+                and not _pan_clamped_tool_allowed
             ):
                 if blocked_by_tool_policy:
                     blocked_name = next(
@@ -6091,7 +6091,7 @@ async def stream_agent_loop(
                         _prefix = "\n\n" if _clean_current else ""
                         full_response = (_clean_current + _prefix + _notes_text).strip()
                         yield f'data: {json.dumps({"delta": _prefix + _notes_text})}\n\n'
-                    _ody_notes_tool_completed = True
+                    _pan_notes_tool_completed = True
 
             if block.tool_type == "manage_tasks":
                 _tasks_action = ""
@@ -6121,10 +6121,10 @@ async def stream_agent_loop(
                         _prefix = "\n\n" if _clean_current else ""
                         full_response = (_clean_current + _prefix + _tasks_text).strip()
                         yield f'data: {json.dumps({"delta": _prefix + _tasks_text})}\n\n'
-                    _ody_notes_tool_completed = True
+                    _pan_notes_tool_completed = True
 
-            if _ody_qwen_finetune_model and not result.get("error"):
-                _terminal_summary = _ody_qwen_terminal_tool_summary({
+            if _pan_qwen_finetune_model and not result.get("error"):
+                _terminal_summary = _pan_qwen_terminal_tool_summary({
                     "tool": block.tool_type,
                     "desc": desc,
                     "command": block.content,
@@ -6136,7 +6136,7 @@ async def stream_agent_loop(
                     or "",
                 })
                 if _terminal_summary:
-                    _terminal_summary = _normalize_ody_qwen_text_artifacts(_terminal_summary).strip()
+                    _terminal_summary = _normalize_pan_qwen_text_artifacts(_terminal_summary).strip()
                     _clean_current = strip_tool_blocks(full_response).strip()
                     # Replace model-written summaries for list/read tools. They
                     # are the common source of doubled text and dropped-letter
@@ -6145,7 +6145,7 @@ async def stream_agent_loop(
                     full_response = _terminal_summary
                     if _terminal_summary not in _clean_current:
                         yield f'data: {json.dumps({"delta": _terminal_summary})}\n\n'
-                    _ody_notes_tool_completed = True
+                    _pan_notes_tool_completed = True
 
             # This must be the final UI event for ask_user: the frontend appends
             # the card below the now-settled tool node and cancels any between-
@@ -6243,17 +6243,17 @@ async def stream_agent_loop(
                 }
             )
             if (
-                _ody_doc_stream_create_mode
+                _pan_doc_stream_create_mode
                 and block.tool_type == "create_document"
                 and result.get("action") == "create"
             ):
                 _doc_stream_create_completed = True
             if (
-                _ody_doc_finetune_mode
+                _pan_doc_finetune_mode
                 and block.tool_type in ("create_document", "update_document", "edit_document", "suggest_document")
                 and not result.get("error")
             ):
-                _ody_doc_tool_completed = True
+                _pan_doc_tool_completed = True
             if _pending_ask_user_event:
                 # An approval card is a turn boundary.  Never execute a later
                 # model-supplied call from the same batch after this request.
@@ -6277,14 +6277,14 @@ async def stream_agent_loop(
             logger.info("[agent] pantheon doc stream-create completed after one create_document")
             break
 
-        if _ody_doc_tool_completed:
+        if _pan_doc_tool_completed:
             if not full_response.strip() or full_response.strip().startswith("```"):
                 full_response = "Done."
                 yield 'data: ' + json.dumps({"delta": "Done."}) + '\n\n'
             logger.info("[agent] pantheon doc tool completed after one textual tool block")
             break
 
-        if (_ody_notes_finetune_mode or _ody_qwen_finetune_model) and _ody_notes_tool_completed:
+        if (_pan_notes_finetune_mode or _pan_qwen_finetune_model) and _pan_notes_tool_completed:
             logger.info("[agent] pantheon completed from deterministic tool output")
             break
 
@@ -6333,8 +6333,8 @@ async def stream_agent_loop(
     # prose. Local finetunes may emit those before the parser catches and
     # executes them; saved history should contain only the user-facing answer.
     full_response = strip_tool_blocks(full_response).strip()
-    if _ody_qwen_finetune_model:
-        full_response = _normalize_ody_qwen_text_artifacts(full_response)
+    if _pan_qwen_finetune_model:
+        full_response = _normalize_pan_qwen_text_artifacts(full_response)
         if (
             not tool_events
             and _looks_like_destructive_request(_last_user)

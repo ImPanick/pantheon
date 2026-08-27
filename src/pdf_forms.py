@@ -10,7 +10,7 @@ import re
 from typing import Any
 
 # PyMuPDF is an OPTIONAL dependency (AGPL-3.0), required ONLY for the PDF
-# form-filling feature implemented in this module. The MIT core imports fine
+# form-filling feature implemented in this module. The rest of the app imports fine
 # without it; calling these functions without PyMuPDF raises a clear error.
 # See requirements-optional.txt.
 try:

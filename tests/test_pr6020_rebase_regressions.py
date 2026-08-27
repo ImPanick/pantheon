@@ -6,7 +6,7 @@ import json
 import src.agent_loop as agent_loop
 
 
-ODY_QWEN = "pantheon-qwen3-4b"
+PAN_QWEN = "pantheon-qwen3-4b"
 NOTES_TOOLS = {
     "manage_notes",
     "manage_calendar",
@@ -77,7 +77,7 @@ def _run_probe(messages, *, relevant_tools, **kwargs):
     return _collect(
         agent_loop.stream_agent_loop(
             "https://api.example/v1",
-            kwargs.pop("model", ODY_QWEN),
+            kwargs.pop("model", PAN_QWEN),
             messages,
             max_rounds=1,
             relevant_tools=set(relevant_tools),
@@ -192,12 +192,12 @@ def test_qwen_fallback_candidate_gets_capped_temperature(monkeypatch):
         model="gpt-4o",
         relevant_tools={"bash"},
         temperature=1.2,
-        fallbacks=[("https://qwen.example/v1", ODY_QWEN, {})],
+        fallbacks=[("https://qwen.example/v1", PAN_QWEN, {})],
     )
 
     assert stream_calls[0]["temperature"] == 1.2
     factory = stream_calls[0]["candidate_request_factory"]
-    request = asyncio.run(factory(1, "https://qwen.example/v1", ODY_QWEN, {}))
+    request = asyncio.run(factory(1, "https://qwen.example/v1", PAN_QWEN, {}))
     assert request["kwargs"]["temperature"] == 0.2
 
 
@@ -237,7 +237,7 @@ def test_qwen_notes_fallback_reenables_personal_managers(monkeypatch):
                 + json.dumps(
                     {
                         "type": "fallback",
-                        "answered_by": ODY_QWEN,
+                        "answered_by": PAN_QWEN,
                         "candidate_index": 1,
                     }
                 )
@@ -274,7 +274,7 @@ def test_qwen_notes_fallback_reenables_personal_managers(monkeypatch):
             max_rounds=2,
             relevant_tools={"manage_notes", "manage_calendar", "manage_tasks", "bash"},
             disabled_tools={"manage_notes", "manage_calendar", "manage_tasks"},
-            fallbacks=[("https://qwen.example/v1", ODY_QWEN, {})],
+            fallbacks=[("https://qwen.example/v1", PAN_QWEN, {})],
             _is_teacher_run=True,
         )
     )

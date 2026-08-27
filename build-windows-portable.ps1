@@ -8,6 +8,8 @@
     dist\Pantheon\scripts\...
     dist\Pantheon\mcp_servers\...
     dist\Pantheon\services\hwfit\data\...
+    dist\Pantheon\licenses\...        (third-party notices — required, not optional)
+    dist\Pantheon\{LICENSE,NOTICE,CREDITS.md}
 
   The app then keeps using its normal filesystem layout when frozen.
 
@@ -60,7 +62,13 @@ $dataArgs = @(
     "--add-data", "mcp_servers;mcp_servers",
     "--add-data", "services/hwfit/data;services/hwfit/data",
     "--add-data", "config;config",
-    "--add-data", ".env.example;.env.example"
+    "--add-data", ".env.example;.env.example",
+    # MIT, BSD and OFL require the notice to travel with a redistributed copy,
+    # and this bundle is one. Keep these in step with Pantheon.spec.
+    "--add-data", "licenses;licenses",
+    "--add-data", "LICENSE;.",
+    "--add-data", "NOTICE;.",
+    "--add-data", "CREDITS.md;."
 )
 
 & $pyExe -m PyInstaller --noconfirm --clean --onedir --noconsole --icon=static/icon.ico --name Pantheon @dataArgs launcher.py

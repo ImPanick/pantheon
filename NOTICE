@@ -21,16 +21,35 @@ Pantheon is a MODIFIED VERSION of Odysseus.
 
     Upstream project : Odysseus
     Upstream source  : https://github.com/pewdiepie-archdaemon/odysseus
+    Upstream identity: https://github.com/odysseus-dev/odysseus
     Forked from      : commit b4d1293 (branch dev)
     Date of fork     : 2026-08-24
     Modified by      : Panick
+
+Odysseus is reachable under two GitHub identities and both are named above,
+because naming one of two would be an incomplete notice.
+
+    Upstream source   -- pewdiepie-archdaemon/odysseus -- is the repository
+    Pantheon was cloned from.  It is the `origin` remote of the fork-point
+    checkout, and CHANGELOG.md records the fork from it at b4d1293 on
+    2026-08-24.
+
+    Upstream identity -- odysseus-dev/odysseus -- is the identity Odysseus's
+    own code and documentation point at.  At commit b4d1293 it appears 47
+    times across 16 files, including the README's `git clone` command,
+    CONTRIBUTING.md, package.json's repository.url, the .github issue and PR
+    templates, and the outbound HTTP-Referer header set by the source itself.
+
+Pantheon makes no claim about the relationship between the two.  What is
+recorded here is what each one demonstrably is.  See CREDITS.md for the detail.
 
 Odysseus is licensed under the GNU Affero General Public License v3.  Pantheon is
 released under the same licence.  The original authors retain copyright over the
 portions of this work that originate with them.
 
 Pantheon is not affiliated with, endorsed by, or supported by the Odysseus
-project or its authors.  Please do not report Pantheon issues to them.
+project or its authors, under either identity.  Please do not report Pantheon
+issues to them.
 
 Summary of modifications is maintained in CHANGELOG.md.  A complete record is
 available in the commit history of this repository.

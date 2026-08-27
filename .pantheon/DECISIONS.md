@@ -5,6 +5,43 @@ Each entry names what was decided, what it costs, and what would reopen it.
 
 ---
 
+## D-2026-08-27-01 · `CREDITS.md` is the credits file; `ACKNOWLEDGMENTS.md` merges into it
+
+**Decided:** `CREDITS.md` is authoritative. `ACKNOWLEDGMENTS.md` is merged into it in full and
+then deleted. `NOTICE` keeps pointing at `CREDITS.md`, which it already does. `P0-19`.
+
+**The problem it settles.** Both files exist, both claim to be the credits file, and they
+disagree. `ACKNOWLEDGMENTS.md` is upstream's — 9,409 bytes, dated with the fork, and it still
+opens *"Odysseus stands on the shoulders of a lot of open-source work."* `CREDITS.md` is
+Pantheon's — 3,782 bytes, written on 2026-08-26, and it leads with Odysseus as it should. The
+detail lives in the upstream file; the correct framing lives in ours. Neither is currently
+complete, which is why `P0-20` … `P0-26` all stall behind this call.
+
+**Why `CREDITS.md` wins.** Three reasons, in order of weight:
+
+1. **`ACKNOWLEDGMENTS.md` speaks in upstream's voice about upstream's project.** That is the
+   same defect as the root `ROADMAP.md` in `P0-28` — inherited prose flying this project's
+   name. A credits file that opens by describing a different project is wrong regardless of how
+   good its contents are.
+2. **`NOTICE` already names `CREDITS.md`**, and `NOTICE` is the AGPL §5(a) artefact. Moving the
+   licence-bearing pointer is riskier than moving the prose it points at.
+3. **`Law 7`.** Two files claiming the same fact is exactly the condition that law exists to
+   end, and it has already cost us: `P0-14` could not be re-ticked because there was no
+   agreed place to put the second upstream identity.
+
+**Nothing is subtracted.** Every credited party, every licence note and every adapted-code
+attribution in `ACKNOWLEDGMENTS.md` moves into `CREDITS.md` first, and the merge is verified
+party-by-party before the file goes. This is consolidation, not removal — `Law 1` still
+applies, so the deletion is marked on the task line and named in the commit.
+
+**What it unblocks.** `P0-20`, `P0-24`, `P0-25` and `P0-26` all write into "the credits file"
+and now know which one. `P0-14` can be re-ticked once the second upstream identity —
+`odysseus-dev/odysseus`, which the code and docs referenced 47 times before the sweep — is
+named in both `NOTICE` and `CREDITS.md`. Until it is, the AGPL §5(a) attribution names one of
+two upstreams, and this repo cannot go public.
+
+---
+
 ## D-2026-08-26-01 · P2-01 — delete `is_safe_file_type` entirely
 
 **Decided:** delete the function and its call site whole. Both blocklists go: the

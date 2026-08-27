@@ -5,7 +5,11 @@ a = Analysis(
     ['launcher.py'],
     pathex=[],
     binaries=[],
-    datas=[('static', 'static'), ('scripts', 'scripts'), ('mcp_servers', 'mcp_servers'), ('services/hwfit/data', 'services/hwfit/data'), ('config', 'config'), ('.env.example', '.env.example')],
+    # licenses/, LICENSE, NOTICE and CREDITS.md are not optional extras: MIT, BSD
+    # and OFL all require the notice to travel with a redistributed copy, and this
+    # bundle is one. Without them the desktop build ships other people's code with
+    # their attribution stripped.
+    datas=[('static', 'static'), ('scripts', 'scripts'), ('mcp_servers', 'mcp_servers'), ('services/hwfit/data', 'services/hwfit/data'), ('config', 'config'), ('.env.example', '.env.example'), ('licenses', 'licenses'), ('LICENSE', '.'), ('NOTICE', '.'), ('CREDITS.md', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

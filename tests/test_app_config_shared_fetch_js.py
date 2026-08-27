@@ -55,9 +55,9 @@ globalThis.sessionStorage = {
   removeItem: (k) => { store.delete(k); },
 };
 globalThis.__seedPrefetch = (value) => {
-  store.set('ody-prefetch-settings', JSON.stringify(value));
+  store.set('pan-prefetch-settings', JSON.stringify(value));
 };
-globalThis.__prefetchLeft = () => store.has('ody-prefetch-settings');
+globalThis.__prefetchLeft = () => store.has('pan-prefetch-settings');
 """
 
 
