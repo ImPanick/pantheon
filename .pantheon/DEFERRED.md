@@ -193,3 +193,80 @@ extension itself only earn their place once there is data worth compressing.
 
 **Revisit when** the GPU-harness use case becomes real, or the first time a question about
 usage over time cannot be answered.
+
+---
+
+## D-06 · Training and fine-tuning — not scope creep, if it stays adapters
+
+**The ask.** Pantheon already serves models. Could it also train them — so that alongside
+self-adapting skills, RAG, and LLM-assisted MCP and automation building, the models themselves
+refine over time?
+
+**The honest answer: this fits, and it fits better than most things that get called scope
+creep — but only under one constraint, and the constraint is the whole decision.**
+
+### Why it genuinely fits
+
+The hard infrastructure is **already built, for serving**. A training run needs exactly what
+the Forge already has: a remote host registry with SSH, GPU detection and hardware fit, a
+long-running job lifecycle held open in tmux, a zombie-revival probe that checks whether a
+session is still alive before declaring a job dead, weight download and cache management, and a
+file-durable background job store with PID liveness that survives a server restart. Roughly
+70% of a training station is the serving station.
+
+And Pantheon has the thing nobody else building this has: **the data**. Chat transcripts,
+approved tool traces, the RAG corpus, skill invocations that worked and ones that did not. The
+scarce input for a useful fine-tune is a good dataset, and this platform is already sitting on
+one.
+
+### The constraint: adapters, never full fine-tuning
+
+Everything else in Pantheon's adaptation story — skills, RAG, MCP servers, automations — shares
+one property: **it is reversible and inspectable.** You can read a skill. You can delete it and
+be exactly where you were. You can see which documents a retrieval pulled.
+
+A fine-tune is neither. You cannot read a weight delta, and you cannot un-bake it. Worse, a bad
+fine-tune **does not error** — it just gets quietly, subtly worse at things you were not
+testing. For a harness whose entire pitch is being a glass box, that is the most dangerous
+possible failure mode, because it looks like nothing.
+
+**LoRA and QLoRA adapters restore the property.** An adapter is a separate file of tens to
+hundreds of megabytes, it attaches and detaches at serve time, vLLM and llama.cpp both load
+them as a first-class feature, and turning one off puts you exactly back where you started.
+That is the same contract as a skill. Full fine-tuning breaks it and should never ship here.
+
+### The second constraint: an eval gate is mandatory
+
+Training without evaluation is a random walk that feels like progress. A held-out set and a
+before/after comparison, with the adapter **not promoted unless it wins**, is not a nice-to-have
+— it is the difference between a feature and a way to quietly degrade your own platform.
+
+This is also why `D-05` telemetry comes first. You cannot gate on a measurement you do not take.
+
+### What it would actually be
+
+1. **Dataset curation from what already exists** — transcripts, approved tool traces, RAG
+   corpus. Explicit opt-in per source, with a review step. This is the largest piece of work
+   and the real differentiator; the training run is the easy part.
+2. **LoRA / QLoRA runs on the Forge's existing remote-host machinery.** No new subsystem for
+   hosts, SSH, GPU detection or job lifecycle.
+3. **Adapter registry** — versioned, with the dataset and hyperparameters that produced each
+   one recorded beside it. An adapter whose provenance is unknown is not promotable.
+4. **Eval harness and the promotion gate.**
+5. **Serve with the adapter attached** — vLLM `--enable-lora`, llama.cpp adapter loading.
+
+### Where this is scope creep, stated plainly
+
+- **"Train models"** is scope creep. Full fine-tuning, base-model pretraining, anything that
+  produces a weight file you cannot detach.
+- **Training without the eval gate** is worse than scope creep; it is a liability.
+- **Building it before `P11`/`P12`** is scope creep of a different kind: a training run is the
+  single most expensive thing a user could trigger, and shipping that capability before
+  per-role quotas exist means one person can consume a GPU server indefinitely with no control
+  available to the operator.
+
+**Revisit when** the Forge rename has landed and settled, `P11` and `P12` are in place so a
+training job can be quota'd and permissioned, `D-05` telemetry exists so eval has somewhere to
+report, and there is a real GPU host to run on. In that order. None of those is a stalling
+tactic — each one is a thing that must exist for the feature to be safe rather than impressive.
+

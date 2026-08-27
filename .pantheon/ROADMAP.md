@@ -58,9 +58,9 @@ soon as its dependency lands.
 | P8 | The Workshop | 48 | 48 | 0 | 0 |
 | P9 | Feature surfaces | 16 | 16 | 0 | 0 |
 | P10 | Accessibility & release | 12 | 12 | 0 | 0 |
-| P11 | Identity & access | 10 | 10 | 0 | 0 |
+| P11 | Identity & access | 13 | 13 | 0 | 0 |
 | P12 | Limits & the control plane | 8 | 8 | 0 | 0 |
-| **Total** | | **250** | **219** | **1** | **30** | | **231** | **200** | **1** | **30** | | **231** | **211** | **0** | **20** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
+| **Total** | | **253** | **222** | **1** | **30** | | **250** | **219** | **1** | **30** | | **231** | **200** | **1** | **30** | | **231** | **211** | **0** | **20** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
 
 **Everything now waits on eighteen decisions**, collected into one sheet with a recommendation
 each — see § Progress for the link. Nine of them finish P2, five gate the public flip. Nothing
@@ -89,6 +89,14 @@ upstream's artwork under Pantheon's filenames.
 *The one progress area. Newest first. One entry per completed section — two lines, a
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
+
+### Forge named, RBAC scoped, training filed
+`Cookbook` → **`Forge`** (`DECISIONS.md` D-2026-08-26-05); Olympus was rejected on positioning,
+not aesthetics. RBAC grew four tasks after reading `core/auth.py`, which corrected two things
+this tracker had wrong: the privileges **are** declared and **already carry quota primitives**
+(`max_messages_per_day`, `allowed_models`), so P12 extends that dict rather than building a
+parallel system; and authorization is one bit applied 84 times — `require_admin` 84 sites
+against `require_privilege` 17. Training filed as `D-06`: fits, but adapters only.
 
 ### Scaling track opened — P11, P12, and the Cookbook rename
 The deployment assumption changed from one admin on a LAN to real infrastructure. Two phases
@@ -290,7 +298,7 @@ purge, re-index, log back in. The only manual step is one line in your `.env`.
 - [ ] **P0-26** Reconcile the credits file's "the core ships fully permissive (MIT-compatible)" framing against the AGPL `LICENSE`, or state which is authoritative for Pantheon.
 - [x] **P0-27** README statement of intent: *"Pantheon is free software under the AGPL. I don't sell it, and I'd rather you didn't."* **Social, not legal — do not add a non-commercial clause.** AGPL §10 prohibits further restrictions and §7 lets any recipient strip one. — **done:** in the README licence section, phrased as intent and explicitly not as a clause.
 - [ ] **P0-28** **The root `ROADMAP.md` is upstream's, and the sweep put Pantheon's name on it.** It now opens *"Pantheon is on a voyage, but not home yet... (I don't know what I'm doing, help)"* — upstream's words, upstream's self-deprecation, attributed to this project. It also collides with the real tracker at `.pantheon/ROADMAP.md`, which the README links as "Tracker". Replace it with a short pointer to `.pantheon/ROADMAP.md`, or delete it. `Verify:` a reader following either link lands somewhere that is true.
-- [ ] **P0-29** **Rename Cookbook.** It reads as a recipe box; it is a model-serving control plane — remote host registry with SSH keys, GPU detection and hardware fit, weight downloads from HuggingFace and Ollama, vLLM / llama.cpp / Ollama launches held open in tmux, process kill, and task-status polling. 17 routes. **Surface: 3,533 occurrences across 172 files and 43 paths — larger than the Odysseus→Pantheon sweep was** (2,929). Use the same tool: `scripts/pantheon-init.sh` is proven and parameterises cleanly. Decide the name first (`DECISIONS.md`, pending) and whether *recipe* survives — 242 occurrences, and a vLLM recipe genuinely is a parameterised launch config, so it may earn its keep even if Cookbook does not. `Verify:` no user-visible string says Cookbook; `rail-*`, `tool-*-btn` and modal ids move together with their CSS.
+- [ ] **P0-29** **Rename Cookbook → Forge** (`DECISIONS.md` D-2026-08-26-05). It reads as a recipe box; it is a model-serving control plane — remote host registry with SSH keys, GPU detection and hardware fit, weight downloads from HuggingFace and Ollama, vLLM / llama.cpp / Ollama launches held open in tmux, process kill, and task-status polling. 17 routes. **Surface: 3,533 occurrences across 172 files and 43 paths — larger than the Odysseus→Pantheon sweep was** (2,929). Use the same tool: `scripts/pantheon-init.sh` is proven and parameterises cleanly. Decide the name first (`DECISIONS.md`, pending) and whether *recipe* survives — 242 occurrences, and a vLLM recipe genuinely is a parameterised launch config, so it may earn its keep even if Cookbook does not. `Verify:` no user-visible string says Cookbook; `rail-*`, `tool-*-btn` and modal ids move together with their CSS.
 
 ---
 
@@ -632,21 +640,56 @@ the only lane through which the theme file gets touched.
 # P11 · Identity & access
 *Area: `identity` · Depends: nothing · Blocks: P12's per-role limits*
 
-**Why this is a phase and not a task.** Today identity is one JSON file: bcrypt hashes and
-pyotp secrets in `auth.json`, a single `is_admin` boolean, and nine `can_*` privilege flags
-read per user. There are no roles, no groups, and no external identity. Worse, unknown
-privilege keys **fail open** — `privs.get(key, True)` at `src/auth_helpers.py:172` — with the
-comment "the UI gates display-side", and `P2-18` proved that UI gate does not work. A typo in
-a privilege key currently grants access.
+**Why this is a phase and not a task.** Identity is one JSON file: bcrypt hashes and pyotp
+secrets in `auth.json`, a single `is_admin` boolean, and a privilege dict. No roles, no
+groups, no external identity.
 
-None of that is wrong for one admin on a LAN. All of it is wrong the moment a second person
+Two things the first pass of this section got wrong, corrected by reading `core/auth.py`:
+
+1. **The privileges are declared, not grep-discovered.** `DEFAULT_PRIVILEGES` at
+   `core/auth.py:24` is a real registry. Better still, **it already holds quota primitives** —
+   `max_messages_per_day` (int), `allowed_models` (list), `allowed_models_restricted`, and a
+   `block_all_models` sentinel that exists because an empty allowlist was ambiguous. Seven
+   `can_*` booleans, four non-boolean policy values. **This is already a control plane; it is
+   just under-populated.** `P12` should extend this dict rather than build a parallel system,
+   and a role is then a named overlay on it.
+2. **Authorization is effectively one bit, applied 84 times.** `require_admin` has **84** call
+   sites against `require_privilege`'s **17**. Ownership scoping is healthier — `owner_filter`
+   at 58 sites — so the data model already understands "whose row is this". What it does not
+   understand is "what may this kind of person do".
+
+The live defect: unknown privilege keys **fail open** — `privs.get(key, True)` at
+`src/auth_helpers.py:172` — with the comment "the UI gates display-side", and `P2-18` proved
+that UI gate does not work. A typo in a privilege key currently grants access.
+
+None of this is wrong for one admin on a LAN. All of it is wrong the moment a second person
 has an account.
 
 - [ ] **P11-01** **Close the fail-open default.** Known keys default to denied; genuinely
   unknown keys stay permissive so a new key does not lock everyone out mid-deploy. Requires a
   registry of known privilege keys, which does not exist — there are 9, discovered by grep.
   `Verify:` a typo'd key denies rather than grants.
-- [ ] **P11-02** **Introduce roles between `is_admin` and the nine flags.** Today admin means
+- [ ] **P11-02** **Roles as named overlays on `DEFAULT_PRIVILEGES`.** Not a new system — the
+  dict already carries booleans, an integer quota and a model allowlist. A role is a named set
+  of overrides; a user gets a role and optional per-user overrides on top. Resolution order:
+  built-in default → role → user. Keep `is_admin` as the superuser role rather than replacing
+  it, because 84 call sites depend on it and rewriting them all at once is how this goes wrong.
+- [ ] **P11-02b** **Audit every `require_admin` site against the role model.** 84 of them, and
+  each is currently a binary answer to a question that should have three or four. Produce the
+  mapping before changing any of them: which are genuinely superuser-only, which are
+  "operator", which are "power user", which were `require_admin` because nothing finer existed.
+- [ ] **P11-02c** **Resolve the `_ADMIN_TOOLS` name collision before touching either.**
+  `src/tool_execution.py:322` defines an 11-name set that **blocks** non-admins, checked
+  *before* the public blocklist and with a different error string. `src/agent_loop.py:2842`
+  defines a different 15-name set with the **inverted** meaning — a force-include for prompts
+  and schemas. Same name, opposite semantics, one grep away from a serious mistake during an
+  RBAC refactor. Rename one.
+- [ ] **P11-02d** **Audit the fifteen route files that make no auth call of their own.**
+  `assistant` 6, `auth` 29, `chat` 8, `cleanup` 2, `compare` 5, `editor_draft` 5, `emoji` 1,
+  `font` 1, `hwfit` 4, `prefs` 3, `search` 4, `signature` 3, `stt` 2, `tts` 3, `workspace` 2.
+  Several are covered by `AuthMiddleware` and some are deliberately exempt — **this is a
+  reconciliation task, not a list of holes.** The deliverable is a table: route, what actually
+  gates it, and whether that is intended. Nothing here should be changed before that exists.
   every privilege wholesale (`ADMIN_PRIVILEGES`), and non-admin means nine independent
   booleans set per user. A role is the missing middle: a named bundle of privileges plus limit
   profile. Keep `is_admin` as the superuser role rather than replacing it.
@@ -716,6 +759,13 @@ is mostly moving values into a system that exists, then layering roles on top.
 
 - **D-01 · The approval card's new markup.** Effect chips, fingerprint badge, expiry countdown, taint trail. Two CI tests assert literal source strings from that file and the upstream cluster around it is the hottest code in the project — 15 commits in 4 weeks, a revert inside the most recent PR. **Style through existing selectors only; add no markup.** Revisit when the upstream commits stop landing daily. *(P4-04 and P7-06/07/08 are the style-only subset and can proceed.)*
 - **D-02 · Container station.** Full entry in `DEFERRED.md`. The strongest framing is as the sandbox the threat model says does not exist, not as a deploy feature. ~70% of the machinery is in Cookbook.
+- **D-06 · Training and fine-tuning.** Fits the platform — ~70% of a training station is the
+  serving station the Forge already is, and Pantheon is sitting on the scarce input, which is
+  the dataset. **Constrained to LoRA/QLoRA adapters, never full fine-tuning**, because every
+  other adaptation path here is reversible and inspectable and a baked weight is neither. An
+  eval gate is mandatory, not optional. Blocked behind the Forge rename, `P11`, `P12` and
+  `D-05` — a training run is the most expensive thing a user can trigger, and it should not
+  ship before quotas exist. Full entry in `DEFERRED.md`.
 - **D-04 · The vector store.** Keep ChromaDB for now. The coupling is 130 call sites over
   2,110 lines, not the 72-line client that makes it look easy, and the swap that would
   actually pay is Postgres replacing SQLite **and** Chroma at once — not Chroma alone.

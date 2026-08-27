@@ -149,3 +149,29 @@ They are a parallel track. The one real ordering constraint inside it: **`D-05` 
 before anything adaptive**, because you cannot tune a limit you cannot measure, and today token
 usage is stored as a running counter with the time dimension discarded at write.
 
+---
+
+## D-2026-08-26-05 · Cookbook becomes the Forge
+
+**Decided:** `Cookbook` → `Forge`. `P0-29`.
+
+**Why the old name failed.** It reads as a recipe box. It is a model-serving control plane:
+remote host registry with SSH keys and connection testing, GPU detection and hardware fit,
+weight downloads from HuggingFace and Ollama, vLLM / llama.cpp / Ollama launches held open in
+tmux, process kill, task-status polling. Seventeen routes. Raw weights and hardware go in; a
+running inference service comes out. That is a forge.
+
+**Why not Olympus** — and this is worth recording, because it is a positioning decision rather
+than a naming one. Olympus would have cast the models as gods in residence. AI is already
+under heavy and often fair criticism for exactly that framing, and a self-hosted tool has no
+business adding to it. The name would have made a claim about what these things *are*. Forge
+makes a claim about what the operator *does*, which is the honest one and the better story.
+
+**`recipe` survives.** 242 occurrences, and a vLLM recipe genuinely is a parameterised launch
+config — the confusion was never about recipes, it was the section name. Renaming it would be
+churn for its own sake.
+
+**Scale.** 3,533 occurrences, 172 files, 43 paths — larger than the Odysseus→Pantheon sweep
+was at 2,929. `scripts/pantheon-init.sh` is proven and parameterises cleanly, and it now
+carries four fixes learned the hard way. Use it; do not hand-roll a second sweep.
+
