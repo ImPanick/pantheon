@@ -114,6 +114,24 @@ either, and propagate in one explicit step. Never assume an edit landed on both.
 > **Incident.** `ROADMAP.md` existed in the build package and in the repo. Two consecutive
 > edits went to different copies. The second silently reverted part of the first.
 
+### Law 13 — Nothing ships half-wired.
+A backend with no caller, an element id with no markup, a flag with no consumer, a module
+loaded on every boot that returns early on a missing element — **that is not "built", it is
+drift**, and calling it velocity is how it accumulates. If you cannot finish the wiring in the
+same change, the task is not done: it stays open with a note saying what is missing, and the
+unwired half does not merge.
+
+`python3 .pantheon/check-wiring.py` counts it. The number is currently **78** unresolved
+`getElementById` targets — measured as: static-string lookups across `static/js/**` excluding
+`static/lib/**`, minus ids present in any tracked HTML, minus ids the JS itself creates at
+runtime. **It may go down. It may not go up.**
+
+> **Incident.** An audit of one phase found a complete webhooks backend with no UI at all, a
+> skills editor behind a flag whose list was never fetched, a Real-ESRGAN upscaler with no
+> button, a RAG module called on every single startup that bails on a missing element, and
+> plan mode whose docked window three prompt strings promise and nobody ever drew. None of it
+> was broken. All of it passed CI. Nothing measured whether it was reachable.
+
 ### Law 12 — Adversarial review is the default, not the escalation.
 An agent that checks its own work confirms it. Findings get a reviewer whose job is to
 **refute** them, defaulting to refuted when uncertain. This is not paranoia; it is the

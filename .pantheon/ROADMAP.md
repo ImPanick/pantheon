@@ -28,6 +28,7 @@ The other files in `.pantheon/` are *reference*, never tracking:
 | `DEFERRED.md` | decided, not scheduled — and why |
 | `ORCHESTRATION.md` | how agents are batched and run |
 | `check-tracker.py` | recounts the ticks and fails if the status table has drifted |
+| `check-wiring.py` | counts element lookups that resolve to nothing. Law 13's enforcement |
 | `design/pantheon-v10.html` | the mockup. Reference, not source. |
 
 ---
@@ -50,7 +51,7 @@ soon as its dependency lands.
 | P0 | Fork identity & licence | 30 | 16 | 0 | **14** |
 | P1 | Token layer — the free wins | 14 | 14 | 0 | 0 |
 | P2 | Un-nerf | 26 | 15 | 1 | **10** |
-| P3 | Mechanical hygiene | 12 | 12 | 0 | 0 |
+| P3 | Mechanical hygiene | 15 | 15 | 0 | 0 |
 | P4 | The wire — the real glass box | 24 | 24 | 0 | 0 |
 | P5 | Trace & composer restyle | 16 | 16 | 0 | 0 |
 | P6 | Queue & Plan | 17 | 17 | 0 | 0 |
@@ -60,7 +61,8 @@ soon as its dependency lands.
 | P10 | Accessibility & release | 12 | 12 | 0 | 0 |
 | P11 | Identity & access | 13 | 13 | 0 | 0 |
 | P12 | Limits & the control plane | 8 | 8 | 0 | 0 |
-| **Total** | | **253** | **222** | **1** | **30** | | **250** | **219** | **1** | **30** | | **231** | **200** | **1** | **30** | | **231** | **211** | **0** | **20** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
+| P13 | The Brain | 10 | 10 | 0 | 0 |
+| **Total** | | **266** | **235** | **1** | **30** | | **253** | **222** | **1** | **30** | | **250** | **219** | **1** | **30** | | **231** | **200** | **1** | **30** | | **231** | **211** | **0** | **20** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
 
 **Everything now waits on eighteen decisions**, collected into one sheet with a recommendation
 each — see § Progress for the link. Nine of them finish P2, five gate the public flip. Nothing
@@ -89,6 +91,15 @@ upstream's artwork under Pantheon's filenames.
 *The one progress area. Newest first. One entry per completed section — two lines, a
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
+
+### Law 13 written, the drift measured, the Brain scoped
+The complaint was right and now it has a number: **78 `getElementById` targets resolve to
+nothing**, across 16 prefixes and seven subsystems — the P2 audit found a handful of them by
+hand. `check-wiring.py` counts it, Law 13 forbids adding to it, and `P3-13`/`P3-14` put a
+ceiling on it that may fall and may never rise. `P13 · The Brain` scoped from the source:
+memories have no confidence and no edges, but the skill extractor already scores 0..1 with a
+0.6 floor, and `/timeline`, `/audit` and `/import` all exist — edges are the only genuinely
+new thing.
 
 ### Forge named, RBAC scoped, training filed
 `Cookbook` → **`Forge`** (`DECISIONS.md` D-2026-08-26-05); Olympus was rejected on positioning,
@@ -415,6 +426,23 @@ Provably safe, and each one removes a trap the restyle would otherwise fall into
 - [ ] **P3-10** Delete the 3 dead modules: the RAG module (its three DOM targets exist nowhere, and two app-level call sites invoke a function it does not export), the calendar reminder poller (complete, zero callers, browser-notification path inert), and the tour autoplay module (its entire body is a "Disabled for v1 stability" comment, and it still imports a 6,500-line module for a side effect that never runs). **Two are still precached by the service worker** — update `sw.js`. `Depends:` P2-23 must land first if you want RAG's UI, else delete.
 - [ ] **P3-11** Fix the duplicate module specifier — `chatRenderer.js` is imported under 3 distinct specifiers, so a 3,126-line module is parsed three times per page load. A config module's header documents the symptom and works around it; the root cause was never fixed. One-line change per import.
 - [ ] **P3-12** Delete the 6 verified-dead elements and handlers: two elements killed by CSS with zero JS references, four ids appearing once in markup and nowhere in script, a handler wired to a nonexistent element, and section drag-reorder (queries a `draggable` attribute nothing ever adds).
+
+---
+
+### Drift control — Law 13's enforcement
+- [ ] **P3-13** **Wire `check-wiring.py` into CI at `--max 78`.** It counts `getElementById`
+  targets that resolve to nothing: 78 today, across 16 prefixes and seven subsystems. The
+  ceiling may fall and may never rise. Every built-and-never-wired finding in the P2 audit
+  would have shown up here years ago if anything had been counting. `Verify:` a PR that adds
+  an unresolved lookup fails.
+- [ ] **P3-14** **Clear the 78.** Not one task — each id is either wired to markup, or deleted
+  along with the handler that looks for it. Grouped by owner: `ge-*` 17 (gallery editor,
+  overlaps `P2-22`), `doc-*` 11, `cookbook-*` 9 (becomes `forge-*` under `P0-29`),
+  `doclib-*` 6, `new-skill-*` 5, `email-*` 4, `gallery-*` 3, `hwfit-*` 3, `rag-*` 2
+  (`P2-23`), `tool-*` 2, plus 13 singletons. Lower the ceiling after each batch.
+- [ ] **P3-15** **Extend the check to the other half of the disease** — routes with no caller,
+  settings keys with no reader, feature flags with no consumer. `P2-18` found three flags with
+  zero consumers by hand; a script finds the next three for free.
 
 ---
 
@@ -752,6 +780,56 @@ is mostly moving values into a system that exists, then layering roles on top.
 - [ ] **P12-08** **Show operators what is actually being consumed** before asking them to set
   a number. Blocked on `D-05` — you cannot tune a limit you cannot measure, and today token
   usage is stored as a running total with the time dimension discarded at write.
+
+---
+
+# P13 · The Brain
+*Area: `brain` · Depends: P1 for the visual · Independent of everything else*
+
+**What is actually there today.** `memories` is a flat table — `id, text, category, source,
+owner, session_id, timestamp` — behind a vector index. **No confidence, no edges, no
+provenance beyond a one-word `source`.** Four of the pieces this needs already exist and are
+proven, which is why this is a smaller phase than it looks:
+
+- **Confidence is already implemented — on the wrong half.** `services/memory/skill_extractor.py`
+  scores every extracted skill 0..1 and drops anything under a `MIN_CONFIDENCE = 0.6` floor.
+  The pattern works. Memories never got it.
+- **`GET /memory/timeline`** already returns memories chronologically with their source
+  session. That is half of "observable growth" already shipped.
+- **`POST /memory/audit`** already runs an LLM dedup-and-consolidate pass and reports before
+  and after counts. That is the consolidation step, unwired to any notion of confidence.
+- **`POST /memory/import`** exists but takes a file upload and returns suggestions. Provider
+  import is a new source feeding an existing pipe, not a new pipe.
+
+**What genuinely does not exist: edges.** One grep hit for link/related/edge/graph across the
+whole memory subsystem. That is the phase.
+
+- [ ] **P13-01** **Confidence on memories.** Lift the skill extractor's 0..1 score and floor
+  onto memory extraction. Same shape, same tuning surface, one fewer concept to learn.
+- [ ] **P13-02** **Typed edges between memories.** `supersedes`, `contradicts`,
+  `derived_from`, `co_occurs`. A contradiction that is *recorded* is worth more than one
+  silently resolved — it is the thing a person most needs to see.
+- [ ] **P13-03** **Provenance.** Which session, which message, which tool produced this — and
+  what has confirmed or contradicted it since. `session_id` exists; the rest does not.
+- [ ] **P13-04** **Reinforcement and decay.** A memory retrieved and acted on gets stronger; one
+  never retrieved fades toward archive rather than deletion. Nothing is ever silently dropped.
+- [ ] **P13-05** **Commitment as an explicit act.** Suggestions today are accepted or not. Add
+  a real promotion step with a quality gate, so "committed to memory" means something and can
+  be audited afterwards.
+- [ ] **P13-06** **Provider import** — ChatGPT, Claude, Gemini conversation exports. Every
+  imported memory carries its origin and enters at a lower confidence than something learned
+  first-hand, because it was.
+- [ ] **P13-07** **The Brain page.** A dedicated navigable surface, **not on the main path and
+  not on open** — reached from a small card via *Explore more*. Graph of memories and their
+  edges, filterable by confidence, category, age and session.
+- [ ] **P13-08** **Observable skill growth.** Skills already carry confidence and a timeline
+  exists for memories; extend it so a person can watch a capability form, strengthen, and
+  either get used or fall away. This is the feature nobody else self-hosted has.
+- [ ] **P13-09** **Wire `audit` to confidence.** The consolidation pass exists and is blind —
+  it should raise confidence where sources agree and record a contradiction edge where they
+  do not, rather than picking a winner quietly.
+- [ ] **P13-10** **A retrieval trace.** When memory changes an answer, say which memories and
+  at what confidence. Same principle as `P4` — the data is computed and thrown away.
 
 ---
 
