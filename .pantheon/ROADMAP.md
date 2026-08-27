@@ -50,7 +50,7 @@ soon as its dependency lands.
 | Setup | Fork, rename, rebuild | 6 | 0 | 0 | **6** |
 | P0 | Fork identity & licence | 30 | 16 | 0 | **14** |
 | P1 | Token layer — the free wins | 14 | 14 | 0 | 0 |
-| P2 | Un-nerf | 26 | 15 | 1 | **10** |
+| P2 | Un-nerf | 26 | 13 | 1 | **12** |
 | P3 | Mechanical hygiene | 19 | 17 | 0 | **2** |
 | P4 | The wire — the real glass box | 28 | 28 | 0 | 0 |
 | P5 | Trace & composer restyle | 16 | 16 | 0 | 0 |
@@ -63,7 +63,7 @@ soon as its dependency lands.
 | P12 | Limits & the control plane | 10 | 10 | 0 | 0 |
 | P13 | The Brain | 12 | 12 | 0 | 0 |
 | P14 | Measurement | 7 | 7 | 0 | 0 |
-| **Total** | | **288** | **255** | **1** | **32** | | **288** | **257** | **1** | **30** | | **287** | **256** | **1** | **30** | | **266** | **235** | **1** | **30** | | **253** | **222** | **1** | **30** | | **250** | **219** | **1** | **30** | | **231** | **200** | **1** | **30** | | **231** | **211** | **0** | **20** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
+| **Total** | | **288** | **253** | **1** | **34** | | **288** | **255** | **1** | **32** | | **288** | **257** | **1** | **30** | | **287** | **256** | **1** | **30** | | **266** | **235** | **1** | **30** | | **253** | **222** | **1** | **30** | | **250** | **219** | **1** | **30** | | **231** | **200** | **1** | **30** | | **231** | **211** | **0** | **20** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
 
 **Nothing is waiting on a decision.** All eighteen are answered and recorded in `DECISIONS.md`
 D-2026-08-26-06, and each task line carries its own call. `P2-13` is the only blocked row in the
@@ -95,6 +95,14 @@ upstream's artwork under Pantheon's filenames.
 *The one progress area. Newest first. One entry per completed section — two lines, a
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
+
+### Roadmap verification in flight
+The wiring run finished two roadmap tasks without the tracker knowing — `P2-22` (upscaler UI) and
+`P2-23` (RAG upload), both verified present in the tree and now ticked. That is the drift Law 8
+exists to catch, and it means there are probably more: two large runs have landed since most of
+these premises were written, one of them deleting 1,524 lines. Seven agents are re-verifying every
+open task against the source, with `ALREADY_DONE` treated as the highest-value verdict — an
+implementer sent at finished work either wastes the run or builds a second copy.
 
 ### Wiring run 01 — 78 unreachable features resolved, 2 left
 **340 insertions, 1,524 deletions.** Mostly deletions, as predicted: `models.js` shed 565 lines
@@ -466,8 +474,8 @@ cross one if implemented carelessly.
 - [ ] **P2-19** **Webhooks admin panel** — backend complete, **no UI whatsoever**. Add `adm-whList` / `adm-whAddBtn` markup. Add the null guards at the two functions that currently throw on `null.innerHTML` inside a silent `try` — which is why nobody noticed.
 - [ ] **P2-20** MCP admin panel markup (`adm-mcp*`) — this also makes the OAuth-file registration path reachable for the first time. Feature toggles (`adm-featureToggles`), API tokens (`adm-tokenList`), RAG (`adm-rag*`). All four backends exist. — **DECIDED — build only RAG and feature toggles; skip MCP and tokens, which already have live UIs in settings (`Law 14`). Wire both into `inits` and `refreshAll`** (D-2026-08-26-06).
 - [ ] **P2-21** Built-in skills editor: flip `showBuiltin = false` → `true`. `_buildBuiltinCards()` and its three admin endpoints are fully implemented, including a per-tool instruction-block override editor. — **DECIDED — gate the two GETs, write the list loader, then flip the flag. **Amended from optional to required** by `P11-10`** (D-2026-08-26-06).
-- [ ] **P2-22** Re-attach the gallery upscaler controls (`ge-upscale-*`). Backend + local Real-ESRGAN both implemented, zero UI. — **DECIDED — target `/api/image/upscale-local` (local Real-ESRGAN). A backend selector waits for a real GPU host** (D-2026-08-26-06).
-- [ ] **P2-23** Give RAG upload a UI — the module expects three elements that do not exist. The endpoint works and has **no extension restriction at all**. — **DECIDED — resurface the **user-facing** `rag.js` module, not the admin one. Three ids plus wiring, on a module already called every boot** (D-2026-08-26-06).
+- [x] **P2-22** Re-attach the gallery upscaler controls (`ge-upscale-*`). Backend + local Real-ESRGAN both implemented, zero UI. — **DECIDED — target `/api/image/upscale-local` (local Real-ESRGAN). A backend selector waits for a real GPU host** (D-2026-08-26-06). — **done:** completed by wiring run 01 — `ge-upscale-section` built in `static/js/editor/build/controls.js`, toolbar entry present, and `ai-tools-misc.js` targets `upscale-local` per D-2026-08-26-06.
+- [x] **P2-23** Give RAG upload a UI — the module expects three elements that do not exist. The endpoint works and has **no extension restriction at all**. — **DECIDED — resurface the **user-facing** `rag.js` module, not the admin one. Three ids plus wiring, on a module already called every boot** (D-2026-08-26-06). — **done:** completed by wiring run 01 — `rag-upload-zone`, `rag-file-input` and `docs-view` all present in `static/index.html`, on the user-facing `rag.js` module as decided.
 - [ ] **P2-24** Add a custom-font upload route. **Keep the extension allowlist here** — these files land under the static mount and are served with no forced disposition. This is the exception that proves the rule.
 - [ ] **P2-25** Prune `NON_ADMIN_BLOCKED_TOOLS` of owner-scoped read-only tools. **Must stay:** shell, python, all filesystem tools, vault, settings, tokens, endpoints, MCP, webhooks, api_call, app_api, and the `mcp__*` prefix rule. **`CI:` two tests cover this partition.** — **DECIDED — prune nothing. Confirmed** (D-2026-08-26-06).
 - [ ] **P2-26** Trim the "use the nicer tool" half of the app-API blocklist. **Must stay:** the cookbook install/rebuild/kill entries and every prefix rule. — **DECIDED — prune nothing. Correct the must-stay documentation and close it. Gets **stronger** under `P11`, not weaker** (D-2026-08-26-06).

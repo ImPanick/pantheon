@@ -12,6 +12,7 @@ own — drift means someone ticked without counting, and that is worth looking a
 than silently overwriting.
 """
 import re
+import signal
 import sys
 import pathlib
 
@@ -88,4 +89,9 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    # `| head` closes the pipe; not an error worth a traceback.
+    try:
+        signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+    except (AttributeError, ValueError):
+        pass
     sys.exit(main())
