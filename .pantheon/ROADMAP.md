@@ -48,45 +48,61 @@ soon as its dependency lands.
 | Phase | Area | Tasks | Ready | Blocked | Done |
 |---|---|---|---|---|---|
 | Setup | Fork, rename, rebuild | 6 | 0 | 0 | **6** |
-| P0 | Fork identity & licence | 30 | 16 | 0 | **14** |
-| P1 | Token layer — the free wins | 14 | 14 | 0 | 0 |
-| P2 | Un-nerf | 26 | 13 | 1 | **12** |
-| P3 | Mechanical hygiene | 19 | 17 | 0 | **2** |
+| P0 | Fork identity & licence | 30 | 16 | **1** | **13** |
+| P1 | Token layer — the free wins | 14 | 12 | **1** | **1** |
+| P2 | Un-nerf | 26 | 12 | **1** | **13** |
+| P3 | Mechanical hygiene | 19 | 14 | **3** | **2** |
 | P4 | The wire — the real glass box | 28 | 28 | 0 | 0 |
 | P5 | Trace & composer restyle | 16 | 16 | 0 | 0 |
 | P6 | Queue & Plan | 18 | 18 | 0 | 0 |
-| P7 | Trust ladder & control plane | 11 | 11 | 0 | 0 |
-| P8 | The Workshop | 48 | 48 | 0 | 0 |
-| P9 | Feature surfaces | 18 | 18 | 0 | 0 |
+| P7 | Trust ladder & control plane | 11 | 9 | **1** | **1** |
+| P8 | The Workshop | 48 | 44 | **3** | **1** |
+| P9 | Feature surfaces | 18 | 17 | 0 | **1** |
 | P10 | Accessibility & release | 12 | 12 | 0 | 0 |
-| P11 | Identity & access | 13 | 13 | 0 | 0 |
+| P11 | Identity & access | 13 | 12 | **1** | 0 |
 | P12 | Limits & the control plane | 10 | 10 | 0 | 0 |
 | P13 | The Brain | 12 | 12 | 0 | 0 |
 | P14 | Measurement | 7 | 7 | 0 | 0 |
-| **Total** | | **288** | **253** | **1** | **34** | | **288** | **255** | **1** | **32** | | **288** | **257** | **1** | **30** | | **287** | **256** | **1** | **30** | | **266** | **235** | **1** | **30** | | **253** | **222** | **1** | **30** | | **250** | **219** | **1** | **30** | | **231** | **200** | **1** | **30** | | **231** | **211** | **0** | **20** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
+| **Total** | | **288** | **239** | **11** | **38** | | **288** | **253** | **1** | **34** | | **288** | **255** | **1** | **32** | | **288** | **257** | **1** | **30** | | **287** | **256** | **1** | **30** | | **266** | **235** | **1** | **30** | | **253** | **222** | **1** | **30** | | **250** | **219** | **1** | **30** | | **231** | **200** | **1** | **30** | | **231** | **211** | **0** | **20** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
 
-**Nothing is waiting on a decision.** All eighteen are answered and recorded in `DECISIONS.md`
-D-2026-08-26-06, and each task line carries its own call. `P2-13` is the only blocked row in the
-programme, on four test assertions.
+**Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
+`CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
+in `DECISIONS.md` D-2026-08-26-06 and each task line carries its own.
 
-**Run `P2` to finish it** — every remaining task now has a settled answer on its line, and the
-work-list was verified against the source before any of it. Then `P1`, because everything visual
-depends on the token layer and `P1-01` is finally specified correctly.
+**Every open row was re-read against the source on 2026-08-27.** 121 rows are verified accurate
+and safe to pick up as written; the rest carry a correction on the line. Anything marked `[~]`
+names its blocker. Nothing below is a guess.
 
-**`P1` is the next phase to run** — everything visual depends on the token layer, and `P1-01` is
-now specified correctly (per theme, never `:root`).
+### Run the P0 licence block: `P0-19` → `P0-16`, `P0-20` … `P0-26`, then `P0-08` and `P0-14`
 
-**Then the licence gaps** — they are the gate on going public (`DECISIONS.md`
-D-2026-08-26-02), and `P0-17` is the only one that is a genuine legal obligation rather
-than tidying: the AGPL §13 source link, which does not exist anywhere in the UI today.
-After that, `P0-19 … P0-26` — seven vendored libraries ship with no licence text, one
-bundle's banner points at a file that is not in the repo, and the twenty KaTeX font faces
-are credited as MIT when they are OFL with Reserved Font Names.
+It is the only phase gating something outside the tracker. D-2026-08-26-02 keeps this repo private
+until these close, so everything else can run *beside* it and nothing can run *instead* of it.
 
-`P0-13` (the mark) also blocks the flip: the wordmark and screenshot in `docs/` are still
-upstream's artwork under Pantheon's filenames.
+- **Accuracy is highest here.** Seven of nine open rows verified clean with exact citations, and
+  the two corrections are additive. `P4`, by contrast, needed 18 of 28 rows corrected.
+- **Blast radius is near zero.** File headers and additions under `licenses/`; one deletion of a
+  provably-false artefact; two prose rows. No CSS, no JS, no `CACHE_NAME` bump, no rebuild.
+- **One decision unblocks four rows.** `P0-19` gates `P0-20`, `P0-24`, `P0-25` and `P0-26`. Run
+  `P0-26` after `P0-25`, because the "fully permissive core" sentence at `ACKNOWLEDGMENTS.md:151`
+  rests partly on the PyMuPDF scope claim `P0-25` disproves.
+- **`P0-08` and `P0-14` are both in this block**, and both were ticked without being finished.
+  Publishing a repo whose AGPL §5(a) attribution names one of two upstreams is the worst outcome
+  available in this tracker, and it is entirely avoidable.
 
-`P2` has no dependencies at all and runs in parallel with any of it.
+**Out of scope for that run:** `P0-13` (needs a design decision, blocked) and `P0-29`. The
+Cookbook → Forge sweep is 3,529 occurrences across 171 files and 43 paths — the largest blast
+radius in the programme, coupled to `_ROUTE_FAVICON_SHAPES` **and now to the `ODY_` residue
+`P0-08` should have cleared**. Its own session, as D-2026-08-26-06 already says.
+
+**Second choice, if the licence work is someone else's:** `P6` — queue and plan mode. 13 of 18
+rows verified accurate, contained to `chat.js`, `app.js` and two scheduler files, no cross-phase
+gate, and `P6-01/02/03` is one coherent user-facing bug cluster: queued messages fire into the
+wrong chat, vanish on reload, and silently swallow a send with attachments.
+
+**Do not start with:** `P1` — `P1-01` is three files plus a `CACHE_NAME` bump, not one module, and
+`P1-06` is blocked on a measurement that does not exist. `P4` — `P4-01`'s six-template unification
+gates eight rows behind it. `P3-03` — its classifier was never committed. `P11`–`P14` — `P14-01`
+unblocks five rows and its stated write location was wrong.
 
 ---
 
@@ -96,13 +112,28 @@ upstream's artwork under Pantheon's filenames.
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
 
-### Roadmap verification in flight
-The wiring run finished two roadmap tasks without the tracker knowing — `P2-22` (upscaler UI) and
-`P2-23` (RAG upload), both verified present in the tree and now ticked. That is the drift Law 8
-exists to catch, and it means there are probably more: two large runs have landed since most of
-these premises were written, one of them deleting 1,524 lines. Seven agents are re-verifying every
-open task against the source, with `ALREADY_DONE` treated as the highest-value verdict — an
-implementer sent at finished work either wastes the run or builds a second copy.
+### Roadmap verification — every open task re-read against the source
+**Eight agents, 282 rows, zero source files changed.** Five tasks were finished and untracked
+(`P0-09`, `P2-22`, `P2-23`, `P8-01`, `P9-15b`), **two ticks did not hold** (`P0-08` — `ODY_USER`
+never renamed; `P0-14` — the second upstream identity never named), **28 rows had a false premise**,
+and **40 figures were wrong**, including a `508` copied into three documents that is really `521`
+and a function called `applyTheme()` that does not exist. Full report in
+`.pantheon/VERIFY-2026-08-27.md`; every correction is on its own task line.
+
+The pass paid for itself twice over. `P3-10` would have deleted the RAG module four days after
+`P2-23` brought it to life. `P3-03` would have deleted the exact CSS `P2-20` needs. `P3-17`'s
+acceptance test **passed on an unfixed tree**, and so did `P1-05`'s. Nine rows were smaller than
+written and three were larger — `P5-13`'s icon variance is two and a half times what the line
+claimed. Eleven rows are now marked blocked with the blocker named, because a row that cannot
+start is worth knowing about before an agent claims it, not after.
+
+**What the checker cannot see.** `check-tracker.py` recounts marks against the table and passes
+whatever the source says — it never opens a source file, so it was green throughout while five
+finished tasks sat unticked and two false ticks sat green. That is `Law 8`'s blind spot, named
+here so the next person does not mistake a green checker for a true tracker. `check-wiring.py`
+has its own: it scans neither `static/app.js` nor `static/sw.js` and sees only literal
+`getElementById`, so `admin.js`'s 39 dead `el('adm-*')` lookups have never been counted. Both
+are written up on `P3-15`.
 
 ### Wiring run 01 — 78 unreachable features resolved, 2 left
 **340 insertions, 1,524 deletions.** Mostly deletions, as predicted: `models.js` shed 565 lines
@@ -352,18 +383,18 @@ purge, re-index, log back in. The only manual step is one line in your `.env`.
 - [x] **P0-01** Create `.pantheon/` with `AGENTS.md`, `ROADMAP.md`, `FORBIDDEN.md`, `DEFERRED.md`, `handoff/`. Seed one empty handoff file per area. — **done:** the directory exists; the sixteen empty handoff files were deleted in favour of § Progress.
 - [x] **P0-01b** Run `scripts/pantheon-init.sh --dry-run`, read the diff, then run it for real. It does P0-02, P0-03, P0-04, P0-06, P0-07, P0-08, P0-10 and P0-11 as one reviewable sweep, with the attribution files excluded. Everything after it is by hand. — **done:** swept, 373 files, 2,615 in / 2,615 out, 37 path renames.
 - [x] **P0-02** Rename cosmetic surfaces: page titles, wordmark text in `index.html` + `login.html`, 111 UI strings across `static/js/`, tray menu in `launcher.py`, `setup.py` banner. `Verify:` grep for case-insensitive `odysseus` in `static/` returns only attribution strings. — **done:** verified — `git grep -icI odysseus -- static/` returns one hit, the protected provenance link in `cookbook.js`.
-- [x] **P0-03** Rename env prefix `ODYSSEUS_*` → `PANTHEON_*` (99 distinct names, 560 refs). Update `.env.example`, `docker-compose*.yml`, `Dockerfile`, `docs/`, **and your live `.env` on the host** — that one file is the entire migration. No shim. `Verify:` app boots with only `PANTHEON_*` set. — **done:** code and live `.env`; only `PANTHEON_ADMIN_USER`/`PASSWORD` existed on the host, and both are read solely at first-boot admin creation.
+- [x] **P0-03** Rename env prefix `ODYSSEUS_*` → `PANTHEON_*` (**103 distinct names, 574 refs** — re-measured 2026-08-27 post-sweep, scope: `PANTHEON_*` in tracked files excluding `.pantheon/`; the pre-sweep estimate of 99 / 560 undercounted). Update `.env.example`, `docker-compose*.yml`, `Dockerfile`, `docs/`, **and your live `.env` on the host** — that one file is the entire migration. No shim. `Verify:` app boots with only `PANTHEON_*` set. — **done:** code and live `.env`; only `PANTHEON_ADMIN_USER`/`PASSWORD` existed on the host, and both are read solely at first-boot admin creation.
 - [x] **P0-04** Rename browser storage keys (113 distinct, 206 refs in `static/`). Costs you one theme re-pick and a layout reset. `CI:` none. — **done:** verified — no `ody-`/`ody.` keys remain in `static/`.
-- [ ] **P0-05** **Corrected — there is nothing to drop.** The previous entry claimed the volume still held `odysseus_*` collections. Queried the live instance: one tenant, one database, and only two collections exist — `pantheon_rag_fastembed` (0 docs) and `pantheon_memories_fastembed` (**8 docs**). The app created them under the new names on first boot and memory is already writing to them. No orphans anywhere, so nothing was stranded and nothing needs migrating. What is left is smaller: **RAG is empty and `pantheon_tool_index` does not exist yet** — add the directories back through the RAG UI, and the tool index builds itself on first tool search. `Verify:` RAG search returns results after re-adding a directory; `GET :8100/api/v2/tenants/default_tenant/databases/default_database/collections` lists a tool index. *(Caught by Law 9 — the entry described what I assumed, not what was there.)*
+- [ ] **P0-05** **Corrected — there is nothing to drop.** The previous entry claimed the volume still held `odysseus_*` collections. Queried the live instance: one tenant, one database, and only two collections exist — `pantheon_rag_fastembed` (0 docs) and `pantheon_memories_fastembed` (**8 docs**). The app created them under the new names on first boot and memory is already writing to them. No orphans anywhere, so nothing was stranded and nothing needs migrating. What is left is smaller: **RAG is empty and `pantheon_tool_index` does not exist yet** — add the directories back through the RAG UI, and the tool index builds itself on first tool search. `Verify:` RAG search returns results after re-adding a directory; `GET :8100/api/v2/tenants/default_tenant/databases/default_database/collections` lists a tool index. *(Caught by Law 9 — the entry described what I assumed, not what was there.)* **Verification note 2026-08-27:** the code half is confirmed; **the two live-instance claims are not.** ChromaDB at `localhost:8100` is unreachable from the build container, and this row's own `Verify:` needs that endpoint — so "RAG is empty" and "`pantheon_tool_index` does not exist yet" are **carried, not measured** (`Law 6`). Whoever picks this up runs the collections query on the box that can see it, first.
 - [x] **P0-06** Rename session cookie `odysseus_session` → `pantheon_session`. You log in again once. — **done:** swept.
 - [x] **P0-07** Rename outbound HTTP headers (`X-Odysseus-Origin/Kind/Ref/Event/Signature/Owner`) and the four User-Agent strings. No downstream consumers exist yet — do it now, before any do. — **done:** swept.
-- [x] **P0-08** Rename Docker compose service, container user (`ODY_USER`), and the SearXNG settings sentinel `odysseus-local-searxng-json-2026-05-30`. `Verify:` a clean `docker compose up` produces a working SearXNG. — **done:** swept; a clean rebuild produced a healthy SearXNG.
-- [ ] **P0-09** Rename data dir default (`~/.odysseus/data`), systemd unit + installer, PyInstaller spec, macOS `CFBundleIdentifier`, PWA manifest name, service-worker cache name. **Docker mounts `./data` explicitly, so the default path change does not move your live data** — verify that before restarting.
-- [x] **P0-10** Rename the 19 `scripts/odysseus-*` CLI scripts (`git mv`). If you have a crontab or systemd timer pointing at any of them, update it — otherwise nothing references them. — **done:** all 19 `git mv`-d.
+- [ ] **P0-08** Rename Docker compose service, container user (`ODY_USER`), and the SearXNG settings sentinel `odysseus-local-searxng-json-2026-05-30`. `Verify:` a clean `docker compose up` produces a working SearXNG. — **UNTICKED (verified 2026-08-27):** the compose service and the sentinel were swept, but **`ODY_USER` itself never was** — only its *value* changed. It is still `ODY_USER` at `docker/entrypoint.sh:29,30,45,141,146`, where `:30` now reads the giveaway `[ -z "$ODY_USER" ] && ODY_USER=pantheon`, plus two assertions at `tests/test_docker_devops_hardening.py:100-101`. **The sweep only ever matched `odysseus`/`Odysseus`/`ODYSSEUS`; the abbreviated `ODY_`/`_ody_` prefix was never in scope.** Same class, same cause, and none of it is renamed: `_ody_qwen_temperature_cap` (`src/agent_loop.py:2212` + 3 call sites), `_ODY_VENV_FOR_LIBS` / `_ody_nvlib` / `_ODY_LLAMA_SHIM_EOF` (`routes/cookbook_routes.py:138-141,2251`), and the three `ody_*_finetune_*` wire keys at `src/agent_loop.py:4346-4348`. `ody_` appears in 71 lines of `src/agent_loop.py` alone and in ten other `src/` files. **Scope this as its own prefix sweep** — the wire keys are protocol surface and changing them is not cosmetic.
+- [x] **P0-09** Rename data dir default (`~/.odysseus/data`), systemd unit + installer, PyInstaller spec, macOS `CFBundleIdentifier`, PWA manifest name, service-worker cache name. **Docker mounts `./data` explicitly, so the default path change does not move your live data** — verify that before restarting. — **done:** all six landed in the rename sweep and nobody ticked the line. `src/runtime_paths.py:29` `~/.pantheon/data`, `pantheon-ui.service`, `Pantheon.spec`, `build-macos-app.sh:56` `com.pantheon.launcher`, `static/manifest.json:2-3`, `static/sw.js:10`. `.odysseus` now occurs nowhere outside `.pantheon/`. (verified 2026-08-27)
+- [x] **P0-10** Rename the **20** `scripts/odysseus-*` CLI scripts (`git mv`). If you have a crontab or systemd timer pointing at any of them, update it — otherwise nothing references them. — **done:** all of them `git mv`-d. *(Count corrected 2026-08-27: **20**, not 19 — scope: `pantheon-*` in `scripts/` minus the init and repo-setup scripts. The work was complete; only the number was wrong.)*
 - [x] **P0-11** Rename Swift package + two executables, the two integration plugin ids (`integrations/{claude,codex}/skills/odysseus/`), `_EMAIL_MCP_OWNER_ARG`, and the 3 custom DOM events. `Depends:` P0-02. — **done:** swept.
 - [x] **P0-12** **The sweep rewrote two badges to dead targets — they need removing, not renaming.** `README.md:17` now points at `repology.org/project/pantheon-ai`, which does not exist; `README.md:71-75` now points the star-history chart at `ImPanick/pantheon`, which is private and will 404 for every reader. Delete both blocks. The rest of this task is done: the 47 `odysseus-dev` references, `package.json`, `.github/` templates and `cookbook.js:3177` were handled by the sweep, and the three links to specific upstream issues and discussions were deliberately preserved. `Verify:` no README image URL 404s. — **done:** both dead badges removed in the README rewrite; the sweep had already handled the 47 `odysseus-dev` references, `package.json`, `.github/` and `cookbook.js:3177`.
-- [ ] **P0-13** Design the Pantheon mark — **and take a real screenshot with it.** Every README worth copying opens with one; ours would have to be `docs/pantheon-browser.jpg`, which is upstream's shot of the old UI under a renamed file, so shipping it would misrepresent the product. The README currently has none for that reason. **Do not reuse the red sailing boat, the wordmark, or the per-route favicon shapes** — the licence grants them but they are upstream's identity. Replace `static/icon.ico`, the favicon registry, the inline boat SVG (5 copies), and the programmatic tray drawing. **Keep the ASCII wave loader** — it's a loader, not a logo. — **DECIDED — its own session: three or four directions, pick one, then favicon, tray icon and the five inline SVG copies follow** (D-2026-08-26-06).
-- [x] **P0-14** **§5(a) + §5(b) notices.** Add to `README.md` and a new `NOTICE`: a prominent statement that this is a modified version of Odysseus, **with a date**, and that it is released under the AGPL. Neither exists today. — **done:** `NOTICE` carries the §5(a) modification notice with the fork commit and date; the README carries the same statement in its status block.
+- [~] **P0-13** Design the Pantheon mark — **and take a real screenshot with it.** Every README worth copying opens with one; ours would have to be `docs/pantheon-browser.jpg`, which is upstream's shot of the old UI under a renamed file, so shipping it would misrepresent the product. The README currently has none for that reason. **Do not reuse the red sailing boat, the wordmark, or the per-route favicon shapes** — the licence grants them but they are upstream's identity. Replace `static/icon.ico`, the favicon registry, the inline boat SVG — **9 copies, not 5** (re-measured 2026-08-27: the wave path `M4 24Q10 20 16 24` across 4 files; 6 if you exclude `docs/index.html`) — and the programmatic tray drawing. **Keep the ASCII wave loader** — it's a loader, not a logo. — **DECIDED — its own session: three or four directions, pick one, then favicon, tray icon and the nine inline SVG copies follow** (D-2026-08-26-06). `Blocked:` needs a design decision no agent can make. It gates the public flip alongside the licence rows.
+- [ ] **P0-14** **§5(a) + §5(b) notices.** Add to `README.md` and a new `NOTICE`: a prominent statement that this is a modified version of Odysseus, **with a date**, and that it is released under the AGPL. Neither exists today. — **PARTLY DONE, UNTICKED (verified 2026-08-27):** the notice itself is right — `NOTICE` carries the §5(a) statement with the fork commit and date, and `README.md:207` repeats it in prose. **What is missing is the second upstream identity.** `odysseus-dev/odysseus` returns **zero** hits across `NOTICE`, `README.md`, `CREDITS.md` and `ACKNOWLEDGMENTS.md`; `NOTICE:23` names only `pewdiepie-archdaemon/odysseus`. D-2026-08-26-06 requires both be named, and § *Two upstream identities* below is the reason. An attribution that names one of two upstreams is the one defect in this block you cannot ship publicly. Add the second identity to `NOTICE` and to whichever credits file `P0-19` makes authoritative, then re-tick.
 - [x] **P0-15** **§4 copyright line.** There is **no project copyright notice anywhere in the repo today**. Add Pantheon's and preserve any upstream one that can be established. — **done:** `NOTICE` line 2 — `Copyright (c) 2026 Panick`. There was no upstream copyright line in the repo to preserve.
 - [ ] **P0-16** **Apache-2.0 §4(b) change notices** on the research-derived files (`services/research/`, `src/research_handler.py`, `routes/research/`, `services/search/`) — "You changed the files". Absent today.
 - [ ] **P0-17** **§13 Source link.** Single footer button in the UI. `href` → the public repo. `title="Built on Odysseus — click to see where Pantheon originated from!"`. Must be present on the logged-in shell and the login page. This is the one licence obligation that is genuinely required and genuinely missing. `Depends:` P0-12.
@@ -372,7 +403,7 @@ purge, re-index, log back in. The only manual step is one line in your `.env`.
 ### P0 · Credits — the licence gaps you inherit
 *Do not publish before these close.*
 
-- [ ] **P0-19** Rewrite `ACKNOWLEDGMENTS.md` as Pantheon's credits file. **Lead with Odysseus.** Preserve every credited party. Update paths that moved.
+- [ ] **P0-19** **Decide which file is the credits file, then rewrite it.** *(2026-08-27 — this is the decision that gates the whole licence block.)* `CREDITS.md` and `ACKNOWLEDGMENTS.md` both exist and **disagree about which is authoritative**, and `NOTICE:41-42` points at the wrong one. One call unblocks `P0-20`, `P0-24`, `P0-25` and `P0-26`, and `P0-14` cannot be re-ticked until it lands, because the second upstream identity has to go somewhere authoritative. **Do this first in the P0 run.** Then: rewrite it as Pantheon's credits file, **lead with Odysseus**, preserve every credited party, update paths that moved, and make `NOTICE` point at the surviving file.
 - [ ] **P0-20** Add missing licence bodies to `licenses/`: highlight.js (BSD-3), SheetJS/xlsx (Apache-2.0 — check upstream for a `NOTICE`), docx (MIT), mammoth.js (BSD-2), jsPDF (MIT), html2canvas (MIT), node-qrcode (MIT). MIT and both BSDs require the notice to travel with redistributed copies.
 - [ ] **P0-21** Fetch the missing `html2pdf.bundle.min.js.LICENSE.txt` — the bundle's own banner references a file that is not in the repo.
 - [ ] **P0-22** Add OFL text for Fira Code and Inter, and list the **20 KaTeX font faces** — all carry Reserved Font Names and are currently credited as MIT-only. Do not subset any font, or OFL §3 bites.
@@ -381,8 +412,8 @@ purge, re-index, log back in. The only manual step is one line in your `.env`.
 - [ ] **P0-25** Correct the PyMuPDF scope statement — it is documented as form-filling only; it also backs the PDF viewer's page render and the annotation-fill endpoint (three route handlers). Fix the stale docstring at `routes/email_helpers.py:1453` that credits it for text extraction it does not perform.
 - [ ] **P0-26** Reconcile the credits file's "the core ships fully permissive (MIT-compatible)" framing against the AGPL `LICENSE`, or state which is authoritative for Pantheon.
 - [x] **P0-27** README statement of intent: *"Pantheon is free software under the AGPL. I don't sell it, and I'd rather you didn't."* **Social, not legal — do not add a non-commercial clause.** AGPL §10 prohibits further restrictions and §7 lets any recipient strip one. — **done:** in the README licence section, phrased as intent and explicitly not as a clause.
-- [ ] **P0-28** **The root `ROADMAP.md` is upstream's, and the sweep put Pantheon's name on it.** It now opens *"Pantheon is on a voyage, but not home yet... (I don't know what I'm doing, help)"* — upstream's words, upstream's self-deprecation, attributed to this project. It also collides with the real tracker at `.pantheon/ROADMAP.md`, which the README links as "Tracker". Replace it with a short pointer to `.pantheon/ROADMAP.md`, or delete it. `Verify:` a reader following either link lands somewhere that is true. — **DECIDED — delete it; point everything at `.pantheon/ROADMAP.md`** (D-2026-08-26-06).
-- [ ] **P0-29** **Rename Cookbook → Forge** (`DECISIONS.md` D-2026-08-26-05). It reads as a recipe box; it is a model-serving control plane — remote host registry with SSH keys, GPU detection and hardware fit, weight downloads from HuggingFace and Ollama, vLLM / llama.cpp / Ollama launches held open in tmux, process kill, and task-status polling. 17 routes. **Surface: 3,533 occurrences across 172 files and 43 paths — larger than the Odysseus→Pantheon sweep was** (2,929). Use the same tool: `scripts/pantheon-init.sh` is proven and parameterises cleanly. Decide the name first (`DECISIONS.md`, pending) and whether *recipe* survives — 242 occurrences, and a vLLM recipe genuinely is a parameterised launch config, so it may earn its keep even if Cookbook does not. `Verify:` no user-visible string says Cookbook; `rail-*`, `tool-*-btn` and modal ids move together with their CSS.
+- [ ] **P0-28** **The root `ROADMAP.md` is upstream's, and the sweep put Pantheon's name on it.** It now opens *"Pantheon is on a voyage, but not home yet... (I don't know what I'm doing, help)"* — upstream's words, upstream's self-deprecation, attributed to this project. It also collides with the real tracker at `.pantheon/ROADMAP.md` — **but only by filename** (**Premise corrected 2026-08-27.**): all three README references already point at `.pantheon/ROADMAP.md`, so no reader is currently sent to the wrong file. That lowers the urgency and leaves the actual problem, which is upstream's self-deprecation flying Pantheon's name. Replace it with a short pointer to `.pantheon/ROADMAP.md`, or delete it. `Verify:` a reader following either link lands somewhere that is true. — **DECIDED — delete it; point everything at `.pantheon/ROADMAP.md`** (D-2026-08-26-06).
+- [ ] **P0-29** **Rename Cookbook → Forge** (`DECISIONS.md` D-2026-08-26-05). It reads as a recipe box; it is a model-serving control plane — remote host registry with SSH keys, GPU detection and hardware fit, weight downloads from HuggingFace and Ollama, vLLM / llama.cpp / Ollama launches held open in tmux, process kill, and task-status polling. 17 routes. **Surface: 3,529 occurrences across 171 files and 43 paths — larger than the Odysseus→Pantheon sweep was** (2,929). *(Re-measured 2026-08-27; scope: case-insensitive `cookbook` in tracked files, excluding `.pantheon/`. The old 3,533 / 172 counted this tracker's own text.)* Use the same tool: `scripts/pantheon-init.sh` is proven and parameterises cleanly. Decide the name first (`DECISIONS.md`, pending) and whether *recipe* survives — 242 occurrences, and a vLLM recipe genuinely is a parameterised launch config, so it may earn its keep even if Cookbook does not. `Verify:` no user-visible string says Cookbook; `rail-*`, `tool-*-btn` and modal ids move together with their CSS.
 
 ---
 
@@ -391,20 +422,22 @@ purge, re-index, log back in. The only manual step is one line in your `.env`.
 
 More visible change than any redesign step, and zero markup touched.
 
-- [ ] **P1-01** **Define `--accent` PER THEME, not in `:root`. Defining it in `:root` breaks all 16 themes.** Measured: of the 799 `var(--accent…)` sites in `style.css`, **508 are `var(--accent, var(--red))`** and resolve today to the theme's own `red`, which `applyTheme()` sets at `static/js/theme.js:263`. A `:root` definition wins over that fallback, so all 508 would flip to one global colour and every theme would lose its identity in a single commit. **The themes are protected — see `DECISIONS.md` D-2026-08-26-03.**
-  **Do instead:** one line in `applyTheme()` beside `s.setProperty('--red', colors.red)` — `s.setProperty('--accent', colors.accent || colors.red)`. The 508 fallback sites then resolve to exactly what they resolve to now (zero visual change), the bare sites resolve for the first time (pure gain), each theme keeps its own accent, and the 8 custom-theme slots get it free because they run through the same function. Add an optional `accent:` key to `THEMES` for any theme that should differ from its `red`. `CI:` none. `Verify:` cycle all 16 themes and diff screenshots — only the previously-unstyled elements change. Then: rail hover backgrounds appear; both resize handles become visible; the session rename input gets a border; the scroll-to-bottom button gets its colour.
-- [ ] **P1-02** Define `--accent-primary` (121 uses, never defined) — or replace those uses with `--accent`.
+- [ ] **P1-01** **Define `--accent` PER THEME, not in `:root`. Defining it in `:root` breaks all 16 themes.** Measured: of the 799 `var(--accent…)` sites in `style.css`, **521 are `var(--accent, var(--red))`** and resolve today to the theme's own `red`, which `applyColors()` sets at `static/js/theme.js:263`. A `:root` definition wins over that fallback, so all 521 would flip to one global colour and every theme would lose its identity in a single commit. **The themes are protected — see `DECISIONS.md` D-2026-08-26-03.**
+  **Do instead:** `s.setProperty('--accent', colors.accent || colors.red)` beside the existing `s.setProperty('--red', colors.red)`, guarded the same way. The 521 fallback sites then resolve to exactly what they resolve to now (zero visual change), the bare sites resolve for the first time (pure gain), each theme keeps its own accent, and the 8 custom-theme slots get it free — `generateHarmonyColors()` at `theme.js:220` returns no `accent` key, so `colors.accent || colors.red` falls through to red exactly as intended. Add an optional `accent:` key to `THEMES` for any theme that should differ from its `red`.
+  **Three corrections, verified 2026-08-27, and all three change the work.** **(1) 521, not 508** — four independent methods agree, and `style.css` has one commit in this repo, so the old figure was wrong when written, not stale. **(2) There is no `applyTheme()`.** The function is `applyColors()` at `theme.js:257`; the only `applyTheme` in the tree is a dead call at `slashCommands.js:876` behind an `||` the module can never satisfy. An implementer searching for the named function finds nothing. **(3) One line is not enough — `--red` is set at three sites.** `theme.js:263` (the module), `index.html:29` (the first-paint inline script) and `login.html:54` (the login page's own script, which never runs `applyColors` — its comment at `:605-607` says so). Adding the line only in `applyColors()` leaves a flash on every cold load, where the 205 bare sites resolve to nothing until the module boots, and leaves the **login page permanently without `--accent`** — it carries a `var(--accent` site of its own and `index.html` carries 14. **Mirror the line into all three, and bump `CACHE_NAME` in `sw.js`** or returning users keep the old first-paint script.
+  `CI:` none. `Verify:` cycle all 16 themes and diff screenshots — only the previously-unstyled elements change. Then: rail hover backgrounds appear; both resize handles become visible; the scroll-to-bottom button gets its colour; and the session rename input gets a border — that last one is **not** in the bare-site list, because `style.css:6775` is `var(--accent, var(--accent-primary))` with *both* undefined, so the whole `border` shorthand is invalid at computed-value time and falls back to `border-style: none`. Same fix, different failure mode.
+- [ ] **P1-02** Define `--accent-primary` (121 uses, never defined) — or replace those uses with `--accent`. **Premise corrected 2026-08-27: this is token hygiene, not a bug hunt.** The line reads as 121 broken uses. It is not — **120 of the 121 already resolve correctly through their fallbacks**, 116 of them to the theme's `--red`. **Exactly one site is genuinely dead: `style.css:6775`** — and that is the same pixel `P1-01` already fixes, so as written these two rows overlap on their only real defect. Do `P1-01` first, then this becomes what it should always have been: an undefined token used 121 times, worth resolving so the next reader is not misled, with no visual change expected and none acceptable.
 - [ ] **P1-03** **Define `--fg-muted`** (93 bare uses, zero definitions). Every one of those elements was authored as secondary text and renders at full strength. `Depends:` P1-01.
 - [ ] **P1-04** **Delete `#sidebar-backdrop { display:none !important }`** at top-level nesting depth 0 — it beats the media-query rule everywhere. Thirteen call sites across four modules already toggle the element. `Verify:` mobile drawer dims the page and tap-to-close works.
-- [ ] **P1-05** **Fix `#rail-settings`** — it unhides the sidebar and scrolls to the bottom instead of opening Settings. The guided tour uses it as its opener, polls 25 times, and gives up with an error. `Verify:` the tour completes.
-- [ ] **P1-06** Add 4–6 semantic status tokens (`--ok --warn --danger --info` + optional `--think`) derived from the five theme tokens. Absorbs **420 of 517 unthemed colour occurrences across 68 distinct hex values** — 21 reds meaning danger, 22 blues meaning info.
-- [ ] **P1-07** Separate the ~120 Dracula/One-Dark syntax-palette occurrences into their own token set. They are code-block theming that was never wired to the theme system — not app status colours.
-- [ ] **P1-08** **Computed `--on-accent`.** `.send-btn` hardcodes `color:#fff`; white-on-accent fails 4.5:1 on **all 16 themes**, and the accent itself fails on 7 of 16. One token fixes all sixteen.
+- [ ] **P1-05** **Fix `#rail-settings`** — it unhides the sidebar and scrolls to the bottom instead of opening Settings. **Premise corrected 2026-08-27.** The rail gear is genuinely broken and stays open, but **the guided tour is not its victim.** The tour opens Settings through `#user-bar-settings` (`slashCommands.js:3337`), which works; the `#rail-settings` branch is reached only when that element is absent, and `ui_visibility.js:32` guarantees it never is. That branch is unreachable dead code. **The old `Verify:` passed on an unfixed tree** — a rewritten one is the only reason this row is still worth opening. `Verify:` click the rail gear on a cold load with the sidebar hidden; the Settings panel opens and the sidebar does not scroll.
+- [~] **P1-06** Add semantic status tokens derived from the five theme tokens. — **BLOCKED on its own premise (2026-08-27).** Two problems, both fatal as written. **(1) The numbers do not exist.** 517 / 68 / 420 carried no scope and reproduce under none tried (`Law 5`); the nearest defensible measurement is **346 occurrences across 75 distinct non-grey hex values in `static/style.css` outside `:root`**. Nobody can size this row until its scope is written down. **(2) It would fork a third colour vocabulary.** `--warn` already exists at `style.css:30`, and the codebase already carries two semantic colour scaffoldings. Adding `--ok --warn --danger --info` beside them is precisely `Law 14`. **Unblock by:** stating the scope, then extending whichever of the two existing vocabularies is the better host — not by adding a third. `P1-07`'s 135 loose hexes outside `:root` fold in here.
+- [x] **P1-07** Separate the Dracula/One-Dark syntax-palette occurrences into their own token set. — **SUPERSEDED (verified 2026-08-27) — the separation already exists.** Ten `--hl-*` tokens are declared and used 97 times, and they are recomputed per theme at `theme.js:270-281` and `index.html:45-56`. The palette was never unwired; the audit read the loose hexes and inferred a missing system. Re-measured with scope: 150 occurrences of the 27 One-Dark ∪ Dracula values in `static/style.css`, **135 of them outside `:root`** — and roughly half are duplicates of `--red`/`--green`, which makes them ordinary hardcoded colours. **Folded into `P1-06`**, which is the row that owns loose hexes. Nothing here is a separate task.
+- [ ] **P1-08** **Computed `--on-accent`.** `.send-btn` hardcodes `color:#fff`; white-on-accent fails 4.5:1 on **15 of 16 themes**, and the accent itself fails on **8 of 16**. *(Re-measured 2026-08-27 — WCAG 2.x relative luminance per theme against the resolved send-button background and the theme background. One theme passes, which is worth knowing: it is the proof the token can be right rather than merely uniform.)* One token fixes all sixteen.
 - [ ] **P1-09** Add a contrast guard inside `generateHarmonyColors()` and `applyColors()` (~15 lines) so every future custom theme clears the floor too. `Depends:` P1-08. **`CI:`** any new theme token must extend `ADV_KEYS` **and** `computeAdvancedDefaults()` in lockstep or all 16 themes break.
-- [ ] **P1-10** **Normalise z-index to 7 named tiers.** 261 declarations, 63 distinct values, range −1 to 1,000,000. Use the order-preserving remap: strictly increasing in the same sorted order ⇒ no element can change stacking. `Verify:` the remap list is strictly increasing; nothing moves visually.
+- [ ] **P1-10** **Normalise z-index to 7 named tiers.** **259 declarations, 64 distinct values** (re-measured 2026-08-27, scope: `static/style.css` only — 63 numeric plus one `var()`), range −1 to 1,000,000. Use the order-preserving remap: strictly increasing in the same sorted order ⇒ no element can change stacking. `Verify:` the remap list is strictly increasing; nothing moves visually.
 - [ ] **P1-11** Fix the toast occlusion the tiering surfaces — toasts sit at 9999, below every image-editor popover at 10001–10006. Deliberate second pass, needs visual review. `Depends:` P1-10.
-- [ ] **P1-12** **One global `prefers-reduced-motion` guard.** 18 narrow opt-outs against 148 keyframes and 7 unguarded canvas animators — the background effects run continuously with nothing.
-- [ ] **P1-13** Elevation tokens: 4 theme-aware shadows replacing 274 declarations / 198 unique values. 110 hardcode `rgba(0,0,0,α)` — on the four light themes those read as grey smudges. The good theme-aware form already exists and is used 6 times.
+- [ ] **P1-12** **One global `prefers-reduced-motion` guard.** 18 narrow opt-outs against **160 keyframes** and 7 unguarded canvas animators — the background effects run continuously with nothing. **The 160 is the load-bearing correction** (re-measured 2026-08-27): 148 live in CSS, and **12 are injected into `document.head` at runtime by `slashCommands.js`**. A CSS-only guard cannot reach those twelve, so a guard written against the old 148 would pass its own review and still animate. Guard the injection site too.
+- [ ] **P1-13** Elevation tokens: 4 theme-aware shadows replacing **287 declarations / 212 unique values** (re-measured 2026-08-27, scope: `static/style.css`, comments stripped). **112** hardcode `rgba(0,0,0,α)` — on the four light themes those read as grey smudges. **156 of the 287 are already token-aware**, which the old figures hid: slightly over half the file is done, and the row is smaller than 287 makes it sound. The good theme-aware form already exists and is used 6 times.
 - [ ] **P1-14** Name the signature curve. `cubic-bezier(0.34, 1.56, 0.64, 1)` is used 34 times and has never had a token.
 
 ---
@@ -460,25 +493,25 @@ cross one if implemented carelessly.
 - [ ] **P2-09** **Implemented once and REVERTED — read this before re-landing.** Scaling `skill_max_injected` off the context window is right in principle and wrong as first built: the value reaches `_build_system_prompt` from `get_context_length()`, which returns `DEFAULT_CONTEXT = 128000` for any endpoint whose window cannot be proven **and discards the `known` flag**. `compute_skill_injection_limit(3, 128000, explicit=False)` is **12**. A local llama.cpp box holding 8K would have been injected 12 skill blocks of user-editable untrusted content instead of 3 — the exact failure `src/model_context.py:313-315` warns about. A user who deliberately typed `3` into the `max="12"` input at `index.html:495` would also have got 12. **Re-land:** call `budget_context_for_model(url, model, fallback=0)` at `agent_loop.py:4342` — returns 0 for an unproven window, shares the existing cache, adds no probe, restores the flat 3. **Decide first:** `0` is already the documented off switch, so *auto* needs its own sentinel or an explicit UI affordance. The pure functions written for it were correct in isolation and are worth keeping for the re-land. **DECIDED — a checkbox, "scale to the model's context window", disabling the number field when ticked; the number becomes the ceiling** (D-2026-08-26-06).
 
 ### Fix
-- [ ] **P2-10** **The fake concurrency limit.** "max concurrent uploads: 3" is enforced as "≤3 uploads in the last ten seconds" and fires on a normal multi-file drag. Drop it; the 60/min rate limit already exists. `CI:` the test sets it locally, so the default is not pinned. — ****DECIDED — AMENDED. Do NOT delete.** The "one operator cannot DoS themselves" reasoning does not survive `P11`. Becomes an admin control, default off — `P12-06`** (D-2026-08-26-06).
+- [x] **P2-10** **The fake concurrency limit.** — **SUPERSEDED (verified 2026-08-27) — the work is `P12-06`.** D-2026-08-26-06 reversed this row's body: it does **not** get deleted, because "one operator cannot DoS themselves" stops being true under `P11`. Leaving a line whose title and first sentence say *drop it* while a clause at the end says *do not* is a `Law 10` hazard — an agent that stops reading at the instruction deletes a control the roadmap decided to keep. The false-positive on multi-file drag was fixed independently (`upload_routes.py:285-291`, #1346); the constant and the ten-second window are open at `P12-06`.
 - [x] **P2-11** Raise `MAX_FILES` (10 → 25) **and** add a server-side `len(files)` cap, which does not exist. **`CI:` a test regex-parses this literal** and asserts `upload_rate_limit >= MAX_FILES`. — **done:** `MAX_FILES_PER_REQUEST = 25` at `src/upload_handler.py:227`, enforced pre-loop at `routes/upload_routes.py:274`; partial-write hazard fixed.
 - [ ] **P2-12** **Stop hiding small email attachments.** The signature heuristic also returns true for *any* image under 30 KB — a real screenshot is silently invisible **and** excluded from the ZIP. Keep the filename patterns, drop the size clause. — **DECIDED — drop the size clause in **both** files, pin `_has_visible_attachments` to the old predicate, keep the two filename patterns. Write the first test** (D-2026-08-26-06).
 - [~] **P2-13** **BLOCKED — correctly, on something the spec never named.** Premise verified true: both clamps exist at `src/llm_core.py:1071` and `src/agent_loop.py:2212`, and the Anthropic cloud clamp at `:1572` is untouched. But **four assertions in two unowned test files pin the cap** — `tests/test_llm_core_temperature_reasoning.py:104` and `tests/test_pr6020_rebase_regressions.py:182/:201/:216`. The two qwen tests exist to prove a mixed fallback chain leaks temperature in neither direction, and that property must survive any rewrite. **Also needs a decision:** `_apply_local_generation_stability` receives only a payload dict and cannot tell *the user asked for 0.9* from *0.9 is a default*, so a faithful "default, not cap" needs an explicitness signal threaded from the builder. The agent refused to ship a hidden env escape hatch with no UI — right call. **DECIDED — thread an `explicit_params` set from the payload builder; the clamp becomes a setdefault for everything else. Keep the Anthropic ceiling** (D-2026-08-26-06).
-- [ ] **P2-14** Loosen the guide-only trigger: seven regexes fire on any mention of the phrasing and then strip every tool **and all MCP** for the turn. Require whole-message match, or an explicit toggle. — **DECIDED — anchor patterns 1–6 to whole-message match; convert pattern 7 into a confirmation mode that arms the approval gate rather than stripping tools** (D-2026-08-26-06).
+- [ ] **P2-14** Loosen the guide-only trigger: seven regexes fire on any mention of the phrasing and then strip **all 82 tools** — re-measured 2026-08-27 by executing `known_tool_names()` in-tree, not 81 — **and all MCP** for the turn. Require whole-message match, or an explicit toggle. — **DECIDED — anchor patterns 1–6 to whole-message match; convert pattern 7 into a confirmation mode that arms the approval gate rather than stripping tools** (D-2026-08-26-06).
 - [x] **P2-15** Fix the self-contradicting bash prompt — one line forbids heredocs, seven lines later another instructs the model to use one. Prompt-only; enforces nothing. — **done:** heredoc instruction removed at `src/agent_loop.py:574` — 10 ban sites, 0 instruction sites.
 - [x] **P2-16** Fix the grammar bug producing `Your account is not allowed to can use research.` — **done:** `privilege_denied_message` at `src/auth_helpers.py:127`; the fail-open `privs.get(key, True)` deliberately untouched.
 - [x] **P2-17** Cap the backup import — `await request.json()` with no size limit on an admin route. — **done:** 413 cap at `routes/backup_routes.py:134`, **after** `require_admin` at `:131`; env var wired into all three compose files and `.env.example`.
 - [ ] **P2-18** Fix the feature-flag story: `deep_research` defaults off, the frontend hides four buttons, and **no server route checks it**. Either enforce server-side or delete the three flags with zero consumers. Flip `deep_research` on. — **DECIDED — fix the precedence bug generally, delete the three consumerless flags, flip `deep_research` on. **No server-side enforcement** — the endpoint is auth-exempt and was never a boundary** (D-2026-08-26-06).
 
 ### Re-surface what was built and never wired
-- [ ] **P2-19** **Webhooks admin panel** — backend complete, **no UI whatsoever**. Add `adm-whList` / `adm-whAddBtn` markup. Add the null guards at the two functions that currently throw on `null.innerHTML` inside a silent `try` — which is why nobody noticed.
+- [ ] **P2-19** **Webhooks admin panel** — backend complete, **no UI whatsoever**. Add `adm-whList` / `adm-whAddBtn` markup. **Premise corrected 2026-08-27.** The two functions do not throw, because **neither is ever called** — `initWebhookForm` (`admin.js:2735`) is absent from the `inits` array at `:3152-3156`, and `loadWebhooks` (`:2684`) is absent from `refreshAll` at `:3164-3171`, and `initWebhookForm` has no `try` at all. The silent-`try` story was wrong, and it mattered: null guards alone would have shipped a panel that still never renders. **The fix is markup *plus* registration in `inits` and `refreshAll`**, the same pairing `P2-20` needs. `Verify:` the panel renders on a cold load of the admin page, not merely on a hand-called init.
 - [ ] **P2-20** MCP admin panel markup (`adm-mcp*`) — this also makes the OAuth-file registration path reachable for the first time. Feature toggles (`adm-featureToggles`), API tokens (`adm-tokenList`), RAG (`adm-rag*`). All four backends exist. — **DECIDED — build only RAG and feature toggles; skip MCP and tokens, which already have live UIs in settings (`Law 14`). Wire both into `inits` and `refreshAll`** (D-2026-08-26-06).
-- [ ] **P2-21** Built-in skills editor: flip `showBuiltin = false` → `true`. `_buildBuiltinCards()` and its three admin endpoints are fully implemented, including a per-tool instruction-block override editor. — **DECIDED — gate the two GETs, write the list loader, then flip the flag. **Amended from optional to required** by `P11-10`** (D-2026-08-26-06).
+- [ ] **P2-21** Built-in skills editor: flip `showBuiltin = false` → `true`. `_buildBuiltinCards()` and its admin endpoints are fully implemented, including a per-tool instruction-block override editor. **There are four endpoints, not three, and only two are gated** (`skills_routes.py:1250/1287/1311/1337` — both GETs are open, re-measured 2026-08-27). That is the whole reason `P11-10` amended this row from optional to required. — **DECIDED — gate the two GETs, write the list loader, then flip the flag. **Amended from optional to required** by `P11-10`** (D-2026-08-26-06).
 - [x] **P2-22** Re-attach the gallery upscaler controls (`ge-upscale-*`). Backend + local Real-ESRGAN both implemented, zero UI. — **DECIDED — target `/api/image/upscale-local` (local Real-ESRGAN). A backend selector waits for a real GPU host** (D-2026-08-26-06). — **done:** completed by wiring run 01 — `ge-upscale-section` built in `static/js/editor/build/controls.js`, toolbar entry present, and `ai-tools-misc.js` targets `upscale-local` per D-2026-08-26-06.
 - [x] **P2-23** Give RAG upload a UI — the module expects three elements that do not exist. The endpoint works and has **no extension restriction at all**. — **DECIDED — resurface the **user-facing** `rag.js` module, not the admin one. Three ids plus wiring, on a module already called every boot** (D-2026-08-26-06). — **done:** completed by wiring run 01 — `rag-upload-zone`, `rag-file-input` and `docs-view` all present in `static/index.html`, on the user-facing `rag.js` module as decided.
 - [ ] **P2-24** Add a custom-font upload route. **Keep the extension allowlist here** — these files land under the static mount and are served with no forced disposition. This is the exception that proves the rule.
-- [ ] **P2-25** Prune `NON_ADMIN_BLOCKED_TOOLS` of owner-scoped read-only tools. **Must stay:** shell, python, all filesystem tools, vault, settings, tokens, endpoints, MCP, webhooks, api_call, app_api, and the `mcp__*` prefix rule. **`CI:` two tests cover this partition.** — **DECIDED — prune nothing. Confirmed** (D-2026-08-26-06).
-- [ ] **P2-26** Trim the "use the nicer tool" half of the app-API blocklist. **Must stay:** the cookbook install/rebuild/kill entries and every prefix rule. — **DECIDED — prune nothing. Correct the must-stay documentation and close it. Gets **stronger** under `P11`, not weaker** (D-2026-08-26-06).
+- [ ] **P2-25** **Document `NON_ADMIN_BLOCKED_TOOLS` — prune nothing.** *(Retitled 2026-08-27: the old title read "Prune…" while its own decision clause said not to. An agent that stopped at the title would have pruned — `Law 10`.)* The decision is settled: **nothing comes out of this list.** The remaining work is documentation — say beside each entry why it is blocked, so the next reader does not re-litigate it. **Must stay:** shell, python, all filesystem tools, vault, settings, tokens, endpoints, MCP, webhooks, api_call, app_api, and the `mcp__*` prefix rule. **`resolve_contact` is the trap** — it reads owner-scoped and harmless and is the entry most likely to be pruned by someone acting on the old title. **`CI:` two tests cover this partition.** (D-2026-08-26-06)
+- [ ] **P2-26** **Document the app-API blocklist — trim nothing.** *(Retitled 2026-08-27, same reason as `P2-25`.)* The decision is settled and this list gets **stronger** under `P11`, not weaker. **Must stay:** the cookbook install/rebuild/kill entries, every prefix rule, and — **missing from the old must-stay list** — `POST /api/cookbook/state` and `DELETE /api/cookbook/state`. Those two are data-destruction guards that **no test pins**, which makes them the pair most likely to be trimmed by accident and the least likely to be caught. Write the reason beside every entry and close the row. (D-2026-08-26-06)
 
 ---
 
@@ -489,16 +522,16 @@ Provably safe, and each one removes a trap the restyle would otherwise fall into
 
 - [ ] **P3-01** **Resolve `#message` declared 4×.** The composer never renders at its authored 14px — a later `!important` forces 13px, and a third rule forces 16px on touch. One of the conflicting blocks sits under a class that does not exist. **Do this before any composer work.** *(Note: `max-height` is fine — 200px wins on specificity; only the font-size conflict is real.)*
 - [ ] **P3-02** Resolve `.attach-strip` declared 3× with conflicting margin and padding.
-- [ ] **P3-03** Delete the 510 confidently-dead rule blocks (**2,590 lines, 6.3%**). Verified 0/55 false positives on two random samples. **Do not touch the 349 UNCERTAIN blocks** — they are dynamically constructed.
-- [ ] **P3-04** Delete duplicate `@font-face` (the whole Fira Code set is declared twice) and the 3 exact-duplicate `@keyframes`.
+- [~] **P3-03** Delete the confidently-dead CSS rule blocks. — **BLOCKED (2026-08-27), for two independent reasons, either one sufficient.** **(1) The measurement does not exist.** 510 / 2,590 / 349 came from a classifier that **is not in this repo**, so nobody can reproduce or re-check them — and they are stale besides: the wiring run deleted 1,524 lines of JS *after* they were taken, which moves every one of those numbers. The arithmetic checks out (2,590 / 41,401 = 6.26%) and that is all that can be said for them. **(2) `P2-20` must land first.** 16 `admin-rag-*` rules in `static/style.css` (`.admin-rag-upload-zone` at `:15733-15747` and others) are dead **only because `P2-20`'s markup is missing** — a sweep run today deletes exactly the CSS `P2-20` needs. **This already happened in reverse and proves the risk:** `.rag-upload-zone` (`style.css:2392/:2402`) was an orphan until `P2-23` landed its markup, and is live again now. **Unblock by:** landing `P2-20`, then rebuilding the classifier with the `check-wiring` scope lesson applied — it must resolve helper lookups, not just `getElementById`. Verified 0/55 false positives on two random samples, which is the one part of the old row still worth keeping.
+- [ ] **P3-04** Delete duplicate `@font-face` (the whole Fira Code set is declared twice) and the exact-duplicate `@keyframes` — **3 names but 4 duplicate blocks**, because `spin` has two extras rather than one (re-measured 2026-08-27). Deleting three blocks leaves one behind.
 - [ ] **P3-05** **Fix the 2 conflicting `@keyframes` redefinitions** — `research-pulse` and `fadeIn`. These are live bugs: the later definition silently wins for every consumer, including code written against the earlier one.
-- [ ] **P3-06** Collapse the 9 clone-body animations (nine names for one 360° rotation) into one.
-- [ ] **P3-07** **Canonicalise breakpoints to three.** 13 distinct widths today. One 560-line block switches to mobile at 700px while 3,066 lines switch at 768px — **between those widths the UI is in a mixed state**, and there is a 20px dead zone (701–719) where an unpaired min/max leaves neither rule applying.
-- [ ] **P3-08** Add paired-rule comments so a desktop rule points at its mobile override — the roadmap's own "CSS did not move" item.
+- [ ] **P3-06** Collapse the clone-body animations into one — **9 definitions under 7 distinct names** (re-measured 2026-08-27; two names are themselves declared twice), every one of them the body `to { transform: rotate(360deg) }`.
+- [ ] **P3-07** **Canonicalise breakpoints to three.** 13 distinct widths today. One **559**-line block switches to mobile at 700px while **2,965** lines switch at 768px (re-measured 2026-08-27, scope: 85 `max-width:768px` blocks, span-summed) — **between those widths the UI is in a mixed state**, and there is a 20px dead zone (701–719) where an unpaired min/max leaves neither rule applying.
+- [~] **P3-08** Add paired-rule comments so a desktop rule points at its mobile override. — **BLOCKED (2026-08-27):** the row cites *"the roadmap's own 'CSS did not move' item"* and **there is no such item** — the citation is self-referential with no antecedent, so there is no way to know which pairs are meant or when this is finished (`Law 9`). It also **must follow `P3-07`**: canonicalising 13 breakpoints down to three rewrites the pairings, and doing this first means writing 85 comments twice. **Unblock by:** landing `P3-07`, then defining what a "pair" is in one sentence.
 - [ ] **P3-09** Delete `:root.light` (21 lines + 3 other sites) — unreachable by construction, since light themes push values through the five tokens and never add a class. **Recover the well-tuned light syntax palette inside it first.** `Verify:` the four light themes stop rendering dark native dropdowns.
-- [ ] **P3-10** Delete the 3 dead modules: the RAG module (its three DOM targets exist nowhere, and two app-level call sites invoke a function it does not export), the calendar reminder poller (complete, zero callers, browser-notification path inert), and the tour autoplay module (its entire body is a "Disabled for v1 stability" comment, and it still imports a 6,500-line module for a side effect that never runs). **Two are still precached by the service worker** — update `sw.js`. `Depends:` P2-23 must land first if you want RAG's UI, else delete.
+- [ ] **P3-10** Delete the **2** dead modules. **Premise corrected 2026-08-27.** **The RAG module is live and must not be deleted** — `P2-23` landed its three DOM targets at `static/index.html:485-487`, so the bail-out at `rag.js:143` no longer fires. Deleting it now would remove a feature that started working four days ago; this is exactly the row that would have caused it. What is actually dead: `calendar/reminders.js` (114 lines, zero importers) and `tourAutoplay.js` — and the second description was also wrong. Its body is **133 lines of working code**; only `init()` is stubbed out, which is why the 6,500-line import is still there. Read it before deleting: the autoplay logic may be worth keeping behind a flag. **Both are still precached by the service worker** — update `sw.js` and bump `CACHE_NAME` in the same commit.
 - [ ] **P3-11** Fix the duplicate module specifier — `chatRenderer.js` is imported under 3 distinct specifiers, so a 3,126-line module is parsed three times per page load. A config module's header documents the symptom and works around it; the root cause was never fixed. One-line change per import.
-- [ ] **P3-12** Delete the 6 verified-dead elements and handlers: two elements killed by CSS with zero JS references, four ids appearing once in markup and nowhere in script, a handler wired to a nonexistent element, and section drag-reorder (queries a `draggable` attribute nothing ever adds).
+- [ ] **P3-12** Delete the verified-dead elements and handlers. **Re-measured 2026-08-27 and the orphan-id count is not four — it is 26.** Scope: 476 ids in `static/index.html`; 31 are never read by JS; 26 of those 31 are absent from CSS too. Only the drag-reorder item was verifiable as written (it queries a `draggable` attribute nothing ever adds). **The other two items — "two elements killed by CSS" and "a handler wired to a nonexistent element" — are not itemised anywhere**, so under `Law 9` this row cannot be honestly ticked until someone names them. Itemise the 26, then delete under `Law 1`.
 
 ---
 
@@ -513,16 +546,21 @@ shapes. Each is an audit, not a guess.
   settings and skill files in place. `Verify:` no writer persists a value derived from a read
   that failed; a failed read aborts the write.
 - [ ] **P3-17** **Fail loudly.** They fixed "several paths where the app could quit silently
-  instead of surfacing an error." This codebase already has the same disease documented — the
-  webhook admin functions that throw on `null.innerHTML` inside a silent `try` are the reason
-  nobody noticed the panel was missing for years. `Verify:` no bare `except: pass` around a
-  user-visible operation.
+  instead of surfacing an error." **Premise corrected 2026-08-27.** **Both halves of this row were wrong.** The
+  webhook example is refuted — see `P2-19`; those functions are never called and one has no
+  `try` at all. And the `Verify:` line **passes today on an unfixed tree**: there are **zero**
+  bare `except:` statements in non-test Python. A row whose acceptance test already passes is a
+  row that gets ticked without a fix. The real target is `except Exception: pass` — **199 pairs**
+  in non-test Python (re-measured 2026-08-27). `Verify:` every one of the 199 either logs, or
+  surfaces to the user, or carries a comment saying why swallowing is correct there.
 - [ ] **P3-18** **Stacking order: menus above modals.** They shipped dropdowns and context menus
   rendering *behind* open dialogs. Pantheon has a window system, a tile manager, modal chrome
   and popovers. `Verify:` every popover opened from inside a modal is visible.
-- [ ] **P3-19** **Graph and canvas surfaces need a no-acceleration fallback.** Their Brain graph
+- [~] **P3-19** **Graph and canvas surfaces need a no-acceleration fallback.** Their Brain graph
   crashed outright on machines with hardware acceleration disabled. `P13-07` is a graph.
-  `Depends:` P13-07.
+  **`Blocked:` `P13-07` is unstarted — the artefact to be made resilient does not exist yet**
+  (2026-08-27). Nothing here is verifiable until it does. *(The canvas half is not idle work:
+  the 7 unguarded canvas animators in `P1-12` are already in the tree today.)*
 
 ### Drift control — Law 13's enforcement
 - [x] **P3-13** **Wire `check-wiring.py` into CI at `--max 78`.** It counts `getElementById` — **done:** CI ceiling set to `--max 2`, which is the floor rather than a target — both remaining entries are artifacts of the checker's own regex against dynamic lookups, and its docstring already concedes that class is invisible.
@@ -539,14 +577,30 @@ shapes. Each is an audit, not a guess.
   settings keys with no reader, feature flags with no consumer. `P2-18` found three flags with
   zero consumers by hand; a script finds the next three for free.
 
+**`check-wiring.py` has two blind spots, and they are worth fixing before extending it**
+*(measured 2026-08-27)*. It scans `tracked("static/js")` only, so **`static/app.js` and
+`static/sw.js` are never scanned at all**; adding them to the identical algorithm takes
+UNRESOLVED from **2 to 6** — `notes-fullscreen-toggle` (`app.js:1175`), `mode-toggle`
+(`:1336`), `overflow-research-btn` (`:1357`), `message-input` (`:3840`). And it matches only
+literal `getElementById(...)`, so every `el('…')` helper lookup is invisible: **`static/js/
+admin.js` makes zero literal calls and 75 `el('adm-*')` ones, 39 of which resolve to nothing.**
+Extending the checker's own resolution rule to `el()`/`_el()` across the same tree gives
+**1,351 lookups and 125 unresolved** (`settings.js` 51, `admin.js` 45, `app.js` 27). Treat 125
+as the size of the blind spot, **not** as 125 confirmed defects — only 3 were individually
+adjudicated, and the `--max 2` ceiling is honest for what the checker currently measures.
+`P3-13`'s ceiling should fall to cover `app.js` and `sw.js` first; the helper-aware rule is a
+bigger change and belongs here, with `P3-14` re-run against it.
+
 ---
 
 # P4 · The wire — the real glass box
 *Area: `wire`, `trace` · Depends: P1 · Blocks: P5*
 
-The backend emits ~50 distinct SSE event types through a single `if/else if` chain;
+The backend emits **39** distinct SSE event types through a single `if/else if` chain;
 anything without a branch is silently discarded. **Thirty-plus fields are computed,
 serialised, sent to the browser and never read.** None of this needs backend work.
+*(39 re-measured 2026-08-27, scope stated: the `type` key of every dict serialised into a
+`data:` frame on `/api/chat`. The old "~50" was a tilde doing load-bearing work — `Law 5`.)*
 
 ### Prerequisite — do this first
 - [ ] **P4-01** **Unify the six drifted agent-thread templates into one builder.** They exist across the live path, history replay and compare mode, and **zero pairs are byte-identical**. They diverged three ways: compare mode hardcodes the fallback icon so it can never show the search glyph; one copy omits the diff block; the labels differ. **This is not a mechanical extract — you must decide which behaviour is correct and record the decision in your handoff note.** Every other P4/P5 trace task depends on this.
@@ -556,7 +610,7 @@ serialised, sent to the browser and never read.** None of this needs backend wor
 ### Free — already on the wire, zero backend work
 - [ ] **P4-04** **The approval card's own reason.** The server sends a written explanation naming the exact effects that tripped the gate; the renderer never reads the field. *(Style-only — see `DEFERRED.md` for the markup constraint.)*
 - [ ] **P4-05** **The full fallback chain** — every model candidate tried with its HTTP status. Render `gpt-4o ✗502 → claude ✗429 → llama ✓` instead of a six-second "retrying" toast.
-- [ ] **P4-06** **`failed` and `failure{status,message}` on terminal metrics.** **A failed turn currently renders identically to a successful one.** This is a correctness bug, not polish. Highest priority in P4.
+- [ ] **P4-06** **`failed` and `failure{status,message}` on terminal metrics.** **Premise corrected 2026-08-27.** Not *identically* — the reply text does carry `[Agent stopped: …]`, so a reader is not left with nothing. What renders identically is **the metrics footer and the stats popup**, which report a failed turn with the same shape and styling as a successful one. Still a correctness bug and still the highest priority in `P4`; the scope is narrower than the line claimed and an implementer diffing whole messages will not find it.
 - [ ] **P4-07** Per-round token buckets — round, model, endpoint, input/output tokens, cost-tracked flag. Currently summed into one cost number and discarded.
 - [ ] **P4-08** Live prep breakdown — request setup, tool selection, prompt build, context trim, each timed. Replaces a static spinner label.
 - [ ] **P4-09** `full_command` on every tool start — expand-to-full-arguments on the running card. The truncated version is what you see now. `Depends:` P4-01.
@@ -576,7 +630,7 @@ serialised, sent to the browser and never read.** None of this needs backend wor
 - [ ] **P4-21** Approval expiry — a ten-minute TTL that is computed and never sent. Today the card silently stops working.
 - [ ] **P4-22** Prompt-cache read/write tokens — extracted from the provider, written to a log line, dropped. **Cache hit ratio is the single biggest lever on real cost.**
 - [ ] **P4-23** Live tool-budget and round meter — a progress bar instead of a surprise stop at the limit. The agent already streams step events.
-- [ ] **P4-24** **Background sessions get none of this.** When a stream is resumed after navigating away, a second and much poorer dispatch chain collapses every tool, research and source payload to a single "this was rich" boolean. A background agent run is currently unobservable after the fact. `Depends:` P4-01.
+- [ ] **P4-24** **Background sessions get none of this.** When a stream is resumed after navigating away, a second and much poorer dispatch chain collapses every tool, research and source payload to a single "this was rich" boolean. **Premise corrected 2026-08-27.** **"Unobservable after the fact" is wrong** — the session reloads and replays from persisted `tool_events`, so the history is there once the stream ends. What is actually lost is the **live** view *during* the resumed stream: for the length of that stream you watch a rich run through a one-bit window. Narrower, still real, and the fix is the same dispatch chain. `Depends:` P4-01.
 
 ### Run receipts — Law 14: this is P4's job, not a phase of its own
 The wire already computes model, parameters, tools offered, skills injected and RAG hits, then
@@ -585,7 +639,10 @@ discards them. A receipt is that data kept instead of thrown away.
 - [ ] **P4-25** **Capture a receipt per agent run** — model and endpoint, resolved sampling
   parameters, the tool schemas actually sent, which skills were injected and at what confidence,
   which memories and documents were retrieved, round count, token usage, and every approval
-  decision with its outcome. All of it is already on the wire; none of it is kept.
+  decision with its outcome. **Premise corrected 2026-08-27.** **"All on the wire, none kept" is wrong in both
+  directions.** Five of the eight items already persist (`routes/chat_helpers.py:1044-1070`), so a
+  fresh receipt table would duplicate them — `Law 14`. Three are neither on the wire nor kept,
+  and those are the actual work: **extend what persists, do not start a second store.**
 - [ ] **P4-26** **Make a receipt re-runnable.** Same inputs, same configuration, new run —
   which is the only honest way to answer "did that change help". `Depends:` P4-25.
 - [ ] **P4-27** **Make a receipt portable.** One file, exportable, readable by a person who was
@@ -598,7 +655,7 @@ discards them. A receipt is that data kept instead of thrown away.
 # P5 · Trace & composer restyle
 *Area: `trace`, `composer` · Depends: P3, P4-01*
 
-- [ ] **P5-01** Replace the three nested 300px scrollers with a `grid-template-rows: 0fr → 1fr` transition. Long reasoning currently clips into a 300px inner scroller inside the page scroller — the worst UX defect in the trace.
+- [ ] **P5-01** Replace the **two** nested 300px scrollers with a `grid-template-rows: 0fr → 1fr` transition. *(Re-measured 2026-08-27 — scope: CSS rules pairing `max-height:300px` with `overflow-y:auto` in trace markup. An implementer hunting a third will not find it.)* Long reasoning currently clips into a 300px inner scroller inside the page scroller — the worst UX defect in the trace.
 - [ ] **P5-02** Give tool nodes the same open/close transition as reasoning. They hard show/hide today while a sibling inches away animates.
 - [ ] **P5-03** **Stop cards renaming themselves on completion.** A node reading *Running* becomes *bash*; *Searching* becomes *web_search*. 21 tools affected, and history replay shows raw ids for all of them. Compare mode already does it right — proof it is a bug. `Depends:` P4-01.
 - [ ] **P5-04** Per-tool icons — the map has **one entry** against 21 labels; everything else falls back to a triangle. Inline monochrome SVG. `Depends:` P4-01.
@@ -609,9 +666,9 @@ discards them. A receipt is that data kept instead of thrown away.
 - [ ] **P5-09** Injection disclosure as a collapsible peer of `.sources-section`, reusing that idiom verbatim so it inherits styling and behaviour. `Depends:` P4-16.
 - [ ] **P5-10** Restore prose heading hierarchy. `h1`–`h6` map to keyword/function/string/builtin/variable/number — a five-heading answer renders as five hues across a 20% size range. **Keep the syntax hue on h1 and h2 only**; that pairing is the tell, the rest is noise.
 - [ ] **P5-11** Fix the section-header inversion — headers are 10px/400 over 13px rows. Both sizes already exist; this is a swap.
-- [ ] **P5-12** Consolidate the six hand-styled tool chips and the two bare-icon toggles into **one chip component**. Cleanest large win in the composer, and it makes the strip themeable for the first time.
-- [ ] **P5-13** Icon normalisation — three sizes and one stroke token replacing 8 sizes and 9 stroke widths across 1,182 inline SVGs. A stroke-2 glyph from a 24 viewBox at 11px has an effective stroke under one pixel. **Attributes only; no SVG markup is rewritten.**
-- [ ] **P5-14** Type scale — collapse 27 ad-hoc steps onto a ramp drawn from the existing values, with **11px as the floor rather than the median** (827 of 1,222 sizes are 10–12px; 118 are ≤9px).
+- [ ] **P5-12** Consolidate the **seven** hand-styled tool chips and the two bare-icon toggles into **one chip component**. *(Re-measured 2026-08-27, scope: `input-icon-btn tool-indicator` in `static/index.html`.)* Cleanest large win in the composer, and it makes the strip themeable for the first time.
+- [ ] **P5-13** Icon normalisation — three sizes and one stroke token replacing **20 sizes and 14 stroke widths across 1,193 inline SVGs**. *(Re-measured 2026-08-27, scope: `static/*.html` + `static/js/**` + `static/app.js`, excluding `static/lib`. The old 8 and 9 were `index.html` alone — the row is two and a half times the variance it advertised.)* A stroke-2 glyph from a 24 viewBox at 11px has an effective stroke under one pixel. **Attributes only; no SVG markup is rewritten.**
+- [ ] **P5-14** Type scale — collapse 27 ad-hoc steps onto a ramp drawn from the existing values, with **11px as the floor rather than the median** (**829** of 1,222 sizes are 10–12px; 118 are ≤9px — re-measured 2026-08-27, scope: `font-size:<N>px` declarations in `static/style.css`; the 27 steps confirmed).
 - [ ] **P5-15** **Populate `#pinned-tools-bar`** — an empty div appearing once in the whole codebase with zero CSS and zero JS. Unclaimed composer real estate, no layout risk.
 - [ ] **P5-16** Make the send button's five states legible without changing the machine. **Eight modules mutate it**; any composer rework must reproduce `newchat · mic · send · streaming(processing/receiving/queue) · recording` exactly. Note Enter-on-empty opens a new chat, and the mic state appears from a silent server capability check.
 
@@ -627,8 +684,8 @@ discards them. A receipt is that data kept instead of thrown away.
 - [ ] **P6-01** **Session-bind the queue — live bug.** Queue items carry no session id. Switching chats wipes the message list, destroying every queued bubble's element while the array keeps the items; when the old stream ends the prompt **fires into whichever chat is now open**, invisibly. Add the field, filter the drain on it, re-render bubbles on session switch.
 - [ ] **P6-02** Persist the queue. `_queuedAgentRequests` is a bare module array — a reload loses it silently.
 - [ ] **P6-03** Allow queueing with attachments — currently refused with an error that swallows the send.
-- [ ] **P6-04** Build the queue panel: drag-reorder, edit in place, per-item mode/model/trust rung, start-now force bypass, pause, remove. **Clone the research job engine** (382 self-contained lines) rather than writing a new one — only two lines are research-specific.
-- [ ] **P6-05** Adopt the shipped status vocabulary: `queued → running → success | error | skipped | aborted`. `skipped` and `aborted` are load-bearing — `aborted` keeps infrastructure events out of error-rate stats.
+- [ ] **P6-04** Build the queue panel: drag-reorder, edit in place, per-item mode/model/trust rung, start-now force bypass, pause, remove. **Clone the research job engine** (382 self-contained lines) rather than writing a new one — but **not "only two lines are research-specific"**. Re-measured 2026-08-27: **roughly 16 research-specific references across 7 endpoints** (scope: case-insensitive `research` in `research/jobs.js`). Still worth cloning; budget a generalisation pass rather than a find-and-replace.
+- [ ] **P6-05** Adopt the shipped status vocabulary: `queued → running → success | error | skipped | aborted`. `skipped` and `aborted` are load-bearing — `aborted` keeps infrastructure events out of error-rate stats. **The gap is a documentation gap, and it is the reason this row exists** (2026-08-27): `db.py:818`'s comment documents **3** statuses while `task_scheduler.py` actually writes **6**. Three real states are undocumented, so anything reading the comment instead of the code mis-handles them.
 - [ ] **P6-06** Sequential-vs-parallel picker. **Already built** in the research panel — reuse it. Parallel must allocate a session per item: one agent run per session is enforced.
 - [ ] **P6-07** Point the existing Tasks activity view at queue items rather than building a second queue UI. It already renders every status with shared elapsed timers, a force button and a stop button.
 - [ ] **P6-08** Make `_concurrency_cap` actually configurable — it sits next to `Semaphore(1)` and is documented as "a hard guarantee, not configurable".
@@ -649,17 +706,17 @@ discards them. A receipt is that data kept instead of thrown away.
 
 The approval store is better than anything that would replace it. Do not rebuild it.
 
-- [ ] **P7-01** **Stop the mode toggle lying.** A 60-word keyword regex — including *change, update, review, test, run, build, source, system, device, app* — silently promotes Chat to Agent, and 35 lines later a single line **overwrites the user's own shell toggle to true**. The backend escalates again on tool intent, search and web intent, computes an escalation flag, and never sends it. `Depends:` P4-18.
+- [ ] **P7-01** **Stop the mode toggle lying.** A keyword regex of **58 alternations** — including *change, update, review, test, run, build, source, system, device, app* — silently promotes Chat to Agent, and **33 lines later** a single line **overwrites the user's own shell toggle to true**. *(Re-parsed 2026-08-27 from the alternation group at `chat.js:1884`.)* The backend escalates again on tool intent, search and web intent, computes an escalation flag, and never sends it. `Depends:` P4-18.
 - [ ] **P7-02** Stop the model raising its own trust level — it can currently flip the mode toggle through a UI-control event with no confirmation.
 - [ ] **P7-03** Add rung **"ask every time"**. Does not exist: the gate is conditional on untrusted content having entered, so a clean session never prompts. Change the gate condition from *taint seen* to *taint seen **or** the current rung requires confirmation*. **Reuse `PendingToolApproval` unchanged.**
 - [ ] **P7-04** Add rung **"allow-listed"** — a rule store mapping tool + argument pattern to auto-allow, consulted before the blocked-effect check. Does not exist.
-- [ ] **P7-05** Record the correction in the UI: **Auto-Pilot is already the default** for every untainted conversation. The ladder is added *below* current behaviour, not above it.
+- [x] **P7-05** Record the correction in the UI: **Auto-Pilot is already the default** for every untainted conversation. — **SUPERSEDED (verified 2026-08-27) — not independently actionable.** There is no ladder UI to record it in; this is an acceptance criterion, not a task, and left on its own it is a row nobody can ever honestly tick. **Re-filed as acceptance criteria on `P7-03` and `P7-04`**, citing `design/pantheon-v10.html:1721-1727`: whatever those two build must show Auto-Pilot as the existing default with the ladder added below it, never above.
 - [ ] **P7-06** Rank prompts by effect. A destructive action and a UI side effect produce an identical card. The 13-value taxonomy is written and used to rank nothing.
 - [ ] **P7-07** Send only the effects that actually **tripped** the gate, not all of them — and surface the unrecognised-tool case, which is the riskiest and currently invisible.
 - [ ] **P7-08** **Surface the taint trail.** The security context builds a complete list of which tools introduced untrusted content into a run, and it is read **nowhere** — server or client. Built in memory and thrown away.
 - [ ] **P7-09** Grant inspector — once a session-wide grant is given, nothing lists it and nothing revokes it.
 - [ ] **P7-10** Surface run limits at the moment of decision. "How far can it run unattended" sits in a settings tab, invisible when you choose. `Depends:` P4-23.
-- [ ] **P7-11** Real file export — Markdown, JSON, HTML download. PDF is `window.print()`, which cannot run headless or be scheduled. Nothing exports the approval trail at all.
+- [~] **P7-11** Real file export — Markdown, JSON, HTML download. **Premise corrected 2026-08-27.** **The export already exists.** `GET /api/session/{sid}/export` serves md, txt, json and html as attachments (`session_routes.py:804`) — it is simply unreachable except by typing `/export`, so the work is a UI entry point, not a backend. The PDF observation stands. **The approval-trail half is blocked and cannot be built:** approvals are held in memory with a 600-second TTL and are never persisted, so there is no trail to export. `Blocked:` persist the approval trail first — file that under `P4-25`, which is already the row that owns extending what persists.
 
 ---
 
@@ -669,15 +726,15 @@ The approval store is better than anything that would replace it. Do not rebuild
 Three authoring surfaces over three engines that already run.
 
 ### Skill Crafter
-- [ ] **P8-01** **Add the five phantom inputs** — `#new-skill-name`, `-description`, `-when`, `-procedure`, `-category`. The handler already reads them, they are in the clear-on-success list, and one has an Enter binding. **Zero JavaScript change.** Do this first; it is the cheapest win in the whole roadmap.
-- [ ] **P8-02** Add pitfalls, verification, platforms and required-toolsets inputs. All four are supported by the API and reachable from nowhere — **half the structure of every hand-written skill is currently unusable.**
+- [x] **P8-01** **Add the five phantom inputs** — `#new-skill-name`, `-description`, `-when`, `-procedure`, `-category`. The handler already reads them, they are in the clear-on-success list, and one has an Enter binding. **Zero JavaScript change.** — **done:** wiring run 01. All five are at `static/index.html:389/393/397/401/405`, read at `skills.js:1935-1944` and cleared at `:1970-1972`. Zero JavaScript changed, as predicted. Unblocks `P9-06`. (verified 2026-08-27)
+- [ ] **P8-02** Add pitfalls, verification, platforms and required-toolsets inputs. **Premise corrected 2026-08-27.** All four are supported by the API and **all four are reachable** — through the raw SKILL.md card editor at `skills.js:1034`, where you hand-write the frontmatter. So this is not a `Law 13` wiring gap; it is a **`Law 15` failure**: the capability exists and only someone who already knows the file format can use it. That changes the deliverable. Do not build a second write path — add the four fields to the form that already posts to the same API, so the raw editor stays the power-user route rather than the only route.
 - [ ] **P8-03** Relabel "draft". A draft is excluded from the catalogue the model browses and **still keyword-injected** when it matches — "uncatalogued", not "inactive".
 - [ ] **P8-04** Fix the confidence-slider trap: maximum position stores **zero**, labelled "All", which disables the gate entirely. Dragging right is "let everything in", not "only perfect skills".
 - [ ] **P8-05** Surface the hidden coupling: turning auto-approve off sets the injection floor to 2.0, silently making injection published-only.
 - [ ] **P8-06** **Prompt preview** — call `GET /api/skills/index`, which exists to answer exactly this and **no frontend file has ever called**. Extract the injection renderer into a shared function so the preview is the truth, not a re-implementation.
 - [ ] **P8-07** Show what the preview reveals: **verification and body text are never injected.** They surface only through an on-demand view action.
 - [ ] **P8-08** Wire the test's `task` field — the endpoint has accepted a user task all along and the UI has never sent one. One textarea.
-- [ ] **P8-09** **Before/after behaviour diff.** The runner is parameterised on arbitrary markdown *and* an arbitrary task and never reads from disk — call it twice with old and new against the same task. `Depends:` P8-08, P8-10.
+- [~] **P8-09** **Before/after behaviour diff.** The runner is parameterised on arbitrary markdown *and* an arbitrary task and never reads from disk — call it twice with old and new against the same task. — **BLOCKED (2026-08-27), and this one bites on the first run.** `_run_skill_test_once` **destructively denies a pending approval when it hits a gate**, so calling it twice — which is the entire idea — burns two approvals and the second half of the diff runs against a state the first half changed. `Depends:` P8-08, **`Blocked:` P8-10** — the runner needs to be non-destructive before a before/after diff means anything.
 - [ ] **P8-10** **Versioning.** Every write overwrites in place and the audit rewrites destructively with no copy kept; the version field is decorative and never bumped. A skill is a *directory* — a `versions/` sibling costs one line in the writer, and the rewrite path still holds the old markdown in a local when it writes the new one.
 - [ ] **P8-11** Rollback from a version. `Depends:` P8-10.
 - [ ] **P8-12** Pre-save lint — the necessity and retrieval-precision judges are pure functions of `(skill, siblings)`, already run nightly, callable with no refactor.
@@ -692,15 +749,15 @@ Three authoring surfaces over three engines that already run.
 - [ ] **P8-21** *(Stretch)* Budget the index. It costs ~15 tokens per published skill on **every single request** and participates in no budget. Also: the usage counter records *retrievals*, not successes, so "most-used" measures keyword luck.
 
 ### Automations
-- [ ] **P8-22** Node palette endpoint — merge the three `/meta/*` routes, move the client-side category/icon taxonomy server-side, emit param schemas and a `model_backed` flag (currently maintained twice: once to gate the semaphore, once to draw a badge).
+- [ ] **P8-22** Node palette endpoint — merge the three `/meta/*` routes, move the client-side category/icon taxonomy server-side, emit param schemas and a `model_backed` flag (currently maintained twice: once to gate the semaphore, once to draw a badge). **A defect this row inherits and nobody had recorded** (found 2026-08-27, AST-verified): `BUILTIN_ACTIONS` holds **18** entries and `BUILTIN_ACTION_INFO` holds **16**, so `run_local` and `cookbook_serve` exist and are **never offered by `/meta/actions`**. Two working actions are invisible to the palette. Reconcile the pair in the same commit — that is the merge's whole point (`Law 7`).
 - [ ] **P8-23** **Give triggers payloads.** The event bus takes a name and an owner — a "document created" trigger cannot say *which* document. The webhook route has **no request parameter**: body, query and headers are read by nobody. It is a doorbell. **Highest-leverage change in Automations; everything downstream depends on it.** Do not change the webhook URL shape — it is CI-pinned.
 - [ ] **P8-24** Widen the node output contract from `(text, success)` to `(payload, status)` with a back-compat adapter for the 18 existing actions. The no-op and defer-with-backoff signals already encode skip and retry — generalise them.
-- [ ] **P8-25** **Write `TaskRun.steps`** — declared, migrated, never written. A run records one result string for the whole task. Filling it upgrades the shipped activity view instantly with no new UI.
+- [~] **P8-25** **Write `TaskRun.steps`** — declared, never written. A run records one result string for the whole task. Filling it upgrades the shipped activity view instantly with no new UI. — **BLOCKED (2026-08-27): "migrated" is false.** There is **no `ALTER TABLE task_runs ADD COLUMN steps` anywhere in the tree**, so the column exists in the model and not in any database that was created before it. Writing to it raises `OperationalError` on every upgraded install — a fresh dev box would pass and every real deployment would break. **Unblock by:** writing the migration first. It also blocks `P8-34`.
 - [ ] **P8-26** Add the graph document. One nullable successor today; the cycle check doubles as a **silent depth cap of ten**. Project the existing successor as a single edge on read.
 - [ ] **P8-27** Run-scoped execution identity — the current one is keyed by task, so a task cannot be in flight twice. Required before fan-out. `Depends:` P8-26.
 - [ ] **P8-28** Branch node — the only conditional in the engine is `status == "success"`. `Depends:` P8-26.
 - [ ] **P8-29** Data mapping between nodes. `Depends:` P8-23, P8-24.
-- [ ] **P8-30** Collapse the three parallel event catalogues into one registry, and **add `document_updated`** — it is fired in production and appears in neither catalogue, so nothing can trigger on it.
+- [ ] **P8-30** Collapse the parallel event catalogues into one registry, and **add `document_updated`** — it is fired in production and appears in no catalogue, so nothing can trigger on it. **Re-measured 2026-08-27: not three catalogues but two enumerated ones plus five hardcoded strings** (`task_routes.py:1035-1043`, `tool_schemas.py:583`, `task_scheduler.py:241-251`). The five loose strings are the ones a merge of "three catalogues" would miss entirely.
 - [ ] **P8-31** Default a user-built automation's event count to 1. The UI defaults to 5; anyone arriving from a workflow tool expects every event.
 - [ ] **P8-32** Per-task timezone, retries, and a per-task timeout — none exist. Timezone today comes only via a crew member.
 - [ ] **P8-33** A dry run that is actually dry. "Run now" is a real run with real side effects — no mocking, no pinned input, no per-node execution.
@@ -713,11 +770,11 @@ Three authoring surfaces over three engines that already run.
 - [ ] **P8-38** Keep the handshake. The initialize result is discarded at exactly three connect sites; it carries server name and version, protocol version, advertised capabilities and the server's own instructions, and **nothing in the app records any of it.** One line each.
 - [ ] **P8-39** **Encrypt server env vars.** Every other secret in the schema is encrypted at rest; this one is plain text, and it is where the tokens live. The CLI already redacts on read behind a reveal flag. Storage migration only — no wire or JSON shape changes. **Do this before a Creator multiplies the rows holding them.**
 - [ ] **P8-40** Capture `annotations` on the HTTP transport — stdio and SSE both do, HTTP does not, so a remote server gets no plan-mode read-only credit however it advertises itself.
-- [ ] **P8-41** Fix three stale comments claiming MCP is dropped in plan mode. It is not — read-only tools are kept via annotations with a fail-closed verb heuristic.
-- [ ] **P8-42** Fix the empty-env trap: an empty env dict yields `None`, so the SDK substitutes a minimal environment instead of inheriting the parent's. A generated server relying on inherited `PATH`/`HOME` starts on a fresh install and fails on a bare one.
+- [ ] **P8-41** Fix the **two** stale comments claiming MCP is dropped in plan mode *(re-counted 2026-08-27 by multiline grep across `src/`, `routes/`, `core/`, `services/`, `static/` and `docs/`)*. It is not — read-only tools are kept via annotations with a fail-closed verb heuristic.
+- [ ] **P8-42** Fix the empty-env trap: an empty env dict yields `None`, so the SDK substitutes a minimal environment. **Premise corrected 2026-08-27.** **`PATH` and `HOME` are not the casualties** — both are in `DEFAULT_INHERITED_ENV_VARS` and survive. What vanishes is `PYTHONPATH`, `NODE_PATH`, the npm cache location and every proxy variable, and **only when the env dict is empty**. That is a narrower trap and a much harder one to diagnose: a server that resolves its interpreter fine and then cannot find its own packages, or cannot reach the network from behind a corporate proxy. `Verify:` a generated server with an empty env dict inherits the parent's `PYTHONPATH` and proxy settings.
 - [ ] **P8-43** Let `builtin_browser` auto-reconnect — the reconnect helper hard-returns false for anything outside a four-entry map, despite the browser server counting as built-in. A crashed Playwright server stays dead until a manual reconnect.
 - [ ] **P8-44** Server-id validation. One `split("__", 2)` is the sole parse of the namespaced name; **an id containing `__` routes the call to the wrong server.** Unreachable today because ids are uuid4-derived — the moment a Creator lets people name servers, this field holds the invariant.
-- [ ] **P8-45** Surface the 23-entry preset catalogue (14 with setup walkthroughs) currently sitting in ~400 lines of unreachable code. Its two entry points look up DOM ids no template has ever rendered. `Depends:` P2-20.
+- [~] **P8-45** Surface the **15**-entry preset catalogue (14 with setup walkthroughs) currently sitting in **420** lines of unreachable code. Its two entry points look up DOM ids no template has ever rendered. *(Re-measured 2026-08-27 by balanced-bracket parse: 15 top-level objects at `admin.js:1793-1859`. A naive `{ name:` regex returns 23 — that is exactly how the wrong figure was produced, and it is worth recording because the same regex habit produced several others in this pass.)* `Depends:` P2-20. **`Blocked:` `Law 14` — `settings.js:5000` already ships a working MCP form.** Decide whether these presets feed *that* form before building a second surface for them.
 - [ ] **P8-46** Replace the single-line JSON inputs — a parse failure is caught and **silently discarded**, posting empty args and env, after which the server fails to connect for a reason nothing explains.
 - [ ] **P8-47** Scaffold generator, writing to the **data volume** — the source tree is baked into the image with no bind mount, so generated servers cannot be built-ins and must register as ordinary rows with an absolute path. **That path is denied on the agent's registration path by design.** Author here; register through the admin route. **Do not weaken the command validation** — it closes a reported RCE and is pinned by 10 tests.
 - [ ] **P8-48** Tool schema editor + `readOnlyHint` / `destructiveHint` annotation UI. The schema is already carried end-to-end and nothing edits it; `manage_mcp list_tools` drops it entirely, so the LLM cannot see a tool's parameters through its own tool.
@@ -744,22 +801,38 @@ Three authoring surfaces over three engines that already run.
 - [ ] **P9-01** **Command palette**, framed as extending the existing search rather than a parallel component. Every data source is already a registry: slash commands, settings panels with keywords, the modal auto-wire map, the route table. **`#search-overlay`, `#search-input` and `#search-results` must stay in the DOM** — five call sites including the rail button and `/find`.
 - [ ] **P9-02** Render the settings nav from its own registry. Two sources of truth for one information architecture; the registry was built for this and is consumed only by search. **Keep the class name and data attribute identical** — four modules query them. There is also a `getSettingsRegistryIssues()` self-check that diffs registry against DOM — run it while you work.
 - [ ] **P9-03** Unify the library. Chats, Documents, Research and Archive are already tabs of one modal; make it *the* library with Gallery and Email as facets, and settle the three names for one thing (`rail-archive` labelled "Library", `rail-documents` labelled "Docs", modal id `doclib`).
-- [ ] **P9-04** Consolidate email settings — they live in three places. Highest-priority IA fix. **Keep compose-in-document-editor** (it is why AI drafting works); present it as a composer.
-- [ ] **P9-05** Full views for Calendar and Compare — a month grid and an N-way comparison inside ~780px draggable boxes. **Compare deliberately shows/hides the original container's children rather than replacing markup**, so listeners on the input bar and mode toggle survive; any rework must honour that.
+- [ ] **P9-04** Consolidate email settings. **Premise corrected 2026-08-27.** **The consolidation already landed** at `static/index.html:2100-2124`, so this is no longer the highest-priority IA fix — or an IA fix at all. What remains is a **deletion**: two dead forms, `eaf-*` and `set-email-*`. Under `Law 1` a deletion is marked, reviewed and justified before it runs, so treat this as a delete row and not a build row. **Keep compose-in-document-editor** — it is why AI drafting works.
+- [ ] **P9-05** Full views for Calendar and Compare. **Premise corrected 2026-08-27.** **Both views already exist.** The month grid and the N-way comparison are built; what is missing is the full-view presentation, not the feature. And the Compare half of this row **contradicts its own protected constraint**: Compare deliberately shows and hides the original container's children rather than replacing markup (`compare/index.js:328-336`) precisely so the input-bar and mode-toggle listeners survive — putting it inside a ~780px draggable box is the rework that constraint forbids. **Rewrite this as Calendar-only, or state how Compare gets a full view without replacing the container.** As written it asks for the one thing `FORBIDDEN.md` protects.
 - [ ] **P9-06** Promote Skills out of the Brain modal — different object, different lifecycle (draft → audit → publish). `Depends:` P8-01.
-- [ ] **P9-15b** **Freeform answers on the ask-user card.** When the model offers choices, a
+- [x] **P9-15b** **Freeform answers on the ask-user card.** When the model offers choices, a
   person should be able to type something that is not on the list. `.ask-user-card` is in
-  `FORBIDDEN.md` Part 1 — extend it, do not rebuild it.
-- [ ] **P9-15c** **Hybrid chat search — keyword and meaning in one box.** The vector half exists;
-  exact-match does not, and "find the message where I pasted that error" is a keyword query.
-- [ ] **P9-07** **Empty states.** A named roadmap item, and **not one empty state exists anywhere.** Include the cookbook's, which should show the actual command and output instead of "crashed".
+  `FORBIDDEN.md` Part 1 — extend it, do not rebuild it. — **done:** `chatRenderer.js:2516-2546`
+  adds the `.ask-user-other` input, its send button and an Enter binding, appended at `:2546` on
+  non-approval cards only; CSS at `style.css:40940-40957`. Live on all three render paths. The
+  card was extended in place, never rebuilt. Withheld from `tool_approval` deliberately — a
+  freeform box on an approval card is a different and worse control. (verified 2026-08-27)
+- [ ] **P9-15c** **Hybrid chat search — keyword and meaning in one box.** **Premise corrected 2026-08-27.** **This is
+  backwards, and the correction makes the row bigger, not smaller.** The *keyword* half is what
+  ships: FTS5 plus `LIKE` at `session_search.py:300`. The *vector* half does not exist — there
+  are three Chroma collections and **not one of them indexes chat messages**. So "find the
+  message where I pasted that error" already works, and the semantic query is the missing one.
+  Scope accordingly: a chat-message embedding lane, an indexing hook on write, **and a backfill
+  over existing sessions.** That is a `P13`-sized piece of work sitting on a `P9` line — decide
+  whether it moves before anyone starts.
+- [ ] **P9-07** **Empty states.** **Premise corrected 2026-08-27.** **"Not one exists anywhere" is wrong by about fifty-four.** There are ~54 empty-state sites across 20 class names, a shared helper at `ui.js:833`, and `calendar.js:827-855` is a complete, well-built example worth copying. The cookbook clause is false too — `cookbookRunning.js:2411` already renders real output and a diagnosis, not "crashed". **This is a consistency task, not a greenfield one:** pick the `ui.js:833` helper as the one shape, then bring the 20 class names onto it. `Law 14` — do not author a twenty-first.
 - [ ] **P9-08** Honest error messages, same lane. `Depends:` P9-07.
-- [ ] **P9-09** Provenance on everything the model produced — memories, skills, tidy results, research reports, calendar parses, generated images. Chat bubbles show it; nothing else does. The formatter already exists.
+- [ ] **P9-09** Provenance on everything the model produced. **Premise corrected 2026-08-27.** **Four of the six already have it** — memories (`memory.js:776`), skills (`skills.js:208`), generated images (`gallery.js:1286/1481`) and research reports (`research/panel.js:897`). Only **tidy results and calendar parses** lack it, and "the formatter already exists" is false: the four that work each format their own. So the row is two additions plus a genuine `Law 14` opportunity — **extract one formatter from the four existing ones first**, then use it for the two that are missing. Doing the two additions without that leaves six implementations of the same idea.
 - [ ] **P9-10** Preview before destructive AI operations. **Chat tidy deletes sessions *and* re-folders them with no preview at all**; memory tidy has an animation, not a reviewable diff. Calendar has a real undo stack and is the only surface that does — proof it is solvable here.
 - [ ] **P9-11** Make background work visible with its window closed — skills audit, research jobs, cookbook downloads, memory tidy and email sync all report into windows the user has closed. **Extend the minimized-dock chips**, which already carry per-window status; email writes an unread label onto its own.
 - [ ] **P9-12** Fix "non-passing" in the skills bulk delete — it currently catches **never-audited** skills, so a brand-new hand-written skill counts as failing. Add an undo path. `Depends:` P8-10.
 - [ ] **P9-13** Surface the theme zone highlighter — hovering a colour picker outlines the element it controls on the live page behind the modal. **The best explainability feature in the app**, with no label, legend or hint that it exists. The map is keyed by picker id, so extending it is a data edit.
-- [ ] **P9-14** Add the selection count to the bulk bar — it is computed and never rendered — and stop looping bulk archive/delete one row at a time with no progress and no partial-failure reporting.
+- [ ] **P9-14** Bulk-operation reporting. **Premise corrected 2026-08-27.** **Both halves are wrong.** The selection
+  count *is* rendered, in four live bulk bars. And three document operations plus one gallery
+  operation already report done and failed counts. The one-row-at-a-time loop the audit found
+  is at `sessions.js:3283-3312`, inside `#library-modal` — **a surface that is unreachable**, so
+  fixing it changes nothing a user can see. **Delete-or-justify row:** either delete the dead
+  library-modal loop under `Law 1`, or name a bulk surface that genuinely lacks reporting. Do
+  not implement it as written.
 
 ---
 
@@ -769,14 +842,14 @@ Three authoring surfaces over three engines that already run.
 The accessibility pass is the upstream roadmap's own item, unclaimed, and historically
 the only lane through which the theme file gets touched.
 
-- [ ] **P10-01** One focus ring through `:focus-visible`. **97 `outline:none` suppressions** against 35 `:focus-visible` rules and six competing ring styles. The a11y shim's own header notes the ring already exists and never fired because rows were never focusable. Most suppressions can then be deleted.
+- [ ] **P10-01** One focus ring through `:focus-visible`. **97 `outline:none` suppressions — plus 2 `outline:0`, so 99 in total** (re-measured 2026-08-27; the 97 confirmed exactly, and the two stragglers are the ones a find-and-replace on `outline:none` leaves behind) — against 35 `:focus-visible` rules and six competing ring styles. The a11y shim's own header notes the ring already exists and never fired because rows were never focusable. Most suppressions can then be deleted.
 - [ ] **P10-02** Author sidebar rows as real buttons. **Keep `.list-item`** — the a11y shim and the drag-sort module both query it, and rows *contain* nested buttons, which is exactly why the shim declines `role="button"` on them. **Change the tag, not the class.**
-- [ ] **P10-03** Make both resize handles visible and keyboard-reachable. They are mouse-only and invisible because their entire treatment routes through the accent token. `Depends:` P1-01.
+- [ ] **P10-03** Make the resize handles visible and keyboard-reachable. **Premise corrected 2026-08-27.** **There are three, not two** — and `#settings-sidebar-resize-handle` is **already done**. That makes it the template: copy its treatment onto the other two rather than inventing one. They are mouse-only and invisible because their entire treatment routes through the accent token. `Depends:` P1-01.
 - [ ] **P10-04** Contrast audit across all 16 themes with the guard from P1-09 enforcing it. `Depends:` P1-09.
-- [ ] **P10-05** Verify the reduced-motion guard covers all 148 keyframes and the 7 canvas animators. `Depends:` P1-12.
+- [ ] **P10-05** Verify the reduced-motion guard covers all **160** keyframes and the 7 canvas animators — **including the 12 that `slashCommands.js` injects into `document.head` at runtime**, which a CSS-only audit will not see. `Depends:` P1-12.
 - [ ] **P10-06** Keyboard navigation pass over the rail, the sidebar, the composer, the window system and the Workshop.
 - [ ] **P10-07** Give the loader a stage line so boot is not silent, move it off `innerHTML`-per-frame, and add a reduced-motion guard. **Keep the wave.**
-- [ ] **P10-08** Any new modal needs its own `ui-scale-125` height compensation — otherwise zoom pushes the draggable header and close button off-screen, and you cannot reach the control to turn the size back down.
+- [ ] **P10-08** Zoom compensation for modals. **Premise corrected 2026-08-27.** **This is backwards.** The generic rule at `style.css:181` already covers every `.modal-content`, so a new modal is compensated by default and needs no line of its own. The five per-modal `ui-scale-125` rules are **exceptions to that rule**, not the pattern to follow. Rewritten deliverable: find out why each of the five needs an override, fold back the ones that do not, and document the remainder. As written this row taught every future contributor the wrong habit.
 - [ ] **P10-09** Rebuild, redeploy, bump the cache-buster, verify in-container imports. **`static/` has no bind mount.**
 - [ ] **P10-10** Full regression: `pytest -q`, `py_compile` across app/routes/src, `node --check` across every touched module, and a manual pass over every surface in the mockup.
 - [ ] **P10-11** Run the `SECURITY.md` fork checklist before the first public push — `git status --short`, the ignore check, and the secret grep.
@@ -800,10 +873,13 @@ Two things the first pass of this section got wrong, corrected by reading `core/
    `can_*` booleans, four non-boolean policy values. **This is already a control plane; it is
    just under-populated.** `P12` should extend this dict rather than build a parallel system,
    and a role is then a named overlay on it.
-2. **Authorization is effectively one bit, applied 84 times.** `require_admin` has **84** call
-   sites against `require_privilege`'s **17**. Ownership scoping is healthier — `owner_filter`
-   at 58 sites — so the data model already understands "whose row is this". What it does not
-   understand is "what may this kind of person do".
+2. **Authorization is effectively one bit, applied 103 times.** Re-measured 2026-08-27 with
+   the scope stated: non-test `.py`, excluding the definition and its imports. `require_admin`
+   has **103** call sites against `require_privilege`'s **16**. Ownership scoping is healthier
+   — `owner_filter` at **32** sites — so the data model already understands "whose row is
+   this". What it does not understand is "what may this kind of person do". *(The old 84 / 17 /
+   58 carried no scope and reproduces under none of six tried — `Law 5`. The ratio, which is
+   the whole point of the paragraph, turned out worse rather than better.)*
 
 The live defect: unknown privilege keys **fail open** — `privs.get(key, True)` at
 `src/auth_helpers.py:172` — with the comment "the UI gates display-side", and `P2-18` proved
@@ -813,14 +889,20 @@ None of this is wrong for one admin on a LAN. All of it is wrong the moment a se
 has an account.
 
 - [ ] **P11-01** **Close the fail-open default.** Known keys default to denied; genuinely
-  unknown keys stay permissive so a new key does not lock everyone out mid-deploy. Requires a
-  registry of known privilege keys, which does not exist — there are 9, discovered by grep.
-  `Verify:` a typo'd key denies rather than grants.
+  unknown keys stay permissive so a new key does not lock everyone out mid-deploy. **Premise corrected 2026-08-27.**
+  **The registry already exists** — `DEFAULT_PRIVILEGES` in `core/auth.py:24-38` is it, with
+  **11 keys** (AST-verified: 9 boolean, 1 integer, 1 list; the earlier 9 was a grep of the
+  booleans only), and `set_privileges` already filters against it. So this is not a new
+  registry: it is **a one-line guard at `src/auth_helpers.py:172`**, changing `privs.get(key,
+  True)` to default known keys closed while leaving genuinely unknown ones open. That moves it
+  from a design task to the cheapest security fix in the tracker. `Verify:` a typo'd key denies
+  rather than grants, and adding a brand-new key to `DEFAULT_PRIVILEGES` does not lock out
+  existing users mid-deploy.
 - [ ] **P11-02** **Roles as named overlays on `DEFAULT_PRIVILEGES`.** Not a new system — the
   dict already carries booleans, an integer quota and a model allowlist. A role is a named set
   of overrides; a user gets a role and optional per-user overrides on top. Resolution order:
   built-in default → role → user. Keep `is_admin` as the superuser role rather than replacing
-  it, because 84 call sites depend on it and rewriting them all at once is how this goes wrong.
+  it, because 103 call sites depend on it and rewriting them all at once is how this goes wrong.
 - [ ] **P11-02b** **Audit every `require_admin` site against the role model.** 84 of them, and
   each is currently a binary answer to a question that should have three or four. Produce the
   mapping before changing any of them: which are genuinely superuser-only, which are
@@ -837,9 +919,13 @@ has an account.
   Several are covered by `AuthMiddleware` and some are deliberately exempt — **this is a
   reconciliation task, not a list of holes.** The deliverable is a table: route, what actually
   gates it, and whether that is intended. Nothing here should be changed before that exists.
-  every privilege wholesale (`ADMIN_PRIVILEGES`), and non-admin means nine independent
-  booleans set per user. A role is the missing middle: a named bundle of privileges plus limit
-  profile. Keep `is_admin` as the superuser role rather than replacing it.
+  **Premise corrected 2026-08-27.** **Two fixes.** First, the premise: **nine of the fifteen do make an auth call of
+  their own** — `get_current_user` or `owner_filter` — and `chat_routes.py:338/367` performs a
+  real admin check via `owner_is_admin_or_single_user`. Six files are the actual unknowns.
+  Second, four lines of `P11-02`'s role paragraph had been **mis-merged onto the end of this
+  row** and are now removed; they said nine privileges where there are eleven, and they made
+  this reconciliation row read like a build row. `Law 7` — one source of truth per fact, and
+  `P11-02` is the one for roles.
 - [ ] **P11-03** **OIDC Authorization Code + PKCE against a discovery document.** BYO
   provider — Keycloak, Zitadel, Authentik, Authelia, or a hosted IdP. Discovery URL, client id,
   client secret, scopes. No provider-specific code.
@@ -855,12 +941,21 @@ has an account.
   balancer. Decide before, not after, someone runs two replicas.
 - [ ] **P11-08** **An auth audit log** — logins, role changes, privilege grants, failures.
   Feeds `D-05`'s telemetry table rather than inventing a second store.
-- [ ] **P11-09** **Re-arm what single-user mode let us delete.** `DECISIONS.md`
+- [~] **P11-09** **Re-arm what single-user mode let us delete.** `DECISIONS.md`
   D-2026-08-26-01 deleted the upload type blocklist and named "a second user account" as the
   condition that voids it. This phase *is* that condition. Restore the check — with `.svg` in
-  it this time — gated on multi-user being enabled, not unconditionally.
+  it this time — gated on multi-user being enabled, not unconditionally. **`Blocked:`
+  (2026-08-27) two things, both real.** `tests/test_upload_multifile.py:297` and `:310`
+  **actively pin the deletion**, so restoring the check turns the suite red on arrival — those
+  assertions have to be rewritten in the same commit, deliberately, not discovered. And **there
+  is no multi-user flag to gate on yet**; it arrives with `P11-02`'s roles. Restoring the check
+  ungated would re-impose on a single-user LAN box exactly the restriction D-2026-08-26-01
+  removed.
 - [ ] **P11-10** **Admin-gate the built-in capability reads** if `P2-21` has not already. Any
-  logged-in non-admin can currently read all 60 tool instruction blocks.
+  logged-in non-admin can currently read all 60 tool instruction blocks (AST-verified
+  2026-08-27 — `TOOL_SECTIONS`, exactly 60). **`Blocked:` `P2-21`'s missing list loader.**
+  `builtinSkills` is never assigned from any fetch, so flipping the flag today ships an empty
+  section — a gate over nothing, which reads as done and is not.
 
 ---
 
@@ -877,23 +972,36 @@ team bigger uploads has no move except editing compose and rebuilding.
 a file-backed dict with `get_setting` / `set_setting` and a `DEFAULT_SETTINGS` merge — so this
 is mostly moving values into a system that exists, then layering roles on top.
 
-- [ ] **P12-01** **Move the eleven byte caps into settings**, with the environment variable as
+- [ ] **P12-01** **Move the ten byte caps into settings** *(re-measured 2026-08-27 — distinct
+  `PANTHEON_*BYTES` env names in non-test Python: 7 in `upload_limits.py`, 1 backup, 1 TTS, 1
+  lazy. Eleven was one too many, and knowing which ten they are is the row's actual first
+  step)*, with the environment variable as
   an *override* rather than the only source. Order: role profile → instance setting → env →
   built-in default.
 - [ ] **P12-02** **Limit profiles attached to roles.** Upload size, files per request, request
   rate, context budget, concurrent agent runs, model-serve permission.
-- [ ] **P12-03** **Runtime-adjustable without a restart.** The caps are read at import today,
-  so this is a real refactor, not a settings row.
+- [ ] **P12-03** **Runtime-adjustable without a restart.** **8 of the 10 caps** are read at
+  import today (re-measured 2026-08-27) — so this is a real refactor, not a settings row. The
+  other two already re-read per call and are the pattern to copy rather than files to change:
+  `get_chat_upload_max_bytes` re-reads on every call, and the TTS cap is read at instance init.
 - [ ] **P12-04** **Context and attachment budgets become policy.** This is where `P2-08` and
-  `P2-09` land properly: the shared 24,000-char budget, the PDF's 15,000, the per-file 30,000,
-  and skill-injection count all become a single coherent budget with a per-role ceiling — and
-  the ceiling is what stops a proven-window scale-up from handing someone twelve untrusted
-  skill blocks.
+  `P2-09` land properly. **Premise corrected 2026-08-27.** **There are more budgets than the line admits** — five
+  live in `document_processor.py` alone, including a `.log`-only 10,000 branch nobody has
+  mentioned, and **seven** across the codebase: the shared 24,000-char budget, the PDF's 15,000,
+  the per-file 30,000, the `.log` 10,000, and the skill-injection count. All of them become a
+  single coherent budget with a per-role ceiling — the ceiling is what stops a proven-window
+  scale-up from handing someone twelve untrusted skill blocks. **`services/context_budget.py`
+  already implements the shape this wants.** Extend it; do not author an eighth (`Law 14`).
 - [ ] **P12-05** **Per-user and per-role rate limiting.** The current limiter is per-IP, which
   behind any reverse proxy is one bucket for everyone.
 - [ ] **P12-06** **Reinstate upload concurrency as an admin control, not a constant.**
   `P2-10`'s recommendation to delete it assumed one user on a LAN. Under real infrastructure
-  it becomes a per-role setting with the default off.
+  it becomes a per-role setting with the default off. **Premise corrected 2026-08-27.** **The false-positive is
+  already fixed** — `upload_routes.py:285-291` (#1346) no longer fires on a normal multi-file
+  drag, so the urgency is gone and the deletion argument with it. Two real defects remain and
+  they are what this row now owns: **`3` is a hardcoded constant**, and **"concurrent" is
+  implemented as a ten-second window**, which is a rate limit wearing the wrong name. Make the
+  number a per-role setting and either make it mean concurrency or rename it.
 - [ ] **P12-07** **An admin surface for all of it** — one panel, not eleven env vars in a
   compose file. Depends on `P2-20` landing the admin markup pattern first.
 - [ ] **P12-09** **Make the context budget visible while you work, not in a settings tab.**
@@ -928,9 +1036,14 @@ is mostly moving values into a system that exists, then layering roles on top.
 > The Brain surface becomes something a person can **read and search** — filter, sort, inspect,
 > correct — not something they navigate by dragging.
 
-**What is actually there today.** `memories` is a flat table — `id, text, category, source,
-owner, session_id, timestamp` — behind a vector index. **No confidence, no edges, no
-provenance beyond a one-word `source`.** Four of the pieces this needs already exist and are
+**What is actually there today.** *(Corrected 2026-08-27 — this paragraph named the wrong
+store, and every task under it inherited the error.)* The **live store is `data/memory.json`**
+(read at `src/memory.py:136`, atomically rewritten at `:275-278`). There is also a `memories` SQL table — `id, text, category, source,
+owner, session_id, timestamp` behind a vector index — but it has **two non-test readers** and is
+not where memory actually lives. **No confidence, no edges, no provenance beyond a one-word
+`source`.** The correction is load-bearing and it makes the phase *smaller*: adding confidence
+is **a JSON key and a default, not a schema migration**, and anyone who starts by writing an
+`ALTER TABLE` is editing a store nothing reads. Four of the pieces this needs already exist and are
 proven, which is why this is a smaller phase than it looks:
 
 - **Confidence is already implemented — on the wrong half.** `services/memory/skill_extractor.py`
@@ -981,10 +1094,22 @@ closest thing to this that exists — with what it teaches:
   `contradicts`, `derived_from`, `co_occurs`. Each one changes what retrieval returns: a
   superseded memory stops surfacing, a contradiction surfaces *both* sides with the conflict
   named. **An edge that only exists to be drawn is not worth storing.** That is the test.
+  *(Re-measured 2026-08-27: `link|related|edge|graph` across `services/memory/*.py` returns 6
+  raw hits and **0 relevant** — the earlier "one grep hit" was itself a false positive. The
+  finding is unchanged and stronger: there is nothing here to extend, so this row is a genuine
+  build. It writes to the `data/memory.json` store — see the corrected preamble — and it
+  depends on `P13-03` landing provenance first.)*
 - [ ] **P13-03** **Provenance.** Which session, which message, which tool produced this — and
   what has confirmed or contradicted it since. `session_id` exists; the rest does not.
-- [ ] **P13-04** **Reinforcement and decay.** A memory retrieved and acted on gets stronger; one
-  never retrieved fades toward archive rather than deletion. Nothing is ever silently dropped.
+  **Premise corrected 2026-08-27.** **Do this one first.** It carries the store correction above — provenance fields
+  go on the `data/memory.json` record (`src/memory.py:136` / `:275-278`), not on the SQL table — and
+  `P13-01`, `P13-02`, `P13-05` and `P13-09` all write to whatever store this row establishes.
+  Landing any of them before this one points four tasks at the wrong half of the system.
+- [ ] **P13-04** **Decay and archive.** **Premise corrected 2026-08-27.** **Reinforcement already ships** —
+  `memory.py:297-315` strengthens on retrieval, `chat_processor.py:352` calls it, and the "Most
+  used" sort is that signal surfacing in the UI. Building it again is a second counter that
+  disagrees with the first (`Law 14`). **What is open is the other direction:** a memory never
+  retrieved fades toward archive rather than deletion. Nothing is ever silently dropped.
 - [ ] **P13-05** **Commitment as an explicit act.** Suggestions today are accepted or not. Add
   a real promotion step with a quality gate, so "committed to memory" means something and can
   be audited afterwards.
@@ -1012,7 +1137,12 @@ closest thing to this that exists — with what it teaches:
   it should raise confidence where sources agree and record a contradiction edge where they
   do not, rather than picking a winner quietly.
 - [ ] **P13-10** **A retrieval trace.** When memory changes an answer, say which memories and
-  at what confidence. Same principle as `P4` — the data is computed and thrown away.
+  at what confidence. **Premise corrected 2026-08-27.** **"Computed and thrown away" is wrong — this is wired end to
+  end.** `chat_processor.py:311/330/347` → `routes/chat_helpers.py:1068` → `chat_routes.py:1622` →
+  `chat.js:3417` → `chatRenderer.js:1847`, which renders a `.memory-used-pill` and a detail
+  panel. Which memories were used is already visible. **The only missing field is confidence**,
+  which `P13-01` introduces — so this collapses to a one-field extension of that row and is not
+  independently actionable. `Depends:` P13-01, and it is not worth starting without it.
 
 ---
 
@@ -1028,9 +1158,14 @@ of a harness — *did that change help?* — because the events were never writt
 session row**. The time dimension is discarded at write. Not because the query is hard; because
 nothing ever recorded the event.
 
-- [ ] **P14-01** **One append-only events table.** Written where the totals are already
-  computed in `llm_core.py`. Timestamp, session, owner, model, endpoint, tokens in and out,
-  duration, outcome. Everything else in this phase reads from it.
+- [ ] **P14-01** **One append-only events table.** Timestamp, session, owner, model, endpoint,
+  tokens in and out, duration, outcome. Everything else in this phase reads from it.
+  **Premise corrected 2026-08-27.** **The stated write location was wrong, and wrong in an expensive direction.**
+  `llm_core.py` writes no total at all — the totals accumulate in `accumulate_token_usage` at **`routes/chat_helpers.py:828-844`** —
+  path-qualified deliberately, because `src/chat_helpers.py` also exists —
+  which has four callers. That is a **17-line insertion point instead of a 3,731-line file** to
+  read first. This row unblocks `P14-02`, `P14-03`, `P14-05`, `P12-08` and half of `P14-04`, so
+  the wrong address here was costing five downstream rows.
 - [ ] **P14-02** **Instrument the rest of the loop** — round latency, tool call and failure
   counts, queue depth, approval outcomes, retrieval hit rates. Same table.
 - [ ] **P14-03** **An eval harness.** Save a set of cases, run them against a configuration,

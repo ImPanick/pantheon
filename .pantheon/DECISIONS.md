@@ -96,16 +96,30 @@ everything downstream that touches colour.
 token phase, was written as *"define `--accent` in `:root`"*. Auditing it against this
 decision showed it would have destroyed the thing being protected:
 
-Of the 799 `var(--accent…)` sites in `style.css`, **508 are `var(--accent, var(--red))`**.
-They resolve today to the theme's own `red`, which `applyTheme()` sets at
-`static/js/theme.js:263`. A `:root` definition beats a fallback — so all 508 would have
+Of the 799 `var(--accent…)` sites in `style.css`, **521 are `var(--accent, var(--red))`**.
+They resolve today to the theme's own `red`, which `applyColors()` sets at
+`static/js/theme.js:263`. A `:root` definition beats a fallback — so all 521 would have
 flipped to one global colour, and all 16 themes would have converged on it in one commit.
 The task would have reported success. Every screenshot would have looked deliberate.
 
-`P1-01` now sets `--accent` **per theme**, seeded from that theme's `red`, one line inside
-`applyTheme()`. The 508 fallback sites resolve to exactly what they resolve to now, the
-bare sites resolve for the first time, and each theme keeps its identity. Strictly better
-than the original plan, and it costs less.
+`P1-01` now sets `--accent` **per theme**, seeded from that theme's `red`, beside the
+existing `--red` line in `applyColors()`. The 521 fallback sites resolve to exactly what
+they resolve to now, the bare sites resolve for the first time, and each theme keeps its
+identity. Strictly better than the original plan, and it costs less.
+
+> **Corrected 2026-08-27, and the correction is its own lesson.** This entry said **508**
+> and named a function called **`applyTheme()`**. The real count is **521** — four
+> independent methods agree, and `static/style.css` has one commit in this repo, so the
+> figure was wrong when written rather than gone stale. There is no `applyTheme()` in
+> `theme.js`; the function is `applyColors()` at `:257`, and the only `applyTheme` in the
+> tree is a dead call at `slashCommands.js:876` guarded by an `||` that can never be
+> satisfied. **A third correction matters more than either:** `--red` is set at **three**
+> sites, not one — `theme.js:263`, the first-paint inline script at `index.html:29`, and
+> `login.html:54`. One line in `applyColors()` alone leaves a flash on every cold load and
+> leaves the login page without `--accent` permanently. All three get the line.
+>
+> The 508 had been copied into three documents, including this one and `FORBIDDEN.md`.
+> That is `Law 6`'s exact failure mode occurring inside the documents that define it.
 
 **Still allowed.** `P10-04` (contrast audit across all 16 themes) and `P10-05`
 (reduced-motion guard over the 7 animators) both stand. A reduced-motion guard **respects

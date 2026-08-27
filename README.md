@@ -71,8 +71,8 @@ and liked it.
 Then we tried to change something small and ended up reading all 41,401 lines of the stylesheet.
 
 `--accent` — the colour behind every highlight, hover state and drag handle — is referenced 799
-times and defined nowhere. About three hundred style rules resolve to nothing. Nothing errors;
-the rules simply never apply.
+times and defined nowhere. 206 style rules resolve to nothing. Nothing errors; the rules simply
+never apply.
 
 Most of what we found after that is finished work that never got connected:
 

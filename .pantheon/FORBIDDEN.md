@@ -63,11 +63,14 @@ odysseus-theme / odysseus-custom-themes     (renamed to pantheon-* by P0-04; the
                                              stay one-to-one, the values are unchanged)
 ```
 
-**`--accent` must never be defined in `:root`.** 508 of the 799 `var(--accent…)` sites in
-`style.css` are `var(--accent, var(--red))` and resolve to the active theme's `red`. A
+**`--accent` must never be defined in `:root`.** **521** of the 799 `var(--accent…)` sites
+in `style.css` are `var(--accent, var(--red))` and resolve to the active theme's `red`. A
 `:root` definition beats the fallback and collapses all 16 themes onto one colour. Set it
-per theme inside `applyTheme()` instead — see `P1-01`, which was rewritten for exactly
-this reason after being written the wrong way round.
+per theme inside **`applyColors()`** instead — see `P1-01`, which was rewritten for exactly
+this reason after being written the wrong way round. *(Both the count and the function name
+were corrected 2026-08-27: 508 → 521, and `applyTheme()` does not exist. `--red` is set at
+three sites — `theme.js:263`, `index.html:29`, `login.html:54` — and all three need the new
+line, or the login page never gets an accent and every cold load flashes.)*
 
 **A reduced-motion guard is not a removal.** `P10-05` adds one over the seven canvas
 animators. It respects an operating-system setting. The animation stays.
