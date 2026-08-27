@@ -96,6 +96,12 @@ upstream's artwork under Pantheon's filenames.
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
 
+### README trimmed, and the unwired inventory made public
+Prose cut to 1,411 words. Gained a section the old one was missing entirely — the 78 unreachable
+features by subsystem, which is the most interesting thing about this fork and was buried in a
+tracker nobody outside would read. All three nav anchors verified against real headings, and both
+licence obligations re-checked after the trim.
+
 ### README rewritten for people
 Same facts, told as a story rather than an audit: saw Odysseus, fell in love, read all 41,401
 lines of the stylesheet, decided to finish it. The forensics moved out of the prose and the
