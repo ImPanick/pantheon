@@ -7,166 +7,161 @@
 
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
-  <a href="#where-this-came-from">Where this came from</a> ·
-  <a href="#why-the-fork-exists">Why the fork exists</a> ·
-  <a href="#what-pantheon-is-building">What it's building</a> ·
-  <a href=".pantheon/ROADMAP.md">Tracker</a>
+  <a href="#we-saw-odysseus-and-fell-in-love">The story</a> ·
+  <a href="#what-well-have-when-were-done">Where it's going</a> ·
+  <a href=".pantheon/ROADMAP.md">The tracker</a>
 </p>
 
 ---
 
-> **Status: early, and honest about it.** Pantheon is a fork of
-> [Odysseus](https://github.com/pewdiepie-archdaemon/odysseus) taken at `b4d1293` on
-> 2026-08-24. Everything Odysseus does, Pantheon does — the fork inherits a working
-> product. What is new so far is the audit, the plan, and the rename. **10 of 222
-> planned tasks are complete**, and all 10 are the rename. The live tracker is
-> [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md); it does not round up.
->
-> Every finding on this page is cited to a file and a line, and every one of them was
-> checked against the source by an adversarial pass whose job was to prove it wrong.
-> Several did not survive. Those are not on this page.
+## We saw Odysseus, and fell in love
+
+[Odysseus](https://github.com/pewdiepie-archdaemon/odysseus) is a genuinely ambitious piece of
+software. A self-hosted AI workspace with a real agent loop, real tool execution, a
+hardware-aware model server, deep research, a document editor, IMAP mail, CalDAV calendar, MCP
+support, sixteen themes — and animated backgrounds that change depending on which theme you
+pick, which is the kind of detail people only add when they care.
+
+Two thousand commits. It runs. We installed it and used it for real work.
+
+Then we started reading it.
+
+Not looking for problems — trying to change something small. And the small thing led to a
+bigger thing, and eventually to reading all **41,401 lines** of one stylesheet in a single
+sitting. What we found there changed what this project is.
 
 ---
 
-## Where this came from
+## What we found
 
-**Pantheon exists because Odysseus is good.**
+`--accent` — the colour that draws the highlights, the hover states, the active tabs, the
+handles you drag — is referenced **799 times**, and defined nowhere. Around three hundred
+carefully written style rules were quietly resolving to nothing at all. Not broken. Not
+throwing errors. Just… not applied. Somebody designed all of that and never got to switch it on.
 
-[Odysseus](https://github.com/pewdiepie-archdaemon/odysseus) is a genuinely ambitious
-piece of software — a self-hosted AI workspace with a real agent loop, real tool
-execution, a hardware-aware model cookbook, deep research, a document editor, IMAP mail,
-CalDAV calendar, MCP support and sixteen themes. It is roughly 2,000 commits of work and
-it runs. Forking it was not a judgement that it was bad. It was a judgement that its
-engines were *further along than its surface*, and that the gap was worth closing.
+That turned out to be the pattern.
 
-None of the following is a criticism of the people who built it. Ambitious software
-accumulates exactly this kind of debt — the audit below is the sort of thing you only
-find when someone reads all 41,401 lines of one stylesheet.
+**A webhooks admin panel with a complete, working backend and no interface whatsoever.** Two of
+its functions crash on a missing element inside a silent `try`, which is precisely why nobody
+ever noticed it wasn't there.
 
-Odysseus is AGPL-3.0-or-later, and so is Pantheon. Upstream stays wired in as a remote,
-and fixes get cherry-picked back down. Credit is in
-[`CREDITS.md`](CREDITS.md), the modification notice is in [`NOTICE`](NOTICE), and the
-divergence is logged in [`CHANGELOG.md`](CHANGELOG.md).
+**A built-in skills editor, fully implemented**, sitting behind a single line that reads
+`const showBuiltin = false;`.
 
----
+**An image upscaler** with a working backend and a local Real-ESRGAN model behind it, and no
+button anywhere that calls it.
 
-## Why the fork exists
+**Plan mode** — a complete lifecycle, properly built — whose docked plan window has never
+existed, while three separate prompt strings cheerfully tell the model that it does.
 
-Six audit passes, one adversarial, then a thirteen-agent scout pass over the source. Here
-is what came back. Every item is a real finding with a real citation.
+And the one that stings: files you upload that the system doesn't recognise as text don't lose
+their syntax highlighting. They arrive at the model as the literal string
+`[Attached document file]`. **Zero bytes of your actual file.** Silently, for `.go`, `.tsx`,
+`.yaml`, `.rs`, `.sql`, and seven more.
 
-### Things that were built and never wired up
+None of this is incompetence. It's the fingerprint of a project moving fast — someone builds
+the difficult half, ships it, and the last ten percent never happens. The expensive work is
+*already paid for*. It just isn't connected.
 
-The most striking category. Real, finished backends with no way to reach them.
-
-- **The webhooks admin panel has a complete backend and no UI whatsoever.** Two of its
-  functions throw on `null.innerHTML` inside a silent `try` — which is precisely why
-  nobody noticed.
-- **The built-in skills editor exists behind `showBuiltin = false`.** Its card builder and
-  all three admin endpoints are fully implemented, including a per-tool
-  instruction-block override editor.
-- **The gallery upscaler has a backend and a local Real-ESRGAN integration, and zero
-  controls.** So do the harmonize, style and import panels beside it.
-- **Plan mode is a complete lifecycle whose docked plan window has never existed** —
-  while three separate prompt strings tell the model that it does.
-- **The RAG upload module expects three elements that were never added to the page.**
-- Admin markup is missing for MCP, feature toggles, API tokens and RAG. All four
-  backends are there. And it is not only markup: five entries are omitted from
-  `admin.js`'s `inits` and `refreshAll`, so adding the HTML alone yields a panel that
-  renders empty and never fetches.
-
-### A design system that was never turned on
-
-- **`--accent` is referenced 799 times in `static/style.css` and defined nowhere in the
-  application's CSS.** 205 of those references carry no fallback value. `--fg-muted` is
-  referenced 101 times, 93 of them bare. **That is 298 authored declarations resolving to
-  nothing and silently dropping.** The only `--accent` definitions in the repository sit
-  in `src/visual_report.py`, which generates standalone report documents — a different
-  stylesheet entirely.
-- `static/style.css` is **41,401 lines** with **963 property re-declarations across 405
-  selectors**.
-- Both resize handles are invisible and mouse-only, because their entire visual
-  treatment routes through that undefined accent token.
-
-### A glass box you cannot see into
-
-- The backend streams roughly **50 distinct event types**. More than **30 computed
-  fields are sent over the wire and thrown away by the renderer.**
-- **A failed turn renders identically to a successful one.** The failure reason is on
-  the wire. Nothing reads it.
-- Six copies of the agent-thread template have drifted three different ways.
-
-### Restrictions that restricted the wrong things
-
-- `.js` uploads were blocked by MIME sniffing — while **`.svg`, the one genuine stored-XSS
-  vector in the set, was never blocked at all.**
-- Files that fail the text-file check do not lose a code fence. They return a literal
-  `[Attached document file]` banner and **zero bytes reach the model** — `.go`, `.tsx`,
-  `.jsx`, `.yaml`, `.rs`, `.sql`, `.rb`, `.php`, `.xml`, `.bash`.
-- "Maximum 3 concurrent uploads" is implemented as "at most 3 uploads in the last ten
-  seconds", and fires on an ordinary multi-file drag.
-- A grammar bug ships the sentence *"Your account is not allowed to can use research."*
-- The bash tool prompt forbids heredocs on one line and instructs the model to use one
-  seven lines later.
-
-### Sharp edges
-
-- **No route in this application can set a CSP header.** The security middleware runs
-  after the route and overwrites it. One route ships a `Content-Security-Policy` that is
-  dead at the wire — and two tests pin it in place by calling the endpoint without the
-  middleware.
-- **MCP has no update endpoint.** Editing a server means delete-and-recreate, which mints
-  a new id, which orphans every `mcp__<id>__<tool>` reference pointing at it. There is
-  also no call timeout, and env vars are stored unencrypted.
-- A chat queue exists with a live session-leak bug: it carries no session id, so it fires
-  into whichever chat happens to be open.
+So we forked it. Not to replace Odysseus, and not because it's bad. Because it's good, and it
+deserves to be finished.
 
 ---
 
-## What Pantheon is building
+## How we're doing it
 
-Eleven phases, 222 tracked tasks, one tracker. The governing rule is **add, never
-subtract** — this is an elevation of Odysseus, not a rewrite of it. The wheel is already
-invented here; the work is making it round.
+**One rule above all the others: add, never subtract.** Every feature survives. Nothing gets
+deleted because it's inconvenient. This is an elevation, not a rewrite — the wheel is already
+invented here, and we're making it rounder.
 
-| | Phase | What it does |
-|---|---|---|
-| **P0** | Fork identity & licence | The rename, and closing the licence gaps inherited from upstream — the AGPL §13 source link, seven vendored libraries shipping with no licence text, fonts credited under the wrong licence |
-| **P1** | The token layer | Define `--accent` and `--fg-muted`. One declaration repaints 799 reference sites at once — the 205 bare ones start resolving at all, and the 594 with fallbacks stop silently falling back |
-| **P2** | Un-nerf | Delete the restrictions that were never protecting anything, widen the ones that were too narrow, and leave the ~30 controls that are genuinely load-bearing exactly where they are |
-| **P3** | Mechanical hygiene | 963 duplicate declarations, 405 selectors |
-| **P4** | The wire | Render what the backend already sends. A failed turn should look like a failed turn |
-| **P5** | Trace & composer | The surfaces you look at most |
-| **P6** | Queue & Plan | Fix the session leak; build the plan window the prompts already promise |
-| **P7** | Trust ladder | Approval effects ranked, tripped effects named, the taint trail made visible |
-| **P8** | The Workshop | The largest addition: a Skill Crafter, an n8n-style Automations canvas, and an MCP Creator — all three with the model assisting end to end |
-| **P9** | Feature surfaces | Re-attach everything that was built and never wired |
-| **P10** | Accessibility & release | Contrast across all sixteen themes, keyboard reachability, reduced motion, then ship |
+Beyond that, we wrote down fifteen rules, and every one of them came from something that
+actually went wrong while we worked. A few worth sharing, because they're the reason to trust
+anything else on this page:
 
-Each phase is scouted before it is implemented: agents verify every task's premise
-against the source and correct the plan where it is wrong. The first scout pass, over P2,
-overturned its own scouts on **twelve of twelve** contested findings and proved the
-headline task wrong in three separate ways. The corrected result is in
-[`.pantheon/P2-CORRECTED.md`](.pantheon/P2-CORRECTED.md).
+> **Nothing ships half-wired.** A backend with no caller and a button with no handler are the
+> same disease. There's a script that counts them, it runs in CI, and the number is allowed to
+> go down and never up.
+
+> **A number without a stated scope is not a number.** Is `--accent` used 799 times, or 950, or
+> 1,014? All three are true — they're counting different things. Only one answers the question.
+
+> **If it needs a tutorial, it isn't finished.** We watched someone with beta access to a far
+> more advanced version of a feature we're planning give up on it, because nobody had written
+> the docs and the learning curve was too steep. The capability was real. The adoption was zero.
+
+Every finding on this page was checked by a second agent whose only job was to prove the first
+one wrong. In the first audit round, **the sceptics won twelve out of twelve** — including
+proving that our own headline task was wrong in three separate ways. That's why we do it that
+way, and it's why the numbers here are worth reading.
 
 ---
 
-## What actually works today
+## Where we actually are
 
-Everything Odysseus does, because Pantheon inherits it:
+**288 tracked tasks. 30 finished.** That's not modesty, it's the tracker, and it doesn't round
+up.
 
-- **Chat + agents** — local and API models, tools, MCP, files, shell, skills, memory
-- **Cookbook** — hardware-aware model recommendations, downloads and serving
-- **Deep research** — multi-step web research with source reading and report generation
-- **Compare** — blind side-by-side model testing and synthesis
-- **Documents** — a writing-first editor with AI edits, suggestions, Markdown, HTML, CSV
-- **Email** — IMAP/SMTP with triage, tags, summaries, reminders and reply drafts
-- **Notes, tasks + calendar** — reminders, todos, scheduled agent tasks, CalDAV sync
-- **Extras** — gallery and image editor, sixteen themes, uploads, web search, presets,
-  sessions, 2FA
+Twenty of those were setup and the rename. **Ten are real fixes**, already running:
 
-Plus what the fork has added so far: guardrail caps lifted for self-hosted inference
-while cloud APIs keep theirs, an agent RAG scratchpad, and endpoint probe auth.
+- Files you upload now reach the model as **content**, not as a banner.
+- The upload type blocklist is gone — the one that blocked executables while leaving `.svg`,
+  the actual attack vector, wide open.
+- A real limit on files-per-upload, which somehow never existed on the server side.
+- Uploads get a proper sandbox policy — placed where it can actually reach the browser, which
+  it turns out no route in this application can do.
+- Four blocks of dead configuration and a validator nothing ever called, removed.
+- A prompt that forbade a shell technique on one line and instructed the model to use it seven
+  lines later.
+- *"Your account is not allowed to can use research."* Fixed, and yes, that was real.
+
+Full test suite: **5,742 passing, zero regressions.**
+
+---
+
+## What we'll have when we're done
+
+**A glass box.** The backend already streams around fifty kinds of event about what your agent
+is doing, and throws more than thirty of them away before you see any of it. Today a failed
+turn looks exactly like a successful one. It shouldn't.
+
+**A workshop.** Build a skill from nothing, wire automations together on a canvas, and create an
+MCP server end to end — with the model helping at every step. The biggest single addition, and
+the reason this is a fork rather than a patch.
+
+**A memory that lasts.** Not a pretty graph of glowing dots — we tried the one that exists and
+it's beautiful and nobody uses it. Something plainer and far more useful: knowledge about
+*your projects* that survives every session, model swap and restart, that gets more confident as
+things confirm it, that tells you when two things it learned contradict each other, and that you
+can read, search and correct like a document instead of navigating like a star map.
+
+**A harness you can hand to other people.** Single sign-on against whatever identity provider
+you already run. Real roles instead of one admin bit checked in eighty-four places. Limits an
+operator can actually set, per team, without editing a compose file and rebuilding.
+
+**And an honest one.** Every run leaves a receipt — the model, the settings, the tools it had,
+the skills it used, what it retrieved. Re-runnable, comparable, and portable enough to hand to
+someone else when something goes strange.
+
+The full plan is in [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) — fifteen phases, every task
+written down, every finished one traceable to the commit that did it.
+
+---
+
+## What works today
+
+Everything Odysseus does, because Pantheon inherits all of it:
+
+**Chat and agents** with local or API models, tools, MCP, files, shell, skills and memory ·
+**a model server** with hardware-aware recommendations, downloads and serving, local or over SSH ·
+**deep research** across multiple steps with real source reading ·
+**blind model comparison** ·
+**a writing-first document editor** with AI edits and suggestions ·
+**IMAP/SMTP email** with triage, summaries and reply drafts ·
+**notes, tasks and a CalDAV calendar** ·
+plus a gallery and image editor, sixteen themes, web search, presets, sessions and 2FA.
+
+And what the fork has added so far: guardrail caps lifted for self-hosted inference while cloud
+APIs keep theirs, an agent scratchpad, and endpoint probe auth.
 
 ---
 
@@ -179,47 +174,44 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-Open `http://localhost:7000` once the containers are healthy. The first admin password is
+Open `http://localhost:7000` once the containers are healthy. Your first admin password is
 printed in `docker compose logs pantheon`.
 
-Native installs, GPU notes, Windows and macOS instructions, HTTPS and configuration are
-in the [setup guide](docs/setup.md).
-
-`main` is the only branch. Upstream's `dev` is available through the `upstream` remote.
+Native installs, GPU notes, Windows and macOS, HTTPS and configuration all live in the
+[setup guide](docs/setup.md). `main` is the only branch here; upstream's `dev` is available
+through the `upstream` remote.
 
 ---
 
 ## Security
 
-Pantheon is a self-hosted workspace with powerful local tools. Keep auth on, keep private
-data out of Git, and do not expose raw model or service ports publicly.
+This is a self-hosted workspace with powerful local tools. Keep auth on, keep private data out
+of Git, and don't expose raw model or service ports to the internet.
 
-- Keep `AUTH_ENABLED=true` for any network-accessible deployment.
+- Keep `AUTH_ENABLED=true` on anything reachable over a network.
 - Keep `LOCALHOST_BYPASS=false` outside local development.
 
-P2 removes restrictions, and it is worth being precise about which ones. Roughly thirty
-controls are on a never-lift list in [`.pantheon/FORBIDDEN.md`](.pantheon/FORBIDDEN.md) —
-authentication, CSRF posture, the approval store's seal and single-use consumption, path
-traversal guards, SSRF guards, command-injection guards, secrets redaction, and the
-extension allowlist on uploaded fonts, which is the one place an uploaded file really is
-served from a static mount. Those do not move. What P2 removes is the theatre that was
+We remove a lot of restrictions in this fork, so it's worth being precise about which ones. About
+thirty controls are on a **never-lift list** — authentication, CSRF posture, the approval store's
+seal and single-use consumption, path traversal and SSRF guards, command-injection guards,
+secrets redaction, and the extension allowlist on uploaded fonts, which is the one place an
+uploaded file really does get served back. Those don't move. What we remove is the theatre
 standing in front of them.
 
-Deployment details are in the [setup guide](docs/setup.md#security-notes).
+Deployment details: [setup guide](docs/setup.md#security-notes).
 
 ---
 
 ## Contributing
 
-Early, and moving fast. The most useful contributions right now are fresh-install testing,
-provider setup bugs, and picking up a task from
-[`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) — read
-[`.pantheon/AGENTS.md`](.pantheon/AGENTS.md) first, it is the working agreement and it is
-short. See also [CONTRIBUTING.md](CONTRIBUTING.md).
+Early days, moving fast. The most useful things right now are fresh-install testing, provider
+setup bugs, and picking up a task from [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) — read
+[`.pantheon/AGENTS.md`](.pantheon/AGENTS.md) first, it's the working agreement and it's short.
+See also [CONTRIBUTING.md](CONTRIBUTING.md).
 
-If you are here for Odysseus itself, contribute
-[upstream](https://github.com/pewdiepie-archdaemon/odysseus) — that project is alive and
-this one is downstream of it.
+If you're here for Odysseus itself, contribute
+[upstream](https://github.com/pewdiepie-archdaemon/odysseus). That project is alive, and this one
+is downstream of it.
 
 ---
 
@@ -227,14 +219,17 @@ this one is downstream of it.
 
 **AGPL-3.0-or-later** — see [LICENSE](LICENSE).
 
-Pantheon is free software and I do not sell it. I would rather you did not either, though
-the AGPL does not let me require that, and I am not going to pretend otherwise: §10
-prohibits adding further restrictions and §7 lets any recipient strip one. Use it
-internally at your company if it is useful. That is what it is for.
+Pantheon is free software and I don't sell it. I'd rather you didn't either, though the AGPL
+doesn't let me require that and I'm not going to pretend otherwise. Use it inside your company
+if it's useful to you. That's what it's for.
 
-Credit and third-party licences are in [`CREDITS.md`](CREDITS.md) and
-[`ACKNOWLEDGMENTS.md`](ACKNOWLEDGMENTS.md). The modification notice required by §5(a) is
-in [`NOTICE`](NOTICE).
+Credits and third-party licences are in [`CREDITS.md`](CREDITS.md) and
+[`ACKNOWLEDGMENTS.md`](ACKNOWLEDGMENTS.md). The modification notice the licence requires is in
+[`NOTICE`](NOTICE).
 
-**Built on [Odysseus](https://github.com/pewdiepie-archdaemon/odysseus).** It got the hard
-parts right first.
+Pantheon is a **modified version of Odysseus**, forked from commit `b4d1293` on **24 August
+2026** and released under the same licence. It isn't affiliated with or endorsed by the Odysseus
+project — please don't send them our bugs.
+
+**Built on [Odysseus](https://github.com/pewdiepie-archdaemon/odysseus).** It got the hard parts
+right first, and we wouldn't be here without it.

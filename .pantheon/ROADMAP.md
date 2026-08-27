@@ -96,6 +96,13 @@ upstream's artwork under Pantheon's filenames.
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
 
+### README rewritten for people
+Same facts, told as a story rather than an audit: saw Odysseus, fell in love, read all 41,401
+lines of the stylesheet, decided to finish it. The forensics moved out of the prose and the
+numbers stayed — 288 tracked, 30 done, and it still says so. `P0-14`'s §5(a) statement and
+`P0-27`'s statement of intent were both re-verified present afterwards, because a rewrite that
+quietly drops a licence obligation un-ticks a task nobody would notice.
+
 ### Wiring run 01 in flight — all 78 under classification
 Every unresolved lookup inventoried and batched by owning file: documents 19, gallery editor 17,
 Forge 12, skills+RAG 8, email+gallery 8, shell singletons 14. Six agents classifying each id as
