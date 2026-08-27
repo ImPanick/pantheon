@@ -114,3 +114,38 @@ it that way has misread it. New themes may be added; new patterns may be added.
 
 **What would reopen this.** Nothing. This is a product decision, not a technical one.
 
+---
+
+## D-2026-08-26-04 · The deployment assumption changed — what that voids
+
+**What changed.** Pantheon was planned for one self-created admin on a home LAN with
+disposable data. It is now being planned to survive **real infrastructure**: OIDC/SSO against
+a bring-your-own provider, roles, and admin-controlled throttling and quotas. `P11` and `P12`
+exist because of this.
+
+**This is not a rewrite of the earlier decisions. It is their trigger condition arriving.**
+Each of the following was decided honestly for a single-admin box, and each named the
+condition that would void it. The conditions are now foreseeable rather than hypothetical.
+
+| Decision | What it assumed | What now |
+|---|---|---|
+| **D-2026-08-26-01** — delete the upload type blocklist | "a second user account" listed as a voiding condition | Stands for today's deployment. `P11-09` restores it — **with `.svg` in it this time** — gated on multi-user being enabled, not unconditionally. |
+| **P2-10** — delete the upload concurrency guard | one operator cannot meaningfully denial-of-service themselves | Reasoning collapses under real users. Becomes `P12-06`: an admin-controlled per-role setting, default off. |
+| **P2-05** — drop the memory-import allowlist | nothing is persisted or re-served, so extension filtering guards nothing | Still true, and still the right call. But the **size and rate** limits become the real control, which means they must be per-role and adjustable — `P12-01`, `P12-05`. |
+| **P2-08** — scale the attachment budget off the context window | one operator, one machine, one window | Right shape, wrong ceiling. Under `P12-04` it gets a per-role cap, which is also what stops a proven-window scale-up from handing someone twelve untrusted skill blocks. |
+| **P2-21** — admin-gate the built-in capability reads | argued as cheap insurance on a single-admin box | No longer insurance. `P11-10` makes it required. |
+
+**The one that does not move.** `P2-25` and `P2-26` — do not prune the tool blocklists — get
+*stronger* under multi-user, not weaker. Every argument for keeping them assumed a trusted
+operator; none of them assumed an untrusted one.
+
+**What this decision explicitly does not do.** It does not turn Pantheon into a SaaS product,
+add a subscription surface, or introduce a hosted tier. It makes a self-hosted platform
+survivable at organisational scale, which is a different thing — and it is what makes "use it
+internally at your company" from the README an honest offer rather than a slogan.
+
+**Sequencing.** `P11` and `P12` depend on nothing in `P0`–`P10` and block nothing in them.
+They are a parallel track. The one real ordering constraint inside it: **`D-05` telemetry comes
+before anything adaptive**, because you cannot tune a limit you cannot measure, and today token
+usage is stored as a running counter with the time dimension discarded at write.
+

@@ -47,7 +47,7 @@ soon as its dependency lands.
 | Phase | Area | Tasks | Ready | Blocked | Done |
 |---|---|---|---|---|---|
 | Setup | Fork, rename, rebuild | 6 | 0 | 0 | **6** |
-| P0 | Fork identity & licence | 29 | 15 | 0 | **14** |
+| P0 | Fork identity & licence | 30 | 16 | 0 | **14** |
 | P1 | Token layer — the free wins | 14 | 14 | 0 | 0 |
 | P2 | Un-nerf | 26 | 15 | 1 | **10** |
 | P3 | Mechanical hygiene | 12 | 12 | 0 | 0 |
@@ -58,7 +58,9 @@ soon as its dependency lands.
 | P8 | The Workshop | 48 | 48 | 0 | 0 |
 | P9 | Feature surfaces | 16 | 16 | 0 | 0 |
 | P10 | Accessibility & release | 12 | 12 | 0 | 0 |
-| **Total** | | **231** | **200** | **1** | **30** | | **231** | **211** | **0** | **20** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
+| P11 | Identity & access | 10 | 10 | 0 | 0 |
+| P12 | Limits & the control plane | 8 | 8 | 0 | 0 |
+| **Total** | | **250** | **219** | **1** | **30** | | **231** | **200** | **1** | **30** | | **231** | **211** | **0** | **20** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
 
 **Everything now waits on eighteen decisions**, collected into one sheet with a recommendation
 each — see § Progress for the link. Nine of them finish P2, five gate the public flip. Nothing
@@ -87,6 +89,15 @@ upstream's artwork under Pantheon's filenames.
 *The one progress area. Newest first. One entry per completed section — two lines, a
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
+
+### Scaling track opened — P11, P12, and the Cookbook rename
+The deployment assumption changed from one admin on a LAN to real infrastructure. Two phases
+added: identity and access (10 tasks — OIDC/SSO against a BYO provider, roles, and closing the
+privilege fail-open at `auth_helpers.py:172`), and limits and the control plane (8 — every limit
+is a process-wide env constant today, none per-role, none adjustable without a restart). Five
+earlier decisions had "a second user account" as their voiding condition; `DECISIONS.md`
+D-2026-08-26-04 records which move and which do not. Cookbook filed for rename as `P0-29` —
+3,533 occurrences, larger than the Odysseus sweep was.
 
 ### Decision ledger — 18 open calls collected, awaiting answers
 Everything blocked on a product call rather than a code question, gathered into one sheet with
@@ -224,6 +235,12 @@ Phases are ordered by dependency, not importance. **P0 → P1 → P3 are strictl
 sequential.** P2 is independent and can run in parallel with anything from the start.
 P4 gates P5. P8 depends only on P1.
 
+**P11 and P12 are the scaling track** and depend on nothing in P0–P10. They exist because the
+deployment assumption changed: this was planned for one admin on a home LAN, and it is now
+being planned to survive real infrastructure with real users. Several settled decisions named
+"a second user account" as their voiding condition — those conditions are now foreseeable
+rather than hypothetical, and `P11-09` is where that debt comes due.
+
 ---
 
 # P0 · Fork identity & licence
@@ -273,6 +290,7 @@ purge, re-index, log back in. The only manual step is one line in your `.env`.
 - [ ] **P0-26** Reconcile the credits file's "the core ships fully permissive (MIT-compatible)" framing against the AGPL `LICENSE`, or state which is authoritative for Pantheon.
 - [x] **P0-27** README statement of intent: *"Pantheon is free software under the AGPL. I don't sell it, and I'd rather you didn't."* **Social, not legal — do not add a non-commercial clause.** AGPL §10 prohibits further restrictions and §7 lets any recipient strip one. — **done:** in the README licence section, phrased as intent and explicitly not as a clause.
 - [ ] **P0-28** **The root `ROADMAP.md` is upstream's, and the sweep put Pantheon's name on it.** It now opens *"Pantheon is on a voyage, but not home yet... (I don't know what I'm doing, help)"* — upstream's words, upstream's self-deprecation, attributed to this project. It also collides with the real tracker at `.pantheon/ROADMAP.md`, which the README links as "Tracker". Replace it with a short pointer to `.pantheon/ROADMAP.md`, or delete it. `Verify:` a reader following either link lands somewhere that is true.
+- [ ] **P0-29** **Rename Cookbook.** It reads as a recipe box; it is a model-serving control plane — remote host registry with SSH keys, GPU detection and hardware fit, weight downloads from HuggingFace and Ollama, vLLM / llama.cpp / Ollama launches held open in tmux, process kill, and task-status polling. 17 routes. **Surface: 3,533 occurrences across 172 files and 43 paths — larger than the Odysseus→Pantheon sweep was** (2,929). Use the same tool: `scripts/pantheon-init.sh` is proven and parameterises cleanly. Decide the name first (`DECISIONS.md`, pending) and whether *recipe* survives — 242 occurrences, and a vLLM recipe genuinely is a parameterised launch config, so it may earn its keep even if Cookbook does not. `Verify:` no user-visible string says Cookbook; `rail-*`, `tool-*-btn` and modal ids move together with their CSS.
 
 ---
 
@@ -608,6 +626,89 @@ the only lane through which the theme file gets touched.
 - [ ] **P10-10** Full regression: `pytest -q`, `py_compile` across app/routes/src, `node --check` across every touched module, and a manual pass over every surface in the mockup.
 - [ ] **P10-11** Run the `SECURITY.md` fork checklist before the first public push — `git status --short`, the ignore check, and the secret grep.
 - [ ] **P10-12** Write the release notes. Lead with the Odysseus credit. Enumerate the breaking renames: env vars, storage keys, vector collections, cookie, CLI scripts, systemd unit, bundle id.
+
+---
+
+# P11 · Identity & access
+*Area: `identity` · Depends: nothing · Blocks: P12's per-role limits*
+
+**Why this is a phase and not a task.** Today identity is one JSON file: bcrypt hashes and
+pyotp secrets in `auth.json`, a single `is_admin` boolean, and nine `can_*` privilege flags
+read per user. There are no roles, no groups, and no external identity. Worse, unknown
+privilege keys **fail open** — `privs.get(key, True)` at `src/auth_helpers.py:172` — with the
+comment "the UI gates display-side", and `P2-18` proved that UI gate does not work. A typo in
+a privilege key currently grants access.
+
+None of that is wrong for one admin on a LAN. All of it is wrong the moment a second person
+has an account.
+
+- [ ] **P11-01** **Close the fail-open default.** Known keys default to denied; genuinely
+  unknown keys stay permissive so a new key does not lock everyone out mid-deploy. Requires a
+  registry of known privilege keys, which does not exist — there are 9, discovered by grep.
+  `Verify:` a typo'd key denies rather than grants.
+- [ ] **P11-02** **Introduce roles between `is_admin` and the nine flags.** Today admin means
+  every privilege wholesale (`ADMIN_PRIVILEGES`), and non-admin means nine independent
+  booleans set per user. A role is the missing middle: a named bundle of privileges plus limit
+  profile. Keep `is_admin` as the superuser role rather than replacing it.
+- [ ] **P11-03** **OIDC Authorization Code + PKCE against a discovery document.** BYO
+  provider — Keycloak, Zitadel, Authentik, Authelia, or a hosted IdP. Discovery URL, client id,
+  client secret, scopes. No provider-specific code.
+- [ ] **P11-04** **Claim → role mapping.** Configurable: which claim carries groups, and which
+  group maps to which Pantheon role. This is the piece that makes SSO useful rather than just
+  a different login button.
+- [ ] **P11-05** **Keep local auth alongside, not instead.** BYO means both — an OIDC outage
+  must not lock the operator out of their own box. Local admin stays as a break-glass path.
+- [ ] **P11-06** **JIT provisioning on first SSO login**, with a default role. SCIM is a
+  later question and probably never for self-hosted.
+- [ ] **P11-07** **Sessions that survive more than one process.** They are file-backed today
+  (`Loaded N session(s) from disk`), which is fine for one container and wrong behind a load
+  balancer. Decide before, not after, someone runs two replicas.
+- [ ] **P11-08** **An auth audit log** — logins, role changes, privilege grants, failures.
+  Feeds `D-05`'s telemetry table rather than inventing a second store.
+- [ ] **P11-09** **Re-arm what single-user mode let us delete.** `DECISIONS.md`
+  D-2026-08-26-01 deleted the upload type blocklist and named "a second user account" as the
+  condition that voids it. This phase *is* that condition. Restore the check — with `.svg` in
+  it this time — gated on multi-user being enabled, not unconditionally.
+- [ ] **P11-10** **Admin-gate the built-in capability reads** if `P2-21` has not already. Any
+  logged-in non-admin can currently read all 60 tool instruction blocks.
+
+---
+
+# P12 · Limits & the control plane
+*Area: `control-plane` · Depends: P11-02 for per-role, `D-05` for anything adaptive*
+
+**The gap.** Every limit in Pantheon is a process-wide constant read from an environment
+variable at import: eleven `PANTHEON_*_MAX_BYTES` caps, one 49-line `RateLimiter`, and a
+handful of literals like the 24,000-character attachment budget. Nothing is per-user, nothing
+is per-role, and nothing can be changed without a restart. An operator who wants to give one
+team bigger uploads has no move except editing compose and rebuilding.
+
+**The principle: a limit is policy, not a constant.** Settings already has the right shape —
+a file-backed dict with `get_setting` / `set_setting` and a `DEFAULT_SETTINGS` merge — so this
+is mostly moving values into a system that exists, then layering roles on top.
+
+- [ ] **P12-01** **Move the eleven byte caps into settings**, with the environment variable as
+  an *override* rather than the only source. Order: role profile → instance setting → env →
+  built-in default.
+- [ ] **P12-02** **Limit profiles attached to roles.** Upload size, files per request, request
+  rate, context budget, concurrent agent runs, model-serve permission.
+- [ ] **P12-03** **Runtime-adjustable without a restart.** The caps are read at import today,
+  so this is a real refactor, not a settings row.
+- [ ] **P12-04** **Context and attachment budgets become policy.** This is where `P2-08` and
+  `P2-09` land properly: the shared 24,000-char budget, the PDF's 15,000, the per-file 30,000,
+  and skill-injection count all become a single coherent budget with a per-role ceiling — and
+  the ceiling is what stops a proven-window scale-up from handing someone twelve untrusted
+  skill blocks.
+- [ ] **P12-05** **Per-user and per-role rate limiting.** The current limiter is per-IP, which
+  behind any reverse proxy is one bucket for everyone.
+- [ ] **P12-06** **Reinstate upload concurrency as an admin control, not a constant.**
+  `P2-10`'s recommendation to delete it assumed one user on a LAN. Under real infrastructure
+  it becomes a per-role setting with the default off.
+- [ ] **P12-07** **An admin surface for all of it** — one panel, not eleven env vars in a
+  compose file. Depends on `P2-20` landing the admin markup pattern first.
+- [ ] **P12-08** **Show operators what is actually being consumed** before asking them to set
+  a number. Blocked on `D-05` — you cannot tune a limit you cannot measure, and today token
+  usage is stored as a running total with the time dimension discarded at write.
 
 ---
 
