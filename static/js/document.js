@@ -4950,6 +4950,10 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
           <button type="button" id="doc-pdf-add-check-btn" class="md-toolbar-pdf-only" title="Add checkmark (then click on PDF)" style="display:none"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></button>
           <button type="button" id="doc-pdf-add-sign-btn" class="md-toolbar-pdf-only" title="Add signature (then click on PDF)" style="display:none"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3l6 6-9 9-3-3z"/><path d="M9 15l-3 1 1-3"/><path d="M4 18l3-3"/><path d="M3 20l3-3"/><path d="M5 22l3-3"/></svg><span class="doc-pdf-sign-label">sign</span></button>
           <button type="button" id="doc-pdf-refresh-btn" class="md-toolbar-pdf-only" title="Reload PDF view" style="display:none"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
+          <!-- Text-only on purpose: _aiFillAnnotations() swaps this button's
+               textContent to "Thinking…" and back to "AI fill", which would
+               wipe an icon child. -->
+          <button type="button" id="doc-pdf-ai-fill-btn" class="md-toolbar-pdf-only" title="Fill this form with AI — describe what to enter, then review each box" style="display:none">AI fill</button>
         </div>
         <div class="md-toolbar-overflow-wrapper" id="md-toolbar-overflow-wrapper" style="display:none">
           <button class="md-toolbar-overflow-toggle" id="md-toolbar-overflow-toggle" title="More formatting"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></button>
@@ -5193,9 +5197,14 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     document.getElementById('doc-mobile-grabber')?.addEventListener('click', () => closePanel('down'));
 
     // Wire up events
-    document.getElementById('doc-close-btn')?.addEventListener('click', () => closePanel('down'));
-    document.getElementById('doc-footer-close-btn')?.addEventListener('click', () => { if (activeDocId) closeTab(activeDocId); });
-    document.getElementById('doc-import-btn')?.addEventListener('click', () => openLibrary());
+    // The header X (#doc-close-btn), the footer X (#doc-footer-close-btn) and
+    // the dedicated import icon (#doc-import-btn) are gone — the pane template
+    // above says so in two places ("Close + Copy/Export moved to the bottom
+    // action footer", "The X close … is now redundant with the per-tab close
+    // button in the title strip — removed") and the export menu now carries
+    // "Import from library". Close-the-panel lives on .doc-divider-hide and
+    // #doc-mobile-grabber; close-the-tab lives on .doc-tab-close, the per-tab
+    // menu's `close` action and #doc-mobile-close.
     document.getElementById('doc-footer-copy-btn')?.addEventListener('click', (e) => {
       if (e.currentTarget.dataset.mode === 'reply') { if (activeDocId) _sendSignedReply(activeDocId); }
       else saveDocument({ silent: false, forceVersion: true });
@@ -5208,14 +5217,13 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     // Save, copy, run, export, delete, preview toggles are now in per-tab context menu
     document.getElementById('doc-version-badge').addEventListener('click', toggleVersionHistory);
     document.getElementById('doc-version-close').addEventListener('click', _closeVersionPanel);
-    // Reflect the current language as a small icon left of the type select.
-    const _syncLangIcon = () => {
-      const iconEl = document.getElementById('doc-language-icon');
-      const v = document.getElementById('doc-language-select')?.value || '';
-      if (iconEl) iconEl.innerHTML = v ? langIcon(v, 14, { style: 'opacity:0.75;' }) : '';
-    };
-    // Intercept programmatic `langSelect.value = …` so the icon updates without
-    // having to instrument every set-site in this file.
+    // The current language reads as an icon on #doc-langpicker-trigger, built
+    // by _initLangPicker() below. The older standalone #doc-language-icon span
+    // it replaced is gone (the picker used to delete it on sight), so the
+    // sync helper that painted it is gone with it — _syncLangPicker() is the
+    // single writer now.
+    // Intercept programmatic `langSelect.value = …` so the picker updates
+    // without having to instrument every set-site in this file.
     (function _interceptLangSelectValue() {
       const ls = document.getElementById('doc-language-select');
       if (!ls) return;
@@ -5224,9 +5232,8 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
       Object.defineProperty(ls, 'value', {
         configurable: true,
         get() { return desc.get.call(this); },
-        set(v) { desc.set.call(this, v); _syncLangIcon(); _syncLangPicker(); },
+        set(v) { desc.set.call(this, v); _syncLangPicker(); },
       });
-      _syncLangIcon();  // initial paint
     })();
 
     // ── Custom language picker ────────────────────────────────────────────
@@ -5343,11 +5350,9 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
       });
 
       // Hide the native select but keep it in the layout for screen readers
-      // / programmatic value sets / focus management. The icon span next to
-      // it is removed since the trigger now carries the current icon.
+      // / programmatic value sets / focus management. The trigger carries the
+      // current icon, so there is no separate icon span to tear down.
       ls.classList.add('doc-langpicker-native-hidden');
-      const iconSpan = document.getElementById('doc-language-icon');
-      if (iconSpan) iconSpan.remove();
       ls.parentNode.insertBefore(trigger, ls);
       // Menu is body-mounted so position:fixed coords work cleanly.
       document.body.appendChild(menu);
@@ -5355,7 +5360,6 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
       _syncLangPicker();
     })();
     document.getElementById('doc-language-select').addEventListener('change', () => {
-      _syncLangIcon();
       _syncLangPicker();
       const val = document.getElementById('doc-language-select').value;
       // For form-backed docs, the select toggles between PDF view and the
@@ -5599,10 +5603,9 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
       document.getElementById('doc-email-send-caret')?.setAttribute('aria-expanded', 'false');
     }, true);
 
-    // Attachments
-    document.getElementById('doc-email-attach-btn')?.addEventListener('click', (e) => {
-      _showComposeAttachMenu(e.currentTarget);
-    });
+    // Attachments — one paperclip, #md-toolbar-attach-btn, which stays visible
+    // in email mode (it carries no .md-toolbar-email-hide) and branches on the
+    // doc's language. The separate #doc-email-attach-btn it replaced is gone.
     document.getElementById('md-toolbar-attach-btn')?.addEventListener('click', (e) => {
       if (_activeDocLanguage() === 'email') {
         _showComposeAttachMenu(e.currentTarget);
@@ -5813,6 +5816,10 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     document.getElementById('doc-pdf-add-check-btn')?.addEventListener('click', () => _setPdfDropMode(_pdfDropMode === 'check' ? null : 'check'));
     document.getElementById('doc-pdf-add-sign-btn')?.addEventListener('click', () => _setPdfDropMode(_pdfDropMode === 'signature' ? null : 'signature'));
     document.getElementById('doc-pdf-refresh-btn')?.addEventListener('click', () => _renderPdfPane());
+    // AI fill — asks the backend's vision pipeline to propose a value for every
+    // blank on the form, then drops them in as ordinary annotations the user
+    // can edit, drag or delete. Route: POST /api/document/{id}/ai-fill-annotations.
+    document.getElementById('doc-pdf-ai-fill-btn')?.addEventListener('click', () => _aiFillAnnotations());
 
     // Markdown formatting toolbar
     initMdToolbar();
@@ -6570,7 +6577,6 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     const overflowWrapper = document.getElementById('md-toolbar-overflow-wrapper');
     const overflowToggle = document.getElementById('md-toolbar-overflow-toggle');
     const overflowMenu = document.getElementById('md-toolbar-overflow-menu');
-    const undoBtn = document.getElementById('md-toolbar-undo');
 
     // Click handler for format buttons + the grouped dropdown toggles. The menu
     // is appended to <body> (not nested in the toolbar) so the draggable panel's
@@ -6594,14 +6600,10 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
       applyMdFormat(btn.dataset.md);
     });
 
-    // Undo button
-    if (undoBtn) {
-      undoBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        const ta = document.getElementById('doc-editor-textarea');
-        if (ta) { ta.focus(); document.execCommand('undo'); }
-      });
-    }
+    // Undo is #doc-undo-btn — one button, moved into the action footer by the
+    // pane builder. It already does everything this toolbar's own undo did,
+    // plus the PDF-annotation undo and the mobile keyboard dismiss, so there
+    // is no second undo control here.
 
     // Overflow collapse logic
     let _mdMenuOpen = false;
@@ -6694,140 +6696,12 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     toolbar._syncOverflow = syncMdOverflow;
   }
 
-  /** Collapse action buttons into overflow "..." menu (3 most-used visible) */
-  const _DOC_RECENTS_KEY = 'pantheon-doc-actions-recent';
-  const _DOC_MAX_VISIBLE = 2;
-
-  function _getDocRecent() {
-    try { return JSON.parse(localStorage.getItem(_DOC_RECENTS_KEY) || '[]'); } catch { return []; }
-  }
-  function _trackDocAction(id) {
-    let recent = _getDocRecent().filter(x => x !== id);
-    recent.unshift(id);
-    if (recent.length > 10) recent.length = 10;
-    localStorage.setItem(_DOC_RECENTS_KEY, JSON.stringify(recent));
-  }
-
-  function initActionOverflow() {
-    const actionsEl = document.getElementById('doc-editor-actions');
-    const wrapper = document.getElementById('doc-overflow-wrapper');
-    const toggle = document.getElementById('doc-overflow-toggle');
-    const menu = document.getElementById('doc-overflow-menu');
-    if (!actionsEl || !wrapper || !toggle || !menu) return;
-
-    const allBtns = Array.from(actionsEl.querySelectorAll('.doc-collapsible-btn'));
-    let _menuOpen = false;
-
-    function syncOverflow() {
-      allBtns.forEach(b => { b.classList.remove('doc-collapsed'); });
-      menu.innerHTML = '';
-
-      // Filter to currently visible buttons
-      const available = allBtns.filter(b => b.style.display !== 'none');
-
-      // Sort by recent usage, defaults: copy, export, save
-      const recent = _getDocRecent();
-      const defaults = ['doc-copy-btn', 'doc-export-btn', 'doc-save-btn'];
-      const order = recent.length > 0 ? recent : defaults;
-
-      // Auto-pin: md preview when language is markdown
-      const lang = document.getElementById('doc-language-select')?.value;
-      const pinned = [];
-      if (lang === 'markdown') {
-        const mdBtn = available.find(b => b.id === 'doc-md-btn');
-        if (mdBtn) pinned.push(mdBtn);
-      }
-
-      const sorted = [...available].sort((a, b) => {
-        const ai = order.indexOf(a.id), bi = order.indexOf(b.id);
-        if (ai >= 0 && bi >= 0) return ai - bi;
-        if (ai >= 0) return -1;
-        if (bi >= 0) return 1;
-        return 0;
-      });
-
-      // Pinned + top N (deduplicated) — pinned count against the max
-      const visible = [...pinned];
-      for (const btn of sorted) {
-        if (visible.length >= _DOC_MAX_VISIBLE) break;
-        if (!visible.includes(btn)) visible.push(btn);
-      }
-      // Ensure we never exceed MAX_VISIBLE
-      while (visible.length > _DOC_MAX_VISIBLE) visible.pop();
-      const overflow = sorted.filter(b => !visible.includes(b));
-
-      // Show visible, hide overflow
-      overflow.forEach(b => b.classList.add('doc-collapsed'));
-
-      // Reorder DOM: visible buttons before wrapper
-      for (const btn of visible) {
-        actionsEl.insertBefore(btn, wrapper);
-      }
-
-      if (overflow.length > 0) {
-        wrapper.style.display = '';
-        overflow.forEach(btn => {
-          const item = document.createElement('button');
-          item.className = 'doc-overflow-item';
-          item.innerHTML = btn.innerHTML + '<span>' + (btn.title || '') + '</span>';
-          item.addEventListener('click', (e) => {
-            _trackDocAction(btn.id);
-            // Export button has its own submenu
-            if (btn.id === 'doc-export-btn') {
-              e.stopPropagation();
-              const savedRect = item.getBoundingClientRect();
-              closeMenu();
-              setTimeout(() => showExportMenu(null, savedRect), 50);
-              return;
-            }
-            closeMenu();
-            btn.click();
-            syncOverflow(); // re-sort with new recency
-          });
-          menu.appendChild(item);
-        });
-      } else {
-        wrapper.style.display = 'none';
-      }
-    }
-
-    function closeMenu() {
-      _menuOpen = false;
-      menu.classList.remove('open');
-    }
-
-    toggle.addEventListener('click', (e) => {
-      e.stopPropagation();
-      _menuOpen = !_menuOpen;
-      if (_menuOpen) {
-        // Move to body to escape overflow:hidden on doc-editor-pane
-        document.body.appendChild(menu);
-        const rect = toggle.getBoundingClientRect();
-        menu.style.position = 'fixed';
-        menu.style.top = (rect.bottom + 2) + 'px';
-        menu.style.right = (window.innerWidth - rect.right) + 'px';
-        menu.style.left = 'auto';
-      } else {
-        wrapper.appendChild(menu);
-      }
-      menu.classList.toggle('open', _menuOpen);
-    });
-    document.addEventListener('click', () => {
-      if (_menuOpen) { closeMenu(); wrapper.appendChild(menu); }
-    });
-
-    // Also track when visible buttons are clicked directly
-    allBtns.forEach(btn => {
-      btn.addEventListener('click', () => {
-        _trackDocAction(btn.id);
-        // Defer re-sort so the click handler fires first
-        setTimeout(syncOverflow, 100);
-      });
-    });
-
-    requestAnimationFrame(syncOverflow);
-    _syncOverflow = syncOverflow;
-  }
+  // The per-tab context menu (showDocTabMenu) and the footer Save/Export
+  // split are the action surface now: the collapse-into-"…" overflow that
+  // used to live in #doc-editor-actions had no markup left to collapse
+  // (#doc-copy-btn / #doc-export-btn / #doc-save-btn / #doc-md-btn and the
+  // .doc-collapsible-btn class are gone), no caller, and an undeclared
+  // assignment that would have thrown under a module's strict mode. Removed.
 
   /** Divider drag to resize the editor pane */
   function initDividerDrag(divider, pane, isRight) {
@@ -8987,12 +8861,6 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 
     _activeSuggestions = _activeSuggestions.filter(s => s.id !== id);
     _clearSuggestionHighlight();
-
-    // Remove container if empty
-    if (_activeSuggestions.length === 0) {
-      const container = document.getElementById('doc-suggestions-container');
-      if (container) container.style.display = 'none';
-    }
   }
 
   /** Dismiss a suggestion — just remove the card */
@@ -9006,14 +8874,14 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 
     _activeSuggestions = _activeSuggestions.filter(s => s.id !== id);
     _clearSuggestionHighlight();
-
-    if (_activeSuggestions.length === 0) {
-      const container = document.getElementById('doc-suggestions-container');
-      if (container) container.style.display = 'none';
-    }
   }
 
   /** Clear all suggestion cards */
+  // One suggestion is on screen at a time: #doc-suggestion-active, built by
+  // _showCurrentSuggestion() and appended to <body> with position:fixed. The
+  // multi-card #doc-suggestions-container it replaced is gone — nothing
+  // creates it, nothing appends into it and it has no CSS — so removing the
+  // active card is the whole teardown.
   function clearAllSuggestions() {
     _activeSuggestions = [];
     _suggestionTotal = 0;
@@ -9022,8 +8890,6 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     _clearInlineDiff();
     const old = document.getElementById('doc-suggestion-active');
     if (old) { if (old._cleanup) old._cleanup(); old.remove(); }
-    const container = document.getElementById('doc-suggestions-container');
-    if (container) { container.innerHTML = ''; container.style.display = 'none'; }
     // Restore line numbers
     const ta = document.getElementById('doc-editor-textarea');
     if (ta) updateLineNumbers(ta.value);

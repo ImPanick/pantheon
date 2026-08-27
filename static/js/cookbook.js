@@ -2108,7 +2108,6 @@ function _wireTabEvents(body) {
 
   // Cache server selector
   const cacheServer = document.getElementById('hwfit-cache-server');
-  const cacheDirEl = document.getElementById('hwfit-cache-dir');
   if (cacheServer) {
     cacheServer.addEventListener('change', () => {
       _applyServerSelection(cacheServer.value);
@@ -2119,7 +2118,9 @@ function _wireTabEvents(body) {
       } else {
         srv = _serverByVal(val) || {};
       }
-      if (cacheDirEl) cacheDirEl.value = srv.modelDir || '~/.cache/huggingface/hub';
+      // The single `#hwfit-cache-dir` input this used to fill is gone: a
+      // server now carries `modelDirs` (plural), rendered read-only as
+      // `.cookbook-serve-dirs` pills just below, and edited in Settings.
       const dirsEl = document.querySelector('.cookbook-serve-dirs');
       if (dirsEl) {
         const dirs = (Array.isArray(srv.modelDirs) ? srv.modelDirs : [srv.modelDir || '~/.cache/huggingface/hub']).map(d => _normalizeCookbookModelDir(d)).filter(Boolean);
@@ -2199,19 +2200,13 @@ function _wireTabEvents(body) {
   // so a host that first built CPU-only (no nvcc at build time) keeps reusing
   // that binary forever; this is the lever to force a fresh GPU build after a
   // CUDA/ROCm toolkit is installed.
-  const rebuildBtn = document.getElementById('cookbook-rebuild-engine');
-  if (rebuildBtn && !rebuildBtn._wired) {
-    rebuildBtn._wired = true;
-    rebuildBtn.addEventListener('click', async () => {
-      // Match _installDep: honor the Dependencies server selector so the clear
-      // runs on the same host the build runs on.
-      const sel = document.getElementById('hwfit-deps-server');
-      if (sel) _applyServerSelection(sel.value);
-      const host = _envState.remoteHost || '';
-      const where = host || 'this server';
-      if (window._cookbookRebuildLlamaCpp) await window._cookbookRebuildLlamaCpp(false, rebuildBtn);
-    });
-  }
+  //
+  // It is no longer a `#cookbook-rebuild-engine` button in the Dependencies
+  // header — it moved into the llama_cpp row's "Installed ▾" menu (see
+  // _showDepMenu above), which offers both "Rebuild" and "Update source +
+  // rebuild" and calls _rebuildLlamaCpp directly. That function already reads
+  // `#hwfit-deps-server` and applies the server selection itself, so the row
+  // menu targets the same host the old header button did.
 
   // "Reinstall" buttons for pip-based serving stacks (vllm, sglang). The
   // deps list renders ASYNCHRONOUSLY after _fetchDependencies resolves, so
@@ -2323,16 +2318,11 @@ function _wireTabEvents(body) {
   const dlGgufRow = document.getElementById('cookbook-dl-gguf-row');
   const dlGgufQuant = document.getElementById('cookbook-dl-gguf-quant');
   const dlGgufNote = document.getElementById('cookbook-dl-gguf-note');
-  const dlCardToggle = document.getElementById('cookbook-download-card-toggle');
-  const dlCardBody = document.getElementById('cookbook-download-card-body');
-  const dlCardArrow = document.getElementById('cookbook-download-card-arrow');
-  if (dlCardToggle && dlCardBody) {
-    dlCardToggle.addEventListener('click', () => {
-      const isOpen = dlCardBody.style.display !== 'none';
-      dlCardBody.style.display = isOpen ? 'none' : 'block';
-      if (dlCardArrow) dlCardArrow.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(90deg)';
-    });
-  }
+  // The Download card's collapse lives further down in this same function, on
+  // `#cookbook-dl-tab-fold` / `#cookbook-dl-tab-fold-body` / `#cookbook-dl-tab-chevron`:
+  // it animates via the `.is-folded` class, persists to `cookbook_dl_tab_folded_v1`
+  // and auto-folds on downward scroll. The older `#cookbook-download-card-*`
+  // display:none toggle it replaced is gone.
   if (dlBtn && dlInput) {
     function _stripHfUrl(input) {
       let repo = input.trim();
@@ -2770,82 +2760,11 @@ function _wireTabEvents(body) {
   }
 
   // Browse Ollama library popup removed — Engine = Ollama in the
-  // Scan / Download filter covers this use case. The handler below is a
-  // no-op now because the elements no longer exist.
-  const olToggle = document.getElementById('cookbook-ollama-toggle');
-  const olArrow = document.getElementById('cookbook-ollama-arrow');
-  const olList = document.getElementById('cookbook-ollama-list');
-  const olRefresh = document.getElementById('cookbook-ollama-refresh');
-  if (olToggle && olList) {
-    let _olLoaded = false;
-    async function _loadOllama(refresh = false) {
-      olList.innerHTML = '<div class="hwfit-loading" style="opacity:0.5;font-size:11px;text-align:center;padding:12px;">Loading…</div>';
-      try {
-        const res = await fetch(`/api/cookbook/ollama/library${refresh ? '?refresh=1' : ''}`);
-        const data = await res.json();
-        const models = data.models || [];
-        if (!models.length) {
-          olList.innerHTML = '<div class="hwfit-loading">No models</div>';
-          return;
-        }
-        let html = '';
-        for (const m of models) {
-          const sizes = Array.isArray(m.sizes) && m.sizes.length ? m.sizes : ['latest'];
-          const sizeChips = sizes.map(s => `<button type="button" class="memory-toolbar-btn cookbook-ol-size" data-name="${esc(m.name)}" data-size="${esc(s)}" style="height:20px;padding:0 6px;font-size:10px;border-radius:3px;">${esc(s)}</button>`).join('');
-          html += `<div class="doclib-card memory-item cookbook-ollama-card" data-name="${esc(m.name)}">`;
-          html += `<div style="flex:1;min-width:0;">`;
-          html += `<div class="memory-item-title">${esc(m.name)} <a href="https://ollama.com/library/${esc(m.name)}" target="_blank" rel="noopener" class="cookbook-hf-link">ollama ↗</a></div>`;
-          if (m.description) html += `<div class="memory-item-meta" style="font-size:10px;opacity:0.55;margin-top:2px;">${esc(m.description)}</div>`;
-          html += `<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:4px;">${sizeChips}</div>`;
-          html += `</div></div>`;
-        }
-        olList.innerHTML = html;
-        olList.querySelectorAll('.cookbook-ol-size').forEach(btn => {
-          btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const name = btn.dataset.name;
-            const size = btn.dataset.size;
-            if (dlInput) {
-              dlInput.value = `${name}:${size}`;
-              dlInput.focus();
-            }
-          });
-        });
-        // Clicking the card body (not a size chip / link) → default to first size
-        olList.querySelectorAll('.cookbook-ollama-card').forEach(card => {
-          card.addEventListener('click', (e) => {
-            if (e.target.closest('a') || e.target.closest('.cookbook-ol-size')) return;
-            const name = card.dataset.name;
-            const firstSize = card.querySelector('.cookbook-ol-size')?.dataset.size || 'latest';
-            if (dlInput) {
-              dlInput.value = `${name}:${firstSize}`;
-              dlInput.focus();
-            }
-          });
-        });
-      } catch (e) {
-        olList.innerHTML = '<div class="hwfit-loading">Failed to load</div>';
-      }
-    }
-    olToggle.addEventListener('click', () => {
-      const isOpen = olList.style.display !== 'none';
-      olList.style.display = isOpen ? 'none' : 'flex';
-      if (olArrow) olArrow.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(90deg)';
-      if (!isOpen && !_olLoaded) {
-        _olLoaded = true;
-        _loadOllama(false);
-      }
-    });
-    if (olRefresh) olRefresh.addEventListener('click', (e) => {
-      e.stopPropagation();
-      _olLoaded = true;
-      _loadOllama(true);
-      if (olList.style.display === 'none') {
-        olList.style.display = 'flex';
-        if (olArrow) olArrow.style.transform = 'rotate(90deg)';
-      }
-    });
-  }
+  // Scan / Download filter covers this use case, so the standalone
+  // `#cookbook-ollama-toggle` / `-arrow` / `-list` / `-refresh` card and the
+  // handler that fed it are gone with it. `/api/cookbook/ollama/library` is
+  // still live and still consumed — by _ensureOllamaLib in cookbook-hwfit.js,
+  // which turns those models into rows in the main hwfit list.
 
   // Server add button, row removal, model-dir add/remove, and per-row wiring
   // are ALL owned by cookbook-hwfit.js's _hwfitInit / _wireServerEntry.
@@ -3074,6 +2993,13 @@ function _renderRecipes() {
   // = rotated 90deg into a down chevron (handled by existing toggle CSS).
   html += `<span id="cookbook-hf-latest-arrow" style="display:inline-block;transition:transform 0.15s;pointer-events:none;opacity:0.6;font-size:11px;">\u25B8</span>`;
   html += `</button>`;
+  // Re-run the trending scan on demand. Without this the list loads once on
+  // first expand and never again — collapsing and reopening reuses the cached
+  // render, so there was no way to pick up new HF trending results (or retry
+  // after an HF API timeout) short of changing servers. Same glyph and
+  // `.hwfit-gpu-btn` sizing as the Scan and Serve refresh buttons, so it reads
+  // as the same control.
+  html += `<button type="button" class="hwfit-gpu-btn" id="cookbook-hf-latest-refresh" title="Refresh trending models" aria-label="Refresh trending models" style="flex-shrink:0;width:28px;padding:0;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10"/><path d="M3.51 15a9 9 0 0 0 14.85 3.36L23 14"/></svg></button>`;
   html += `</div>`;
   html += `<div id="cookbook-hf-latest-list" style="display:none;margin-top:4px;max-height:320px;overflow-y:auto;overscroll-behavior:contain;flex-direction:column;gap:4px;"></div>`;
   html += `</div>`;

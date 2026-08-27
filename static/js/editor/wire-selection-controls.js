@@ -1,9 +1,14 @@
 /**
  * Lasso + Magic Wand panel controls — sliders, mode toggles, and the
- * panel action buttons (Invert / Clear / Delete / Copy / To Mask /
- * Bg Remove). The actual selection algorithms live in their tool
- * modules (editor/tools/lasso.js, editor/tools/wand.js); this file
- * just wires the side-panel UI to them.
+ * panel action buttons (Invert / Clear / Delete / Copy / To Mask).
+ * The actual selection algorithms live in their tool modules
+ * (editor/tools/lasso.js, editor/tools/wand.js); this file just wires
+ * the side-panel UI to them.
+ *
+ * Background removal is deliberately NOT duplicated here: #ge-rembg-run
+ * in the Bg Remove section already picks up the live wand/lasso
+ * selection as a hint mask (editor/ai-rembg.js), so a second
+ * selection-panel button would be a second way to do the same thing.
  *
  *   Lasso section:
  *     #ge-lasso-feather       slider, updates label + preview, recomposites
@@ -20,7 +25,7 @@
  *     #ge-wand-live           opt-in rAF-coalesced live retune while dragging
  *     .ge-wand-mode-btn       segmented toggle (New / Add / Subtract)
  *     #ge-wand-vis            toggle the translucent red overlay
- *     #ge-wand-clear / -invert / -delete / -copy / -mask / -rembg
+ *     #ge-wand-clear / -invert / -delete / -copy / -mask
  *
  * @param {{
  *   composite:               () => void,
@@ -33,9 +38,6 @@
  *   wandDeleteSelection:     () => void,
  *   wandCopyToNewLayer:      () => void,
  *   wandToMask:              () => void,
- *   buildSelectionHintMask:  () => string | null,
- *   applyImageTool:          (endpoint, payload, name, btn, opts?) => Promise<void>,
- *   uiModule:                object,
  * }} deps
  */
 import { state } from './state.js';
@@ -49,8 +51,6 @@ export function wireSelectionControls({
   lassoDeleteSelection, lassoCopyToLayer, lassoToMask,
   runMagicWand,
   wandClear, wandDeleteSelection, wandCopyToNewLayer, wandToMask,
-  buildSelectionHintMask, applyImageTool,
-  uiModule,
 }) {
   // ── Lasso section ──
   const lassoFPrev = document.getElementById('ge-lasso-feather-preview');
@@ -153,16 +153,6 @@ export function wireSelectionControls({
   document.getElementById('ge-wand-delete')?.addEventListener('click', wandDeleteSelection);
   document.getElementById('ge-wand-copy')?.addEventListener('click', wandCopyToNewLayer);
   document.getElementById('ge-wand-mask')?.addEventListener('click', wandToMask);
-  // Selection-constrained Bg Remove — reuses the same path the toolbar
-  // Bg Remove button does. buildSelectionHintMask picks the active
-  // wand/lasso selection, so this just kicks off the existing flow.
-  document.getElementById('ge-wand-rembg')?.addEventListener('click', async () => {
-    const btn = document.getElementById('ge-wand-rembg');
-    const hint = buildSelectionHintMask();
-    if (!hint) { if (uiModule) uiModule.showToast('Click to make a wand selection first'); return; }
-    await applyImageTool('/api/image/remove-bg', { hint_mask: hint }, 'BG Removed', btn);
-    wandClear();
-  });
 
   // Live tolerance preview (just opacity-tracking like sharpen).
   const wandTolPrev = document.getElementById('ge-wand-tol-preview');

@@ -278,14 +278,7 @@ async function _buildCompareUI() {
     }
   }
 
-  // 3. Hide mobile new-chat button during compare
-  const _mobileNewBtn = document.getElementById('mobile-new-chat-btn');
-  if (_mobileNewBtn) {
-    _mobileNewBtn.dataset.cmpWasDisplay = _mobileNewBtn.style.display;
-    _mobileNewBtn.style.display = 'none';
-  }
-
-  // 4. Save toolbar indicator display states before hiding
+  // 3. Save toolbar indicator display states before hiding
   const indicatorIds = ['overflow-tts-btn', 'overflow-attach-btn', 'overflow-rag-btn', 'overflow-research-btn', 'overflow-doc-btn', 'rag-indicator-btn', 'research-toggle-btn'];
   state._savedIndicatorDisplay = {};
   indicatorIds.forEach(id => {
@@ -293,7 +286,7 @@ async function _buildCompareUI() {
     if (el) state._savedIndicatorDisplay[id] = el.style.display;
   });
 
-  // 5. Save current mode and seed the toolbar for this compare type.
+  // 4. Save current mode and seed the toolbar for this compare type.
   const _toggleState = Storage.loadToggleState();
   state._savedMode = _toggleState.mode || 'chat';
   const _targetMode = (state._compareMode === 'agent') ? 'agent' : 'chat';
@@ -318,7 +311,7 @@ async function _buildCompareUI() {
   const _modeToggle = document.querySelector('.mode-toggle');
   if (_modeToggle) { _modeToggle.style.pointerEvents = ''; _modeToggle.style.opacity = ''; }
 
-  // 6. Force tool toggles per compare mode
+  // 5. Force tool toggles per compare mode
   disableToolToggles();
   if (state._compareMode === 'search') {
     const webChk = document.getElementById('web-toggle');
@@ -332,7 +325,7 @@ async function _buildCompareUI() {
     if (resBtn) { resBtn.style.display = ''; resBtn.classList.add('active'); }
   }
 
-  // 7. Hide existing chat container children (preserves event listeners)
+  // 6. Hide existing chat container children (preserves event listeners)
   const container = document.getElementById('chat-container');
   state._compareElements = [];
   if (_modeCleanup) state._compareElements.push(_modeCleanup);
@@ -343,7 +336,7 @@ async function _buildCompareUI() {
   });
   container.classList.add('compare-active');
 
-  // 8. Header bar
+  // 7. Header bar
   const cols = Math.min(n, 4);
   const headerBar = document.createElement('div');
   headerBar.className = 'compare-header-bar';
@@ -438,7 +431,7 @@ async function _buildCompareUI() {
   // Initial visibility — hidden if all current models are already probed
   window._updateCheckBtnState();
 
-  // 9. Grid of panes
+  // 8. Grid of panes
   const grid = document.createElement('div');
   grid.className = 'compare-grid';
   grid.dataset.cols = String(cols);
@@ -503,7 +496,7 @@ async function _buildCompareUI() {
   container.appendChild(grid);
   state._compareElements.push(grid);
 
-  // 10. Vote bar placeholder
+  // 9. Vote bar placeholder
   const voteBar = document.createElement('div');
   voteBar.id = 'compare-vote-bar';
   voteBar.className = 'compare-vote-bar';
@@ -513,7 +506,7 @@ async function _buildCompareUI() {
 
   if (state._blindMode && n > 1) shufflePanePositions();
 
-  // 11. Move chat input bar to the bottom of the container
+  // 10. Move chat input bar to the bottom of the container
   const inputBar = document.querySelector('.chat-input-bar');
   if (inputBar) {
     inputBar.style.display = '';
@@ -531,7 +524,7 @@ async function _buildCompareUI() {
   // so hide it and restore on deactivate via the wrap's _cleanup.
   _setupEvalPicker();
 
-  // 12. Hide tool buttons that don't apply during compare
+  // 11. Hide tool buttons that don't apply during compare
   ['overflow-tts-btn', 'overflow-attach-btn', 'overflow-rag-btn', 'overflow-research-btn', 'overflow-doc-btn', 'rag-indicator-btn', 'web-toggle-btn', 'bash-toggle-btn', 'overflow-plus-btn'].forEach(id => {
     const el = document.getElementById(id);
     if (el) { el.style.display = 'none'; el.style.pointerEvents = 'none'; }
@@ -1402,11 +1395,6 @@ function cleanupResults() {
     const sidebar = document.getElementById('sidebar');
     if (sidebar) sidebar.classList.remove('hidden');
     state._sidebarWasHidden = false;
-  }
-  const _mobileNewRestore = document.getElementById('mobile-new-chat-btn');
-  if (_mobileNewRestore && _mobileNewRestore.dataset.cmpWasDisplay !== undefined) {
-    _mobileNewRestore.style.display = _mobileNewRestore.dataset.cmpWasDisplay;
-    delete _mobileNewRestore.dataset.cmpWasDisplay;
   }
   state._hasVisibleResults = false;
 

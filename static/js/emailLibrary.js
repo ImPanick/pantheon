@@ -1391,7 +1391,9 @@ function _askAgentToUnsubscribe(candidate) {
   const prompt = url
     ? `Use the email unsubscribe tools and browser/web tools to unsubscribe from this email's web unsubscribe page. Ask me before any destructive step if the page is ambiguous.\n\nEmail UID: ${uid}\nFolder: ${folder}\nAccount: ${account || '(default)'}\nUnsubscribe URL: ${url}`
     : `Use scan_email_unsubscribes/unsubscribe_email to unsubscribe this email if safe.\n\nEmail UID: ${uid}\nFolder: ${folder}\nAccount: ${account || '(default)'}`;
-  const input = document.getElementById('message') || document.getElementById('message-input');
+  // The chat composer is `#message` (static/index.html) — the same id
+  // `#chat-form` submits below. There is no second composer id.
+  const input = document.getElementById('message');
   if (!input) {
     showToast?.('Chat composer not found');
     return;
@@ -3486,7 +3488,7 @@ async function _loadFolders({ resetMissing = false, live = false } = {}) {
       _libListCache.clear();
       const searchEl = document.getElementById('email-lib-search');
       const filterEl = document.getElementById('email-lib-filter');
-      const attachEl = document.getElementById('email-attachments-btn');
+      const attachEl = document.getElementById('email-attach-btn');
       if (searchEl) searchEl.value = '';
       if (filterEl) filterEl.value = 'all';
       if (attachEl) attachEl.classList.remove('active');

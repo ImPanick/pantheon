@@ -261,8 +261,6 @@ function _showSetupEndpointChoicesStreamed(options = {}) {
 }
 
 async function _hasConfiguredModels() {
-  const modelsBox = document.getElementById('models');
-  if (modelsBox && modelsBox.querySelector('.models-row')) return true;
   try {
     const res = await fetch(`${API_BASE}/api/models`, { credentials: 'same-origin' });
     if (!res.ok) return false;
@@ -3093,8 +3091,7 @@ async function _cmdTourTheme(args, ctx) {
   let modal = document.getElementById('theme-modal');
   if (!modal || modal.classList.contains('hidden')) {
     const opener = document.getElementById('tool-theme-btn')
-      || document.getElementById('rail-theme')
-      || document.getElementById('open-theme-btn');
+      || document.getElementById('rail-theme');
     if (opener) opener.click();
     for (let i = 0; i < 25; i++) {
       await new Promise(r => setTimeout(r, 80));
@@ -3337,8 +3334,8 @@ async function _cmdTourSettings(args, ctx) {
   // Open the settings modal.
   let modal = document.getElementById('settings-modal');
   if (!modal || modal.classList.contains('hidden')) {
-    const opener = document.getElementById('rail-settings')
-      || document.getElementById('tool-settings-btn');
+    const opener = document.getElementById('user-bar-settings')
+      || document.getElementById('rail-settings');
     if (opener) opener.click();
     for (let i = 0; i < 25; i++) {
       await new Promise(r => setTimeout(r, 80));
@@ -5125,8 +5122,7 @@ async function _cmdSetup(args, ctx) {
   }
 
   // Check if models are already configured
-  const modelsBox = document.getElementById('models');
-  const hasModels = modelsBox && modelsBox.querySelector('.models-row');
+  const hasModels = await _hasConfiguredModels();
 
   if (hasModels) {
     if (!topic) {

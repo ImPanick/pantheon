@@ -55,6 +55,11 @@ export function buildTopbar() {
             <span class="dropdown-icon">⤢</span>
             <span>Canvas…</span>
           </button>
+          <div class="ge-filter-submenu-label">Selection</div>
+          <button class="dropdown-item-compact" id="ge-image-action-fill" data-image-action="fill" disabled title="Make a selection or pick a mask first">
+            <span class="dropdown-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 11 11 3 3 11l8 8z"/><path d="M5 13h14"/><path d="M20 15s2 2.5 2 4a2 2 0 0 1-4 0c0-1.5 2-4 2-4z"/></svg></span>
+            <span>Fill selection / mask</span>
+          </button>
           <div class="ge-filter-submenu-label">Transform</div>
           <button class="dropdown-item-compact" data-image-action="rotate-90">
             <span class="dropdown-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/></svg></span>
@@ -86,6 +91,22 @@ export function buildTopbar() {
             <span class="dropdown-icon ge-blur-icon ge-blur-zoom" aria-hidden="true"></span>
             <span>Zoom Blur…</span>
           </button>
+        </div>
+      </div>
+      <div class="ge-edge-wrap" id="ge-edge-wrap" style="display:none;">
+        <button class="ge-btn ge-btn-sm" id="ge-edge-menu-btn" title="Feather or delete the active layer's edges" aria-haspopup="true">
+          <span class="ge-edge-glyph" aria-hidden="true">◢</span> Edge ▾
+        </button>
+        <div class="ge-edge-menu dropdown" id="ge-edge-menu" hidden>
+          <div class="ge-edge-form">
+            <label class="ge-edge-label" for="ge-edge-width">Band width (px)</label>
+            <input type="number" class="ge-edge-input" id="ge-edge-width" min="1" max="400" value="8" />
+            <div class="ge-edge-actions">
+              <button class="ge-btn ge-btn-sm" id="ge-edge-feather" title="Fade the active layer's alpha inside the band">Feather</button>
+              <button class="ge-btn ge-btn-sm" id="ge-edge-delete" title="Clear the active layer's pixels inside the band">Delete</button>
+            </div>
+            <p class="ge-edge-hint">Applies to the active layer. Feather fades pixels within this many px of any transparent area or canvas border; Delete clears them outright. Enter runs Feather.</p>
+          </div>
         </div>
       </div>
       <span class="ge-topbar-sep"></span>

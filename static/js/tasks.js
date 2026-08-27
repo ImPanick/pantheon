@@ -1191,7 +1191,6 @@ function _showPresetPicker() {
       _showForm(null, p.taskType, p.triggerType);
     });
   });
-  document.getElementById('task-preset-cancel')?.addEventListener('click', () => _renderMainView());
 
   // Describe a task in plain language → AI drafts the structured task + opens the form.
   const aiInput = document.getElementById('task-ai-input');

@@ -5460,7 +5460,7 @@ import { loadPanel } from './panels.js';
         }
 
         // Reset UI state
-        var _submitBtn = document.getElementById('submit');
+        var _submitBtn = document.querySelector('.send-btn');
         updateSubmitButton('idle', _submitBtn);
         var _msgInput = document.getElementById('message');
         if (_msgInput) _msgInput.disabled = false;

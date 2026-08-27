@@ -237,7 +237,9 @@ function _getSelectedAIEndpoint(type) {
     const sel = document.querySelector(`select[data-ge-tool-model="${type}"]`);
     raw = sel?.value || '';
   }
-  if (!raw) raw = document.getElementById('ge-ai-model')?.value || '';
+  // No global fallback: the editor-wide "Gen" model select (#ge-ai-model)
+  // was removed from the topbar — see editor/ai-models.js. Each AI tool
+  // now carries its own picker (#ge-ai-inpaint / select.ge-tool-model).
   if (!raw) return { endpoint: '', model: '' };
   const idx = raw.indexOf('::');
   if (idx < 0) return { endpoint: raw, model: '' };
@@ -319,7 +321,7 @@ function _openSamPrompt() {
   if (state.tool !== 'sam') {
     _clickToolButton('sam');
   } else {
-    const controls = document.getElementById('ge-controls') || document.querySelector('.ge-controls');
+    const controls = document.querySelector('.ge-controls');
     controls?.classList.remove('dismissed');
     document.getElementById('ge-sam-section')?.style.removeProperty('display');
   }
@@ -2429,8 +2431,11 @@ function _syncToolClearIndicators() {
       : 'Fill the active selection / mask with the current color';
   }
   // Topbar Selection button only makes sense with an active selection.
+  // `.ge-edge-wrap` carries `display:inline-block` in style.css, and an
+  // author display rule beats the UA `[hidden]` rule — so toggle display
+  // directly. Setting `.hidden` here would leave the button on screen.
   const edgeWrap = document.getElementById('ge-edge-wrap');
-  if (edgeWrap) edgeWrap.hidden = !hasSel;
+  if (edgeWrap) edgeWrap.style.display = hasSel ? '' : 'none';
   const lFeather = document.getElementById('ge-lasso-refine-feather');
   const lGrow = document.getElementById('ge-lasso-refine-grow');
   if (lFeather) lFeather.style.display = lassoHasSel ? '' : 'none';
@@ -2851,7 +2856,7 @@ function _wireInpaintPopoverWindow() {
     e.stopPropagation();
     panel.classList.add('dismissed');
     panel.style.display = 'none';
-    document.getElementById('ge-controls')?.classList.remove('ge-inpaint-popover-host');
+    document.querySelector('.ge-controls')?.classList.remove('ge-inpaint-popover-host');
   });
   const head = panel.querySelector('[data-inpaint-drag]');
   if (!head) return;
@@ -2918,7 +2923,7 @@ function _buildEditor(container) {
       // controls live in the right panel.
       const reactivated = state.tool === toolId;
       state.tool = toolId;
-      const controls = document.getElementById('ge-controls') || document.querySelector('.ge-controls');
+      const controls = document.querySelector('.ge-controls');
       if (controls) {
         if (reactivated) controls.classList.toggle('dismissed');
         else controls.classList.remove('dismissed');
@@ -3350,13 +3355,12 @@ function _buildEditor(container) {
 
   // Inpaint side-panel controls (Feather/Strength previews, post-gen
   // edge tuner, mask vis/invert/clear, paint-erase toggle, mask tint
-  // pickers) — full implementation in editor/wire-inpaint-controls.js.
+  // picker) — full implementation in editor/wire-inpaint-controls.js.
   wireInpaintControls({
     composite,
     applyInpaintFeather: _applyInpaintFeather,
     autoMatchInpaint: _autoMatchLastInpaintLayer,
     syncToolClearIndicators: () => _syncToolClearIndicators(),
-    attachColorPicker,
     uiModule,
   });
 
@@ -3381,9 +3385,9 @@ function _buildEditor(container) {
   wireStrokeToolSliders();
 
   // Sharpen + Bg Remove + edge cleanup — full implementation in
-  // editor/ai-rembg.js. Returns the selection-hint-mask builder so
-  // the wand-rembg button (in the wand controls section) can reuse it.
-  const { buildSelectionHintMask: _buildSelectionHintMask } = wireRembgAndSharpen({
+  // editor/ai-rembg.js. #ge-rembg-run builds its own selection-hint
+  // mask internally, so nothing here needs the returned builder.
+  wireRembgAndSharpen({
     applyImageTool: _applyImageTool,
     openCookbookForDependency: (pkg) => _openCookbookForDependency(pkg),
     composite,
@@ -3436,9 +3440,6 @@ function _buildEditor(container) {
     wandDeleteSelection: _wandDeleteSelection,
     wandCopyToNewLayer: _wandCopyToNewLayer,
     wandToMask: _wandToMask,
-    buildSelectionHintMask: _buildSelectionHintMask,
-    applyImageTool: _applyImageTool,
-    uiModule,
   });
   document.getElementById('ge-sam-find')?.addEventListener('click', () => _runSamTextSelection());
   document.getElementById('ge-sam-query')?.addEventListener('keydown', (e) => {

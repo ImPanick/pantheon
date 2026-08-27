@@ -2025,7 +2025,7 @@ body.bg-pattern-sparkles {
     #welcome-screen .welcome-name {
       font-size:2.2rem;
       font-weight:700;
-      background: linear-gradient(135deg, var(--brand-color, var(--red)), color-mix(in srgb, var(--brand-color, var(--red)) 60%, var(--fg)));
+      background: linear-gradient(135deg, var(--brand-color, var(--red)), color-mix(in srgb, var(--brand-color, var(--red)) 60%, var(--brand-mix-to, var(--fg))));
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;

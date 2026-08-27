@@ -134,16 +134,9 @@ export function initSidebarLayout(Storage, opts) {
     });
   }
 
-  // Header-only new-chat aliases. #sidebar-new-chat-btn is wired in app.js
-  // because it needs the full default-model/pending-chat flow; wiring it here
-  // as well caused duplicate click handling and occasional no-op/race behavior.
-  const chatNewBtn = document.getElementById('chat-new-btn');
-  [chatNewBtn].forEach(btn => {
-    if (btn) btn.addEventListener('click', () => {
-      const brandBtn = document.getElementById('sidebar-brand-btn');
-      if (brandBtn) brandBtn.click();
-    });
-  });
+  // NOTE: do not wire #sidebar-new-chat-btn here. It is wired in app.js because
+  // it needs the full default-model/pending-chat flow; wiring it here as well
+  // caused duplicate click handling and occasional no-op/race behavior.
 
   // Hamburger cycles: full sidebar → mini → off → full
   let _userToggledSidebar = false;

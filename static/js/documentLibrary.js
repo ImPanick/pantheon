@@ -1166,19 +1166,11 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
     const actionsBtn = document.getElementById('doclib-bulk-actions');
     if (countEl) countEl.textContent = `${_librarySelectedIds.size} Selected`;
     if (actionsBtn) actionsBtn.style.color = _librarySelectedIds.size > 0 ? 'var(--fg)' : '';
-    // Legacy per-action buttons no longer rendered — guard so the rest of the
-    // function (if anything still references them) doesn't crash.
-    const deleteBtn = document.getElementById('doclib-bulk-delete');
-    const exportBtn = document.getElementById('doclib-bulk-export');
-    const archiveBtn = document.getElementById('doclib-bulk-archive');
-    const cloneBtn = document.getElementById('doclib-bulk-clone');
-    if (deleteBtn) deleteBtn.disabled = _librarySelectedIds.size === 0;
-    if (exportBtn) exportBtn.disabled = _librarySelectedIds.size === 0;
-    if (cloneBtn) cloneBtn.disabled = _librarySelectedIds.size === 0;
-    if (archiveBtn) {
-      archiveBtn.disabled = _librarySelectedIds.size === 0;
-      archiveBtn.textContent = _libraryArchivedView ? 'Restore' : 'Archive';
-    }
+    // The four legacy per-action buttons (#doclib-bulk-delete / -export /
+    // -archive / -clone) are not rendered anywhere and have not been for some
+    // time — #doclib-bulk-actions is the one bulk surface now, and its menu
+    // (see the Actions dropdown) wires Archive/Restore, Clone, Export and
+    // Delete off the same four functions. Nothing left to enable or disable.
   }
 
   async function libraryDeleteSingle(docId, card) {
@@ -1684,6 +1676,7 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
                 </select>
                 <button class="memory-toolbar-btn" id="doclib-research-select-btn">Select</button>
                 <button class="memory-toolbar-btn" id="doclib-research-tidy-btn" title="Tidy: delete research with no sources or empty reports">Tidy</button>
+                <button class="memory-toolbar-btn" id="doclib-research-archived-btn" title="Show archived research"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>Archived</button>
               </div>
               <input type="text" id="doclib-research-search" placeholder="Search research\u2026" class="memory-search-input" />
             </div>
@@ -1713,6 +1706,7 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
                 </select>
                 <button class="memory-toolbar-btn" id="doclib-select-btn" title="Select documents">Select</button>
                 <button class="memory-toolbar-btn" id="doclib-tidy-btn" title="Tidy: remove empty / junk / duplicate documents">Tidy</button>
+                <button class="memory-toolbar-btn" id="doclib-archived-btn" title="Show archived documents"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>Archived</button>
               </div>
               <input type="text" id="doclib-search" placeholder="Search titles &amp; content\u2026" class="memory-search-input" />
               <div id="doclib-chips" class="doclib-lang-chips"></div>
@@ -3380,8 +3374,11 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
     };
     document.addEventListener('keydown', _libraryEscHandler);
 
-    // Toggle active on tool button
-    const btn = document.getElementById('tool-doclib-btn');
+    // Toggle active on tool button. The sidebar row that opens this modal is
+    // #tool-library-btn (app.js wires it → sessionModule.openLibrary(), which
+    // delegates straight back here); modalManager's _AUTO_WIRE, ui_visibility,
+    // keyboard-shortcuts and slashCommands all name the same id.
+    const btn = document.getElementById('tool-library-btn');
     if (btn) btn.classList.add('active');
 
     libraryFetch(false);
@@ -3413,7 +3410,7 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
       _libraryEscHandler = null;
     }
 
-    const btn = document.getElementById('tool-doclib-btn');
+    const btn = document.getElementById('tool-library-btn');
     if (btn) btn.classList.remove('active');
   }
 

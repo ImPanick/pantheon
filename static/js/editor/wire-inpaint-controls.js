@@ -19,16 +19,16 @@
  *     #ge-inpaint-mode-paint   set persistent paint mode
  *     #ge-inpaint-mode-erase   set persistent erase mode
  *
- *   Mask tint pickers (wired to keep both visually in sync):
- *     .ge-inpaint-mask-color   (inpaint section)
- *     #ge-topbar-mask-color    (topbar swatch — HSV picker attached)
+ *   Mask tint picker — one surface only:
+ *     .ge-inpaint-mask-color   (inpaint section; the in-house HSV
+ *                               picker is attached by galleryEditor's
+ *                               `.ge-color-picker` sweep over the panel)
  *
  * @param {{
  *   composite:                () => void,
  *   applyInpaintFeather:      (layer: object, featherPx: number, edgeShiftPx: number) => void,
  *   autoMatchInpaint:         () => void,
  *   syncToolClearIndicators:  () => void,
- *   attachColorPicker:        (el: HTMLInputElement) => void,
  *   uiModule:                 object,
  * }} deps
  */
@@ -39,7 +39,7 @@ const EYE_OFF_SM  = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none"
 
 export function wireInpaintControls({
   composite, applyInpaintFeather, autoMatchInpaint, syncToolClearIndicators,
-  attachColorPicker, uiModule,
+  uiModule,
 }) {
   // ── Feather + Strength preview swatches ──
   const featherPrev = document.getElementById('ge-feather-preview');
@@ -144,25 +144,18 @@ export function wireInpaintControls({
   document.getElementById('ge-inpaint-mode-erase')?.addEventListener('click', () => setInpaintMode(true));
 
   // ── Mask color picker ──
-  // Updates state.maskTintColor live so the user can pick a colour
-  // that contrasts with their photo. Wire both the topbar picker AND
-  // the inpaint-section picker so changing one syncs the other.
+  // Updates state.maskTintColor live so the user can pick a colour that
+  // contrasts with their photo. The swatch in the inpaint section is the
+  // only surface for it; a mirrored topbar swatch (#ge-topbar-mask-color)
+  // was never built and is not wanted — one control per piece of state.
   function applyMaskTintFromHex(hex) {
     const r = parseInt(hex.slice(1, 3), 16);
     const g = parseInt(hex.slice(3, 5), 16);
     const b = parseInt(hex.slice(5, 7), 16);
     state.maskTintColor = `rgba(${r}, ${g}, ${b}, 1)`;
     const inpaintPicker = document.querySelector('.ge-inpaint-mask-color');
-    const topbarPicker = document.getElementById('ge-topbar-mask-color');
     if (inpaintPicker && inpaintPicker.value !== hex) inpaintPicker.value = hex;
-    if (topbarPicker && topbarPicker.value !== hex) topbarPicker.value = hex;
     composite();
   }
   document.querySelector('.ge-inpaint-mask-color')?.addEventListener('input', (e) => applyMaskTintFromHex(e.target.value));
-  document.getElementById('ge-topbar-mask-color')?.addEventListener('input', (e) => applyMaskTintFromHex(e.target.value));
-  // Use the in-house HSV picker for the topbar swatch.
-  const topbarMaskColor = document.getElementById('ge-topbar-mask-color');
-  if (topbarMaskColor) {
-    try { attachColorPicker(topbarMaskColor); topbarMaskColor.value = topbarMaskColor.value; } catch {}
-  }
 }

@@ -355,6 +355,21 @@ export function controlsHTML({ color, brushSize, wandTolerance }) {
         <button class="ge-btn ge-btn-primary" id="ge-harmonize-run">Harmonize</button>
       </div>
     </div>
+    <div class="ge-upscale-section" id="ge-upscale-section" style="display:none;">
+      <div class="ge-section-title ge-section-title-with-help"><span>Upscale</span><span class="ge-section-help" tabindex="0" role="img" aria-label="How upscale works" title="Resample enlarges the canvas in your browser with bicubic filtering — instant, offline, and it invents no new detail. AI upscale sends the flattened image to Real-ESRGAN running on this server and adds the result as a new layer.">?</span></div>
+      <p class="ge-section-hint" style="margin-top:0;">Resample is instant and runs in the browser. AI upscale runs Real-ESRGAN on this server.</p>
+      <div class="ge-control-row ge-actions">
+        <button class="ge-btn ge-btn-sm" id="ge-upscale-2x" title="Bicubic resample — doubles every layer and the canvas. No server, no new detail.">Resample 2&times;</button>
+        <button class="ge-btn ge-btn-sm" id="ge-upscale-4x" title="Bicubic resample — quadruples every layer and the canvas. No server, no new detail.">Resample 4&times;</button>
+      </div>
+      <hr class="ge-section-divider" />
+      <div class="ge-control-row ge-actions" style="margin-top:4px;">
+        <button class="ge-btn ge-btn-primary ge-btn-ai" id="ge-upscale-ai" style="width:100%;justify-content:center;display:inline-flex;align-items:center;gap:6px;" title="Real-ESRGAN 2&times; on this server — adds the upscaled image as a new layer.">
+          <span class="ge-btn-ai-mark" aria-hidden="true">&#10022;</span>
+          AI Upscale 2&times;
+        </button>
+      </div>
+    </div>
     <div class="ge-style-section" id="ge-style-section" style="display:none;">
       <p style="font-size:10px;opacity:0.5;margin:0 0 6px;">Apply an art style to the image using img2img. Requires a running diffusion model.</p>
       <div class="ge-control-row ge-tool-model-row">

@@ -1511,8 +1511,6 @@ function _enterSelectMode() {
   _selectedIds.clear();
   const bulkBar = document.getElementById('session-bulk-bar');
   if (bulkBar) bulkBar.classList.remove('hidden');
-  const selectBtn = document.getElementById('session-select-btn');
-  if (selectBtn) selectBtn.style.opacity = '1';
   // Add select dots to all session items
   document.querySelectorAll('.list-item[data-session-id]').forEach(item => {
     if (item.querySelector('.session-select-cb')) return;
@@ -1542,8 +1540,6 @@ function _exitSelectMode() {
   _selectedIds.clear();
   const bulkBar = document.getElementById('session-bulk-bar');
   if (bulkBar) bulkBar.classList.add('hidden');
-  const selectBtn = document.getElementById('session-select-btn');
-  if (selectBtn) selectBtn.style.opacity = '0.5';
   const selectAll = document.getElementById('session-select-all');
   if (selectAll) selectAll.checked = false;
   // Remove checkboxes
@@ -1559,14 +1555,8 @@ function _updateBulkCount() {
 }
 
 function _initBulkSelect() {
-  const selectBtn = document.getElementById('session-select-btn');
-  if (selectBtn) {
-    selectBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (_selectMode) _exitSelectMode();
-      else _enterSelectMode();
-    });
-  }
+  // Bulk select is entered from the sort/funnel dropdown (#session-select-from-dropdown)
+  // below — the old #session-select-btn header toggle is no longer in the markup.
   const cancelBtn = document.getElementById('session-bulk-cancel');
   if (cancelBtn) cancelBtn.addEventListener('click', () => _exitSelectMode());
 

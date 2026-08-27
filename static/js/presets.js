@@ -82,7 +82,6 @@ export function init(apiBase) {
   initEnabledToggle();
   initNameDropdown();
   initResetButton();
-  initSaveAsTemplate();
   initExpandButton();
   initPersistentChat();
   loadUserTemplates();
@@ -384,9 +383,6 @@ async function loadUserTemplates() {
 
 
 /**
- * Init "Save as Character" button
- */
-/**
  * "Create Persistent Chat" button — creates a favorited session for the current character
  */
 function initPersistentChat() {
@@ -439,58 +435,6 @@ function initPersistentChat() {
       console.error('Failed to create persistent chat:', e);
       btn.textContent = 'Error';
       setTimeout(() => { btn.textContent = 'Create Persistent Chat'; }, 2000);
-    }
-  });
-}
-
-function initSaveAsTemplate() {
-  const btn = document.getElementById('save-as-template-btn');
-  if (!btn) return;
-
-  btn.addEventListener('click', async () => {
-    const nameInput = document.getElementById('custom-character-name');
-    const promptInput = document.getElementById('custom-system-prompt');
-    const tempInput = document.getElementById('custom-temperature');
-    const tokensInput = document.getElementById('custom-max-tokens');
-
-    let name = nameInput ? nameInput.value.trim() : '';
-    if (!name) {
-      name = prompt('Enter a name for this persona:');
-      if (!name || !name.trim()) return;
-      name = name.trim();
-      if (nameInput) nameInput.value = name;
-    }
-
-    const _rawTk = tokensInput ? parseInt(tokensInput.value) : 0;
-    const template = {
-      id: '',
-      name: name,
-      system_prompt: promptInput ? promptInput.value : '',
-      temperature: tempInput ? parseFloat(tempInput.value) : 1.0,
-      max_tokens: _rawTk > 8192 ? 0 : _rawTk,
-    };
-
-    try {
-      const res = await fetch(`${API_BASE}/api/presets/templates`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(template),
-      });
-      if (!res.ok) throw new Error(`Server returned ${res.status}`);
-      const data = await res.json();
-      if (data.success) {
-        await loadUserTemplates();
-        btn.textContent = 'Saved!';
-        setTimeout(() => { btn.textContent = 'Save as Template'; }, 1500);
-      } else {
-        btn.textContent = 'Error';
-        setTimeout(() => { btn.textContent = 'Save as Template'; }, 2000);
-      }
-    } catch (e) {
-      console.error('Failed to save template:', e);
-      btn.textContent = 'Restart server';
-      btn.style.color = 'var(--color-error)';
-      setTimeout(() => { btn.textContent = 'Save as Template'; btn.style.color = ''; }, 3000);
     }
   });
 }

@@ -4341,7 +4341,6 @@ function startPantheonApp() {
       try { sessionModule.updateModelPicker(); } catch (_) {}
     }).catch(() => {});
   }, 3500);
-  runNonCriticalStartup(() => modelsModule.refreshProviders(), 6500);
   runNonCriticalStartup(() => ragModule.loadPersonalDocs(), 9000);
 	  runNonCriticalStartup(() => memoryModule.loadMemories(), 12000);
 

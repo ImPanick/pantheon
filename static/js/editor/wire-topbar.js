@@ -36,13 +36,13 @@
  */
 import { state } from './state.js';
 
-const TOPBAR_MENU_IDS = ['ge-image-menu', 'ge-filter-menu', 'ge-resize-menu', 'ge-save-menu'];
-const TOPBAR_TRIGGER_IDS = ['ge-image-menu-btn', 'ge-filter-menu-btn', 'ge-resize-menu-btn', 'ge-save-menu-btn'];
+const TOPBAR_MENU_IDS = ['ge-image-menu', 'ge-filter-menu', 'ge-edge-menu', 'ge-save-menu'];
+const TOPBAR_TRIGGER_IDS = ['ge-image-menu-btn', 'ge-filter-menu-btn', 'ge-edge-menu-btn', 'ge-save-menu-btn'];
 
 /**
  * Close every topbar dropdown except an optional "keep open" one.
- * Exported so the Image / Filter / Resize menus (wired elsewhere)
- * can call it from their own open handlers.
+ * Exported so the Image / Filter menus (wired elsewhere) can call it
+ * from their own open handlers.
  */
 export function closeOtherTopbarMenus(keepId) {
   for (const id of TOPBAR_MENU_IDS) {

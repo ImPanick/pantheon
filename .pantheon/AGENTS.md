@@ -98,7 +98,25 @@ the worst drift lives — because it looks finished.
 > complete. The volume still held the old collections, so memory, RAG and the tool index
 > silently returned nothing. Nothing errored. It is `P0-05`, and it shipped looking done.
 
-### Law 10 — A tool's excludes must match its stated intent, and be tested against both.
+### Law 10 — A tool's output must be unambiguous to whatever consumes it.
+Excludes must match the stated intent. Field names must have one reading. A boolean whose
+polarity can be understood two ways **will** be understood both ways, and the automation
+downstream of it will silently do the wrong thing while every individual step looks correct.
+
+Prefer an enum to a boolean for any verdict. `verdict: upheld | refuted | inconclusive` cannot
+be misread; `stands: true/false` can.
+
+> **Incident (excludes).** The rename sweep's own header said it excluded attribution files. It
+> did not exclude `CHANGELOG.md`, so it would have rewritten *"forked from Odysseus"* into
+> *"forked from Pantheon"*, and it did not exclude itself, so a second run would have rewritten
+> its own search string.
+
+> **Incident (polarity).** A reviewer schema defined `stands: false` as *"the change is wrong"*.
+> Every reviewer read it as *"my challenge did not stand"* and returned `false` on findings they
+> had just confirmed as sound — with `severity: none` beside it. The agent consuming the field
+> then skipped the **eight best-validated** fragments in the run and applied the ones with real
+> defects. Eight of the ten remaining ids traced to that one word. Nothing wrong shipped, but
+> only because a later agent noticed the contradiction between the two fields.
 A script that says what it protects and then does not protect it is worse than one that
 makes no claim, because the claim is what people review instead of the behaviour.
 

@@ -158,8 +158,9 @@ export function init(documentModule) {
   _docModule = documentModule;
   _bindEvents();
   document.addEventListener('pantheon:email-tags-toggle', (e) => {
+    // Mirror the library's tag-visibility preference. The library repaints its
+    // own grid; there is no second list here to re-render.
     _showEmailTags = e.detail?.show !== false;
-    _renderList();
   });
   // Init the library popup with a callback to open emails
   initEmailLibrary({
@@ -382,71 +383,12 @@ export function markInboxAsSeen() {
   } catch (e) {}
 }
 
-export async function loadEmails(append = false) {
-  if (_loading) return;
-  _loading = true;
-
-  const list = document.getElementById('email-list');
-  if (!list) { _loading = false; return; }
-
-  if (!append) {
-    list.innerHTML = '';
-    // Show whirlpool spinner
-    if (_listSpinner) { _listSpinner.destroy(); _listSpinner = null; }
-    const sp = spinnerModule.createWhirlpool(20);
-    _listSpinner = sp;
-    list.appendChild(sp.element);
-  }
-
-  try {
-    const fromQS = _senderFilter ? `&from=${encodeURIComponent(_senderFilter)}` : '';
-    const applyListData = (data) => {
-      if (!append) _emails = [];
-      _emails.push(...(data.emails || []));
-      _total = data.total || 0;
-      if (_listSpinner) { _listSpinner.destroy(); _listSpinner = null; }
-      _renderList();
-      const unreadCount = _emails.filter(e => !e.is_read).length;
-      const dot = document.getElementById('email-unread-dot');
-      if (dot) dot.style.display = unreadCount > 0 ? '' : 'none';
-    };
-    if (!append && !_senderFilter) {
-      try {
-        const cachedRes = await fetch(`${API_BASE}/api/email/list?folder=${encodeURIComponent(_currentFolder)}&limit=50&offset=${_offset}&cached_only=1${_acct()}`);
-        const cachedData = await cachedRes.json();
-        if (!cachedData.error && (cachedData.emails || []).length) {
-          applyListData(cachedData);
-        }
-      } catch (_) {}
-    }
-    const res = await fetch(`${API_BASE}/api/email/list?folder=${encodeURIComponent(_currentFolder)}&limit=50&offset=${_offset}${fromQS}${_acct()}`);
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    applyListData(data);
-  } catch (e) {
-    console.error('Failed to load emails:', e);
-    if (_listSpinner) { _listSpinner.destroy(); _listSpinner = null; }
-    if (!append && list) {
-      const msg = e && e.message ? `Failed to load: ${e.message}` : 'Failed to load';
-      list.innerHTML = `<div class="email-loading">${msg.replace(/&/g, '&amp;').replace(/</g, '&lt;')}${_emailSetupHint()}</div>`;
-    }
-  } finally {
-    _loading = false;
-  }
-}
-
-async function loadFolders() {
-  try {
-    const accountQS = _acct().replace(/^&/, '');
-    const res = await fetch(`${API_BASE}/api/email/folders${accountQS ? `?${accountQS}` : ''}`);
-    const data = await res.json();
-    const select = document.getElementById('email-folder-select');
-    if (!select || !data.folders) return;
-    _populateFolderSelect(select, data.folders);
-  } catch (e) {
-    console.error('Failed to load folders:', e);
-  }
-}
+// The sidebar inbox list (#email-list / #email-folder-select /
+// #email-load-more) is gone. Opening Email from the sidebar opens the email
+// library modal instead — #email-lib-grid + #email-lib-folder in
+// emailLibrary.js — which is the one inbox surface. Its folder <select> is
+// populated with the sortedFolders() / folderDisplayName() helpers below,
+// which is why those two stay exported.
 
 export function sortedFolders(folders) {
   const roleOf = (folder) => {
@@ -483,273 +425,6 @@ export function folderDisplayName(folder) {
   if (f.includes('sent')) return 'Sent';
   if (f.includes('draft')) return 'Drafts';
   return raw;
-}
-
-function _populateFolderSelect(select, folders) {
-  select.innerHTML = '';
-  const { priority, others } = sortedFolders(folders);
-
-  for (const folder of priority) {
-    const opt = document.createElement('option');
-    opt.value = folder;
-    opt.textContent = folderDisplayName(folder);
-    if (folder === _currentFolder) opt.selected = true;
-    select.appendChild(opt);
-  }
-
-  if (priority.length > 0 && others.length > 0) {
-    const sep = document.createElement('option');
-    sep.disabled = true;
-    sep.textContent = '─────────';
-    select.appendChild(sep);
-  }
-
-  for (const folder of others) {
-    const opt = document.createElement('option');
-    opt.value = folder;
-    opt.textContent = folderDisplayName(folder);
-    if (folder === _currentFolder) opt.selected = true;
-    select.appendChild(opt);
-  }
-}
-
-function _renderList() {
-  const list = document.getElementById('email-list');
-  if (!list) return;
-  list.innerHTML = '';
-
-  if (_senderFilter) {
-    const chip = document.createElement('div');
-    chip.className = 'email-filter-chip';
-    chip.innerHTML = `<span class="email-filter-chip-label">From: ${_esc(_senderFilterLabel || _senderFilter)}</span><button class="email-filter-chip-clear" title="Clear filter">&times;</button>`;
-    chip.querySelector('.email-filter-chip-clear').addEventListener('click', () => _clearSenderFilter());
-    list.appendChild(chip);
-  }
-
-  if (_emails.length === 0) {
-    const empty = document.createElement('div');
-    empty.className = 'email-loading';
-    empty.textContent = _senderFilter ? `No emails from ${_senderFilterLabel || _senderFilter}` : 'No emails';
-    list.appendChild(empty);
-    return;
-  }
-
-  for (const em of _emails) {
-    list.appendChild(_createEmailItem(em));
-  }
-
-  const loadMore = document.getElementById('email-load-more');
-  if (loadMore) {
-    loadMore.style.display = (_emails.length < _total) ? '' : 'none';
-  }
-}
-
-function _setSenderFilter(addr, label) {
-  _senderFilter = addr;
-  _senderFilterLabel = label || addr;
-  _offset = 0;
-  loadEmails(false);
-}
-
-function _clearSenderFilter() {
-  _senderFilter = null;
-  _senderFilterLabel = null;
-  _offset = 0;
-  loadEmails(false);
-}
-
-function _createEmailItem(em) {
-  const item = document.createElement('div');
-  item.className = 'list-item email-item' + (em.is_spam_verdict ? ' email-item-spam' : '');
-  item.setAttribute('role', 'option');
-  item.setAttribute('data-uid', em.uid);
-
-  let dateStr = '';
-  if (em.date) {
-    try {
-      const d = new Date(em.date);
-      const now = new Date();
-      const isToday = d.toDateString() === now.toDateString();
-      if (isToday) {
-        dateStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      } else {
-        dateStr = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
-      }
-    } catch (_) {}
-  }
-
-  const senderName = em.from_name || em.from_address;
-  const initial = (senderName || '?')[0].toUpperCase();
-  const color = _senderColor(senderName);
-
-  const attachIcon = em.has_attachments
-    ? '<span title="Has attachments" style="opacity:0.6;display:inline-flex;flex-shrink:0;margin-left:4px;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 17.93 8.8l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span>'
-    : '';
-
-  // Per-row dot tint: if the urgency scanner flagged this UID, override the
-  // per-sender pastel with red (3) / orange (2). Look up by any cached key
-  // ending in `:<uid>` since the per_uid map is keyed `<account_id>:<uid>`
-  // and the inbox list doesn't surface the account id per row.
-  let _unreadColor = color;
-  let _unreadTitle = 'Unread';
-  try {
-    const us = window._emailUrgencyState;
-    if (us && us.per_uid && em.uid != null) {
-      const suffix = ':' + String(em.uid);
-      for (const k of Object.keys(us.per_uid)) {
-        if (k.endsWith(suffix)) {
-          const v = us.per_uid[k] || {};
-          const score = v.score || 0;
-          if (score >= 3) { _unreadColor = 'var(--color-error, #e06c75)'; _unreadTitle = 'Urgent — ' + (v.reason || 'needs reply now'); }
-          else if (score === 2) { _unreadColor = '#f0ad4e'; _unreadTitle = 'Reply soon — ' + (v.reason || ''); }
-          break;
-        }
-      }
-    }
-  } catch (_) {}
-  const unreadIcon = (!em.is_read && !em.is_answered)
-    ? `<span class="email-unread-dot-inline" title="${_esc(_unreadTitle)}" style="display:inline-flex;align-items:center;flex-shrink:0;margin-left:4px;color:${_unreadColor}"><svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="6"/></svg></span>`
-    : '';
-
-  const tags = _showEmailTags ? _visibleEmailTagsForRender(em) : [];
-  const tagPills = _emailTagGroupHtml(tags, em);
-
-  const spamTag = _showEmailTags && em.is_spam_verdict
-    ? `<span class="email-tag email-tag-spam" title="AI flagged as spam — click ✓ to unflag">spam <button class="email-spam-unflag" data-uid="${em.uid}" title="Not spam">\u2713</button></span>`
-    : '';
-
-  const senderAddr = (em.from_address || '').toLowerCase();
-  item.innerHTML = `
-    <span class="email-avatar" style="background:${color}">${initial}</span>
-    <div class="email-item-content">
-      <div class="email-item-top">
-        <span class="email-sender email-sender-clickable" style="color:${color}" data-from-addr="${_esc(senderAddr)}" data-from-name="${_esc(senderName)}" title="Show all emails from ${_esc(senderName)}">${_esc(senderName)}</span>
-        <span class="email-date">${_esc(dateStr)}</span>
-      </div>
-      <div class="email-subject">${_esc(em.subject)}${unreadIcon}${attachIcon}${tagPills}${spamTag}</div>
-    </div>
-  `;
-
-  // Click sender name → filter list to that sender
-  const senderEl = item.querySelector('.email-sender-clickable');
-  item.querySelectorAll('[data-calendar-event-uid]').forEach(btn => {
-    btn.addEventListener('click', (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      _openCalendarEventFromEmail(btn.dataset.calendarEventUid);
-    });
-  });
-  item.querySelectorAll('[data-email-filter-tag]').forEach(btn => {
-    btn.addEventListener('click', (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      _openEmailTagFilter(btn.dataset.emailFilterTag);
-    });
-  });
-  item.querySelectorAll('[data-email-tags-more]').forEach(btn => {
-    btn.addEventListener('click', (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      const wrap = btn.closest('.email-tags');
-      if (!wrap) return;
-      const expanded = wrap.classList.toggle('email-tags-expanded');
-      btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-    });
-  });
-  if (senderEl) {
-    senderEl.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const addr = senderEl.dataset.fromAddr || '';
-      const name = senderEl.dataset.fromName || addr;
-      if (addr) _setSenderFilter(addr, name);
-    });
-  }
-
-  // Wire the "not spam" button
-  const unflagBtn = item.querySelector('.email-spam-unflag');
-  if (unflagBtn) {
-    unflagBtn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      try {
-        await fetch(`${API_BASE}/api/email/${em.uid}/unflag-spam`, {
-          method: 'POST', credentials: 'same-origin',
-        });
-        em.is_spam_verdict = false;
-        item.classList.remove('email-item-spam');
-        const tag = item.querySelector('.email-tag-spam');
-        if (tag) tag.remove();
-      } catch (_) {}
-    });
-  }
-
-  // Click to open — do NOT close sidebar
-  item.addEventListener('click', (e) => {
-    if (item.dataset.swipeBlock === '1') return;
-    _openEmail(em, item);
-  });
-
-  // Swipe left to archive (mobile). Mirrors sidebar-layout.js swipe pattern.
-  if ('ontouchstart' in window) {
-    let startX = 0, startY = 0, dx = 0, dy = 0, swiping = false, swiped = false;
-    const HORIZ_THRESHOLD = 70; // px to trigger archive
-    const VERT_CANCEL = 30;     // px vertical motion cancels swipe (treat as scroll)
-
-    item.addEventListener('touchstart', (e) => {
-      const t = e.touches[0];
-      startX = t.clientX; startY = t.clientY;
-      dx = 0; dy = 0; swiping = true; swiped = false;
-      item.style.transition = 'none';
-    }, { passive: true });
-
-    item.addEventListener('touchmove', (e) => {
-      if (!swiping) return;
-      const t = e.touches[0];
-      dx = t.clientX - startX;
-      dy = t.clientY - startY;
-      if (Math.abs(dy) > VERT_CANCEL) {
-        // Vertical scroll — cancel swipe
-        swiping = false;
-        item.style.transform = '';
-        return;
-      }
-      if (dx < 0) {
-        // Only swipe-left for archive; clamp at -160 so it doesn't fly off
-        const offset = Math.max(dx, -160);
-        item.style.transform = `translateX(${offset}px)`;
-        item.style.background = `linear-gradient(to right, transparent, transparent ${100 + offset/1.6}%, var(--red) ${100 + offset/1.6}%)`;
-      }
-    }, { passive: true });
-
-    item.addEventListener('touchend', () => {
-      if (!swiping) return;
-      swiping = false;
-      item.style.transition = 'transform 0.2s ease, opacity 0.2s ease';
-      if (dx <= -HORIZ_THRESHOLD) {
-        // Trigger archive — animate off-screen, suppress next click
-        swiped = true;
-        item.dataset.swipeBlock = '1';
-        item.style.transform = 'translateX(-100%)';
-        item.style.opacity = '0';
-        setTimeout(() => {
-          _archiveEmail(em);
-          delete item.dataset.swipeBlock;
-        }, 200);
-      } else {
-        // Snap back
-        item.style.transform = '';
-        item.style.background = '';
-      }
-    });
-
-    item.addEventListener('touchcancel', () => {
-      swiping = false;
-      item.style.transition = 'transform 0.2s ease';
-      item.style.transform = '';
-      item.style.background = '';
-    });
-  }
-
-  return item;
 }
 
 async function _openEmail(em, itemEl, preloadedData = null, mode = 'reply', noteHint = '', prefilledBody = '', mailboxContext = null) {
@@ -1253,7 +928,6 @@ async function _archiveEmail(em) {
   try {
     await fetch(`${API_BASE}/api/email/archive/${em.uid}?folder=${encodeURIComponent(_currentFolder)}${_acct()}`, { method: 'POST' });
     _emails = _emails.filter(e => e.uid !== em.uid);
-    _renderList();
   } catch (e) {
     console.error('Failed to archive:', e);
   }
@@ -1271,7 +945,6 @@ async function _deleteEmail(em) {
     await fetch(`${API_BASE}/api/email/delete/${em.uid}?folder=${encodeURIComponent(_currentFolder)}${_acct()}`, { method: 'DELETE' });
     busy?.remove?.();
     _emails = _emails.filter(e => e.uid !== em.uid);
-    _renderList();
   } catch (e) {
     busy?.remove?.();
     console.error('Failed to delete:', e);

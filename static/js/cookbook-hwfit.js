@@ -1447,12 +1447,17 @@ export function _hwfitRenderList(el, models) {
       if (!modelData) return;
       if (modelData._isOllama) {
         // Force-open the Download card if it's been collapsed — otherwise
-        // filling the (hidden) input silently swallows the click.
-        const dlBody = document.getElementById('cookbook-download-card-body');
-        const dlArrow = document.getElementById('cookbook-download-card-arrow');
-        if (dlBody && dlBody.style.display === 'none') {
-          dlBody.style.display = 'block';
-          if (dlArrow) dlArrow.style.transform = 'rotate(90deg)';
+        // filling the (hidden) input silently swallows the click. The card
+        // folds via the `.is-folded` class on `#cookbook-dl-tab-fold-body`
+        // (see _setFolded in cookbook.js); unfold the same way, and leave the
+        // stored `cookbook_dl_tab_folded_v1` preference alone — matching the
+        // auto-fold path, which also moves the card without persisting.
+        const dlBody = document.getElementById('cookbook-dl-tab-fold-body');
+        if (dlBody && dlBody.classList.contains('is-folded')) {
+          dlBody.classList.remove('is-folded');
+          document.getElementById('cookbook-dl-tab-fold')?.classList.remove('is-folded');
+          const dlChevron = document.getElementById('cookbook-dl-tab-chevron');
+          if (dlChevron) dlChevron.textContent = '▾';
         }
         const dlInput = document.getElementById('cookbook-dl-repo');
         if (dlInput) {
@@ -2166,7 +2171,9 @@ export function _hwfitInit() {
   const ctx = document.getElementById('hwfit-context');
   const ctxLabel = document.getElementById('hwfit-context-label');
   const search = document.getElementById('hwfit-search');
-  const remote = document.getElementById('hwfit-host');
+  // The free-text `#hwfit-host` box is gone — the server is chosen from the
+  // `#hwfit-server-select` / `#hwfit-dl-server` dropdowns, which resolve to a
+  // saved entry (host, port, platform, model dirs) instead of a bare hostname.
   _syncCtxControl();
   if (uc) _bindHwfitUsecasePicker(uc);
   if (uc) uc.addEventListener('change', () => _hwfitFetch());
@@ -2210,38 +2217,14 @@ export function _hwfitInit() {
       _hwfitFetch();
     });
   }
-  // Rescan — force a fresh hardware probe (bypasses the per-host cache).
-  const rescan = document.getElementById('hwfit-rescan');
-  if (rescan && !rescan.dataset.bound) {
-    rescan.dataset.bound = '1';
-    rescan.addEventListener('click', async () => {
-      if (rescan.dataset.scanning) return;   // ignore re-clicks mid-scan
-      rescan.dataset.scanning = '1';
-      const orig = rescan.innerHTML;
-      rescan.disabled = true;
-      rescan.style.opacity = '0.85';
-      // Swap the ↻ glyph for a live whirlpool so the click feels responsive
-      // during the (often slow) SSH hardware probe.
-      const wp = spinnerModule.createWhirlpool(12);
-      wp.element.style.marginRight = '4px';
-      wp.element.style.position = 'relative';
-      wp.element.style.top = '-2px';   // sit a touch higher, aligned with the label
-      rescan.innerHTML = '';
-      rescan.appendChild(wp.element);
-      rescan.appendChild(document.createTextNode('RESCAN'));
-      // Reset toggle state (no flicker — buttons stay until the fresh scan swaps them).
-      _resetGpuToggleState();
-      try {
-        await _hwfitFetch(true);
-      } finally {
-        try { wp.destroy(); } catch {}
-        rescan.innerHTML = orig;
-        rescan.disabled = false;
-        rescan.style.opacity = '';
-        delete rescan.dataset.scanning;
-      }
-    });
-  }
+  // The standalone `#hwfit-rescan` button is gone. Forcing a fresh hardware
+  // probe is the Scan / Download toolbar refresh button
+  // (`#hwfit-hw-refresh-btn` → _refreshScanDownloadTarget in cookbook.js),
+  // which re-syncs the selected server, resets the GPU toggles and runs both
+  // _hwfitFetch(true) and _fetchCachedModels(true) — a superset of what the
+  // old button did, on the toolbar the section description already points at.
+  // The hardware-visibility warning box carries its own Rescan too
+  // (`[data-hw-action="rescan"]`, above), for when the probe came back thin.
   if (search) search.addEventListener('input', () => {
     clearTimeout(_hwfitDebounce);
     _hwfitDebounce = setTimeout(() => _hwfitFetch(), 400);

@@ -12,6 +12,7 @@ let API_BASE = '';
 export function init(apiBase) {
   API_BASE = apiBase;
   _setupUploadZone();
+  _setupPanelRefresh();
 }
 
 function _humanSize(bytes) {
@@ -166,6 +167,30 @@ function _setupUploadZone() {
       input.value = '';
     }
   });
+}
+
+/**
+ * Refresh the file list whenever the panel holding `#docs-view` is shown.
+ *
+ * `loadPersonalDocs()` runs once from `app.js`'s non-critical startup queue
+ * (~9s after boot) and after this module's own uploads and deletes. Without
+ * this, a file added by `/rag`, by the agent's document tools, or from the
+ * admin panel would not appear until the page was reloaded — the panel would
+ * show a snapshot taken nine seconds after boot for the rest of the session.
+ *
+ * Keyed off the panel's own `hidden` class rather than a specific tab button,
+ * so it keeps working wherever the markup lands and quietly does nothing if
+ * `#docs-view` is not inside a tab panel at all.
+ */
+function _setupPanelRefresh() {
+  const box = document.getElementById('docs-view');
+  if (!box || typeof MutationObserver !== 'function') return;
+  const panel = box.closest('.memory-tab-panel[data-memory-panel]');
+  if (!panel) return;
+
+  new MutationObserver(() => {
+    if (!panel.classList.contains('hidden')) loadPersonalDocs();
+  }).observe(panel, { attributes: true, attributeFilter: ['class'] });
 }
 
 const ragModule = {

@@ -51,7 +51,7 @@ soon as its dependency lands.
 | P0 | Fork identity & licence | 30 | 16 | 0 | **14** |
 | P1 | Token layer — the free wins | 14 | 14 | 0 | 0 |
 | P2 | Un-nerf | 26 | 15 | 1 | **10** |
-| P3 | Mechanical hygiene | 19 | 19 | 0 | 0 |
+| P3 | Mechanical hygiene | 19 | 17 | 0 | **2** |
 | P4 | The wire — the real glass box | 28 | 28 | 0 | 0 |
 | P5 | Trace & composer restyle | 16 | 16 | 0 | 0 |
 | P6 | Queue & Plan | 18 | 18 | 0 | 0 |
@@ -63,7 +63,7 @@ soon as its dependency lands.
 | P12 | Limits & the control plane | 10 | 10 | 0 | 0 |
 | P13 | The Brain | 12 | 12 | 0 | 0 |
 | P14 | Measurement | 7 | 7 | 0 | 0 |
-| **Total** | | **288** | **257** | **1** | **30** | | **287** | **256** | **1** | **30** | | **266** | **235** | **1** | **30** | | **253** | **222** | **1** | **30** | | **250** | **219** | **1** | **30** | | **231** | **200** | **1** | **30** | | **231** | **211** | **0** | **20** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
+| **Total** | | **288** | **255** | **1** | **32** | | **288** | **257** | **1** | **30** | | **287** | **256** | **1** | **30** | | **266** | **235** | **1** | **30** | | **253** | **222** | **1** | **30** | | **250** | **219** | **1** | **30** | | **231** | **200** | **1** | **30** | | **231** | **211** | **0** | **20** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
 
 **Nothing is waiting on a decision.** All eighteen are answered and recorded in `DECISIONS.md`
 D-2026-08-26-06, and each task line carries its own call. `P2-13` is the only blocked row in the
@@ -95,6 +95,20 @@ upstream's artwork under Pantheon's filenames.
 *The one progress area. Newest first. One entry per completed section — two lines, a
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
+
+### Wiring run 01 — 78 unreachable features resolved, 2 left
+**340 insertions, 1,524 deletions.** Mostly deletions, as predicted: `models.js` shed 565 lines
+whose entry point exists in neither this tree nor upstream, a document overflow menu whose
+initialiser had one reference in the whole tree — its own definition — and an Ollama browser with
+two independent first-party removal notes. What got wired instead were features whose absence was
+a live bug: archived documents could be archived but never retrieved, the RAG upload module that
+`AGENTS.md` quotes as Law 13's own incident, and a skill-creation form whose absence meant every
+hand-made skill shipped with `description == name`. Three renames fixed real defects, including
+`submit`, which left the send button stuck in streaming state after tab recovery.
+
+The two survivors are checker artifacts. `adv-` is a truncation of `getElementById('adv-' + key)`;
+`cmp-history-0` **is** built, as `'cmp-history-' + i`, and the regex banks the prefix. Reaching
+zero means editing the checker, so 2 is the floor.
 
 ### README rewritten dry, with badges and a nav row
 The AI-essay rhythm was the real problem rather than the length — "this isn't X, it's Y"
@@ -503,12 +517,12 @@ shapes. Each is an audit, not a guess.
   `Depends:` P13-07.
 
 ### Drift control — Law 13's enforcement
-- [ ] **P3-13** **Wire `check-wiring.py` into CI at `--max 78`.** It counts `getElementById`
+- [x] **P3-13** **Wire `check-wiring.py` into CI at `--max 78`.** It counts `getElementById` — **done:** CI ceiling set to `--max 2`, which is the floor rather than a target — both remaining entries are artifacts of the checker's own regex against dynamic lookups, and its docstring already concedes that class is invisible.
   targets that resolve to nothing: 78 today, across 16 prefixes and seven subsystems. The
   ceiling may fall and may never rise. Every built-and-never-wired finding in the P2 audit
   would have shown up here years ago if anything had been counting. `Verify:` a PR that adds
   an unresolved lookup fails.
-- [ ] **P3-14** **Clear the 78.** Not one task — each id is either wired to markup, or deleted
+- [x] **P3-14** **Clear the 78.** Not one task — each id is either wired to markup, or deleted — **done:** **78 → 2.** 340 insertions against **1,524 deletions** — overwhelmingly dead code removed, not markup added. Full report in `runs/wiring-run-01.md`.
   along with the handler that looks for it. Grouped by owner: `ge-*` 17 (gallery editor,
   overlaps `P2-22`), `doc-*` 11, `cookbook-*` 9 (becomes `forge-*` under `P0-29`),
   `doclib-*` 6, `new-skill-*` 5, `email-*` 4, `gallery-*` 3, `hwfit-*` 3, `rag-*` 2

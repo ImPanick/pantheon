@@ -1,17 +1,18 @@
 /**
  * AI model dropdown loader — fetches available model endpoints from
- * the backend and populates the editor's three model-select surfaces:
+ * the backend and populates the editor's model-select surfaces:
  *
- *   #ge-ai-model     — global Gen picker
  *   #ge-ai-inpaint   — inpaint picker
  *   select.ge-tool-model[data-ge-tool-model="…"]
  *                    — per-tool pickers (harmonize / upscale / style /
  *                      sharpen / etc.)
  *
+ * (The editor-wide "Gen" picker #ge-ai-model was removed from the
+ * topbar; each tool carries its own model select now.)
+ *
  * Each model is filtered through a small capability classifier so the
- * Gen dropdown only sees text-to-image models, the inpaint dropdown
- * only sees image+mask edit models, and the per-tool dropdowns get
- * everything img2img-capable.
+ * inpaint dropdown only sees image+mask edit models and the per-tool
+ * dropdowns get everything img2img-capable.
  *
  * Every picker ends with a "+ Serve a model in Cookbook…" sentinel —
  * choosing it opens Cookbook → Serve filtered to image models, then
@@ -81,28 +82,22 @@ export function wireAIModelSelectors({ container, apiBase, openCookbookForImg2im
     if (sel && sel.value !== '__serve_cookbook__') sel._prevServeValue = sel.value;
   }, true);
 
-  const aiGenSelect = document.getElementById('ge-ai-model');
   const aiInpaintSelect = document.getElementById('ge-ai-inpaint');
-  // The global Gen model dropdown was removed from the editor topbar;
-  // only bail if there's nothing to populate at all (neither the Gen
-  // select nor the inpaint select nor any per-tool select).
-  if (!aiGenSelect && !aiInpaintSelect &&
-      !document.querySelector('select.ge-tool-model')) return;
+  // The global Gen model dropdown was removed from the editor topbar, so
+  // there is nothing left to populate unless the inpaint select or a
+  // per-tool select is present.
+  if (!aiInpaintSelect && !document.querySelector('select.ge-tool-model')) return;
 
   async function loadAIModels(opts = {}) {
     try {
       const selectBaseUrl = opts.selectBaseUrl || '';
-      const prevGenValue = aiGenSelect?.value || '';
       const prevInpaintValue = aiInpaintSelect?.value || '';
       const res = await fetch(`${apiBase}/api/model-endpoints`);
       const endpoints = await res.json();
-      if (aiGenSelect) aiGenSelect.innerHTML = '<option value="">None</option>';
       if (aiInpaintSelect) aiInpaintSelect.innerHTML = '<option value="">Auto</option>';
       const perToolSelects = Array.from(document.querySelectorAll('select.ge-tool-model'));
       for (const ts of perToolSelects) ts.innerHTML = '<option value="">Auto</option>';
-      let firstGen = null;
       let firstInpaint = null;
-      let selectedGen = null;
       let selectedInpaint = null;
       for (const ep of endpoints) {
         if (!ep.is_enabled) continue;
@@ -121,15 +116,6 @@ export function wireAIModelSelectors({ container, apiBase, openCookbookForImg2im
           const shortModel = modelId ? String(modelId).split('/').pop() : (ep.name || ep.base_url);
           const epHint = modelId && ep.name && ep.name !== modelId ? ` · ${ep.name}` : '';
           const label = `${shortModel}${epHint}${epUsable ? '' : ' (offline)'}`;
-          if (caps.gen && aiGenSelect) {
-            const opt = document.createElement('option');
-            opt.value = value;
-            opt.textContent = label;
-            opt.disabled = !epUsable;
-            aiGenSelect.appendChild(opt);
-            if (epUsable && !firstGen) firstGen = value;
-            if (epUsable && selectBaseUrl && ep.base_url === selectBaseUrl && !selectedGen) selectedGen = value;
-          }
           if (caps.inpaint && aiInpaintSelect) {
             const opt = document.createElement('option');
             opt.value = value;
@@ -157,11 +143,6 @@ export function wireAIModelSelectors({ container, apiBase, openCookbookForImg2im
         }
       }
       const hasValue = (sel, value) => !!value && [...sel.options].some(o => o.value === value);
-      if (aiGenSelect) {
-        if (selectedGen) aiGenSelect.value = selectedGen;
-        else if (hasValue(aiGenSelect, prevGenValue)) aiGenSelect.value = prevGenValue;
-        else if (firstGen) aiGenSelect.value = firstGen;
-      }
       if (aiInpaintSelect) {
         if (selectedInpaint) aiInpaintSelect.value = selectedInpaint;
         else if (hasValue(aiInpaintSelect, prevInpaintValue)) aiInpaintSelect.value = prevInpaintValue;
@@ -180,9 +161,8 @@ export function wireAIModelSelectors({ container, apiBase, openCookbookForImg2im
         sel.appendChild(serveOpt);
       };
       for (const ts of perToolSelects) appendServeSentinel(ts);
-      if (aiGenSelect) appendServeSentinel(aiGenSelect);
       if (aiInpaintSelect) appendServeSentinel(aiInpaintSelect);
-      // Wire the sentinel on the Gen + Inpaint selects too.
+      // Wire the sentinel on the Inpaint select too.
       const wireServeSentinel = (sel) => {
         if (!sel) return;
         let prev = sel.value;
@@ -195,7 +175,6 @@ export function wireAIModelSelectors({ container, apiBase, openCookbookForImg2im
           prev = sel.value;
         });
       };
-      wireServeSentinel(aiGenSelect);
       wireServeSentinel(aiInpaintSelect);
       // Restore each per-tool selection from localStorage.
       for (const ts of perToolSelects) {
@@ -222,7 +201,6 @@ export function wireAIModelSelectors({ container, apiBase, openCookbookForImg2im
       // a model. Otherwise the dropdown shows only "Auto" with no
       // hint about what to do next.
       const fallback = '<option value="">Auto</option><option value="" disabled>──────────</option><option value="__serve_cookbook__">+ Serve a model in Cookbook…</option>';
-      if (aiGenSelect) aiGenSelect.innerHTML = fallback;
       if (aiInpaintSelect) aiInpaintSelect.innerHTML = fallback;
       document.querySelectorAll('select.ge-tool-model').forEach(ts => { ts.innerHTML = fallback; });
       const wireServe = (sel) => {
@@ -237,7 +215,6 @@ export function wireAIModelSelectors({ container, apiBase, openCookbookForImg2im
           prev = sel.value;
         });
       };
-      wireServe(aiGenSelect);
       wireServe(aiInpaintSelect);
       document.querySelectorAll('select.ge-tool-model').forEach(wireServe);
     }

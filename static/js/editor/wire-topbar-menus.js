@@ -1,5 +1,5 @@
 /**
- * Topbar dropdown menus — Image, Filter, and Resize.
+ * Topbar dropdown menus — Image and Filter.
  *
  *   Image menu (#ge-image-menu-btn → #ge-image-menu):
  *     resize, selection (edge feather/delete), fill, rotate 90/180,
@@ -8,9 +8,10 @@
  *   Filter menu (#ge-filter-menu-btn → #ge-filter-menu):
  *     Blur sub-menu — Gaussian, Zoom.
  *
- *   Resize menu (#ge-resize-menu-btn → #ge-resize-menu):
- *     preset W×H items (data-resize-w/-h) apply immediately;
- *     [data-resize-custom] opens a themed prompt for arbitrary sizes.
+ * Canvas resize has exactly one surface: the Image menu's "Canvas…"
+ * item, which opens the themed W×H prompt (also on Ctrl+Shift+T). The
+ * separate preset dropdown (#ge-resize-menu-btn → #ge-resize-menu) was
+ * never built and is not coming back — Law 14, one scaffolding.
  *
  * Returns the resize helpers so the keyboard-shortcuts module can
  * call them too (Ctrl+Shift+T opens the custom prompt).
@@ -136,33 +137,6 @@ export function wireTopbarMenus({
         const action = item.dataset.filterAction;
         if (action === 'blur-gaussian') applyGaussianBlur();
         else if (action === 'blur-zoom') applyZoomBlur();
-      });
-      registerDocClickAway((e) => {
-        if (!menu.hidden && !menu.contains(e.target) && e.target !== btn) menu.hidden = true;
-      });
-    }
-  }
-
-  // ── Resize popup (preset items + Custom… → resizeCustomPrompt) ──
-  {
-    const btn = document.getElementById('ge-resize-menu-btn');
-    const menu = document.getElementById('ge-resize-menu');
-    if (btn && menu) {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const willOpen = menu.hidden;
-        if (willOpen) closeOtherTopbarMenus('ge-resize-menu');
-        menu.hidden = !menu.hidden;
-      });
-      menu.querySelectorAll('[data-resize-w]').forEach(item => {
-        item.addEventListener('click', () => {
-          menu.hidden = true;
-          applyResize(parseInt(item.dataset.resizeW, 10), parseInt(item.dataset.resizeH, 10));
-        });
-      });
-      menu.querySelector('[data-resize-custom]')?.addEventListener('click', () => {
-        menu.hidden = true;
-        resizeCustomPrompt();
       });
       registerDocClickAway((e) => {
         if (!menu.hidden && !menu.contains(e.target) && e.target !== btn) menu.hidden = true;

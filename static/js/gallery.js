@@ -1781,7 +1781,8 @@ function _openDetail(img) {
       if (uiModule) uiModule.showError('Failed to open editor: ' + (e?.message || 'unknown'));
     }
   };
-  document.getElementById('gallery-edit-btn')?.addEventListener('click', _openInEditor);
+  // Edit is a direct header button (#gallery-edit-direct-btn) — it was promoted
+  // out of the ⋮ actions menu, which is why the menu has no Edit entry.
   document.getElementById('gallery-edit-direct-btn')?.addEventListener('click', _openInEditor);
 
   // Rotate — server-side image rotation. Forces a fresh URL afterwards
@@ -2432,29 +2433,13 @@ export function openGallery() {
     });
   }
 
-  // ── Toolbar overflow (⋮) ──
-  const moreBtn = document.getElementById('gallery-toolbar-more-btn');
-  const moreMenu = document.getElementById('gallery-toolbar-more-menu');
-  if (moreBtn && moreMenu) {
-    // `.dropdown { display:none }` isn't tied to [hidden], so toggling the
-    // attribute alone won't reveal it — set inline display too (inline wins).
-    const _setMore = (show) => { moreMenu.hidden = !show; moreMenu.style.display = show ? 'block' : 'none'; };
-    _setMore(false);
-    moreBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      _setMore(moreMenu.hidden);
-    });
-    document.addEventListener('click', (e) => {
-      if (!moreMenu.hidden && !moreMenu.contains(e.target) && e.target !== moreBtn) _setMore(false);
-    });
-  }
-
   // ── Clear AI Tags ──
+  // Lives in the gallery Settings tab beside "Start AI tag" (see the
+  // #gallery-settings-container markup above) — not in a toolbar overflow.
   const clearAiTagsBtn = document.getElementById('gallery-clear-ai-tags-btn');
   if (clearAiTagsBtn) {
     clearAiTagsBtn.addEventListener('click', async () => {
       if (clearAiTagsBtn.disabled) return;
-      if (moreMenu) { moreMenu.hidden = true; moreMenu.style.display = 'none'; }
       if (!await uiModule.styledConfirm(
         'Remove all AI-generated tags from every photo? Your own tags are kept.',
         { confirmText: 'Clear AI Tags', danger: true }
