@@ -96,6 +96,13 @@ upstream's artwork under Pantheon's filenames.
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
 
+### README rewritten dry, with badges and a nav row
+The AI-essay rhythm was the real problem rather than the length — "this isn't X, it's Y"
+reframes, punchy two-word closers, a rhetorical turn ending nearly every section. Rewritten
+against `we-promise/sure` and `apexcharts` as reference: badge row, nav links, quick start first,
+bullets over prose, origin told as plain fact. 1,269 words, and a regex scan for the reframe
+pattern comes back clean. `P0-13` grew the screenshot requirement.
+
 ### README trimmed, and the unwired inventory made public
 Prose cut to 1,411 words. Gained a section the old one was missing entirely — the 78 unreachable
 features by subsystem, which is the most interesting thing about this fork and was buried in a
@@ -333,7 +340,7 @@ purge, re-index, log back in. The only manual step is one line in your `.env`.
 - [x] **P0-10** Rename the 19 `scripts/odysseus-*` CLI scripts (`git mv`). If you have a crontab or systemd timer pointing at any of them, update it — otherwise nothing references them. — **done:** all 19 `git mv`-d.
 - [x] **P0-11** Rename Swift package + two executables, the two integration plugin ids (`integrations/{claude,codex}/skills/odysseus/`), `_EMAIL_MCP_OWNER_ARG`, and the 3 custom DOM events. `Depends:` P0-02. — **done:** swept.
 - [x] **P0-12** **The sweep rewrote two badges to dead targets — they need removing, not renaming.** `README.md:17` now points at `repology.org/project/pantheon-ai`, which does not exist; `README.md:71-75` now points the star-history chart at `ImPanick/pantheon`, which is private and will 404 for every reader. Delete both blocks. The rest of this task is done: the 47 `odysseus-dev` references, `package.json`, `.github/` templates and `cookbook.js:3177` were handled by the sweep, and the three links to specific upstream issues and discussions were deliberately preserved. `Verify:` no README image URL 404s. — **done:** both dead badges removed in the README rewrite; the sweep had already handled the 47 `odysseus-dev` references, `package.json`, `.github/` and `cookbook.js:3177`.
-- [ ] **P0-13** Design the Pantheon mark. **Do not reuse the red sailing boat, the wordmark, or the per-route favicon shapes** — the licence grants them but they are upstream's identity. Replace `static/icon.ico`, the favicon registry, the inline boat SVG (5 copies), and the programmatic tray drawing. **Keep the ASCII wave loader** — it's a loader, not a logo. — **DECIDED — its own session: three or four directions, pick one, then favicon, tray icon and the five inline SVG copies follow** (D-2026-08-26-06).
+- [ ] **P0-13** Design the Pantheon mark — **and take a real screenshot with it.** Every README worth copying opens with one; ours would have to be `docs/pantheon-browser.jpg`, which is upstream's shot of the old UI under a renamed file, so shipping it would misrepresent the product. The README currently has none for that reason. **Do not reuse the red sailing boat, the wordmark, or the per-route favicon shapes** — the licence grants them but they are upstream's identity. Replace `static/icon.ico`, the favicon registry, the inline boat SVG (5 copies), and the programmatic tray drawing. **Keep the ASCII wave loader** — it's a loader, not a logo. — **DECIDED — its own session: three or four directions, pick one, then favicon, tray icon and the five inline SVG copies follow** (D-2026-08-26-06).
 - [x] **P0-14** **§5(a) + §5(b) notices.** Add to `README.md` and a new `NOTICE`: a prominent statement that this is a modified version of Odysseus, **with a date**, and that it is released under the AGPL. Neither exists today. — **done:** `NOTICE` carries the §5(a) modification notice with the fork commit and date; the README carries the same statement in its status block.
 - [x] **P0-15** **§4 copyright line.** There is **no project copyright notice anywhere in the repo today**. Add Pantheon's and preserve any upstream one that can be established. — **done:** `NOTICE` line 2 — `Copyright (c) 2026 Panick`. There was no upstream copyright line in the repo to preserve.
 - [ ] **P0-16** **Apache-2.0 §4(b) change notices** on the research-derived files (`services/research/`, `src/research_handler.py`, `routes/research/`, `services/search/`) — "You changed the files". Absent today.
