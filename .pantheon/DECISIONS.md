@@ -5,6 +5,85 @@ Each entry names what was decided, what it costs, and what would reopen it.
 
 ---
 
+## D-2026-08-26-07 · Identity, roles, and the RBAC clean-up
+
+*Written 2026-08-28. The call was made on 2026-08-26 and never recorded — thirteen `P11` rows
+have been resting on one subordinate clause inside D-2026-08-26-04, an entry whose stated job is
+to list what a change **voids**. `rbac` and `keycloak` both returned zero hits in this file.*
+
+**Decided:** Pantheon plans for real infrastructure. In the owner's words: *"we should probably
+plan around someone potentially scaling into actual real infrastructure, OIDC/SSO Support etc…
+BYO software (self hosted keycloak/zitadel as an example, and more…)"* and *"this is going to
+need some extensive RBAC cleaning and establishment."*
+
+**Identity.**
+
+- **OIDC Authorization Code + PKCE**, discovered from the provider's `.well-known` document.
+  Not a bespoke integration per provider.
+- **Bring your own provider.** Self-hosted Keycloak and Zitadel are the reference cases because
+  they are what a person running this on their own hardware would actually reach for. Anything
+  that serves a standard discovery document should work; nothing is hard-coded to a vendor.
+- **Local auth stays, alongside.** Not replaced. A single operator on a LAN must never be forced
+  to stand up an identity provider to log in — that is the deployment this project started from
+  and it remains a first-class one.
+
+**Roles.** Named overlays on `DEFAULT_PRIVILEGES` (`core/auth.py:24-38`, 11 keys, AST-verified),
+resolving built-in default → role → user. `is_admin` stays as the superuser role rather than
+being replaced, because 103 call sites depend on it and rewriting them at once is how this goes
+wrong. This is `Law 14` applied to authorization: the dict is already a control plane, just
+under-populated.
+
+**The clean-up half, which is the part with no other home.** "Extensive RBAC cleaning" is four
+concrete preconditions, all measured:
+
+1. **Close the fail-open default.** `privs.get(key, True)` at `src/auth_helpers.py:172` grants on
+   a typo. `P11-01`.
+2. **Audit all 103 `require_admin` sites** against the role model — 83 direct calls plus 20
+   `Depends(require_admin)`, non-test Python. `P11-02b`.
+3. **Resolve the `_ADMIN_TOOLS` collision.**
+4. **Reconcile the fifteen route files with no auth call of their own** — nine of which do in
+   fact make one; six are the real unknowns. `P11-02d`.
+
+**What this does not decide.** Where an operator administers any of it. That gap is real and is
+now `P11-11`: the answer is to extend the admin panel that already ships, not to invent a second
+one.
+
+---
+
+## D-2026-08-26-08 · The Brain keeps its edges and loses its picture
+
+*Written 2026-08-28 for the same reason as the entry above: this is one of the five corrections
+the roadmap names as having overturned an earlier plan, and `Brain`, `graph`, `confetti` and
+`force-directed` all returned zero hits in this file. It lived only in a phase preamble 1,200
+lines into the tracker, which is the shape a fresh agent reads as an omission rather than a call.*
+
+**Decided:** no canvas, no force layout, no starburst, no confetti. The data model survives whole.
+
+**The owner's words:** *"We dont need the visual 'confetti' of memories. Just as long as memories
+and persistence/long term knowledge of projects etc has permanence."*
+
+**Why.** The force-directed constellation is the part of a competitor's version that looked most
+impressive and was the reason it went unused. A beta screenshot of that product showed 616
+entries and 614 connections — about one edge per node, rendering as one hub with a starburst of
+spokes and a periphery of dots joined to nothing. A graph at that ratio promises a structure the
+data does not have.
+
+**What survives, and it is most of it.** Typed edges — `supersedes`, `contradicts`,
+`derived_from`, `co_occurs` — are kept as **data**, because each one changes what retrieval
+returns whether or not anyone ever looks at it. A superseded memory stops surfacing; a recorded
+contradiction surfaces both sides with the conflict named. The test for an edge is whether a
+query is better for it, not whether it draws well: an edge that exists only to be drawn is not
+worth storing.
+
+**What the Brain surface becomes.** Something a person can read, search, filter, sort, inspect
+and correct. Not something they navigate by dragging.
+
+**What would reopen this:** nothing about rendering. If someone later wants a visualisation, it
+is additive and it argues for itself on its own merits — it does not get to shape the data model
+on the way in.
+
+---
+
 ## D-2026-08-27-01 · `CREDITS.md` is the credits file; `ACKNOWLEDGMENTS.md` merges into it
 
 **Decided:** `CREDITS.md` is authoritative. `ACKNOWLEDGMENTS.md` is merged into it in full and
@@ -163,6 +242,14 @@ identity. Strictly better than the original plan, and it costs less.
 an operating-system setting** — it does not disable the feature, and an agent that reads
 it that way has misread it. New themes may be added; new patterns may be added.
 
+**And the owner named two directions, unprompted, twice — they belong in the decision that
+governs what this system may grow into rather than only in a task row.** First, more themes,
+including unique ones. Second: *"possibly even ASCII art subtle in the background for the entire
+platform depending on the theme selected."* That second one is specified as `P9-16` and is
+additive by construction — one entry in `_BG_CLASSES`, one in `_CANVAS_PATTERNS`, one init
+function beside the seven that already exist. Neither direction touches an existing theme, which
+is why both are allowed under a decision whose whole purpose is that the existing ones survive.
+
 **What would reopen this.** Nothing. This is a product decision, not a technical one.
 
 ---
@@ -210,7 +297,7 @@ usage is stored as a running counter with the time dimension discarded at write.
 remote host registry with SSH keys and connection testing, GPU detection and hardware fit,
 weight downloads from HuggingFace and Ollama, vLLM / llama.cpp / Ollama launches held open in
 tmux, process kill, task-status polling. Seventeen routes. Raw weights and hardware go in; a
-running inference service comes out. That is a forge.
+running inference service comes out.
 
 **Why not Olympus** — and this is worth recording, because it is a positioning decision rather
 than a naming one. Olympus would have cast the models as gods in residence. AI is already
@@ -222,7 +309,7 @@ makes a claim about what the operator *does*, which is the honest one and the be
 config — the confusion was never about recipes, it was the section name. Renaming it would be
 churn for its own sake.
 
-**Scale.** 3,533 occurrences, 172 files, 43 paths — larger than the Odysseus→Pantheon sweep
+**Scale.** **3,529** occurrences, **171** files, 43 paths (re-measured 2026-08-27; the old 3,533 / 172 counted this tracker's own text) — larger than the Odysseus→Pantheon sweep
 was at 2,929. `scripts/pantheon-init.sh` is proven and parameterises cleanly, and it now
 carries four fixes learned the hard way. Use it; do not hand-roll a second sweep.
 
@@ -266,7 +353,7 @@ The ledger itself is superseded by this entry.
 | **P0-14 prereq** | **Name both, and say which is which** — forked from the clone source, upstream project referenced as the other. | Unless the operator knows one is a mirror or a rename, in which case say so and this becomes simpler. The git remote is verifiable evidence; so are the 47 in-code references. An attribution that reports both cannot be wrong. |
 | **P0-23** | **Delete the file and its credits row.** | 1,468 bytes, three glyphs, metadata reading `Untitled1 / Copyright (c) 2025, Unknown`. The only licensing item that is affirmatively false rather than merely incomplete. Nothing uses three glyphs. |
 | **P0-28** | **Delete the root `ROADMAP.md`.** Point everything at `.pantheon/ROADMAP.md`. | Two files with the same name saying different things is `Law 7`'s exact failure mode — it is how `FRONTIER-NOTES.md` ended up still calling the project Odysseus. A public "help wanted" page is a real thing to want and `CONTRIBUTING.md` already is it. |
-| **P0-13** | **Its own session.** Three or four directions, pick one, then favicon, tray icon and the five inline SVG copies follow. | The identity is what people see before reading a line of the README, it is cheapest to get right while nothing depends on it, and it is a different kind of work from everything else here. A placeholder reliably becomes permanent. |
+| **P0-13** | **Its own session.** Three or four directions, pick one, then favicon, tray icon and the nine inline SVG copies follow. | The identity is what people see before reading a line of the README, it is cheapest to get right while nothing depends on it, and it is a different kind of work from everything else here. A placeholder reliably becomes permanent. |
 
 ### The two couplings
 

@@ -60,10 +60,10 @@ soon as its dependency lands.
 | P9 | Feature surfaces | 18 | 17 | 0 | **1** |
 | P10 | Accessibility & release | 12 | 12 | 0 | 0 |
 | P11 | Identity & access | 13 | 12 | **1** | 0 |
-| P12 | Limits & the control plane | 10 | 10 | 0 | 0 |
-| P13 | The Brain | 12 | 12 | 0 | 0 |
+| P12 | Limits & the control plane | 11 | 11 | 0 | 0 |
+| P13 | The Brain | 12 | 11 | 0 | **1** |
 | P14 | Measurement | 7 | 7 | 0 | 0 |
-| **Total** | | **291** | **218** | **11** | **62** | | **291** | **221** | **11** | **59** | | **291** | **231** | **11** | **49** | | **288** | **239** | **11** | **38** | | **288** | **253** | **1** | **34** | | **288** | **255** | **1** | **32** | | **288** | **257** | **1** | **30** | | **287** | **256** | **1** | **30** | | **266** | **235** | **1** | **30** | | **253** | **222** | **1** | **30** | | **250** | **219** | **1** | **30** | | **231** | **200** | **1** | **30** | | **231** | **211** | **0** | **20** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
+| **Total** | | **295** | **221** | **11** | **63** | | **295** | **222** | **11** | **62** | | **294** | **221** | **11** | **62** | | **291** | **218** | **11** | **62** | | **291** | **221** | **11** | **59** | | **291** | **231** | **11** | **49** | | **288** | **239** | **11** | **38** | | **288** | **253** | **1** | **34** | | **288** | **255** | **1** | **32** | | **288** | **257** | **1** | **30** | | **287** | **256** | **1** | **30** | | **266** | **235** | **1** | **30** | | **253** | **222** | **1** | **30** | | **250** | **219** | **1** | **30** | | **231** | **200** | **1** | **30** | | **231** | **211** | **0** | **20** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -102,8 +102,9 @@ They were held until now for a reason: **reuse is only judgeable once the surfac
 is real**, and as of wave 2 it is. `P6-18` (steer mid-response, not only queue) is the one
 genuinely new feature left in the phase and depends on `P6-01`, which landed in wave 1.
 
-`P6-11` also stays open on `effect`, which needs the `ToolEffect` taxonomy put on the SSE wire —
-that is `P4`/`P7-06` work, not a `P6` row, and it should be picked up there.
+`P6-11` also stays open on `effect`. **`P7-06` owns putting the `ToolEffect` taxonomy on the SSE
+wire** — it already needs the data to rank approval prompts, and it is one field on two emits.
+Landing it closes `P6-11`.
 
 **Still out of scope on its own:** `P0-29`. The Cookbook → Forge sweep is 3,529 occurrences
 across 171 files and 43 paths — the largest blast radius in the programme, coupled to
@@ -117,8 +118,8 @@ wrong chat, vanish on reload, and silently swallow a send with attachments.
 
 **Do not start with:** `P1` — `P1-01` is three files plus a `CACHE_NAME` bump, not one module, and
 `P1-06` is blocked on a measurement that does not exist. `P4` — `P4-01`'s six-template unification
-gates eight rows behind it. `P3-03` — its classifier was never committed. `P11`–`P14` — `P14-01`
-unblocks five rows and its stated write location was wrong.
+gates eight rows behind it. `P3-03` — its classifier was never committed. `P11`–`P14` — `P14-01` unblocks five rows, and its write
+location was wrong until it was corrected on the row itself; the row is right now.
 
 ---
 
@@ -127,6 +128,70 @@ unblocks five rows and its stated write location was wrong.
 *The one progress area. Newest first. One entry per completed section — two lines, a
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
+
+### Vision alignment — the corrections landed on the rows and never got carried up
+**Five read-only auditors and a reconciler, against twelve vision points quoted from the owner
+verbatim rather than paraphrased.** The verdict is worth stating plainly: this programme is
+substantially aligned. `V1` (elevation, not rewrite), `V4` (training parked), `V5` (no
+marketplace), `V6` (permanence, not a picture) and `V12` (AGPL, the non-commercial line as a
+wish) are honoured well and in the owner's own terms, and `V7` and `V8` are enforced row by row
+rather than merely cited.
+
+**What had not happened was the second sweep.** A correction would land on the task row and never
+be carried up into the preamble, the header, the decision file or the README above it — so five
+vision points were contradicted by a document sitting *upstream* of the row that got them right.
+The P0 preamble still stated the pre-correction deployment assumption fourteen lines below a
+paragraph superseding it. `P0-29` said the Forge name was "pending" on a row whose own title
+carries the decision id. `P11-02b` said 84 `require_admin` sites where its own phase preamble had
+retired that number twice, thirty lines above.
+
+**The worst finding was not a vision drift at all. It was the thing that would have caught them.**
+`P3-13` — *"wire `check-wiring.py` into CI"* — was ticked done, and `git grep check-wiring`
+outside `.pantheon/` returned two hits, neither of them a workflow. Three documents advertised a
+gate that did not exist. The law against shipping half-wired features was itself half-wired.
+**It runs now**, as the `wiring-ratchet` job, which made all three claims true rather than
+requiring three documents be edited down to match a gap.
+
+**The correction with the most at stake was `P3-10`.** It scheduled `tourAutoplay.js` for
+deletion as a dead module. It is 133 lines of working code, imported from `index.html`, mapping
+seven modals to per-feature walkthroughs — **the product's entire first-run onboarding.** `Law 15`
+exists in this project because its owner stopped using a competitor's *more advanced* version of
+what we are building, for one reason: *"There's no tutorials and the learning curve is too
+steep."* Deleting the only tutorial we have would have been that mistake, made deliberately, by
+the project that wrote the law. Split: `calendar/reminders.js` goes, and `P3-10b` turns the tours
+back on.
+
+**Two corrections the owner gave had never become decisions at all.** Identity and the RBAC
+clean-up — thirteen `P11` rows resting on one subordinate clause inside an entry titled *"what
+that voids"*, with `rbac` and `keycloak` both returning zero hits in the decision file. And the
+Brain losing its graph, one of the five corrections this tracker itself names, with `Brain`,
+`graph` and `confetti` all returning zero. Both are now written down. `D-2026-08-26-07` and
+`D-2026-08-26-08`.
+
+**`Law 15` was stated and then never applied.** Cited zero times across 101 open `P0`–`P6` rows;
+87 of them carry no `Verify:` line at all; the 48-row Workshop phase — the three steepest surfaces
+in the product — had a one-line preamble and no legibility gate, while its own second row already
+diagnosed a live `Law 15` failure. Gates added to `P4`, `P5`, `P6`, `P8`, `P9` and `P13`, and
+Laws 13–15 moved into the anti-drift section they belong to: they had been filed below *"When to
+stop and ask"*, which is exactly why the header's count of thirteen omitted those three.
+
+**And `Law 6` caught us again, in the sentence that ruled it out.** `P1-01` said *"521, not 508 —
+`style.css` has one commit in this repo, so the old figure was wrong when written, not stale."*
+The file has three commits. Our own P6 wave 2 added 342 lines to it the next day, and the count
+is now **535**. The claim that a number could not go stale went stale in twenty-four hours.
+
+Nineteen numbers refreshed with their scopes, twenty-one document contradictions closed, one
+finding rejected — see below.
+
+### One audit finding rejected, and the brief was mine
+The `V2` brief said the project must not frame models as *"deities, oracles, minds, or anything
+with a claim about what they ARE"*, and an auditor correctly applied it to **The Brain**, the name
+of an entire phase. That extension was wrong, and it was wrong because I wrote it. The owner
+rejected **Olympus** specifically — *"posturing the LLM's as 'Gods' in residence"* — and then, in
+a later message, introduced "The Brain" himself while asking about a competitor's. He named it
+after the decision, knowing it. The auditor flagged it as a question rather than a defect and
+said the owner should decide, which was the right call. The name stays; the over-broad brief is
+recorded here so nobody re-derives the objection from it.
 
 ### P6 wave 2 — the plan window exists, and four prompt strings stopped lying
 **Three rows done, one honestly left open.** `static/js/planWindow.js` renders the approved
@@ -543,11 +608,18 @@ rather than hypothetical, and `P11-09` is where that debt comes due.
 The rename is ~2,900 occurrences across 371 files, of which ~150 identifiers are
 load-bearing.
 
-**Deployment reality: one self-created admin account, one Docker install, a home LAN,
-no other users, no downstream consumers, and the data is explicitly disposable.** The
-entire "breaking change" analysis collapses — there is nobody to break and nothing to
-preserve. **No migration shims. No compatibility layer. No data migration.** Rename,
-purge, re-index, log back in. The only manual step is one line in your `.env`.
+**Deployment reality, corrected 2026-08-28.** This phase was written for one self-created
+admin account on a home LAN with disposable data, and that is still where it runs today — so
+everything already swept under that assumption stays swept. But the assumption itself was
+superseded: the owner asked to plan around someone scaling into real infrastructure, and
+`P11`/`P12` exist because of it. **Every rename still open — `P0-29`, `P0-31` — decides per key
+whether a read-old-write-new path is needed, and records that decision on its own row.**
+`P0-31`'s `Verify:` line already accepts "a migration path reading the old key"; this paragraph
+used to forbid one.
+
+**Nothing is purged.** `P0-05` below measured the live instance: two collections, both already
+under the new names, and `pantheon_memories_fastembed` holds real memories. Re-index what is
+genuinely empty and log back in. The only manual step is one line in your `.env`.
 
 `scripts/pantheon-init.sh` does the mechanical sweep. Review its diff before committing.
 
@@ -590,7 +662,7 @@ purge, re-index, log back in. The only manual step is one line in your `.env`.
 - [ ] **P0-21b** **Twelve bundled packages have no licence notice anywhere in this repository.** `html2pdf.bundle.min.js` bundles fifteen top-level packages; its sidecar `LICENSE.txt` carries a copyright notice for **three** of them — `es6-promise`, `html2canvas`, `jspdf` — plus html2pdf.js itself. Measured 2026-08-27 across all comment-block forms (955 blocks, 23 copyright-bearing), which is why an earlier `/*!`-only count said five. The twelve: `@babel/runtime-corejs3`, `canvg`, `core-js`, `core-js-pure`, `dompurify`, `fflate`, `performance-now`, `raf`, `regenerator-runtime`, `rgbcolor`, `stackblur-canvas`, `svg-pathdata`. **`dompurify` is not just a missing file** — DOMPurify 2.3.0 is dual-licensed Apache-2.0 **or** MPL-2.0, so someone has to choose and record the choice. `Verify:` every package the bundle ships has a notice in `licenses/`, and the count is re-derived rather than carried.
 - [x] **P0-30** **The notices did not travel.** Adding licence bodies to `licenses/` satisfies MIT/BSD/OFL for the git repository and for nothing else, and all three of those licences require the notice to accompany **redistributed copies**. Found 2026-08-27: `Pantheon.spec:8` and `build-windows-portable.ps1` both listed their payload by hand and shipped no licence file at all, so the desktop builds redistributed a dozen libraries with their attribution stripped; and `.dockerignore`'s blanket `*.md` excluded **`CREDITS.md`** — the exact file `NOTICE` designates as this distribution's third-party notice — from the image. — **done:** `licenses/`, `LICENSE`, `NOTICE` and `CREDITS.md` added to the PyInstaller spec and the Windows `--add-data` list with a comment saying why, and negated in `.dockerignore`. **This was pre-existing, not caused by the licence run — the run is just what made it visible.** `Verify:` build each of the three artefacts and confirm `licenses/` is inside it.
 - [ ] **P0-31** **`ody-` browser storage keys survive in the test fixtures that prove the rename worked.** `P0-04` renamed 113 storage keys in `static/` and its trace reads "verified — no `ody-`/`ody.` KEYS remain in static/", which is true and was not the whole question. `git grep -nIP '(?<![A-Za-z0-9])(?i:ody)[-.]'` returns **50 lines across 12 files**, 24 of them under `static/`. One was a genuinely red test — `tests/test_app_config_shared_fetch_js.py` seeded `ody-prefetch-settings` while `static/js/appConfig.js:31` reads `pan-prefetch-settings`, so the fixture that exists to prove the rename was pinning the old name and failing. Fixed 2026-08-27; the other 49 lines are unaudited. `Verify:` every remaining hit is either deliberate (a migration path reading the old key) or renamed, and each one is named.
-- [ ] **P0-29** **Rename Cookbook → Forge** (`DECISIONS.md` D-2026-08-26-05). It reads as a recipe box; it is a model-serving control plane — remote host registry with SSH keys, GPU detection and hardware fit, weight downloads from HuggingFace and Ollama, vLLM / llama.cpp / Ollama launches held open in tmux, process kill, and task-status polling. 17 routes. **Surface: 3,529 occurrences across 171 files and 43 paths — larger than the Odysseus→Pantheon sweep was** (2,929). *(Re-measured 2026-08-27; scope: case-insensitive `cookbook` in tracked files, excluding `.pantheon/`. The old 3,533 / 172 counted this tracker's own text.)* Use the same tool: `scripts/pantheon-init.sh` is proven and parameterises cleanly. Decide the name first (`DECISIONS.md`, pending) and whether *recipe* survives — 242 occurrences, and a vLLM recipe genuinely is a parameterised launch config, so it may earn its keep even if Cookbook does not. `Verify:` no user-visible string says Cookbook; `rail-*`, `tool-*-btn` and modal ids move together with their CSS.
+- [ ] **P0-29** **Rename Cookbook → Forge** (`DECISIONS.md` D-2026-08-26-05). It reads as a recipe box; it is a model-serving control plane — remote host registry with SSH keys, GPU detection and hardware fit, weight downloads from HuggingFace and Ollama, vLLM / llama.cpp / Ollama launches held open in tmux, process kill, and task-status polling. 17 routes. **Surface: 3,529 occurrences across 171 files and 43 paths — larger than the Odysseus→Pantheon sweep was** (2,929). *(Re-measured 2026-08-27; scope: case-insensitive `cookbook` in tracked files, excluding `.pantheon/`. The old 3,533 / 172 counted this tracker's own text.)* Use the same tool: `scripts/pantheon-init.sh` is proven and parameterises cleanly. **The name is settled: `Forge`** (D-2026-08-26-05), and the reason is positional rather than aesthetic — Olympus was rejected because it would have cast the models as gods in residence, and AI is under enough of that already. Forge names what the *operator* does. *(This clause read "Decide the name first (`DECISIONS.md`, pending)" until 2026-08-28, on a row whose own title already carries the decision id.)* The one open sub-question is whether *recipe* survives — 242 occurrences, and a vLLM recipe genuinely is a parameterised launch config, so it may earn its keep even if Cookbook does not. `Verify:` no user-visible string says Cookbook; `rail-*`, `tool-*-btn` and modal ids move together with their CSS.
 
 ---
 
@@ -599,11 +671,11 @@ purge, re-index, log back in. The only manual step is one line in your `.env`.
 
 More visible change than any redesign step, and zero markup touched.
 
-- [ ] **P1-01** **Define `--accent` PER THEME, not in `:root`. Defining it in `:root` breaks all 16 themes.** Measured: of the 799 `var(--accent…)` sites in `style.css`, **521 are `var(--accent, var(--red))`** and resolve today to the theme's own `red`, which `applyColors()` sets at `static/js/theme.js:263`. A `:root` definition wins over that fallback, so all 521 would flip to one global colour and every theme would lose its identity in a single commit. **The themes are protected — see `DECISIONS.md` D-2026-08-26-03.**
-  **Do instead:** `s.setProperty('--accent', colors.accent || colors.red)` beside the existing `s.setProperty('--red', colors.red)`, guarded the same way. The 521 fallback sites then resolve to exactly what they resolve to now (zero visual change), the bare sites resolve for the first time (pure gain), each theme keeps its own accent, and the 8 custom-theme slots get it free — `generateHarmonyColors()` at `theme.js:220` returns no `accent` key, so `colors.accent || colors.red` falls through to red exactly as intended. Add an optional `accent:` key to `THEMES` for any theme that should differ from its `red`.
-  **Three corrections, verified 2026-08-27, and all three change the work.** **(1) 521, not 508** — four independent methods agree, and `style.css` has one commit in this repo, so the old figure was wrong when written, not stale. **(2) There is no `applyTheme()`.** The function is `applyColors()` at `theme.js:257`; the only `applyTheme` in the tree is a dead call at `slashCommands.js:876` behind an `||` the module can never satisfy. An implementer searching for the named function finds nothing. **(3) One line is not enough — `--red` is set at three sites.** `theme.js:263` (the module), `index.html:29` (the first-paint inline script) and `login.html:54` (the login page's own script, which never runs `applyColors` — its comment at `:605-607` says so). Adding the line only in `applyColors()` leaves a flash on every cold load, where the 205 bare sites resolve to nothing until the module boots, and leaves the **login page permanently without `--accent`** — it carries a `var(--accent` site of its own and `index.html` carries 14. **Mirror the line into all three, and bump `CACHE_NAME` in `sw.js`** or returning users keep the old first-paint script.
-  `CI:` none. `Verify:` cycle all 16 themes and diff screenshots — only the previously-unstyled elements change. Then: rail hover backgrounds appear; both resize handles become visible; the scroll-to-bottom button gets its colour; and the session rename input gets a border — that last one is **not** in the bare-site list, because `style.css:6775` is `var(--accent, var(--accent-primary))` with *both* undefined, so the whole `border` shorthand is invalid at computed-value time and falls back to `border-style: none`. Same fix, different failure mode.
-- [ ] **P1-02** Define `--accent-primary` (121 uses, never defined) — or replace those uses with `--accent`. **Premise corrected 2026-08-27: this is token hygiene, not a bug hunt.** The line reads as 121 broken uses. It is not — **120 of the 121 already resolve correctly through their fallbacks**, 116 of them to the theme's `--red`. **Exactly one site is genuinely dead: `style.css:6775`** — and that is the same pixel `P1-01` already fixes, so as written these two rows overlap on their only real defect. Do `P1-01` first, then this becomes what it should always have been: an undefined token used 121 times, worth resolving so the next reader is not misled, with no visual change expected and none acceptable.
+- [ ] **P1-01** **Define `--accent` PER THEME, not in `:root`. Defining it in `:root` breaks all 16 themes.** Measured **2026-08-28**: of the **813** `var(--accent…)` sites in `style.css`, **535 are `var(--accent, var(--red))`** and resolve today to the theme's own `red`, which `applyColors()` sets at `static/js/theme.js:263`. A `:root` definition wins over that fallback, so all 521 would flip to one global colour and every theme would lose its identity in a single commit. **The themes are protected — see `DECISIONS.md` D-2026-08-26-03.**
+  **Do instead:** `s.setProperty('--accent', colors.accent || colors.red)` beside the existing `s.setProperty('--red', colors.red)`, guarded the same way. The 535 fallback sites then resolve to exactly what they resolve to now (zero visual change), the bare sites resolve for the first time (pure gain), each theme keeps its own accent, and the 8 custom-theme slots get it free — `generateHarmonyColors()` at `theme.js:220` returns no `accent` key, so `colors.accent || colors.red` falls through to red exactly as intended. Add an optional `accent:` key to `THEMES` for any theme that should differ from its `red`.
+  **Three corrections, verified 2026-08-27, and all three change the work.** **(1) The count moves — re-derive it before you start.** It was 508 in three documents, then 521 when four independent methods agreed on 2026-08-27, and it is **535** today. `static/style.css` has **three** commits, not the one the previous version of this sentence claimed: `078e0b4` added 342 lines to it on 2026-08-28, some of them new fallback sites. *The sentence that ruled out staleness went stale in a day, which is the most honest argument for `Law 6` this programme has produced.* **(2) There is no `applyTheme()`.** The function is `applyColors()` at `theme.js:257`; the only `applyTheme` in the tree is a dead call at `slashCommands.js:876` behind an `||` the module can never satisfy. An implementer searching for the named function finds nothing. **(3) One line is not enough — `--red` is set at three sites.** `theme.js:263` (the module), `index.html:29` (the first-paint inline script) and `login.html:54` (the login page's own script, which never runs `applyColors` — its comment at `:605-607` says so). Adding the line only in `applyColors()` leaves a flash on every cold load, where the 205 bare sites resolve to nothing until the module boots, and leaves the **login page permanently without `--accent`** — it carries a `var(--accent` site of its own and `index.html` carries 14. **Mirror the line into all three, and bump `CACHE_NAME` in `sw.js`** or returning users keep the old first-paint script.
+  `CI:` none. `Verify:` cycle all 16 themes and diff screenshots — only the previously-unstyled elements change. Then: rail hover backgrounds appear; both resize handles become visible; the scroll-to-bottom button gets its colour; and the session rename input gets a border — that last one is **not** in the bare-site list, because that rule (at `style.css:7020` as of 2026-08-28; it was `:6775` before the file grew) is `var(--accent, var(--accent-primary))` with *both* undefined, so the whole `border` shorthand is invalid at computed-value time and falls back to `border-style: none`. Same fix, different failure mode.
+- [ ] **P1-02** Define `--accent-primary` (121 uses, never defined) — or replace those uses with `--accent`. **Premise corrected 2026-08-27: this is token hygiene, not a bug hunt.** The line reads as 121 broken uses. It is not — **120 of the 121 already resolve correctly through their fallbacks**, 116 of them to the theme's `--red`. **Exactly one site is genuinely dead** — the session rename input, `style.css:7020` as of 2026-08-28 — — and that is the same pixel `P1-01` already fixes, so as written these two rows overlap on their only real defect. *(Line numbers in this row and `P1-01` move whenever `style.css` grows — re-derive rather than trusting them.)* Do `P1-01` first, then this becomes what it should always have been: an undefined token used 121 times, worth resolving so the next reader is not misled, with no visual change expected and none acceptable.
 - [ ] **P1-03** **Define `--fg-muted`** (93 bare uses, zero definitions). Every one of those elements was authored as secondary text and renders at full strength. `Depends:` P1-01.
 - [ ] **P1-04** **Delete `#sidebar-backdrop { display:none !important }`** at top-level nesting depth 0 — it beats the media-query rule everywhere. Thirteen call sites across four modules already toggle the element. `Verify:` mobile drawer dims the page and tap-to-close works.
 - [ ] **P1-05** **Fix `#rail-settings`** — it unhides the sidebar and scrolls to the bottom instead of opening Settings. **Premise corrected 2026-08-27.** The rail gear is genuinely broken and stays open, but **the guided tour is not its victim.** The tour opens Settings through `#user-bar-settings` (`slashCommands.js:3337`), which works; the `#rail-settings` branch is reached only when that element is absent, and `ui_visibility.js:32` guarantees it never is. That branch is unreachable dead code. **The old `Verify:` passed on an unfixed tree** — a rewritten one is the only reason this row is still worth opening. `Verify:` click the rail gear on a cold load with the sidebar hidden; the Settings panel opens and the sidebar does not scroll.
@@ -614,7 +686,7 @@ More visible change than any redesign step, and zero markup touched.
 - [ ] **P1-10** **Normalise z-index to 7 named tiers.** **259 declarations, 64 distinct values** (re-measured 2026-08-27, scope: `static/style.css` only — 63 numeric plus one `var()`), range −1 to 1,000,000. Use the order-preserving remap: strictly increasing in the same sorted order ⇒ no element can change stacking. `Verify:` the remap list is strictly increasing; nothing moves visually.
 - [ ] **P1-11** Fix the toast occlusion the tiering surfaces — toasts sit at 9999, below every image-editor popover at 10001–10006. Deliberate second pass, needs visual review. `Depends:` P1-10.
 - [ ] **P1-12** **One global `prefers-reduced-motion` guard.** 18 narrow opt-outs against **160 keyframes** and 7 unguarded canvas animators — the background effects run continuously with nothing. **The 160 is the load-bearing correction** (re-measured 2026-08-27): 148 live in CSS, and **12 are injected into `document.head` at runtime by `slashCommands.js`**. A CSS-only guard cannot reach those twelve, so a guard written against the old 148 would pass its own review and still animate. Guard the injection site too.
-- [ ] **P1-13** Elevation tokens: 4 theme-aware shadows replacing **287 declarations / 212 unique values** (re-measured 2026-08-27, scope: `static/style.css`, comments stripped). **112** hardcode `rgba(0,0,0,α)` — on the four light themes those read as grey smudges. **156 of the 287 are already token-aware**, which the old figures hid: slightly over half the file is done, and the row is smaller than 287 makes it sound. The good theme-aware form already exists and is used 6 times.
+- [ ] **P1-13** Elevation tokens: 4 theme-aware shadows replacing **288 declarations / 209 unique values** (re-measured 2026-08-28) (re-measured 2026-08-27, scope: `static/style.css`, comments stripped). **144** hardcode `rgba(0,0,0,α)` — re-counted 2026-08-28 across the whole file — on the four light themes those read as grey smudges. **156 of the 287 are already token-aware**, which the old figures hid: slightly over half the file is done, and the row is smaller than 287 makes it sound. The good theme-aware form already exists and is used 6 times.
 - [ ] **P1-14** Name the signature curve. `cubic-bezier(0.34, 1.56, 0.64, 1)` is used 34 times and has never had a token.
 
 ---
@@ -686,7 +758,7 @@ cross one if implemented carelessly.
 - [ ] **P2-21** Built-in skills editor: flip `showBuiltin = false` → `true`. `_buildBuiltinCards()` and its admin endpoints are fully implemented, including a per-tool instruction-block override editor. **There are four endpoints, not three, and only two are gated** (`skills_routes.py:1250/1287/1311/1337` — both GETs are open, re-measured 2026-08-27). That is the whole reason `P11-10` amended this row from optional to required. — **DECIDED — gate the two GETs, write the list loader, then flip the flag. **Amended from optional to required** by `P11-10`** (D-2026-08-26-06).
 - [x] **P2-22** Re-attach the gallery upscaler controls (`ge-upscale-*`). Backend + local Real-ESRGAN both implemented, zero UI. — **DECIDED — target `/api/image/upscale-local` (local Real-ESRGAN). A backend selector waits for a real GPU host** (D-2026-08-26-06). — **done:** completed by wiring run 01 — `ge-upscale-section` built in `static/js/editor/build/controls.js`, toolbar entry present, and `ai-tools-misc.js` targets `upscale-local` per D-2026-08-26-06.
 - [x] **P2-23** Give RAG upload a UI — the module expects three elements that do not exist. The endpoint works and has **no extension restriction at all**. — **DECIDED — resurface the **user-facing** `rag.js` module, not the admin one. Three ids plus wiring, on a module already called every boot** (D-2026-08-26-06). — **done:** completed by wiring run 01 — `rag-upload-zone`, `rag-file-input` and `docs-view` all present in `static/index.html`, on the user-facing `rag.js` module as decided.
-- [ ] **P2-24** Add a custom-font upload route. **Keep the extension allowlist here** — these files land under the static mount and are served with no forced disposition. This is the exception that proves the rule.
+- [ ] **P2-24** Add a custom-font upload route. **Keep the extension allowlist here** — these files land under the static mount and are served with no forced disposition — the one place in this app where an uploaded file is served back to a browser, which is why the allowlist stays here and nowhere else.
 - [ ] **P2-25** **Document `NON_ADMIN_BLOCKED_TOOLS` — prune nothing.** *(Retitled 2026-08-27: the old title read "Prune…" while its own decision clause said not to. An agent that stopped at the title would have pruned — `Law 10`.)* The decision is settled: **nothing comes out of this list.** The remaining work is documentation — say beside each entry why it is blocked, so the next reader does not re-litigate it. **Must stay:** shell, python, all filesystem tools, vault, settings, tokens, endpoints, MCP, webhooks, api_call, app_api, and the `mcp__*` prefix rule. **`resolve_contact` is the trap** — it reads owner-scoped and harmless and is the entry most likely to be pruned by someone acting on the old title. **`CI:` two tests cover this partition.** (D-2026-08-26-06)
 - [ ] **P2-26** **Document the app-API blocklist — trim nothing.** *(Retitled 2026-08-27, same reason as `P2-25`.)* The decision is settled and this list gets **stronger** under `P11`, not weaker. **Must stay:** the cookbook install/rebuild/kill entries, every prefix rule, and — **missing from the old must-stay list** — `POST /api/cookbook/state` and `DELETE /api/cookbook/state`. Those two are data-destruction guards that **no test pins**, which makes them the pair most likely to be trimmed by accident and the least likely to be caught. Write the reason beside every entry and close the row. (D-2026-08-26-06)
 
@@ -706,7 +778,10 @@ Provably safe, and each one removes a trap the restyle would otherwise fall into
 - [ ] **P3-07** **Canonicalise breakpoints to three.** 13 distinct widths today. One **559**-line block switches to mobile at 700px while **2,965** lines switch at 768px (re-measured 2026-08-27, scope: 85 `max-width:768px` blocks, span-summed) — **between those widths the UI is in a mixed state**, and there is a 20px dead zone (701–719) where an unpaired min/max leaves neither rule applying.
 - [~] **P3-08** Add paired-rule comments so a desktop rule points at its mobile override. — **BLOCKED (2026-08-27):** the row cites *"the roadmap's own 'CSS did not move' item"* and **there is no such item** — the citation is self-referential with no antecedent, so there is no way to know which pairs are meant or when this is finished (`Law 9`). It also **must follow `P3-07`**: canonicalising 13 breakpoints down to three rewrites the pairings, and doing this first means writing 85 comments twice. **Unblock by:** landing `P3-07`, then defining what a "pair" is in one sentence.
 - [ ] **P3-09** Delete `:root.light` (21 lines + 3 other sites) — unreachable by construction, since light themes push values through the five tokens and never add a class. **Recover the well-tuned light syntax palette inside it first.** `Verify:` the four light themes stop rendering dark native dropdowns.
-- [ ] **P3-10** Delete the **2** dead modules. **Premise corrected 2026-08-27.** **The RAG module is live and must not be deleted** — `P2-23` landed its three DOM targets at `static/index.html:485-487`, so the bail-out at `rag.js:143` no longer fires. Deleting it now would remove a feature that started working four days ago; this is exactly the row that would have caused it. What is actually dead: `calendar/reminders.js` (114 lines, zero importers) and `tourAutoplay.js` — and the second description was also wrong. Its body is **133 lines of working code**; only `init()` is stubbed out, which is why the 6,500-line import is still there. Read it before deleting: the autoplay logic may be worth keeping behind a flag. **Both are still precached by the service worker** — update `sw.js` and bump `CACHE_NAME` in the same commit.
+- [ ] **P3-10** Delete the **2** dead modules. **Premise corrected 2026-08-27.** **The RAG module is live and must not be deleted** — `P2-23` landed its three DOM targets at `static/index.html:485-487`, so the bail-out at `rag.js:143` no longer fires. Deleting it now would remove a feature that started working four days ago; this is exactly the row that would have caused it. **Corrected again 2026-08-28, and the row is now one module, not two.** What is actually dead: **`calendar/reminders.js`** (114 lines, zero importers). That one goes — update `sw.js` and bump `CACHE_NAME` in the same commit.
+
+  **`tourAutoplay.js` is not dead and must not be deleted. It is the product's entire first-run walkthrough system**, and deleting it is the single most vision-contradicting act available in this tracker. Read: 133 lines of working code, imported at `static/index.html:2642`, mapping seven modals to per-feature tours — `doclib-modal`→`tour-library`, `cookbook-modal`→`tour-cookbook`, `research-overlay`→`tour-research`, `compare-model-overlay`→`tour-compare`, `theme-modal`→`tour-theme`, `settings-modal`→`tour-settings`, `gallery-modal`→`tour-gallery` — one-shot per modal, mobile excluded because tours position halos by rect math. Only `init()` is stubbed, with the comment "Disabled for v1 stability". **`Law 15` exists in this project because its owner stopped using a competitor's *more advanced* version of what we are building, for exactly one reason: *"There's no tutorials and the learning curve is too steep."*** Deleting the only onboarding we have would be that mistake, made deliberately, by the project that wrote the law. Re-filed as `P3-10b`.
+- [ ] **P3-10b** **Re-enable the first-run tours — `Law 15`'s first concrete row.** `static/js/tourAutoplay.js` is complete and switched off: `init()` is stubbed with "Disabled for v1 stability", and nobody recorded which instability. Find out whether it still reproduces (the seven target modals have all changed since), then turn it back on behind a setting a person can find. `Depends:` nothing. `CI:` none. `Verify:` a browser with cleared storage opens the Forge modal for the first time and gets its walkthrough; opening it again does not; and the setting that turns tours off is discoverable without reading the source. **This row is the answer to the question the owner asked of a competitor and we have not yet asked of ourselves.**
 - [ ] **P3-11** Fix the duplicate module specifier — `chatRenderer.js` is imported under 3 distinct specifiers, so a 3,126-line module is parsed three times per page load. A config module's header documents the symptom and works around it; the root cause was never fixed. One-line change per import.
 - [ ] **P3-12** Delete the verified-dead elements and handlers. **Re-measured 2026-08-27 and the orphan-id count is not four — it is 26.** Scope: 476 ids in `static/index.html`; 31 are never read by JS; 26 of those 31 are absent from CSS too. Only the drag-reorder item was verifiable as written (it queries a `draggable` attribute nothing ever adds). **The other two items — "two elements killed by CSS" and "a handler wired to a nonexistent element" — are not itemised anywhere**, so under `Law 9` this row cannot be honestly ticked until someone names them. Itemise the 26, then delete under `Law 1`.
 
@@ -740,7 +815,7 @@ shapes. Each is an audit, not a guess.
   the 7 unguarded canvas animators in `P1-12` are already in the tree today.)*
 
 ### Drift control — Law 13's enforcement
-- [x] **P3-13** **Wire `check-wiring.py` into CI at `--max 78`.** It counts `getElementById` — **done:** CI ceiling set to `--max 2`, which is the floor rather than a target — both remaining entries are artifacts of the checker's own regex against dynamic lookups, and its docstring already concedes that class is invisible.
+- [x] **P3-13** **Wire `check-wiring.py` into CI at `--max 78`.** It counts `getElementById` — **done:** the ratchet runs in CI as the `wiring-ratchet` job in `.github/workflows/ci.yml`, at `--max 2`. **Wired 2026-08-28, after an alignment audit found this row ticked on a gate that did not exist** — `git grep check-wiring` outside `.pantheon/` returned two hits, neither of them a workflow, while three documents advertised it. The law against shipping half-wired features was itself half-wired, which is the one defect that lets every other one through. `--max 2` is the floor rather than a target — both remaining entries are artifacts of the checker's own regex against dynamic lookups, and its docstring already concedes that class is invisible.
   targets that resolve to nothing: 78 today, across 16 prefixes and seven subsystems. The
   ceiling may fall and may never rise. Every built-and-never-wired finding in the P2 audit
   would have shown up here years ago if anything had been counting. `Verify:` a PR that adds
@@ -772,6 +847,8 @@ bigger change and belongs here, with `P3-14` re-run against it.
 
 # P4 · The wire — the real glass box
 *Area: `wire`, `trace` · Depends: P1 · Blocks: P5*
+
+**`Law 15` applies to every row in this phase.** It draws surface a person has to operate, and the law exists because the owner stopped using a competitor's *more advanced* version of this product for one reason: *"There's no tutorials and the learning curve is too steep for the little amount of time I have."* A row here is not done because the feature works — it is done when someone who has not read this tracker can find it, tell what state it is in, and use it without being told how. Put that in the row's `Verify:` line, in those terms.
 
 The backend emits **39** distinct SSE event types through a single `if/else if` chain;
 anything without a branch is silently discarded. **Thirty-plus fields are computed,
@@ -832,6 +909,8 @@ discards them. A receipt is that data kept instead of thrown away.
 # P5 · Trace & composer restyle
 *Area: `trace`, `composer` · Depends: P3, P4-01*
 
+**`Law 15` applies to every row in this phase.** It draws surface a person has to operate, and the law exists because the owner stopped using a competitor's *more advanced* version of this product for one reason: *"There's no tutorials and the learning curve is too steep for the little amount of time I have."* A row here is not done because the feature works — it is done when someone who has not read this tracker can find it, tell what state it is in, and use it without being told how. Put that in the row's `Verify:` line, in those terms.
+
 - [ ] **P5-01** Replace the **two** nested 300px scrollers with a `grid-template-rows: 0fr → 1fr` transition. *(Re-measured 2026-08-27 — scope: CSS rules pairing `max-height:300px` with `overflow-y:auto` in trace markup. An implementer hunting a third will not find it.)* Long reasoning currently clips into a 300px inner scroller inside the page scroller — the worst UX defect in the trace.
 - [ ] **P5-02** Give tool nodes the same open/close transition as reasoning. They hard show/hide today while a sibling inches away animates.
 - [ ] **P5-03** **Stop cards renaming themselves on completion.** A node reading *Running* becomes *bash*; *Searching* becomes *web_search*. 21 tools affected, and history replay shows raw ids for all of them. Compare mode already does it right — proof it is a bug. `Depends:` P4-01.
@@ -853,6 +932,8 @@ discards them. A receipt is that data kept instead of thrown away.
 
 # P6 · Queue & Plan
 *Area: `queue`, `plan` · Depends: P4-01*
+
+**`Law 15` applies to every row in this phase.** It draws surface a person has to operate, and the law exists because the owner stopped using a competitor's *more advanced* version of this product for one reason: *"There's no tutorials and the learning curve is too steep for the little amount of time I have."* A row here is not done because the feature works — it is done when someone who has not read this tracker can find it, tell what state it is in, and use it without being told how. Put that in the row's `Verify:` line, in those terms.
 
 - [ ] **P6-18** **Steer mid-response, not only queue.** The queue holds the *next* message;
   steering redirects the one in flight. Two different verbs, and only one exists. Prior art has
@@ -877,7 +958,8 @@ discards them. A receipt is that data kept instead of thrown away.
   `src/tool_capabilities.py:21-34`, and it is **not on the SSE wire** — neither `tool_start`
   (`src/agent_loop.py:5830`) nor `tool_output` (`:6056`) carries it. Resolved effect strings *do*
   already reach the frontend on the approval `action` payload (`chatRenderer.js:2594`), so the
-  field exists; it just does not travel on the tool events. Emitting it is `P4`/`P7-06` territory.
+  field exists; it just does not travel on the tool events. **`P7-06` owns emitting it** — it already needs the taxonomy to rank approval prompts, and
+  saying so on that row is what this handoff was missing.
   **Two `breaks-users` defects were found by refutation and are fixed:** `update_plan` — the tool
   this window exists to listen to, and the one the model is *ordered* to call after every step —
   arrived wrapped in the same `tool_start`/`tool_output` pair as real work and overwrote each
@@ -905,7 +987,7 @@ The approval store is better than anything that would replace it. Do not rebuild
 - [ ] **P7-03** Add rung **"ask every time"**. Does not exist: the gate is conditional on untrusted content having entered, so a clean session never prompts. Change the gate condition from *taint seen* to *taint seen **or** the current rung requires confirmation*. **Reuse `PendingToolApproval` unchanged.**
 - [ ] **P7-04** Add rung **"allow-listed"** — a rule store mapping tool + argument pattern to auto-allow, consulted before the blocked-effect check. Does not exist.
 - [x] **P7-05** Record the correction in the UI: **Auto-Pilot is already the default** for every untainted conversation. — **SUPERSEDED (verified 2026-08-27) — not independently actionable.** There is no ladder UI to record it in; this is an acceptance criterion, not a task, and left on its own it is a row nobody can ever honestly tick. **Re-filed as acceptance criteria on `P7-03` and `P7-04`**, citing `design/pantheon-v10.html:1721-1727`: whatever those two build must show Auto-Pilot as the existing default with the ladder added below it, never above.
-- [ ] **P7-06** Rank prompts by effect. A destructive action and a UI side effect produce an identical card. The 13-value taxonomy is written and used to rank nothing.
+- [ ] **P7-06** Rank prompts by effect. A destructive action and a UI side effect produce an identical card. The 13-value taxonomy (`ToolEffect`, `src/tool_capabilities.py`) is written and used to rank nothing. **This row owns putting `effect` on the SSE wire, and that ownership is stated here because it was previously stated nowhere** — `tool_start` and `tool_output` carry no `effect` key, and two independent auditors reading the same handoff assigned the job to two different phases. It is one field on two emits. **Landing it unblocks `P6-11`**, whose plan window is built and open on exactly this: four of its five per-step fields ship and `effect` is the fifth.
 - [ ] **P7-07** Send only the effects that actually **tripped** the gate, not all of them — and surface the unrecognised-tool case, which is the riskiest and currently invisible.
 - [ ] **P7-08** **Surface the taint trail.** The security context builds a complete list of which tools introduced untrusted content into a run, and it is read **nowhere** — server or client. Built in memory and thrown away.
 - [ ] **P7-09** Grant inspector — once a session-wide grant is given, nothing lists it and nothing revokes it.
@@ -919,8 +1001,25 @@ The approval store is better than anything that would replace it. Do not rebuild
 
 Three authoring surfaces over three engines that already run.
 
+**This is the largest phase in the programme — 48 rows — and it builds the three steepest
+surfaces in the product.** It is therefore the phase where `Law 15` bites hardest, and until
+2026-08-28 it had no gate at all. `P8-02` already diagnoses a live `Law 15` failure *inside* the
+phase: four skill fields the API supports, reachable only by someone who already knows the
+SKILL.md frontmatter format. That is the pattern to avoid, found in the phase's own second row.
+
+**`Law 15` applies to every row in this phase.** It draws surface a person has to operate, and the law exists because the owner stopped using a competitor's *more advanced* version of this product for one reason: *"There's no tutorials and the learning curve is too steep for the little amount of time I have."* A row here is not done because the feature works — it is done when someone who has not read this tracker can find it, tell what state it is in, and use it without being told how. Put that in the row's `Verify:` line, in those terms.
+
+
 ### Skill Crafter
 - [x] **P8-01** **Add the five phantom inputs** — `#new-skill-name`, `-description`, `-when`, `-procedure`, `-category`. The handler already reads them, they are in the clear-on-success list, and one has an Enter binding. **Zero JavaScript change.** — **done:** wiring run 01. All five are at `static/index.html:389/393/397/401/405`, read at `skills.js:1935-1944` and cleared at `:1970-1972`. Zero JavaScript changed, as predicted. Unblocks `P9-06`. (verified 2026-08-27)
+- [ ] **P8-00** **Legibility is this phase's acceptance criterion, and it is checkable.** Not a
+  build row — a gate on the other 47. The Workshop is where a person authors a skill, wires an
+  automation and creates an MCP server, and it is the part of the product most likely to be
+  abandoned for the reason the owner abandoned a competitor's. **Every `P8` row carries a
+  `Verify:` line naming what a first-time user can do unaided.** `Verify:` for this row — someone
+  who has never opened the Workshop creates one working skill, end to end, without reading the
+  source, the tracker, or a tutorial that does not exist yet. If they cannot, the phase is not
+  finished however many rows are ticked.
 - [ ] **P8-02** Add pitfalls, verification, platforms and required-toolsets inputs. **Premise corrected 2026-08-27.** All four are supported by the API and **all four are reachable** — through the raw SKILL.md card editor at `skills.js:1034`, where you hand-write the frontmatter. So this is not a `Law 13` wiring gap; it is a **`Law 15` failure**: the capability exists and only someone who already knows the file format can use it. That changes the deliverable. Do not build a second write path — add the four fields to the form that already posts to the same API, so the raw editor stays the power-user route rather than the only route.
 - [ ] **P8-03** Relabel "draft". A draft is excluded from the catalogue the model browses and **still keyword-injected** when it matches — "uncatalogued", not "inactive".
 - [ ] **P8-04** Fix the confidence-slider trap: maximum position stores **zero**, labelled "All", which disables the gate entirely. Dragging right is "let everything in", not "only perfect skills".
@@ -977,6 +1076,8 @@ Three authoring surfaces over three engines that already run.
 
 # P9 · Feature surfaces
 *Area: `surfaces` · Depends: P5*
+
+**`Law 15` applies to every row in this phase.** It draws surface a person has to operate, and the law exists because the owner stopped using a competitor's *more advanced* version of this product for one reason: *"There's no tutorials and the learning curve is too steep for the little amount of time I have."* A row here is not done because the feature works — it is done when someone who has not read this tracker can find it, tell what state it is in, and use it without being told how. Put that in the row's `Verify:` line, in those terms.
 
 ### Theme expansion — additive, no dependency on anything
 - [ ] **P9-15** **New themes.** The system takes them cleanly: five colours plus an optional
@@ -1097,7 +1198,11 @@ has an account.
   of overrides; a user gets a role and optional per-user overrides on top. Resolution order:
   built-in default → role → user. Keep `is_admin` as the superuser role rather than replacing
   it, because 103 call sites depend on it and rewriting them all at once is how this goes wrong.
-- [ ] **P11-02b** **Audit every `require_admin` site against the role model.** 84 of them, and
+- [ ] **P11-02b** **Audit every `require_admin` site against the role model.** **103** of them
+  — scope: 83 direct `require_admin(` calls plus 20 `Depends(require_admin)`, non-test `.py`,
+  excluding the definition and its imports. *(The line said 84 until 2026-08-28, which this
+  phase's own preamble had already retired twice, thirty lines above. A map 19 gates short would
+  have survived the entire refactor.)* Each is
   each is currently a binary answer to a question that should have three or four. Produce the
   mapping before changing any of them: which are genuinely superuser-only, which are
   "operator", which are "power user", which were `require_admin` because nothing finer existed.
@@ -1135,6 +1240,17 @@ has an account.
   balancer. Decide before, not after, someone runs two replicas.
 - [ ] **P11-08** **An auth audit log** — logins, role changes, privilege grants, failures.
   Feeds `D-05`'s telemetry table rather than inventing a second store.
+- [ ] **P11-11** **Where an operator actually does any of this.** `P11-03` names four values
+  someone must supply — discovery URL, client id, client secret, scopes — and gives them no
+  home. `P11-04` calls the claim map "configurable" without saying where. `P11-02` never says
+  how a role is created or assigned. **Left as-is, the whole phase lands as roles hand-edited
+  in `auth.json` and a client secret pasted into a compose file** — which is `Law 13`'s unwired
+  feature and `Law 15`'s steep curve at once, in the phase whose entire purpose is that a second
+  person can use this. **Extend the admin panel that already ships** (`static/js/admin.js`, its
+  `refreshAll` list, and `#adm-userList` in `static/index.html`) — a live per-user privilege
+  editor is already there, which makes this `Law 14` rather than new construction. `Depends:`
+  P11-02, P11-03. `Verify:` an admin creates a role, assigns it to a second user, and connects a
+  self-hosted Keycloak realm — without editing `auth.json` and without restarting the server.
 - [~] **P11-09** **Re-arm what single-user mode let us delete.** `DECISIONS.md`
   D-2026-08-26-01 deleted the upload type blocklist and named "a second user account" as the
   condition that voids it. This phase *is* that condition. Restore the check — with `.svg` in
@@ -1188,6 +1304,17 @@ is mostly moving values into a system that exists, then layering roles on top.
   already implements the shape this wants.** Extend it; do not author an eighth (`Law 14`).
 - [ ] **P12-05** **Per-user and per-role rate limiting.** The current limiter is per-IP, which
   behind any reverse proxy is one bucket for everyone.
+- [ ] **P12-05b** **The throttle *values* are still literals, and `P12-05` does not change
+  that.** It changes the key the limiter buckets on. Measured 2026-08-28: `routes/auth_routes.py`
+  builds three `RateLimiter`s with hardcoded `15/60`, `3/300` and `3/300`; `src/upload_handler.py`
+  sets `self.upload_rate_limit = 60`, **shadowing the default of 5 declared in `src/config.py`** —
+  reconcile those two before making either settable. None of the four is among `P12-01`'s ten byte
+  caps, so after `P12-01`, `P12-03` and `P12-05` all land, **an operator still cannot change a
+  throttle without a rebuild** — which is the thing the owner asked for by name: *"adding admin
+  controls, such as throttling and such."* Also decide where the counters live:
+  `src/rate_limiter.py` is 49 lines and in-memory, so per-user limits behind two replicas are two
+  buckets. `Depends:` P12-01. `Verify:` an admin changes a login-attempt limit and the next
+  attempt honours it, with no restart.
 - [ ] **P12-06** **Reinstate upload concurrency as an admin control, not a constant.**
   `P2-10`'s recommendation to delete it assumed one user on a LAN. Under real infrastructure
   it becomes a per-role setting with the default off. **Premise corrected 2026-08-27.** **The false-positive is
@@ -1230,6 +1357,15 @@ is mostly moving values into a system that exists, then layering roles on top.
 > The Brain surface becomes something a person can **read and search** — filter, sort, inspect,
 > correct — not something they navigate by dragging.
 
+**`Law 15` is this phase's acceptance criterion, and it is why the graph was cut.** The owner
+stopped using a competitor's more advanced version of exactly this feature for one reason:
+*"There's no tutorials and the learning curve is too steep for the little amount of time I
+have."* Every row here is measured against a person who has never seen the page: can they find
+what the agent remembers about a project, and correct something that is wrong, without being
+taught how? `P13-07` and `P13-08` carry that as a `Verify:` line. *(Filed as row `P13-00` until
+2026-08-28, which was the shape `P7-05` had already been superseded for — an acceptance
+criterion filed as a task is one nobody can tick.)*
+
 **What is actually there today.** *(Corrected 2026-08-27 — this paragraph named the wrong
 store, and every task under it inherited the error.)* The **live store is `data/memory.json`**
 (read at `src/memory.py:136`, atomically rewritten at `:275-278`). There is also a `memories` SQL table — `id, text, category, source,
@@ -1250,8 +1386,9 @@ proven, which is why this is a smaller phase than it looks:
 - **`POST /memory/import`** exists but takes a file upload and returns suggestions. Provider
   import is a new source feeding an existing pipe, not a new pipe.
 
-**What genuinely does not exist: edges.** One grep hit for link/related/edge/graph across the
-whole memory subsystem. That is the phase.
+**What genuinely does not exist: edges.** Re-measured 2026-08-27: `link|related|edge|graph`
+across `services/memory/*.py` returns **6 raw hits and 0 relevant** — the earlier "one grep hit"
+was itself a false positive. The finding is unchanged and stronger. That is the phase.
 
 **Evidence from a shipped implementation.** A beta screenshot of PandaOS's *PandAtlas* — the
 closest thing to this that exists — with what it teaches:
@@ -1269,7 +1406,7 @@ closest thing to this that exists — with what it teaches:
   should move on its own.
 - **Their "Avoid" list contains raw venting, promoted to a rule at 95%.** Verbatim entries like
   *"not a single person I have had look at it knows what the fuck is going on"* are sitting in a
-  behavioural policy list at high confidence. A bad afternoon became a durable instruction.
+  behavioural policy list at high confidence.
   **This is the single strongest argument for `P13-05`'s explicit commitment gate** — extraction
   should propose; only promotion should bind.
 - **"Last analyzed 5m ago · Covering last 3 months."** It is a batch job over a window, not a
@@ -1310,19 +1447,22 @@ closest thing to this that exists — with what it teaches:
 - [ ] **P13-06** **Provider import** — ChatGPT, Claude, Gemini conversation exports. Every
   imported memory carries its origin and enters at a lower confidence than something learned
   first-hand, because it was.
-- [ ] **P13-00** **Legibility is the acceptance criterion for this entire phase — `Law 15`.**
+- [x] **P13-00** **Legibility is the acceptance criterion for this entire phase — `Law 15`.** — **SUPERSEDED 2026-08-28 — moved into the phase preamble, where a criterion belongs.** This is the row shape `P7-05` was already superseded for: an acceptance criterion filed as a task, which nobody can honestly tick and which therefore sits open forever while the phase it governs ships around it. The statement is now in the `P13` preamble and hangs as a `Verify:` clause on `P13-07` and `P13-08`, naming a cold reader. Same words, somewhere they bite.
   The competitor's version of this feature is more advanced than anything planned here, and an
   interested beta user who *wanted it to work* abandoned it because there were no tutorials and
   the curve was too steep. The capability was real; the adoption was zero. Nothing in `P13`
   ships until someone who has never seen the surface can tell what it is for and what to do
   next, from the surface alone. **If it needs a tutorial, it is not finished.**
-- [ ] **P13-07** **The Brain page — readable, not navigable-by-dragging.** A dedicated surface,
+- [ ] **P13-07** **The Brain page — readable, not navigable-by-dragging.** `Verify:` someone who
+  has never opened this page finds what the agent remembers about one project, and corrects a
+  wrong memory, without being told how and without reading the source (`Law 15`). A dedicated surface,
   **not on the main path and not on open**, reached from a small card via *Explore more*. Lists
   and filters: by project, confidence, category, age, session, and edge type. Open a memory, see
   what it supersedes and what contradicts it, correct it, retire it. Search that finds a thing
   in one query rather than a thing you spot in a cloud. State plainly how fresh the analysis is.
   **No canvas. No force layout.** (`P3-19` is therefore moot unless another surface needs it.)
-- [ ] **P13-08** **Observable skill growth, as a list with dates.** Skills already carry
+- [ ] **P13-08** **Observable skill growth, as a list with dates.** `Verify:` a cold reader can
+  say which skills got better this week, and why, from the page alone (`Law 15`). Skills already carry
   confidence and `/memory/timeline` already exists; extend it so a person can see a capability
   form, strengthen, get used, or fall away — in a table they can read, sort and act on. The
   value is knowing *what the system learned this week and whether it was right*, which is a
@@ -1363,7 +1503,7 @@ nothing ever recorded the event.
 - [ ] **P14-02** **Instrument the rest of the loop** — round latency, tool call and failure
   counts, queue depth, approval outcomes, retrieval hit rates. Same table.
 - [ ] **P14-03** **An eval harness.** Save a set of cases, run them against a configuration,
-  get a number. This is the missing organ: every prompt change, model swap, skill edit and
+  get a number. Nothing in this codebase does that today: every prompt change, model swap, skill edit and
   retrieval tweak in this codebase is currently evaluated by vibes.
 - [ ] **P14-04** **Wire eval to receipts.** A saved case is a receipt (`P4-27`); a run is a
   re-run (`P4-26`); a result is a diff (`P4-28`). Law 14 — no second scaffolding.

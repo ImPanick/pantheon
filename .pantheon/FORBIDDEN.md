@@ -63,12 +63,11 @@ odysseus-theme / odysseus-custom-themes     (renamed to pantheon-* by P0-04; the
                                              stay one-to-one, the values are unchanged)
 ```
 
-**`--accent` must never be defined in `:root`.** **521** of the 799 `var(--accent…)` sites
+**`--accent` must never be defined in `:root`.** **535** of the **813** `var(--accent…)` sites
 in `style.css` are `var(--accent, var(--red))` and resolve to the active theme's `red`. A
 `:root` definition beats the fallback and collapses all 16 themes onto one colour. Set it
 per theme inside **`applyColors()`** instead — see `P1-01`, which was rewritten for exactly
-this reason after being written the wrong way round. *(Both the count and the function name
-were corrected 2026-08-27: 508 → 521, and `applyTheme()` does not exist. `--red` is set at
+this reason after being written the wrong way round. *(Re-measured 2026-08-28; it was 508, then 521, now 535 — `static/style.css` grows, so derive it rather than quoting this line. `applyTheme()` does not exist. `--red` is set at
 three sites — `theme.js:263`, `index.html:29`, `login.html:54` — and all three need the new
 line, or the login page never gets an accent and every cold load flashes.)*
 
@@ -126,10 +125,14 @@ why that block goes. For everything below, something is.
 - **The skill importer's host allowlist** — the SSRF property is held by the outbound-URL
   check and the per-hop IP-pinned transport, *not* by the host list. Widening the hosts is
   a supply-chain decision; removing the transport is a vulnerability.
-- **`ODYSSEUS_MCP_ALLOWED_COMMANDS`** — a curated default is fine. The denied-command,
+- **`PANTHEON_MCP_ALLOWED_COMMANDS`** — a curated default is fine. *(Named `ODYSSEUS_MCP_ALLOWED_COMMANDS` here until 2026-08-28. The real variable is read at `src/agent_tools/admin_tools.py:140` and pinned by four assertions in `tests/test_manage_mcp_command_allowlist.py`. A protection list that names the wrong identifier protects nothing — and this one is the RCE control.)* The denied-command,
   denied-flag and dangerous-env lists are the RCE fix and do not move.
 - **The serve-command allowlist** — keep the metachar rejection.
 - **The system-package allowlist** — it is the only thing shaping argv into a package manager.
-- **Upload byte limits** — prefer the env overrides. Above ~100 MB you need
+- **Upload byte limits** — resolution order is **role profile → instance setting → env →
+  built-in default** (`P12-01`). The environment variable is the *override*, not the place a new
+  limit goes: the owner asked for these to be controllable from admin, intelligently. *(This line
+  said "prefer the env overrides" until 2026-08-28, which is the opposite, in the file every
+  agent reads before touching a limit.)* Above ~100 MB you need
   streaming-to-disk, because the reader buffers the whole payload in memory.
   **Three tests pin the current defaults exactly.**

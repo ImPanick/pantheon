@@ -1,7 +1,17 @@
 # DEFERRED — decided, not scheduled
 
-Three items are deliberately out of the roadmap's critical path. Each has a reason and a
-condition for revisiting. None is "we forgot".
+**Seven** items are deliberately out of the roadmap's critical path, and they are not all the
+same kind of thing — the file said "three" and "each has a condition for revisiting" until
+2026-08-28, which was true when it was written and stopped being true twice since:
+
+- **Five are parked with a condition** — `D-01` … `D-05`. Each names what would reopen it.
+- **`D-06` (training) is parked indefinitely.** The owner's words: *"Let's abandon the training
+  idea — but we can leave it in but parked. Mark it as a 'skip for now' kind of ordeal."* It has
+  prerequisites rather than a trigger, and nobody is waiting on them.
+- **`D-07` (a marketplace) is closed, not deferred.** There is no condition, because the answer
+  was *"No marketplace at all."* Do not read it as a deferral with the clause missing.
+
+None of the seven is "we forgot".
 
 ---
 
@@ -48,14 +58,18 @@ confinement**, and points at an open sandbox proposal. A container station *is* 
 sandbox; deployment is the side effect.
 
 Second reason it matters: the app container already has the **host Docker socket
-mounted** for Cookbook. Anything inside reaches the host daemon. A station that owns and
+mounted** for the Forge. Anything inside reaches the host daemon. A station that owns and
 mediates that access is strictly better than the current ambient arrangement.
 
-**What already exists.** Cookbook has roughly 70% of the hard parts — a remote host
+**What already exists.** The Forge has roughly 70% of the hard parts — a remote host
 registry with SSH, tmux session lifecycle, a per-host mutex, GPU detection and
 hardware-fit, and a zombie-revival probe that checks whether a tmux session is still
 alive before declaring a job dead. Plus a file-durable background job store with PID
-liveness that survives a server restart. This is Cookbook's sibling, not a new subsystem.
+liveness that survives a server restart. This is the Forge's sibling, not a new subsystem.
+
+*(Renamed here 2026-08-28. `D-02` and `D-03` predate D-2026-08-26-05 and were never swept —
+`.pantheon/` is deliberately outside `P0-29`'s sweep scope, so these files need renaming by
+hand. `D-06`, written after the decision, already says Forge.)*
 
 **Open questions to settle first.**
 
@@ -66,7 +80,7 @@ liveness that survives a server restart. This is Cookbook's sibling, not a new s
 - Does the agent get to *create* containers, or only *run inside* one someone defined?
   Creating means image pulls, which means network, which is the thing you were confining.
 - Where does the Docker socket live afterwards — mediated through the station, or still
-  ambient for Cookbook? Two paths to the daemon is worse than one.
+  ambient for the Forge? Two paths to the daemon is worse than one.
 
 **Revisit when.** P8 is complete and there's appetite for a security-shaped project
 rather than a feature-shaped one.
@@ -249,9 +263,9 @@ That is the same contract as a skill. Full fine-tuning breaks it and should neve
 
 ### The second constraint: an eval gate is mandatory
 
-Training without evaluation is a random walk that feels like progress. A held-out set and a
-before/after comparison, with the adapter **not promoted unless it wins**, is not a nice-to-have
-— it is the difference between a feature and a way to quietly degrade your own platform.
+An adapter is promoted only if it beats the base model on a held-out set, measured before and
+after. Without that gate, a bad fine-tune does not raise an error — it scores worse on the things
+nobody tested, and keeps serving.
 
 This is also why `D-05` telemetry comes first. You cannot gate on a measurement you do not take.
 

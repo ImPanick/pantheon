@@ -54,7 +54,8 @@ the `upstream` remote.
 - **Documents** — writing-first editor with AI edits, suggestions, Markdown, HTML, CSV
 - **Email** — IMAP/SMTP with triage, tags, summaries, reminders and reply drafts
 - **Notes, tasks, calendar** — reminders, todos, scheduled agent tasks, CalDAV sync
-- **Extras** — gallery and image editor, sixteen themes with animated backgrounds, web search,
+- **Extras** — gallery and image editor, sixteen themes (nine with an animated background you
+  can swap or switch off), web search,
   presets, sessions, 2FA
 
 Added by this fork so far: guardrail caps lifted for self-hosted inference while cloud APIs keep
@@ -72,9 +73,9 @@ Odysseus goes by two names. We cloned `pewdiepie-archdaemon/odysseus`; its own c
 at `odysseus-dev/odysseus`. Both are the same upstream project and we credit both — see
 [`NOTICE`](NOTICE).
 
-Then we tried to change something small and ended up reading all 41,401 lines of the stylesheet.
+Then we tried to change something small and ended up reading all 41,738 lines of the stylesheet.
 
-`--accent` — the colour behind every highlight, hover state and drag handle — is referenced 799
+`--accent` — the colour behind every highlight, hover state and drag handle — is referenced 813
 times and defined nowhere. 206 style rules resolve to nothing. Nothing errors; the rules simply
 never apply.
 
@@ -91,10 +92,9 @@ Most of what we found after that is finished work that never got connected:
   `[Attached document file]` — no content at all — for `.go`, `.tsx`, `.yaml`, `.rs`, `.sql` and
   seven more.
 
-The backends exist. The endpoints respond. The styling is written. Someone built the hard part
-and moved on before the last step, which is a normal thing to happen to a project moving quickly.
-
-We forked it to finish it.
+The backends exist, the endpoints respond and the styling is written. Someone built the hard
+part and moved on before the last step, which is a normal thing to happen to a project moving
+quickly. We forked it to finish that last step.
 
 ---
 
@@ -120,7 +120,7 @@ runs in CI and the count only goes down.
 
 ## Status
 
-**288 tracked tasks, 30 done.** Twenty were setup and the rename. Ten are fixes now running:
+**294 tracked tasks, 62 done.** Twenty were setup and the rename. Ten are fixes now running:
 
 - Uploaded files reach the model as content rather than a placeholder
 - Upload type blocklist removed — it blocked executables while leaving `.svg` unblocked
@@ -136,7 +136,7 @@ Test suite: 5,742 passing, no regressions against baseline.
 
 ## What's next
 
-- **The wire** — the backend streams around fifty kinds of event per agent turn and discards
+- **The wire** — the backend streams 39 kinds of event per agent turn and discards
   more than thirty before display. A failed turn currently renders the same as a successful one.
 - **The Workshop** — build a skill from scratch, wire automations on a canvas, create an MCP
   server end to end, with the model assisting throughout.
@@ -146,6 +146,8 @@ Test suite: 5,742 passing, no regressions against baseline.
   flag, and per-team quotas set without editing compose files.
 - **Run receipts** — model, settings, tools, skills and retrievals recorded per run;
   re-runnable and comparable.
+- **More themes** — new palettes, and subtle ASCII-art backgrounds as a pattern class of their
+  own, chosen per theme like the seven animated ones already are.
 
 Fifteen phases, every task written down: [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md).
 

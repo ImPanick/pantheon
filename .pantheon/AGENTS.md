@@ -13,7 +13,7 @@ per-area handoff files — there were sixteen, all empty, and they are gone.
 
 ## The Laws
 
-Three about the work. Ten about drift and discipline. All of them came from something that actually
+Three about the work. Twelve about drift and discipline. All of them came from something that actually
 went wrong — every anti-drift law below cites the incident that produced it, because a
 law with no scar behind it gets ignored.
 
@@ -38,8 +38,8 @@ If it does not, correct the task line in `ROADMAP.md` and stop.
 
 ## The anti-drift laws
 
-Drift is not one failure. It is eight, and they compound: a wrong number becomes a wrong
-plan becomes a wrong implementation, and by then nobody remembers which step was the lie.
+Drift is not one failure. It is the twelve below, and they compound: a wrong number becomes a
+wrong plan becomes a wrong implementation, and by then nobody remembers which step was the lie.
 
 ### Law 4 — The roadmap is updated every turn. No exceptions.
 **Every single turn.** Not at the end of a phase, not when it feels significant, not when
@@ -51,13 +51,17 @@ found a bug, changed your mind, got blocked, did nothing — it goes in. Then ru
 `python3 .pantheon/check-tracker.py`.
 
 ### Law 5 — A number without a stated scope is not a number.
-`--accent` is referenced **799** times, or **950**, or **1,014**, depending entirely on
+`--accent` is referenced **813** times, or **968**, or **1,325**, depending entirely on
 whether you counted `var(--accent…)` in `style.css`, every appearance of the token in
 that file, or every appearance across CSS, JS and HTML. All three are true. Only one
 answers the question being asked.
 
-Write the scope into the claim: *"799 `var(--accent…)` sites in `static/style.css`, 205
-of them bare."* Never *"799 references."*
+Write the scope into the claim: *"813 `var(--accent…)` sites in `static/style.css`, 205
+of them bare."* Never *"813 references."*
+
+*Those three figures were 799 / 950 / 1,014 until 2026-08-28. `static/style.css` grew by 342
+lines that day and every one of them moved. The law's own example is the best demonstration of
+the law: **measure it when you cite it.***
 
 > **Incident.** The programme's own README first said `--fg-muted` was referenced 93
 > times. It is referenced 101 times, 93 of them without a fallback. Both numbers were
@@ -141,6 +145,61 @@ measured hit rate.
 > break them. The reviewers won **twelve of twelve** contested calls — including proving
 > that the phase's headline task was wrong in three separate ways.
 
+
+### Law 13 — Nothing ships half-wired.
+A backend with no caller, an element id with no markup, a flag with no consumer, a module
+loaded on every boot that returns early on a missing element — **that is not "built", it is
+drift**, and calling it velocity is how it accumulates. If you cannot finish the wiring in the
+same change, the task is not done: it stays open with a note saying what is missing, and the
+unwired half does not merge.
+
+`python3 .pantheon/check-wiring.py` counts it. The number is **2** unresolved
+`getElementById` targets — measured as: static-string lookups across `static/js/**` excluding
+`static/lib/**`, minus ids present in any tracked HTML, minus ids the JS itself creates at
+runtime. **It may go down. It may not go up.**
+
+*It said 78 until 2026-08-27, which was the count before wiring run 01 cleared them — the law
+against carrying numbers, carrying a number. Both remaining entries are checker artifacts, not
+drift, and the CI ceiling is `--max 2`. The checker has two known blind spots, written up on
+`P3-15`: it scans neither `static/app.js` nor `static/sw.js`, and it sees only literal
+`getElementById`, so helper lookups like `el('adm-*')` are invisible to it.*
+
+> **Incident.** An audit of one phase found a complete webhooks backend with no UI at all, a
+> skills editor behind a flag whose list was never fetched, a Real-ESRGAN upscaler with no
+> button, a RAG module called on every single startup that bails on a missing element, and
+> plan mode whose docked window three prompt strings promise and nobody ever drew. None of it
+> was broken. All of it passed CI. Nothing measured whether it was reachable.
+
+### Law 14 — Extend the primary scaffolding. Never build a second one.
+Before adding anything, ask: **does this create a second way to do something that already
+works?** If it does, the answer is to extend the first one. A second implementation is not
+redundancy, it is a fork in the maintenance path where one side goes stale and nobody notices
+which.
+
+This applies to plans as much as to code. A new capability that fits an existing phase belongs
+in that phase, not in a phase of its own — receipts belong in `P4` because `P4` already exists
+to render what the backend computes and discards; a visible context budget belongs in `P12`
+because `P12` already exists to make limits legible and adjustable. Inventing `P14 · Receipts`
+would be the same mistake in a different medium.
+
+> **Incident.** This codebase carries **two** dead RAG interfaces, an admin MCP form duplicating
+> a working one in settings, two files named `ROADMAP.md` saying different things, and two
+> `_ADMIN_TOOLS` constants with **opposite** meanings. Not one of those was a bad idea. Each was
+> a second way to do something that already had a first way.
+
+### Law 15 — If it needs a tutorial, it is not finished.
+A feature nobody can work has not shipped. The owner abandoned a competitor's memory graph for
+exactly this reason, and it was better than anything here.
+
+The test: **can someone who has never seen this surface tell, from the surface alone, what it
+is for and what to do next?** If the answer needs a paragraph of explanation, the surface is
+the thing to fix.
+
+> **Incident.** A competitor's memory-graph feature — genuinely more advanced than anything
+> here — was abandoned by an interested beta user who wanted it to work, because there were no
+> tutorials and the curve was too steep for the time available. The capability was real. The
+> adoption was zero. That is the whole lesson.
+
 ---
 
 ## Before you start a task
@@ -148,8 +207,9 @@ measured hit rate.
 ```
 □ Read the task's full entry in ROADMAP.md — including `Depends`, `CI` and `Verify`
 □ Check DECISIONS.md — the call may already be settled, with reasons
+□ Check DEFERRED.md — it may already be parked, or closed outright
 □ Check FORBIDDEN.md Part 1 (names) and Part 2 (controls that never lift)
-□ Confirm the task's premise is true in the current source        ← rule 3
+□ Confirm the task's premise is true in the current source        ← Law 3
 □ If `CI` is set, read the named test BEFORE editing — several assert on source
   text rather than behaviour, so a clean refactor can still fail them
 □ Claim it: flip `- [ ]` to `- [·]` and put your agent id on the line
@@ -213,12 +273,14 @@ agent never meets the same fork in the road, and say in your report that you did
 > superseded, and the integrator had to surface the contradiction as an open question after the
 > work was already done.
 
-1. **The source.** Beats everything. See rule 3.
+1. **The source.** Beats everything. See Law 3.
 2. **`P2-CORRECTED.md`** for anything in P2 — it was verified against the source by
    thirteen agents and it supersedes P2's task text.
 3. **`DECISIONS.md`** for a settled call, and what accepting it cost.
-4. **The roadmap task line.**
-5. **The mockup** (`design/pantheon-v10.html`) — what it should look like when done. It
+4. **`DEFERRED.md`** for whether the thing is parked or closed. A task line asking for work
+   that `D-06` parked or `D-07` closed is a task line nobody swept, and it outranks the row.
+5. **The roadmap task line.**
+6. **The mockup** (`design/pantheon-v10.html`) — what it should look like when done. It
    is a mockup: it fakes its data and does not reproduce every state. Where it disagrees
    with the source, the source wins and you file the discrepancy.
 
@@ -269,63 +331,6 @@ Full table in `ROADMAP.md` § Where things run.
 - A task's premise is false in the source.
 - A change would touch something in `FORBIDDEN.md`.
 - A change would touch the approval card's markup (see `DEFERRED.md`).
-- You are about to remove a security control. Read `FORBIDDEN.md` § Never Lift first;
+- You are about to remove a security control. Read `FORBIDDEN.md` **Part 2** first;
   if it is on that list, the answer is no.
 - Two tasks conflict and the roadmap does not say which wins.
-
-
-### Law 13 — Nothing ships half-wired.
-A backend with no caller, an element id with no markup, a flag with no consumer, a module
-loaded on every boot that returns early on a missing element — **that is not "built", it is
-drift**, and calling it velocity is how it accumulates. If you cannot finish the wiring in the
-same change, the task is not done: it stays open with a note saying what is missing, and the
-unwired half does not merge.
-
-`python3 .pantheon/check-wiring.py` counts it. The number is **2** unresolved
-`getElementById` targets — measured as: static-string lookups across `static/js/**` excluding
-`static/lib/**`, minus ids present in any tracked HTML, minus ids the JS itself creates at
-runtime. **It may go down. It may not go up.**
-
-*It said 78 until 2026-08-27, which was the count before wiring run 01 cleared them — the law
-against carrying numbers, carrying a number. Both remaining entries are checker artifacts, not
-drift, and the CI ceiling is `--max 2`. The checker has two known blind spots, written up on
-`P3-15`: it scans neither `static/app.js` nor `static/sw.js`, and it sees only literal
-`getElementById`, so helper lookups like `el('adm-*')` are invisible to it.*
-
-> **Incident.** An audit of one phase found a complete webhooks backend with no UI at all, a
-> skills editor behind a flag whose list was never fetched, a Real-ESRGAN upscaler with no
-> button, a RAG module called on every single startup that bails on a missing element, and
-> plan mode whose docked window three prompt strings promise and nobody ever drew. None of it
-> was broken. All of it passed CI. Nothing measured whether it was reachable.
-
-### Law 14 — Extend the primary scaffolding. Never build a second one.
-Before adding anything, ask: **does this create a second way to do something that already
-works?** If it does, the answer is to extend the first one. A second implementation is not
-redundancy, it is a fork in the maintenance path where one side goes stale and nobody notices
-which.
-
-This applies to plans as much as to code. A new capability that fits an existing phase belongs
-in that phase, not in a phase of its own — receipts belong in `P4` because `P4` already exists
-to render what the backend computes and discards; a visible context budget belongs in `P12`
-because `P12` already exists to make limits legible and adjustable. Inventing `P14 · Receipts`
-would be the same mistake in a different medium.
-
-> **Incident.** This codebase carries **two** dead RAG interfaces, an admin MCP form duplicating
-> a working one in settings, two files named `ROADMAP.md` saying different things, and two
-> `_ADMIN_TOOLS` constants with **opposite** meanings. Not one of those was a bad idea. Each was
-> a second way to do something that already had a first way.
-
-### Law 15 — If it needs a tutorial, it is not finished.
-Power that cannot be operated is worth less than a modest thing that can. A feature whose
-learning curve requires documentation nobody wrote has not shipped — it has been *placed*.
-
-The test: **can someone who has never seen this surface tell, from the surface alone, what it
-is for and what to do next?** If the answer needs a paragraph of explanation, the surface is
-the thing to fix.
-
-> **Incident.** A competitor's memory-graph feature — genuinely more advanced than anything
-> here — was abandoned by an interested beta user who wanted it to work, because there were no
-> tutorials and the curve was too steep for the time available. The capability was real. The
-> adoption was zero. That is the whole lesson.
-
-

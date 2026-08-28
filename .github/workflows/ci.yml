@@ -82,6 +82,23 @@ jobs:
       # Byte-compile sources — catches syntax errors without installing deps.
       - run: python -m compileall -q app.py core routes src services scripts tests
 
+  wiring-ratchet:
+    name: Wiring ratchet (check-wiring.py --max 2)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: "3.11"
+      # Law 13 — nothing ships half-wired. Counts getElementById targets that
+      # resolve to no markup and no runtime creation. The ceiling may fall and
+      # may never rise; a PR that adds an unresolved lookup fails here.
+      # No dependencies: the checker is stdlib plus `git ls-files`.
+      - name: check-wiring
+        run: python3 .pantheon/check-wiring.py --max 2
+
   node-syntax:
     name: JS syntax (node --check)
     runs-on: ubuntu-latest
