@@ -54,7 +54,7 @@ soon as its dependency lands.
 | P3 | Mechanical hygiene | 19 | 14 | **3** | **2** |
 | P4 | The wire — the real glass box | 28 | 28 | 0 | 0 |
 | P5 | Trace & composer restyle | 16 | 16 | 0 | 0 |
-| P6 | Queue & Plan | 18 | 8 | 0 | **10** |
+| P6 | Queue & Plan | 18 | 5 | 0 | **13** |
 | P7 | Trust ladder & control plane | 11 | 9 | **1** | **1** |
 | P8 | The Workshop | 48 | 44 | **3** | **1** |
 | P9 | Feature surfaces | 18 | 17 | 0 | **1** |
@@ -63,7 +63,7 @@ soon as its dependency lands.
 | P12 | Limits & the control plane | 10 | 10 | 0 | 0 |
 | P13 | The Brain | 12 | 12 | 0 | 0 |
 | P14 | Measurement | 7 | 7 | 0 | 0 |
-| **Total** | | **291** | **221** | **11** | **59** | | **291** | **231** | **11** | **49** | | **288** | **239** | **11** | **38** | | **288** | **253** | **1** | **34** | | **288** | **255** | **1** | **32** | | **288** | **257** | **1** | **30** | | **287** | **256** | **1** | **30** | | **266** | **235** | **1** | **30** | | **253** | **222** | **1** | **30** | | **250** | **219** | **1** | **30** | | **231** | **200** | **1** | **30** | | **231** | **211** | **0** | **20** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
+| **Total** | | **291** | **218** | **11** | **62** | | **291** | **221** | **11** | **59** | | **291** | **231** | **11** | **49** | | **288** | **239** | **11** | **38** | | **288** | **253** | **1** | **34** | | **288** | **255** | **1** | **32** | | **288** | **257** | **1** | **30** | | **287** | **256** | **1** | **30** | | **266** | **235** | **1** | **30** | | **253** | **222** | **1** | **30** | | **250** | **219** | **1** | **30** | | **231** | **200** | **1** | **30** | | **231** | **211** | **0** | **20** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -88,19 +88,22 @@ Ten of its rows landed on 2026-08-27 — see § Progress. What is left of it:
 - **`P0-21b`, `P0-31`** — new, from the run: twelve bundled packages with no notice anywhere, and
   49 unaudited `ody-` storage-key hits.
 
-### `P6` wave 1 is done; wave 2 is the plan surface
+### `P6` is 13 of 18. Finish it with the three reuse rows
 
-Eight rows remain, and they are one coherent piece of work rather than eight errands: **the
-docked plan window (`P6-11`), its entry control (`P6-12`), a step model with ids (`P6-13`), and
-the agent's own todo renderer (`P6-17`).** `P6-11` is the anchor — three prompt strings tell the
-model the window exists and a code comment claims it renders, and nothing has ever rendered it.
-Mid-execution `update_plan` writes to browser storage with no visible effect, which means the
-prompt is currently telling the model something false about its own interface.
+**`P6-04`, `P6-06` and `P6-07` are what is left of the phase, and all three say the same thing:
+reuse the thing that already exists.** The queue panel clones the research job engine (382
+self-contained lines, ~16 research-specific references across 7 endpoints — budget a
+generalisation pass, not a find-and-replace). The sequential/parallel picker is already built in
+that same research panel. And the Tasks activity view already renders every status with shared
+elapsed timers, a force button and a stop button, so pointing it at queue items beats building a
+second queue UI.
 
-That wave is UI-heavy and lands in `static/index.html`, `static/style.css` and a new module, so
-it does not contend with wave 1's files. `P6-04`, `P6-06` and `P6-07` sit behind it: all three
-say "reuse the thing that already exists" (the research job engine, its sequential/parallel
-picker, the Tasks activity view), and reuse is only judgeable once the plan surface is real.
+They were held until now for a reason: **reuse is only judgeable once the surface it plugs into
+is real**, and as of wave 2 it is. `P6-18` (steer mid-response, not only queue) is the one
+genuinely new feature left in the phase and depends on `P6-01`, which landed in wave 1.
+
+`P6-11` also stays open on `effect`, which needs the `ToolEffect` taxonomy put on the SSE wire —
+that is `P4`/`P7-06` work, not a `P6` row, and it should be picked up there.
 
 **Still out of scope on its own:** `P0-29`. The Cookbook → Forge sweep is 3,529 occurrences
 across 171 files and 43 paths — the largest blast radius in the programme, coupled to
@@ -124,6 +127,58 @@ unblocks five rows and its stated write location was wrong.
 *The one progress area. Newest first. One entry per completed section — two lines, a
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
+
+### P6 wave 2 — the plan window exists, and four prompt strings stopped lying
+**Three rows done, one honestly left open.** `static/js/planWindow.js` renders the approved
+checklist docked beside the chat, updates when `plan_update` arrives, and survives a reload.
+`src/agent_loop.py:759`, `:3402-3403`, `src/tool_index.py:109` and `src/tool_schemas.py:545`
+have all been telling the model *"the user's docked plan window updates live"* since before this
+fork existed. **That sentence is now true**, verified by driving the live module against the real
+SSE ordering rather than by reading the code.
+
+`P6-11` stays open on one point: `effect`, one of its five named per-step fields, is the 13-value
+`ToolEffect` taxonomy and it is **not on the SSE wire** — neither `tool_start` nor `tool_output`
+carries it. Four of five ship; the row is not finished, so it is not ticked.
+
+**Refutation found two `breaks-users` defects, and the first is the kind that only turns up when
+someone drives the code.**
+
+- **The window was corrupted by the tool it was built for.** `update_plan` is what the model is
+  *ordered* to call after every step — and it arrives wrapped in the same `tool_start` /
+  `tool_output` pair as real work. So each step's real bound tool was overwritten with
+  "update_plan", its result deleted, the raw plan JSON rendered as the target chip, and a phantom
+  result planted on the step that had not started yet. The window would have destroyed its own
+  contents on the mainline path, every step, from the first run.
+- **Approving one plan approved every later plan on that browser.** A new plan reset neither the
+  approval nor the per-step history, which it inherited by ordinal — so a brand-new checklist
+  read "Executing" and bound the next unrelated tool call straight to its step 1.
+
+`P6-17` came with five more, including **a second live door onto the same defect** — compare mode
+builds the identical card and `todowrite` is not stripped from it, so the agent's task list still
+surfaced there as raw JSON. That is the third time this programme has found a fix that was right
+and reached only one of two paths (`P6-01`, `P6-10`, now this). Also fixed: N repeated calls
+stacked N always-visible contradictory lists; a *successful* cleared list fell back to raw JSON;
+and the dashed in-progress box never drew, having lost a specificity contest to
+`li.task-item .task-check`.
+
+**The cross-batch finding neither refuter could see.** Both batches render the same row
+component, and they disagreed on its accessibility contract: the todo card gave each box
+`role="img"` and a label, while the plan window — this wave's headline feature — set
+`aria-hidden` on every one. A completed step was **silent to a screen reader**, its only "done"
+signal a fill and a strikethrough. Each refuter reviewed its own half and the halves had drifted
+apart inside a single run. The plan window now adopts the better contract.
+
+**The sixteen themes are intact**, checked five ways: zero `--accent` definitions in `:root`
+anywhere, no runtime `setProperty('--accent')`, every added token pre-existing, and zero
+hardcoded hex added. One real find in passing — `.plan-step-ok` and `.plan-step-bad` both
+resolved to `--red`, so success and failure chips were **the same colour in all sixteen themes**
+until `P1-01` lands. Now `--green`, which is a real `:root` token.
+
+**Suite: 5,785 passing, 19 failing, all 19 pre-existing.** The integrator caught that the
+baseline had quietly become 22, and the three extra were mine: wave 1's `crew_member_id` tests
+passed alone and failed in the suite, because they resolved `SessionLocal` at import time while
+the executor resolves it at call time — so any earlier test rebinding it broke them. Made
+hermetic against their own database, the way the rest of the suite does it.
 
 ### P6 wave 1 — the queue bug cluster closed, and two fixes that needed a second pass
 **Ten rows done.** A queued message no longer fires into whichever chat happens to be open, the
@@ -814,12 +869,29 @@ discards them. A receipt is that data kept instead of thrown away.
 - [x] **P6-09** Rewrite the todo "solve with an agent" button to enqueue instead of firing an unbounded raw stream. **Click ten todos and ten agent loops run at once**, with no progress and no cancel. — **done:** both todo agent-solve entry points enqueue through a bounded one-at-a-time queue with visible position, live status and a real server-side stop. Baseline reproduced before the fix: ten clicks, **ten concurrent streams**, no progress and no cancel.
 - [x] **P6-10** Expose `crew_member_id` in the task create/update schemas and the `manage_tasks` tool. It is read-only today and honoured by the executor — **this one field closes the roadmap's "todos assignable to an agent from the UI" item at the API layer.** — **done:** `crew_member_id` exposed in the task create/update schemas and in `manage_tasks`. **It shipped half-wired and refutation caught it:** the tool schema advertised the field while `src/tools/system.py` had never heard of it, so the model would accept the argument, report the task assigned, and the value would be discarded — the model confidently telling a user their task runs as Research Bot when it does not. Now resolved through an owner-scoped lookup mirroring the route layer's, because the executor runs the task with that crew member's persona, model, endpoint and tool allowlist. `tests/test_manage_tasks_crew_member.py` (6 tests) pins the round trip, the cross-owner refusal, and the schema-versus-executor agreement.
 - [ ] **P6-11** **Build the docked plan window.** Three prompt strings tell the model it exists and a code comment claims it renders. **Nothing has ever rendered it** — mid-execution `update_plan` writes to browser storage with zero visible effect, and the prompt is telling the model something false about its own interface. Structured steps with per-step status, bound tool, effect, elapsed and result.
-- [ ] **P6-12** Give plan mode a real entry control. The toggle button resolves to nothing — the element does not exist; entry is Tab-in-composer or a mobile swipe, and the status pill can only turn it **off**. Its CSS is written and dead. **Do not use the three-up mode toggle** — it belongs to the model-serving panel.
-- [ ] **P6-13** Add a step model with ids. A plan is an opaque markdown string everywhere — storage, form field, prompt, tool argument — and progress is computed by counting ticked boxes in that string. `Depends:` P6-11.
+  **The window is built and live — four of the five per-step fields ship — but `effect` does
+  not, so this row stays open** (`AGENTS.md`: a partly done task stays open with a note saying
+  what is left). `static/js/planWindow.js` renders the approved checklist docked, updates on
+  `plan_update`, and survives a reload; **the four prompt strings that have been promising this
+  window are now true.** What is left: `effect` is the 13-value `ToolEffect` taxonomy at
+  `src/tool_capabilities.py:21-34`, and it is **not on the SSE wire** — neither `tool_start`
+  (`src/agent_loop.py:5830`) nor `tool_output` (`:6056`) carries it. Resolved effect strings *do*
+  already reach the frontend on the approval `action` payload (`chatRenderer.js:2594`), so the
+  field exists; it just does not travel on the tool events. Emitting it is `P4`/`P7-06` territory.
+  **Two `breaks-users` defects were found by refutation and are fixed:** `update_plan` — the tool
+  this window exists to listen to, and the one the model is *ordered* to call after every step —
+  arrived wrapped in the same `tool_start`/`tool_output` pair as real work and overwrote each
+  step's bound tool, deleted its result, rendered the raw plan JSON as the target chip and put a
+  phantom result on the step that had not started; and approving one plan approved every later
+  plan on that browser, because a new plan reset neither the approval nor the per-step history it
+  inherited by ordinal. Both closed and verified by driving the live module against the real SSE
+  ordering.
+- [x] **P6-12** Give plan mode a real entry control. The toggle button resolves to nothing — the element does not exist; entry is Tab-in-composer or a mobile swipe, and the status pill can only turn it **off**. Its CSS is written and dead. **Do not use the three-up mode toggle** — it belongs to the model-serving panel. — **done:** plan mode has a labelled **Plan** button in the composer toolbar (`static/index.html:1209`) that toggles **both** directions, folding into the overflow menu on narrow widths. It is not the three-up mode toggle, which belongs to the model-serving panel. The `.plan-mode-btn` CSS that had been dead since it was written is now live — and its `.active` rule needed a `var(--red)` fallback, because bare `var(--accent)` is undefined until `P1-01` runs and the whole declaration was invalid, leaving on and off visually identical. A 2px vertical offset inherited from the dead rule was removed once the element was real enough to see it.
+- [x] **P6-13** Add a step model with ids. A plan is an opaque markdown string everywhere — storage, form field, prompt, tool argument — and progress is computed by counting ticked boxes in that string. `Depends:` P6-11. — **done:** steps carry stable ids derived from the markdown — FNV-1a of the normalised step text plus an occurrence ordinal — so status, bound tool, elapsed and result attach to something that survives every `update_plan`. **`src/tool_schemas.py` was deliberately not touched:** its schema tells the model to send the complete checklist every time, and quietly teaching it a different wire format would have made the prompt lie a second time. Ticking a box does not change a step's text, so the id holds.
 - [x] **P6-14** **Let planning mode ask a question.** The clarifying-question tool is absent from the read-only allowlist, so the gate blocks it. A planning mode that cannot ask what you meant is planning blind. — **done:** `ask_user` added to `PLAN_MODE_READONLY_TOOLS` (24 → 25), and `PLAN_MODE_DIRECTIVE` now tells the model the tool is there and to prefer asking over guessing — refutation caught that half missing, and an allowlist entry the prompt never mentions is a tool the model does not know it has. *(Premise mechanism corrected: the gate did not reject the call. `_assemble_prompt` computes `included = tool_names - disabled`, so the tool was stripped from the prompt entirely — plan mode was mute, not half-wired-and-lying.)*
 - [x] **P6-15** **Pass the plan to the verifier.** It judges against the last user message, which during plan execution is literally the string *"Execute the approved plan"* — naming no deliverables. **The verifier is blind for the entire run.** One line. — **done:** the verifier now judges plan-execution turns against the approved checklist instead of the bare trigger string. *(The roadmap's claimed cross-batch seam did not exist: `chat.js` has posted `approved_plan` since before this phase, and `chat.js:961` is the trigger, not the payload. `P6-15` was self-contained in `src/agent_loop.py` after all.)*
 - [x] **P6-16** Guard the narrating-without-acting supervisor against plan mode, where narrating **is** the job. One line. — **done:** the narrating-without-acting supervisor is exempt in plan mode, where describing un-taken actions is the job. **The code was right and the reasoning under it was false** — it justified the exemption with "every mutating tool is denied anyway", but plan mode is an *allowlist* with 25 read-only tools enabled and a directive that orders their use, so the nudge was not harmless-because-blocked, it was harmful because it pushed the model from planning into acting on tools that work. Corrected in place, because anyone re-deriving the decision from that sentence would have reached the wrong answer.
-- [ ] **P6-17** Render the agent's own todo list. A structured todo tool exists, persists to disk, is instructed for multi-step work, and **has no renderer** — it surfaces only as raw tool output text.
+- [x] **P6-17** Render the agent's own todo list. A structured todo tool exists, persists to disk, is instructed for multi-step work, and **has no renderer** — it surfaces only as raw tool output text. — **done:** `todowrite` renders as a real checklist card instead of a raw JSON blob, on the live path, the reload path **and compare mode** — that third one was a second live door onto the same defect, found by refutation, the same shape as `P6-01` in wave 1. Four more defects came out of that review and are fixed: N repeated calls no longer stack N always-visible contradictory lists (superseded cards keep their header and lose their rows — `Law 1`, nothing deleted); a cleared list (`{"todos": []}`, a *successful* call) no longer falls back to raw JSON; the dashed in-progress box now actually draws, having lost a specificity contest to `li.task-item .task-check`; and an uppercase `[X]` marker is accepted rather than guarded against by a branch the regex made unreachable.
 
 ---
 
@@ -1348,6 +1420,9 @@ nothing ever recorded the event.
 - [ ] **B07** **The scheduler files an admin-privilege refusal as `error`.** `src/task_scheduler.py` sets `status = "error"` where the task never ran and is then paused. By the vocabulary documented at `core/database.py:810+` that is `skipped` — "deliberately did not run", not a failure — so every privilege refusal currently counts against the task's error rate. Changing a persisted status value is why this is its own row rather than part of `P6-05`: decide whether old rows are migrated or left. `Verify:` a task whose owner lacks the privilege records `skipped` and does not appear under Errors. — found during P6-05 — agent:`integrator`
 - [ ] **B08** **A stale `agent_status: running` outlives the run that set it.** `static/js/notes.js` reads `agentLive || item.agent_status`, so a `running` value persisted before a reload — or written when the tab closed mid-run, which is exactly the `P6-09` scenario — survives with no live job behind it. The tooltip then says "open the menu to stop it" while `_agentSolveState` is live-only, so no Stop entry renders. Related: `grep is-agent-running|is-agent-queued static/style.css` returns **0** — the class the button's visibility depends on has no rule, so it stays at `opacity:0`. `Verify:` reload with a stale `running` todo; either it offers a working stop or it stops claiming to. — found during P6-09 — agent:`refute:queue`
 - [ ] **B09** **`static/js/chat.js` is loaded under two different cache-buster strings.** `static/index.html:250` preloads it as `?v=20260815toolapproval4` while `static/index.html:2620` and `static/app.js:13` request `?v=20260819approvalcontrol1`. The modulepreload therefore warms a URL the page never asks for — the preload is wasted and the module is fetched twice on a cold load. Pre-existing, not this run's. `Verify:` one string, three sites. — found during P6 wave 1 — agent:`integrator`
+- [ ] **B10** **`node --check` is a no-op for `static/app.js`, and `AGENTS.md` names it as a gate.** `static/js/package.json` is `{"type": "module"}`, so every module under `static/js/` parses as ESM and the check works. `static/app.js` sits outside that directory with no marker, so Node parses it as CommonJS, the ESM syntax error is swallowed by module detection, and it exits **0 on a file with a deliberate syntax error** — measured by appending `const broken = ;` to a copy. `static/sw.js` is fine (plain script). So the pre-tick checklist silently verifies nothing for the one top-level module in the tree. Fix: add a marker, move the file, or say so on the line. `Verify:` a syntax error in `static/app.js` fails the gate. — found during P6 wave 2 — agent:`integrator`
+- [ ] **B11** **The plan window and the todo card render visually identical rows that mean different things.** Sharing the row system was right (`Law 14`) and the CSS is genuinely joined by selector, not copied. But an approved plan and the agent's private scratch list can now be on screen at once looking the same, and they are not the same kind of thing — one is a commitment the user approved, the other is the model's working memory. They need a tell. `Law 15`: a person should not have to work out which is which. `Verify:` both on screen at once, and a stranger can say which is the approved plan. — found during P6 wave 2 — agent:`integrator`
+- [ ] **B12** **Four smaller duplications survive between the plan window and the todo card.** The row system is shared, the chrome is not: `.plan-window-head` / `.todo-card-head` (2 of 6 declarations shared), the `"N of M done"` string built two ways (`planWindow.js:392`, `chatRenderer.js:1377`), the step chip built as DOM in one and as a string in the other, and the play triangle `points="7 4 20 12 7 20 7 4"` hand-written twice (`chat.js:978`, `planWindow.js:412`). None is a bug today; all four are the shape that becomes one, the way the accessibility contract already did — the two row builders disagreed on it until this run and each batch's refuter only saw its own half. `Verify:` one implementation each. — found during P6 wave 2 — agent:`integrator`
 - [ ] **B01** **The datastore image is unpinned.** `chromadb/chroma:latest` in all three
   compose files, and `binwiederhier/ntfy` with no tag at all in the same three. A
   breaking Chroma release lands on the next `--build` and the collections stop loading —

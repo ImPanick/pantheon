@@ -14,11 +14,34 @@ own session.
 """
 import asyncio
 import json
+import sys
 
 import pytest
 
-from core.database import SessionLocal, ScheduledTask, CrewMember
-from src.tools.system import do_manage_tasks
+from tests.helpers.import_state import clear_fake_database_modules
+from tests.helpers.sqlite_db import make_temp_sqlite
+
+clear_fake_database_modules()
+
+import core.database as cdb
+from core.database import ScheduledTask, CrewMember
+
+# Bind our own file-backed database rather than sharing the suite's.
+# `do_manage_tasks` resolves `core.database.SessionLocal` at CALL time (the
+# import is inside the function), so a module-level `from ... import
+# SessionLocal` here would silently diverge the moment any earlier test rebinds
+# it — which is exactly what happened: green alone, red in the suite.
+_TS, _ENGINE, _TMPDB = make_temp_sqlite(cdb.Base.metadata)
+
+
+@pytest.fixture(autouse=True)
+def _bind_temp_db(monkeypatch):
+    monkeypatch.setitem(sys.modules, "core.database", cdb)
+    parent = sys.modules.get("core")
+    if parent is not None:
+        monkeypatch.setattr(parent, "database", cdb, raising=False)
+    monkeypatch.setattr(cdb, "SessionLocal", _TS)
+    yield
 
 
 def _run(coro):
@@ -26,8 +49,8 @@ def _run(coro):
 
 
 @pytest.fixture()
-def crew():
-    db = SessionLocal()
+def crew(_bind_temp_db):
+    db = _TS()
     mine = CrewMember(id="crew-test-mine", owner="alice-crewtest", name="Research Bot")
     theirs = CrewMember(id="crew-test-theirs", owner="bob-crewtest", name="Bob's Bot")
     db.add_all([mine, theirs])
@@ -42,8 +65,13 @@ def crew():
     db.close()
 
 
+def _import_do_manage_tasks():
+    from src.tools.system import do_manage_tasks
+    return do_manage_tasks
+
+
 def _create(crew_member_id, owner="alice-crewtest", name="crewtest"):
-    return _run(do_manage_tasks(json.dumps({
+    return _run(_import_do_manage_tasks()(json.dumps({
         "action": "create", "name": name, "prompt": "do a thing",
         "trigger_type": "schedule", "schedule": "daily",
         "scheduled_time": "09:00", "crew_member_id": crew_member_id,
@@ -77,7 +105,7 @@ def test_unknown_crew_member_is_refused(crew):
 def test_edit_with_empty_string_unassigns(crew):
     task_id = _create("crew-test-mine").get("task_id")
     assert task_id
-    _run(do_manage_tasks(json.dumps({
+    _run(_import_do_manage_tasks()(json.dumps({
         "action": "edit", "task_id": task_id, "crew_member_id": "",
     }), owner="alice-crewtest"))
     crew.expire_all()
@@ -89,7 +117,7 @@ def test_edit_omitting_the_field_leaves_the_assignment_alone(crew):
     """`None` means "not mentioned"; only an explicit "" unassigns."""
     task_id = _create("crew-test-mine").get("task_id")
     assert task_id
-    _run(do_manage_tasks(json.dumps({
+    _run(_import_do_manage_tasks()(json.dumps({
         "action": "edit", "task_id": task_id, "name": "renamed",
     }), owner="alice-crewtest"))
     crew.expire_all()

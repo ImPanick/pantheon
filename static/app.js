@@ -2265,7 +2265,10 @@ function initializeEventListeners() {
     if (!inputLeft || !overflowMenu || !overflowWrapper) return;
 
     // Buttons that can be collapsed (in reverse priority — last collapsed first)
-    const collapsibleIds = ['bash-toggle-btn', 'web-toggle-btn'];
+    // `plan-toggle-btn` (P6-12) goes first so it collapses before Shell and Web
+    // — their relative order is untouched — and lands in the overflow menu with
+    // a text label rather than being silently clipped by the bar's overflow.
+    const collapsibleIds = ['plan-toggle-btn', 'bash-toggle-btn', 'web-toggle-btn'];
     const collapsibleBtns = collapsibleIds.map(id => el(id)).filter(Boolean);
     // Map of toolbar btn id → overflow mirror element (created dynamically)
     const overflowMirrors = new Map();
@@ -2276,7 +2279,9 @@ function initializeEventListeners() {
       mirror.type = 'button';
       mirror.className = 'overflow-menu-item toolbar-overflow-mirror';
       mirror.dataset.mirrorOf = btn.id;
-      const title = btn.title || btn.id.replace(/-/g, ' ');
+      // `title` is state text for some buttons (syncPlanToggle rewrites plan
+      // mode's on every toggle), so a button can pin a stable menu label.
+      const title = btn.dataset.overflowLabel || btn.title || btn.id.replace(/-/g, ' ');
       mirror.innerHTML = btn.querySelector('svg').outerHTML + '<span>' + title + '</span>' +
         '<span class="overflow-active-dot"></span>';
       mirror.style.display = 'none';

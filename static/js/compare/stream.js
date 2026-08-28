@@ -1,7 +1,7 @@
 // compare/stream.js — SSE streaming to panes
 import state from './state.js';
 import { addFinishBadge } from './vote.js';
-import { getModelCost, renderAskUserCard, safeDisplayImageSrc } from '../chatRenderer.js?v=20260819approvalcontrol1';
+import { getModelCost, renderAskUserCard, safeDisplayImageSrc, buildTodoCard } from '../chatRenderer.js?v=20260819approvalcontrol1';
 import markdownModule from '../markdown.js';
 import spinnerModule from '../spinner.js';
 import uiModule from '../ui.js';
@@ -595,9 +595,14 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
               if (json.output && json.output.trim()) {
                 outHtml = `<details class="agent-tool-output"><summary>Output</summary><pre>${escapeHtml(json.output)}</pre></details>`;
               }
-              const cmdHtml = cmd ? `<pre class="agent-thread-cmd">${escapeHtml(cmd)}</pre>` : '';
+              // Compare mode reaches the same /api/chat endpoint in agent mode
+              // and todowrite is not stripped, so without this the agent's task
+              // list surfaces here as the raw JSON <pre> that P6-17 replaces
+              // everywhere else. Same card, same builder — not a second one.
+              const todoHtml = buildTodoCard(json);
+              const cmdHtml = (cmd && !todoHtml) ? `<pre class="agent-thread-cmd">${escapeHtml(cmd)}</pre>` : '';
               currentToolBlock.className = 'agent-thread-node' + (ok ? '' : ' error');
-              currentToolBlock.innerHTML = `<div class="agent-thread-dot"></div><div class="agent-thread-header"><span class="agent-thread-icon">${ok ? '\u2713' : '\u2717'}</span><span class="agent-thread-tool">${escapeHtml(tLabel)}</span><span class="agent-thread-status">${ok ? 'done' : 'failed'}</span><span class="agent-thread-chevron">\u25B6</span></div><div class="agent-thread-content">${cmdHtml}${outHtml}</div>`;
+              currentToolBlock.innerHTML = `<div class="agent-thread-dot"></div><div class="agent-thread-header"><span class="agent-thread-icon">${ok ? '\u2713' : '\u2717'}</span><span class="agent-thread-tool">${escapeHtml(tLabel)}</span><span class="agent-thread-status">${ok ? 'done' : 'failed'}</span><span class="agent-thread-chevron">\u25B6</span></div>${todoHtml}<div class="agent-thread-content">${cmdHtml}${outHtml}</div>`;
               currentToolBlock.querySelector('.agent-thread-header').addEventListener('click', () => currentToolBlock.classList.toggle('open'));
               currentToolBlock = null;
               // Reset text element so next deltas create a fresh container

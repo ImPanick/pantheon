@@ -2659,16 +2659,28 @@ body.bg-pattern-sparkles {
 	      color: var(--fg);
 	      background: color-mix(in srgb, var(--fg) 9%, transparent);
 	    }
+	    /* P6-12 — this rule and the `.active` one below were written for
+	       #plan-toggle-btn and sat dead because the element did not exist. The
+	       button now carries a visible "Plan" label (Law 15: no unlabelled
+	       icons), so the fixed 28px square becomes a fixed height plus padding.
+	       `--accent` gained its `var(--red)` fallback because P1-01 has not run
+	       yet: bare `var(--accent)` is undefined today, which made the whole
+	       declaration invalid and left the on-state visually indistinguishable
+	       from the off-state. */
 	    .plan-mode-btn {
-	      width: 28px;
 	      height: 28px;
-	      padding: 0;
+	      padding: 0 8px 0 6px;
+	      gap: 4px;
 	      flex-shrink: 0;
-	      top: -2px;
+	    }
+	    .plan-mode-btn-label {
+	      font-size: 11px;
+	      font-weight: 600;
+	      line-height: 1;
 	    }
 	    .plan-mode-btn.active {
-	      color: var(--accent);
-	      background: color-mix(in srgb, var(--accent) 14%, transparent);
+	      color: var(--accent, var(--red));
+	      background: color-mix(in srgb, var(--accent, var(--red)) 14%, transparent);
 	    }
     /* GitHub-style task lists (- [ ] / - [x]) */
     li.task-item {
@@ -2734,6 +2746,239 @@ body.bg-pattern-sparkles {
 	      color: var(--accent, var(--red));
 	      font-weight: 650;
 	    }
+
+    /* ── Docked plan window (P6-11) ─────────────────────────────────────────
+       Docked between the transcript and the composer inside .chat-container's
+       flex column, so it stays on screen while the agent works instead of
+       scrolling away with the message it came from.
+
+       It is not a second panel system (Law 14). The step rows reuse the
+       checklist idiom the markdown renderer already emits — li.task-item /
+       .task-check / .task-text / .task-done (see markdown.js:851 and the rules
+       just above) — and the footer reuses .plan-inline-actions with its
+       .plan-inline-execute / .plan-inline-clear buttons, so the window and the
+       inline plan actions are the same component shown in two places.
+
+       Theme tokens only (D-2026-08-26-03). Every accent reference carries the
+       `var(--red)` fallback the other 521 sites use; nothing here defines
+       `--accent` in :root. */
+    .plan-window {
+      flex: 0 0 auto;
+      width: 100%;
+      max-width: 800px;
+      margin: 0 auto 8px;
+      border: 1px solid var(--input-border, var(--border));
+      border-radius: 14px;
+      background: var(--input-bg, var(--panel));
+      overflow: hidden;
+    }
+    .plan-window[hidden] { display: none !important; }
+    .plan-window-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px 7px 7px;
+    }
+    .plan-window-fold {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      background: none;
+      border: none;
+      padding: 3px 5px;
+      border-radius: 8px;
+      color: var(--fg);
+      font: inherit;
+      cursor: pointer;
+      text-align: left;
+    }
+    .plan-window-fold:hover {
+      background: color-mix(in srgb, var(--fg) 8%, transparent);
+    }
+    .plan-window-chevron,
+    .plan-window-icon {
+      display: inline-flex;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .plan-window-chevron {
+      opacity: 0.7;
+      transition: transform 0.16s ease;
+    }
+    .plan-window-folded .plan-window-chevron { transform: rotate(-90deg); }
+    /* .plan-window-icon and .plan-window-title are declared once, jointly with
+       their .todo-card-* twins further down — both surfaces share one row
+       system, so they should share its chrome too (Law 14). Only the
+       plan-window-specific font-size stays here. */
+    .plan-window-title { font-size: 12px; }
+    .plan-window-count {
+      font-size: 11px;
+      opacity: 0.62;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .plan-window-origin {
+      font-size: 10px;
+      padding: 2px 7px;
+      border-radius: 999px;
+      border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent);
+      opacity: 0.7;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .plan-window-origin[hidden] { display: none !important; }
+    .plan-window-status {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 2px 8px;
+      border-radius: 999px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      border: 1px solid color-mix(in srgb, var(--fg) 16%, transparent);
+      color: color-mix(in srgb, var(--fg) 72%, transparent);
+    }
+    .plan-window-status[data-plan-state="executing"] {
+      border-color: color-mix(in srgb, var(--accent, var(--red)) 45%, transparent);
+      background: color-mix(in srgb, var(--accent, var(--red)) 14%, transparent);
+      color: var(--accent, var(--red));
+    }
+    .plan-window-track {
+      height: 2px;
+      background: color-mix(in srgb, var(--fg) 10%, transparent);
+    }
+    .plan-window-fill {
+      display: block;
+      height: 100%;
+      width: 0;
+      background: var(--accent, var(--red));
+      transition: width 0.3s ease;
+    }
+    .plan-window-body[hidden] { display: none !important; }
+    .plan-window-steps {
+      list-style: none;
+      margin: 0;
+      padding: 6px;
+      max-height: 240px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+    /* The four row rules below are shared with the todo card (P6-17,
+       `.todo-card-list` further down): a step row and a todo row are the same
+       object, so they join this rule by selector instead of copying it (Law
+       14). The selectors are added, never re-specified — each stays at the
+       same specificity, so the plan window's computed style is unchanged. */
+    .plan-window-steps li.plan-step,
+    .todo-card-list li.plan-step {
+      margin-left: 0;
+      padding: 6px 8px;
+      border-radius: 8px;
+      align-items: flex-start;
+    }
+    .plan-window-steps li.plan-step .task-check,
+    .todo-card-list li.plan-step .task-check { margin-top: 2px; }
+    /* Scoped fallback: the shared rule sets bare var(--accent), which is
+       undefined until P1-01 lands, so a ticked box would draw empty. */
+    .plan-window-steps li.plan-step.task-done .task-check,
+    .todo-card-list li.plan-step.task-done .task-check {
+      background: var(--accent, var(--red));
+      border-color: var(--accent, var(--red));
+    }
+    .plan-window-steps .task-text,
+    .todo-card-list .task-text {
+      display: block;
+      font-size: 12px;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+    .plan-step-main {
+      flex: 1;
+      min-width: 0;
+    }
+    .plan-step-now {
+      background: color-mix(in srgb, var(--accent, var(--red)) 9%, transparent);
+      box-shadow: inset 2px 0 0 var(--accent, var(--red));
+    }
+    /* `li.` is load-bearing: li.task-item .task-check is (0,2,1) and its
+       `border` shorthand overrode both sub-properties here, so the dashed
+       in-progress box never rendered. Matching that specificity is the fix. */
+    li.plan-step-now .task-check {
+      border-style: dashed;
+      border-color: var(--accent, var(--red));
+      animation: plan-step-pulse 1.6s ease-in-out infinite;
+    }
+    @keyframes plan-step-pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .plan-step-now .task-check { animation: none; }
+      .plan-window-chevron,
+      .plan-window-fill { transition: none; }
+    }
+    .plan-step-meta {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4px;
+      margin-top: 4px;
+    }
+    .plan-step-chip {
+      font-size: 9.5px;
+      line-height: 1.7;
+      padding: 0 5px;
+      border-radius: 3px;
+      border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent);
+      color: color-mix(in srgb, var(--fg) 70%, transparent);
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .plan-step-tool { font-weight: 700; }
+    .plan-step-target { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    /* --accent is undefined until P1-01 lands, so an ok chip written against
+       it painted the same colour as the failure chip below — success and
+       failure were indistinguishable in all sixteen themes. --green is a real
+       :root token (see the palette at the top of this file). */
+    .plan-step-ok {
+      border-color: color-mix(in srgb, var(--green, #50fa7b) 45%, transparent);
+      background: color-mix(in srgb, var(--green, #50fa7b) 12%, transparent);
+      color: var(--green, #50fa7b);
+    }
+    .plan-step-bad {
+      border-color: color-mix(in srgb, var(--red) 50%, transparent);
+      background: color-mix(in srgb, var(--red) 12%, transparent);
+      color: var(--red);
+    }
+    .plan-step-elapsed {
+      border-color: transparent;
+      font-variant-numeric: tabular-nums;
+      opacity: 0.8;
+    }
+    .plan-window-foot {
+      margin: 0;
+      padding: 8px 10px 10px;
+      border-top: 1px solid color-mix(in srgb, var(--fg) 9%, transparent);
+      flex-wrap: wrap;
+    }
+    .plan-window .plan-inline-execute[hidden] { display: none !important; }
+    .plan-window-hint {
+      font-size: 10.5px;
+      opacity: 0.62;
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+    @media (max-width: 768px) {
+      .plan-window-steps { max-height: 180px; }
+      .plan-window-hint { flex-basis: 100%; }
+    }
     /* While the menu is open the chevron stays in its highlighted state
        — don't run the opacity fade transition so we never flash from
        0.5 → hover-1.0 → drop-back. The state holds steady. */
@@ -9902,6 +10147,82 @@ body.fullwidth-chat .chat-history {
   line-height: 1.4;
   overflow-x: auto;
 }
+
+/* ── The agent's own todo list (P6-17) ──────────────────────────────────────
+   Drawn by `chatRenderer.buildTodoCard()` into the `todowrite` tool node, in
+   both the live stream (`chat.js`, the `tool_output` branch) and the reloaded
+   history (`chatRenderer.js`, the agent-thread branch).
+
+   It sits BETWEEN `.agent-thread-header` and `.agent-thread-content`, which is
+   the whole point: `.agent-thread-content` is `display:none` until the node is
+   opened, so a list rendered inside it would still need a click and a decode
+   (Law 15). The raw tool output keeps its `<details>` inside the fold, so this
+   adds a reading and removes none.
+
+   Not a second card system (Law 14). The surface values are `.agent-thread-cmd`'s
+   directly above, so it reads as part of the tool node it belongs to; the rows
+   are the checklist idiom `markdown.js` emits for `- [ ]` lines (`li.task-item`
+   / `.task-check` / `.task-text` / `.task-done`); and the in-progress row and
+   its chips are the plan window's `.plan-step-now` / `.plan-step-meta` /
+   `.plan-step-chip`, joined by selector further up rather than copied.
+
+   Theme tokens only (D-2026-08-26-03). Every accent reference carries the
+   `var(--red)` fallback the other 521 sites use, and nothing here defines
+   `--accent` in `:root`. */
+.todo-card {
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin: 4px 0;
+  padding: 6px;
+  max-width: 100%;
+}
+.todo-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 4px 5px;
+  font-size: 11px;
+  color: color-mix(in srgb, var(--fg) 72%, transparent);
+}
+.plan-window-icon,
+.todo-card-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--accent, var(--red));
+}
+.plan-window-title,
+.todo-card-title {
+  font-weight: 650;
+  white-space: nowrap;
+}
+.todo-card-count {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.78;
+  white-space: nowrap;
+}
+.todo-card-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+/* Both chips say the state in words as well as in colour — a dashed box or a
+   tint alone is a symbol someone has to be taught (Law 15). */
+.todo-now-chip {
+  border-color: color-mix(in srgb, var(--accent, var(--red)) 40%, transparent);
+  color: var(--accent, var(--red));
+  font-weight: 700;
+}
+.todo-prio-high {
+  border-color: color-mix(in srgb, var(--color-warning, #f0ad4e) 45%, transparent);
+  color: color-mix(in srgb, var(--color-warning, #f0ad4e) 80%, var(--fg));
+}
+.todo-prio-low { opacity: 0.72; }
 
 .agent-image-progress {
   margin: 6px 0 0;
@@ -41398,4 +41719,20 @@ body.settings-sidebar-resize-active {
   .settings-sidebar-toggle {
     display: none;
   }
+}
+
+/* P6-17 — a superseded todo list keeps its header and loses its rows.
+   `todowrite` is a whole-list replace and the model is told to call it after
+   every step, so the cards stack; without this a ten-step task ends with ten
+   always-visible lists, nine of them out of date and none of them marked. The
+   history stays (Law 1) — only the rows collapse. */
+.todo-card-superseded .todo-card-list {
+  display: none;
+}
+.todo-card-superseded {
+  opacity: 0.55;
+}
+.todo-card-superseded .todo-card-count::after {
+  content: " · superseded";
+  opacity: 0.8;
 }

@@ -36,6 +36,7 @@ import {
 } from './chatModelProvenance.js';
 import { createTerminalStreamError, isRecoverableStreamError } from './chatStreamErrors.js';
 import { loadPanel } from './panels.js';
+import planWindow from './planWindow.js';
 
   const RESEARCH_TIMEOUT_MS = 360000;
   const DEFAULT_TIMEOUT_MS = 120000;
@@ -908,7 +909,9 @@ import { loadPanel } from './panels.js';
 
   // API key pattern for the guard in handleChatSubmit
   const API_KEY_RE = /^(sk-[a-zA-Z0-9_\-]{20,}|gsk_[a-zA-Z0-9]{20,}|AIza[a-zA-Z0-9_\-]{30,}|xai-[a-zA-Z0-9]{20,})$/;
-  const PLAN_STORAGE_KEY = 'pantheon-active-plan';
+  // The active-plan storage key now lives in planWindow.js (one literal, one
+  // owner): the plan store and the docked window that draws it are the same
+  // module, so a write cannot land without the window following it (P6-11).
 
   const _queuedAgentRequests = [];
   let _queuedDrainTimer = null;
@@ -926,39 +929,45 @@ import { loadPanel } from './panels.js';
 
   // P6-02 — the queue survives a reload. Stored through the same `Storage`
   // helper every other per-session browser preference in this app already uses
-  // (`lastSessionId` in sessions.js, PLAN_STORAGE_KEY above). No second store.
+  // (`lastSessionId` in sessions.js, the active plan in planWindow.js). No
+  // second store.
   const QUEUE_STORAGE_KEY = 'pantheon-queued-requests';
   const QUEUE_MAX_PERSISTED = 20;          // bound the row; a queue is not an archive
   const QUEUE_MAX_AGE_MS = 24 * 60 * 60 * 1000;  // a day-old prompt is stale, not queued
 
+  // The plan store moved into planWindow.js so that storing a plan and drawing
+  // it are one call (P6-11). These four keep their names and their contracts —
+  // every existing call site is unchanged — and now every write repaints the
+  // docked window instead of vanishing into localStorage.
   function _extractPlanText(text) {
-    const raw = String(text || '').trim();
-    if (!raw) return '';
-    const stripped = raw
-      .replace(/<think[\s\S]*?<\/think>/gi, '')
-      .replace(/<thought[\s\S]*?<\/thought>/gi, '')
-      .trim();
-    const lines = stripped.split('\n');
-    const firstChecklist = lines.findIndex(line => /^\s*(?:[-*]|\d+\.)\s+\[[ x-]\]\s+/i.test(line));
-    if (firstChecklist >= 0) return lines.slice(firstChecklist).join('\n').trim();
-    const firstPlanHeading = lines.findIndex(line => /^\s{0,3}#{1,4}\s+.*plan/i.test(line) || /^\s*(?:plan|proposed plan)\s*:?$/i.test(line));
-    if (firstPlanHeading >= 0) return lines.slice(firstPlanHeading).join('\n').trim();
-    return stripped;
+    return planWindow.extractPlanText(text);
   }
 
   function _getStoredPlan() {
-    try { return localStorage.getItem(PLAN_STORAGE_KEY) || ''; } catch (_) { return ''; }
+    return planWindow.getPlan();
   }
 
-	  function _setStoredPlan(plan) {
-	    const text = _extractPlanText(plan);
-	    if (!text) return;
-	    try { localStorage.setItem(PLAN_STORAGE_KEY, text); } catch (_) {}
-	  }
+  function _setStoredPlan(plan) {
+    planWindow.setPlan(plan);
+  }
 
-	  function _clearStoredPlan() {
-	    try { localStorage.removeItem(PLAN_STORAGE_KEY); } catch (_) {}
-	  }
+  function _clearStoredPlan() {
+    planWindow.clearPlan();
+  }
+
+  // ONE execute path (Law 14). The inline plan actions on the last plan-mode
+  // bubble and the docked window's Execute button are two entry points into
+  // this function, never two implementations of it.
+  function _executeStoredPlan(fallbackPlan) {
+    const approved = _getStoredPlan() || _extractPlanText(fallbackPlan || '');
+    if (!approved.trim()) return false;
+    _pendingApprovedPlan = approved;
+    planWindow.markApproved();
+    if (window.__pantheonSetPlanMode) window.__pantheonSetPlanMode(false);
+    if (window.__pantheonSetChatMode) window.__pantheonSetChatMode('agent');
+    _setComposerAndSend('Execute the approved plan.');
+    return true;
+  }
 
 	  function _attachPlanActions(target, plan) {
 	    if (!target || !String(plan || '').trim() || target.querySelector('.plan-inline-actions')) return;
@@ -971,12 +980,7 @@ import { loadPanel } from './panels.js';
 	      </button>
 	      <button type="button" class="plan-inline-clear">Clear</button>`;
 	    actions.querySelector('.plan-inline-execute')?.addEventListener('click', () => {
-	      const approved = _getStoredPlan() || _extractPlanText(plan);
-	      if (!approved.trim()) return;
-	      _pendingApprovedPlan = approved;
-	      if (window.__pantheonSetPlanMode) window.__pantheonSetPlanMode(false);
-	      if (window.__pantheonSetChatMode) window.__pantheonSetChatMode('agent');
-	      _setComposerAndSend('Execute the approved plan.');
+	      _executeStoredPlan(plan);
 	    });
 	    actions.querySelector('.plan-inline-clear')?.addEventListener('click', () => {
 	      _clearStoredPlan();
@@ -1144,6 +1148,9 @@ import { loadPanel } from './panels.js';
     const box = document.getElementById('chat-history');
     if (!box || typeof MutationObserver !== 'function') return false;
     _queuedHistoryObserver = new MutationObserver(() => {
+      // Same hook, same reason: the plan window's "from another chat" tag has to
+      // be recomputed when the session changes under it (P6-11). One observer.
+      planWindow.refresh();
       if (!_queuedAgentRequests.length) return;
       const sid = _currentSessionIdSafe();
       const mine = _queuedItemsForSession(sid);
@@ -3838,6 +3845,11 @@ import { loadPanel } from './panels.js';
                 // Track tool name for contextual spinner labels
                 _lastToolName = json.tool || '';
 
+                // Bind the tool to the plan step the agent is on (P6-11/P6-13).
+                // No-op unless an approved plan has an unticked step and plan
+                // mode is off — i.e. we are executing, not drafting.
+                planWindow.noteToolStart({ tool: json.tool, command: json.command });
+
                 // --- Thread timeline: group tools in a thread container ---
                 const cmd = json.command || '';
                 const chatBox = document.getElementById('chat-history');
@@ -3963,6 +3975,15 @@ import { loadPanel } from './panels.js';
 
               } else if (json.type === 'tool_output') {
                 if (_isBg) continue;
+                // Record the bound tool's verdict + first output line as the
+                // active plan step's result (P6-11). Same no-op guard as
+                // `noteToolStart`.
+                planWindow.noteToolEnd({
+                  tool: json.tool,
+                  command: json.command,
+                  exit_code: json.exit_code,
+                  output: json.output,
+                });
                 // --- Update the current thread node ---
                 if (currentToolBubble) {
                   // Stop wave animation + the per-second cooking ticker
@@ -4004,9 +4025,18 @@ import { loadPanel } from './panels.js';
                     }).join('');  // spans are display:block — a literal \n here would double-space the diff
                     diffHtml = `<details class="agent-tool-output agent-tool-diff"><summary><span class="diff-file">${esc(d.file || 'diff')}</span> <span class="diff-summary-stats">${stat}</span></summary><pre class="diff-pre">${rows}</pre></details>`;
                   }
+                  // The agent's own todo list (P6-17). `todowrite` keeps a
+                  // structured task list and the prompt tells the model to use
+                  // it for multi-step work; until now it surfaced only as the
+                  // raw args JSON plus a text listing, both behind the fold.
+                  // The card goes BETWEEN the header and .agent-thread-content
+                  // so it needs no click (Law 15) — the raw output keeps its
+                  // <details> inside the fold, so nothing is taken away.
+                  const todoHtml = chatRenderer.buildTodoCard(json);
                   // For file edits the "command" is the raw JSON args — redundant
                   // next to the diff, so hide it when we have a diff to show.
-                  const cmdHtml2 = (cmd && !(json.diff && json.diff.text)) ? `<pre class="agent-thread-cmd">${esc(cmd)}</pre>` : '';
+                  // Same for a todo card: it IS that JSON, rendered (P6-17).
+                  const cmdHtml2 = (cmd && !(json.diff && json.diff.text) && !todoHtml) ? `<pre class="agent-thread-cmd">${esc(cmd)}</pre>` : '';
                   // Preserve the user's .open choice across the innerHTML
                   // rewrite \u2014 otherwise expanding a running tool collapses
                   // it as soon as the result lands, forcing the user to
@@ -4014,9 +4044,10 @@ import { loadPanel } from './panels.js';
                   // bottom of file) so no per-node listener needed.
                   const _wasOpen = currentToolBubble.classList.contains('open');
                   currentToolBubble.className = 'agent-thread-node' + (ok ? '' : ' error') + (_wasOpen ? ' open' : '');
-                  currentToolBubble.innerHTML = `<div class="agent-thread-dot"></div><div class="agent-thread-header"><span class="agent-thread-icon">${ok ? '\u2713' : '\u2717'}</span><span class="agent-thread-tool">${esc(json.tool)}</span><span class="agent-thread-status">${ok ? 'done' : 'failed'}</span><span class="agent-thread-chevron">\u25B6</span></div><div class="agent-thread-content">${cmdHtml2}${outHtml}${diffHtml}</div>`;
+                  currentToolBubble.innerHTML = `<div class="agent-thread-dot"></div><div class="agent-thread-header"><span class="agent-thread-icon">${ok ? '\u2713' : '\u2717'}</span><span class="agent-thread-tool">${esc(json.tool)}</span><span class="agent-thread-status">${ok ? 'done' : 'failed'}</span><span class="agent-thread-chevron">\u25B6</span></div>${todoHtml}<div class="agent-thread-content">${cmdHtml2}${outHtml}${diffHtml}</div>`;
                   // Reset so thinking spinner between tools says "Thinking" not the old tool's label
                   _lastToolName = '';
+                  if (todoHtml) chatRenderer.demoteSupersededTodoCards();
                   uiModule.scrollHistory();
                 }
                 // --- Render generated images inline ---
@@ -4145,8 +4176,10 @@ import { loadPanel } from './panels.js';
 
               } else if (json.type === 'plan_update') {
                 if (_isBg) continue;
-                // Agent wrote back to the plan (ticked a step / revised). Update
-                // the stored plan + live-refresh the docked plan window.
+                // Agent wrote back to the plan (ticked a step / revised). Storing
+                // the plan repaints the docked window — `_setStoredPlan` delegates
+                // to planWindow.js, which owns both. This comment used to claim a
+                // live refresh that had never been built (P6-11).
                 const _pu = (json.data && json.data.plan) ? json.data.plan : '';
                 if (_pu) _setStoredPlan(_pu);
 
@@ -7040,6 +7073,19 @@ import { loadPanel } from './panels.js';
     _appendViewReportLink,
     hasActiveStream,
   };
+
+  // ── Docked plan window (P6-11) ────────────────────────────────────────────
+  // chat.js owns the send path, so it owns Execute; the window is an entry
+  // point into `_executeStoredPlan`, not a second copy of it. Module scripts
+  // run after parsing, so the markup is there — the readyState guard only
+  // covers a stray non-deferred load.
+  planWindow.onExecute(_executeStoredPlan);
+  planWindow.onSessionId(_currentSessionIdSafe);
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => planWindow.init(), { once: true });
+  } else {
+    planWindow.init();
+  }
 
   // Single delegated handler for tool-call fold/expand. One listener on
   // document.body covers every .agent-thread-node — running, completed,

@@ -1210,6 +1210,220 @@ export function buildFindingsBox(findings, expanded) {
     + '</div></div>';
 }
 
+/* ── The agent's own todo list (P6-17) ──────────────────────────────────────
+   `todowrite` (`src/agent_tools/coding_tools.py`) keeps a structured task list
+   for the current session, persists it to `DATA_DIR/agent_todos/<sid>.json`,
+   and the system prompt tells the model to use it for multi-step work
+   (`src/agent_loop.py:1242`). It had no renderer anywhere in `static/`, so a
+   model doing exactly what it was told showed the person a JSON blob inside a
+   collapsed tool card.
+
+   ── Where the data comes from, measured rather than assumed ────────────────
+   The executor returns a *normalised* `todos` array alongside its text output
+   (`coding_tools.py:66`), but nothing forwards it: `src/agent_loop.py:6056`
+   builds the `tool_output` SSE event from `tool` / `command` / `output` /
+   `exit_code` plus a fixed whitelist of document, image, ui_event, screenshot
+   and diff keys, and the persisted `tool_event` (`agent_loop.py:6242`) carries
+   the same four. So the array never reaches the browser and this renderer
+   cannot use it.
+
+   What does reach the browser is `command`. For any non-document tool
+   `cmd_display` is the untruncated block content (`agent_loop.py:5695-5697`),
+   and for `todowrite` that content is `json.dumps(args)`
+   (`src/tool_schemas.py:1451` for a native tool call; the fenced form is the
+   same JSON object — see the prompt example at `agent_loop.py:634`). That is
+   the parse source, identical live and on reload. `output` — the executor's
+   own `"[x] text (priority)"` listing, capped at `MAX_OUTPUT_CHARS` = 10,000
+   which a task list never approaches — is the fallback for anything that
+   arrives without parseable args.
+
+   ── Why this is not a second card system (Law 14) ──────────────────────────
+   The block is emitted into the `.agent-thread-node` the tool already
+   produces. The rows are the checklist idiom `markdown.js` emits for `- [ ]`
+   lines — `li.task-item` / `.task-check` / `.task-text` / `.task-done`,
+   `markdown.js:851` — and the in-progress row and its chips are
+   `.plan-step-now` / `.plan-step-meta` / `.plan-step-chip`, introduced by the
+   docked plan window (P6-11). One visual language for "the step the agent is
+   on", whether it came from `update_plan` or from `todowrite`.
+
+   ── Law 15 ────────────────────────────────────────────────────────────────
+   The card sits OUTSIDE `.agent-thread-content`, so it is readable without a
+   click and without decoding: a ticked box and a strikethrough for done, an
+   `in progress` chip in words next to the accent-tinted row, a plain box for
+   pending. Nothing is hidden that used to be visible — the raw output stays in
+   its `<details>` behind the same chevron every other tool card uses. */
+const TODO_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>';
+
+/** The three statuses `todowrite` accepts — `coding_tools.py:34`. */
+const TODO_STATUSES = { pending: 1, in_progress: 1, completed: 1 };
+/** The three priorities it accepts; anything else is coerced to `medium`. */
+const TODO_PRIORITIES = { low: 1, medium: 1, high: 1 };
+/** The markers the executor prints in its text output — `coding_tools.py:60`. */
+const TODO_OUT_MARKS = { ' ': 'pending', '>': 'in_progress', x: 'completed' };
+// `X` is in the class deliberately: models emit both cases, and the
+// normaliser below folds it. Without it the uppercase branch there was
+// unreachable — a guard against something the regex had already rejected.
+const TODO_OUT_RE = /^\[([ xX>])\]\s+(.*?)(?:\s+\(([a-zA-Z]+)\))?$/;
+
+/**
+ * Normalise one raw todo the same way the executor does
+ * (`coding_tools.py:31-49`): `content` or its `text` alias, status defaulting
+ * to `pending` and priority to `medium`, unknown priority coerced rather than
+ * rejected. Returns null for a record the executor would itself have refused.
+ */
+function _normalizeTodo(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  var text = String(raw.content != null ? raw.content : (raw.text != null ? raw.text : '')).trim();
+  if (!text) return null;
+  var status = String(raw.status || 'pending').trim();
+  if (!TODO_STATUSES[status]) return null;
+  var priority = String(raw.priority || 'medium').trim();
+  if (!TODO_PRIORITIES[priority]) priority = 'medium';
+  return { content: text, status: status, priority: priority };
+}
+
+/**
+ * Read a `todowrite` tool event into `{ items, done, total }`, or null when
+ * the event is not a renderable todo list.
+ *
+ * Returns null for a FAILED call on purpose. `todowrite` rejects a list with
+ * two `in_progress` items, an empty `content`, or an unknown status
+ * (`coding_tools.py:24-51`) and nothing is written to disk — drawing the
+ * rejected list as if it were state would be the renderer telling the same
+ * kind of lie this phase exists to remove. The red node and its error text
+ * stand instead.
+ *
+ * @param {{tool?: string, command?: string, output?: string, exit_code?: number}} ev
+ */
+export function parseTodoList(ev) {
+  if (!ev || String(ev.tool || '').toLowerCase() !== 'todowrite') return null;
+  if (!(ev.exit_code === 0 || ev.exit_code == null)) return null;
+
+  var items = [];
+  var raw = String(ev.command == null ? '' : ev.command).trim();
+  if (raw.charAt(0) === '{') {
+    try {
+      var args = JSON.parse(raw);
+      if (args && Array.isArray(args.todos)) {
+        for (var i = 0; i < args.todos.length; i++) {
+          var one = _normalizeTodo(args.todos[i]);
+          if (one) items.push(one);
+        }
+      }
+    } catch (e) { items = []; }
+  }
+
+  // Fallback: the executor's own rendering, "[x] content (priority)" per line
+  // under an "Updated todo list:" header. Used when the args did not arrive as
+  // JSON — an older persisted event, or a provider that reshapes tool args.
+  if (!items.length) {
+    var lines = String(ev.output == null ? '' : ev.output).split('\n');
+    for (var j = 0; j < lines.length; j++) {
+      var m = TODO_OUT_RE.exec(lines[j].trim());
+      if (!m) continue;
+      var status = TODO_OUT_MARKS[m[1] === 'X' ? 'x' : m[1]];
+      if (!status) continue;
+      var one2 = _normalizeTodo({
+        content: m[2], status: status,
+        priority: m[3] ? String(m[3]).toLowerCase() : m[3],
+      });
+      if (one2) items.push(one2);
+    }
+  }
+
+  if (!items.length) {
+    // An empty list is a successful call, not an unparseable one: the executor
+    // accepts {"todos": []}, writes the file and returns exit 0. Returning null
+    // here sent that single case back to the raw-JSON <pre> this card exists to
+    // replace. `cleared` lets buildTodoCard say so in words.
+    var wasTodo = String((ev && ev.tool) || '') === 'todowrite';
+    return wasTodo ? { items: [], done: 0, total: 0, cleared: true } : null;
+  }
+  var done = 0;
+  for (var k = 0; k < items.length; k++) if (items[k].status === 'completed') done++;
+  return { items: items, done: done, total: items.length };
+}
+
+/**
+ * Build the todo card for a `todowrite` tool event. Returns '' when the event
+ * is not a renderable todo list, so a call site can use it as the test for
+ * "did this render" as well as for the markup.
+ *
+ * @param {{tool?: string, command?: string, output?: string, exit_code?: number}} ev
+ * @returns {string} HTML, or '' when nothing to draw.
+ */
+export function buildTodoCard(ev) {
+  var list = parseTodoList(ev);
+  if (!list) return '';
+  var esc = uiModule.esc;
+  var rows = '';
+  for (var i = 0; i < list.items.length; i++) {
+    var item = list.items[i];
+    var cls = 'task-item plan-step';
+    if (item.status === 'completed') cls += ' task-done';
+    else if (item.status === 'in_progress') cls += ' plan-step-now';
+    var chips = '';
+    if (item.status === 'in_progress') {
+      chips += '<span class="plan-step-chip todo-now-chip">in progress</span>';
+    }
+    // `medium` is the schema default and what an unknown value is coerced to,
+    // so printing it on every row would be noise rather than information.
+    // `high` and `low` are a deliberate choice by the model and are shown.
+    if (item.priority !== 'medium') {
+      chips += '<span class="plan-step-chip todo-prio-' + item.priority + '">' + esc(item.priority) + '</span>';
+    }
+    // The box is decorative in `markdown.js` because a `- [x]` line carries no
+    // other state; here the state is structured, so the box can name it and a
+    // screen reader gets the same three readings the eye does. `in_progress`
+    // keeps the box hidden — its visible chip already says the word, and
+    // labelling both would announce it twice.
+    var boxAria = item.status === 'in_progress'
+      ? 'aria-hidden="true"'
+      : 'role="img" aria-label="' + (item.status === 'completed' ? 'done' : 'to do') + '"';
+    rows += '<li class="' + cls + '">'
+      + '<span class="task-check" ' + boxAria + '></span>'
+      + '<span class="plan-step-main">'
+      + '<span class="task-text">' + esc(item.content) + '</span>'
+      + (chips ? '<span class="plan-step-meta">' + chips + '</span>' : '')
+      + '</span></li>';
+  }
+  if (list.cleared) {
+    return '<div class="todo-card todo-card-cleared" role="group" aria-label="Agent task list">'
+      + '<div class="todo-card-head">'
+      + '<span class="todo-card-icon" aria-hidden="true">' + TODO_ICON + '</span>'
+      + '<span class="todo-card-title">Task list</span>'
+      + '<span class="todo-card-count">cleared</span>'
+      + '</div></div>';
+  }
+  var count = list.done + ' of ' + list.total + ' done';
+  return '<div class="todo-card" role="group" aria-label="Agent task list">'
+    + '<div class="todo-card-head">'
+    + '<span class="todo-card-icon" aria-hidden="true">' + TODO_ICON + '</span>'
+    + '<span class="todo-card-title">Task list</span>'
+    + '<span class="todo-card-count">' + esc(count) + '</span>'
+    + '</div>'
+    + '<ul class="todo-card-list">' + rows + '</ul>'
+    + '</div>';
+}
+
+/**
+ * Collapse every todo card except the newest one in `scope`.
+ *
+ * `todowrite` replaces the whole list and the model is instructed to call it
+ * repeatedly, so without this a long task ends with a column of stacked lists
+ * that contradict each other and are all equally prominent. The older ones keep
+ * their header — how far along that revision was is real history — and lose
+ * only their rows.
+ */
+export function demoteSupersededTodoCards(scope) {
+  var root = scope || document;
+  var cards = root.querySelectorAll('.todo-card');
+  for (var i = 0; i < cards.length - 1; i++) {
+    cards[i].classList.add('todo-card-superseded');
+  }
+  if (cards.length) cards[cards.length - 1].classList.remove('todo-card-superseded');
+}
+
 /** Append report button + continue research prompt. */
 export function appendReportButton(container, sessionId) {
   _appendReportButton(container, sessionId);
@@ -2722,11 +2936,18 @@ export function addMessage(role, content, modelName, metadata) {
             }
             const node = document.createElement('div');
             node.className = 'agent-thread-node' + (ok ? '' : ' error');
-            // Hide the raw JSON command when a diff says it better (same as live).
-            const evCmdHtml = (ev.command && !(ev.diff && ev.diff.text)) ? `<pre class="agent-thread-cmd">${esc(ev.command)}</pre>` : '';
-            node.innerHTML = `<div class="agent-thread-dot"></div><div class="agent-thread-header"><span class="agent-thread-icon">${ok ? '\u2713' : '\u2717'}</span><span class="agent-thread-tool">${esc(ev.tool)}</span><span class="agent-thread-status">${ok ? 'done' : 'failed'}</span><span class="agent-thread-chevron">\u25B6</span></div><div class="agent-thread-content">${evCmdHtml}${outHtml}${evDiffHtml}</div>`;
+            // The agent's own todo list (P6-17) — persisted events carry the
+            // same `command`/`output` the live stream sends, so the card
+            // survives a reload identically. Same placement as live: between
+            // the header and the fold.
+            const evTodoHtml = buildTodoCard(ev);
+            // Hide the raw JSON command when a diff or a todo card says it
+            // better (same as live).
+            const evCmdHtml = (ev.command && !(ev.diff && ev.diff.text) && !evTodoHtml) ? `<pre class="agent-thread-cmd">${esc(ev.command)}</pre>` : '';
+            node.innerHTML = `<div class="agent-thread-dot"></div><div class="agent-thread-header"><span class="agent-thread-icon">${ok ? '\u2713' : '\u2717'}</span><span class="agent-thread-tool">${esc(ev.tool)}</span><span class="agent-thread-status">${ok ? 'done' : 'failed'}</span><span class="agent-thread-chevron">\u25B6</span></div>${evTodoHtml}<div class="agent-thread-content">${evCmdHtml}${outHtml}${evDiffHtml}</div>`;
             // Click handling is delegated globally \u2014 see chat.js init.
             threadWrap.appendChild(node);
+            if (evTodoHtml) demoteSupersededTodoCards();
           }
           // Check if next round has text — extend line down to connect
           const nextTxt = (roundTexts[r + 1] || '').trim();
@@ -3112,6 +3333,8 @@ const chatRenderer = {
   renderAskUserCard,
   buildSourcesBox,
   buildFindingsBox,
+  parseTodoList,
+  buildTodoCard,
   appendReportButton,
   buildImageBubble,
   hideWelcomeScreen,

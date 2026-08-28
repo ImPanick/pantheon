@@ -1058,6 +1058,32 @@
     </script>
     <div id="chat-history" class="chat-history" role="log" aria-live="polite"></div>
 
+    <!-- Docked plan window (P6-11). Docked between the transcript and the
+         composer so it stays on screen while the agent works — a plan you have
+         to scroll back to find is not a plan window. Drawn by
+         static/js/planWindow.js; hidden whenever there is no active plan. -->
+    <section id="plan-window" class="plan-window" hidden aria-label="Active plan">
+      <div class="plan-window-head">
+        <button type="button" id="plan-window-fold" class="plan-window-fold" aria-expanded="true" aria-controls="plan-window-body" title="Hide the plan steps">
+          <span id="plan-window-chevron" class="plan-window-chevron" aria-hidden="true"></span>
+          <span id="plan-window-icon" class="plan-window-icon" aria-hidden="true"></span>
+          <span class="plan-window-title">Active plan</span>
+          <span id="plan-window-count" class="plan-window-count"></span>
+        </button>
+        <span id="plan-window-origin" class="plan-window-origin" hidden>from another chat</span>
+        <span id="plan-window-status" class="plan-window-status"></span>
+      </div>
+      <div class="plan-window-track" aria-hidden="true"><span id="plan-window-fill" class="plan-window-fill"></span></div>
+      <div id="plan-window-body" class="plan-window-body">
+        <ul id="plan-window-steps" class="plan-window-steps"></ul>
+        <div class="plan-inline-actions plan-window-foot">
+          <button type="button" id="plan-window-execute" class="plan-inline-execute">Execute plan</button>
+          <button type="button" id="plan-window-clear" class="plan-inline-clear">Clear plan</button>
+          <span id="plan-window-hint" class="plan-window-hint"></span>
+        </div>
+      </div>
+    </section>
+
     <!-- Attachments strip -->
     <div id="attach-strip" class="attach-strip"></div>
 
@@ -1176,6 +1202,16 @@
               </button>
             </div>
           </div>
+          <!-- Plan mode (P6-12). The only visible way in: entry used to be a Tab
+               press in the composer or a mobile swipe, and the status pill could
+               only turn it OFF. `.plan-mode-btn` styling and app.js's
+               `initPlanToggle` handler were both already written for this id. -->
+          <button type="button" class="input-icon-btn plan-mode-btn" title="Plan mode" id="plan-toggle-btn" data-overflow-label="Plan mode" aria-label="Plan mode" aria-pressed="false">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="m9 13 1.5 1.5L14 11"/>
+            </svg>
+            <span class="plan-mode-btn-label">Plan</span>
+          </button>
           <!-- Web search (magnifying glass) -->
           <button type="button" class="input-icon-btn" title="Web search" id="web-toggle-btn" data-mode-tool="true" aria-label="Web search" aria-pressed="false">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
