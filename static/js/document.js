@@ -15,7 +15,7 @@ import { langIcon } from './langIcons.js';
 import spinnerModule from './spinner.js';
 import { openLibrary, closeLibrary, isLibraryOpen, initLibrary } from './documentLibrary.js';
 import signatureModule from './signature.js';
-import * as Modals from './modalManager.js';
+import * as Modals from './modalManager.js?v=20260723compareicon2';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 
   let API_BASE = '';

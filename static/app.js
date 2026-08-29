@@ -27,7 +27,7 @@ import sessionModule from './js/sessions.js';
 import memoryModule from './js/memory.js?v=20260722memoryloading1';
 import voiceRecorderModule from './js/voiceRecorder.js';
 import censorModule from './js/censor.js';
-import galleryModule from './js/gallery.js';
+import galleryModule from './js/gallery.js?v=20260708match1';
 import { UI_VIS_DEFAULT_OFF, resolveVisibility } from './js/ui_visibility.js';
 import tasksModule from './js/tasks.js?v=20260723tasksbulkfeedback1';
 import calendarModule from './js/calendar.js';
@@ -1018,7 +1018,7 @@ function initializeEventListeners() {
     toolCookbookBtn.addEventListener('click', async () => {
       if (!cookbookModule) return;
       // Try minimized→restore or open→minimize via the manager first
-      const Modals = await import('./js/modalManager.js');
+      const Modals = await import('./js/modalManager.js?v=20260723compareicon2');
       if (!Modals.toggle('cookbook-modal')) {
         // Not registered yet → fresh open
         cookbookModule.open();
@@ -1046,7 +1046,7 @@ function initializeEventListeners() {
   if (toolGalleryBtn) {
     toolGalleryBtn.addEventListener('click', async () => {
       if (!galleryModule) return;
-      const Modals = await import('./js/modalManager.js');
+      const Modals = await import('./js/modalManager.js?v=20260723compareicon2');
       if (!Modals.toggle('gallery-modal')) {
         if (galleryModule.isGalleryOpen()) galleryModule.closeGallery();
         else galleryModule.openGallery();
@@ -1075,7 +1075,7 @@ function initializeEventListeners() {
   if (toolCalendarBtn) {
     toolCalendarBtn.addEventListener('click', async () => {
       if (!calendarModule) return;
-      const Modals = await import('./js/modalManager.js');
+      const Modals = await import('./js/modalManager.js?v=20260723compareicon2');
       // toggle returns true when a registered modal was minimized/restored;
       // returns false when nothing is registered → open fresh.
       if (!Modals.toggle('calendar-modal')) {
@@ -1840,6 +1840,11 @@ function initializeEventListeners() {
       setTimeout(() => applyModeToToggles(mode), 500);
     }
     window.__pantheonSetChatMode = setMode;
+    // Paired getter. `chat.js` applies a queued item's per-item mode for its
+    // send and puts the user's mode back afterwards, which it cannot do without
+    // reading the current one first — and a setter with no getter is how that
+    // restore came to be missing in the first place.
+    window.__pantheonGetChatMode = () => st.mode;
     agentBtn.addEventListener('click', () => {
       // Agent mode turns off research if active
       const resChk = el('research-toggle');

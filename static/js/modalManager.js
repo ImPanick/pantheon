@@ -9,7 +9,7 @@
  *
  * Usage from a tool module:
  *
- *   import * as Modals from './modalManager.js';
+ *   import * as Modals from './modalManager.js?v=20260723compareicon2';
  *
  *   // After building the modal element and adding it to the body:
  *   Modals.register('gallery-modal', {

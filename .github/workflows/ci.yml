@@ -98,6 +98,13 @@ jobs:
       # No dependencies: the checker is stdlib plus `git ls-files`.
       - name: check-wiring
         run: python3 .pantheon/check-wiring.py --max 2
+      # Law 14, arrived at by accident. A module imported under two URLs is two
+      # modules with two copies of its state, and nothing breaks loudly when it
+      # happens — a registry written through one specifier is simply empty when
+      # read through the other. Eleven modules were forked this way when the
+      # check was written; two features were silently dead because of it.
+      - name: check-specifiers
+        run: python3 .pantheon/check-specifiers.py --max 0
 
   node-syntax:
     name: JS syntax (node --check)

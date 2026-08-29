@@ -3217,7 +3217,7 @@ function _renderRecipes() {
 
 // ── Public API ──
 
-import * as Modals from './modalManager.js';
+import * as Modals from './modalManager.js?v=20260723compareicon2';
 
 let _rendered = false;
 

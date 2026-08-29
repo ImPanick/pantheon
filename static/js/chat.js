@@ -37,6 +37,7 @@ import {
 import { createTerminalStreamError, isRecoverableStreamError } from './chatStreamErrors.js';
 import { loadPanel } from './panels.js';
 import planWindow from './planWindow.js';
+import queuePanel from './queuePanel.js';
 
   const RESEARCH_TIMEOUT_MS = 360000;
   const DEFAULT_TIMEOUT_MS = 120000;
@@ -914,6 +915,10 @@ import planWindow from './planWindow.js';
   // module, so a write cannot land without the window following it (P6-11).
 
   const _queuedAgentRequests = [];
+  // P6-04 — the queue panel's Pause. Deliberately NOT persisted: a queue that
+  // silently stays paused across a reload is a trap, and restored items do not
+  // auto-fire anyway (P6-02), so an unpaused reload cannot stampede.
+  let _queuePaused = false;
   let _queuedDrainTimer = null;
   let _queuedPromoteTimer = null;
   let _queuedRequestSeq = 0;
@@ -1017,6 +1022,13 @@ import planWindow from './planWindow.js';
           sessionId: it.sessionId,
           message: it.message,
           createdAt: it.createdAt,
+          // P6-04's per-item route. Without these a restored item sent under
+          // whatever the composer happened to be set to, which is the opposite
+          // of what choosing a per-item model means.
+          mode: it.mode || '',
+          model: it.model || '',
+          endpointUrl: it.endpointUrl || '',
+          endpointId: it.endpointId || '',
           attachmentIds: Array.isArray(it.attachmentIds) ? it.attachmentIds.slice() : [],
           attachments: (it.attachments || []).map(a => ({
             name: a.name || '', size: a.size || 0, mime: a.mime || '',
@@ -1026,6 +1038,10 @@ import planWindow from './planWindow.js';
       if (rows.length) Storage.setJSON(QUEUE_STORAGE_KEY, rows);
       else Storage.remove(QUEUE_STORAGE_KEY);
     } catch (_) { /* best-effort — the live queue still works without it */ }
+    // Every queue mutation already funnels through here, so this is the one
+    // hook both views need — no second change-notification path (Law 14).
+    try { queuePanel.refresh(); } catch (_) {}
+    try { _refreshQueueActivityView(); } catch (_) {}
   }
 
   /** Read the queue back after a reload. Restored items are marked `restored`
@@ -1055,6 +1071,12 @@ import planWindow from './planWindow.js';
         sessionId: sid,
         message: msg,
         createdAt: created,
+        // Paired with _persistQueuedRequests. Written and not read is the same
+        // defect as read and not written.
+        mode: (row.mode === 'agent' || row.mode === 'chat') ? row.mode : '',
+        model: String(row.model || ''),
+        endpointUrl: String(row.endpointUrl || ''),
+        endpointId: String(row.endpointId || ''),
         attachmentIds: atts,
         attachments: Array.isArray(row.attachments) ? row.attachments : [],
         pendingUpload: false,
@@ -1131,6 +1153,9 @@ import planWindow from './planWindow.js';
       if (it.el && it.sessionId !== sid && it.el.parentNode) it.el.remove();
       if (it.el && !it.el.isConnected) it.el = null;
     }
+    // The panel is session-scoped too, so it repaints on the same hook the
+    // bubbles do — one queue, two views, never two states (Law 7).
+    try { queuePanel.refresh(); } catch (_) {}
     const mine = _queuedItemsForSession(sid);
     if (!mine.length) return;
     if (!document.getElementById('chat-history')) return;
@@ -1288,6 +1313,9 @@ import planWindow from './planWindow.js';
     if (peek.sessionId && peek.sessionId !== _currentSessionIdSafe()) return;
     const item = _removeQueuedRequest(id);
     if (!item) return;
+    // Per-item mode/model applies on every promote path — the bubble click and
+    // the panel's "Start now" are two entry points into this one function.
+    _applyQueueItemRoute(item, item.sessionId);
     if (!isStreaming && !_sendInFlight) {
       _setComposerAndSend(item.message, item);
       return;
@@ -1407,9 +1435,14 @@ import planWindow from './planWindow.js';
       }
     }
     if (!_queuedAgentRequests.length) return;
+    // P6-04 Pause. Held here rather than at the call sites so every path that
+    // can fire the queue — stream end, upload finish, session re-render — is
+    // covered by the one check the panel's button flips.
+    if (_queuePaused) return;
     if (_queuedDrainTimer) return;
     _queuedDrainTimer = setTimeout(() => {
       _queuedDrainTimer = null;
+      if (_queuePaused) return;
       if (isStreaming || _sendInFlight || !_queuedAgentRequests.length) return;
       const sid = _currentSessionIdSafe();
       if (!sid) return;
@@ -1418,9 +1451,438 @@ import planWindow from './planWindow.js';
       );
       if (!next) return;
       _removeQueuedRequest(next.id);
+      _applyQueueItemRoute(next, sid);
       _setComposerAndSend(next.message, next);
     }, 180);
   }
+
+  // ── Queue panel driver (P6-04 · P6-06 · P6-07) ─────────────────────────────
+  // chat.js keeps ownership of `_queuedAgentRequests`, its persistence and the
+  // send path; `queuePanel.js` owns the surface and asks for changes through
+  // the functions below. One queue, one store, one send path.
+
+  /**
+   * Per-item mode and model (P6-04), applied through the mechanisms that
+   * already exist: `window.__pantheonSetChatMode` is the composer's own mode
+   * setter (`app.js:1842`) and `window.__pantheonLastPickedRoute` is the route
+   * override the model picker writes (`modelPicker.js:647`) and the send path
+   * already reads (`chat.js` `selectedRouteForSend`). No second per-send model
+   * channel, and no new wire field.
+   *
+   * The route override is honoured for ten minutes, so leaving one item's model
+   * in place would silently re-route the user's NEXT hand-typed message. The
+   * previous value is restored as soon as the send has committed — identified
+   * by `hasActiveStream(sid)`, which flips true at `chat.js` line ~1799, well
+   * after `selectedRouteForSend` has read it.
+   */
+  function _applyQueueItemRoute(item, targetSessionId) {
+    if (!item) return;
+
+    // A per-item mode or model is a property of THAT message, not a change to
+    // the user's composer. Both are applied for the send and put back after it.
+    //
+    // Two bugs lived here. (1) mode was applied and never restored at all, and
+    // `app.js`'s setMode persists to storage — so one queued agent-mode item
+    // permanently flipped the composer and survived a reload. (2) the model
+    // restore probe treated "a stream is live" as "my send is done", but on the
+    // promote path the OLD stream is still unwinding when the first probe fires
+    // at +250ms, so it restored the route before the queued send went out and
+    // the per-item model was silently discarded.
+    //
+    // Both now wait for the same thing: our send to START and then FINISH.
+    const prevMode = (() => {
+      try { return window.__pantheonGetChatMode && window.__pantheonGetChatMode(); }
+      catch (_) { return null; }
+    })();
+    const wantMode = (item.mode === 'agent' || item.mode === 'chat') ? item.mode : null;
+    if (wantMode) {
+      try { window.__pantheonSetChatMode && window.__pantheonSetChatMode(wantMode); } catch (_) {}
+    }
+
+    let mine = null;
+    const prevRoute = window.__pantheonLastPickedRoute || null;
+    if (item.model) {
+      try {
+        mine = {
+          model: item.model,
+          endpoint_url: item.endpointUrl || '',
+          endpoint_id: item.endpointId || '',
+          display: String(item.model).split('/').pop(),
+          picked_at: Date.now(),
+        };
+        window.__pantheonLastPickedRoute = mine;
+      } catch (_) { mine = null; }
+    }
+    if (!wantMode && !mine) return;
+
+    let started = false;
+    let tries = 0;
+    const putBack = () => {
+      // Identity guard: if the user picked a model in the meantime, theirs wins.
+      if (mine && window.__pantheonLastPickedRoute === mine) {
+        window.__pantheonLastPickedRoute = prevRoute;
+      }
+      if (wantMode && prevMode && prevMode !== wantMode) {
+        try { window.__pantheonSetChatMode && window.__pantheonSetChatMode(prevMode); } catch (_) {}
+      }
+    };
+    const probe = () => {
+      tries++;
+      const busy = !!(_sendInFlight || isStreaming);
+      if (!started && busy) { started = true; }
+      // Put back once OUR send has started and then ended, or if it never
+      // started at all within ~20s (the send was refused or superseded).
+      if ((started && !busy) || tries > 80) { putBack(); return; }
+      setTimeout(probe, 250);
+    };
+    setTimeout(probe, 250);
+  }
+
+  /**
+   * Queue rows in the shape `static/js/tasks.js` `_runToActivityEntry` emits
+   * (`tasks.js:2020`). This is `P6-07`'s half that lives in this file: the
+   * queue panel renders these, and so does the Tasks activity view once
+   * `tasks.js`'s activity-source registry has them, because they already speak
+   * its vocabulary — the six `TaskRun.status` values documented at
+   * `core/database.py:810+`.
+   *
+   * `aborted` is never folded into `error` here. `skipped` is used for an item
+   * whose chat no longer exists: it deliberately did not run, and calling that
+   * a failure is what corrupts error-rate statistics.
+   *
+   * `scope` is an enum, not a boolean or a magic id (Law 10):
+   *   'session' — the chat currently on screen. What the docked panel wants.
+   *   'all'     — every chat's queue. What a global Activity view wants; rows
+   *               carry their chat's name as `category` so they group by chat.
+   * The `onForce` / `onStop` / `onOpen` callbacks are the ones `tasks.js`
+   * `activityEntryControls` looks for, so a queue row gets the activity view's
+   * existing Start-now and stop buttons without that file learning what a
+   * queue item is.
+   */
+  export function getQueueActivityEntries(scope = 'session') {
+    const current = _currentSessionIdSafe();
+    const all = scope === 'all';
+    if (!all && !current) return [];
+    const names = new Map();
+    try {
+      for (const s of (sessionModule.getSessions() || [])) {
+        if (s && s.id) names.set(s.id, s.name || '');
+      }
+    } catch (_) { /* session list not loaded yet — treat every item as live */ }
+    const rows = [];
+    const seat = new Map();
+    for (const it of _queuedAgentRequests) {
+      if (!it) continue;
+      if (!all && it.sessionId !== current) continue;
+      const position = (seat.get(it.sessionId) || 0) + 1;
+      seat.set(it.sessionId, position);
+      // `gone` used to be derived from absence in /api/sessions. That payload
+      // excludes archived sessions, Incognito, and hidden system sessions
+      // (`routes/session_routes.py`), so a live chat could render as a dead row
+      // with no way back to it — the queue telling the user their message was
+      // orphaned when it was fine. We cannot know a session is gone from a list
+      // that is documented to omit live ones, so we no longer claim it: the row
+      // stays queued, and a send into a session that really has vanished fails
+      // and says so, which is the honest place for that signal.
+      const status = 'queued';
+      const id = it.id;
+      rows.push({
+        queueId: id,
+        kind: 'llm',
+        taskName: it.message || '',
+        taskId: '',
+        action: '',
+        prompt: '',
+        category: all ? (names.get(it.sessionId) || 'Queued') : '',
+        // Pin the row hue so a batch of queued messages reads as one group in
+        // the Activity view instead of each hashing its own text to a different
+        // colour. 45 is the amber the `queued` status dot already uses.
+        hue: 45,
+        result: it.pendingUpload ? 'Uploading the attachment…' : '',
+        // ISO 8601, because that is what `tasks.js`'s activity rows carry and
+        // what its source contract asks for — `_relativeTime` would survive an
+        // epoch number, but a contract honoured only by accident is not one.
+        ts: new Date(it.createdAt || Date.now()).toISOString(),
+        status,
+        model: it.model || '',
+        endpointUrl: it.endpointUrl || '',
+        endpointId: it.endpointId || '',
+        mode: it.mode || '',
+        sessionId: it.sessionId,
+        researchId: '',
+        output_target: 'session',
+        attachmentCount: (it.attachments && it.attachments.length) || 0,
+        editable: !it.pendingUpload,
+        // Distinct from `editable`, which is also false for a launched
+        // parallel run. `sendable` means "the drain would actually take this
+        // one": `_drainQueuedRequests` filters `!it.pendingUpload`, so a row
+        // still uploading its attachment cannot be sent no matter what the
+        // panel offers. Consumers count on this to avoid advertising a Send
+        // button that is a guaranteed no-op.
+        sendable: !it.pendingUpload,
+        position,
+        // Start now: the same promote path the bubble and the panel use.
+        onForce: it.pendingUpload ? undefined : (() => _promoteQueuedRequest(id)),
+        // Stop, on a message that has not run yet, means "do not run this".
+        onStop: () => { _removeQueuedRequest(id); },
+        onOpen: () => sessionModule.selectSession(it.sessionId).catch(() => {}),
+      });
+    }
+    return rows;
+  }
+
+  function _queueItemById(id) {
+    return _queuedAgentRequests.find(it => it && it.id === id) || null;
+  }
+
+  /** Apply a new order to this session's items, leaving other sessions alone. */
+  function _reorderQueuedRequests(ids) {
+    if (!Array.isArray(ids) || !ids.length) return;
+    const rank = new Map();
+    ids.forEach((id, i) => rank.set(id, i));
+    // Stable partition: pull this session's items out, sort by the new order,
+    // then put them back into the slots they occupied. Items belonging to other
+    // sessions never move, so a reorder here cannot reshuffle another chat.
+    const slots = [];
+    const mine = [];
+    _queuedAgentRequests.forEach((it, i) => {
+      if (it && rank.has(it.id)) { slots.push(i); mine.push(it); }
+    });
+    mine.sort((a, b) => rank.get(a.id) - rank.get(b.id));
+    slots.forEach((slot, i) => { _queuedAgentRequests[slot] = mine[i]; });
+    // The transcript bubbles are appended in array order and never move on
+    // their own, so a reorder that only touched the array would leave the two
+    // views disagreeing about what sends next. Drop this session's bubbles and
+    // let the existing renderer re-append them in the new order.
+    for (const it of mine) {
+      if (it && it.el && it.el.parentNode) it.el.remove();
+      if (it) it.el = null;
+    }
+    _persistQueuedRequests();
+    _renderQueuedRequestsForCurrentSession();
+  }
+
+  /** Edit in place: message text, per-item mode, per-item model. */
+  function _updateQueuedRequest(id, patch) {
+    const item = _queueItemById(id);
+    if (!item || !patch) return;
+    if (typeof patch.message === 'string') {
+      const next = patch.message.trim();
+      // An emptied row with no attachment is a removal, not an empty prompt.
+      if (!next && !(item.attachmentIds && item.attachmentIds.length)) {
+        _removeQueuedRequest(id);
+        return;
+      }
+      item.message = next;
+      _paintQueuedBubble(item);
+    }
+    if ('mode' in patch) item.mode = patch.mode || '';
+    if ('model' in patch) {
+      item.model = patch.model || '';
+      item.endpointUrl = patch.endpointUrl || '';
+      item.endpointId = patch.endpointId || '';
+    }
+    _persistQueuedRequests();
+  }
+
+  /** Wait for a send to actually leave — the same signal the route restore uses. */
+  function _waitForSendCommit(sid, timeoutMs = 20000) {
+    return new Promise(resolve => {
+      const started = Date.now();
+      const tick = () => {
+        if (hasActiveStream(sid)) return resolve(true);
+        if (Date.now() - started > timeoutMs) return resolve(false);
+        setTimeout(tick, 200);
+      };
+      setTimeout(tick, 120);
+    });
+  }
+
+  /**
+   * Parallel run (P6-06): **one session per item.**
+   *
+   * Verified in the source before building against it — `src/agent_runs.py`
+   * `start()` keys its run registry by session id and *cancels* whatever run is
+   * already in flight for that session before installing the new one. So a
+   * "parallel" mode that reused one session would not merely serialise: each
+   * launch would kill its predecessor, and only the last would survive. A
+   * session per item is the only shape that can run these at the same time.
+   *
+   * The launches are issued one after another on purpose — the composer, the
+   * mode toggle and the route override are single-instance, so two launches in
+   * the same tick would race each other. Each send is only awaited until it has
+   * *committed*, not until it finishes; switching to the next item detaches the
+   * previous stream to the background (`sessions.js selectSession` →
+   * `detachCurrentStream`), which is what makes them concurrent.
+   */
+  async function _runQueueParallel() {
+    const home = _currentSessionIdSafe();
+    if (!home) return;
+    const mine = _queuedItemsForSession(home).filter(it => it && !it.pendingUpload);
+    if (!mine.length) return;
+    const wasPaused = _queuePaused;
+    // Hold the sequential drain for the duration: it fires into the *current*
+    // session, and this loop is deliberately changing which session that is.
+    _queuePaused = true;
+    try { queuePanel.refresh(); } catch (_) {}
+    try {
+      for (const item of mine) {
+        if (!_queuedAgentRequests.includes(item)) continue;  // removed mid-run
+        let sid = '';
+        try { sid = await _createSessionForQueueItem(item); } catch (_) { sid = ''; }
+        if (!sid) {
+          try {
+            queuePanel.noteLaunchResult(
+              queuePanel.noteLaunched(item, '', home), 'error', 'Could not open a new chat for this message.');
+          } catch (_) {}
+          continue;
+        }
+        _removeQueuedRequest(item.id);
+        item.sessionId = sid;
+        item.el = null;
+        // Attachments ride along unchanged: `uploadPending` already ran at
+        // queue time and its `session_id` only steers gallery promotion, so the
+        // ids are not re-bound by moving the message to another chat (P6-03's
+        // one attachment path is untouched).
+        let rec = null;
+        try { rec = queuePanel.noteLaunched(item, sid, home); } catch (_) {}
+        try {
+          await sessionModule.selectSession(sid, { showLoading: false });
+        } catch (_) {
+          try { queuePanel.noteLaunchResult(rec, 'error', 'Could not open the new chat.'); } catch (_) {}
+          // Re-address it to the chat it came from, not to the new session the
+          // user was never taken to — otherwise it is orphaned in a chat that
+          // is not open and nothing will ever drain it.
+          item.sessionId = home;
+          _requeueAfterSessionChange(item);
+          continue;
+        }
+        _applyQueueItemRoute(item, sid);
+        _setComposerAndSend(item.message, item);
+        const committed = await _waitForSendCommit(sid);
+        if (!committed) {
+          try { queuePanel.noteLaunchResult(rec, 'aborted', 'The send did not start in time.'); } catch (_) {}
+        }
+      }
+    } finally {
+      _queuePaused = wasPaused;
+      // Land the user back where they pressed the button.
+      try { await sessionModule.selectSession(home, { showLoading: false }); } catch (_) {}
+      try { queuePanel.refresh(); } catch (_) {}
+    }
+  }
+
+  /**
+   * A chat for one parallel queue item. Uses the same `POST /api/session`
+   * contract `sessions.js materializePendingSession` uses — same form fields,
+   * same `skip_validation` rule — so there is one session-create shape.
+   */
+  async function _createSessionForQueueItem(item) {
+    const model = (item && item.model)
+      || (sessionModule.getCurrentModel ? (sessionModule.getCurrentModel() || '') : '');
+    const url = (item && item.endpointUrl)
+      || (sessionModule.getCurrentEndpointUrl ? (sessionModule.getCurrentEndpointUrl() || '') : '');
+    const label = String(item && item.message || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+    const sess = (sessionModule.getSessions && sessionModule.getSessions() || [])
+      .find(s => s && s.id === _currentSessionIdSafe());
+    const endpointId = (item && item.endpointId)
+      || (sess && (sess.endpoint_id || sess.endpointId)) || '';
+    const fd = new FormData();
+    fd.append('name', label || `Queued ${new Date().toLocaleTimeString()}`);
+    fd.append('model', model);
+    // `_reject_raw_endpoint_url_for_non_admin` (routes/session_routes.py) lets a
+    // request through when endpoint_id is set, or when no endpoint_url is sent —
+    // and 403s a signed-in non-admin otherwise. Sending the URL unconditionally
+    // while sending the id only for per-item models meant parallel mode failed
+    // for every non-admin who had not overridden the model, which is the common
+    // case. Send the id we have; without one, send no raw URL and let the server
+    // apply the session default, which is what "no per-item model" means anyway.
+    if (endpointId) {
+      fd.append('endpoint_id', endpointId);
+      fd.append('endpoint_url', url);
+      if (url && model) fd.append('skip_validation', 'true');
+    }
+    const res = await fetch(`${API_BASE}/api/session`, {
+      method: 'POST', body: fd, credentials: 'same-origin',
+    });
+    if (!res.ok) return '';
+    const payload = await res.json();
+    if (payload && payload.id && sessionModule.loadSessions) {
+      sessionModule.loadSessions().catch(() => {});
+    }
+    return (payload && payload.id) || '';
+  }
+
+  /**
+   * Is a run this panel launched still going?
+   *
+   * NOT `hasActiveStream`: that one deliberately answers "is this session
+   * spoken for", and it stays true for a *finished* background stream, because
+   * the `_backgroundStreams` entry survives until the user next opens that
+   * session (`checkBackgroundStream` is what deletes it). A queue row driven by
+   * that probe would say "Sending" forever. This one asks the narrower
+   * question — is a reader loop still attached — which is what an elapsed timer
+   * and a Stop button need to be true.
+   */
+  function _isQueueRunLive(sid) {
+    if (!sid) return false;
+    if (_activeStreams.has(sid)) return true;
+    if (_resumingStreams.has(sid)) return true;
+    const bg = _backgroundStreams.get(sid);
+    return !!(bg && bg.status === 'running');
+  }
+
+  /** Stop a run this panel launched. Terminal status is `aborted`, never `error`. */
+  function _stopLaunchedQueueRun(rowId) {
+    let rec = null;
+    try { rec = queuePanel.launchedById(rowId); } catch (_) {}
+    if (!rec || !rec.sessionId) return;
+    try {
+      fetch(`${API_BASE}/api/chat/stop/${encodeURIComponent(rec.sessionId)}`, {
+        method: 'POST', credentials: 'same-origin',
+      }).catch(() => {});
+    } catch (_) {}
+    if (rec.sessionId === _currentSessionIdSafe()) abortCurrentRequest(true);
+    try { queuePanel.noteLaunchResult(rec, 'aborted', 'Stopped from the queue panel.'); } catch (_) {}
+  }
+
+  const _queuePanelDriver = {
+    getEntries: () => getQueueActivityEntries('session'),
+    getSessionId: () => _currentSessionIdSafe(),
+    isBusy: () => isStreaming || _sendInFlight,
+    isPaused: () => _queuePaused,
+    setPaused: (paused) => {
+      _queuePaused = !!paused;
+      if (!_queuePaused) _drainQueuedAgentRequests();
+    },
+    reorder: _reorderQueuedRequests,
+    update: _updateQueuedRequest,
+    remove: (id) => { _removeQueuedRequest(id); },
+    // Force bypass: the same promote path a queued bubble's click uses (which
+    // is where the per-item route is applied), so there is one "send this one
+    // now" reachable from two places rather than two implementations of it.
+    startNow: (id) => { _promoteQueuedRequest(id); },
+    stopRun: _stopLaunchedQueueRun,
+    runSequential: () => {
+      _queuePaused = false;
+      // "Send now" has to mean "stop this reply and send" — because the queue
+      // panel only ever exists WHILE a reply is streaming (queueing is refused
+      // otherwise, see queueStreamingComposerRequest), and _drainQueued...'s own
+      // first guard is `if (isStreaming || _sendInFlight) return`. Calling the
+      // drain alone made the panel's primary button a guaranteed no-op in the
+      // only state the panel can be in. Stop first, exactly as promoting a
+      // single row already does, then let the drain fire when the stream ends.
+      if (isStreaming || _sendInFlight) {
+        try { uiModule.showToast && uiModule.showToast('Stopping the reply, then sending the queue'); } catch (_) {}
+        const submitBtn = document.querySelector('.send-btn');
+        if (submitBtn) submitBtn.click();
+      }
+      _drainQueuedAgentRequests();
+      try { queuePanel.refresh(); } catch (_) {}
+    },
+    runParallel: () => { _runQueueParallel().catch(() => {}); },
+    isStreamLive: _isQueueRunLive,
+  };
 
 
   /**
@@ -7072,6 +7534,11 @@ import planWindow from './planWindow.js';
     continueFrom,
     _appendViewReportLink,
     hasActiveStream,
+    // P6-07. The queue, in the shape `tasks.js` `_runToActivityEntry` emits, so
+    // the Tasks activity view can render queue rows by folding these into
+    // `_activityEntries` instead of growing a second queue UI. The queue panel
+    // is the caller today; `tasks.js` is the second one and is owed.
+    getQueueActivityEntries,
   };
 
   // ── Docked plan window (P6-11) ────────────────────────────────────────────
@@ -7081,10 +7548,43 @@ import planWindow from './planWindow.js';
   // covers a stray non-deferred load.
   planWindow.onExecute(_executeStoredPlan);
   planWindow.onSessionId(_currentSessionIdSafe);
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => planWindow.init(), { once: true });
-  } else {
+
+  // ── Docked queue panel (P6-04 / P6-06 / P6-07) ────────────────────────────
+  // Same dock, same init shape as the plan window. chat.js keeps the queue and
+  // the send path; the panel gets a driver, never the array.
+  //
+  // The Tasks activity view gets the SAME rows through `tasks.js`'s activity
+  // source registry, so the queue appears in both places from one mapper.
+  // Deliberately a guarded dynamic import rather than a static named one:
+  // `tasks.js` belongs to another change landing in parallel, and a static
+  // import of a name that moves would fail the whole chat module at load. This
+  // degrades to "queue rows do not appear under Tasks ▸ Activity" instead.
+  // `app.js:32` already imports `tasks.js` at boot, so this resolves from cache.
+  let _activitySourceHandle = null;
+  function _registerQueueActivitySource() {
+    import('./tasks.js?v=20260723tasksbulkfeedback1').then((mod) => {
+      if (!mod || typeof mod.registerActivitySource !== 'function') return;
+      mod.registerActivitySource('chat-queue', () => getQueueActivityEntries('all'));
+      _activitySourceHandle = mod;
+    }).catch(() => { /* the docked panel still shows the queue */ });
+  }
+  /** Nudge the Activity tab when the queue changes under it. No-op when shut. */
+  function _refreshQueueActivityView() {
+    const mod = _activitySourceHandle;
+    if (!mod || typeof mod.refreshActivityView !== 'function') return;
+    try { mod.refreshActivityView(); } catch (_) {}
+  }
+  window.__pantheonRefreshQueueActivity = _refreshQueueActivityView;
+
+  const _initDockedPanels = () => {
     planWindow.init();
+    queuePanel.init(_queuePanelDriver);
+    _registerQueueActivitySource();
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _initDockedPanels, { once: true });
+  } else {
+    _initDockedPanels();
   }
 
   // Single delegated handler for tool-call fold/expand. One listener on

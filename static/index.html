@@ -1084,6 +1084,33 @@
       </div>
     </section>
 
+    <!-- Docked queue panel (P6-04 / P6-06 / P6-07). Same dock as the plan
+         window, directly above the composer, and it appears by itself the
+         moment anything is queued — nobody has to find a button to discover
+         it, which is the Law 15 half of the row. Rows are drawn by
+         static/js/queuePanel.js using the Tasks activity view's own
+         `task-log-*` classes, so there is one queue-row appearance in the
+         product rather than two. Hidden whenever the queue is empty. -->
+    <section id="queue-panel" class="queue-panel" hidden aria-label="Message queue">
+      <div class="queue-panel-head">
+        <button type="button" id="queue-panel-fold" class="queue-panel-fold" aria-expanded="true" aria-controls="queue-panel-body" title="Hide the queued messages">
+          <span id="queue-panel-chevron" class="queue-panel-chevron" aria-hidden="true"></span>
+          <span id="queue-panel-icon" class="queue-panel-icon" aria-hidden="true"></span>
+          <span class="queue-panel-title">Queue</span>
+          <span id="queue-panel-count" class="queue-panel-count"></span>
+        </button>
+        <span id="queue-panel-state" class="queue-panel-state"></span>
+        <button type="button" id="queue-panel-pause" class="queue-panel-pause" aria-pressed="false">Pause</button>
+      </div>
+      <div id="queue-panel-body" class="queue-panel-body">
+        <div id="queue-panel-list" class="queue-panel-list"></div>
+        <div class="plan-inline-actions queue-panel-foot">
+          <button type="button" id="queue-panel-run" class="plan-inline-execute queue-panel-run" hidden>Send now</button>
+          <span id="queue-panel-hint" class="queue-panel-hint"></span>
+        </div>
+      </div>
+    </section>
+
     <!-- Attachments strip -->
     <div id="attach-strip" class="attach-strip"></div>
 

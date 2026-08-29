@@ -53,8 +53,8 @@ soon as its dependency lands.
 | P2 | Un-nerf | 26 | 12 | **1** | **13** |
 | P3 | Mechanical hygiene | 19 | 14 | **3** | **2** |
 | P4 | The wire — the real glass box | 28 | 28 | 0 | 0 |
-| P5 | Trace & composer restyle | 16 | 16 | 0 | 0 |
-| P6 | Queue & Plan | 18 | 5 | 0 | **13** |
+| P5 | Trace & composer restyle | 17 | 17 | 0 | 0 |
+| P6 | Queue & Plan | 18 | 2 | 0 | **16** |
 | P7 | Trust ladder & control plane | 11 | 9 | **1** | **1** |
 | P8 | The Workshop | 48 | 44 | **3** | **1** |
 | P9 | Feature surfaces | 18 | 17 | 0 | **1** |
@@ -63,7 +63,7 @@ soon as its dependency lands.
 | P12 | Limits & the control plane | 11 | 11 | 0 | 0 |
 | P13 | The Brain | 12 | 11 | 0 | **1** |
 | P14 | Measurement | 7 | 7 | 0 | 0 |
-| **Total** | | **295** | **221** | **11** | **63** | | **295** | **222** | **11** | **62** | | **294** | **221** | **11** | **62** | | **291** | **218** | **11** | **62** | | **291** | **221** | **11** | **59** | | **291** | **231** | **11** | **49** | | **288** | **239** | **11** | **38** | | **288** | **253** | **1** | **34** | | **288** | **255** | **1** | **32** | | **288** | **257** | **1** | **30** | | **287** | **256** | **1** | **30** | | **266** | **235** | **1** | **30** | | **253** | **222** | **1** | **30** | | **250** | **219** | **1** | **30** | | **231** | **200** | **1** | **30** | | **231** | **211** | **0** | **20** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
+| **Total** | | **296** | **218** | **11** | **67** | | **295** | **221** | **11** | **63** | | **295** | **222** | **11** | **62** | | **294** | **221** | **11** | **62** | | **291** | **218** | **11** | **62** | | **291** | **221** | **11** | **59** | | **291** | **231** | **11** | **49** | | **288** | **239** | **11** | **38** | | **288** | **253** | **1** | **34** | | **288** | **255** | **1** | **32** | | **288** | **257** | **1** | **30** | | **287** | **256** | **1** | **30** | | **266** | **235** | **1** | **30** | | **253** | **222** | **1** | **30** | | **250** | **219** | **1** | **30** | | **231** | **200** | **1** | **30** | | **231** | **211** | **0** | **20** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -88,23 +88,36 @@ Ten of its rows landed on 2026-08-27 — see § Progress. What is left of it:
 - **`P0-21b`, `P0-31`** — new, from the run: twelve bundled packages with no notice anywhere, and
   49 unaudited `ody-` storage-key hits.
 
-### `P6` is 13 of 18. Finish it with the three reuse rows
+### `P6` is 16 of 18. Two rows close it, and both are small
 
-**`P6-04`, `P6-06` and `P6-07` are what is left of the phase, and all three say the same thing:
-reuse the thing that already exists.** The queue panel clones the research job engine (382
-self-contained lines, ~16 research-specific references across 7 endpoints — budget a
-generalisation pass, not a find-and-replace). The sequential/parallel picker is already built in
-that same research panel. And the Tasks activity view already renders every status with shared
-elapsed timers, a force button and a stop button, so pointing it at queue items beats building a
-second queue UI.
+**`P6-18` needs one route.** The backend inbox is in `src/agent_loop.py`, the composer control and
+its key binding are in `static/js/chatStream.js`, and 50 tests cover the inbox and pass. **No route
+accepts the steer**, so nothing reaches it. Add it beside `chat_stop` and `inject_context` in
+`routes/chat_routes.py` — `agent_runs` and `_verify_session_owner` are already imported there. Then
+the 50 tests get a round trip they can actually assert on.
 
-They were held until now for a reason: **reuse is only judgeable once the surface it plugs into
-is real**, and as of wave 2 it is. `P6-18` (steer mid-response, not only queue) is the one
-genuinely new feature left in the phase and depends on `P6-01`, which landed in wave 1.
+**`P6-11` is not a `P6` row any more; it is a `P7-06` row.** The plan window is built and live and
+four of its five per-step fields ship. The fifth is `effect`, the 13-value `ToolEffect` taxonomy at
+`src/tool_capabilities.py:21-34`, and it is **not on the SSE wire** — neither `tool_start`
+carries it. `P7-06` owns emitting it, needs it for its own reason (ranking approval prompts by
+consequence), and it is one field per emit.
+**Landing `P7-06` closes `P6-11` for free**, which makes it the highest-leverage row on the board.
 
-`P6-11` also stays open on `effect`. **`P7-06` owns putting the `ToolEffect` taxonomy on the SSE
-wire** — it already needs the data to rank approval prompts, and it is one field on two emits.
-Landing it closes `P6-11`.
+**Re-measured 2026-08-29, and it is four emit sites, not two.** Each event type is emitted twice:
+`tool_start` at `src/agent_loop.py:4694` (the post-approval replay) and `:5990` (the main path), and
+`tool_output` at `:4801` and `:6216`. Missing the approval pair would ship exactly the bug `P7-06`
+exists to fix — the prompts that *asked* for consent would be the ones with no consequence on them.
+
+Take both in one run and `P6` closes. It is contained: one Python route, four SSE emit sites, and the
+frontend already knows how to render a resolved effect string — it receives one today on the approval
+`action` payload (`chatRenderer.js:2637`).
+
+**What this run leaves behind, in priority order.** `P5-17` (one run-mode picker, not two — and the
+listener leak is patched in both copies, so one implementation means one patch next time). `B13`
+(one queued message, two vocabularies, both on screen at once — a `Law 15` row). `B06` (the verifier
+goes blind after round one of a long plan run — that is `P6-15` only half-holding). `B10` (`node
+--check` is a no-op for `static/app.js`, and `AGENTS.md` names it as a gate — a second half-wired
+gate, the same shape as `P3-13`).
 
 **Still out of scope on its own:** `P0-29`. The Cookbook → Forge sweep is 3,529 occurrences
 across 171 files and 43 paths — the largest blast radius in the programme, coupled to
@@ -128,6 +141,50 @@ location was wrong until it was corrected on the row itself; the row is right no
 *The one progress area. Newest first. One entry per completed section — two lines, a
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
+
+### P6 reuse wave — three rows, and the systemic defect they uncovered
+`P6-04` (queue panel), `P6-06` (sequential-vs-parallel picker), `P6-07` (point the Tasks activity
+view at queue items) and `P3-11` (one specifier per module). `01e8807..HEAD`.
+
+**The integrator's verdict on the three reuse rows was "tick nothing" — all three failed their own
+`Verify:` line — and it was right.** What it found underneath them was not three defects but one:
+`P6-07`'s registry did not work, and the reason was that `chat.js` registered through
+`import('./tasks.js')` while `app.js` imports `'./js/tasks.js?v=…'`. **ES module identity is keyed on
+the resolved URL including the query string**, and there is no import map in this tree, so those are
+two modules with two copies of their state — and nothing fails loudly when it happens. A registry
+written through one specifier is simply empty when read through the other.
+
+**Eleven modules were forked that way.** `chatRenderer.js` under three URLs, `modalManager.js` under
+two, `settings.js`, `tasks.js`, `gallery.js`, `memory.js`, `models.js`, `slashCommands.js`,
+`compare/index.js` and both research modules. Two features were dead because of it: `P6-07`'s
+registry, and `chatStream.js`'s `research_started` fast-path adopt, which called `adoptSession` on an
+instance whose `_jobs` array was always empty — so every agent-started research job waited for the
+slow poll instead. **Eight `sw.js` precache entries had never matched a request URL**, because the
+fetch handler uses `cache.match(e.request)` with no `ignoreSearch`. And the fork *silently defeated a
+control `FORBIDDEN.md` says never lifts*: "the approval cache-buster string must be bumped across all
+six approval-path modules together" was structurally impossible to obey while four importers held no
+buster at all. Nobody lifted that control. It was voided by an unrelated convenience, four modules
+away, and the document went on describing a guarantee the tree could not provide.
+
+`P3-11` had been sitting in the tracker the whole time, scoped as *"one module, one line per import,
+a performance row."* It was eleven modules, 42 rewrites across 27 files, and not a performance row.
+**`check-specifiers.py` now runs in CI at `--max 0`**, beside the wiring ratchet the alignment pass
+wired up — the second entry in a section that exists because `Law 13` needs a machine, not a habit.
+
+**On reuse, the three rows landed differently and the tracker says so.** `P6-07` is the unambiguous
+win: 19 hunks in `tasks.js`, exactly one of them new. `P6-04` genuinely reuses the app's `Storage`
+helper and the activity view's row CSS rather than building a second store or a second row system.
+`P6-06` is a **clone**, not a share, and the row states that plainly — the honest answer was that
+sharing it as written would ship *"Opens N new chats"* to a panel that opens no chats, which is a
+worse `Law 15` outcome than the duplication. Parameterising it is `P5-17`, filed with the three
+differences named.
+
+**Nine defects were found by refutation and fixed before any of these were ticked**, four of them
+`breaks-users`: a *Send now* button that was a guaranteed no-op, a per-item mode that flipped the
+composer permanently and survived a reload, a model restore that fired before the send it was
+restoring, and parallel mode 403ing for every signed-in non-admin. Three more were caught reviewing
+my own work in this run — an editor that lost your typing on any re-render, a popover leaking two
+document listeners per toggle, and uploading rows inflating the count behind the Send button.
 
 ### Vision alignment — the corrections landed on the rows and never got carried up
 **Five read-only auditors and a reconciler, against twelve vision points quoted from the owner
@@ -777,12 +834,13 @@ Provably safe, and each one removes a trap the restyle would otherwise fall into
 - [ ] **P3-06** Collapse the clone-body animations into one — **9 definitions under 7 distinct names** (re-measured 2026-08-27; two names are themselves declared twice), every one of them the body `to { transform: rotate(360deg) }`.
 - [ ] **P3-07** **Canonicalise breakpoints to three.** 13 distinct widths today. One **559**-line block switches to mobile at 700px while **2,965** lines switch at 768px (re-measured 2026-08-27, scope: 85 `max-width:768px` blocks, span-summed) — **between those widths the UI is in a mixed state**, and there is a 20px dead zone (701–719) where an unpaired min/max leaves neither rule applying.
 - [~] **P3-08** Add paired-rule comments so a desktop rule points at its mobile override. — **BLOCKED (2026-08-27):** the row cites *"the roadmap's own 'CSS did not move' item"* and **there is no such item** — the citation is self-referential with no antecedent, so there is no way to know which pairs are meant or when this is finished (`Law 9`). It also **must follow `P3-07`**: canonicalising 13 breakpoints down to three rewrites the pairings, and doing this first means writing 85 comments twice. **Unblock by:** landing `P3-07`, then defining what a "pair" is in one sentence.
-- [ ] **P3-09** Delete `:root.light` (21 lines + 3 other sites) — unreachable by construction, since light themes push values through the five tokens and never add a class. **Recover the well-tuned light syntax palette inside it first.** `Verify:` the four light themes stop rendering dark native dropdowns.
+- [ ] **P3-09** **Land the `color-scheme` fix first, then delete `:root.light`** (21 lines + 3 other sites) — unreachable by construction, since light themes push values through the five tokens and never add a class. **Recover the well-tuned light syntax palette inside it first.** `Verify:` the four light themes stop rendering dark native dropdowns.
 - [ ] **P3-10** Delete the **2** dead modules. **Premise corrected 2026-08-27.** **The RAG module is live and must not be deleted** — `P2-23` landed its three DOM targets at `static/index.html:485-487`, so the bail-out at `rag.js:143` no longer fires. Deleting it now would remove a feature that started working four days ago; this is exactly the row that would have caused it. **Corrected again 2026-08-28, and the row is now one module, not two.** What is actually dead: **`calendar/reminders.js`** (114 lines, zero importers). That one goes — update `sw.js` and bump `CACHE_NAME` in the same commit.
 
   **`tourAutoplay.js` is not dead and must not be deleted. It is the product's entire first-run walkthrough system**, and deleting it is the single most vision-contradicting act available in this tracker. Read: 133 lines of working code, imported at `static/index.html:2642`, mapping seven modals to per-feature tours — `doclib-modal`→`tour-library`, `cookbook-modal`→`tour-cookbook`, `research-overlay`→`tour-research`, `compare-model-overlay`→`tour-compare`, `theme-modal`→`tour-theme`, `settings-modal`→`tour-settings`, `gallery-modal`→`tour-gallery` — one-shot per modal, mobile excluded because tours position halos by rect math. Only `init()` is stubbed, with the comment "Disabled for v1 stability". **`Law 15` exists in this project because its owner stopped using a competitor's *more advanced* version of what we are building, for exactly one reason: *"There's no tutorials and the learning curve is too steep."*** Deleting the only onboarding we have would be that mistake, made deliberately, by the project that wrote the law. Re-filed as `P3-10b`.
 - [ ] **P3-10b** **Re-enable the first-run tours — `Law 15`'s first concrete row.** `static/js/tourAutoplay.js` is complete and switched off: `init()` is stubbed with "Disabled for v1 stability", and nobody recorded which instability. Find out whether it still reproduces (the seven target modals have all changed since), then turn it back on behind a setting a person can find. `Depends:` nothing. `CI:` none. `Verify:` a browser with cleared storage opens the Forge modal for the first time and gets its walkthrough; opening it again does not; and the setting that turns tours off is discoverable without reading the source. **This row is the answer to the question the owner asked of a competitor and we have not yet asked of ourselves.**
-- [ ] **P3-11** Fix the duplicate module specifier — `chatRenderer.js` is imported under 3 distinct specifiers, so a 3,126-line module is parsed three times per page load. A config module's header documents the symptom and works around it; the root cause was never fixed. One-line change per import.
+- [x] **P3-11** Fix the duplicate module specifier — `chatRenderer.js` is imported under 3 distinct specifiers, so a 3,126-line module is parsed three times per page load. A config module's header documents the symptom and works around it; the root cause was never fixed. One-line change per import. — **done, and it was eleven modules rather than one.** `.pantheon/check-specifiers.py` counts modules imported under more than one URL; against the pre-fix tree it read `modules 166 · specifiers 178 · FORKED 11`, and it now reads `modules 167 · specifiers 167 · FORKED 0`. **42 specifier rewrites across 27 files**, plus **eight** `sw.js` precache entries that had never matched a request URL — the fetch handler uses `cache.match(e.request)` with no `ignoreSearch`, so a precached `/static/js/tasks.js` is simply not the response to a request for `/static/js/tasks.js?v=…`. `--max 0` is now a CI job (`wiring-ratchet` → `check-specifiers`), so the fork cannot come back.
+  **This was not a performance row. Two features were dead and nobody had noticed.** ES module identity is keyed on the resolved URL *including the query string*, and there is no import map in this tree, so `./tasks.js` and `./js/tasks.js?v=…` are two modules with two copies of their state — and nothing fails loudly when it happens: a registry written through one specifier is simply empty when read through the other. `P6-07`'s queue registry was written into a `tasks.js` instance the sidebar never reads. `chatStream.js:553` called `adoptSession` on a second instance of `research/jobs.js` whose `_jobs` array was always empty, so the `research_started` fast-path adopt did nothing and every agent-started research job waited for the slow poll instead. **And the fork silently defeated a control `FORBIDDEN.md` says never lifts** (line 38): *"the approval cache-buster string must be bumped across all six approval-path modules together."* It was structurally impossible to obey — `sessions.js` held `chatRenderer.js?v=20260815toolapproval4` while four other importers held `?v=20260819approvalcontrol1` and four more imported it bare, with no buster at all. *(`appConfig.js`'s header, which documented the symptom and worked around it, is corrected in place rather than deleted — `Law 1`. The shared config cache is still worth having; it is now worth having for one reason instead of two.)* `Verify:` `python3 .pantheon/check-specifiers.py --max 0` exits 0, and its report lists every module exactly once — nine `chatRenderer.js` importers on one specifier where there were three.
 - [ ] **P3-12** Delete the verified-dead elements and handlers. **Re-measured 2026-08-27 and the orphan-id count is not four — it is 26.** Scope: 476 ids in `static/index.html`; 31 are never read by JS; 26 of those 31 are absent from CSS too. Only the drag-reorder item was verifiable as written (it queries a `draggable` attribute nothing ever adds). **The other two items — "two elements killed by CSS" and "a handler wired to a nonexistent element" — are not itemised anywhere**, so under `Law 9` this row cannot be honestly ticked until someone names them. Itemise the 26, then delete under `Law 1`.
 
 ---
@@ -810,8 +868,13 @@ shapes. Each is an audit, not a guess.
   and popovers. `Verify:` every popover opened from inside a modal is visible.
 - [~] **P3-19** **Graph and canvas surfaces need a no-acceleration fallback.** Their Brain graph
   crashed outright on machines with hardware acceleration disabled. `P13-07` is a graph.
-  **`Blocked:` `P13-07` is unstarted — the artefact to be made resilient does not exist yet**
-  (2026-08-27). Nothing here is verifiable until it does. *(The canvas half is not idle work:
+  **Restated 2026-08-28: the graph half of this row is moot.** `D-2026-08-26-08` cut the canvas,
+  the force layout and the constellation — `P13-07` builds a page you read, not one you drag, so
+  there is no graph to make resilient and there never will be. **What survives is the canvas
+  half, and it is real today:** the 7 unguarded canvas animators named in `P1-12` ship in the
+  product now, and a machine with hardware acceleration disabled is the case that broke a
+  competitor outright. Rewrite as: the seven background animators degrade to a static background
+  rather than failing, and `Verify:` the app renders correctly with acceleration off. *(The canvas half is not idle work:
   the 7 unguarded canvas animators in `P1-12` are already in the tree today.)*
 
 ### Drift control — Law 13's enforcement
@@ -859,7 +922,7 @@ serialised, sent to the browser and never read.** None of this needs backend wor
 ### Prerequisite — do this first
 - [ ] **P4-01** **Unify the six drifted agent-thread templates into one builder.** They exist across the live path, history replay and compare mode, and **zero pairs are byte-identical**. They diverged three ways: compare mode hardcodes the fallback icon so it can never show the search glyph; one copy omits the diff block; the labels differ. **This is not a mechanical extract — you must decide which behaviour is correct and record the decision in your handoff note.** Every other P4/P5 trace task depends on this.
 - [ ] **P4-02** Fix the key-name mismatch: the shell tool sends elapsed time under one name and the frontend reads another, so the displayed timer is a client-side guess rather than server truth. One rename. `Depends:` P4-01.
-- [ ] **P4-03** Delete the dead handler for a skill-saved event the server never emits.
+- [ ] **P4-03** **Audit, then delete or wire — the skill-saved handler.** The frontend listens for an event the server never emits. `Law 1`'s only exception is a deletion *proven dead by audit*, and this row had none: no file:line, no scope, no `Verify:`. Establish first whether the *handler* is dead or the *emit* is missing — a save that never notifies the UI is a `Law 13` gap, not dead code, and deleting the listener would close it the wrong way. Decide on the row and record which it was.
 
 ### Free — already on the wire, zero backend work
 - [ ] **P4-04** **The approval card's own reason.** The server sends a written explanation naming the exact effects that tripped the gate; the renderer never reads the field. *(Style-only — see `DEFERRED.md` for the markup constraint.)*
@@ -925,8 +988,9 @@ discards them. A receipt is that data kept instead of thrown away.
 - [ ] **P5-12** Consolidate the **seven** hand-styled tool chips and the two bare-icon toggles into **one chip component**. *(Re-measured 2026-08-27, scope: `input-icon-btn tool-indicator` in `static/index.html`.)* Cleanest large win in the composer, and it makes the strip themeable for the first time.
 - [ ] **P5-13** Icon normalisation — three sizes and one stroke token replacing **20 sizes and 14 stroke widths across 1,193 inline SVGs**. *(Re-measured 2026-08-27, scope: `static/*.html` + `static/js/**` + `static/app.js`, excluding `static/lib`. The old 8 and 9 were `index.html` alone — the row is two and a half times the variance it advertised.)* A stroke-2 glyph from a 24 viewBox at 11px has an effective stroke under one pixel. **Attributes only; no SVG markup is rewritten.**
 - [ ] **P5-14** Type scale — collapse 27 ad-hoc steps onto a ramp drawn from the existing values, with **11px as the floor rather than the median** (**829** of 1,222 sizes are 10–12px; 118 are ≤9px — re-measured 2026-08-27, scope: `font-size:<N>px` declarations in `static/style.css`; the 27 steps confirmed).
-- [ ] **P5-15** **Populate `#pinned-tools-bar`** — an empty div appearing once in the whole codebase with zero CSS and zero JS. Unclaimed composer real estate, no layout risk.
+- [ ] **P5-15** **Populate `#pinned-tools-bar`** — **`Depends:` P5-12, and this is a `Law 14` dependency rather than an ordering one.** `P5-12` consolidates seven hand-styled tool chips into one component; this row adds a second tool strip a few pixels above them. Build it out of `P5-12`'s chip or the composer ends up with two chip vocabularies stacked on top of each other. — an empty div appearing once in the whole codebase with zero CSS and zero JS. Unclaimed composer real estate, no layout risk.
 - [ ] **P5-16** Make the send button's five states legible without changing the machine. **Eight modules mutate it**; any composer rework must reproduce `newchat · mic · send · streaming(processing/receiving/queue) · recording` exactly. Note Enter-on-empty opens a new chat, and the mic state appears from a silent server capability check.
+- [ ] **P5-17** **One run-mode picker, not two.** `P6-06` shipped the queue's sequential-vs-parallel popover as a *clone* of the research panel's, and said so rather than pretending otherwise. The two are byte-identical in positioning, classes (`.research-run-mode-popover` / `.research-run-mode-row` / `.rrm-title`), glyphs and dismissal; they differ in exactly three things — the popover id, the two subtitles, and what the rows call. **Sharing it naively is worse than the duplication**, which is why `P6-06` did not: the queue's copy says *"Opens N new chats, one per message"*, and shipping that string to the research panel — which opens no chats — is a `Law 15` regression. Parameterise it instead: id, per-row title and subtitle, and the two callbacks. `queuePanel.js` `promptRunMode` is already three-quarters of the way there — it takes handlers rather than calling `jobs.startAllQueued()` directly. Move it somewhere both can import and delete `research/panel.js` `_promptParallelOrSequential`. **Fix the shared defect once while you are there:** both copies leak their two capture-phase document listeners on the toggle-shut path (patched in place 2026-08-29, in both files — one implementation means one patch next time). `Depends:` nothing. `Verify:` the `.research-run-mode-popover` markup is built in exactly one module, and the research panel's popover still says "Parallel" / "Sequential" with no chat-opening subtitle.
 
 ---
 
@@ -938,14 +1002,23 @@ discards them. A receipt is that data kept instead of thrown away.
 - [ ] **P6-18** **Steer mid-response, not only queue.** The queue holds the *next* message;
   steering redirects the one in flight. Two different verbs, and only one exists. Prior art has
   both on one key pair — Enter queues, Cmd/Ctrl+Enter steers — which is the right shape because
-  it is the same intent at two urgencies. `Depends:` P6-01.
+  it is the same intent at two urgencies. `Depends:` P6-01, which landed.
+  **Two of three parts landed 2026-08-29 and the row stays open on the third.** The backend
+  accepts a steer at a round boundary — `src/agent_loop.py` carries the inbox, and the round
+  boundary is the honest granularity, so the UI says *"applies at the next step"* rather than
+  implying instant redirection. The composer control and its key binding are in
+  `static/js/chatStream.js`, visible rather than keyboard-only (`Law 15`). **What is missing is
+  the transport:** no route accepts the steer, so nothing reaches the inbox. Add it beside
+  `chat_stop` and `inject_context` in `routes/chat_routes.py` — `agent_runs` and
+  `_verify_session_owner` are already imported there, so it needs no new ones. 50 tests cover
+  the inbox and pass; none of them can cover the round trip until the route exists.
 - [x] **P6-01** **Session-bind the queue — live bug.** Queue items carry no session id. Switching chats wipes the message list, destroying every queued bubble's element while the array keeps the items; when the old stream ends the prompt **fires into whichever chat is now open**, invisibly. Add the field, filter the drain on it, re-render bubbles on session switch. — **done:** queue items carry `sessionId`, set at queue time; the drain filters on it and bubbles re-render on session switch. **The fix needed a second pass:** refutation proved the click-to-promote path still leaked — `_promoteQueuedRequest` guarded at click time and then handed the item to a poller that retried every 220ms with no check, so switching chats during the abort round trip still posted one session's text into another. Guarded at *send* time instead (`chat.js` `trySend` plus a backstop in `_setComposerAndSend`), and a mismatched item is **put back in the queue** rather than dropped — it is still the user's message. Verified with the refuter's own attack: fires into B never, kept and addressed to A, and still sends correctly on returning to A.
 - [x] **P6-02** Persist the queue. `_queuedAgentRequests` is a bare module array — a reload loses it silently. — **done:** queue persisted through the app's existing `Storage` helper — no second store (`Law 14`). Restored items never auto-replay: they re-arm only on their own session's next ended stream, expire at 24h, and cap at 20 rows, so a reload cannot resurrect a stale prompt.
 - [x] **P6-03** Allow queueing with attachments — currently refused with an error that swallows the send. — **done:** attachments are uploaded at queue time and re-carried through the slot resend/regenerate already uses, so a queued send goes down exactly one attachment path. A failed upload returns the text **and** the files to the composer instead of eating them. *(The implementer proposed a wording correction to this line; refutation showed the line was already accurate and the correction was not applied — the tracker says "swallows the send" in all four places and nothing claimed the message disappears.)*
-- [ ] **P6-04** Build the queue panel: drag-reorder, edit in place, per-item mode/model/trust rung, start-now force bypass, pause, remove. **Clone the research job engine** (382 self-contained lines) rather than writing a new one — but **not "only two lines are research-specific"**. Re-measured 2026-08-27: **roughly 16 research-specific references across 7 endpoints** (scope: case-insensitive `research` in `research/jobs.js`). Still worth cloning; budget a generalisation pass rather than a find-and-replace.
+- [x] **P6-04** Build the queue panel: drag-reorder, edit in place, per-item mode and model, start-now force bypass, pause, remove. **The per-item *trust rung* is deliberately not in this list** (removed 2026-08-28): it would make this row the first trust-ladder UI in the product, built inside the queue panel, selecting from a ladder `P7-05` records as not existing. Add it to the queue once `P7-03`/`P7-04` have built the ladder — one control, not two vocabularies. **Clone the research job engine** (382 self-contained lines) rather than writing a new one — but **not "only two lines are research-specific"**. Re-measured 2026-08-27: **roughly 16 research-specific references across 7 endpoints** (scope: case-insensitive `research` in `research/jobs.js`). Still worth cloning; budget a generalisation pass rather than a find-and-replace. — **done:** the docked queue panel: drag-reorder, edit in place, per-item mode and model, force, pause, remove — `static/js/queuePanel.js` as a **view**, with `chat.js` keeping the one queue and the one persistence hook, so no second store. `Verify:` queue a message while a reply streams and the panel appears above the composer saying what will happen and when, unprompted. **Four defects found by refutation and fixed before the tick:** the panel's primary *Send now* button was a guaranteed no-op — items can only be queued while a reply streams, and the drain it called returns immediately in exactly that state, so it now stops the reply first the way promoting a single row already did; per-item **mode** was applied and never restored, and `setMode` persists, so one queued agent-mode item permanently flipped the composer and survived a reload; the model restore probe treated *a stream is live* as *my send is done*, so on the promote path it put the route back before the queued send went out; and neither mode nor model was in the persisted row, so a restored item sent under whatever the composer happened to be. Also: rows no longer claim a chat is *gone* from a payload documented to omit archived and Incognito sessions, and the panel's state line survives on phones — it was `display:none` under 768px, deleting the sentence that says *"Paused — nothing sends until you press Resume"* on the form factor with the least room for guessing.
 - [x] **P6-05** Adopt the shipped status vocabulary: `queued → running → success | error | skipped | aborted`. `skipped` and `aborted` are load-bearing — `aborted` keeps infrastructure events out of error-rate stats. **The gap is a documentation gap, and it is the reason this row exists** (2026-08-27): `db.py:818`'s comment documents **3** statuses while `task_scheduler.py` actually writes **6**. Three real states are undocumented, so anything reading the comment instead of the code mis-handles them. — **done:** the six-value `TaskRun.status` vocabulary is documented at `core/database.py:810+` — what each means, which writer sets it, and why folding `aborted` into `error` corrupts error-rate statistics. **Refutation caught the block asserting something the tree contradicted**, so the audit came with it: `static/js/tasks.js` `_entryStatus` text-scanned run output for `/error|failed|exception|traceback/` and filed an `aborted` run under Errors whenever its partial output mentioned one — fixed to prefer the row's own status, matching its correct sibling in the same file. One violation stays open and is named in the block: the scheduler writes `error` on an admin-privilege refusal where the task never ran, which is `skipped` by these definitions. Changing a persisted status value earns its own row.
-- [ ] **P6-06** Sequential-vs-parallel picker. **Already built** in the research panel — reuse it. Parallel must allocate a session per item: one agent run per session is enforced.
-- [ ] **P6-07** Point the existing Tasks activity view at queue items rather than building a second queue UI. It already renders every status with shared elapsed timers, a force button and a stop button.
+- [x] **P6-06** Sequential-vs-parallel picker. **Already built** in the research panel — reuse it. Parallel must allocate a session per item: one agent run per session is enforced. — **done:** sequential-vs-parallel picker on the queue, with parallel allocating a session per item because one agent run per session is enforced. Copy names the consequence rather than the mechanism — *"One after another / Here in this chat"* versus *"All at once / One new chat each"*. **Parallel 403'd for every signed-in non-admin** until refutation caught it: the session-create guard passes when `endpoint_id` is set *or* when no raw `endpoint_url` is sent, and this sent the URL unconditionally while sending the id only for per-item models — so the common case hit neither exit. **On reuse, the honest answer: this is a clone of the research panel's control, not a shared one.** Positioning and the dismiss handlers are byte-identical; the two subtitles and the popover id are chat-specific. Sharing it as the row imagined would ship *"Opens N new chats"* to a panel that opens no chats, which is a worse `Law 15` outcome than the duplication. Parameterising it is `P5-17`.
+- [x] **P6-07** Point the existing Tasks activity view at queue items rather than building a second queue UI. It already renders every status with shared elapsed timers, a force button and a stop button. — **done:** queue items render in the **existing** Tasks activity view — same rows, same status dots, same elapsed timers, same force and stop buttons. `git diff` on `tasks.js` is 19 hunks of which exactly one is new; every other edit is inside a function that already existed, and task rows are unchanged. This is the run's one unambiguous reuse win. **It did not work when first written, for a reason worth the row:** `chat.js` registered through `import('./tasks.js')` while `app.js` imports `'./js/tasks.js?v=…'` — two URLs, and ES module identity is keyed on the resolved URL, so the registry was written into an instance the sidebar never reads. Fixed by `P3-11`, which unified all eleven forked modules and put a checker in CI.
 - [x] **P6-08** Make `_concurrency_cap` actually configurable — it sits next to `Semaphore(1)` and is documented as "a hard guarantee, not configurable". — **done:** `_concurrency_cap` resolves through instance setting → env → built-in default, clamped to [1,16], re-read on settings change without a restart. **Registered in all four places it has to exist** — `DEFAULT_SETTINGS`, `.env.example`, and *all three* compose files: adding it only to `docker-compose.yml` broke `test_gpu_compose_standalone.py`, which pins the standalone GPU files as base-plus-overlay, and the suite caught it. The comment claiming the cap upheld "exactly one task at a time" was wrong twice over and is corrected in place: two paths already bypassed the semaphore, and `run_task_now(force=True)` neither checks nor adds `_executing`, so a forced trigger can overlap a task with itself. That is what `force` means; it is now written down.
 - [x] **P6-09** Rewrite the todo "solve with an agent" button to enqueue instead of firing an unbounded raw stream. **Click ten todos and ten agent loops run at once**, with no progress and no cancel. — **done:** both todo agent-solve entry points enqueue through a bounded one-at-a-time queue with visible position, live status and a real server-side stop. Baseline reproduced before the fix: ten clicks, **ten concurrent streams**, no progress and no cancel.
 - [x] **P6-10** Expose `crew_member_id` in the task create/update schemas and the `manage_tasks` tool. It is read-only today and honoured by the executor — **this one field closes the roadmap's "todos assignable to an agent from the UI" item at the API layer.** — **done:** `crew_member_id` exposed in the task create/update schemas and in `manage_tasks`. **It shipped half-wired and refutation caught it:** the tool schema advertised the field while `src/tools/system.py` had never heard of it, so the model would accept the argument, report the task assigned, and the value would be discarded — the model confidently telling a user their task runs as Research Bot when it does not. Now resolved through an owner-scoped lookup mirroring the route layer's, because the executor runs the task with that crew member's persona, model, endpoint and tool allowlist. `tests/test_manage_tasks_crew_member.py` (6 tests) pins the round trip, the cross-owner refusal, and the schema-versus-executor agreement.
@@ -956,9 +1029,11 @@ discards them. A receipt is that data kept instead of thrown away.
   `plan_update`, and survives a reload; **the four prompt strings that have been promising this
   window are now true.** What is left: `effect` is the 13-value `ToolEffect` taxonomy at
   `src/tool_capabilities.py:21-34`, and it is **not on the SSE wire** — neither `tool_start`
-  (`src/agent_loop.py:5830`) nor `tool_output` (`:6056`) carries it. Resolved effect strings *do*
-  already reach the frontend on the approval `action` payload (`chatRenderer.js:2594`), so the
-  field exists; it just does not travel on the tool events. **`P7-06` owns emitting it** — it already needs the taxonomy to rank approval prompts, and
+  carries it. **Re-measured 2026-08-29: four emit sites, not two.** `tool_start` is emitted at
+  `src/agent_loop.py:4694` (the post-approval replay) and `:5990` (the main path); `tool_output` at
+  `:4801` and `:6216`. Resolved effect strings *do* already reach the frontend on the approval
+  `action` payload (`chatRenderer.js:2637`, `aq.action.effects`), so the field exists; it just does
+  not travel on the tool events. **`P7-06` owns emitting it** — it already needs the taxonomy to rank approval prompts, and
   saying so on that row is what this handoff was missing.
   **Two `breaks-users` defects were found by refutation and are fixed:** `update_plan` — the tool
   this window exists to listen to, and the one the model is *ordered* to call after every step —
@@ -987,7 +1062,7 @@ The approval store is better than anything that would replace it. Do not rebuild
 - [ ] **P7-03** Add rung **"ask every time"**. Does not exist: the gate is conditional on untrusted content having entered, so a clean session never prompts. Change the gate condition from *taint seen* to *taint seen **or** the current rung requires confirmation*. **Reuse `PendingToolApproval` unchanged.**
 - [ ] **P7-04** Add rung **"allow-listed"** — a rule store mapping tool + argument pattern to auto-allow, consulted before the blocked-effect check. Does not exist.
 - [x] **P7-05** Record the correction in the UI: **Auto-Pilot is already the default** for every untainted conversation. — **SUPERSEDED (verified 2026-08-27) — not independently actionable.** There is no ladder UI to record it in; this is an acceptance criterion, not a task, and left on its own it is a row nobody can ever honestly tick. **Re-filed as acceptance criteria on `P7-03` and `P7-04`**, citing `design/pantheon-v10.html:1721-1727`: whatever those two build must show Auto-Pilot as the existing default with the ladder added below it, never above.
-- [ ] **P7-06** Rank prompts by effect. A destructive action and a UI side effect produce an identical card. The 13-value taxonomy (`ToolEffect`, `src/tool_capabilities.py`) is written and used to rank nothing. **This row owns putting `effect` on the SSE wire, and that ownership is stated here because it was previously stated nowhere** — `tool_start` and `tool_output` carry no `effect` key, and two independent auditors reading the same handoff assigned the job to two different phases. It is one field on two emits. **Landing it unblocks `P6-11`**, whose plan window is built and open on exactly this: four of its five per-step fields ship and `effect` is the fifth.
+- [ ] **P7-06** Rank prompts by effect. A destructive action and a UI side effect produce an identical card. The 13-value taxonomy (`ToolEffect`, `src/tool_capabilities.py`) is written and used to rank nothing. **This row owns putting `effect` on the SSE wire, and that ownership is stated here because it was previously stated nowhere** — `tool_start` and `tool_output` carry no `effect` key, and two independent auditors reading the same handoff assigned the job to two different phases. It is one field per emit — and **re-measured 2026-08-29 it is four emit sites, not two**: `tool_start` at `src/agent_loop.py:4694` (the post-approval replay) and `:5990` (the main path), `tool_output` at `:4801` and `:6216`. **Miss the approval pair and you ship the bug this row exists to fix** — the prompts that asked for consent would be the ones carrying no consequence. The frontend already renders a resolved effect list from the approval `action` payload (`chatRenderer.js:2637`, `aq.action.effects`), so there is a rendering shape to match rather than invent. **Landing it unblocks `P6-11`**, whose plan window is built and open on exactly this: four of its five per-step fields ship and `effect` is the fifth.
 - [ ] **P7-07** Send only the effects that actually **tripped** the gate, not all of them — and surface the unrecognised-tool case, which is the riskiest and currently invisible.
 - [ ] **P7-08** **Surface the taint trail.** The security context builds a complete list of which tools introduced untrusted content into a run, and it is read **nowhere** — server or client. Built in memory and thrown away.
 - [ ] **P7-09** Grant inspector — once a session-wide grant is given, nothing lists it and nothing revokes it.
@@ -1563,6 +1638,7 @@ nothing ever recorded the event.
 - [ ] **B10** **`node --check` is a no-op for `static/app.js`, and `AGENTS.md` names it as a gate.** `static/js/package.json` is `{"type": "module"}`, so every module under `static/js/` parses as ESM and the check works. `static/app.js` sits outside that directory with no marker, so Node parses it as CommonJS, the ESM syntax error is swallowed by module detection, and it exits **0 on a file with a deliberate syntax error** — measured by appending `const broken = ;` to a copy. `static/sw.js` is fine (plain script). So the pre-tick checklist silently verifies nothing for the one top-level module in the tree. Fix: add a marker, move the file, or say so on the line. `Verify:` a syntax error in `static/app.js` fails the gate. — found during P6 wave 2 — agent:`integrator`
 - [ ] **B11** **The plan window and the todo card render visually identical rows that mean different things.** Sharing the row system was right (`Law 14`) and the CSS is genuinely joined by selector, not copied. But an approved plan and the agent's private scratch list can now be on screen at once looking the same, and they are not the same kind of thing — one is a commitment the user approved, the other is the model's working memory. They need a tell. `Law 15`: a person should not have to work out which is which. `Verify:` both on screen at once, and a stranger can say which is the approved plan. — found during P6 wave 2 — agent:`integrator`
 - [ ] **B12** **Four smaller duplications survive between the plan window and the todo card.** The row system is shared, the chrome is not: `.plan-window-head` / `.todo-card-head` (2 of 6 declarations shared), the `"N of M done"` string built two ways (`planWindow.js:392`, `chatRenderer.js:1377`), the step chip built as DOM in one and as a string in the other, and the play triangle `points="7 4 20 12 7 20 7 4"` hand-written twice (`chat.js:978`, `planWindow.js:412`). None is a bug today; all four are the shape that becomes one, the way the accessibility contract already did — the two row builders disagreed on it until this run and each batch's refuter only saw its own half. `Verify:` one implementation each. — found during P6 wave 2 — agent:`integrator`
+- [ ] **B13** **One queued message, two vocabularies, both on screen at once.** The docked queue panel (`queuePanel.js` `statusLabel`) renders the shipped six-value status set as *Waiting · Sending · Sent · Failed · Skipped · Stopped*; the Tasks activity view (`static/js/tasks.js:2958`), which renders **the same row objects** from the same `getQueueActivityEntries` source, says *Queued · Running*. Open the queue panel with the sidebar Activity view showing and one message is "Waiting" in one place and "Queued" in the other. Neither word is wrong; having both is. The status *values* are already one vocabulary — this is only the labels — so the fix is to pick one wording and give it a single home, not to touch anything persisted. Prefer the panel's wording: *Waiting/Sending* describes a message, *Queued/Running* describes a job, and the composer's queue holds messages. `Verify:` one queued item, both surfaces visible, one word. — found during P6 reuse wave — agent:`integrator`
 - [ ] **B01** **The datastore image is unpinned.** `chromadb/chroma:latest` in all three
   compose files, and `binwiederhier/ntfy` with no tag at all in the same three. A
   breaking Chroma release lands on the next `--build` and the collections stop loading —

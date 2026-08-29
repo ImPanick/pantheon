@@ -1988,7 +1988,7 @@ function _makeGalleryDraggable(content) {
 // ---- Open / Close ----
 
 // Re-export the manager for the rail click handler
-import * as Modals from './modalManager.js';
+import * as Modals from './modalManager.js?v=20260723compareicon2';
 
 export function openGallery() {
   // If already minimized — restore in place, preserve all state
@@ -2334,7 +2334,7 @@ export function openGallery() {
   if (visionLink) {
     visionLink.addEventListener('click', (e) => {
       e.preventDefault();
-      import('./settings.js').then(m => {
+      import('./settings.js?v=20260815approvalsave1').then(m => {
         m.open('ai');
         // The gallery modal gets a bumped z-index from modalManager; settings
         // opens with its lower static z-index and lands BEHIND it. Raise it above.

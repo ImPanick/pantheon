@@ -2099,6 +2099,146 @@ async function _renderCompletedView() {
   }
 }
 
+// ---- Activity sources (P6-07) ----
+//
+// The Activity view already renders every run status with a shared elapsed
+// timer, a force button and a stop button. Anything else that is "a thing
+// happening now with a status" — the chat queue is the first — belongs IN it,
+// not in a second panel that would drift out of sync with this one (`Law 14`).
+//
+// A source is a function returning rows in the SAME shape `_runToActivityEntry`
+// produces, so the renderer needs no special case. **The accepted shape:**
+//
+//   {
+//     status:   'queued' | 'running' | 'success' | 'error' | 'skipped' | 'aborted'
+//               REQUIRED. The six shipped values and no others — they are the
+//               vocabulary documented at `core/database.py` above `TaskRun`, and
+//               `FORBIDDEN.md` pins them as stored enum values. A seventh value
+//               renders as an untyped grey row and silently misfiles the entry;
+//               in particular do NOT send `aborted` as `error`, which is what
+//               corrupts error-rate statistics.
+//     taskName: string   REQUIRED. The row title.
+//     ts:       ISO 8601 string OR epoch milliseconds — both go through
+//               `new Date(...)`. For `running` it is the START time and drives
+//               the live elapsed counter; for terminal rows it is the finish
+//               time and shows as "3m ago".
+//     result:   string   Markdown body. Empty on a `queued` row is fine and
+//               renders as a headline-only row.
+//     kind:     'llm' | 'research' | 'action' | anything — picks the row icon.
+//     category: string?  Filter-chip label. Defaults to the keyword match on
+//               `taskName`, so a queued message reading "reply to the email"
+//               would otherwise land under the "email" chip. Set it.
+//     hue:      number?  0-359. Pins the row stripe so a group of rows reads as
+//               one group; without it each row hashes its own title.
+//     onForce:  function? Renders the existing "Start now" button on a `queued`
+//               row and calls this instead of the task force-run endpoint.
+//     onStop:   function? Renders the existing stop button and calls this. Its
+//               presence also keeps a TERMINAL row removable, which a task run
+//               never needs and a source row does.
+//     onOpen:   function? Renders "Open in chat" and calls this. A source row
+//               gets that button even with no `result` — a queued message has
+//               nothing to read yet and still has somewhere to take you.
+//     forceTitle / stopTitle / openTitle: string? tooltips for those buttons.
+//     prompt / model / endpointUrl / action / output_target / taskId: optional,
+//               with exactly the meanings `_runToActivityEntry` gives them.
+//   }
+//
+// Callbacks may be sync or async; a throw or a rejection surfaces as an error
+// toast and the view redraws either way.
+//
+// Sources are polled at render time, never cached: the queue changes without
+// the tasks modal knowing, so a stale snapshot would be worse than no rows.
+// Registered rows sort ahead of server run rows because a source only ever
+// reports things that are happening now.
+const _activitySources = new Map();
+
+/** Register a live activity source. Re-registering an id replaces it. */
+export function registerActivitySource(id, fn) {
+  const key = String(id || '').trim();
+  if (!key || typeof fn !== 'function') return false;
+  _activitySources.set(key, fn);
+  refreshActivityView();
+  return true;
+}
+
+export function unregisterActivitySource(id) {
+  const removed = _activitySources.delete(String(id || '').trim());
+  if (removed) refreshActivityView();
+  return removed;
+}
+
+/** Redraw the Activity tab if it is the one on screen. A source calls this when
+ *  its rows change (item queued, promoted, removed) — cheap no-op otherwise. */
+export function refreshActivityView() {
+  if (!_open) return false;
+  if (!document.querySelector('.tasks-tab.active[data-tab="activity"]')) return false;
+  _renderActivityView();
+  return true;
+}
+
+/** Which of the Activity row's shared controls an entry gets.
+ *
+ *  Exported because this IS the contract a registered source builds against
+ *  (P6-07): "give me a queued row with a Start-now button" has to be answerable
+ *  without reading the renderer. A task run qualifies through `taskId` (the
+ *  buttons hit the task endpoints); a source's row qualifies by supplying the
+ *  callback itself. `force` is offered only on a `queued` row, matching what
+ *  the button has always meant: skip the wait, start this one now. */
+export function activityEntryControls(entry) {
+  const e = entry || {};
+  const inFlight = e.status === 'queued' || e.status === 'running';
+  return {
+    force: e.status === 'queued' && !!(e.taskId || typeof e.onForce === 'function'),
+    // A task run can only be stopped while it is actually in flight. A source
+    // row supplies its own verb, so one the source still owns after it went
+    // terminal — a queue item whose chat was deleted, say — stays removable
+    // instead of becoming a row nobody can clear.
+    stop: typeof e.onStop === 'function' || (inFlight && !!e.taskId),
+    open: !!(typeof e.onOpen === 'function' || e.kind === 'llm' || e.kind === 'research'),
+  };
+}
+
+/** Tooltip for the shared stop control. A task run is *stopped*; a source row
+ *  is whatever its source calls it, defaulting to "Remove this" — the same
+ *  button, an honest label. */
+function _stopLabel(entry) {
+  if (typeof entry?.onStop === 'function') return entry.stopTitle || 'Remove this';
+  return 'Stop this task';
+}
+
+/** Collect every source's rows. A throwing source is skipped, not fatal: one
+ *  bad source must not take the whole Activity view down with it. */
+export function collectActivitySourceEntries() {
+  const out = [];
+  for (const [id, fn] of _activitySources) {
+    let rows;
+    try { rows = fn(); } catch (e) { console.warn('activity source failed:', id, e); continue; }
+    if (!Array.isArray(rows)) continue;
+    for (const row of rows) {
+      if (!row || typeof row !== 'object') continue;
+      out.push({ kind: 'llm', taskName: 'Activity', result: '', ...row, sourceId: id });
+    }
+  }
+  return out;
+}
+
+/** Run a source row's own force/stop/open callback and redraw. Errors surface
+ *  as a normal error toast instead of a dead button and a console line — the
+ *  row's controls look identical to a task run's, so they must fail the same
+ *  way a task run's do. */
+function _runEntryAction(entry, key) {
+  let result;
+  try {
+    result = entry[key](entry);
+  } catch (err) {
+    uiModule.showError((err && err.message) || `Action failed: ${key}`);
+    return;
+  }
+  Promise.resolve(result)
+    .catch(err => uiModule.showError((err && err.message) || `Action failed: ${key}`))
+    .then(() => refreshActivityView());
+}
+
 // ---- Activity view (assistant session log) ----
 
 async function _renderActivityView() {
@@ -2128,7 +2268,8 @@ async function _renderActivityView() {
   let _afQuery = '';
   let _solo = null;  // 'cat:<Category>' | 'status:error' | null
 
-  const _entryCat = (e) => _categoryLabel(e.taskName);
+  // A registered source may name its own chip; task runs keep the keyword match.
+  const _entryCat = (e) => e.category || _categoryLabel(e.taskName);
   // Prefer the run's own status over a text-scan of its output, matching the
   // renderer below. The old form fell through to _classifyResult, a regex over
   // `result` for /error|failed|exception|traceback/ — so an `aborted` run (user
@@ -2232,8 +2373,13 @@ async function _renderActivityView() {
   const searchEl = document.getElementById('tasks-activity-search');
   if (searchEl) searchEl.addEventListener('input', () => { _afQuery = searchEl.value; _buildChips(); _applyFilter(); });
 
+  // P6-07: registered sources are read every render, and they paint BEFORE the
+  // network round trip — a queued chat message is the most current thing in the
+  // panel and should not wait on a run-history fetch to become visible.
+  const _sourceEntries = collectActivitySourceEntries();
   const _actList = document.getElementById('tasks-activity-list');
-  if (_activityEntries.length) {
+  if (_activityEntries.length || _sourceEntries.length) {
+    if (_sourceEntries.length && !_activityEntries.length) _activityEntries = _sourceEntries;
     _buildChips();
     _applyFilter();
   } else if (_actList) {
@@ -2248,17 +2394,25 @@ async function _renderActivityView() {
     _activityHasMore = !!data.has_more && _activityLimit < 200;
     const list = document.getElementById('tasks-activity-list');
     if (!list) return;
-    if (runs.length === 0) {
+    if (runs.length === 0 && !_sourceEntries.length) {
       list.innerHTML = '<div style="opacity:0.5;padding:12px;">No activity yet. Scheduled tasks will log here once they run.</div>';
       return;
     }
-    _activityEntries = runs.map(_runToActivityEntry);
+    _activityEntries = _sourceEntries.concat(runs.map(_runToActivityEntry));
     _syncCompletedTabCount(_activityEntries.filter(_isChatResultRun).length);
     _buildChips();
     _applyFilter();
   } catch (e) {
     const list = document.getElementById('tasks-activity-list');
-    if (list) list.innerHTML = `<div style="opacity:0.5;padding:12px;">Failed to load activity: ${_escHtml(e.message || String(e))}</div>`;
+    if (!list) return;
+    // A failed run-history fetch must not blank rows a source already gave us.
+    if (_sourceEntries.length) {
+      _activityEntries = _sourceEntries;
+      _buildChips();
+      _applyFilter();
+      return;
+    }
+    list.innerHTML = `<div style="opacity:0.5;padding:12px;">Failed to load activity: ${_escHtml(e.message || String(e))}</div>`;
   }
 }
 
@@ -2295,6 +2449,9 @@ function _stackActivityEntries(entries) {
   };
   for (const entry of entries) {
     const key = [
+      // A registered source's rows never collapse into a task run's, even if
+      // every other field happens to match (P6-07).
+      entry.sourceId || '',
       entry.taskId || '',
       entry.taskName || '',
       entry.kind || '',
@@ -2391,7 +2548,10 @@ function _wireActivityRows(list) {
       e.stopPropagation();
       const idx = parseInt(row.dataset.entryIdx, 10);
       const entry = _activityEntries[idx];
-      if (entry) _openResultInChat(entry);
+      if (!entry) return;
+      // P6-07: a registered source owns what "open" means for its own rows.
+      if (typeof entry.onOpen === 'function') { _runEntryAction(entry, 'onOpen'); return; }
+      _openResultInChat(entry);
     });
     row.querySelector('.task-log-open-report')?.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -2403,13 +2563,17 @@ function _wireActivityRows(list) {
       e.stopPropagation();
       const idx = parseInt(row.dataset.entryIdx, 10);
       const entry = _activityEntries[idx];
-      if (entry?.taskId) _doRunNow(entry.taskId, true);
+      if (!entry) return;
+      if (typeof entry.onForce === 'function') { _runEntryAction(entry, 'onForce'); return; }
+      if (entry.taskId) _doRunNow(entry.taskId, true);
     });
     row.querySelector('.task-log-stop')?.addEventListener('click', async (e) => {
       e.stopPropagation();
       const idx = parseInt(row.dataset.entryIdx, 10);
       const entry = _activityEntries[idx];
-      if (!entry?.taskId) return;
+      if (!entry) return;
+      if (typeof entry.onStop === 'function') { _runEntryAction(entry, 'onStop'); return; }
+      if (!entry.taskId) return;
       try {
         await _stopTask(entry.taskId);
         uiModule.showToast('Task stopped');
@@ -2719,7 +2883,13 @@ function _renderActivityEntry(entry, opts = {}) {
   const promptHtml = entry.prompt
     ? `<details class="task-log-prompt"><summary>Prompt</summary><pre>${_escHtml(entry.prompt)}</pre></details>`
     : '';
-  const hue = status === 'error' ? 0 : _categoryHue(entry.taskName, entry.kind);
+  // A source may pin its rows' hue (P6-07). Without it every queued chat
+  // message would hash its own text to a different colour and the group would
+  // read as unrelated rows.
+  const _entryHue = Number(entry.hue);
+  const hue = status === 'error'
+    ? 0
+    : (Number.isFinite(_entryHue) ? _entryHue : _categoryHue(entry.taskName, entry.kind));
   const rowStatusClass = ` task-log-row-${status}`;
   // CSS vars feed the colored title + accent stripe.
   const styleVars = `--cat-hue:${hue};`;
@@ -2731,10 +2901,22 @@ function _renderActivityEntry(entry, opts = {}) {
   // (e.g. "No recent emails", "Tidied N memories") — for those, replace the
   // button with "Copy log" so you can grab the text without spawning a chat
   // with nothing useful in it.
-  const _isChatWorthy = entry.kind === 'llm' || entry.kind === 'research';
+  // P6-07: which shared controls this row gets — one rule, in one place, for
+  // task runs and registered-source rows alike.
+  const _controls = activityEntryControls(entry);
+  const _isChatWorthy = _controls.open;
   let actionBtn = '';
-  if (hasResult && _isChatWorthy) {
-    actionBtn = `<button class="task-log-open-chat" type="button" title="Open this result in a chat to read full-width + ask follow-ups">
+  // A task run earns "Open in chat" by having a result worth reading. A source
+  // row earns it by supplying `onOpen` — a queued message has no result yet and
+  // still has somewhere to take you (P6-07).
+  const _canOpen = hasResult || typeof entry.onOpen === 'function';
+  if (_canOpen && _isChatWorthy) {
+    // A row with no result yet is not being opened "to read full-width" — say
+    // what the button actually does for it.
+    const _openTitle = (!hasResult && typeof entry.onOpen === 'function')
+      ? (entry.openTitle || 'Go to the chat this belongs to')
+      : 'Open this result in a chat to read full-width + ask follow-ups';
+    actionBtn = `<button class="task-log-open-chat" type="button" title="${_escHtml(_openTitle)}">
          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
          Open in chat
        </button>`;
@@ -2775,8 +2957,13 @@ function _renderActivityEntry(entry, opts = {}) {
     const stale = !isQueued && (Date.now() - startMs) > 30 * 60 * 1000;
     const label = isQueued ? 'Queued' : stale ? 'Still running' : 'Running';
     const elapsedInit = isQueued ? '' : `<span class="task-log-running-elapsed" data-since="${startMs}">${_fmtElapsed(Date.now() - startMs)}</span>`;
-    const forceBtn = isQueued && entry.taskId ? `<button class="task-log-force-run" type="button" title="Start now in parallel, bypassing the queue"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg><span>Start now</span></button>` : '';
-    const stopBtn = entry.taskId ? `<button class="task-log-stop" type="button" title="Stop this task"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg></button>` : '';
+    // P6-07: the same two controls serve a registered source's rows — they just
+    // dispatch to the entry's own callback instead of the task endpoints.
+    const _forceTitle = typeof entry.onForce === 'function'
+      ? (entry.forceTitle || 'Start now')
+      : 'Start now in parallel, bypassing the queue';
+    const forceBtn = _controls.force ? `<button class="task-log-force-run" type="button" title="${_escHtml(_forceTitle)}"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg><span>Start now</span></button>` : '';
+    const stopBtn = _controls.stop ? `<button class="task-log-stop" type="button" title="${_escHtml(_stopLabel(entry))}"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg></button>` : '';
     rightHtml = `<span class="task-log-running-inline"><span class="task-log-running-label">${label}</span>${elapsedInit}<span data-spin-here="1"></span>${forceBtn}${stopBtn}</span>`;
   } else {
     rightHtml = `<span class="task-log-time" title="${_escHtml(tsAbs)}">${_escHtml(tsLabel)}</span>`;
@@ -2787,6 +2974,12 @@ function _renderActivityEntry(entry, opts = {}) {
   // users can see *why* the row was skipped without expanding anything.
   if (_isSkipped) {
     const reason = (entry.result || '').trim();
+    // P6-07: a skipped TASK run is history and needs no control. A skipped row
+    // a source still owns — a queued message whose chat was deleted — needs a
+    // way out, or the Activity view accumulates rows nobody can clear.
+    const skippedStop = _controls.stop
+      ? `<button class="task-log-stop" type="button" title="${_escHtml(_stopLabel(entry))}"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg></button>`
+      : '';
     return `
       <div class="task-log-row is-skipped${rowStatusClass}" data-kind="${_escHtml(entry.kind)}" data-entry-idx="${entryIdx}" style="${styleVars}">
         <div class="task-log-row-head">
@@ -2795,6 +2988,7 @@ function _renderActivityEntry(entry, opts = {}) {
           <span class="task-log-name">${_escHtml(entry.taskName)}</span>${_taskAiMark(entry)}
           ${repeatBadge}
           <span class="task-log-skipped-reason">skipped${reason ? ' — ' + _escHtml(reason) : ''}</span>
+          ${skippedStop}
           <span class="task-log-time" title="${_escHtml(tsAbs)}">${_escHtml(tsLabel)}</span>
         </div>
       </div>
@@ -3194,6 +3388,13 @@ function stopNotificationPolling() {
   }
 }
 
-const tasksModule = { openTasks, closeTasks, isTasksOpen, startNotificationPolling, stopNotificationPolling };
+const tasksModule = {
+  openTasks, closeTasks, isTasksOpen, startNotificationPolling, stopNotificationPolling,
+  // P6-07 — how another module puts its live rows in the Activity view instead
+  // of building a second one. The accepted entry shape is documented above
+  // `_activitySources`.
+  registerActivitySource, unregisterActivitySource, refreshActivityView,
+  activityEntryControls, collectActivitySourceEntries,
+};
 export default tasksModule;
 window.tasksModule = tasksModule;

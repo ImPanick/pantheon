@@ -829,8 +829,15 @@ function _renderJobs() {
  *  isn't enough room below the button. Outside-click / Esc dismiss. */
 function _promptParallelOrSequential(count, anchorBtn) {
   // Strip any prior instance so a second click closes-then-reopens cleanly.
+  // Toggle-shut must run the *same* teardown the outside-click path runs.
+  // Removing the element alone leaves both capture-phase document listeners
+  // attached to a detached popover, and they accumulate one pair per toggle.
   const existing = document.getElementById('research-run-mode-popover');
-  if (existing) { existing.remove(); return; }
+  if (existing) {
+    if (typeof existing._rrmClose === 'function') existing._rrmClose();
+    else existing.remove();
+    return;
+  }
   if (!anchorBtn) return;
 
   const rect = anchorBtn.getBoundingClientRect();
@@ -863,6 +870,7 @@ function _promptParallelOrSequential(count, anchorBtn) {
     document.removeEventListener('click', onDocClick, true);
     document.removeEventListener('keydown', onKey, true);
   };
+  pop._rrmClose = close;
   const onDocClick = (e) => {
     if (pop.contains(e.target) || e.target === anchorBtn) return;
     close();

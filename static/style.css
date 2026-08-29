@@ -2979,6 +2979,232 @@ body.bg-pattern-sparkles {
       .plan-window-steps { max-height: 180px; }
       .plan-window-hint { flex-basis: 100%; }
     }
+
+    /* ── Docked queue panel (P6-04 / P6-06 / P6-07) ─────────────────────────
+       Same dock, same shell as the plan window above — one docked-panel look,
+       not two. The shell rules below are the only new geometry; every row
+       inside the list is drawn with the Tasks activity view's existing
+       `.task-log-row` / `.task-log-status-*` / `.task-log-running-elapsed` /
+       `.task-log-force-run` / `.task-log-stop` classes (style.css ~24468+),
+       including its collapse rule, so a queue row and an activity row are the
+       same component in two places (Law 14, and the whole point of P6-07).
+
+       Theme tokens only (D-2026-08-26-03): nothing here defines --accent, and
+       every accent reference carries the var(--red) fallback the rest of the
+       file uses. */
+    .queue-panel {
+      flex: 0 0 auto;
+      width: 100%;
+      max-width: 800px;
+      margin: 0 auto 8px;
+      border: 1px solid var(--input-border, var(--border));
+      border-radius: 14px;
+      background: var(--input-bg, var(--panel));
+      overflow: hidden;
+    }
+    .queue-panel[hidden] { display: none !important; }
+    .queue-panel-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px 7px 7px;
+    }
+    .queue-panel-fold {
+      flex: 0 0 auto;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      background: none;
+      border: none;
+      padding: 3px 5px;
+      border-radius: 8px;
+      color: var(--fg);
+      font: inherit;
+      cursor: pointer;
+      text-align: left;
+    }
+    .queue-panel-fold:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+    .queue-panel-chevron,
+    .queue-panel-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0.75;
+    }
+    .queue-panel-chevron { transition: transform 0.15s ease; }
+    .queue-panel-folded .queue-panel-chevron { transform: rotate(-90deg); }
+    .queue-panel-title { font-size: 12px; font-weight: 650; }
+    .queue-panel-count {
+      font-size: 11px;
+      opacity: 0.7;
+      font-variant-numeric: tabular-nums;
+    }
+    /* The state line is the Law 15 sentence: it says what happens next, in
+       words, without anyone having to be told what the panel is for. */
+    .queue-panel-state {
+      flex: 1 1 auto;
+      min-width: 0;
+      font-size: 10.5px;
+      opacity: 0.62;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .queue-panel-state[data-queue-state="paused"] {
+      opacity: 0.95;
+      color: var(--accent, var(--red));
+    }
+    .queue-panel-pause {
+      flex: 0 0 auto;
+      height: 22px;
+      border-radius: 7px;
+      border: 1px solid color-mix(in srgb, var(--fg) 13%, transparent);
+      background: transparent;
+      color: var(--fg);
+      font: inherit;
+      font-size: 10.5px;
+      padding: 0 9px;
+      cursor: pointer;
+      opacity: 0.85;
+    }
+    .queue-panel-pause:hover { opacity: 1; background: color-mix(in srgb, var(--fg) 8%, transparent); }
+    .queue-panel-pause[aria-pressed="true"] {
+      color: var(--accent, var(--red));
+      border-color: color-mix(in srgb, var(--accent, var(--red)) 35%, transparent);
+      background: color-mix(in srgb, var(--accent, var(--red)) 12%, transparent);
+      opacity: 1;
+    }
+    .queue-panel-body[hidden] { display: none !important; }
+    .queue-panel-list {
+      max-height: 240px;
+      overflow-y: auto;
+      padding: 0 10px;
+      position: relative;
+    }
+    .queue-panel-foot {
+      margin: 0;
+      padding: 8px 10px 10px;
+      border-top: 1px solid color-mix(in srgb, var(--fg) 9%, transparent);
+      flex-wrap: wrap;
+    }
+    .queue-panel .queue-panel-run[hidden] { display: none !important; }
+    .queue-panel-hint {
+      font-size: 10.5px;
+      opacity: 0.62;
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+    /* Row extras. Everything not listed here is inherited from .task-log-row. */
+    .queue-row-grip {
+      display: inline-flex;
+      align-items: center;
+      opacity: 0.4;
+      cursor: grab;
+      flex-shrink: 0;
+    }
+    .queue-row-grip:hover { opacity: 0.85; }
+    .queue-row.dragging .queue-row-grip,
+    .queue-row.touch-dragging .queue-row-grip { cursor: grabbing; }
+    .queue-row-pos {
+      font-size: 10px;
+      opacity: 0.45;
+      font-variant-numeric: tabular-nums;
+      flex-shrink: 0;
+    }
+    .queue-row .queue-row-text {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 60%;
+      font-weight: 500;
+    }
+    .queue-row .queue-row-attach { flex-shrink: 0; }
+    .queue-row-input {
+      width: 100%;
+      box-sizing: border-box;
+      resize: vertical;
+      min-height: 44px;
+      border-radius: 8px;
+      border: 1px solid var(--input-border, var(--border));
+      background: var(--bg);
+      color: var(--fg);
+      font: inherit;
+      font-size: 12px;
+      padding: 6px 8px;
+    }
+    .queue-row-input:focus {
+      outline: none;
+      border-color: color-mix(in srgb, var(--accent, var(--red)) 45%, transparent);
+    }
+    .queue-row-note { font-size: 11.5px; opacity: 0.75; }
+    .queue-row-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 6px;
+    }
+    .queue-row-field {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 10.5px;
+      opacity: 0.85;
+    }
+    .queue-row-field select {
+      height: 22px;
+      max-width: 150px;
+      border-radius: 6px;
+      border: 1px solid var(--input-border, var(--border));
+      background: var(--bg);
+      color: var(--fg);
+      font: inherit;
+      font-size: 10.5px;
+      padding: 0 4px;
+    }
+    .queue-row-save {
+      height: 22px;
+      border-radius: 7px;
+      border: 1px solid color-mix(in srgb, var(--accent, var(--red)) 35%, transparent);
+      background: color-mix(in srgb, var(--accent, var(--red)) 14%, transparent);
+      color: var(--accent, var(--red));
+      font: inherit;
+      font-size: 10.5px;
+      font-weight: 650;
+      padding: 0 10px;
+      cursor: pointer;
+      margin-left: auto;
+    }
+    /* Two-line rows in the run-mode popover. Additive: the research panel
+       emits no `.rrm-sub`, so its own popover is untouched (P6-06). */
+    .research-run-mode-popover .rrm-label {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      min-width: 0;
+    }
+    .research-run-mode-popover .rrm-sub {
+      font-size: 11px;
+      opacity: 0.62;
+      color: var(--fg);
+      font-weight: 400;
+    }
+    @media (max-width: 768px) {
+      .queue-panel-list { max-height: 180px; }
+      .queue-panel-hint { flex-basis: 100%; }
+      .queue-row .queue-row-text { max-width: 45%; }
+      /* .queue-panel-state carries the sentence that tells a person what the
+         queue is about to do — including "Paused — nothing sends until you
+         press Resume". Hiding it on phones deleted the Law 15 affordance on the
+         form factor with the least room for guessing, and left Pause changing a
+         button label and nothing else. Wrap it instead. */
+      .queue-panel-state { flex-basis: 100%; font-size: 11px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .queue-panel-chevron { transition: none; }
+    }
+
     /* While the menu is open the chevron stays in its highlighted state
        — don't run the opacity fade transition so we never flash from
        0.5 → hover-1.0 → drop-back. The state holds steady. */

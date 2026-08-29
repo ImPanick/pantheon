@@ -23,7 +23,11 @@ _IMPORT_REWRITES = {
     "import uiModule, { autoResize, styledPrompt } from './ui.js';": (
         "import uiModule, { autoResize, styledPrompt } from './ui.mjs';"
     ),
-    "import chatRenderer from './chatRenderer.js?v=20260815toolapproval4';": (
+    # Follows the specifier unification of 2026-08-29: sessions.js was the one
+    # consumer still on the pre-approval-control string, which meant it received
+    # a SECOND chatRenderer instance and FORBIDDEN.md's six-module approval bump
+    # could never reach it. check-specifiers.py now fails CI if that recurs.
+    "import chatRenderer from './chatRenderer.js?v=20260819approvalcontrol1';": (
         "import chatRenderer from './chatRenderer.mjs';"
     ),
     "import { providerLogo } from './providers.js';": (

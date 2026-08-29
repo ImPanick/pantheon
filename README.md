@@ -54,8 +54,8 @@ the `upstream` remote.
 - **Documents** — writing-first editor with AI edits, suggestions, Markdown, HTML, CSV
 - **Email** — IMAP/SMTP with triage, tags, summaries, reminders and reply drafts
 - **Notes, tasks, calendar** — reminders, todos, scheduled agent tasks, CalDAV sync
-- **Extras** — gallery and image editor, sixteen themes (nine with an animated background you
-  can swap or switch off), web search,
+- **Extras** — gallery and image editor, sixteen themes and eight background patterns
+  (seven of them animated) chosen independently of each other, web search,
   presets, sessions, 2FA
 
 Added by this fork so far: guardrail caps lifted for self-hosted inference while cloud APIs keep
@@ -120,7 +120,7 @@ runs in CI and the count only goes down.
 
 ## Status
 
-**294 tracked tasks, 62 done.** Twenty were setup and the rename. Ten are fixes now running:
+**296 tracked tasks, 67 done.** Twenty were setup and the rename. Ten are fixes now running:
 
 - Uploaded files reach the model as content rather than a placeholder
 - Upload type blocklist removed — it blocked executables while leaving `.svg` unblocked
@@ -130,7 +130,7 @@ runs in CI and the count only goes down.
 - A tool prompt that forbade heredocs on one line and instructed their use seven lines later
 - `Your account is not allowed to can use research.`
 
-Test suite: 5,742 passing, no regressions against baseline.
+Test suite: 5,835 passing, no regressions against baseline.
 
 ---
 
@@ -146,8 +146,8 @@ Test suite: 5,742 passing, no regressions against baseline.
   flag, and per-team quotas set without editing compose files.
 - **Run receipts** — model, settings, tools, skills and retrievals recorded per run;
   re-runnable and comparable.
-- **More themes** — new palettes, and subtle ASCII-art backgrounds as a pattern class of their
-  own, chosen per theme like the seven animated ones already are.
+- **More themes** — new palettes, and subtle ASCII-art backgrounds as a ninth pattern, picked
+  the same way the seven animated ones already are: independently of the palette.
 
 Fifteen phases, every task written down: [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md).
 

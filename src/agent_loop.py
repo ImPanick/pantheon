@@ -72,6 +72,131 @@ logger = logging.getLogger(__name__)
 _BROWSER_MCP_PREFIX = "mcp__builtin_browser__"
 
 
+# ── Mid-run steering (P6-18) ────────────────────────────────────────────────
+# A *steer* redirects the response that is ALREADY IN FLIGHT. The queue
+# (`static/js/chat.js` `_queueAgentRequest`) holds the NEXT message and does not
+# send it until the current stream has ended. Two different verbs, the same
+# intent at two urgencies — and before this block only the queue existed.
+#
+# THE HONEST LIMIT, read off the round structure in this file rather than
+# assumed. `stream_agent_loop` builds one provider request per round from
+# `messages`, awaits that round's entire model reply, then executes every tool
+# the round asked for. Nothing re-reads `messages` in between, and there is no
+# channel into a request that is already streaming. So the earliest a new user
+# instruction can reach the model is the TOP OF THE NEXT ROUND — the same
+# boundary that already emits `agent_step`. A steer is therefore *pending*
+# until that boundary and *applied* at it. **Any UI built on this must say so.**
+# Promising instant redirection would be a lie the backend cannot keep.
+#
+# A steer is submitted through a normal authenticated HTTP request while the
+# run is detached (`src/agent_runs.py`), which is why it needs an inbox at all:
+# the loop and the request that carries the steer are different call stacks.
+# Liveness is deliberately NOT decided here — `agent_runs.is_active()` already
+# owns that question and the HTTP layer gates on it. A second liveness notion
+# in this module would be a second source of truth (`Law 14`).
+#
+# Concurrency: one list per session, mutated only from the asyncio event loop
+# (the handler that accepts a steer, and the loop that drains it), so a plain
+# dict is enough — the same assumption `src/agent_runs.py::_RUNS` already makes.
+_STEER_INBOX: Dict[str, List[str]] = {}
+
+# A steer is a short course correction, not a second conversation. Both caps are
+# per session and enforced at submit time, so the caller can report a refusal
+# instead of silently eating the user's words.
+STEER_MAX_PENDING = 8
+STEER_MAX_CHARS = 4000
+
+
+def submit_steer(session_id: str, text: str) -> Dict[str, Any]:
+    """Queue one steer for the run in flight on ``session_id``.
+
+    Returns a verdict dict rather than a bool: three different things can
+    happen and the caller has to be able to tell them apart (`Law 10` —
+    prefer an enum to a boolean for a verdict).
+
+        {"accepted": True,  "pending": N, "applies_at": "next_round"}
+        {"accepted": False, "reason": "empty" | "too_long" | "too_many", ...}
+    """
+    sid = str(session_id or "").strip()
+    body = str(text or "").strip()
+    if not sid or not body:
+        return {"accepted": False, "reason": "empty",
+                "pending": len(_STEER_INBOX.get(sid, []))}
+    if len(body) > STEER_MAX_CHARS:
+        return {"accepted": False, "reason": "too_long", "limit": STEER_MAX_CHARS,
+                "pending": len(_STEER_INBOX.get(sid, []))}
+    pending = _STEER_INBOX.setdefault(sid, [])
+    if len(pending) >= STEER_MAX_PENDING:
+        return {"accepted": False, "reason": "too_many", "limit": STEER_MAX_PENDING,
+                "pending": len(pending)}
+    pending.append(body)
+    logger.info("[agent] steer queued for session=%s pending=%d chars=%d",
+                sid, len(pending), len(body))
+    return {"accepted": True, "pending": len(pending), "applies_at": "next_round"}
+
+
+def pending_steers(session_id: str) -> List[str]:
+    """Read the pending steers for a session without consuming them."""
+    return list(_STEER_INBOX.get(str(session_id or "").strip(), []))
+
+
+def take_steers(session_id: str) -> List[str]:
+    """Consume every pending steer for a session, in submission order."""
+    return _STEER_INBOX.pop(str(session_id or "").strip(), [])
+
+
+def clear_steers(session_id: str) -> int:
+    """Drop anything left in the inbox and report how much was dropped.
+
+    Called at run start. A steer that is still sitting here when a *new* run
+    begins missed the run it was addressed to (submitted just as the previous
+    stream ended), and letting it redirect the next one is exactly the bug
+    class `P6-01` closed in the queue — an item outliving the thing it was
+    addressed to and firing into whatever came next.
+    """
+    return len(_STEER_INBOX.pop(str(session_id or "").strip(), []))
+
+
+def consume_steers_for_round(session_id: Optional[str], messages: List[Dict]) -> List[str]:
+    """Move every pending steer for a session into ``messages`` as user turns.
+
+    Split out of the round loop so the delivery rule is testable on its own
+    rather than only through a live stream: it consumes (never re-applies),
+    preserves submission order, and returns exactly what it applied so the
+    caller can emit ``steer_applied`` and skip the round-1 request pin.
+    """
+    if not session_id:
+        return []
+    applied = take_steers(session_id)
+    for text in applied:
+        messages.append({"role": "user", "content": steer_directive(text)})
+    return applied
+
+
+def steer_directive(text: str) -> str:
+    """Wrap one steer for delivery to the model.
+
+    It goes in as a real ``user`` turn, because it *is* the user talking: no
+    untrusted-content marking, no gate bypass, and `run_security` observes it
+    like any other user message. It is deliberately not a ``system`` message —
+    on the Anthropic path every ``system`` message is hoisted into the system
+    prompt (`llm_core._build_anthropic_payload`), and promoting user text into
+    system instructions is a prompt-injection shape, not a delivery mechanism.
+
+    Landing a ``user`` message straight after a round's tool results is not a
+    new payload shape: a round with two tool calls already produces two
+    consecutive ``user`` messages on the Anthropic path, because every ``tool``
+    message is converted to one.
+    """
+    return (
+        "[Course correction from the user, sent while you were still working. "
+        "It reached you at a step boundary, so anything already done stands. "
+        "It supersedes earlier instructions that conflict with it. Continue "
+        "from where you are — do not restart the task unless this says to.]\n\n"
+        + str(text or "")
+    )
+
+
 def _expand_browser_mcp_tools(tool_names: Set[str], mcp_mgr) -> Set[str]:
     """Expand browser intent to every connected Playwright MCP tool.
 
@@ -3462,6 +3587,9 @@ async def stream_agent_loop(
       - data: {"type": "tool_start", "tool": "...", ...}    (before execution)
       - data: {"type": "tool_output", "tool": "...", ...}   (after execution)
       - data: {"type": "agent_step", "round": N}            (next round)
+      - data: {"type": "steer_applied", "round": N, ...}    (P6-18: a mid-run
+                                                             steer reached the
+                                                             model at round N)
       - data: {"type": "metrics", "data": {...}}            (final metrics)
       - data: [DONE]                                        (end)
     """
@@ -3479,6 +3607,14 @@ async def stream_agent_loop(
             exact_approval and exact_approval.allow_remaining_actions
         ),
     )
+    # P6-18: a steer belongs to the run that was in flight when it was sent.
+    # Anything still in the inbox now missed its run, so drop it rather than let
+    # it redirect this one — see `clear_steers`.
+    if session_id:
+        _stale_steers = clear_steers(session_id)
+        if _stale_steers:
+            logger.info("[agent] dropped %d stale steer(s) for session=%s at run start",
+                        _stale_steers, session_id)
     mcp_mgr = get_mcp_manager()
     prep_timings: Dict[str, float] = {}
     disabled_tools = set(disabled_tools or [])
@@ -4803,6 +4939,25 @@ async def stream_agent_loop(
         round_reasoning = ""  # reasoning_content deltas (DeepSeek-thinking, vLLM --reasoning-parser)
         native_tool_calls = []  # populated if model uses function calling
 
+        # P6-18 — deliver anything the user steered with while the previous
+        # round was running. This is the ONLY point in the loop where a new
+        # user instruction can enter the conversation; the module block at the
+        # top of this file explains why, and the UI is required to say so.
+        _steers_applied = consume_steers_for_round(session_id, messages)
+        if _steers_applied:
+            logger.info("[agent] applying %d steer(s) at round %d for session=%s",
+                        len(_steers_applied), round_num, session_id)
+            yield (
+                "data: "
+                + json.dumps({
+                    "type": "steer_applied",
+                    "round": round_num,
+                    "count": len(_steers_applied),
+                    "steers": _steers_applied,
+                })
+                + "\n\n"
+            )
+
         _active_route_state = {
             "messages": messages,
             "mcp_schemas": mcp_schemas,
@@ -4818,7 +4973,12 @@ async def stream_agent_loop(
                 _route_state.get("compaction_state", {}) if round_num == 1 else {}
             ),
         }
-        if round_num == 1 and not _approved_result_injected:
+        # `_initial_route_request_messages` is a request list built BEFORE the
+        # loop, so pinning it would silently discard a round-1 steer (and an
+        # injected approval result, which is why the first half of this guard
+        # already exists). Fall through to the normal per-round build whenever
+        # `messages` has grown since that list was made.
+        if round_num == 1 and not _approved_result_injected and not _steers_applied:
             _active_route_state["request_messages"] = _initial_route_request_messages
         all_tool_schemas = _tool_schemas_for_route(_active_route_state)
         agent_stream_timeout = int(get_setting("agent_stream_timeout_seconds", 300) or 300)
@@ -6498,5 +6658,16 @@ async def stream_agent_loop(
                 yield evt
         except Exception as _esc_err:
             logger.warning(f"teacher escalation hook failed: {_esc_err}", exc_info=True)
+
+    # P6-18: the run is over. A steer accepted in its last moments never reached
+    # a round boundary, so it belongs to nothing now. Dropping it here as well as
+    # at the next run's start keeps the inbox from holding a session's worth of
+    # text between runs; the client learns it missed by never seeing
+    # `steer_applied` for it.
+    if session_id:
+        _unapplied_steers = clear_steers(session_id)
+        if _unapplied_steers:
+            logger.info("[agent] %d steer(s) missed the end of the run for session=%s",
+                        _unapplied_steers, session_id)
 
     yield "data: [DONE]\n\n"

@@ -6,7 +6,7 @@ import markdownModule from './markdown.js';
 import { svgifyEmoji } from './markdown.js';
 import { addAITTSButton } from './tts-ai.js';
 import { providerLogo, providerLabel } from './providers.js';
-import settingsModule from './settings.js';
+import settingsModule from './settings.js?v=20260815approvalsave1';
 import spinnerModule from './spinner.js';
 import { bindMenuDismiss } from './escMenuStack.js';
 import { loadPanel } from './panels.js';
@@ -447,11 +447,15 @@ function stripExecutedFence(match, tag, inline, body) {
 
 async function loadExecFenceRegex() {
   try {
-    // Shared with admin.js, and — more to the point — with the other copies of
-    // this module: chatRenderer.js is imported under three different ?v= query
-    // strings, so it is instantiated three times per load and used to issue
-    // three identical /api/tools requests. appConfig.js is imported by one
-    // specifier from all of them, so they now share a single fetch.
+    // Shared with admin.js: several modules want /api/tools at startup and
+    // appConfig.js gives them one fetch and one snapshot between them.
+    //
+    // CORRECTED 2026-08-29 (P3-11). This comment used to say the sharper
+    // reason was that chatRenderer.js is imported under three different ?v=
+    // query strings — three module instances, three identical /api/tools
+    // requests. That was true and is no longer: all nine importers now use
+    // one specifier and .pantheon/check-specifiers.py holds them there at
+    // --max 0 in CI. The cache is still worth having for the first reason.
     const data = await getTools();
     const tags = (data.tools || [])
       .map((t) => t.id)
@@ -1604,7 +1608,7 @@ document.addEventListener('click', function(e) {
       } catch (_) {}
     }).catch(() => {});
   } else if (kind === 'image') {
-    import('./gallery.js').then(mod => {
+    import('./gallery.js?v=20260708match1').then(mod => {
       const open = mod.openGalleryImage || (mod.default && mod.default.openGalleryImage);
       if (open) open(id);
     }).catch(() => {});
@@ -1619,7 +1623,7 @@ document.addEventListener('click', function(e) {
       if (open) open(id);
     }).catch(() => {});
   } else if (kind === 'task') {
-    import('./tasks.js').then(mod => {
+    import('./tasks.js?v=20260723tasksbulkfeedback1').then(mod => {
       const open = mod.openTasks || (mod.default && mod.default.openTasks);
       if (open) open(id);
       else { const b = document.getElementById('tool-tasks-btn'); if (b) b.click(); }
@@ -1630,7 +1634,7 @@ document.addEventListener('click', function(e) {
       if (open) open(id);
     }).catch(() => {});
   } else if (kind === 'research') {
-    import('./research/panel.js').then(mod => {
+    import('./research/panel.js?v=20260630researchthumb').then(mod => {
       const open = mod.openPanel || (mod.default && mod.default.openPanel);
       if (open) open(id);
     }).catch(() => {});
@@ -1767,7 +1771,7 @@ export function buildImageBubble(imageUrl, prompt, model, size, quality, imageId
     e.stopPropagation();
     try {
       const [galleryMod, editorMod] = await Promise.all([
-        import('./gallery.js'),
+        import('./gallery.js?v=20260708match1'),
         loadPanel('editor'),
       ]);
       // Ensure the Gallery modal is open so the editor has a container
@@ -1801,7 +1805,7 @@ export function buildImageBubble(imageUrl, prompt, model, size, quality, imageId
     galleryBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
       try {
-        const mod = await import('./gallery.js');
+        const mod = await import('./gallery.js?v=20260708match1');
         const open = mod.openGalleryImage || (mod.default && mod.default.openGalleryImage);
         if (open) open(imageId);
       } catch (err) {

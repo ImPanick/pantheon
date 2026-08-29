@@ -6,10 +6,15 @@
 // Before this, /api/auth/settings was fetched independently by six modules and
 // /api/tools by three, none of them aware of the others — 4 and 3 requests on a
 // single cold load. Worse than the requests: each caller could observe a
-// different snapshot of the same object, and chatRenderer.js is imported under
-// three different ?v= query strings, so it is three separate module instances
-// each issuing its own /api/tools fetch. Caching here fixes both, because the
-// cache lives in one module every instance imports by the same specifier.
+// different snapshot of the same object. Caching here fixes both, because the
+// cache lives in one module every caller imports by the same specifier.
+//
+// CORRECTED 2026-08-29 (P3-11). This header used to add that chatRenderer.js
+// was imported under three different ?v= query strings, so it was three
+// separate module instances each issuing its own /api/tools fetch. That was
+// true when this file was written. It is not a workaround for that any more:
+// P3-11 unified all eleven forked modules and check-specifiers.py fails CI on
+// a reappearance. The duplicate-fetch reason above still stands on its own.
 //
 // URLs are bare paths on purpose. The callers that used `${API_BASE}/api/...`
 // resolved to the identical URL — API_BASE is `window.location.origin`
