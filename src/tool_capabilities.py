@@ -360,6 +360,14 @@ _ACTION_DESTRUCTIVE: Mapping[str, frozenset[str]] = MappingProxyType(
         "manage_documents": frozenset({"delete", "tidy"}),
         "manage_endpoints": frozenset({"delete"}),
         "manage_bg_jobs": frozenset({"kill", "stop", "cancel", "terminate"}),
+        # `bulk_email` is the one non-`manage_*` multiplexer in this table, and
+        # it earns its place: `delete_email` is registered DESTRUCTIVE at the
+        # tool level for removing *one* message, while `bulk_email` removes
+        # many — with `permanent: true` it sets `\Deleted` and bypasses Trash
+        # entirely (`mcp_servers/email_server.py`). Without this line the card
+        # for emptying a mailbox ranked *below* the card for deleting a single
+        # message, which is the exact inversion P7-06 exists to prevent.
+        "bulk_email": frozenset({"delete", "junk"}),
         "manage_memory": frozenset({"delete"}),
         "manage_mcp": frozenset({"delete"}),
         "manage_notes": frozenset({"delete"}),
@@ -459,6 +467,16 @@ def capabilities_for_action(tool_name: Any, content: Any) -> ToolCapabilities:
     if not isinstance(tool_name, str):
         return base
 
+    # Every table below is keyed on the bare tool name, but the model can call an
+    # email tool under its MCP alias — `capabilities_for_tool` already strips
+    # that prefix and these lookups did not, so an aliased call silently missed
+    # its own action table and resolved one rung too low.
+    if (
+        tool_name.startswith("mcp__email__")
+        and tool_name[len("mcp__email__"):] in BUILTIN_EMAIL_TOOLS
+    ):
+        tool_name = tool_name[len("mcp__email__"):]
+
     action = _action_from_content(tool_name, content)
     destructive = action in _ACTION_DESTRUCTIVE.get(tool_name, ())
     if tool_name not in _PRIVATE_ACTION_READS:
@@ -489,6 +507,144 @@ def capabilities_for_action(tool_name: Any, content: Any) -> ToolCapabilities:
         ToolEffect.WRITE_PRIVATE,
         result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED,
     )
+
+
+# ── One severity ordering, and one set of words for it (P7-06) ──────────────
+#
+# The 13-value taxonomy above says *what* a tool does. It does not say which of
+# two effects a person should worry about more, and until this block existed the
+# answer lived nowhere — so an approval card printed `Effects: destructive` and
+# `Effects: ui_side_effect` in the same grey text at the same size, and the plan
+# window had no way to render its fifth per-step field at all.
+#
+# The ordering is a judgement and it is written down once, here, beside the
+# taxonomy it ranks. It is deliberately NOT duplicated in JavaScript: the wire
+# carries the resolved rank and the resolved words, so a value added to the enum
+# cannot render as a blank in one surface and a raw identifier in another.
+#
+# Read the numbers as ranks, not scores. Only their order is meaningful, and the
+# gaps are there so a value can be inserted later without renumbering.
+_EFFECT_SEVERITY: Mapping[ToolEffect, int] = MappingProxyType({
+    ToolEffect.UI_SIDE_EFFECT: 10,
+    ToolEffect.USER_INTERACTION: 20,
+    ToolEffect.READ_PUBLIC: 30,
+    ToolEffect.READ_WORKSPACE: 40,
+    ToolEffect.BROKERED_NETWORK_READ: 50,
+    ToolEffect.WRITE_WORKSPACE: 60,
+    ToolEffect.READ_PRIVATE: 70,
+    ToolEffect.EXECUTE_CODE: 80,
+    ToolEffect.NETWORK_EGRESS: 90,
+    ToolEffect.WRITE_PRIVATE: 100,
+    ToolEffect.EXTERNAL_SIDE_EFFECT: 110,
+    ToolEffect.ADMIN_CHANGE: 120,
+    ToolEffect.DESTRUCTIVE: 130,
+})
+
+# `Law 15`: the person approving this has not read the enum. The phrase says what
+# happens to *them*, not what the tool is classified as. Short enough to sit on a
+# plan-window step row without wrapping.
+_EFFECT_PHRASE: Mapping[ToolEffect, str] = MappingProxyType({
+    ToolEffect.UI_SIDE_EFFECT: "Changes what is on screen",
+    ToolEffect.USER_INTERACTION: "Asks you a question",
+    ToolEffect.READ_PUBLIC: "Reads public information",
+    ToolEffect.READ_WORKSPACE: "Reads workspace files",
+    ToolEffect.BROKERED_NETWORK_READ: "Fetches a page through the app",
+    ToolEffect.WRITE_WORKSPACE: "Writes workspace files",
+    ToolEffect.READ_PRIVATE: "Reads your private data",
+    ToolEffect.EXECUTE_CODE: "Runs code on this machine",
+    ToolEffect.NETWORK_EGRESS: "Sends data out to the internet",
+    ToolEffect.WRITE_PRIVATE: "Changes your private data",
+    ToolEffect.EXTERNAL_SIDE_EFFECT: "Changes something outside this app",
+    ToolEffect.ADMIN_CHANGE: "Changes settings for everyone",
+    ToolEffect.DESTRUCTIVE: "Can permanently delete or overwrite",
+})
+
+# Three bands, because a card can afford three visual treatments and not
+# thirteen. The thresholds are the rank of the lowest member of each band, so
+# adding an effect between two existing ones lands in the right band without
+# anyone editing this.
+EFFECT_BAND_ROUTINE = "routine"      # reads, and drawing on the screen
+EFFECT_BAND_NOTABLE = "notable"      # writes, code, and anything leaving the box
+EFFECT_BAND_SERIOUS = "serious"      # other people's state, and deletion
+
+
+def effect_severity(effect: Any) -> int:
+    """Rank one effect. An unrecognised value sorts *highest*, not lowest.
+
+    Failing high is the same rule the rest of this module uses for unknown
+    tools: a value nobody has classified is treated as the most consequential
+    thing it could be, so a new enum member cannot quietly render as harmless
+    on a surface that has not been updated.
+    """
+    try:
+        return _EFFECT_SEVERITY[ToolEffect(effect)]
+    except (KeyError, ValueError):
+        return 999
+
+
+def effect_band(severity: int) -> str:
+    """Map a rank onto the three bands a surface can actually draw."""
+    if severity >= _EFFECT_SEVERITY[ToolEffect.EXTERNAL_SIDE_EFFECT]:
+        return EFFECT_BAND_SERIOUS
+    if severity >= _EFFECT_SEVERITY[ToolEffect.WRITE_WORKSPACE]:
+        return EFFECT_BAND_NOTABLE
+    return EFFECT_BAND_ROUTINE
+
+
+def describe_effects(capabilities: Any) -> dict:
+    """Resolve a capability set into what a surface needs to draw it.
+
+    Returns the raw values *and* the presentation, because the two surfaces that
+    consume this want different halves: the approval card shows every phrase, the
+    plan window has room for one. Both need the same answer to "which one of
+    these matters most", and this is the only place that answer is computed.
+
+        {"effects": ["destructive", "read_private"],   # ranked, most severe first
+         "effect": "destructive",                       # the dominant one
+         "effect_label": "Can permanently delete or overwrite",
+         "effect_labels": ["Can permanently delete or overwrite", "Reads your private data"],
+         "effect_severity": 130,
+         "effect_band": "serious"}
+
+    An empty or unrecognisable capability set returns an empty dict rather than a
+    dict of empty strings, so a caller can spread it into an event and the key is
+    simply absent — a surface that reads `effect` gets `undefined`, which it
+    already handles, instead of a falsy string it has to special-case.
+
+    Takes either a `ToolCapabilities` or a bare iterable of effect values,
+    because `PendingToolApproval` keeps its effects as a tuple of strings for
+    digest stability and would otherwise need a second resolver of its own.
+    """
+    effects = getattr(capabilities, "effects", None)
+    if effects is None and isinstance(capabilities, (list, tuple, set, frozenset)):
+        effects = capabilities
+    if not effects:
+        return {}
+    ranked = sorted(effects, key=lambda e: (-effect_severity(e), str(getattr(e, "value", e))))
+    values = [e.value if isinstance(e, ToolEffect) else str(e) for e in ranked]
+
+    def _phrase(effect: Any) -> str:
+        """The words, or the identifier when there are none.
+
+        A raw string reaching here still gets its phrase if it names a member of
+        the enum — the approval record stores values, not members, and it would
+        otherwise show identifiers to the one person being asked to consent.
+        """
+        try:
+            return _EFFECT_PHRASE[ToolEffect(effect)]
+        except (KeyError, ValueError):
+            return str(getattr(effect, "value", effect))
+
+    labels = [_phrase(e) for e in ranked]
+    top = effect_severity(ranked[0])
+    return {
+        "effects": values,
+        "effect": values[0],
+        "effect_label": labels[0],
+        "effect_labels": labels,
+        "effect_severity": top,
+        "effect_band": effect_band(top),
+    }
 
 
 def tool_result_is_successful(result: Any) -> bool:

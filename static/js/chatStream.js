@@ -108,6 +108,22 @@ function _steerSessionId() {
   catch (_) { return ''; }
 }
 
+/**
+ * True when this turn is a plain chat turn — no agent loop, so no rounds.
+ *
+ * Unknown counts as steerable: the server is the authority and refuses what it
+ * cannot deliver, so a missing getter costs one honest refusal rather than
+ * silently hiding a working control.
+ */
+function _steerChatModeOnly() {
+  try {
+    const get = window.__pantheonGetChatMode;
+    return typeof get === 'function' && get() === 'chat';
+  } catch (_) {
+    return false;
+  }
+}
+
 function _steerComposer() {
   return document.getElementById('message');
 }
@@ -328,7 +344,11 @@ export async function submitSteer(text) {
     try { data = await res.json(); } catch (_) { data = {}; }
     if (!res.ok || data.accepted === false) {
       const why = {
-        no_active_run: 'The agent already finished',
+        // Covers both causes the server folds into this reason: the run
+        // finished, and the run cannot take a steer at all (a plain chat or
+        // image turn). Saying "already finished" for the second was wrong, and
+        // the sentence has to hold for whichever one it was.
+        no_active_run: 'There is no agent run to steer right now',
         too_many: 'Too many steers are already waiting',
         too_long: 'That steer is too long to send mid-run',
         empty: 'Nothing to steer with',
@@ -399,6 +419,14 @@ export function initSteerControl() {
     }
     if (_steerSupported === null) await probeSteerSupport();
     if (_steerSupported !== true) return;
+    // Chat mode has no rounds, so it has no step boundary to deliver a steer
+    // at, and the server refuses one — correctly, since accepting it would
+    // report words as landing that nothing would ever read. Drawing the bar
+    // anyway would offer a control that always declines, which is the `Law 15`
+    // failure this whole feature exists to avoid. The composer already knows
+    // the mode; asking it is cheaper and more honest than a probe, which fires
+    // once per page load and cannot answer a per-run question.
+    if (_steerChatModeOnly()) { _removeSteerBar(); return; }
     // A run that belongs to a different chat than the one on screen gets a
     // fresh bar rather than another session's accepted-steer list.
     if (_steerBar && _steerBoundSessionId && _steerBoundSessionId !== _steerSessionId()) {

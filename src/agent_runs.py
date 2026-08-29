@@ -24,7 +24,8 @@ logger = logging.getLogger(__name__)
 
 
 class _Run:
-    __slots__ = ("buffer", "subscribers", "status", "task", "evict_task", "run_id")
+    __slots__ = ("buffer", "subscribers", "status", "task", "evict_task", "run_id",
+                 "steerable")
 
     def __init__(self) -> None:
         self.buffer: list = []          # ordered SSE event strings (replay log)
@@ -35,6 +36,11 @@ class _Run:
         # Stable across every subscription/replay of this exact detached run.
         # The browser uses it to make local cost accounting replay-idempotent.
         self.run_id: str = uuid.uuid4().hex
+        # Whether THIS run's generator reaches `stream_agent_loop`, the only
+        # code that drains the steer inbox. Default off: a run that has not
+        # said it can consume a steer cannot, and a caller that forgets to say
+        # so loses steering rather than swallowing the user's words.
+        self.steerable: bool = False
 
 
 _RUNS: Dict[str, _Run] = {}
@@ -93,6 +99,24 @@ def _schedule_evict(session_id: str, expected_run: Optional[_Run] = None) -> Non
 def is_active(session_id: str) -> bool:
     r = _RUNS.get(session_id)
     return bool(r and r.status == "running")
+
+
+def is_steerable(session_id: str) -> bool:
+    """Whether a run that can actually CONSUME a steer is in flight.
+
+    Strictly narrower than `is_active`, and the two are not interchangeable.
+    `is_active` answers "a detached run is registered" — true for every
+    non-compare stream, including plain chat and image generation, neither of
+    which ever calls `consume_steers_for_round`. Gating the steer route on
+    `is_active` therefore accepted steers for runs that would never read them,
+    told the user they would land at the next step, and left the words in an
+    inbox `clear_steers` empties at the start of the next run.
+
+    Liveness stays in this module (`Law 14`); this is the same question asked
+    precisely rather than a second answer to it.
+    """
+    r = _RUNS.get(session_id)
+    return bool(r and r.status == "running" and r.steerable)
 
 
 def get_status(session_id: str) -> Optional[str]:
@@ -172,9 +196,17 @@ async def _drain(session_id: str, run: _Run, agen: AsyncGenerator[str, None],
         _schedule_evict(session_id, run)
 
 
-def start(session_id: str, agen: AsyncGenerator[str, None]) -> _Run:
+def start(session_id: str, agen: AsyncGenerator[str, None],
+          steerable: bool = False) -> _Run:
     """Start a detached run draining `agen` for a session. If a run is already in
-    flight for this session (e.g. a rapid double-send), it's cancelled first."""
+    flight for this session (e.g. a rapid double-send), it's cancelled first.
+
+    ``steerable`` says whether `agen` reaches `stream_agent_loop`, the only
+    stream that drains the steer inbox — see `is_steerable`. It defaults to
+    False so a caller that does not know answers "no": refusing a steer sends
+    the text back to the composer's queue, while a wrong "yes" accepts words
+    nothing will ever deliver.
+    """
     prev = _RUNS.get(session_id)
     prev_task: Optional[asyncio.Task] = None
     if prev:
@@ -192,6 +224,7 @@ def start(session_id: str, agen: AsyncGenerator[str, None]) -> _Run:
         if prev.evict_task and not prev.evict_task.done():
             prev.evict_task.cancel()
     run = _Run()
+    run.steerable = bool(steerable)
     _RUNS[session_id] = run
     run.task = asyncio.create_task(_drain(session_id, run, agen, prev_task))
     return run

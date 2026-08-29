@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Dict, Any, AsyncGenerator, List, Optional
 
 from fastapi import APIRouter, Request, HTTPException, Form, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import ValidationError
 
 from core.models import ChatMessage
@@ -22,7 +22,7 @@ from src.llm_core import (
     stream_llm,
     stream_llm_with_fallback,
 )
-from src.agent_loop import stream_agent_loop
+from src.agent_loop import pending_steers, stream_agent_loop, submit_steer
 from src import agent_runs
 from src.model_context import estimate_tokens
 from src.context_compactor import (
@@ -73,6 +73,49 @@ logger = logging.getLogger(__name__)
 
 # Track active streams for partial-save safety net
 _active_streams: Dict[str, dict] = {}
+
+# How a refused steer answers on the wire. None of these may be 404, 405 or
+# 501: `chatStream.js` reads exactly those three as "this build has no steer
+# transport", hides the control and stops asking for the rest of the page's
+# life — so a refusal that borrowed one would retire a working feature. The
+# same rule binds the ownership refusal, which is why `chat_steer` re-stamps
+# `_verify_session_owner`'s 404 as 403 instead of letting it through.
+_STEER_REFUSAL_STATUS = {
+    "no_active_run": 409,   # the session is the caller's; the run is over
+    "too_many": 429,        # STEER_MAX_PENDING, counted in agent_loop
+    "too_long": 400,        # STEER_MAX_CHARS, likewise
+    "empty": 400,
+}
+
+
+def _stream_is_steerable(
+    *,
+    chat_mode: str,
+    is_image_session: bool,
+    do_research: bool,
+) -> bool:
+    """Whether the stream about to be detached will reach `stream_agent_loop`.
+
+    `stream_with_save` picks one of three destinations, and only the last of
+    them drains the steer inbox (`consume_steers_for_round` and `clear_steers`
+    exist nowhere else): an image-generation session generates and returns;
+    ``chat_mode == "chat"`` goes to `stream_llm_with_fallback`; everything else
+    runs the agent loop. Research is refused here even though it can end up on
+    the agent branch: a research turn that actually researches returns from its
+    own block before the three-way choice is made, and the one case that falls
+    through (the clarifying-questions round) is not worth mirroring an inner
+    `_skip_research` decision to catch. The cost of this conservatism is a
+    steer that is queued instead of applied; the cost of the opposite error is
+    the user's words accepted into an inbox nothing reads.
+
+    Kept as one named predicate rather than an expression at the call site so
+    the three conditions are stated once, next to the reason for each.
+    """
+    return (
+        chat_mode != "chat"
+        and not is_image_session
+        and not do_research
+    )
 
 
 def _stream_failure_status(chunk: str) -> Optional[int]:
@@ -2579,7 +2622,21 @@ def setup_chat_routes(
         if compare_mode:
             return StreamingResponse(_safe_stream(), media_type="text/event-stream")
 
-        _detached_run = agent_runs.start(session, _safe_stream())
+        # Registering the run also decides whether it can be steered. The
+        # destination is settled by now — `chat_mode` takes its last value well
+        # above, and the image check reads the model `build_chat_context` has
+        # already normalised — so this answers the same question the branch
+        # inside `stream_with_save` will ask, at the only moment the steer
+        # route can be told about it.
+        _detached_run = agent_runs.start(
+            session,
+            _safe_stream(),
+            steerable=_stream_is_steerable(
+                chat_mode=chat_mode,
+                is_image_session=_is_image_generation_session(sess, owner=_user),
+                do_research=bool(effective_do_research),
+            ),
+        )
         return StreamingResponse(
             agent_runs.subscribe(session, _detached_run),
             media_type="text/event-stream",
@@ -2612,6 +2669,106 @@ def setup_chat_routes(
         _expected_run_id = request.headers.get("X-Pantheon-Run-Id")
         stopped = agent_runs.stop(session_id, _expected_run_id)
         return {"stopped": stopped}
+
+    # ------------------------------------------------------------------ #
+    # POST /api/chat/steer — redirect the run that is already in flight
+    # (P6-18). The queue holds the NEXT message; this carries a correction for
+    # the one running, which `src/agent_loop.py` delivers at the next round
+    # boundary. Verdicts ride in the body, not in an HTTPException: the client
+    # renders `reason` and FastAPI's error shape carries only `detail`.
+    #
+    # Every status this route can answer with:
+    #   200  probe answered, or the steer reached the inbox
+    #   400  malformed body, empty steer, or one over STEER_MAX_CHARS
+    #   401  no authenticated caller (auth on, nobody signed in)
+    #   403  not the caller's session, or no such session — one refusal, so
+    #        neither can be told from the other
+    #   409  no run that can consume a steer is in flight
+    #   429  STEER_MAX_PENDING already waiting
+    # 404/405/501 are absent by construction; see `_STEER_REFUSAL_STATUS`.
+    # ------------------------------------------------------------------ #
+    @router.post("/api/chat/steer/{session_id}")
+    async def chat_steer(request: Request, session_id: str) -> JSONResponse:
+        # Decided before the body is read, so the probe below cannot become a
+        # cheaper route to session state than the steer itself — it reports
+        # whether a run is live, which is the owner's business alone.
+        #
+        # `_verify_session_owner` refuses "not yours" and "no such session"
+        # identically, which is what keeps this off being an existence oracle;
+        # its status is re-stamped 403 here, with its wording untouched, and
+        # only for the codes it uses for that refusal. 404 cannot leave this
+        # route: `chatStream.js` reads 404/405/501 as "this build has no steer
+        # transport" and retires the control for the rest of the page's life,
+        # so a steer aimed at a session another tab has just deleted used to
+        # kill steering in this one and report it as unsupported by the server.
+        # A caller with no session at all still gets 401 from the same call —
+        # that is authentication, not ownership, and stays as it is.
+        try:
+            _verify_session_owner(request, session_id)
+        except HTTPException as exc:
+            if exc.status_code == 404:
+                raise HTTPException(403, exc.detail)
+            raise
+
+        try:
+            body = await request.json()
+        except Exception:
+            raise HTTPException(400, "Invalid JSON")
+        if not isinstance(body, dict):
+            raise HTTPException(400, "Invalid JSON")
+
+        # The capability probe fires when the first run of the page starts —
+        # `chatStream.js` calls it from its `pantheon:chat-busy-change`
+        # listener, on the active edge — and only asks whether this build has
+        # the route, so it answers without touching the inbox. (It used to say
+        # "once on page load, before the user has typed anything"; there has
+        # never been a call site that early, and a reader who believed it would
+        # look for a probe that never fires on an idle page.)
+        #
+        # `is True`, not truthiness: `{"probe": "no"}` is a string and would
+        # have read as a probe, while `{"probe": 0}` fell through to the steer
+        # path. The wire type for a flag is a bool.
+        #
+        # The reply used to also carry `"active"`. Nothing read it —
+        # `probeSteerSupport` branches on `res.status` alone — so it was a
+        # liveness answer with no reader (`Law 13`), and it reported
+        # `is_active`, which is not the question a steer is gated on anyway.
+        if body.get("probe") is True:
+            return JSONResponse({"supported": True})
+
+        # Liveness is agent_runs' question and is deliberately not re-decided
+        # inside agent_loop (`Law 14`), so the gate belongs here — but the
+        # predicate is `is_steerable`, not `is_active`. This comment used to
+        # justify the gate with `is_active` behind it, and described an outcome
+        # the gate did not prevent: `is_active` is true for a plain chat or
+        # image-generation stream as well, neither of which ever calls
+        # `consume_steers_for_round`, so a steer sent during one was accepted,
+        # reported to the user as landing at the next step, and then dropped by
+        # `clear_steers` — exactly the loss the sentence claimed was avoided.
+        # With `is_steerable` the refusal happens instead, and the client falls
+        # back to the queue on `no_active_run`, which is what makes the words
+        # survive.
+        if not agent_runs.is_steerable(session_id):
+            return JSONResponse(
+                # `pending` on every verdict, refusals included: `submit_steer`
+                # reports the backlog even when it refuses, and a client that
+                # has to special-case one reason for a missing field is a
+                # client that will forget to.
+                {"accepted": False, "reason": "no_active_run",
+                 "pending": len(pending_steers(session_id))},
+                status_code=_STEER_REFUSAL_STATUS["no_active_run"],
+            )
+
+        # `submit_steer` coerces with `str()` rather than typing its argument,
+        # so a JSON object here would reach the model as its repr.
+        text = body.get("text")
+        verdict = submit_steer(session_id, text if isinstance(text, str) else "")
+        if verdict.get("accepted"):
+            return JSONResponse(verdict)
+        return JSONResponse(
+            verdict,
+            status_code=_STEER_REFUSAL_STATUS.get(verdict.get("reason"), 400),
+        )
 
     # ------------------------------------------------------------------ #
     # GET /api/chat/stream_status — check if a stream is active for a session

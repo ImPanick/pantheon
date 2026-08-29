@@ -4310,7 +4310,18 @@ import queuePanel from './queuePanel.js';
                 // Bind the tool to the plan step the agent is on (P6-11/P6-13).
                 // No-op unless an approved plan has an unticked step and plan
                 // mode is off — i.e. we are executing, not drafting.
-                planWindow.noteToolStart({ tool: json.tool, command: json.command });
+                // `effect_label`/`effect_band` are the plan window's fifth
+                // per-step field (P6-11), resolved server-side by P7-06. They
+                // are forwarded rather than derived: the severity ordering and
+                // the wording live in `src/tool_capabilities.py` and nowhere
+                // else, so a value added to the taxonomy cannot render one way
+                // here and another way on the approval card.
+                planWindow.noteToolStart({
+                  tool: json.tool,
+                  command: json.command,
+                  effect_label: json.effect_label,
+                  effect_band: json.effect_band,
+                });
 
                 // --- Thread timeline: group tools in a thread container ---
                 const cmd = json.command || '';
@@ -4445,6 +4456,8 @@ import queuePanel from './queuePanel.js';
                   command: json.command,
                   exit_code: json.exit_code,
                   output: json.output,
+                  effect_label: json.effect_label,
+                  effect_band: json.effect_band,
                 });
                 // --- Update the current thread node ---
                 if (currentToolBubble) {
@@ -4626,6 +4639,16 @@ import queuePanel from './queuePanel.js';
               } else if (json.type === 'ui_control') {
                 if (_isBg) continue;
                 chatStream.handleUIControl(json.data || {});
+
+              } else if (json.type === 'steer_applied') {
+                // P6-18. The steer bar lives in the foreground composer, so a
+                // background session's confirmation has no bar to upgrade —
+                // and routing it would set the "confirmations work here" flag
+                // from a run the user is not watching. `stream_agent_loop`
+                // emits `round`/`count`/`steers` at the top level, not under
+                // `data`, so the event goes through whole.
+                if (_isBg) continue;
+                chatStream.handleSteerApplied(json);
 
               } else if (json.type === 'ask_user') {
                 if (_isBg) continue;

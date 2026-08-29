@@ -43,6 +43,7 @@ from src.tool_capabilities import (
     blocked_tool_result,
     capabilities_for_action,
     capabilities_for_tool,
+    describe_effects,
     messages_contain_external_untrusted_context,
     tool_result_is_successful,
     tool_result_should_arm_gate,
@@ -72,6 +73,31 @@ logger = logging.getLogger(__name__)
 _BROWSER_MCP_PREFIX = "mcp__builtin_browser__"
 
 
+def _effect_fields(tool_name: Any, content: Any) -> Dict[str, Any]:
+    """Effect keys for one action's `tool_start`/`tool_output` pair (P7-06).
+
+    Resolve from the *content* the block carries, not from the tool name alone:
+    `manage_memory` with `action: delete` and `manage_memory` with `action: list`
+    are the same tool and not the same consequence, and only
+    `capabilities_for_action` can tell them apart.
+
+    Every caller is a `yield` inside a live SSE stream, so this swallows
+    everything. `capabilities_for_action` is defensive about odd input but its
+    `_action_from_content` path still calls `dict()` and `json.loads()` on model
+    output, and a card that ranks nothing is survivable where a dead stream is
+    not. An empty dict spreads into an event as no keys at all.
+    """
+    try:
+        return describe_effects(capabilities_for_action(tool_name, content))
+    except Exception:
+        logger.warning(
+            "[agent] effect resolution failed for tool=%r; card ships unranked",
+            tool_name,
+            exc_info=True,
+        )
+        return {}
+
+
 # ── Mid-run steering (P6-18) ────────────────────────────────────────────────
 # A *steer* redirects the response that is ALREADY IN FLIGHT. The queue
 # (`static/js/chat.js` `_queueAgentRequest`) holds the NEXT message and does not
@@ -91,9 +117,17 @@ _BROWSER_MCP_PREFIX = "mcp__builtin_browser__"
 # A steer is submitted through a normal authenticated HTTP request while the
 # run is detached (`src/agent_runs.py`), which is why it needs an inbox at all:
 # the loop and the request that carries the steer are different call stacks.
-# Liveness is deliberately NOT decided here — `agent_runs.is_active()` already
-# owns that question and the HTTP layer gates on it. A second liveness notion
-# in this module would be a second source of truth (`Law 14`).
+# Liveness is deliberately NOT decided here — `src/agent_runs.py` owns that
+# question and the HTTP layer gates on it. A second liveness notion in this
+# module would be a second source of truth (`Law 14`).
+#
+# CORRECTED 2026-08-29. This used to name `is_active()` as the predicate, and
+# that was the wrong question: `is_active` is true for a plain chat stream and
+# an image-generation stream too, and neither ever calls
+# `consume_steers_for_round`, so a steer sent during one was accepted, reported
+# as landing at the next step, and then dropped by `clear_steers`. The gate is
+# `is_steerable()`, which is true only for a run that can actually read this
+# inbox.
 #
 # Concurrency: one list per session, mutated only from the asyncio event loop
 # (the handler that accepts a steer, and the loop that drains it), so a plain
@@ -3592,6 +3626,23 @@ async def stream_agent_loop(
                                                              model at round N)
       - data: {"type": "metrics", "data": {...}}            (final metrics)
       - data: [DONE]                                        (end)
+
+    P7-06 — `tool_start` and `tool_output` additionally carry six effect keys,
+    resolved from the tool name *and* its content, so that a delete and a list
+    of the same multiplexed tool do not render as the same card:
+
+      "effects": ["destructive", "read_private"]  ranked, most severe first
+      "effect": "destructive"                     the dominant one
+      "effect_label": "Can permanently delete or overwrite"
+      "effect_labels": [...]                      one phrase per entry of effects
+      "effect_severity": 130                      rank; order is meaningful, not scale
+      "effect_band": "routine" | "notable" | "serious"
+
+    All six appear or none do. They are absent when the action classifies to
+    nothing, and on a replayed approval whose sealed binding did not match this
+    run — so a consumer must read a missing `effect` as "unranked", never as
+    "harmless". The ordering and the phrasing live in `src/tool_capabilities.py`
+    (`describe_effects`) and are deliberately not duplicated client-side.
     """
 
     run_security = ToolRunSecurityContext(
@@ -4686,6 +4737,17 @@ async def stream_agent_loop(
             content=approved.content,
             workspace=workspace,
         )
+        # Resolved once for the whole replay so the pair cannot disagree, and
+        # from the sealed content because that is what the dispatcher will run.
+        # Gated on `approval_matches` for the same reason `command` below is:
+        # a binding that failed is blocked before execution, and describing the
+        # consequences of an action this run is not allowed to show is worse
+        # than showing nothing.
+        approved_effects = (
+            _effect_fields(approved.tool_name, approved.content)
+            if approval_matches
+            else {}
+        )
         if approval_matches:
             yield (
                 "data: "
@@ -4697,6 +4759,7 @@ async def stream_agent_loop(
                         "full_command": approved_display,
                         "round": 0,
                         "approved": True,
+                        **approved_effects,
                     }
                 )
                 + "\n\n"
@@ -4804,6 +4867,7 @@ async def stream_agent_loop(
             "output": _truncate(approved_output),
             "exit_code": approved_result.get("exit_code"),
             "approved": True,
+            **approved_effects,
         }
         for key in (
             "image_url",
@@ -4885,6 +4949,11 @@ async def stream_agent_loop(
             "exit_code": approved_result.get("exit_code"),
             "approved": True,
             "approval_digest": approved.digest[:16],
+            # Same reason as the main path: the ranking has to survive a reload.
+            # `approved_effects` is already `{}` when the binding did not match,
+            # so a refused grant persists nothing rather than persisting a claim
+            # about an action that was never allowed to run.
+            **approved_effects,
         }
         for key in (
             "image_url",
@@ -5851,6 +5920,12 @@ async def stream_agent_loop(
             # Document tools show a brief summary instead of dumping full content.
             is_doc_tool = block.tool_type in ("create_document", "update_document", "edit_document", "suggest_document")
             full_command = block.content.strip()
+            # P7-06. Resolved once per block and reused by every event this
+            # iteration emits — `tool_start`, `tool_output`, the `ask_user` card
+            # and the persisted `tool_event`. Nothing in the loop rewrites
+            # `block`, so re-resolving would give the same answer four times;
+            # one variable means it cannot start giving four different ones.
+            block_effects = _effect_fields(block.tool_type, block.content)
             if is_doc_tool:
                 cmd_display = block.content.split("\n")[0].strip()[:80]
             else:
@@ -5987,7 +6062,7 @@ async def stream_agent_loop(
                     )
             else:
                 yield (
-                    f'data: {json.dumps({"type": "tool_start", "tool": block.tool_type, "command": cmd_display, "full_command": full_command, "round": round_num})}\n\n'
+                    f'data: {json.dumps({"type": "tool_start", "tool": block.tool_type, "command": cmd_display, "full_command": full_command, "round": round_num, **block_effects})}\n\n'
                 )
 
                 # Streaming progress for long-running tools (bash, python).
@@ -6212,8 +6287,13 @@ async def stream_agent_loop(
             elif "error" in result:
                 output_text = _truncate(result["error"])
 
-            # Emit tool_output (include ui_event data if present)
-            tool_output_data = {"type": "tool_output", "tool": block.tool_type, "command": cmd_display, "output": output_text, "exit_code": result.get("exit_code")}
+            # Emit tool_output (include ui_event data if present).
+            # `block` still holds the content that ran — nothing in this loop
+            # rewrites it — so the effect keys here match the `tool_start` above.
+            # This event also carries the `ask_user` approval payload when the
+            # gate fired instead, which is the card P7-06 exists to rank, so it
+            # gets the keys on the blocked path too.
+            tool_output_data = {"type": "tool_output", "tool": block.tool_type, "command": cmd_display, "output": output_text, "exit_code": result.get("exit_code"), **block_effects}
             if is_doc_tool and "action" in result:
                 tool_output_data.update({
                     "doc_id": result.get("doc_id"),
@@ -6355,6 +6435,14 @@ async def stream_agent_loop(
             # the card below the now-settled tool node and cancels any between-
             # round spinner.  The turn ends after the current tool batch.
             if _pending_ask_user_event:
+                # No effect keys here on purpose. `_pending_ask_user_event` is
+                # `PendingToolApproval.public_payload()`, which now carries the
+                # ranked consequence itself, so every producer of this card gets
+                # it — including the compare pane, the background monitor and a
+                # card rebuilt from history, none of which pass through here.
+                # Adding a second copy on the event would be the same answer in
+                # two places, and refutation found three surfaces already
+                # disagreeing when it lived in more than one.
                 yield (
                     f'data: {json.dumps({"type": "ask_user", "data": _pending_ask_user_event})}\n\n'
                 )
@@ -6414,6 +6502,12 @@ async def stream_agent_loop(
                 "command": cmd_display,
                 "output": output_text,
                 "exit_code": result.get("exit_code"),
+                # P7-06. The same keys the live events carry, so a card is not
+                # ranked while it streams and unranked after a reload — the
+                # history renderer reads them off the persisted event and would
+                # otherwise have to guess, which is how one surface ends up
+                # disagreeing with another about the same action.
+                **block_effects,
             }
             if result.get("image_url"):
                 for ik in ("image_url", "image_prompt", "image_model", "image_size", "image_quality"):

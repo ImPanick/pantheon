@@ -24,7 +24,7 @@ from src.tool_approval_scopes import (
     ToolApprovalScope,
     scope_for_decision,
 )
-from src.tool_capabilities import ToolCapabilities, capabilities_for_action
+from src.tool_capabilities import ToolCapabilities, capabilities_for_action, describe_effects
 
 
 DEFAULT_APPROVAL_TTL_SECONDS = 10 * 60
@@ -212,6 +212,20 @@ class PendingToolApproval:
                 "document_id": self.document_id or None,
                 "document_version": self.document_version,
             },
+            # P7-06. Ranked, plain-language consequence, resolved here because
+            # this payload is what *every* producer of an approval card hands to
+            # the renderer — the chat loop, the compare pane, the background
+            # monitor, the teacher escalation, and a card rebuilt from history.
+            # Resolving it at each of those five instead would be five copies of
+            # one answer, and refutation found three of them already disagreeing.
+            #
+            # It sits beside `action` rather than inside it because `action` is
+            # the sealed input shown verbatim; this is a rendering of it. Safe to
+            # add: `_canonical_digest` seals `_binding_payload`, a separate
+            # server-side dict, and this view is never read back as authority.
+            # `self.effects` stays alphabetical inside `action` for that reason —
+            # it is the sealed value — while `effects` here is severity-ranked.
+            **describe_effects(self.effects),
         }
 
 

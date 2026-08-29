@@ -25,8 +25,8 @@
  * deterministically**: id = FNV-1a of the step's normalised text, plus an
  * occurrence ordinal when two steps read identically. Ticking a box does not
  * change a step's text, so the id survives every `update_plan` the model is
- * actually instructed to send, and per-step status / bound tool / elapsed /
- * result attach to something stable instead of to a line number.
+ * actually instructed to send, and per-step status / bound tool / effect /
+ * elapsed / result attach to something stable instead of to a line number.
  *
  * A step whose *text* is edited gets a new id; its metadata is carried over by
  * position among the steps that failed to match, which is the only reading of a
@@ -39,8 +39,8 @@ import Storage from './storage.js';
 export const PLAN_STORAGE_KEY = 'pantheon-active-plan';
 
 /**
- * Per-step runtime metadata (bound tool, elapsed, result) + the window's fold
- * state. Deliberately a SEPARATE key from the plan: the plan string is posted
+ * Per-step runtime metadata (bound tool, effect, elapsed, result) + the window's
+ * fold state. Deliberately a SEPARATE key from the plan: the plan string is posted
  * to the server as `approved_plan` and is read by `_getStoredPlan()`, so its
  * shape is a contract. This key holds only things derived from live events —
  * never a second copy of the plan itself.
@@ -367,6 +367,14 @@ function renderStep(step, index, active) {
   const metaRow = document.createElement('span');
   metaRow.className = 'plan-step-meta';
 
+  // The consequence leads the row. Which tool ran and how long it took are
+  // details; what it could do to the user is the only thing here that would
+  // change what they do next, so it is read first and drawn heaviest.
+  if (meta.effect) {
+    const c = chip('plan-step-effect', meta.effect, 'What this step can do');
+    if (meta.effectBand) c.dataset.effectBand = meta.effectBand;
+    metaRow.appendChild(c);
+  }
   if (meta.tool) {
     metaRow.appendChild(chip('plan-step-tool', meta.tool, 'Ran while this step was next'));
   }
@@ -578,7 +586,7 @@ export function markApproved() {
   render();
 }
 
-// ── Tool binding (the "bound tool / elapsed / result" half of P6-11) ─────────
+// ── Tool binding (the "bound tool / effect / elapsed / result" half of P6-11) ─
 
 /**
  * Bind a tool to a step only when all four are true, because attributing an
@@ -613,6 +621,37 @@ function isBookkeeping(ev) {
   return BOOKKEEPING_TOOLS.has(String((ev && ev.tool) || ''));
 }
 
+/**
+ * Copy the event's effect onto a step record.
+ *
+ * `describe_effects()` (`src/tool_capabilities.py`) has already ranked the
+ * effects and resolved the words; `effect_label` IS the dominant one. Neither
+ * the ranking nor the phrasing is recomputed here — one ordering, one home.
+ * The record keeps the phrase and not the value: nothing past this point has
+ * any use for the identifier, and an event that arrives without a phrase leaves
+ * the row blank rather than printing one the reader would have to decode.
+ *
+ * It goes in the same per-step record as the bound tool and the result, so a
+ * new plan drops it through the paths that already exist — `adoptPlanText`
+ * reconciling against nothing and clearing `_meta.steps`. A parallel map would
+ * have needed its own line there, and eventually not got one.
+ *
+ * `clear` is for `tool_start`, where the record is being handed to a different
+ * tool: a stale phrase describing the previous one is worse than none.
+ */
+function applyEffect(rec, ev, clear) {
+  const label = String((ev && ev.effect_label) || '').trim();
+  if (label) {
+    rec.effect = truncate(label, 120);
+    const band = String((ev && ev.effect_band) || '').trim();
+    if (band) rec.effectBand = band;
+    else delete rec.effectBand;
+  } else if (clear) {
+    delete rec.effect;
+    delete rec.effectBand;
+  }
+}
+
 /** A tool started. Attribute it to the step the agent is currently on. */
 export function noteToolStart(ev) {
   if (isBookkeeping(ev)) return;
@@ -623,6 +662,7 @@ export function noteToolStart(ev) {
   rec.tool = String((ev && ev.tool) || '') || rec.tool;
   const cmd = String((ev && ev.command) || '');
   if (cmd) rec.cmd = truncate(cmd, 240);
+  applyEffect(rec, ev, true);
   delete rec.result;
   delete rec.ok;
   if (!_activeStartedAt) _activeStartedAt = Date.now();
@@ -637,6 +677,22 @@ export function noteToolEnd(ev) {
   const step = _steps[activeIndex()];
   if (!step) return;
   const rec = _meta.steps[step.id] || (_meta.steps[step.id] = {});
+  // Usually `tool_output` is the back half of a pair and carries the same
+  // description as its `tool_start`, so a missing phrase must not wipe one the
+  // start event already recorded.
+  //
+  // **But the pair is not guaranteed.** An approval gate and a policy block both
+  // emit `tool_output` with no `tool_start` before it (`src/agent_loop.py`), so
+  // a refused tool's output can land on a step that a *different* tool has
+  // already claimed — and refutation reproduced the worst direction of that: a
+  // step that overwrote a file reading "Reads your private data" in the routine
+  // band because an unrelated blocked tool finished on the same step. A
+  // differing tool name is a hand-over, and a hand-over replaces the record
+  // rather than editing it.
+  const evTool = String((ev && ev.tool) || '');
+  const handover = !!(evTool && rec.tool && evTool !== rec.tool);
+  if (handover) rec.tool = evTool;
+  applyEffect(rec, ev, handover);
   const code = ev ? ev.exit_code : null;
   rec.ok = code === 0 || code == null;
   const out = String((ev && ev.output) || '').split('\n').find((l) => l.trim()) || '';

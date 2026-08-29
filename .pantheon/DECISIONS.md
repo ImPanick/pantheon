@@ -366,3 +366,44 @@ The ledger itself is superseded by this entry.
 and is restored under `P11-09`, with `.svg` in it — the condition it named has arrived, not
 passed. `P2-25` and `P2-26` get stronger. Everything else is as recommended.
 
+
+---
+
+## D-2026-08-29-01 · One severity ordering, in Python, and what "unknown" means
+
+`P7-06` needed an answer to a question the 13-value `ToolEffect` taxonomy does not contain:
+**which of two effects should a person worry about more.** Three decisions came out of it and all
+three are the kind someone re-derives differently in six months, so they are written down.
+
+**The ordering lives in Python and nowhere else.** `_EFFECT_SEVERITY` and `_EFFECT_PHRASE` sit in
+`src/tool_capabilities.py`, beside the enum they rank, and the wire carries the resolved rank and
+the resolved words. No JavaScript copy of either exists and two tests enforce that. The reason is
+not tidiness: a second home for an ordering drifts the first time a value is added to the enum,
+and the failure mode is that the same action reads as harmless on one surface and severe on
+another — which is not a cosmetic disagreement when the surface is a consent card. The cost is
+that a purely presentational choice now requires a backend change; that is accepted.
+
+**The ordering itself, lowest to highest:** `ui_side_effect · user_interaction · read_public ·
+read_workspace · brokered_network_read · write_workspace · read_private · execute_code ·
+network_egress · write_private · external_side_effect · admin_change · destructive`. The two
+arguable placements: **`read_private` above `write_workspace`**, because a scoped workspace write
+is reversible and reading private data is an exfiltration precursor; and **`admin_change` above
+`external_side_effect`**, because changing settings for everyone outlives the run. Ranks are
+spaced by ten so a value can be inserted later without renumbering; only the order is meaningful.
+
+**Unknown fails high.** An effect value nobody has classified ranks *above* `destructive`, not
+below `ui_side_effect`, and bands to `serious`. This is the same rule the module already applied
+to unknown tools, and it is the only safe direction: the alternative is that a new enum member
+renders as "no consequence" on a surface that has not been updated. A mutation that inverted this
+survived the entire suite until `tests/test_tool_capabilities_effects.py` was written for it.
+
+**What the seal actually protects, corrected here because three files got it wrong.**
+`_canonical_digest` hashes `_binding_payload`, a server-side dict that includes the alphabetically
+sorted `effects` tuple. `public_payload()` is a *derived view*, built fresh on each call and never
+read back as authority. Three comments claimed the public payload's shape fed the digest and that
+the sealed record therefore "cannot carry more"; that premise sent the presentation threading
+through every event and every consumer, and refutation found three card producers shipping
+unranked as a result. The presentation now lives inside `public_payload()`, all five producers get
+it from one place, and `action.effects` stays alphabetical because *that* list is the sealed one.
+**`FORBIDDEN.md` Part 2 still stands unchanged** — the seal, the TTL, the single-use consumption
+and the owner binding are untouched. What was lifted was a misreading of it.

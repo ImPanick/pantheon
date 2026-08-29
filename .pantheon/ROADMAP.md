@@ -54,7 +54,7 @@ soon as its dependency lands.
 | P3 | Mechanical hygiene | 19 | 14 | **3** | **2** |
 | P4 | The wire — the real glass box | 28 | 28 | 0 | 0 |
 | P5 | Trace & composer restyle | 17 | 17 | 0 | 0 |
-| P6 | Queue & Plan | 18 | 2 | 0 | **16** |
+| P6 | Queue & Plan | 18 | 0 | 0 | **18** |
 | P7 | Trust ladder & control plane | 11 | 9 | **1** | **1** |
 | P8 | The Workshop | 48 | 44 | **3** | **1** |
 | P9 | Feature surfaces | 18 | 17 | 0 | **1** |
@@ -63,7 +63,7 @@ soon as its dependency lands.
 | P12 | Limits & the control plane | 11 | 11 | 0 | 0 |
 | P13 | The Brain | 12 | 11 | 0 | **1** |
 | P14 | Measurement | 7 | 7 | 0 | 0 |
-| **Total** | | **296** | **218** | **11** | **67** | | **295** | **221** | **11** | **63** | | **295** | **222** | **11** | **62** | | **294** | **221** | **11** | **62** | | **291** | **218** | **11** | **62** | | **291** | **221** | **11** | **59** | | **291** | **231** | **11** | **49** | | **288** | **239** | **11** | **38** | | **288** | **253** | **1** | **34** | | **288** | **255** | **1** | **32** | | **288** | **257** | **1** | **30** | | **287** | **256** | **1** | **30** | | **266** | **235** | **1** | **30** | | **253** | **222** | **1** | **30** | | **250** | **219** | **1** | **30** | | **231** | **200** | **1** | **30** | | **231** | **211** | **0** | **20** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
+| **Total** | | **296** | **215** | **11** | **70** | | **296** | **215** | **11** | **70** | | **296** | **218** | **11** | **67** | | **295** | **221** | **11** | **63** | | **295** | **222** | **11** | **62** | | **294** | **221** | **11** | **62** | | **291** | **218** | **11** | **62** | | **291** | **221** | **11** | **59** | | **291** | **231** | **11** | **49** | | **288** | **239** | **11** | **38** | | **288** | **253** | **1** | **34** | | **288** | **255** | **1** | **32** | | **288** | **257** | **1** | **30** | | **287** | **256** | **1** | **30** | | **266** | **235** | **1** | **30** | | **253** | **222** | **1** | **30** | | **250** | **219** | **1** | **30** | | **231** | **200** | **1** | **30** | | **231** | **211** | **0** | **20** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -88,36 +88,38 @@ Ten of its rows landed on 2026-08-27 — see § Progress. What is left of it:
 - **`P0-21b`, `P0-31`** — new, from the run: twelve bundled packages with no notice anywhere, and
   49 unaudited `ody-` storage-key hits.
 
-### `P6` is 16 of 18. Two rows close it, and both are small
+### `P6` is closed. 18 of 18, and it is the first phase finished
 
-**`P6-18` needs one route.** The backend inbox is in `src/agent_loop.py`, the composer control and
-its key binding are in `static/js/chatStream.js`, and 50 tests cover the inbox and pass. **No route
-accepts the steer**, so nothing reaches it. Add it beside `chat_stop` and `inject_context` in
-`routes/chat_routes.py` — `agent_runs` and `_verify_session_owner` are already imported there. Then
-the 50 tests get a round trip they can actually assert on.
+Nothing in `P6` is open. `P7` is 2 of 11, and `P7-06` landing early means the `ToolEffect` taxonomy
+now ranks things — which is the data three of the remaining `P7` rows were waiting on.
 
-**`P6-11` is not a `P6` row any more; it is a `P7-06` row.** The plan window is built and live and
-four of its five per-step fields ship. The fifth is `effect`, the 13-value `ToolEffect` taxonomy at
-`src/tool_capabilities.py:21-34`, and it is **not on the SSE wire** — neither `tool_start`
-carries it. `P7-06` owns emitting it, needs it for its own reason (ranking approval prompts by
-consequence), and it is one field per emit.
-**Landing `P7-06` closes `P6-11` for free**, which makes it the highest-leverage row on the board.
+**Take `P7-03` and `P7-04` next — the trust ladder.** Two rungs, and both rows say *"does not
+exist"*: **"ask every time"** (`P7-03`, a gate condition change — today the gate is conditional on
+untrusted content having entered, so a clean session never prompts) and **"allow-listed"**
+(`P7-04`, a rule store mapping tool plus argument pattern to auto-allow, consulted before the
+blocked-effect check). `P7-05` is already ticked and superseded; it is not a third rung.
 
-**Re-measured 2026-08-29, and it is four emit sites, not two.** Each event type is emitted twice:
-`tool_start` at `src/agent_loop.py:4694` (the post-approval replay) and `:5990` (the main path), and
-`tool_output` at `:4801` and `:6216`. Missing the approval pair would ship exactly the bug `P7-06`
-exists to fix — the prompts that *asked* for consent would be the ones with no consequence on them.
+`P6-04` deliberately shed its per-item trust rung on the way in, because it would have made the
+queue panel the first trust-ladder UI in the product, selecting from a ladder that does not exist.
+That debt is now the only thing between the queue and a control it was designed for — and `P7-06`
+has already built the half that classifies consequence, which is what an allow-list rule has to be
+written against. Read `P6-04`'s note before starting: **one control, not two vocabularies.**
 
-Take both in one run and `P6` closes. It is contained: one Python route, four SSE emit sites, and the
-frontend already knows how to render a resolved effect string — it receives one today on the approval
-`action` payload (`chatRenderer.js:2637`).
+**Second choice: `P1`, which is the oldest blocker in the tree.** `P1-01` is 1 of 14 and everything
+under it waits. It is three files plus a `CACHE_NAME` bump, not one module — and `P6-12` already
+found what happens when it is late: a bare `var(--accent)` makes the whole declaration invalid, so
+a button's on and off states rendered identically. Every row that has needed an accent this month
+has written `var(--accent, var(--red))` to work around a variable that should exist.
 
-**What this run leaves behind, in priority order.** `P5-17` (one run-mode picker, not two — and the
-listener leak is patched in both copies, so one implementation means one patch next time). `B13`
-(one queued message, two vocabularies, both on screen at once — a `Law 15` row). `B06` (the verifier
-goes blind after round one of a long plan run — that is `P6-15` only half-holding). `B10` (`node
---check` is a no-op for `static/app.js`, and `AGENTS.md` names it as a gate — a second half-wired
-gate, the same shape as `P3-13`).
+**What this run leaves behind, in priority order.** `B14` (the steer bar is still offered on a
+research turn, which cannot take one — nothing is lost, but a control that can only decline is
+still a `Law 15` failure). `B15` (two themes put *every string in the app* under WCAG AA against
+their own panel — `cute` at 3.44:1, `retrowave` at 4.15:1; themes are protected, so this is a
+measurement and a decision, not a repaint). `B16` (the accent graphic is under the 3:1 floor on
+three light themes; the band ladder does not depend on it). `B06` (the verifier still goes blind
+after round one of a long plan run — `P6-15` only half-holds). `B10` (`node --check` is a no-op for
+`static/app.js` and `AGENTS.md` names it as a gate — the same half-wired-gate shape as `P3-13`).
+`P5-17` and `B13` from the previous run are still open.
 
 **Still out of scope on its own:** `P0-29`. The Cookbook → Forge sweep is 3,529 occurrences
 across 171 files and 43 paths — the largest blast radius in the programme, coupled to
@@ -141,6 +143,58 @@ location was wrong until it was corrected on the row itself; the row is right no
 *The one progress area. Newest first. One entry per completed section — two lines, a
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
+
+### P6 closes at 18 of 18 — the steer route, and the taxonomy that ranked nothing
+`P6-18` (steer mid-response), `P7-06` (rank prompts by effect) and `P6-11` (the plan window's
+fifth field, closed by `P7-06`). `22c8628..HEAD`. **296 tracked, 70 done. Suite 5,835 → 5,962,
+the same 19 failing and all 19 pre-existing.**
+
+**Two rows, three implementers, three refuters, and all three refuters returned `broken: true`.**
+Both headline findings were the same shape: a thing that *looked* landed, passed its tests, and was
+wrong in the one case that mattered most.
+
+**`P6-18`'s gate asked the wrong question, and it deleted user text on the default mode.**
+`agent_runs.is_active()` answers "a run is registered", not "a run that can read the steer inbox is
+in flight" — and `agent_runs.start()` is called for every non-compare stream while only one of
+*four* exits reaches `stream_agent_loop`. So on a plain chat turn the route accepted the steer, the
+client cleared the composer and said *"lands at the next step"*, and the words went into an inbox
+nothing would ever read. Reproduced end to end, server and client. Fixed with `is_steerable()` —
+liveness stays in `agent_runs` (`Law 14`), it is just now the right predicate — plus a fourth
+non-steerable exit the refutation itself had missed. Three more closed with it, including a
+`Law 13` half-wire that had been sitting in plain sight: `steer_applied` was emitted by the
+backend, exported by the frontend, documented in both, and **routed nowhere**, so the module's own
+"your steer missed the run" warning could never fire.
+
+**`P7-06`'s ranking lied about the worst action in the product.** `bulk_email` — the tool whose
+purpose is deleting *many* messages, and which with `permanent: true` bypasses Trash entirely —
+ranked **below** `delete_email` for a single message. The card for emptying a mailbox read milder
+than the card for deleting one email, which is the exact inversion the row exists to prevent. The
+general defect underneath it was worse: the action tables are keyed on bare tool names while the
+model can call an email tool under its MCP alias, so *every* aliased call was missing its own
+action table and resolving one rung low.
+
+**The second finding made the design smaller, and is the one worth remembering.** Three files
+asserted that the sealed approval payload "cannot carry more — the seal is a control that never
+lifts", so the presentation was threaded beside it, event by event, consumer by consumer. The
+premise was false: the digest seals a server-side dict, while `public_payload()` is a derived view
+never read back as authority — proven by mutating it and watching the digest hold. Refutation had
+already found **three** surfaces shipping the card unranked because of the threading. Moving the
+resolution *inside* the shared payload deleted two copies, fixed all three surfaces at once, and
+turned five pending consumer edits into none. **A false constraint had produced real duplication,
+and the duplication was already drifting.**
+
+**`Law 15`, from the refuter, unedited: *"the honest answer is yes — from the sentence, not from
+the design."*** The wording carries the card; the visual system was one pixel of font-size, two
+pixels of rule width and one mark shape — and on six of sixteen themes it was actively harmful,
+with the `serious` lead measured at **2.11:1 on `paper`** while the harmless line beside it sat at
+11.05:1. The lead is no longer recoloured. After: no theme has the serious lead more than 10%
+below the routine line, where 14 of 16 did before.
+
+**On refutation itself.** Twenty-eight mutation/test pairs were run against the new tests; two
+mutants survived the first pass and exposed real gaps in tests written by the same agent that
+wrote them. Six mutations had survived all sixteen original surface tests, including one that
+inverted the module's stated fail-high rule for unknown effects. `tests/test_tool_capabilities_effects.py`
+exists because of that mutation and nothing else.
 
 ### P6 reuse wave — three rows, and the systemic defect they uncovered
 `P6-04` (queue panel), `P6-06` (sequential-vs-parallel picker), `P6-07` (point the Tasks activity
@@ -1010,7 +1064,7 @@ discards them. A receipt is that data kept instead of thrown away.
 
 **`Law 15` applies to every row in this phase.** It draws surface a person has to operate, and the law exists because the owner stopped using a competitor's *more advanced* version of this product for one reason: *"There's no tutorials and the learning curve is too steep for the little amount of time I have."* A row here is not done because the feature works — it is done when someone who has not read this tracker can find it, tell what state it is in, and use it without being told how. Put that in the row's `Verify:` line, in those terms.
 
-- [ ] **P6-18** **Steer mid-response, not only queue.** The queue holds the *next* message;
+- [x] **P6-18** **Steer mid-response, not only queue.** The queue holds the *next* message;
   steering redirects the one in flight. Two different verbs, and only one exists. Prior art has
   both on one key pair — Enter queues, Cmd/Ctrl+Enter steers — which is the right shape because
   it is the same intent at two urgencies. `Depends:` P6-01, which landed.
@@ -1021,8 +1075,36 @@ discards them. A receipt is that data kept instead of thrown away.
   `static/js/chatStream.js`, visible rather than keyboard-only (`Law 15`). **What is missing is
   the transport:** no route accepts the steer, so nothing reaches the inbox. Add it beside
   `chat_stop` and `inject_context` in `routes/chat_routes.py` — `agent_runs` and
-  `_verify_session_owner` are already imported there, so it needs no new ones. 50 tests cover
-  the inbox and pass; none of them can cover the round trip until the route exists.
+  `_verify_session_owner` are already imported there, so it needs no new ones. *(The row said
+  "50 tests cover the inbox"; refutation counted **36** — 21 in `test_agent_loop_steer.py`, 15 in
+  `test_chat_steer_js.py`. Corrected rather than quietly dropped, because a number nobody can
+  reproduce is how a row stops being checkable.)*
+  — **done:** `POST /api/chat/steer/{session_id}` lands the third part.
+  `_verify_session_owner` is the **first statement**, before the body is even read, so the probe
+  cannot become an existence oracle — a stranger's live session and a session that never existed
+  return the same status, the same body and the same headers, measured indistinguishable over 400
+  warmed samples each. 44 tests, every one killed by at least one of ten deliberate mutations.
+  **Refutation found the gate asking the wrong question, and it was a `breaks-users` defect on the
+  *default* mode.** `agent_runs.is_active()` answers "a run is registered", not "a run that can
+  read this inbox is in flight" — and `agent_runs.start()` is called for every non-compare stream,
+  while only one of four exits reaches `stream_agent_loop`. So on a plain chat turn the steer was
+  accepted, the client cleared the composer and said *"lands at the next step"*, and the words went
+  into an inbox nothing would ever read: **silently deleted user text, on every attempt, in the
+  mode most people are in.** Fixed with `agent_runs.is_steerable()` — liveness stays in
+  `agent_runs` (`Law 14`), it is just now the right predicate — and a fourth non-steerable exit
+  (research) that the refutation itself had missed is refused too.
+  **Three more, all closed:** a steer that hit the ownership 404 made the client conclude the
+  *build* had no steer route and retire the control for the page load while saying so out loud —
+  the refusal is now **403**, which the client does not read as a missing route, with the
+  indistinguishability property preserved and tested; nothing dispatched `steer_applied`, so the
+  module's own "your steer missed the run" warning could never fire (`Law 13` — the event was
+  emitted, exported, documented, and routed nowhere); and the bar was drawn for plain chat turns,
+  offering a control that could only ever decline. It now asks the composer's own mode getter and
+  stays away — **not offering a control is better than offering one that always says no**
+  (`Law 15`), and the refusal sentence stopped saying *"The agent already finished"* for a turn
+  that had not finished.
+  `Verify:` send an agent message, type a correction, press Cmd/Ctrl+Enter — the bar says it
+  lands at the next step and it does; do the same in chat mode and no bar is offered at all.
 - [x] **P6-01** **Session-bind the queue — live bug.** Queue items carry no session id. Switching chats wipes the message list, destroying every queued bubble's element while the array keeps the items; when the old stream ends the prompt **fires into whichever chat is now open**, invisibly. Add the field, filter the drain on it, re-render bubbles on session switch. — **done:** queue items carry `sessionId`, set at queue time; the drain filters on it and bubbles re-render on session switch. **The fix needed a second pass:** refutation proved the click-to-promote path still leaked — `_promoteQueuedRequest` guarded at click time and then handed the item to a poller that retried every 220ms with no check, so switching chats during the abort round trip still posted one session's text into another. Guarded at *send* time instead (`chat.js` `trySend` plus a backstop in `_setComposerAndSend`), and a mismatched item is **put back in the queue** rather than dropped — it is still the user's message. Verified with the refuter's own attack: fires into B never, kept and addressed to A, and still sends correctly on returning to A.
 - [x] **P6-02** Persist the queue. `_queuedAgentRequests` is a bare module array — a reload loses it silently. — **done:** queue persisted through the app's existing `Storage` helper — no second store (`Law 14`). Restored items never auto-replay: they re-arm only on their own session's next ended stream, expire at 24h, and cap at 20 rows, so a reload cannot resurrect a stale prompt.
 - [x] **P6-03** Allow queueing with attachments — currently refused with an error that swallows the send. — **done:** attachments are uploaded at queue time and re-carried through the slot resend/regenerate already uses, so a queued send goes down exactly one attachment path. A failed upload returns the text **and** the files to the composer instead of eating them. *(The implementer proposed a wording correction to this line; refutation showed the line was already accurate and the correction was not applied — the tracker says "swallows the send" in all four places and nothing claimed the message disappears.)*
@@ -1033,10 +1115,20 @@ discards them. A receipt is that data kept instead of thrown away.
 - [x] **P6-08** Make `_concurrency_cap` actually configurable — it sits next to `Semaphore(1)` and is documented as "a hard guarantee, not configurable". — **done:** `_concurrency_cap` resolves through instance setting → env → built-in default, clamped to [1,16], re-read on settings change without a restart. **Registered in all four places it has to exist** — `DEFAULT_SETTINGS`, `.env.example`, and *all three* compose files: adding it only to `docker-compose.yml` broke `test_gpu_compose_standalone.py`, which pins the standalone GPU files as base-plus-overlay, and the suite caught it. The comment claiming the cap upheld "exactly one task at a time" was wrong twice over and is corrected in place: two paths already bypassed the semaphore, and `run_task_now(force=True)` neither checks nor adds `_executing`, so a forced trigger can overlap a task with itself. That is what `force` means; it is now written down.
 - [x] **P6-09** Rewrite the todo "solve with an agent" button to enqueue instead of firing an unbounded raw stream. **Click ten todos and ten agent loops run at once**, with no progress and no cancel. — **done:** both todo agent-solve entry points enqueue through a bounded one-at-a-time queue with visible position, live status and a real server-side stop. Baseline reproduced before the fix: ten clicks, **ten concurrent streams**, no progress and no cancel.
 - [x] **P6-10** Expose `crew_member_id` in the task create/update schemas and the `manage_tasks` tool. It is read-only today and honoured by the executor — **this one field closes the roadmap's "todos assignable to an agent from the UI" item at the API layer.** — **done:** `crew_member_id` exposed in the task create/update schemas and in `manage_tasks`. **It shipped half-wired and refutation caught it:** the tool schema advertised the field while `src/tools/system.py` had never heard of it, so the model would accept the argument, report the task assigned, and the value would be discarded — the model confidently telling a user their task runs as Research Bot when it does not. Now resolved through an owner-scoped lookup mirroring the route layer's, because the executor runs the task with that crew member's persona, model, endpoint and tool allowlist. `tests/test_manage_tasks_crew_member.py` (6 tests) pins the round trip, the cross-owner refusal, and the schema-versus-executor agreement.
-- [ ] **P6-11** **Build the docked plan window.** Three prompt strings tell the model it exists and a code comment claims it renders. **Nothing has ever rendered it** — mid-execution `update_plan` writes to browser storage with zero visible effect, and the prompt is telling the model something false about its own interface. Structured steps with per-step status, bound tool, effect, elapsed and result.
-  **The window is built and live — four of the five per-step fields ship — but `effect` does
-  not, so this row stays open** (`AGENTS.md`: a partly done task stays open with a note saying
-  what is left). `static/js/planWindow.js` renders the approved checklist docked, updates on
+- [x] **P6-11** **Build the docked plan window.** Three prompt strings tell the model it exists and a code comment claims it renders. **Nothing has ever rendered it** — mid-execution `update_plan` writes to browser storage with zero visible effect, and the prompt is telling the model something false about its own interface. Structured steps with per-step status, bound tool, effect, elapsed and result.
+  **Closed 2026-08-29 by `P7-06`, which put the fifth field on the wire.** All five per-step
+  fields now ship: status, bound tool, `effect`, elapsed and result. The step row leads with one
+  plain-language phrase — *"Can permanently delete or overwrite"*, not `destructive` — because the
+  ranking and the wording live in `src/tool_capabilities.py` and the window renders what it is
+  told rather than deciding for itself; a value added to the taxonomy cannot render one way here
+  and another way on the approval card. **Refutation found a real misattribution and it is fixed:**
+  an approval gate and a policy block both emit `tool_output` with no `tool_start` before it, so a
+  refused tool's output landed on a step a *different* tool had claimed — reproduced overwriting a
+  step that had just written `/etc/hosts` with *"Reads your private data"* in the routine band, the
+  red rule and the triangle both gone. A differing tool name is now treated as a hand-over, which
+  replaces the record rather than editing it.
+  **The history below is kept because it is the record of what was wrong** (`AGENTS.md`: a partly
+  done task stays open with a note saying what is left — this one was, for two waves): `static/js/planWindow.js` renders the approved checklist docked, updates on
   `plan_update`, and survives a reload; **the four prompt strings that have been promising this
   window are now true.** What is left: `effect` is the 13-value `ToolEffect` taxonomy at
   `src/tool_capabilities.py:21-34`, and it is **not on the SSE wire** — neither `tool_start`
@@ -1073,7 +1165,11 @@ The approval store is better than anything that would replace it. Do not rebuild
 - [ ] **P7-03** Add rung **"ask every time"**. Does not exist: the gate is conditional on untrusted content having entered, so a clean session never prompts. Change the gate condition from *taint seen* to *taint seen **or** the current rung requires confirmation*. **Reuse `PendingToolApproval` unchanged.**
 - [ ] **P7-04** Add rung **"allow-listed"** — a rule store mapping tool + argument pattern to auto-allow, consulted before the blocked-effect check. Does not exist.
 - [x] **P7-05** Record the correction in the UI: **Auto-Pilot is already the default** for every untainted conversation. — **SUPERSEDED (verified 2026-08-27) — not independently actionable.** There is no ladder UI to record it in; this is an acceptance criterion, not a task, and left on its own it is a row nobody can ever honestly tick. **Re-filed as acceptance criteria on `P7-03` and `P7-04`**, citing `design/pantheon-v10.html:1721-1727`: whatever those two build must show Auto-Pilot as the existing default with the ladder added below it, never above.
-- [ ] **P7-06** Rank prompts by effect. A destructive action and a UI side effect produce an identical card. The 13-value taxonomy (`ToolEffect`, `src/tool_capabilities.py`) is written and used to rank nothing. **This row owns putting `effect` on the SSE wire, and that ownership is stated here because it was previously stated nowhere** — `tool_start` and `tool_output` carry no `effect` key, and two independent auditors reading the same handoff assigned the job to two different phases. It is one field per emit — and **re-measured 2026-08-29 it is four emit sites, not two**: `tool_start` at `src/agent_loop.py:4694` (the post-approval replay) and `:5990` (the main path), `tool_output` at `:4801` and `:6216`. **Miss the approval pair and you ship the bug this row exists to fix** — the prompts that asked for consent would be the ones carrying no consequence. The frontend already renders a resolved effect list from the approval `action` payload (`chatRenderer.js:2637`, `aq.action.effects`), so there is a rendering shape to match rather than invent. **Landing it unblocks `P6-11`**, whose plan window is built and open on exactly this: four of its five per-step fields ship and `effect` is the fifth.
+- [x] **P7-06** Rank prompts by effect. A destructive action and a UI side effect produce an identical card. The 13-value taxonomy (`ToolEffect`, `src/tool_capabilities.py`) is written and used to rank nothing. **This row owns putting `effect` on the SSE wire, and that ownership is stated here because it was previously stated nowhere** — `tool_start` and `tool_output` carry no `effect` key, and two independent auditors reading the same handoff assigned the job to two different phases. It is one field per emit — and **re-measured 2026-08-29 it is four emit sites, not two**: `tool_start` at `src/agent_loop.py:4694` (the post-approval replay) and `:5990` (the main path), `tool_output` at `:4801` and `:6216`. **Miss the approval pair and you ship the bug this row exists to fix** — the prompts that asked for consent would be the ones carrying no consequence. The frontend already renders a resolved effect list from the approval `action` payload (`chatRenderer.js:2637`, `aq.action.effects`), so there is a rendering shape to match rather than invent. **Landing it unblocks `P6-11`**, whose plan window is built and open on exactly this: four of its five per-step fields ship and `effect` is the fifth. — **done:** the 13-value taxonomy now ranks something. `src/tool_capabilities.py` gained one severity ordering and one set of plain-language phrases — *"Can permanently delete or overwrite"*, not `destructive` — plus three bands, and `describe_effects()` resolves a capability set into what a surface needs to draw it. **It is written down once and only in Python**; no JavaScript copy of the ordering or the wording exists, and two tests enforce that, because a second home for an ordering drifts the first time the enum grows and then the same action reads as harmless on one surface and severe on the other. Unknown values fail *high*: an effect nobody has classified ranks above `destructive` rather than below `ui_side_effect`, which is the same rule the module already used for unknown tools. `P6-11` closes with it, and `chatRenderer.js` stopped printing `Effects: destructive, external_side_effect` as a run of grey text identical to `Effects: ui_side_effect`.
+  **Refutation found the ranking lying, and that was the whole row.** `bulk_email` — the one tool whose purpose is deleting *many* messages, and which with `permanent: true` sets `\Deleted` and bypasses Trash entirely — ranked **below** `delete_email` for a single message, because it was never in `_ACTION_DESTRUCTIVE`. The card for emptying a mailbox read milder than the card for deleting one email, which is precisely the inversion this row exists to prevent. Fixed, along with the general defect underneath it: the action tables are keyed on bare tool names while the model can call an email tool under its MCP alias, so **every** aliased call was missing its own action table and resolving one rung low.
+  **The second finding rewrote the design and made it smaller.** Three files asserted that the sealed approval payload "cannot carry more — the seal is a control that never lifts", so the presentation was threaded beside it, event by event, consumer by consumer. That premise was false: `_canonical_digest` seals `_binding_payload`, a server-side dict, while `public_payload()` is a derived view never read back as authority — proven by mutating it and watching the digest and `matches()` hold. Refutation had already found **three** surfaces shipping this card unranked because of the threading — the compare pane, the background monitor and the teacher escalation. The resolution now lives inside `public_payload()` itself, so **all five producers get it from one place**, the two threaded copies were deleted, and the false sentence is corrected in place in all three files rather than removed.
+  **`Law 15` verdict, from the refuter, unedited:** *"the honest answer is yes — from the sentence, not from the design."* The wording carries it; the visual system was one pixel of font-size, two pixels of rule width and one mark shape. It was also **actively harmful on six of sixteen themes** — the `serious` lead was recoloured to the accent over a tinted panel and measured **2.11:1 on `paper`** while the harmless line beside it sat at 11.05:1, and on `terminal` and `retrowave` `--fg` and `--red` are the same hex so the colour channel was worth exactly nothing. The lead is no longer recoloured; the accent moved to the rule and the mark, which survive greyscale. **After: no theme has the serious lead more than 10% below the routine line, and none is under the large-text floor — before, 14 of 16 were.** The band ladder is now four graded channels (size, weight, rule width, mark shape and fill), none of them a hue, all pinned by value tests rather than property-name tests.
+  `Verify:` a destructive approval and a `ui_control` approval on screen together, and someone who has never read this tracker can say which one deletes things — in greyscale, and on a phone.
 - [ ] **P7-07** Send only the effects that actually **tripped** the gate, not all of them — and surface the unrecognised-tool case, which is the riskiest and currently invisible.
 - [ ] **P7-08** **Surface the taint trail.** The security context builds a complete list of which tools introduced untrusted content into a run, and it is read **nowhere** — server or client. Built in memory and thrown away.
 - [ ] **P7-09** Grant inspector — once a session-wide grant is given, nothing lists it and nothing revokes it.
@@ -1650,6 +1746,9 @@ nothing ever recorded the event.
 - [ ] **B11** **The plan window and the todo card render visually identical rows that mean different things.** Sharing the row system was right (`Law 14`) and the CSS is genuinely joined by selector, not copied. But an approved plan and the agent's private scratch list can now be on screen at once looking the same, and they are not the same kind of thing — one is a commitment the user approved, the other is the model's working memory. They need a tell. `Law 15`: a person should not have to work out which is which. `Verify:` both on screen at once, and a stranger can say which is the approved plan. — found during P6 wave 2 — agent:`integrator`
 - [ ] **B12** **Four smaller duplications survive between the plan window and the todo card.** The row system is shared, the chrome is not: `.plan-window-head` / `.todo-card-head` (2 of 6 declarations shared), the `"N of M done"` string built two ways (`planWindow.js:392`, `chatRenderer.js:1377`), the step chip built as DOM in one and as a string in the other, and the play triangle `points="7 4 20 12 7 20 7 4"` hand-written twice (`chat.js:978`, `planWindow.js:412`). None is a bug today; all four are the shape that becomes one, the way the accessibility contract already did — the two row builders disagreed on it until this run and each batch's refuter only saw its own half. `Verify:` one implementation each. — found during P6 wave 2 — agent:`integrator`
 - [ ] **B13** **One queued message, two vocabularies, both on screen at once.** The docked queue panel (`queuePanel.js` `statusLabel`) renders the shipped six-value status set as *Waiting · Sending · Sent · Failed · Skipped · Stopped*; the Tasks activity view (`static/js/tasks.js:2958`), which renders **the same row objects** from the same `getQueueActivityEntries` source, says *Queued · Running*. Open the queue panel with the sidebar Activity view showing and one message is "Waiting" in one place and "Queued" in the other. Neither word is wrong; having both is. The status *values* are already one vocabulary — this is only the labels — so the fix is to pick one wording and give it a single home, not to touch anything persisted. Prefer the panel's wording: *Waiting/Sending* describes a message, *Queued/Running* describes a job, and the composer's queue holds messages. `Verify:` one queued item, both surfaces visible, one word. — found during P6 reuse wave — agent:`integrator`
+- [ ] **B14** **The steer bar is still offered on a research turn, which cannot take a steer.** `P6-18` closed the chat-mode case by asking the composer's own mode getter, but research is a *fourth* non-steerable exit (`routes/chat_routes.py` returns from inside the `effective_do_research` block before the three-way stream choice), and the client cannot see it — a research turn is `mode: 'agent'` as far as the composer is concerned. Nothing is lost: the server refuses, the words fall back to the queue, and the sentence the user reads is accurate for both causes. But a control that can only decline is still on screen, which is the `Law 15` half of the defect `P6-18` fixed everywhere else. The honest fix is a per-run signal rather than a per-build one — the capability probe fires once per page load and cannot answer a per-run question, so either the stream announces its own steerability in an early event, or the composer learns that research is in play. `Verify:` start a research turn and no steer bar appears. — found during P6-18 — agent:`impl:steer-route`
+- [ ] **B15** **Two themes put every string in the app under WCAG AA against their own panel.** Measured 2026-08-29 across all sixteen palettes in `static/js/theme.js`: `cute` renders `--fg` on `--panel` at **3.44:1** and `retrowave` at **4.15:1**, against a 4.5:1 floor for body text. Every other theme clears it with room — the next lowest is `light` at 7.13. This is not about any one component; it is the palette, so it applies to every label, every menu item and every message in the product on those two themes. **Themes are protected territory and this row does not authorise a repaint** — it authorises the measurement being on the record and a decision being made: lift `--fg`, darken `--panel`, or accept the two as decorative and say so somewhere a person will find it. `Verify:` the sixteen palettes are measured in a test, and either every one clears 4.5:1 or the exceptions are named on purpose. — found during P7-06 — agent:`refute:surfaces`
+- [ ] **B16** **The accent-coloured rule and mark fall below the 3:1 graphic floor on three light themes.** `--red` over `--panel` measures **2.24 on `paper`**, **2.56 on `cute`** and **3.03 on `light`**; WCAG asks 3:1 of a graphic that carries meaning. `P7-06`'s band ladder does not depend on it — after that row the distinction is carried by type size, weight, rule *width* and mark shape, all of which survive greyscale, and the colour is redundant reinforcement by design. So this is not a `Law 15` failure and it is not urgent. It is a real number that should either clear the floor or be documented as decorative, and the attempt to lift it by mixing `--fg` into the accent was abandoned because it could not clear 3:1 on `cute` at any ratio without destroying the hue. Related to `B15` and probably settled with it. `Verify:` every accent-on-panel graphic that carries meaning clears 3:1, or is documented as redundant. — found during P7-06 — agent:`refute:surfaces`
 - [ ] **B01** **The datastore image is unpinned.** `chromadb/chroma:latest` in all three
   compose files, and `binwiederhier/ntfy` with no tag at all in the same three. A
   breaking Chroma release lands on the next `--build` and the collections stop loading —

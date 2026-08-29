@@ -2582,6 +2582,180 @@ function _handleAskUserShortcut(event) {
 document.addEventListener('keydown', _handleAskUserShortcut);
 
 /**
+ * The keys `describe_effects()` puts on the wire, spelled once.
+ *
+ * Listed rather than pattern-matched on the `effect` prefix: a future field
+ * that happens to start with those seven letters would be copied onto an
+ * approval payload by accident, and this list is short enough to keep honest.
+ */
+const EFFECT_PRESENTATION_KEYS = [
+  'effect', 'effects', 'effect_label', 'effect_labels',
+  'effect_severity', 'effect_band',
+];
+
+/**
+ * Split an approval payload into the effect presentation it was handed.
+ *
+ * `describe_effects()` (`src/tool_capabilities.py`) ranks the effects and
+ * resolves the English once, beside the taxonomy it ranks. Neither the ranking
+ * nor the phrases are repeated here. A JS copy of either is a second home for
+ * one ordering and it drifts the first time the enum grows, which is how the
+ * same action ends up reading as harmless on one surface and severe on the
+ * other. What arrives is drawn in the order it arrives; what does not arrive is
+ * not invented.
+ *
+ * Where it arrives from, corrected 2026-08-29 after refutation. The earlier
+ * version of this comment said the sealed record "cannot carry more — the seal
+ * is a control that never lifts", and that was wrong in a way worth recording,
+ * because it is why three surfaces shipped this card unranked. The seal hashes
+ * `_binding_payload`, a server-side dict; `public_payload()` is a derived view
+ * that is never read back as authority, so it *can* carry the presentation and
+ * now does. That is why the phrases arrive as siblings of `action` on the
+ * payload itself and every producer of this card gets them — the chat loop, the
+ * compare pane, the background monitor and a card rebuilt from history alike.
+ *
+ * `action.effects` stays alphabetical because *that* list is sealed; the ranked
+ * one beside it is not. When only the sealed list arrives — a session saved
+ * before this landed — the card shows those values as the machine identifiers
+ * they are rather than inventing words for them.
+ */
+function approvalEffects(aq) {
+  const action = (aq && aq.action) || {};
+  const dressed = aq
+    && (aq.effect_label || Array.isArray(aq.effect_labels) || aq.effect_band);
+  const wire = dressed ? aq : action;
+  const clean = (list) => (Array.isArray(list) ? list : [list])
+    .map((v) => String(v == null ? '' : v).trim())
+    .filter(Boolean);
+  return {
+    labels: clean(Array.isArray(wire.effect_labels) ? wire.effect_labels : wire.effect_label),
+    // `wire.effects` is severity-ranked; the sealed `action.effects` is sorted
+    // for a stable digest, so it leads with whatever starts with 'a'.
+    values: clean(Array.isArray(wire.effects) ? wire.effects : action.effects),
+    band: String(wire.effect_band || '').trim(),
+  };
+}
+
+/**
+ * The approval payload for a card being rebuilt from a saved session.
+ *
+ * Two places in a persisted `tool_event` can hold the resolved presentation,
+ * and the precedence between them is the whole point of this function.
+ *
+ *   1. Inside `ev.ask_user`, which is `PendingToolApproval.public_payload()`
+ *      (`src/tool_approvals.py`) and now carries the phrases as siblings of
+ *      `action`. This is the one every producer of an approval card shares —
+ *      the chat loop, the compare pane, the background monitor, the teacher
+ *      escalation — so it is what a reloaded card should read, and it wins.
+ *   2. On the event itself, from the `**block_effects` spread in
+ *      `src/agent_loop.py`. That describes the tool the event records, which
+ *      for an approval-gated block is the same action, but it is a second copy
+ *      of one answer and so it is only a fallback.
+ *
+ * The fallback is not dead code: sessions saved before the presentation moved
+ * into `public_payload()` have the keys only in position 2, and a card rebuilt
+ * from one of those would otherwise drop to the raw sealed identifiers. That
+ * path is no longer the common one, which is exactly why it needs a test —
+ * refutation found a mutation deleting this merge outright and no assertion
+ * anywhere noticed.
+ *
+ * A session older still has the keys in neither place, and the raw values are
+ * then all there is; `approvalEffects` shows those as identifiers rather than
+ * inventing English for them.
+ */
+function askUserWithEffects(ev) {
+  const aq = (ev && ev.ask_user) || null;
+  if (!aq) return aq;
+  // Already dressed by the payload itself — nothing to merge, and merging
+  // anyway would let the event's copy overwrite the shared one.
+  if (aq.effect_label || aq.effect_labels || aq.effect_band) return aq;
+  if (!(ev.effect_label || ev.effect_labels || ev.effect_band)) return aq;
+  const merged = { ...aq };
+  for (const key of EFFECT_PRESENTATION_KEYS) {
+    if (ev[key] !== undefined) merged[key] = ev[key];
+  }
+  return merged;
+}
+
+/**
+ * The consequences of the proposed action, most severe first.
+ *
+ * A destructive action and a panel repaint used to produce the same line of
+ * grey text at the same size (`P7-06`). The lead phrase is the one the ranking
+ * chose; it is drawn larger and heavier than the rows beneath it, and the band
+ * it belongs to goes onto the box as data for the stylesheet.
+ *
+ * CORRECTED 2026-08-29 after refutation. This paragraph used to end "so the
+ * three treatments differ in shape and weight and not only in colour", and
+ * measured through the real cascade that was false in both halves: no band
+ * changed `font-weight` at all (every lead resolved to 700), and `notable` and
+ * `routine` shared a 3px rule, leaving a 7px circle-to-diamond swap and a
+ * border alpha as the entire difference between them. Writing a claim like
+ * that into a docstring is worse than not making it, because it is what a
+ * later reader checks the design against instead of the screen.
+ *
+ * What is true now, and what `static/style.css` is written to keep true:
+ * across `routine -> notable -> serious` the lead runs 13/13/15px at weight
+ * 600/700/700, the box's left rule runs 2/4/6px, and the lead's mark runs
+ * hollow circle -> filled diamond -> filled triangle. Adjacent bands differ on
+ * at least three of those and none of them is a hue, so the ladder survives
+ * greyscale. `tests/test_tool_effect_surfaces_js.py` asserts those values
+ * rather than the property names, because a version of that test which
+ * compared names only let the serious lead collapse to the routine size
+ * without failing.
+ *
+ * The band is still the junior partner. The phrase is what actually carries
+ * the warning — it survives greyscale, colour-blindness, a narrow phone and a
+ * screen reader, none of which the geometry survives completely — and the
+ * ladder exists to give a reader skimming rather than reading a second route
+ * to the same conclusion.
+ */
+function buildApprovalEffects(aq) {
+  const { labels, values, band } = approvalEffects(aq);
+  const rows = labels.length ? labels : values;
+  if (!rows.length) return null;
+
+  const box = document.createElement('div');
+  box.className = 'approval-effects';
+  if (band) box.dataset.effectBand = band;
+
+  const title = document.createElement('div');
+  title.className = 'approval-effects-title';
+  title.textContent = 'What this can do';
+  box.appendChild(title);
+
+  const list = document.createElement('ul');
+  list.className = 'approval-effect-list';
+  rows.forEach((phrase, i) => {
+    const item = document.createElement('li');
+    item.className = 'approval-effect'
+      + (i === 0 ? ' approval-effect-lead' : '')
+      // No phrase came with these, so they are shown undressed rather than
+      // guessed at. Styled as machine detail so nobody reads one as a sentence.
+      + (labels.length ? '' : ' approval-effect-raw');
+    const mark = document.createElement('span');
+    mark.className = 'approval-effect-mark';
+    mark.setAttribute('aria-hidden', 'true');
+    item.appendChild(mark);
+    const text = document.createElement('span');
+    text.className = 'approval-effect-text';
+    // `textContent`, never `innerHTML`, and this is load-bearing rather than
+    // stylistic. The dressed rows are prose from a fixed table in Python, but
+    // the undressed rows are effect *values* read straight off a persisted
+    // approval record, and this card is the one place in the app where the
+    // user is being asked to consent to something — markup injected into the
+    // sentence describing the action would be forging the description of the
+    // thing being approved. Refutation found the swap invisible to every
+    // assertion in the surface tests, so those now read the node's raw HTML.
+    text.textContent = phrase;
+    item.appendChild(text);
+    list.appendChild(item);
+  });
+  box.appendChild(list);
+  return box;
+}
+
+/**
  * Render an ask_user payload as a durable choice card.
  *
  * This lives in the history renderer rather than the streaming loop so the
@@ -2632,15 +2806,16 @@ export function renderAskUserCard(payload, options) {
   card.setAttribute('aria-labelledby', question.id);
 
   if (isToolApproval && aq.action) {
+    // Above the technical block, because it is the part that decides the
+    // answer. The block below stays a verbatim dump of what was sealed.
+    const consequences = buildApprovalEffects(aq);
+    if (consequences) card.appendChild(consequences);
+
     const action = document.createElement('div');
     action.className = 'ask-user-option-desc';
-    const effects = Array.isArray(aq.action.effects)
-      ? aq.action.effects.join(', ')
-      : '';
     action.textContent = [
       aq.action.tool || 'tool',
       aq.action.content || '',
-      effects ? `Effects: ${effects}` : '',
       aq.action.workspace ? `Workspace: ${aq.action.workspace}` : '',
       aq.action.document_id ? `Document: ${aq.action.document_id}` : '',
       aq.action.document_version != null
@@ -2906,7 +3081,9 @@ export function addMessage(role, content, modelName, metadata) {
             box.appendChild(threadWrap);
           }
           for (const ev of roundTools) {
-            if (ev.ask_user && !ev.ask_user.resolved) pendingAskUser = ev.ask_user;
+            if (ev.ask_user && !ev.ask_user.resolved) {
+              pendingAskUser = askUserWithEffects(ev);
+            }
             const ok = (ev.exit_code === 0 || ev.exit_code == null);
             let outHtml = '';
             if (ev.output && ev.output.trim()) {

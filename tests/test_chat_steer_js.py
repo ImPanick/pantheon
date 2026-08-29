@@ -397,8 +397,39 @@ def test_a_refused_steer_falls_back_to_the_existing_queue(sandbox):
     """)
     assert out["queued"] == 1, "the words go to chat.js's queue, never on the floor"
     assert any("queued for after this response" in t for t in out["toasts"])
-    assert any("already finished" in t for t in out["toasts"])
+    # Was "already finished" until 2026-08-29. The server folds two causes into
+    # `no_active_run` — the run ended, and the run cannot take a steer at all (a
+    # plain chat or image turn, which has no rounds) — and "already finished"
+    # was false for the second. The sentence has to hold whichever one it was.
+    assert any("no agent run to steer" in t for t in out["toasts"])
     assert out["errors"] == []
+
+
+def test_no_steer_bar_is_drawn_for_a_plain_chat_turn(sandbox):
+    """A control that can only decline is worse than no control (`Law 15`).
+
+    Chat mode has no rounds, so there is no step boundary to deliver a steer at
+    and the server refuses. Drawing the bar anyway would advertise a course
+    correction that never lands. The composer's own mode getter answers this —
+    the capability probe fires once per page load and cannot, because
+    steerability is a property of the run, not of the build.
+    """
+    out = _run(sandbox, """
+        globalThis.__sid = 'sess-a';
+        mockFetch(async () => res(200, { supported: true }));
+        let mode = 'chat';
+        globalThis.window.__pantheonGetChatMode = () => mode;
+        await import('./chatStream.js');
+        setBusy(true); await tick();
+        const chatMode = !!document.querySelector('.steer-bar');
+        setBusy(false); await tick();
+        mode = 'agent';
+        setBusy(true); await tick();
+        const agentMode = !!document.querySelector('.steer-bar');
+        console.log(JSON.stringify({ chatMode, agentMode }));
+    """)
+    assert out["chatMode"] is False, "chat mode must not advertise steering"
+    assert out["agentMode"] is True, "agent mode still gets the bar"
 
 
 def test_a_route_that_vanishes_hides_the_control_and_queues_instead(sandbox):
@@ -507,8 +538,16 @@ def test_a_steer_that_missed_the_run_is_reported_once_the_channel_is_known_live(
 
 
 def test_no_missed_steer_warning_when_the_confirmation_channel_is_absent(sandbox):
-    # On a build where chat.js does not route `steer_applied` yet, every steer
-    # would look unconfirmed. Crying wolf on all of them is worse than silence.
+    # When no `steer_applied` ever reaches this module, every steer looks
+    # unconfirmed. Crying wolf on all of them is worse than silence.
+    #
+    # This used to read "on a build where chat.js does not route
+    # `steer_applied` yet" — true when written, and no longer: chat.js routes
+    # it from the same dispatch chain as `ui_control` (P6-18, pinned by
+    # `tests/test_chat_steer_route.py`). The behaviour pinned here is unchanged
+    # and still load-bearing, because the channel is still absent whenever the
+    # stream is not the agent loop: a plain-chat turn emits no `steer_applied`
+    # at all, and neither does an older server.
     out = _run(sandbox, """
         globalThis.__sid = 'sess-a';
         mockFetch(async () => res(200, { accepted: true }));

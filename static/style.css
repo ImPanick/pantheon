@@ -2962,6 +2962,84 @@ body.bg-pattern-sparkles {
       font-variant-numeric: tabular-nums;
       opacity: 0.8;
     }
+    /* ── The step's fifth field: what its tool can do (P6-11 / P7-06) ───────
+       The phrase and the band both arrive resolved from
+       `src/tool_capabilities.py:describe_effects()`. Nothing here decides which
+       effect outranks which — it draws the band it was handed, in three
+       treatments because there are three bands.
+
+       The band ladder on a 9.5px chip, stated so it can be checked:
+
+         channel     routine             notable             serious
+         weight      600                 700                 700
+         mark        6px hollow circle   6px filled diamond  9x8px filled
+                                                             triangle
+         chip fill   none                fg tint             accent tint
+
+       routine-to-notable moves all three of those, plus the border's strength.
+       notable-to-serious moves only the mark — its shape and its size — plus
+       the hue of the fill and the border. That second step is thinner than the
+       approval card's, and saying so is the point of writing the table out:
+       this chip is a status line beside a plan step, not the surface where
+       consent is given, and the phrase is what does the work here. The card is
+       where the ladder is built to be read without any of the words.
+
+       CORRECTED 2026-08-29 after refutation. `serious` used to set
+       `color: var(--accent, var(--red))` on this chip. The approval card had
+       the same bug measured at 2.11:1 on `paper`, and 9.5px chip text is the
+       worse place for it, so the same fix applies: the text colour stays
+       anchored to `--fg` in every band and the accent moves onto the chip's
+       border, its fill and its mark — none of which are text.
+
+       Rules sit after `.plan-step-chip` at equal specificity so they win on
+       order; the banded ones add an attribute and win outright. Accent always
+       carries its `var(--red)` fallback — `--accent` is undefined until
+       P1-01. */
+    .plan-step-effect {
+      font-weight: 600;
+      border-color: color-mix(in srgb, var(--fg) 28%, transparent);
+      color: color-mix(in srgb, var(--fg) 88%, transparent);
+    }
+    /* inline-block rather than a flex item, so the chip keeps the ellipsis
+       `.plan-step-chip` gives it when a phrase outgrows a narrow dock. */
+    .plan-step-effect::before {
+      content: '';
+      display: inline-block;
+      vertical-align: middle;
+      margin-right: 4px;
+      width: 6px;
+      height: 6px;
+      border: 1px solid currentColor;
+      border-radius: 50%;
+    }
+    .plan-step-effect[data-effect-band="notable"] {
+      font-weight: 700;
+      border-color: color-mix(in srgb, var(--fg) 45%, transparent);
+      background: color-mix(in srgb, var(--fg) 8%, transparent);
+    }
+    .plan-step-effect[data-effect-band="notable"]::before {
+      border-radius: 0;
+      transform: rotate(45deg);
+      background: currentColor;
+    }
+    .plan-step-effect[data-effect-band="serious"] {
+      font-weight: 700;
+      border-color: color-mix(in srgb, var(--accent, var(--red)) 55%, transparent);
+      background: color-mix(in srgb, var(--accent, var(--red)) 14%, transparent);
+    }
+    /* Named rather than inherited through `currentColor`: the chip's text is
+       `--fg` in every band now, and this 9x8px triangle is the one part of the
+       chip large enough to be worth painting the accent on. */
+    .plan-step-effect[data-effect-band="serious"]::before {
+      width: 0;
+      height: 0;
+      border: none;
+      border-left: 4.5px solid transparent;
+      border-right: 4.5px solid transparent;
+      border-bottom: 8px solid var(--accent, var(--red));
+      border-radius: 0;
+      background: none;
+    }
     .plan-window-foot {
       margin: 0;
       padding: 8px 10px 10px;
@@ -2978,6 +3056,14 @@ body.bg-pattern-sparkles {
     @media (max-width: 768px) {
       .plan-window-steps { max-height: 180px; }
       .plan-window-hint { flex-basis: 100%; }
+      /* Narrow dock: give the consequence its own line rather than letting it
+         be the chip that gets ellipsised down to nothing. It is the field a
+         reader with the least room can least afford to lose. */
+      .plan-step-effect {
+        flex-basis: 100%;
+        max-width: 100%;
+        white-space: normal;
+      }
     }
 
     /* ── Docked queue panel (P6-04 / P6-06 / P6-07) ─────────────────────────
@@ -41429,6 +41515,157 @@ body.theme-frosted .modal {
   word-break: break-word;
   white-space: normal;
 }
+/* ── What a proposed action can do (P7-06) ────────────────────────────────
+   Until now a destructive action and a panel repaint produced the same run of
+   grey text at the same size: `Effects: destructive` and `Effects:
+   ui_side_effect`, both raw identifiers, both indistinguishable at a glance.
+
+   `describe_effects()` (src/tool_capabilities.py) ranks the effects and picks
+   the words; this block only draws the band it is handed, which is why there
+   are three treatments and not thirteen.
+
+   WHAT THE WORDS DO, AND WHAT THIS BLOCK DOES. The phrase is what carries the
+   warning: it survives greyscale, colour-blindness, a 320px viewport and being
+   read aloud, and nothing here can improve on that. Everything below is
+   *redundant reinforcement* — a second and third route to the same conclusion
+   for a reader skimming rather than reading. That ordering is deliberate, and
+   the rules are written to be worth having rather than to be the point.
+
+   The band ladder, stated exactly so it can be checked against the values:
+
+     channel        routine            notable            serious
+     lead size      13px               13px               15px
+     lead weight    600                700                700
+     left rule      2px solid          4px solid          6px solid
+     mark           7px hollow circle  7px filled diamond 12x11px filled
+                                                          triangle
+
+     Adjacent bands differ on at least three of those, and every one of them
+     is geometry or type — no pair is separated by hue alone.
+
+   CORRECTED 2026-08-29 after refutation; the previous wording of this comment
+   claimed "the band changes the mark's shape and the left rule's weight" and
+   that the cards "differ in wording, in type size and in outline". Measured
+   through the real cascade, `notable` and `routine` shared a 3px rule and a
+   700 weight, so between those two only the mark's shape was ever true. The
+   rule widths and the weight step above are what make the sentence describe
+   the code instead of the intention.
+
+   ALSO CORRECTED: the `serious` lead used to be recoloured
+   `var(--accent, var(--red))` over a red-tinted panel. Measured across all
+   sixteen themes in `static/js/theme.js`, that put the one line the card
+   exists to make unmissable at 2.11:1 on `paper` and 2.81:1 on `light` while
+   the harmless line beside it sat above 6:1 — the alarm was the *least*
+   legible text in the box. On `terminal` and `retrowave` `--fg` and `--red`
+   are the same hex, so the recolour bought exactly nothing there. Body text
+   stays `var(--fg)` in every band; colour is carried only on the rule and the
+   mark, which are 6px and 12px of pure geometry and can afford it.
+
+   Theme tokens only, and every accent reference carries its `var(--red)`
+   fallback — `--accent` is undefined until P1-01 and a bare `var(--accent)`
+   would silently void the whole declaration. */
+.approval-effects {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  /* The routine rung of the rule ladder. `notable` and `serious` widen it. */
+  border-left: 2px solid color-mix(in srgb, var(--fg) 34%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fg) 3%, var(--panel));
+}
+/* No band came with these values, which is not the same as "harmless" — a
+   dashed rule says unclassified without claiming a severity nobody sent. It
+   sits at 3px, between routine and notable, so it cannot be mistaken for a
+   rung of the ladder while still reading as deliberate rather than thin. */
+.approval-effects:not([data-effect-band]) {
+  border-left-style: dashed;
+  border-left-width: 3px;
+}
+.approval-effects-title {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.55;
+  margin-bottom: 5px;
+}
+.approval-effect-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.approval-effect {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--fg);
+  opacity: 0.72;
+  overflow-wrap: anywhere;
+}
+.approval-effect + .approval-effect { margin-top: 3px; }
+/* The routine rung: bigger and heavier than the rows under it, so the ranked
+   phrase reads first even in the band that is not trying to alarm anyone. */
+.approval-effect-lead {
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 1;
+}
+/* Raw values are shown as the machine detail they are, never dressed as prose. */
+.approval-effect-raw .approval-effect-text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+}
+.approval-effect-mark {
+  flex-shrink: 0;
+  align-self: center;
+  width: 7px;
+  height: 7px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  opacity: 0.75;
+}
+.approval-effects[data-effect-band="notable"] {
+  border-left-width: 4px;
+  border-left-color: color-mix(in srgb, var(--fg) 58%, transparent);
+}
+.approval-effects[data-effect-band="notable"] .approval-effect-lead {
+  font-weight: 700;
+}
+/* Filled, not just turned: hollow-to-solid is the half of this a greyscale
+   reader gets for free, and the rotation is the half a small-screen reader
+   gets. Neither alone is much at 7px; together they are a different mark. */
+.approval-effects[data-effect-band="notable"] .approval-effect-lead .approval-effect-mark {
+  border-radius: 0;
+  transform: rotate(45deg);
+  background: currentColor;
+  opacity: 0.9;
+}
+.approval-effects[data-effect-band="serious"] {
+  border-left-width: 6px;
+  border-left-color: var(--accent, var(--red));
+  background: color-mix(in srgb, var(--accent, var(--red)) 8%, var(--panel));
+}
+.approval-effects[data-effect-band="serious"] .approval-effect-lead {
+  font-size: 15px;
+  font-weight: 700;
+}
+/* The accent is named here rather than inherited through `currentColor`,
+   because the lead's colour is now `var(--fg)` in every band — see the header
+   comment. A 12x11px solid triangle is a large enough graphic to carry hue;
+   13px of body text is not. */
+.approval-effects[data-effect-band="serious"] .approval-effect-lead .approval-effect-mark {
+  width: 0;
+  height: 0;
+  border: none;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 11px solid var(--accent, var(--red));
+  border-radius: 0;
+  background: none;
+  opacity: 1;
+}
 .ask-user-options {
   display: flex;
   flex-direction: column;
@@ -41516,6 +41753,16 @@ body.theme-frosted .modal {
     font-size: 11px !important;
     line-height: 1.35;
   }
+  /* The band's gap in type size has to survive the phone, or the one form
+     factor with the least room to guess loses the whole distinction. The
+     desktop ladder is 11 / 13 / 15; this is the same three steps shrunk to
+     10 / 12 / 14, keeping the 2px gaps rather than compressing them away.
+     Nothing here restates a border width or a weight, so the rule ladder and
+     the notable weight step reach the phone untouched. */
+  .approval-effects { padding: 7px 8px; }
+  .approval-effect { font-size: 10px; }
+  .approval-effect-lead { font-size: 12px; }
+  .approval-effects[data-effect-band="serious"] .approval-effect-lead { font-size: 14px; }
   .ask-user-option {
     padding: 7px 8px;
     font-size: 10px !important;
