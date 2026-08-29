@@ -564,6 +564,17 @@ with different messages, authors or timestamps still produce the same tree hash 
 files match, which makes it the right check for "did everything arrive". A checksum on
 the tarball proves the transfer; the tree hash proves the *result*.
 
+**Use a patch, not a bundle.** The two mirrors carry the same trees under *different commit
+SHAs* — the container was seeded from a tarball, so its history is its own. A `git bundle` is
+addressed by SHA and will not apply on cybertooth for that reason; `git format-patch
+<base>..HEAD --stdout` is addressed by content and does. The 2026-08-29 sync ran:
+`SendUserFile` → `device_commit_files` into `.pantheon-transfer/` → `md5sum` on both sides →
+`git apply --check` → `git am --keep-non-patch --committer-date-is-author-date` →
+`git commit --amend --author='ImPanick <…>'` (the container's git identity is not the repo's,
+and `--reset-author` and `--author` cannot be passed together) → delete `.pantheon-transfer/` →
+`git push`. Three checks, in order: the md5 matches, `git apply --check` is clean, and the tree
+hashes agree afterwards.
+
 *Confirmed useful on 2026-08-27.* It disagreed after a sync that had in fact worked:
 1,532 files, **zero differing blobs**, and 1,484 files whose only difference was the
 executable bit — the container mirror had been seeded from a tarball that set `+x` on
