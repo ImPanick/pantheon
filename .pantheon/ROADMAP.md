@@ -63,7 +63,7 @@ soon as its dependency lands.
 | P12 | Limits & the control plane | 11 | 11 | 0 | 0 |
 | P13 | The Brain | 12 | 11 | 0 | **1** |
 | P14 | Measurement | 7 | 7 | 0 | 0 |
-| **Total** | | **296** | **215** | **11** | **70** | | **296** | **215** | **11** | **70** | | **296** | **218** | **11** | **67** | | **295** | **221** | **11** | **63** | | **295** | **222** | **11** | **62** | | **294** | **221** | **11** | **62** | | **291** | **218** | **11** | **62** | | **291** | **221** | **11** | **59** | | **291** | **231** | **11** | **49** | | **288** | **239** | **11** | **38** | | **288** | **253** | **1** | **34** | | **288** | **255** | **1** | **32** | | **288** | **257** | **1** | **30** | | **287** | **256** | **1** | **30** | | **266** | **235** | **1** | **30** | | **253** | **222** | **1** | **30** | | **250** | **219** | **1** | **30** | | **231** | **200** | **1** | **30** | | **231** | **211** | **0** | **20** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
+| **Total** | | **296** | **213** | **11** | **72** | | **296** | **213** | **11** | **72** | | **296** | **215** | **11** | **70** | | **296** | **215** | **11** | **70** | | **296** | **218** | **11** | **67** | | **295** | **221** | **11** | **63** | | **295** | **222** | **11** | **62** | | **294** | **221** | **11** | **62** | | **291** | **218** | **11** | **62** | | **291** | **221** | **11** | **59** | | **291** | **231** | **11** | **49** | | **288** | **239** | **11** | **38** | | **288** | **253** | **1** | **34** | | **288** | **255** | **1** | **32** | | **288** | **257** | **1** | **30** | | **287** | **256** | **1** | **30** | | **266** | **235** | **1** | **30** | | **253** | **222** | **1** | **30** | | **250** | **219** | **1** | **30** | | **231** | **200** | **1** | **30** | | **231** | **211** | **0** | **20** | | **229** | **208** | **1** | **20** | | **228** | **211** | **1** | **16** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -88,38 +88,35 @@ Ten of its rows landed on 2026-08-27 — see § Progress. What is left of it:
 - **`P0-21b`, `P0-31`** — new, from the run: twelve bundled packages with no notice anywhere, and
   49 unaudited `ody-` storage-key hits.
 
-### `P6` is closed. 18 of 18, and it is the first phase finished
+### `P6` is closed and `P7` is 4 of 11. The next row is `P1-01`, and it is overdue
 
-Nothing in `P6` is open. `P7` is 2 of 11, and `P7-06` landing early means the `ToolEffect` taxonomy
-now ranks things — which is the data three of the remaining `P7` rows were waiting on.
+**`P1` is 1 of 14 and every row under it waits.** `P1-01` defines `--accent`, and its absence has
+now cost three separate rows: `P6-12` shipped a Plan button whose on and off states rendered
+identically, because a bare `var(--accent)` makes the whole declaration invalid; `P7-06`'s band
+system and `P7-04`'s ladder both had to be written as `var(--accent, var(--red))` throughout. Every
+row that has needed an accent this month has worked around a variable that should exist. It is
+three files plus a `CACHE_NAME` bump — **not one module**, which is the mistake the row warns about.
 
-**Take `P7-03` and `P7-04` next — the trust ladder.** Two rungs, and both rows say *"does not
-exist"*: **"ask every time"** (`P7-03`, a gate condition change — today the gate is conditional on
-untrusted content having entered, so a clean session never prompts) and **"allow-listed"**
-(`P7-04`, a rule store mapping tool plus argument pattern to auto-allow, consulted before the
-blocked-effect check). `P7-05` is already ticked and superseded; it is not a third rung.
+**Second choice: `B19`, which is small and makes a shipped feature usable.** The two new rungs gate
+on `POST_EXTERNAL_BLOCKED_EFFECTS`, which contains `READ_PRIVATE` because an *already-tainted* run
+must not exfiltrate. A clean run on a strict rung is a different threat model, and reusing one
+frozenset for both means 21 tools are gated solely by `read_private` — the agent needs a
+confirmation to read back its own memory. `P7-04` already fixed the copy so it stops promising four
+write verbs, and bound that copy to the set with a test in both directions, so the follow-up is
+honest rather than a surprise. Give the rungs their own writes/executes/sends/deletes set.
 
-`P6-04` deliberately shed its per-item trust rung on the way in, because it would have made the
-queue panel the first trust-ladder UI in the product, selecting from a ladder that does not exist.
-That debt is now the only thing between the queue and a control it was designed for — and `P7-06`
-has already built the half that classifies consequence, which is what an allow-list rule has to be
-written against. Read `P6-04`'s note before starting: **one control, not two vocabularies.**
+**`P7`'s remaining six are now unblocked by what landed.** `P7-07` (send only the effects that
+actually *tripped* the gate) and `P7-08` (surface the taint trail) both want the resolved effect
+data `P7-06` put on the wire. `P7-09` (grant inspector) is now the *session-scope grant* half only —
+`P7-04` built the allow-rule half of that complaint, so read its row before starting or you will
+build the screen twice.
 
-**Second choice: `P1`, which is the oldest blocker in the tree.** `P1-01` is 1 of 14 and everything
-under it waits. It is three files plus a `CACHE_NAME` bump, not one module — and `P6-12` already
-found what happens when it is late: a bare `var(--accent)` makes the whole declaration invalid, so
-a button's on and off states rendered identically. Every row that has needed an accent this month
-has written `var(--accent, var(--red))` to work around a variable that should exist.
-
-**What this run leaves behind, in priority order.** `B14` (the steer bar is still offered on a
-research turn, which cannot take one — nothing is lost, but a control that can only decline is
-still a `Law 15` failure). `B15` (two themes put *every string in the app* under WCAG AA against
-their own panel — `cute` at 3.44:1, `retrowave` at 4.15:1; themes are protected, so this is a
-measurement and a decision, not a repaint). `B16` (the accent graphic is under the 3:1 floor on
-three light themes; the band ladder does not depend on it). `B06` (the verifier still goes blind
-after round one of a long plan run — `P6-15` only half-holds). `B10` (`node --check` is a no-op for
-`static/app.js` and `AGENTS.md` names it as a gate — the same half-wired-gate shape as `P3-13`).
-`P5-17` and `B13` from the previous run are still open.
+**What this run leaves behind, in priority order.** `B17` (a 1,984-character nested tool argument
+kills any run, at any rung — pre-existing, and the model writes that content). `B18` (running
+`tests/test_agent_loop.py` first breaks ~51 tests in six files; the natural suite order happens not
+to trigger it, so this surfaces the first time someone shards CI). `B19` above. `B20` (`P6-08`'s env
+layer is unreachable after the first admin settings save). Still open from earlier runs: `P5-17`,
+`B13`, `B14`, `B15`, `B16`, `B06`, `B10`.
 
 **Still out of scope on its own:** `P0-29`. The Cookbook → Forge sweep is 3,529 occurrences
 across 171 files and 43 paths — the largest blast radius in the programme, coupled to
@@ -143,6 +140,58 @@ location was wrong until it was corrected on the row itself; the row is right no
 *The one progress area. Newest first. One entry per completed section — two lines, a
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
+
+### The trust ladder — and the run where refutation found the control inverted
+`P7-03` (rung "ask every time") and `P7-04` (rung "allow-listed"), discharging `P7-05`'s
+superseded acceptance criterion. `3b5cf9c..HEAD`. **296 tracked, 72 done. Suite 5,962 → 6,156,
+the same 19 failing and all 19 pre-existing.**
+
+**Three implementers, two refuters, both `broken: true`, and the headline finding is the reason
+this programme refutes everything.** The ladder *inverted*. `approval_gate_bypassed` short-circuits
+the gate before the rung is consulted, and both approval buttons set `allow_remaining_actions` — so
+on `ask_every_time`, approving one harmless `bash` in a clean run disarmed the gate, and a later
+round fetched a hostile page and ran an exfiltration command **with no prompt at all**, an action
+the *default* rung stops and asks about. The two "stricter" rungs were strictly less protected than
+the one they sit below, and the ladder's own copy promised the opposite in the same commit. A
+second refuter found the same shape in the allow-list: a standing *"anything starting with git"*
+rule let `git push --force origin main` run unprompted in a run that had already pulled in a web
+page. Both are one line each, and neither was pinned by any test — which is how they survived
+three implementers who all reported their work green.
+
+**The reason both happened is the same and worth keeping.** Before this row a card could only exist
+once untrusted content had armed the gate, so every grant was given under the same threat model it
+then relaxed. A rung mints cards in *clean* runs, and **a yes given when nothing was wrong must not
+spend itself after something is.** `src/tool_execution.py` already enforced that across the
+approval door; nothing enforced it across the bypass door, or across a saved rule.
+
+**The row also could not be answered end to end when it first landed, and the batch said so instead
+of ticking.** `execute_tool_block` refused every approval replay unless *both* the run and the
+sealed pending carried taint — because "taint seen" had been standing in for "the gate asked". A
+rung refusal mints a card with taint false, so approving it answered *"Exact-action approval
+requires an armed run security context"* and the tool never ran: the ladder could ask a question
+nobody could answer. It shipped as `xfail(strict=True)` naming the file and the fix rather than as
+a green tick, which is the behaviour the laws are for.
+
+**Two more `breaks-users` findings, both a control reporting success and doing nothing.** In
+no-login mode the route filed rules under the reserved local owner while the run carried
+`owner=None`, so every rule was written, listed, toasted as *saved*, and never read. And switching
+*onto* the allow-listed rung never drew the "always allow" chooser until a page reload — the one
+thing the rung promises, unreachable by the route a first-time user takes.
+
+**The largest gap was not code.** A rule could be created and then neither seen nor revoked from
+any screen: the widest grant, *"anything bash does"*, one click away with no undo. `core/database.py`
+had already written *"this is the table where that omission is expensive"*, and the store's
+five-second TTL was defended on the grounds that *"revoke means revoked before the user has
+finished reading the confirmation"* — with nothing in the product able to revoke. There is a list
+under the ladder now, and its failure path says the unwelcome half out loud.
+
+**On mutation testing.** Between them the two waves ran 58 mutation/test pairs and found eight
+properties the code got right that no test pinned — including the second half of the replay guard,
+whose deletion passed the entire suite, and the revoke route's authentication gate. Two mutants
+survived a batch's *own* first sweep and exposed real gaps in tests written minutes earlier. And
+one finding came out of it that belongs to nobody here: a 1,984-character nested tool argument
+kills a run at every rung, because `json.loads` is wrapped in `except (TypeError, ValueError)` and
+`RecursionError` is neither. That is `B17`, pre-existing, and the model writes that content.
 
 ### P6 closes at 18 of 18 — the steer route, and the taxonomy that ranked nothing
 `P6-18` (steer mid-response), `P7-06` (rank prompts by effect) and `P6-11` (the plan window's
@@ -1162,8 +1211,19 @@ The approval store is better than anything that would replace it. Do not rebuild
 
 - [ ] **P7-01** **Stop the mode toggle lying.** A keyword regex of **58 alternations** — including *change, update, review, test, run, build, source, system, device, app* — silently promotes Chat to Agent, and **33 lines later** a single line **overwrites the user's own shell toggle to true**. *(Re-parsed 2026-08-27 from the alternation group at `chat.js:1884`.)* The backend escalates again on tool intent, search and web intent, computes an escalation flag, and never sends it. `Depends:` P4-18.
 - [ ] **P7-02** Stop the model raising its own trust level — it can currently flip the mode toggle through a UI-control event with no confirmation.
-- [ ] **P7-03** Add rung **"ask every time"**. Does not exist: the gate is conditional on untrusted content having entered, so a clean session never prompts. Change the gate condition from *taint seen* to *taint seen **or** the current rung requires confirmation*. **Reuse `PendingToolApproval` unchanged.**
-- [ ] **P7-04** Add rung **"allow-listed"** — a rule store mapping tool + argument pattern to auto-allow, consulted before the blocked-effect check. Does not exist.
+- [x] **P7-03** Add rung **"ask every time"**. Does not exist: the gate is conditional on untrusted content having entered, so a clean session never prompts. Change the gate condition from *taint seen* to *taint seen **or** the current rung requires confirmation*. **Reuse `PendingToolApproval` unchanged.** — **done, and both premises held exactly** — `decision_for`'s second line was `if not self.external_untrusted_context_seen: return ToolGateDecision(True)`. `TrustRung` lives in `src/tool_capabilities.py` beside the gate it controls, `trust_rung` is a `DEFAULT_SETTINGS` key defaulting to today's behaviour, and `PendingToolApproval` is untouched. **The untainted early exit is preserved for the default rung**, so an existing install's clean session is byte-for-byte what it was — pinned by a sweep of 21,360 cases (every known tool × 20 hostile contents × taint × bypass × three lookup shapes) against an oracle transcribed from the previous commit: **0 diverged**, verdict *and* reason string.
+  **Two of the design's five rungs are deliberately not in the enum, and saying why is half the row.** *"Plan only"* is a mode you enter (`PLAN_MODE_READONLY_TOOLS` plus a directive), not a gate condition — putting it in an enum `decision_for` switches on would claim a control this code does not have. *"Auto-pilot"* is what `gate_on_untrusted` feels like in a clean chat, and `design/pantheon-v10.html:1727` says so itself: *"auto-pilot isn't a new top rung. It's already the default."* That is `P7-05`'s superseded correction, discharged here rather than re-derived.
+  **The row could not be answered end to end when it first landed, and the batch that found it said so instead of ticking.** `execute_tool_block` refused every approval replay unless *both* the resumed run and the sealed pending carried `external_untrusted_context_seen` — because until this row an untainted run could never mint a card, so "taint seen" was standing in for "the gate asked". A rung refusal mints one with taint `False`, so approving it answered *"Exact-action approval requires an armed run security context"* and the tool never ran. The guard now asks `gate_is_armed`, which lives beside the gate, and separately keeps the older protection: an approval granted before taint arrived cannot be spent after it. That second half **had no test at all** — deleting it passed the entire suite — and now does.
+  **Refutation found the ladder inverted, and that is the finding of the run.** `approval_gate_bypassed` short-circuits before the rung, and both allow buttons set `allow_remaining_actions`. So on `ask_every_time`, approving one harmless `bash` in a clean run disarmed the gate — and a later round then fetched a hostile page and ran an exfiltration command **with no prompt, an action the default rung stops and asks about.** The two "stricter" rungs were strictly *less* protected than the one they sit below, and the ladder's own copy promised the opposite. One line: a bypass no longer outranks a rung that asks. The sealed exact grant still authorises its own action, so the rung stays usable.
+  **And a typo bought less protection than the operator asked for.** `coerce_trust_rung` fails to the default rather than the strictest rung — deliberate, and argued in its docstring — but nothing validated the write, so `ask_every_tim`, `Ask every time` and `ask-every-time` all stored fine, answered `200`, echoed the typo back into the settings panel, and left the install on the default. Through chat it was worse: `manage_settings` replied *"Set trust_rung = ask every time."* Both doors now reject an unknown rung at the door.
+  `Verify:` set the rung to *Ask every time*, send a message in a clean chat that writes a file, and it stops and asks; approve it and it runs; the same chat still asks about the next one.
+- [x] **P7-04** Add rung **"allow-listed"** — a rule store mapping tool + argument pattern to auto-allow, consulted before the blocked-effect check. Does not exist. — **done:** `ToolAllowRule` (owner **not null** and indexed, unlike every other owner column in that file, because a rule with no owner is a rule that matches for everyone), `src/tool_allow_rules.py`, and owner-scoped `GET`/`POST`/`DELETE /api/tool-allow-rules`. **No regular expressions, and that is a decision rather than an omission**: a regex in a security allow-list is two problems — users cannot write them correctly, and a catastrophic-backtracking pattern is a denial of service on a live tool-dispatch path. Three explicit kinds instead (`any` / `exact` / `prefix`), normalised with `strip()` and nothing else, because matching *less* is the safe failure direction for a control that only ever grants. A person picks a scope on the approval card; nobody authors a pattern.
+  **Consulted before the *refusal*, not literally before the blocked-effect check**, which is the same behaviour and safer literally: an action with no blocked effect is already allowed above, so the only actions a rule can reach are ones that would otherwise be refused — and a rule can never make an action fail classification and be allowed anyway.
+  **Refutation found the rung asking *less* than the default, in the case the default exists for.** A standing *"anything starting with git"* rule let `git push --force origin main` run with no prompt in a run that had already pulled in a web page — which `gate_on_untrusted` stops. A rule is a standing yes to a *routine* action, and a run carrying someone else's text is not routine; the consult now requires an untainted run. No test pinned it in either direction, which is why it survived to refutation.
+  **Two more `breaks-users` findings, both about a control that reported success and did nothing.** In no-login mode the route filed rules under the reserved local owner while the run carried `owner=None`, so every rule was written, listed, toasted as *saved* — and never once read; the run now resolves its owner through the same `effective_storage_owner` the route uses. And switching *onto* the rung never drew the "always allow" chooser until a page reload, so the one thing the rung promises was unreachable by the route a first-time user takes.
+  **The largest gap was not code.** A rule could be created and then neither seen nor revoked from any screen — the widest grant, *"anything bash does"*, one click away with no undo. The refuter called it the worst thing in the change and was right; `core/database.py`'s own comment said *"this is the table where that omission is expensive"* and the store's five-second snapshot TTL was defended on the grounds that *"revoke means revoked before the user has finished reading the confirmation"* — with no revoke to be prompt about. There is a list under the ladder now, each row with a Revoke button, the failure path saying the unwelcome half out loud: *"That could not be taken back, so Pantheon can still do it without asking."*
+  **`P7-05`'s acceptance criterion is met and visible:** the default leads the ladder, badged *"What you have now"*, and the two additions sit below it. **The copy was also lying and is fixed** — it promised confirmation before *"saves a file, runs code, sends anything or deletes anything"* while the rung gates 72 of 81 tools including pure reads of your mail, calendar, notes and memory. It now says so, and a test binds the sentence to `POST_EXTERNAL_BLOCKED_EFFECTS` in both directions so it cannot drift again. `B19` carries the argument that the effect set itself is wrong for a clean run.
+  `Verify:` on *Allow-listed*, approve one action with "anything beginning with…", watch the next matching action run unprompted, then revoke it from Settings and watch it ask again.
 - [x] **P7-05** Record the correction in the UI: **Auto-Pilot is already the default** for every untainted conversation. — **SUPERSEDED (verified 2026-08-27) — not independently actionable.** There is no ladder UI to record it in; this is an acceptance criterion, not a task, and left on its own it is a row nobody can ever honestly tick. **Re-filed as acceptance criteria on `P7-03` and `P7-04`**, citing `design/pantheon-v10.html:1721-1727`: whatever those two build must show Auto-Pilot as the existing default with the ladder added below it, never above.
 - [x] **P7-06** Rank prompts by effect. A destructive action and a UI side effect produce an identical card. The 13-value taxonomy (`ToolEffect`, `src/tool_capabilities.py`) is written and used to rank nothing. **This row owns putting `effect` on the SSE wire, and that ownership is stated here because it was previously stated nowhere** — `tool_start` and `tool_output` carry no `effect` key, and two independent auditors reading the same handoff assigned the job to two different phases. It is one field per emit — and **re-measured 2026-08-29 it is four emit sites, not two**: `tool_start` at `src/agent_loop.py:4694` (the post-approval replay) and `:5990` (the main path), `tool_output` at `:4801` and `:6216`. **Miss the approval pair and you ship the bug this row exists to fix** — the prompts that asked for consent would be the ones carrying no consequence. The frontend already renders a resolved effect list from the approval `action` payload (`chatRenderer.js:2637`, `aq.action.effects`), so there is a rendering shape to match rather than invent. **Landing it unblocks `P6-11`**, whose plan window is built and open on exactly this: four of its five per-step fields ship and `effect` is the fifth. — **done:** the 13-value taxonomy now ranks something. `src/tool_capabilities.py` gained one severity ordering and one set of plain-language phrases — *"Can permanently delete or overwrite"*, not `destructive` — plus three bands, and `describe_effects()` resolves a capability set into what a surface needs to draw it. **It is written down once and only in Python**; no JavaScript copy of the ordering or the wording exists, and two tests enforce that, because a second home for an ordering drifts the first time the enum grows and then the same action reads as harmless on one surface and severe on the other. Unknown values fail *high*: an effect nobody has classified ranks above `destructive` rather than below `ui_side_effect`, which is the same rule the module already used for unknown tools. `P6-11` closes with it, and `chatRenderer.js` stopped printing `Effects: destructive, external_side_effect` as a run of grey text identical to `Effects: ui_side_effect`.
   **Refutation found the ranking lying, and that was the whole row.** `bulk_email` — the one tool whose purpose is deleting *many* messages, and which with `permanent: true` sets `\Deleted` and bypasses Trash entirely — ranked **below** `delete_email` for a single message, because it was never in `_ACTION_DESTRUCTIVE`. The card for emptying a mailbox read milder than the card for deleting one email, which is precisely the inversion this row exists to prevent. Fixed, along with the general defect underneath it: the action tables are keyed on bare tool names while the model can call an email tool under its MCP alias, so **every** aliased call was missing its own action table and resolving one rung low.
@@ -1749,6 +1809,10 @@ nothing ever recorded the event.
 - [ ] **B14** **The steer bar is still offered on a research turn, which cannot take a steer.** `P6-18` closed the chat-mode case by asking the composer's own mode getter, but research is a *fourth* non-steerable exit (`routes/chat_routes.py` returns from inside the `effective_do_research` block before the three-way stream choice), and the client cannot see it — a research turn is `mode: 'agent'` as far as the composer is concerned. Nothing is lost: the server refuses, the words fall back to the queue, and the sentence the user reads is accurate for both causes. But a control that can only decline is still on screen, which is the `Law 15` half of the defect `P6-18` fixed everywhere else. The honest fix is a per-run signal rather than a per-build one — the capability probe fires once per page load and cannot answer a per-run question, so either the stream announces its own steerability in an early event, or the composer learns that research is in play. `Verify:` start a research turn and no steer bar appears. — found during P6-18 — agent:`impl:steer-route`
 - [ ] **B15** **Two themes put every string in the app under WCAG AA against their own panel.** Measured 2026-08-29 across all sixteen palettes in `static/js/theme.js`: `cute` renders `--fg` on `--panel` at **3.44:1** and `retrowave` at **4.15:1**, against a 4.5:1 floor for body text. Every other theme clears it with room — the next lowest is `light` at 7.13. This is not about any one component; it is the palette, so it applies to every label, every menu item and every message in the product on those two themes. **Themes are protected territory and this row does not authorise a repaint** — it authorises the measurement being on the record and a decision being made: lift `--fg`, darken `--panel`, or accept the two as decorative and say so somewhere a person will find it. `Verify:` the sixteen palettes are measured in a test, and either every one clears 4.5:1 or the exceptions are named on purpose. — found during P7-06 — agent:`refute:surfaces`
 - [ ] **B16** **The accent-coloured rule and mark fall below the 3:1 graphic floor on three light themes.** `--red` over `--panel` measures **2.24 on `paper`**, **2.56 on `cute`** and **3.03 on `light`**; WCAG asks 3:1 of a graphic that carries meaning. `P7-06`'s band ladder does not depend on it — after that row the distinction is carried by type size, weight, rule *width* and mark shape, all of which survive greyscale, and the colour is redundant reinforcement by design. So this is not a `Law 15` failure and it is not urgent. It is a real number that should either clear the floor or be documented as decorative, and the attempt to lift it by mixing `--fg` into the accent was abandoned because it could not clear 3:1 on `cute` at any ratio without destroying the hue. Related to `B15` and probably settled with it. `Verify:` every accent-on-panel graphic that carries meaning clears 3:1, or is documented as redundant. — found during P7-06 — agent:`refute:surfaces`
+- [ ] **B17** **A 1,984-character tool argument kills the whole agent run, at every rung, including the default.** `_action_from_content` (`src/tool_capabilities.py:429`) wraps `json.loads` in `except (TypeError, ValueError)`. **`RecursionError` is neither**, so a deeply nested payload — `"["*992 + "]"*992` is enough — escapes into the SSE generator and the stream dies. Reproduced at all three rungs. `_effect_fields`'s `except Exception` is *not* the escape route and catches it correctly; the run then dies at the first unguarded `capabilities_for_action` caller instead — `decision_for` on the strict rungs, `observe_tool_result` → `tool_result_should_arm_gate` on the default. **Pre-existing**: the narrow `except` is at `HEAD` before `P7-03`, so this is `P7-06`-era or older, not the ladder's. The threshold is stack-depth dependent, not a constant — 1,940 characters survived and 1,960 died in a bare harness, and behind uvicorn the ambient stack is deeper, so the real threshold is lower. The model writes this content, so a model that emits one malformed argument takes the conversation down with it. `Verify:` that payload as a tool argument produces a refused tool call, not a dead stream. — found during P7-03 — agent:`refute:gate`
+- [ ] **B18** **Running `tests/test_agent_loop.py` first breaks about 51 tests in six other files.** Confirmed with every uncommitted edit reverted, so it is neither this run's nor last's: `test_external_context_tool_gate.py` (32), `test_prompt_injection_audit.py` (9), `test_tool_path_confinement.py` (3), `test_tool_output_prompt_injection.py` (3), `test_tool_approval_task_scope.py` (2), `test_tool_approvals.py` (2). The natural full-suite order happens not to trigger it, which is why CI is green and why this will surface as a mystery the first time someone runs a subset or a shard. The mechanism is the one already documented on `tests/test_trust_rung_gate.py`'s harness: files in this suite stub entries in `sys.modules`, so a later `import` can hand back a different module object than the running code closed over — and `__module__` does not help, because it is a *name*. `Verify:` `pytest tests/test_agent_loop.py tests/test_external_context_tool_gate.py` is green. — found during P7-03 — agent:`impl:gate-tests`
+- [ ] **B19** **The strict rungs gate on the wrong effect set, and it is the reason people will turn them off.** `ask_every_time` and `allow_listed` both reuse `POST_EXTERNAL_BLOCKED_EFFECTS`, which contains `READ_PRIVATE` because an *already-tainted* run must not exfiltrate. A **clean** run on a strict rung is a different threat model, and reusing one frozenset for both conflates them: 72 of 81 known tools are gated, **21 of them solely by `read_private`** — `read_email`, `search_emails`, `list_sessions`, `search_chats`, `manage_calendar`, `manage_documents`, `list_models`, `vault_search` among them. The agent needs a confirmation to read back a note it wrote in an earlier chat. `P7-04` fixed the *copy* so it no longer promises four write verbs it does not honour, and bound that copy to the set with a test in both directions — so this row is the honest follow-up, not a surprise. Give the rungs their own writes/executes/sends/deletes set. **Two corrections to the evidence, both verified:** `manage_notes` and `manage_memory` also carry `write_private` and would stay gated anyway, and `read_file`/`glob`/`grep`/`ls` are already ungated — workspace reads are fine today, private ones are what hurt. `Verify:` on *Ask every time* a clean run reads its own memory without a prompt and still stops before writing a file. — found during P7-04 — agent:`impl:trust-ladder-ui`
+- [ ] **B20** **`P6-08`'s env layer is unreachable after the first admin settings save.** `set_settings` writes back `DEFAULT_SETTINGS` merged with the saved file, so the first save materialises **every** key into `data/settings.json` — and the resolver ranks the instance setting above the env var, so `PANTHEON_TASK_CONCURRENCY_CAP` can never win again. For a concurrency cap that is a nuisance. The row exists because the same shape would be worse elsewhere: an operator's env-var hardening silently undone the first time someone opens Settings. `trust_rung` deliberately has **no** env layer for exactly this reason — that decision is recorded here so nobody adds one thinking it will hold. `Verify:` an env var that ranks above a settings key still wins after a settings save, or the layering is documented as instance-setting-only on every key that has both. — found during P7-03 — agent:`impl:rung-setting`
 - [ ] **B01** **The datastore image is unpinned.** `chromadb/chroma:latest` in all three
   compose files, and `binwiederhier/ntfy` with no tag at all in the same three. A
   breaking Chroma release lands on the next `--build` and the collections stop loading —

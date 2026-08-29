@@ -11,7 +11,7 @@ from typing import Dict, Any, AsyncGenerator, List, Optional
 
 from fastapi import APIRouter, Request, HTTPException, Form, Query
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from core.models import ChatMessage
 from src.request_models import ChatRequest
@@ -40,7 +40,12 @@ from src.foreground_model_routing import (
 from src.session_search import search_session_messages
 from src.prompt_security import untrusted_context_message
 from core.exceptions import SessionNotFoundError
-from src.auth_helpers import effective_user, get_current_user
+from src.auth_helpers import (
+    effective_user,
+    get_current_user,
+    require_user,
+    storage_owner_for_request,
+)
 from routes.session_routes import _verify_session_owner
 from routes.document_helpers import _owner_session_filter
 from core.database import SessionLocal, get_session_mode, set_session_mode
@@ -68,11 +73,40 @@ from src.tool_policy import (
     web_search_enabled_for_turn,
 )
 from src.tool_approvals import tool_approval_store
+from src import tool_allow_rules
 
 logger = logging.getLogger(__name__)
 
 # Track active streams for partial-save safety net
 _active_streams: Dict[str, dict] = {}
+
+
+class ToolAllowRuleCreate(BaseModel):
+    """Body of `POST /api/tool-allow-rules` (P7-04)."""
+
+    tool_name: str
+    match_kind: str
+    pattern: Optional[str] = ""
+    # Declared only so that a client which sends one is refused, rather than
+    # having it silently rewritten to the caller. The stored owner always comes
+    # from `_allow_rule_owner`.
+    owner: Optional[str] = None
+
+
+def _allow_rule_owner(request: Request) -> str:
+    """The owner an allow-rule request may read and write, or a refusal.
+
+    `require_user` first: it 403s a bearer API token — no token scope grants the
+    right to lower an owner's confirmation gate — and 401s an unauthenticated
+    caller. `storage_owner_for_request` then resolves the explicit no-login mode
+    to the reserved local owner instead of the legacy NULL bucket, because a
+    rule with no owner is a rule that matches for everybody.
+    """
+    require_user(request)
+    owner = storage_owner_for_request(request)
+    if not owner:
+        raise HTTPException(403, "Allow rules need a signed-in owner")
+    return owner
 
 # How a refused steer answers on the wire. None of these may be 404, 405 or
 # 501: `chatStream.js` reads exactly those three as "this build has no steer
@@ -2939,5 +2973,76 @@ def setup_chat_routes(
                 yield f'event: error\ndata: {json.dumps({"error": str(e), "status": 500})}\n\n'
 
         return StreamingResponse(stream_rewrite(), media_type="text/event-stream")
+
+    # ------------------------------------------------------------------ #
+    # Standing allow rules for the `allow_listed` trust rung (P7-04)
+    #
+    # These live in this module because it is already where a tool approval is
+    # answered — `tool_approval_id` / `tool_approval_decision` above resolve the
+    # "allow this once" card. A rule is the durable form of the same answer, so
+    # both now share one module and one vocabulary rather than sitting in two
+    # surfaces that can drift.
+    #
+    # `require_user` before anything else: it 403s bearer API tokens (no token
+    # scope grants the right to lower an owner's confirmation gate) and 401s an
+    # unauthenticated caller. The owner is then resolved from the request and
+    # never from the body — see `_allow_rule_owner`.
+    # ------------------------------------------------------------------ #
+
+    @router.get("/api/tool-allow-rules")
+    async def list_tool_allow_rules(request: Request) -> Dict[str, Any]:
+        """Every standing allow rule belonging to the caller.
+
+        Listable is half of revocable: a grant nobody can see is one nobody
+        thinks to take back.
+        """
+        owner = _allow_rule_owner(request)
+        return {
+            "rules": tool_allow_rules.list_rules(owner),
+            # The vocabulary travels with the list so a chooser is built from
+            # the store's own kinds. Hardcoding the three strings client-side
+            # would be a second vocabulary, and a kind added to one and not the
+            # other renders as a blank option or an unsubmittable form.
+            "match_kinds": list(tool_allow_rules.MATCH_KINDS),
+        }
+
+    @router.post("/api/tool-allow-rules")
+    async def create_tool_allow_rule(
+        request: Request,
+        body: ToolAllowRuleCreate,
+    ) -> Dict[str, Any]:
+        owner = _allow_rule_owner(request)
+        if body.owner is not None and body.owner.strip() != owner:
+            # Refused rather than quietly rewritten to the caller. A client that
+            # believes it is writing a rule for someone else has to be told it
+            # is not, or the mistake ships as a rule in the wrong list.
+            raise HTTPException(403, "An allow rule can only be created for yourself")
+        try:
+            return tool_allow_rules.create_rule(
+                owner,
+                body.tool_name,
+                body.match_kind,
+                body.pattern,
+            )
+        except tool_allow_rules.AllowRuleError as exc:
+            raise HTTPException(400, str(exc))
+        except Exception:
+            logger.warning("tool allow rule create failed", exc_info=True)
+            raise HTTPException(500, "Could not save the allow rule")
+
+    @router.delete("/api/tool-allow-rules/{rule_id}")
+    async def delete_tool_allow_rule(request: Request, rule_id: str) -> Dict[str, str]:
+        owner = _allow_rule_owner(request)
+        try:
+            revoked = tool_allow_rules.delete_rule(owner, rule_id)
+        except Exception:
+            logger.warning("tool allow rule revoke failed", exc_info=True)
+            raise HTTPException(500, "Could not revoke the allow rule")
+        if not revoked:
+            # 404 for another owner's rule as much as for one that never
+            # existed, so this route cannot be used to probe which rule ids are
+            # real.
+            raise HTTPException(404, "Allow rule not found")
+        return {"status": "revoked", "id": rule_id}
 
     return router

@@ -38,11 +38,14 @@ from src.tool_security import (
 )
 from src.tool_policy import GUIDE_ONLY_DIRECTIVE, WEB_TOOL_NAMES, ToolPolicy
 from src.tool_capabilities import (
+    DEFAULT_TRUST_RUNG,
     ResultIntegrity,
     ToolRunSecurityContext,
+    TrustRung,
     blocked_tool_result,
     capabilities_for_action,
     capabilities_for_tool,
+    coerce_trust_rung,
     describe_effects,
     messages_contain_external_untrusted_context,
     tool_result_is_successful,
@@ -71,6 +74,78 @@ from src.agent_tools import (
 logger = logging.getLogger(__name__)
 
 _BROWSER_MCP_PREFIX = "mcp__builtin_browser__"
+
+
+# ── The trust rung one run answers to (P7-03) ───────────────────────────────
+#
+# Resolution follows `resolve_task_concurrency_cap` (P6-08, src/task_scheduler.py):
+# instance setting → built-in default, with the role-profile layer `P12-01`
+# specifies sitting above the setting when `P11`/`P12` builds it. When it does,
+# it may only raise strictness — a profile that lowers the rung hands a user a
+# way to switch their own confirmation gate off.
+#
+# There is no environment layer, and that is a decision rather than an omission.
+# `set_settings` (routes/auth_routes.py) writes back `DEFAULT_SETTINGS` merged
+# with the saved file, so the first admin save materialises `trust_rung` into
+# `data/settings.json` and any env value ranked below it could never win again.
+# For a concurrency cap that is a nuisance; for a confirmation gate it is an
+# operator's hardening silently coming undone the first time someone opens
+# Settings, so the layer that could do that is not built.
+TRUST_RUNG_SETTING = "trust_rung"
+
+
+def resolve_trust_rung() -> TrustRung:
+    """The rung for one run, resolved once by `stream_agent_loop` at run start.
+
+    Never raises: a settings store that cannot be read yields the default, which
+    is the behaviour the install had before this ladder existed.
+    """
+    try:
+        stored = get_setting(TRUST_RUNG_SETTING, None)
+    except Exception:
+        logger.debug("Trust rung: settings read failed", exc_info=True)
+        return DEFAULT_TRUST_RUNG
+    return coerce_trust_rung(stored)
+
+
+def _resolve_allow_rule_lookup(owner: Any, session_id: Any):
+    """The `P7-04` rule store's lookup for this run, or None if there is none.
+
+    Imported inside the call so this module does not hard-depend on a file that
+    may not be installed, and so a broken rule store degrades to "no rules"
+    instead of stopping every agent run.
+
+    Only built at `ALLOW_LISTED`, because that is the only rung
+    `ToolRunSecurityContext.decision_for` consults it at — asking the store on
+    any other rung would be a database read per run whose answer is discarded.
+
+    Contract for `src/tool_allow_rules.py`::
+
+        def allow_rule_lookup_for(*, owner, session_id) -> Callable | None
+
+    whose return value is called as ``lookup(tool_name, content) -> bool``.
+    Anything else here — no module, no attribute, a raise, a non-callable —
+    means no rules, so the gate asks. Failing the other way would let a store
+    that cannot answer decide that everything is allowed.
+    """
+    try:
+        from src.owner_identity import effective_storage_owner
+        from src.tool_allow_rules import allow_rule_lookup_for
+
+        # Resolve the owner the *same way the route that writes the rules does*
+        # (`storage_owner_for_request` → `effective_storage_owner`). Refutation
+        # found the two disagreeing: in no-login mode a run carries `owner=None`
+        # while the route files rules under the reserved local bucket, so every
+        # rule was written, listed, and reported saved — and never once read.
+        # A control that reports success and does nothing is the exact `Law 13`
+        # shape this module's own comments claim to prevent.
+        lookup = allow_rule_lookup_for(
+            owner=effective_storage_owner(owner), session_id=session_id
+        )
+    except Exception:
+        logger.debug("Allow-rule store unavailable for this run", exc_info=True)
+        return None
+    return lookup if callable(lookup) else None
 
 
 def _effect_fields(tool_name: Any, content: Any) -> Dict[str, Any]:
@@ -3645,6 +3720,10 @@ async def stream_agent_loop(
     (`describe_effects`) and are deliberately not duplicated client-side.
     """
 
+    # P7-03. Read once, here, and carried on the context for the rest of the
+    # run: re-reading per tool call would let a settings save land between two
+    # blocks of one model turn and answer them under two different policies.
+    _run_rung = resolve_trust_rung()
     run_security = ToolRunSecurityContext(
         external_untrusted_context_seen=(
             bool(external_untrusted_context_seen)
@@ -3657,7 +3736,17 @@ async def stream_agent_loop(
         approval_gate_bypassed=bool(
             exact_approval and exact_approval.allow_remaining_actions
         ),
+        rung=_run_rung,
+        allow_rule_lookup=(
+            _resolve_allow_rule_lookup(owner, session_id)
+            if _run_rung is TrustRung.ALLOW_LISTED
+            else None
+        ),
     )
+    if _run_rung is not DEFAULT_TRUST_RUNG:
+        logger.info(
+            "[agent] trust rung=%s for session=%s", _run_rung.value, session_id
+        )
     # P6-18: a steer belongs to the run that was in flight when it was sent.
     # Anything still in the inbox now missed its run, so drop it rather than let
     # it redirect this one — see `clear_steers`.

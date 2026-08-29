@@ -703,6 +703,62 @@ class UserToolData(Base):
     )
 
 
+class ToolAllowRule(TimestampMixin, Base):
+    """P7-04. One standing auto-allow rule for the `allow_listed` trust rung.
+
+    Read through the predicate `src.tool_allow_rules.allow_rule_lookup_for`
+    builds, which `src/agent_loop.py` hands to
+    `ToolRunSecurityContext.allow_rule_lookup`. The gate consults it only for an
+    action it would otherwise refuse, so a row here can turn a refusal into an
+    allow and can do nothing else. There is deliberately no deny rule: what may
+    run at all is `src/tool_policy.py`'s decision, and a second, weaker copy of
+    it in this table would be a fork with no owner.
+
+    `owner` is NOT NULL, unlike every other owner column in this file — those
+    are nullable because legacy rows predate ownership. A rule with no owner is
+    a rule that matches for everyone, which is the one row this table must never
+    be able to hold.
+
+    Revocation is a DELETE, not an `is_active` flag. A revoked rule that still
+    exists is one forgotten `.filter(is_active == True)` away from granting
+    again, and this is the table where that omission is expensive.
+    """
+    __tablename__ = "tool_allow_rules"
+
+    id           = Column(String, primary_key=True, index=True)
+    owner        = Column(String, nullable=False, index=True)
+    tool_name    = Column(String, nullable=False)
+    # "any" | "exact" | "prefix" — `src.tool_allow_rules.MATCH_KINDS`, which is
+    # also the only writer. There is no regex kind: users cannot write one that
+    # means what they think it means, and a backtracking pattern evaluated on
+    # the tool-dispatch path is a denial of service.
+    match_kind   = Column(String, nullable=False)
+    # Stored already normalised (`strip()`, nothing else) and empty for "any".
+    # Length-capped by the store so this index stays inside the row-size limit
+    # of non-SQLite backends.
+    pattern      = Column(Text, nullable=False, default="")
+    # Recency, and deliberately not a use *count*. The gate evaluates every
+    # action twice — `src/agent_loop.py` asks before rendering the approval
+    # card, then `execute_tool_block` asks again on dispatch — so a counter
+    # incremented from the lookup would count evaluations, not actions, and read
+    # about double. A number that is silently wrong is worse than no number.
+    # With `created_at` this still separates the three states a revoke decision
+    # turns on: never used (NULL), used and since gone quiet, used recently.
+    last_used_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        # A duplicate rule is not dangerous — the twins match the same actions —
+        # but it makes revocation look broken: the user deletes the rule the
+        # list showed them and the action is still allowed.
+        Index(
+            'ix_tool_allow_rules_identity',
+            'owner', 'tool_name', 'match_kind', 'pattern',
+            unique=True,
+        ),
+        Index('ix_tool_allow_rules_owner_tool', 'owner', 'tool_name'),
+    )
+
+
 class CrewMember(TimestampMixin, Base):
     """A custom AI persona ('crew member') with its own personality, model, tools, and memory scope."""
     __tablename__ = "crew_members"

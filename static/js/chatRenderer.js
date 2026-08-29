@@ -12,6 +12,23 @@ import { bindMenuDismiss } from './escMenuStack.js';
 import { loadPanel } from './panels.js';
 import { matchModelKey } from './model/matchKey.js';
 import { getTools } from './appConfig.js';
+// P7-04's "always allow this". The chooser and its words live beside the trust
+// ladder's, because they are one vocabulary; this file only decides where on the
+// card it goes. It returns null unless the server has said it takes rules AND
+// the rung is the one that reads them — see the header of that module.
+import { buildAllowRuleChooser } from './trustLadder.js';
+
+// The decisions that mean yes, and the whole of that set.
+//
+// `src/tool_approval_scopes.py` defines exactly three wire values —
+// `TASK_APPROVAL_DECISION` ("approve_task"), `CHAT_SESSION_APPROVAL_DECISION`
+// ("approve") and `DENY_APPROVAL_DECISION` ("deny") — and
+// `scope_for_decision()` returns a scope for the first two and `None` for
+// everything else. This is that same "affirmative or not" test, spelled as the
+// closed set rather than as its complement. `static/js/chat.js` already refuses
+// to submit any decision outside those three, so a value not listed here is
+// either a denial or a button the server should not have sent.
+const APPROVAL_DECISIONS_THAT_GRANT = ['approve', 'approve_task'];
 
 const SEARCH_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>';
 const REPORT_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>';
@@ -2827,6 +2844,13 @@ export function renderAskUserCard(payload, options) {
     card.appendChild(action);
   }
 
+  // Below the sealed action and directly above the buttons, because it changes
+  // what the button beside it will mean and a person has to have read it before
+  // they press one. `null` on every build that has no rule store — see
+  // `buildAllowRuleChooser`.
+  const allowRule = isToolApproval && aq.action ? buildAllowRuleChooser(aq) : null;
+  if (allowRule) card.appendChild(allowRule);
+
   const list = document.createElement('div');
   list.className = 'ask-user-options';
   card.appendChild(list);
@@ -2885,6 +2909,28 @@ export function renderAskUserCard(payload, options) {
               ? String(aq.action.document_id)
               : '',
           };
+          // A standing rule is sent by the buttons that grant the thing it
+          // would keep granting, and by no other button — refusing an action
+          // must not be a way to create permission for it. Not awaited: the
+          // approval is the urgent half and the rule is the convenience, and
+          // `createAllowRule` reports its own outcome, including the store's
+          // own refusals, verbatim.
+          //
+          // CORRECTED 2026-08-29. This read `detail.decision !== 'deny'` — a
+          // blacklist of one string, under a comment claiming the opposite of
+          // what it did. Refutation drove it with denial options that do not
+          // carry that literal: a Deny button with no `value` at all normalises
+          // to '', and any second refusal (`deny_all`, "Deny and stop") is its
+          // own string; both passed the test and created the standing rule. Not
+          // reachable through shipped code — `public_payload` always sends
+          // `DENY_APPROVAL_DECISION` — but one server-side copy change away,
+          // and the failure is silent and grants permission, which is the
+          // combination that must never be one edit deep. A whitelist cannot
+          // fail that way: a decision nobody taught this line about grants
+          // nothing.
+          if (allowRule && APPROVAL_DECISIONS_THAT_GRANT.includes(detail.decision)) {
+            allowRule.commit();
+          }
           if (onSubmit) {
             const accepted = onSubmit({
               kind: 'tool_approval',

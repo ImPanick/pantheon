@@ -6,7 +6,11 @@ from collections import namedtuple
 import pytest
 
 from src.tool_approvals import ToolApprovalStore, document_content_digest
-from src.tool_capabilities import ToolRunSecurityContext, capabilities_for_action
+from src.tool_capabilities import (
+    ToolRunSecurityContext,
+    TrustRung,
+    capabilities_for_action,
+)
 
 
 ToolBlock = namedtuple("ToolBlock", ["tool_type", "content"])
@@ -420,6 +424,102 @@ async def test_dispatcher_requires_armed_security_context_for_approval(monkeypat
 
     assert result["blocked"] is True
     assert result["policy"] == "exact_tool_approval"
+    # Which half refused. `blocked` and `policy` are identical on both halves of
+    # the split guard, so without the sentence this row passes just as happily
+    # when the half below it is the one doing the work.
+    assert "armed run security context" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_refuses_an_approval_sealed_before_untrusted_content(
+    monkeypatch,
+):
+    """The second half of the split replay guard, which nothing else reaches.
+
+    Every other pending in this suite is created tainted, so the run and the
+    seal have always agreed and this branch never ran. A rung refusal mints an
+    *untainted* card, and replaying one into a run that has since pulled in a
+    web page spends a yes given under a threat model its owner never saw.
+    """
+    import src.tool_execution as tool_execution
+
+    store = ToolApprovalStore()
+    pending = _pending(store, external_untrusted_context_seen=False)
+    grant = store.consume(
+        pending.approval_id,
+        decision="approve",
+        owner="alice",
+        session_id="session-1",
+    )
+
+    async def should_not_run(*args, **kwargs):
+        raise AssertionError("pre-taint approval reached implementation")
+
+    monkeypatch.setattr(
+        tool_execution,
+        "_execute_tool_block_impl",
+        should_not_run,
+    )
+    _, result = await tool_execution.execute_tool_block(
+        ToolBlock("bash", "printf exact"),
+        session_id="session-1",
+        owner="alice",
+        workspace=None,
+        security_context=ToolRunSecurityContext(
+            external_untrusted_context_seen=True
+        ),
+        exact_approval=grant,
+    )
+
+    assert result["blocked"] is True
+    assert result["policy"] == "exact_tool_approval"
+    assert "before untrusted content entered" in result["error"]
+    # And it is *this* half that refused, not the armed-context one above.
+    assert "armed run security context" not in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_runs_an_untainted_approval_in_the_run_that_asked(
+    monkeypatch,
+):
+    """The other side of the guard above, or it would pass by refusing everything.
+
+    This is the shape a rung refusal produces: seal untainted, run untainted,
+    gate armed by the rung rather than by taint. Refusing here would make the
+    two strict rungs unusable — they would mint cards nobody could answer.
+    """
+    import src.tool_execution as tool_execution
+
+    store = ToolApprovalStore()
+    pending = _pending(store, external_untrusted_context_seen=False)
+    grant = store.consume(
+        pending.approval_id,
+        decision="approve",
+        owner="alice",
+        session_id="session-1",
+    )
+    calls = []
+
+    async def fake_implementation(block, **kwargs):
+        calls.append((block.tool_type, block.content))
+        return "bash", {"output": "ok", "exit_code": 0}
+
+    monkeypatch.setattr(
+        tool_execution,
+        "_execute_tool_block_impl",
+        fake_implementation,
+    )
+    _, result = await tool_execution.execute_tool_block(
+        ToolBlock("bash", "printf exact"),
+        session_id="session-1",
+        owner="alice",
+        workspace=None,
+        security_context=ToolRunSecurityContext(rung=TrustRung.ASK_EVERY_TIME),
+        exact_approval=grant,
+    )
+
+    assert result["exit_code"] == 0
+    assert calls == [("bash", "printf exact")]
 
 
 @pytest.mark.asyncio

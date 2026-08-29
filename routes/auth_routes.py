@@ -25,6 +25,7 @@ from src.settings import (
     RETIRED_SETTING_KEYS,
     without_retired_settings,
 )
+from src.tool_capabilities import TrustRung
 from src.integrations import (
     load_integrations,
     add_integration,
@@ -737,12 +738,29 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             "agent_max_rounds": (1, 200),
             "agent_max_tool_calls": (0, 1000),  # 0 = unlimited
         }
+        # Per-key validation for settings whose values are a closed set. A
+        # security setting must not be *quietly* rejected: `coerce_trust_rung`
+        # deliberately falls back to the default rather than the strictest rung,
+        # so an unrecognised value stored here would hand the operator less
+        # protection than they asked for while answering 200 and echoing their
+        # typo back. Refutation reproduced exactly that with `ask_every_tim`,
+        # `Ask every time` and `ask-every-time`. Reject at the door instead.
+        _ENUMS = {
+            "trust_rung": tuple(rung.value for rung in TrustRung),
+        }
         for key in DEFAULT_SETTINGS:
             if key in RETIRED_SETTING_KEYS:
                 continue
             if key not in body:
                 continue
             val = body[key]
+            if key in _ENUMS:
+                if not isinstance(val, str) or val.strip().casefold() not in _ENUMS[key]:
+                    raise HTTPException(
+                        400,
+                        f"{key} must be one of: {', '.join(_ENUMS[key])}",
+                    )
+                val = val.strip().casefold()
             if key in _INT_RANGES:
                 lo, hi = _INT_RANGES[key]
                 try:

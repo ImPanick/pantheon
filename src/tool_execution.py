@@ -627,15 +627,46 @@ async def execute_tool_block(
 
     approval_claimed = False
     if exact_approval is not None:
+        # Split in two on 2026-08-29, and the split is the point. This used to
+        # be one condition requiring untrusted content on *both* the run and the
+        # sealed pending, because until `P7-03` a card could only exist if taint
+        # had arrived — so "taint seen" was standing in for "the gate asked".
+        # A rung refusal mints a card in a clean run, and under the old reading
+        # approving it answered "requires an armed run security context" and the
+        # tool never ran: the ladder could ask a question nobody could answer.
+        #
+        # First half: the run's gate must actually ask. `gate_is_armed` is that
+        # question, and it lives in `tool_capabilities.py` beside the gate so
+        # there is one answer rather than a copy here that goes stale the next
+        # time a rung is added.
         if (
             not isinstance(security_context, ToolRunSecurityContext)
-            or not security_context.external_untrusted_context_seen
-            or not exact_approval.pending.external_untrusted_context_seen
+            or not security_context.gate_is_armed
         ):
             return (
                 f"{getattr(block, 'tool_type', None)}: BLOCKED",
                 {
                     "error": "Exact-action approval requires an armed run security context.",
+                    "exit_code": 1,
+                    "blocked": True,
+                    "policy": "exact_tool_approval",
+                },
+            )
+        # Second half, preserved exactly: an approval granted before untrusted
+        # content entered was granted under a different threat model, and taint
+        # arriving afterwards must not be able to spend it. At the default rung
+        # the two halves together are byte-for-byte the old condition.
+        if (
+            security_context.external_untrusted_context_seen
+            and not exact_approval.pending.external_untrusted_context_seen
+        ):
+            return (
+                f"{getattr(block, 'tool_type', None)}: BLOCKED",
+                {
+                    "error": (
+                        "This approval was given before untrusted content entered "
+                        "the run, so it cannot authorize an action now."
+                    ),
                     "exit_code": 1,
                     "blocked": True,
                     "policy": "exact_tool_approval",

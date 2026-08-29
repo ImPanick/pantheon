@@ -407,3 +407,63 @@ unranked as a result. The presentation now lives inside `public_payload()`, all 
 it from one place, and `action.effects` stays alphabetical because *that* list is the sealed one.
 **`FORBIDDEN.md` Part 2 still stands unchanged** — the seal, the TTL, the single-use consumption
 and the owner binding are untouched. What was lifted was a misreading of it.
+
+---
+
+## D-2026-08-29-02 · The trust ladder — three rungs, and what a "yes" is worth
+
+`P7-03` and `P7-04` built the ladder. Six decisions came out of them that someone will
+re-derive differently in six months, and two of the six were only settled because refutation
+proved the first answer inverted the control it was meant to strengthen.
+
+**Three rungs, not the design's five.** `TrustRung` is `ask_every_time · allow_listed ·
+gate_on_untrusted`, the last being the default and today's behaviour. `.pantheon/design/pantheon-v10.html:1721`
+draws five, and two of them are not gate settings. **"Plan only"** is a mode you enter — a tool
+allowlist plus a directive — so putting it in an enum `decision_for` switches on would claim a
+control this code does not have. **"Auto-pilot"** is what `gate_on_untrusted` feels like in a
+clean chat, and the design's own note says so: *"auto-pilot isn't a new top rung. It's already
+the default. The ladder is added below current behaviour, not above it."* That is `P7-05`,
+superseded and re-filed as an acceptance criterion; it is discharged in the ladder's copy, where
+the default leads and is badged *"What you have now"*.
+
+**A blanket approval does not outrank a rung that asks.** This is the one that inverted.
+`approval_gate_bypassed` short-circuited `decision_for` before the rung, and both allow buttons
+set `allow_remaining_actions` — so on `ask_every_time`, approving one harmless action in a clean
+run disarmed the gate, and a later round fetched a hostile page and ran an exfiltration command
+**with no prompt**, an action the *default* rung stops. The two stricter rungs were strictly less
+protected than the one below them. The reason it happened is worth keeping: before this row a
+card could only exist once taint had armed the gate, so a bypass was always granted under the
+same threat model it then relaxed. A rung mints cards in clean runs, and **a yes given when
+nothing was wrong must not spend itself after something is**. The approved action still runs —
+it is authorised by the sealed exact grant, bound to that owner, session, tool and content.
+
+**A standing allow-rule does not survive taint**, for the same reason in a different costume. A
+rule is a standing yes to a *routine* action; a run carrying someone else's text is not routine.
+Without this, a *"anything starting with git"* rule let `git push --force` run unprompted in a
+tainted run that the default rung stops.
+
+**No regular expressions in the allow-list, ever.** A regex here is two problems: users cannot
+write them correctly, and a catastrophic-backtracking pattern is a denial of service on a live
+tool-dispatch path. Three explicit kinds — `any`, `exact`, `prefix` — normalised with `strip()`
+and nothing more, because matching *less* is the safe failure direction for a control that only
+ever grants. A person picks a scope on the approval card; nobody authors a pattern. A `git s`
+prefix rule *does* match `git shove-everything`, and that is pinned rather than papered over: a
+token-boundary rule would equally block `git status`, separating nothing while making the control
+impossible to predict from its own name — and a control that is hard to aim gets aimed wide.
+
+**`coerce_trust_rung` fails to the *default*, not the strictest rung** — the opposite of
+`effect_severity`'s fail-high rule, and deliberately. An unknown *effect* is something we might be
+under-warning about; an unknown *rung* is a corrupt setting, and answering it by switching a
+working install to confirm-everything reads as the product breaking. **But that only holds if a
+bad value cannot be stored**, and it could: `ask_every_tim` returned `200`, echoed the typo back,
+and left the install on the default, while `manage_settings` answered *"Set trust_rung = ask every
+time."* Both write paths now reject an unknown rung at the door. `trust_rung` deliberately has
+**no env layer**, because `set_settings` materialises every key on the first admin save and the
+instance setting outranks the env var from then on — an operator's hardening silently undone by
+someone opening Settings. `B20` carries that defect where it already exists.
+
+**Rules are owner-scoped and revocable, and the revoke screen shipped with them.** The store's
+five-second snapshot TTL is defended on the grounds that a revocation lands before the user
+finishes reading the confirmation — which was an empty argument while nothing in the product could
+revoke anything. A grant nobody can see is one nobody thinks to take back, and the widest grant
+here is one click on an approval card.

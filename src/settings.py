@@ -51,6 +51,16 @@ DEFAULT_SETTINGS = {
     # still never runs twice concurrently, which `_executing` guarantees
     # separately. See P6-08.
     "task_concurrency_cap": 1,
+    # How often the approval gate asks (P7-03). The values are `TrustRung` in
+    # src/tool_capabilities.py; `resolve_trust_rung` in src/agent_loop.py reads
+    # this layer and every run resolves it once at start. The default is what
+    # every install already did — a clean run is never gated and the gate arms
+    # once untrusted content enters — so shipping this key changes nothing until
+    # someone moves it. A value that is not a rung resolves back to this default
+    # rather than to the strictest rung; `coerce_trust_rung` argues that case.
+    # Global, deliberately not in `_PER_USER_KEYS`: a per-user copy would let a
+    # non-admin lower their own confirmation gate.
+    "trust_rung": "gate_on_untrusted",
     "image_gen_enabled": False,
     "image_model": "",
     "image_quality": "medium",

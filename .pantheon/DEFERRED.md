@@ -36,6 +36,21 @@ cached interceptor, so the approval click lands on the New-chat branch.
 - **P7-06 / P7-07 / P7-08** — effect ranking, tripped-effect identification, and the
   taint trail can all be *computed and sent* now; only their presentation waits.
 
+**PARTLY OVERTAKEN 2026-08-29, and this correction is here because the deferral was
+still telling agents to stop at a line two rows had already crossed.** `P7-06` added
+`.approval-effects` markup to that renderer and `P7-04` added `.allow-rule`. Both landed
+with the literal-source CI tests green — `tests/test_tool_approval_frontend_routing.py`
+and `tests/test_ask_user_persistence.py` assert *specific* strings, not the absence of
+new ones, so adding a sibling block does not trip them. The cache-buster contract is the
+half that still bites and it was obeyed: the string moved across all six modules in one
+commit (`20260819approvalcontrol1` → `20260829trustladder1`).
+
+**So the deferral is now narrower than it reads:** the fingerprint badge, the expiry
+countdown and the taint trail are still deferred; effect presentation and the allow-rule
+chooser are not, because they shipped. What remains true is the *reason* — that renderer
+is upstream's hottest file — so a change there still earns a coordinated buster bump and
+a look at the upstream log first.
+
 **Revisit when.** The upstream commits in that cluster stop landing daily. Check the log
 before starting; if the last three weeks are quiet, it's safe.
 

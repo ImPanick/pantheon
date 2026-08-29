@@ -41785,6 +41785,533 @@ body.theme-frosted .modal {
   }
 }
 
+/* ── The trust ladder, and "always allow this" (P7-03 / P7-04) ────────────
+   Drawn by static/js/trustLadder.js: the ladder in Settings > Agent Tools, and
+   the scope chooser on the approval card. One visual language for both,
+   deliberately the same one `.approval-effects` above already uses, so a person
+   who has learned to read one card can read the other.
+
+   WHAT CARRIES THE MEANING, IN ORDER. The sentence does. It survives greyscale,
+   colour-blindness, a 320px viewport and a screen reader, and nothing here can
+   improve on that — which is why the strict rungs' cost line is a rendered
+   sentence and not a colour. Everything below is redundant reinforcement for a
+   reader skimming rather than reading.
+
+   The ladder, stated exactly so it can be checked against the values:
+
+     channel        none (default)     some (allow-listed)  high (ask every time)
+     left rule      2px solid          4px solid            6px solid
+     mark           7px hollow circle  7px filled diamond   12x11px filled
+                                                            triangle
+     badge          present            absent               absent
+     cost line      absent             12px / 600           13px / 700
+
+     Adjacent rungs differ on at least three of those and none of them is a hue.
+
+   COLOUR IS NOT ALLOWED TO CARRY THIS, and the reason is measured rather than
+   assumed. `P7-06`'s refutation put the recoloured `serious` lead at 2.11:1 on
+   `paper` while the harmless line beside it sat at 11.05:1, and on `terminal`
+   and `retrowave` `--fg` and `--red` are the same hex, so the colour channel is
+   worth exactly zero there. So: every string in both controls is `var(--fg)` on
+   `var(--panel)`, in every band, on all sixteen themes — identical contrast by
+   construction, which is a stronger promise than a threshold. The accent appears
+   only on the 6px rule and the 12x11px triangle, both pure geometry, both
+   redundant to the width and shape beside them. `B16` records that the same
+   accent-on-panel graphic measures 2.24:1 on `paper`; it is documented there as
+   redundant, and here it genuinely is.
+
+   Rows sit on `var(--panel)` like `.ask-user-option` does, separated by their
+   border rather than by a tint. Mixing 7% `--fg` into the panel to lift a strict
+   row was tried and dropped: measured across the sixteen palettes it cost the
+   strict row up to 19% of its contrast (`claude`, 12.02 -> 9.78), which is the
+   defect this block exists to avoid, arriving through the back door.
+
+   Theme tokens only. Every accent reference carries its `var(--red)` fallback —
+   `--accent` is undefined until `P1-01` and a bare `var(--accent)` voids the
+   whole declaration silently. */
+.trust-ladder {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.trust-ladder-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--fg);
+}
+.trust-ladder-intro {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg);
+  opacity: 0.8;
+}
+.trust-ladder-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.trust-ladder-status {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--fg);
+  opacity: 0.75;
+  min-height: 15px;
+}
+.trust-ladder-note {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--fg);
+  opacity: 0.7;
+}
+/* One rung. The `none` band is the base; `some` and `high` widen the rule and
+   change the mark below. */
+.trust-rung {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left: 2px solid color-mix(in srgb, var(--fg) 34%, transparent);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--fg);
+  cursor: pointer;
+}
+.trust-rung:hover {
+  border-color: color-mix(in srgb, var(--fg) 30%, var(--border));
+}
+.trust-rung-input {
+  flex-shrink: 0;
+  margin: 3px 0 0;
+  accent-color: var(--accent, var(--red));
+}
+.trust-rung-body {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.trust-rung-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.trust-rung-mark {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  background: none;
+  opacity: 0.75;
+}
+.trust-rung-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+}
+/* The selected rung is already carried by the native radio beside it; this is
+   the second, non-colour route to the same fact. */
+.trust-rung-input:checked + .trust-rung-body .trust-rung-name {
+  font-weight: 700;
+}
+/* "What you have now", on the default and only on the default. Text, because
+   the one thing a person must not misread is which of these they already have,
+   and text is the only channel that reaches every reader. */
+.trust-rung-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--fg);
+  opacity: 0.75;
+}
+.trust-rung-sentence {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--fg);
+  opacity: 0.8;
+  overflow-wrap: anywhere;
+}
+/* Never dimmer and never smaller than the sentence above it. A control that
+   whispers its price is worse than one that does not state it, because the
+   person has then been shown the cost and still not seen it. */
+.trust-rung-cost {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--fg);
+  opacity: 1;
+  overflow-wrap: anywhere;
+}
+.trust-rung[data-rung-cost="some"] {
+  border-left-width: 4px;
+  border-left-color: color-mix(in srgb, var(--fg) 58%, transparent);
+}
+/* Filled and turned: hollow-to-solid is the half a greyscale reader gets for
+   free, the rotation is the half a small screen gets. */
+.trust-rung[data-rung-cost="some"] .trust-rung-mark {
+  border-radius: 0;
+  transform: rotate(45deg);
+  background: currentColor;
+  opacity: 0.9;
+}
+.trust-rung[data-rung-cost="high"] {
+  border-left-width: 6px;
+  border-left-color: var(--accent, var(--red));
+}
+.trust-rung[data-rung-cost="high"] .trust-rung-mark {
+  width: 0;
+  height: 0;
+  border: none;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 11px solid var(--accent, var(--red));
+  border-radius: 0;
+  background: none;
+  opacity: 1;
+}
+.trust-rung[data-rung-cost="high"] .trust-rung-cost {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* "Stop asking about this in future", on the approval card. Only ever drawn
+   when the server has said it takes rules and the rung is the one that reads
+   them; see static/js/trustLadder.js. The box matches `.approval-effects`
+   above — same 3% panel tint, same title treatment — because it is the same
+   card and a second box style would read as a second kind of thing. The dashed
+   rule says "nothing here has happened yet": no scope is chosen until one is
+   pressed, and skipping it saves nothing. */
+.allow-rule {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-left: 3px dashed color-mix(in srgb, var(--fg) 45%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fg) 3%, var(--panel));
+}
+.allow-rule-title {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.55;
+  margin-bottom: 5px;
+}
+.allow-rule-hint {
+  margin: 0 0 7px;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--fg);
+  opacity: 0.75;
+}
+.allow-rule-scopes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.allow-rule-scope {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  text-align: left;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-left: 2px solid color-mix(in srgb, var(--fg) 34%, transparent);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--fg);
+  font-family: inherit;
+  cursor: pointer;
+}
+.allow-rule-scope:hover {
+  border-color: color-mix(in srgb, var(--fg) 30%, var(--border));
+}
+/* Chosen. Three channels and only one of them is a hue: the rule jumps 2px to
+   6px, the label goes to 700, and the outline is the colour. */
+.allow-rule-scope[aria-pressed="true"] {
+  border-left-width: 6px;
+  border-left-color: var(--accent, var(--red));
+  outline: 2px solid var(--accent, var(--red));
+  outline-offset: -2px;
+}
+.allow-rule-scope[aria-pressed="true"] .allow-rule-scope-label {
+  font-weight: 700;
+}
+/* The scopes are nested — exact is inside prefix is inside any — so the mark
+   grows with what the rule would cover, and the widest one is also the only
+   filled one. */
+.allow-rule-scope-mark {
+  flex-shrink: 0;
+  align-self: center;
+  width: 6px;
+  height: 6px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  background: none;
+  opacity: 0.75;
+}
+.allow-rule-scope[data-scope="prefix"] .allow-rule-scope-mark {
+  width: 9px;
+  height: 9px;
+}
+.allow-rule-scope[data-scope="any"] .allow-rule-scope-mark {
+  width: 12px;
+  height: 12px;
+  background: currentColor;
+  opacity: 0.9;
+}
+.allow-rule-scope-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.allow-rule-scope-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg);
+}
+/* The literal command or tool the rule would cover, shown as the machine
+   detail it is so nobody reads it as prose — and shown at all because a scope
+   you cannot see is a pattern you were made to imagine. */
+.allow-rule-scope-detail {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  color: var(--fg);
+  opacity: 0.7;
+  overflow-wrap: anywhere;
+}
+.allow-rule-scope-sentence {
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--fg);
+  opacity: 0.8;
+  overflow-wrap: anywhere;
+}
+/* The widest scope says so, at weight and at full opacity. Same argument as the
+   cost line on the ladder: the sentence is the warning. */
+.allow-rule-scope[data-scope="any"] .allow-rule-scope-sentence {
+  font-weight: 700;
+  opacity: 1;
+}
+
+/* "What Pantheon no longer asks about", under the ladder and only on the rung
+   that reads rules. The list a grant could not be seen or taken back from until
+   this block existed.
+
+   It borrows `.allow-rule`'s small uppercase title, because it is the other end
+   of the same transaction — the card offers the promise in those words, this
+   shows the receipt in the same ones — but NOT its 3% panel tint. Measured
+   across the sixteen palettes that tint costs a string on it up to 8% of its
+   contrast against `var(--panel)` (claude, 12.02 -> 11.02), and the strings
+   here include the line that says a revoke failed. So every string in this
+   block is `var(--fg)` on `var(--panel)`, identical to the rungs above it by
+   construction, which is a stronger promise than a threshold. The list is told
+   apart from the ladder by its border, its padding and its title.
+
+   Nothing here reaches for the accent either. The Revoke button is the most
+   important word on the screen and a hue is the one channel `terminal` and
+   `retrowave` cannot spend — `--fg` and `--red` are the same hex on both. It is
+   told apart by being a bordered control with a verb in it, which survives
+   greyscale, a screen reader and a 320px phone. */
+.allow-rule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 2px;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+/* The list is emptied and hidden off the rung, not deleted, so moving back onto
+   the rung redraws it without a second request. `display: flex` above would
+   otherwise beat the browser's own `[hidden]` rule and show an empty box. */
+.allow-rule-list[hidden] {
+  display: none;
+}
+.allow-rule-list-title {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg);
+  opacity: 0.55;
+}
+.allow-rule-list-hint {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--fg);
+  opacity: 0.75;
+}
+/* What the last Revoke did. Never smaller or dimmer than the hint above it: on
+   the failure path this line is the only thing saying the grant is still
+   standing, and a control that whispers that has not reported it. */
+.allow-rule-list-status {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--fg);
+  opacity: 1;
+  min-height: 15px;
+}
+/* An empty list is a sentence, not a blank space. A person who has revoked
+   their last rule and a person who has never made one both need to be told
+   which of those they are looking at. */
+.allow-rule-list-empty {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--fg);
+  opacity: 0.8;
+}
+.allow-rule-list-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+/* One standing rule. The solid 2px left rule is the `.allow-rule-scope` resting
+   width: a rule that exists is not a choice being offered, so it does not wear
+   the dashed "nothing has happened yet" edge of the box on the card. */
+.allow-rule-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-left: 2px solid color-mix(in srgb, var(--fg) 34%, transparent);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--fg);
+}
+.allow-rule-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.allow-rule-row-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg);
+}
+/* The literal string the store holds, as the machine detail it is. Same
+   treatment as `.allow-rule-scope-detail`, and for the same reason: a scope you
+   cannot see is a pattern you were made to imagine. */
+.allow-rule-row-detail {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  color: var(--fg);
+  opacity: 0.7;
+  overflow-wrap: anywhere;
+}
+.allow-rule-row-sentence {
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--fg);
+  opacity: 0.8;
+  overflow-wrap: anywhere;
+}
+/* Whether it has ever been used. The one fact that separates "I need this" from
+   "I clicked that once by accident", which is the whole question a person is
+   here to answer. */
+.allow-rule-row-when {
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--fg);
+  opacity: 0.75;
+}
+/* The button. A word, at the weight of the label it undoes, in a control-shaped
+   border — no hue anywhere in it. */
+.allow-rule-revoke {
+  flex-shrink: 0;
+  align-self: center;
+  padding: 5px 11px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.allow-rule-revoke:hover {
+  border-color: color-mix(in srgb, var(--fg) 30%, var(--border));
+}
+/* In flight. Dimmed *and* unclickable, so the two channels agree — a button
+   that only looks busy invites the second press that revokes twice. */
+.allow-rule-revoke:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Both narrow breakpoints. Nothing below restates a border width, a mark or a
+   weight, so the ladder above reaches every form factor intact — and nothing
+   below is a `display: none`. `P6-04` deleted the queue panel's state line
+   under 768px and removed the sentence "Paused — nothing sends until you press
+   Resume" from the form factor with the least room to guess; the cost line here
+   is the same kind of sentence and gets the same protection. */
+@media (max-width: 768px) {
+  .trust-ladder-intro { font-size: 11px; line-height: 1.45; }
+  .trust-rung { padding: 9px 10px; gap: 9px; }
+  .trust-ladder-note { font-size: 10px; }
+  .allow-rule-list { padding: 8px 9px; }
+}
+@media (max-width: 640px) {
+  .trust-ladder-title { font-size: 12px; }
+  .trust-rung { padding: 8px 9px; gap: 8px; }
+  .trust-rung-name { font-size: 12px; }
+  /* 12/12/13 desktop becomes 11/11/12: the cost line stays level with the
+     sentence in the `some` band and a step above it in `high`, which is the
+     relationship, not the absolute size. */
+  .trust-rung-sentence { font-size: 11px; }
+  .trust-rung-cost { font-size: 11px; }
+  .trust-rung[data-rung-cost="high"] .trust-rung-cost { font-size: 12px; }
+  .allow-rule-hint { font-size: 10px; }
+  .allow-rule-scope { padding: 6px 8px; }
+  .allow-rule-scope-label { font-size: 11px; }
+  .allow-rule-scope-detail { font-size: 9px; }
+  .allow-rule-scope-sentence { font-size: 10px; }
+  /* The row stacks rather than squeezing: at 320px a Revoke button held on the
+     same line takes the width from the sentence that says what it revokes, and
+     the sentence is the half that cannot be guessed from the other. Full width
+     so the button stays a comfortable target once it is on its own line. */
+  .allow-rule-row { flex-direction: column; align-items: stretch; gap: 7px; padding: 6px 8px; }
+  .allow-rule-revoke { align-self: stretch; padding: 6px 11px; }
+  .allow-rule-list-hint { font-size: 10px; }
+  .allow-rule-list-status { font-size: 10px; }
+  .allow-rule-list-empty { font-size: 10px; }
+  .allow-rule-row-label { font-size: 11px; }
+  .allow-rule-row-detail { font-size: 9px; }
+  .allow-rule-row-sentence { font-size: 10px; }
+  .allow-rule-row-when { font-size: 9px; }
+}
+
 /* ── Workspace picker ───────────────────────────────────────────── */
 /* Layout (width/flex column/max-height) inherited from base .modal-content. */
 /* Editable path/address bar: reuses .styled-prompt-input for border/bg/radius/

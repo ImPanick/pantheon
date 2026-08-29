@@ -721,6 +721,59 @@ POST_EXTERNAL_BLOCKED_EFFECTS = frozenset(
 )
 
 
+# ── The trust ladder (P7-03, P7-04) ─────────────────────────────────────────
+#
+# How often the approval gate asks. One value, resolved once per run, and it is
+# the *only* thing on this ladder the gate implements — which is worth stating,
+# because `.pantheon/design/pantheon-v10.html:1721` draws five rungs and only
+# three of them are gate settings.
+#
+#   rung 0 "plan only"          — NOT here. Plan mode is a tool allowlist plus a
+#                                 directive (`PLAN_MODE_READONLY_TOOLS`), a mode
+#                                 you enter, not a gate condition. Putting it in
+#                                 this enum would claim a control this code does
+#                                 not have.
+#   rung 4 "auto-pilot"         — NOT here, and the design says so itself: *"auto-
+#                                 pilot isn't a new top rung. It's already the
+#                                 default."* `P7-05` re-filed that correction onto
+#                                 these two rows. Adding it would be a second name
+#                                 for `GATE_ON_UNTRUSTED` in a clean session.
+#
+# Ordered strictest first. Only the order is meaningful.
+class TrustRung(str, Enum):
+    ASK_EVERY_TIME = "ask_every_time"
+    ALLOW_LISTED = "allow_listed"
+    GATE_ON_UNTRUSTED = "gate_on_untrusted"
+
+
+DEFAULT_TRUST_RUNG = TrustRung.GATE_ON_UNTRUSTED
+
+# The two rungs that ask in a clean session. `GATE_ON_UNTRUSTED` is the current
+# behaviour and stays exactly as it was: an untainted run is never gated.
+_RUNGS_THAT_ASK_UNTAINTED = frozenset({
+    TrustRung.ASK_EVERY_TIME,
+    TrustRung.ALLOW_LISTED,
+})
+
+
+def coerce_trust_rung(value: Any) -> TrustRung:
+    """Resolve a stored or supplied rung, failing *safe* rather than open.
+
+    An unreadable value returns the default rather than the strictest rung. That
+    is the opposite of `effect_severity`'s fail-high rule and the difference is
+    deliberate: an unknown *effect* is a thing we might be under-warning about,
+    while an unknown *rung* is a corrupt setting, and answering it by silently
+    switching a working install to confirm-everything would read as the product
+    breaking. The default is what the install had before this ladder existed.
+    """
+    if isinstance(value, TrustRung):
+        return value
+    try:
+        return TrustRung(str(value).strip().casefold())
+    except (ValueError, AttributeError):
+        return DEFAULT_TRUST_RUNG
+
+
 @dataclass(frozen=True)
 class ToolGateDecision:
     allowed: bool
@@ -780,6 +833,16 @@ class ToolRunSecurityContext:
     # The bypass affects only this automatic gate; current tool policy, ownership,
     # workspace confinement, and execution/sandbox restrictions still apply.
     approval_gate_bypassed: bool = False
+    # P7-03. How often this run asks. Resolved once, at run start, from the
+    # owner's setting — never re-read mid-run, because a rung that changed under
+    # a run would make two actions in the same turn answerable to two policies.
+    rung: TrustRung = DEFAULT_TRUST_RUNG
+    # P7-04. `(tool_name, content) -> bool`, supplied by the caller. A callable
+    # rather than a store because this module classifies tools and must not grow
+    # a database import to do it; the rule store lives in `src/tool_allow_rules.py`
+    # and `src/agent_loop.py` wires the two together. `None` means no rules, which
+    # is what every existing caller gets without changing a line.
+    allow_rule_lookup: Any = None
 
     def observe_messages(self, messages: Iterable[dict]) -> None:
         """Apply server-owned chat scope and promote untrusted prompt context."""
@@ -796,26 +859,140 @@ class ToolRunSecurityContext:
         if messages_contain_external_untrusted_context(message_list):
             self.external_untrusted_context_seen = True
 
+    @property
+    def gate_is_armed(self) -> bool:
+        """Whether this run's gate can refuse anything at all.
+
+        Two things arm it now, and the second is why this property exists.
+        Before `P7-03` "armed" and "untrusted content has arrived" were the same
+        sentence, so callers outside this module wrote the second and meant the
+        first. `src/tool_execution.py` did exactly that, and the day a rung
+        started minting approval cards in a clean run, approving one returned
+        *"Exact-action approval requires an armed run security context"* and the
+        action never ran — the ladder built a card nobody could answer.
+
+        The bypass is deliberately not consulted: a bypassed gate refuses
+        nothing, but an approval replayed into one is still an approval being
+        replayed into a run that asked for it.
+        """
+        return bool(
+            self.external_untrusted_context_seen
+            or self.rung in _RUNGS_THAT_ASK_UNTAINTED
+        )
+
     def decision_for(self, tool_name: Any, content: Any = None) -> ToolGateDecision:
-        if self.approval_gate_bypassed:
+        # The bypass does not outrank a rung that asks. **Refutation proved the
+        # ladder inverted without this line**, and the reproduction is worth
+        # keeping: on `ask_every_time`, approving one harmless `bash` in a clean
+        # run set `allow_remaining_actions`, and a later round then fetched a
+        # hostile page and ran an exfiltration command with no prompt — an
+        # action the *default* rung stops and asks about. The two "stricter"
+        # rungs were strictly less protected than the one they sit below.
+        #
+        # It happened because before `P7-03` a card could only exist once taint
+        # had armed the gate, so a bypass was always granted under the same
+        # threat model it then relaxed. A rung mints cards in clean runs, and a
+        # yes given when nothing was wrong must not spend itself after something
+        # is. `src/tool_execution.py` already refuses that across the *approval*
+        # door; this is the same rule on the *bypass* door.
+        #
+        # The approved action itself still runs: it is authorised by the sealed
+        # exact grant, which is bound to that owner, session, tool and content —
+        # not by this blanket flag.
+        if self.approval_gate_bypassed and self.rung not in _RUNGS_THAT_ASK_UNTAINTED:
             return ToolGateDecision(True)
-        if not self.external_untrusted_context_seen:
+
+        # The untainted early exit is preserved exactly for the default rung,
+        # and behaviour preservation is the whole of the reason: every verdict
+        # and every sentence the default rung produces is the one it produced
+        # before this ladder existed.
+        #
+        # CORRECTED 2026-08-29. This used to claim a second reason, and the
+        # claim was false. It said `capabilities_for_action` parses model output
+        # and can raise on a pathological payload, that *"today a clean chat
+        # never reaches it"*, and that the early exit therefore kept that
+        # failure mode out of untainted runs. Instrumented, a clean chat at the
+        # default rung reaches `capabilities_for_action` four times for one
+        # fenced tool block: once from `_effect_fields` in `src/agent_loop.py`,
+        # and three more from `tool_result_should_arm_gate`, which every result
+        # passes through — twice via `observe_tool_result` (the dispatcher and
+        # the loop each call it) and once more when the result is folded into
+        # the message history. Skipping one caller in four protects nothing.
+        #
+        # It is not even the caller that would matter. `_effect_fields` catches
+        # and logs; this method and `tool_result_should_arm_gate` do not, and
+        # nothing between here and the SSE stream does either. A payload that
+        # makes `json.loads` raise something other than `TypeError`/`ValueError`
+        # — a deeply nested one raises `RecursionError`, which the `except` in
+        # `_action_from_content` does not name — ends the run at whichever of
+        # those two is reached first, at every rung.
+        asks_untainted = self.rung in _RUNGS_THAT_ASK_UNTAINTED
+        if not self.external_untrusted_context_seen and not asks_untainted:
             return ToolGateDecision(True)
+
         capabilities = capabilities_for_action(tool_name, content)
         blocked_effects = capabilities.effects & POST_EXTERNAL_BLOCKED_EFFECTS
         if capabilities.known and not blocked_effects:
             return ToolGateDecision(True)
+
+        # P7-04 says "consulted before the blocked-effect check", and it is
+        # consulted before the *refusal*, which is the same thing behaviourally
+        # and safer literally: an action with no blocked effect is already
+        # allowed above, so the only actions a rule can reach are the ones that
+        # would otherwise be refused — and a rule can never make an action fail
+        # classification and be allowed anyway.
+        #
+        # Only at `ALLOW_LISTED`. `ASK_EVERY_TIME` honouring a saved rule would
+        # be the control lying about its own name.
+        #
+        # And **never once untrusted content has entered**. Refutation found the
+        # rung asking *less* than the default without this: a standing "anything
+        # starting with git" rule let `git push --force origin main` run without
+        # a prompt in a run that had already pulled in a web page — which the
+        # default rung stops. A rule is a standing yes to a routine action, and
+        # the moment the run is carrying someone else's text it is not routine
+        # any more. The ladder's own copy promises the strict rungs "only ever
+        # make Pantheon ask more often"; this is what makes that true.
+        if (
+            self.rung is TrustRung.ALLOW_LISTED
+            and not self.external_untrusted_context_seen
+            and self._allow_rule_matches(tool_name, content)
+        ):
+            return ToolGateDecision(True)
+
         effects = ", ".join(sorted(effect.value for effect in blocked_effects))
         if not capabilities.known:
             effects = "unknown/high-impact"
+        if self.external_untrusted_context_seen:
+            why = "External untrusted context has already influenced this run. "
+        else:
+            # The rung asked for this, and the sentence has to say so — the old
+            # one blamed untrusted context, which on this path has not happened.
+            why = "This conversation is set to confirm every effectful action. "
         return ToolGateDecision(
             False,
             (
-                "External untrusted context has already influenced this run. "
+                f"{why}"
                 f"Tool '{tool_name}' requires a separate user-authorized action "
                 f"because it can cause {effects}."
             ),
         )
+
+    def _allow_rule_matches(self, tool_name: Any, content: Any) -> bool:
+        """Ask the injected rule store, and treat any failure as "no rule".
+
+        A rule store that errors must not become a rule store that allows. The
+        lookup reaches a database on a live tool-dispatch path, so it *will*
+        fail sometimes, and the safe answer to "is this allowed" when nobody
+        knows is no.
+        """
+        lookup = self.allow_rule_lookup
+        if lookup is None:
+            return False
+        try:
+            return bool(lookup(tool_name, content))
+        except Exception:
+            return False
 
     def observe_tool_result(
         self,

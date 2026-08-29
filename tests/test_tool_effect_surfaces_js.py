@@ -315,6 +315,15 @@ export default { createWhirlpool: () => ({ element: { style: {} }, destroy(){} }
     "panels.js": "export function loadPanel(){}\n",
     "appConfig.js": "export function getTools(){return Promise.resolve({ tools: [] });}\nexport function getSettings(){return Promise.resolve({});}\n",
     "model/matchKey.js": "export function matchModelKey(){return null;}\n",
+    # ADDED 2026-08-29 by P7-03/P7-04. `chatRenderer.js` now imports the
+    # approval card's allow-rule scope chooser from `static/js/trustLadder.js`;
+    # without this entry every case in this file dies on an unresolved import.
+    # Stubbed to "no chooser", which is also what the real module returns
+    # whenever the rule store is absent or the trust rung is not `allow_listed`
+    # — so the cards these tests build are exactly the ones a default install
+    # renders. The chooser itself is covered against the real module in
+    # `tests/test_trust_ladder_js.py`.
+    "trustLadder.js": "export function buildAllowRuleChooser(){ return null; }\n",
 }
 
 # ── Plan window sandbox ─────────────────────────────────────────────────────

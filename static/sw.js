@@ -7,7 +7,7 @@
 //   - Other static assets (images/fonts/libs): cache-first with bg refresh.
 //   - API / non-GET: never cached.
 // Bump CACHE_NAME whenever the precache list or SW logic changes.
-const CACHE_NAME = 'pantheon-v385-p7-effect-rank';
+const CACHE_NAME = 'pantheon-v386-p7-trust-ladder';
 
 // KaTeX resolves these from its own stylesheet, so caching the CSS without them
 // gives offline math fallback glyphs instead of proper typesetting.
@@ -60,14 +60,15 @@ const PRECACHE = [
   '/static/js/tts-ai.js',
   '/static/js/document.js',
   '/static/js/gallery.js?v=20260708match1',
-  '/static/js/chatRenderer.js?v=20260819approvalcontrol1',
+  '/static/js/chatRenderer.js?v=20260829trustladder1',
+  '/static/js/trustLadder.js',
   '/static/js/codeRunner.js',
   '/static/js/chatStream.js',
   '/static/js/chat.js',
   '/static/js/planWindow.js',
   '/static/js/cookbook.js',
   '/static/js/search-chat.js',
-  '/static/js/compare/index.js?v=20260819approvalcontrol1',
+  '/static/js/compare/index.js?v=20260829trustladder1',
   '/static/js/theme.js',
   '/static/js/censor.js',
   '/static/js/settings.js?v=20260815approvalsave1',

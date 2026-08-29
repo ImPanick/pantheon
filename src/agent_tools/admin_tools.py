@@ -13,6 +13,8 @@ import re
 import logging
 from typing import Optional, Dict
 
+from src.tool_capabilities import TrustRung
+
 from src.tool_utils import get_mcp_manager, _parse_tool_args
 from src.tool_security import BUILTIN_EMAIL_TOOLS
 
@@ -573,6 +575,13 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
         _ENUMS = {
             "image_quality": ["low", "medium", "high"],
             "reminder_channel": ["browser", "email", "ntfy", "webhook"],
+            # The trust rung is the one entry here with a security consequence.
+            # `coerce_trust_rung` falls back to the *default* rather than the
+            # strictest rung, so without this line "set trust_rung to ask every
+            # time" answered *"Set trust_rung = ask every time."* and left the
+            # install on the default — the user told to their face that the
+            # protection they asked for is on, when it is not.
+            "trust_rung": [rung.value for rung in TrustRung],
         }
         def _coerce(value, default):
             if isinstance(default, bool):

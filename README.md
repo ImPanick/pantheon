@@ -120,7 +120,7 @@ runs in CI and the count only goes down.
 
 ## Status
 
-**296 tracked tasks, 70 done.** Twenty were setup and the rename. Ten are fixes now running:
+**296 tracked tasks, 72 done.** Twenty were setup and the rename. Ten are fixes now running:
 
 - Uploaded files reach the model as content rather than a placeholder
 - Upload type blocklist removed — it blocked executables while leaving `.svg` unblocked
@@ -130,7 +130,7 @@ runs in CI and the count only goes down.
 - A tool prompt that forbade heredocs on one line and instructed their use seven lines later
 - `Your account is not allowed to can use research.`
 
-Test suite: 5,962 passing, no regressions against baseline.
+Test suite: 6,156 passing, no regressions against baseline.
 
 ---
 

@@ -27,7 +27,7 @@ _IMPORT_REWRITES = {
     # consumer still on the pre-approval-control string, which meant it received
     # a SECOND chatRenderer instance and FORBIDDEN.md's six-module approval bump
     # could never reach it. check-specifiers.py now fails CI if that recurs.
-    "import chatRenderer from './chatRenderer.js?v=20260819approvalcontrol1';": (
+    "import chatRenderer from './chatRenderer.js?v=20260829trustladder1';": (
         "import chatRenderer from './chatRenderer.mjs';"
     ),
     "import { providerLogo } from './providers.js';": (
