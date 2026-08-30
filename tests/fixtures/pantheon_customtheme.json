@@ -1,0 +1,12 @@
+{
+  "name": "customtheme",
+  "colors": {
+    "bg": "#1d2425",
+    "fg": "#d2dddf",
+    "panel": "#131516",
+    "border": "#385057",
+    "red": "#13bbe7"
+  },
+  "bgPattern": "embers",
+  "bgEffectColor": "#eb910c"
+}

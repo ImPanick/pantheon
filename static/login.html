@@ -67,6 +67,14 @@
       // — mirrors ADV_KEYS in static/js/theme.js so the login page picks up
       // every customization the user has on their theme instead of falling
       // back to defaults that didn't match the main app.
+      //
+      // This page links no stylesheet, so only the rules in the <style> block
+      // below can read any of these: `--brand-color` and `--brand-mix-to`, on
+      // the wordmark. The other twelve are written against the day a rule here
+      // wants one, and are kept key-for-key identical to `ADV_KEYS` because a
+      // set that is *nearly* the same is the one shape nothing catches —
+      // `brandMixTo` was missing from here alone, and the wordmark it feeds
+      // was the one place on this page it would have shown (B21, 2026-08-30).
       var a = c.advanced || {};
       var ADV = {
         userBubbleBg:    '--user-bubble-bg',
@@ -74,6 +82,7 @@
         bubbleBorder:    '--bubble-border',
         sidebarBg:       '--sidebar-bg',
         brandColor:      '--brand-color',
+        brandMixTo:      '--brand-mix-to',
         hamburgerColor:  '--hamburger-color',
         inputBg:         '--input-bg',
         inputBorder:     '--input-border',
@@ -168,8 +177,12 @@
     letter-spacing: 0.04em;
     /* Same gradient as the main app's welcome-screen "Pantheon" title
        (static/style.css #welcome-screen .welcome-name) so the brand
-       wordmark is consistent across login + first-launch screens. */
-    background: linear-gradient(135deg, var(--brand-color, var(--red)), color-mix(in srgb, var(--brand-color, var(--red)) 60%, var(--fg)));
+       wordmark is consistent across login + first-launch screens.
+       The gradient's far end read a bare `var(--fg)` where the rule it
+       copies reads `var(--brand-mix-to, var(--fg))`, so a user who set
+       "Logo Gradient End" saw it everywhere but here. Corrected with the
+       key itself, which this page's ADV map was also missing. B21. */
+    background: linear-gradient(135deg, var(--brand-color, var(--red)), color-mix(in srgb, var(--brand-color, var(--red)) 60%, var(--brand-mix-to, var(--fg))));
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;

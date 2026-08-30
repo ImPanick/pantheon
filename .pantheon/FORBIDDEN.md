@@ -43,6 +43,33 @@ Style them freely. Do not rename them.
 `DECISIONS.md` D-2026-08-26-03 keeps Odysseus's themes and their animated backgrounds.
 These names carry that decision. Restyle around them; do not rename or remove them.
 
+**The theme editor is protected too, and by the owner's own words (2026-08-30):**
+
+> *"One genuinely awesome thing I have found is the theme creator that's built into the
+> platform. This is genuinely awesome, and we should ensure it stays functional. It is also
+> the location where you enable the glass panels too. Can even export and import different
+> themes too."*
+
+So the editor is not merely styling that happens to work — it is a feature the owner uses and
+values, and **anything that changes what a theme stores has to keep it whole.** Concretely:
+
+```
+ADV_KEYS                  the advanced-colour picker's schema — static/js/theme.js
+computeAdvancedDefaults   its default provider; the two move in lockstep or 16 themes break
+applyFrostedGlass         the frosted-glass toggle · body.theme-frosted
+theme-frosted-toggle      the checkbox that drives it
+theme-import-area · theme-import-go · theme-export  the export/import controls
+```
+
+**A theme's stored options are one list in four places** — `saveCustomTheme`, `save`, the
+exporter and the importer. `tests/test_theme_export_round_trip_js.py` holds them equal, using
+the owner's own exported theme as its fixture. That test exists because they had already
+drifted: the exporter wrote four of seven, so **the frosted-glass state did not survive an
+export/import round trip**, and a tuned background pattern came back at its defaults. Nothing
+failed loudly — the file imported cleanly and simply produced a different theme.
+
+Add an option to what a theme stores and you add it to all four, or the test fails.
+
 ```
 THEMES                    the 16 built-in entries — static/js/theme.js:11
 THEME_DEFAULT_PATTERN     which background each theme gets. This map IS the feature.

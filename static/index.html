@@ -45,8 +45,11 @@
         // there during load and the bar "switches" colour once the app boots.
         var mtc = document.querySelector('meta[name="theme-color"]');
         if (mtc && c.bg) mtc.setAttribute('content', c.bg);
-        // Update favicon to match accent color
-        var ac = c.red || '#e06c75';
+        // Update favicon to match accent color. `_ac` above, not `c.red`:
+        // until P1-01 the two were the same value by construction, so "accent"
+        // and "red" read as synonyms here. They are separable now, and the
+        // boat is the mark for the colour that carries the chrome.
+        var ac = _ac || '#e06c75';
         var fav = document.querySelector("link[rel='icon']");
         if (fav) fav.href = 'data:image/svg+xml,' + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M16 4L16 22L6 22Z' fill='" + ac + "'/><path d='M16 8L16 22L24 22Z' fill='" + ac + "' opacity='0.6'/><path d='M4 24Q10 20 16 24Q22 28 28 24' stroke='" + ac + "' stroke-width='2.5' fill='none' stroke-linecap='round'/></svg>");
         // Derive syntax highlighting colors from theme
@@ -75,10 +78,38 @@
         s.setProperty('--hl-builtin', hsl2h(180,Math.min(fH[1]+15,60),dk?65:40));
         s.setProperty('--hl-variable', hsl2h((fH[0]+30)%360,Math.min(fH[1]+5,60),fH[2]));
         s.setProperty('--hl-params', hsl2h(fH[0],Math.max(fH[1]-5,10),dk?Math.min(fH[2]+8,85):Math.max(fH[2]-8,25)));
-        // Apply advanced overrides if present
+        // Apply advanced overrides if present.
+        //
+        // This map has to hold exactly the keys `ADV_KEYS` in
+        // static/js/theme.js holds, in both directions, because both read the
+        // same `advanced` object out of the same localStorage entry:
+        //   * a key here that `ADV_KEYS` lacks is written once, at first
+        //     paint, and then never updated or cleared — `applyColors()` only
+        //     walks `ADV_KEYS`, so the token survives every later theme switch
+        //     holding the colour of a theme the user has left;
+        //   * a key `ADV_KEYS` has and this map lacks paints its default here
+        //     and the user's override a frame later — the flash this script
+        //     exists to prevent.
+        //
+        // P1-02, 2026-08-30. This map carried 17 keys against `ADV_KEYS`'s 14.
+        // Four of the extras were the first failure above; three of those four
+        // named a token nothing under static/ reads at all, and the fourth had
+        // 131 readers of which 124 of the 130 carrying a fallback already
+        // reach the theme's own accent, so it was a second spelling of
+        // `--accent` (P1-01) that no writer maintained. All four are gone
+        // rather than wired: a wired one would need a default equal to
+        // `--accent` and would out-rank those 130 fallbacks at once, which is
+        // the flattening D-2026-08-26-03 protects the sixteen themes from.
+        // `create_theme` in src/ still accepts them; that is a dead parameter
+        // now rather than a stale token, and closing it is a src/ change this
+        // batch does not own.
+        //
+        // `hamburgerColor` is added, the missing-key half of the same drift:
+        // style.css reads `var(--hamburger-color, var(--fg))`, so a custom one
+        // painted as `--fg` until the module booted.
         if (c.advanced) {
           var a = c.advanced;
-          var advMap = {userBubbleBg:'--user-bubble-bg',aiBubbleBg:'--ai-bubble-bg',bubbleBorder:'--bubble-border',sidebarBg:'--sidebar-bg',sectionAccent:'--section-accent',brandColor:'--brand-color',brandMixTo:'--brand-mix-to',inputBg:'--input-bg',inputBorder:'--input-border',sendBtnBg:'--send-btn-bg',sendBtnHover:'--send-btn-hover',codeBg:'--code-bg',codeFg:'--code-fg',toggleBg:'--toggle-bg',toggleActive:'--toggle-active',accentPrimary:'--accent-primary',accentError:'--accent-error'};
+          var advMap = {userBubbleBg:'--user-bubble-bg',aiBubbleBg:'--ai-bubble-bg',bubbleBorder:'--bubble-border',sidebarBg:'--sidebar-bg',brandColor:'--brand-color',brandMixTo:'--brand-mix-to',hamburgerColor:'--hamburger-color',inputBg:'--input-bg',inputBorder:'--input-border',sendBtnBg:'--send-btn-bg',sendBtnHover:'--send-btn-hover',codeBg:'--code-bg',codeFg:'--code-fg',toggleActive:'--toggle-active'};
           for (var k in advMap) { if (a[k]) s.setProperty(advMap[k], a[k]); }
         }
       }
@@ -127,7 +158,14 @@
     try {
       var path = (window.location.pathname || '').toLowerCase();
       var theme = (function(){ try { return JSON.parse(localStorage.getItem('pantheon-theme')); } catch(_) { return null; } })();
-      var ac = (theme && (theme.red || theme.colors && theme.colors.red)) || '#e06c75';
+      // Accent before red, matching `_updateFavicon()` in static/js/theme.js
+      // and the first-paint block above. Before P1-01 a theme's accent was its
+      // red by construction and the distinction did not exist; a theme
+      // carrying its own accent would otherwise get one favicon here and a
+      // different one the moment the module boots.
+      var _tc = theme || {};
+      var ac = _tc.accent || _tc.red
+             || (_tc.colors && (_tc.colors.accent || _tc.colors.red)) || '#e06c75';
       // Shapes are line-stroke SVGs (no emoji glyphs). Each entry returns
       // the inner SVG markup rendered against currentColor=`ac`.
       var SHAPES = {

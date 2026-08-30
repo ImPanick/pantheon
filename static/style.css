@@ -43,6 +43,40 @@
   --green: #50fa7b;
   --warn: #f0ad4e;
 
+  /* Secondary text. 93 sites named this token and none defined it, so each of
+     them dropped its declaration and inherited body text at full strength.
+     Three of the casualties were not merely "too loud": `.cookbook-tab`,
+     `.lib-tab` and `.admin-tab` sit at `--fg-muted` and hover to `var(--fg)`,
+     so base and hover resolved to the same colour and the affordance did
+     nothing; four hover-border rules and `.ge-adj-hist-handle` (a triangle
+     drawn entirely from `border-color`) painted nothing at all.
+
+     Declared once here rather than beside `--fg` in the three palette writers.
+     All three set `--fg` on this same element, so one `:root` rule already
+     tracks every palette — and B21 is that those three have already drifted
+     (14 / 13 / 17 keys), so a fourth mirror is the defect, not the fix. The
+     `P1-01` prohibition on `:root` does not carry over: it existed because 553
+     sites shipped a `var(--red)` fallback that a `:root` rule would have
+     flipped. Here 8 sites carry any fallback at all, and all 8 want this.
+
+     Mixed toward `--color-muted` rather than toward `--bg` or `transparent`,
+     which is where the value stopped being a taste question. A mix toward the
+     background travels the segment from `--fg` to `--bg`, and `forest`'s
+     accent `#7cb871` lies within 22 sRGB units of that segment at *every*
+     ratio — so on `forest` an inactive tab and the active tab beside it became
+     one colour, at 33 such pairs. Pivoting through a mid-grey leaves the
+     segment: the closest any of the sixteen accents then comes is 45.6. It
+     also has the right sign on light palettes, where mixing toward `--bg`
+     lightens secondary text into the page and puts `light` at 2.96:1.
+
+     45% is the largest muting at which fourteen of the sixteen still clear
+     4.5:1 against `--panel`; 43% is the true edge and the two points keep
+     `light` off a 4.50 knife-edge. `cute` (3.54) and `retrowave` (3.97) miss
+     it because their own `--fg` misses it — 3.44 and 4.15 — which is B15 and
+     not reachable from this file. Both still clear 3:1, which mixing toward
+     `--bg` could not manage at any ratio. */
+  --fg-muted: color-mix(in srgb, var(--fg) 45%, var(--color-muted));
+
   /* Syntax highlighting */
   --hl-bg: #1e2228;
   --hl-fg: #9cdef2;
@@ -6032,8 +6066,25 @@ body.bg-pattern-sparkles {
         margin: -10px -12px;
       }
     }
+    /* `#mobile-backdrop` and `#mobile-menu-btn` are markup in `index.html` that
+       no script references — nothing queries them, binds them or toggles a
+       class on them. `#mobile-menu-btn` is a `<button>` holding a hamburger
+       glyph, so without this it renders a second, dead hamburger beside the
+       live `#hamburger-btn` at every width. Hidden everywhere, on purpose. */
     #mobile-backdrop, #mobile-menu-btn { display:none !important; }
-    #sidebar-backdrop { display:none !important; }
+    /* Was `#sidebar-backdrop { display:none !important }` on this line, at
+       depth 0. `#sidebar-backdrop` is the live one — `sidebar-layout.js`
+       creates it and thirteen sites across four modules toggle `.visible` on
+       it — but every style it owns lives inside `@media (max-width:768px)`, so
+       a depth-0 `!important` out-ranked that block at every width and the
+       drawer never dimmed the page or took the tap that closes it. Deleting
+       the line outright is not the fix either: outside the mobile block the
+       element has no `position`, so it becomes a bare flex child of
+       `body { display:flex }` rather than an overlay. Restricted to the widths
+       the mobile block does not claim instead, so desktop is unchanged. */
+    @media (min-width: 769px) {
+      #sidebar-backdrop { display:none !important; }
+    }
     /* ----- Loading spinner ----- */
     @keyframes spin {
       to { transform: rotate(360deg); }

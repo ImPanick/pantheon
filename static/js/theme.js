@@ -300,15 +300,23 @@ export function applyColors(colors) {
   s.setProperty('--hl-variable', syn.variable);
   s.setProperty('--hl-params', syn.params);
 
-  // Apply advanced overrides (or defaults)
+  // Apply advanced overrides (or defaults). Unconditionally, every key, every
+  // call — an override that is absent from `colors` has to be written back to
+  // its default here or the previous theme's value stays on the element. That
+  // is why the mirrors of this list in index.html and login.html may not carry
+  // a key this one lacks: nothing else ever clears one.
   const adv = colors.advanced || {};
   const defaults = computeAdvancedDefaults(colors);
   for (const { key, css } of ADV_KEYS) {
     s.setProperty(css, adv[key] || defaults[key]);
   }
 
-  // Update favicon to match theme accent color
-  _updateFavicon(colors.red || '#e06c75');
+  // Update favicon to match theme accent color. `_accent`, not `colors.red`:
+  // the comment said accent and the argument said red, and until P1-01 made
+  // the accent separately settable those were the same value for every theme.
+  // A theme carrying its own `accent` would otherwise get an accent-coloured
+  // UI and a red boat.
+  _updateFavicon(_accent || '#e06c75');
 }
 
 // Per-route SVG shape registry — kept in sync with the inline favicon
@@ -1298,10 +1306,26 @@ export function initThemeUI() {
       if (adv) colors.advanced = adv;
       const cur = getSaved();
       const obj = { name: cur ? cur.name : 'custom', colors };
+      // Every option `save()` and `saveCustomTheme()` persist, in the same
+      // order they are declared there. The three at the end were missing until
+      // 2026-08-30, and the omission was invisible because export produced a
+      // file that imported cleanly — it simply came back as a different theme.
+      // `frosted` is the one that mattered: the frosted-glass look is a
+      // headline feature of this editor, and turning it on, exporting, and
+      // importing on another machine silently gave you a theme with the glass
+      // off. `bgEffectIntensity` and `bgEffectSize` lost a tuned background
+      // pattern back to its defaults the same way.
+      //
+      // A test pins these three lists — this one, the importer's, and the two
+      // save functions' — against each other, so a new option cannot be added
+      // to storage and forgotten here again.
       if (cur && cur.font) obj.font = cur.font;
       if (cur && cur.density) obj.density = cur.density;
       if (cur && cur.bgPattern) obj.bgPattern = cur.bgPattern;
       if (cur && cur.bgEffectColor) obj.bgEffectColor = cur.bgEffectColor;
+      if (cur && cur.bgEffectIntensity !== undefined) obj.bgEffectIntensity = cur.bgEffectIntensity;
+      if (cur && cur.bgEffectSize !== undefined) obj.bgEffectSize = cur.bgEffectSize;
+      if (cur && cur.frosted !== undefined) obj.frosted = !!cur.frosted;
       const json = JSON.stringify(obj, null, 2);
       const blob = new Blob([json], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -1347,16 +1371,31 @@ export function initThemeUI() {
       if (colors.advanced && typeof colors.advanced === 'object') colorData.advanced = colors.advanced;
       const slug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') || 'imported';
       const opts = {};
+      // Mirrors the exporter above. An older export carries only the first
+      // four and still imports correctly — the three below are read with
+      // `!== undefined` rather than truthiness precisely so that a file
+      // without them leaves the defaults alone, and a file that says
+      // `frosted: false` or `bgEffectIntensity: 0` is obeyed rather than
+      // ignored.
       if (parsed.font) opts.font = parsed.font;
       if (parsed.density) opts.density = parsed.density;
       if (parsed.bgPattern) opts.bgPattern = parsed.bgPattern;
       if (parsed.bgEffectColor) opts.bgEffectColor = parsed.bgEffectColor;
+      if (parsed.bgEffectIntensity !== undefined) opts.bgEffectIntensity = Number(parsed.bgEffectIntensity);
+      if (parsed.bgEffectSize !== undefined) opts.bgEffectSize = Number(parsed.bgEffectSize);
+      if (parsed.frosted !== undefined) opts.frosted = !!parsed.frosted;
       const result = saveCustomTheme(slug, colorData, opts);
       if (result === 'limit') { saveError.textContent = 'Max ' + MAX_CUSTOM_THEMES + ' custom themes. Delete one first.'; saveError.style.display = 'block'; return; }
       save(slug, colorData, opts);
       applyColors(colorData);
       applyFontDensity(opts.font || DEFAULT_FONT, opts.density || DEFAULT_DENSITY);
       applyBgEffectColor(opts.bgEffectColor || '');
+      if (opts.bgEffectIntensity !== undefined) applyBgEffectIntensity(opts.bgEffectIntensity);
+      if (opts.bgEffectSize !== undefined) applyBgEffectSize(opts.bgEffectSize);
+      // Applied before the pattern: the canvas animators read the intensity
+      // and size off the custom properties when they start, so setting them
+      // after `applyBgPattern` would leave the first frames on the old values.
+      applyFrostedGlass(!!opts.frosted);
       applyBgPattern(opts.bgPattern || 'none');
       importAreaEl.classList.add('hidden');
       importActionsEl.classList.add('hidden');
@@ -1381,6 +1420,16 @@ export function initThemeUI() {
 // Maps each color input id to a selector for the part of the UI it affects.
 // When the user hovers the color row, we overlay a translucent box on the
 // matching elements so it's obvious what's being edited.
+//
+// Every `adv-` key here must be a key `ADV_KEYS` carries, because that is
+// what decides which `adv-*` inputs index.html holds — an entry for a key
+// `ADV_KEYS` lacks describes a row that does not exist. It need not be the
+// whole of `ADV_KEYS`: a key with no entry here just gets no hover highlight,
+// which is `brandMixTo` and `hamburgerColor` today. P1-02, 2026-08-30: the
+// four entries removed (`adv-sectionAccent`, `adv-toggleBg`,
+// `adv-accentPrimary`, `adv-accentError`) were dead lookups of that first
+// kind, and the same four keys the first-paint script wrote and nothing
+// maintained.
 const _THEME_ZONE_MAP = {
   'clr-bg':            'body',
   'clr-fg':            '.msg .body, .chat-input-bar',
@@ -1392,7 +1441,6 @@ const _THEME_ZONE_MAP = {
   'adv-aiBubbleBg':    '.msg.msg-ai .body',
   'adv-bubbleBorder':  '.msg .body',
   'adv-sidebarBg':     '.sidebar',
-  'adv-sectionAccent': '.sidebar h4',
   'adv-brandColor':    '#sidebar-brand-btn',
   'adv-inputBg':       '#message',
   'adv-inputBorder':   '.chat-input-bar',
@@ -1400,10 +1448,7 @@ const _THEME_ZONE_MAP = {
   'adv-sendBtnHover':  '.send-btn',
   'adv-codeBg':        'pre, code',
   'adv-codeFg':        'pre code, p code',
-  'adv-toggleBg':      '.mode-toggle, .admin-switch',
   'adv-toggleActive':  '.mode-toggle-btn.active, .admin-switch input:checked + .admin-slider',
-  'adv-accentPrimary': '.send-btn, .icon-rail-btn.active',
-  'adv-accentError':   '.toast.error',
 };
 
 function _showThemeZoneHighlight(selector) {

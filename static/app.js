@@ -51,7 +51,11 @@ import ttsModule from './js/tts-ai.js';
 import spinnerModule from './js/spinner.js';
 import { initKeyboardShortcuts } from './js/keyboard-shortcuts.js';
 import { getSettings } from './js/appConfig.js';
-import { initSidebarLayout, syncRailSide } from './js/sidebar-layout.js?v=20260715startupclean';
+// `syncRailSide` is not named here: initSidebarLayout() publishes it as
+// window.syncRailSide, which is how the two call sites left in this file reach
+// it. The direct binding existed only for the rail-gear handler that P1-05
+// removed.
+import { initSidebarLayout } from './js/sidebar-layout.js?v=20260715startupclean';
 import { initSectionCollapse, initSectionDrag } from './js/section-management.js';
 
 const API_BASE = window.location.origin;
@@ -3793,17 +3797,24 @@ function startPantheonApp() {
     });
   }
 
-  // Rail: settings button
+  // Rail: settings button — the same opener #user-bar-settings uses above, and
+  // the one /settings, the model picker and the guided tour reach in the end.
+  //
+  // CORRECTED 2026-08-30 (P1-05). Until now this unhid #sidebar, called
+  // syncRailSide() and smooth-scrolled .sidebar-inner to the bottom, under the
+  // comment "Scroll to bottom where settings typically are". Recorded because
+  // the guess was tried and is wrong in three separate ways: #settings-modal is
+  // a body-level .modal overlay, so there is nothing in the sidebar to scroll
+  // to; unhiding the sidebar is a state change nobody asked for, and
+  // syncRailSide() then reacted to it by setting the rail's own display to
+  // none, taking the clicked gear off screen; and sidebar-layout.js already
+  // excludes #rail-settings from the delegated open-and-scroll handler that
+  // every section launcher does want. Going through the module rather than
+  // clicking #user-bar-settings also keeps the rail working when that button is
+  // switched off in Customize UI (ui_visibility.js, 'sidebar-settings-btn').
   const _railSettings = el('rail-settings');
   if (_railSettings) {
-    _railSettings.addEventListener('click', () => {
-      const sidebar = document.getElementById('sidebar');
-      if (sidebar) sidebar.classList.remove('hidden');
-      syncRailSide();
-      // Scroll to bottom where settings typically are
-      const sidebarInner = document.querySelector('.sidebar-inner');
-      if (sidebarInner) sidebarInner.scrollTo({ top: sidebarInner.scrollHeight, behavior: 'smooth' });
-    });
+    _railSettings.addEventListener('click', () => settingsModule.open());
   }
 
   // Rail: admin button
