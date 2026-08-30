@@ -88,34 +88,37 @@ Ten of its rows landed on 2026-08-27 — see § Progress. What is left of it:
 - **`P0-21b`, `P0-31`** — new, from the run: twelve bundled packages with no notice anywhere, and
   49 unaudited `ody-` storage-key hits.
 
-### `P1` is 5 of 14. `P1-10` next — it is the largest remaining row with no dependency
+### Next: `H01`, then `H05`, then `P3-15`. The `H` rows outrank the phases now
 
-**What is left in `P1` splits three ways.** `P1-06` is blocked on its own scope and `P1-07` is
-superseded into it. `P1-08`/`P1-09` are the contrast pair, and `P1-08` is now measured — 187
-full-strength accent `color:` sites failing on seven palettes, 33 rules painting text on an
-undiluted accent with 19 hard-coded `#fff` — but **`B15` has to settle first**, because two
-palettes put their own `--fg` under the floor against their own `--panel` and the row cannot state
-what passing means until someone decides whether those two are decorative.
+**The discovery audit changed what the top of the queue is.** 21 rows of working code with no
+door, and three of them are live harm rather than absent polish:
 
-**So take `P1-10` — normalise z-index to 7 named tiers.** 259 declarations, 64 distinct values,
-range −1 to 1,000,000, and the row already carries the safe method: an order-preserving remap,
-strictly increasing in the same sorted order, so no element can change stacking. It depends on
-nothing, `P1-11` (the toast occlusion) falls out of it, and it is the last `P1` row that is large
-without being blocked. **Re-derive the 259 and the 64 first** — every count in this phase has moved
-at least once, and `P1-01`'s moved four times.
+**`H01` first — the email black hole.** It is on by default, it is losing user data right now, and
+the model is telling people their mail is awaiting approval on a screen that does not exist.
+**Run `git log -S'"agent_email_confirm": True' src/settings.py` before anything else** — that says
+whether the backlog is a week or a year, and it changes whether the first move is the UI or the
+one-line default flip.
 
-**Then `P1-12`** (one `prefers-reduced-motion` guard) — and read its correction before starting:
-12 of the 160 keyframes are injected into `document.head` at runtime by `slashCommands.js`, so a
-CSS-only guard passes its own review and still animates. **Then `P1-13`/`P1-14`**, which are
-mechanical.
+**`H05` second — the feature flags.** An admin turning off Deep Research or Gallery gets a success
+response and the feature stays on, for the user *and* for the agent, because nothing was ever
+gated server-side. Eight decorative switches.
 
-**What this run leaves behind, in priority order.** `B21`'s remaining half — `src/` is a seventh
-and eighth advanced-key set, and `create_theme` now accepts four **dead parameters**: stored, and
-written by nobody. `B22` (semantic tokens are not theme-scoped — a success green is the same hex on
-`terminal` as on `paper`, where it measures 1.37:1). `B23` (two link idioms disagree). The
-`style.css` sweep of 121 `var(--accent-primary, …)` sites onto `--accent` is described precisely on
-`P1-02` and is safe to defer indefinitely — nothing is broken, and a test now pins that. Still open
-from earlier runs: `B17`, `B18`, `B19`, `B20`, `P5-17`, `B13`, `B14`, `B15`, `B16`, `B06`, `B10`.
+**`H14`, `H15`, `H17` are one-liners with real payoff** — a tooltip that names the gesture it
+actually needs, settings search that indexes the controls rather than only the panels, and the
+idempotent open-signup route that already exists and nothing calls.
+
+**Then `P3-15`**, which is now specified rather than sketched: the audit's method is on the row,
+and a correct script rediscovers all 21 `H` rows from a clean checkout. Fix `check-wiring.py`'s
+two newly-found blind spots first — string-literal-only matching, and not stripping comments.
+
+**`P1` continues at 5 of 14 when the `H` rows are drained.** `P1-10` (z-index, 259 declarations,
+64 values, order-preserving remap) is the largest unblocked row left; `P1-08` still waits on
+`B15`. Re-derive every count first — every number in that phase has moved at least once and
+`P1-01`'s moved four times.
+
+**What this run leaves behind.** The 21 `H` rows. `B21`'s `src/` half. `B22`, `B23`. From earlier
+runs: `B17`, `B18`, `B19`, `B20` (which `H06` supersedes and sharpens — read `H06` first),
+`P5-17`, `B13`, `B14`, `B15`, `B16`, `B06`, `B10`.
 
 **Still out of scope on its own:** `P0-29`. The Cookbook → Forge sweep is 3,529 occurrences
 across 171 files and 43 paths — the largest blast radius in the programme, coupled to
@@ -139,6 +142,69 @@ location was wrong until it was corrected on the row itself; the row is right no
 *The one progress area. Newest first. One entry per completed section — two lines, a
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
+
+### The discovery audit — 21 features that exist and cannot be reached
+Four read-only audits, five fixes, 21 new `H` rows. `65054fa..HEAD`. **Suite 6,301 collected,
+6,277 passing, the same 19 failing and all 19 pre-existing.**
+
+**This run came from one sentence.** The owner, about his own product: *"there's a lot of hidden
+things that are in this platform that we can't fully discover yet."* Four agents swept the
+backend, the frontend, the configuration surface, and every place the product *claims* a
+capability. **Two of them independently found the same two defects**, which is the strongest
+evidence in the set.
+
+**The territory was bigger than any document said.** 500 routes, not the 301 in `routes/*.py` —
+**173 live in subdirectories** a naive scan omits, and three of the best findings are in that
+half. 168 JS modules, not 145. 128 environment variables read, 54 declared.
+
+**Ranked by harm, the product lying to the model comes first**, because the model repeats it to a
+person as fact. Three of those:
+
+- **`ui_control open_panel skills` and `open_panel settings` returned "Opening skills panel" and
+  did nothing.** The two element ids they clicked **exist nowhere in the repository** — the only
+  occurrence of either string was that line. And the system prompt steers *towards* it: *"'open
+  skills' … means OPEN THE PANEL — call `ui_control`, NOT a manage/list tool"*, so the one
+  phrasing a person would use was routed off a working tool onto a silent no-op. **Fixed.**
+- **`tail_serve_output` was advertised on four surfaces and callable from none.** In the native
+  schema, in the system prompt, in the RAG tool index, in the cookbook toolset group — and absent
+  from `TOOL_TAGS`, which gates *both* call channels. `do_serve_model` **orders** the model to
+  call it after every serve: *"Do not tell the user to check logs; you have the log tool."* So at
+  the exact moment a model server crashes, the agent reached for the traceback and the call was
+  dropped. **Fixed — one string, and the comment eight lines above it already described this
+  failure for the rest of the family.**
+- **`edit_image` advertises four actions and all four POST to routes that do not exist.** Filed as
+  `H03` rather than fixed: all four capabilities are real under other names, but the bodies
+  differ enough that a path map would be wrong.
+
+**Then losing their data.** `agent_email_confirm` defaults on, so agent-composed mail is staged
+into `scheduled_emails` with a `send_at` the poller never reaches. Three routes exist to approve
+it. **`grep` for them across 183 frontend files returns nothing.** The model is instructed to tell
+the user their mail awaits approval *in the chat UI*; there is no approval surface in existence.
+
+**Then hiding capability the owner already paid for.** A 475-line Personal Assistant with daily
+check-ins whose only entry point is gated on a function that occurs **once in the repository, at
+that call site**. A complete embedding-model manager: seven admin routes, zero pixels. Session
+cleanup *with a dry run*. Three memory views including "why did it remember that". A blind-vote
+history you can never read. An add-to-album endpoint that takes exactly the array the gallery's
+existing multi-select already produces.
+
+**And two places where a control lies.** Seven of eight feature flags do nothing, and four are
+un-hidden one line after being hidden — measured by replaying the real sequence: 9 of 9 hidden,
+then 7 of 9 shown again. `PANTHEON_TASK_CONCURRENCY_CAP` has **never worked on any install**, not
+"after the first admin save" as `B20` says — `get_setting` merges defaults on every read, so the
+env layer is unreachable code, and the helper written to solve exactly this has zero callers.
+
+**Two lessons about our own instruments.** `check-wiring.py` matches only lookups whose argument
+is a *string literal*, so the id map that produced the headline defect scored clean — Law 13's
+enforcement has a structural blind spot, not a one-off. And it does not strip comments: writing
+the correction note with the call spelled out made it count my own comment as an unresolved
+lookup. Both are now on `P3-15`, whose specification is no longer "a script finds the next three
+for free" but "a correct script rediscovers all 21".
+
+**Also corrected: three documents told contributors to target a `dev` branch that does not
+exist** — at clone, at contribute, and at harden-CI, the three places a newcomer meets the
+project. `README.md` said the opposite and was right. And the README's own badge said 5,742 tests
+while its body said 6,277, on one page.
 
 ### `P1` wave 2 — four rows, and the feature the owner loves was quietly broken
 `P1-02`, `P1-03`, `P1-04`, `P1-05`, plus `B24`. `a67000b..HEAD`. **296 tracked, 77 done. Suite
@@ -1108,6 +1174,28 @@ shapes. Each is an audit, not a guess.
 - [ ] **P3-15** **Extend the check to the other half of the disease** — routes with no caller,
   settings keys with no reader, feature flags with no consumer. `P2-18` found three flags with
   zero consumers by hand; a script finds the next three for free.
+  **The audit that this script would have automated ran by hand on 2026-08-30 and produced the
+  21 `H` rows.** Its findings are the specification: build the script against them, and a
+  correct script rediscovers all 21. What it established that changes the row:
+  **(1) The route count is 500, not 301.** `routes/*.py` top-level is 304; **173 more live in
+  `routes/<subdir>/*.py`** plus 5 in `companion/`. Three of the audit's best findings are in the
+  half a naive scan omits. Get the list by walking `app.routes` — this FastAPI keeps included
+  routers nested, so a flat walk returns 69 and recursion returns 505.
+  **(2) Path matching needs three passes.** Literal search alone is useless against
+  `` `${API_BASE}/api/a/${id}/b` ``. What worked: normalise both sides to segment patterns; then
+  a head-plus-tail-on-one-line probe; then a per-file base-variable resolver, which was the only
+  thing that caught three false positives in `assistant.js`. Two independent methods agreed on 90
+  routes and disagreed on 8 — the stricter was right all 8 times.
+  **(3) `check-wiring.py` has two more blind spots than the two already recorded.** It matches
+  only a lookup whose argument is a **string literal**, so an id map indexed by a variable scores
+  clean — and on 2026-08-30 exactly that hid the highest-harm defect in the audit, where the agent
+  reported opening a panel that had no button behind it. And it **does not strip comments**, so
+  writing that sentence with the call spelled out made it count the comment as a fourth unresolved
+  lookup. Fix both before extending it.
+  **(4) 84 environment variables are read by app code and absent from `.env.example`**, including
+  the switch that silently uncaps every local agent run (`H08`). 128 read / 54 declared / 55
+  forwarded by compose / 33 in `docs/setup.md`.
+  `Verify:` the script finds `H01`, `H04` and `H10` from a clean checkout with no hints.
 
 **`check-wiring.py` has two blind spots, and they are worth fixing before extending it**
 *(measured 2026-08-27)*. It scans `tracked("static/js")` only, so **`static/app.js` and
@@ -1892,6 +1980,43 @@ nothing ever recorded the event.
 - **D-03 · VM station.** Held. If the need proves real, wire to Proxmox or libvirt through an MCP server rather than building a hypervisor. `Depends:` P8 complete.
 
 ---
+
+# Hidden — features that exist and cannot be reached
+
+*Found 2026-08-30 by a four-part discovery audit, run because the owner said of his own
+product: **"there's a lot of hidden things that are in this platform that we can't fully
+discover yet."** He was right. Four read-only agents swept the backend (500 routes — not the
+301 in `routes/*.py`, which silently omits 173 in subdirectories), the frontend (168 modules),
+the configuration surface (68 settings keys, 8 flags, 128 env vars) and every place the product
+*claims* a capability. Two of them independently found the same two defects, which is the
+strongest evidence in the set.*
+
+*These are not bugs in a feature someone is building. They are **working code with no door** —
+and the difference matters, because every one of them is already paid for. Ranked by harm:
+the product lying to the model comes first, because the model repeats the lie to a person as
+fact; then losing their data; then hiding capability they own.*
+
+- [ ] **H01** **The agent's email approval queue is a black hole, on by default.** `agent_email_confirm` defaults to `True` (`src/settings.py:46`), so `_send_email` does not SMTP — it stages the message into `scheduled_emails` with `status='agent_draft'` and a **far-future `send_at` the poller never reaches** (`mcp_servers/email_server.py:1393,1478`). Three endpoints exist to complete the loop: `GET /api/email/pending`, `POST /api/email/pending/{sid}/approve`, `DELETE /api/email/pending/{sid}` (`routes/email_routes.py:4471,4490,4514`). **`grep -rn "email/pending\|agent_draft" static/` returns nothing** — no path, no identifier, no comment, in 183 frontend files. Three places state the intent and all three are wrong about reality: the route comment says *"these endpoints let the chat UI surface them"*, the stash docstring says *"the chat UI can render as an approval card"*, and the model is **instructed** at `src/agent_loop.py:949` and `:962` that the tool *"stages the email for the user to approve in the chat UI."* So the model tells the user their mail awaits approval and there is no approval surface in existence. Every agent-composed email since this default landed is sitting unsent and invisible. `Verify:` a pending-drafts card in chat with Approve and Discard; and run `git log -S'"agent_email_confirm": True' src/settings.py` first, because that tells you whether the backlog is a week or a year. **One-line stopgap while the UI is built: default it to `False` so mail actually sends.** — found during the discovery audit — agent:`audit:backend`
+- [ ] **H02** **The Personal Assistant has no door at all.** 475 lines of frontend (`static/js/assistant.js`, loaded on every page at `index.html:2751`) and six live routes (`routes/assistant_routes.py` — session, settings GET/PATCH, run, run-status, timezones) behind a settings modal offering a personality picker, timezone, endpoint, model, a grouped tool allow-list and **daily scheduled check-ins**. Both entry points are dead: `openAssistantChat()` (`:23`) has **zero callers repo-wide**, and `openAssistantSettings()` (`:401`) is reached only from a gear built by a poll gated on `window.sessionModule?.getActiveSession?.()` — **`getActiveSession` occurs exactly once in the repository, at that call site**, and is not among `sessionModule`'s 22 exports. So the gear is never built and the poll spins 120 times over two minutes on every page load doing nothing. The comment at `:416` says the views *"now live as Activity / Settings tabs inside the Tasks modal (see tasks.js)"* — **`tasks.js` never imports `assistant.js`**; that migration never happened. The session is lazily created by the route only `openAssistantChat()` calls, so the assistant does not even appear in the chat list by accident. `Verify:` a person can open the assistant, configure it, and receive a daily check-in. — found during the discovery audit — agent:`audit:frontend`
+- [ ] **H03** **`edit_image` advertises four actions and all four POST to routes that do not exist.** `src/tool_schemas.py:1037` offers `upscale · rembg · inpaint · harmonize`; `src/tools/image.py:34` posts to `{base}/api/gallery/{action}`. **None of the four exists.** The path matches `/api/gallery/{image_id}`, which is GET/PATCH/DELETE only, so it 405s; `do_edit_image` reads `data.get("error")`, finds none, and returns the bare string `"upscale failed"` — the model gets no hint the URL was wrong. **All four capabilities are real under other names**: `/api/gallery/ai-upscale`, `/api/image/remove-bg`, `/api/image/inpaint`, `/api/image/harmonize`. **The bodies differ and that is why this is a row rather than a path map** — `ai-upscale` takes multipart with an `image` file, not a JSON `image_id`, and `inpaint` needs a mask. Ship the three that map cleanly and **remove `inpaint` from the enum** rather than leaving it advertised. The only test touching `edit_image` asserts a symbol re-export. `Verify:` each advertised action performs its edit, and nothing advertised is unreachable. — found during the discovery audit — agent:`audit:promises`
+- [ ] **H04** **A complete embedding-model manager with zero pixels.** `routes/embedding_routes.py`, all admin-gated: the fastembed catalogue with `downloaded`/`downloading`/`active`/`recommended`/`size_gb`/`cached_size_mb` sorted active-first (`:115`), download off the event loop (`:154`), progress poll (`:190`), delete-with-refusal-to-delete-the-active-model (`:211`), and custom endpoint config (`:244/:255/:335`). `grep -rn "embeddings" static/js static/app.js static/index.html` returns two irrelevant hits. This is finished, self-consistent code — it guards double-downloads and blocks deleting the model in use — that never got its markup. `Verify:` Settings → Embeddings shows which model RAG uses and lets an admin change it. — found during the discovery audit — agent:`audit:backend`
+- [ ] **H05** **Seven of the eight feature flags do nothing, and four are un-hidden one line after being hidden.** `load_features()` has three Python callers, all of them read-write plumbing — **no server-side code branches on any flag.** Enforcement is entirely client-side: `static/app.js:1505-1514` hides four elements (`web_search`, `deep_research`, `document_editor`, `gallery`) and `censor.js:62` reads `sensitive_filter`; **`web_fetch`, `memory` and `rag` have zero consumers** (the three `P2-18` found by hand — confirmed). Worse, `static/app.js:1522`, in the *same* `.then()` callback, runs `applyUIVis(loadUIVis())`, which writes `display` for all 31 selectors in `UI_VIS_MAP` — and for a user with default Appearance prefs every one resolves visible. Measured by replaying the real sequence against a DOM stub: **after feature hiding 9 of 9 hidden; after `applyUIVis`, 7 of 9 shown again.** So an admin who turns off Deep Research or Gallery gets a success response, the toggle stays off, and the feature is still there — and was never gated server-side, so the agent could call the tool regardless. `Verify:` a flag turned off is off, for the user and for the agent. — found during the discovery audit — agent:`audit:config`
+- [ ] **H06** **`PANTHEON_TASK_CONCURRENCY_CAP` has never worked, on any install, from first boot — `B20` is filed as a weaker bug than it is.** `resolve_task_concurrency_cap` (`src/task_scheduler.py:98`) reads the instance layer as `get_setting(KEY, None)`, and `get_setting` calls `load_settings()`, which **merges `DEFAULT_SETTINGS` on every read** — so it cannot return `None`, returns the shipped `1`, and the env layer at `:119` is unreachable code. Proved with no settings file at all: `get_setting(...) -> 1`, `resolve -> (1, 'instance setting')`, `env alone would give 8`. **This contradicts `B20`, `src/settings.py:47` and `src/agent_loop.py:87`, which all say the env var dies on the first admin save.** It dies at import; materialisation is real but is not the cause, and a fix aimed at materialisation will not fix it. **The fix already exists and is unwired:** `is_setting_overridden` (`src/settings.py:279`) was written for exactly this, is documented, has four tests and **zero production callers**; `context_budget.budget_is_explicit` is the same idea, used, and correct. `Verify:` the env var wins on a fresh install and after a settings save. — found during the discovery audit — agent:`audit:config`
+- [ ] **H07** **CardDAV credentials from the environment die the first time anyone touches the Contacts panel.** `routes/contacts/contacts_routes.py:50,55,56` use `settings.get(k, os.environ.get(K, ""))` — the env var is the default only while the key is *absent*. Three UI paths write those keys unconditionally including empty values, and one of them is **"Remove", which deliberately PUTs three empty strings** (`static/js/settings.js:3059,3990,3598`). After any of the three, `CARDDAV_URL/USERNAME/PASSWORD` are permanently unreachable, and none is in `.env.example`. **The same idiom is latent on ten email fields** (`routes/email_helpers.py:1104-1117`), safe today only because no writer creates those flat keys any more — one future write of `""` reproduces this across a mail configuration. The correct shape is already in the tree: `services/search/providers.py:42` does `(settings.get(k) or "").strip() or env`. `Verify:` an operator's env credential survives a settings save and a Remove. — found during the discovery audit — agent:`audit:config`
+- [ ] **H08** **On local inference — the primary deployment — `agent_max_rounds` and the stream timeout are silently discarded.** `src/agent_loop.py:5083` lifts `max_rounds` to 100,000 and `max_tokens` to 1,000,000, and `:5142` lifts the 300s stream timeout to 24 hours, whenever `runtime_limits.unlimited()` is true — which is `_LIFT_WHEN_LOCAL` (**default on**) and any localhost/LAN `/v1` endpoint. The settings API clamps `agent_max_rounds` to 1–200 and `chat_routes.py:2357` re-clamps it *with a comment about defending against hand-edits* — then the loop replaces it. The only off-switch is `PANTHEON_UNLIMITED_LOCAL=0`, which appears **nowhere** outside `src/runtime_limits.py` — not `.env.example`, not compose, not `docs/setup.md`. `unlimited()` also removes read-file truncation and four fetch caps. **Bonus defect in the same block:** the `max_tokens` lift is nested *inside* the `max_rounds` branch, so the two knobs are accidentally coupled. `Verify:` the documented cap is the cap, or the lift is documented with an off-switch a person can find. — found during the discovery audit — agent:`audit:config`
+- [ ] **H09** **The compact prompt names two tools the model has no way to call.** `src/agent_loop.py:4588` selects the compact prompt for every API model plus native and compat Ollama. It says *"Only the tool schemas provided by the API are available for this turn… do not write tool syntax in chat"* — then lists `generate_image` and `manage_research`, the only two entries in `TOOL_SECTIONS`/`TOOL_TAGS`/`tool_index` with **no `FUNCTION_TOOL_SCHEMAS` entry**. The fenced fallback is shut for exactly these models (`skip_fenced=is_api_model and not allow_fenced_for_api`). Both channels closed, both tools named. The same prompt then tells the model *"if a needed tool is missing, say what is missing instead of pretending"* — trusting the list that is misleading it. **The better fix is the guard, not the two instances:** filter the compact list against `FUNCTION_TOOL_SCHEMAS` so this class cannot recur. `Verify:` every tool the prompt names is callable on that turn. — found during the discovery audit — agent:`audit:promises`
+- [ ] **H10** **Session cleanup, with a dry run, unreachable.** `GET /api/cleanup/preview` and `POST /api/cleanup` (`routes/cleanup/cleanup_routes.py:22,38`) archive sessions untouched for 7 days, delete archived/unimportant/under-10-message ones at 14, and report MB freed — and `preview` shows exactly what *would* happen first. `grep "api/cleanup" static/` returns nothing; both halves unreachable. `Verify:` "reclaim 340 MB from 82 stale chats — here is the list" before anything is touched. — found during the discovery audit — agent:`audit:backend`
+- [ ] **H11** **Three memory views, including the answer to "why did it remember that".** `GET /api/memory/timeline` (chronological, annotated with the source chat's name), `POST /api/memory/debug` (*which memories would this query trigger, and why*) and `GET /api/memory/by-session/{id}` (*what did this chat teach the assistant*) — `routes/memory/memory_routes.py:170,85,208`. The UI uses only add/search/{id}/pin. `debug` is a real diagnostic for the single most common complaint about any memory system. `Verify:` a person can see why a memory fired. — found during the discovery audit — agent:`audit:backend`
+- [ ] **H12** **You vote in blind model comparisons forever and can never see your results.** The compare UI calls exactly one compare route, `/api/compare/record` (`static/js/compare/vote.js:130`). `GET /api/compare/history` (last 50 with winner, blind flag and timestamps) and `DELETE /api/compare/{id}` (`routes/compare/compare_routes.py:320,346`) have no caller. `Verify:` a leaderboard of your own blind votes. — found during the discovery audit — agent:`audit:backend`
+- [ ] **H13** **The gallery can move images into albums and nothing offers it.** `POST /api/gallery/albums/{id}/add` and `/remove` (`routes/gallery/gallery_routes.py:2177,2195`) take a bulk `image_ids` list, ownership-scoped. `static/js/gallery.js` already creates albums, lists them, uploads *into* them, filters by them and has a working multi-select (`_albumSelectMode`, `_albumSelected`) — **the only missing verb is the one a person reaches for first**, and the endpoint takes exactly the array the selection Set produces. `grep -rni "add to album\|move to album" static/js/gallery.js` returns nothing. Same shape one level down: the toolbar offers "Clear AI tags" while `POST /api/gallery/clear-user-tags` and `/dedupe-tags` have no surface — and the first is documented in-code as *"use after a bug populated user-tags with AI-suggested values you never added"*. `GET /api/gallery/tags` and `/stats` are the tag filter and the library header, also unreachable. `Verify:` select images, add to album. — found during the discovery audit — agent:`audit:promises`
+- [ ] **H14** **The GPU process viewer and killer opens on right-click, and the tooltip tells you to left-click.** `_openProbePopup` (`static/js/cookbookServe.js:2845`) lists every process holding VRAM with per-PID **Kill (SIGTERM)** and **SIGKILL**. Its only call sites are `contextmenu` (`:3095`) and `dblclick` (`:3102`); plain click toggles GPU selection. The persistent tooltip at `:3000` reads **"click to view/kill"**, which is false. The only accurate hint is a 7-second toast that fires solely on a *manual* probe. For a local-model-serving product, "a zombie process is holding my VRAM" is the highest-frequency operational failure, and this is the tool that fixes it. `Verify:` the tooltip names the real gesture, and a visible affordance exists on busy GPUs. **One line for the tooltip.** — found during the discovery audit — agent:`audit:frontend`
+- [ ] **H15** **Settings search indexes 13 panel labels and zero of the 96 controls.** `getSettingsPanelSearchText` (`static/js/settings/registry.js:162`) builds its haystack from `panel.label` plus `panel.keywords` and nothing else, and results are panels, never controls. So **31 of 32 labelled toggles in Appearance are unfindable by any word in their own label** — including *Incognito Mode*, *Deep Research*, *Shell* and *Web Search*. The sharpest case: **"Sensitive Blur"** (`static/index.html:2102`, *"blur emails, tokens, and secrets in AI output"*) is the app's **only** privacy control, is off by default, and lives under **Appearance** — there is no Privacy or Security panel among the 13. Typing *privacy*, *secret*, *redact* or *security* returns nothing. Someone about to screen-share cannot find the feature that hides their API keys. `Verify:` searching a control's own label finds it. — found during the discovery audit — agent:`audit:frontend`
+- [ ] **H16** **Three shipped capabilities have no switch a person can reach.** **(a)** `agent_verifier_subagent` (`src/agent_loop.py:5797`) gates a fresh-context verifier that independently checks effectful turns before accepting "done" — the key is **not in `DEFAULT_SETTINGS`**, so the settings route skips it and `manage_settings` refuses it; the only writer is hand-editing JSON. **(b)** The built-in tool-prompt override editor is complete — four live routes (`routes/skills_routes.py:1250-1337`) writing `builtin_tool_overrides`, substituted into the system prompt for any of **60** `TOOL_SECTIONS` entries — and switched off by a literal, `static/js/skills.js:636` `const showBuiltin = false;`, over a list nothing populates. An operator can already rewrite how the assistant is told to use any built-in tool, today, with curl. **(c)** `tool_path_extra_roots` (`src/settings.py:156`) is the switch that lets the agent's file tools reach outside `data/`; six occurrences in the whole tree, no UI, refused by `manage_settings`. Plus a nightly skill-audit loop with three undeclared knobs (`app.py:1235`). `Verify:` each has a control, or is documented as deliberately expert-only. — found during the discovery audit — agent:`audit:config`
+- [ ] **H17** **Two security controls with the wrong door.** **(a)** The admin UI calls `POST /api/auth/signup-toggle` (`static/js/admin.js:340`), whose own docstring says *"DEPRECATED: this endpoint uses toggle semantics which can lead to unsafe state changes. Use PUT /open-signup instead."* The safe idempotent replacement (`routes/auth_routes.py:652`) has **no caller anywhere**, so a double-submit or two admins clicking flips open registration back **on**. **(b)** A task's webhook token is rendered in full, readonly, with a Copy button and the label "No auth needed" (`static/js/tasks.js:1489`); `POST /api/tasks/{id}/webhook-regenerate` (`routes/task/task_routes.py:1110`) rotates it and nothing calls it — **if that URL leaks there is no revocation path in the product**. One line each. `Verify:` the toggle is idempotent, and a leaked webhook token can be rotated. — found during the discovery audit — agent:`audit:backend`
+- [ ] **H18** **Twelve settings the model can change and a person cannot.** Each has zero references under `static/` and is settable by `manage_settings` under its exact key: `agent_email_confirm`, `agent_input_token_budget`, `agent_input_token_hard_max`, `agent_stream_timeout_seconds`, `document_writing_style`, `research_planning_timeout_seconds`, `research_query_timeout_seconds`, `search_safesearch`, `task_concurrency_cap`, `task_endpoint_id`, `task_model`, `teacher_tier2_enabled`. **`agent_email_confirm` is the one that matters** — it is the gate in `H01`, and the model can turn it off while the person it protects has no control at all. `search_safesearch` carries 17 lines of documentation about three levels across six providers and has no UI. `Verify:` a person can reach every setting the model can. — found during the discovery audit — agent:`audit:config`
+- [ ] **H19** **Three diagnostics whose only door is an unlisted slash command.** `/probe` (`routes/model_routes.py:1841`) probes individual *models* with a real completion — the admin panel shows endpoint up/down but never per-model liveness, so this is the only way to learn an endpoint is up while half its models 404. `/stats` (`routes/diagnostics_routes.py:56`) is sessions/messages/memories/documents/uploads counts. `/sh` is the only general-purpose command runner a person can reach. All three are `hidden: true`, which filters them from **both** `/help` and the autocomplete. Also here: **`/shortcuts` is a stale hardcoded duplicate** showing 7 rows against the runtime's 20 — it **invents two actions that do not exist** (`admin_panel`, `star_session`), omits 15 real ones, and prints the wrong combo for `toggle_sidebar`, which itself disagrees between `keyboard-shortcuts.js:10` (`ctrl+alt+b`) and `settings.js:1655` (`ctrl+b`). And `_cmdToggleRag` is a handler with no registry entry — `/toggle rag` does not exist. `Verify:` a diagnostics surface, and `/shortcuts` generated from the registry or deleted. — found during the discovery audit — agent:`audit:frontend`
+- [ ] **H20** **Document-editor Find is Ctrl+F only, and documented nowhere.** `_openFindBar` (`static/js/document.js:5937`) has one caller — the Ctrl+F handler at `:6033`. The bar has match counts, prev/next and highlight rectangles (`:4965`). `doc-find` appears **zero times** in `index.html`; there is no toolbar button, and it is not in the keybind registry, so neither the Shortcuts panel nor `/shortcuts` mentions it. Also in this class: `/chats export` accepts `json`, `txt`, `html` and a `> filename.ext` redirect while its help text says only *"Download as markdown"* — three of four formats invisible. `Verify:` a find button in the doc toolbar; the export usage string names its formats. — found during the discovery audit — agent:`audit:frontend`
+- [ ] **H21** **Dead weight the sweep also found, for deletion rather than wiring.** A second complete session-archive modal nothing opens — `openArchive`/`closeArchive` (`static/js/sessions.js:3553,3618`), zero callers, **14 functions and 282 lines reachable only from it**, plus 5 dead `.archive-col-*` CSS rules; the `reminders.js` disease at 2.5× the size. `GET /backgrounds` (`app.py:939`) serves `static/backgrounds.html`, **which does not exist**, unauthenticated. `RESEARCH_LLM_ENDPOINT` is in `.env.example` and forwarded by all three compose files and read by **no Python at all**. `services/research/` is a dead fork of the live handler with a different `research_max_tokens` default. Three note endpoints superseded by `PUT /api/notes/{id}`, two compare endpoints superseded by the client. A `.search-fallback-chain` CSS cluster for a feature never built. **516 of 3,313 class names appear nowhere else** (a floor, not a ceiling — the method counts a bare token match as used). `Verify:` deleted, with the count on the row. — found during the discovery audit — agent:`audit:frontend`
 
 # Bugs found during implementation
 

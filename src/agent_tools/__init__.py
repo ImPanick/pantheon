@@ -106,6 +106,18 @@ TOOL_TAGS = {"bash", "python", "web_search", "web_fetch", "read_file", "write_fi
              "search_hf_models", "list_cached_models",
              "list_serve_presets", "serve_preset", "adopt_served_model",
              "list_cookbook_servers",
+             # Added 2026-08-30, and the comment eight lines above already
+             # described this exact failure for the rest of this family — one
+             # member was missed. `tail_serve_output` was in
+             # `FUNCTION_TOOL_SCHEMAS`, in the system prompt, in the RAG tool
+             # index and in the `cookbook` toolset group, and not here, so both
+             # call channels rejected it: `function_call_to_tool_block` and
+             # `parse_tool_blocks` each gate on this set. `do_serve_model`
+             # *orders* the model to call it after every serve — "Do not tell
+             # the user to check logs; you have the log tool" — so the agent
+             # reached for the crash traceback at the one moment it matters and
+             # the call was silently dropped.
+             "tail_serve_output",
              # Other tools the agent reaches for that were also missing.
              "edit_image", "trigger_research", "manage_research",
              # Generic loopback to any UI-button endpoint (cookbook,

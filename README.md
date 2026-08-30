@@ -9,7 +9,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/licence-AGPL--3.0--or--later-blue" alt="AGPL-3.0-or-later">
   <img src="https://img.shields.io/badge/status-early-orange" alt="Early">
-  <img src="https://img.shields.io/badge/tests-5%2C742%20passing-brightgreen" alt="5,742 tests passing">
+  <img src="https://img.shields.io/badge/tests-6%2C301%20passing-brightgreen" alt="6,301 tests passing">
   <img src="https://img.shields.io/badge/docker-compose-2496ED?logo=docker&logoColor=white" alt="Docker Compose">
   <img src="https://img.shields.io/badge/python-FastAPI-009688?logo=fastapi&logoColor=white" alt="FastAPI">
   <img src="https://img.shields.io/badge/forked%20from-Odysseus-6E5494?logo=github&logoColor=white" alt="Forked from Odysseus">
@@ -101,7 +101,16 @@ quickly. We forked it to finish that last step.
 ## Switching it back on
 
 We wrote a script that counts element lookups with nothing behind them. It found **78**, across
-seven subsystems:
+six subsystems — and **that number is now 2**, which is the point of writing the script rather
+than the list. What follows is the original finding, kept because it is the honest picture of
+what a fork inherits; the notes say where each one now stands.
+
+Two cautions the table cannot carry. The count only measures lookups whose argument is a
+*string literal* — a lookup that indexes a map with a variable scores as clean, and on
+2026-08-30 exactly that hid a live defect where the agent reported opening a panel that had no
+button behind it. And a script that counts one shape of unreachability says nothing about the
+others: routes with no caller, settings nothing reads, features whose only door is an
+undocumented keystroke. Those are `P3-15` and the `H` rows.
 
 | Area | Built, but unreachable |
 |---|---|
@@ -120,7 +129,7 @@ runs in CI and the count only goes down.
 
 ## Status
 
-**296 tracked tasks, 77 done.** Twenty were setup and the rename. Ten are fixes now running:
+**296 tracked tasks, 77 done**, plus 21 `H` rows — features that exist and cannot be reached, found by a discovery audit on 2026-08-30. Twenty were setup and the rename. Ten are fixes now running:
 
 - Uploaded files reach the model as content rather than a placeholder
 - Upload type blocklist removed — it blocked executables while leaving `.svg` unblocked
@@ -130,7 +139,7 @@ runs in CI and the count only goes down.
 - A tool prompt that forbade heredocs on one line and instructed their use seven lines later
 - `Your account is not allowed to can use research.`
 
-Test suite: 6,277 passing, no regressions against baseline.
+Test suite: 6,301 collected, no regressions against baseline.
 
 ---
 

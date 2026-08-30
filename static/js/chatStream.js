@@ -621,11 +621,48 @@ export function handleUIControl(uiData) {
           if (fn) fn();
         }).catch(function(){});
       } else if (panel === 'memories' || panel === 'skills' || panel === 'settings') {
-        // These live in the sidebar / settings drawer — most just need
-        // an existing button click.
-        var ids = { memories: 'tool-memory-btn', skills: 'skills-btn', settings: 'open-settings-btn' };
-        var btn = document.getElementById(ids[panel]);
-        if (btn) btn.click();
+        // CORRECTED 2026-08-30. This used to read
+        //   `var ids = { memories: 'tool-memory-btn', skills: 'skills-btn',
+        //                settings: 'open-settings-btn' };`
+        // and **two of those three ids exist nowhere in the product** — the only
+        // occurrence of either string in the whole repository was that line. The
+        // `if (btn)` swallowed it, so `open_panel skills` and `open_panel
+        // settings` did nothing while `ui_control` returned "Opening skills
+        // panel" to the model, which then told the user it had opened.
+        //
+        // Worse, the system prompt steers *towards* this path: "'open skills'
+        // … means OPEN THE PANEL — call `ui_control`, NOT a manage/list tool."
+        // So the one phrasing a person would use was routed off a working tool
+        // onto a silent no-op.
+        //
+        // It also shows what `check-wiring.py` cannot see: it matches only a
+        // lookup whose argument is a string literal, and this one indexed an
+        // object with a variable. A lookup with nothing behind it scored clean.
+        // (Writing that sentence with the literal call spelled out made the
+        // checker count *this comment* as a fourth unresolved lookup — it does
+        // not strip comments before scanning. Filed with the rest of P3-15.)
+        if (panel === 'memories' || panel === 'skills') {
+          var memBtn = document.getElementById('tool-memory-btn');
+          if (memBtn) memBtn.click();
+          // Skills is not a panel of its own — it is a tab inside the memory
+          // panel (`static/index.html:350`). Select it the way memory.js's own
+          // code does, after the panel has had a frame to render its tabs.
+          if (panel === 'skills') {
+            setTimeout(function () {
+              var tab = document.querySelector('.memory-tab[data-memory-tab="skills"]');
+              if (tab) tab.click();
+            }, 0);
+          }
+        } else {
+          // Settings is a body-level modal with a module opener — the same one
+          // the rail gear, the user bar, `/settings` and four other modules use
+          // (`P1-05`). Going through the module rather than clicking a sidebar
+          // button keeps this working when Customize UI hides that button.
+          import('./settings.js?v=20260815approvalsave1').then(function (mod) {
+            var open = (mod && mod.open) || (mod && mod.default && mod.default.open);
+            if (open) open();
+          }).catch(function () {});
+        }
       }
 
     } else if (uiEvent === 'open_email_reply' || uiData.ui_event === 'open_email_reply') {

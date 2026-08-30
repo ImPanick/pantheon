@@ -4,14 +4,16 @@ Thanks for helping. The project is moving quickly, so the best contributions are
 
 ## Branch model
 
-Pantheon has two branches:
+**`main` is the only branch.** Open your PR against it; cloning gives you it.
 
-- **`dev`** — where all PRs land. Things can be in flux here; the merge button gets used freely.
-- **`main`** — what users run. Curated and tested by the maintainer. Fast-forwarded to a stable `dev` commit at each release.
+Upstream Odysseus's `dev` branch is reachable on the `upstream` remote if you need to compare
+against it, but nothing here lands there.
 
-**Open your PR against `dev`, not `main`.** The GitHub "base" dropdown defaults to `dev`. If you opened a PR against `main` by accident, click "Edit" on the PR and change the base — no rebase needed.
-
-End-users cloning the repo will land on `dev` by default. To run the curated/stable version: `git checkout main` after clone.
+*Corrected 2026-08-30. This section described upstream's two-branch model — "open your PR
+against `dev`, not `main`", "end-users cloning will land on `dev` by default" — which survived
+the fork rename and was never true of this repository. `git branch -a` has only ever shown one.
+`README.md` said the opposite and was right; three documents said this and were wrong, at the
+three places a newcomer meets the project first: cloning, contributing, and hardening CI.*
 
 ## Before You Start
 

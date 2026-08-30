@@ -4,7 +4,7 @@ This page keeps the detailed install, deployment, troubleshooting, and configura
 
 ## Quick Start
 
-> **Branch note:** `dev` is the default branch and contains the latest development changes, but it may be unstable. For the more stable curated branch, use [`main`](https://github.com/ImPanick/pantheon/tree/main).
+> **Branch note:** `main` is the only branch — cloning gives you it, and there is nothing to switch to. *(Corrected 2026-08-30: this line described upstream Odysseus's two-branch model and told people to check out a branch this repository does not have.)*
 
 Defaults work out of the box: clone, run, then configure models/search/email
 inside **Settings**. Only edit `.env` for deployment-level overrides like
