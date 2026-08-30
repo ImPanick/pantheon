@@ -261,6 +261,26 @@ export function applyColors(colors) {
   s.setProperty('--panel', colors.panel);
   s.setProperty('--border', colors.border);
   if (colors.red) s.setProperty('--red', colors.red);
+  // P1-01. Never in `:root`. The fallback in `var(--accent, var(--red))` fires
+  // only while `--accent` is undefined, so a `:root` definition retires it at
+  // all 553 of those sites in `style.css` at once and hands all sixteen themes
+  // the same accent. Per theme instead, beside `--red` and guarded the same
+  // way: `THEMES` carries no `accent` key and `generateHarmonyColors()` returns
+  // none, so every accent is its own theme's red today. Those 553 keep the
+  // colour they already had; the 202 bare `var(--accent)` sites, voided at
+  // computed-value time for as long as nothing defined the token, resolve for
+  // the first time. An `accent:` key parts a theme from its red.
+  //
+  // Mirrored in `static/index.html`'s first-paint script and in
+  // `static/login.html` — the other two places `--red` is written. Neither is
+  // reachable from here: index.html paints before this module boots, and
+  // `initThemeUI()` returns at its missing `#themeGrid` on the login page,
+  // above the `applyColors()` call below.
+  //
+  // Counts re-derived from `style.css` 2026-08-30 and they move as it grows;
+  // `tests/test_accent_token_js.py` measures rather than trusts them.
+  const _accent = colors.accent || colors.red;
+  if (_accent) s.setProperty('--accent', _accent);
 
   // Keep the mobile browser toolbar / status bar matched to the theme bg
   // (same as the early head-script does on first paint).

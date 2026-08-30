@@ -423,7 +423,13 @@ function buildFolderSubmenu(sessionId, currentFolder, dropdown) {
   // "New folder" option
   const newOpt = document.createElement('div');
   newOpt.className = 'dropdown-item-compact';
-  newOpt.style.color = 'var(--accent-primary)';
+  // `--accent-primary` has zero declarations anywhere, and with no fallback
+  // this resolved to `inherit` — so "+ New Folder" rendered identically to the
+  // plain folder rows above it, which is the one thing it must not do. Found
+  // measuring `P1-02`: it is the *second* dead site, and the row said there was
+  // one. `P1-01` fixes the other by defining `--accent`; nothing could reach
+  // this one, because there is no `--accent` in its chain to define.
+  newOpt.style.color = 'var(--accent, var(--red))';
   newOpt.textContent = '+ New Folder';
   newOpt.addEventListener('click', async (e) => {
     e.stopPropagation();

@@ -27,6 +27,13 @@
         s.setProperty('--panel', c.panel);
         s.setProperty('--border', c.border);
         if (c.red) s.setProperty('--red', c.red);
+        // P1-01, mirrored from applyColors() in static/js/theme.js. The 553
+        // `var(--accent, var(--red))` sites in style.css ride the `--red` set
+        // on the line above, but the 202 bare `var(--accent)` ones stay voided
+        // until the module boots — a visible flash on every cold load without
+        // this. Counts re-derived 2026-08-30; they move as style.css grows.
+        var _ac = c.accent || c.red;
+        if (_ac) s.setProperty('--accent', _ac);
         // Set --brand-color now (= custom brand or the theme red) so the
         // loading-screen ASCII wave shows its final colour from the first
         // paint. Otherwise it starts on --red and visibly switches once the

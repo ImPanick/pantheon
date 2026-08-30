@@ -237,6 +237,23 @@ identity. Strictly better than the original plan, and it costs less.
 > The 508 had been copied into three documents, including this one and `FORBIDDEN.md`.
 > That is `Law 6`'s exact failure mode occurring inside the documents that define it.
 
+> **LANDED 2026-08-30, and the count moved a fourth time.** 508 → 521 → 535 → and at
+> implementation **816 sites, 553 of them `var(--accent, var(--red))`**. Every figure above
+> is kept because the sequence *is* the argument for `Law 6`; none of them was right for
+> longer than a few days, and `static/style.css` turned out to have three commits in this
+> repo rather than the one this entry claimed.
+>
+> **What the numbers hid, and no version of this entry saw:** the population is not two
+> classes but three. 562 sites resolve to the theme's red and do not move; 204 paint for
+> the first time; and **63 carry a hand-picked fallback that is not red, so defining the
+> token changes their colour.** Twelve of those were never accent sites at all — a green
+> *verified* badge, two link blues, an amber supervisor rung — reaching for
+> `var(--accent, <the real colour>)` because `--accent` did not exist and the fallback was
+> the actual intent. Left alone, `.skill-verified` would have rendered in the same hue as
+> `.skill-needsmark` on all sixteen themes. They now name the semantic token they meant.
+> The remaining fifty are hover borders, focus rings and drag ghosts, which is what
+> `var(--accent, …)` asks for and what this row exists to deliver.
+
 **Still allowed.** `P10-04` (contrast audit across all 16 themes) and `P10-05`
 (reduced-motion guard over the 7 animators) both stand. A reduced-motion guard **respects
 an operating-system setting** — it does not disable the feature, and an agent that reads

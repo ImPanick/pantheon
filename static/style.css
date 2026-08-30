@@ -6,13 +6,27 @@
 /* ── Variables ──
  *
  * Theme-public variables (override via theme.js or custom themes):
- *   Core:     --bg, --fg, --panel, --border, --red
+ *   Core:     --bg, --fg, --panel, --border, --red, --accent
  *   Syntax:   --hl-keyword, --hl-string, --hl-comment, --hl-function,
  *             --hl-number, --hl-builtin, --hl-variable, --hl-params,
  *             --hl-bg, --hl-fg
- *   Accents:  --accent-primary, --accent-error (set by theme.js)
  *   Semantic: --color-error, --color-success, --color-warning, --color-danger,
  *             --color-accent, --color-muted, --color-muted-alt
+ *
+ * `--accent` joined Core on 2026-08-30 (P1-01). It is set per theme, beside
+ * `--red`, at all three palette writers — and **never declared in this file**.
+ * A `:root` declaration here would win over `var(--accent, var(--red))` and
+ * flip 553 sites to one global colour, costing all sixteen themes their
+ * identity in a single commit. A test fails if one appears.
+ *
+ * CORRECTED 2026-08-30. This header used to carry a fourth line reading
+ * `Accents:  --accent-primary, --accent-error (set by theme.js)`. Neither is
+ * set by theme.js and neither ever was: `ADV_KEYS` contains no `accentPrimary`
+ * or `accentError`, so `applyColors()` never writes them — while
+ * `index.html`'s first-paint `advMap` does. A theme made through the assistant
+ * therefore sets `--accent-primary` once and it sticks, stale, through every
+ * later theme switch. That is `P1-02`'s real content, and the line that hid it
+ * is corrected rather than deleted.
  */
 
 :root {
@@ -10315,13 +10329,18 @@ body.fullwidth-chat .chat-history {
 }
 /* Supervisor ladder cards — same chrome as tool cards but tinted so the
    user can tell at a glance "this is the agent recovering" vs "this is
-   the agent doing work". Stop rung gets the red accent. */
+   the agent doing work". Stop rung gets the red accent.
+   Was `var(--accent, #c08a3e)`. The stop rung below dilutes `var(--red)` to
+   the same 60% on the same dot, so once `--accent` resolves to the theme's
+   red the two dots come out byte-identical and the one distinction this
+   block exists to draw is gone. Recovering is the caution band, which the
+   stall banner and `.todo-prio-high` already spell `--color-warning`. */
 .agent-thread-node.supervisor-step .agent-thread-tool {
-  color: color-mix(in srgb, var(--accent, #c08a3e) 80%, var(--fg));
+  color: color-mix(in srgb, var(--color-warning, #c08a3e) 80%, var(--fg));
   font-style: italic;
 }
 .agent-thread-node.supervisor-step .agent-thread-dot {
-  background: color-mix(in srgb, var(--accent, #c08a3e) 60%, transparent);
+  background: color-mix(in srgb, var(--color-warning, #c08a3e) 60%, transparent);
 }
 .agent-thread-node.supervisor-step[data-rung="stop"] .agent-thread-tool {
   color: var(--red, #d65a5a);
@@ -18346,7 +18365,12 @@ body:not(.email-doc-split-active) #email-lib-modal.email-lib-fullscreen:not(.mod
   vertical-align: middle;
   margin-right: 3px;
 }
-.skill-verified { color: var(--accent, #4ade80); }
+/* Was `var(--accent, #4ade80)` on the first of these three. The other two name
+   a `--color-*` band, and so does every other verdict chip in this panel
+   (`.skill-eval-ok`, `.skill-duplicate-keep`) with this same literal. Once
+   `--accent` resolves to the theme's red, "verified" renders in the colour
+   `.skill-needsmark` two lines down uses to mean the opposite. */
+.skill-verified { color: var(--color-success, #4ade80); }
 .skill-teachermark { color: var(--color-warning, #f0ad4e); }
 .skill-needsmark { color: var(--color-danger, #e06c75); cursor: help; }
 
@@ -24682,9 +24706,15 @@ body:not(.welcome-ready) #welcome-screen {
 #rail-tasks.task-failure-pending {
   color: var(--red, #f87171);
 }
+/* Was `var(--accent, var(--green, #86efac))` here and on the dot below. The
+   failure rung above is `var(--red)`, and the combined rung further down
+   deliberately lets failure win — an override that only means anything while
+   the two rungs differ. Under a red accent, "tasks finished" and "tasks
+   failed" paint the same pixel and that override becomes a no-op. The
+   fallback was the intent; keep it and drop the accent layer. */
 #tool-tasks-btn.task-completion-pending,
 #rail-tasks.task-completion-pending {
-  color: var(--accent, var(--green, #86efac));
+  color: var(--green, #86efac);
 }
 #tool-tasks-btn.task-failure-pending::after,
 #rail-tasks.task-failure-pending::after,
@@ -24700,8 +24730,8 @@ body:not(.welcome-ready) #welcome-screen {
 }
 #tool-tasks-btn.task-completion-pending::after,
 #rail-tasks.task-completion-pending::after {
-  background: var(--accent, var(--green, #86efac));
-  box-shadow: 0 0 7px var(--accent, var(--green, #86efac)), 0 0 3px var(--accent, var(--green, #86efac));
+  background: var(--green, #86efac);
+  box-shadow: 0 0 7px var(--green, #86efac), 0 0 3px var(--green, #86efac);
 }
 #tool-tasks-btn.task-failure-pending.task-completion-pending,
 #rail-tasks.task-failure-pending.task-completion-pending {
@@ -25063,7 +25093,12 @@ body:not(.welcome-ready) #welcome-screen {
   border-left: 2px solid color-mix(in srgb, var(--fg) 20%, transparent);
   opacity: 0.85;
 }
-.task-log-row-body a { color: var(--accent, #60a5fa); text-decoration: none; }
+/* Was `var(--accent, #60a5fa)`. A hyperlink inside rendered body text is not
+   an accent site — `--color-accent` is the sheet's link hue, paired with
+   `--color-link-hover` on `.search-result-title` and the `details a` hover.
+   Under a red accent these links read as broken text in the same hue
+   `.task-failure-pending` uses. */
+.task-log-row-body a { color: var(--color-accent, #60a5fa); text-decoration: none; }
 .task-log-row-body a:hover { text-decoration: underline; }
 .task-log-row-body strong { font-weight: 650; color: var(--fg); }
 /* Email-summary tables — render compactly instead of default browser ugliness. */
@@ -33392,7 +33427,9 @@ body.doc-find-active mark.doc-find-mark.current {
   opacity: 0.4;
   pointer-events: none;
 }
-.doc-email-richbody a { color: var(--accent, #4af); }
+/* Was `var(--accent, #4af)` — same correction as `.task-log-row-body a`: a
+   link in composed email body text, not an accent surface. */
+.doc-email-richbody a { color: var(--color-accent, #4af); }
 .doc-email-richbody blockquote {
   margin: 6px 0; padding-left: 10px;
   border-left: 3px solid var(--border); opacity: 0.8;
@@ -37170,7 +37207,13 @@ body.notes-mobile-mode.notes-drag-mode .note-card-pin.active {
 .note-checkbox:hover .note-checkbox-edit,
 .note-checkbox:hover .note-checkbox-rm { opacity: 0.55; }
 .note-checkbox-rm:hover { opacity: 1 !important; color: var(--red); background: color-mix(in srgb, var(--red) 12%, transparent); }
-.note-checkbox-edit:hover { opacity: 1 !important; color: var(--accent, var(--blue)); background: color-mix(in srgb, var(--accent, var(--blue)) 12%, transparent); }
+/* Was `var(--accent, var(--blue))`, and `--blue` has never existed anywhere in
+   this sheet — so the declaration was invalid and edit-hover painted nothing.
+   The delete button one line up is `var(--red)` at the same geometry and the
+   same 12% tint; a red accent would give the destructive control and the
+   benign one beside it an identical hover. `--color-accent` is the blue the
+   author meant. */
+.note-checkbox-edit:hover { opacity: 1 !important; color: var(--color-accent, #00aaff); background: color-mix(in srgb, var(--color-accent, #00aaff) 12%, transparent); }
 .note-card-selectmode .note-checkbox-edit,
 .note-card-selectmode .note-checkbox-rm { display: none; }
 .note-check-text[contenteditable="true"] {
@@ -38215,10 +38258,14 @@ button.cal-add-btn.cal-add-btn-text.cal-add-btn-sm:hover .cal-add-label {
 #cal-sync svg,
 #email-lib-refresh-btn svg { display: block; transform-box: fill-box; transform-origin: 50% 50%; }
 /* Brief checkmark flash after a refresh completes. Lasts ~900ms in JS;
-   the small bounce + accent color give a clear "done" cue. */
+   the small bounce + a success color give a clear "done" cue.
+   Was `var(--accent, #2ea043)` and the comment above said "accent color" —
+   but the mark being flashed is a tick, and a tick that flashes in the
+   theme's red says the refresh failed. `#2ea043` is a success green and
+   `--color-success` is the band it belongs to. */
 #cal-sync.cal-sync-done svg,
 #email-lib-refresh-btn.email-lib-refresh-done svg {
-  color: var(--accent, #2ea043);
+  color: var(--color-success, #2ea043);
   animation: refresh-check-pop 0.32s ease-out;
 }
 @keyframes refresh-check-pop {

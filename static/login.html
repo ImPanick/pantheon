@@ -52,6 +52,16 @@
       s.setProperty('--panel', c.panel);
       s.setProperty('--border', c.border);
       if (c.red) s.setProperty('--red', c.red);
+      // P1-01. `initThemeUI()` returns at its missing `#themeGrid` before it
+      // reaches `applyColors()` — see the comment at the bottom of this file —
+      // so this is the one screen the module never hands an accent to. The
+      // single consumer below chains on to `--red`, so nothing looks wrong
+      // today; the line is here so the next bare `var(--accent)` written on
+      // this page is not dead on arrival. With no saved theme the token stays
+      // unset and the `:root` block below carries the page, exactly as it does
+      // for `--red`.
+      var _ac = c.accent || c.red;
+      if (_ac) s.setProperty('--accent', _ac);
       if (c.green) s.setProperty('--green', c.green);
       // Advanced overrides (sidebar logo color, input bg, send-button bg, etc.)
       // — mirrors ADV_KEYS in static/js/theme.js so the login page picks up

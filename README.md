@@ -73,7 +73,7 @@ Odysseus goes by two names. We cloned `pewdiepie-archdaemon/odysseus`; its own c
 at `odysseus-dev/odysseus`. Both are the same upstream project and we credit both — see
 [`NOTICE`](NOTICE).
 
-Then we tried to change something small and ended up reading all 41,738 lines of the stylesheet.
+Then we tried to change something small and ended up reading all 42,739 lines of the stylesheet.
 
 `--accent` — the colour behind every highlight, hover state and drag handle — is referenced 813
 times and defined nowhere. 206 style rules resolve to nothing. Nothing errors; the rules simply
@@ -120,7 +120,7 @@ runs in CI and the count only goes down.
 
 ## Status
 
-**296 tracked tasks, 72 done.** Twenty were setup and the rename. Ten are fixes now running:
+**296 tracked tasks, 73 done.** Twenty were setup and the rename. Ten are fixes now running:
 
 - Uploaded files reach the model as content rather than a placeholder
 - Upload type blocklist removed — it blocked executables while leaving `.svg` unblocked
@@ -130,7 +130,7 @@ runs in CI and the count only goes down.
 - A tool prompt that forbade heredocs on one line and instructed their use seven lines later
 - `Your account is not allowed to can use research.`
 
-Test suite: 6,156 passing, no regressions against baseline.
+Test suite: 6,199 passing, no regressions against baseline.
 
 ---
 
