@@ -209,12 +209,30 @@ The owner's words, 2026-08-31:
 > with options to add cloud providers via api in which case the cloud provider being API linked
 > will have everything the users subscription allows."*
 
-**The test, and it is a hard one:** install Pantheon on a machine with no credentials
-configured, open it, and use it. **Nothing should reach the public internet.** Not a package
-registry, not a model catalogue, not a font, not an emoji, not a search engine, not a version
-check. If a fresh install talks to anyone, that is a defect with a row.
+**Amended by the owner the same day, and the amendment is the sharp edge of the law:**
 
-Three clauses, and the second is the one that gets misread:
+> *"telemetry is fine, but 'phone home' to an external destination is not allowed. if the user
+> wants to establish their own telemetry endpoint, they can bypass this law and do so… like
+> Prometheus or Grafana etc.. maybe even enrolling other services to connect like OpenSEO, or
+> other CRM products"*
+
+**So the rule is about the destination, not the activity.** Measuring is not the sin. Sending
+what you measured somewhere the user did not choose is. Rewrite any question of the form *"is X
+allowed?"* as ***"who owns the address at the other end?"*** — if the answer is the user or their
+sysadmin, it is allowed and always was; if the answer is us, or a vendor, or anyone the user did
+not name, it is forbidden however anonymous, aggregated or well-meant it is.
+
+That reframing is what makes the law buildable rather than merely restrictive. Pantheon **should**
+be able to emit metrics — to *your* Prometheus, *your* Grafana, *your* OTLP collector — and to
+enrol whatever else you connect it to. That is a capability this product is missing, not a
+temptation it is resisting.
+
+**The test, and it is a hard one:** install Pantheon on a machine with no credentials configured,
+open it, and use it. **Nothing should reach the public internet.** Not a package registry, not a
+model catalogue, not a font, not an emoji, not a search engine, not a version check, and not a
+metrics push. If a fresh install talks to anyone, that is a defect with a row.
+
+Four clauses, and the second is the one that gets misread:
 
 1. **Default local.** Every endpoint default points at loopback, the LAN, or nothing. A default
    that points at somebody's cloud is a bug however convenient it is.
@@ -225,6 +243,13 @@ Three clauses, and the second is the one that gets misread:
 3. **Deliberate beats silent.** An outbound call a person asked for is fine. The failure is the
    call nobody chose — a convenience default, a `@latest` lookup, a "free, no API key required
    so it is safe to ship on" fallback.
+4. **Telemetry is allowed; phoning home is not.** Collect whatever is useful, store it locally by
+   default, and export it **only** to an address the user configured. A Prometheus scrape
+   endpoint, an OTLP exporter pointed at their collector, a webhook into their CRM — all fine,
+   all `Law 16`-compliant, because in every case the user owns the far end. What is never
+   permitted, at any sample rate, in any aggregation, is a build that reports to us. **There is
+   no opt-out ceremony that makes vendor telemetry acceptable here** — not opt-in, not a consent
+   dialog, not "anonymous". The address is the whole test.
 
 > **Incident.** `npx -y @playwright/mcp@latest` ran about three seconds after **every** boot —
 > installing from the npm registry on first start and re-checking the dist-tag on every one
@@ -241,6 +266,12 @@ Three clauses, and the second is the one that gets misread:
 other vendor-specific skills in the bundled library stay; they do nothing until a person opens
 them and supplies their own key. Deleting a capability and defaulting it off are different acts,
 and this law asks for the second.
+
+**Nor does it say "no observability".** Reading clause 4 as *do not measure anything* would be
+the opposite of what it says, and would leave operators flying blind on their own hardware —
+which is `Law 15` failing in a different costume. `P14` owns the measurement; `P16-12` owns the
+export. The whole design constraint is one line: **the destination is configured by the person
+running it, and there is no default.**
 
 ---
 

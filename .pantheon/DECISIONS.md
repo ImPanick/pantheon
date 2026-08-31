@@ -484,3 +484,49 @@ five-second snapshot TTL is defended on the grounds that a revocation lands befo
 finishes reading the confirmation — which was an empty argument while nothing in the product could
 revoke anything. A grant nobody can see is one nobody thinks to take back, and the widest grant
 here is one click on an approval card.
+
+---
+
+## D-2026-08-31-01 · Telemetry is allowed. Phoning home is not. The test is the address.
+
+`Law 16` landed in the morning as *self-hosted by default*. The owner amended it the same day,
+and the amendment is worth its own entry because it converts a restriction into a specification:
+
+> *"telemetry is fine, but 'phone home' to an external destination is not allowed. if the user
+> wants to establish their own telemetry endpoint, they can bypass this law and do so… like
+> Prometheus or Grafana etc.. maybe even enrolling other services to connect like OpenSEO, or
+> other CRM products"*
+
+**The rule is about the destination, not the activity.** Measuring is not the sin; sending what
+you measured somewhere the user did not choose is. Every question of the form *"is X allowed?"*
+is rewritten as ***"who owns the address at the other end?"***
+
+**Why this needed writing down.** The obvious misreading — *no telemetry, we are privacy-first* —
+is the one an agent reaches for, and it is wrong in both directions. It would ban the operator's
+own Grafana, which the owner explicitly wants, and it would leave someone running Pantheon on
+their own hardware with no way to see what it is doing. That is `Law 15` failing in a different
+costume: the capability exists, nobody can reach it. Meanwhile the same misreading would *permit*
+"anonymous aggregated usage stats" to a vendor, because it sounds harmless and is not the word
+"telemetry". The address test gets both right and needs no judgement call.
+
+**What follows from it, concretely:**
+
+1. **Collect freely, locally.** `P14`'s events table is not a `Law 16` problem and never was.
+   Storing measurements on the machine that produced them is not egress.
+2. **Export only to a configured address, with no default.** An empty destination is not a
+   disabled feature — it is the *only* correct shipped state. A default endpoint here would be
+   the whole defect, whatever its value.
+3. **There is no consent ceremony that makes vendor telemetry acceptable.** Not opt-in, not a
+   dialog, not "anonymised". This is deliberately stricter than the industry norm, and it is the
+   owner's call to be stricter.
+4. **The same shape covers integrations generally** — Prometheus, Grafana, OTLP, a CRM webhook,
+   OpenSEO. They are not special cases needing new policy; they are instances of *the user owns
+   the far end*, which is what the existing Integrations system already models.
+
+**Cost, stated honestly.** Nobody upstream will ever know how Pantheon is used, so there is no
+crash-rate signal, no adoption data, and no way to learn that a feature is broken for everyone
+except by being told. That is a real price and it is paid on purpose: this is a product people
+run on their own machines, and the one thing they are buying is that it does not report on them.
+
+**Filed as:** `P16-12` (the export), `P16-13` (the guard that keeps it honest). `P14` is unchanged
+by this — it was always local.

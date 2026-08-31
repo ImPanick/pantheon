@@ -69,8 +69,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P13 | The Brain | 12 | 11 | 0 | **1** |
 | P14 | Measurement | 7 | 7 | 0 | 0 |
 | P15 | Outbound politeness | 12 | 5 | **1** | **6** |
-| P16 | Self-hosted by default | 11 | 7 | 0 | **4** |
-| **Total** | | **320** | **223** | **9** | **88** |
+| P16 | Self-hosted by default | 13 | 9 | 0 | **4** |
+| **Total** | | **322** | **225** | **9** | **88** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -103,7 +103,11 @@ embedding model is pulled from HuggingFace on the *first chat message*, because
 requirement. Either the model ships in the image or the lane becomes conditional on an explicit
 download permission.
 
-**`P16-11` is the row that stops this recurring.** Everything in `P16` was found by reading.
+**`P16-12` is the one that turns the law into a feature**, and it is now the most valuable row in
+the phase: operators on their own hardware currently have no way to see what Pantheon is doing,
+and clause 4 explicitly permits fixing that. Build it with `P16-13`'s guard in place, not after.
+
+**`P16-11` is the row that stops all of this recurring.** Everything in `P16` was found by reading.
 A CI job with no route to the internet, asserting the app boots and answers one message, would
 find the next one — and would have found all of these.
 
@@ -201,6 +205,45 @@ location was wrong until it was corrected on the row itself; the row is right no
 *The one progress area. Newest first. One entry per completed section — two lines, a
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
+
+### Law 16, amended — the address is the test, not the activity
+Same day, and it turned a restriction into a specification. `3166798..HEAD`. **Suite 6,371 →
+6,375 passing, the same 19 failing.**
+
+The owner, hours after `Law 16` landed:
+
+> *"telemetry is fine, but 'phone home' to an external destination is not allowed. if the user
+> wants to establish their own telemetry endpoint, they can bypass this law and do so… like
+> Prometheus or Grafana etc.. maybe even enrolling other services to connect like OpenSEO, or
+> other CRM products"*
+
+**Every question of the form *is X allowed?* is now rewritten as *who owns the address at the
+other end?*** If it is the user or their sysadmin, it was always allowed. If it is us, or a
+vendor, or anyone they did not name, it is forbidden however anonymous or aggregated.
+
+**This matters because the obvious misreading is wrong in both directions.** *"No telemetry, we
+are privacy-first"* is what an agent reaches for, and it would ban the operator's own Grafana —
+which the owner explicitly wants — while leaving someone running Pantheon on their own hardware
+with no way to see what it is doing, which is `Law 15` failing in a different costume. The same
+misreading would *wave through* "anonymous aggregated usage stats" to a vendor, because that
+phrasing avoids the word. The address test gets both right and needs no judgement call.
+
+**It also converts the law from a thing to obey into a thing to build.** `P16-12` is now filed:
+Pantheon has **no telemetry export at all**, which is compliant by accident rather than by
+design. A Prometheus scrape endpoint and an OTLP exporter, with `P14-01`'s local events table as
+the source and **no default destination** — because an empty destination here is not a disabled
+feature, it is the only correct shipped state.
+
+**`P16-13` arms the guard before the hole exists.** `P16-12` will create the first legitimate
+place in this codebase for an outbound metrics URL, and therefore the first place a well-meant
+default could land. The test is already red for a compiled-in Sentry DSN, a PostHog beacon in the
+frontend, or any telemetry setting that ships pre-filled — checked across 24 collector hosts, in
+Python and in JS. Five mutations, all caught.
+
+**The cost is written down rather than glossed** (`D-2026-08-31-01`): nobody upstream will ever
+know how Pantheon is used. No crash-rate signal, no adoption data, no way to learn a feature is
+broken for everyone except by being told. Paid on purpose — the one thing someone running this
+on their own machine is buying is that it does not report on them.
 
 ### Law 16, and 286 skills that need no network
 `417c91c..HEAD`. **Suite 6,349 → 6,381 passing, the same 19 failing.** New phase `P16`, four rows
@@ -2361,6 +2404,8 @@ below are convenience defaults, and most are a line each.
 - [ ] **P16-08** **Rendered markdown loads images from any https host.** `img-src 'self' data: blob: https:` (`core/middleware.py:198`) means an `![](…)` in model output, a RAG document or an **email** causes the viewer's browser to beacon a third party. Content the user did not author, fetched by their browser, from a host they did not choose. `Verify:` `img-src 'self' data: blob:`, with remote images proxied same-origin (the emoji route is the pattern) or behind click-to-load.
 - [ ] **P16-09** **`trust_remote_code=True` on a HuggingFace download.** `routes/gallery/gallery_routes.py:2022` runs `transformers.pipeline("briaai/RMBG-1.4", trust_remote_code=True)` as the rembg fallback — downloading **and executing** arbitrary remote code. Gated behind a user action, so not a `Law 16` default violation, but it is the one place in the tree that executes code fetched at runtime from a third party. `Verify:` pinned revision with `trust_remote_code=False`, or the path is removed.
 - [ ] **P16-10** **Self-hosted SearXNG still fans out to commercial engines.** `use_default_settings: true` (`config/searxng/settings.yml:1`) and the last-ditch retry at `services/search/providers.py:222-229` **strips the `engines` parameter entirely**, re-enabling SearXNG's Google/DDG/Brave defaults. Inherent to metasearch and not a defect on its own — but "self-hosted search" that silently queries Google on retry is not what the phrase promises. `Verify:` the engine list is explicit and the retry cannot widen it, or the behaviour is documented where a person choosing SearXNG will read it.
+- [ ] **P16-12** **Give operators the telemetry the law now explicitly allows — to their address, never ours.** `Law 16` clause 4 and `D-2026-08-31-01`: measuring is not the sin, sending it somewhere the user did not choose is. Today there is **no telemetry export at all**, which is compliant by accident rather than by design and leaves someone running this on their own hardware with no way to see what it is doing — `Law 15` in a different costume. Build the two shapes that cover the field: a **Prometheus scrape endpoint** (pull, so nothing leaves unless something asks) and an **OTLP exporter** with a user-supplied collector URL (push, to their box). `P14-01`'s events table is the source; it is local and always was. **The shipped destination is empty, and empty is the only correct default** — a default endpoint here is the whole defect whatever its value. `Verify:` an operator points Grafana at Pantheon and sees round latency, tool failures and token usage, having configured exactly one address.
+- [ ] **P16-13** **A guard that no default destination can ever appear.** `P16-12` creates the first legitimate place in the codebase for an outbound metrics URL, and therefore the first place a well-meant default could land — a "public demo collector", a "community stats" endpoint, an SDK whose constructor has a hosted URL baked in. The rule is absolute and has no opt-in ceremony that satisfies it (`D-2026-08-31-01`). `Verify:` a test asserts every telemetry destination setting ships empty, and CI fails on any hardcoded collector or analytics host anywhere in the tree — the check runs whether or not `P16-12` has landed, so it is armed before the hole exists rather than after.
 - [ ] **P16-11** **A `Law 16` regression test that runs in CI.** The defaults are pinned by `tests/test_self_hosted_defaults.py`, which is the cheap half. The expensive half is the one that would actually hold: **run the app with egress blocked and assert it boots, answers a message, and renders a reply.** Everything above was found by reading; a test that runs would find the next one. `Verify:` a CI job with no route to the internet completes a first-message round trip.
 
 ---
