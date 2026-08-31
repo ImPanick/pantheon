@@ -68,8 +68,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P12 | Limits & the control plane | 11 | 11 | 0 | 0 |
 | P13 | The Brain | 12 | 11 | 0 | **1** |
 | P14 | Measurement | 7 | 7 | 0 | 0 |
-| P15 | Outbound politeness | 12 | 7 | 0 | **5** |
-| **Total** | | **309** | **218** | **8** | **83** |
+| P15 | Outbound politeness | 12 | 6 | 0 | **6** |
+| **Total** | | **309** | **217** | **8** | **84** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -94,7 +94,7 @@ Ten of its rows landed on 2026-08-27 — see § Progress. What is left of it:
 - **`P0-21b`, `P0-31`** — new, from the run: twelve bundled packages with no notice anywhere, and
   49 unaudited `ody-` storage-key hits.
 
-### Next: `P15-07`, `P15-09`, `P15-12`, then `H01`. Outbound politeness outranks everything
+### Next: `P15-09`, then `H01`. `P15-07` is waiting on the owner
 
 **2026-08-31 — a live ban reordered the queue.** The owner was soft-banned by GitHub by his own
 product while this session was running. `P15` exists because of it, and four of its rows are
@@ -111,11 +111,10 @@ undocumented, and now it is not.
 Pantheon while GitHub has you in a forty-minute penalty and it starts asking again immediately.
 A crash-loop plus a rate limit is precisely the pair that turns a soft ban into a hard one.
 
-**`P15-12` is the one still actively hammering.** The unread-email poll is index-first
-*specifically* to avoid Gmail round-trips — but the guard is `if indexed_total:`, so an account
-whose IMAP is **failing**, and which therefore never indexes, drops to a live login on every
-60-second tick, in every open tab, forever. Repeated failing logins are what providers lock. There
-is no failure counter or auto-disable for a broken email account anywhere in the tree.
+**`P15-09` is now the last cheap one, and it got more valuable this run.** Every cooldown is in
+memory — including the new per-account IMAP penalties, which are the ones a restart can least
+afford to forget: a crash-loop plus a locked mailbox is the pair that turns a lockout permanent.
+The state is small and boring: key, blocked-until, consecutive failures.
 
 **Then `H01`, unchanged and still the biggest data-loss row** — the invisible email backlog.
 Its gating question was answered on 2026-08-31: the default arrived at the fork baseline, so the
@@ -191,6 +190,36 @@ location was wrong until it was corrected on the row itself; the row is right no
 *The one progress area. Newest first. One entry per completed section — two lines, a
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
+
+### P15-12 — the mailbox that must not be retried was the only one always retried
+`38931c6..HEAD`. **Suite 6,339 → 6,349 passing, the same 19 failing.**
+
+`/unread-state` is index-first *specifically* so polling does not hit the provider — its own
+docstring says so, and says the fallback happens once. The guard was `if indexed_total:`, and
+**the account most likely to have an empty index is the one whose IMAP is failing**, because a
+failing account never indexes. So the single mailbox that must not be hammered was the only one
+that always was: a live login attempt every 60 seconds, in every open tab, indefinitely.
+Repeated failing logins are what providers lock accounts for.
+
+**I wrote the wrong fix first, and it would have shipped.** Wrapping the call in `try/except`
+and backing off in the handler is the obvious move — and `_list_emails_sync` **catches every
+exception** and reports failure as an `error` key on an otherwise-empty result. AST-verified:
+two broad handlers, both returning, neither re-raising. So the handler never runs and the
+backoff engages never. It compiles, it reads correctly, and it does nothing.
+
+**That swallowing is also why nobody noticed the hammering.** From the poll's side, a mailbox
+that has been refusing logins for a week is indistinguishable from one with no unread mail.
+`P3-17` is the row that owns 250 of these; this is the first one that cost something.
+
+**New primitive: `penalise()` / `succeeded()`** — escalating cooldowns for protocols with no
+429. IMAP, SMTP, CalDAV: *stop* arrives as a socket error or an auth rejection, so the protocols
+without a status code are exactly the ones where blind retrying costs the user most. Keyed by
+account rather than host, deliberately — one stale password must not silence the other mailboxes.
+
+**Two mutations survived, and both were my tests.** One asserted `second > first`, which the 20%
+jitter satisfies about half the time with escalation deleted entirely — flaky *and* vacuous. The
+other checked only that an unrelated account stayed clear, which passes trivially when the
+penalty is written to the wrong key and *nothing* is blocked, including the failing account.
 
 ### P15-05 — 260 requests from one button, and the error handler made it worse
 `d2eb00a..HEAD`. **Suite 6,330 → 6,339 passing, the same 19 failing.**
@@ -2222,7 +2251,7 @@ back, and the only way to *stay* banned is to keep asking while it is telling yo
 - [ ] **P15-09** **The limiter forgets everything on restart.** Cooldowns, escalation counts and `bg_monitor`'s per-job backoff are all in memory. Restart Pantheon while GitHub has you in a 40-minute penalty and it will start asking again immediately — and a crash-loop plus a rate limit is exactly the pair that turns a soft ban into a hard one. The state is small and boring: host, blocked-until, consecutive failures. `Verify:` a cooldown survives a restart.
 - [ ] **P15-10** **Give jitter to every recurring job.** Confirmed absent everywhere: `grep -rnE "jitter|random\.uniform|random\.randint" src/ routes/ services/ app.py` found nothing but a comment. The seeded email tasks all use minute `0`; the nightly skill audit runs at exactly 02:00 local; the 60s unread poll fires on the tab's own boundary. Individually harmless, collectively a thundering herd against whatever provider they share. `P15-04` added jitter to `bg_monitor` as the worked example. `Verify:` no recurring job fires on an exact boundary.
 - [ ] **P15-11** **Show the user what is throttled.** `OutboundHostLimiter.snapshot()` already returns per-host cooldown, consecutive-429 count, requests made and seconds waited — it exists and has no reader. When a host has us in cooldown the person should be able to see it and see when it lifts, rather than watching a feature quietly fail. This is `Law 15`: the product knows something the person needs and does not say it. `Verify:` a throttled host is visible somewhere a person will look, with the time it clears.
-- [ ] **P15-12** **The unread-email poll falls through to IMAP whenever the index is empty.** `routes/email_routes.py:2452` is index-first *"so periodic UI polling does not trigger Gmail SEARCH/LIST round-trips"* — but the guard is `if indexed_total:`, so a new account, or one whose IMAP is **failing** and therefore never indexes, drops to a live `_list_emails_sync` on every 60s tick, per open tab, forever. Repeated failing IMAP logins are exactly what providers throttle and lock. There is **no failure counter, cooldown or auto-disable for a broken email account anywhere in the tree**. `Verify:` a failing account backs off and says so, instead of retrying every minute in every tab.
+- [x] **P15-12** **The unread-email poll falls through to IMAP whenever the index is empty.** `routes/email_routes.py:2452` is index-first *"so periodic UI polling does not trigger Gmail SEARCH/LIST round-trips"* — but the guard is `if indexed_total:`, so a new account, or one whose IMAP is **failing** and therefore never indexes, drops to a live `_list_emails_sync` on every 60s tick, per open tab, forever. Repeated failing IMAP logins are exactly what providers throttle and lock. There is **no failure counter, cooldown or auto-disable for a broken email account anywhere in the tree**. `Verify:` a failing account backs off and says so, instead of retrying every minute in every tab. — **done 2026-08-31, and the row understated it by one level.** The gate is now a per-account cooldown (`imap-unread:<account>`) checked *before* the live call, escalating 120s → 1 hour with jitter and clearing on the first success; two mailboxes at one provider fail independently, because one stale password must not silence the others. **The part the row did not know:** `_list_emails_sync` **catches every exception** and reports failure as an `error` key on an otherwise-empty result (AST-verified: two broad handlers, both returning, neither re-raising). So the obvious fix — wrap the call in `try/except` and back off in the handler — compiles, reads correctly, ships, and backs off **never**. I wrote that version first. The swallowing is also *why* nobody noticed the hammering: from the poll's side, a mailbox that has been refusing logins for a week is indistinguishable from one with no unread mail. The response now carries `sync.source: "unavailable"` with `retry_in`, so `P15-11` has something true to show. **New primitive:** `OutboundHostLimiter.penalise()` / `.succeeded()` — escalating cooldowns for protocols with no 429 (IMAP, SMTP, CalDAV), where *stop* arrives as a socket error and blind retrying costs the user the most. 10 tests, 7 mutations. *(Two survived first time and both were my tests: one asserted `second > first`, which the 20% jitter satisfies half the time with escalation deleted; the other checked only that the unrelated account was clear, which passes trivially when the penalty is written to the wrong key and nothing is blocked at all.)*
 
 ---
 

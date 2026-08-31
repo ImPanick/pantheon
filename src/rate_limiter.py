@@ -367,6 +367,44 @@ class OutboundHostLimiter:
                 st.last_detail = ""
         return cooldown
 
+    def penalise(self, key: str, *, base: float = 60.0, cap: float = 1800.0,
+                 reason: str = "") -> float:
+        """Escalating cooldown for a failure that is not an HTTP response.
+
+        `observe()` reads a status code and headers, which covers everything
+        that speaks HTTP. Plenty of what this product calls does not: IMAP and
+        SMTP logins, CalDAV, CardDAV. There "stop" arrives as a socket error or
+        an auth rejection, and **repeated failing logins are exactly what mail
+        providers lock accounts for** — so the protocol without a 429 is the one
+        where retrying blindly costs the user the most.
+
+        `key` need not be a hostname. Two accounts on the same provider fail
+        independently — one mailbox with a stale password must not silence the
+        other — so callers pass an account-scoped key. What the limiter needs is
+        a stable name for *the thing that should stop being called*, and a
+        hostname is only the common case of that.
+
+        Returns the cooldown imposed.
+        """
+        now = time.monotonic()
+        with self._lock:
+            st = self._st(key)
+            st.consecutive_429 += 1
+            cooldown = min(base * (2 ** (st.consecutive_429 - 1)), cap)
+            cooldown += random.uniform(0.0, cooldown * 0.2)
+            if reason:
+                st.last_detail = reason[:200]
+            st.blocked_until = max(st.blocked_until, now + cooldown)
+            return cooldown
+
+    def succeeded(self, key: str) -> None:
+        """It worked. Clear the penalty ladder without forgetting the pacing."""
+        with self._lock:
+            st = self._st(key)
+            st.consecutive_429 = 0
+            st.blocked_until = 0.0
+            st.last_detail = ""
+
     def note_failure(self, host: str, cooldown: float = 5.0) -> None:
         """A transport-level failure. Slow down, but do not treat it as a ban."""
         now = time.monotonic()

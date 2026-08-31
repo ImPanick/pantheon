@@ -2418,6 +2418,15 @@ def setup_email_routes():
         trigger Gmail SEARCH/LIST round-trips. If no local index exists for the
         account/folder yet, do one tiny IMAP fallback and then cache naturally
         through the list path.
+
+        **"One tiny fallback" was never once.** The guard below is
+        `if indexed_total:`, so an account whose index is empty falls through on
+        *every* poll — and the account most likely to have an empty index is the
+        one whose IMAP is failing, because a failing account never indexes. At a
+        60-second tick, in every open tab, that is a failing login attempt a
+        minute forever, which is what providers lock accounts for. Fixed
+        2026-08-31 (`P15-12`): the fallback is now gated on a per-account
+        cooldown that escalates on failure and clears on success.
         """
         fixture_result = _fixture_email_list(folder, 1, 0, "unread", None, owner)
         if fixture_result is not None:
@@ -2463,9 +2472,63 @@ def setup_email_routes():
         except Exception:
             logger.debug("unread-state index lookup skipped", exc_info=True)
 
-        result = await _asyncio.to_thread(
-            _list_emails_sync, folder, 1, 0, "unread", account_id, None, False, owner,
-        )
+        # Gate the live IMAP call. The key is the account, not the host: two
+        # mailboxes at the same provider fail independently, and one with a
+        # stale password must not silence the other.
+        from src.rate_limiter import outbound as _outbound
+
+        poll_key = f"imap-unread:{_account_cache_key(account_id, owner)}"
+        blocked_for = _outbound.blocked_for(poll_key)
+        if blocked_for > 0:
+            # Answer from what we know rather than knocking again. Zero is the
+            # honest number here: the index is empty and we cannot reach the
+            # server, so nothing is claimed that has not been seen.
+            return {
+                "unread_count": 0,
+                "max_uid": 0,
+                "folder": folder,
+                "sync": {
+                    "source": "unavailable",
+                    "retry_in": int(blocked_for),
+                    "detail": "This mailbox is not answering; Pantheon has stopped retrying "
+                              "for now so the provider does not lock the account.",
+                },
+            }
+
+        try:
+            result = await _asyncio.to_thread(
+                _list_emails_sync, folder, 1, 0, "unread", account_id, None, False, owner,
+            )
+        except Exception as e:  # a raise from the thread hop itself
+            failure = str(e)[:200]
+        else:
+            # `_list_emails_sync` catches everything and reports failure as an
+            # `error` key on an otherwise empty result — so an `except` around
+            # it is dead code, and a backoff hung on one would never engage.
+            # That swallowing is also *why* this went unnoticed: from the poll's
+            # side, a mailbox that has been refusing logins for a week is
+            # indistinguishable from one with no unread mail.
+            failure = ""
+            if isinstance(result, dict) and result.get("error"):
+                failure = str(result.get("error"))[:200]
+
+        if failure:
+            cooldown = _outbound.penalise(poll_key, base=120.0, cap=3600.0, reason=failure)
+            logger.warning(
+                "unread-state IMAP fallback failed for %s; backing off %.0fs: %s",
+                poll_key, cooldown, failure,
+            )
+            return {
+                "unread_count": 0,
+                "max_uid": 0,
+                "folder": folder,
+                "sync": {
+                    "source": "unavailable",
+                    "retry_in": int(cooldown),
+                    "detail": "Could not reach this mailbox.",
+                },
+            }
+        _outbound.succeeded(poll_key)
         emails = (result or {}).get("emails") or []
         max_uid = 0
         if emails:
