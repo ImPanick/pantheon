@@ -10,7 +10,7 @@
 > goes in, and then `python3 .pantheon/check-tracker.py` runs. A tracker updated
 > *sometimes* is worse than no tracker, because people trust it.
 >
-> The other eleven laws are in `AGENTS.md`. Eight of them are anti-drift laws, and each
+> The other fifteen laws are in `AGENTS.md`. Eight of them are anti-drift laws, and each
 > one cites the incident that produced it.
 
 **This file is the only place work is tracked.** One list, one progress area. There are
@@ -69,7 +69,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P13 | The Brain | 12 | 11 | 0 | **1** |
 | P14 | Measurement | 7 | 7 | 0 | 0 |
 | P15 | Outbound politeness | 12 | 5 | **1** | **6** |
-| **Total** | | **309** | **216** | **9** | **84** |
+| P16 | Self-hosted by default | 11 | 7 | 0 | **4** |
+| **Total** | | **320** | **223** | **9** | **88** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -94,7 +95,17 @@ Ten of its rows landed on 2026-08-27 — see § Progress. What is left of it:
 - **`P0-21b`, `P0-31`** — new, from the run: twelve bundled packages with no notice anywhere, and
   49 unaudited `ody-` storage-key hits.
 
-### Next: `P15-09`, then `H01`. `P15-07` is waiting on the owner
+### Next: `P16-05`, `P16-11`, then `P15-09`. `P15-07` is waiting on the owner
+
+**`P16-05` is the last zero-configuration leak**, and the only one that is not a one-liner: the
+embedding model is pulled from HuggingFace on the *first chat message*, because
+`build_embedding_lanes` builds the fastembed lane unconditionally and `fastembed` is a hard
+requirement. Either the model ships in the image or the lane becomes conditional on an explicit
+download permission.
+
+**`P16-11` is the row that stops this recurring.** Everything in `P16` was found by reading.
+A CI job with no route to the internet, asserting the app boots and answers one message, would
+find the next one — and would have found all of these.
 
 **2026-08-31 — a live ban reordered the queue.** The owner was soft-banned by GitHub by his own
 product while this session was running. `P15` exists because of it, and four of its rows are
@@ -190,6 +201,48 @@ location was wrong until it was corrected on the row itself; the row is right no
 *The one progress area. Newest first. One entry per completed section — two lines, a
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
+
+### Law 16, and 286 skills that need no network
+`417c91c..HEAD`. **Suite 6,349 → 6,381 passing, the same 19 failing.** New phase `P16`, four rows
+closed on the day it opened.
+
+**The owner set a standing constraint:** fully self-hosted by default, nothing routes anywhere
+until a person or sysadmin links it — and a linked provider then gets *everything their
+subscription allows*. That second clause matters as much as the first: this is a rule about
+defaults, not a cap on capability, and nerfing a configured provider in its name is the mistake
+`P2` exists to undo. It is `Law 16` now, with the owner's words on it.
+
+**The audit says the product was already most of the way there** — no telemetry of any kind, every
+model, embedding and search endpoint defaulting to loopback, `.env.example` two active lines and
+both localhost, fonts and libraries vendored, invasive scheduled tasks shipping paused. What was
+left were convenience defaults, and the sharpest one is worth naming: **`npx -y
+@playwright/mcp@latest` ran about three seconds after every boot**, installing from the npm
+registry on first start and re-checking the dist-tag on every one after. A fresh install with no
+account and no key reached the public internet before anyone had clicked anything. Its opt-out
+existed and was **inverted** — and the comment above it explained the choice plainly, so nobody
+had hidden it. It had simply never been asked this question. Alongside it, `search_fallback_chain`
+shipped as `["duckduckgo"]` on the reasoning that it is free and keyless, which meant that on a
+native install — where SearXNG never starts — **every search a user typed left the machine**.
+
+**And the product now ships 286 skills.** ECC (MIT) vendored under `library/ecc/`, pinned to
+`2.2.0` @ `005eff4`. The reason it fits in an afternoon is that nothing needed converting: ECC
+writes `name:`/`description:` frontmatter in `SKILL.md`, which is exactly what
+`skill_format.py` already reads. All 286 parse with the reader that was already there.
+
+**Three design calls worth the record.** It loads as a **read-only layer beneath** `data/skills/`
+rather than seeding copies into it — `data/` is disposable here, and seeding would make every
+update a three-way merge against files the user may have edited, where a shadowing layer has no
+merge at all. It is kept **off every write path**, because `_iter_skill_files` has three callers
+and one of them *rewrites* every file it is handed; folding the library in would have rewritten
+286 vendored files in place on the next owner backfill, visible only as a dirty tree. And
+**SKILL.md text only** — no upstream scripts or assets, because a product built to depend on
+nothing external should not ship code it has not read to run on someone's machine.
+
+**Updatable, not auto-updating.** `scripts/update-skill-library.py` fetches through the `P15`
+limiter, **refuses to apply if any incoming skill fails to parse with this product's own reader**,
+and regenerates the manifest with per-file checksums so the diff is reviewable. An auto-updating
+bundle is an external dependency wearing a different hat, and it turns *review the diff* into
+*hope upstream is fine*.
 
 ### P15-07 — I overstated my own row, and the scope changes the decision
 Pacing landed; the policy question is now correctly framed and belongs to the owner.
@@ -2272,6 +2325,43 @@ back, and the only way to *stay* banned is to keep asking while it is telling yo
 - [ ] **P15-10** **Give jitter to every recurring job.** Confirmed absent everywhere: `grep -rnE "jitter|random\.uniform|random\.randint" src/ routes/ services/ app.py` found nothing but a comment. The seeded email tasks all use minute `0`; the nightly skill audit runs at exactly 02:00 local; the 60s unread poll fires on the tab's own boundary. Individually harmless, collectively a thundering herd against whatever provider they share. `P15-04` added jitter to `bg_monitor` as the worked example. `Verify:` no recurring job fires on an exact boundary.
 - [ ] **P15-11** **Show the user what is throttled.** `OutboundHostLimiter.snapshot()` already returns per-host cooldown, consecutive-429 count, requests made and seconds waited — it exists and has no reader. When a host has us in cooldown the person should be able to see it and see when it lifts, rather than watching a feature quietly fail. This is `Law 15`: the product knows something the person needs and does not say it. `Verify:` a throttled host is visible somewhere a person will look, with the time it clears.
 - [x] **P15-12** **The unread-email poll falls through to IMAP whenever the index is empty.** `routes/email_routes.py:2452` is index-first *"so periodic UI polling does not trigger Gmail SEARCH/LIST round-trips"* — but the guard is `if indexed_total:`, so a new account, or one whose IMAP is **failing** and therefore never indexes, drops to a live `_list_emails_sync` on every 60s tick, per open tab, forever. Repeated failing IMAP logins are exactly what providers throttle and lock. There is **no failure counter, cooldown or auto-disable for a broken email account anywhere in the tree**. `Verify:` a failing account backs off and says so, instead of retrying every minute in every tab. — **done 2026-08-31, and the row understated it by one level.** The gate is now a per-account cooldown (`imap-unread:<account>`) checked *before* the live call, escalating 120s → 1 hour with jitter and clearing on the first success; two mailboxes at one provider fail independently, because one stale password must not silence the others. **The part the row did not know:** `_list_emails_sync` **catches every exception** and reports failure as an `error` key on an otherwise-empty result (AST-verified: two broad handlers, both returning, neither re-raising). So the obvious fix — wrap the call in `try/except` and back off in the handler — compiles, reads correctly, ships, and backs off **never**. I wrote that version first. The swallowing is also *why* nobody noticed the hammering: from the poll's side, a mailbox that has been refusing logins for a week is indistinguishable from one with no unread mail. The response now carries `sync.source: "unavailable"` with `retry_in`, so `P15-11` has something true to show. **New primitive:** `OutboundHostLimiter.penalise()` / `.succeeded()` — escalating cooldowns for protocols with no 429 (IMAP, SMTP, CalDAV), where *stop* arrives as a socket error and blind retrying costs the user the most. 10 tests, 7 mutations. *(Two survived first time and both were my tests: one asserted `second > first`, which the 20% jitter satisfies half the time with escalation deleted; the other checked only that the unrelated account was clear, which passes trivially when the penalty is written to the wrong key and nothing is blocked at all.)*
+
+---
+
+# P16 · Self-hosted by default — Law 16
+*Area: `egress` · Depends: nothing · Independent of everything else*
+
+**The directive, in the owner's words (2026-08-31):**
+
+> *"we drop external dependence. i dont want things that'll may route to external services
+> unless the user (or sysadmin) explicitly links it. the intent is fully self hosted everything,
+> with options to add cloud providers via api in which case the cloud provider being API linked
+> will have everything the users subscription allows."*
+
+**The acceptance test for the whole phase:** install Pantheon with no credentials, open it, use
+it — and nothing reaches the public internet. `P15` is about being *polite* to services we call;
+this phase is about not calling them at all until someone asks.
+
+**Read clause 2 of `Law 16` before starting any row here.** This is a rule about defaults, not a
+cap on capability. A provider the user has linked gets everything their subscription allows.
+Nerfing a configured provider in the name of this phase is the mistake `P2` exists to undo.
+
+**The audit found the product much closer to this than not** — no telemetry of any kind, every
+model/embedding/search endpoint defaulting to loopback, `.env.example` two active lines and both
+localhost, fonts and libraries all vendored, invasive scheduled tasks shipping paused. The gaps
+below are convenience defaults, and most are a line each.
+
+- [x] **P16-01** **`npx -y @playwright/mcp@latest` ran ~3 seconds after every boot.** A fresh install with no account, no key and no user action reached `registry.npmjs.org` — installing on first start and re-checking the `@latest` dist-tag on every one after. The opt-out existed and was **inverted**: `PANTHEON_BROWSER_MCP_REQUIRE_CACHE` defaulted to off, and the comment above it explained the choice plainly, so nobody had hidden it — it had simply never been asked this question. — **done:** default flipped to on. The capability is unchanged: browser automation starts the moment the package is on disk. What is gone is Pantheon going to get it uninvited. The test that pinned the old default is rewritten to pin the new one, with the reason on it.
+- [x] **P16-02** **`search_fallback_chain` shipped as `["duckduckgo"]`.** Justified in a comment as *"free, no API key required, so safe to ship on by default for every user"* — both true, and neither is the question. On a native install SearXNG never starts, so the primary provider **always** failed and every search a user typed went to DuckDuckGo, scraped from an HTML endpoint under a spoofed desktop user-agent, which is also how an IP gets blocked. — **done:** defaults to `[]`. Adding a fallback is one line in Settings and it is the user's line to add.
+- [x] **P16-03** **Ship a skill library that needs no network.** — **done:** 286 skills vendored from ECC (MIT) under `library/ecc/`, pinned to upstream `2.2.0` @ `005eff4`. They needed no conversion — ECC's `name:`/`description:` frontmatter is exactly what `skill_format.py` already reads, and all 286 parse. Loaded as a **read-only layer beneath** `data/skills/`, so a `data/` wipe does not cost the library and a user skill of the same name shadows it. **SKILL.md text only** — no upstream scripts, assets or docs, because a product built to depend on nothing external should not ship code it has not read to execute on the user's machine. Attribution in `CREDITS.md` and `licenses/ECC-MIT.txt`. 11 tests, 7 mutations.
+- [x] **P16-04** **Make the library updatable without making it auto-updating.** — **done:** `scripts/update-skill-library.py --check|--apply`. Fetches through the `P15` limiter, **refuses to apply if any incoming skill fails to parse with this product's own reader** (a skill Pantheon cannot read is a regression, not an update), and regenerates `MANIFEST.json` with the new commit and per-file checksums so the diff is reviewable. An auto-updating bundle is an external dependency wearing a different hat, and a supply-chain hole besides.
+- [ ] **P16-05** **The embedding model is downloaded from HuggingFace on the first chat message.** `build_embedding_lanes` (`src/embedding_lanes.py:266-270`) builds the fastembed lane **unconditionally** — the `try` is not conditional on the HTTP lane succeeding — and `FastEmbedClient.__init__` fetches `all-MiniLM-L6-v2` (~90 MB). `fastembed` is a hard requirement, so it is never skipped, and `memory` and `rag` both default on, so the first message triggers it. The HTTP lane's own default is already correct (`http://localhost:11434/v1/embeddings`). **This is the last zero-configuration leak and the only one that is not a one-liner.** `Verify:` a fresh install answers its first message with no outbound request; either the model ships in the image or the lane is conditional on an explicit download permission.
+- [ ] **P16-06** **Emoji SVGs are proxied from jsDelivr on the first emoji in any message.** `routes/emoji_routes.py:28,97` ← `static/js/markdown.js:515`. The design is deliberately same-origin and sanitised and disk-cached — the client never touches the CDN — but the *server* does, and the codepoint sequence is a weak side-channel about message content. Models emit emoji constantly, so this fires on roughly the first reply. The OpenMoji black set is ~4 MB. `Verify:` vendor it into `static/` beside the fonts and KaTeX, and delete the fetch.
+- [ ] **P16-07** **Pyodide is loaded from jsDelivr when a user runs a Python block**, and it half-works. `static/js/codeRunner.js:156` pulls `pyodide.js` from the CDN — while the CSP's `connect-src 'self'` (`core/middleware.py:200`) blocks the `.wasm` fetch that follows. So the request leaks and the feature likely fails anyway. `Verify:` vendor Pyodide into `static/lib/`, then tighten `script-src` to `'self'` — which removes the last external allowance in the CSP.
+- [ ] **P16-08** **Rendered markdown loads images from any https host.** `img-src 'self' data: blob: https:` (`core/middleware.py:198`) means an `![](…)` in model output, a RAG document or an **email** causes the viewer's browser to beacon a third party. Content the user did not author, fetched by their browser, from a host they did not choose. `Verify:` `img-src 'self' data: blob:`, with remote images proxied same-origin (the emoji route is the pattern) or behind click-to-load.
+- [ ] **P16-09** **`trust_remote_code=True` on a HuggingFace download.** `routes/gallery/gallery_routes.py:2022` runs `transformers.pipeline("briaai/RMBG-1.4", trust_remote_code=True)` as the rembg fallback — downloading **and executing** arbitrary remote code. Gated behind a user action, so not a `Law 16` default violation, but it is the one place in the tree that executes code fetched at runtime from a third party. `Verify:` pinned revision with `trust_remote_code=False`, or the path is removed.
+- [ ] **P16-10** **Self-hosted SearXNG still fans out to commercial engines.** `use_default_settings: true` (`config/searxng/settings.yml:1`) and the last-ditch retry at `services/search/providers.py:222-229` **strips the `engines` parameter entirely**, re-enabling SearXNG's Google/DDG/Brave defaults. Inherent to metasearch and not a defect on its own — but "self-hosted search" that silently queries Google on retry is not what the phrase promises. `Verify:` the engine list is explicit and the retry cannot widen it, or the behaviour is documented where a person choosing SearXNG will read it.
+- [ ] **P16-11** **A `Law 16` regression test that runs in CI.** The defaults are pinned by `tests/test_self_hosted_defaults.py`, which is the cheap half. The expensive half is the one that would actually hold: **run the app with egress blocked and assert it boots, answers a message, and renders a reply.** Everything above was found by reading; a test that runs would find the next one. `Verify:` a CI job with no route to the internet completes a first-message round trip.
 
 ---
 

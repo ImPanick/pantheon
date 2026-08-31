@@ -30,6 +30,19 @@ from .skill_format import Skill, slugify
 logger = logging.getLogger(__name__)
 
 
+def _default_library_root() -> str:
+    """Where the bundled skill library ships: `<repo>/library/ecc/skills`.
+
+    Resolved from this file's location rather than the working directory, so it
+    is found identically whether Pantheon is started from the repo root, from a
+    systemd unit, or inside the container. Missing is not an error — an install
+    that has deleted the library simply has no bundled skills.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))          # services/memory
+    repo = os.path.dirname(os.path.dirname(here))              # repo root
+    return os.environ.get("PANTHEON_SKILL_LIBRARY") or os.path.join(repo, "library", "ecc", "skills")
+
+
 # ---------------------------------------------------------------------------
 # Token / similarity helpers (kept for the relevance fallback)
 # ---------------------------------------------------------------------------
@@ -62,11 +75,20 @@ def _to_float(x, default: float = 0.0) -> float:
 class SkillsManager:
     """Read/write SKILL.md files under <data_dir>/skills/."""
 
-    def __init__(self, data_dir: str):
+    def __init__(self, data_dir: str, library_root: Optional[str] = None):
         self.data_dir = data_dir
         self.skills_root = os.path.join(data_dir, "skills")
         self.usage_file = os.path.join(self.skills_root, "_usage.json")
         self.legacy_file = os.path.join(data_dir, "skills.json")  # back-compat
+        # The bundled library ships **in the repo**, not in the data dir, and is
+        # never written to. Two reasons it is a separate root rather than seeded
+        # copies under data/skills/:
+        #   * a `data/` wipe is a supported thing to do here (data is disposable)
+        #     and must not cost the user the library;
+        #   * seeding copies would make every update a three-way merge against
+        #     files the user may have edited. A read-only layer that a
+        #     same-named user skill shadows has no merge at all.
+        self.library_root = library_root if library_root is not None else _default_library_root()
         os.makedirs(self.skills_root, exist_ok=True)
 
     # ----------------------------------------------------------------------
@@ -157,11 +179,40 @@ class SkillsManager:
     # ----------------------------------------------------------------------
 
     def _iter_skill_files(self) -> Iterable[str]:
+        """The user's own skills. **Writable — the library is deliberately not here.**
+
+        Three callers share this, and one of them (`backfill_owner`) *rewrites*
+        every file it is handed. Folding the read-only library into this
+        iterator would therefore not merely surface it; it would rewrite it in
+        place on the next owner backfill. The library gets its own iterator
+        below, used only on read paths.
+        """
         if not os.path.isdir(self.skills_root):
             return
         for root, _dirs, files in os.walk(self.skills_root, followlinks=False):
             if "SKILL.md" in files:
                 yield os.path.join(root, "SKILL.md")
+
+    def _iter_library_files(self) -> Iterable[str]:
+        """The bundled library. Read-only, and never yielded to a write path."""
+        root_dir = self.library_root
+        if not root_dir or not os.path.isdir(root_dir):
+            return
+        for root, _dirs, files in os.walk(root_dir, followlinks=False):
+            if "SKILL.md" in files:
+                yield os.path.join(root, "SKILL.md")
+
+    def library_manifest(self) -> Dict:
+        """What the bundled library is, and where it came from. {} if absent."""
+        if not self.library_root:
+            return {}
+        path = os.path.join(os.path.dirname(self.library_root.rstrip(os.sep)), "MANIFEST.json")
+        try:
+            with open(path, encoding="utf-8") as f:
+                d = json.load(f)
+            return d if isinstance(d, dict) else {}
+        except (OSError, json.JSONDecodeError):
+            return {}
 
     def _read_skill(self, path: str) -> Optional[Skill]:
         try:
@@ -235,6 +286,25 @@ class SkillsManager:
             d["necessity"] = u.get("necessity")
             out.append(d)
             seen_names.add(sk.name)
+
+        # The bundled library, second so a user's own skill of the same name
+        # shadows it. That shadowing *is* the fork mechanism: save a skill under
+        # a bundled name and yours wins, with no merge and nothing to undo.
+        for path in self._iter_library_files():
+            sk = self._read_skill(path)
+            if not sk or sk.name in seen_names:
+                continue
+            d = sk.to_dict()
+            u = self._usage_entry(usage, sk.name, None)
+            d["uses"] = int(u.get("uses", 0))
+            d["last_used"] = u.get("last_used")
+            d["source"] = "bundled"
+            d["bundled"] = True
+            d["editable"] = False
+            d["owner"] = None          # bundled skills belong to the install
+            out.append(d)
+            seen_names.add(sk.name)
+
         # Legacy JSON entries — surfaced as draft, not editable from new flow
         if os.path.exists(self.legacy_file):
             try:

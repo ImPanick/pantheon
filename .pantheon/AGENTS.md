@@ -200,6 +200,48 @@ the thing to fix.
 > tutorials and the curve was too steep for the time available. The capability was real. The
 > adoption was zero. That is the whole lesson.
 
+### Law 16 — Self-hosted by default. Nothing leaves the machine until someone links it.
+
+The owner's words, 2026-08-31:
+
+> *"we drop external dependence. i dont want things that'll may route to external services
+> unless the user (or sysadmin) explicitly links it. the intent is fully self hosted everything,
+> with options to add cloud providers via api in which case the cloud provider being API linked
+> will have everything the users subscription allows."*
+
+**The test, and it is a hard one:** install Pantheon on a machine with no credentials
+configured, open it, and use it. **Nothing should reach the public internet.** Not a package
+registry, not a model catalogue, not a font, not an emoji, not a search engine, not a version
+check. If a fresh install talks to anyone, that is a defect with a row.
+
+Three clauses, and the second is the one that gets misread:
+
+1. **Default local.** Every endpoint default points at loopback, the LAN, or nothing. A default
+   that points at somebody's cloud is a bug however convenient it is.
+2. **This is a rule about defaults, not a cap on capability.** Once a person or sysadmin links a
+   provider, that provider gets **everything their subscription allows** — full context, full
+   model list, full rate. Do not nerf a configured provider in the name of this law; that is a
+   different mistake and `P2` exists because this product has made it before.
+3. **Deliberate beats silent.** An outbound call a person asked for is fine. The failure is the
+   call nobody chose — a convenience default, a `@latest` lookup, a "free, no API key required
+   so it is safe to ship on" fallback.
+
+> **Incident.** `npx -y @playwright/mcp@latest` ran about three seconds after **every** boot —
+> installing from the npm registry on first start and re-checking the dist-tag on every one
+> after. A fresh install reached the public internet before the user had clicked anything. Its
+> opt-out existed and was inverted, and the comment above it explained the choice plainly, so
+> nobody had hidden it. It had simply never been asked the question this law asks.
+>
+> Alongside it: `search_fallback_chain` shipped as `["duckduckgo"]`, justified in a comment as
+> *"free, no API key required, so safe to ship on by default for every user."* On a native
+> install SearXNG never starts, so the primary always failed and **every search a user typed
+> went to DuckDuckGo** — scraped, under a spoofed desktop user-agent.
+
+**What this law does not say.** It does not say remove capability. `videodb`, `x-api` and the
+other vendor-specific skills in the bundled library stay; they do nothing until a person opens
+them and supplies their own key. Deleting a capability and defaulting it off are different acts,
+and this law asks for the second.
+
 ---
 
 ## Before you start a task

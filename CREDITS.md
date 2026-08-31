@@ -105,6 +105,31 @@ texts are in [`licenses/`](licenses/).
 | [opencode](https://github.com/anomalyco/opencode) | MIT | Agent-loop and tool-execution patterns, UI concepts |
 | [llmfit](https://github.com/AlexsJones/llmfit) | MIT | Hardware-fit calculation behind the model Cookbook's download / serve / "What Fits?" feature |
 | [Tongyi DeepResearch](https://github.com/Alibaba-NLP/DeepResearch) | Apache-2.0 | Deep-research pipeline |
+| [ECC](https://github.com/affaan-m/ECC) | MIT | The 286-skill library Pantheon ships with, in `library/ecc/` |
+
+- **[ECC](https://github.com/affaan-m/ECC)** — "the agent harness operating
+  system" by Affaan Mustafa. Copyright © 2026 Affaan Mustafa. **MIT License**,
+  full text in [`licenses/ECC-MIT.txt`](licenses/ECC-MIT.txt).
+
+  Pantheon ships **286 skills** from it, vendored under
+  [`library/ecc/`](library/ecc/) and pinned to a named upstream commit recorded
+  in `library/ecc/MANIFEST.json`. They load as a **read-only** layer beneath the
+  user's own skills, so a skill you write under a bundled name shadows it.
+
+  **What is vendored and what is not.** The `SKILL.md` text only — 286 files,
+  2.5 MB. ECC's scripts, assets and documentation are deliberately **not**
+  included: they are third-party executables, and a product whose stated intent
+  is to depend on nothing external should not ship code it has not read to
+  execute on the user's machine. The skills are prose an agent reads. That is a
+  different risk, and an auditable one.
+
+  Six of the 286 name a commercial API in their own body — `videodb`,
+  `nutrient-document-processing`, `social-publisher`, `ito-baskets`, `x-api`,
+  `scientific-db-uspto-database`. Each is confined to a skill directory named
+  after the thing it does, and none of them causes any traffic unless a person
+  invokes that skill and supplies their own credentials. They are listed here
+  rather than removed, because deleting a capability is not the same as
+  defaulting it off, and the second is what the self-hosting rule asks for.
 
 - **[opencode](https://github.com/anomalyco/opencode)** — open-source AI coding
   agent (originally [opencode-ai/opencode](https://github.com/opencode-ai/opencode),

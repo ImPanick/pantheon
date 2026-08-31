@@ -36,14 +36,38 @@ def test_npx_package_from_args_prefers_package_after_y_flag(monkeypatch):
     ) == "@playwright/mcp@latest"
 
 
-def test_browser_mcp_cache_requirement_is_opt_in(monkeypatch):
+def test_a_fresh_install_does_not_fetch_from_npm_at_boot(monkeypatch):
+    """`Law 16` at its sharpest point.
+
+    This test previously asserted the opposite -- that requiring a cached
+    package was opt-IN, so the default path ran `npx -y @playwright/mcp@latest`
+    about three seconds after every startup. That meant a fresh install with no
+    account, no key and no user action reached registry.npmjs.org before anyone
+    had clicked anything, and re-checked the `@latest` dist-tag on every boot
+    thereafter.
+
+    Reversed deliberately on 2026-08-31, on the owner's directive that nothing
+    routes anywhere until a person links it. The capability is unchanged:
+    browser automation still starts the moment the package is on disk. What is
+    gone is Pantheon going to get it uninvited.
+    """
     monkeypatch.delenv("PANTHEON_BROWSER_MCP_REQUIRE_CACHE", raising=False)
+    builtin_mcp = _load_builtin_mcp(monkeypatch)
+
+    assert builtin_mcp.BROWSER_MCP_REQUIRE_CACHE is True, (
+        "the default boot path installs from the npm registry before the user has acted"
+    )
+
+
+def test_the_fetch_can_still_be_opted_into(monkeypatch):
+    """Deliberate is fine. Silent is not. Both directions must be reachable."""
+    monkeypatch.setenv("PANTHEON_BROWSER_MCP_REQUIRE_CACHE", "0")
     builtin_mcp = _load_builtin_mcp(monkeypatch)
 
     assert builtin_mcp.BROWSER_MCP_REQUIRE_CACHE is False
 
 
-def test_browser_mcp_cache_requirement_can_be_enabled(monkeypatch):
+def test_an_explicit_1_still_means_cache_only(monkeypatch):
     monkeypatch.setenv("PANTHEON_BROWSER_MCP_REQUIRE_CACHE", "1")
     builtin_mcp = _load_builtin_mcp(monkeypatch)
 

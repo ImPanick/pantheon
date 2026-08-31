@@ -87,7 +87,19 @@ _BUILTIN_NPX_SERVERS = {
 
 # Global flag to disable MCP if there are compatibility issues
 MCP_DISABLED = os.environ.get("PANTHEON_DISABLE_MCP", "").lower() in ("1", "true", "yes")
-BROWSER_MCP_REQUIRE_CACHE = os.environ.get("PANTHEON_BROWSER_MCP_REQUIRE_CACHE", "").lower() in ("1", "true", "yes")
+# Default ON as of 2026-08-31 (`Law 16`). This used to default OFF, which meant
+# `npx -y @playwright/mcp@latest` ran ~3 seconds after every boot — installing
+# from registry.npmjs.org on first start and re-checking the `@latest` dist-tag
+# on every subsequent one. A fresh install with no account, no key and no user
+# action reached the public internet before anyone had clicked anything, which
+# is the single clearest contradiction of a self-hosted-first product.
+#
+# The capability is not removed. Browser automation still starts the instant the
+# package is present in the npm cache or vendored into the image. What changed is
+# that Pantheon no longer goes and gets it uninvited.
+BROWSER_MCP_REQUIRE_CACHE = os.environ.get(
+    "PANTHEON_BROWSER_MCP_REQUIRE_CACHE", "1"
+).lower() in ("1", "true", "yes")
 
 
 # Strong references to the fire-and-forget startup tasks scheduled below.
@@ -203,10 +215,11 @@ async def register_builtin_servers(mcp_manager):
     async def _start_npx_servers():
         await asyncio.sleep(3)  # let Python servers finish first
         for server_id, cfg in _BUILTIN_NPX_SERVERS.items():
-            # Browser automation is a shipped built-in, so the default path
-            # lets `npx -y` install @playwright/mcp on first start. Locked-down
-            # installs can opt back into the old no-network startup behavior
-            # with PANTHEON_BROWSER_MCP_REQUIRE_CACHE=1.
+            # Browser automation is a shipped built-in, and it starts as soon
+            # as its package is on disk. It is not fetched at boot: an install
+            # that wants Pantheon to download it can set
+            # PANTHEON_BROWSER_MCP_REQUIRE_CACHE=0, which is a deliberate,
+            # recorded choice rather than the silent default it used to be.
             args = _browser_mcp_args(cfg["args"]) if server_id == "builtin_browser" else list(cfg["args"])
             pkg_spec = _npx_package_from_args(args)
             if BROWSER_MCP_REQUIRE_CACHE and pkg_spec and not await _is_npx_package_cached(npx_path, pkg_spec):

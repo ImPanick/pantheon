@@ -89,10 +89,17 @@ DEFAULT_SETTINGS = {
     "stt_model": "base",
     "stt_language": "",
     "search_provider": "searxng",
-    # Default fallback chain — when the primary provider fails or
-    # rate-limits, we try DuckDuckGo next. Free, no API key required, so
-    # safe to ship on by default for every user.
-    "search_fallback_chain": ["duckduckgo"],
+    # Empty by default as of 2026-08-31 (`Law 16`). This shipped as
+    # `["duckduckgo"]` on the reasoning that it is free and needs no API key —
+    # both true, and neither is the question. The question is whether a person
+    # who installed a self-hosted product and typed a search expects the query
+    # to leave their machine. On a native install SearXNG is not running at all,
+    # so the primary provider always failed and **every search went to
+    # DuckDuckGo** — scraped from an HTML endpoint under a spoofed desktop
+    # user-agent, which is also how you get that IP blocked.
+    #
+    # Adding a fallback is one line in Settings and it is the user's line to add.
+    "search_fallback_chain": [],
     "search_url": "",
     "search_result_count": 5,
     # SafeSearch level applied to every provider that exposes one.
