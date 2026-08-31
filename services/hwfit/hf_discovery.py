@@ -2,6 +2,7 @@ import json
 import os
 import re
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from email.utils import parsedate_to_datetime
@@ -15,6 +16,27 @@ HW_FIT_CACHE_DIR = Path(DATA_DIR) / "hwfit"
 MLX_COMMUNITY_CACHE = HW_FIT_CACHE_DIR / "mlx_community_models.json"
 HF_COLLECTION_MODELS_CACHE = HW_FIT_CACHE_DIR / "hf_collection_models.json"
 HF_COLLECTION_TTL_SECONDS = 24 * 3600
+
+# Politeness budget for one catalogue refresh (`P15-05`).
+#
+# Before 2026-08-31 this walked 13 sources x 20 pages = **260 sequential,
+# unauthenticated requests at huggingface.co from a single button press**, with
+# no delay between them — while two other call sites in this same product
+# (`routes/cookbook_routes.py` and `src/tools/cookbook.py`) send a Bearer token
+# to that same host. The 24h TTL was the only brake, and `force=True` from the
+# UI's refresh button walked straight past it.
+#
+# The cap is on requests, not sources: a source that paginates deeply must not
+# be able to spend the whole budget and starve the twelve behind it.
+HF_MAX_REQUESTS_PER_REFRESH = 40
+HF_MAX_PAGES_PER_SOURCE = 8
+
+# Floor between forced refreshes. `force=True` exists so an operator can pick up
+# a new model without waiting a day; it does not exist so the button can be held
+# down. Separate from the TTL because it answers a different question: the TTL
+# is "is this stale", this is "have we just done this".
+HF_FORCE_REFRESH_FLOOR_SECONDS = 300
+_last_forced_refresh = 0.0
 
 
 HF_COLLECTION_SOURCES = (
@@ -271,20 +293,63 @@ def _next_link(header):
     return m.group(1) if m else None
 
 
-def fetch_collection_models(source, timeout=20, max_pages=20):
+def _hf_token() -> str:
+    """The token the rest of the product already has, which this path never used."""
+    try:
+        from routes.cookbook_helpers import load_stored_hf_token
+
+        return (load_stored_hf_token() or "").strip()
+    except Exception:
+        return ""
+
+
+def fetch_collection_models(source, timeout=20, max_pages=HF_MAX_PAGES_PER_SOURCE, budget=None):
+    """Page through one collection owner's models.
+
+    `budget` is a mutable [remaining] cell shared across every source in a
+    refresh. Capping pages per source is not enough on its own — thirteen
+    sources each politely stopping at their own limit still add up to a burst.
+    """
+    from src.rate_limiter import OutboundRateLimited, outbound
+
     params = urllib.parse.urlencode({
         "owner": source["owner"],
         "limit": "100",
         "expand": "true",
     })
     url = f"{HF_COLLECTIONS_URL}?{params}"
+    token = _hf_token()
     models = {}
     pages = 0
     while url and pages < max_pages:
-        req = urllib.request.Request(url, headers={"User-Agent": "pantheon-hwfit/1.0"})
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            payload = json.load(resp)
-            url = _next_link(resp.headers.get("Link"))
+        if budget is not None:
+            if budget[0] <= 0:
+                break
+            budget[0] -= 1
+        try:
+            outbound.acquire("huggingface.co", authenticated=bool(token))
+        except OutboundRateLimited:
+            # The host has told us to stop. Returning what we have beats
+            # pressing on: the caller writes a partial cache and the next
+            # refresh picks up the rest.
+            break
+        headers = {"User-Agent": "pantheon-hwfit/1.0"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        req = urllib.request.Request(url, headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                outbound.observe("huggingface.co", getattr(resp, "status", 200) or 200,
+                                 dict(resp.headers))
+                payload = json.load(resp)
+                url = _next_link(resp.headers.get("Link"))
+        except urllib.error.HTTPError as e:
+            # A 429 here used to be swallowed by the caller's bare `except` and
+            # answered by moving on to the next source — twelve more bursts at
+            # a host that had just said stop. Record it and give up instead;
+            # the cooldown is what makes the limit expire.
+            outbound.observe("huggingface.co", e.code, dict(getattr(e, "headers", {}) or {}))
+            raise
         pages += 1
         if not isinstance(payload, list):
             break
@@ -344,21 +409,40 @@ def refresh_mlx_community_cache(force=False):
     if not force and _cache_fresh(MLX_COMMUNITY_CACHE):
         return load_cached_mlx_community_models()
     source = next(s for s in HF_COLLECTION_SOURCES if s["key"] == "mlx_community")
-    rows = fetch_collection_models(source)
+    rows = fetch_collection_models(source, budget=[HF_MAX_REQUESTS_PER_REFRESH])
     _write_cache(MLX_COMMUNITY_CACHE, "https://huggingface.co/mlx-community/collections", rows)
     return rows
 
 
 def refresh_hf_collection_models_cache(force=False):
+    global _last_forced_refresh
+
     if not force and _cache_fresh(HF_COLLECTION_MODELS_CACHE):
         return load_cached_hf_collection_models()
+    if force:
+        # `force` skips the 24h staleness check, not the politeness floor.
+        since = time.time() - _last_forced_refresh
+        if since < HF_FORCE_REFRESH_FLOOR_SECONDS:
+            return load_cached_hf_collection_models()
+        _last_forced_refresh = time.time()
+
+    budget = [HF_MAX_REQUESTS_PER_REFRESH]
     rows_by_name = {}
     for source in HF_COLLECTION_SOURCES:
         if source["key"] == "mlx_community":
             continue
+        if budget[0] <= 0:
+            break
         try:
-            for row in fetch_collection_models(source):
+            for row in fetch_collection_models(source, budget=budget):
                 rows_by_name.setdefault(row["name"], row)
+        except urllib.error.HTTPError as e:
+            if e.code in (429, 403):
+                # Stop the whole refresh. Continuing here was the amplifier:
+                # a rate limit on the first source bought twelve more bursts
+                # at the host that had just issued it.
+                break
+            continue
         except Exception:
             # Keep partial refreshes useful. A temporary DNS/provider issue for
             # one brand should not invalidate the other cached collection rows.

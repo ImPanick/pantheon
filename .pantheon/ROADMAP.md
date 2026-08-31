@@ -68,8 +68,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P12 | Limits & the control plane | 11 | 11 | 0 | 0 |
 | P13 | The Brain | 12 | 11 | 0 | **1** |
 | P14 | Measurement | 7 | 7 | 0 | 0 |
-| P15 | Outbound politeness | 12 | 8 | 0 | **4** |
-| **Total** | | **309** | **219** | **8** | **82** |
+| P15 | Outbound politeness | 12 | 7 | 0 | **5** |
+| **Total** | | **309** | **218** | **8** | **83** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -94,16 +94,12 @@ Ten of its rows landed on 2026-08-27 — see § Progress. What is left of it:
 - **`P0-21b`, `P0-31`** — new, from the run: twelve bundled packages with no notice anywhere, and
   49 unaudited `ody-` storage-key hits.
 
-### Next: `P15-05`, `P15-07`, `P15-09`, then `H01`. Outbound politeness outranks everything
+### Next: `P15-07`, `P15-09`, `P15-12`, then `H01`. Outbound politeness outranks everything
 
 **2026-08-31 — a live ban reordered the queue.** The owner was soft-banned by GitHub by his own
 product while this session was running. `P15` exists because of it, and four of its rows are
 closed; what is left of it comes before the `H` rows, because a feature nobody can reach costs
 less than one that gets the user locked out of a service they depend on.
-
-**`P15-05` first** — one click on the hardware-fit refresh fires up to **260 unauthenticated
-requests** at huggingface.co, sequentially, with no delay, while two other call sites in this
-same product send a token to that same host. It is the next ban, and it is a small fix.
 
 **`P15-07` needs a human, not an agent.** `llm_core` rotates its `User-Agent` through six
 different vendors' clients until a 403 stops coming back. That is block evasion by construction
@@ -114,6 +110,12 @@ undocumented, and now it is not.
 **`P15-09` is the cheap one with the worst failure mode.** Every cooldown is in memory. Restart
 Pantheon while GitHub has you in a forty-minute penalty and it starts asking again immediately.
 A crash-loop plus a rate limit is precisely the pair that turns a soft ban into a hard one.
+
+**`P15-12` is the one still actively hammering.** The unread-email poll is index-first
+*specifically* to avoid Gmail round-trips — but the guard is `if indexed_total:`, so an account
+whose IMAP is **failing**, and which therefore never indexes, drops to a live login on every
+60-second tick, in every open tab, forever. Repeated failing logins are what providers lock. There
+is no failure counter or auto-disable for a broken email account anywhere in the tree.
 
 **Then `H01`, unchanged and still the biggest data-loss row** — the invisible email backlog.
 Its gating question was answered on 2026-08-31: the default arrived at the fork baseline, so the
@@ -189,6 +191,26 @@ location was wrong until it was corrected on the row itself; the row is right no
 *The one progress area. Newest first. One entry per completed section — two lines, a
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
+
+### P15-05 — 260 requests from one button, and the error handler made it worse
+`d2eb00a..HEAD`. **Suite 6,330 → 6,339 passing, the same 19 failing.**
+
+The hardware-fit catalogue refresh walked 13 collection sources × 20 pages at
+huggingface.co — **sequential, no delay, no token** — while two other call sites in this same
+product send a Bearer token to that exact host. Now: a **shared** 40-request budget across the
+whole refresh (per-source caps alone do not help — thirteen sources each stopping politely at
+their own limit still add up to a burst), the token that was two imports away, and a five-minute
+floor under `force=True`, which previously walked straight past the 24-hour TTL from a UI button.
+
+**The error handler was the real find.** `except Exception: continue` meant a 429 on the first
+source was swallowed and answered by trying the other twelve — so being told to stop bought the
+host twelve more bursts. That is the same shape as the search chain in `P15-04`, in a module
+nobody connected to it.
+
+**And one mutation survived, usefully.** Deleting the rate-limit `break` changed nothing, because
+the limiter's own cooldown already blocks the second source. Two independent protections, which
+is correct — but it meant the test could not see the loop it claimed to test. There is now a
+second test with a deaf limiter stubbed in, so each half is proved alone.
 
 ### P15 — the product had no brakes on anything it called
 Four rows closed the day the phase was opened. `ba8f561..HEAD`. **Suite 6,287 → 6,330
@@ -2193,7 +2215,7 @@ back, and the only way to *stay* banned is to keep asking while it is telling yo
 - [x] **P15-02** **Read the server's instructions — all three forms.** — **done:** `parse_retry_after` handles the delta-seconds **and** the HTTP-date form (reading only `int(value)` is the obvious implementation and silently drops every date-form response, which is the half carrying the long waits); `parse_reset_header` handles `X-RateLimit-Reset`, which is what **GitHub sends instead of `Retry-After`** on a primary rate limit. Three things count as *stop*: a `429`; a `403` whose body names a rate or abuse limit — **GitHub's primary rate limit is a 403, not a 429** — and `X-RateLimit-Remaining: 0` on an otherwise fine response, which is the one signal that lets us stop *before* being told to. A plain `403` is **not** a rate limit and must not silence a host; there is a test.
 - [x] **P15-03** **Fix the import that caused this.** — **done:** every request in `services/memory/skill_importer.py` now passes through one chokepoint (`_get_checked`) that paces, authenticates, identifies itself, and feeds the response back. Five defects closed: **(a)** no pacing — GitHub asks for serial requests a second apart, and gets them; **(b)** `MAX_FILES = 64` capped *files kept*, not requests made, so a tree of empty or binary-only folders cost **unbounded** `api.github.com` calls while the counter never moved — a per-import request budget now caps the real number (40 unauthenticated, 200 with a token); **(c)** no `User-Agent`, so every request went out as `python-httpx`, a bot signature GitHub scores against you before reading the path; **(d)** no token — unauthenticated GitHub is **60 requests an hour**, with one it is 5,000, and `github_token` is now a setting registered in all five places (`DEFAULT_SETTINGS`, `.env.example`, three compose files); **(e)** the 403 was detected only to print *"try again in a bit"*, which is what makes a person click again and deepen the ban — it now names the wait and says Pantheon has stopped calling, which is what lets the limit expire.
 - [x] **P15-04** **Stop the hammer-on-429 sites.** — **done:** three. `services/search/core.py` retried a rate-limited provider **immediately, with no sleep**, then moved down the chain and did the same to the next one — one provider's limit became load on all of them; a `RateLimitError` is now terminal for that provider and is recorded against its host so every other feature sees it. `src/llm_core.py` retried a 429 on a flat 0.5s three times and never read the header; it now honours `Retry-After`/`X-RateLimit-Reset`, sits through a short wait, and surfaces a long one so the caller can fall back rather than queue behind it. `src/bg_monitor.py` retried a failed follow-up **every 5 seconds forever** — 720 attempts an hour, each up to 12 model rounds, each round able to call `web_search`, unattended — now 30s doubling to 30 minutes with jitter, and it gives up after 12.
-- [ ] **P15-05** **`services/hwfit/hf_discovery.py` fires up to 260 unauthenticated requests from one click.** 13 collection sources × 20 pages, sequential, zero delay, no token — while `routes/cookbook_routes.py:3876` and `src/tools/cookbook.py:484` *do* send an `Authorization: Bearer` to the same host. The 24h TTL is real protection but `force=True` bypasses it and is reachable from the UI (`routes/hwfit_routes.py:210`, `refresh_catalog=1`). `Verify:` the refresh button cannot exceed the host's budget, and it uses the token the rest of the product already has.
+- [x] **P15-05** **`services/hwfit/hf_discovery.py` fires up to 260 unauthenticated requests from one click.** 13 collection sources × 20 pages, sequential, zero delay, no token — while `routes/cookbook_routes.py:3876` and `src/tools/cookbook.py:484` *do* send an `Authorization: Bearer` to the same host. The 24h TTL is real protection but `force=True` bypasses it and is reachable from the UI (`routes/hwfit_routes.py:210`, `refresh_catalog=1`). `Verify:` the refresh button cannot exceed the host's budget, and it uses the token the rest of the product already has. — **done 2026-08-31.** Four changes, and the third was the one worth finding. **(a)** A **shared** request budget across the whole refresh — 40, against a worst case of 260. Capping pages per source is not enough on its own: thirteen sources each politely stopping at their own limit still add up to a burst, so the budget is one cell threaded through every source. **(b)** The token this product already has. `load_stored_hf_token` was two imports away, and two other call sites already send it to this exact host. **(c)** **The `except Exception: continue` was an amplifier.** A 429 on the first source was swallowed and answered by trying the other twelve — so being told to stop bought the host twelve more bursts. A rate limit now ends the refresh. **(d)** `force=True` skips the 24-hour staleness check, which is what it is for; it no longer skips a five-minute floor, which is a different question — *is this stale* versus *have we just done this*. 9 tests, 7 mutations, all caught. *(One survived at first and was informative: deleting the rate-limit `break` changed nothing, because the limiter's own cooldown already blocks the second source. Two independent protections, which is right — so there is now a test with a deaf limiter stubbed in, isolating the loop itself.)*
 - [ ] **P15-06** **Route the remaining outbound clients through the limiter.** The audit inventoried **50 modules** making outbound calls. `P15-03`/`P15-04` cover the ones that caused harm; these are the rest, in risk order: `src/embeddings.py` (⌈N/8⌉ sequential POSTs with no pacing, **and a fan-out amplifier** — a failing batch of 8 is retried as 8 single-item requests, 9 where there was 1); `src/deep_research.py` (up to 25 queries per run launched in one unbounded `asyncio.gather`, each walking the whole provider chain — its page fetches *are* capped at 3, so the pattern is already there to copy); the four unauthenticated third-party endpoints in `routes/cookbook_routes.py`; `src/webhook_manager.py` (one task per matching webhook, no per-host cap); `src/caldav_sync.py`. `Verify:` a call that leaves the process without passing the limiter is the exception and is named.
 - [ ] **P15-07** **`src/llm_core.py:919` rotates its User-Agent through six vendors' clients to defeat a 403.** `KIMI_CODE_USER_AGENTS` re-fires the same request as `claude-code`, `KimiCLI`, `Kilo-Code`, `Roo-Code`, `Cursor` in turn until one is not refused. Whatever its history, this is block evasion by construction, it is the single most likely thing to turn a soft ban into a permanent one, and it is **the opposite of the rule this phase is built on**. `Decide:` remove it, or gate it behind an explicit operator opt-in that says what it does. Not an agent's call to make silently — but it cannot stay undocumented.
 - [ ] **P15-08** **A schedulable task accepts `* * * * *` with no floor.** `routes/task/task_routes.py:500-503` validates cron *syntax* only, and the UI is a free-text field. A user can set a minute-by-minute task that hits IMAP, a search provider and a model API. Failure does not back off either — `next_run` advances to the next slot, so a task failing against a rate-limiting provider retries at full cadence forever. Related precedent on the same line: `check_email_urgency` shipped at `*/15 * * * *` and was **walked back** to hourly with a migration (`src/task_scheduler.py:2539-2548`) — this exact failure class has already bitten this product once. `Verify:` a minimum interval, enforced server-side with a reason the user can read, and a failing task slows down.
