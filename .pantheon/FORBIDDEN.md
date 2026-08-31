@@ -101,6 +101,30 @@ line, or the login page never gets an accent and every cold load flashes.)*
 **A reduced-motion guard is not a removal.** `P10-05` adds one over the seven canvas
 animators. It respects an operating-system setting. The animation stays.
 
+### The app-API blocklist — two entries with no test behind them
+
+`_APP_API_BLOCKLIST_METHOD_PATH` in `src/tools/system.py` refuses a set of `(method, path)`
+pairs to the generic `app_api` tool. Every entry carries its reason in a comment beside it or
+in the group above it, and that documentation predates the fork — `P2-26` closed on 2026-08-31
+having verified the two tuples **byte-identical to the fork baseline**, 2,375 characters, no
+drift either way.
+
+**Two of those entries are protected here because nothing else protects them:**
+
+    ("POST",   "/api/cookbook/state")
+    ("DELETE", "/api/cookbook/state")
+
+They exist because the agent was **observed** wiping `cookbook_state.json` — presets *and*
+tasks — by POSTing `{"tasks": []}`, which overwrote the whole file. **No test pins either
+one.** That combination — real incident behind them, no test in front of them — makes them
+the pair most likely to be removed by someone tidying a list they believe is over-long, and
+the least likely to be caught when it happens.
+
+Do not remove them. Do not narrow them to `POST`. If the list is ever refactored, these two
+survive the refactor, and the incident comment survives with them. Widening the tool's reach
+here is not a feature; it is the same data loss a second time. `P2-26` is closed, and a closed
+row cannot keep saying this, which is why it says it here instead.
+
 ### Renames that ARE happening (P0) — and what they cost
 
 These are deliberate, one-time, and documented as a break. Everything else above stays.
