@@ -116,6 +116,36 @@ def _call_provider(provider_name: str, query: str, count: int, time_filter: str 
 _FALLBACK_ORDER = ["duckduckgo"]
 
 
+# Where each provider actually lives, so a rate limit reported by one feature is
+# visible to every other feature that calls the same host. Keying the cooldown by
+# provider *name* would let deep research and a plain chat search each keep their
+# own idea of whether Brave is angry with us.
+_PROVIDER_HOSTS = {
+    "brave": "api.search.brave.com",
+    "duckduckgo": "html.duckduckgo.com",
+    "ddg": "html.duckduckgo.com",
+    "google": "www.googleapis.com",
+    "google_pse": "www.googleapis.com",
+    "tavily": "api.tavily.com",
+    "serper": "google.serper.dev",
+}
+
+
+def _note_provider_rate_limited(provider_name: str) -> None:
+    """Put a rate-limited provider into cooldown for everyone, not just us."""
+    host = _PROVIDER_HOSTS.get((provider_name or "").lower())
+    if not host:
+        # SearXNG and anything self-hosted: the host is whatever the operator
+        # configured, and being polite to your own box is not what this is for.
+        return
+    try:
+        from src.rate_limiter import outbound
+
+        outbound.observe(host, 429, {}, body_hint=f"{provider_name} rate limit")
+    except Exception:  # never let politeness break a search
+        logger.debug("could not record rate limit for %s", provider_name, exc_info=True)
+
+
 def _build_provider_chain(primary: str) -> List[str]:
     """Build ordered list: primary first, then configured/default fallbacks."""
     chain = [primary]
@@ -182,7 +212,18 @@ def searxng_search_results(query: str, count: int = 10, time_filter: str = None)
                 if results:
                     logger.info(f"{provider_name} search succeeded with {len(results)} results")
                     break
-            except (NetworkError, ParseError, RateLimitError) as e:
+            except RateLimitError as e:
+                # A 429 used to be retried here **immediately, with no sleep**,
+                # against the provider that had just said stop — and then the
+                # chain moved on and did the same to the next one. That turns one
+                # provider's rate limit into load on all of them. A rate limit is
+                # not a transient error, so do not re-attempt it: record it and
+                # fall through to the next provider, which is the whole point of
+                # having a chain.
+                error_logger.error(f"{provider_name} rate-limited, not retrying: {e}")
+                _note_provider_rate_limited(provider_name)
+                break
+            except (NetworkError, ParseError) as e:
                 error_logger.error(f"{provider_name} search error (attempt {attempt + 1}): {e}")
             except Exception as e:
                 error_logger.error(f"Unexpected error during {provider_name} search (attempt {attempt + 1}): {e}")

@@ -93,3 +93,33 @@ def pytest_collection_modifyitems(config, items):
         path = getattr(item, "path", None) or item.fspath
         for marker_name in markers_for_path(path):
             item.add_marker(getattr(pytest.mark, marker_name))
+
+
+# ---------------------------------------------------------------------------
+# Outbound limiter isolation
+# ---------------------------------------------------------------------------
+# `src.rate_limiter.outbound` is a single process-wide limiter, deliberately —
+# politeness belongs to the destination host, not to the feature calling it, so
+# two features must not each get their own allowance. That makes it shared
+# mutable state across the whole suite: a test that drives a host into cooldown
+# would leave every later test talking to that host raising OutboundRateLimited,
+# and it would fail only in a full sweep, never alone. This project has already
+# lost an afternoon to exactly that shape once (see test_trust_rung_gate.py).
+#
+# Pacing itself is left ON. Zeroing the interval here would make the tests that
+# exist to prove pacing works pass without proving anything.
+import pytest as _pytest
+
+
+@_pytest.fixture(autouse=True)
+def _reset_outbound_limiter():
+    try:
+        from src.rate_limiter import outbound
+    except Exception:
+        yield
+        return
+    outbound.reset()
+    try:
+        yield
+    finally:
+        outbound.reset()

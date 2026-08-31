@@ -68,7 +68,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P12 | Limits & the control plane | 11 | 11 | 0 | 0 |
 | P13 | The Brain | 12 | 11 | 0 | **1** |
 | P14 | Measurement | 7 | 7 | 0 | 0 |
-| **Total** | | **297** | **211** | **8** | **78** |
+| P15 | Outbound politeness | 12 | 8 | 0 | **4** |
+| **Total** | | **309** | **219** | **8** | **82** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -93,7 +94,32 @@ Ten of its rows landed on 2026-08-27 — see § Progress. What is left of it:
 - **`P0-21b`, `P0-31`** — new, from the run: twelve bundled packages with no notice anywhere, and
   49 unaudited `ody-` storage-key hits.
 
-### Next: `H01`, then `H05`, then `P3-15`. The `H` rows outrank the phases now
+### Next: `P15-05`, `P15-07`, `P15-09`, then `H01`. Outbound politeness outranks everything
+
+**2026-08-31 — a live ban reordered the queue.** The owner was soft-banned by GitHub by his own
+product while this session was running. `P15` exists because of it, and four of its rows are
+closed; what is left of it comes before the `H` rows, because a feature nobody can reach costs
+less than one that gets the user locked out of a service they depend on.
+
+**`P15-05` first** — one click on the hardware-fit refresh fires up to **260 unauthenticated
+requests** at huggingface.co, sequentially, with no delay, while two other call sites in this
+same product send a token to that same host. It is the next ban, and it is a small fix.
+
+**`P15-07` needs a human, not an agent.** `llm_core` rotates its `User-Agent` through six
+different vendors' clients until a 403 stops coming back. That is block evasion by construction
+and it is the one thing most likely to convert a soft ban into a permanent one. Removing it may
+break a provider someone relies on, so it is a decision, not a task — but it cannot stay
+undocumented, and now it is not.
+
+**`P15-09` is the cheap one with the worst failure mode.** Every cooldown is in memory. Restart
+Pantheon while GitHub has you in a forty-minute penalty and it starts asking again immediately.
+A crash-loop plus a rate limit is precisely the pair that turns a soft ban into a hard one.
+
+**Then `H01`, unchanged and still the biggest data-loss row** — the invisible email backlog.
+Its gating question was answered on 2026-08-31: the default arrived at the fork baseline, so the
+backlog is as old as the install, and the drafts UI comes before the default flip.
+
+### Then: `H05`, then `P3-15`. The `H` rows outrank the remaining phases
 
 **The discovery audit changed what the top of the queue is.** 21 rows of working code with no
 door, and three of them are live harm rather than absent polish:
@@ -163,6 +189,66 @@ location was wrong until it was corrected on the row itself; the row is right no
 *The one progress area. Newest first. One entry per completed section — two lines, a
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
+
+### P15 — the product had no brakes on anything it called
+Four rows closed the day the phase was opened. `ba8f561..HEAD`. **Suite 6,287 → 6,330
+passing, the same 19 failing and all 19 pre-existing.**
+
+**This came from the owner getting soft-banned by GitHub**, mid-session, for pasting a link
+into his own product's skill importer. The importer walked a repository tree unauthenticated,
+at wire speed, opening a fresh TLS connection per file, identifying itself as `python-httpx`.
+That is not a feature with a bug in it — that is the exact request shape abuse detection is
+built to catch, and it caught it.
+
+**Two audits found the same thing everywhere, and both facts are one-liners.** *Nothing in
+this codebase read `Retry-After`* — not one call site out of 50 modules that make outbound
+requests. And *nothing had jitter*, so every install fires at the same instant on the same
+boundary. `src/rate_limiter.py` did exist, and is **inbound**: it protects Pantheon from its
+callers. Nothing protected the user from the services Pantheon calls for them.
+
+**The fix is one shared limiter keyed by destination host, not by feature** — because two
+features each staying under a limit will jointly exceed it, and the importer and the
+cookbook's GitHub calls could already collide. Its shape is lifted from `routes/device_flow.py`,
+which turned out to be the only correct outbound throttle in the tree: a `next_poll_at` per key
+and a `slow_down()` that obeys the server's own pacing signal. Re-keying that from poll session
+to host was the smallest change that made it apply to everything.
+
+**Hearing "stop" correctly is the part that matters, and it has three forms.** A `429` is the
+easy one. **GitHub's primary rate limit is a `403`**, carrying `X-RateLimit-Reset` rather than
+`Retry-After` — a client reading only `Retry-After` learns nothing from the response that
+matters most. And `X-RateLimit-Remaining: 0` on an otherwise successful response is the only
+signal that lets you stop *before* being told to. A plain `403` is not a rate limit and must
+not silence a host for an hour; there is a test for that too, because getting it wrong turns
+one private repository into a twenty-minute outage.
+
+**The importer's cap was counting the wrong thing.** `MAX_FILES = 64` counts files *kept*. A
+directory costs a request whether or not it yields a file, so a tree of empty or binary-only
+folders cost an unbounded number of `api.github.com` calls while the counter never moved — and
+unauthenticated GitHub allows sixty requests an hour, total. There is now a budget on requests.
+There is also a token setting, which is the difference between a couple of imports an hour and
+five thousand; and the 403 message now names the wait instead of saying *"try again in a bit"*,
+which is the sentence that makes a person click again and deepen the ban.
+
+**Three hammers stopped.** Search retried a rate-limited provider **immediately, with no
+sleep**, then walked down the chain doing the same to the next — turning one provider's limit
+into load on all of them. `llm_core` retried a 429 on a flat 0.5 seconds, three times, without
+reading the header that said when. And `bg_monitor` retried a failed follow-up **every five
+seconds, forever** — 720 attempts an hour, each allowed twelve model rounds, each round able to
+call `web_search`, entirely unattended.
+
+**Two of my own tests were wrong and the mutation run is what said so.** The jitter test
+measured wall-clock time around `acquire`, and scheduler noise alone made the gaps differ — it
+passed with jitter switched off entirely; it now reads the *planned* gap and has a control that
+proves it can tell the two cases apart. The escalation test called `reset()` in its own setup,
+which cleared the counter the assertion was checking, so it passed with the clearing logic
+deleted. Both were caught by mutating the thing they claimed to test, which is the only way
+either would ever have been caught.
+
+**And one production bug came out of writing them:** `Retry-After: 0` is a legal answer meaning
+*go ahead now*, and `parse_retry_after(...) or parse_reset_header(...)` reads `0.0` as absent —
+so the clearest instruction a server can give was being converted into the sixty-second penalty
+reserved for servers that said nothing at all. It was in three files. The `or` looked right in
+all three.
 
 ### The reconciliation — the checker was green over six wrong rows
 Five read-only agents across all 335 rows; two bumps, four unblocks, one tick withdrawn, nine
@@ -2078,6 +2164,43 @@ nothing ever recorded the event.
   append-only table where the totals are already computed. This is the real case for
   TimescaleDB — an addition, touching nothing that exists. Full entry in `DEFERRED.md`.
 - **D-03 · VM station.** Held. If the need proves real, wire to Proxmox or libvirt through an MCP server rather than building a hypervisor. `Depends:` P8 complete.
+
+---
+
+# P15 · Outbound politeness — not getting the user banned
+*Area: `outbound` · Depends: nothing · Independent of everything else*
+
+**Why this phase exists.** On 2026-08-31 the owner pasted a GitHub link into the skills
+importer and **GitHub soft-banned his IP.** The audit that followed found the cause was not
+one careless feature. It was two absences, everywhere:
+
+> **Nothing in this codebase read `Retry-After`.** Not one call site, in 50 modules that
+> make outbound requests. Servers send that header to tell you exactly how to stay welcome,
+> and we ignored every one of them.
+>
+> **Nothing had jitter.** Every recurring job fires on an exact wall-clock boundary, so
+> every Pantheon install in the world hits a given provider on the same second.
+
+`src/rate_limiter.py` existed and is **inbound** — it protects Pantheon from its callers,
+keyed by client IP, with one consumer (`routes/auth_routes.py`). Nothing protected the user
+from the services Pantheon calls on their behalf. `P12` owns inbound limits; this phase owns
+outbound, and the two must not be confused again.
+
+**The rule for this phase:** a limit is a conversation. The server tells you when to come
+back, and the only way to *stay* banned is to keep asking while it is telling you.
+
+- [x] **P15-01** **A shared outbound limiter, keyed by destination host.** Not per feature — two features each staying under a limit will jointly blow through it, and the importer and the cookbook's GitHub calls could already collide. — **done:** `OutboundHostLimiter` in `src/rate_limiter.py`, beside the inbound one so there is one vocabulary and not two. Per-host minimum interval, concurrency cap, jitter, and a cooldown fed by the server's own signal. Sync (`acquire`) and async (`acquire_async`) entry points over one state, because the importer is synchronous and search and `llm_core` are not. Shape borrowed deliberately from `routes/device_flow.py`, which was **the only correct outbound throttle in the tree** — its `next_poll_at`/`slow_down` pair, re-keyed from poll session to host. 25 tests; 12 mutations, all caught.
+- [x] **P15-02** **Read the server's instructions — all three forms.** — **done:** `parse_retry_after` handles the delta-seconds **and** the HTTP-date form (reading only `int(value)` is the obvious implementation and silently drops every date-form response, which is the half carrying the long waits); `parse_reset_header` handles `X-RateLimit-Reset`, which is what **GitHub sends instead of `Retry-After`** on a primary rate limit. Three things count as *stop*: a `429`; a `403` whose body names a rate or abuse limit — **GitHub's primary rate limit is a 403, not a 429** — and `X-RateLimit-Remaining: 0` on an otherwise fine response, which is the one signal that lets us stop *before* being told to. A plain `403` is **not** a rate limit and must not silence a host; there is a test.
+- [x] **P15-03** **Fix the import that caused this.** — **done:** every request in `services/memory/skill_importer.py` now passes through one chokepoint (`_get_checked`) that paces, authenticates, identifies itself, and feeds the response back. Five defects closed: **(a)** no pacing — GitHub asks for serial requests a second apart, and gets them; **(b)** `MAX_FILES = 64` capped *files kept*, not requests made, so a tree of empty or binary-only folders cost **unbounded** `api.github.com` calls while the counter never moved — a per-import request budget now caps the real number (40 unauthenticated, 200 with a token); **(c)** no `User-Agent`, so every request went out as `python-httpx`, a bot signature GitHub scores against you before reading the path; **(d)** no token — unauthenticated GitHub is **60 requests an hour**, with one it is 5,000, and `github_token` is now a setting registered in all five places (`DEFAULT_SETTINGS`, `.env.example`, three compose files); **(e)** the 403 was detected only to print *"try again in a bit"*, which is what makes a person click again and deepen the ban — it now names the wait and says Pantheon has stopped calling, which is what lets the limit expire.
+- [x] **P15-04** **Stop the hammer-on-429 sites.** — **done:** three. `services/search/core.py` retried a rate-limited provider **immediately, with no sleep**, then moved down the chain and did the same to the next one — one provider's limit became load on all of them; a `RateLimitError` is now terminal for that provider and is recorded against its host so every other feature sees it. `src/llm_core.py` retried a 429 on a flat 0.5s three times and never read the header; it now honours `Retry-After`/`X-RateLimit-Reset`, sits through a short wait, and surfaces a long one so the caller can fall back rather than queue behind it. `src/bg_monitor.py` retried a failed follow-up **every 5 seconds forever** — 720 attempts an hour, each up to 12 model rounds, each round able to call `web_search`, unattended — now 30s doubling to 30 minutes with jitter, and it gives up after 12.
+- [ ] **P15-05** **`services/hwfit/hf_discovery.py` fires up to 260 unauthenticated requests from one click.** 13 collection sources × 20 pages, sequential, zero delay, no token — while `routes/cookbook_routes.py:3876` and `src/tools/cookbook.py:484` *do* send an `Authorization: Bearer` to the same host. The 24h TTL is real protection but `force=True` bypasses it and is reachable from the UI (`routes/hwfit_routes.py:210`, `refresh_catalog=1`). `Verify:` the refresh button cannot exceed the host's budget, and it uses the token the rest of the product already has.
+- [ ] **P15-06** **Route the remaining outbound clients through the limiter.** The audit inventoried **50 modules** making outbound calls. `P15-03`/`P15-04` cover the ones that caused harm; these are the rest, in risk order: `src/embeddings.py` (⌈N/8⌉ sequential POSTs with no pacing, **and a fan-out amplifier** — a failing batch of 8 is retried as 8 single-item requests, 9 where there was 1); `src/deep_research.py` (up to 25 queries per run launched in one unbounded `asyncio.gather`, each walking the whole provider chain — its page fetches *are* capped at 3, so the pattern is already there to copy); the four unauthenticated third-party endpoints in `routes/cookbook_routes.py`; `src/webhook_manager.py` (one task per matching webhook, no per-host cap); `src/caldav_sync.py`. `Verify:` a call that leaves the process without passing the limiter is the exception and is named.
+- [ ] **P15-07** **`src/llm_core.py:919` rotates its User-Agent through six vendors' clients to defeat a 403.** `KIMI_CODE_USER_AGENTS` re-fires the same request as `claude-code`, `KimiCLI`, `Kilo-Code`, `Roo-Code`, `Cursor` in turn until one is not refused. Whatever its history, this is block evasion by construction, it is the single most likely thing to turn a soft ban into a permanent one, and it is **the opposite of the rule this phase is built on**. `Decide:` remove it, or gate it behind an explicit operator opt-in that says what it does. Not an agent's call to make silently — but it cannot stay undocumented.
+- [ ] **P15-08** **A schedulable task accepts `* * * * *` with no floor.** `routes/task/task_routes.py:500-503` validates cron *syntax* only, and the UI is a free-text field. A user can set a minute-by-minute task that hits IMAP, a search provider and a model API. Failure does not back off either — `next_run` advances to the next slot, so a task failing against a rate-limiting provider retries at full cadence forever. Related precedent on the same line: `check_email_urgency` shipped at `*/15 * * * *` and was **walked back** to hourly with a migration (`src/task_scheduler.py:2539-2548`) — this exact failure class has already bitten this product once. `Verify:` a minimum interval, enforced server-side with a reason the user can read, and a failing task slows down.
+- [ ] **P15-09** **The limiter forgets everything on restart.** Cooldowns, escalation counts and `bg_monitor`'s per-job backoff are all in memory. Restart Pantheon while GitHub has you in a 40-minute penalty and it will start asking again immediately — and a crash-loop plus a rate limit is exactly the pair that turns a soft ban into a hard one. The state is small and boring: host, blocked-until, consecutive failures. `Verify:` a cooldown survives a restart.
+- [ ] **P15-10** **Give jitter to every recurring job.** Confirmed absent everywhere: `grep -rnE "jitter|random\.uniform|random\.randint" src/ routes/ services/ app.py` found nothing but a comment. The seeded email tasks all use minute `0`; the nightly skill audit runs at exactly 02:00 local; the 60s unread poll fires on the tab's own boundary. Individually harmless, collectively a thundering herd against whatever provider they share. `P15-04` added jitter to `bg_monitor` as the worked example. `Verify:` no recurring job fires on an exact boundary.
+- [ ] **P15-11** **Show the user what is throttled.** `OutboundHostLimiter.snapshot()` already returns per-host cooldown, consecutive-429 count, requests made and seconds waited — it exists and has no reader. When a host has us in cooldown the person should be able to see it and see when it lifts, rather than watching a feature quietly fail. This is `Law 15`: the product knows something the person needs and does not say it. `Verify:` a throttled host is visible somewhere a person will look, with the time it clears.
+- [ ] **P15-12** **The unread-email poll falls through to IMAP whenever the index is empty.** `routes/email_routes.py:2452` is index-first *"so periodic UI polling does not trigger Gmail SEARCH/LIST round-trips"* — but the guard is `if indexed_total:`, so a new account, or one whose IMAP is **failing** and therefore never indexes, drops to a live `_list_emails_sync` on every 60s tick, per open tab, forever. Repeated failing IMAP logins are exactly what providers throttle and lock. There is **no failure counter, cooldown or auto-disable for a broken email account anywhere in the tree**. `Verify:` a failing account backs off and says so, instead of retrying every minute in every tab.
 
 ---
 

@@ -10,11 +10,27 @@ from typing import Dict, Iterable, List, Optional, Tuple, cast
 from urllib.parse import quote, urljoin, urlparse
 
 import httpcore
+import contextvars
+import os
+
 import httpx
 
 from src.url_safety import _default_resolver, check_outbound_url
 
 logger = logging.getLogger(__name__)
+
+# Identify ourselves. The default `python-httpx/x.y` is a bot signature that
+# GitHub's abuse detection scores against you before it has read a single path.
+_USER_AGENT = "Pantheon-SkillImporter/1.0 (+https://github.com/ImPanick/pantheon)"
+
+# A hard ceiling on HTTP requests for one import, independent of how many files
+# come back. MAX_FILES below caps *files kept*, which is not the same thing: a
+# directory costs a request whether or not it yields a file, and a tree of empty
+# or binary-only folders used to cost an unbounded number of api.github.com calls
+# while `len(out)` never moved. Unauthenticated GitHub allows 60 requests an hour
+# in total, so one import must not be able to spend them all.
+MAX_REQUESTS_UNAUTHENTICATED = 40
+MAX_REQUESTS_AUTHENTICATED = 200
 
 MAX_FILES = 64
 MAX_TOTAL_BYTES = 2_000_000
@@ -28,6 +44,56 @@ _GITHUB_HOSTS = frozenset({
     "github.com", "www.github.com", "api.github.com", "raw.githubusercontent.com",
 })
 _SKILLS_SH_HOSTS = frozenset({"skills.sh", "www.skills.sh"})
+
+
+_request_budget: contextvars.ContextVar = contextvars.ContextVar("skill_import_budget", default=None)
+
+
+class _Budget:
+    """Requests remaining for one import, and what we spent them on."""
+
+    __slots__ = ("remaining", "spent", "authenticated")
+
+    def __init__(self, remaining: int, authenticated: bool):
+        self.remaining = remaining
+        self.spent = 0
+        self.authenticated = authenticated
+
+    def take(self) -> None:
+        if self.remaining <= 0:
+            raise SkillImportError(
+                f"skill import stopped after {self.spent} requests to GitHub — the link points at "
+                "a tree too large to walk politely. Link the skill's own folder or its SKILL.md "
+                "rather than the repository root."
+            )
+        self.remaining -= 1
+        self.spent += 1
+
+
+def _github_credentials() -> str:
+    """A GitHub token, if the operator has supplied one. Empty string otherwise.
+
+    Unauthenticated api.github.com allows **60 requests per hour per IP**; with a
+    token it is 5,000. A token is therefore the difference between "a couple of
+    imports an hour" and "as many as you like", and it is the single most useful
+    thing an operator can set here.
+
+    The env fallback below is reachable, unlike the one `H06` found dead in
+    `resolve_task_concurrency_cap`, and the difference is worth understanding
+    before copying either: `get_setting` merges `DEFAULT_SETTINGS` on every read,
+    so an env layer beneath a setting is dead **whenever the shipped default is
+    truthy**. This default is `""`, so the `or` falls through exactly as written.
+    Do not generalise from this to a numeric setting.
+    """
+    try:
+        from src.settings import get_setting
+
+        tok = (get_setting("github_token", "") or "").strip()
+    except Exception:
+        tok = ""
+    if not tok:
+        tok = (os.environ.get("PANTHEON_GITHUB_TOKEN") or "").strip()
+    return tok
 
 
 def _github_host(url: str) -> str:
@@ -229,6 +295,42 @@ class _PinnedTransport(httpx.BaseTransport):
         self._pool.close()
 
 
+def _response_headers(response) -> dict:
+    """Headers as a plain lowercase dict, tolerating a response without any.
+
+    Every real `httpx.Response` has `.headers`, so this looks like belt and
+    braces — but it sits on the *error* path, and an `AttributeError` here would
+    replace "GitHub rate-limited you until 14:32" with a stack trace. The guard
+    costs nothing and protects the message that matters most.
+    """
+    raw = getattr(response, "headers", None) or {}
+    try:
+        return {str(k).lower(): str(v) for k, v in dict(raw).items()}
+    except (TypeError, ValueError):
+        return {}
+
+
+def _rate_limit_hint(response) -> str:
+    """The bit of a GitHub error body that says whether this is a rate limit.
+
+    GitHub's **primary** rate limit is a `403`, not a `429`, and it is
+    indistinguishable from an ordinary permission denial without reading the
+    message. Getting this wrong means treating a ban as a 404 and carrying on.
+    """
+    if getattr(response, "status_code", 0) not in (403, 429):
+        return ""
+    try:
+        body = response.json()
+        if isinstance(body, dict):
+            return str(body.get("message") or "")[:200]
+    except Exception:
+        pass
+    try:
+        return (response.text or "")[:200]
+    except Exception:
+        return ""
+
+
 def _get_checked(
     url: str,
     *,
@@ -242,15 +344,41 @@ def _get_checked(
     still be connected to before any post-hoc host check. Following redirects by
     hand lets us re-validate every hop, closing that blind-SSRF gap.
     """
+    from src.rate_limiter import OutboundRateLimited, host_of, outbound
+
+    budget = _request_budget.get()
+    token = _github_credentials()
+    sent = dict(headers or {})
+    sent.setdefault("User-Agent", _USER_AGENT)
+    if token:
+        sent.setdefault("Authorization", f"Bearer {token}")
+
     current = url
     for _ in range(_MAX_FETCH_REDIRECTS + 1):
         pinned_ips = _resolve_and_check_url(current)
+        host = host_of(current)
+
+        # Pace before the connection is opened, not after. A fresh TLS handshake
+        # per request is deliberate here — it is what keeps the DNS pin honest
+        # against a rebind — but 64 of them back to back is precisely the burst
+        # shape abuse detection scores on, so the fix is spacing, not pooling.
+        if budget is not None:
+            budget.take()
+        try:
+            outbound.acquire(host, authenticated=bool(token))
+        except OutboundRateLimited as e:
+            raise SkillImportError(str(e)) from e
+
         with httpx.Client(
             transport=_PinnedTransport(pinned_ips),
             follow_redirects=False,
             timeout=timeout,
         ) as client:
-            r = client.get(current, headers=headers)
+            r = client.get(current, headers=sent)
+
+        # Hand the response back so the next caller knows what this one learned.
+        # A 200 clears the cooldown; a 403 carrying X-RateLimit-Reset sets one.
+        outbound.observe(host, r.status_code, _response_headers(r), body_hint=_rate_limit_hint(r))
 
         if r.status_code in (301, 302, 303, 307, 308):
             location = r.headers.get("location")
@@ -364,9 +492,27 @@ def _github_response_error(response: httpx.Response) -> SkillImportError:
         detail = (response.text or "").strip()[:200]
 
     low = detail.lower()
-    if status == 403 and "rate limit" in low:
+    if status == 403 and ("rate limit" in low or "abuse" in low):
+        # "try again in a bit" was the old text. GitHub tells us exactly when in
+        # X-RateLimit-Reset, so say it — a person who knows the number waits,
+        # and a person who does not clicks again and deepens the ban.
+        from src.rate_limiter import parse_reset_header, parse_retry_after
+
+        hdrs = _response_headers(response)
+        wait = parse_retry_after(hdrs.get("retry-after"))
+        if wait is None:
+            wait = parse_reset_header(hdrs.get("x-ratelimit-reset"))
+        when = ""
+        if wait:
+            when = (
+                f" — wait {wait:.0f} seconds"
+                if wait < 90
+                else f" — wait about {wait / 60:.0f} minutes"
+            )
+        authed = " Set a GitHub token in Settings to raise the limit from 60 to 5,000 an hour." if not _github_credentials() else ""
         return SkillImportError(
-            "GitHub API rate limit exceeded — try again in a bit"
+            f"GitHub rate limit reached{when}. Pantheon has stopped calling GitHub until then, "
+            f"which is what lets the limit expire.{authed}"
             + (f" ({detail})" if detail else "")
         )
     if status == 404:
@@ -432,9 +578,32 @@ def _list_github_dir(src: ResolvedSource, rel_dir: str, out: Dict[str, str], *, 
 
 
 def fetch_skill_bundle(url: str) -> Tuple[Dict[str, str], ResolvedSource]:
-    """Download SKILL.md and sibling text assets. Returns relative_path → content."""
-    src = parse_skill_source(url)
-    files: Dict[str, str] = {}
+    """Download SKILL.md and sibling text assets. Returns relative_path → content.
+
+    Every request made under here is paced by the shared outbound limiter and
+    counted against one budget, so a single import cannot spend an hour's worth
+    of GitHub quota — which is what it did before 2026-08-31, when it earned the
+    owner a soft ban walking a repository tree at wire speed.
+    """
+    authed = bool(_github_credentials())
+    budget = _Budget(
+        MAX_REQUESTS_AUTHENTICATED if authed else MAX_REQUESTS_UNAUTHENTICATED,
+        authed,
+    )
+    token = _request_budget.set(budget)
+    try:
+        # parse_skill_source can itself make a request — a skills.sh link is
+        # resolved by following its redirect — so it has to be inside the budget
+        # or the first call of every import is untracked and unpaced.
+        src = parse_skill_source(url)
+        return _fetch_skill_bundle_inner(url, src, {})
+    finally:
+        _request_budget.reset(token)
+
+
+def _fetch_skill_bundle_inner(
+    url: str, src: ResolvedSource, files: Dict[str, str]
+) -> Tuple[Dict[str, str], ResolvedSource]:
 
     path = _safe_relpath(src.path) if src.path else ""
     if path.lower().endswith("skill.md"):

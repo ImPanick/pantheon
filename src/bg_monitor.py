@@ -13,6 +13,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import random
+import time
 
 from src import bg_jobs
 from src.prompt_security import untrusted_context_message
@@ -24,6 +26,45 @@ POLL_INTERVAL_S = 5
 # The follow-up agent run is allowed a few rounds to actually continue the task
 # (e.g. after `pip install` finishes, run the transcription).
 _FOLLOWUP_MAX_ROUNDS = 12
+
+# Per-job backoff after a failed follow-up.
+#
+# `mark_followed_up` only runs when `_run_followup` returns True, and the except
+# below deliberately leaves `followed_up=False` so the work is not lost. That is
+# the right call for idempotency and the wrong one for pacing: a follow-up whose
+# model call 429s used to be retried **every five seconds, forever**, each
+# attempt allowed up to 12 model rounds, each round able to call web_search. One
+# rate-limited job could issue 720 attempts an hour, indefinitely, unattended.
+#
+# The state is in memory rather than on the record because `bg_jobs` has no
+# attempt column and a schema change is not what this hour is for; the cost is
+# that a restart forgets the backoff, which is the same trade the rest of the
+# limiter makes and is filed on `P15-09`.
+_FOLLOWUP_BACKOFF_BASE_S = 30.0
+_FOLLOWUP_BACKOFF_MAX_S = 1800.0
+_FOLLOWUP_GIVE_UP_AFTER = 12
+_followup_failures: dict = {}
+
+
+def _followup_ready(job_id, now: float) -> bool:
+    """False while a previously failed job is still serving its backoff."""
+    entry = _followup_failures.get(job_id)
+    return not entry or now >= entry[1]
+
+
+def _note_followup_failure(job_id, now: float) -> float:
+    """Record a failure and return the delay before this job is tried again."""
+    fails = _followup_failures.get(job_id, (0, 0.0))[0] + 1
+    delay = min(_FOLLOWUP_BACKOFF_BASE_S * (2 ** (fails - 1)), _FOLLOWUP_BACKOFF_MAX_S)
+    # Jitter, because every Pantheon install that hit the same provider outage
+    # would otherwise come back at the same instant and reproduce it.
+    delay += random.uniform(0, delay * 0.2)
+    _followup_failures[job_id] = (fails, now + delay)
+    return delay
+
+
+def _clear_followup_failure(job_id) -> None:
+    _followup_failures.pop(job_id, None)
 
 
 def _background_result_message(rec):
@@ -146,13 +187,36 @@ async def _run_followup(rec: dict) -> bool:
 async def _loop():
     while True:
         try:
+            now = time.monotonic()
             for rec in bg_jobs.pending_followups():
+                job_id = rec.get("id")
+                if not _followup_ready(job_id, now):
+                    continue
                 try:
                     if await _run_followup(rec):
-                        bg_jobs.mark_followed_up(rec["id"])
+                        bg_jobs.mark_followed_up(job_id)
+                        _clear_followup_failure(job_id)
                 except Exception as e:
-                    # Idempotent: leave followed_up=False so the next tick retries.
-                    logger.warning("bg-followup failed for %s (will retry): %s", rec.get("id"), e)
+                    # Still idempotent — followed_up stays False so the work is
+                    # not lost — but the retry now waits. Without this the job
+                    # came back in five seconds and kept coming back.
+                    delay = _note_followup_failure(job_id, now)
+                    fails = _followup_failures.get(job_id, (0, 0.0))[0]
+                    if fails >= _FOLLOWUP_GIVE_UP_AFTER:
+                        logger.error(
+                            "bg-followup failed for %s %d times; giving up and marking it "
+                            "followed-up so it stops retrying: %s", job_id, fails, e,
+                        )
+                        try:
+                            bg_jobs.mark_followed_up(job_id)
+                        except Exception:
+                            logger.warning("could not mark %s followed-up", job_id, exc_info=True)
+                        _clear_followup_failure(job_id)
+                    else:
+                        logger.warning(
+                            "bg-followup failed for %s (attempt %d, retrying in %.0fs): %s",
+                            job_id, fails, delay, e,
+                        )
         except Exception as e:
             logger.warning("bg-monitor tick error: %s", e)
         await asyncio.sleep(POLL_INTERVAL_S)

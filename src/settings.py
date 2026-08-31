@@ -44,6 +44,14 @@ DEFAULT_SETTINGS = {
     # have been observed inventing signatures and sending to real
     # recipients without confirmation.
     "agent_email_confirm": True,
+    # A GitHub personal access token, read-only/public scope is enough. Empty by
+    # default. Unauthenticated api.github.com allows 60 requests an hour per IP;
+    # with a token it is 5,000. The skill importer walks a repository tree, so
+    # without this an operator gets a handful of imports an hour and then a 403.
+    # NOTE: the env fallback in `skill_importer._github_credentials` is reachable
+    # only because this default is falsy — see the note there before copying the
+    # pattern to a setting whose default is not.
+    "github_token": "",
     # How many scheduled tasks may hold the model slot at once. 1 preserves the
     # behaviour this was hardcoded to; the resolver in src/task_scheduler.py
     # clamps to [1, 16] and reads this layer between the env var and the

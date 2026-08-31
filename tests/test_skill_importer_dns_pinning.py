@@ -144,10 +144,14 @@ def test_get_checked_uses_fresh_transport_per_redirect_hop(monkeypatch):
     response = skill_importer._get_checked(first, headers={"Accept": "text/plain"})
 
     assert [ips for ips, _ in clients] == [[PUBLIC_A], [PUBLIC_B]]
-    assert requested == [
-        (first, {"Accept": "text/plain"}),
-        (second, {"Accept": "text/plain"}),
-    ]
+    # The caller's headers must survive every hop, and the importer's own
+    # User-Agent must be on every request. Asserting the dict *equals* the
+    # caller's headers pinned the absence of a User-Agent, which is the thing
+    # that got us flagged as a bot — so this asserts the properties instead.
+    assert [url for url, _ in requested] == [first, second]
+    for _url, sent in requested:
+        assert sent["Accept"] == "text/plain"
+        assert sent["User-Agent"] == skill_importer._USER_AGENT
     assert str(response.url) == second
 
 

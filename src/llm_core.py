@@ -14,6 +14,16 @@ from contextlib import asynccontextmanager
 from fastapi import HTTPException
 from typing import Optional, Dict, List, Tuple
 from src.model_context import get_context_length, DEFAULT_CONTEXT, is_local_endpoint
+from src.rate_limiter import outbound as _outbound
+from src.rate_limiter import parse_retry_after as _retry_after
+from src.rate_limiter import parse_reset_header as _reset_after
+
+# Longest server-requested wait we will sit through inside a retry loop. Beyond
+# this, honouring the header by sleeping would hold a user's request open for
+# minutes; the right move is to stop retrying and let the caller fall back to
+# another provider. Either way we have *read* the header, which is the part that
+# was missing — nothing in this codebase looked at Retry-After before 2026-08-31.
+_RETRY_AFTER_MAX_WAIT = 10.0
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
@@ -2422,7 +2432,30 @@ async def llm_call_async(
                     f"(attempt {attempt}): HTTP {r.status_code} {friendly}"
                 )
                 if r.status_code in (429, 502, 503, 504) and attempt < max_retries:
-                    await asyncio.sleep(LLMConfig.RETRY_DELAY)
+                    # A 429 is the provider telling us how to stay welcome, and
+                    # it usually says exactly how long to wait. Sleeping a flat
+                    # 0.5s and retrying was how this used to answer that, three
+                    # times in a row, before rolling to the next provider and
+                    # doing it again there — an escalation, not a backoff.
+                    delay = LLMConfig.RETRY_DELAY
+                    if r.status_code == 429:
+                        _outbound.observe(
+                            _host_key(target_url), 429, dict(r.headers), body_hint=(r.text or "")[:200]
+                        )
+                        told = _retry_after(r.headers.get("retry-after"))
+                        if told is None:
+                            told = _reset_after(r.headers.get("x-ratelimit-reset"))
+                        # Honour the header when it is short enough to sit
+                        # through; when it is long, stop retrying and surface it
+                        # so the caller can fall back rather than queue behind a
+                        # wait nobody asked for.
+                        if told is not None:
+                            if told > _RETRY_AFTER_MAX_WAIT:
+                                raise HTTPException(r.status_code, friendly)
+                            delay = max(delay, told)
+                        else:
+                            delay = max(delay, LLMConfig.RETRY_DELAY * (2 ** (attempt - 1)))
+                    await asyncio.sleep(delay)
                     continue
                 raise HTTPException(r.status_code, friendly)
             logger.info(f"LLM async call to {target_url} succeeded in {duration:.2f}s (attempt {attempt})")

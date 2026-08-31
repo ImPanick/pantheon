@@ -158,6 +158,40 @@ why that block goes. For everything below, something is.
 | The five SSRF validators + pinned-IP transports | Cloud-metadata and internal-network SSRF. |
 | The nh3 report sanitiser | XSS under the relaxed CSP on report pages. |
 | The two email HTML sanitisers | DOM XSS from received mail; live script shipped to recipients. |
+| `OutboundHostLimiter` on every third-party call | **The user's access to services they depend on.** See below — this one is not a security control and is here anyway. |
+
+### The outbound limiter has no off switch, and must not grow one
+
+`src/rate_limiter.OutboundHostLimiter` is not a security control. It is in this file
+because it protects something a security control cannot give back: **the user's standing
+with a third party.** A ban is not served by Pantheon and cannot be lifted by Pantheon.
+
+It exists because on 2026-08-31 the owner was soft-banned by GitHub by his own product,
+importing a skill. His words were the whole brief:
+
+> *"We need to ensure ALL api communications and Polling is being rate limited to not be
+> banned, or trigger abuse detections."*
+
+**What never lifts:**
+
+- **No global bypass.** Not a `PANTHEON_DISABLE_RATE_LIMIT`, not a `paced=False`, not a
+  debug flag. Someone will want one, because pacing makes an import take eleven seconds
+  instead of two, and eleven seconds is the correct price. A bypass exists to be left on.
+- **The floors do not go to zero.** `_AUTHENTICATED_FLOOR` is `0.2s` and a token does not
+  remove it: a token raises your *quota*, and abuse detection is a separate system that
+  does not care what your quota is. This distinction is the one that caused the ban.
+- **`observe()` is called on every response, not only failures.** A `200` is how a host
+  tells us a cooldown is over. Skipping it on the success path leaves cooldowns latched.
+- **A plain `403` is never treated as a rate limit**, and a `403` naming one always is.
+  Confusing either direction is a bug with a test: one silences a host for an hour over a
+  private repository, the other walks straight back into the ban.
+- **The limiter is process-wide and keyed by host.** Not per feature. Two features each
+  staying under a limit will jointly exceed it — the skill importer and the cookbook's
+  GitHub calls already could.
+
+**And the rule that produced all of it:** *a limit is a conversation.* The server says when
+to come back. Read `Retry-After`, read `X-RateLimit-Reset`, and when a server says stop,
+stop — the only way to stay banned is to keep asking while it is telling you.
 | The emoji SVG guards | XSS via CDN-fetched SVG served same-origin. |
 | Signature PNG magic + size and dimension caps | Non-PNG stamped into PDFs and stored. |
 | The post-external blocked-effect gate | Prompt injection → privileged action. |
