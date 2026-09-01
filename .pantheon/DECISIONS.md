@@ -530,3 +530,54 @@ run on their own machines, and the one thing they are buying is that it does not
 
 **Filed as:** `P16-12` (the export), `P16-13` (the guard that keeps it honest). `P14` is unchanged
 by this — it was always local.
+
+---
+
+## D-2026-09-01-01 · Who this is for, and what that settles
+
+The owner, closing the telemetry question and setting the product's shape in the same breath:
+
+> *"I don't plan to openly host Pantheon. This is legitimately for my own private stack and
+> whoever else wants to make it their private stack as well. Even companies. […] the thing I lose
+> is negligible because I'll be using my own product here. Extensively.. Fully. Therefore - I will
+> likely find the bugs. And it being open source, people can create issues on GitHub."*
+
+And the north star, from the same message:
+
+> *"I'd love for this platform to be able to automate anything I don't want to do on the
+> computer/internet or on my network (even my parallel networks etc)"*
+
+**The telemetry question is closed, and closed on evidence rather than principle.** The argument
+for a vendor pipe was that bug reports do not happen. Here the primary user is the maintainer,
+using it fully, daily. He is the sensor, and he is a better one than any crash-rate curve —
+he sees the bug *and* knows what he was doing when it happened, which is the half telemetry
+never captures. GitHub issues carry the rest. `D-2026-08-31-01` stands; this is why it costs
+nothing.
+
+**What that re-ranks, and it inverts the order I had:**
+
+* **`P16-15` (local self-checks) goes first.** If the maintainer is the instrument, give the
+  instrument a dial. `H01` is the proof: a year of staged, invisible email that a local count in
+  front of a person would have surfaced in a week. This is now the highest-value row in `P16`.
+* **`P16-14` (diagnostic bundle) is about *other people's* issues, not ours.** Open source means
+  strangers file bugs; a bundle is what makes those reports usable rather than *"it broke"*.
+* **`P16-12` (Prometheus/OTLP) is an operator feature, not a bug-signal.** Still wanted — for the
+  person running it, on their own Grafana — but it is no longer the answer to anything.
+
+**"Not openly hosted" is a default, not a guarantee, and the security posture does not relax.**
+*"Whoever else wants to make it their private stack, even companies"* means multi-user, roles and
+an auth boundary all still matter (`P11`), and it means somebody will eventually put this on a
+public address whatever the intent. Every control in `FORBIDDEN.md` Part 2 stays. The correct
+reading of "private stack" is *this is not a SaaS and has no tenant model*, not *the boundary can
+be weaker*.
+
+**"Even my parallel networks" is a capability requirement and is not currently met.**
+`model_discovery` scans loopback, `host.docker.internal`, the local LAN and Tailscale peers —
+one network at a time, implicitly. Reaching several segments deliberately is a different feature.
+Filed as `P16-16` rather than assumed.
+
+**And the north star is worth writing down because it settles arguments about scope:** the target
+is *automate anything the owner does not want to do on his machines, his internet, or his
+networks*. That is why the tool surface is wide, why `P8`'s Workshop matters, and why `Law 16`
+is about **defaults** rather than capability — a product meant to automate everything cannot be
+one that refuses to reach anything. It reaches what it is pointed at, and nothing else.

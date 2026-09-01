@@ -106,6 +106,31 @@ jobs:
       - name: check-specifiers
         run: python3 .pantheon/check-specifiers.py --max 0
 
+  law16-egress:
+    name: Law 16 — no egress on a fresh install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: "3.11"
+      - name: Install test dependencies
+        run: pip install pytest
+      # Law 16 — a fresh install reaches nothing until someone links something.
+      #
+      # Every finding in P16 was found by a person reading code. That works once
+      # and does not hold: the next convenience default will look as reasonable
+      # as `npx -y @playwright/mcp@latest` did, and its comment will explain the
+      # choice just as plainly. This makes the machine try instead.
+      #
+      # The guard sits at socket.connect and getaddrinfo, not at httpx —
+      # guarding a library would have missed the npm fetch, which went out
+      # through subprocess, and that was the worst offender of the lot.
+      - name: no egress on boot
+        run: python3 -m pytest tests/test_no_egress_on_boot.py tests/test_self_hosted_defaults.py -q -p no:randomly
+
   node-syntax:
     name: JS syntax (node --check)
     runs-on: ubuntu-latest

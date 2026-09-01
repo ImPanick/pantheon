@@ -69,8 +69,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P13 | The Brain | 12 | 11 | 0 | **1** |
 | P14 | Measurement | 7 | 7 | 0 | 0 |
 | P15 | Outbound politeness | 12 | 5 | **1** | **6** |
-| P16 | Self-hosted by default | 15 | 10 | 0 | **5** |
-| **Total** | | **324** | **226** | **9** | **89** |
+| P16 | Self-hosted by default | 16 | 10 | 0 | **6** |
+| **Total** | | **325** | **226** | **9** | **90** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -103,9 +103,16 @@ embedding model is pulled from HuggingFace on the *first chat message*, because
 requirement. Either the model ships in the image or the lane becomes conditional on an explicit
 download permission.
 
-**`P16-14` and `P16-15` are the answer to the bug-report problem**, and they beat a telemetry
-pipe on this product's own evidence — read them before building `P16-12`, because between them
-they may be all the signal that is actually needed.
+**`P16-15` is the highest-value row in the phase now** (`D-2026-09-01-01`). The maintainer is the
+sensor; give the sensor instruments. `H01` is the worked example and the proof it can be local —
+a year of staged, invisible email that a count in front of a person would have surfaced in a week.
+
+**`P16-14` is about *other people's* issues**, not ours: open source means strangers file bugs,
+and a diagnostic bundle is what makes those reports usable rather than *"it broke"*.
+
+**`P16-16` is new and is a capability gap, not a defect** — the north star includes *"even my
+parallel networks"*, and the product reaches one network's worth of hosts, implicitly, from
+wherever the container sits.
 
 **`P16-12` is the one that turns the law into a feature**, and it is now the most valuable row in
 the phase: operators on their own hardware currently have no way to see what Pantheon is doing,
@@ -209,6 +216,38 @@ location was wrong until it was corrected on the row itself; the row is right no
 *The one progress area. Newest first. One entry per completed section — two lines, a
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
+
+### P16-11 — stop reading, make the machine try
+`f65b5cb..HEAD`. **Suite 6,382 → 6,392 passing, the same 19 failing.** `P16` now has a tripwire.
+
+Every finding in this phase was found by a person reading code. That works once and does not
+hold: the next convenience default will look as reasonable as `npx -y @playwright/mcp@latest`
+did, and its comment will explain the choice just as plainly. So the guard is a **runnable test**
+rather than a CI-only job — it fails on a developer's machine, before the push — wired into CI as
+`law16-egress` beside the wiring ratchet.
+
+**It sits at `socket.connect` and `getaddrinfo`, not at `httpx`.** Guarding the HTTP library
+would have missed `urllib`; guarding both would have missed `subprocess` → `npx`, and the npm
+fetch was the worst offender of the lot. Everything reaches a socket eventually.
+
+**The classifier is `not ip.is_global`, and the first version was wrong in the dangerous
+direction.** It enumerated loopback, private and link-local — which calls **Tailscale egress**,
+because tailnet addresses live in `100.64.0.0/10`, RFC 6598 shared space, where `is_private` is
+False. A guard that fires on the product reaching a model server over Tailscale is a guard that
+gets switched off. My own test for "not so strict it bans the LAN" caught it.
+
+**And the mutation run found the guard is two independent layers.** Blunt DNS and connect catches
+it; blunt connect and DNS catches it; only blunting both goes red. Correct — and it meant the
+combined test could prove neither half alive. Each is now exercised on a path the other cannot
+reach: a raw `sock.connect` to a literal IP for one, a bare `getaddrinfo` for the other. That
+first attempt failed, usefully: `create_connection` calls `getaddrinfo` **even for a literal IP**,
+so the DNS guard fired first and the connect guard was never reached.
+
+**The telemetry question closed the same day** (`D-2026-09-01-01`). The owner will be the product's
+heaviest user, so he is the sensor — and a better one than a crash-rate curve, because he sees
+the bug *and* knows what he was doing when it happened, which is the half telemetry never
+captures. That re-ranks the phase: `P16-15` (local self-checks) is now its highest-value row,
+because if the maintainer is the instrument, the instrument needs a dial.
 
 ### P16-05 — the fallback that always ran
 `2dc908a..HEAD`. **Suite 6,374 → 6,382 passing, the same 19 failing.** The last
@@ -2451,7 +2490,8 @@ below are convenience defaults, and most are a line each.
 - [ ] **P16-13** **A guard that no default destination can ever appear.** `P16-12` creates the first legitimate place in the codebase for an outbound metrics URL, and therefore the first place a well-meant default could land — a "public demo collector", a "community stats" endpoint, an SDK whose constructor has a hosted URL baked in. The rule is absolute and has no opt-in ceremony that satisfies it (`D-2026-08-31-01`). `Verify:` a test asserts every telemetry destination setting ships empty, and CI fails on any hardcoded collector or analytics host anywhere in the tree — the check runs whether or not `P16-12` has landed, so it is armed before the hole exists rather than after.
 - [ ] **P16-14** **Make reporting a bug so easy it actually happens — which is the problem, not the missing pipe.** The owner, weighing opt-in vendor telemetry: *"having people report bugs is not very easy to get to happen."* True, and the usual conclusion — open a telemetry pipe — treats the symptom. **People do not report bugs because they do not know what to include and they are afraid of leaking their data**, and in this product that fear is correct: a stack trace here carries file paths (usernames), endpoint URLs (their LAN topology), model names, and often a slice of the message that caused it. So build the thing that removes both obstacles: **a one-click diagnostic bundle the person can read in full before it goes anywhere.** Last N log lines, the failing trace, versions, feature flags, redacted config — rendered on screen, editable, then copied to clipboard or attached to a GitHub issue **from their account**. No collector to run, no standing pipe, no data-controller obligation, and `Law 16`-clean because the destination is theirs and chosen per incident. `Verify:` someone who hits a bug files a useful report in under a minute without being asked to gather anything.
 - [ ] **P16-15** **Let the product notice its own breakage and tell the user.** The other half of the telemetry problem: aggregate signal exists to reveal *silent* failure — a feature broken for everyone that nobody mentions. There is a way to get that without a pipe, and this product has already proved the need for it. **`H01` is the worked example:** every agent-composed email since install, staged and invisible, for a year, because nothing surfaced the queue. A local self-check that counted `agent_draft` rows and put a number in front of the user would have caught it the first week. Generalise it: a **health surface** that runs local assertions — is every configured integration answering, is the queue draining, is anything staged and unreachable, did any background job give up — and shows the user, on their own screen. The user becomes the sensor, which is both the honest design and, on this evidence, the faster one. `Verify:` a deliberately broken subsystem is visible to its own operator within one session, unasked.
-- [ ] **P16-11** **A `Law 16` regression test that runs in CI.** The defaults are pinned by `tests/test_self_hosted_defaults.py`, which is the cheap half. The expensive half is the one that would actually hold: **run the app with egress blocked and assert it boots, answers a message, and renders a reply.** Everything above was found by reading; a test that runs would find the next one. `Verify:` a CI job with no route to the internet completes a first-message round trip.
+- [ ] **P16-16** **Reach across parallel networks, deliberately.** The owner's north star includes *"my network (even my parallel networks etc)"*, and that is not what the product does today: `src/model_discovery.py:207-243` scans loopback, `host.docker.internal`, the local LAN and Tailscale peers — one network's worth of hosts, implicitly, from wherever the container happens to sit. Several segments at once (VLANs, a second physical LAN, more than one tailnet, a lab subnet behind a jump host) is a different feature, not a bigger scan: it needs named networks with their own reachability, their own credentials, and their own trust level, because "the printer VLAN" and "the production subnet" should not be one undifferentiated pool the agent may roam. **`Law 16` is not in tension with this** — a network the operator named is a network they linked. `Verify:` an operator declares two segments, and the agent can be told to act on one without gaining reach into the other.
+- [x] **P16-11** **A `Law 16` regression test that runs in CI.** The defaults are pinned by `tests/test_self_hosted_defaults.py`, which is the cheap half. The expensive half is the one that would actually hold: **run the app with egress blocked and assert it boots, answers a message, and renders a reply.** Everything above was found by reading; a test that runs would find the next one. `Verify:` a CI job with no route to the internet completes a first-message round trip. — **done 2026-09-01, and built as a runnable test rather than a CI-only job** so it fails on a developer's machine too, before the push. **The guard sits at `socket.connect` and `getaddrinfo`, not at `httpx`.** Guarding the HTTP library would have missed `urllib`; guarding both would have missed `subprocess` → `npx`, and the npm fetch was the worst offender of the lot. Every one of them reaches a socket eventually. Loopback, the docker host alias, RFC1918 and link-local pass; the classifier is `not ip.is_global` rather than an enumeration of private ranges — **the first version listed loopback/private/link-local and called Tailscale egress**, because tailnet addresses live in `100.64.0.0/10`, which is RFC 6598 shared space and `is_private` is False for it. That would have made the guard fire on the product doing its actual job. Covers: the settings layer, the built-in MCP registry (where the npm fetch lived), the 286-skill bundled library, the embedding lanes, the search defaults and the limiter itself. Wired into CI as the `law16-egress` job beside `wiring-ratchet`. **10 tests. The mutation run found the guard is two independent layers** — blunt DNS and connect catches it, blunt connect and DNS catches it, only blunting both goes red — which is right, and meant the combined test could prove neither half alive. Each is now exercised on a path the other cannot reach: a raw `sock.connect` to an IP for one *(`create_connection` calls `getaddrinfo` even for a literal IP, so it could not be used)*, and a bare `getaddrinfo` for the other.
 
 ---
 
