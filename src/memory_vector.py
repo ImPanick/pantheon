@@ -22,6 +22,20 @@ from src.embedding_lanes import (
 logger = logging.getLogger(__name__)
 
 
+
+
+def _record_retrieval(store: str, asked: int, got: int, *,
+                      outcome: str = "ok", elapsed_ms=None) -> None:
+    """P14-02 — retrieval hit rates. Guarded; a search never fails over this."""
+    try:
+        from src.events import record_event
+        record_event("retrieval", name=store, outcome=outcome,
+                     duration_ms=elapsed_ms,
+                     detail={"asked": asked, "returned": got})
+    except Exception:
+        pass
+
+
 class MemoryVectorStore:
     """Vector index over memory entries for semantic retrieval."""
 
@@ -137,6 +151,11 @@ class MemoryVectorStore:
         We convert back: similarity = 1.0 - distance.
         """
         if not self._healthy or self.count() == 0:
+            # P14-02 records this too. "Retrieval returned nothing because the
+            # store is unavailable" and "returned nothing because there was no
+            # match" look identical to a user and are different bugs; a hit-rate
+            # that silently omits the first is the more flattering of the two.
+            _record_retrieval("memory", k, 0, outcome="unavailable")
             return []
 
         out = []
@@ -160,7 +179,10 @@ class MemoryVectorStore:
             except Exception as e:
                 logger.warning("memory search failed in %s lane: %s", lane.name, e)
         out.sort(key=lambda row: (-row["score"], lane_priority.get(row["embedding_lane"], 99)))
-        return dedupe_results(out, id_key="memory_id", limit=k)
+        results = dedupe_results(out, id_key="memory_id", limit=k)
+        _record_retrieval("memory", k, len(results),
+                          outcome="ok" if results else "empty")
+        return results
 
     def find_similar(self, text: str, threshold: float = 0.92) -> Optional[str]:
         """Check if a near-duplicate exists. Returns memory_id if found, else None."""

@@ -34,7 +34,19 @@ class RAGManager:
     # Delegate all methods to VectorRAG
     def search(self, query: str, k: int = 5, owner: Optional[str] = None) -> List[Dict[str, Any]]:
         """Search for documents - delegates to VectorRAG."""
-        return self.vector_rag.search(query, k, owner=owner)
+        import time as _t
+        _t0 = _t.monotonic()
+        results = self.vector_rag.search(query, k, owner=owner)
+        # P14-02 — retrieval hit rates. Guarded; a search never fails over this.
+        try:
+            from src.events import record_event
+            record_event("retrieval", name="rag", owner=owner,
+                         outcome="ok" if results else "empty",
+                         duration_ms=int((_t.monotonic() - _t0) * 1000),
+                         detail={"asked": k, "returned": len(results or [])})
+        except Exception:
+            pass
+        return results
     
     def index_personal_documents(
         self,

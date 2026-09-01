@@ -54,6 +54,16 @@ from core.database import Document as DBDocument, ModelEndpoint
 from core.log_safety import redact_url
 from routes.research_routes import _resolve_research_endpoint
 from routes.model_routes import _visible_models
+def _mark_turn_start() -> None:
+    """Start the turn clock (`P14-02`). Guarded: instrumentation must never be
+    the reason a chat request fails to start."""
+    try:
+        from src.events import mark_turn_start
+        mark_turn_start()
+    except Exception:
+        pass
+
+
 from routes.chat_helpers import (
     resolve_session_auth,
     build_chat_context,
@@ -815,6 +825,7 @@ def setup_chat_routes(
     @router.post("/api/chat", response_model=Dict[str, Any])
     async def chat_endpoint(request: Request, chat_request: ChatRequest) -> Dict[str, Any]:
         _set_user_time_from_request(request)
+        _mark_turn_start()   # P14-02 — the clock read at accumulate_token_usage
 
         message = chat_request.message
         session = chat_request.session
@@ -1004,6 +1015,7 @@ def setup_chat_routes(
     # ------------------------------------------------------------------ #
     @router.post("/api/chat_stream")
     async def chat_stream(request: Request) -> StreamingResponse:
+        _mark_turn_start()   # P14-02 — the clock read at accumulate_token_usage
         body = None
         try:
             if request.headers.get("content-type", "").startswith("application/json"):

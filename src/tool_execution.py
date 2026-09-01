@@ -741,6 +741,9 @@ async def execute_tool_block(
             )
 
     token = _active_workspace.set(workspace or None)
+    _t0 = time.monotonic()
+    _tool_name = getattr(block, "tool_type", None)
+    _tool_outcome = "ok"
     try:
         output = await _execute_tool_block_impl(
             block,
@@ -771,9 +774,28 @@ async def execute_tool_block(
                 output[1],
                 getattr(block, "content", None),
             )
+        # A tool that returns {"error": ...} has failed. It does not raise, so
+        # counting exceptions alone would report a 0% failure rate for the most
+        # common way a tool fails in this codebase — which is exactly the sort
+        # of metric that is worse than none.
+        result = output[1] if isinstance(output, tuple) and len(output) > 1 else None
+        if isinstance(result, dict) and (result.get("error") or result.get("exit_code")):
+            _tool_outcome = "error"
         return output
+    except Exception:
+        _tool_outcome = "exception"
+        raise
     finally:
         _active_workspace.reset(token)
+        # P14-02. Guarded and last: instrumentation never changes whether a tool
+        # call succeeded, and never delays its result.
+        try:
+            from src.events import record_event
+            record_event("tool_call", name=_tool_name, session_id=session_id,
+                         owner=owner, outcome=_tool_outcome,
+                         duration_ms=int((time.monotonic() - _t0) * 1000))
+        except Exception:
+            pass
 
 
 async def _execute_tool_block_impl(

@@ -314,6 +314,75 @@ def test_the_terminal_paths_tag_their_rounds_as_errors():
             f"a terminal path records its round as a success: {call}")
 
 
+def test_the_first_write_in_a_process_prunes(monkeypatch):
+    """`_last_prune` was 0.0, and `time.monotonic()` counts from BOOT on Linux.
+
+    So `now - 0.0 < 86400` was True for a machine's first day of uptime, the
+    gate returned early every time, and a container starting on a freshly booted
+    host never pruned — silently, with whether it pruned at all depending on how
+    long the machine happened to have been up. The sentinel has to mean "never",
+    not "at time zero".
+    """
+    calls = []
+    monkeypatch.setattr(ev, "prune_events", lambda *a, **kw: calls.append(1))
+    monkeypatch.setattr(ev, "_last_prune", None)
+    monkeypatch.setattr(ev.time, "monotonic", lambda: 60.0)   # freshly booted
+    ev._maybe_prune()
+    assert calls, "no prune on the first write of a process"
+    # ...and not again straight away.
+    ev._maybe_prune()
+    assert len(calls) == 1
+
+
+def test_usage_summary_aggregates_in_sql_rather_than_in_python():
+    """The first version did `for e in q.all()` — every event in the window
+    pulled into Python to add integers, on a table whose whole design is "this
+    accumulates". 90 days of heavy use is hundreds of thousands of ORM objects
+    to compute six numbers.
+
+    Captured at the driver, so this cannot pass by reading the source.
+    """
+    from sqlalchemy import event as sa_event
+
+    statements = []
+    engine = SessionLocal.kw["bind"]
+
+    def before(conn, cursor, statement, params, context, many):
+        statements.append(statement)
+
+    sa_event.listen(engine, "before_cursor_execute", before)
+    try:
+        for i in range(5):
+            ev.record_llm_round("t14-agg", {"input_tokens": 10, "output_tokens": 1,
+                                            "model": f"m{i % 2}"})
+        statements.clear()
+        summary = ev.usage_summary(days=1)
+    finally:
+        sa_event.remove(engine, "before_cursor_execute", before)
+
+    assert summary["rounds"] == 5 and summary["input_tokens"] == 50
+    assert len(summary["by_model"]) == 2
+    selects = [s for s in statements if s.lstrip().upper().startswith("SELECT")]
+    assert selects, "no query ran — the test would be vacuous"
+    assert all("count(" in s.lower() or "sum(" in s.lower() for s in selects), (
+        "usage_summary ran a non-aggregate SELECT; it is loading rows to add "
+        f"them in Python: {selects}"
+    )
+    assert any("group by" in s.lower() for s in selects)
+
+
+def test_usage_summary_is_still_correct_with_errors_and_unknown_models():
+    """Aggregating in SQL is where NULL handling goes wrong quietly."""
+    ev.record_llm_round("t14-agg2", {"input_tokens": 7, "output_tokens": 3, "model": "m"})
+    ev.record_llm_round("t14-agg2", {"input_tokens": None, "output_tokens": None},
+                        outcome="error")
+    s = ev.usage_summary(days=1)
+    assert s["rounds"] == 2
+    assert s["input_tokens"] == 7 and s["output_tokens"] == 3
+    assert s["errors"] == 1
+    assert s["by_model"]["unknown"]["rounds"] == 1
+
+
 def test_the_table_is_not_write_only():
     """`P14-01` ships with a door. The whole `H` series is finished work that
     had none, and a measurement phase should not open by adding another."""

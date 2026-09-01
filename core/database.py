@@ -976,6 +976,12 @@ class Event(Base):
     kind       = Column(String, nullable=False, default="llm_round")
     session_id = Column(String, nullable=True)      # NOT a FK — see above
     owner      = Column(String, nullable=True, index=True)
+    # What the event is ABOUT, when that is not a model: the tool that ran, the
+    # store that was searched, the capability that was approved. Added by
+    # `P14-02` one commit after the table shipped, which was the cheapest moment
+    # it could be added — a generic events table needs a subject column, and
+    # `llm_round` simply leaves it null because `model` already is one.
+    name       = Column(String, nullable=True)
     model      = Column(String, nullable=True)
     # The endpoint LABEL, never its URL. Endpoint URLs can carry credentials in
     # userinfo or query (`core/log_safety.redact_url` exists for that reason),
@@ -993,6 +999,9 @@ class Event(Base):
         # The two questions this phase asks: "what happened lately" and "what
         # has this owner used". Both are range scans on ts.
         Index("ix_events_ts_kind", "ts", "kind"),
+        # "which tool fails most" and "how often does retrieval come back empty"
+        # are both (kind, name) group-bys over a time range.
+        Index("ix_events_kind_name_ts", "kind", "name", "ts"),
         Index("ix_events_owner_ts", "owner", "ts"),
         Index("ix_events_session_ts", "session_id", "ts"),
     )
@@ -1032,6 +1041,41 @@ class Memory(Base):
         Index('ix_memories_lookup', 'category', 'timestamp'),  # Composite for category-based queries
         Index('ix_memories_session', 'session_id', 'timestamp'),  # Composite for session-based queries
     )
+
+def _migrate_add_events_name_column():
+    """Add `name` to events (`P14-02`).
+
+    `Base.metadata.create_all` creates missing TABLES; it never alters an
+    existing one. `events` shipped in `P14-01` one commit earlier, so an install
+    that ran that build already has the table without this column and would fail
+    every insert. Guarded on the column list, so it is a no-op everywhere else.
+    """
+    import sqlite3
+    db_path = DATABASE_URL.replace("sqlite:///", "")
+    if not os.path.exists(db_path):
+        return
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        tables = [r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='events'")]
+        if not tables:
+            return          # create_all will build it complete
+        columns = [row[1] for row in conn.execute("PRAGMA table_info(events)")]
+        if "name" not in columns:
+            conn.execute("ALTER TABLE events ADD COLUMN name TEXT")
+            logging.getLogger(__name__).info("Migrated: added 'name' to events")
+        conn.execute("CREATE INDEX IF NOT EXISTS ix_events_kind_name_ts "
+                     "ON events(kind, name, ts)")
+        conn.commit()
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"events.name migration failed: {e}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
 
 def _migrate_add_last_message_at_column():
     """Add last_message_at to sessions + backfill from the latest message
@@ -2281,6 +2325,7 @@ def init_db():
     _migrate_add_owner_column()
     _migrate_add_document_archived_column()
     _migrate_add_last_message_at_column()
+    _migrate_add_events_name_column()
     _migrate_add_folder_column()
     _migrate_add_token_columns()
     _migrate_add_mode_column()

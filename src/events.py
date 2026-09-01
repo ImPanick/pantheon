@@ -35,6 +35,7 @@ one they inherit. Pruning is time-gated in-process rather than scheduled,
 following `rate_limiter.py`'s pattern — this product has no daily job runner and
 adding one for a DELETE would be the larger change.
 """
+import contextvars
 import json
 import logging
 import re
@@ -50,7 +51,15 @@ DEFAULT_RETENTION_DAYS = 90
 # Prune at most this often per process. Cheap enough to check on every write,
 # rare enough that the DELETE is invisible.
 _PRUNE_INTERVAL_SECONDS = 24 * 60 * 60
-_last_prune = 0.0
+# None means "never pruned in this process", NOT "pruned at time zero".
+#
+# This was 0.0, and on Linux `time.monotonic()` counts from BOOT — so
+# `now - 0.0 < 86400` is True for the first day of a machine's uptime and the
+# gate returned early every time. A container starting on a freshly booted host
+# would never prune, silently, and whether it pruned at all depended on how long
+# the machine had been up. Exactly the class of default this project keeps
+# finding: correct-looking, and load-bearing on something unrelated.
+_last_prune: Optional[float] = None
 _prune_lock = threading.Lock()
 
 _URLISH = re.compile(r"[a-z][a-z0-9+.-]*://", re.I)
@@ -98,6 +107,65 @@ def _int_or_none(value: Any) -> Optional[int]:
     return n if 0 <= n <= 2**63 - 1 else None
 
 
+# Turn clock. Set when a chat request begins, read when the round is recorded.
+#
+# A ContextVar rather than a parameter because the two ends are far apart —
+# `routes/chat_routes.py` at one, `accumulate_token_usage` at the other, with
+# the whole agent loop in between — and threading a start time through that
+# would touch far more than it measures. ContextVars follow async tasks, so
+# concurrent turns do not read each other's clocks.
+_turn_started: "contextvars.ContextVar[Optional[float]]" = contextvars.ContextVar(
+    "pantheon_turn_started", default=None)
+
+
+def mark_turn_start() -> None:
+    """Start the clock for this turn. Safe to call more than once per turn —
+    the first call wins, so a retry inside one request does not restart it."""
+    if _turn_started.get() is None:
+        _turn_started.set(time.monotonic())
+
+
+def _turn_elapsed_ms() -> Optional[int]:
+    started = _turn_started.get()
+    if started is None:
+        return None
+    return max(0, int((time.monotonic() - started) * 1000))
+
+
+def record_event(kind: str, *, name: Optional[str] = None,
+                 session_id: Optional[str] = None, owner: Optional[str] = None,
+                 duration_ms: Optional[int] = None, outcome: str = "ok",
+                 detail: Optional[Dict[str, Any]] = None) -> bool:
+    """One row for anything that is not a model round. Never raises.
+
+    `P14-02`. Tool calls, retrievals and approvals all land in the same table as
+    `llm_round`, because "what happened at 14:02" should have one place to look
+    rather than five — that is the whole reason `P14-01` built a table instead
+    of three counters.
+    """
+    try:
+        from core.database import SessionLocal, Event
+        db = SessionLocal()
+        try:
+            db.add(Event(
+                kind=kind,
+                name=_safe_label(name),
+                session_id=session_id,
+                owner=owner,
+                duration_ms=_int_or_none(duration_ms),
+                outcome=(outcome or "ok")[:32],
+                detail=json.dumps(detail, sort_keys=True, default=str) if detail else None,
+            ))
+            db.commit()
+        finally:
+            db.close()
+    except Exception as e:
+        logger.debug("event not recorded: %s: %s", type(e).__name__, e)
+        return False
+    _maybe_prune()
+    return True
+
+
 def record_llm_round(session_id: str, metrics: Dict[str, Any], *,
                      outcome: str = "ok") -> bool:
     """One row for one model round. Returns True if it landed; never raises.
@@ -128,8 +196,13 @@ def record_llm_round(session_id: str, metrics: Dict[str, Any], *,
                 endpoint=_safe_label(metrics.get("endpoint_label")),
                 input_tokens=_int_or_none(metrics.get("input_tokens")),
                 output_tokens=_int_or_none(metrics.get("output_tokens")),
-                # duration_ms stays NULL: round latency is not available at this
-                # insertion point, and threading it through is `P14-02`.
+                # `P14-02` fills this. It measures the TURN — from the chat
+                # request arriving to the totals being accumulated — so it
+                # includes tool calls and retries, not just time in the model.
+                # That is the number an operator watching a dashboard cares
+                # about, and calling it round latency without saying so would
+                # be the kind of quietly-wrong metric that outlives its author.
+                duration_ms=_turn_elapsed_ms(),
                 outcome=(outcome or "ok")[:32],
                 detail=json.dumps(extras, sort_keys=True) if extras else None,
             ))
@@ -176,10 +249,11 @@ def _maybe_prune() -> None:
     """Time-gated, so the check costs a float compare on the hot path."""
     global _last_prune
     now = time.monotonic()
-    if now - _last_prune < _PRUNE_INTERVAL_SECONDS:
+    if _last_prune is not None and now - _last_prune < _PRUNE_INTERVAL_SECONDS:
         return
     with _prune_lock:
-        if time.monotonic() - _last_prune < _PRUNE_INTERVAL_SECONDS:
+        if (_last_prune is not None
+                and time.monotonic() - _last_prune < _PRUNE_INTERVAL_SECONDS):
             return
         _last_prune = time.monotonic()
     prune_events()
@@ -196,25 +270,47 @@ def usage_summary(days: int = 30, owner: Optional[str] = None) -> Dict[str, Any]
     out: Dict[str, Any] = {"days": days, "rounds": 0, "input_tokens": 0,
                            "output_tokens": 0, "errors": 0, "by_model": {}}
     try:
+        from sqlalchemy import func
         from core.database import SessionLocal, Event, utcnow_naive
         cutoff = utcnow_naive() - timedelta(days=max(1, days))
         db = SessionLocal()
         try:
-            q = db.query(Event).filter(Event.ts >= cutoff, Event.kind == "llm_round")
-            if owner:
-                q = q.filter(Event.owner == owner)
-            for e in q.all():
-                out["rounds"] += 1
-                out["input_tokens"] += e.input_tokens or 0
-                out["output_tokens"] += e.output_tokens or 0
-                if (e.outcome or "ok") != "ok":
-                    out["errors"] += 1
-                key = e.model or "unknown"
-                m = out["by_model"].setdefault(
-                    key, {"rounds": 0, "input_tokens": 0, "output_tokens": 0})
-                m["rounds"] += 1
-                m["input_tokens"] += e.input_tokens or 0
-                m["output_tokens"] += e.output_tokens or 0
+            # Aggregated in SQL, one row per model, never one per event.
+            #
+            # The first version of this did `for e in q.all()` — pulling every
+            # event in the window into Python to add integers. On a table whose
+            # entire design is "this accumulates", that is a memory bomb waiting
+            # for a heavy user: 90 days at a few thousand rounds a day is
+            # hundreds of thousands of ORM objects to compute six numbers.
+            def scoped(q):
+                q = q.filter(Event.ts >= cutoff, Event.kind == "llm_round")
+                return q.filter(Event.owner == owner) if owner else q
+
+            totals = scoped(db.query(
+                func.count(Event.id),
+                func.coalesce(func.sum(Event.input_tokens), 0),
+                func.coalesce(func.sum(Event.output_tokens), 0),
+            )).one()
+            out["rounds"] = int(totals[0] or 0)
+            out["input_tokens"] = int(totals[1] or 0)
+            out["output_tokens"] = int(totals[2] or 0)
+
+            out["errors"] = int(scoped(
+                db.query(func.count(Event.id))
+            ).filter(func.coalesce(Event.outcome, "ok") != "ok").scalar() or 0)
+
+            rows = scoped(db.query(
+                Event.model,
+                func.count(Event.id),
+                func.coalesce(func.sum(Event.input_tokens), 0),
+                func.coalesce(func.sum(Event.output_tokens), 0),
+            )).group_by(Event.model).all()
+            for model, rounds, in_t, out_t in rows:
+                out["by_model"][model or "unknown"] = {
+                    "rounds": int(rounds or 0),
+                    "input_tokens": int(in_t or 0),
+                    "output_tokens": int(out_t or 0),
+                }
         finally:
             db.close()
     except Exception as e:

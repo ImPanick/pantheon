@@ -324,7 +324,25 @@ class ExactToolApproval:
             ):
                 return False
             self._claimed = True
+            # P14-02 — approval outcomes. A claim is a human saying yes to a
+            # specific tool on a specific payload; "how often is the ladder
+            # asking, and does anyone answer" is not visible anywhere else.
+            _record_approval("claimed", tool_name, owner, session_id)
             return True
+
+
+def _record_approval(outcome: str, tool_name, owner, session_id) -> None:
+    """P14-02 — approval outcomes. Guarded; approval logic never fails over
+    instrumentation, because the failure mode there is a tool running that
+    should not have."""
+    try:
+        from src.events import record_event
+        record_event("approval", name=str(tool_name or "")[:200] or None,
+                     owner=str(owner) if owner else None,
+                     session_id=str(session_id) if session_id else None,
+                     outcome=outcome)
+    except Exception:
+        pass
 
 
 class ToolApprovalStore:
@@ -348,7 +366,13 @@ class ToolApprovalStore:
             if pending.expires_at <= now
         ]
         for approval_id in expired:
-            self._pending.pop(approval_id, None)
+            pending = self._pending.pop(approval_id, None)
+            # P14-02. An expired approval is a question nobody answered, and it
+            # is the outcome most worth counting: a ladder that asks often and
+            # is answered rarely is a ladder people have learned to ignore.
+            _record_approval("expired", getattr(pending, "tool_name", None),
+                             getattr(pending, "owner", None),
+                             getattr(pending, "session_id", None))
 
     def create(
         self,
