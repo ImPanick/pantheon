@@ -690,6 +690,8 @@ Key settings:
 | `OPENAI_API_KEY` | -- | Optional OpenAI key. Prefer adding providers in the app unless pre-seeding. |
 | `SEARXNG_INSTANCE` | `http://localhost:8080` | SearXNG URL. Docker overrides this to `http://searxng:8080`. |
 | `SEARXNG_SECRET` | generated on first Docker boot | Optional SearXNG cookie/CSRF secret. Leave blank unless you need to pin it. |
+| `SEARXNG_GENERAL_ENGINES` | `bing,mojeek,presearch` | Which engines general queries are sent to. See **What self-hosted search does and does not mean** below. |
+| `SEARXNG_WIDEN_ENGINES` | `0` | Allow a failed search to retry with the instance's *default* engines. Off — see below. |
 | `APP_BIND` | `127.0.0.1` | Docker Compose host bind address for the web UI. Use `0.0.0.0` only for intentional LAN/reverse-proxy access. |
 | `APP_PORT` | `7000` | Docker Compose host port for the web UI. |
 | `APP_DATA_DIR` | `./data` | Docker Compose host directory for application data volumes. |
@@ -724,6 +726,45 @@ npx -y @playwright/mcp@latest --version
 ```
 
 That installs `@playwright/mcp` plus Playwright (~300MB total). Restart Pantheon and the server will register at startup.
+
+
+### What self-hosted search does and does not mean
+
+Worth being plain about, because the phrase promises more than it delivers.
+
+**SearXNG is a metasearch engine.** Self-hosting it means *the aggregator* runs
+on your hardware — it does not mean the searching happens there. SearXNG has no
+index of its own; it forwards your query to other people's engines and merges
+what comes back. What you gain is real: no account, no profile, no cookies, no
+search history held by a company, and your browser never talks to those engines
+directly. What you do not gain is queries that stay on your network. They
+cannot; there would be nothing to search.
+
+**Which engines see your queries is a choice, and it is yours.**
+`SEARXNG_GENERAL_ENGINES` pins the list. It ships as `bing,mojeek,presearch`
+because on a fresh instance the usual defaults are rate-limited or
+CAPTCHA-blocked and return nothing — not because those three are more private.
+Set it to whatever you are comfortable with; Mojeek and Presearch have their
+own indexes, and an instance pinned to those two queries no large ad network at
+all, at the cost of thinner results.
+
+**A failed search will not quietly widen that list.** Until 2026-09-01 it did:
+when a pinned search returned nothing, the third retry dropped the pin, and
+SearXNG's `use_default_settings: true` handed the query to its full default set
+— Google, DuckDuckGo, Brave, Startpage. Engines you had excluded, on the third
+attempt, logged at INFO as a detail. That is off now (`P16-10`). Set
+`SEARXNG_WIDEN_ENGINES=1` if you would rather have the results; the log says
+which engines were tried either way.
+
+**If you want the guarantee at the source rather than from the client**, restrict
+the engine set in `config/searxng/settings.yml` with
+`use_default_settings: {engines: {keep_only: [...]}}`. Pantheon does not ship
+that, deliberately: the news category does not pin engines, so a `keep_only`
+list tuned for general search silently breaks news queries, and a default that
+breaks a working feature is a worse default than the one it replaces. It is the
+right change to make by hand once you know which engines your instance actually
+answers on.
+
 
 ## Architecture
 ```

@@ -74,6 +74,12 @@ DEFAULT_SETTINGS = {
     # That link is navigation the person clicks, never a request this server
     # makes — no bundle is transmitted anywhere by anything Pantheon runs.
     "issue_tracker_url": "",
+    # May a failed SearXNG search retry with this instance's DEFAULT engines?
+    # (`P16-10`.) Ships off. Pinning engines is a choice about who sees the
+    # query; the retry that dropped the pin handed it to Google, DuckDuckGo and
+    # Brave on the third attempt, silently. Off keeps the choice; on is one
+    # switch away and the switch says what it does.
+    "searxng_widen_engines": False,
     # What to do with images in content the user did not write — model output, a
     # RAG document, an email. `ask` (default) renders a placeholder naming the
     # host until someone clicks; `proxy` fetches through /api/img automatically,

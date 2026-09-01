@@ -132,6 +132,29 @@ _NEWS_HINTS = ("news", "nyheter", "headlines", "breaking", "latest", "today", "i
 _GENERAL_ENGINES = os.environ.get("SEARXNG_GENERAL_ENGINES", "bing,mojeek,presearch")
 
 
+def _widen_engines_allowed() -> bool:
+    """May a failed search fall back to this instance's default engine set?
+
+    Ships **off** (`P16-10`). Pinning engines is a choice about who sees the
+    query, and a retry that discards the pin discards the choice — on the third
+    attempt, silently, in a product whose entire premise is that nothing reaches
+    a third party the operator did not pick.
+
+    Reachable through the env because the default is falsy. Beneath a truthy
+    default this function would be dead code, which is `H06`/`B20` and is the
+    same distinction `P16-05` turned on.
+    """
+    try:
+        from src.settings import get_setting
+        if bool(get_setting("searxng_widen_engines", False)):
+            return True
+    except Exception:
+        pass
+    return (os.environ.get("SEARXNG_WIDEN_ENGINES") or "").strip().lower() in (
+        "1", "true", "yes", "on"
+    )
+
+
 def searxng_search_api(query: str, count: Optional[int] = None, categories: str = "general",
                        time_filter: Optional[str] = None) -> List[dict]:
     """Search using SearXNG JSON API. Returns list of {title, url, snippet}."""
@@ -225,13 +248,41 @@ def searxng_search_api(query: str, count: Optional[int] = None, categories: str 
             active_params = fallback
             parsed, data = _run(active_params)
         if not parsed and active_params.get("engines"):
-            fallback = dict(active_params)
-            fallback.pop("engines", None)
-            logger.info(
-                "SearXNG pinned engines returned 0 results for %r; retrying default engines",
-                query,
-            )
-            parsed, data = _run(fallback)
+            # `P16-10`. Dropping `engines` does not "retry harder" — it hands the
+            # query to whatever `use_default_settings: true` enables, which is
+            # SearXNG's full default set: Google, DuckDuckGo, Brave, Startpage.
+            # Those are exactly the engines an operator excluded by pinning
+            # `SEARXNG_GENERAL_ENGINES` in the first place, and the widening
+            # happened silently, on the third try, with an INFO line that read
+            # like a detail.
+            #
+            # Metasearch queries other people's engines by definition and that
+            # is not the defect. The defect is that "self-hosted search"
+            # quietly became "Google" without the person who chose it being
+            # told, or asked.
+            #
+            # So it is default-off rather than removed — the same shape as
+            # `P16-01`'s inverted opt-out and `P16-02`'s empty fallback chain.
+            # The capability is one setting away and the setting says what it
+            # does.
+            if _widen_engines_allowed():
+                fallback = dict(active_params)
+                fallback.pop("engines", None)
+                logger.info(
+                    "SearXNG pinned engines returned 0 results for %r; retrying "
+                    "with this instance's default engines (searxng_widen_engines "
+                    "is on)",
+                    query,
+                )
+                parsed, data = _run(fallback)
+            else:
+                logger.info(
+                    "SearXNG returned 0 results for %r on engines=%s. Not retrying "
+                    "with default engines: that would query whatever this instance "
+                    "enables by default (typically Google, DuckDuckGo, Brave), "
+                    "which pinning excluded. Set searxng_widen_engines to allow it.",
+                    query, active_params.get("engines"),
+                )
         logger.info(f"SearXNG JSON API returned {len(parsed)} results for: {query}")
         if not parsed:
             unresponsive = data.get("unresponsive_engines") if isinstance(data, dict) else None
