@@ -259,6 +259,100 @@ def _maybe_prune() -> None:
     prune_events()
 
 
+def usage_over_time(days: int = 30, owner: Optional[str] = None) -> Dict[str, Any]:
+    """The question that started `P14` (`P14-05`): what has been used, over time.
+
+    Daily buckets, split by model and by owner, aggregated in SQL. `usage_summary`
+    answers *how much in total*; this answers *when*, which is the whole reason
+    the events table exists — `Session` already knew the total and had thrown the
+    timestamp away.
+
+    **Buckets are UTC days**, because `Event.ts` is naive UTC (`utcnow_naive`) and
+    inventing a local timezone here would put the boundary in a different place
+    than every other timestamp in the product. The caller renders; the caller
+    knows where it is.
+
+    **Empty days are filled in.** A series that simply omits a quiet Tuesday
+    draws a line straight from Monday to Wednesday, and a gap that reads as
+    continuity is the one way a usage chart actively misleads.
+    """
+    from datetime import date, timedelta as _td
+    out: Dict[str, Any] = {"days": days, "owner": owner, "buckets": [],
+                           "models": [], "owners": []}
+    try:
+        from sqlalchemy import func
+        from core.database import SessionLocal, Event, utcnow_naive
+
+        days = max(1, min(int(days), 365))
+        out["days"] = days
+        start_day = (utcnow_naive() - _td(days=days - 1)).date()
+        cutoff = utcnow_naive() - _td(days=days)
+
+        db = SessionLocal()
+        try:
+            day = func.date(Event.ts)
+
+            def scoped(q):
+                q = q.filter(Event.kind == "llm_round", Event.ts >= cutoff)
+                return q.filter(Event.owner == owner) if owner else q
+
+            rows = scoped(db.query(
+                day, Event.model,
+                func.count(Event.id),
+                func.coalesce(func.sum(Event.input_tokens), 0),
+                func.coalesce(func.sum(Event.output_tokens), 0),
+                func.coalesce(func.avg(Event.duration_ms), 0),
+            )).group_by(day, Event.model).all()
+
+            per_day: Dict[str, Dict[str, Any]] = {}
+            models: Dict[str, Dict[str, int]] = {}
+            for d, model, n, in_t, out_t, avg_ms in rows:
+                key = str(d)
+                name = model or "unknown"
+                bucket = per_day.setdefault(key, {"day": key, "rounds": 0,
+                                                  "input_tokens": 0,
+                                                  "output_tokens": 0,
+                                                  "by_model": {}})
+                bucket["rounds"] += int(n or 0)
+                bucket["input_tokens"] += int(in_t or 0)
+                bucket["output_tokens"] += int(out_t or 0)
+                bucket["by_model"][name] = int(n or 0)
+                m = models.setdefault(name, {"rounds": 0, "input_tokens": 0,
+                                             "output_tokens": 0, "avg_ms": 0})
+                m["rounds"] += int(n or 0)
+                m["input_tokens"] += int(in_t or 0)
+                m["output_tokens"] += int(out_t or 0)
+                m["avg_ms"] = int(avg_ms or 0)
+
+            # Every day in the window, including the quiet ones.
+            for i in range(days):
+                key = str(start_day + _td(days=i))
+                out["buckets"].append(per_day.get(key, {
+                    "day": key, "rounds": 0, "input_tokens": 0,
+                    "output_tokens": 0, "by_model": {}}))
+
+            out["models"] = [{"model": k, **v} for k, v in
+                             sorted(models.items(),
+                                    key=lambda kv: -kv[1]["input_tokens"])]
+
+            owner_rows = (db.query(Event.owner, func.count(Event.id),
+                                   func.coalesce(func.sum(Event.input_tokens), 0),
+                                   func.coalesce(func.sum(Event.output_tokens), 0))
+                            .filter(Event.kind == "llm_round", Event.ts >= cutoff)
+                            .group_by(Event.owner).all())
+            out["owners"] = [
+                {"owner": o or "(unattributed)", "rounds": int(n or 0),
+                 "input_tokens": int(i or 0), "output_tokens": int(t2 or 0)}
+                for o, n, i, t2 in
+                sorted(owner_rows, key=lambda r: -(r[2] or 0))
+            ]
+        finally:
+            db.close()
+    except Exception as e:
+        out["error"] = f"{type(e).__name__}: {e}"
+    return out
+
+
 def usage_summary(days: int = 30, owner: Optional[str] = None) -> Dict[str, Any]:
     """The question that started the phase: what has this cost, over time.
 

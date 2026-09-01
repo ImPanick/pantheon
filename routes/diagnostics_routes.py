@@ -131,8 +131,14 @@ def setup_diagnostics_routes(
         `H` series, and a measurement phase should not open by adding another.
         """
         require_admin(request)
-        from src.events import usage_summary
-        return usage_summary(days=max(1, min(days, 365)), owner=owner or None)
+        from src.events import usage_summary, usage_over_time
+        days = max(1, min(days, 365))
+        result = usage_summary(days=days, owner=owner or None)
+        # `P14-05` — the same call carries the time series, because a caller
+        # that has to make two requests to draw one chart will eventually draw
+        # it from one of them.
+        result["over_time"] = usage_over_time(days=days, owner=owner or None)
+        return result
 
     @router.get("/api/diagnostics/bundle")
     async def get_diagnostic_bundle(

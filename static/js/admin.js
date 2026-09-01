@@ -3131,6 +3131,176 @@ async function loadSelfChecks() {
 }
 
 // ---------------------------------------------------------------------------
+// Usage over time (P14-05)
+// ---------------------------------------------------------------------------
+//
+// The question that started P14: not "what has this session cost" — the session
+// row always knew that — but "what did last Tuesday cost, and is this model
+// cheaper than that one". Until P14-01 the timestamp was discarded at write, so
+// there was nothing to draw.
+//
+// Bars are inline SVG built with DOM calls. No charting library: this is one
+// series of daily totals, and vendoring a library to draw rectangles would be a
+// third-party dependency for something the browser already does. Every string
+// here is server-derived — model names, owner names — so textContent, never
+// innerHTML.
+
+function usageBars(buckets, host) {
+  const max = Math.max(1, ...buckets.map(b => b.input_tokens + b.output_tokens));
+  const w = 100 / Math.max(1, buckets.length);
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 100 30');
+  svg.setAttribute('preserveAspectRatio', 'none');
+  svg.setAttribute('class', 'usage-chart');
+  svg.setAttribute('role', 'img');
+
+  const total = buckets.reduce((n, b) => n + b.rounds, 0);
+  const label = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+  // The accessible name carries the numbers, because a chart nobody can read
+  // aloud is a chart that excludes people from the only place this data lives.
+  label.textContent = `${total} rounds over ${buckets.length} days, `
+    + `${buckets[0] ? buckets[0].day : ''} to `
+    + `${buckets.length ? buckets[buckets.length - 1].day : ''}`;
+  svg.appendChild(label);
+
+  buckets.forEach((b, i) => {
+    const value = b.input_tokens + b.output_tokens;
+    const h = value ? Math.max(0.6, (value / max) * 28) : 0;
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    rect.setAttribute('x', (i * w + w * 0.12).toFixed(3));
+    rect.setAttribute('y', (29 - h).toFixed(3));
+    rect.setAttribute('width', (w * 0.76).toFixed(3));
+    rect.setAttribute('height', h.toFixed(3));
+    rect.setAttribute('class', value ? 'usage-bar' : 'usage-bar is-empty');
+    const tip = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+    tip.textContent = `${b.day}: ${b.rounds} round${b.rounds === 1 ? '' : 's'}, `
+      + `${value.toLocaleString()} tokens`;
+    rect.appendChild(tip);
+    svg.appendChild(rect);
+  });
+  host.appendChild(svg);
+}
+
+function usageTable(rows, columns, host) {
+  const table = document.createElement('table');
+  table.className = 'usage-table';
+  const thead = document.createElement('thead');
+  const hr = document.createElement('tr');
+  columns.forEach(c => {
+    const th = document.createElement('th');
+    th.textContent = c.label;
+    if (c.numeric) th.className = 'is-num';
+    hr.appendChild(th);
+  });
+  thead.appendChild(hr);
+  table.appendChild(thead);
+  const tbody = document.createElement('tbody');
+  rows.forEach(row => {
+    const tr = document.createElement('tr');
+    columns.forEach(c => {
+      const td = document.createElement('td');
+      const value = row[c.key];
+      td.textContent = c.numeric && typeof value === 'number'
+        ? value.toLocaleString() : String(value ?? '');
+      if (c.numeric) td.className = 'is-num';
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  host.appendChild(table);
+}
+
+async function loadUsage() {
+  const body = el('usage-body');
+  if (!body) return;
+  const range = el('usage-range');
+  const days = range ? range.value : 30;
+
+  body.textContent = 'Loading…';
+  let data;
+  try {
+    const res = await fetch(`/api/diagnostics/usage?days=${encodeURIComponent(days)}`,
+                            { credentials: 'same-origin' });
+    if (!res.ok) { body.textContent = `Could not load usage (HTTP ${res.status}).`; return; }
+    data = await res.json();
+  } catch (_e) {
+    body.textContent = 'Could not reach this Pantheon.';
+    return;
+  }
+
+  const series = (data && data.over_time) || {};
+  const buckets = Array.isArray(series.buckets) ? series.buckets : [];
+  body.textContent = '';
+
+  if (!buckets.some(b => b.rounds)) {
+    // Not an error, and it should not look like one. A fresh install has no
+    // history, and saying "nothing yet" beats an empty chart that reads as
+    // broken.
+    const empty = document.createElement('p');
+    empty.className = 'usage-empty';
+    empty.textContent = 'No model rounds recorded in this window yet. '
+      + 'Usage is recorded from the first message after this build.';
+    body.appendChild(empty);
+    return;
+  }
+
+  const head = document.createElement('p');
+  head.className = 'usage-headline';
+  head.textContent = `${(data.rounds || 0).toLocaleString()} rounds · `
+    + `${(data.input_tokens || 0).toLocaleString()} in · `
+    + `${(data.output_tokens || 0).toLocaleString()} out`
+    + (data.errors ? ` · ${data.errors} failed` : '');
+  body.appendChild(head);
+
+  usageBars(buckets, body);
+
+  const axis = document.createElement('p');
+  axis.className = 'usage-axis';
+  axis.textContent = `${buckets[0].day} → ${buckets[buckets.length - 1].day} (UTC days)`;
+  body.appendChild(axis);
+
+  if (Array.isArray(series.models) && series.models.length) {
+    const h = document.createElement('h4');
+    h.className = 'usage-subhead';
+    h.textContent = 'By model';
+    body.appendChild(h);
+    usageTable(series.models, [
+      { key: 'model', label: 'Model' },
+      { key: 'rounds', label: 'Rounds', numeric: true },
+      { key: 'input_tokens', label: 'In', numeric: true },
+      { key: 'output_tokens', label: 'Out', numeric: true },
+      { key: 'avg_ms', label: 'Avg ms', numeric: true },
+    ], body);
+  }
+
+  // Only when there is more than one, because a single-user install does not
+  // need a table to tell it who the user is.
+  if (Array.isArray(series.owners) && series.owners.length > 1) {
+    const h = document.createElement('h4');
+    h.className = 'usage-subhead';
+    h.textContent = 'By owner';
+    body.appendChild(h);
+    usageTable(series.owners, [
+      { key: 'owner', label: 'Owner' },
+      { key: 'rounds', label: 'Rounds', numeric: true },
+      { key: 'input_tokens', label: 'In', numeric: true },
+      { key: 'output_tokens', label: 'Out', numeric: true },
+    ], body);
+  }
+}
+
+function setupUsagePanel() {
+  const panel = el('usage-panel');
+  if (!panel) return;
+  const range = el('usage-range');
+  // Load on first open, not on page load: it is a query over the events table
+  // and nobody opening Settings for a theme should pay for it.
+  panel.addEventListener('toggle', () => { if (panel.open) loadUsage(); });
+  if (range) range.addEventListener('change', () => { if (panel.open) loadUsage(); });
+}
+
+// ---------------------------------------------------------------------------
 // Report a bug (P16-14)
 // ---------------------------------------------------------------------------
 //
@@ -3321,6 +3491,7 @@ function initLogsView() {
 
   loadSelfChecks();
   setupBugReport();   // wires listeners only; assembles nothing until asked
+  setupUsagePanel();  // queries only when the panel is opened
   if (refreshBtn) refreshBtn.addEventListener('click', () => { loadLogs(false); loadSelfChecks(); });
   if (levelSelect) levelSelect.addEventListener('change', () => renderLogs(false));
   if (limitSelect) limitSelect.addEventListener('change', () => loadLogs(false));

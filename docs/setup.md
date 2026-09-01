@@ -765,13 +765,19 @@ paced outbound call. **A host in no declared network is refused too:** if you
 named two segments and asked for one, you did not mean "and also anything I
 forgot to describe".
 
-**What this does not do, stated plainly.** It is not an OS-level control. A
-shell tool running `curl 10.20.7.3` reaches that address regardless, because the
-process has a route to it — stopping that needs a network namespace or a
-firewall rule, not a Python function. This boundary covers every connection
-Pantheon opens on the agent's behalf, which is most of them, and it is described
-accurately here because a boundary people believe is tighter than it is, is
-worse than one they can plan around.
+**What this is for, and what it is not.** Scoping is how you *direct* the agent:
+work on the lab, and the lab is what gets discovered, offered and acted on. It
+prevents the mistakes — a model list that mixes the lab GPU with the production
+one, a sweep that wanders onto the printer VLAN, an agent that helpfully fixes
+the wrong box — and it prevents them completely.
+
+It is not a sandbox. A shell tool running `curl 10.20.7.3` reaches that address,
+because the process has a route to it and no Python function can remove a route.
+That is stated so you can plan around it, not as an apology: Pantheon is an
+orchestration harness on machines you own, and traffic between them is normal.
+If you do want a hard boundary — most likely because several people share one
+install — that is a network namespace or a firewall rule at the OS level, and it
+belongs outside the app.
 
 ---
 

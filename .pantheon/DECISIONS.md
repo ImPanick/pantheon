@@ -627,3 +627,54 @@ because a knob that cannot move is worse than no knob. Retention is not a boot-t
 `accumulate_token_usage`, and threading it through is `P14-02`. The column ships now so that row
 needs no migration. Saying so on the row is cheaper than a column added later by a migration
 nobody wants to write.
+
+---
+
+## D-2026-09-01-03 — this is an orchestration harness; LAN-to-LAN is not a threat model
+
+The owner, on `P16-16` and the `P16-20` I filed beside it:
+
+> *"internal comms, LAN to LAN etc is totally fine. we arent building fort knox. just an
+> orchestration harness etc.."*
+
+**That corrects an emphasis I was drifting into, and it is worth stating precisely rather than
+just softening the language.** `P16-16` shipped network scoping and I wrote it up as a *boundary* —
+"enforced, not advisory", "refused before DNS" — and then filed `P16-20` to close the remaining
+hole with a network namespace or an nftables rule set. All of that is coherent engineering for a
+product whose threat model includes *the agent, or something wearing it, trying to get out*.
+
+That is not this product's threat model, and pretending otherwise costs real things.
+
+**What the scoping is actually for: directing the agent, not defending against it.** An operator
+who says *"work on the lab"* wants the lab's machines discovered, the lab's endpoints offered, and
+the agent's attention on the lab — not a jail. The failure it prevents is a **mistake**: a model
+list that mixes the lab GPU with the production GPU, a sweep that wanders into the printer VLAN, an
+agent that helpfully "fixes" the wrong box. Those are orchestration failures, and scoping fixes
+them completely.
+
+**What it is not for: containing a hostile or compromised run.** If something is executing arbitrary
+shell on the operator's machine, it is already inside the network. Chasing that with per-run egress
+jails buys a guarantee nobody asked for, in exchange for a large amount of platform-specific
+plumbing — netns on Linux, pf on macOS, something else on Windows, all of it able to break a working
+install in ways that look like the product is broken rather than the sandbox.
+
+**Consequences, so this does not get re-derived:**
+
+* **`P16-20` is reframed and deprioritised**, not deleted. It stays available for whoever
+  eventually wants a hard boundary — a company running this shared, most plausibly — and its text
+  now says that is who it is for. It is not on the path to a good version of this product.
+* **`P16-16`'s honesty clause stays, and stops apologising.** The docs still say a shell tool
+  running `curl` reaches whatever the process routes to. That sentence is *accurate*, and accuracy
+  is the reason to keep it — not because a missing control needs excusing. The test that fails if
+  the disclosure is removed stays too.
+* **What does NOT relax:** the auth boundary. `D-2026-09-01-01` already settled this — "not openly
+  hosted" is a default rather than a guarantee, somebody will eventually put this on a public
+  address, and every control in `FORBIDDEN.md` Part 2 stands. *LAN-to-LAN is fine* is a statement
+  about traffic between machines the operator owns. It is not a statement about who may log in,
+  about SSRF from a hostile document, or about what a tool may do with an approval it never got.
+  Those have a real adversary and this does not.
+
+**The general form, since this is the second time a scope has needed narrowing** (`Law 16` was the
+first, when "no external dependence" nearly became "no capability"): the question is always *who is
+the adversary, and did anyone ask for one?* Where the answer is "nobody, this is a mistake we are
+preventing", build the thing that prevents mistakes and stop there.

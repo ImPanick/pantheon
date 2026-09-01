@@ -20,18 +20,27 @@ of the box, and with nothing declared this module changes no behaviour at all �
 `network_for()` returns None, no scope is active, and every existing call path
 runs exactly as it did.
 
-WHAT THIS ENFORCES, AND WHAT IT HONESTLY DOES NOT.
+WHAT THIS IS FOR, AND WHAT IT IS NOT (`D-2026-09-01-03`).
 
-It is a boundary on every connection **Pantheon itself opens on the agent's
-behalf**: model endpoint selection, discovery, URL fetches, integrations. Inside
-a scope, a host outside it is refused before a socket is opened.
+It **directs** the agent. A run told to work on the lab discovers the lab's
+machines, is offered the lab's endpoints, and is refused the others on every
+connection Pantheon opens on its behalf — model endpoint selection, discovery,
+URL fetches, integrations. The failures it prevents are mistakes: a model list
+that mixes the lab GPU with the production one, a sweep that wanders onto the
+printer VLAN, an agent that helpfully fixes the wrong box. It prevents those
+completely.
 
-It is **not** an OS-level control. A shell tool running `curl 10.9.9.9` reaches
-that address regardless, because the process has a route to it — stopping that
-needs a network namespace or a firewall rule, not a Python function. Saying so
-here rather than implying otherwise is the point: a boundary described as
-tighter than it is, is worse than one described accurately, because people plan
-around the description. `P16-20` is filed for the OS-level half.
+It is **not an OS-level control**, and is not trying to be. A shell tool running
+`curl 10.9.9.9` reaches that address, because the process has a route to it and
+no Python function removes a route. That is recorded so people can plan around
+it, not as an apology for a missing control: this is an orchestration harness
+running on machines the operator owns, and traffic between them is normal.
+`P16-20` holds the hard-boundary version for a deployment that genuinely wants
+one — most plausibly several people sharing one install — and it is deferred.
+
+None of which relaxes the auth boundary. `FORBIDDEN.md` Part 2 stands: *LAN to
+LAN is fine* is about traffic between the operator's own machines, never about
+who may log in.
 """
 import contextlib
 import contextvars

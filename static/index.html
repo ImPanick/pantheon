@@ -2609,6 +2609,22 @@
                    they do not know they have. -->
               <div id="self-check-panel" class="self-check-panel" hidden></div>
 
+              <!-- Usage over time (P14-05). Collapsed: it answers a question
+                   someone comes looking for, rather than one they need
+                   answered every time Settings opens. -->
+              <details id="usage-panel" class="usage-panel">
+                <summary class="usage-summary-toggle">Usage over time</summary>
+                <div class="usage-controls">
+                  <label for="usage-range">Range</label>
+                  <select id="usage-range">
+                    <option value="7">Last 7 days</option>
+                    <option value="30" selected>Last 30 days</option>
+                    <option value="90">Last 90 days</option>
+                  </select>
+                </div>
+                <div id="usage-body" class="usage-body"></div>
+              </details>
+
               <!-- Report a bug (P16-14). Collapsed until asked for: it is for
                    the moment something breaks, not a thing to read past every
                    time you open Settings. Nothing here transmits — the bundle

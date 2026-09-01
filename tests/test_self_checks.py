@@ -11,6 +11,7 @@ So these tests check two things a health feature usually forgets:
   * the whole thing must have a reader. A diagnostic nobody can see is the exact
     defect this project keeps finding in its own product.
 """
+import re
 import sqlite3
 import pathlib
 import time
@@ -212,11 +213,38 @@ def test_liveness_failure_does_not_hide_the_state_checks():
     )
 
 
+def _function_body(js: str, signature: str) -> str:
+    """The body of one function, brace-matched, with comments stripped.
+
+    Both halves were learned the hard way. This test used to slice from
+    `loadSelfChecks` to `loadLogs` — "everything between two functions I know
+    about" — and went red the moment `P14-05` added a panel in the gap, blaming
+    the self-checks for code that was not theirs. And the comment above that
+    panel says "textContent, never innerHTML", which a substring search reads as
+    a violation: the same trap that hid a deleted scope gate in `P16-12`.
+    """
+    start = js.index(signature)
+    open_brace = js.index("{", start)
+    depth, i = 0, open_brace
+    while i < len(js):
+        if js[i] == "{":
+            depth += 1
+        elif js[i] == "}":
+            depth -= 1
+            if depth == 0:
+                break
+        i += 1
+    body = js[open_brace:i + 1]
+    body = re.sub(r"/\*.*?\*/", "", body, flags=re.S)
+    body = re.sub(r"^\s*//.*$", "", body, flags=re.M)
+    return body
+
+
 def test_the_panel_does_not_build_markup_from_strings():
     """This surface reports trouble, which makes it the one most likely to be
     handed a hostile string — from a mail subject, or a host name."""
     js = (REPO / "static/js/admin.js").read_text(encoding="utf-8")
-    start = js.index("async function loadSelfChecks()")
-    body = js[start:js.index("async function loadLogs(")]
+    body = _function_body(js, "async function loadSelfChecks()")
+    assert "createElement" in body, "wrong slice — the test would be vacuous"
     assert "innerHTML" not in body, "the self-check panel builds markup from strings"
     assert "textContent" in body
