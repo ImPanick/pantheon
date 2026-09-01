@@ -214,3 +214,18 @@ def test_cdn_section_of_credits_is_empty_and_says_so():
     section = credits[i:credits.index("\n## ", i + 1)]
     assert "Nothing" in section
     assert "jsdelivr.net" not in section.replace("cdn.jsdelivr.net` allowance", "")
+
+
+def test_manifest_is_written_with_lf_on_every_platform():
+    """`write_text` translates \\n to os.linesep, so the same script produced a
+    different MANIFEST.json on Windows than on Linux — 16 bytes apart.
+
+    It went unnoticed because `.gitattributes` normalises text in the index,
+    which is git covering for the script rather than the script being correct.
+    This file's entire job is recording exact bytes.
+    """
+    raw = (PYODIDE / "MANIFEST.json").read_bytes()
+    assert b"\r\n" not in raw
+    src = (ROOT / "scripts" / "fetch-pyodide.py").read_text(encoding="utf-8")
+    assert 'newline="\\n"' in src
+    assert "MANIFEST.json\").write_text(" not in src

@@ -150,7 +150,14 @@ def fetch(version: str) -> int:
         (DEST / name).write_bytes(data)
         print(f"  wrote {name}  ({len(data):,} bytes)")
 
-    (DEST / "MANIFEST.json").write_text(json.dumps({
+    # newline="\n" is load-bearing on Windows. `write_text` opens in text mode,
+    # which translates every \n to os.linesep -- so the same script run on the
+    # two machines this repo is developed on produced files that differed by
+    # 16 bytes. It survived only because `.gitattributes` normalises text in the
+    # index, which is git covering for the script rather than the script being
+    # right, and this is the one file in the tree whose whole job is recording
+    # exact bytes.
+    (DEST / "MANIFEST.json").open("w", encoding="utf-8", newline="\n").write(json.dumps({
         "package": "pyodide",
         "version": version,
         "licence": "MPL-2.0",
@@ -161,7 +168,7 @@ def fetch(version: str) -> int:
         "note": ("Runtime and Python standard library only — no packages. "
                  "codeRunner.js never calls loadPackage; adding one means "
                  "vendoring its wheel here deliberately."),
-    }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    }, indent=2, sort_keys=True) + "\n")
     print(f"  wrote MANIFEST.json")
     print(f"\nOK — Pyodide {version} vendored to static/lib/pyodide/")
     return 0
