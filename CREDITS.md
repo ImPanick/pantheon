@@ -70,25 +70,65 @@ file. Stated plainly, so nothing has to be inferred:
    the licence you must pass on under, and the licence whose §13 network clause
    applies if you run a modified Pantheon where other people can reach it. It is
    inherited from Odysseus and it is deliberate.
-2. **The permissive licences below belong to the third-party components
-   individually.** MIT, BSD-2/3-Clause, Apache-2.0 and OFL-1.1 are what let
-   Pantheon *include* those components at all, and they travel with the copies —
-   their copyright and licence notices must be preserved in every redistribution,
-   which is what this file and [`licenses/`](licenses/) are for. They do not
-   relicense Pantheon and they never could.
+2. **The third-party licences below belong to those components
+   individually.** MIT, BSD-2/3-Clause, Apache-2.0, OFL-1.1 and — for OpenMoji's
+   artwork — CC BY-SA 4.0 are what let Pantheon *include* those components at
+   all, and they travel with the copies: their copyright and licence notices
+   must be preserved in every redistribution, which is what this file and
+   [`licenses/`](licenses/) are for. They do not relicense Pantheon and they
+   never could.
 3. **The original "MIT-compatible core" claim was about dependency hygiene, and
    that part of it stands.** It meant: no dependency on the core install path
    imposes copyleft, so a downstream who wanted to combine Pantheon's core code
    with permissively-licensed work is not blocked by a *dependency*. It never
    meant Pantheon is distributable under MIT, and this file no longer says
    anything that could be read that way.
-4. **The one copyleft dependency is optional and is called out below.** PyMuPDF
-   is AGPL-3.0 and ships in neither the default install nor the default image —
-   see [PyMuPDF](#pymupdf--scope-and-licence).
+4. **Two third-party components are copyleft, and only one of them is
+   optional.**
+
+   - **OpenMoji** — the emoji artwork, **CC BY-SA 4.0**, in
+     [`library/emoji/`](library/emoji/). It **ships by default**: it is what
+     every emoji in the product is made of. Share-alike binds *the artwork and
+     adaptations of it*, and Pantheon's serve-time transform is an adaptation,
+     so the vendored file is CC BY-SA 4.0 too. It does **not** reach the code
+     that reads it — see the aggregation note below.
+   - **PyMuPDF** — **AGPL-3.0**, and ships in neither the default install nor
+     the default image. See [PyMuPDF](#pymupdf--scope-and-licence).
+
+   This numbered point said "the one copyleft dependency is optional" until
+   2026-09-01, and by then it had been wrong for as long as the product had been
+   drawing emoji — which is to say, since before the fork. It was corrected when
+   OpenMoji was finally attributed. The failure worth naming is not the sentence:
+   it is that a *summary* of the licence position was maintained by hand, next to
+   a detail section it was allowed to contradict. `.pantheon/check-licences.py`
+   now fails the build if a copyleft entry is missing from this list.
 
 Nothing in this repository restricts commercial use. AGPL §10 forbids adding
 such a restriction and §7 lets any recipient strip one, so any statement of
 preference you find in the README is exactly that — a preference, not a term.
+
+**Why CC BY-SA 4.0 artwork can sit inside an AGPL-3.0 program.** The two
+licences are not merged and neither one swallows the other. The emoji are a data
+file that the program *reads* — glyph outlines in
+`library/emoji/openmoji-black.json`, served as SVG — and no OpenMoji expression
+is compiled into, linked against or derived from Pantheon's source. That is the
+"aggregate" the AGPL describes in §5: separate and independent works distributed
+on one medium, where including one does not extend its licence over the others.
+So:
+
+- Pantheon's code stays AGPL-3.0-or-later. CC BY-SA does not reach it.
+- The emoji data stays CC BY-SA 4.0. The AGPL does not reach it either, and you
+  may take that file, use it elsewhere and adapt it under CC BY-SA's own terms.
+- **If you fork Pantheon and change the emoji artwork, share-alike applies to
+  your changed artwork** — publish it under CC BY-SA 4.0 with attribution. If
+  you replace the set entirely, you are simply not using OpenMoji any more.
+- If you would rather ship no CC BY-SA material at all, `library/emoji/` is one
+  directory and `routes/emoji_routes.py` degrades to blank glyphs without it.
+
+Creative Commons has separately declared CC BY-SA 4.0 one-way compatible with
+GPLv3, so relicensing the artwork *into* the program is also available if a
+downstream ever wants it. Pantheon does not need that route and does not take
+it — aggregation is the weaker claim and the true one.
 
 ---
 
@@ -254,13 +294,23 @@ SheetJS -- http://sheetjs.com"*. `html2pdf.bundle.min.js` opens with *"For
 license information please see html2pdf.bundle.min.js.LICENSE.txt"*, and that
 sidecar file is now in
 [`licenses/html2pdf.bundle.min.js.LICENSE.txt`](licenses/html2pdf.bundle.min.js.LICENSE.txt)
-— fetched verbatim from html2pdf.js 0.10.2, not reconstructed. KaTeX and Mermaid
-have their texts in [`licenses/`](licenses/). The remainder — docx, mammoth.js,
-jsPDF, html2canvas, node-qrcode — carry no inline banner, and their texts landed
-in [`licenses/`](licenses/) on 2026-08-27, each fetched from upstream at the
-version actually vendored here. MIT and both BSD variants require the notice to
-travel with redistributed copies, which is why they are files in this repository
-rather than a list in this one.
+— fetched verbatim from html2pdf.js 0.10.2, not reconstructed. **The other
+seven files carry no banner at all**: docx, mammoth.js, KaTeX (`.js` and
+`.css`), Mermaid, node-qrcode, and — inside the html2pdf bundle — jsPDF and
+html2canvas. *(Measured 2026-09-01: zero `/*!` markers and zero occurrences of
+"license" or "copyright" in the first 4 KB of each. An earlier version of this
+paragraph named only five, which implied KaTeX and Mermaid had banners; they do
+not.)* Their texts landed in [`licenses/`](licenses/) on 2026-08-27, each
+fetched from upstream at the version actually vendored here.
+
+MIT and both BSD variants require the notice to travel with redistributed
+copies. Minifiers strip banners, so for seven of these files the *only* notice
+in this repository is the one in [`licenses/`](licenses/) — which means copying
+a single file out of `static/lib/` carries no notice with it, and whoever does
+that has to bring the licence text along themselves. That is the reason the
+texts are files here rather than a list in this one, and the reason
+[`.pantheon/check-licences.py`](.pantheon/check-licences.py) fails if one goes
+missing or stops being linked.
 
 **The sidecar does not cover everything the bundle contains.**
 `html2pdf.bundle.min.js` pulls in fifteen top-level packages; its `LICENSE.txt`
@@ -290,6 +340,19 @@ Not vendored — fetched from `cdn.jsdelivr.net` when the feature is first used:
 *Measured 2026-08-27: `static/js/codeRunner.js:156,158` is the only third-party
 CDN load left in the tree — Mermaid and KaTeX used to load this way and are now
 vendored.*
+
+**[`licenses/`](licenses/) holds no Pyodide text, and that is correct today.**
+MPL-2.0 §3.2 attaches to *distributing* the covered software; Pantheon
+distributes no Pyodide bytes, it points a browser at jsDelivr. **`P16-07` vendors
+Pyodide** to close the last CDN dependency, and the moment it does, this stops
+being true: the licence text, an `INVENTORY` entry in
+[`.pantheon/check-licences.py`](.pantheon/check-licences.py) and a row in the
+[vendored libraries](#vendored-libraries--staticlib) table all become required in
+that same commit. MPL is file-level copyleft — weaker than the AGPL and
+compatible with it, since §3.3 permits distributing the covered files inside a
+larger work under a secondary licence — so vendoring adds paperwork, not a
+constraint. The checker will fail the build if the paperwork is skipped, which is
+the only reason to write this down in advance.
 
 **[PDFObject](https://github.com/pipwerks/PDFObject) 2.1.1 (MIT)** was credited
 by the acknowledgements Pantheon inherited, as a second CDN-loaded library for
@@ -327,6 +390,42 @@ and `KaTeX_Typewriter`, copyright Design Science, Inc. and Khan Academy.
 > typeface. It was the one affirmatively false statement in this repository's
 > attribution rather than a merely incomplete one, so the file and its credit
 > row went together (`P0-23`, D-2026-08-26-06). Nothing rendered with it.
+
+---
+
+## Vendor marks — `static/icons/`
+
+Two of the images in `static/icons/` are other projects' brand marks. They are
+not code and carry no licence text, which is exactly why they went nine months
+without an entry anywhere: an attribution audit looks for `LICENSE` files, and a
+logo does not have one.
+
+| Mark | Files | Project | Why it is here |
+|---|---|---|---|
+| Ollama | `static/icons/ollama-mark.png`, `static/icons/ollama-mark-crop.png` | [Ollama](https://github.com/ollama/ollama) (MIT) | Labels the Ollama backend in the Cookbook's model list, download and serve views |
+| SGLang | `static/icons/sglang-mark.png`, `static/icons/sglang-logo.png` | [SGLang](https://github.com/sgl-project/sglang) (Apache-2.0) | Labels the SGLang backend in the same views |
+
+**What Pantheon claims, and does not.** These marks are used **nominatively** —
+to name the thing a row is about, the way a table of adapters is allowed to say
+which adapter. Pantheon is not affiliated with, endorsed by or sponsored by
+either project. The marks belong to their owners; a permissive software licence
+covers a project's *code*, not its trademarks, so neither MIT nor Apache-2.0 is
+what permits this and nothing in `licenses/` should suggest otherwise. Either
+owner may ask for the mark to be removed, and the answer would be yes — they are
+four PNGs behind a `background: currentColor` mask, and the UI degrades to text
+labels without them.
+
+**Both were in the tree at the fork point** (`fff72ec`, baseline of cybertooth
+`c3b2120`) and neither was mentioned in Odysseus's acknowledgements or in this
+file until 2026-09-01. They were found the same week as OpenMoji and for the
+same reason: someone finally compared what is *on disk* against what this file
+*says*. That comparison is now `.pantheon/check-licences.py`, and it runs in CI.
+
+> The Ollama entry under [Companion services](#companion-services--interoperated-with-not-bundled)
+> says those projects are "not distributed with this project". That is true of
+> Ollama's *software* and was never true of its mark. The line stays where it
+> is, because Ollama genuinely is a companion service; this section is the part
+> that ships.
 
 ---
 

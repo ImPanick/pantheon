@@ -105,6 +105,14 @@ jobs:
       # check was written; two features were silently dead because of it.
       - name: check-specifiers
         run: python3 .pantheon/check-specifiers.py --max 0
+      # OpenMoji's artwork shipped under CC BY-SA 4.0, credited in no file in
+      # the repository, from before the fork until 2026-09-01 — and two vendor
+      # marks in static/icons/ went the same way. None of it was a missing
+      # rule. It was that nothing ever compared the tree against CREDITS.md.
+      # This is that comparison, and the inventory is an allowlist: a vendored
+      # file nobody has written a licence line for fails here.
+      - name: check-licences
+        run: python3 .pantheon/check-licences.py
 
   law16-egress:
     name: Law 16 — no egress on a fresh install
