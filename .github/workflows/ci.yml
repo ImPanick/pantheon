@@ -113,6 +113,15 @@ jobs:
       # file nobody has written a licence line for fails here.
       - name: check-licences
         run: python3 .pantheon/check-licences.py
+      # Law 16 clause 4, armed before the hole exists. P16-12 builds the first
+      # legitimate place in this codebase for an outbound metrics URL, and so
+      # the first place a well-meant default could land — a "community stats"
+      # endpoint, or an SDK whose constructor has a hosted collector in it and
+      # whose docs call that the quickstart. Primary rule is an allowlist over
+      # shape, not a denylist of vendor names: every telemetry vendor was new
+      # once, and the one that matters is the one nobody has heard of yet.
+      - name: check-destinations
+        run: python3 .pantheon/check-destinations.py
 
   law16-egress:
     name: Law 16 — no egress on a fresh install
