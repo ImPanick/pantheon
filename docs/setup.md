@@ -728,6 +728,53 @@ npx -y @playwright/mcp@latest --version
 That installs `@playwright/mcp` plus Playwright (~300MB total). Restart Pantheon and the server will register at startup.
 
 
+### Parallel networks — declaring segments and scoping a run to one
+
+Pantheon ships declaring **nothing**, and with nothing declared it behaves
+exactly as it always has: one flat set of hosts, no scoping, no change.
+
+Declare segments in the `networks` setting when you have more than one and they
+are not equally trusted — a printer VLAN, a lab subnet behind a jump host, a
+second tailnet, the production network:
+
+```json
+[
+  {"name": "lab",  "cidrs": ["10.9.0.0/24"],  "hosts": ["lab-gpu.lan"],
+   "trust": "limited", "notes": "GPU box + bench machines"},
+  {"name": "prod", "cidrs": ["10.20.0.0/16"], "hosts": ["prod-llm.internal"],
+   "trust": "trusted"}
+]
+```
+
+**`cidrs` classify; `hosts` are scanned.** A `/16` is 65,536 addresses, and
+expanding a declaration into a sweep is how "discover my networks" becomes a
+port scan your own IDS reports. Model discovery probes the hosts you list and
+uses the CIDRs only to say which segment something belongs to.
+
+**A bare hostname matches only by exact listing.** Resolving it would make
+membership depend on whichever network answered the lookup, which is precisely
+the ambiguity this exists to remove.
+
+**Order decides an overlap.** First match wins, so put narrow segments before
+broad ones. That is stated rather than sorted for you — "most specific wins"
+quietly reorders what you wrote, and the surprise arrives later.
+
+**Scoping a run.** Inside a scope, a host in another segment is refused before a
+socket opens — on model endpoint selection, discovery, URL fetches and every
+paced outbound call. **A host in no declared network is refused too:** if you
+named two segments and asked for one, you did not mean "and also anything I
+forgot to describe".
+
+**What this does not do, stated plainly.** It is not an OS-level control. A
+shell tool running `curl 10.20.7.3` reaches that address regardless, because the
+process has a route to it — stopping that needs a network namespace or a
+firewall rule, not a Python function. This boundary covers every connection
+Pantheon opens on the agent's behalf, which is most of them, and it is described
+accurately here because a boundary people believe is tighter than it is, is
+worse than one they can plan around.
+
+---
+
 ### Metrics — pointing Prometheus and Grafana at Pantheon
 
 Off by default. Turn it on with `PANTHEON_METRICS_ENABLED=1` (or the setting),

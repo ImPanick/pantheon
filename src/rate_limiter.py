@@ -285,8 +285,24 @@ class OutboundHostLimiter:
             st.total_waits += wait
             return wait, pol
 
+    def _check_scope(self, host: str) -> None:
+        """`P16-16` — refuse an out-of-scope host before pacing it.
+
+        The limiter is the one place every deliberately-paced outbound call
+        passes through (`P15`), which makes it the cheapest place to put a
+        second layer under the per-caller checks. It is a layer, not the
+        boundary: a caller that does not pace is not caught here, which is why
+        `url_safety` and `outbound_fetch` check independently.
+        """
+        try:
+            from src.networks import require_host
+            require_host(host, what="outbound request")
+        except ImportError:
+            pass
+
     def acquire(self, host: str, *, authenticated: bool = False) -> float:
         """Block until it is polite to call `host`. Returns seconds waited."""
+        self._check_scope(host)
         waited = 0.0
         while True:
             wait, _pol = self._plan(host, authenticated=authenticated)
@@ -303,6 +319,7 @@ class OutboundHostLimiter:
     async def acquire_async(self, host: str, *, authenticated: bool = False) -> float:
         import asyncio
 
+        self._check_scope(host)
         waited = 0.0
         while True:
             wait, _pol = self._plan(host, authenticated=authenticated)

@@ -99,6 +99,19 @@ def _resolve_public_ips(
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
         raise httpx.RequestError(f"Blocked non-public URL: {url}")
     host = (parsed.hostname or "").strip().lower()
+    # `P16-16` — network scope, before anything else looks at this host.
+    # No-op with nothing declared or no scope in force.
+    try:
+        from src.networks import host_allowed, network_for, current_scope
+        if not host_allowed(host):
+            where = network_for(host)
+            raise httpx.RequestError(
+                f"Blocked by network scope: {host} is in "
+                f"{'network ' + repr(where) if where else 'no declared network'}, "
+                f"and this run is scoped to {sorted(current_scope() or [])}"
+            )
+    except ImportError:
+        pass
     if host in ("localhost", "metadata", "metadata.google.internal"):
         raise httpx.RequestError(f"Blocked non-public hostname: {host}")
     try:

@@ -83,6 +83,23 @@ def check_outbound_url(
     if not host:
         return False, "URL has no host"
 
+    # `P16-16` — network scope, checked before DNS.
+    #
+    # Before resolution on purpose: refusing after a lookup has already told
+    # the other network's resolver that we asked is a boundary that leaks the
+    # question it was meant to prevent. With nothing declared, or no scope in
+    # force, `host_allowed` returns True and this costs one function call.
+    try:
+        from src.networks import host_allowed, network_for, current_scope
+        if not host_allowed(host):
+            where = network_for(host)
+            return False, (
+                f"host is in {'network ' + repr(where) if where else 'no declared network'}, "
+                f"and this run is scoped to {sorted(current_scope() or [])}"
+            )
+    except ImportError:
+        pass
+
     resolve = resolver or _default_resolver
     try:
         raw_ips = resolve(host)

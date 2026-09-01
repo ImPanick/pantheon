@@ -87,6 +87,16 @@ def discover_tailscale_hosts() -> List[str]:
     return hosts
 
 
+def _network_for(host: str):
+    """Which declared network a host is on. Guarded: discovery never fails
+    because a classification could not be made."""
+    try:
+        from src.networks import network_for
+        return network_for(host)
+    except Exception:
+        return None
+
+
 class ModelDiscovery:
     def __init__(self, default_host: str, openai_api_key: Optional[str] = None):
         self.default_host = default_host
@@ -118,6 +128,28 @@ class ModelDiscovery:
                         self._extra_ports.add(parsed.port)
                 except Exception:
                     pass
+
+        # Declared networks first (`P16-16`). When a scope is in force these
+        # are ONLY the in-scope ones, so a run told to work on the lab does not
+        # discover production and then find it in a dropdown.
+        #
+        # With nothing declared this returns None and everything below is
+        # exactly as it was — which is the shipped state.
+        try:
+            from src.networks import hosts_in_scope, current_scope
+            declared = hosts_in_scope()
+        except Exception:
+            declared, current_scope = None, (lambda: None)
+        if declared is not None:
+            hosts = list(declared)
+            if current_scope() is None:
+                # No scope: the operator's declarations ADD to the usual set
+                # rather than replacing it, because declaring a lab subnet is
+                # not a statement that localhost stopped existing.
+                _append_host(hosts, self.default_host)
+                _append_host(hosts, "host.docker.internal")
+                _append_env_hosts(hosts)
+            return hosts
 
         # Manual override takes priority
         extra = os.getenv("LLM_HOSTS", "").strip()
@@ -199,6 +231,11 @@ class ModelDiscovery:
                     "models": ids,
                     "models_display": [i.lstrip("/") for i in ids],
                     "provider": self._fingerprint_provider(host, port),
+                    # Which declared segment this endpoint lives on, or None
+                    # when nothing is declared (`P16-16`). A model list that
+                    # cannot say which network a server is on is how "the lab
+                    # GPU" and "the production GPU" become one dropdown.
+                    "network": _network_for(host),
                 }
         except Exception:
             pass

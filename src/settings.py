@@ -108,6 +108,17 @@ DEFAULT_SETTINGS = {
     #
     # Falsy, so PANTHEON_METRICS_ENABLED is genuinely reachable beneath it.
     "metrics_enabled": False,
+    # Named network segments (`P16-16`). Ships EMPTY, and empty means "behave
+    # exactly as before": nothing is declared, nothing is scoped, and every
+    # existing path runs unchanged.
+    #
+    # A network the operator NAMED is a network they linked, so this is `Law 16`
+    # working as intended rather than an exception to it — the law is about
+    # defaults, not capability.
+    #
+    # [{"name": "lab", "cidrs": ["10.9.0.0/24"], "hosts": ["lab-gpu.lan"],
+    #   "trust": "limited", "enabled": true, "notes": "…"}]
+    "networks": [],
     # What to do with images in content the user did not write — model output, a
     # RAG document, an email. `ask` (default) renders a placeholder naming the
     # host until someone clicks; `proxy` fetches through /api/img automatically,
