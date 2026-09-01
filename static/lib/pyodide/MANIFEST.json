@@ -1,0 +1,16 @@
+{
+  "files": {
+    "pyodide-lock.json": "be1807745da93daa09d360b109c17a0e526e74d664d1f1b9870aafcce98ce426",
+    "pyodide.asm.js": "3a889f073e628c2196c705b42fa0e955ba2e25c034b1e3dd589c35be675bc01b",
+    "pyodide.asm.wasm": "f7fefe563134714a17abd65516d94960e8dbd96fe6778a7a842947fc9686b3a1",
+    "pyodide.js": "7fdbe66e53f68f6a4e93c295a667371759be093d2bd402bb44545514584039b6",
+    "python_stdlib.zip": "6030964967e447c887abc46c5f0967c55688644d759496de82a3ef09f49f5cba"
+  },
+  "licence": "MPL-2.0",
+  "note": "Runtime and Python standard library only \u2014 no packages. codeRunner.js never calls loadPackage; adding one means vendoring its wheel here deliberately.",
+  "package": "pyodide",
+  "source": "https://registry.npmjs.org/pyodide",
+  "tarball": "https://registry.npmjs.org/pyodide/-/pyodide-0.27.5.tgz",
+  "tarball_integrity": "sha512-nXErpLzEdtQolt+sNQ/5mKuN9XTUwhxR2MRhRhZ6oDRGpYLXrOp5+kkTPGEwK+wn1ZA8+poNmoxKTj2sq/p9og==",
+  "version": "0.27.5"
+}

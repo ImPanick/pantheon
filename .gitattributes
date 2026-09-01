@@ -32,3 +32,9 @@ static/lib/** -whitespace linguist-vendored
 *.ico  binary
 *.woff binary
 *.woff2 binary
+# Pyodide (`P16-07`). `* text=auto` decides by content heuristic, which is a
+# guess, and this repository has already shipped a CRLF corruption bug from a
+# Windows checkout (issues #150, #77). A mangled 10 MB `.wasm` fails at
+# instantiate with nothing useful on screen, so these are stated, not guessed.
+*.wasm binary
+*.zip  binary

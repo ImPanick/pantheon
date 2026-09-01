@@ -122,7 +122,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 "script-src 'self' 'unsafe-inline'; "
                 "style-src 'self' 'unsafe-inline'; "
                 "font-src 'self'; "
-                                # `https:` was here until 2026-09-01 (`P16-08`). It let an
+                # `https:` was here until 2026-09-01 (`P16-08`). It let an
                 # `![](…)` in model output, a RAG document or an **email** make
                 # the reader's browser fetch from a host nobody chose — their IP,
                 # their user-agent, and the moment they opened it. Remote images
@@ -198,10 +198,24 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             # don't execute script, the residual risk is visual-only.
             response.headers["Content-Security-Policy"] = (
                 "default-src 'self'; "
-                f"script-src 'self' 'nonce-{nonce}' https://cdn.jsdelivr.net; "
-                "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-                "font-src 'self' https://cdn.jsdelivr.net; "
-                                # `https:` was here until 2026-09-01 (`P16-08`). It let an
+                # `https://cdn.jsdelivr.net` was in all three of these
+                # until 2026-09-01 (`P16-07`). Pyodide was the only thing
+                # that used it, and it is vendored now, so the last
+                # external allowance in this policy is gone: every byte
+                # this page loads comes from this origin.
+                #
+                # `'wasm-unsafe-eval'` is NOT a loosening — it is what
+                # makes the vendoring work at all. A page with any
+                # `script-src` cannot compile WebAssembly without it, so
+                # dropping jsDelivr without adding this would have moved
+                # the failure rather than fixed it: no request leaves, and
+                # Python still does not run. It permits compiling wasm
+                # bytes and nothing else — not `eval`, not inline script,
+                # and not a byte from another origin.
+                f"script-src 'self' 'nonce-{nonce}' 'wasm-unsafe-eval'; "
+                "style-src 'self' 'unsafe-inline'; "
+                "font-src 'self'; "
+                # `https:` was here until 2026-09-01 (`P16-08`). It let an
                 # `![](…)` in model output, a RAG document or an **email** make
                 # the reader's browser fetch from a host nobody chose — their IP,
                 # their user-agent, and the moment they opened it. Remote images

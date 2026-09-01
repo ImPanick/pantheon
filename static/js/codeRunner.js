@@ -140,7 +140,19 @@ function addCopyBtn_unused(panel, text) {
 function addCloseBtn(_panel) { /* no-op */ }
 
 /**
- * Lazy-load Pyodide from CDN
+ * Lazy-load Pyodide from this origin.
+ *
+ * It came from cdn.jsdelivr.net until 2026-09-01 (`P16-07`), and that had two
+ * problems, only one of which was the network. The request left the machine the
+ * moment someone ran a Python block -- and the feature failed anyway, because
+ * the CSP that let `pyodide.js` through blocked the `.wasm` fetch it makes next.
+ * A leak with nothing to show for it.
+ *
+ * Both paths now point at `/static/lib/pyodide/`, vendored by
+ * `scripts/fetch-pyodide.py` from a checksum-verified npm tarball. `indexURL`
+ * matters as much as `src`: Pyodide resolves `pyodide.asm.wasm`,
+ * `python_stdlib.zip` and `pyodide-lock.json` against it, so leaving it pointed
+ * at the CDN would keep three of the five files remote and look fixed.
  */
 function loadPyodide() {
   if (pyodideInstance) return Promise.resolve(pyodideInstance);
@@ -153,9 +165,9 @@ function loadPyodide() {
 
   return new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/pyodide/v0.27.5/full/pyodide.js';
+    script.src = '/static/lib/pyodide/pyodide.js';
     script.onload = () => {
-      window.loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.5/full/' })
+      window.loadPyodide({ indexURL: '/static/lib/pyodide/' })
         .then(py => {
           pyodideInstance = py;
           pyodideLoading = false;
@@ -172,7 +184,13 @@ function loadPyodide() {
     };
     script.onerror = () => {
       pyodideLoading = false;
-      const err = new Error('Failed to load Pyodide');
+      // Vendored, so this is a missing file rather than a network problem, and
+      // the message should say which -- `scripts/fetch-pyodide.py` is the fix
+      // and nobody guesses that from "failed to load".
+      const err = new Error(
+        'Pyodide is not installed. Expected it at /static/lib/pyodide/ — run '
+        + 'scripts/fetch-pyodide.py to vendor it.'
+      );
       pyodideQueue.forEach(q => q.reject(err));
       pyodideQueue.length = 0;
       reject(err);

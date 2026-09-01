@@ -83,15 +83,24 @@ file. Stated plainly, so nothing has to be inferred:
    with permissively-licensed work is not blocked by a *dependency*. It never
    meant Pantheon is distributable under MIT, and this file no longer says
    anything that could be read that way.
-4. **Two third-party components are copyleft, and only one of them is
-   optional.**
+4. **Three third-party components are copyleft, and only one of them is
+   optional.** Each is copyleft in a *different* way, which is the part worth
+   reading — "copyleft" on its own tells you almost nothing about what you owe.
 
    - **OpenMoji** — the emoji artwork, **CC BY-SA 4.0**, in
-     [`library/emoji/`](library/emoji/). It **ships by default**: it is what
-     every emoji in the product is made of. Share-alike binds *the artwork and
+     [`library/emoji/`](library/emoji/). **Ships by default**: it is what every
+     emoji in the product is made of. Share-alike binds *the artwork and
      adaptations of it*, and Pantheon's serve-time transform is an adaptation,
      so the vendored file is CC BY-SA 4.0 too. It does **not** reach the code
      that reads it — see the aggregation note below.
+   - **Pyodide** — the in-browser Python runtime, **MPL-2.0**, in
+     `static/lib/pyodide/`. **Ships by default** since 2026-09-01, when it
+     stopped being fetched from a CDN. MPL is **file-level** copyleft: it binds
+     those files and any modification of them, and §3.3 expressly permits
+     shipping them inside a larger work under a secondary licence. Pantheon
+     ships them **unmodified**, so what is owed is the notice and a pointer to
+     the source, both of which are here. Change one of those files and you owe
+     that file's source under MPL — the rest of Pantheon is unaffected.
    - **PyMuPDF** — **AGPL-3.0**, and ships in neither the default install nor
      the default image. See [PyMuPDF](#pymupdf--scope-and-licence).
 
@@ -281,6 +290,7 @@ embedded licence banner.
 | [node-qrcode](https://github.com/soldair/node-qrcode) | `qrcode.min.js` | QR-code rendering (2FA setup) | MIT ([`licenses/node-qrcode-MIT-LICENSE.txt`](licenses/node-qrcode-MIT-LICENSE.txt)) |
 | [KaTeX](https://github.com/KaTeX/KaTeX) v0.16.22 | `katex/katex.min.{js,css}` + `katex/fonts/*.woff2` | Math typesetting | MIT ([`licenses/KaTeX-MIT-LICENSE.txt`](licenses/KaTeX-MIT-LICENSE.txt)) |
 | [Mermaid](https://github.com/mermaid-js/mermaid) v11.16.1 | `mermaid.min.js` | Diagrams from text | MIT ([`licenses/Mermaid-MIT-LICENSE.txt`](licenses/Mermaid-MIT-LICENSE.txt)) |
+| [Pyodide](https://github.com/pyodide/pyodide) 0.27.5 | `pyodide/{pyodide.js,pyodide.asm.js,pyodide.asm.wasm,python_stdlib.zip,pyodide-lock.json}` | In-browser Python runtime for `” ```python ”` code blocks | MPL-2.0 ([`licenses/Pyodide-MPL-2.0.txt`](licenses/Pyodide-MPL-2.0.txt)) |
 
 *Versions read out of the shipped bundles on 2026-08-27, not carried from a
 document: `highlight.min.js` v11.9.0 from its own banner, `katex.min.js`
@@ -331,28 +341,37 @@ never requested by a browser that supports `woff2`.
 
 ## Loaded at runtime from a CDN
 
-Not vendored — fetched from `cdn.jsdelivr.net` when the feature is first used:
+**Nothing. This section is empty as of 2026-09-01, and that is the point.**
 
-| Library | Purpose | Licence |
-|---|---|---|
-| [Pyodide](https://github.com/pyodide/pyodide) 0.27.5 | In-browser Python runtime | MPL-2.0 |
+Pyodide was the last entry and is now vendored — see
+[vendored libraries](#vendored-libraries--staticlib). With it went the final
+`https://cdn.jsdelivr.net` allowance in the Content-Security-Policy, which had
+been in `script-src`, `style-src` **and** `font-src`. Every byte the app loads
+now comes from its own origin.
+
+The heading stays rather than being deleted, because "we removed the CDN loads"
+is a claim that needs somewhere to be falsified. If a library reappears here, it
+belongs in this table with its licence, and `.pantheon/check-licences.py` will
+not catch it — a CDN load ships no file, so rule 1 has nothing to see. That is a
+known limit of the checker and this table is the compensating control.
 
 *Measured 2026-08-27: `static/js/codeRunner.js:156,158` is the only third-party
 CDN load left in the tree — Mermaid and KaTeX used to load this way and are now
 vendored.*
 
-**[`licenses/`](licenses/) holds no Pyodide text, and that is correct today.**
-MPL-2.0 §3.2 attaches to *distributing* the covered software; Pantheon
-distributes no Pyodide bytes, it points a browser at jsDelivr. **`P16-07` vendors
-Pyodide** to close the last CDN dependency, and the moment it does, this stops
-being true: the licence text, an `INVENTORY` entry in
-[`.pantheon/check-licences.py`](.pantheon/check-licences.py) and a row in the
-[vendored libraries](#vendored-libraries--staticlib) table all become required in
-that same commit. MPL is file-level copyleft — weaker than the AGPL and
-compatible with it, since §3.3 permits distributing the covered files inside a
-larger work under a secondary licence — so vendoring adds paperwork, not a
-constraint. The checker will fail the build if the paperwork is skipped, which is
-the only reason to write this down in advance.
+**Pyodide is MPL-2.0 and the paperwork landed with the bytes.** The five files
+live in `static/lib/pyodide/` with a `MANIFEST.json` pinning each one's SHA-256.
+MPL §3.2
+attaches on *distribution* — pointing a browser at jsDelivr distributed nothing,
+shipping the files does — so `P16-18` wrote this requirement onto the `P16-07`
+row a commit before it came due, and `P16-07` paid it in the same commit that
+vendored: licence text in [`licenses/`](licenses/), an `INVENTORY` entry in
+[`.pantheon/check-licences.py`](.pantheon/check-licences.py), and the table row
+above. MPL is **file-level** copyleft: it binds the covered files and their
+modifications, and §3.3 expressly permits distributing them inside a larger work
+under a secondary licence. Pantheon ships them **unmodified**, so the obligation
+is the notice and the source pointer, both discharged here. It does not reach
+Pantheon's own code, and the AGPL does not reach Pyodide's.
 
 **[PDFObject](https://github.com/pipwerks/PDFObject) 2.1.1 (MIT)** was credited
 by the acknowledgements Pantheon inherited, as a second CDN-loaded library for

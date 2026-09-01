@@ -91,6 +91,8 @@ INVENTORY = [
           "KaTeX-fonts-OFL.txt", "KaTeX-fonts-OFL.txt"),
     Entry("Mermaid", ["static/lib/mermaid.min.js"], "MIT",
           "Mermaid-MIT-LICENSE.txt", "Mermaid"),
+    Entry("Pyodide", ["static/lib/pyodide/*"], "MPL-2.0",
+          "Pyodide-MPL-2.0.txt", "static/lib/pyodide", copyleft=True),
     Entry("Fira Code", ["static/fonts/FiraCode-*.woff2"], "OFL-1.1",
           "FiraCode-OFL.txt", "Fira Code"),
     Entry("Inter", ["static/fonts/Inter-*.woff2"], "OFL-1.1",
