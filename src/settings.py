@@ -60,6 +60,15 @@ DEFAULT_SETTINGS = {
     # answer to "why is memory unavailable" on a machine with no local
     # embedding server and no network.
     "allow_model_download": False,
+    # What to do with images in content the user did not write — model output, a
+    # RAG document, an email. `ask` (default) renders a placeholder naming the
+    # host until someone clicks; `proxy` fetches through /api/img automatically,
+    # so the browser still never talks to the third party; `block` never fetches.
+    #
+    # `ask` is the default because a proxy alone only moves the beacon one hop:
+    # the request still leaves the machine for content nobody chose. Mail is
+    # full of tracking pixels and this is the setting that answers them.
+    "remote_images": "ask",
     # How many scheduled tasks may hold the model slot at once. 1 preserves the
     # behaviour this was hardcoded to; the resolver in src/task_scheduler.py
     # clamps to [1, 16] and reads this layer between the env var and the

@@ -157,12 +157,51 @@ function linkHtml(text, url) {
   return `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer">${safeText}</a>`;
 }
 
+// How to treat images from hosts the user did not choose (P16-08). Fetched
+// once per page from /api/img/mode; until it answers we assume `ask`, which is
+// the safe direction to be wrong in.
+let _remoteImageMode = 'ask';
+export function setRemoteImageMode(mode) {
+  if (mode === 'ask' || mode === 'proxy' || mode === 'block') _remoteImageMode = mode;
+}
+export function getRemoteImageMode() { return _remoteImageMode; }
+
+function _isSameOrigin(href) {
+  try { return new URL(href, window.location.origin).origin === window.location.origin; }
+  catch (_) { return false; }
+}
+
 function imageHtml(alt, url, title) {
   const safeUrl = safeLinkUrl(url);
   if (!safeUrl || safeUrl.startsWith('#')) return escapeHtml(alt || '');
   const safeAlt = escapeHtml(alt || '');
   const safeTitle = title ? ` title="${escapeHtml(title)}"` : '';
-  return `<img src="${escapeHtml(safeUrl)}" alt="${safeAlt}"${safeTitle} loading="lazy" decoding="async">`;
+
+  // Our own images load as they always did.
+  if (_isSameOrigin(safeUrl)) {
+    return `<img src="${escapeHtml(safeUrl)}" alt="${safeAlt}"${safeTitle} loading="lazy" decoding="async">`;
+  }
+
+  // Everything else came from content the reader did not write — model output,
+  // a RAG document, an email. Loading it announces, to a host nobody chose,
+  // that they opened it. That is what a tracking pixel is, and mail is full of
+  // them. The CSP no longer permits it directly; these two paths are the whole
+  // remaining surface.
+  let host = '';
+  try { host = new URL(safeUrl).host; } catch (_) { host = 'another site'; }
+  const proxied = '/api/img?u=' + encodeURIComponent(safeUrl);
+
+  if (_remoteImageMode === 'block') {
+    return `<span class="remote-img-blocked" title="${escapeHtml(safeUrl)}">`
+      + `Image from ${escapeHtml(host)} (remote images are off)</span>`;
+  }
+  if (_remoteImageMode === 'proxy') {
+    return `<img src="${escapeHtml(proxied)}" alt="${safeAlt}"${safeTitle} loading="lazy" decoding="async">`;
+  }
+  // ask — the default. Nothing leaves the machine until someone clicks.
+  return `<button type="button" class="remote-img-ask" data-remote-src="${escapeHtml(proxied)}" `
+    + `data-remote-alt="${safeAlt}" title="${escapeHtml(safeUrl)}">`
+    + `Load image from ${escapeHtml(host)}</button>`;
 }
 
 function _isModelEndpointUrl(rawUrl) {
@@ -1044,6 +1083,37 @@ function _setThinkingExpanded(content, toggle, header, expanded) {
     label_el.textContent = expanded ? `Hide ${label}` : `View ${label}`;
   }
 }
+
+// Click-to-load for remote images (P16-08). Delegated, because these are
+// rendered into message HTML long after this file runs.
+document.addEventListener('click', function (e) {
+  const btn = e.target.closest('.remote-img-ask[data-remote-src]');
+  if (!btn) return;
+  const img = document.createElement('img');
+  img.src = btn.dataset.remoteSrc;          // already /api/img?u=… — same origin
+  img.alt = btn.dataset.remoteAlt || '';
+  img.loading = 'lazy';
+  img.decoding = 'async';
+  img.className = 'remote-img-loaded';
+  img.addEventListener('error', () => {
+    const failed = document.createElement('span');
+    failed.className = 'remote-img-blocked';
+    failed.textContent = 'That image could not be loaded.';
+    img.replaceWith(failed);
+  });
+  btn.replaceWith(img);
+});
+
+// Ask the server how remote images should be treated. Until this answers, the
+// renderer assumes `ask`, which is the safe direction to be wrong in.
+(async function _loadRemoteImageMode() {
+  try {
+    const res = await fetch('/api/img/mode', { credentials: 'same-origin' });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data && data.mode) setRemoteImageMode(data.mode);
+  } catch (_e) { /* keep the safe default */ }
+})();
 
 // Delegated click handler for thinking toggle (CSP-safe, no inline onclick)
 document.addEventListener('click', function(e) {

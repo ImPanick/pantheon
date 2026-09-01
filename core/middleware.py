@@ -122,7 +122,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 "script-src 'self' 'unsafe-inline'; "
                 "style-src 'self' 'unsafe-inline'; "
                 "font-src 'self'; "
-                "img-src 'self' data: blob: https:; "
+                                # `https:` was here until 2026-09-01 (`P16-08`). It let an
+                # `![](…)` in model output, a RAG document or an **email** make
+                # the reader's browser fetch from a host nobody chose — their IP,
+                # their user-agent, and the moment they opened it. Remote images
+                # now go through /api/img, same-origin, and only when the
+                # `remote_images` setting says so.
+                "img-src 'self' data: blob:; "
                 "connect-src 'self'; "
                 "frame-ancestors 'none'"
             )
@@ -195,7 +201,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 f"script-src 'self' 'nonce-{nonce}' https://cdn.jsdelivr.net; "
                 "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
                 "font-src 'self' https://cdn.jsdelivr.net; "
-                "img-src 'self' data: blob: https:; "
+                                # `https:` was here until 2026-09-01 (`P16-08`). It let an
+                # `![](…)` in model output, a RAG document or an **email** make
+                # the reader's browser fetch from a host nobody chose — their IP,
+                # their user-agent, and the moment they opened it. Remote images
+                # now go through /api/img, same-origin, and only when the
+                # `remote_images` setting says so.
+                "img-src 'self' data: blob:; "
                 "media-src 'self' blob:; "
                 "connect-src 'self'; "
                 "frame-src 'self'; "

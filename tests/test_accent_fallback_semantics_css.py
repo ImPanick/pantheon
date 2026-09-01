@@ -7,10 +7,10 @@ sixteen palettes are protected territory (`DECISIONS.md` D-2026-08-26-03) and a
 `:root` rule would out-rank every `var(--accent, …)` fallback at once and flip
 the whole stylesheet to one global colour.
 
-`static/style.css` named `--accent` 828 times before this file, and 816 after.
+`static/style.css` named `--accent` 828 times before this file, and 817 after.
 Three populations, and they are not the same kind of thing:
 
-  * **562 sites reach the theme's red through their fallback.** 553 of them
+  * **563 sites reach the theme's red through their fallback.** 554 of them
     spell it `var(--accent, var(--red))`; nine take a longer road —
     `var(--red, #e53935)` and two more literals, plus two routed through the
     undefined `--accent-primary` first. They resolved to the theme's red before
@@ -60,7 +60,7 @@ What is pinned below, and why each is a defect if it breaks:
 
   * **`--accent` is defined nowhere in this stylesheet.** The single failure
     mode the row is built to avoid, asserted directly rather than inferred;
-  * **the no-change population stays 553 spelled and 562 resolved**, so a
+  * **the no-change population stays 554 spelled and 563 resolved**, so a
     fallback rewritten in place is visible in the diff of a test rather than
     only in a screenshot;
   * **every token named inside an `--accent` fallback exists**, with the one
@@ -135,8 +135,8 @@ def _css() -> str:
 def _line_starts() -> list:
     """Offsets of every line start, for `_line_of`.
 
-    Counting newlines from position zero for each of 816 hits re-reads a
-    1.6MB string 816 times; the whole file measures in under two seconds with
+    Counting newlines from position zero for each of 817 hits re-reads a
+    1.6MB string 817 times; the whole file measures in under two seconds with
     this and in a minute and a half without it.
     """
     return [0] + [m.end() for m in re.finditer(r"\n", _css())]
@@ -404,7 +404,7 @@ def _distance(a: tuple, b: tuple) -> float:
 
 
 def test_accent_is_defined_nowhere_in_the_stylesheet():
-    """A `:root { --accent: … }` would out-rank all 816 fallbacks at once.
+    """A `:root { --accent: … }` would out-rank all 817 fallbacks at once.
 
     `--accent` is set per theme, beside `--red`, at the three places that set
     `--red`. Defining it here as well — in `:root`, in `:root.light`, in a
@@ -434,14 +434,14 @@ def test_the_no_change_population_holds_at_both_of_its_counts():
 
     Two counts, because the two that get quoted about this row are counts of
     different things and disagreeing about it has already cost one review pass:
-    553 sites spell the fallback `var(--red)` exactly, and a further nine reach
+    554 sites spell the fallback `var(--red)` exactly, and a further nine reach
     the same colour through a chain — `var(--red, #e53935)` and friends, plus
     two that route through the undefined `--accent-primary` first.
     """
     exact = [expr for _, expr in _var_uses("accent")
              if _fallback(expr) == "var(--red)"]
-    assert len(exact) == 553, (
-        f"expected 553 sites spelling the fallback `var(--red)` exactly, found "
+    assert len(exact) == 554, (
+        f"expected 554 sites spelling the fallback `var(--red)` exactly, found "
         f"{len(exact)}. If a site was legitimately added or removed, move this "
         "number and say which site in the commit — do not widen the assertion."
     )
@@ -459,12 +459,12 @@ def test_the_no_change_population_holds_at_both_of_its_counts():
             continue  # a gaining site, counted by the population above
         if painted == red:
             resolving.append(expr)
-    assert len(resolving) == 562, (
-        f"expected 562 sites whose fallback resolves to the theme's red, found "
+    assert len(resolving) == 563, (
+        f"expected 563 sites whose fallback resolves to the theme's red, found "
         f"{len(resolving)}"
     )
-    assert len(_var_uses("accent")) == 816, (
-        f"expected 816 uses of --accent in total, found {len(_var_uses('accent'))}"
+    assert len(_var_uses("accent")) == 817, (
+        f"expected 817 uses of --accent in total, found {len(_var_uses('accent'))}"
     )
 
 

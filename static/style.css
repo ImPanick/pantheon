@@ -16,7 +16,7 @@
  * `--accent` joined Core on 2026-08-30 (P1-01). It is set per theme, beside
  * `--red`, at all three palette writers — and **never declared in this file**.
  * A `:root` declaration here would win over `var(--accent, var(--red))` and
- * flip 553 sites to one global colour, costing all sixteen themes their
+ * flip 554 sites to one global colour, costing all sixteen themes their
  * identity in a single commit. A test fails if one appears.
  *
  * CORRECTED 2026-08-30. This header used to carry a fourth line reading
@@ -55,7 +55,7 @@
      All three set `--fg` on this same element, so one `:root` rule already
      tracks every palette — and B21 is that those three have already drifted
      (14 / 13 / 17 keys), so a fourth mirror is the defect, not the fix. The
-     `P1-01` prohibition on `:root` does not carry over: it existed because 553
+     `P1-01` prohibition on `:root` does not carry over: it existed because 554
      sites shipped a `var(--red)` fallback that a `:root` rule would have
      flipped. Here 8 sites carry any fallback at all, and all 8 want this.
 
@@ -42527,6 +42527,36 @@ body.theme-frosted .modal {
   color: #d1d4e0;
   box-shadow: inset 0 2px 8px rgba(0,0,0,0.5);
 }
+/* Remote images the reader did not ask for (P16-08). Deliberately plain: this
+   is a control, not a decoration, and it must read as "nothing has loaded yet"
+   rather than as a broken image. */
+.remote-img-ask {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 11px;
+  border: 1px dashed var(--border);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  color: var(--fg);
+  opacity: .85;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  max-width: 100%;
+}
+.remote-img-ask:hover { opacity: 1; border-style: solid; }
+.remote-img-ask:focus-visible { outline: 2px solid var(--accent, var(--red)); outline-offset: 2px; }
+.remote-img-blocked {
+  display: inline-block;
+  padding: 6px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 5px;
+  font-size: 12.5px;
+  opacity: .6;
+}
+.remote-img-loaded { max-width: 100%; }
+
 /* Self-check panel — what is quietly wrong (P16-15).
    Colours come from the theme tokens, never literals: sixteen palettes, and
    several are light. --warn and --red are set per theme; --green is not yet
