@@ -933,6 +933,71 @@ class TaskRun(Base):
     )
 
 
+class Event(Base):
+    """One thing that happened, with the time it happened at (`P14-01`).
+
+    The phase this table opens exists because of a single line elsewhere in this
+    file. `Session` carries `message_count`, `total_input_tokens` and
+    `total_output_tokens` as **running counters on a row** — so the platform
+    knows what a conversation has cost in total and can never say what it cost
+    on Tuesday, whether one model is cheaper than another, or whether a change
+    helped. The time dimension is not hard to query. It was discarded at write.
+
+    APPEND-ONLY, AND DELIBERATELY NOT A FOREIGN KEY.
+
+    `session_id` is a plain column. A `ForeignKey(... ondelete="CASCADE")` would
+    be the tidy choice and it would delete the cost of a conversation along with
+    the conversation, which defeats the point: "what did last month cost" must
+    survive tidying up. Nothing here is conversation content — no message text,
+    no prompts, no responses — so keeping it after a session is gone leaks
+    nothing that deleting the session was meant to remove. What it keeps is the
+    shape of the usage.
+
+    That is not licence to keep it forever: `src/events.py` prunes on a
+    retention window that ships finite (`events_retention_days`, 90). An
+    append-only table with no ceiling is a defect on someone's home server, not
+    a feature.
+
+    WHAT IS POPULATED TODAY. `P14-01` writes from `accumulate_token_usage`, the
+    one place four call paths already converge, so it sees: timestamp, session,
+    owner, model, endpoint label, tokens in and out, and outcome. `duration_ms`
+    is nullable and **NULL for now** — round latency is not available at that
+    insertion point and threading it through is `P14-02`, which this table is
+    shaped to receive. A column that exists and is honestly empty beats a
+    column added later by a migration nobody wants to write.
+    """
+    __tablename__ = "events"
+
+    id         = Column(Integer, primary_key=True, autoincrement=True)
+    ts         = Column(DateTime, nullable=False, default=utcnow_naive, index=True)
+    # 'llm_round' today. P14-02 adds tool calls, approvals, retrieval — same
+    # table, because the question "what happened at 14:02" should have one place
+    # to look, not five.
+    kind       = Column(String, nullable=False, default="llm_round")
+    session_id = Column(String, nullable=True)      # NOT a FK — see above
+    owner      = Column(String, nullable=True, index=True)
+    model      = Column(String, nullable=True)
+    # The endpoint LABEL, never its URL. Endpoint URLs can carry credentials in
+    # userinfo or query (`core/log_safety.redact_url` exists for that reason),
+    # and this table is read by the usage views P14-05 will build and may be
+    # carried in a P16-14 diagnostic bundle. A label is what a person recognises
+    # anyway.
+    endpoint   = Column(String, nullable=True)
+    input_tokens  = Column(Integer, nullable=True)
+    output_tokens = Column(Integer, nullable=True)
+    duration_ms   = Column(Integer, nullable=True)   # P14-02 fills this
+    outcome    = Column(String, nullable=True)       # 'ok' | 'error'
+    detail     = Column(Text, nullable=True)         # JSON, for P14-02's extras
+
+    __table_args__ = (
+        # The two questions this phase asks: "what happened lately" and "what
+        # has this owner used". Both are range scans on ts.
+        Index("ix_events_ts_kind", "ts", "kind"),
+        Index("ix_events_owner_ts", "owner", "ts"),
+        Index("ix_events_session_ts", "session_id", "ts"),
+    )
+
+
 class Memory(Base):
     """
     SQLAlchemy model for Memory table.

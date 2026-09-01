@@ -69,10 +69,10 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P11 | Identity & access | 14 | 13 | **1** | 0 |
 | P12 | Limits & the control plane | 11 | 11 | 0 | 0 |
 | P13 | The Brain | 12 | 11 | 0 | **1** |
-| P14 | Measurement | 7 | 7 | 0 | 0 |
+| P14 | Measurement | 7 | 6 | 0 | **1** |
 | P15 | Outbound politeness | 12 | 5 | **1** | **6** |
 | P16 | Self-hosted by default | 18 | 2 | 0 | **16** |
-| **Total** | | **327** | **218** | **9** | **100** |
+| **Total** | | **327** | **217** | **9** | **101** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -97,7 +97,7 @@ Ten of its rows landed on 2026-08-27 — see § Progress. What is left of it:
 - **`P0-21b`, `P0-31`** — new, from the run: twelve bundled packages with no notice anywhere, and
   49 unaudited `ody-` storage-key hits.
 
-### Next: `P14-01` — `P16-12` turned out to depend on it. Then `P16-16`. `P15-07` waits on the owner
+### Next: `P16-12` — unblocked now. Then `P14-02`, `P16-16`. `P15-07` waits on the owner
 
 **`P16-05` is the last zero-configuration leak**, and the only one that is not a one-liner: the
 embedding model is pulled from HuggingFace on the *first chat message*, because
@@ -222,6 +222,40 @@ location was wrong until it was corrected on the row itself; the row is right no
 *The one progress area. Newest first. One entry per completed section — two lines, a
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
+
+### P14-01 — the time dimension, written down
+`797b832..HEAD`. **Suite 6,512 → 6,530 passing, the same 19 failing.**
+
+`Session` carried `message_count` and token totals as **running counters on a row**. So Pantheon
+knew what a conversation had cost in total and could never say what it cost on Tuesday, whether one
+model was cheaper than another, or whether a change helped. The query was never the hard part. The
+event was not recorded.
+
+`Event` now is: ts, kind, session, owner, model, endpoint, tokens, duration, outcome, detail.
+Written from `accumulate_token_usage` — the one place four call paths already converge, which is
+what the 2026-08-27 premise correction bought — and **before its early return**, because
+`if not (in_t or out_t): return` is precisely what discards failed rounds.
+
+**Its own database session, swallowing everything.** Measuring is worth nothing if the measured
+thing stops working, and the counters worked before any of this existed.
+
+**Shape, never content** (`D-2026-09-01-02`). No prompts, no responses, no thinking — which is what
+makes `session_id` a plain column rather than a cascading foreign key. Deleting a session removes
+the conversation; keeping its rows leaks nothing the deletion was for, and *"what did last month
+cost"* survives tidying up. Retention ships finite at 90 days.
+
+`duration_ms` is present and NULL. Round latency is not available at this insertion point; that is
+`P14-02`, and the column ships now so that row needs no migration.
+
+**Two survived mutations, both the same shape as always.** The zero-token test called the recorder
+directly, so moving the write below the early return passed cleanly — the placement *is* the
+behaviour. And nothing caught the terminal paths dropping `outcome="error"`, which files every
+failure as a success in the one column that makes failure countable.
+
+**And a bug the suite found that isolation never would: 18 tests passed alone, 10 failed together.**
+The suite runs on `sqlite:///:memory:`, where every new connection is a *new empty database* — they
+had been leaning on one pooled connection surviving the run. Each test builds its own file-backed
+database now, which also stops them writing to and pruning the developer's real one.
 
 ### P16-10 — self-hosted search, and the sentence no setting can make true
 `8cf6c6e..HEAD`. **Suite 6,505 → 6,512 passing, the same 19 failing.**
@@ -2647,7 +2681,7 @@ of a harness — *did that change help?* — because the events were never writt
 session row**. The time dimension is discarded at write. Not because the query is hard; because
 nothing ever recorded the event.
 
-- [ ] **P14-01** **One append-only events table.** Timestamp, session, owner, model, endpoint,
+- [x] **P14-01** **One append-only events table.** Timestamp, session, owner, model, endpoint,
   tokens in and out, duration, outcome. Everything else in this phase reads from it.
   **Premise corrected 2026-08-27.** **The stated write location was wrong, and wrong in an expensive direction.**
   `llm_core.py` writes no total at all — the totals accumulate in `accumulate_token_usage` at **`routes/chat_helpers.py:828-844`** —
@@ -2655,6 +2689,7 @@ nothing ever recorded the event.
   which has four callers. That is a **17-line insertion point instead of a 3,731-line file** to
   read first. This row unblocks `P14-02`, `P14-03`, `P14-05`, `P12-08` and half of `P14-04`, so
   the wrong address here was costing five downstream rows.
+  — **done 2026-09-01. The corrected address was right and the insertion was 5 lines.** `core/database.py` gains `Event`: ts, kind, session, owner, model, endpoint, tokens in and out, duration, outcome, detail, with three indexes. `src/events.py` writes and prunes it; `GET /api/diagnostics/usage` reads it. **Written from `accumulate_token_usage`, and *before* its early return** — that `if not (in_t or out_t): return` is exactly what discards failed rounds, and *how often does this endpoint fail* is the question the running counters can never answer. **Its own DB session, and it swallows everything:** measuring is worth nothing if the measured thing stops working, and sharing the counters' session would let a failed commit here roll back an update that worked fine before any of this existed. **`session_id` is deliberately not a cascading FK** (`D-2026-09-01-02`) — that would delete the cost of a conversation along with the conversation, and what is stored is *shape, never content*: no prompts, no responses, no thinking, so keeping rows past a session deletion leaks nothing the deletion was for. **Retention ships finite at 90 days**, `0` = keep everything; an append-only table with no ceiling is a defect on someone's home server. **The endpoint LABEL is stored, never the URL** — those carry credentials in userinfo and query, and a caller that hands one over by mistake gets it redacted rather than stored. `duration_ms` is present and **NULL**: round latency is not available here and threading it is `P14-02`; the column ships now so that row needs no migration. **`events_retention_days` is settings-only** and the absence of an env var is the decision — I registered `PANTHEON_EVENTS_RETENTION_DAYS` in the env and all three compose files, then removed it, because `get_setting` merges `DEFAULT_SETTINGS` on every read and a fallback beneath a **truthy** default can never run. That is `H06`/`B20` for the fourth time and `P16-05` from the other side. 18 tests, 7 mutations. *(Two survived. The zero-token test called `record_llm_round` **directly**, so moving the write below the early return passed cleanly — the placement IS the behaviour and now has its own test through the caller. And nothing caught the two terminal paths dropping `outcome="error"`, which would silently file every failure as a success.)* **A separate bug, found by the suite and worth naming: all 18 tests passed alone and 10 failed together.** The suite runs on `sqlite:///:memory:`, where each new connection is a **new empty database** — they had been leaning on one pooled connection surviving. They now build a private file-backed DB per test, which also stops them writing to and *pruning* the developer's real database.
 - [ ] **P14-02** **Instrument the rest of the loop** — round latency, tool call and failure
   counts, queue depth, approval outcomes, retrieval hit rates. Same table.
 - [ ] **P14-03** **An eval harness.** Save a set of cases, run them against a configuration,

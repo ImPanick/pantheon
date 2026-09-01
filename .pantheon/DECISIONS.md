@@ -581,3 +581,49 @@ is *automate anything the owner does not want to do on his machines, his interne
 networks*. That is why the tool surface is wide, why `P8`'s Workshop matters, and why `Law 16`
 is about **defaults** rather than capability — a product meant to automate everything cannot be
 one that refuses to reach anything. It reaches what it is pointed at, and nothing else.
+
+---
+
+## D-2026-09-01-02 — the events table keeps shape, not content, and the window is finite
+
+`P14-01`. Two decisions were needed to build the append-only events table, and both cut against
+an instinct this project otherwise holds.
+
+**1. `session_id` is a plain column, not a cascading foreign key.**
+
+The tidy choice is `ForeignKey("sessions.id", ondelete="CASCADE")`, and it would delete the cost
+of a conversation along with the conversation. That defeats the point: *"what did last month
+cost"* has to survive tidying up, and sessions are archived and deleted routinely — that is what
+`cleanup_service.py` is for.
+
+This is in tension with **"data is disposable"**, so the reasoning has to be explicit rather than
+convenient. What makes it defensible is what the table holds: timestamp, session id, owner, model,
+endpoint **label**, token counts, outcome. **No message text, no prompts, no responses, no
+thinking.** Deleting a session removes the conversation; keeping its rows here leaks none of what
+the deletion was for. What survives is the *shape* of the usage, which is the only thing the phase
+was ever about.
+
+There is a test that fails if a foreign key is ever added, and one that greps every column of a
+recorded row for planted secrets.
+
+**2. Retention ships finite — 90 days — and `0` means keep everything.**
+
+An append-only table with no ceiling is a defect on somebody's home server, not a feature. Ninety
+days answers every question this phase asks (*what did last month cost*, *did that change help*)
+without the table becoming the largest thing in the database. Keeping everything stays available
+and is a choice someone makes, rather than one they inherit from nobody having thought about it.
+
+Pruning is time-gated in-process, following `rate_limiter.py`'s pattern, because this product has
+no daily job runner and adding one to run a `DELETE` would be the larger change.
+
+**`events_retention_days` is settings-only, and the absence of an env var is the decision.**
+`get_setting` merges `DEFAULT_SETTINGS` on every read, so an env fallback beneath a **truthy**
+default can never execute. That shape was found dead twice (`H06`, `B20`) and turned on exactly
+this distinction in `P16-05`. It was registered in `.env.example` and all three compose files here
+before the same check caught it a fourth time — and then removed rather than left as decoration,
+because a knob that cannot move is worse than no knob. Retention is not a boot-time concern.
+
+**What this does not decide.** `duration_ms` exists and is NULL: round latency is not available at
+`accumulate_token_usage`, and threading it through is `P14-02`. The column ships now so that row
+needs no migration. Saying so on the row is cheaper than a column added later by a migration
+nobody wants to write.

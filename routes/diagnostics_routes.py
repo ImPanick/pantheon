@@ -69,6 +69,24 @@ def setup_diagnostics_routes(
         from src.self_checks import run_self_checks
         return run_self_checks()
 
+    @router.get("/api/diagnostics/usage")
+    async def get_usage(request: Request, days: int = 30,
+                        owner: str = "") -> Dict[str, Any]:
+        """What has actually been used, over time (`P14-01`).
+
+        The question the running counters on a session row could never answer:
+        they hold a conversation's lifetime total and discard the time it
+        happened at. This reads the events table.
+
+        Deliberately minimal — `P14-05` builds the per-model, per-owner views
+        this phase is really for. It exists now so `P14-01` ships with a reader
+        rather than a write-only table. Finished work with no door is the whole
+        `H` series, and a measurement phase should not open by adding another.
+        """
+        require_admin(request)
+        from src.events import usage_summary
+        return usage_summary(days=max(1, min(days, 365)), owner=owner or None)
+
     @router.get("/api/diagnostics/bundle")
     async def get_diagnostic_bundle(
         request: Request, note: str = "", log_limit: int = 120

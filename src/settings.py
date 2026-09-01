@@ -80,6 +80,25 @@ DEFAULT_SETTINGS = {
     # Brave on the third attempt, silently. Off keeps the choice; on is one
     # switch away and the switch says what it does.
     "searxng_widen_engines": False,
+    # How many days of the events table to keep (`P14-01`). 0 = keep everything.
+    #
+    # Finite by default, because an append-only table with no ceiling is a
+    # defect on somebody's home server rather than a feature — and 90 days
+    # answers every question this phase asks ("what did last month cost",
+    # "did that change help") without becoming the largest thing in the
+    # database. Keeping everything is a choice someone makes, not one they
+    # inherit by nobody having thought about it.
+    #
+    # SETTINGS-ONLY — there is no PANTHEON_EVENTS_RETENTION_DAYS, and the
+    # omission is deliberate. `get_setting` merges DEFAULT_SETTINGS on every
+    # read, so an env fallback beneath a TRUTHY default can never run: it is
+    # unreachable the moment the default is 90 rather than 0 or "". That shape
+    # was found dead twice already (`H06`, `B20`) and turned on exactly this
+    # distinction in `P16-05`. It was registered in the env and all three
+    # compose files here before the same check caught it a fourth time, and
+    # removed rather than left as decoration. Retention is not a boot-time
+    # concern; Settings is the place to change it.
+    "events_retention_days": 90,
     # What to do with images in content the user did not write — model output, a
     # RAG document, an email. `ask` (default) renders a placeholder naming the
     # host until someone clicks; `proxy` fetches through /api/img automatically,

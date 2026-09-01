@@ -825,8 +825,27 @@ async def build_chat_context(
     )
 
 
-def accumulate_token_usage(session_id: str, metrics: dict):
-    """Add input/output token counts to the session's running totals."""
+def accumulate_token_usage(session_id: str, metrics: dict, *, outcome: str = "ok"):
+    """Add input/output token counts to the session's running totals.
+
+    Also writes one row to the events table (`P14-01`). This is the one place
+    four call paths converge, which is why the row lands here and not in
+    `llm_core.py`.
+
+    **The event is written FIRST, and before the early return.** A round that
+    produced no tokens is usually a round that failed, and "how often does this
+    endpoint fail" is exactly the question the counters can never answer. It is
+    also a separate database session on purpose: `record_llm_round` swallows
+    everything, so a missing table on an old install costs a row of history —
+    sharing this session would let a failed commit there roll back the counter
+    update, and the counters worked before any of this existed.
+    """
+    try:
+        from src.events import record_llm_round
+        record_llm_round(session_id, metrics or {}, outcome=outcome)
+    except Exception:
+        pass   # history is never worth a failed reply
+
     in_t = metrics.get("input_tokens", 0)
     out_t = metrics.get("output_tokens", 0)
     if not (in_t or out_t):

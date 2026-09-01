@@ -2223,7 +2223,7 @@ def setup_chat_routes(
                                     character_name=ctx.preset.character_name,
                                     incognito=incognito,
                                 )
-                                accumulate_token_usage(session, _terminal_metrics)
+                                accumulate_token_usage(session, _terminal_metrics, outcome="error")
                                 _chat_terminal_saved = True
                                 _stream_set(session, status="error")
                                 if _saved_id:
@@ -2515,7 +2515,7 @@ def setup_chat_routes(
                                             incognito=incognito,
                                         )
                                         _terminal_saved = True
-                                        accumulate_token_usage(session, terminal_metadata)
+                                        accumulate_token_usage(session, terminal_metadata, outcome="error")
                                         _stream_set(session, status="error")
                                         if _saved_id:
                                             yield f'data: {json.dumps({"type": "message_saved", "id": _saved_id})}\n\n'
