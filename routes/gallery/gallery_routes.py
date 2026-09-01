@@ -2018,15 +2018,30 @@ def setup_gallery_routes() -> APIRouter:
             from rembg import remove
             cut = remove(crop)
         except ImportError:
-            try:
-                from transformers import pipeline
-                pipe = pipeline("image-segmentation", model="briaai/RMBG-1.4", trust_remote_code=True)
-                mask_img = pipe(crop, return_mask=True).convert("L")
-                tmp = crop.copy()
-                tmp.putalpha(mask_img)
-                cut = tmp
-            except Exception:
-                return {"error": "No background removal model available. Install rembg: pip install rembg"}
+            # There used to be a fallback here: `transformers.pipeline(...,
+            # model="briaai/RMBG-1.4", trust_remote_code=True)`. Removed
+            # 2026-09-01 (`P16-09`), deliberately and under `Law 1`.
+            #
+            # `trust_remote_code=True` downloads Python from a third party and
+            # **executes it**, in the app process, with the app's permissions —
+            # triggered by an ordinary user clicking "remove background", with
+            # nothing on screen saying that is what happens. Silently running
+            # code fetched at request time is not a fallback, it is a different
+            # product. rembg does the same job from a package the operator
+            # installed on purpose.
+            #
+            # Nothing is lost that was not already opt-in: this path only ran
+            # when rembg was absent, and the message below already said how to
+            # get it. (`scripts/diffusion_server.py` also passes
+            # `trust_remote_code=True`, five times, and is deliberately left
+            # alone — an operator who starts a diffusion server has chosen to
+            # load models, and most diffusion pipelines require it. Loading
+            # models is that script's whole purpose; it is not this one's.)
+            return {
+                "error": "Background removal needs rembg, which is not installed. "
+                         "Install it with `pip install rembg` — Pantheon will not "
+                         "download and run a model's code on its own.",
+            }
 
         # Compose the cropped result back into a full-size transparent canvas.
         if bbox:

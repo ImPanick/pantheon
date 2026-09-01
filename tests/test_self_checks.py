@@ -186,6 +186,32 @@ def test_the_panel_has_a_reader_and_a_caller():
     assert calls >= 1, "loadSelfChecks is defined but never called"
 
 
+def test_the_liveness_report_now_has_a_reader():
+    """`P16-17`. `/api/diagnostics/services` existed, probed five subsystems,
+    was admin-gated and safe to poll -- and nothing in `static/` called it.
+    Found while building the panel it now renders in."""
+    js = (REPO / "static/js/admin.js").read_text(encoding="utf-8")
+    assert "/api/diagnostics/services" in js, "the liveness report still has no caller"
+
+    start = js.index("async function loadSelfChecks()")
+    body = js[start:js.index("async function loadLogs(")]
+    assert "/api/diagnostics/services" in body, "the call is not in the panel that shows it"
+
+
+def test_liveness_failure_does_not_hide_the_state_checks():
+    """The two answer different questions, so one must not take the other down.
+
+    H01 is the reason both are here: the mail server was reachable the entire
+    time a year of email sat staged and invisible.
+    """
+    js = (REPO / "static/js/admin.js").read_text(encoding="utf-8")
+    start = js.index("/api/diagnostics/services")
+    window = js[start - 400:start + 700]
+    assert "try {" in window and "catch" in window, (
+        "a failing liveness probe would blank the state checks beside it"
+    )
+
+
 def test_the_panel_does_not_build_markup_from_strings():
     """This surface reports trouble, which makes it the one most likely to be
     handed a hostile string — from a mail subject, or a host name."""

@@ -3048,14 +3048,28 @@ async function loadSelfChecks() {
     return;
   }
 
+  // Liveness, from the report that already existed and had no caller (P16-17).
+  // Fetched alongside rather than instead: the two answer different questions,
+  // and H01 is the proof that you need both — the mail server was reachable the
+  // entire time a year of email sat staged and invisible.
+  let services = [];
+  try {
+    const sres = await fetch('/api/diagnostics/services', { credentials: 'same-origin' });
+    if (sres.ok) {
+      const sdata = await sres.json();
+      services = (sdata && Array.isArray(sdata.services) ? sdata.services : [])
+        .filter((s) => s && s.status && s.status !== 'ok');
+    }
+  } catch (_e) { /* liveness is best-effort; the state checks above still render */ }
+
   panel.textContent = '';
   const rows = (data && Array.isArray(data.needs_attention)) ? data.needs_attention : [];
 
-  if (!rows.length) {
+  if (!rows.length && !services.length) {
     const ok = document.createElement('div');
     ok.className = 'self-check-allclear';
     const n = (data && Array.isArray(data.checks)) ? data.checks.length : 0;
-    ok.textContent = `${n} self-check${n === 1 ? '' : 's'} passed — nothing accumulating, nothing given up.`;
+    ok.textContent = `${n} self-check${n === 1 ? '' : 's'} passed — nothing accumulating, nothing given up, every service answering.`;
     panel.appendChild(ok);
     panel.hidden = false;
     return;
@@ -3090,6 +3104,27 @@ async function loadSelfChecks() {
       count.textContent = String(c.count);
       row.appendChild(count);
     }
+    panel.appendChild(row);
+  }
+
+  // Reachability, after state. That order is the point: something can be
+  // perfectly reachable and still quietly broken, and the reverse is obvious
+  // the moment you try to use it.
+  for (const svc of services) {
+    const row = document.createElement('div');
+    row.className = 'self-check-row is-' + (svc.status === 'down' ? 'stuck' : 'attention');
+
+    const body = document.createElement('div');
+    const title = document.createElement('div');
+    title.className = 'self-check-title';
+    title.textContent = `${String(svc.name)} — ${svc.status === 'down' ? 'not answering' : 'degraded'}`;
+    body.appendChild(title);
+
+    const summary = document.createElement('p');
+    summary.className = 'self-check-summary';
+    summary.textContent = String(svc.detail || '');
+    body.appendChild(summary);
+    row.appendChild(body);
     panel.appendChild(row);
   }
   panel.hidden = false;
