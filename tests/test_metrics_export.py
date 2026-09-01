@@ -179,6 +179,98 @@ def test_self_check_unknown_is_not_folded_into_ok():
     assert mx._SELF_CHECK_VALUE["stuck"] > mx._SELF_CHECK_VALUE["attention"]
 
 
+# --- the scrape must not become a load generator --------------------------
+
+def test_repeated_scrapes_do_not_re_probe_the_embedding_server(monkeypatch):
+    """The defect this caught, stated plainly.
+
+    `run_self_checks` → `embedding_availability` → `get_embedding_client()`,
+    which performs a real HTTP health check against the operator's embedding
+    server. The latch in `embeddings.py` only suppresses that after a FAILURE —
+    on a healthy install the probe runs every call.
+
+    Uncached, a 15-second scrape sends 240 requests an hour to that server
+    forever, as a side effect of being monitored. Exactly what this module
+    refuses liveness probing to avoid, one layer down.
+    """
+    calls = []
+    monkeypatch.setattr("src.self_checks.run_self_checks",
+                        lambda: calls.append(1) or {"checks": []})
+    monkeypatch.setattr(mx, "_self_check_cache", (0.0, None))
+
+    for _ in range(20):        # five minutes of 15-second scrapes
+        mx.render_metrics()
+
+    assert len(calls) == 1, (
+        f"{len(calls)} self-check runs for 20 scrapes; each one probes the "
+        f"embedding server over HTTP")
+
+
+def test_the_cache_expires(monkeypatch):
+    """Cached is not frozen. A self-check state that never refreshes is worse
+    than one a minute old — it is a dashboard reporting the state at boot.
+
+    Counted across the TTL boundary. The first version of this asserted that
+    the cache timestamp was non-zero, which is true after the FIRST fetch and
+    stays true forever: raising the TTL to a billion seconds passed it cleanly.
+    """
+    calls = []
+    monkeypatch.setattr("src.self_checks.run_self_checks",
+                        lambda: calls.append(1) or {"checks": []})
+    clock = {"t": 1000.0}
+    monkeypatch.setattr(mx.time, "monotonic", lambda: clock["t"])
+    monkeypatch.setattr(mx, "_self_check_cache", (0.0, None))
+
+    mx._cached_self_checks()
+    mx._cached_self_checks()
+    assert len(calls) == 1, "the cache did not hold within its TTL"
+
+    clock["t"] += mx.SELF_CHECK_TTL_SECONDS + 1
+    mx._cached_self_checks()
+    assert len(calls) == 2, "the cache never expires; the numbers freeze at boot"
+
+
+def test_the_ttl_is_short_enough_to_be_a_cache_and_not_a_freeze():
+    """A minute is chosen against the scrape interval. An hour would make the
+    self-check gauges decorative."""
+    assert 15 <= mx.SELF_CHECK_TTL_SECONDS <= 300
+
+
+def test_the_scrape_says_how_stale_the_cached_checks_are(monkeypatch):
+    """A cached reading that does not say it is cached is one an operator will
+    misread as live."""
+    monkeypatch.setattr("src.self_checks.run_self_checks", lambda: {"checks": []})
+    monkeypatch.setattr(mx, "_self_check_cache", (0.0, None))
+    samples, types, _ = parse(mx.render_metrics())
+    names = {n for n, _, _ in samples}
+    assert "pantheon_self_check_age_seconds" in names
+    assert types["pantheon_self_check_age_seconds"] == "gauge"
+
+
+def test_no_collector_other_than_self_checks_touches_the_network(monkeypatch):
+    """A guard on the whole module, not just the one that was wrong.
+
+    Every collector runs with sockets stubbed out; anything that reaches for the
+    network fails its collector, and `pantheon_scrape_collector_failed` reports
+    which. The self-check collector is exempted only because its probe is
+    behind the TTL cache above.
+    """
+    import socket
+
+    def refuse(*a, **kw):
+        raise AssertionError("a metrics collector opened a socket")
+
+    monkeypatch.setattr(mx, "_cached_self_checks", lambda: {"checks": []})
+    monkeypatch.setattr(socket.socket, "connect", refuse)
+    monkeypatch.setattr(socket, "create_connection", refuse)
+    monkeypatch.setattr(socket, "getaddrinfo", refuse)
+
+    samples, _, _ = parse(mx.render_metrics())
+    failed = {lbl: v for n, lbl, v in samples if n == "pantheon_scrape_collector_failed"}
+    assert failed, "no collectors ran — the test would be vacuous"
+    assert all(v == 0 for v in failed.values()), f"a collector reached the network: {failed}"
+
+
 # --- resilience -----------------------------------------------------------
 
 def test_a_failing_collector_does_not_fail_the_scrape(monkeypatch):

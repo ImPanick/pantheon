@@ -182,6 +182,53 @@ def _collect_events(out: _Out) -> None:
         db.close()
 
 
+# Self-check results, cached. See `_cached_self_checks`.
+SELF_CHECK_TTL_SECONDS = 60
+_self_check_cache: Tuple[float, Optional[Dict[str, Any]]] = (0.0, None)
+_self_check_lock = None
+
+
+def _cached_self_checks() -> Dict[str, Any]:
+    """`run_self_checks()`, at most once a minute.
+
+    **This cache is not an optimisation, it is a correctness fix.**
+    `embedding_availability` calls `get_embedding_client()`, which performs a
+    real HTTP health check against the configured embedding server. The
+    process-level latch in `embeddings.py` only suppresses that after a
+    FAILURE — on a healthy install the probe runs on every call.
+
+    Uncached, a 15-second Prometheus scrape would send **240 requests an hour**
+    to the operator's embedding server, forever, as a side effect of being
+    monitored. That is the exact defect this module refuses liveness probing to
+    avoid, arriving one layer down where it is much harder to see.
+
+    Sixty seconds is chosen against the scrape, not the data: none of these
+    checks changes second to second, and a state up to a minute stale is fine
+    for an alert rule. The panel in Settings is unaffected — it calls
+    `run_self_checks` directly, and a person looking at a screen is a bounded
+    number of calls.
+    """
+    global _self_check_cache, _self_check_lock
+    import threading
+    if _self_check_lock is None:
+        _self_check_lock = threading.Lock()
+
+    fetched_at, cached = _self_check_cache
+    now = time.monotonic()
+    if cached is not None and now - fetched_at < SELF_CHECK_TTL_SECONDS:
+        return cached
+
+    with _self_check_lock:
+        fetched_at, cached = _self_check_cache
+        now = time.monotonic()
+        if cached is not None and now - fetched_at < SELF_CHECK_TTL_SECONDS:
+            return cached
+        from src.self_checks import run_self_checks
+        result = run_self_checks() or {}
+        _self_check_cache = (time.monotonic(), result)
+        return result
+
+
 def _collect_self_checks(out: _Out) -> None:
     """`P16-15`'s local assertions, as numbers.
 
@@ -190,14 +237,21 @@ def _collect_self_checks(out: _Out) -> None:
     *nothing is wrong* are different answers, and an alert rule written against
     `> 0` catches both.
     """
-    from src.self_checks import run_self_checks
-    result = run_self_checks() or {}
+    result = _cached_self_checks()
     out.metric("pantheon_self_check", "gauge",
                "Local self-check state: 0=ok 1=attention 2=unknown 3=stuck.")
     for check in (result.get("checks") or []):
         out.add("pantheon_self_check",
                 _SELF_CHECK_VALUE.get(check.get("status"), 2),
                 {"check": check.get("name") or "unknown"})
+    # How old the numbers above are. A cached reading that does not say it is
+    # cached is a reading an operator will misread as live.
+    out.metric("pantheon_self_check_age_seconds", "gauge",
+               f"Age of the cached self-check result (TTL "
+               f"{SELF_CHECK_TTL_SECONDS}s). These probe real subsystems, so "
+               f"they are not re-run on every scrape.")
+    out.add("pantheon_self_check_age_seconds",
+            round(max(0.0, time.monotonic() - _self_check_cache[0]), 1))
 
 
 def _collect_outbound(out: _Out) -> None:

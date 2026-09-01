@@ -770,6 +770,7 @@ name instead (`pantheon_llm_rounds_1h`), and mean what they say.
 | `pantheon_retrieval_1h{store,outcome}` | `"unavailable"` is the store being down; `"empty"` is a genuine miss |
 | `pantheon_approvals_1h{outcome}` | `"expired"` is a question nobody answered |
 | `pantheon_self_check{check}` | 0=ok 1=attention 2=unknown 3=stuck. Alert on `> 0` |
+| `pantheon_self_check_age_seconds` | How stale the row above is. The self-checks probe real subsystems, so they are cached for 60s rather than re-run on every scrape |
 | `pantheon_outbound_cooldown_seconds{host}` | Why a feature looks broken when nothing is broken |
 | `pantheon_queue_depth{queue}` | `agent_mail` is the staged-drafts queue that once sat invisible for a year |
 | `pantheon_events_rows` | Table size, bounded by your retention setting |
@@ -779,6 +780,13 @@ name instead (`pantheon_llm_rounds_1h`), and mean what they say.
 the chat request arriving to the totals being written, so it includes tool calls
 and retries. That is usually the number you want; it is named this way so you are
 never guessing which one it is.
+
+**The self-checks are cached for 60 seconds, and that is a correctness
+measure rather than a speed one.** One of them asks the embedding server whether
+it is answering — a real HTTP call. Re-running it on a 15-second scrape would
+send 240 requests an hour to your embedding server as a side effect of being
+monitored. `pantheon_self_check_age_seconds` tells you how old the reading is,
+because a cached number that does not say it is cached gets read as live.
 
 **Liveness probing is not on this endpoint.** Checking whether every configured
 provider answers means real network calls to other people's machines; at a
