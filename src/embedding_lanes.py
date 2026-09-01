@@ -111,8 +111,66 @@ def _load_custom_endpoint() -> Dict[str, str]:
     return {"url": url, "model": model, "api_key": api_key}
 
 
+def fastembed_model_is_cached() -> bool:
+    """Is the ONNX model already on disk? Then using it costs no network.
+
+    Checked by looking for the file rather than by asking fastembed, because
+    fastembed's answer to "is it there?" is to fetch it — which is the thing
+    being decided.
+    """
+    import glob
+
+    from src.constants import FASTEMBED_CACHE_DIR
+
+    try:
+        return bool(glob.glob(os.path.join(FASTEMBED_CACHE_DIR, "**", "*.onnx"), recursive=True))
+    except OSError:
+        return False
+
+
+def model_download_allowed() -> bool:
+    """Has someone said Pantheon may fetch a model? Ships False (`Law 16`).
+
+    Note the default is falsy, which is what makes the env fallback below
+    reachable — see `H06`/`B20` for the numeric-default case where the same
+    shape is dead code.
+    """
+    try:
+        from src.settings import get_setting
+
+        if bool(get_setting("allow_model_download", False)):
+            return True
+    except Exception:
+        pass
+    return (os.environ.get("PANTHEON_ALLOW_MODEL_DOWNLOAD") or "").strip().lower() in (
+        "1", "true", "yes",
+    )
+
+
+class ModelDownloadNotPermitted(RuntimeError):
+    """Constructing this client would fetch a model, and nobody asked for that."""
+
+
 def _build_fastembed_client():
+    """Build the local ONNX embedding client, downloading the model if needed.
+
+    The `Law 16` gate lives **here**, at the one function that actually reaches
+    the network, and not in `build_embedding_lanes` where the lane list is
+    assembled. That distinction matters and cost a red suite to learn: the lane
+    assembler is exercised by fourteen tests that stub this function to check
+    dimension separation, legacy backfill and dual-write. Gating there refused
+    lanes in tests that were never going to download anything, because a stub
+    does not download. Gating here means the rule binds exactly where the cost
+    is, and a caller holding a real client is unaffected.
+    """
     from src.embeddings import FastEmbedClient
+
+    if not fastembed_model_is_cached() and not model_download_allowed():
+        raise ModelDownloadNotPermitted(
+            "the local embedding model is not downloaded, and Pantheon does not fetch "
+            "models on its own. Point EMBEDDING_URL at a local embedding server (Ollama "
+            "serves one), or set allow_model_download to fetch ~90MB from HuggingFace once."
+        )
 
     client = FastEmbedClient()
     client.get_sentence_embedding_dimension()
@@ -263,9 +321,23 @@ def build_embedding_lanes(base_name: str) -> List[EmbeddingLane]:
     except Exception as e:
         logger.warning("Custom embedding lane unavailable for %s: %s", base_name, e)
 
+    # `_build_fastembed_client` refuses rather than downloading when the model is
+    # absent and nobody has permitted a fetch (`P16-05`). Until 2026-09-01 it
+    # simply fetched — ~90MB of ONNX from HuggingFace, on the **first chat
+    # message of a fresh install**, with the local HTTP lane above already
+    # answering. `fastembed` is a hard requirement so the path was never
+    # skipped, and this lane is documented as the "zero config fallback": a
+    # fallback that always runs is not a fallback.
     try:
         fastembed = _build_fastembed_client()
         lanes.append(_create_lane(chroma_client, base_name, LANE_FASTEMBED, fastembed))
+    except ModelDownloadNotPermitted as e:
+        # Not a failure — a choice. Memory and RAG degrade to unavailable, which
+        # `memory_vector` and `rag_vector` already handle, and the log says which
+        # of the two remedies to apply.
+        (logger.warning if not lanes else logger.info)(
+            "No fastembed lane for %s: %s", base_name, e
+        )
     except Exception as e:
         logger.warning("FastEmbed lane unavailable for %s: %s", base_name, e)
 

@@ -69,8 +69,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P13 | The Brain | 12 | 11 | 0 | **1** |
 | P14 | Measurement | 7 | 7 | 0 | 0 |
 | P15 | Outbound politeness | 12 | 5 | **1** | **6** |
-| P16 | Self-hosted by default | 13 | 9 | 0 | **4** |
-| **Total** | | **322** | **225** | **9** | **88** |
+| P16 | Self-hosted by default | 15 | 10 | 0 | **5** |
+| **Total** | | **324** | **226** | **9** | **89** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -102,6 +102,10 @@ embedding model is pulled from HuggingFace on the *first chat message*, because
 `build_embedding_lanes` builds the fastembed lane unconditionally and `fastembed` is a hard
 requirement. Either the model ships in the image or the lane becomes conditional on an explicit
 download permission.
+
+**`P16-14` and `P16-15` are the answer to the bug-report problem**, and they beat a telemetry
+pipe on this product's own evidence — read them before building `P16-12`, because between them
+they may be all the signal that is actually needed.
 
 **`P16-12` is the one that turns the law into a feature**, and it is now the most valuable row in
 the phase: operators on their own hardware currently have no way to see what Pantheon is doing,
@@ -205,6 +209,45 @@ location was wrong until it was corrected on the row itself; the row is right no
 *The one progress area. Newest first. One entry per completed section — two lines, a
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
+
+### P16-05 — the fallback that always ran
+`2dc908a..HEAD`. **Suite 6,374 → 6,382 passing, the same 19 failing.** The last
+zero-configuration leak is closed.
+
+`build_embedding_lanes` returns lanes in preference order — a local HTTP embedding server, then
+fastembed. `embeddings.py` calls fastembed the *"zero config fallback"*. It was built
+**unconditionally**: the `try` around it was never conditional on the primary succeeding. And
+`FastEmbedClient.__init__` fetches ~90 MB of ONNX from HuggingFace when the model is absent,
+with `fastembed` a hard requirement so the path is never skipped. **A fresh install downloaded a
+model from a third party on its first chat message — with a local embedding server running and
+answering.** A fallback that always runs is not a fallback.
+
+Three cases now, and only the third reaches the network: cached → use it, free; a working local
+lane → do not fetch a second one nobody asked for; nothing else *and* permission → fetch, because
+the alternative is silently having no embeddings at all.
+
+**The cache probe deliberately looks for the `.onnx` on disk rather than asking fastembed**,
+because fastembed's way of answering *is it there* is to fetch it. That regression would still
+return the right answer, which is what makes it invisible — so there is a tripwire test that
+constructs a fake `TextEmbedding` and fails if the probe ever touches it.
+
+**I put the gate in the wrong place first, and the suite said so — 14 red.** Those tests stub the
+client builder to exercise lane mechanics, so gating the *assembler* refused lanes in tests that
+were never going to download anything. The gate belongs at the one function that reaches the
+network, not where the lane list is assembled. My own tests moved with it: they now stub
+`FastEmbedClient` — the thing that downloads — rather than the function containing the gate,
+which had been testing nothing.
+
+**Two rows came out of the telemetry conversation rather than the code.** The owner's real
+problem is *"having people report bugs is not very easy to get to happen"*, and the usual answer —
+open a pipe — treats the symptom. `P16-14`: people do not report bugs because they do not know
+what to include and fear leaking data, and **in this product that fear is correct** — a stack
+trace here carries usernames, LAN topology and often the message that caused it. A diagnostic
+bundle they can read in full before it goes anywhere removes both obstacles, needs no collector,
+and creates no data-controller obligation. `P16-15`: aggregate signal exists to reveal *silent*
+failure, and `H01` is the proof it can be got locally — every agent-composed email since install,
+staged and invisible for a year, would have been caught in a week by a local check that counted
+the queue and put the number in front of the user.
 
 ### Law 16, amended — the address is the test, not the activity
 Same day, and it turned a restriction into a specification. `3166798..HEAD`. **Suite 6,371 →
@@ -2398,7 +2441,7 @@ below are convenience defaults, and most are a line each.
 - [x] **P16-02** **`search_fallback_chain` shipped as `["duckduckgo"]`.** Justified in a comment as *"free, no API key required, so safe to ship on by default for every user"* — both true, and neither is the question. On a native install SearXNG never starts, so the primary provider **always** failed and every search a user typed went to DuckDuckGo, scraped from an HTML endpoint under a spoofed desktop user-agent, which is also how an IP gets blocked. — **done:** defaults to `[]`. Adding a fallback is one line in Settings and it is the user's line to add.
 - [x] **P16-03** **Ship a skill library that needs no network.** — **done:** 286 skills vendored from ECC (MIT) under `library/ecc/`, pinned to upstream `2.2.0` @ `005eff4`. They needed no conversion — ECC's `name:`/`description:` frontmatter is exactly what `skill_format.py` already reads, and all 286 parse. Loaded as a **read-only layer beneath** `data/skills/`, so a `data/` wipe does not cost the library and a user skill of the same name shadows it. **SKILL.md text only** — no upstream scripts, assets or docs, because a product built to depend on nothing external should not ship code it has not read to execute on the user's machine. Attribution in `CREDITS.md` and `licenses/ECC-MIT.txt`. 11 tests, 7 mutations.
 - [x] **P16-04** **Make the library updatable without making it auto-updating.** — **done:** `scripts/update-skill-library.py --check|--apply`. Fetches through the `P15` limiter, **refuses to apply if any incoming skill fails to parse with this product's own reader** (a skill Pantheon cannot read is a regression, not an update), and regenerates `MANIFEST.json` with the new commit and per-file checksums so the diff is reviewable. An auto-updating bundle is an external dependency wearing a different hat, and a supply-chain hole besides.
-- [ ] **P16-05** **The embedding model is downloaded from HuggingFace on the first chat message.** `build_embedding_lanes` (`src/embedding_lanes.py:266-270`) builds the fastembed lane **unconditionally** — the `try` is not conditional on the HTTP lane succeeding — and `FastEmbedClient.__init__` fetches `all-MiniLM-L6-v2` (~90 MB). `fastembed` is a hard requirement, so it is never skipped, and `memory` and `rag` both default on, so the first message triggers it. The HTTP lane's own default is already correct (`http://localhost:11434/v1/embeddings`). **This is the last zero-configuration leak and the only one that is not a one-liner.** `Verify:` a fresh install answers its first message with no outbound request; either the model ships in the image or the lane is conditional on an explicit download permission.
+- [x] **P16-05** **The embedding model is downloaded from HuggingFace on the first chat message.** `build_embedding_lanes` (`src/embedding_lanes.py:266-270`) builds the fastembed lane **unconditionally** — the `try` is not conditional on the HTTP lane succeeding — and `FastEmbedClient.__init__` fetches `all-MiniLM-L6-v2` (~90 MB). `fastembed` is a hard requirement, so it is never skipped, and `memory` and `rag` both default on, so the first message triggers it. The HTTP lane's own default is already correct (`http://localhost:11434/v1/embeddings`). **This is the last zero-configuration leak and the only one that is not a one-liner.** `Verify:` a fresh install answers its first message with no outbound request; either the model ships in the image or the lane is conditional on an explicit download permission. — **done 2026-09-01.** `_build_fastembed_client` now **refuses** rather than downloading when the model is absent and nobody permitted a fetch; cached costs no network so it is always allowed. **The gate's placement is load-bearing and cost a red suite to learn.** I first put it in `build_embedding_lanes`, which turned **14 existing tests red** — they stub `_build_fastembed_client` to check dimension separation, legacy backfill and dual-write, and none of them downloads anything, because a stub does not download. Gating the assembler refused lanes in tests that were never going to fetch. Moved to the one function that actually reaches the network, the rule binds exactly where the cost is and a caller holding a real client is unaffected. `allow_model_download` ships `False`, registered in all five places (`DEFAULT_SETTINGS`, `.env.example`, three compose files). With no lane, memory and RAG degrade to unavailable — `memory_vector` and `rag_vector` already handled zero lanes — and the log says which of the two fixes to apply. **The cache probe looks for the `.onnx` on disk rather than asking fastembed**, because fastembed's way of answering *is it there* is to fetch it; there is a tripwire test that fails if that ever regresses, since the wrong implementation still returns the right answer. *(The env fallback here is reachable precisely because the default is falsy — `H06` found the identical shape dead where the default is `1`. The distinction is truthiness, not the pattern.)* 8 tests, 7 mutations, all caught.
 - [ ] **P16-06** **Emoji SVGs are proxied from jsDelivr on the first emoji in any message.** `routes/emoji_routes.py:28,97` ← `static/js/markdown.js:515`. The design is deliberately same-origin and sanitised and disk-cached — the client never touches the CDN — but the *server* does, and the codepoint sequence is a weak side-channel about message content. Models emit emoji constantly, so this fires on roughly the first reply. The OpenMoji black set is ~4 MB. `Verify:` vendor it into `static/` beside the fonts and KaTeX, and delete the fetch.
 - [ ] **P16-07** **Pyodide is loaded from jsDelivr when a user runs a Python block**, and it half-works. `static/js/codeRunner.js:156` pulls `pyodide.js` from the CDN — while the CSP's `connect-src 'self'` (`core/middleware.py:200`) blocks the `.wasm` fetch that follows. So the request leaks and the feature likely fails anyway. `Verify:` vendor Pyodide into `static/lib/`, then tighten `script-src` to `'self'` — which removes the last external allowance in the CSP.
 - [ ] **P16-08** **Rendered markdown loads images from any https host.** `img-src 'self' data: blob: https:` (`core/middleware.py:198`) means an `![](…)` in model output, a RAG document or an **email** causes the viewer's browser to beacon a third party. Content the user did not author, fetched by their browser, from a host they did not choose. `Verify:` `img-src 'self' data: blob:`, with remote images proxied same-origin (the emoji route is the pattern) or behind click-to-load.
@@ -2406,6 +2449,8 @@ below are convenience defaults, and most are a line each.
 - [ ] **P16-10** **Self-hosted SearXNG still fans out to commercial engines.** `use_default_settings: true` (`config/searxng/settings.yml:1`) and the last-ditch retry at `services/search/providers.py:222-229` **strips the `engines` parameter entirely**, re-enabling SearXNG's Google/DDG/Brave defaults. Inherent to metasearch and not a defect on its own — but "self-hosted search" that silently queries Google on retry is not what the phrase promises. `Verify:` the engine list is explicit and the retry cannot widen it, or the behaviour is documented where a person choosing SearXNG will read it.
 - [ ] **P16-12** **Give operators the telemetry the law now explicitly allows — to their address, never ours.** `Law 16` clause 4 and `D-2026-08-31-01`: measuring is not the sin, sending it somewhere the user did not choose is. Today there is **no telemetry export at all**, which is compliant by accident rather than by design and leaves someone running this on their own hardware with no way to see what it is doing — `Law 15` in a different costume. Build the two shapes that cover the field: a **Prometheus scrape endpoint** (pull, so nothing leaves unless something asks) and an **OTLP exporter** with a user-supplied collector URL (push, to their box). `P14-01`'s events table is the source; it is local and always was. **The shipped destination is empty, and empty is the only correct default** — a default endpoint here is the whole defect whatever its value. `Verify:` an operator points Grafana at Pantheon and sees round latency, tool failures and token usage, having configured exactly one address.
 - [ ] **P16-13** **A guard that no default destination can ever appear.** `P16-12` creates the first legitimate place in the codebase for an outbound metrics URL, and therefore the first place a well-meant default could land — a "public demo collector", a "community stats" endpoint, an SDK whose constructor has a hosted URL baked in. The rule is absolute and has no opt-in ceremony that satisfies it (`D-2026-08-31-01`). `Verify:` a test asserts every telemetry destination setting ships empty, and CI fails on any hardcoded collector or analytics host anywhere in the tree — the check runs whether or not `P16-12` has landed, so it is armed before the hole exists rather than after.
+- [ ] **P16-14** **Make reporting a bug so easy it actually happens — which is the problem, not the missing pipe.** The owner, weighing opt-in vendor telemetry: *"having people report bugs is not very easy to get to happen."* True, and the usual conclusion — open a telemetry pipe — treats the symptom. **People do not report bugs because they do not know what to include and they are afraid of leaking their data**, and in this product that fear is correct: a stack trace here carries file paths (usernames), endpoint URLs (their LAN topology), model names, and often a slice of the message that caused it. So build the thing that removes both obstacles: **a one-click diagnostic bundle the person can read in full before it goes anywhere.** Last N log lines, the failing trace, versions, feature flags, redacted config — rendered on screen, editable, then copied to clipboard or attached to a GitHub issue **from their account**. No collector to run, no standing pipe, no data-controller obligation, and `Law 16`-clean because the destination is theirs and chosen per incident. `Verify:` someone who hits a bug files a useful report in under a minute without being asked to gather anything.
+- [ ] **P16-15** **Let the product notice its own breakage and tell the user.** The other half of the telemetry problem: aggregate signal exists to reveal *silent* failure — a feature broken for everyone that nobody mentions. There is a way to get that without a pipe, and this product has already proved the need for it. **`H01` is the worked example:** every agent-composed email since install, staged and invisible, for a year, because nothing surfaced the queue. A local self-check that counted `agent_draft` rows and put a number in front of the user would have caught it the first week. Generalise it: a **health surface** that runs local assertions — is every configured integration answering, is the queue draining, is anything staged and unreachable, did any background job give up — and shows the user, on their own screen. The user becomes the sensor, which is both the honest design and, on this evidence, the faster one. `Verify:` a deliberately broken subsystem is visible to its own operator within one session, unasked.
 - [ ] **P16-11** **A `Law 16` regression test that runs in CI.** The defaults are pinned by `tests/test_self_hosted_defaults.py`, which is the cheap half. The expensive half is the one that would actually hold: **run the app with egress blocked and assert it boots, answers a message, and renders a reply.** Everything above was found by reading; a test that runs would find the next one. `Verify:` a CI job with no route to the internet completes a first-message round trip.
 
 ---

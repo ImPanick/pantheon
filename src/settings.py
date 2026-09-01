@@ -52,6 +52,14 @@ DEFAULT_SETTINGS = {
     # only because this default is falsy — see the note there before copying the
     # pattern to a setting whose default is not.
     "github_token": "",
+    # May Pantheon fetch a model from a third party on its own? Ships False
+    # (`Law 16`). Until 2026-09-01 the local embedding model was downloaded from
+    # HuggingFace on the **first chat message** of a fresh install, because the
+    # fastembed lane was built unconditionally even when a local embedding
+    # server was already answering. This is the switch that permits it, and the
+    # answer to "why is memory unavailable" on a machine with no local
+    # embedding server and no network.
+    "allow_model_download": False,
     # How many scheduled tasks may hold the model slot at once. 1 preserves the
     # behaviour this was hardcoded to; the resolver in src/task_scheduler.py
     # clamps to [1, 16] and reads this layer between the env var and the
