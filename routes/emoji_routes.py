@@ -3,18 +3,27 @@
 #   <span class="emoji" style="--em:url('/api/emoji/<codepoints>.svg')">
 # which uses the returned SVG as a CSS mask tinted to the text color, so emoji
 # render as monochrome line icons (project rule: never colorful emoji). The
-# black line-art SVGs are lazily fetched from the OpenMoji CDN on first use and
-# cached on disk, so:
-#   - the client only ever talks to our own origin (no CDN dep, no CSP change),
-#   - the repo isn't bloated with thousands of SVG files,
-#   - it works offline once an emoji has been seen once.
+# black line-art SVGs ship with the product (`P16-06`, 2026-09-01). They used to
+# be lazily fetched from the OpenMoji CDN on first use — same-origin from the
+# client's side, but the *server* reached a third party on roughly the first
+# assistant reply, because models emit emoji constantly. Under `Law 16` that is
+# an outbound call nobody asked for, and the codepoint sequence is a weak
+# side-channel about what a message contained.
+#
+# Vendored as **one 5 MB JSON**, not 4,147 files: the same bytes cost 18 MB on
+# disk as separate files, and a single blob is kinder to git and the filesystem.
+# Each entry holds only the inner markup — the identical stroke attributes every
+# glyph in this set repeats are hoisted onto one wrapping `<g>` at serve time,
+# which is most of the 7.6 MB -> 5.0 MB saving.
+#
+# OpenMoji is **CC BY-SA 4.0** and was being used with no attribution anywhere in
+# the repo until this row. See `CREDITS.md` and `licenses/`.
 # Unknown/unreachable codepoints return a transparent SVG (not 404), so the CSS
 # mask shows nothing rather than a solid currentColor box.
 import logging
 import re
 from pathlib import Path
 
-import httpx
 from fastapi import APIRouter
 from fastapi.responses import Response
 
@@ -22,10 +31,45 @@ from src.constants import EMOJI_CACHE_DIR
 
 logger = logging.getLogger(__name__)
 
+# Vendored OpenMoji, loaded once and kept. 5 MB of JSON is a real amount of
+# resident memory, so it loads lazily — an install that never renders an emoji
+# never pays for it.
+_GLYPHS: dict | None = None
+
+
+def _library_path() -> Path:
+    import os
+
+    here = Path(__file__).resolve().parent.parent      # repo root
+    return Path(os.environ.get("PANTHEON_EMOJI_LIBRARY")
+                or here / "library" / "emoji" / "openmoji-black.json")
+
+
+def _glyphs() -> dict:
+    """The vendored set. Empty dict if absent — not an error, just no emoji."""
+    global _GLYPHS
+    if _GLYPHS is None:
+        import json as _json
+        try:
+            _GLYPHS = _json.loads(_library_path().read_text(encoding="utf-8"))
+        except (OSError, ValueError) as e:
+            logger.warning("emoji library unavailable: %s", e)
+            _GLYPHS = {}
+    return _GLYPHS
+
+
+# The attributes hoisted out of every glyph at vendoring time, put back here.
+_SVG_OPEN = (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">'
+    '<g fill="none" stroke="#000000" stroke-linecap="round" '
+    'stroke-linejoin="round" stroke-width="2">'
+)
+_SVG_CLOSE = "</g></svg>"
+
 _CACHE_DIR = Path(EMOJI_CACHE_DIR)
-# OpenMoji "black" set = monochrome line-art SVGs. Filenames are the codepoints
-# in UPPERCASE (FE0F dropped, same as we compute), '-' joined.
-_OPENMOJI_BASE = "https://cdn.jsdelivr.net/npm/openmoji@15.0.0/black/svg"
+# OpenMoji "black" set = monochrome line-art SVGs, keyed by the codepoints
+# lowercased (FE0F dropped, same as we compute), '-' joined. The CDN base that
+# used to live here is gone with the fetch that used it (`P16-06`).
 # codepoints like "1f600" or "1f468-200d-1f469-200d-1f467" (lowercase hex, '-' joined)
 _CODE_RE = re.compile(r"^[0-9a-f]{2,6}(?:-[0-9a-f]{2,6})*$")
 _MAX_SVG_BYTES = 256 * 1024
@@ -78,32 +122,20 @@ def setup_emoji_routes() -> APIRouter:
         if not _CODE_RE.match(code):
             return _blank()
 
-        _CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        fp = _CACHE_DIR / f"{code}.svg"
-        if fp.exists():
-            try:
-                content = fp.read_bytes()
-                if _is_safe_svg(content):
-                    return Response(content, media_type="image/svg+xml", headers=_SVG_HEADERS)
-                fp.unlink(missing_ok=True)
-            except Exception as e:
-                logger.warning("emoji cache read %s failed: %s", code, e)
+        body = _glyphs().get(code)
+        if body is None:
+            # Unknown codepoint, or the library is absent. Blank, not 404, so the
+            # CSS mask shows nothing rather than a solid currentColor box.
             return _blank()
 
-        # First time we've seen this emoji — fetch the OpenMoji black SVG + cache
-        # it. OpenMoji filenames are the codepoints uppercased.
-        try:
-            async with httpx.AsyncClient(timeout=8.0) as client:
-                r = await client.get(f"{_OPENMOJI_BASE}/{code.upper()}.svg")
-            if r.status_code == 200 and _is_safe_svg(r.content):
-                try:
-                    fp.write_bytes(r.content)
-                except Exception:
-                    pass  # cache write is best-effort
-                return Response(r.content, media_type="image/svg+xml", headers=_SVG_HEADERS)
-        except Exception as e:
-            logger.warning("emoji fetch %s failed: %s", code, e)
-
-        return _blank()
+        content = (_SVG_OPEN + body + _SVG_CLOSE).encode("utf-8")
+        # Still sanitised, even though these bytes shipped with the product. The
+        # check is cheap, this is served to a logged-in origin, and a guard that
+        # only runs on the path you distrust is one you have already reasoned
+        # your way out of once.
+        if not _is_safe_svg(content):
+            logger.warning("vendored emoji %s failed the SVG check", code)
+            return _blank()
+        return Response(content, media_type="image/svg+xml", headers=_SVG_HEADERS)
 
     return router

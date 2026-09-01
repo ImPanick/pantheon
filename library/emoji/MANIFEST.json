@@ -1,0 +1,12 @@
+{
+  "adapted": "SVG wrappers stripped and identical stroke attributes hoisted to a single <g> at serve time; the artwork itself is unchanged. This adaptation is itself CC BY-SA 4.0.",
+  "attribution": "OpenMoji \u2014 the open-source emoji and icon project. License: CC BY-SA 4.0",
+  "content_sha256": "99d337150cdf0d6d2b2e66f16ff15be2aea4609bb6c5c5d9e87121c0268ba8f9",
+  "glyphs": 4147,
+  "licence": "CC-BY-SA-4.0",
+  "package": "openmoji",
+  "set": "black (monochrome line art)",
+  "source": "https://github.com/hfg-gmuend/openmoji",
+  "vendored_at": "2026-09-01",
+  "version": "15.0.0"
+}

@@ -106,6 +106,31 @@ texts are in [`licenses/`](licenses/).
 | [llmfit](https://github.com/AlexsJones/llmfit) | MIT | Hardware-fit calculation behind the model Cookbook's download / serve / "What Fits?" feature |
 | [Tongyi DeepResearch](https://github.com/Alibaba-NLP/DeepResearch) | Apache-2.0 | Deep-research pipeline |
 | [ECC](https://github.com/affaan-m/ECC) | MIT | The 286-skill library Pantheon ships with, in `library/ecc/` |
+| [OpenMoji](https://openmoji.org) | **CC BY-SA 4.0** | Every emoji rendered in the product, in `library/emoji/` |
+
+- **[OpenMoji](https://openmoji.org)** — the open-source emoji and icon project
+  by the University of Applied Sciences Schwäbisch Gmünd (HfG). **Licensed
+  CC BY-SA 4.0**, full text in
+  [`licenses/OpenMoji-CC-BY-SA-4.0.txt`](licenses/OpenMoji-CC-BY-SA-4.0.txt).
+
+  Every emoji you see in Pantheon is OpenMoji's black (monochrome line-art) set,
+  4,147 glyphs, vendored under [`library/emoji/`](library/emoji/) and pinned in
+  `MANIFEST.json`.
+
+  **This attribution was missing until 2026-09-01, and the obligation was not
+  new.** The product had been serving OpenMoji artwork through `/api/emoji/`
+  since before the fork, fetched from a CDN, credited nowhere in the repository.
+  CC BY-SA 4.0 requires attribution whether the bytes are proxied or bundled;
+  vendoring them only made the omission easier to notice. It is recorded here in
+  the same terms as the AGPL and MIT obligations rather than quietly fixed,
+  because a licence you meet only once you are caught is not one you are
+  meeting.
+
+  **Share-alike applies to what we did to them.** The vendored JSON strips each
+  SVG's wrapper and hoists the stroke attributes every glyph repeats onto one
+  `<g>` at serve time. The artwork is unchanged, but that is an adaptation, so
+  the adaptation is CC BY-SA 4.0 too — stated in `library/emoji/MANIFEST.json`
+  as well as here.
 
 - **[ECC](https://github.com/affaan-m/ECC)** — "the agent harness operating
   system" by Affaan Mustafa. Copyright © 2026 Affaan Mustafa. **MIT License**,

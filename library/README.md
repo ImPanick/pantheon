@@ -5,6 +5,25 @@ is the point: `Law 16` says a fresh Pantheon install reaches nothing until a
 person links something, and a skill library that phones home to be useful would
 be that rule broken on day one.
 
+## `emoji/` — 4,147 glyphs
+
+[OpenMoji](https://openmoji.org)'s black (monochrome line-art) set, **CC BY-SA
+4.0**. Every emoji the product renders. Before this, they were fetched from a
+CDN on first use — same-origin from the browser's side, but the *server* reached
+a third party on roughly the first assistant reply, because models emit emoji
+constantly.
+
+**One 5 MB JSON, not 4,147 files.** The same bytes cost 18 MB on disk as
+individual files; a single blob is kinder to git and to the filesystem. Each
+entry holds only the inner markup, because every glyph in this set repeats the
+same six stroke attributes — those are hoisted onto one wrapping `<g>` at serve
+time, which is most of the 7.6 MB → 5.0 MB saving. It loads lazily, so an
+install that never renders an emoji never pays the memory.
+
+That stripping is an adaptation, so the vendored file is CC BY-SA 4.0 as well.
+Attribution is in `CREDITS.md`; it was **missing entirely** until this landed,
+and the obligation was not new.
+
 ## `ecc/` — 286 skills
 
 From [ECC](https://github.com/affaan-m/ECC) by Affaan Mustafa, **MIT licensed**
