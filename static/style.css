@@ -42527,6 +42527,55 @@ body.theme-frosted .modal {
   color: #d1d4e0;
   box-shadow: inset 0 2px 8px rgba(0,0,0,0.5);
 }
+/* Self-check panel — what is quietly wrong (P16-15).
+   Colours come from the theme tokens, never literals: sixteen palettes, and
+   several are light. --warn and --red are set per theme; --green is not yet
+   (that is B22), so success here leans on --fg opacity rather than a hue. */
+.self-check-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.self-check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.self-check-row.is-stuck { border-left-color: var(--red); }
+.self-check-row.is-attention { border-left-color: var(--warn, var(--red)); }
+.self-check-row.is-unknown { border-left-color: color-mix(in srgb, var(--fg) 35%, transparent); }
+.self-check-title {
+  font-weight: 600;
+  color: var(--fg);
+  margin: 0 0 2px;
+}
+.self-check-summary { color: var(--fg); opacity: .85; margin: 0; }
+.self-check-action {
+  margin: 6px 0 0;
+  opacity: .7;
+  font-size: 12.5px;
+}
+.self-check-count {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  opacity: .75;
+  padding-left: 12px;
+}
+.self-check-allclear {
+  font-size: 12.5px;
+  opacity: .6;
+  padding: 6px 2px;
+}
+
 .settings-system-logs-placeholder {
   color: var(--color-text-dim, #7f8c8d);
   font-style: italic;

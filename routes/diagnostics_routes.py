@@ -29,6 +29,21 @@ def setup_diagnostics_routes(
         from src.service_health import collect_service_health
         return await collect_service_health(rag_manager, memory_vector)
 
+    @router.get("/api/diagnostics/self-check")
+    async def get_self_check(request: Request) -> Dict[str, Any]:
+        """What is quietly wrong on this machine.
+
+        Distinct from `/services` above, which asks *can I reach X* — liveness.
+        This asks *is something accumulating, or has something quietly stopped*.
+        `H01` is why both exist: the mail server was reachable the whole time a
+        year of agent-written email sat staged and invisible. Liveness said green.
+
+        Local only, cheap, safe to poll.
+        """
+        require_admin(request)
+        from src.self_checks import run_self_checks
+        return run_self_checks()
+
     @router.get("/api/diagnostics/logs")
     async def get_diagnostics_logs(request: Request, limit: int = 200) -> Dict[str, Any]:
         require_admin(request)

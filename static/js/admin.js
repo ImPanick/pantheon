@@ -3021,6 +3021,80 @@ function renderLogs(isAutoPoll = false) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Self-checks — what is quietly wrong (P16-15)
+// ---------------------------------------------------------------------------
+//
+// Rendered ABOVE the log console on purpose. The whole lesson of H01 is that
+// nobody reads a log to discover a problem they do not know they have: a year
+// of agent-written email sat staged and invisible while the mail server was
+// reachable the entire time. A count in front of a person is the fix.
+//
+// Built with DOM calls rather than innerHTML: every string here comes from
+// server-side state, some of it derived from mail and host names, and this
+// panel exists to report trouble — the one surface where an injected string is
+// most likely to arrive.
+async function loadSelfChecks() {
+  const panel = el('self-check-panel');
+  if (!panel) return;
+
+  let data;
+  try {
+    const res = await fetch('/api/diagnostics/self-check', { credentials: 'same-origin' });
+    if (!res.ok) { panel.hidden = true; return; }
+    data = await res.json();
+  } catch (_e) {
+    panel.hidden = true;   // never let a diagnostic break the page it sits on
+    return;
+  }
+
+  panel.textContent = '';
+  const rows = (data && Array.isArray(data.needs_attention)) ? data.needs_attention : [];
+
+  if (!rows.length) {
+    const ok = document.createElement('div');
+    ok.className = 'self-check-allclear';
+    const n = (data && Array.isArray(data.checks)) ? data.checks.length : 0;
+    ok.textContent = `${n} self-check${n === 1 ? '' : 's'} passed — nothing accumulating, nothing given up.`;
+    panel.appendChild(ok);
+    panel.hidden = false;
+    return;
+  }
+
+  for (const c of rows) {
+    const row = document.createElement('div');
+    row.className = 'self-check-row is-' + String(c.status || 'unknown');
+
+    const body = document.createElement('div');
+    const title = document.createElement('div');
+    title.className = 'self-check-title';
+    title.textContent = String(c.title || c.name || 'Check');
+    body.appendChild(title);
+
+    const summary = document.createElement('p');
+    summary.className = 'self-check-summary';
+    summary.textContent = String(c.summary || '');
+    body.appendChild(summary);
+
+    if (c.action) {
+      const action = document.createElement('p');
+      action.className = 'self-check-action';
+      action.textContent = String(c.action);
+      body.appendChild(action);
+    }
+    row.appendChild(body);
+
+    if (c.count) {
+      const count = document.createElement('div');
+      count.className = 'self-check-count';
+      count.textContent = String(c.count);
+      row.appendChild(count);
+    }
+    panel.appendChild(row);
+  }
+  panel.hidden = false;
+}
+
 async function loadLogs(isAutoPoll = false) {
   const consoleContainer = el('log-console-container');
   const limitSelect = el('log-limit-select');
@@ -3125,7 +3199,8 @@ function initLogsView() {
   const searchInput = el('log-search-input');
   const autoRefreshToggle = el('log-auto-refresh-toggle');
 
-  if (refreshBtn) refreshBtn.addEventListener('click', () => loadLogs(false));
+  loadSelfChecks();
+  if (refreshBtn) refreshBtn.addEventListener('click', () => { loadLogs(false); loadSelfChecks(); });
   if (levelSelect) levelSelect.addEventListener('change', () => renderLogs(false));
   if (limitSelect) limitSelect.addEventListener('change', () => loadLogs(false));
   if (searchInput) searchInput.addEventListener('input', () => renderLogs(false));
