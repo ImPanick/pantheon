@@ -27,9 +27,16 @@ ALLOWED_SCOPES = {
     "memory:write",
     "cookbook:read",
     "cookbook:launch",
+    # P16-12. Read-only, and narrower than it looks: it grants the aggregate
+    # scrape body and nothing else — no message content, no settings, no
+    # per-session detail. A Prometheus scrape config wants exactly one
+    # credential with exactly one power, and giving it `chat` would be handing
+    # a monitoring system the ability to talk to the model.
+    "metrics:read",
 }
 TOKEN_PROFILES = {
     "chat": ["chat"],
+    "metrics": ["metrics:read"],
     "codex_todos": ["todos:read", "todos:write"],
     "codex_documents": ["documents:read", "documents:write"],
     "codex_email_drafts": ["email:read", "email:draft", "documents:read", "documents:write"],

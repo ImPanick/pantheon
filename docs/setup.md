@@ -728,6 +728,65 @@ npx -y @playwright/mcp@latest --version
 That installs `@playwright/mcp` plus Playwright (~300MB total). Restart Pantheon and the server will register at startup.
 
 
+### Metrics — pointing Prometheus and Grafana at Pantheon
+
+Off by default. Turn it on with `PANTHEON_METRICS_ENABLED=1` (or the setting),
+and `GET /metrics` serves the Prometheus text exposition format.
+
+**Nothing is ever sent anywhere.** A scrape is *your* Prometheus asking Pantheon
+a question — there is no collector address in this codebase and no place to put
+one, and CI fails the build if one appears. That is `Law 16` clause 4 satisfied
+by shape rather than by promise.
+
+**Authenticate the scrape.** Create an API token with the `metrics:read` scope
+(Settings → API tokens, profile *metrics*), then:
+
+```yaml
+scrape_configs:
+  - job_name: pantheon
+    authorization:
+      credentials: ody_your_token_here
+    static_configs:
+      - targets: ['pantheon.lan:7000']
+```
+
+An admin browser session also works, so you can just open the URL and look.
+`metrics:read` grants the aggregate scrape body and nothing else — no message
+content, no settings, no per-session detail.
+
+**Everything is a gauge, deliberately.** A Prometheus counter must be monotonic,
+and `events_retention_days` prunes at 90 days — so a `_total` sourced from that
+table would *decline gradually* as old rows age out, which Prometheus reads as
+neither a counter reset nor a real rate. `rate()` over it would be wrong in a way
+nobody notices on a dashboard. The windowed numbers carry their window in the
+name instead (`pantheon_llm_rounds_1h`), and mean what they say.
+
+| Metric | What it tells you |
+|---|---|
+| `pantheon_llm_rounds_1h{model,outcome}` | Throughput, and how much of it failed |
+| `pantheon_llm_tokens_1h{model,direction}` | What each model is actually costing you |
+| `pantheon_turn_duration_ms_1h{stat}` | Turn latency — mean, max, sample count |
+| `pantheon_tool_calls_1h{tool,outcome}` | `outcome="error"` is a tool that *returned* a failure; `"exception"` is one that raised |
+| `pantheon_retrieval_1h{store,outcome}` | `"unavailable"` is the store being down; `"empty"` is a genuine miss |
+| `pantheon_approvals_1h{outcome}` | `"expired"` is a question nobody answered |
+| `pantheon_self_check{check}` | 0=ok 1=attention 2=unknown 3=stuck. Alert on `> 0` |
+| `pantheon_outbound_cooldown_seconds{host}` | Why a feature looks broken when nothing is broken |
+| `pantheon_queue_depth{queue}` | `agent_mail` is the staged-drafts queue that once sat invisible for a year |
+| `pantheon_events_rows` | Table size, bounded by your retention setting |
+| `pantheon_scrape_collector_failed{collector}` | A collector that raised. The scrape still returns everything else |
+
+**`pantheon_turn_duration_ms` measures the turn, not the model.** It runs from
+the chat request arriving to the totals being written, so it includes tool calls
+and retries. That is usually the number you want; it is named this way so you are
+never guessing which one it is.
+
+**Liveness probing is not on this endpoint.** Checking whether every configured
+provider answers means real network calls to other people's machines; at a
+15-second scrape interval that is thousands of requests an hour. It stays on the
+diagnostics panel, where a person asks for it.
+
+---
+
 ### What self-hosted search does and does not mean
 
 Worth being plain about, because the phrase promises more than it delivers.

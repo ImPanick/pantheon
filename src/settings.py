@@ -99,6 +99,15 @@ DEFAULT_SETTINGS = {
     # removed rather than left as decoration. Retention is not a boot-time
     # concern; Settings is the place to change it.
     "events_retention_days": 90,
+    # Serve GET /metrics for a Prometheus scrape (`P16-12`). Ships OFF.
+    #
+    # Off is not shyness about telemetry — `Law 16` clause 4 explicitly permits
+    # it, and a scrape has no destination to permit. Off because a monitoring
+    # endpoint nobody configured is attack surface nobody asked for, and because
+    # the operator turning it on is the same act as pointing something at it.
+    #
+    # Falsy, so PANTHEON_METRICS_ENABLED is genuinely reachable beneath it.
+    "metrics_enabled": False,
     # What to do with images in content the user did not write — model output, a
     # RAG document, an email. `ask` (default) renders a placeholder naming the
     # host until someone clicks; `proxy` fetches through /api/img automatically,

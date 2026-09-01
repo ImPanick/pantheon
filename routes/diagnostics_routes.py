@@ -69,6 +69,53 @@ def setup_diagnostics_routes(
         from src.self_checks import run_self_checks
         return run_self_checks()
 
+    @router.get("/metrics")
+    async def prometheus_metrics(request: Request):
+        """Prometheus scrape endpoint (`P16-12`).
+
+        `/metrics` rather than `/api/metrics`: it is the one place convention
+        beats this app's own prefix, because it is what an operator will type
+        and what every scrape example already assumes.
+
+        **This endpoint answers; it never sends.** There is no destination
+        anywhere in it and no place for one — `Law 16` clause 4 is satisfied by
+        the shape of a pull, not by a policy about a push. `.pantheon/
+        check-destinations.py` fails the build if an address ever appears.
+
+        Authenticated, because aggregate usage is still the operator's business
+        and this is reachable on whatever address Pantheon is bound to. An API
+        token with `metrics:read` is the intended credential — Prometheus sends
+        it natively via `authorization: credentials:` — and an admin browser
+        session works too, so a person can just open the URL and look.
+
+        Off by default (`metrics_enabled`). A monitoring endpoint nobody
+        configured is attack surface nobody asked for.
+        """
+        from fastapi.responses import PlainTextResponse
+        from src.settings import get_setting
+
+        enabled = bool(get_setting("metrics_enabled", False)) or (
+            (os.environ.get("PANTHEON_METRICS_ENABLED") or "").strip().lower()
+            in ("1", "true", "yes", "on")
+        )
+        if not enabled:
+            # 404 rather than 403: a disabled endpoint should be indistinguishable
+            # from one that was never built.
+            raise HTTPException(404, "Metrics endpoint is disabled")
+
+        if getattr(request.state, "api_token", False):
+            scopes = set(getattr(request.state, "api_token_scopes", []) or [])
+            if "metrics:read" not in scopes:
+                raise HTTPException(403, "API token missing required scope: metrics:read")
+        else:
+            require_admin(request)
+
+        from src.metrics_export import render_metrics
+        return PlainTextResponse(
+            render_metrics(),
+            media_type="text/plain; version=0.0.4; charset=utf-8",
+        )
+
     @router.get("/api/diagnostics/usage")
     async def get_usage(request: Request, days: int = 30,
                         owner: str = "") -> Dict[str, Any]:
