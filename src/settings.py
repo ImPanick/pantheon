@@ -60,6 +60,20 @@ DEFAULT_SETTINGS = {
     # answer to "why is memory unavailable" on a machine with no local
     # embedding server and no network.
     "allow_model_download": False,
+    # Where the diagnostic bundle's "report this" link points (`P16-14`).
+    #
+    # Ships EMPTY, deliberately, and the emptiness is load-bearing twice over.
+    # `get_setting` merges DEFAULT_SETTINGS on every read, so the
+    # PANTHEON_ISSUE_TRACKER_URL fallback in `routes/diagnostics_routes.py`
+    # would be dead code beneath a truthy default (`H06`, `B20`, and `P16-05`
+    # from the other side). And a company making this their own private stack
+    # (`D-2026-09-01-01`) wants their tracker, not this repo's; shipping an
+    # address decides that for them.
+    #
+    # Empty means "the client offers the project's own issues page as a link".
+    # That link is navigation the person clicks, never a request this server
+    # makes — no bundle is transmitted anywhere by anything Pantheon runs.
+    "issue_tracker_url": "",
     # What to do with images in content the user did not write — model output, a
     # RAG document, an email. `ask` (default) renders a placeholder naming the
     # host until someone clicks; `proxy` fetches through /api/img automatically,

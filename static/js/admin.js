@@ -3130,6 +3130,91 @@ async function loadSelfChecks() {
   panel.hidden = false;
 }
 
+// ---------------------------------------------------------------------------
+// Report a bug (P16-14)
+// ---------------------------------------------------------------------------
+//
+// The obstacle to bug reports is not a missing pipe. It is that people do not
+// know what to include, and are afraid of leaking their own data — and here
+// that fear is correct: a trace from this product carries the username in every
+// file path, the LAN in every endpoint, and often a slice of the message that
+// caused it.
+//
+// So the report is assembled, redacted, and shown IN FULL in an editable box
+// before anything happens to it. Nothing in this file sends it anywhere. The
+// "open issue tracker" control is an <a> the person clicks — a navigation, not
+// a fetch — and it carries no report with it; they paste what they chose to
+// keep. That is Law 16 satisfied by design rather than by volume.
+
+// Built with textContent and DOM calls: every string below is server-derived,
+// and this panel's entire job is displaying trouble.
+const PROJECT_ISSUES_URL = 'https://github.com/ImPanick/pantheon/issues';
+
+function setupBugReport() {
+  const root = el('bug-report');
+  if (!root) return;
+  const buildBtn = el('bug-report-build');
+  const copyBtn = el('bug-report-copy');
+  const issueLink = el('bug-report-issue');
+  const noteBox = el('bug-report-note');
+  const output = el('bug-report-output');
+  const status = el('bug-report-status');
+  if (!buildBtn || !output || !status) return;
+
+  function say(message, isError) {
+    status.textContent = message || '';
+    status.classList.toggle('is-error', Boolean(isError));
+  }
+
+  buildBtn.addEventListener('click', async () => {
+    buildBtn.disabled = true;
+    say('Assembling and redacting…');
+    try {
+      const note = noteBox ? noteBox.value : '';
+      const res = await fetch(
+        '/api/diagnostics/bundle?note=' + encodeURIComponent(note),
+        { credentials: 'same-origin' }
+      );
+      if (!res.ok) { say(`Could not assemble the report (HTTP ${res.status}).`, true); return; }
+      const data = await res.json();
+      if (!data || typeof data.markdown !== 'string') {
+        say('The report came back in a shape this page does not understand.', true);
+        return;
+      }
+      output.value = data.markdown;
+      output.hidden = false;
+      if (copyBtn) copyBtn.hidden = false;
+      if (issueLink) {
+        // A configured tracker wins; otherwise this project's own. Either way
+        // it is a link, and it carries no report — the person pastes what they
+        // decided to keep, which is the only version that ever leaves.
+        issueLink.href = (data.issue_url || PROJECT_ISSUES_URL);
+        issueLink.hidden = false;
+      }
+      say('Ready. Read it, edit anything you would rather not share, then copy.');
+    } catch (_e) {
+      say('Could not reach this Pantheon to assemble the report.', true);
+    } finally {
+      buildBtn.disabled = false;
+    }
+  });
+
+  if (copyBtn) {
+    copyBtn.addEventListener('click', async () => {
+      // Deliberately copies output.value, not the fetched markdown: the edits
+      // the person made are the point of showing it to them.
+      try {
+        await navigator.clipboard.writeText(output.value);
+        say('Copied. Paste it into an issue.');
+      } catch (_e) {
+        output.focus();
+        output.select();
+        say('Clipboard unavailable — the report is selected, press Ctrl/Cmd+C.', true);
+      }
+    });
+  }
+}
+
 async function loadLogs(isAutoPoll = false) {
   const consoleContainer = el('log-console-container');
   const limitSelect = el('log-limit-select');
@@ -3235,6 +3320,7 @@ function initLogsView() {
   const autoRefreshToggle = el('log-auto-refresh-toggle');
 
   loadSelfChecks();
+  setupBugReport();   // wires listeners only; assembles nothing until asked
   if (refreshBtn) refreshBtn.addEventListener('click', () => { loadLogs(false); loadSelfChecks(); });
   if (levelSelect) levelSelect.addEventListener('change', () => renderLogs(false));
   if (limitSelect) limitSelect.addEventListener('change', () => loadLogs(false));

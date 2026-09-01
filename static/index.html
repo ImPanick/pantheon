@@ -2609,6 +2609,33 @@
                    they do not know they have. -->
               <div id="self-check-panel" class="self-check-panel" hidden></div>
 
+              <!-- Report a bug (P16-14). Collapsed until asked for: it is for
+                   the moment something breaks, not a thing to read past every
+                   time you open Settings. Nothing here transmits — the bundle
+                   is built locally, redacted, shown in full, and copied by the
+                   person after they have read and edited it. -->
+              <details id="bug-report" class="bug-report">
+                <summary class="bug-report-summary">Report a bug</summary>
+                <p class="bug-report-intro">
+                  Pantheon will assemble a report from this machine and redact it
+                  — your username, endpoint URLs, email addresses, LAN addresses
+                  and anything that looks like a credential. <strong>It is shown
+                  to you first and sent nowhere.</strong> Read it, edit anything
+                  you would rather not share, then copy it.
+                </p>
+                <label class="bug-report-label" for="bug-report-note">What happened?</label>
+                <textarea id="bug-report-note" class="bug-report-note" rows="3"
+                          placeholder="What you did, and what happened instead."></textarea>
+                <div class="bug-report-actions">
+                  <button type="button" id="bug-report-build" class="btn-secondary">Assemble report</button>
+                  <button type="button" id="bug-report-copy" class="btn-secondary" hidden>Copy to clipboard</button>
+                  <a id="bug-report-issue" class="btn-secondary" hidden target="_blank" rel="noopener noreferrer">Open issue tracker</a>
+                </div>
+                <textarea id="bug-report-output" class="bug-report-output" rows="18" hidden
+                          spellcheck="false" aria-label="Diagnostic report — editable before you copy it"></textarea>
+                <div id="bug-report-status" class="bug-report-status" role="status" aria-live="polite"></div>
+              </details>
+
               <!-- Console container -->
               <div id="log-console-container">
                 <div class="settings-system-logs-placeholder">Initializing logs terminal viewer...</div>

@@ -13,6 +13,31 @@ from core.middleware import require_admin
 logger = logging.getLogger(__name__)
 
 
+def _issue_tracker_url() -> str:
+    """Where "report this" points. A setting, not a constant.
+
+    `D-2026-09-01-01` says the people running this include companies making it
+    their own private stack. Their bug reports belong in their tracker, not in
+    the upstream repo, and hardcoding one address decides that for them. The
+    default is Pantheon's own issues page because that is the honest default for
+    a fork of this project — and it is a **link the person clicks**, never a
+    request this server makes. Nothing here fetches it.
+    """
+    try:
+        from src.settings import get_setting
+        configured = str(get_setting("issue_tracker_url", "") or "").strip()
+    except Exception:
+        configured = ""
+    if configured:
+        return configured
+    # The env layer is REACHABLE here only because the default is falsy.
+    # `get_setting` merges DEFAULT_SETTINGS on every read, so beneath a truthy
+    # default this line could never run — that is `H06`/`B20`, and `P16-05` hit
+    # the same shape from the other side. The distinction is truthiness, not the
+    # pattern.
+    return (os.environ.get("PANTHEON_ISSUE_TRACKER_URL") or "").strip()
+
+
 def setup_diagnostics_routes(
     rag_manager,
     rag_available: bool,
@@ -43,6 +68,33 @@ def setup_diagnostics_routes(
         require_admin(request)
         from src.self_checks import run_self_checks
         return run_self_checks()
+
+    @router.get("/api/diagnostics/bundle")
+    async def get_diagnostic_bundle(
+        request: Request, note: str = "", log_limit: int = 120
+    ) -> Dict[str, Any]:
+        """A bug report, assembled locally, redacted, and sent nowhere.
+
+        `P16-14`. This endpoint **builds** — it does not transmit. There is no
+        collector URL here and there is no place for one; the response goes to
+        the browser that asked, the person reads and edits it, and they choose
+        a destination per incident or choose none. That is what makes it
+        `Law 16`-clean rather than merely low-volume.
+
+        `note` is the person's own description, echoed back through the same
+        redactor as everything else — they may paste a path or an endpoint into
+        it without thinking, and a redactor that trusts one field is a redactor
+        with a hole in it.
+        """
+        require_admin(request)
+        from src.diagnostic_bundle import build_bundle, render_markdown
+        bundle = build_bundle(note=note, log_limit=log_limit)
+        return {
+            "status": "success",
+            "bundle": bundle,
+            "markdown": render_markdown(bundle),
+            "issue_url": _issue_tracker_url(),
+        }
 
     @router.get("/api/diagnostics/logs")
     async def get_diagnostics_logs(request: Request, limit: int = 200) -> Dict[str, Any]:
