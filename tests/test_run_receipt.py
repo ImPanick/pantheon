@@ -218,6 +218,79 @@ def test_the_receipt_survives_a_broken_database(monkeypatch):
 
 # --- the capture sites -----------------------------------------------------
 
+def test_every_llm_entry_point_records_a_config():
+    """The gap the first version shipped with, and the test that missed it.
+
+    `record_run_config` lived only in `stream_llm`. `/api/chat` reaches the
+    model through `llm_call_async_with_route_fallback` → `llm_call_async` and
+    never streams, so **half the chat surface produced receipts with
+    `config: null`** — silently, because a null config looks like a quiet turn.
+
+    The old test grepped `llm_core.py` for the call, which one entry point
+    satisfies. This one walks the AST and requires every entry point to capture,
+    or to be named here with a reason.
+    """
+    import ast
+    src = (ROOT / "src" / "llm_core.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+
+    # Functions that actually reach a model on a user's behalf.
+    entry_points = {"llm_call", "llm_call_async", "stream_llm"}
+    found = {}
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) \
+                and node.name in entry_points:
+            found[node.name] = any(
+                isinstance(c, ast.Call) and getattr(c.func, "id", "") == "_capture_run_config"
+                for c in ast.walk(node))
+
+    missing = sorted(n for n in entry_points if not found.get(n))
+    assert not missing, (
+        f"these reach a model without recording a run config: {missing}. "
+        f"A receipt with config: null is indistinguishable from a quiet turn.")
+
+
+def test_the_capture_is_one_implementation_not_three():
+    """`Law 14`. Three entry points, one helper — three copies would drift, and
+    the one that drifted would be the one nobody was looking at."""
+    src = (ROOT / "src" / "llm_core.py").read_text(encoding="utf-8")
+    assert src.count("def _capture_run_config(") == 1
+    assert src.count("record_run_config(") == 1, \
+        "record_run_config is called from more than one place; funnel it"
+
+
+def test_the_non_stream_path_records_before_the_cache_check():
+    """A turn answered from cache still HAD a configuration. A receipt that
+    exists only for cache misses goes missing exactly when two runs of the same
+    thing are being compared — which is what receipts are for."""
+    import ast
+    src = (ROOT / "src" / "llm_core.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    fn = next(n for n in ast.walk(tree)
+              if isinstance(n, ast.AsyncFunctionDef) and n.name == "llm_call_async")
+    capture = next(c.lineno for c in ast.walk(fn) if isinstance(c, ast.Call)
+                   and getattr(c.func, "id", "") == "_capture_run_config")
+    cached = next(c.lineno for c in ast.walk(fn) if isinstance(c, ast.Call)
+                  and getattr(c.func, "id", "") == "_get_cached_response")
+    assert capture < cached, "the cache short-circuits the receipt"
+
+
+def test_omitting_tools_is_not_the_same_as_sending_none():
+    """"No tools were sent" and "we did not look" are different facts, and a
+    diff (`P4-28`) that cannot tell them apart reports a change nobody made."""
+    ev.mark_turn_start()
+    rid = ev.current_run_id()
+    ev.record_run_config(sampling={"temperature": 0.1}, session_id="s")
+    assert "tools" not in ev.receipt(rid)["config"]
+
+    ev._turn_started.set(None)
+    ev._run_id.set(None)
+    ev.mark_turn_start()
+    rid2 = ev.current_run_id()
+    ev.record_run_config(sampling={"temperature": 0.1}, tools=[], session_id="s")
+    assert ev.receipt(rid2)["config"]["tools"] == []
+
+
 def test_sampling_and_tools_are_captured_where_they_are_resolved():
     """Not at the caller. Defaults are merged and caps applied inside
     `_stream_llm`, so a receipt built from what the caller intended records the
@@ -248,24 +321,56 @@ def test_injected_skills_are_captured_after_selection():
     assert src.index("relevant_skills = sm.get_relevant_skills(") < i
 
 
-def test_the_skills_capture_references_only_names_in_scope():
-    """The first draft passed `session_id`, which `_build_system_prompt` does
-    not take — and the `except Exception` around it swallowed the NameError.
-    Guarded code that never runs and never says so is worse than code that
-    fails."""
+@pytest.mark.parametrize("module,func", [
+    ("src/agent_loop.py", "record_run_config"),
+    ("src/llm_core.py", "_capture_run_config"),
+])
+def test_every_capture_site_references_only_names_in_scope(module, func):
+    """`B32`, twice, and the second time proved the first fix was too narrow.
+
+    The skills capture passed `session_id` to a function that does not take one,
+    and the `except Exception` around it swallowed the NameError — recording
+    nothing, forever, silently. I wrote a test. It checked exactly that one call
+    site. Then the correction pass added a capture to the SYNC `llm_call`, which
+    also has no `session_id`, and the same bug shipped again in a different
+    file — caught only because that call is not wrapped, so it raised.
+
+    So the check is parameterised over every module that captures, and walks
+    every call site in each. A test written to the shape of one bug catches one
+    bug.
+    """
     import ast
-    src = (ROOT / "src" / "agent_loop.py").read_text(encoding="utf-8")
+    src = (ROOT / module).read_text(encoding="utf-8")
     tree = ast.parse(src)
-    fn = next(n for n in ast.walk(tree)
-              if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-              and n.name == "_build_system_prompt")
-    params = {a.arg for a in fn.args.args} | {a.arg for a in fn.args.kwonlyargs}
-    call = next(n for n in ast.walk(fn) if isinstance(n, ast.Call)
-                and getattr(n.func, "id", "") == "record_run_config")
-    for kw in call.keywords:
-        if isinstance(kw.value, ast.Name):
-            assert kw.value.id in params or kw.value.id == "relevant_skills", \
-                f"{kw.value.id} is not in scope at the capture site"
+
+    checked = 0
+    for fn in ast.walk(tree):
+        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        params = {a.arg for a in fn.args.args} | {a.arg for a in fn.args.kwonlyargs}
+        if fn.args.vararg:
+            params.add(fn.args.vararg.arg)
+        if fn.args.kwarg:
+            params.add(fn.args.kwarg.arg)
+        # Names bound inside the function body count as in scope too.
+        for node in ast.walk(fn):
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+                params.add(node.id)
+            elif isinstance(node, ast.alias):
+                params.add((node.asname or node.name).split(".")[0])
+
+        for call in ast.walk(fn):
+            if not (isinstance(call, ast.Call)
+                    and getattr(call.func, "id", "") == func):
+                continue
+            checked += 1
+            names = [a for a in call.args if isinstance(a, ast.Name)]
+            names += [k.value for k in call.keywords if isinstance(k.value, ast.Name)]
+            for n in names:
+                assert n.id in params, (
+                    f"{module}: {func}() in {fn.name}() references {n.id!r}, "
+                    f"which is not in scope there")
+    assert checked, f"no {func} call sites found in {module} — test is vacuous"
 
 
 def test_the_route_serves_a_receipt():

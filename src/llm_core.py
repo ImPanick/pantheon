@@ -2052,6 +2052,16 @@ def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LL
         messages_copy = non_sys
 
     provider = _detect_provider(url)
+    # `P4-25` — before the cache check, deliberately. A turn answered from cache
+    # still HAD a configuration, and a receipt that exists only for cache misses
+    # is one that goes missing exactly when two runs of the same thing are being
+    # compared, which is what receipts are for.
+    # The sync `llm_call` takes no `session_id` — background jobs call it,
+    # not a chat turn. It still has a configuration worth recording, and
+    # the receipt is keyed on `run_id` anyway; the session, when there is
+    # one, arrives from the other rows of the same run.
+    _capture_run_config(temperature, max_tokens, None)
+
     cache_key = _get_cache_key(
         url, model, messages_copy, temperature, max_tokens, headers=headers,
     )
@@ -2329,6 +2339,16 @@ async def llm_call_async(
     return_model_metadata: bool = False,
 ) -> str | tuple[str, str]:
     """Asynchronous LLM call using httpx with connection pooling, timeout, retry logic, and performance logging."""
+    # `P4-25` — the non-streaming path. `/api/chat` reaches the model through
+    # `llm_call_async_with_route_fallback` → here and never touches
+    # `stream_llm`, so the first version of this recorded nothing for half
+    # the chat surface — receipts with `config: null`, silently. The test
+    # only grepped this file for the call, which one entry point satisfies.
+    #
+    # No `tools=`: this path sends none, and the key is omitted rather than
+    # written empty so a diff can tell 'none sent' from 'not looked at'.
+    _capture_run_config(temperature, max_tokens, session_id)
+
     provider = _detect_provider(url)
     messages_copy = _sanitize_llm_messages(messages)
 
@@ -2629,6 +2649,39 @@ _run_config_recorded: "contextvars.ContextVar[bool]" = contextvars.ContextVar(
     "pantheon_run_config_recorded", default=False)
 
 
+def _capture_run_config(temperature, max_tokens, session_id, *, tools=None) -> None:
+    """Record the resolved configuration for this turn (`P4-25`).
+
+    Called from **every** entry point a chat turn can take, and that plurality
+    is the point: the first version lived only in `stream_llm`, so `/api/chat`
+    — which goes `llm_call_async_with_route_fallback` → `llm_call_async` and
+    never streams — produced receipts with `config: null`. Half the chat
+    surface, silently, and the test only grepped this file for the call.
+
+    Here rather than at the caller because this is where the values are
+    RESOLVED: defaults merged, caps applied, the tool list assembled. A receipt
+    built from what the caller intended records the wrong thing on every path
+    that adjusts either, and several do.
+
+    `tools=None` means *this path sends no tools*, and the key is omitted rather
+    than written as `[]` — "none were sent" and "we did not look" are different
+    facts, and a diff (`P4-28`) that cannot tell them apart is a diff that
+    reports a change nobody made.
+    """
+    try:
+        from src.events import record_run_config, current_run_id
+        if not current_run_id() or _run_config_recorded.get():
+            return
+        _run_config_recorded.set(True)
+        record_run_config(
+            sampling={"temperature": temperature, "max_tokens": max_tokens},
+            tools=tools,
+            session_id=session_id,
+        )
+    except Exception:
+        pass   # a receipt is never worth a failed reply
+
+
 def _stream_target_url(url: str) -> str:
     provider = _detect_provider(url)
     if provider == "anthropic":
@@ -2646,25 +2699,7 @@ async def stream_llm(url: str, model: str, messages: List[Dict], temperature: fl
                      tools: Optional[List[Dict]] = None, session_id: Optional[str] = None,
                      tool_choice_none: bool = False, workload: str = "foreground"):
     target_url = _stream_target_url(url)
-    # `P4-25` — the resolved sampling parameters and the tool schemas the model
-    # is actually shown. Recorded here because this is where they are RESOLVED:
-    # defaults merged, caps applied, the tool list assembled. A receipt built
-    # from what the caller intended would record the wrong thing on every path
-    # that adjusts either, and several do.
-    #
-    # Once per run: `record_run_config` writes one row, and a turn that streams
-    # ten rounds should not write ten copies of the same configuration.
-    try:
-        from src.events import record_run_config, current_run_id
-        if current_run_id() and not _run_config_recorded.get():
-            _run_config_recorded.set(True)
-            record_run_config(
-                sampling={"temperature": temperature, "max_tokens": max_tokens},
-                tools=tools or [],
-                session_id=session_id,
-            )
-    except Exception:
-        pass   # a receipt is never worth a failed reply
+    _capture_run_config(temperature, max_tokens, session_id, tools=tools)
 
     async with _local_model_slot(target_url, model, workload):
         async for chunk in _stream_llm_inner(

@@ -157,6 +157,37 @@ def setup_diagnostics_routes(
         from src.events import receipt
         return receipt(run_id)
 
+    @router.get("/api/diagnostics/rerun/{run_id}")
+    async def get_rerun_plan(request: Request, run_id: str) -> Dict[str, Any]:
+        """What it would take to re-run this receipt, and what has moved (`P4-26`).
+
+        Read-only. It costs no model call, which is the point of having it
+        separate: *"same inputs, same configuration"* is a claim, and someone
+        should be able to check it before spending a request on it.
+        """
+        require_admin(request)
+        from src.replay import rerun_plan, describe
+        plan = rerun_plan(run_id)
+        return {**plan, "summary": describe(plan)}
+
+    @router.post("/api/diagnostics/rerun/{run_id}")
+    async def do_rerun(request: Request, run_id: str, model: str = "") -> Dict[str, Any]:
+        """Re-run it. Same inputs, same configuration, **new run** (`P4-26`).
+
+        POST because it spends a model call. `model` overrides the recorded one,
+        which is the whole point for *"is the new model better"* — and it is
+        recorded as **deliberate** drift, so `P4-28` can tell a choice from an
+        accident.
+
+        The replay does not touch the session. It is a diagnostic, not a
+        conversation: appending its output would change the thing being measured
+        and put a machine-generated turn in front of the person next time they
+        scrolled up.
+        """
+        require_admin(request)
+        from src.replay import replay
+        return await replay(run_id, model=model or None)
+
     @router.get("/api/diagnostics/bundle")
     async def get_diagnostic_bundle(
         request: Request, note: str = "", log_limit: int = 120
