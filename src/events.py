@@ -41,8 +41,9 @@ import logging
 import re
 import threading
 import time
+import uuid
 from datetime import timedelta
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -118,11 +119,25 @@ _turn_started: "contextvars.ContextVar[Optional[float]]" = contextvars.ContextVa
     "pantheon_turn_started", default=None)
 
 
+# The run this turn's events belong to (`P4-25`). Set beside the clock, so a
+# turn cannot have a duration without an identity or the reverse.
+_run_id: "contextvars.ContextVar[Optional[str]]" = contextvars.ContextVar(
+    "pantheon_run_id", default=None)
+
+
 def mark_turn_start() -> None:
-    """Start the clock for this turn. Safe to call more than once per turn —
-    the first call wins, so a retry inside one request does not restart it."""
+    """Start the clock for this turn and give it an identity.
+
+    Safe to call more than once per turn — the first call wins, so a retry
+    inside one request neither restarts the clock nor splits the receipt in two.
+    """
     if _turn_started.get() is None:
         _turn_started.set(time.monotonic())
+        _run_id.set(uuid.uuid4().hex)
+
+
+def current_run_id() -> Optional[str]:
+    return _run_id.get()
 
 
 def _turn_elapsed_ms() -> Optional[int]:
@@ -151,6 +166,7 @@ def record_event(kind: str, *, name: Optional[str] = None,
                 kind=kind,
                 name=_safe_label(name),
                 session_id=session_id,
+                run_id=_run_id.get(),
                 owner=owner,
                 duration_ms=_int_or_none(duration_ms),
                 outcome=(outcome or "ok")[:32],
@@ -191,6 +207,7 @@ def record_llm_round(session_id: str, metrics: Dict[str, Any], *,
             db.add(Event(
                 kind="llm_round",
                 session_id=session_id,
+                run_id=_run_id.get(),
                 owner=owner,
                 model=_safe_label(metrics.get("model") or metrics.get("actual_model")),
                 endpoint=_safe_label(metrics.get("endpoint_label")),
@@ -405,6 +422,134 @@ def usage_summary(days: int = 30, owner: Optional[str] = None) -> Dict[str, Any]
                     "input_tokens": int(in_t or 0),
                     "output_tokens": int(out_t or 0),
                 }
+        finally:
+            db.close()
+    except Exception as e:
+        out["error"] = f"{type(e).__name__}: {e}"
+    return out
+
+
+# ---------------------------------------------------------------------------
+# P4-25 — the receipt
+# ---------------------------------------------------------------------------
+
+def record_run_config(*, sampling: Optional[Dict[str, Any]] = None,
+                      tools: Optional[Iterable[Any]] = None,
+                      skills: Optional[Iterable[Dict[str, Any]]] = None,
+                      session_id: Optional[str] = None,
+                      owner: Optional[str] = None) -> bool:
+    """The three things a run did that nothing kept (`P4-25`).
+
+    Five of the eight items `P4-25` asks for already persisted, and `P14-02`
+    added a sixth and seventh — approvals and tool outcomes. These are the
+    remainder: **what sampling parameters were resolved, which tool schemas the
+    model was actually shown, and which skills were injected at what
+    confidence.** Between them they are most of the reason two runs of "the same
+    thing" differ, and none of them was written down anywhere.
+
+    **Tool schemas are stored as names plus a hash, not in full.** The point of
+    recording them is to make a CHANGE visible — a tool added, removed, or its
+    schema edited between two runs. Full schemas are kilobytes each and dozens
+    per turn; a stable hash answers the same question at a hundredth of the size,
+    and `P4-28`'s diff reads a changed hash exactly as well as a changed blob.
+    """
+    payload: Dict[str, Any] = {}
+    if sampling:
+        # Only the knobs that change an answer. A whole request payload would
+        # drag the prompt in with it, and a receipt that contains the
+        # conversation is a receipt nobody can share.
+        keep = ("temperature", "top_p", "top_k", "max_tokens", "presence_penalty",
+                "frequency_penalty", "repetition_penalty", "seed", "stop",
+                "reasoning_effort", "num_ctx")
+        payload["sampling"] = {k: sampling[k] for k in keep if k in sampling}
+    if tools is not None:
+        payload["tools"] = _tool_fingerprints(tools)
+    if skills is not None:
+        payload["skills"] = [
+            {"name": str(s.get("name") or "")[:200],
+             "confidence": s.get("confidence"),
+             "source": s.get("source")}
+            for s in skills if isinstance(s, dict)
+        ]
+    if not payload:
+        return False
+    return record_event("run_config", session_id=session_id, owner=owner,
+                        detail=payload)
+
+
+def _tool_fingerprints(tools: Iterable[Any]) -> List[Dict[str, str]]:
+    """`[{name, sha}]` for the schemas as sent. Order-independent per tool."""
+    import hashlib
+    out: List[Dict[str, str]] = []
+    for tool in tools or []:
+        try:
+            spec = tool if isinstance(tool, dict) else {"name": str(tool)}
+            fn = spec.get("function") if isinstance(spec.get("function"), dict) else spec
+            name = str(fn.get("name") or spec.get("name") or "?")[:200]
+            blob = json.dumps(spec, sort_keys=True, default=str)
+            out.append({"name": name,
+                        "sha": hashlib.sha256(blob.encode()).hexdigest()[:16]})
+        except Exception:
+            continue
+    out.sort(key=lambda d: d["name"])
+    return out
+
+
+def receipt(run_id: str) -> Dict[str, Any]:
+    """Everything one turn did, assembled from the rows it already wrote.
+
+    Not a new store (`Law 14`): a receipt is a range scan on `run_id`. The
+    config row carries what `P4-25` had to add; the rounds, tool calls,
+    retrievals and approvals were already being written by `P14-01`/`P14-02`.
+    """
+    out: Dict[str, Any] = {"run_id": run_id, "config": None, "rounds": [],
+                           "tools": [], "retrievals": [], "approvals": [],
+                           "totals": {}}
+    if not run_id:
+        out["error"] = "no run_id"
+        return out
+    try:
+        from core.database import SessionLocal, Event
+        db = SessionLocal()
+        try:
+            rows = (db.query(Event).filter(Event.run_id == run_id)
+                      .order_by(Event.ts.asc(), Event.id.asc()).all())
+            for e in rows:
+                detail = None
+                if e.detail:
+                    try:
+                        detail = json.loads(e.detail)
+                    except Exception:
+                        detail = {"raw": e.detail}
+                item = {"ts": e.ts.isoformat() if e.ts else None,
+                        "name": e.name, "outcome": e.outcome,
+                        "duration_ms": e.duration_ms, "detail": detail}
+                if e.kind == "run_config":
+                    out["config"] = detail
+                elif e.kind == "llm_round":
+                    out["rounds"].append({**item, "model": e.model,
+                                          "endpoint": e.endpoint,
+                                          "input_tokens": e.input_tokens,
+                                          "output_tokens": e.output_tokens})
+                elif e.kind == "tool_call":
+                    out["tools"].append(item)
+                elif e.kind == "retrieval":
+                    out["retrievals"].append(item)
+                elif e.kind == "approval":
+                    out["approvals"].append(item)
+                if e.session_id and not out.get("session_id"):
+                    out["session_id"] = e.session_id
+                if e.owner and not out.get("owner"):
+                    out["owner"] = e.owner
+            out["totals"] = {
+                "rounds": len(out["rounds"]),
+                "input_tokens": sum(r.get("input_tokens") or 0 for r in out["rounds"]),
+                "output_tokens": sum(r.get("output_tokens") or 0 for r in out["rounds"]),
+                "tool_calls": len(out["tools"]),
+                "tool_failures": sum(1 for x in out["tools"]
+                                     if (x.get("outcome") or "ok") != "ok"),
+                "approvals": len(out["approvals"]),
+            }
         finally:
             db.close()
     except Exception as e:

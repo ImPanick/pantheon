@@ -273,6 +273,41 @@ which is `Law 15` failing in a different costume. `P14` owns the measurement; `P
 export. The whole design constraint is one line: **the destination is configured by the person
 running it, and there is no default.**
 
+### Law 17 — Ask who the adversary is. If nobody named one, you are building the wrong thing.
+
+Before hardening anything, answer one question out loud: **who is the adversary, and did anyone
+ask for one?**
+
+Where the answer is *"nobody — this is a mistake we are preventing"*, build the thing that
+prevents mistakes and **stop there**. Where there genuinely is an adversary — someone who may log
+in, a hostile document, a tool acting on an approval it never got — build the control and do not
+weaken it.
+
+The tell is a rule that starts reasonable and generalises past its purpose. It always sounds like
+rigour, and it always costs the same three things: platform-specific plumbing that breaks working
+installs, a guarantee nobody asked for, and time not spent on the product.
+
+**Pantheon is an orchestration harness on machines the owner owns.** Traffic between them is
+normal. That is a statement about *reach between the operator's own boxes*, and it is never a
+statement about the auth boundary — `FORBIDDEN.md` Part 2 and `D-2026-09-01-01` stand, because
+those have a real adversary.
+
+> **Incident, twice, three days apart.** `Law 16` was nearly read as *no external capability*
+> rather than *no external default* — which would have banned the operator's own Grafana and left
+> people blind on their own hardware. The owner corrected it: *"telemetry is fine, but 'phone
+> home' to an external destination is not allowed."*
+>
+> Then `P16-16` shipped network scoping written up as a security boundary, and I filed `P16-20`
+> beside it to close the remaining hole with a network namespace or nftables rules. The owner
+> corrected that too: *"internal comms, LAN to LAN etc is totally fine. we arent building fort
+> knox. just an orchestration harness etc.."* The scoping is for **directing** the agent — it
+> stops a model list mixing the lab GPU with the production one, and it does that completely.
+> Containing a hostile run is a different problem, and on a machine already executing shell there
+> is no adversary left to contain. `P16-20` is deferred (`D-2026-09-01-03`).
+>
+> Both times the engineering was sound and the *premise* was not. That is the failure this law
+> catches, and it is not caught by testing harder.
+
 ---
 
 ## Before you start a task

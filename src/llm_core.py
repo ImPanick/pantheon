@@ -1,4 +1,5 @@
 # src/llm_core.py
+import contextvars
 import httpx
 import asyncio
 import copy
@@ -2621,6 +2622,13 @@ async def llm_call_async(
                 f"POST {target_url} could not be configured: {e}",
             )
 
+# `P4-25` — one run_config row per turn, not one per round. A ContextVar rather
+# than a module global: two concurrent turns each need their own answer, and a
+# global would let the first turn of a busy minute suppress everyone else's.
+_run_config_recorded: "contextvars.ContextVar[bool]" = contextvars.ContextVar(
+    "pantheon_run_config_recorded", default=False)
+
+
 def _stream_target_url(url: str) -> str:
     provider = _detect_provider(url)
     if provider == "anthropic":
@@ -2638,6 +2646,26 @@ async def stream_llm(url: str, model: str, messages: List[Dict], temperature: fl
                      tools: Optional[List[Dict]] = None, session_id: Optional[str] = None,
                      tool_choice_none: bool = False, workload: str = "foreground"):
     target_url = _stream_target_url(url)
+    # `P4-25` — the resolved sampling parameters and the tool schemas the model
+    # is actually shown. Recorded here because this is where they are RESOLVED:
+    # defaults merged, caps applied, the tool list assembled. A receipt built
+    # from what the caller intended would record the wrong thing on every path
+    # that adjusts either, and several do.
+    #
+    # Once per run: `record_run_config` writes one row, and a turn that streams
+    # ten rounds should not write ten copies of the same configuration.
+    try:
+        from src.events import record_run_config, current_run_id
+        if current_run_id() and not _run_config_recorded.get():
+            _run_config_recorded.set(True)
+            record_run_config(
+                sampling={"temperature": temperature, "max_tokens": max_tokens},
+                tools=tools or [],
+                session_id=session_id,
+            )
+    except Exception:
+        pass   # a receipt is never worth a failed reply
+
     async with _local_model_slot(target_url, model, workload):
         async for chunk in _stream_llm_inner(
             url,

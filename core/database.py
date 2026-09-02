@@ -975,6 +975,12 @@ class Event(Base):
     # to look, not five.
     kind       = Column(String, nullable=False, default="llm_round")
     session_id = Column(String, nullable=True)      # NOT a FK — see above
+    # One turn's worth of events share a run_id (`P4-25`). A receipt is every
+    # row with the same one: the config that was resolved, the rounds that ran,
+    # the tools that were called, the approvals that were asked for. That is why
+    # this is a column rather than a key inside `detail` — a receipt is a range
+    # scan, and JSON extraction in SQLite is neither indexable nor pleasant.
+    run_id     = Column(String, nullable=True, index=True)
     owner      = Column(String, nullable=True, index=True)
     # What the event is ABOUT, when that is not a model: the tool that ran, the
     # store that was searched, the capability that was approved. Added by
@@ -1043,7 +1049,7 @@ class Memory(Base):
     )
 
 def _migrate_add_events_name_column():
-    """Add `name` to events (`P14-02`).
+    """Add `name` and `run_id` to events (`P14-02`, `P4-25`).
 
     `Base.metadata.create_all` creates missing TABLES; it never alters an
     existing one. `events` shipped in `P14-01` one commit earlier, so an install
@@ -1065,8 +1071,13 @@ def _migrate_add_events_name_column():
         if "name" not in columns:
             conn.execute("ALTER TABLE events ADD COLUMN name TEXT")
             logging.getLogger(__name__).info("Migrated: added 'name' to events")
+        if "run_id" not in columns:
+            conn.execute("ALTER TABLE events ADD COLUMN run_id TEXT")
+            logging.getLogger(__name__).info("Migrated: added 'run_id' to events")
         conn.execute("CREATE INDEX IF NOT EXISTS ix_events_kind_name_ts "
                      "ON events(kind, name, ts)")
+        conn.execute("CREATE INDEX IF NOT EXISTS ix_events_run_id "
+                     "ON events(run_id)")
         conn.commit()
     except Exception as e:
         logging.getLogger(__name__).warning(f"events.name migration failed: {e}")

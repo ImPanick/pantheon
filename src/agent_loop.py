@@ -2901,6 +2901,24 @@ def _build_system_prompt(
                     max_items=_skill_max_injected,
                     min_confidence=_skill_min_conf,
                 ) if _skill_max_injected > 0 else []
+                # `P4-25` — which skills were injected, and at what confidence.
+                # Recorded after selection rather than at the call site, because
+                # the threshold and max_items are applied here: what a receipt
+                # needs is what the model was SHOWN, not what matched.
+                try:
+                    from src.events import record_run_config
+                    if relevant_skills:
+                        # No `session_id` here: `_build_system_prompt` does not
+                        # take one. The first draft passed it anyway and the
+                        # `except` below swallowed the NameError — guarded code
+                        # that never ran and never said so, which is worse than
+                        # code that fails. The receipt is keyed on `run_id`, and
+                        # the session is filled in from the other rows of the
+                        # same run.
+                        record_run_config(skills=relevant_skills, owner=owner)
+                except Exception:
+                    pass   # a receipt is never worth a failed run
+
                 lines = [""]
                 if relevant_skills:
                     # Bump the "uses" counter on every skill we actually surface

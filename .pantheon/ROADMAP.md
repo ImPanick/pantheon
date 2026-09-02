@@ -10,7 +10,7 @@
 > goes in, and then `python3 .pantheon/check-tracker.py` runs. A tracker updated
 > *sometimes* is worse than no tracker, because people trust it.
 >
-> The other fifteen laws are in `AGENTS.md`. Eight of them are anti-drift laws, and each
+> The other sixteen laws are in `AGENTS.md`. Nine of them are anti-drift laws, and each
 > one cites the incident that produced it.
 
 **This file is the only place work is tracked.** One list, one progress area. There are
@@ -59,7 +59,7 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P1 | Token layer — the free wins | 14 | 8 | 0 | **6** |
 | P2 | Un-nerf | 26 | 12 | 0 | **14** |
 | P3 | Mechanical hygiene | 20 | 15 | **2** | **3** |
-| P4 | The wire — the real glass box | 28 | 28 | 0 | 0 |
+| P4 | The wire — the real glass box | 28 | 27 | 0 | **1** |
 | P5 | Trace & composer restyle | 17 | 17 | 0 | 0 |
 | P6 | Queue & Plan | 18 | 1 | 0 | **17** |
 | P7 | Trust ladder & control plane | 12 | 7 | **1** | **4** |
@@ -72,7 +72,7 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P14 | Measurement | 7 | 4 | 0 | **3** |
 | P15 | Outbound politeness | 12 | 5 | **1** | **6** |
 | P16 | Self-hosted by default | 20 | 2 | 0 | **18** |
-| **Total** | | **329** | **215** | **9** | **105** |
+| **Total** | | **329** | **214** | **9** | **106** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -97,7 +97,7 @@ Ten of its rows landed on 2026-08-27 — see § Progress. What is left of it:
 - **`P0-21b`, `P0-31`** — new, from the run: twelve bundled packages with no notice anywhere, and
   49 unaudited `ody-` storage-key hits.
 
-### Next: `P14-03` (eval harness), then `P16-19`. `P12-08` waits on `P12-07`; `P15-07` on the owner
+### Next: `P4-26` (re-run a receipt) — it unblocks `P14-03`. Then `P16-19`. `P15-07` waits on the owner
 
 **`P16-05` is the last zero-configuration leak**, and the only one that is not a one-liner: the
 embedding model is pulled from HuggingFace on the *first chat message*, because
@@ -222,6 +222,36 @@ location was wrong until it was corrected on the row itself; the row is right no
 *The one progress area. Newest first. One entry per completed section — two lines, a
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
+
+### P4-25 — the three things that explain why two runs differ
+`ac53d94..HEAD`. **Suite 6,617 → 6,638 passing, the same 19 failing.**
+
+Re-measured before building, as the row's own corrected premise demands. It said five of eight items
+persist; after `P14-01` and `P14-02`, **seven** do — the loop instrumentation picked up approvals and
+tool outcomes on its way past. The remainder is exactly three, and they are the three that explain
+why two runs of the same thing come out different: **resolved sampling parameters, the tool schemas
+actually sent, and which skills were injected at what confidence.**
+
+**No third store.** `events` gains a `run_id`, one `run_config` row per turn holds the three, and a
+receipt is a range scan over rows that were already being written.
+
+**Tool schemas are name + hash, not the schemas.** The point is to make a *change* visible; full
+schemas are kilobytes each and dozens per turn, and `P4-28`'s diff reads a changed hash exactly as
+well as a changed blob. Order-independent, because a shuffled tool list is not a different
+configuration and a diff that claims otherwise gets ignored.
+
+**No message content reaches a receipt** — which is the whole of what makes `P4-27` possible. Sampling
+is an allowlist, because the payload it filters contains the prompt.
+
+**`B32`, caught before it shipped:** the skills capture referenced a name that isn't in scope there,
+and the `except Exception` that keeps a receipt from breaking a reply would have swallowed the
+`NameError` forever — recording nothing, silently. The guard that makes instrumentation safe is the
+same guard that makes broken instrumentation invisible. There is an AST test resolving every name at
+that call site now.
+
+**And `P14-03` is blocked, checked rather than assumed.** `P14-04` says a saved case *is* a receipt
+and a run *is* a re-run. Building a case store now would be the second scaffolding that row exists to
+prevent. `P4-26` is the real prerequisite.
 
 ### P14-05 — what did last Tuesday cost
 `3fed404..HEAD`. **Suite 6,598 → 6,617 passing, the same 19 failing.**
@@ -2137,13 +2167,14 @@ serialised, sent to the browser and never read.** None of this needs backend wor
 The wire already computes model, parameters, tools offered, skills injected and RAG hits, then
 discards them. A receipt is that data kept instead of thrown away.
 
-- [ ] **P4-25** **Capture a receipt per agent run** — model and endpoint, resolved sampling
+- [x] **P4-25** **Capture a receipt per agent run** — model and endpoint, resolved sampling
   parameters, the tool schemas actually sent, which skills were injected and at what confidence,
   which memories and documents were retrieved, round count, token usage, and every approval
   decision with its outcome. **Premise corrected 2026-08-27.** **"All on the wire, none kept" is wrong in both
   directions.** Five of the eight items already persist (`routes/chat_helpers.py:1044-1070`), so a
   fresh receipt table would duplicate them — `Law 14`. Three are neither on the wire nor kept,
   and those are the actual work: **extend what persists, do not start a second store.**
+  — **done 2026-09-02, and the premise was re-measured before building.** The 2026-08-27 correction said five of the eight items persist; measured again after `P14-01`/`P14-02`, **seven do** — the loop instrumentation added approvals and tool outcomes on its way past. The remainder is exactly three, and they are the three that explain why two runs of *the same thing* differ: **resolved sampling parameters, the tool schemas actually sent, and which skills were injected at what confidence.** **No third store** (`Law 14`): `events` gains a `run_id` column and one `run_config` row per turn holds those three; everything else was already being written. **A receipt is a range scan on `run_id`** — which is why it is a column and not a key inside `detail`, since JSON extraction in SQLite is neither indexable nor pleasant. **Tool schemas are stored as name + a 16-char hash, not in full.** The point of recording them is to make a *change* visible; full schemas are kilobytes each and dozens per turn, and `P4-28`'s diff reads a changed hash exactly as well as a changed blob. Fingerprints are order-independent, because a tool list that arrives shuffled is not a different configuration and a diff that says so will be ignored. **Sampling is an allowlist**, same reason as `P16-14`'s settings — a denylist keeps whatever it did not think of, and the payload it is filtering contains the prompt. **No message content reaches a receipt**, which is what makes `P4-27` possible at all: one you cannot hand to someone is not portable. Captured where the values are **resolved** — inside `_stream_llm`, after defaults are merged and caps applied, and after the skill threshold is applied — because a receipt built from what the caller intended records the wrong thing on every path that adjusts either, and several do. Once per turn via a `ContextVar`, not a module global: a global would let the first turn of a busy minute suppress everyone else's. Served at `/api/diagnostics/receipt/{run_id}`. 21 tests, 7 mutations. **A bug caught during the build and worth naming (`B32`):** the skills capture passed `session_id`, which `_build_system_prompt` does not take — and the `except Exception` around it would have swallowed the `NameError` forever. **Guarded code that never runs and never says so is worse than code that fails.** There is now an AST test that resolves every name at that call site against the enclosing function's parameters.
 - [ ] **P4-26** **Make a receipt re-runnable.** Same inputs, same configuration, new run —
   which is the only honest way to answer "did that change help". `Depends:` P4-25.
 - [ ] **P4-27** **Make a receipt portable.** One file, exportable, readable by a person who was
@@ -2820,6 +2851,7 @@ nothing ever recorded the event.
 - [ ] **P14-03** **An eval harness.** Save a set of cases, run them against a configuration,
   get a number. Nothing in this codebase does that today: every prompt change, model swap, skill edit and
   retrieval tweak in this codebase is currently evaluated by vibes.
+  **Blocked on `P4-26`, checked 2026-09-02 rather than assumed.** `P14-04` says a saved case *is* a receipt and a run *is* a re-run — `Law 14`, no second scaffolding — so building a case store now would create exactly the fork that row exists to prevent. `P4-25` (capture) is **done**; `P4-26` (re-run the same inputs against the same configuration) is the actual prerequisite, and it is what turns a receipt into a case. Order is `P4-26` → `P14-03` → `P14-04`, and nothing about that is a judgement call.
 - [ ] **P14-04** **Wire eval to receipts.** A saved case is a receipt (`P4-27`); a run is a
   re-run (`P4-26`); a result is a diff (`P4-28`). Law 14 — no second scaffolding.
 - [x] **P14-05** **Usage over time, per model and per owner.** The question that started this
@@ -3018,6 +3050,7 @@ fact; then losing their data; then hiding capability they own.*
 - [x] **B29** **`usage_summary` loaded every event in the window into Python to add integers.** `for e in q.all()` on a table whose entire design is *this accumulates*: 90 days of heavy use is hundreds of thousands of ORM objects instantiated to compute six numbers. — found during `P14-02`, reviewing `P14-01` — **fixed:** aggregated in SQL with `count`/`sum` and one `GROUP BY`. The test captures statements at the driver, so it cannot pass by reading the source. — agent: `opus-5`
 - [x] **B30** **The scrape endpoint would have turned Prometheus into a load generator against the operator's embedding server.** `render_metrics` called `run_self_checks()` on every scrape; `embedding_availability` calls `get_embedding_client()`, which performs a **real HTTP health check**. The process latch in `embeddings.py` only suppresses that after a *failure* — on a healthy install the probe runs every call. At a 15-second scrape that is **240 requests an hour, forever, as a side effect of being monitored**: precisely the defect `P16-12` refuses liveness probing to avoid, arriving one layer down where the module's own test for it could not see it. — found during `P16-12`'s correction pass, before it had run anywhere — **fixed:** a 60-second TTL cache, `pantheon_self_check_age_seconds` so a cached reading is never mistaken for a live one, and a test that stubs `socket` and fails any collector that reaches the network. *(The first expiry test was vacuous — it asserted the cache timestamp was non-zero, which stays true forever after the first fetch, so raising the TTL to a billion seconds passed it. It counts fetches across the boundary now.)* — agent: `opus-5`
 - [x] **B31** **A test sliced *everything between two functions I know about* and blamed the wrong panel.** `test_the_panel_does_not_build_markup_from_strings` (mine, from `P16-15`) took `admin.js` from `loadSelfChecks` to `loadLogs` and asserted no `innerHTML` in between. `P14-05` added a panel in that gap and the test went red for code that was not the self-checks' — and it failed on a **comment** reading *"textContent, never innerHTML"*, which is the docstring-read-as-code trap for the third time. — found during `P14-05` — **fixed:** brace-matched extraction of the one function's body, comments stripped, plus an assertion that the slice still contains code so it cannot pass by matching nothing. Verified by mutation: an `innerHTML` put back inside `loadSelfChecks` still turns it red. — agent: `opus-5`
+- [x] **B32** **A `try/except` would have swallowed a `NameError` forever.** The `P4-25` skills capture in `src/agent_loop.py` passed `session_id=session_id`, and `_build_system_prompt` does not take a `session_id` — so every run would have raised `NameError`, been caught by the `except Exception: pass` that exists to keep a receipt from breaking a reply, and recorded **nothing**, silently, for as long as anyone cared to look. The guard that makes instrumentation safe is the same guard that makes broken instrumentation invisible. — found during `P4-25`, before it shipped — **fixed:** the argument is dropped (the receipt is keyed on `run_id` and the session comes from the other rows), plus an AST test that resolves every name at that call site against the enclosing function's parameters. — agent: `opus-5`
 - [ ] **B01** **The datastore image is unpinned.** `chromadb/chroma:latest` in all three
   compose files, and `binwiederhier/ntfy` with no tag at all in the same three. A
   breaking Chroma release lands on the next `--build` and the collections stop loading —

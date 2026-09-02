@@ -140,6 +140,23 @@ def setup_diagnostics_routes(
         result["over_time"] = usage_over_time(days=days, owner=owner or None)
         return result
 
+    @router.get("/api/diagnostics/receipt/{run_id}")
+    async def get_receipt(request: Request, run_id: str) -> Dict[str, Any]:
+        """Everything one turn did (`P4-25`).
+
+        Assembled from rows that already exist — the config `P4-25` had to add,
+        plus the rounds, tool calls, retrievals and approvals `P14-01` and
+        `P14-02` were already writing. It is a range scan on `run_id`, not a
+        second store (`Law 14`).
+
+        No message content: a receipt says which model, which tools, which
+        skills, how many rounds and what they cost. That is what makes it
+        portable (`P4-27`) — a receipt you cannot hand to someone is not one.
+        """
+        require_admin(request)
+        from src.events import receipt
+        return receipt(run_id)
+
     @router.get("/api/diagnostics/bundle")
     async def get_diagnostic_bundle(
         request: Request, note: str = "", log_limit: int = 120
