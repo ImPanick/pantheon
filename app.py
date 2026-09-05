@@ -1270,6 +1270,15 @@ async def _startup_event():
     from src.cookbook_serve_lifecycle import cookbook_serve_lifecycle_loop
     _startup_tasks.append(asyncio.create_task(cookbook_serve_lifecycle_loop()))
 
+    # OTLP metrics push (`P16-19`) — the push half of `P16-12`, for a Pantheon
+    # a collector cannot scrape into. The loop is unconditional and the WORK is
+    # not: it wakes, reads `otlp_endpoint`, and goes back to sleep unless the
+    # operator has set one. Gating the task on a setting read at startup would
+    # mean turning the exporter on needed a restart, and the shipped state is
+    # off, so that is the state that must be cheap to leave.
+    from src.otlp_export import push_loop as _otlp_push_loop
+    _startup_tasks.append(asyncio.create_task(_otlp_push_loop()))
+
     logger.info("Application startup complete")
 
 async def _shutdown_event():

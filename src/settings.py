@@ -108,6 +108,33 @@ DEFAULT_SETTINGS = {
     #
     # Falsy, so PANTHEON_METRICS_ENABLED is genuinely reachable beneath it.
     "metrics_enabled": False,
+    # Push the same readings to the operator's OWN collector (`P16-19`).
+    #
+    # SHIPS EMPTY, AND EMPTY IS ENFORCED, NOT MERELY INTENDED:
+    # `.pantheon/check-destinations.py` fails the build if a destination-shaped
+    # key is truthy. This is the first legitimate outbound address in the
+    # product, so it is the first place a well-meant default could land.
+    #
+    # The address IS the switch — there is no separate on/off boolean, because a
+    # second control can disagree with the first and the failure it enables
+    # (enabled, blank, operator waiting) is worse than the one it prevents.
+    #
+    # Falsy, so PANTHEON_OTLP_ENDPOINT beneath it is genuinely reachable (H06,
+    # B20). Either the base URL or the full `/v1/metrics` one; both are taken.
+    "otlp_endpoint": "",
+    # Seconds between pushes. Floored at 10 in code — the loop is the one
+    # request in the product that fires whether or not anyone is watching, and
+    # a one-second metrics tick is a self-inflicted rate limit (`P15`).
+    "otlp_interval_seconds": 60,
+    # Headers the operator's collector requires, e.g. an API key. Values are
+    # never logged; a metrics exporter that prints its own credentials into the
+    # application log has moved the secret somewhere handled less carefully than
+    # the settings store it came from.
+    "otlp_headers": {},
+    # OTLP resource attributes, merged over `service.name` and `service.version`.
+    # This is where `service.instance.id` goes if several Pantheons report to
+    # one collector — the product does not invent an identity for the operator.
+    "otlp_resource_attributes": {},
     # Named network segments (`P16-16`). Ships EMPTY, and empty means "behave
     # exactly as before": nothing is declared, nothing is scoped, and every
     # existing path runs unchanged.

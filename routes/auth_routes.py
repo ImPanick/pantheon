@@ -737,6 +737,10 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         _INT_RANGES = {
             "agent_max_rounds": (1, 200),
             "agent_max_tool_calls": (0, 1000),  # 0 = unlimited
+            # `P16-19`. The exporter floors this itself; clamping here too keeps
+            # the STORED value and the EFFECTIVE value the same number, so the
+            # settings page never shows a `1` that is really a `10`.
+            "otlp_interval_seconds": (10, 86400),
         }
         # Per-key validation for settings whose values are a closed set. A
         # security setting must not be *quietly* rejected: `coerce_trust_rung`
@@ -748,6 +752,12 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         _ENUMS = {
             "trust_rung": tuple(rung.value for rung in TrustRung),
         }
+        # Settings whose value must be a map of strings. `otlp_headers` given a
+        # list is *ignored* by the exporter rather than refused, which is the
+        # same defect as the enum above wearing different clothes: a 200, the
+        # operator's value echoed back, and a collector that never gets an auth
+        # header. (`P16-19`)
+        _STRING_MAPS = ("otlp_headers", "otlp_resource_attributes")
         for key in DEFAULT_SETTINGS:
             if key in RETIRED_SETTING_KEYS:
                 continue
@@ -768,6 +778,27 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
                 except (TypeError, ValueError):
                     raise HTTPException(400, f"{key} must be an integer")
                 val = max(lo, min(val, hi))
+            if key in _STRING_MAPS:
+                if not isinstance(val, dict) or not all(
+                        isinstance(k, str) and isinstance(v, (str, int, float, bool))
+                        for k, v in val.items()):
+                    raise HTTPException(400, f"{key} must be a map of names to values")
+                val = {k: str(v) for k, v in val.items()}
+            if key == "otlp_endpoint":
+                # `P16-19`. Empty is the shipped state and means "no push". A
+                # non-empty value that will not parse must be refused HERE: the
+                # push loop only logs a warning and carries on, so accepting a
+                # typo returns 200, echoes it back, and leaves the operator
+                # watching a collector that will never receive anything. Same
+                # reasoning as `trust_rung` above — a setting that does nothing
+                # must not answer as though it did.
+                val = (val or "").strip() if isinstance(val, str) else ""
+                if val:
+                    from src.otlp_export import normalise_endpoint
+                    try:
+                        normalise_endpoint(val)
+                    except ValueError as e:
+                        raise HTTPException(400, f"otlp_endpoint: {e}")
             current[key] = val
         _save_settings(current)
         return without_retired_settings(current)

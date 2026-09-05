@@ -678,3 +678,36 @@ install in ways that look like the product is broken rather than the sandbox.
 first, when "no external dependence" nearly became "no capability"): the question is always *who is
 the adversary, and did anyone ask for one?* Where the answer is "nobody, this is a mistake we are
 preventing", build the thing that prevents mistakes and stop there.
+
+---
+
+## D-2026-09-05-01 — the address is the switch; there is no `otlp_enabled`
+
+`P16-19` ships the metrics push exporter with exactly one control: `otlp_endpoint`, a string that
+ships empty. There is no separate boolean beside it, and this records why — because adding one is
+the obvious "improvement", and the next agent to look at this will want to.
+
+**The argument for a second switch.** An operator who wants to pause pushing without losing their
+collector's address has nowhere to put that intent. They must clear the field, keep the URL
+somewhere else, and paste it back. That is a real cost and it is the whole case against this
+decision.
+
+**The argument that wins.** Two controls can disagree, and the disagreement is silent in the
+direction that matters. `otlp_enabled: true` with a blank address is an operator watching a
+dashboard that will never populate, with nothing anywhere saying why — the failure mode `P16-12`
+and `P16-19` exist to eliminate. The reverse pairing, an address with the feature off, at least
+produces a question the operator can answer by looking at one field.
+
+**And the empty default is not merely a default.** `.pantheon/check-destinations.py` enforces that
+destination-shaped keys ship falsy, for `Law 16` clause 4 (`D-2026-08-31-01`), *and* the falsiness
+is what keeps `PANTHEON_OTLP_ENDPOINT` reachable beneath it — a truthy default makes the env layer
+dead code (`H06`, `B20`). A boolean beside it would be a third thing that has to stay consistent
+with both of those, for a convenience that is one paste.
+
+**`Law 14` is the general form**: the address already answers the question the boolean would ask.
+Where an existing field's *value* fully determines a behaviour, a flag that repeats it is not a
+control, it is a second source of truth.
+
+**What would reopen this**: an operator asking for it, having actually used the exporter. Not a
+reviewer's intuition that features have on/off switches, and not symmetry with `metrics_enabled` —
+that one is a genuine boolean because a scrape endpoint has no address to be empty.

@@ -15,8 +15,11 @@ capping a provider the user paid for is the mistake `P2` exists to undo.
 """
 import os
 import sys
+from pathlib import Path
 
 import pytest
+
+ROOT = Path(__file__).resolve().parent.parent
 
 
 @pytest.fixture(scope="module")
@@ -154,22 +157,70 @@ def test_no_analytics_or_crash_reporting_endpoint_is_compiled_in():
     assert not hits, "a telemetry collector host appears in shipped code:\n  " + "\n  ".join(hits[:10])
 
 
+def _destination_key_rule():
+    """The shape rule from `.pantheon/check-destinations.py`, imported not copied.
+
+    `P16-19` found this test wrong in both directions at once. It matched any
+    key CONTAINING one of five topic words, so `otlp_interval_seconds` — a
+    number of seconds — was read as a destination and had to be empty. And
+    because it matched on topic rather than on shape, `grafana_target` or
+    `metrics_push_url` would have sailed past, which is the failure the
+    checker's own docstring already names as the pytest guard's weakness.
+
+    Loading the checker's regex means the two cannot drift apart, and a future
+    suffix added there is enforced here on the same commit.
+    """
+    import importlib.util
+    path = ROOT / ".pantheon" / "check-destinations.py"
+    spec = importlib.util.spec_from_file_location("_check_destinations", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.DESTINATION_KEY
+
+
+_TELEMETRY_WORDS = ("telemetry", "analytics", "otlp", "collector", "metrics_endpoint")
+
+
 def test_no_telemetry_destination_ships_pre_filled(defaults):
-    """`P16-12` may add these keys. When it does, empty is the only correct value.
+    """`P16-12` and `P16-19` added these keys. Empty is the only correct value.
 
     An empty destination is not a disabled feature here -- it is the shipped
-    state the law requires. This test passes today because the keys do not exist
-    yet, and keeps passing only while whoever adds them ships them empty.
+    state the law requires, and for `otlp_endpoint` it is also what keeps
+    `PANTHEON_OTLP_ENDPOINT` reachable beneath it (`H06`, `B20`).
+
+    Two rules, because one is not enough. A key is checked if it is
+    DESTINATION-SHAPED by the checker's own suffix rule, or if it is a STRING
+    on a telemetry-adjacent topic. An interval, a header map or a boolean on
+    such a topic is not an address and is left alone — the previous version of
+    this test did not draw that line and failed on a number of seconds.
     """
+    shaped = _destination_key_rule()
     suspects = [
         k for k in defaults
-        if any(w in k.lower() for w in ("telemetry", "analytics", "otlp", "collector", "metrics_endpoint"))
+        if shaped.search(k)
+        or (isinstance(defaults[k], str)
+            and any(w in k.lower() for w in _TELEMETRY_WORDS))
     ]
+    assert "otlp_endpoint" in suspects, "the rule stopped covering the one real destination"
     for key in suspects:
         value = defaults[key]
         assert value in ("", None, False, [], {}), (
             f"{key} ships as {value!r}; a telemetry destination must ship empty (Law 16 clause 4)"
         )
+
+
+def test_the_destination_rule_is_about_shape_not_topic():
+    """The half the old word-list missed. `grafana_target` names no vendor and
+    contains none of the five words, and it is exactly the shape a shipped
+    address would take."""
+    shaped = _destination_key_rule()
+    for shaped_key in ("grafana_target", "metrics_push_url", "otlp_endpoint",
+                       "stats_collector", "reporting_webhook"):
+        assert shaped.search(shaped_key), f"{shaped_key} is not recognised as a destination"
+    for not_a_destination in ("otlp_interval_seconds", "otlp_headers",
+                              "metrics_enabled", "events_retention_days"):
+        assert not shaped.search(not_a_destination), \
+            f"{not_a_destination} is not an address and must not be forced empty"
 
 
 def test_the_law_records_that_telemetry_itself_is_allowed():

@@ -431,3 +431,77 @@ def test_registered_in_all_five_places():
     assert "PANTHEON_METRICS_ENABLED" in (ROOT / ".env.example").read_text(encoding="utf-8")
     for f in ("docker-compose.yml", "docker-compose.gpu-amd.yml", "docker-compose.gpu-nvidia.yml"):
         assert "PANTHEON_METRICS_ENABLED" in (ROOT / f).read_text(encoding="utf-8"), f
+
+
+# ---------------------------------------------------------------------------
+# `P16-19` — the second wire format reads the same collectors
+# ---------------------------------------------------------------------------
+
+def test_the_structured_reading_and_the_text_reading_are_the_same_reading():
+    """`P16-19` pushes what `P16-12` serves. If the two ever drift, an operator
+    running both sees two dashboards disagreeing about what the system did and
+    has to work out which one is lying.
+
+    Asserted by re-rendering the text FROM the samples and comparing to the
+    text the module produced — not by counting lines, which any two lists of
+    the same length would satisfy.
+    """
+    out = mx._assemble()
+    text = out.render()
+    samples, metadata = out.samples(), out.metadata()
+
+    value_lines = [ln for ln in text.splitlines() if ln and not ln.startswith("#")]
+    assert len(samples) == len(value_lines)
+    for (name, value, labels), line in zip(samples, value_lines):
+        assert mx._line(name, value, labels) == line
+
+    # Every emitted name is declared, and every declaration is a gauge — the
+    # push serialises `gauge` unconditionally, so a counter appearing here
+    # would be silently mislabelled at the collector.
+    for name, _v, _l in samples:
+        assert name in metadata, f"{name} emitted without a HELP/TYPE declaration"
+        assert metadata[name][0] == "gauge"
+
+
+def test_out_hands_out_a_copy_rather_than_its_live_accumulator():
+    """Tested on the unit, not through `collect_metrics`.
+
+    `_assemble()` builds a fresh `_Out` per call, so a caller mutating what
+    `collect_metrics()` returned could never corrupt the *next* call — a test
+    written at that level passes with the copy removed and proves nothing. The
+    hazard is one level down: `_Out` is now the shared accumulator between two
+    renderers, and a caller that holds one and edits `samples()` would silently
+    change what `render()` emits.
+    """
+    out = mx._Out()
+    out.metric("m", "gauge", "help")
+    out.add("m", 1, {"a": "b"})
+    baseline = out.render()
+
+    out.samples().append(("injected", 99, {}))
+    out.metadata()["injected"] = ("counter", "")
+
+    assert out.render() == baseline
+    assert [n for n, _, _ in out.samples()] == ["m"]
+    assert "injected" not in out.metadata()
+
+
+def test_the_push_exporters_own_health_is_on_the_SCRAPE():
+    """When the push is failing, the pushed copy of this metric is exactly the
+    one that does not arrive. A pull endpoint is where you find out that the
+    pull endpoint is not the problem."""
+    body = mx.render_metrics()
+    assert "pantheon_otlp_configured 0" in body
+    assert "pantheon_otlp_consecutive_failures" in body
+
+
+def test_a_never_successful_push_reports_no_age_at_all():
+    """`B28`: a `0` age reads as *a second ago*, which is the opposite of
+    *never*, and an alert on staleness would never fire."""
+    from src import otlp_export
+    otlp_export._reset_status_for_tests()
+    body = mx.render_metrics()
+    assert "# TYPE pantheon_otlp_last_success_age_seconds gauge" in body
+    values = [ln for ln in body.splitlines()
+              if ln.startswith("pantheon_otlp_last_success_age_seconds")]
+    assert values == [], f"an age was reported before any push succeeded: {values}"

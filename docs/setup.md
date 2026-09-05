@@ -848,6 +848,69 @@ diagnostics panel, where a person asks for it.
 
 ---
 
+### Metrics, pushed — when your collector cannot reach in
+
+The section above is *pull*: your Prometheus asks, Pantheon answers. That covers
+most installs. It does not cover a Pantheon behind NAT, or on one of the
+[parallel networks](#parallel-networks--declaring-segments-and-scoping-a-run-to-one) your collector has no route into. For
+those, Pantheon can push the same readings to an OpenTelemetry collector you run.
+
+**One address, and it ships empty.**
+
+```
+PANTHEON_OTLP_ENDPOINT=http://otel.lan:4318
+```
+
+Either the base URL or the full `http://otel.lan:4318/v1/metrics`; the signal
+path is appended only when it is not already there, because both spellings are
+common and guessing wrong costs a `404` you would have no way to see.
+
+**The address is the switch.** There is no separate on/off setting. No address,
+no push — and the shipped value is empty, enforced by CI rather than intended:
+`.pantheon/check-destinations.py` fails the build if a destination-shaped default
+is non-empty. This is the first legitimate outbound address in the product, so it
+is also the first place a well-meant default could hide. `Law 16` clause 4 says
+telemetry is fine and *phoning home* is not; the difference is entirely who owns
+the address, and this way the answer can only be you.
+
+| Setting | Default | What it does |
+|---|---|---|
+| `otlp_endpoint` | *(empty)* | Your collector. Also `PANTHEON_OTLP_ENDPOINT` |
+| `otlp_interval_seconds` | `60` | Floored at 10, plus up to 10% jitter |
+| `otlp_headers` | `{}` | Whatever your collector wants for auth. Never logged |
+| `otlp_resource_attributes` | `{}` | Merged over `service.name` and `service.version` — put `service.instance.id` here if several Pantheons share a collector |
+
+**It is the same numbers, under the same names.** The push does not have its own
+collectors; it serialises what the scrape would have served. Two exporters with
+two sets of collectors is how a dashboard ends up disagreeing with itself, and
+renaming `pantheon_scrape_duration_seconds` for the push path would silently
+halve the series for anyone running both.
+
+**OTLP/HTTP with a JSON body, over `httpx` — no OpenTelemetry SDK.** The payload
+is a handful of nested keys. The SDK brings a dependency tree, its own background
+processor, and a constructor whose default endpoint is a real address, which is
+three things to audit in exchange for serialising a dict.
+
+**Watch the exporter on the scrape endpoint, not in the pushed data.** When the
+push is failing, the pushed copy of its health metric is exactly the one that
+does not arrive.
+
+| Metric | What it tells you |
+|---|---|
+| `pantheon_otlp_configured` | `0` is the shipped state, not a fault |
+| `pantheon_otlp_consecutive_failures` | Alert on this. Resets to 0 on any success |
+| `pantheon_otlp_points_last_push` | Size of the last accepted batch |
+| `pantheon_otlp_points_rejected` | Points your collector answered `200` for and then discarded — OTLP reports a partly-rejected batch as a success with a `partialSuccess` body, so a status check alone would call that delivered |
+| `pantheon_otlp_last_success_age_seconds` | **Absent** until a push succeeds. Not `0`, which would read as *just now* |
+
+**The push goes through the same outbound limiter as everything else**, so it
+inherits `P16-16` network scoping and backs off when your collector rate-limits
+it. A metrics push on a timer is the one request in the product guaranteed to
+keep firing whether or not anybody is watching, which is exactly the shape the
+limiter exists for.
+
+---
+
 ### What self-hosted search does and does not mean
 
 Worth being plain about, because the phrase promises more than it delivers.

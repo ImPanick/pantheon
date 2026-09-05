@@ -70,24 +70,41 @@ class _Out:
     parse error in strict scrapers, and the natural way to write this — emit the
     header beside each value — produces exactly that as soon as a metric has two
     label sets.
+
+    Since `P16-19` it also keeps the values in structured form. That is the
+    whole of what the push exporter needed: the collectors below are the only
+    thing that knows where a number comes from, and writing a second set of
+    them for a second wire format is how two exporters start disagreeing about
+    what the system did. The text lines are still built here as they always
+    were, so the scrape body is byte-for-byte what it was before.
     """
 
     def __init__(self) -> None:
         self._lines: List[str] = []
         self._declared: set = set()
+        self._meta: Dict[str, Tuple[str, str]] = {}
+        self._samples: List[Tuple[str, Any, Dict[str, Any]]] = []
 
     def metric(self, name: str, kind: str, help_text: str) -> None:
         if name in self._declared:
             return
         self._declared.add(name)
+        self._meta[name] = (kind, help_text)
         self._lines.append(f"# HELP {name} {help_text}")
         self._lines.append(f"# TYPE {name} {kind}")
 
     def add(self, name: str, value: Any, labels: Optional[Dict[str, Any]] = None) -> None:
+        self._samples.append((name, value, dict(labels or {})))
         self._lines.append(_line(name, value, labels))
 
     def render(self) -> str:
         return "\n".join(self._lines) + "\n"
+
+    def samples(self) -> List[Tuple[str, Any, Dict[str, Any]]]:
+        return list(self._samples)
+
+    def metadata(self) -> Dict[str, Tuple[str, str]]:
+        return dict(self._meta)
 
 
 def _event_window(db, Event, kind: str, since):
@@ -305,6 +322,39 @@ def _collect_queue_depth(out: _Out) -> None:
         db.close()
 
 
+def _collect_otlp(out: _Out) -> None:
+    """The push exporter's own health (`P16-19`).
+
+    It belongs on the SCRAPE rather than only in the pushed batch, and that is
+    the whole reason it exists: when the push is failing, the pushed copy of
+    this metric is exactly the one that does not arrive. A pull endpoint is
+    where you find out that the pull endpoint is not the problem.
+
+    `pantheon_otlp_last_success_age_seconds` is absent, not zero, when a push
+    has never succeeded. Zero would read as *just now*, which is `B28` — a
+    "never" wearing the costume of a "just happened".
+    """
+    from src.otlp_export import status as otlp_status
+    st = otlp_status()
+    out.metric("pantheon_otlp_configured", "gauge",
+               "1 when a collector address is set. 0 is the shipped state.")
+    out.add("pantheon_otlp_configured", 1 if st.get("configured") else 0)
+    out.metric("pantheon_otlp_consecutive_failures", "gauge",
+               "Pushes that have failed in a row. 0 after any success.")
+    out.add("pantheon_otlp_consecutive_failures", int(st.get("consecutive_failures", 0) or 0))
+    out.metric("pantheon_otlp_points_last_push", "gauge",
+               "Data points in the most recent accepted push.")
+    out.add("pantheon_otlp_points_last_push", int(st.get("points_last_push", 0) or 0))
+    out.metric("pantheon_otlp_points_rejected", "gauge",
+               "Points the collector answered 200 for and then discarded.")
+    out.add("pantheon_otlp_points_rejected", int(st.get("points_rejected", 0) or 0))
+    age = st.get("last_success_age_seconds")
+    out.metric("pantheon_otlp_last_success_age_seconds", "gauge",
+               "Seconds since the last accepted push. Absent if never.")
+    if age is not None:
+        out.add("pantheon_otlp_last_success_age_seconds", age)
+
+
 def _collect_build(out: _Out) -> None:
     try:
         from src.constants import APP_VERSION
@@ -321,16 +371,22 @@ _COLLECTORS = (
     ("self_checks", _collect_self_checks),
     ("outbound", _collect_outbound),
     ("queue_depth", _collect_queue_depth),
+    ("otlp", _collect_otlp),
 )
 
 
-def render_metrics() -> str:
-    """The scrape body.
+def _assemble() -> _Out:
+    """Run every collector once, in isolation, and return what they produced.
 
     Each collector is isolated. A scrape endpoint that returns 500 because one
     subsystem is unwell is a monitoring system that goes blind exactly when it
     is needed — so a failing collector costs its own metrics and is itself
     reported, and everything else still arrives.
+
+    `P16-19` pushes the same numbers to an operator's collector. The metric
+    names below still say `scrape` on that path, and that is deliberate: one
+    number should have one name. Renaming it for the second transport would
+    give an operator running both a dashboard that silently halves.
     """
     out = _Out()
     started = time.monotonic()
@@ -349,4 +405,20 @@ def render_metrics() -> str:
     out.metric("pantheon_scrape_duration_seconds", "gauge",
                "How long this scrape took to assemble.")
     out.add("pantheon_scrape_duration_seconds", round(time.monotonic() - started, 4))
-    return out.render()
+    return out
+
+
+def render_metrics() -> str:
+    """The scrape body (`P16-12`)."""
+    return _assemble().render()
+
+
+def collect_metrics() -> Tuple[List[Tuple[str, Any, Dict[str, Any]]],
+                               Dict[str, Tuple[str, str]]]:
+    """The same reading, structured, for a transport that is not text.
+
+    `(samples, metadata)` — samples are `(name, value, labels)` in emission
+    order, metadata maps a name to `(kind, help)`. `P16-19` is the only caller.
+    """
+    out = _assemble()
+    return out.samples(), out.metadata()
