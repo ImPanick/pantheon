@@ -781,6 +781,44 @@ belongs outside the app.
 
 ---
 
+### Outbound cooldowns survive a restart
+
+When a provider tells Pantheon to stop — a `429`, a GitHub secondary-rate-limit
+`403`, a mail server rejecting a login — the limiter holds that host or account in
+a cooldown that escalates if the answer keeps coming back. Since `P15-09` those
+cooldowns are written to `data/outbound_state.json` and restored on start.
+
+**Why that is worth a section.** Before, every cooldown lived in memory. Restart
+while GitHub had you in a forty-minute penalty and Pantheon started asking again
+immediately — and a crash-loop plus a rate limit is precisely the pair that turns
+a soft ban into a permanent one. The same applied to per-mailbox IMAP penalties,
+where repeated failing logins are what providers lock accounts for.
+
+**Deadlines are stored as wall-clock time, not as the process's own clock.** The
+in-memory value is a monotonic reading, whose origin resets at boot; persisting
+that number would restore a meaningless deadline after exactly the reboot a
+crash-loop causes, while appearing to work perfectly on a machine that only
+restarted the app.
+
+The file holds nothing but a key, a deadline, a failure count and the provider's
+own message. Pacing intervals and request counters stay in memory, because they
+are re-earned in one request and because a counter that says *this process*
+should not quietly start meaning something else.
+
+**To clear a cooldown**: stop Pantheon, delete `data/outbound_state.json`, start
+it. A penalty that expired while the process was down is dropped on load rather
+than restored, so the file empties itself; a corrupt or unreadable one is ignored
+and the limiter starts clean rather than refusing to make outbound calls. A
+restored deadline is capped at 24 hours as a bound on what a moved system clock
+can do — the in-process limiter still honours a longer `Retry-After` while it is
+running.
+
+`pantheon_outbound_cooldown_seconds{host}` on the metrics endpoint is how you see
+this from outside, and it is usually the answer to "why does this feature look
+broken when nothing is broken".
+
+---
+
 ### Metrics — pointing Prometheus and Grafana at Pantheon
 
 Off by default. Turn it on with `PANTHEON_METRICS_ENABLED=1` (or the setting),

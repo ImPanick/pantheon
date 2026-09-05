@@ -112,17 +112,43 @@ import pytest as _pytest
 
 
 @_pytest.fixture(autouse=True)
-def _reset_outbound_limiter():
+def _reset_outbound_limiter(tmp_path):
+    """Reset the shared limiter, and give it a throwaway state file.
+
+    `P15-09` made cooldowns survive a restart, which means `reset()` and every
+    penalty now WRITE. Without this redirect the suite would drop thousands of
+    writes into the developer's real data directory, and — worse — a stale file
+    from a previous run would restore a cooldown into an unrelated test, giving
+    exactly the cross-test coupling the reset above exists to prevent.
+
+    The private flags are cleared too: `reset()` sets `_loaded` on purpose, so
+    that clearing a cooldown is not immediately undone by a reload, and a test
+    of the loader needs to start from a limiter that has not loaded yet.
+    """
     try:
         from src.rate_limiter import outbound
+        from src import constants as _constants
     except Exception:
         yield
         return
-    outbound.reset()
+
+    original = getattr(_constants, "OUTBOUND_STATE_FILE", None)
+    # In a SUBDIRECTORY: `tmp_path` is the test's own working directory, and a
+    # file dropped at its root breaks every test that globs or indexes it.
+    _constants.OUTBOUND_STATE_FILE = str(tmp_path / "_limiter_state" / "outbound_state.json")
+
+    def _clear():
+        outbound.reset()
+        outbound._loaded = False
+        outbound._last_written = None
+
+    _clear()
     try:
         yield
     finally:
-        outbound.reset()
+        _clear()
+        if original is not None:
+            _constants.OUTBOUND_STATE_FILE = original
 
 
 @_pytest.fixture(autouse=True)

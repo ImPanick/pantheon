@@ -1,9 +1,13 @@
 # src/rate_limiter.py
 """Generic in-memory rate limiter — sliding window, keyed by IP."""
 
+import logging
+import os
 import threading
 import time
-from typing import Dict, List
+from typing import Any, Dict, List
+
+logger = logging.getLogger(__name__)
 
 
 class RateLimiter:
@@ -221,6 +225,45 @@ def _first_signal(*values: Optional[float]) -> Optional[float]:
     return None
 
 
+# --------------------------------------------------------------------------
+# Persistence (`P15-09`) — and the clock domain is the whole row.
+# --------------------------------------------------------------------------
+#
+# `_HostState.blocked_until` is a `time.monotonic()` reading. Monotonic's origin
+# is arbitrary and per-boot; on Linux it counts from boot. Writing that number
+# to a file and reading it back in a new process compares it against a DIFFERENT
+# origin, and the resulting bug is worse than wrong — it is *selectively* wrong.
+#
+#   * Restart after a REBOOT and the restored deadline is a large number
+#     compared against a monotonic clock that has just started from zero, so
+#     every cooldown reads as still active — or, with the subtraction the other
+#     way round, as long expired. Either way the answer is unrelated to reality,
+#     and a reboot is exactly what a crash-loop produces.
+#   * Restart WITHOUT a reboot and monotonic has kept counting, so the naive
+#     version appears to work perfectly.
+#
+# So it passes on the developer's box and fails on the machine that rebooted,
+# which is the machine this row is about. The file stores a WALL-CLOCK deadline
+# and the conversion happens on both sides.
+_PERSIST_VERSION = 1
+
+# A restored cooldown is capped. This is not policy about how long a host may
+# block us — `observe` will honour a `Retry-After` of any length in-process. It
+# is a bound on how much damage a corrupt file or a wall clock that moved can
+# do: a stored deadline implying days from now is a broken clock, not a ban.
+MAX_RESTORED_COOLDOWN = 24 * 3600
+
+# THERE IS NO WRITE DEBOUNCE, DELIBERATELY.
+#
+# Adding one is the obvious optimisation and it would reintroduce the exact loss
+# this row exists to fix: a penalty set and then a `kill -9` inside the debounce
+# window is a penalty that never reached disk, and a crash is the common way
+# this process ends when it is being rate limited. The write rate does not need
+# it — a projection is only written when it CHANGES, blocks are rare, and the
+# steady state on a healthy install is an empty projection that is never
+# rewritten at all.
+
+
 class OutboundHostLimiter:
     """Per-host pacing, concurrency and cooldown for calls we make out.
 
@@ -243,6 +286,135 @@ class OutboundHostLimiter:
         self._default = HostPolicy()
         self._state: Dict[str, _HostState] = {}
         self._lock = threading.Lock()
+        # `P15-09`. Loaded lazily rather than at startup on purpose: a load call
+        # someone has to remember to make is a load call that gets forgotten in
+        # one entry point, and the symptom of forgetting it — cooldowns that
+        # silently do not apply — is the exact thing this row is fixing.
+        self._loaded = False
+        self._last_written: Optional[Dict[str, Dict[str, Any]]] = None
+
+    # -- persistence (`P15-09`) -------------------------------------------
+    def _state_path(self) -> str:
+        """Resolved per call, not captured at import, so a test can move it."""
+        from src.constants import OUTBOUND_STATE_FILE
+        return OUTBOUND_STATE_FILE
+
+    def _ensure_loaded(self) -> None:
+        if self._loaded:
+            return
+        self._loaded = True                 # set first: a failed load must not retry forever
+        try:
+            self.load_persisted()
+        except Exception as e:
+            logger.debug("outbound state not restored: %s: %s", type(e).__name__, e)
+
+    def load_persisted(self) -> int:
+        """Restore cooldowns from disk. Returns how many were still live.
+
+        Converts each wall-clock deadline back into this process's monotonic
+        frame. Anything already expired is dropped rather than restored as a
+        zero-length block, so the file shrinks on its own and a long shutdown
+        leaves nothing behind.
+        """
+        import json
+        path = self._state_path()
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                doc = json.load(f)
+        except (OSError, ValueError):
+            return 0
+        if not isinstance(doc, dict) or doc.get("version") != _PERSIST_VERSION:
+            return 0
+        entries = doc.get("hosts")
+        if not isinstance(entries, dict):
+            return 0
+
+        wall_now = time.time()
+        mono_now = time.monotonic()
+        restored = 0
+        with self._lock:
+            for key, raw in entries.items():
+                if not isinstance(key, str) or not isinstance(raw, dict):
+                    continue
+                try:
+                    remaining = float(raw.get("until", 0)) - wall_now
+                except (TypeError, ValueError):
+                    continue
+                if remaining <= 0:
+                    continue
+                remaining = min(remaining, MAX_RESTORED_COOLDOWN)
+                st = self._st(key)
+                st.blocked_until = max(st.blocked_until, mono_now + remaining)
+                try:
+                    # The ladder matters as much as the deadline. A crash-loop
+                    # that resets `consecutive_429` re-earns the ban from the
+                    # base cooldown every time, which is slower than not
+                    # escalating at all.
+                    st.consecutive_429 = max(st.consecutive_429, int(raw.get("n", 0) or 0))
+                except (TypeError, ValueError):
+                    pass
+                detail = raw.get("why")
+                if isinstance(detail, str) and detail and not st.last_detail:
+                    st.last_detail = detail[:200]
+                restored += 1
+        if restored:
+            logger.info("restored %d outbound cooldown(s) from %s", restored, path)
+        return restored
+
+    def _projection(self) -> Dict[str, Dict[str, Any]]:
+        """The small, boring subset worth keeping. Caller must hold no lock."""
+        mono_now = time.monotonic()
+        wall_now = time.time()
+        with self._lock:
+            out: Dict[str, Dict[str, Any]] = {}
+            for key, st in self._state.items():
+                remaining = st.blocked_until - mono_now
+                if remaining <= 0:
+                    continue
+                entry: Dict[str, Any] = {"until": round(wall_now + remaining, 3)}
+                if st.consecutive_429:
+                    entry["n"] = st.consecutive_429
+                if st.last_detail:
+                    entry["why"] = st.last_detail
+                out[key] = entry
+            return out
+
+    def _persist(self) -> None:
+        """Write the projection if it changed. Never holds the lock over I/O.
+
+        Pacing state (`next_allowed_at`) and the per-process counters are
+        deliberately absent. Pacing is sub-second and re-earned in one request;
+        the counters feed `pantheon_outbound_*`, and carrying them across a
+        restart would make a gauge that says "this process" quietly mean
+        something else.
+        """
+        try:
+            current = self._projection()
+        except Exception:
+            return
+        # `_last_written` starts as None, which is NOT the same as `{}`: on the
+        # first change we must write even when the projection is empty, because
+        # a stale file from the previous run may still be on disk saying a host
+        # is blocked when it is not.
+        if self._last_written is not None and current == self._last_written:
+            return
+        path = self._state_path()
+        if not current and not os.path.exists(path):
+            # Nothing is blocked and there is no stale file to correct. An
+            # install that has never been rate limited should not have this file
+            # at all — creating one to say "nothing" leaves a permanent artefact
+            # in the data directory for a state that is the default.
+            self._last_written = current
+            return
+        try:
+            from core.atomic_io import atomic_write_json
+            atomic_write_json(path, {"version": _PERSIST_VERSION, "hosts": current})
+            self._last_written = current
+        except Exception as e:
+            # A read-only data dir must not break outbound calls. The cooldown
+            # still applies in this process; it just will not survive a restart.
+            logger.debug("could not persist outbound state to %s: %s: %s",
+                         path, type(e).__name__, e)
 
     # -- policy -----------------------------------------------------------
     def policy_for(self, host: str, *, authenticated: bool = False) -> HostPolicy:
@@ -266,6 +438,7 @@ class OutboundHostLimiter:
     # -- the gate ---------------------------------------------------------
     def _plan(self, host: str, *, authenticated: bool) -> Tuple[float, HostPolicy]:
         """Decide how long to wait. Never sleeps while holding the lock."""
+        self._ensure_loaded()
         pol = self.policy_for(host, authenticated=authenticated)
         now = time.monotonic()
         with self._lock:
@@ -345,6 +518,7 @@ class OutboundHostLimiter:
           * `X-RateLimit-Remaining: 0` on an otherwise fine response — the one
             signal that lets us stop *before* being told to.
         """
+        self._ensure_loaded()
         hdrs = {str(k).lower(): str(v) for k, v in (headers or {}).items()}
         low = (body_hint or "").lower()
         cooldown: Optional[float] = None
@@ -382,6 +556,7 @@ class OutboundHostLimiter:
             elif status_code < 400:
                 st.consecutive_429 = 0
                 st.last_detail = ""
+        self._persist()
         return cooldown
 
     def penalise(self, key: str, *, base: float = 60.0, cap: float = 1800.0,
@@ -403,6 +578,7 @@ class OutboundHostLimiter:
 
         Returns the cooldown imposed.
         """
+        self._ensure_loaded()
         now = time.monotonic()
         with self._lock:
             st = self._st(key)
@@ -412,15 +588,23 @@ class OutboundHostLimiter:
             if reason:
                 st.last_detail = reason[:200]
             st.blocked_until = max(st.blocked_until, now + cooldown)
-            return cooldown
+        # Outside the lock: `_persist` takes it again, and this is the write
+        # that matters most — a lockout penalty is the one a crash-loop is
+        # most likely to interrupt.
+        self._persist()
+        return cooldown
 
     def succeeded(self, key: str) -> None:
         """It worked. Clear the penalty ladder without forgetting the pacing."""
+        self._ensure_loaded()
         with self._lock:
             st = self._st(key)
             st.consecutive_429 = 0
             st.blocked_until = 0.0
             st.last_detail = ""
+        # A clear must reach disk too, or a restart resurrects a penalty the
+        # provider has already forgiven — the same defect pointing the other way.
+        self._persist()
 
     def note_failure(self, host: str, cooldown: float = 5.0) -> None:
         """A transport-level failure. Slow down, but do not treat it as a ban."""
@@ -430,18 +614,29 @@ class OutboundHostLimiter:
 
     def blocked_for(self, host: str) -> float:
         """Seconds remaining on a hard cooldown; 0 when the host is callable."""
+        self._ensure_loaded()
         with self._lock:
             return max(0.0, self._st(host).blocked_until - time.monotonic())
 
     def reset(self, host: Optional[str] = None) -> None:
+        """Forget a cooldown, on disk as well as in memory.
+
+        A reset that left the file behind would be undone by the next restart,
+        which is a surprising way for an operator's "clear this" to not stick.
+        `_loaded` is left alone: reloading here would restore what was just
+        cleared.
+        """
         with self._lock:
             if host is None:
                 self._state.clear()
             else:
                 self._state.pop(host, None)
+        self._loaded = True
+        self._persist()
 
     def snapshot(self) -> Dict[str, Dict[str, float]]:
         """What the limiter is doing, for the settings page and for tests."""
+        self._ensure_loaded()
         now = time.monotonic()
         with self._lock:
             return {
