@@ -213,6 +213,25 @@ async def run_suite(name: str, *, model: Optional[str] = None,
                      checks=scored["checks"], replay_run_id=new_run,
                      error=run.get("error"), tool_failures=tool_failures,
                      output_chars=len(run.get("output") or ""))
+
+        # `P14-04` — a result is a diff. Attached only to FAILURES, and only
+        # the unasked-for half.
+        #
+        # "Case 3 failed" sends someone to read a transcript. "Case 3 failed,
+        # and the tool schema changed" is the answer. Running it on passes too
+        # would double the cost of a green suite to produce something nobody
+        # opens, and printing the chosen and outcome entries here would bury the
+        # cause under its own consequences — `P4-28` already ranks them, so this
+        # takes the top of that ranking rather than re-deciding it.
+        if not scored["passed"] and new_run:
+            try:
+                from src.receipt_diff import diff_receipts, INFLICTED
+                d = diff_receipts(run_id, new_run)
+                entry["why"] = d.get("headline")
+                entry["changed"] = [x for x in d.get("differences", [])
+                                    if x["kind"] == INFLICTED]
+            except Exception as e:
+                logger.debug("diff for failed case %s: %s", run_id, e)
         result["passed" if scored["passed"] else "failed"] += 1
         result["cases"].append(entry)
 

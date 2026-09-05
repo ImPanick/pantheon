@@ -215,6 +215,22 @@ def setup_diagnostics_routes(
         from src.evals import run_suite
         return await run_suite(name, model=model or None)
 
+    @router.get("/api/diagnostics/diff/{before_id}/{after_id}")
+    async def diff_two_receipts(request: Request, before_id: str,
+                                after_id: str) -> Dict[str, Any]:
+        """What changed between the run that worked and the one that did not
+        (`P4-28`).
+
+        Every difference is classified — **chosen** (the operator asked),
+        **inflicted** (the world moved), **outcome** (what the run produced),
+        **noise** (timestamps, small wobbles). The classification is the
+        product: a diff that lists every difference equally is one nobody reads
+        twice, and an unread diff is worse than none because it was paid for.
+        """
+        require_admin(request)
+        from src.receipt_diff import diff_receipts
+        return diff_receipts(before_id, after_id)
+
     @router.get("/api/diagnostics/bundle")
     async def get_diagnostic_bundle(
         request: Request, note: str = "", log_limit: int = 120

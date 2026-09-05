@@ -504,7 +504,7 @@ def receipt(run_id: str) -> Dict[str, Any]:
     """
     out: Dict[str, Any] = {"run_id": run_id, "config": None, "rounds": [],
                            "tools": [], "retrievals": [], "approvals": [],
-                           "totals": {}}
+                           "replays": [], "totals": {}}
     if not run_id:
         out["error"] = "no run_id"
         return out
@@ -537,6 +537,12 @@ def receipt(run_id: str) -> Dict[str, Any]:
                     out["retrievals"].append(item)
                 elif e.kind == "approval":
                     out["approvals"].append(item)
+                elif e.kind == "replay":
+                    # `P4-26` writes these and `P4-28` reads them: without this
+                    # branch the link back to the original run was recorded and
+                    # then dropped on the way out — stored, and unreadable
+                    # through the only API that reads receipts.
+                    out["replays"].append(item)
                 if e.session_id and not out.get("session_id"):
                     out["session_id"] = e.session_id
                 if e.owner and not out.get("owner"):

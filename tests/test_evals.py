@@ -218,6 +218,61 @@ def test_tool_failures_come_from_the_replays_own_receipt(suites, fake_replay):
     assert result["cases"][0]["tool_failures"] == 3
 
 
+# --- P14-04: a result is a diff -------------------------------------------
+
+def test_a_failing_case_says_what_changed(suites, fake_replay, monkeypatch):
+    """"Case 3 failed" sends someone to read a transcript. "Case 3 failed, and
+    the tool schema changed" is the answer."""
+    suites({"name": "s", "cases": [{"run_id": "r1", "expect": {"contains": ["ok"]}}]})
+    fake_replay["outputs"] = {"r1": "nope"}
+    monkeypatch.setattr("src.receipt_diff.diff_receipts", lambda a, b: {
+        "headline": "1 unasked-for change(s): tool:shell",
+        "differences": [{"kind": "inflicted", "what": "tool:shell",
+                         "before": "a", "after": "b", "note": "the schema changed"},
+                        {"kind": "outcome", "what": "input_tokens",
+                         "before": 1, "after": 2, "note": ""}]})
+    result = asyncio.run(ev.run_suite("s"))
+    case = result["cases"][0]
+    assert case["status"] == "failed"
+    assert "tool:shell" in case["why"]
+    assert [c["what"] for c in case["changed"]] == ["tool:shell"], \
+        "the outcome entry was included; it is a consequence, not a cause"
+
+
+def test_a_passing_case_costs_no_diff(suites, fake_replay, monkeypatch):
+    """Running it on passes too would double the cost of a green suite to
+    produce something nobody opens."""
+    calls = []
+    suites({"name": "s", "cases": [{"run_id": "r1", "expect": {"contains": ["ok"]}}]})
+    fake_replay["outputs"] = {"r1": "ok"}
+    monkeypatch.setattr("src.receipt_diff.diff_receipts",
+                        lambda a, b: calls.append(1) or {"headline": "", "differences": []})
+    result = asyncio.run(ev.run_suite("s"))
+    assert result["cases"][0]["status"] == "passed"
+    assert not calls, "a diff was computed for a passing case"
+
+
+def test_the_diff_compares_the_original_to_its_own_replay(suites, fake_replay, monkeypatch):
+    seen = []
+    suites({"name": "s", "cases": [{"run_id": "r1", "expect": {"contains": ["ok"]}}]})
+    fake_replay["outputs"] = {"r1": "nope"}
+    monkeypatch.setattr("src.receipt_diff.diff_receipts",
+                        lambda a, b: seen.append((a, b)) or {"headline": "", "differences": []})
+    asyncio.run(ev.run_suite("s"))
+    assert seen == [("r1", "replay-r1")]
+
+
+def test_a_broken_diff_does_not_break_the_suite(suites, fake_replay, monkeypatch):
+    """The score is the deliverable; the explanation is a bonus, and a bonus
+    must never cost the deliverable."""
+    suites({"name": "s", "cases": [{"run_id": "r1", "expect": {"contains": ["ok"]}}]})
+    fake_replay["outputs"] = {"r1": "nope"}
+    monkeypatch.setattr("src.receipt_diff.diff_receipts",
+                        lambda a, b: (_ for _ in ()).throw(RuntimeError("boom")))
+    result = asyncio.run(ev.run_suite("s"))
+    assert result["failed"] == 1
+
+
 # --- Law 14 ----------------------------------------------------------------
 
 def test_the_harness_builds_no_case_store_and_no_runner():

@@ -59,7 +59,7 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P1 | Token layer — the free wins | 14 | 8 | 0 | **6** |
 | P2 | Un-nerf | 26 | 12 | 0 | **14** |
 | P3 | Mechanical hygiene | 20 | 15 | **2** | **3** |
-| P4 | The wire — the real glass box | 28 | 26 | 0 | **2** |
+| P4 | The wire — the real glass box | 28 | 25 | 0 | **3** |
 | P5 | Trace & composer restyle | 17 | 17 | 0 | 0 |
 | P6 | Queue & Plan | 18 | 1 | 0 | **17** |
 | P7 | Trust ladder & control plane | 12 | 7 | **1** | **4** |
@@ -69,10 +69,10 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P11 | Identity & access | 14 | 13 | **1** | 0 |
 | P12 | Limits & the control plane | 11 | 11 | 0 | 0 |
 | P13 | The Brain | 12 | 11 | 0 | **1** |
-| P14 | Measurement | 8 | 4 | 0 | **4** |
+| P14 | Measurement | 8 | 3 | 0 | **5** |
 | P15 | Outbound politeness | 12 | 5 | **1** | **6** |
 | P16 | Self-hosted by default | 20 | 2 | 0 | **18** |
-| **Total** | | **330** | **213** | **9** | **108** |
+| **Total** | | **330** | **211** | **9** | **110** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -97,7 +97,7 @@ Ten of its rows landed on 2026-08-27 — see § Progress. What is left of it:
 - **`P0-21b`, `P0-31`** — new, from the run: twelve bundled packages with no notice anywhere, and
   49 unaudited `ody-` storage-key hits.
 
-### Next: `P4-28` (diff two receipts) — it completes `P14-04`. Then `P4-27` (export). `P15-07` waits on the owner
+### Next: `P4-27` (portable receipt) — the last of the receipts chain. Then `P16-19`. `P15-07` waits on the owner
 
 **`P16-05` is the last zero-configuration leak**, and the only one that is not a one-liner: the
 embedding model is pulled from HuggingFace on the *first chat message*, because
@@ -222,6 +222,29 @@ location was wrong until it was corrected on the row itself; the row is right no
 *The one progress area. Newest first. One entry per completed section — two lines, a
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
+
+### P4-28 and P14-04 — the classification is the product
+`4b97fd5..HEAD`. **Suite 6,681 → 6,704 passing, the same 19 failing.**
+
+Two receipts differ in dozens of ways that mean nothing. A diff that lists them all is one nobody
+reads twice — worse than no diff, because it was paid for. So every difference is **chosen** (the
+operator asked), **inflicted** (the world moved), **outcome** (what the run produced), or **noise**.
+
+`P4-26`'s `deliberate` field is what lets chosen and inflicted be told apart rather than guessed
+from the shape of the change — the return on having recorded it two rows ago. And the tool hash from
+`P4-25` earns its keep here: a schema that changed under an unchanged name is invisible without one.
+
+**The headline leads with the unasked-for changes**, and that ordering is the argument — putting
+outcome first buries the cause under its own consequences.
+
+`P14-04` then had almost nothing left to do, which was the point of the sequencing. A failing eval
+case now carries the diff's headline and the inflicted differences: *"case 3 failed"* sends someone
+to read a transcript, *"case 3 failed, and the tool schema changed"* is the answer. Failures only —
+diffing passes doubles the cost of a green suite to produce something nobody opens.
+
+**A gap found while building it:** `P4-26` recorded `replay` rows carrying the link back to the
+original run, and `receipt()` dropped them on the way out. Stored, and unreadable through the only
+API that reads receipts.
 
 ### P14-03 — the thing that replaces the vibes
 `7994d28..HEAD`. **Suite 6,660 → 6,681 passing, the same 19 failing.**
@@ -2234,7 +2257,7 @@ discards them. A receipt is that data kept instead of thrown away.
   — **done 2026-09-02.** `src/replay.py`: `rerun_plan()` reads a receipt and reports what it would take, `replay()` executes it as a **new run** that links back, and `GET/POST /api/diagnostics/rerun/{run_id}` expose both — GET is free and read-only so the claim can be checked before a model call is spent on it. **The part that is not obvious: a receipt is not enough on its own.** `P4-25` keeps message content out, which is exactly what makes one portable (`P4-27`) — so a replay joins the receipt's *configuration* to the session's *inputs*, and **a receipt exported to somebody else cannot be re-run by them.** That is the correct trade and it is now stated rather than discovered: `rerun_plan` says so in the drift line instead of quietly running a shorter conversation. **Drift is the product, not an error.** *Same configuration* is a claim; between two runs a model can be gone, a skill edited, a confidence moved. Substituting silently would make every answer this row exists to give a lie, so the plan returns what it can reproduce **alongside a list of what it cannot**, and the replay records that list — letting `P4-28` tell a difference that was *chosen* from one that was *inflicted*. A model override is recorded as `deliberate` for the same reason. Skill drift is reported but does **not** disqualify a replay: re-running today's skills against yesterday's configuration is often exactly the comparison someone wants, and refusing it would make the honest answer unavailable. **Inputs are the messages from before the run started** — everything after is what the run *produced*, and replaying with it in the prompt is not a replay, it is a different conversation that happens to contain the answer. Ordered by `(timestamp, id)`, because two messages in the same second are otherwise ordered arbitrarily and a reversed user/assistant pair replays nothing. **A replay never touches the session:** it is a diagnostic, and appending its output would change the thing being measured and put a machine-generated turn in front of the person next time they scrolled up. It also resets the run ContextVars before starting — `mark_turn_start` only acts on an unset var, so without that a replay called inside a request would write its rows onto the caller's receipt. 17 tests, 6 mutations.
 - [ ] **P4-27** **Make a receipt portable.** One file, exportable, readable by a person who was
   not there. This is what turns "it did something weird" into a bug report. `Depends:` P4-25.
-- [ ] **P4-28** **Diff two receipts.** What changed between the run that worked and the one that
+- [x] **P4-28** **Diff two receipts.** What changed between the run that worked and the one that — **done 2026-09-05.** `src/receipt_diff.py`, served at `/api/diagnostics/diff/{before}/{after}`. **The classification is the product, not the completeness.** Two receipts differ in dozens of ways that mean nothing, and a diff that lists them all is one nobody reads twice — which is worse than no diff, because it was paid for. So every difference is **chosen** (the operator asked; a replay's model override is the experiment, not a finding), **inflicted** (the world moved — a skill edited, a tool's schema changed, an endpoint renamed; almost always the actual answer), **outcome** (what the run produced — never presented as a cause), or **noise** (timestamps, token wobble under 25%; counted, not printed). `P4-26`'s `deliberate` field is what lets *chosen* and *inflicted* be told apart rather than guessed from the shape of the change — which is the return on having recorded it. **The headline leads with the unasked-for changes**, and that ordering is the argument: putting outcome first buries the cause under its own consequences. **The tool hash earns its keep here** — a schema that changed under an unchanged name is invisible without it. A receipt with no `config` (one from before `P4-25`) still diffs what it has, because refusing would make the oldest runs — the ones most worth comparing against — undiffable. 19 tests, 8 mutations. **A gap found while building it:** `P4-26` recorded `replay` events carrying the link back to the original run, and `receipt()` dropped them on the way out — stored, and unreadable through the only API that reads receipts. Fixed, with a test.
   did not. `Depends:` P4-26.
 
 ---
@@ -2909,7 +2932,7 @@ nothing ever recorded the event.
   **Unblocked 2026-09-02 — `P4-26` shipped.** A saved case is a receipt (`P4-25`, done) and a run is a re-run (`P4-26`, done), so the harness is now *scoring a set of replays* rather than a new store. `Verify:` a saved set of cases runs against a configuration and produces a number, and `P14-04` wires it to `P4-28`'s diff. Order was `P4-25` → `P4-26` → here, and each one made the next smaller.
   — **done 2026-09-05, and it is small because the two rows in front of it did the work.** `src/evals.py` is a suite of `run_id`s plus what the operator expects, and running one is `replay()` in a loop — **no case store, no execution engine, no second copy of the configuration** (`Law 14`). Suites live in the `eval_suites` setting, following `networks`; `P14-06` is the row that decides a real store when one outgrows that, which is a call to make on evidence rather than pre-empt. **Assertions are deterministic and the operator writes them** — `contains`, `not_contains`, `regex`, `max_tool_failures`, `no_error`. Not a judge model: that is a real technique and a bigger decision (whose model, at what temperature, paid for by whom), and a harness whose *first* answer to *did that change help* is itself non-deterministic has replaced vibes with dearer vibes. Filed as `P14-08`. **The decision that matters is that a case which could not be reproduced is neither a pass nor a fail.** It is `skipped`, counted separately, and it drags nothing into the rate: folding unrunnable cases into *failed* makes a broken environment look like a regression and sends someone hunting a bug that is not there, and folding them into *passed* is worse because it is quiet. `P4-26`'s drift reporting is what makes that knowable at all, and a suite that skipped half its cases says so in the headline instead of in a field nobody reads. A suite where **nothing** ran refuses to print a rate — one computed over zero executed cases reads like evidence and is not. **Checks are an allowlist**, so a typo is a loud refusal before any model call rather than an assertion that silently never runs: a suite passing for the wrong reason is the single failure mode of an eval harness that costs anything, because nobody investigates a pass. Tool failures are read from the **replay's own** receipt, not the original's. 21 tests, 7 mutations. *(One survived and found a decorative defence: `score_case` ended `else error is None`, which looks like it handles the errored case and is unreachable whenever there IS an error — a `no_error` check is always added first. Mutating it to `else True` changed nothing. Simplified, and the test now pins the mechanism rather than the outcome.)*
 - [ ] **P14-08** **Model-graded scoring for `P14-03`, if it earns its place.** The harness scores deterministically — `contains`, `regex`, tool failures — because the first answer to *did that change help* must not itself be non-deterministic. Some questions genuinely need a judge (*is this summary better*), and that is what this row is for. **Decide before building:** which model judges, at what temperature, and who pays for it — a judge that is a cloud API by default would be `Law 16` clause 4 arriving through a side door, and one that is the same local model being tested grades its own homework. `Verify:` a graded suite reports the judge's model and settings beside the score, and a run with no judge configured is refused rather than silently scored some other way.
-- [ ] **P14-04** **Wire eval to receipts.** A saved case is a receipt (`P4-27`); a run is a
+- [x] **P14-04** **Wire eval to receipts.** A saved case is a receipt (`P4-27`); a run is a — **done 2026-09-05, and there was almost nothing left to do, which was the point.** `P14-03` already made a case a receipt and a run a re-run; the remaining wire was *a result is a diff*. A **failing** case now carries `why` — `P4-28`'s headline — and `changed`, the inflicted differences only. *"Case 3 failed"* sends someone to read a transcript; *"case 3 failed, and the tool schema changed"* is the answer. **Failures only:** diffing passes would double the cost of a green suite to produce something nobody opens. **Inflicted only:** `P4-28` already ranks chosen and outcome below, and re-deciding that here would bury the cause under its consequences. Guarded — the score is the deliverable and the explanation is a bonus, and a bonus must never cost the deliverable. 4 tests, 4 mutations.
   re-run (`P4-26`); a result is a diff (`P4-28`). Law 14 — no second scaffolding.
 - [x] **P14-05** **Usage over time, per model and per owner.** The question that started this
   phase. Cheap once `P14-01` exists. **`P12-08` is the same build and folds in here (2026-08-31)** — it asks for this dataset so an operator can see consumption before setting a limit, which is one more consumer of this view, not a second view. Two things follow: the time dimension has to survive the write (today usage is a running total and the timestamp is discarded — `D-05`), and the result needs a reading beside `P12`'s limit fields as well as its own page. `Verify:` an operator sets a limit while looking at the last 30 days of the thing they are limiting.
