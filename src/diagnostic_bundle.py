@@ -197,9 +197,66 @@ def collect_outbound() -> Dict[str, Any]:
         return {"error": f"{type(e).__name__}: {e}"}
 
 
-def build_bundle(*, note: str = "", trace: str = "", log_limit: int = 120) -> Dict[str, Any]:
-    """Everything, redacted. Assembled locally; sent nowhere by this function."""
-    return {
+def collect_receipt(run_id: str) -> Dict[str, Any]:
+    """One run's receipt, redacted (`P4-27`).
+
+    Lives here rather than in a module of its own because this file already owns
+    *make something a person can hand over, with nothing of theirs in it*
+    (`P16-14`) — and a portable receipt is the narrow case of exactly that
+    (`Law 14`). `src/events.receipt()` assembles; this makes it handable.
+
+    A receipt already excludes message content by construction (`P4-25`), which
+    is most of the work. What is left is the labels: an endpoint name can be a
+    hostname, a tool name can be a path, and those go through the same
+    `redact()` as everything else rather than a second, gentler pass — a
+    redactor with an exception is a redactor with a hole.
+    """
+    try:
+        from src.events import receipt
+        raw = receipt(run_id)
+    except Exception as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+    return _redact_tree(raw)
+
+
+# Identifiers, exempt from redaction. A `run_id` is 32 hex characters, which is
+# exactly the shape `redact()`'s opaque-string rule exists to catch — so the
+# first version redacted the one field that makes a receipt usable as a bug
+# report, and produced a document whose subject was `<redacted>`.
+#
+# Over-redaction is not the safe failure. It is the failure that leaves the
+# thing looking correct and worth nothing, which is why half the tests in
+# `P16-14` assert what SURVIVES. These carry no information about the person:
+# they are random ids and content hashes, and their whole purpose is to let two
+# people point at the same run.
+_IDENTIFIER_KEYS = frozenset({"run_id", "session_id", "replay_of", "sha", "id"})
+
+
+def _redact_tree(value: Any, *, key: str = "") -> Any:
+    """Redact every string in a structure except the identifiers.
+
+    Field-by-field rather than over the serialised blob: redacting the JSON as
+    one string cannot tell an endpoint's hostname from a run's identity, and
+    treats both the same.
+    """
+    if isinstance(value, dict):
+        return {k: _redact_tree(v, key=k) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redact_tree(v, key=key) for v in value]
+    if isinstance(value, str):
+        return value if key in _IDENTIFIER_KEYS else redact(value)
+    return value
+
+
+def build_bundle(*, note: str = "", trace: str = "", log_limit: int = 120,
+                 run_id: str = "") -> Dict[str, Any]:
+    """Everything, redacted. Assembled locally; sent nowhere by this function.
+
+    `run_id` attaches that run's receipt (`P4-27`), which is what turns *"it did
+    something weird"* into a report someone can act on: the model, the sampling,
+    the tools it was offered, the skills it was following, and what it did.
+    """
+    bundle = {
         "what_happened": redact(note or ""),
         "traceback": redact(trace or ""),
         "environment": collect_environment(),
@@ -208,6 +265,9 @@ def build_bundle(*, note: str = "", trace: str = "", log_limit: int = 120) -> Di
         "settings": collect_settings(),
         "recent_logs": collect_logs(log_limit),
     }
+    if run_id:
+        bundle["receipt"] = collect_receipt(run_id)
+    return bundle
 
 
 def render_markdown(bundle: Dict[str, Any]) -> str:
@@ -245,6 +305,43 @@ def render_markdown(bundle: Dict[str, Any]) -> str:
               "_Values are shown only for feature flags. Everything else reports "
               "whether it is configured, never what it is set to._", "", "```json",
               json.dumps(bundle.get("settings", {}), indent=2, sort_keys=True), "```"]
+
+    receipt = bundle.get("receipt")
+    if receipt:
+        lines += ["", "### The run", ""]
+        if receipt.get("error"):
+            lines.append(f"- receipt unavailable: {receipt['error']}")
+        else:
+            config = receipt.get("config") or {}
+            totals = receipt.get("totals") or {}
+            first = (receipt.get("rounds") or [{}])[0]
+            lines.append(f"- **run**: `{receipt.get('run_id')}`")
+            lines.append(f"- **model**: {first.get('model') or 'unknown'}"
+                         f" via {first.get('endpoint') or 'unknown endpoint'}")
+            if config.get("sampling"):
+                lines.append("- **sampling**: " + ", ".join(
+                    f"{k}={v}" for k, v in sorted(config["sampling"].items())))
+            if config.get("tools"):
+                lines.append(f"- **tools offered**: " + ", ".join(
+                    t.get("name", "?") for t in config["tools"]))
+            if config.get("skills"):
+                lines.append("- **skills injected**: " + ", ".join(
+                    f"{s.get('name')} ({s.get('confidence')})"
+                    for s in config["skills"]))
+            lines.append(f"- **rounds**: {totals.get('rounds', 0)} · "
+                         f"tools {totals.get('tool_calls', 0)} "
+                         f"({totals.get('tool_failures', 0)} failed) · "
+                         f"tokens {totals.get('input_tokens', 0)} in / "
+                         f"{totals.get('output_tokens', 0)} out")
+            failed = [t for t in (receipt.get("tools") or [])
+                      if (t.get("outcome") or "ok") != "ok"]
+            if failed:
+                lines.append("- **failing tools**: " + ", ".join(
+                    f"{t.get('name')} ({t.get('outcome')})" for t in failed))
+        lines.append("")
+        lines.append("_No prompts or replies are in this section — a receipt "
+                     "never contains the conversation, which is what makes it "
+                     "handable._")
 
     logs = bundle.get("recent_logs") or []
     lines += ["", f"### Recent logs ({len(logs)} lines, redacted)", "", "```"]

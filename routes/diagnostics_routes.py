@@ -231,9 +231,30 @@ def setup_diagnostics_routes(
         from src.receipt_diff import diff_receipts
         return diff_receipts(before_id, after_id)
 
+    @router.get("/api/diagnostics/receipt/{run_id}/export")
+    async def export_receipt(request: Request, run_id: str):
+        """One run, as one file a person who was not there can read (`P4-27`).
+
+        Markdown, because the destination is an issue and the reader is a human.
+        Redacted through the same pass as the diagnostic bundle — a receipt
+        already excludes message content by construction (`P4-25`), so what is
+        left is the labels, and an endpoint name can be a hostname.
+
+        This reuses `P16-14`'s renderer rather than growing a second one
+        (`Law 14`): "make something a person can hand over, with nothing of
+        theirs in it" already had an owner.
+        """
+        require_admin(request)
+        from fastapi.responses import PlainTextResponse
+        from src.diagnostic_bundle import build_bundle, render_markdown
+        bundle = build_bundle(note=f"Receipt for run {run_id}", log_limit=0,
+                              run_id=run_id)
+        return PlainTextResponse(render_markdown(bundle),
+                                 media_type="text/markdown; charset=utf-8")
+
     @router.get("/api/diagnostics/bundle")
     async def get_diagnostic_bundle(
-        request: Request, note: str = "", log_limit: int = 120
+        request: Request, note: str = "", log_limit: int = 120, run_id: str = ""
     ) -> Dict[str, Any]:
         """A bug report, assembled locally, redacted, and sent nowhere.
 
@@ -250,7 +271,7 @@ def setup_diagnostics_routes(
         """
         require_admin(request)
         from src.diagnostic_bundle import build_bundle, render_markdown
-        bundle = build_bundle(note=note, log_limit=log_limit)
+        bundle = build_bundle(note=note, log_limit=log_limit, run_id=run_id)
         return {
             "status": "success",
             "bundle": bundle,

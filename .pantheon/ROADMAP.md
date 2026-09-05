@@ -59,7 +59,7 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P1 | Token layer — the free wins | 14 | 8 | 0 | **6** |
 | P2 | Un-nerf | 26 | 12 | 0 | **14** |
 | P3 | Mechanical hygiene | 20 | 15 | **2** | **3** |
-| P4 | The wire — the real glass box | 28 | 25 | 0 | **3** |
+| P4 | The wire — the real glass box | 28 | 24 | 0 | **4** |
 | P5 | Trace & composer restyle | 17 | 17 | 0 | 0 |
 | P6 | Queue & Plan | 18 | 1 | 0 | **17** |
 | P7 | Trust ladder & control plane | 12 | 7 | **1** | **4** |
@@ -72,7 +72,7 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P14 | Measurement | 8 | 3 | 0 | **5** |
 | P15 | Outbound politeness | 12 | 5 | **1** | **6** |
 | P16 | Self-hosted by default | 20 | 2 | 0 | **18** |
-| **Total** | | **330** | **211** | **9** | **110** |
+| **Total** | | **330** | **210** | **9** | **111** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -97,7 +97,7 @@ Ten of its rows landed on 2026-08-27 — see § Progress. What is left of it:
 - **`P0-21b`, `P0-31`** — new, from the run: twelve bundled packages with no notice anywhere, and
   49 unaudited `ody-` storage-key hits.
 
-### Next: `P4-27` (portable receipt) — the last of the receipts chain. Then `P16-19`. `P15-07` waits on the owner
+### Next: `P16-19` (OTLP push), then `P15-06`/`P15-09`/`P15-10`. `P15-07` waits on the owner
 
 **`P16-05` is the last zero-configuration leak**, and the only one that is not a one-liner: the
 embedding model is pulled from HuggingFace on the *first chat message*, because
@@ -222,6 +222,30 @@ location was wrong until it was corrected on the row itself; the row is right no
 *The one progress area. Newest first. One entry per completed section — two lines, a
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
+
+### P4-27 — the interesting bug was over-redaction
+`cdbda76..HEAD`. **Suite 6,704 → 6,711 passing, the same 19 failing.**
+
+A receipt you can hand to someone, built by extending `P16-14`'s bundle rather than growing a second
+exporter — "make something a person can hand over, with nothing of theirs in it" already had an
+owner.
+
+**The bug worth reading was over-redaction.** A `run_id` is 32 hex characters, exactly the shape the
+opaque-string rule catches, so the first version redacted the one field that lets two people point
+at the same run — a document whose subject was `<redacted>`. Redaction is field-by-field now with an
+identifier exemption: redacting a serialised blob cannot tell an endpoint's hostname from a run's
+identity and treats both the same.
+
+**A mutation survived and was worth more than the ones that didn't.** My credential test asserted on
+an endpoint label — which `events._safe_label` already sanitises at write — so it passed with this
+module's redaction removed entirely. It proved the earlier layer, not this one. It asserts on a
+skill name now: operator free text that nothing else touches.
+
+**`B34`, closed at the right level.** `mark_turn_start()` is idempotent within a turn, which is
+correct in production and a trap under pytest where everything shares one context. A helper that
+seeded a run left the ContextVar set, and another module's test went red *only when the two happened
+to sort in that order*. Fixed in `conftest.py` with an autouse reset — fixing the one offending
+helper would have left the trap armed for whoever writes the next one.
 
 ### P4-28 and P14-04 — the classification is the product
 `4b97fd5..HEAD`. **Suite 6,681 → 6,704 passing, the same 19 failing.**
@@ -2255,8 +2279,9 @@ discards them. A receipt is that data kept instead of thrown away.
 - [x] **P4-26** **Make a receipt re-runnable.** Same inputs, same configuration, new run —
   which is the only honest way to answer "did that change help". `Depends:` P4-25.
   — **done 2026-09-02.** `src/replay.py`: `rerun_plan()` reads a receipt and reports what it would take, `replay()` executes it as a **new run** that links back, and `GET/POST /api/diagnostics/rerun/{run_id}` expose both — GET is free and read-only so the claim can be checked before a model call is spent on it. **The part that is not obvious: a receipt is not enough on its own.** `P4-25` keeps message content out, which is exactly what makes one portable (`P4-27`) — so a replay joins the receipt's *configuration* to the session's *inputs*, and **a receipt exported to somebody else cannot be re-run by them.** That is the correct trade and it is now stated rather than discovered: `rerun_plan` says so in the drift line instead of quietly running a shorter conversation. **Drift is the product, not an error.** *Same configuration* is a claim; between two runs a model can be gone, a skill edited, a confidence moved. Substituting silently would make every answer this row exists to give a lie, so the plan returns what it can reproduce **alongside a list of what it cannot**, and the replay records that list — letting `P4-28` tell a difference that was *chosen* from one that was *inflicted*. A model override is recorded as `deliberate` for the same reason. Skill drift is reported but does **not** disqualify a replay: re-running today's skills against yesterday's configuration is often exactly the comparison someone wants, and refusing it would make the honest answer unavailable. **Inputs are the messages from before the run started** — everything after is what the run *produced*, and replaying with it in the prompt is not a replay, it is a different conversation that happens to contain the answer. Ordered by `(timestamp, id)`, because two messages in the same second are otherwise ordered arbitrarily and a reversed user/assistant pair replays nothing. **A replay never touches the session:** it is a diagnostic, and appending its output would change the thing being measured and put a machine-generated turn in front of the person next time they scrolled up. It also resets the run ContextVars before starting — `mark_turn_start` only acts on an unset var, so without that a replay called inside a request would write its rows onto the caller's receipt. 17 tests, 6 mutations.
-- [ ] **P4-27** **Make a receipt portable.** One file, exportable, readable by a person who was
+- [x] **P4-27** **Make a receipt portable.** One file, exportable, readable by a person who was
   not there. This is what turns "it did something weird" into a bug report. `Depends:` P4-25.
+  — **done 2026-09-05, by extending `P16-14` rather than building a second exporter** (`Law 14`): *make something a person can hand over, with nothing of theirs in it* already had an owner. `build_bundle(run_id=…)` attaches the receipt, the same renderer prints it, and `/api/diagnostics/receipt/{run_id}/export` returns markdown — the destination is an issue and the reader is a human. The section carries the model, the endpoint, the sampling, the tools it was offered, the skills it was following, the round and token totals, and which tools failed. **A receipt already excludes message content by construction (`P4-25`)**, which is most of what makes it handable, and the export says so on its face. **The interesting bug was over-redaction, not a leak.** A `run_id` is 32 hex characters — exactly the shape the opaque-string rule exists to catch — so the first version redacted the one field that lets two people point at the same run, producing a document whose subject was `<redacted>`. Redaction is field-by-field now with an identifier exemption, because redacting a serialised blob cannot tell an endpoint's hostname from a run's identity and treats both the same. 7 tests, 4 mutations. *(One survived and was worth it: my credential test asserted on an **endpoint label**, which `events._safe_label` already sanitises at write — so it passed with this module's redaction removed entirely. It proved the earlier layer, not this one. It asserts on a skill name now, which is operator free text nothing else touches.)* **And a test-suite trap closed at the right level (`B34`).**
 - [x] **P4-28** **Diff two receipts.** What changed between the run that worked and the one that — **done 2026-09-05.** `src/receipt_diff.py`, served at `/api/diagnostics/diff/{before}/{after}`. **The classification is the product, not the completeness.** Two receipts differ in dozens of ways that mean nothing, and a diff that lists them all is one nobody reads twice — which is worse than no diff, because it was paid for. So every difference is **chosen** (the operator asked; a replay's model override is the experiment, not a finding), **inflicted** (the world moved — a skill edited, a tool's schema changed, an endpoint renamed; almost always the actual answer), **outcome** (what the run produced — never presented as a cause), or **noise** (timestamps, token wobble under 25%; counted, not printed). `P4-26`'s `deliberate` field is what lets *chosen* and *inflicted* be told apart rather than guessed from the shape of the change — which is the return on having recorded it. **The headline leads with the unasked-for changes**, and that ordering is the argument: putting outcome first buries the cause under its own consequences. **The tool hash earns its keep here** — a schema that changed under an unchanged name is invisible without it. A receipt with no `config` (one from before `P4-25`) still diffs what it has, because refusing would make the oldest runs — the ones most worth comparing against — undiffable. 19 tests, 8 mutations. **A gap found while building it:** `P4-26` recorded `replay` events carrying the link back to the original run, and `receipt()` dropped them on the way out — stored, and unreadable through the only API that reads receipts. Fixed, with a test.
   did not. `Depends:` P4-26.
 
@@ -3132,6 +3157,7 @@ fact; then losing their data; then hiding capability they own.*
 - [x] **B31** **A test sliced *everything between two functions I know about* and blamed the wrong panel.** `test_the_panel_does_not_build_markup_from_strings` (mine, from `P16-15`) took `admin.js` from `loadSelfChecks` to `loadLogs` and asserted no `innerHTML` in between. `P14-05` added a panel in that gap and the test went red for code that was not the self-checks' — and it failed on a **comment** reading *"textContent, never innerHTML"*, which is the docstring-read-as-code trap for the third time. — found during `P14-05` — **fixed:** brace-matched extraction of the one function's body, comments stripped, plus an assertion that the slice still contains code so it cannot pass by matching nothing. Verified by mutation: an `innerHTML` put back inside `loadSelfChecks` still turns it red. — agent: `opus-5`
 - [x] **B32** **A `try/except` would have swallowed a `NameError` forever.** The `P4-25` skills capture in `src/agent_loop.py` passed `session_id=session_id`, and `_build_system_prompt` does not take a `session_id` — so every run would have raised `NameError`, been caught by the `except Exception: pass` that exists to keep a receipt from breaking a reply, and recorded **nothing**, silently, for as long as anyone cared to look. The guard that makes instrumentation safe is the same guard that makes broken instrumentation invisible. — found during `P4-25`, before it shipped — **fixed:** the argument is dropped (the receipt is keyed on `run_id` and the session comes from the other rows), plus an AST test that resolves every name at that call site against the enclosing function's parameters. — agent: `opus-5`
 - [x] **B33** **`P4-25` recorded a config for streamed turns only — half the chat surface had `config: null`.** `record_run_config` lived in `stream_llm`; `/api/chat` reaches the model through `llm_call_async_with_route_fallback` → `llm_call_async` and never streams. **The test I wrote for it grepped `llm_core.py` for the call, which one entry point satisfies.** — found during the `P4-26` correction pass — **fixed:** one `_capture_run_config` helper called from all three entry points (`Law 14`), placed **before** the response-cache check because a turn answered from cache still had a configuration; plus an AST test that requires every model entry point to capture. **Then the fix reproduced `B32` in a new file** — the sync `llm_call` has no `session_id` either — which this time raised loudly instead of being swallowed, because the guard now lives inside the helper rather than at the call site. The scope test is parameterised over every capturing module now: *a test written to the shape of one bug catches one bug.* — agent: `opus-5`
+- [x] **B34** **A test that marks a turn leaves the next module inside it.** `mark_turn_start()` is deliberately idempotent within a turn — the first call wins, so a retry does not split a receipt — which is correct in production and a trap under pytest, where everything shares one context. A `P4-27` helper that seeds a run left `_turn_started` set, and `test_duration_is_null_and_that_is_honest` went red **only when the two modules happened to sort in that order**. — found during `P4-27` — **fixed in `tests/conftest.py`** with an autouse fixture that clears the run ContextVars before and after every test. Fixing the one offending helper would have left the trap armed for the next person; this is the level that closes it. Verified by mutation — removing the fixture reproduces the cross-module failure. — agent: `opus-5`
 - [ ] **B01** **The datastore image is unpinned.** `chromadb/chroma:latest` in all three
   compose files, and `binwiederhier/ntfy` with no tag at all in the same three. A
   breaking Chroma release lands on the next `--build` and the collections stop loading —

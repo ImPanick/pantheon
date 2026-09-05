@@ -208,6 +208,109 @@ def test_the_users_own_note_is_redacted_too():
     assert "josep" not in text
 
 
+# --- P4-27: a receipt you can hand to someone ------------------------------
+
+def _seeded_run(tmp_path, monkeypatch):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    import core.database as core_db
+    from core.database import Base
+    from src import events as ev
+
+    engine = create_engine(f"sqlite:///{tmp_path}/r.db",
+                           connect_args={"check_same_thread": False})
+    Base.metadata.create_all(bind=engine)
+    monkeypatch.setattr(core_db, "SessionLocal",
+                        sessionmaker(autocommit=False, autoflush=False, bind=engine))
+    monkeypatch.setattr(ev, "_last_prune", 0.0)
+    ev._turn_started.set(None)
+    ev._run_id.set(None)
+    ev.mark_turn_start()
+    rid = ev.current_run_id()
+    ev.record_run_config(sampling={"temperature": 0.7},
+                         tools=[{"function": {"name": "shell"}}],
+                         skills=[{"name": "deploy", "confidence": 0.8}],
+                         session_id="s1")
+    ev.record_llm_round("s1", {"input_tokens": 900, "output_tokens": 120,
+                               "model": "qwen",
+                               "endpoint_label": "http://user:hunter2@llm.lan:8000/v1"})
+    ev.record_event("tool_call", name="shell", outcome="error")
+    return rid
+
+
+def test_the_receipt_section_carries_what_a_reader_needs(tmp_path, monkeypatch):
+    """"It did something weird" becomes a report someone can act on: the model,
+    the sampling, the tools it was offered, the skills it was following."""
+    rid = _seeded_run(tmp_path, monkeypatch)
+    text = render_markdown(build_bundle(note="x", log_limit=0, run_id=rid))
+    assert "### The run" in text
+    for expected in ("qwen", "temperature=0.7", "shell", "deploy (0.8)", "1 failed"):
+        assert expected in text, f"{expected!r} missing from the receipt section"
+
+
+def test_the_run_id_survives_redaction(tmp_path, monkeypatch):
+    """A run_id is 32 hex characters — exactly the shape the opaque-string rule
+    catches. The first version redacted the one field that makes a receipt
+    usable as a bug report, producing a document whose subject was <redacted>.
+
+    Over-redaction is not the safe failure: it leaves the thing looking correct
+    and worth nothing."""
+    rid = _seeded_run(tmp_path, monkeypatch)
+    text = render_markdown(build_bundle(log_limit=0, run_id=rid))
+    assert rid in text, "the receipt cannot be referred to"
+
+
+def test_a_path_in_a_skill_name_is_stripped(tmp_path, monkeypatch):
+    """The other half: exempting identifiers must not exempt everything.
+
+    Asserted on a SKILL NAME rather than an endpoint label, and the difference
+    matters. Endpoint labels are already sanitised at write by
+    `events._safe_label`, so a test using one passes with this module's
+    redaction removed entirely — it proves the earlier layer, not this one.
+    A skill name is operator-supplied free text that nothing else touches.
+    """
+    from src import events as ev
+    rid = _seeded_run(tmp_path, monkeypatch)
+    ev.record_run_config(skills=[{"name": "/home/josep/secret-playbook",
+                                  "confidence": 0.5}], session_id="s1")
+    text = render_markdown(build_bundle(log_limit=0, run_id=rid))
+    assert "/home/josep" not in text, "operator free text reached the export unredacted"
+    assert "secret-playbook" in text, "over-redacted — the name is the useful part"
+
+
+def test_a_credential_in_an_endpoint_label_never_reaches_the_export(tmp_path, monkeypatch):
+    """Belt and braces, and honest about which layer does the work: the label
+    is stripped at write (`events._safe_label`), so this holds even if the
+    export's own redaction changes."""
+    rid = _seeded_run(tmp_path, monkeypatch)
+    text = render_markdown(build_bundle(log_limit=0, run_id=rid))
+    assert "hunter2" not in text
+    assert "llm.lan" in text, "over-redacted — the host is the useful part"
+
+
+def test_no_receipt_section_when_none_was_asked_for(tmp_path, monkeypatch):
+    _seeded_run(tmp_path, monkeypatch)
+    text = render_markdown(build_bundle(note="x", log_limit=0))
+    assert "### The run" not in text
+
+
+def test_an_unknown_run_does_not_break_the_bundle(tmp_path, monkeypatch):
+    _seeded_run(tmp_path, monkeypatch)
+    text = render_markdown(build_bundle(note="x", log_limit=0, run_id="nope"))
+    assert "### The run" in text
+    assert "Environment" in text
+
+
+def test_the_export_reuses_this_renderer_rather_than_a_second_one():
+    """`Law 14`. "Make something a person can hand over, with nothing of theirs
+    in it" already had an owner."""
+    src = (ROOT / "routes" / "diagnostics_routes.py").read_text(encoding="utf-8")
+    i = src.index("/api/diagnostics/receipt/{run_id}/export")
+    block = src[i:i + 1400]
+    assert "render_markdown" in block and "build_bundle" in block
+    assert "text/markdown" in block
+
+
 def test_bundle_survives_a_missing_log_file(tmp_path, monkeypatch):
     monkeypatch.setattr("core.constants.DATA_DIR", str(tmp_path))
     bundle = build_bundle(log_limit=10)

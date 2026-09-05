@@ -123,3 +123,44 @@ def _reset_outbound_limiter():
         yield
     finally:
         outbound.reset()
+
+
+@_pytest.fixture(autouse=True)
+def _reset_run_context():
+    """Clear the per-turn ContextVars between tests (`P4-25`, `P14-02`).
+
+    `mark_turn_start()` sets a run id and a clock and is deliberately
+    idempotent within a turn — the first call wins, so a retry inside one
+    request neither restarts the clock nor splits the receipt. That is correct
+    in production and a trap in a test suite: pytest runs everything in one
+    context, so a test that marks a turn leaves the next module's tests inside
+    it.
+
+    It cost one cross-module failure to find. `test_duration_is_null_and_that_is
+    _honest` asserts a round has no duration when nobody started a clock, and it
+    went red only when a diagnostic-bundle test that seeds a run happened to
+    sort before it. Fixing it in the one offending helper would have left the
+    trap armed for the next person; this is the level that closes it.
+    """
+    try:
+        from src import events as _ev
+    except Exception:
+        yield
+        return
+
+    def _clear():
+        for var in ("_turn_started", "_run_id"):
+            holder = getattr(_ev, var, None)
+            if holder is not None:
+                holder.set(None)
+        try:
+            from src import llm_core as _lc
+            _lc._run_config_recorded.set(False)
+        except Exception:
+            pass
+
+    _clear()
+    try:
+        yield
+    finally:
+        _clear()
