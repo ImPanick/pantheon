@@ -188,6 +188,33 @@ def setup_diagnostics_routes(
         from src.replay import replay
         return await replay(run_id, model=model or None)
 
+    @router.get("/api/diagnostics/evals")
+    async def list_evals(request: Request) -> Dict[str, Any]:
+        """The suites, and whether each one would run (`P14-03`).
+
+        Validated here so a typo costs a page load rather than a set of model
+        calls — an unknown check would otherwise never run, and the suite would
+        pass for the wrong reason.
+        """
+        require_admin(request)
+        from src.evals import load_suites, validate_suite
+        return {"suites": [
+            {"name": s.get("name"), "cases": len(s.get("cases") or []),
+             "problems": validate_suite(s)}
+            for s in load_suites()
+        ]}
+
+    @router.post("/api/diagnostics/evals/{name}/run")
+    async def run_eval(request: Request, name: str, model: str = "") -> Dict[str, Any]:
+        """Replay every case and score it. POST — it spends a model call each.
+
+        `model` runs the whole suite against a different one, which is the
+        question the harness exists for: *did that change help.*
+        """
+        require_admin(request)
+        from src.evals import run_suite
+        return await run_suite(name, model=model or None)
+
     @router.get("/api/diagnostics/bundle")
     async def get_diagnostic_bundle(
         request: Request, note: str = "", log_limit: int = 120

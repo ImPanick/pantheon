@@ -69,10 +69,10 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P11 | Identity & access | 14 | 13 | **1** | 0 |
 | P12 | Limits & the control plane | 11 | 11 | 0 | 0 |
 | P13 | The Brain | 12 | 11 | 0 | **1** |
-| P14 | Measurement | 7 | 4 | 0 | **3** |
+| P14 | Measurement | 8 | 4 | 0 | **4** |
 | P15 | Outbound politeness | 12 | 5 | **1** | **6** |
 | P16 | Self-hosted by default | 20 | 2 | 0 | **18** |
-| **Total** | | **329** | **213** | **9** | **107** |
+| **Total** | | **330** | **213** | **9** | **108** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -97,7 +97,7 @@ Ten of its rows landed on 2026-08-27 — see § Progress. What is left of it:
 - **`P0-21b`, `P0-31`** — new, from the run: twelve bundled packages with no notice anywhere, and
   49 unaudited `ody-` storage-key hits.
 
-### Next: `P14-03` (eval harness) — unblocked. Then `P4-28` (diff), `P4-27` (export). `P15-07` waits on the owner
+### Next: `P4-28` (diff two receipts) — it completes `P14-04`. Then `P4-27` (export). `P15-07` waits on the owner
 
 **`P16-05` is the last zero-configuration leak**, and the only one that is not a one-liner: the
 embedding model is pulled from HuggingFace on the *first chat message*, because
@@ -222,6 +222,30 @@ location was wrong until it was corrected on the row itself; the row is right no
 *The one progress area. Newest first. One entry per completed section — two lines, a
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
+
+### P14-03 — the thing that replaces the vibes
+`7994d28..HEAD`. **Suite 6,660 → 6,681 passing, the same 19 failing.**
+
+A suite is a list of `run_id`s and what the operator expects; running one is `replay()` in a loop.
+No case store, no runner, no second copy of the configuration — `P4-25` and `P4-26` had already
+built all three.
+
+**Assertions are deterministic and the operator writes them.** Not a judge model: a harness whose
+first answer to "did that change help" is itself non-deterministic has replaced vibes with dearer
+vibes. `P14-08` is filed for when a judge earns its place, with the questions to settle first —
+whose model, at what temperature, paid for by whom.
+
+**The decision that matters: a case that could not be reproduced is neither a pass nor a fail.** It
+is skipped and counted separately. Folding it into *failed* makes a broken environment look like a
+regression; folding it into *passed* is worse, because it is quiet. A suite where nothing ran
+refuses to print a rate at all.
+
+**Checks are an allowlist**, so a typo refuses the suite before a model call rather than silently
+never running — a suite passing for the wrong reason is the one failure mode of an eval harness that
+costs anything, because nobody investigates a pass.
+
+One mutation survived and found a decorative defence: `score_case` ended `else error is None`, which
+reads like it handles the errored case and is unreachable whenever there is one.
 
 ### P4-26 — a re-run is what proves the receipt was enough
 `7f10ad8..HEAD`. **Suite 6,638 → 6,660 passing, the same 19 failing.**
@@ -2879,10 +2903,12 @@ nothing ever recorded the event.
 - [x] **P14-02** **Instrument the rest of the loop** — round latency, tool call and failure
   counts, queue depth, approval outcomes, retrieval hit rates. Same table.
   — **done 2026-09-01, four of the five instrumented — and the fifth was the wrong shape.** `events` gains a `name` column (the tool that ran, the store that was searched, the capability that was approved) via a real migration: `create_all` builds missing *tables* and never alters one, and `events` shipped a commit earlier, so an install on that build has the table without the column and would fail every insert. **Round latency** — a `ContextVar` clock started at both `/api/chat` and `/api/chat_stream`, read at `accumulate_token_usage`. It measures the **turn**, tool calls and retries included, and the code says so: calling that *round latency* without qualification is the quietly-wrong metric that outlives its author. A missing measurement is `NULL`, never `0` — zero would sit in a dashboard looking like the best turn ever recorded. **Tool call and failure counts** — one event at `execute_tool_block`'s single choke point, and **a tool that fails by *returning* counts as a failure**. Almost every tool here reports errors in its result dict rather than raising, so counting exceptions alone would report a 0% failure rate: a metric worse than none, because it is reassuring. `error`, `exception` and `ok` are three outcomes, not two. **Retrieval hit rates** — `memory` and `rag`, recording asked-vs-returned, and **`unavailable` is not `empty`**: nothing came back because the store is down, and nothing came back because nothing matched, look identical to a user and are different bugs; merging them is the flattering choice. **Approval outcomes** — `claimed` at the claim, `expired` at the purge. Expiry is the one worth counting: a ladder that asks often and is answered rarely is a ladder people have learned to ignore. **Queue depth is deliberately not here, and the row's framing is corrected rather than quietly satisfied:** it is a *gauge* — a point-in-time reading — and writing it into an append-only log would be sampling something you can simply ask for at scrape time. It belongs in `P16-12`'s endpoint, and is filed there. Every insertion point is guarded and last: instrumentation never changes whether a tool succeeded, never delays its result, and never fails a chat. 16 tests, 7 mutations. *(One survived, the same shape as ever: the latency tests called `mark_turn_start` directly, so deleting the call from `chat_stream` passed all of them. Both handlers are asserted now — an unmeasured one shows up as a dashboard where half the turns have no latency at all.)*
-- [ ] **P14-03** **An eval harness.** Save a set of cases, run them against a configuration,
+- [x] **P14-03** **An eval harness.** Save a set of cases, run them against a configuration,
   get a number. Nothing in this codebase does that today: every prompt change, model swap, skill edit and
   retrieval tweak in this codebase is currently evaluated by vibes.
   **Unblocked 2026-09-02 — `P4-26` shipped.** A saved case is a receipt (`P4-25`, done) and a run is a re-run (`P4-26`, done), so the harness is now *scoring a set of replays* rather than a new store. `Verify:` a saved set of cases runs against a configuration and produces a number, and `P14-04` wires it to `P4-28`'s diff. Order was `P4-25` → `P4-26` → here, and each one made the next smaller.
+  — **done 2026-09-05, and it is small because the two rows in front of it did the work.** `src/evals.py` is a suite of `run_id`s plus what the operator expects, and running one is `replay()` in a loop — **no case store, no execution engine, no second copy of the configuration** (`Law 14`). Suites live in the `eval_suites` setting, following `networks`; `P14-06` is the row that decides a real store when one outgrows that, which is a call to make on evidence rather than pre-empt. **Assertions are deterministic and the operator writes them** — `contains`, `not_contains`, `regex`, `max_tool_failures`, `no_error`. Not a judge model: that is a real technique and a bigger decision (whose model, at what temperature, paid for by whom), and a harness whose *first* answer to *did that change help* is itself non-deterministic has replaced vibes with dearer vibes. Filed as `P14-08`. **The decision that matters is that a case which could not be reproduced is neither a pass nor a fail.** It is `skipped`, counted separately, and it drags nothing into the rate: folding unrunnable cases into *failed* makes a broken environment look like a regression and sends someone hunting a bug that is not there, and folding them into *passed* is worse because it is quiet. `P4-26`'s drift reporting is what makes that knowable at all, and a suite that skipped half its cases says so in the headline instead of in a field nobody reads. A suite where **nothing** ran refuses to print a rate — one computed over zero executed cases reads like evidence and is not. **Checks are an allowlist**, so a typo is a loud refusal before any model call rather than an assertion that silently never runs: a suite passing for the wrong reason is the single failure mode of an eval harness that costs anything, because nobody investigates a pass. Tool failures are read from the **replay's own** receipt, not the original's. 21 tests, 7 mutations. *(One survived and found a decorative defence: `score_case` ended `else error is None`, which looks like it handles the errored case and is unreachable whenever there IS an error — a `no_error` check is always added first. Mutating it to `else True` changed nothing. Simplified, and the test now pins the mechanism rather than the outcome.)*
+- [ ] **P14-08** **Model-graded scoring for `P14-03`, if it earns its place.** The harness scores deterministically — `contains`, `regex`, tool failures — because the first answer to *did that change help* must not itself be non-deterministic. Some questions genuinely need a judge (*is this summary better*), and that is what this row is for. **Decide before building:** which model judges, at what temperature, and who pays for it — a judge that is a cloud API by default would be `Law 16` clause 4 arriving through a side door, and one that is the same local model being tested grades its own homework. `Verify:` a graded suite reports the judge's model and settings beside the score, and a run with no judge configured is refused rather than silently scored some other way.
 - [ ] **P14-04** **Wire eval to receipts.** A saved case is a receipt (`P4-27`); a run is a
   re-run (`P4-26`); a result is a diff (`P4-28`). Law 14 — no second scaffolding.
 - [x] **P14-05** **Usage over time, per model and per owner.** The question that started this

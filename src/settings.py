@@ -119,6 +119,18 @@ DEFAULT_SETTINGS = {
     # [{"name": "lab", "cidrs": ["10.9.0.0/24"], "hosts": ["lab-gpu.lan"],
     #   "trust": "limited", "enabled": true, "notes": "…"}]
     "networks": [],
+    # Eval suites (`P14-03`). Ships empty; a suite is a name plus a list of
+    # receipts to replay and what to expect of each:
+    #
+    # [{"name": "regressions", "cases": [
+    #     {"run_id": "…", "label": "tool loop finishes",
+    #      "expect": {"contains": ["done"], "max_tool_failures": 0}}]}]
+    #
+    # In settings rather than a table, following `networks` — a handful of ids
+    # and strings, edited rarely. `P14-06` is the row that decides the store
+    # when a suite outgrows this, which is a decision to make on evidence rather
+    # than to pre-empt.
+    "eval_suites": [],
     # What to do with images in content the user did not write — model output, a
     # RAG document, an email. `ask` (default) renders a placeholder naming the
     # host until someone clicks; `proxy` fetches through /api/img automatically,
