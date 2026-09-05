@@ -2518,7 +2518,13 @@ async def llm_call_async(
                             delay = max(delay, told)
                         else:
                             delay = max(delay, LLMConfig.RETRY_DELAY * (2 ** (attempt - 1)))
-                    await asyncio.sleep(delay)
+                    # `P15-10`. Jittered because this is the 429 path: a
+                    # provider rate-limiting everyone at once is precisely the
+                    # event that synchronises every client's next attempt. The
+                    # flat 0.5s connect/read-timeout retries below are left
+                    # alone — spreading half a second buys nothing measurable.
+                    from src.jitter import jittered as _jittered
+                    await asyncio.sleep(_jittered(delay))
                     continue
                 raise HTTPException(r.status_code, friendly)
             logger.info(f"LLM async call to {target_url} succeeded in {duration:.2f}s (attempt {attempt})")

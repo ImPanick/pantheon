@@ -567,9 +567,16 @@ def setup_upload_routes(upload_handler):
         return {"ok": True}
 
     async def periodic_rate_limit_cleanup():
-        """Background task to run cleanup every hour"""
+        """Background task to run cleanup every hour.
+
+        Local-only, so it is not part of the cross-install herd — spread anyway
+        (`P15-10`), because "every recurring job" is a rule worth being able to
+        check mechanically and an exception that has to be argued each time is
+        an exception nobody checks.
+        """
+        from src.jitter import sleep_jittered
         while True:
-            await asyncio.sleep(3600)
+            await sleep_jittered(3600)
             upload_handler.cleanup_rate_limits()
     
     return router, periodic_rate_limit_cleanup

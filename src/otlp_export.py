@@ -378,7 +378,11 @@ def next_delay(interval: Optional[float] = None) -> float:
     sees one spike per minute instead of a flat rate.
     """
     base = _interval_seconds() if interval is None else max(MIN_INTERVAL_SECONDS, interval)
-    return base + random.uniform(0.0, base * JITTER_FRACTION)
+    # `P15-10` consolidated this: `src/jitter.py` is now the one place that
+    # decides when a recurring job fires, and a second local implementation is
+    # a second thing to find when the rule changes (`Law 14`).
+    from src.jitter import jittered
+    return jittered(base, fraction=JITTER_FRACTION)
 
 
 async def push_loop() -> None:

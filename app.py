@@ -1126,13 +1126,20 @@ async def _startup_event():
     _keepalive_enabled = str(os.getenv("PANTHEON_MODEL_KEEPALIVE", "")).lower() in {"1", "true", "yes", "on"}
     if _keepalive_enabled:
         async def _keepalive_loop():
+            # `P15-10` — jittered. This one pings every configured endpoint,
+            # so an exact sixty seconds means every install with the same
+            # provider knocks in the same instant.
+            from src.jitter import sleep_jittered
             while True:
                 try:
-                    await asyncio.sleep(60)
+                    await sleep_jittered(60)
                     await _warmup_endpoints()
                 except Exception as e:
                     logger.warning(f"Keepalive loop error: {e}")
-                    await asyncio.sleep(300)  # Back off on error
+                    # Back off on error — and jittered especially here, because
+                    # a provider outage fails every install at once and an exact
+                    # backoff brings them all back together.
+                    await sleep_jittered(300)
 
         _startup_tasks.append(asyncio.create_task(_keepalive_loop()))
 
@@ -1220,14 +1227,19 @@ async def _startup_event():
     # so any data created while auth was disabled / localhost-bypassed gets
     # claimed by the admin instead of staying world-visible (M19).
     async def _null_owner_sweep_loop():
+        # `P15-10` — jittered. This one is local-only, so it is not part of the
+        # cross-install herd; it is spread anyway because "every recurring job"
+        # is a rule worth being able to check mechanically, and an exception
+        # that has to be argued each time is an exception nobody checks.
+        from src.jitter import sleep_jittered
         while True:
             try:
-                await asyncio.sleep(3600)
+                await sleep_jittered(3600)
                 from core.database import _migrate_assign_legacy_owner
                 await asyncio.to_thread(_migrate_assign_legacy_owner)
             except Exception as e:
                 logger.debug(f"Null-owner sweep skipped: {e}")
-                await asyncio.sleep(3600)
+                await sleep_jittered(3600)
 
     _startup_tasks.append(asyncio.create_task(_null_owner_sweep_loop()))
 
@@ -1237,18 +1249,18 @@ async def _startup_event():
     # skills. Gated by the `skill_audit_nightly` setting (default on); hour via
     # `skill_audit_hour` (default 2), batch size via `skill_audit_batch` (8).
     async def _skill_audit_nightly_loop():
-        from datetime import timedelta
+        # `P15-10` — the worked example of why this matters. A nightly job at
+        # exactly 02:00 is the single worst time to pick, because it is the time
+        # everyone picks, and it is the job whose spike lands when nobody is
+        # awake to see it. Spread across the five minutes after the hour.
+        from src.jitter import next_daily_run
         while True:
             try:
                 from src.settings import get_setting
                 hour = int(get_setting("skill_audit_hour", 2) or 2)
             except Exception:
                 hour = 2
-            now = datetime.now()
-            nxt = now.replace(hour=hour % 24, minute=0, second=0, microsecond=0)
-            if nxt <= now:
-                nxt += timedelta(days=1)
-            await asyncio.sleep(max(60, (nxt - now).total_seconds()))
+            await asyncio.sleep(max(60, next_daily_run(hour)))
             try:
                 from src.settings import get_setting
                 if not get_setting("skill_audit_nightly", True):

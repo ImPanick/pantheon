@@ -781,6 +781,40 @@ belongs outside the app.
 
 ---
 
+### Nothing recurring fires on an exact boundary
+
+Every background job in Pantheon — the email pollers, the nightly skill audit,
+the scheduled housekeeping tasks, the browser's unread badge — runs a few percent
+late, on purpose, by a random amount that is re-rolled each time.
+
+**This is not about your install.** Inside one Pantheon the outbound limiter
+already paces whatever these jobs send. The problem is that every Pantheon on
+earth reaches the top of the hour at the same instant, so a provider you share
+with everybody else — a mail host, a model API — sees one spike per hour instead
+of a flat rate, and spikes are what abuse detection scores on. The sharper case
+is an outage: a provider goes down, every client fails together, and without
+jitter every client comes back at the same synchronised moment.
+
+Your schedules still mean what they say. A job asked to run hourly runs hourly;
+it just does not run at `:00:00`. Nothing ever fires *early* — that would make a
+cron-driven task run twice in one period. The spread is capped at five minutes,
+so a daily job stays daily rather than wandering.
+
+Two things deliberately keep their exact timing:
+
+- **A manual "Run now".** You are watching; a spread-out start reads as a button
+  that did not work.
+- **The scheduler's own tick.** It wakes near the next due-time boundary on
+  purpose, so a `* * * * *` task is not up to a minute late. The jitter lives on
+  the individual task instead.
+
+`python3 .pantheon/check-jitter.py` is in CI and fails the build on a recurring
+job with a fixed interval. It exists because the original audit found that not a
+single recurring job in the product had jitter — nobody ever chose an exact sixty
+seconds, it is just what you write.
+
+---
+
 ### Outbound cooldowns survive a restart
 
 When a provider tells Pantheon to stop — a `429`, a GitHub secondary-rate-limit

@@ -286,8 +286,20 @@ function _bindEvents() {
   // Delay the lightweight unread badge check so opening Pantheon doesn't
   // compete with the initial chat/session paint. The full email list now loads
   // only when the inbox is actually opened.
-  setTimeout(_refreshUnreadCount, 8000);
-  setInterval(_refreshUnreadCount, 60000);
+  // `P15-10` — jittered, and this one reaches a mail provider. `setInterval`
+  // is replaced by a self-rescheduling `setTimeout` because an interval fires
+  // on a fixed grid: jittering only the FIRST delay would shift the whole grid
+  // once and then keep every tick exactly sixty seconds apart forever, which
+  // spreads across installs but not across ticks. A drifting timer re-rolls
+  // each time, and drift is the point here rather than a defect.
+  const _unreadJitter = (base) => base + Math.random() * base * 0.1;
+  setTimeout(_refreshUnreadCount, _unreadJitter(8000));
+  (function _pollUnread() {
+    setTimeout(() => {
+      _refreshUnreadCount();
+      _pollUnread();
+    }, _unreadJitter(60000));
+  })();
 
   // Deep-link: #email=<folder>:<uid> opens the library and expands that card
   _maybeOpenFromHash();

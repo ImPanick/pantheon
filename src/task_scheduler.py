@@ -359,6 +359,52 @@ RETIRED_HOUSEKEEPING_ACTIONS = frozenset({
 })
 
 
+# `P15-10`. How long a due task waits before it actually starts.
+#
+# Scaled to the task's OWN period rather than being a flat number, because the
+# herd this exists to break is hourly-and-slower — the seeded email jobs on
+# minute `0` — while a `* * * * *` task delayed by half a minute would start
+# skipping periods once its own runtime is added. Five percent of the period,
+# capped, gives a minute-cadence task a couple of seconds and an hourly one a
+# useful spread.
+DISPATCH_JITTER_FRACTION = 0.05
+DISPATCH_JITTER_CAP_SECONDS = 45.0
+# When the period cannot be worked out — a malformed cron, a one-shot, an event
+# task deferred onto `next_run` — a few seconds is still better than none, and
+# is short enough to be safe against any cadence.
+DISPATCH_JITTER_FALLBACK_SECONDS = 5.0
+
+
+def _task_period_seconds(task, *, now=None):
+    """Seconds between this task's runs, or None when it cannot be derived."""
+    now = now or _utcnow()
+    try:
+        nxt = compute_next_run(
+            schedule=task.schedule,
+            scheduled_time=task.scheduled_time,
+            scheduled_day=task.scheduled_day,
+            scheduled_date=task.scheduled_date,
+            after=now,
+            cron_expression=task.cron_expression,
+            tz_name=getattr(task, "tz_name", None),
+        )
+    except Exception:
+        return None
+    if not nxt:
+        return None
+    seconds = (nxt - now).total_seconds()
+    return seconds if seconds > 0 else None
+
+
+def dispatch_hold(task, *, now=None) -> float:
+    """The spread for one due task. Zero is a legitimate answer."""
+    from src.jitter import spread
+    period = _task_period_seconds(task, now=now)
+    if period is None:
+        return spread(DISPATCH_JITTER_FALLBACK_SECONDS)
+    return spread(min(DISPATCH_JITTER_CAP_SECONDS, period * DISPATCH_JITTER_FRACTION))
+
+
 def _digest_windows(now):
     """(label, start, end) buckets for the calendar check-in digest.
 
@@ -722,7 +768,10 @@ class TaskScheduler:
         cache entries for notes not in the current scan's seen_ids) doesn't
         cross-delete other users' entries (review C4).
         """
-        await asyncio.sleep(30)
+        # `P15-10` — the startup offset is jittered too, or every install that
+        # restarts after the same provider outage lines back up on the way in.
+        from src.jitter import sleep_jittered
+        await sleep_jittered(30)
         from src.builtin_actions import action_ping_notes, TaskNoop
         while self._running:
             owners = self._known_task_owners()
@@ -733,7 +782,7 @@ class TaskScheduler:
                     pass
                 except Exception as e:
                     logger.warning(f"ping_notes background scanner errored for owner={ow!r}: {e}")
-            await asyncio.sleep(60)  # 1 min
+            await sleep_jittered(60)  # 1 min, spread
 
     async def _event_pings_loop(self):
         """Built-in calendar-event scanner — same recipe as note pings. Runs
@@ -742,7 +791,8 @@ class TaskScheduler:
         (passing owner="" globally would email User B's events to User A's
         configured SMTP "from" address — see review C3).
         """
-        await asyncio.sleep(90)
+        from src.jitter import sleep_jittered
+        await sleep_jittered(90)
         from src.builtin_actions import action_ping_events, TaskNoop
         while self._running:
             owners = self._known_task_owners()
@@ -753,7 +803,7 @@ class TaskScheduler:
                     pass
                 except Exception as e:
                     logger.warning(f"ping_events background scanner errored for owner={ow!r}: {e}")
-            await asyncio.sleep(600)  # 10 min
+            await sleep_jittered(600)  # 10 min, spread
 
     def _known_task_owners(self) -> list:
         """Distinct non-empty owners that background scanners should visit.
@@ -840,13 +890,37 @@ class TaskScheduler:
                         task.next_run = now + timedelta(minutes=15)
                         continue
                     self._executing.add(task.id)
-                    to_dispatch.append(task.id)
+                    to_dispatch.append((task.id, dispatch_hold(task, now=now)))
                 if foreground_active and due:
                     db.commit()
-            for task_id in to_dispatch:
-                asyncio.create_task(self._execute_task(task_id))
+            for task_id, hold in to_dispatch:
+                asyncio.create_task(self._dispatch_after(task_id, hold))
         finally:
             db.close()
+
+    async def _dispatch_after(self, task_id: str, hold: float) -> None:
+        """Hold a scheduled task briefly, then run it (`P15-10`).
+
+        The seeded housekeeping tasks all sit on minute `0` of the hour, and
+        they are email and calendar jobs — so every install with the same
+        provider knocks at the same instant. Jittering here rather than in the
+        shipped cron expressions covers user-created tasks too, and needs no
+        migration of a schedule somebody may have edited.
+
+        It is NOT in `_execute_task`, deliberately: that is also the manual
+        "Run now" path, where a person is watching and a spread-out start reads
+        as a button that did not work.
+
+        The id is already in `self._executing`, so the hold cannot cause a
+        second dispatch of the same task.
+        """
+        if hold > 0:
+            try:
+                await asyncio.sleep(hold)
+            except asyncio.CancelledError:
+                self._executing.discard(task_id)
+                raise
+        await self._execute_task(task_id)
 
     async def _execute_task(self, task_id: str, *, bypass_model_slot: bool = False, release_executing: bool = True):
         # Create the run record with status="queued" BEFORE waiting on the

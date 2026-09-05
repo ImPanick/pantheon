@@ -219,7 +219,9 @@ async def _loop():
                         )
         except Exception as e:
             logger.warning("bg-monitor tick error: %s", e)
-        await asyncio.sleep(POLL_INTERVAL_S)
+        # `P15-10` — the poll itself, not just the failure backoff above.
+        from src.jitter import sleep_jittered
+        await sleep_jittered(POLL_INTERVAL_S)
 
 
 def start_bg_monitor():

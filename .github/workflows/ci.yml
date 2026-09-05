@@ -122,6 +122,17 @@ jobs:
       # once, and the one that matters is the one nobody has heard of yet.
       - name: check-destinations
         run: python3 .pantheon/check-destinations.py
+      # P15-10. The audit that opened P15 ran this grep:
+      #   grep -rnE "jitter|random\.uniform|random\.randint" src/ routes/ services/ app.py
+      # and found nothing but a comment. Not one recurring job in the product
+      # had jitter, so every install fired the same job at the same instant and
+      # a shared provider saw a spike per hour rather than a rate. That state
+      # arrived through nobody deciding anything — an exact sixty seconds is
+      # simply what you write — so fixing the call sites without leaving this
+      # behind guarantees the next loop is bare again. It is invisible from
+      # inside a single install, which is why it survived until CI looked.
+      - name: check-jitter
+        run: python3 .pantheon/check-jitter.py
 
   law16-egress:
     name: Law 16 — no egress on a fresh install

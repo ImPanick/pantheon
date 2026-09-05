@@ -210,10 +210,11 @@ async def _tick() -> None:
 
 async def cookbook_serve_lifecycle_loop() -> None:
     """Forever-loop. Registered as a startup task in app.py."""
-    await asyncio.sleep(20)  # let the rest of startup settle
+    from src.jitter import sleep_jittered
+    await sleep_jittered(20)  # let the rest of startup settle
     while True:
         try:
             await _tick()
         except Exception as e:
             logger.warning(f"cookbook_serve_lifecycle tick failed: {e}")
-        await asyncio.sleep(60)
+        await sleep_jittered(60)

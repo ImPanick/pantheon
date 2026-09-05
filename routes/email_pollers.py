@@ -1502,9 +1502,14 @@ async def _scheduled_email_poller():
     cron-driven deployments."""
     import asyncio
 
+    from src.jitter import sleep_jittered
+
     while True:
         try:
-            await asyncio.sleep(30)
+            # `P15-10` — jittered. This is a recurring job that reaches a mail
+            # provider on a fixed thirty seconds, which `.pantheon/check-jitter.py`
+            # found and the hand audit in `P15`'s opening notes did not.
+            await sleep_jittered(30)
             await asyncio.to_thread(_scheduled_poll_once)
         except Exception as e:
             logger.error(f"Scheduled poller error: {e}")
