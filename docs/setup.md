@@ -781,6 +781,25 @@ belongs outside the app.
 
 ---
 
+### Your own machines are never throttled
+
+Pantheon paces the calls it makes out, so a provider does not see a burst where a
+steady rate would do. That pacing does **not** apply to your own machines: a
+model server on `localhost`, a box on your LAN, anything on a `.lan` or `.local`
+name, a private-range address, or a tailnet peer is called as fast as the work
+needs.
+
+The reason is that pacing exists to stay under somebody else's abuse detection.
+Your own hardware runs none, so a floor between requests there buys nothing and
+costs real time — indexing five thousand documents would have spent over two
+minutes asleep. If your own server *does* answer `429`, that is a real signal
+from a real server and Pantheon backs off exactly as it would for anyone else.
+
+If you deliberately want a LAN host paced — an old machine that falls over under
+load, say — give it an explicit policy and that wins over the local shortcut.
+
+---
+
 ### Nothing recurring fires on an exact boundary
 
 Every background job in Pantheon — the email pollers, the nightly skill audit,

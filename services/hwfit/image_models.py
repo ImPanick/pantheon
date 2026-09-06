@@ -175,10 +175,10 @@ def _fetch_hf_image_collection_models() -> list[dict[str, Any]]:
     for slug, mlx_only in [(slug, False) for slug in HF_IMAGE_COLLECTIONS] + [(slug, True) for slug in HF_MLX_IMAGE_COLLECTIONS]:
         url = f"https://huggingface.co/api/collections/{slug}"
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "Pantheon-Cookbook/1.0"})
-            with urllib.request.urlopen(req, timeout=2.5) as resp:
-                data = json.loads(resp.read().decode("utf-8", "replace"))
+            data = _hf_get_json(url, timeout=2.5)
         except Exception:
+            continue
+        if data is None:
             continue
         title = str(data.get("title") or slug)
         for item in data.get("items") or []:
@@ -191,6 +191,45 @@ def _fetch_hf_image_collection_models() -> list[dict[str, Any]]:
     return list(models)
 
 
+def _hf_get_json(url: str, *, timeout: float = 2.5):
+    """One paced GET against huggingface.co, returning parsed JSON or None.
+
+    `P15-06`. Both callers below walked a LIST of collection slugs, one
+    `urlopen` per slug with no pacing at all — against a host that carries an
+    explicit `HostPolicy` precisely because it has throttled this product
+    before. The loop made it a burst rather than a request.
+
+    Kept on `urllib` rather than moved to `paced_http`: this module is imported
+    by the hardware-fit path, which runs before `httpx` is guaranteed to be
+    importable in every deployment shape, and swapping the transport is a
+    bigger change than the row is buying. The pacing is what was missing.
+    """
+    import json as _json
+    import urllib.request
+    from src.rate_limiter import outbound, host_of, OutboundRateLimited
+
+    host = host_of(url)
+    try:
+        outbound.acquire(host, authenticated=False)
+    except OutboundRateLimited:
+        return None
+    req = urllib.request.Request(url, headers={"User-Agent": "Pantheon-Cookbook/1.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            payload = _json.loads(resp.read().decode("utf-8", "replace"))
+    except urllib.error.HTTPError as e:
+        # The status is the whole point of observing: HF answers a rate limit
+        # with a 429 that this path used to swallow into a bare `except`.
+        outbound.observe(host, int(getattr(e, "code", 0) or 0),
+                         dict(getattr(e, "headers", {}) or {}))
+        raise
+    except Exception:
+        outbound.note_failure(host)
+        raise
+    outbound.observe(host, 200, {})
+    return payload
+
+
 def _hf_model_search(query: str, limit: int = 10) -> list[dict[str, Any]]:
     global _HF_SEARCH_DISABLED_UNTIL
     now = time.time()
@@ -201,9 +240,7 @@ def _hf_model_search(query: str, limit: int = 10) -> list[dict[str, Any]]:
         "limit": str(limit),
     })
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "Pantheon-Cookbook/1.0"})
-        with urllib.request.urlopen(req, timeout=2.5) as resp:
-            data = json.loads(resp.read().decode("utf-8", "replace"))
+        data = _hf_get_json(url, timeout=2.5)
         return data if isinstance(data, list) else []
     except Exception:
         _HF_SEARCH_DISABLED_UNTIL = now + 10 * 60

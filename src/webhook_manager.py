@@ -425,9 +425,29 @@ class WebhookManager:
             sig = hmac.new(secret.encode(), body.encode(), hashlib.sha256).hexdigest()
             headers["X-Pantheon-Signature"] = sig
 
+        # `P15-06`. One task is spawned per matching webhook with no per-host
+        # cap, so an event that matches six webhooks pointed at the same
+        # receiver was six simultaneous POSTs — and a busy event stream made
+        # that a sustained burst at somebody else's endpoint.
+        #
+        # Paced HERE rather than in `_send_request`, which is the seam tests
+        # replace to avoid real sockets: moving the acquire inside it would make
+        # every stubbed test pay the limiter, and would leave a real call
+        # unpaced the moment somebody added a second transport path.
+        from src.rate_limiter import outbound, host_of, OutboundRateLimited
+        host = host_of(url)
+        try:
+            await outbound.acquire_async(host, authenticated=bool(secret))
+        except OutboundRateLimited as e:
+            logger.warning("Webhook %s deferred: %s", webhook_id, e)
+            return
+
         db = SessionLocal()
         try:
             resp = await self._send_request(url, body, headers, pinned_ips[0])
+            # A receiver that answers 429 is asking to be left alone, and a
+            # webhook is the one outbound call the operator does not watch.
+            outbound.observe(host, resp.status_code, dict(getattr(resp, "headers", {}) or {}))
             db.query(Webhook).filter(Webhook.id == webhook_id).update({
                 "last_triggered_at": _utcnow(),
                 "last_status_code": resp.status_code,
@@ -436,6 +456,7 @@ class WebhookManager:
             db.commit()
         except Exception as e:
             logger.warning(f"Webhook delivery failed for {webhook_id}")
+            outbound.note_failure(host)
             try:
                 db.query(Webhook).filter(Webhook.id == webhook_id).update({
                     "last_triggered_at": _utcnow(),

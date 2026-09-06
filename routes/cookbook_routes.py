@@ -3533,11 +3533,12 @@ def setup_cookbook_routes() -> APIRouter:
             f"?sort=trendingScore&direction=-1&limit={pool_size}&filter={pipeline}"
         )
         try:
-            async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.get(url)
-                if resp.status_code != 200:
-                    return {"models": [], "error": f"HF API HTTP {resp.status_code}"}
-                raw = resp.json()
+            # `P15-06` — huggingface.co carries a HostPolicy for a reason.
+            from src import paced_http
+            resp = await paced_http.get(url, timeout=15)
+            if resp.status_code != 200:
+                return {"models": [], "error": f"HF API HTTP {resp.status_code}"}
+            raw = resp.json()
         except Exception as e:
             return {"models": [], "error": str(e)}
 
@@ -3876,11 +3877,15 @@ def setup_cookbook_routes() -> APIRouter:
             token = _load_stored_hf_token()
             if token:
                 headers["Authorization"] = f"Bearer {token}"
-            async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-                resp = await client.get(url, headers=headers)
-                if resp.status_code != 200:
-                    return {"ok": False, "files": [], "error": f"HF API HTTP {resp.status_code}"}
-                data = resp.json()
+            # `P15-06`. `authenticated` is not cosmetic: a stored token raises
+            # the quota, so the limiter drops to the authenticated floor rather
+            # than pacing a token holder like an anonymous client.
+            from src import paced_http
+            resp = await paced_http.get(url, headers=headers, timeout=15,
+                                        authenticated=bool(token))
+            if resp.status_code != 200:
+                return {"ok": False, "files": [], "error": f"HF API HTTP {resp.status_code}"}
+            data = resp.json()
         except Exception:
             logger.exception("HF GGUF file scan failed for %s", repo)
             return {"ok": False, "files": [], "error": "HF API request failed"}
@@ -3944,11 +3949,12 @@ def setup_cookbook_routes() -> APIRouter:
             models: list[dict] = []
             err = None
             try:
-                async with _httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
-                    resp = await client.get(
-                        "https://ollama.com/search?sort=popular",
-                        headers={"User-Agent": "pantheon-cookbook/1.0"},
-                    )
+                from src import paced_http
+                resp = await paced_http.get(
+                    "https://ollama.com/search?sort=popular",
+                    headers={"User-Agent": "pantheon-cookbook/1.0"},
+                    timeout=8,
+                )
                 if resp.status_code == 200:
                     html = resp.text
                     # ollama.com renders each model card as a single anchor:
@@ -4038,11 +4044,15 @@ def setup_cookbook_routes() -> APIRouter:
             def _fetch_sync() -> tuple[int, dict | None, str]:
                 try:
                     headers = {"Accept": "application/vnd.github+json"}
-                    with _httpx.Client(timeout=10.0, follow_redirects=True) as client:
-                        r = client.get(url, headers=headers)
-                        if r.status_code != 200:
-                            return r.status_code, None, r.text[:200]
-                        return 200, r.json(), ""
+                    # `P15-06`. Unauthenticated api.github.com is SIXTY requests
+                    # per hour, and its primary rate limit arrives as a 403 whose
+                    # body is the only place that says so — which `paced_http`
+                    # reads and the hand-written version here did not.
+                    from src import paced_http
+                    r = paced_http.get_sync(url, headers=headers, timeout=10.0)
+                    if r.status_code != 200:
+                        return r.status_code, None, r.text[:200]
+                    return 200, r.json(), ""
                 except Exception as e:
                     return 0, None, f"fetch error: {e}"
             status, data, err = await asyncio.to_thread(_fetch_sync)
@@ -4103,9 +4113,9 @@ def setup_cookbook_routes() -> APIRouter:
 
         def _fetch_sync() -> tuple[int, str]:
             try:
-                with _httpx.Client(timeout=8.0, follow_redirects=True) as client:
-                    r = client.get(url)
-                    return r.status_code, r.text
+                from src import paced_http
+                r = paced_http.get_sync(url, timeout=8.0)
+                return r.status_code, r.text
             except Exception as e:
                 return 0, f"fetch error: {e}"
 

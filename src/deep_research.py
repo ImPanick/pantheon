@@ -211,6 +211,7 @@ class DeepResearcher:
         planning_timeout: int = 90,
         query_timeout: int = 120,
         extraction_concurrency: int = 3,
+        search_concurrency: int = 4,
         min_rounds: int = 2,
         max_empty_rounds: int = 2,
         synthesis_window: int = 10,
@@ -232,6 +233,13 @@ class DeepResearcher:
         self.planning_timeout = min(3600, max(15, int(planning_timeout or 90)))
         self.query_timeout = min(3600, max(15, int(query_timeout or 120)))
         self.extraction_concurrency = min(12, max(1, int(extraction_concurrency or 3)))
+        # `P15-06`. The searches had NO bound while the extractions ten lines
+        # below had one — a round can generate up to 25 queries and every one of
+        # them walks the whole provider chain, so an unbounded `gather` was the
+        # single largest burst the product could produce, aimed at whichever
+        # search provider happens to be configured. The pattern to copy was
+        # already in the same function.
+        self.search_concurrency = min(12, max(1, int(search_concurrency or 4)))
         self.min_rounds = min_rounds
         self.max_empty_rounds = max_empty_rounds
         self.synthesis_window = synthesis_window
@@ -517,8 +525,21 @@ class DeepResearcher:
         """Search each query and extract relevant info from top results."""
         all_findings: List[Dict] = []
 
-        # Search all queries in parallel
-        search_tasks = [self._search(q) for q in queries]
+        # Search all queries, with backpressure (`P15-06`).
+        #
+        # This used to be an unbounded `gather` over up to 25 queries. The
+        # limiter would still have paced them per host, but 25 coroutines each
+        # holding a connection and a DNS lookup while queued behind a 2s floor is
+        # a burst at the socket layer even when it is polite at the HTTP one —
+        # and if the provider chain falls through to a second provider, it is 25
+        # more. The extraction path below has had this bound all along.
+        search_gate = asyncio.Semaphore(self.search_concurrency)
+
+        async def _bounded_search(query: str):
+            async with search_gate:
+                return await self._search(query)
+
+        search_tasks = [_bounded_search(q) for q in queries]
         search_results = await asyncio.gather(*search_tasks, return_exceptions=True)
 
         # Collect URLs to fetch from all search results

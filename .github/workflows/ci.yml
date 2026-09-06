@@ -133,6 +133,16 @@ jobs:
       # inside a single install, which is why it survived until CI looked.
       - name: check-jitter
         run: python3 .pantheon/check-jitter.py
+      # P15-06. Two rules. The budget can go down and never up — a hard zero
+      # today would be a lie, because most of what is left is the agent's own
+      # tools calling Pantheon's HTTP API on loopback, where pacing is free but
+      # converting a hundred call sites in one commit is how you ship a
+      # regression nobody can bisect. The rule with NO budget is a call to a
+      # host carrying an explicit HostPolicy — GitHub, HuggingFace, DuckDuckGo —
+      # because those policies exist only because those hosts have already
+      # throttled this product.
+      - name: check-outbound
+        run: python3 .pantheon/check-outbound.py --max 117
 
   law16-egress:
     name: Law 16 — no egress on a fresh install

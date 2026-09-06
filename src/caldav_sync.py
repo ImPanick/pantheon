@@ -251,6 +251,51 @@ def _build_dav_client(url: str, username: str, password: str):
     # test_build_dav_client_disables_redirects asserts it against installed
     # caldav in CI.
     client.session.max_redirects = 0
+    _pace_dav_session(client, url)
+    return client
+
+
+def _pace_dav_session(client, url: str):
+    """Route every request the `caldav` library makes through the limiter.
+
+    `P15-06`. Pacing the sync as a whole would be one acquire for a run that
+    makes one PROPFIND, one REPORT per calendar and — on writeback — one PUT
+    PER EVENT. The fan-out is inside the library, so the gate has to be inside
+    it too, and the library gives us exactly one seam: the session it does all
+    of its I/O through.
+
+    Wrapped on the INSTANCE rather than the class. Patching
+    `requests.Session.request` globally would pace every unrelated caller in the
+    process that happens to use requests, which is a much larger blast radius
+    than this row is buying.
+
+    A CalDAV server is usually the operator's own (`LOCAL_POLICY`, free) but is
+    just as often Fastmail or iCloud, where a sync that walks a year of events
+    is precisely the shape that gets throttled.
+    """
+    from src.rate_limiter import outbound, host_of
+
+    session = getattr(client, "session", None)
+    original = getattr(session, "request", None)
+    if original is None or getattr(session, "_pantheon_paced", False):
+        return client
+
+    host = host_of(url)
+
+    def _paced_request(*args, **kwargs):
+        outbound.acquire(host, authenticated=True)
+        try:
+            response = original(*args, **kwargs)
+        except Exception:
+            outbound.note_failure(host)
+            raise
+        status = getattr(response, "status_code", None)
+        if isinstance(status, int):
+            outbound.observe(host, status, dict(getattr(response, "headers", {}) or {}))
+        return response
+
+    session.request = _paced_request
+    session._pantheon_paced = True
     return client
 
 

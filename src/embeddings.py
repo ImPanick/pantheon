@@ -39,6 +39,12 @@ _DEFAULT_MODEL = "all-minilm:l6-v2"
 _DEFAULT_FASTEMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 
+# How many times a rejected batch may be split before it is trimmed instead.
+# One: a batch of 8 becomes 8 singles, and a single that still fails is trimmed.
+# Two would be 64 requests from one, which is the burst this bounds.
+_MAX_SPLIT_DEPTH = 1
+
+
 class EmbeddingClient:
     """Drop-in replacement for SentenceTransformer.encode() using an HTTP API."""
 
@@ -92,7 +98,27 @@ class EmbeddingClient:
 
         return vecs
 
-    def _embed_batch(self, batch: List[str]) -> List[List[float]]:
+    def _embed_batch(self, batch: List[str], *, _split_depth: int = 0) -> List[List[float]]:
+        """One batch, with the 400-splitting retry that `P15-06` had to bound.
+
+        THE FAN-OUT AMPLIFIER.
+
+        A `400` from the endpoint usually means one item in the batch is too
+        long for its context. Splitting the batch and retrying each item finds
+        the culprit — and turns ONE request into NINE (eight singles plus the
+        original), each of which can split again. The recursion had no depth
+        limit, so a batch whose items were all too long produced the maximum
+        fan-out every time, and it did it during a RAG index, when thousands of
+        batches are in flight. That is the shape abuse detection scores on, and
+        it was the one place in the product that could manufacture a burst out
+        of a steady workload.
+
+        Two changes, and the second is the one that matters: the split is now
+        depth-limited (a batch splits into singles ONCE — a single that still
+        400s is trimmed, then reported, never split again), and every request
+        goes through the limiter, which for a local endpoint costs nothing
+        (`LOCAL_POLICY`) and for a hosted one is the whole point.
+        """
         try:
             return self._post_embeddings(batch)
         except httpx.HTTPStatusError as e:
@@ -100,9 +126,17 @@ class EmbeddingClient:
             if status != 400:
                 raise
             if len(batch) > 1:
+                if _split_depth >= _MAX_SPLIT_DEPTH:
+                    # Refuse to keep multiplying. One over-long item should not
+                    # cost the endpoint an exponential number of requests.
+                    logger.warning(
+                        "Embedding batch of %d still rejected at split depth %d; "
+                        "trimming instead of splitting further", len(batch), _split_depth,
+                    )
+                    return self._post_embeddings([t[: self._max_chars] for t in batch])
                 vecs = []
                 for text in batch:
-                    vecs.extend(self._embed_batch([text]))
+                    vecs.extend(self._embed_batch([text], _split_depth=_split_depth + 1))
                 return vecs
             text = batch[0]
             trimmed = text[: self._max_chars]
@@ -115,11 +149,23 @@ class EmbeddingClient:
             raise
 
     def _post_embeddings(self, batch: List[str]) -> List[List[float]]:
+        # `P15-06` — the one place this module leaves the process. Paced by the
+        # host's policy, which is zero for the operator's own box and real for a
+        # hosted embedding API, and fed the response so a 429 becomes a cooldown
+        # rather than the next request.
+        from src.rate_limiter import outbound, host_of, OutboundRateLimited
+        host = host_of(self.url)
+        try:
+            outbound.acquire(host, authenticated=bool(self.api_key))
+        except OutboundRateLimited as e:
+            raise RuntimeError(f"embedding endpoint is in cooldown: {e}") from e
+
         resp = self._client.post(
             self.url,
             headers={"Authorization": f"Bearer {self.api_key}"} if self.api_key else {},
             json={"input": batch, "model": self.model},
         )
+        outbound.observe(host, resp.status_code, dict(resp.headers or {}))
         resp.raise_for_status()
         data = resp.json()
 

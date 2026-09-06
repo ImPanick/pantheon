@@ -437,7 +437,13 @@ def duckduckgo_search(query: str, count: Optional[int] = None, time_filter: Opti
     count = count if count is not None else _get_result_count()
     def _html_fallback() -> List[dict]:
         try:
-            response = httpx.get(
+            # `P15-06`. `html.duckduckgo.com` has the strictest policy in the
+            # table — 2s between requests, one at a time — because this is the
+            # keyless fallback every install shares, and it is the endpoint most
+            # likely to be scraping-detected. `core.py` was already reporting a
+            # 429 here; nothing was honouring the cooldown it recorded.
+            from src import paced_http
+            response = paced_http.get_sync(
                 "https://html.duckduckgo.com/html/",
                 params={"q": query, "kp": _safesearch_for("duckduckgo_html")},
                 headers={"User-Agent": WEB_FETCH_USER_AGENT},

@@ -92,7 +92,12 @@ def test_service_ddg_html_fallback_sends_safesearch(monkeypatch):
 
     monkeypatch.setattr(providers, "_get_search_settings", lambda: {"search_safesearch": "off"})
     monkeypatch.setitem(sys.modules, "ddgs", None)
-    monkeypatch.setattr(providers.httpx, "get", fake_get)
+    # `P15-06` moved this call onto `paced_http.get_sync`, which is the seam the
+    # limiter lives behind. Stubbing `providers.httpx.get` now stubs a function
+    # nothing calls, so the test would have passed against a transport it was no
+    # longer exercising — patch where the request is actually made.
+    from src import paced_http
+    monkeypatch.setattr(paced_http, "get_sync", fake_get)
 
     results = providers.duckduckgo_search("pantheon", count=1)
 

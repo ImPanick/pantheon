@@ -1,6 +1,7 @@
 # src/rate_limiter.py
 """Generic in-memory rate limiter — sliding window, keyed by IP."""
 
+import ipaddress
 import logging
 import os
 import threading
@@ -148,6 +149,61 @@ _HOST_POLICIES = {
 # from quota and is what actually issues the soft ban.
 _AUTHENTICATED_FLOOR = 0.2
 
+# --------------------------------------------------------------------------
+# The operator's own machines are not a destination to be polite to (`P15-06`)
+# --------------------------------------------------------------------------
+#
+# `D-2026-09-01-03`, in the owner's words: *"internal comms, LAN to LAN etc is
+# totally fine. we arent building fort knox. just an orchestration harness."*
+#
+# This is not a nicety, it is what makes `P15-06` possible at all. Pacing exists
+# because a third party runs abuse detection and will soft-ban a client whose
+# request SHAPE looks wrong. A model server on the operator's own box runs none:
+# the only thing a 0.25s floor buys there is 0.25s. Routing the local-first
+# services through the limiter at the default policy would mean a 5,000-chunk
+# RAG index paying 625 × 0.25s — over two and a half minutes of pure sleeping —
+# and the first person to profile it would rip the limiter back out, correctly.
+#
+# So a local host is paced at zero AND STILL OBSERVED. If a local server does
+# answer 429, that is a real signal from a real server and the cooldown applies
+# exactly as it would to anyone else. What is dropped is the pre-emptive
+# politeness, not the response handling.
+LOCAL_POLICY = HostPolicy(min_interval=0.0, max_concurrent=32, jitter=0.0, max_wait=30.0)
+
+_LOCAL_NAMES = frozenset({
+    "localhost", "host.docker.internal", "gateway.docker.internal",
+    # compose service names — inside the network Pantheon ships with
+    "pantheon", "searxng", "chromadb", "chroma", "ntfy", "ollama",
+})
+_LOCAL_SUFFIXES = (".local", ".lan", ".internal", ".localdomain", ".home.arpa")
+
+
+def host_is_local(host: str) -> bool:
+    """Is this address a machine the operator owns? Name and literal only.
+
+    NO DNS. The limiter sits in front of every deliberate outbound call, and a
+    resolver call there would add a lookup — and a failure mode — to the hot
+    path of every request in the product. A hostname that resolves to a private
+    address but is not named like one takes the ordinary policy, which is the
+    safe direction to be wrong in: it is paced, not blocked.
+
+    `not ip.is_global` rather than `is_private`, because a tailnet lives in
+    100.64.0.0/10 (RFC 6598) which `is_private` reports as False. That mistake
+    has been made twice in this codebase already.
+    """
+    host = (host or "").strip().strip("[]").lower()
+    if not host:
+        return False
+    if host in _LOCAL_NAMES or host.endswith(_LOCAL_SUFFIXES):
+        return True
+    if "." not in host and ":" not in host:
+        # A bare single-label name is a container or LAN name, not a public one.
+        return True
+    try:
+        return not ipaddress.ip_address(host).is_global
+    except ValueError:
+        return False
+
 
 @dataclass
 class _HostState:
@@ -276,9 +332,24 @@ class OutboundHostLimiter:
 
         limiter.observe(host, status_code, headers)
 
-    `observe` is what turns a server's complaint into silence on our side. Call it
-    on every response, not only the failures — a 200 is how a host tells us the
-    cooldown is over.
+    `observe` is what turns a server's complaint into silence on our side. Call
+    it on every response, not only the failures: a success clears the escalation
+    ladder, so the next penalty starts from the base cooldown rather than from
+    wherever the last bad run left it.
+
+    IT DOES NOT CLEAR A HARD COOLDOWN, AND THE DIFFERENCE MATTERS (`B36`).
+
+    An earlier version of this docstring said "a 200 is how a host tells us the
+    cooldown is over", which the code has never done and should not: a
+    `blocked_until` comes from the server's OWN instruction — a `Retry-After`,
+    an `X-RateLimit-Reset` — and it expires on its own schedule. A 200 arriving
+    while we believe the host is blocked means somebody bypassed `acquire`, and
+    letting that erase the block would make the one caller who skips the gate
+    able to un-ban the host for everybody else. The ladder is ours to reset; the
+    deadline is the server's.
+
+    `succeeded(key)` is the explicit "it worked, drop everything" for the
+    `penalise` path, where the failure carried no expiry to wait out.
     """
 
     def __init__(self, policies: Optional[Dict[str, HostPolicy]] = None):
@@ -418,7 +489,12 @@ class OutboundHostLimiter:
 
     # -- policy -----------------------------------------------------------
     def policy_for(self, host: str, *, authenticated: bool = False) -> HostPolicy:
-        pol = self._policies.get((host or "").lower(), self._default)
+        # An explicit policy wins even for a local name — an operator who wrote
+        # one down meant it. Otherwise a local host is not paced (`P15-06`).
+        key = (host or "").lower()
+        if key not in self._policies and host_is_local(key):
+            return LOCAL_POLICY
+        pol = self._policies.get(key, self._default)
         if authenticated and pol.min_interval > _AUTHENTICATED_FLOOR:
             return HostPolicy(
                 min_interval=_AUTHENTICATED_FLOOR,

@@ -486,8 +486,11 @@ async def _cookbook_hf_model_info(repo_id: str) -> Dict[str, Any]:
         headers["Authorization"] = f"Bearer {token}"
     url = f"https://huggingface.co/api/models/{repo_id}"
     try:
-        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
-            resp = await client.get(url, headers=headers)
+        # `P15-06`. huggingface.co carries a HostPolicy; a token raises the
+        # quota, so say so rather than being paced like an anonymous client.
+        from src import paced_http
+        resp = await paced_http.get(url, headers=headers, timeout=20,
+                                    authenticated=bool(token))
         if resp.status_code >= 400:
             return {
                 "repo_id": repo_id,
