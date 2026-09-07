@@ -1911,6 +1911,21 @@
               </div>
             </div>
           </div>
+          <!-- H18. The card above says "keep this email-specific", which is
+               exactly why `document_writing_style` exists as a separate key —
+               greetings and sign-offs are wrong in a report. It had no control
+               anywhere, so the only writer was the agent or a hand-edit. -->
+          <div class="admin-card">
+            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>Document Writing Style</h2>
+            <div class="admin-toggle-sub" style="margin-bottom:8px">Used when the assistant writes or edits a document. Separate from the email style above, because greetings and sign-offs belong in mail and nowhere else.</div>
+            <div class="settings-col">
+              <textarea id="set-doc-style" rows="5" class="settings-select" style="font-family:inherit;resize:none" placeholder="e.g. Short paragraphs. No bullet lists unless I ask. British spelling."></textarea>
+              <div class="settings-row" style="margin-top:4px">
+                <span id="set-doc-style-msg" style="font-size:11px;"></span>
+                <button class="admin-btn-add" id="set-doc-style-save" style="margin-left:auto;">Save</button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- ═══ SEARCH TAB ═══ -->
@@ -1956,6 +1971,24 @@
                   </select>
                   <input id="set-searchResultCountCustom" type="number" class="settings-select" placeholder="Enter custom value" style="flex:1;display:none;min-width:120px;" min="1" max="100">
                 </div>
+              </div>
+              <!-- H18. Seventeen lines of documentation in DEFAULT_SETTINGS
+                   about three levels across six providers, and no control. -->
+              <div class="settings-row">
+                <label class="settings-label" for="set-searchSafesearch">SafeSearch</label>
+                <select id="set-searchSafesearch" class="settings-select">
+                  <option value="strict">Strict — the provider's strongest filter</option>
+                  <option value="moderate">Moderate — the provider's default</option>
+                  <option value="off">Off — no filtering</option>
+                </select>
+              </div>
+              <div class="admin-toggle-sub" style="margin:-4px 0 4px;font-size:11px;opacity:0.6;line-height:1.4;">
+                Applied to SearXNG, Brave, DuckDuckGo, Google PSE and Serper.
+                Tavily has no such setting and filters at index time, and a
+                custom backend reached through the URL below keeps whatever it
+                decides for itself — so self-hosted instances stay in your
+                control. Strict also keeps a lot of low-quality spam out, which
+                is the main reason to leave it on.
               </div>
               <div id="set-searchUrlRow" class="settings-row">
                 <label class="settings-label">URL</label>
@@ -2010,6 +2043,24 @@
                 <div style="position:relative;width:382.5px;flex:0 0 auto;margin-left:auto;">
                   <input id="set-researchExtractTimeout" type="text" inputmode="numeric" placeholder="90 sec" class="settings-select" style="width:100%;padding-right:30px;">
                   <span title="How long the researcher waits for a single URL to fetch and extract before giving up on it. Slow sites get skipped. Default 90 seconds." style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:16px;height:16px;border-radius:50%;border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;opacity:0.55;cursor:help;user-select:none;">?</span>
+                </div>
+              </div>
+              <!-- H18. Two lightweight LLM calls happen BEFORE any search
+                   starts — planning the run, and writing the queries — and they
+                   are separately tunable so a slow local backend is not capped
+                   by the per-call defaults. Both had no control. -->
+              <div class="settings-row">
+                <label class="settings-label">Plan Timeout</label>
+                <div style="position:relative;width:382.5px;flex:0 0 auto;margin-left:auto;">
+                  <input id="set-researchPlanTimeout" type="text" inputmode="numeric" placeholder="90 sec" class="settings-select" style="width:100%;padding-right:30px;">
+                  <span title="How long to wait for the model to plan the research run, before any searching starts. Raise it if a slow local model times out here. Default 90 seconds." style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:16px;height:16px;border-radius:50%;border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;opacity:0.55;cursor:help;user-select:none;">?</span>
+                </div>
+              </div>
+              <div class="settings-row">
+                <label class="settings-label">Query Timeout</label>
+                <div style="position:relative;width:382.5px;flex:0 0 auto;margin-left:auto;">
+                  <input id="set-researchQueryTimeout" type="text" inputmode="numeric" placeholder="90 sec" class="settings-select" style="width:100%;padding-right:30px;">
+                  <span title="How long to wait for the model to write each set of search queries. Same reason as Plan Timeout: slow local backends need more than the old defaults. Default 90 seconds." style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:16px;height:16px;border-radius:50%;border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;opacity:0.55;cursor:help;user-select:none;">?</span>
                 </div>
               </div>
               <div class="settings-row">
@@ -2626,7 +2677,58 @@
                 the action summary and will reject turns that were fine, costing
                 an extra round every time. Worth turning on for a strong model.
               </div>
+              <!-- H18. The trap here is that the DEFAULT VALUE IS A SENTINEL:
+                   `agent_input_token_budget: 6000` means "scale the budget to
+                   the model's context window", not "cap at 6000". A plain
+                   number box would let someone type 6000 meaning a cap and
+                   silently get auto, which is why this is a mode picker with
+                   the number beside it. `context_budget.budget_is_explicit`
+                   is the rule; this control is that rule with a face. -->
+              <div class="settings-row">
+                <label class="settings-label" for="set-agentBudgetMode">Context sent to the model</label>
+                <select id="set-agentBudgetMode" class="settings-select" style="width:200px;flex:0 0 auto;margin-left:auto;">
+                  <option value="auto">Scale to the model's window</option>
+                  <option value="fixed">Fixed number of tokens</option>
+                  <option value="off">Send everything (no trimming)</option>
+                </select>
+              </div>
+              <div class="settings-row" id="set-agentBudgetRow" style="display:none;">
+                <label class="settings-label" for="set-agentBudget">Token budget</label>
+                <input id="set-agentBudget" type="text" inputmode="numeric" placeholder="5999" class="settings-select" style="width:200px;flex:0 0 auto;margin-left:auto;">
+              </div>
+              <div class="settings-row">
+                <label class="settings-label" for="set-agentBudgetMax">Ceiling when scaling</label>
+                <input id="set-agentBudgetMax" type="text" inputmode="numeric" placeholder="200000" class="settings-select" style="width:200px;flex:0 0 auto;margin-left:auto;">
+              </div>
+              <div class="admin-toggle-sub" style="margin:-4px 0 4px;font-size:11px;opacity:0.6;line-height:1.4;">
+                The ceiling only limits the scaled budget — a fixed number you
+                type is honoured as typed. Raise it on a premium API with a very
+                large window you actually want to fill; lower it if you are
+                watching costs.
+              </div>
               <div id="set-agentMsg" style="font-size:11px;color:color-mix(in srgb, var(--fg) 45%, transparent);"></div>
+            </div>
+          </div>
+          <!-- H18. Scheduled tasks run on their own endpoint and model when
+               these are set, and fall back to the chat default when they are
+               not. Both had no control, so a person who wanted their overnight
+               work on a cheaper or a local model had to hand-edit JSON. -->
+          <div class="admin-card" style="margin-bottom:12px;">
+            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Model for scheduled tasks</h2>
+            <div class="admin-toggle-sub" style="margin-bottom:8px">
+              What background and scheduled work runs on. Leave both empty to
+              use the default chat model.
+            </div>
+            <div class="settings-col">
+              <div class="settings-row">
+                <label class="settings-label" for="set-taskEndpoint">Endpoint</label>
+                <select id="set-taskEndpoint" class="settings-select" style="width:250px;flex:0 0 auto;margin-left:auto;"><option value="">Default chat endpoint</option></select>
+              </div>
+              <div class="settings-row">
+                <label class="settings-label" for="set-taskModel">Model</label>
+                <select id="set-taskModel" class="settings-select" style="width:250px;flex:0 0 auto;margin-left:auto;"><option value="">Default</option></select>
+              </div>
+              <div id="set-taskModelMsg" style="font-size:11px;color:color-mix(in srgb, var(--fg) 45%, transparent);"></div>
             </div>
           </div>
           <!-- H16. Three knobs read by a `while True` loop in app.py and absent

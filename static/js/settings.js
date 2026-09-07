@@ -440,6 +440,171 @@ async function initDefaultChat() {
   });
 }
 
+/* ── H18: settings the model could change and a person could not ──
+   Each of these is read by live code, settable by `manage_settings` under its
+   exact key, and had **zero references under `static/`**. The row's own
+   headline is the whole of it: the assistant could change them and you could
+   not. */
+
+/* Document writing style. The email style card next to this one says "keep
+   this email-specific", which is exactly why a second key exists — greetings
+   and sign-offs are wrong in a report — and the second key had no box. */
+async function initDocStyle() {
+  var box = el('set-doc-style');
+  var msg = el('set-doc-style-msg');
+  var saveBtn = el('set-doc-style-save');
+  if (!box || !msg || !saveBtn) return;
+  try {
+    var res = await fetch('/api/auth/settings', { credentials: 'same-origin' });
+    var settings = await res.json();
+    box.value = settings.document_writing_style || '';
+  } catch (e) { /* saving reports its own errors */ }
+  saveBtn.addEventListener('click', async function() {
+    saveBtn.disabled = true;
+    try {
+      await _postSettings({ document_writing_style: box.value });
+      msg.textContent = box.value.trim() ? 'Saved.' : 'Cleared — the assistant will use its own judgement.';
+      msg.style.color = 'var(--fg)';
+    } catch (e) {
+      msg.textContent = 'Failed to save';
+      msg.style.color = 'var(--red)';
+    } finally { saveBtn.disabled = false; }
+  });
+}
+
+/* SafeSearch. Seventeen lines of documentation in DEFAULT_SETTINGS about three
+   levels across six providers, and no control until now. */
+async function initSafesearch() {
+  var sel = el('set-searchSafesearch');
+  if (!sel) return;
+  try {
+    var res = await fetch('/api/auth/settings', { credentials: 'same-origin' });
+    var settings = await res.json();
+    // A stored value that is not one of the three would leave the select on
+    // its first option while the backend used something else — so only adopt
+    // a value the control can actually represent.
+    var v = settings.search_safesearch;
+    if (v === 'strict' || v === 'moderate' || v === 'off') sel.value = v;
+  } catch (e) { /* leaves the shipped default selected */ }
+  sel.addEventListener('change', async function() {
+    try { await _postSettings({ search_safesearch: sel.value }); }
+    catch (e) { console.warn('Failed to save safesearch', e); }
+  });
+}
+
+/* The agent's input budget. The trap: `agent_input_token_budget: 6000` is a
+   SENTINEL meaning "scale to the model's window", not a cap of 6000, so a
+   plain number box would let someone type 6000 meaning a cap and silently get
+   auto. `context_budget.budget_is_explicit` is that rule; this is it with a
+   face. 0 disables trimming entirely. */
+const _AGENT_BUDGET_AUTO = 6000;
+
+async function initAgentBudget() {
+  var mode = el('set-agentBudgetMode');
+  var row = el('set-agentBudgetRow');
+  var box = el('set-agentBudget');
+  var maxBox = el('set-agentBudgetMax');
+  var msg = el('set-agentMsg');
+  if (!mode || !row || !box || !maxBox) return;
+
+  function syncRow() { row.style.display = mode.value === 'fixed' ? '' : 'none'; }
+
+  try {
+    var res = await fetch('/api/auth/settings', { credentials: 'same-origin' });
+    var settings = await res.json();
+    var budget = settings.agent_input_token_budget;
+    if (budget === 0) {
+      mode.value = 'off';
+    } else if (budget === undefined || budget === null || budget === _AGENT_BUDGET_AUTO) {
+      mode.value = 'auto';
+    } else {
+      mode.value = 'fixed';
+      box.value = budget;
+    }
+    if (settings.agent_input_token_hard_max) maxBox.value = settings.agent_input_token_hard_max;
+  } catch (e) { /* saving reports its own errors */ }
+  syncRow();
+
+  async function save() {
+    syncRow();
+    var payload = {};
+    if (mode.value === 'off') {
+      payload.agent_input_token_budget = 0;
+    } else if (mode.value === 'auto') {
+      payload.agent_input_token_budget = _AGENT_BUDGET_AUTO;
+    } else {
+      var n = parseInt(box.value, 10);
+      if (isNaN(n) || n <= 0) { if (msg) { msg.textContent = 'Enter a token budget.'; msg.style.color = 'var(--red)'; } return; }
+      // The sentinel is not available as a fixed value, and saying so beats
+      // storing 6000 and quietly meaning something else. The same advice the
+      // setting's own documentation gives.
+      if (n === _AGENT_BUDGET_AUTO) {
+        if (msg) { msg.textContent = _AGENT_BUDGET_AUTO + ' means "scale to the window". Use ' + (_AGENT_BUDGET_AUTO - 1) + ' for a fixed budget that size.'; msg.style.color = 'var(--red)'; }
+        return;
+      }
+      payload.agent_input_token_budget = n;
+      box.value = n;
+    }
+    var m = parseInt(maxBox.value, 10);
+    if (!isNaN(m) && m > 0) { payload.agent_input_token_hard_max = m; maxBox.value = m; }
+    try {
+      await _postSettings(payload);
+      if (msg) {
+        msg.textContent = mode.value === 'off' ? 'No trimming — the whole conversation is sent.'
+          : mode.value === 'auto' ? 'Scaling to the model\u2019s window.'
+          : 'Fixed at ' + payload.agent_input_token_budget + ' tokens.';
+        msg.style.color = 'var(--fg)';
+      }
+    } catch (e) { if (msg) { msg.textContent = 'Failed to save'; msg.style.color = 'var(--red)'; } }
+  }
+
+  mode.addEventListener('change', save);
+  box.addEventListener('change', save);
+  maxBox.addEventListener('change', save);
+}
+
+/* Endpoint + model for scheduled and background tasks. Same shape as the
+   Utility model pair above, which is the point — this is the third of these
+   and it is the one that had no panel. */
+async function initTaskModel() {
+  var epSel = el('set-taskEndpoint');
+  var modelSel = el('set-taskModel');
+  var msg = el('set-taskModelMsg');
+  if (!epSel || !modelSel) return;
+  var _endpoints = [];
+  try {
+    _endpoints = await _fetchModelEndpoints();
+    _fillEndpointSelect(epSel, _endpoints, epSel.value, true);
+  } catch (e) { console.warn('Failed to load endpoints for task model', e); }
+
+  function refreshModels(selectedModel) {
+    var ep = _endpoints.find(function(e) { return e.id === epSel.value; });
+    _fillModelSelect(modelSel, ep ? ep.models : [], selectedModel, true);
+  }
+
+  try {
+    var res = await fetch('/api/auth/settings', { credentials: 'same-origin' });
+    var settings = await res.json();
+    if (settings.task_endpoint_id) epSel.value = settings.task_endpoint_id;
+    refreshModels(settings.task_model || '');
+  } catch (e) { /* the selects still work */ }
+
+  async function save() {
+    try {
+      await _postSettings({ task_endpoint_id: epSel.value, task_model: modelSel.value });
+      if (msg) {
+        msg.textContent = epSel.value
+          ? 'Scheduled work runs on ' + (modelSel.value || 'the endpoint default') + '.'
+          : 'Scheduled work uses the default chat model.';
+        msg.style.color = 'var(--fg)';
+      }
+    } catch (e) { if (msg) { msg.textContent = 'Failed to save'; msg.style.color = 'var(--red)'; } }
+  }
+
+  epSel.addEventListener('change', function() { refreshModels(''); save(); });
+  modelSel.addEventListener('change', save);
+}
+
 /* ── Utility Model ── */
 async function initUtilityModel() {
   var epSel = el('set-utilityEpSelect');
@@ -1360,6 +1525,8 @@ async function initResearchSettings() {
   var modelSel = el('set-researchModel');
   var tokensInput = el('set-researchMaxTokens');
   var extractTimeoutInput = el('set-researchExtractTimeout');
+  var planTimeoutInput = el('set-researchPlanTimeout');     // H18
+  var queryTimeoutInput = el('set-researchQueryTimeout');   // H18
   var extractConcurrencyInput = el('set-researchExtractConcurrency');
   var runTimeoutInput = el('set-researchRunTimeout');
   var msg = el('set-researchMsg');
@@ -1383,6 +1550,10 @@ async function initResearchSettings() {
     refreshModels(settings.research_model || '');
     if (settings.research_max_tokens) tokensInput.value = settings.research_max_tokens;
     if (settings.research_extraction_timeout_seconds) extractTimeoutInput.value = settings.research_extraction_timeout_seconds;
+    // H18. Two lightweight LLM calls happen before any search starts, and
+    // both were tunable only by hand-editing settings.json.
+    if (settings.research_planning_timeout_seconds) planTimeoutInput.value = settings.research_planning_timeout_seconds;
+    if (settings.research_query_timeout_seconds) queryTimeoutInput.value = settings.research_query_timeout_seconds;
     if (settings.research_extraction_concurrency) extractConcurrencyInput.value = settings.research_extraction_concurrency;
     if (settings.research_run_timeout_seconds !== undefined && settings.research_run_timeout_seconds !== null) {
       runTimeoutInput.value = settings.research_run_timeout_seconds;
@@ -1430,6 +1601,13 @@ async function initResearchSettings() {
     if (tv && tv >= 1024) payload.research_max_tokens = tv;
     var et = parseInt(extractTimeoutInput.value, 10);
     if (et && et >= 15 && et <= 3600) payload.research_extraction_timeout_seconds = et;
+    // Same 15..3600 window as the extraction timeout beside them: below 15 a
+    // slow local model cannot finish a single call, and above an hour the
+    // run-level timeout is the thing that will stop it anyway.
+    var pt = parseInt(planTimeoutInput.value, 10);
+    if (pt && pt >= 15 && pt <= 3600) payload.research_planning_timeout_seconds = pt;
+    var qt = parseInt(queryTimeoutInput.value, 10);
+    if (qt && qt >= 15 && qt <= 3600) payload.research_query_timeout_seconds = qt;
     var ec = parseInt(extractConcurrencyInput.value, 10);
     if (ec && ec >= 1 && ec <= 12) payload.research_extraction_concurrency = ec;
     if (runTimeoutInput.value !== '') {
@@ -1453,6 +1631,8 @@ async function initResearchSettings() {
   modelSel.addEventListener('change', saveResearch);
   tokensInput.addEventListener('change', saveResearch);
   extractTimeoutInput.addEventListener('change', saveResearch);
+  planTimeoutInput.addEventListener('change', saveResearch);    // H18
+  queryTimeoutInput.addEventListener('change', saveResearch);   // H18
   extractConcurrencyInput.addEventListener('change', saveResearch);
   runTimeoutInput.addEventListener('change', saveResearch);
 
@@ -2288,6 +2468,10 @@ function initAll() {
   initAgentSettings();
   initSkillAudit();   // H16
   initEmailConfirm();   // H18 / B42
+  initAgentBudget();   // H18
+  initTaskModel();     // H18
+  initDocStyle();      // H18
+  initSafesearch();    // H18
   initAppearance();
   initShortcuts();
   initAccount();
