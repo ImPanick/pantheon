@@ -2,13 +2,12 @@
 
 The hand audit of 2026-08-30 produced the 21 `H` rows, and the row's `Verify:`
 line is that a script rediscovers its findings **from a clean checkout with no
-hints**. One of those findings is still open in the tree — `H04`, a complete
-embedding-model manager with zero pixels — so it is asserted against the real
-repository. `H01` and `H10` are fixed, so their *shape* is asserted against a
-fixture instead: a route with no caller must still be found, or the checker
-only works on defects that happen to remain. `H10`'s own case is kept and
-inverted — the cleanup routes must NOT appear now — because a test that pinned
-a defect argues for the bug if it is left facing the same way.
+hints**. All three findings are now fixed — `H01`, `H10` and `H04` — so the checker's
+*shape* is asserted against a fixture: a route with no caller must still be
+found, or it only works on defects that happen to remain. `H10`'s and `H04`'s
+own cases are kept and inverted, because a test that pinned a defect argues for
+the bug if it is left facing the same way, and a ratchet that has run out of
+things to point at is exactly when its own tests matter most.
 
 The rest break the checker in the specific ways it can silently stop working,
 and every one of them is a mistake this file's author actually made:
@@ -46,11 +45,17 @@ def report():
 
 # ── the row's Verify line ───────────────────────────────────────────────────
 
-def test_it_finds_H04_the_embedding_manager_with_zero_pixels(report):
-    """`routes/embedding_routes.py`: a catalogue with download, progress poll
-    and delete-with-refusal, all admin-gated, and not one pixel anywhere."""
-    assert "/api/embeddings/models" in report
-    assert "/api/embeddings/endpoint" in report
+def test_H04_is_no_longer_in_the_report_because_it_was_wired(report):
+    """Inverted 2026-09-07, when `H04` shipped — the second of these, after
+    `H10`. It asserted the checker still found the embedding manager's routes
+    with no caller, which was true for as long as the panel did not exist.
+    Settings → Embeddings calls all seven now.
+
+    Keeping the case and turning it round costs nothing and guards the fix; the
+    checker's ability to find a route with no caller is proved on a fixture
+    below, so nothing is lost by having no real orphan left to point at."""
+    assert "/api/embeddings/models" not in report
+    assert "/api/embeddings/endpoint" not in report
 
 
 def test_H10_is_no_longer_in_the_report_because_it_was_wired(report):

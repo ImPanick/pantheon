@@ -1719,6 +1719,15 @@
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             <span>Users</span>
           </button>
+          <!-- H04. `routes/embedding_routes.py` has been a complete, admin-gated
+               embedding-model manager with no markup at all: the fastembed
+               catalogue with downloaded/downloading/active/recommended/size,
+               download off the event loop, a progress poll, delete that refuses
+               to remove the model in use, and custom endpoint config. -->
+          <button class="settings-nav-item admin-only" data-settings-tab="embeddings">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/><line x1="7" y1="7" x2="10" y2="10"/><line x1="17" y1="7" x2="14" y2="10"/><line x1="7" y1="17" x2="10" y2="14"/><line x1="17" y1="17" x2="14" y2="14"/></svg>
+            <span>Embeddings</span>
+          </button>
           <button class="settings-nav-item admin-only" data-settings-tab="system">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v-.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09A1.65 1.65 0 0 0 19.4 15z"/></svg>
             <span>System</span>
@@ -2578,7 +2587,44 @@
                 <label class="settings-label">Max steps per message</label>
                 <input id="set-agentMaxRounds" type="text" inputmode="numeric" placeholder="20" class="settings-select" style="width:120px;">
               </div>
+              <div class="settings-row">
+                <label class="settings-label" for="set-agentVerifier">Verify effectful turns</label>
+                <label class="admin-switch" title="Before accepting &quot;done&quot; on a turn that changed something, run a second pass with fresh context to check it actually happened."><input type="checkbox" id="set-agentVerifier" /><span class="admin-slider"></span></label>
+              </div>
+              <div class="admin-toggle-sub" style="margin:-4px 0 4px;font-size:11px;opacity:0.6;line-height:1.4;">
+                Off by default. A weak local model cannot judge its own work from
+                the action summary and will reject turns that were fine, costing
+                an extra round every time. Worth turning on for a strong model.
+              </div>
               <div id="set-agentMsg" style="font-size:11px;color:color-mix(in srgb, var(--fg) 45%, transparent);"></div>
+            </div>
+          </div>
+          <!-- H16. Three knobs read by a `while True` loop in app.py and absent
+               from DEFAULT_SETTINGS, which is the allowlist the settings route
+               iterates — so every save silently dropped them and the only
+               writer was hand-editing data/settings.json. -->
+          <div class="admin-card" style="margin-bottom:12px;">
+            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M12 2a7 7 0 0 1 7 7c0 2.4-1.2 4.5-3 5.7V17a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2.3C6.2 13.5 5 11.4 5 9a7 7 0 0 1 7-7z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>Nightly skill audit</h2>
+            <div class="admin-toggle-sub" style="margin-bottom:8px">
+              Overnight, Pantheon tests and judges a batch of the skills it has
+              checked least recently, fixing weak ones or flagging them for you.
+              It never deletes a skill. The library rotates, so each night covers
+              different ones.
+            </div>
+            <div class="settings-col">
+              <div class="settings-row">
+                <label class="settings-label" for="set-skillAuditOn">Run the audit</label>
+                <label class="admin-switch"><input type="checkbox" id="set-skillAuditOn" /><span class="admin-slider"></span></label>
+              </div>
+              <div class="settings-row">
+                <label class="settings-label" for="set-skillAuditHour">Hour (local)</label>
+                <input id="set-skillAuditHour" type="text" inputmode="numeric" placeholder="2" class="settings-select" style="width:120px;">
+              </div>
+              <div class="settings-row">
+                <label class="settings-label" for="set-skillAuditBatch">Skills per night</label>
+                <input id="set-skillAuditBatch" type="text" inputmode="numeric" placeholder="8" class="settings-select" style="width:120px;">
+              </div>
+              <div id="set-skillAuditMsg" style="font-size:11px;color:color-mix(in srgb, var(--fg) 45%, transparent);"></div>
             </div>
           </div>
           <!-- The trust ladder (P7-03 / P7-04), drawn by static/js/trustLadder.js.
@@ -2605,6 +2651,50 @@
         </div>
 
         <!-- ═══ SYSTEM TAB ═══ -->
+        <!-- ═══ EMBEDDINGS TAB (H04) ═══ -->
+        <div data-settings-panel="embeddings" class="hidden">
+          <div class="admin-card">
+            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/></svg>What your Brain and documents are searched with</h2>
+            <div class="admin-toggle-sub" style="margin-bottom:8px">
+              Embeddings turn text into vectors so a search can find things that
+              mean the same without sharing a word. Memory and document search
+              use them when they are available and fall back to keyword matching
+              when they are not — which works, but finds much less.
+            </div>
+            <div id="emb-status" class="settings-col" style="font-size:12px;line-height:1.6;">
+              <div style="opacity:0.5;">Checking…</div>
+            </div>
+          </div>
+
+          <div class="admin-card">
+            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Remote embedding endpoint</h2>
+            <div class="admin-toggle-sub" style="margin-bottom:8px">
+              Optional. Point Pantheon at a server that does the embedding for
+              it — your own, or one on your network. Leave this empty to use a
+              model on this machine instead.
+            </div>
+            <div class="settings-col">
+              <div class="settings-row"><label class="settings-label" for="emb-ep-url">URL</label><input type="text" id="emb-ep-url" class="settings-input" placeholder="http://localhost:8080/v1/embeddings"></div>
+              <div class="settings-row"><label class="settings-label" for="emb-ep-model">Model</label><input type="text" id="emb-ep-model" class="settings-input" placeholder="optional"></div>
+              <div class="settings-row"><label class="settings-label" for="emb-ep-key">API key</label><input type="password" id="emb-ep-key" class="settings-input" placeholder="optional"></div>
+              <div class="settings-row" style="margin-top:8px;align-items:center;gap:6px;">
+                <span id="emb-ep-msg" style="font-size:11px;flex:1;"></span>
+                <button class="admin-btn-add" id="emb-ep-save">Save</button>
+                <button class="admin-btn-add" id="emb-ep-clear" hidden>Use a local model instead</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="admin-card">
+            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Models on this machine</h2>
+            <div class="admin-toggle-sub" style="margin-bottom:8px">
+              Downloaded once and then used offline. Bigger models are usually
+              better at finding things and slower to run.
+            </div>
+            <div id="emb-models"><div style="opacity:0.5;font-size:12px;">Loading…</div></div>
+          </div>
+        </div>
+
         <div data-settings-panel="system" class="hidden">
 
           <div class="admin-card" id="settings-system-logs-card">

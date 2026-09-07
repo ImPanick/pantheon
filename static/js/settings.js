@@ -72,6 +72,16 @@ function onSettingsPanelActivated(tab) {
 
   // AI endpoints are intentionally refreshed only when entering the AI panel.
   if (tab === 'ai') refreshAiModelEndpoints();
+
+  // H04. Loaded on activation, not at boot: it makes three requests, one of
+  // which walks the model cache on disk, and nobody opens Settings to look at
+  // embeddings by accident. Dynamic import so a panel most people never open
+  // costs nothing on first paint.
+  if (tab === 'embeddings') {
+    import('./embeddings.js')
+      .then((mod) => mod.open())
+      .catch((e) => console.error('Embeddings panel failed to load', e));
+  }
 }
 
 function openAdminSettingsTab(tab) {
@@ -1500,11 +1510,78 @@ async function initResearchSearchSettings() {
   searchSel.addEventListener('change', function() { updateSearchLogo(); saveResearchSearch(); });
 }
 
+/* ── Nightly skill audit (H16) ──
+   Three knobs read by a `while True` loop in `app.py` and absent from
+   `DEFAULT_SETTINGS`, which is the allowlist `POST /api/auth/settings`
+   iterates — so every save dropped them silently and the only writer was
+   hand-editing `data/settings.json`. Declaring them was the fix; this is the
+   switch. */
+async function initSkillAudit() {
+  var onInput = el('set-skillAuditOn');
+  var hourInput = el('set-skillAuditHour');
+  var batchInput = el('set-skillAuditBatch');
+  var msg = el('set-skillAuditMsg');
+  if (!onInput || !hourInput || !batchInput || !msg) return;
+
+  function clampInt(raw, lo, hi, dflt) {
+    var n = parseInt(raw, 10);
+    if (isNaN(n)) return dflt;
+    return Math.max(lo, Math.min(n, hi));
+  }
+
+  function describe(on, hour, batch) {
+    if (!on) return 'Off — skills are only checked when you ask.';
+    var h = String(hour).padStart(2, '0');
+    return batch + ' skill' + (batch === 1 ? '' : 's') + ' a night, from ' + h + ':00.';
+  }
+
+  try {
+    var res = await fetch('/api/auth/settings', { credentials: 'same-origin' });
+    var settings = await res.json();
+    // These keys are always present now, so `!==  undefined` rather than
+    // truthiness: `skill_audit_nightly: false` is a real value and reading it
+    // as "missing, use the default" would turn the audit back on.
+    onInput.checked = settings.skill_audit_nightly !== undefined
+      ? !!settings.skill_audit_nightly : true;
+    if (settings.skill_audit_hour !== undefined) hourInput.value = settings.skill_audit_hour;
+    if (settings.skill_audit_batch !== undefined) batchInput.value = settings.skill_audit_batch;
+  } catch (e) { /* the controls still work; saving reports its own errors */ }
+
+  async function save() {
+    // Clamped to the same range the server clamps to, and written back into
+    // the field, so the number on screen is the number that will run.
+    var hour = clampInt(hourInput.value, 0, 23, 2);
+    var batch = clampInt(batchInput.value, 1, 100, 8);
+    hourInput.value = hour;
+    batchInput.value = batch;
+    try {
+      await _postSettings({
+        skill_audit_nightly: !!onInput.checked,
+        skill_audit_hour: hour,
+        skill_audit_batch: batch,
+      });
+      msg.textContent = describe(onInput.checked, hour, batch);
+      msg.style.color = 'var(--fg)';
+    } catch (e) {
+      msg.textContent = 'Failed to save';
+      msg.style.color = 'var(--red)';
+    }
+  }
+
+  onInput.addEventListener('change', save);
+  hourInput.addEventListener('change', save);
+  batchInput.addEventListener('change', save);
+  msg.textContent = describe(onInput.checked,
+                             clampInt(hourInput.value, 0, 23, 2),
+                             clampInt(batchInput.value, 1, 100, 8));
+}
+
 /* ── Agent Settings (AI tab) ── */
 async function initAgentSettings() {
   var toolsInput = el('set-agentMaxTools');
   var roundsInput = el('set-agentMaxRounds');
   var supInput = el('set-agentSupervisorLadder');
+  var verInput = el('set-agentVerifier');   // H16
   var msg = el('set-agentMsg');
   if (!toolsInput) return;
 
@@ -1514,6 +1591,9 @@ async function initAgentSettings() {
     if (settings.agent_max_tool_calls) toolsInput.value = settings.agent_max_tool_calls;
     if (roundsInput && settings.agent_max_rounds) roundsInput.value = settings.agent_max_rounds;
     if (supInput) supInput.checked = !!settings.agent_supervisor_ladder;
+    // H16. `!!` on a value the server now always sends, rather than a
+    // truthiness test on a key that used to be absent from every response.
+    if (verInput) verInput.checked = !!settings.agent_verifier_subagent;
   } catch (e) {}
 
   // Clamp + coerce a raw input to an int in [lo, hi]; falls back to `dflt`
@@ -1532,6 +1612,7 @@ async function initAgentSettings() {
     var payload = { agent_max_tool_calls: tools };
     if (rounds != null) payload.agent_max_rounds = rounds;
     if (supInput) payload.agent_supervisor_ladder = !!supInput.checked;
+    if (verInput) payload.agent_verifier_subagent = !!verInput.checked;   // H16
     try {
       await _postSettings(payload);
       msg.textContent = (tools > 0 ? 'Limit: ' + tools + ' tool calls' : 'Unlimited tool calls') +
@@ -1544,6 +1625,7 @@ async function initAgentSettings() {
   toolsInput.addEventListener('change', save);
   if (roundsInput) roundsInput.addEventListener('change', save);
   if (supInput) supInput.addEventListener('change', save);
+  if (verInput) verInput.addEventListener('change', save);   // H16
   var cur = parseInt(toolsInput.value, 10) || 0;
   var curR = roundsInput ? (parseInt(roundsInput.value, 10) || 20) : null;
   msg.textContent = (cur > 0 ? 'Limit: ' + cur + ' tool calls' : 'Unlimited tool calls') +
@@ -2186,6 +2268,7 @@ function initAll() {
   initResearchSettings();
   initResearchSearchSettings();
   initAgentSettings();
+  initSkillAudit();   // H16
   initAppearance();
   initShortcuts();
   initAccount();

@@ -136,6 +136,18 @@ export const SETTINGS_PANELS = Object.freeze([
     keywords: ['users', 'accounts', 'admin'],
   }),
   definePanel({
+    id: 'embeddings',
+    label: 'Embeddings',
+    group: 'administration',
+    controller: 'admin',
+    adminOnly: true,
+    // `H04`. Searchable by what a person would actually type when their
+    // memory or documents stop being found, which is the symptom that
+    // brings anyone here.
+    keywords: ['embeddings', 'embedding', 'vector', 'rag', 'memory',
+               'fastembed', 'chroma', 'model', 'search'],
+  }),
+  definePanel({
     id: 'system',
     label: 'System',
     group: 'administration',

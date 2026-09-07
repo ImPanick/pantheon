@@ -267,6 +267,7 @@ function buildFixture(document) {
     'account',
     'tools',
     'users',
+    'embeddings',
     'system',
   ];
 
@@ -386,6 +387,7 @@ function moduleSource(relativePath) {
       'account',
       'tools',
       'users',
+      'embeddings',
       'system',
     ].join(','),
   );
@@ -411,7 +413,7 @@ function moduleSource(relativePath) {
 
   check(
     'Settings registry distinguishes admin-only visibility from admin-controlled routing',
-    ['tools', 'users', 'system'].every(id => context.isAdminOnlySettingsTab(id))
+    ['tools', 'users', 'embeddings', 'system'].every(id => context.isAdminOnlySettingsTab(id))
       && ['services', 'added-models', 'integrations']
         .every(id => !context.isAdminOnlySettingsTab(id)),
   );

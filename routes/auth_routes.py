@@ -741,6 +741,13 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             # the STORED value and the EFFECTIVE value the same number, so the
             # settings page never shows a `1` that is really a `10`.
             "otlp_interval_seconds": (10, 86400),
+            # `H16`. Both feed a `while True` loop at startup. An hour of 25
+            # makes `next_daily_run` compute a delay for a time that never
+            # comes; a batch of 0 runs an audit that audits nothing, every
+            # night, forever. Clamped here so the stored value and the
+            # effective value are the same number.
+            "skill_audit_hour": (0, 23),
+            "skill_audit_batch": (1, 100),
         }
         # Per-key validation for settings whose values are a closed set. A
         # security setting must not be *quietly* rejected: `coerce_trust_rung`

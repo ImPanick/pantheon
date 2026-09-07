@@ -287,7 +287,36 @@ DEFAULT_SETTINGS = {
     # addition to the built-in project data/ and system temp dirs. Each
     # entry is an absolute path. Sensitive subpaths (.ssh, .gnupg, shell
     # rc files, SSH key files) are always blocked regardless of roots.
+    # `H16`. `tool_path_extra_roots` IS declared and therefore settable
+    # through the admin route — what it has never had is a control, and it is
+    # not getting one. It widens where `read_file` / `write_file` may reach,
+    # and `_resolve_tool_path` is one of the controls `FORBIDDEN.md` Part 2
+    # says never lifts. The sensitive-basename block (`.ssh`, `.gnupg`, shell
+    # rc files, key files) holds whatever roots are listed, so a UI would not
+    # breach the boundary — but it would put "point the agent at my home
+    # directory" one click away, and the row's own `Verify` allows
+    # "documented as deliberately expert-only" for exactly this case. Edit
+    # `data/settings.json`, or ask the agent, and know why you are doing it.
     "tool_path_extra_roots": [],
+    # The four below were read by live code and **absent from this dict**, and
+    # this dict is the allowlist: `POST /api/auth/settings` iterates
+    # `for key in DEFAULT_SETTINGS`, so a key that is not here is silently
+    # dropped from any save, and `manage_settings` refuses it. The only writer
+    # was hand-editing JSON. Each is declared with the exact default its
+    # reader already falls back to, so nothing changes behaviour today —
+    # declaring them only makes them reachable. (`H16`)
+    #
+    # A fresh-context verifier that independently checks effectful turns
+    # before accepting "done". Default OFF and staying off: on weak local
+    # models it cannot judge from the action snapshot, false-rejects, and
+    # forces a costly extra round on every effectful turn. Worth having on a
+    # strong model, which is why it needs a switch.
+    "agent_verifier_subagent": False,
+    # The nightly skill audit: test and judge the least-recently-checked
+    # skills, auto-fixing or escalating weak ones. Never deletes.
+    "skill_audit_nightly": True,
+    "skill_audit_hour": 2,      # local hour, spread across the following five minutes
+    "skill_audit_batch": 8,     # skills per night; the library rotates
     "task_endpoint_id": "",
     "task_model": "",
     "default_endpoint_id": "",
