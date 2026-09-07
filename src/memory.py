@@ -26,6 +26,33 @@ def tokenize(text: str) -> List[str]:
     """Simple tokenizer that splits on whitespace and removes punctuation."""
     return [word.strip('.,!?";') for word in text.split()]
 
+# Keyword categories for semantic matching. Lifted out of
+# `get_relevant_memories` (`H11`) so the diagnostic view can show a person how
+# their question was read, and so the lists themselves can be inspected — they
+# are the whole of the query classifier, and `B40` is what happens when nobody
+# can see them. Order is the precedence order and is deliberate: identity first,
+# so a question about who someone is beats one that merely mentions a phone
+# number.
+QUERY_KEYWORD_GROUPS = (
+    ("identity", ["name", "who", "i", "am", "called", "identity", "myself", "me", "my"]),
+    ("contact", ["phone", "email", "address", "contact", "number", "where", "located", "reach"]),
+    ("preference", ["like", "prefer", "favorite", "want", "love", "hate", "dislike", "enjoy", "interested"]),
+    ("task", ["todo", "task", "remind", "meeting", "appointment", "schedule", "deadline"]),
+    ("fact", ["what", "when", "where", "how", "why", "explain", "describe", "information", "know"]),
+)
+
+
+def classify_query(query: str):
+    """How the retriever reads this question: one of the group names, or None.
+
+    Public because the diagnostic shows it (`H11`), and because it is the most
+    surprising single fact a person learns there — before `B40` the honest
+    answer for almost any question was "identity", including "what is the
+    build timeout".
+    """
+    return _query_type((query or "").lower(), QUERY_KEYWORD_GROUPS)
+
+
 def _is_identity_memory(text: str) -> bool:
     """Whether a memory looks like it says who someone is. `B40`.
 
@@ -397,17 +424,35 @@ class MemoryManager:
         return categories
 
     def get_relevant_memories(self, query: str, memories: list, threshold: float = 0.05, max_items: int = 8):
-        """Get memories that are relevant to the query based on text similarity and semantic keyword matching."""
+        """Get memories that are relevant to the query based on text similarity and semantic keyword matching.
+
+        Unchanged contract: a plain list of memory dicts, best first. Five
+        callers unpack it that way. The scoring lives in
+        `explain_relevant_memories`, which keeps the score and the reason that
+        this one throws away (`H11`).
+        """
+        return [row["memory"] for row in
+                self.explain_relevant_memories(query, memories, threshold, max_items)]
+
+    def explain_relevant_memories(self, query: str, memories: list, threshold: float = 0.05, max_items: int = 8):
+        """The same selection, with the score and the reason kept. `H11`.
+
+        Returns `[{"memory": dict, "score": float, "reason": str}]`, best first.
+
+        This function is the whole of `H11`. `POST /api/memory/debug` is
+        documented as *"Debug which memories would be triggered for a query"*
+        and could only ever answer the WHICH, because the score and the boost
+        that produced it were computed and discarded on the last line. A person
+        asking "why did it remember that" was being handed a list and told to
+        infer the answer.
+
+        The reasons are written from what the code does, not from what it is
+        supposed to do — which is why building this found `B40`.
+        """
         if not memories or not query.strip():
             return []
             
-        # Define keyword categories for semantic matching
-        identity_words = ["name", "who", "i", "am", "called", "identity", "myself", "me", "my"]
-        contact_words = ["phone", "email", "address", "contact", "number", "where", "located", "reach"]
-        preference_words = ["like", "prefer", "favorite", "want", "love", "hate", "dislike", "enjoy", "interested"]
-        task_words = ["todo", "task", "remind", "meeting", "appointment", "schedule", "deadline"]
-        fact_words = ["what", "when", "where", "how", "why", "explain", "describe", "information", "know"]
-        
+
         query_lower = query.lower()
 
         # Determine query type based on keywords.
@@ -425,13 +470,7 @@ class MemoryManager:
         # meant to say. The same ten now classify as fact, task, contact and
         # identity in the shapes you would expect, and "who am I" and "what is
         # my name" are still identity.
-        query_type = _query_type(query_lower, (
-            ("identity", identity_words),
-            ("contact", contact_words),
-            ("preference", preference_words),
-            ("task", task_words),
-            ("fact", fact_words),
-        ))
+        query_type = classify_query(query)
         
         relevant = []
         other_memories = []
@@ -457,7 +496,11 @@ class MemoryManager:
         # everything else about them was thrown away.
         for memory in memories:
             if query_type == "identity" and _is_identity_memory(memory.get("text", "")):
-                relevant.append((0.9, memory))  # High score for identity memories in identity queries
+                # High score for identity memories in identity queries
+                relevant.append((0.9, memory,
+                                 "this reads as a question about identity, and this memory "
+                                 "looks like it says who someone is — admitted without "
+                                 "scoring, ahead of anything matched on words"))
                 continue
             other_memories.append(memory)
 
@@ -471,8 +514,11 @@ class MemoryManager:
             if not query_tokens or not memory_tokens:
                 continue
                 
-            base_similarity = len(query_tokens & memory_tokens) / len(query_tokens | memory_tokens)
+            shared = query_tokens & memory_tokens
+            base_similarity = len(shared) / len(query_tokens | memory_tokens)
             final_score = base_similarity
+            why = (("shares " + ", ".join(sorted(shared)[:4])) if shared
+                   else "no words in common with the query")
             
             # Apply boosts based on semantic matching
             if query_type == "contact":
@@ -482,6 +528,7 @@ class MemoryManager:
                                                                      "http", "www", "tel:"])
                 if has_contact_info:
                     final_score *= 1.4  # 40% boost for contact-related memories
+                    why += f", and got a 40% boost because this reads as a contact question and the memory carries contact details"
             
             elif query_type == "preference":
                 # Boost memories with preference indicators
@@ -489,6 +536,7 @@ class MemoryManager:
                                                                    "prefer", "favorite", "enjoy", "interested"])
                 if has_preference:
                     final_score *= 1.3  # 30% boost for preference-related memories
+                    why += f", and got a 30% boost because this reads as a preference question and the memory carries a preference word"
             
             elif query_type == "task":
                 # Boost memories with task indicators
@@ -496,15 +544,18 @@ class MemoryManager:
                                                               "appointment", "schedule", "deadline", "need to"])
                 if has_task:
                     final_score *= 1.3  # 30% boost for task-related memories
+                    why += f", and got a 30% boost because this reads as a task question and the memory carries a task word"
             
             # Always consider exact phrase matches as highly relevant
             if query.lower() in memory["text"].lower():
                 final_score = max(final_score, 0.8)  # Ensure high relevance for exact matches
+                why = "the query appears in this memory word for word"
             
             # Include memory if it meets threshold after boosts
             if final_score >= threshold:
-                relevant.append((final_score, memory))
+                relevant.append((final_score, memory, why))
         
         # Sort by final score (descending) and return top matches
         relevant.sort(key=lambda x: x[0], reverse=True)
-        return [mem for _, mem in relevant[:max_items]]
+        return [{"memory": mem, "score": round(score, 4), "reason": why}
+                for score, mem, why in relevant[:max_items]]

@@ -649,10 +649,103 @@ async function animateTidyDiff(removedIds, editedItems) {
   }
 }
 
+// ---- "Would fire" — the retrieval diagnostic (H11) ----
+//
+// `POST /api/memory/debug` has been live, owner-scoped and documented as
+// "debug which memories would be triggered for a query", with no caller
+// anywhere in `static/`. It could only ever answer the WHICH, because the
+// scorer computed a score and a boost and dropped both on its last line;
+// `explain_relevant_memories` keeps them, and this shows them.
+//
+// The value of asking without sending: retrieval decides what the agent sees,
+// and until you can interrogate it, a wrong answer and a wrong memory look
+// identical from the outside. Building this is what surfaced `B40`.
+let _fireResult = null;   // { order: [id], byId: {id: {score, reason}}, queryType, query }
+let _fireTimer = null;
+let _fireSeq = 0;
+
+function _fireMode() {
+  return document.getElementById('memory-search-mode')?.value === 'fire';
+}
+
+function _clearFire() {
+  _fireResult = null;
+  const note = document.getElementById('memory-fire-note');
+  if (note) { note.hidden = true; note.textContent = ''; }
+}
+
+async function _runFireQuery(query) {
+  // Sequence guard: a slow response for an earlier keystroke must not
+  // overwrite a newer one. Without it the list flickers back to a stale
+  // answer, which in a diagnostic is worse than no answer.
+  const seq = ++_fireSeq;
+  const note = document.getElementById('memory-fire-note');
+  try {
+    const body = new URLSearchParams();
+    body.set('query', query);
+    const res = await fetch('/api/memory/debug', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (seq !== _fireSeq) return;
+    const byId = {};
+    for (const row of (data.explanations || [])) byId[row.id] = row;
+    _fireResult = {
+      order: (data.memories || []).map((m) => m.id),
+      byId,
+      queryType: data.query_type,
+      query,
+    };
+    if (note) {
+      const n = _fireResult.order.length;
+      // The query type is the single most surprising thing a person learns
+      // here, so it is stated plainly rather than hidden in a tooltip.
+      note.textContent = `${n} memor${n === 1 ? 'y' : 'ies'} would be retrieved. `
+        + (_fireResult.queryType
+            ? `The retriever reads this as a ${_fireResult.queryType} question.`
+            : 'The retriever does not recognise this as any particular kind of question.');
+      note.hidden = false;
+    }
+  } catch (e) {
+    if (seq !== _fireSeq) return;
+    _fireResult = null;
+    if (note) { note.textContent = 'Could not run the retrieval check.'; note.hidden = false; }
+  }
+  renderMemoryList();
+}
+
+function initMemorySearchMode() {
+  const mode = document.getElementById('memory-search-mode');
+  const search = document.getElementById('memory-search');
+  if (!mode || !search) return;
+
+  const refresh = () => {
+    const query = search.value.trim();
+    if (!_fireMode() || !query) { _clearFire(); renderMemoryList(); return; }
+    clearTimeout(_fireTimer);
+    _fireTimer = setTimeout(() => _runFireQuery(query), 250);
+  };
+
+  mode.addEventListener('change', refresh);
+  search.addEventListener('input', () => { if (_fireMode()) refresh(); });
+}
+
 // ---- Filtering helper ----
 
 function getFilteredMemories() {
   const searchTerm = document.getElementById('memory-search')?.value?.toLowerCase().trim() || '';
+
+  // H11. In "would fire" mode the server has already chosen and ordered the
+  // memories, and that ORDER is the answer — re-sorting it here by date or
+  // pinned-ness would throw away the only thing the diagnostic is for.
+  if (_fireResult) {
+    const byId = new Map(memories.map((m) => [m.id, m]));
+    return _fireResult.order.map((id) => byId.get(id)).filter(Boolean);
+  }
 
   let filtered = searchTerm
     ? memories.filter(m => m.text && m.text.toLowerCase().includes(searchTerm))
@@ -777,6 +870,24 @@ export function renderMemoryList() {
     srcSpan.className = 'memory-item-source';
     srcSpan.textContent = memory.source === 'auto' ? 'auto' : 'manual';
     meta.appendChild(srcSpan);
+
+    // H11. Why this one came back, on the row it belongs to. The reason is
+    // server-supplied prose, so textContent — and it goes in `title` as well
+    // because it is a sentence and the meta row is a strip of chips.
+    const fired = _fireResult && _fireResult.byId[memory.id];
+    if (fired) {
+      const whySpan = document.createElement('span');
+      whySpan.className = 'memory-item-why';
+      whySpan.style.cssText = 'opacity:0.75;';
+      whySpan.textContent = `score ${fired.score}`;
+      whySpan.title = fired.reason || '';
+      meta.appendChild(whySpan);
+      const reasonSpan = document.createElement('span');
+      reasonSpan.className = 'memory-item-why-text';
+      reasonSpan.style.cssText = 'opacity:0.6;font-style:italic;';
+      reasonSpan.textContent = fired.reason || '';
+      meta.appendChild(reasonSpan);
+    }
 
     const uses = Number(memory.uses || 0);
     if (uses > 0) {
@@ -1490,6 +1601,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
   _initMemorySortPicker();
+  initMemorySearchMode();  // H11
 
   const tidyBtn = document.getElementById('memory-tidy-btn');
   if (tidyBtn) tidyBtn.addEventListener('click', tidyMemories);

@@ -24,8 +24,44 @@ import pathlib
 
 import pytest
 
-SOURCE = pathlib.Path(__file__).resolve().parent.parent / "src" / "agent_loop.py"
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+
+# `B38` was in `agent_loop.py`; `B41` was the same mistake in
+# `routes/memory/memory_routes.py`, made four hours later by the same hand. A
+# guard aimed at the file the last one landed in is a guard that catches the
+# last one. These are the modules big enough, and edited often enough, for a
+# name to fall out of scope without anything noticing.
+SOURCES = [
+    ROOT / "src" / "agent_loop.py",
+    ROOT / "src" / "memory.py",
+    ROOT / "src" / "settings.py",
+    ROOT / "src" / "task_scheduler.py",
+    ROOT / "routes" / "memory" / "memory_routes.py",
+    ROOT / "routes" / "contacts" / "contacts_routes.py",
+    ROOT / "routes" / "cleanup" / "cleanup_routes.py",
+]
+SOURCE = SOURCES[0]
 TREE = ast.parse(SOURCE.read_text(encoding="utf-8"))
+
+
+def _own_scope(node):
+    """Every node in `node`'s own scope: its body, but NOT the bodies of the
+    functions and classes nested inside it.
+
+    `ast.walk` descends into everything, which made this checker forgive the
+    second incident it was written for. Walking the whole subtree meant a name
+    bound inside `debug_memory_relevance` counted as bound in the enclosing
+    `setup_memory_routes`, so its sibling `search_memories` inherited it and
+    could reference it freely. That is exactly the bug — two route handlers
+    side by side, one reaching for the other's local — and the guard shrugged.
+    """
+    stack = list(ast.iter_child_nodes(node))
+    while stack:
+        child = stack.pop()
+        yield child
+        if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue  # its bindings are its own, not ours
+        stack.extend(ast.iter_child_nodes(child))
 
 
 def _bound_names(node) -> set:
@@ -44,7 +80,7 @@ def _bound_names(node) -> set:
         return got
 
     out |= _params(getattr(node, "args", None))
-    for child in ast.walk(node):
+    for child in _own_scope(node):
         # A lambda's parameters are bound names too, and missing them reported
         # `lambda m: m.group(1)` as an undefined `m`. Found by this test's own
         # first run — which is the argument for running a new checker over the
@@ -55,8 +91,6 @@ def _bound_names(node) -> set:
             out.add(child.id)
         elif isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             out.add(child.name)
-            if child is not node:
-                out |= _bound_names(child)
         elif isinstance(child, (ast.Import, ast.ImportFrom)):
             for alias in child.names:
                 out.add(alias.asname or alias.name.split(".")[0])
@@ -67,9 +101,9 @@ def _bound_names(node) -> set:
     return out
 
 
-def _module_level_names() -> set:
+def _module_level_names(tree=None) -> set:
     out = set(dir(builtins))
-    for node in TREE.body:
+    for node in (tree or TREE).body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             out.add(node.name)
         elif isinstance(node, (ast.Import, ast.ImportFrom)):
@@ -98,10 +132,10 @@ def _module_level_names() -> set:
     return out
 
 
-def _unresolved(func) -> set:
-    known = _module_level_names() | _bound_names(func)
-    used = {n.id for n in ast.walk(func)
-            if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)}
+def _unresolved(func, tree=None) -> set:
+    known = _module_level_names(tree) | _bound_names(func)
+    used = {n.id for n in _own_scope(func)
+             if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)}
     return used - known
 
 
@@ -127,6 +161,33 @@ def test_every_top_level_function_uses_names_it_can_see(name):
     func = next(f for f in _top_level_functions() if f.name == name)
     unresolved = _unresolved(func)
     assert unresolved == set(), f"{name}() references undefined name(s): {sorted(unresolved)}"
+
+
+@pytest.mark.parametrize("path", SOURCES, ids=[p.name for p in SOURCES])
+def test_every_module_that_has_had_this_bug_resolves_its_names(path):
+    """`B38` and `B41` were the same mistake in two files: an edit moved a name
+    out of scope and every targeted test stayed green, because Python resolves
+    a function body's free names only when the line runs. Nested route handlers
+    are walked too — `B41` was inside one."""
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    problems = {}
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            # A nested function legitimately closes over its parents' bindings,
+            # so give it every enclosing scope as well.
+            enclosing = set()
+            for other in ast.walk(tree):
+                if isinstance(other, (ast.FunctionDef, ast.AsyncFunctionDef)) \
+                        and other is not node and _contains(other, node):
+                    enclosing |= _bound_names(other)
+            missing = _unresolved(node, tree) - enclosing
+            if missing:
+                problems[node.name] = sorted(missing)
+    assert not problems, f"{path.name}: {problems}"
+
+
+def _contains(outer, inner) -> bool:
+    return any(n is inner for n in ast.walk(outer))
 
 
 def test_the_check_actually_catches_a_missing_name():

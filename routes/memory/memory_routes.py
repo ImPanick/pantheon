@@ -8,6 +8,8 @@ import tempfile
 import time
 from datetime import datetime
 import logging
+# H11: the diagnostic reports how the retriever read the question.
+from src.memory import classify_query
 
 # Leading list-marker like "1.", "12)", or "3:" plus surrounding whitespace.
 # Strips one prefix per call so import-from-LLM-output doesn't leave the
@@ -92,14 +94,34 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
         """Debug which memories would be triggered for a query"""
         user = _owner(request)
         memories = memory_manager.load(owner=user)
-        relevant = memory_manager.get_relevant_memories(query, memories, threshold=0.05)
+        # `H11`. `explanations` and `query_type` are ADDITIVE — `memories` and
+        # `total` keep the exact shape and order they had, so anything already
+        # reading this endpoint is unaffected. The route's docstring has always
+        # promised to say which memories would be triggered; it can now say why,
+        # which is the half the scorer used to compute and throw away.
+        explained = memory_manager.explain_relevant_memories(query, memories, threshold=0.05)
+        relevant = [row["memory"] for row in explained]
 
         return {
             "query": query,
             "total_memories": len(memories),
             "relevant_count": len(relevant),
             "relevant_memories": [{"text": m["text"], "category": m.get("category", "unknown")}
-                                 for m in relevant]
+                                 for m in relevant],
+            # `H11`, all three keys additive. `relevant_memories` above keeps
+            # its exact shape — text and category, no id — which is why
+            # `memories` is a separate key rather than an edit to it: the
+            # diagnostic has to line each explanation up with a row, and it
+            # cannot do that without ids.
+            "memories": relevant,
+            # How the retriever read the question. Reported once rather than
+            # per row, because it is a property of the query and it is the
+            # single most surprising thing a person learns here.
+            "query_type": classify_query(query),
+            "explanations": [
+                {"id": row["memory"].get("id"), "score": row["score"], "reason": row["reason"]}
+                for row in explained
+            ],
         }
 
     @router.post("/add", response_model=Dict[str, Any])
