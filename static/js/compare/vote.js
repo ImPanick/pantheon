@@ -119,24 +119,57 @@ function _saveVote(winnerIdx) {
     costs: costs,
   };
 
-  // localStorage persistence
+  // localStorage persistence.
+  //
+  // H12. This is no longer a rival record; it is a cache and an offline
+  // buffer. The server copy is the one the Scoreboard reads, and the two used
+  // to drift silently in both directions: clear your site data and the visible
+  // history vanished while the server still held every vote, and voting from a
+  // second browser made the Scoreboard disagree with itself. Neither copy was
+  // authoritative and nothing said so.
+  //
+  // `server_id` is what joins them. Without it there is no way to tell a vote
+  // that reached the server from one that did not, and no way to delete the
+  // right row when someone clears their history.
   const votes = Storage.getJSON(VOTES_STORAGE_KEY, []);
   votes.push(record);
   if (votes.length > VOTES_MAX) votes.splice(0, votes.length - VOTES_MAX);
   Storage.setJSON(VOTES_STORAGE_KEY, votes);
 
-  // Fire-and-forget POST to backend
+  // Still fire-and-forget: a vote must never be lost because the network was
+  // busy, and the local copy above has already been written. What changed is
+  // that the id comes back and gets stored, and that `costs` and `mode` go
+  // out — the two things only this browser knows, and without which the
+  // server's copy cannot rebuild the Scoreboard.
   try {
     fetch(`${state.API_BASE}/api/compare/record`, {
       method: 'POST',
+      credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         prompt: state._lastPrompt,
         models: modelNames,
         winner: winner,
         is_blind: state._blindMode,
+        costs: costs,
+        mode: record.mode,
       }),
-    }).catch(() => {});   // silently ignore errors
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data || !data.id) return;
+        // Re-read rather than closing over `votes`: another vote may have
+        // been recorded while this request was in flight, and writing the
+        // stale array back would drop it.
+        const current = Storage.getJSON(VOTES_STORAGE_KEY, []);
+        const mine = current.find((v) => v.timestamp === record.timestamp
+                                      && v.prompt === record.prompt);
+        if (mine) {
+          mine.server_id = data.id;
+          Storage.setJSON(VOTES_STORAGE_KEY, current);
+        }
+      })
+      .catch(() => {});   // a vote is not worth an error toast
   } catch (_) {}
 }
 

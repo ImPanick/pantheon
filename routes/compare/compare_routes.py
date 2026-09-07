@@ -5,7 +5,7 @@ import uuid
 import random
 from datetime import datetime
 from fastapi import APIRouter, Form, HTTPException, Request
-from typing import List
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
 import logging
 
@@ -62,6 +62,79 @@ class RecordVoteRequest(BaseModel):
     models: List[str]
     winner: str           # model name or "tie"
     is_blind: bool = True
+    # `H12`. Both optional, both things only the voting browser knows: the
+    # per-model cost estimate it computed from the token counts it saw, and
+    # which compare mode produced the vote. Without them the server record
+    # cannot reconstruct the Scoreboard and the browser copy stays the only
+    # complete one — which is the whole defect.
+    costs: Optional[List[Optional[float]]] = None
+    mode: Optional[str] = None
+
+
+def _vote_meta(body) -> Dict[str, Any]:
+    """What a vote stores beyond the two model columns. `H12`.
+
+    A function rather than five lines inline because `_history_row` reads what
+    this writes, and a pair like that is only trustworthy if the round trip can
+    be tested. A mutation restoring the old `if len(models) > 2` condition —
+    which silently dropped costs and mode for every two-model vote — survived a
+    test file that exercised only the reader.
+
+    Written unconditionally, which also removes the N==2 special case that made
+    a two-model vote read back in a different shape from a three-model one.
+    """
+    meta: Dict[str, Any] = {"models": list(body.models)}
+    if body.costs is not None:
+        meta["costs"] = body.costs
+    if body.mode:
+        meta["mode"] = body.mode
+    return meta
+
+
+def _history_row(c) -> Dict[str, Any]:
+    """One comparison as the Scoreboard needs it. `H12`.
+
+    `model_a`/`model_b`/`prompt` keep the exact shape and truncation they had,
+    because this endpoint is public API and something may already read it.
+    What is added is `models`, `costs` and `mode`, decoded from the JSON the
+    vote endpoint writes — without which a browser cannot rebuild a vote it did
+    not cast, and the Scoreboard has to keep reading its own local copy.
+
+    A row whose blob is missing or unreadable still returns a usable `models`
+    from the two columns. That matters: every vote recorded before this change
+    has either no blob at all (N==2) or one carrying models only, and they must
+    not vanish from a history that is about to become the source of truth.
+    """
+    models: List[str] = []
+    costs = None
+    mode = None
+    if c.blind_mapping:
+        try:
+            blob = json.loads(c.blind_mapping)
+            if isinstance(blob, dict):
+                if isinstance(blob.get("models"), list):
+                    models = [str(m) for m in blob["models"]]
+                if isinstance(blob.get("costs"), list):
+                    costs = blob["costs"]
+                if isinstance(blob.get("mode"), str):
+                    mode = blob["mode"]
+        except (ValueError, TypeError):
+            pass
+    if not models:
+        models = [m for m in (c.model_a, c.model_b) if m]
+    return {
+        "id": c.id,
+        "prompt": c.prompt[:100],
+        "model_a": c.model_a,
+        "model_b": c.model_b,
+        "models": models,
+        "costs": costs,
+        "mode": mode,
+        "winner": c.winner,
+        "is_blind": c.is_blind,
+        "voted_at": c.voted_at.isoformat() if c.voted_at else None,
+        "created_at": c.created_at.isoformat() if c.created_at else None,
+    }
 
 
 def setup_compare_routes(session_manager: SessionManager):
@@ -289,11 +362,19 @@ def setup_compare_routes(session_manager: SessionManager):
         model_a = body.models[0] if len(body.models) > 0 else ""
         model_b = body.models[1] if len(body.models) > 1 else ""
 
-        # For N>2 models, store the full list as JSON in blind_mapping
-        if len(body.models) > 2:
-            blind_mapping = json.dumps({"models": body.models})
-        else:
-            blind_mapping = None
+        # `H12`. This column already carried `{"models": [...]}` on this path
+        # for N>2 — the lightweight vote endpoint has always repurposed it,
+        # because `model_a`/`model_b` cannot hold three models. Now it carries
+        # the full list ALWAYS, plus the two fields the browser is the only
+        # holder of, so `/history` can rebuild a vote without the browser that
+        # cast it. Writing it unconditionally also removes the N==2 special
+        # case, which was the reason a two-model vote read back differently
+        # from a three-model one.
+        #
+        # That this column is named `blind_mapping` and holds none of what its
+        # name says is not made worse here, but it is not made better either —
+        # filed as `P13-12`.
+        blind_mapping = json.dumps(_vote_meta(body))
 
         db = SessionLocal()
         try:
@@ -327,19 +408,7 @@ def setup_compare_routes(session_manager: SessionManager):
             if user:
                 q = q.filter(Comparison.owner == user)
             comps = q.order_by(Comparison.created_at.desc()).limit(50).all()
-            return [
-                {
-                    "id": c.id,
-                    "prompt": c.prompt[:100],
-                    "model_a": c.model_a,
-                    "model_b": c.model_b,
-                    "winner": c.winner,
-                    "is_blind": c.is_blind,
-                    "voted_at": c.voted_at.isoformat() if c.voted_at else None,
-                    "created_at": c.created_at.isoformat() if c.created_at else None,
-                }
-                for c in comps
-            ]
+            return [_history_row(c) for c in comps]
         finally:
             db.close()
 

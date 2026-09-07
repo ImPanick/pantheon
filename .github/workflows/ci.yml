@@ -160,7 +160,7 @@ jobs:
       # token, a CLI or the agent's own app_api may be the caller, so the
       # ALLOWED map names the ones that are not the browser.
       - name: check-unreachable
-        run: python3 .pantheon/check-unreachable.py --max-routes 98
+        run: python3 .pantheon/check-unreachable.py --max-routes 96
 
   law16-egress:
     name: Law 16 — no egress on a fresh install

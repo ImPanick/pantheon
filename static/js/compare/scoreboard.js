@@ -26,12 +26,72 @@ function _guessVoteMode(v) {
   return 'chat';
 }
 
-export function showScoreboard() {
+/**
+ * The vote history, server first. `H12`.
+ *
+ * Returns `{ votes, source, serverIds }`. `source` is 'server' when the
+ * server answered and 'local' when it did not, and the caller says which — a
+ * Scoreboard that silently falls back to one browser's copy is the defect this
+ * row exists to fix, wearing a different hat.
+ *
+ * The join is `server_id`. A server row carries who won and what was compared;
+ * the local row carries the per-model cost this browser measured, which older
+ * votes never sent. Merging on the id gives the full picture for votes cast
+ * here and an honest partial one for votes cast elsewhere. Local rows with no
+ * `server_id` are votes the POST never delivered, and they are kept rather than
+ * dropped: losing someone's vote to make a list tidier is not a trade.
+ */
+async function _loadVotes() {
+  const local = Storage.getJSON(VOTES_STORAGE_KEY, []);
+  let rows = null;
+  try {
+    const res = await fetch(`${state.API_BASE}/api/compare/history`, {
+      credentials: 'same-origin',
+    });
+    if (res.ok) rows = await res.json();
+  } catch (_) { /* offline, or no auth — fall through to local */ }
+
+  if (!Array.isArray(rows)) {
+    return { votes: local, source: 'local', serverIds: [] };
+  }
+
+  const localById = new Map();
+  for (const v of local) if (v.server_id) localById.set(v.server_id, v);
+
+  const votes = rows.map((row) => {
+    const mine = localById.get(row.id);
+    return {
+      models: (row.models && row.models.length) ? row.models : [],
+      winner: row.winner,
+      prompt: row.prompt,
+      blind: row.is_blind,
+      // Server first for both, because a vote from another browser has no
+      // local row at all; `mode` falls back to `_guessVoteMode`'s inspection
+      // of the model names, which is what legacy votes have always used.
+      mode: row.mode || mine?.mode,
+      costs: row.costs || mine?.costs || null,
+      timestamp: mine?.timestamp
+        || (row.voted_at ? Date.parse(row.voted_at) : undefined),
+      server_id: row.id,
+    };
+  }).filter((v) => v.models.length);
+
+  const undelivered = local.filter((v) => !v.server_id);
+  return {
+    votes: votes.concat(undelivered),
+    source: 'server',
+    serverIds: rows.map((r) => r.id),
+    undelivered: undelivered.length,
+  };
+}
+
+export async function showScoreboard() {
   // Remove existing overlay if present
   const existing = document.getElementById('scoreboard-overlay');
   if (existing) existing.remove();
 
-  const votes = Storage.getJSON(VOTES_STORAGE_KEY, []);
+  const loaded = await _loadVotes();
+  const votes = loaded.votes;
 
   // Build modal
   const overlay = document.createElement('div');
@@ -152,6 +212,24 @@ export function showScoreboard() {
     total.textContent = filtered.length + ' vote' + (filtered.length !== 1 ? 's' : '') + ' recorded';
     wrap.appendChild(total);
 
+    // H12. Say which copy this is. The defect underneath this row was not that
+    // the numbers were wrong — it was that two copies existed, drifted, and
+    // nothing told anyone which they were looking at. A Scoreboard that falls
+    // back to one browser's history without saying so is the same defect with
+    // better plumbing.
+    const provenance = document.createElement('div');
+    provenance.style.cssText = 'font-size:0.72em;color:color-mix(in srgb, var(--fg) 34%, transparent);margin-top:3px;text-align:center;line-height:1.4;';
+    if (loaded.source === 'server') {
+      provenance.textContent = loaded.undelivered
+        ? `Synced to your account. ${loaded.undelivered} vote`
+          + `${loaded.undelivered === 1 ? '' : 's'} on this browser only — recorded while the server was unreachable.`
+        : 'Synced to your account — the same history on every browser you sign in from.';
+    } else {
+      provenance.textContent = 'Showing this browser\u2019s copy: the server could not be reached, '
+        + 'so votes from your other browsers are missing.';
+    }
+    wrap.appendChild(provenance);
+
     // Move clear button into wrap so it stays at bottom
     const existingClear = body.querySelector('.scoreboard-clear-btn');
     if (existingClear) wrap.appendChild(existingClear);
@@ -192,7 +270,20 @@ export function showScoreboard() {
     const yesBtn = document.createElement('button');
     yesBtn.textContent = 'Clear';
     yesBtn.style.cssText = 'padding:4px 12px;background:var(--red);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600;';
-    yesBtn.addEventListener('click', () => {
+    yesBtn.addEventListener('click', async () => {
+      // H12. Clearing one copy and not the other is how the two drifted in the
+      // first place: the local list emptied, the server kept every vote, and
+      // the next browser to open the Scoreboard saw a history the person
+      // believed they had deleted.
+      yesBtn.disabled = true;
+      for (const id of (loaded.serverIds || [])) {
+        try {
+          await fetch(`${state.API_BASE}/api/compare/${encodeURIComponent(id)}`, {
+            method: 'DELETE',
+            credentials: 'same-origin',
+          });
+        } catch (_) { /* keep going: one failure must not strand the rest */ }
+      }
       Storage.setJSON(VOTES_STORAGE_KEY, []);
       overlay.remove();
       showScoreboard();
