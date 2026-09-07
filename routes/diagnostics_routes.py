@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Diagnostics routes — /api/db/stats, /api/rag/stats, /api/test/youtube, /api/test-research."""
 
 import logging

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Issue #800 — CalDAV write-back pushes local changes to the remote server.
 
 Unit-tests the pure pieces against a fake caldav calendar (no network): the

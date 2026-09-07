@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 from src.agent_tools import parse_tool_blocks, strip_tool_blocks
 
 

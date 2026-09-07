@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Import models from the upstream vllm-project/recipes catalog into our
 local hf_models.json. Two modes:
 

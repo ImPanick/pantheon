@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Skill URL importer — GitHub path parsing."""
 import ipaddress
 

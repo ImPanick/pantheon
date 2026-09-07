@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The Brain > Add Memory form must be submittable (#5828).
 
 The form previously had no submit button and relied on a deprecated

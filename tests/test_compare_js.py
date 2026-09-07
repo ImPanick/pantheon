@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pin pure helpers in the compare/ frontend module — drives them
 through `node --input-type=module` so we get real JS execution without
 needing a full Vitest/Jest setup. If `node` isn't installed the suite

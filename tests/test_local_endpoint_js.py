@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pin the billing/display classifier `isLocalEndpoint` in chatRenderer.js.
 
 Self-hosted endpoints reached by a bare Docker/Compose service name (e.g.

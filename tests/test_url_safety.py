@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for outbound URL safety / SSRF hardening (src/url_safety.py).
 
 A stub resolver is injected so the tests never touch real DNS.

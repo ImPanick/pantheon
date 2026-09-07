@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Issue #2919 — openPanel must reset _searchQuery so a reopened Notes panel
 doesn't keep filtering by a stale query (the rebuilt search box renders empty).
 

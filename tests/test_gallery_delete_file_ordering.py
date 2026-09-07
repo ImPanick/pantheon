@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: deleting a gallery image must not remove the file before the DB
 commit succeeds.
 

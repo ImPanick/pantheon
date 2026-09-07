@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests for two py/polynomial-redos sinks over untrusted model text.
 
 Both had two adjacent `\\s`-matching quantifiers that backtrack O(n^2) when the

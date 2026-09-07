@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Every call that leaves the process is paced, or it is named. `P15-06`.
 
     python3 .pantheon/check-outbound.py             # the inventory

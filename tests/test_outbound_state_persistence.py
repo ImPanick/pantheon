@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Cooldowns survive a restart (`P15-09`).
 
 The row's own framing: *"Restart Pantheon while GitHub has you in a forty-minute

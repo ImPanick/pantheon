@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pin buildReplyAllCc (static/js/emailLibrary/replyRecipients.js) against a
 non-string To/Cc. Driven through `node --input-type=module`; skips without node.
 """

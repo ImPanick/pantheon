@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """index_for() toolset gating: requires_toolsets must only filter when the
 caller provides an explicit active-toolset list.
 

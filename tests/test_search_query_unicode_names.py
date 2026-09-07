@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: _extract_entities must find non-ASCII capitalized names.
 
 The name extractor used the ASCII-only class [A-Z][a-zA-Z]+, so a query like

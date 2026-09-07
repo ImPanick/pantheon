@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Google Gemini model metadata reader."""
 
 from __future__ import annotations

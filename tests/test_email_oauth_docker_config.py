@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression coverage for Google OAuth configuration in Docker Compose."""
 
 from pathlib import Path

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """KaTeX and Mermaid must be vendored and fetched only on first real use.
 
 They used to load from cdn.jsdelivr.net in every <head>, costing ~985 KB on the

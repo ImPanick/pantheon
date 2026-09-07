@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """mcp email server _decode_header must not inject spaces between parts.
 
 email.header.decode_header returns plain-text runs WITH their surrounding

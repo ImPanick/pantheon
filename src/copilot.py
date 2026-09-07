@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # src/copilot.py
 """GitHub Copilot provider support.
 

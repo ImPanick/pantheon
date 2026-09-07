@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for token-owner session attribution (effective_user + session routes).
 
 Proves the two properties the review asked for:

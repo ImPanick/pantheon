@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Exercise sessions.js and startupShell.js together at the bootstrap seam.
 
 The dependency-heavy session module is copied unchanged except for redirecting

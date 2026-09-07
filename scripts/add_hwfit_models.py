@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 add_hwfit_models.py — bulk-add Hugging Face models to the hwfit catalog
 (services/hwfit/data/hf_models.json).

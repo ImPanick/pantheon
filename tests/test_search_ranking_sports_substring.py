@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: the sports-hint match must be word-boundary, not substring.
 
 `_SPORTS_HINTS` contains "sport", which is a substring of "transport",

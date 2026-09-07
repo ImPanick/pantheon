@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Server-side tool safety policy."""
 
 from __future__ import annotations

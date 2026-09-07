@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Independent validation test for the claim that
 `SkillsManager.update_skill` mutates the first skill on disk matching
 `name` regardless of the caller's owner, and that `owner` is in its

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // static/js/signature.js
 //
 // Reusable signature module. Two entry points:

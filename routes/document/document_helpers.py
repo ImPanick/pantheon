@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """document_helpers.py — Pydantic models, doc serializers, owner gating, file-locator helpers shared with document_routes.py."""
 
 """Document routes — CRUD for living documents with version history."""

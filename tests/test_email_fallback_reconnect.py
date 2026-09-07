@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression for issue #1613 — on a large Gmail mailbox the email-summary
 poller's `SEARCH ALL` fallback can time out mid-response, leaving its huge
 `* SEARCH <uids…>` line unread on the socket. The next command (the downstream

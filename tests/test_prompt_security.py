@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests for delimiter-spoofing mitigation in untrusted_context_message.
 
 If malicious content embeds the literal <<<UNTRUSTED_SOURCE_DATA>>> or

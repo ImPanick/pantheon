@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The skill importer must not get its user banned again.
 
 On 2026-08-31 the owner pasted a GitHub link into the skills importer and GitHub

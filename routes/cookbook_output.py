@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pure helpers for shaping cookbook task output for the status response.
 
 Kept dependency-free (no FastAPI / SQLAlchemy imports) so the behavior can be

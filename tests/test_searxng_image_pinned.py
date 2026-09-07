@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression guard for issue #1414 — a broken upstream `searxng:latest` tag
 (2026.6.2 crashed on boot with KeyError: 'default_doi_resolver') failed the
 searxng healthcheck, and because `pantheon` waits on it via

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression guard: Opus 4.7+ rejects the temperature field entirely.
 
 Anthropic removed the sampling parameters (temperature, top_p, top_k) starting

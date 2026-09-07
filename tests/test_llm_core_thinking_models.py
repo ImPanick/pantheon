@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression coverage for structured-thinking model detection."""
 
 import os

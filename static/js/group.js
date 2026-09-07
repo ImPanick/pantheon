@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // static/js/group.js
 // Group Chat — multi-model conversations (parallel or round-robin)
 

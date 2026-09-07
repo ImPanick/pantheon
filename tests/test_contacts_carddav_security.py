@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """CardDAV outbound URL hardening tests."""
 
 import pytest

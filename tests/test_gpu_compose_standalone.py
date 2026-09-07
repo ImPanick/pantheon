@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Guards the standalone GPU compose files against drift.
 
 Stack-management UIs (Portainer, Coolify, Dockhand, ...) often accept only a

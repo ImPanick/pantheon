@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Custom font discovery — lists user-supplied font files in static/fonts/custom/."""
 import os
 import re

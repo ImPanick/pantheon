@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression test: McpManager._generation must bust the tool prompt cache
 when a server connects/disconnects with the same tool count.
 

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Authentication routes — login, logout, signup, status, user management."""
 
 from fastapi import APIRouter, Request, Response, HTTPException

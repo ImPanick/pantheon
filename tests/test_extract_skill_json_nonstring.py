@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: _extract_skill_json must tolerate a non-string response.
 
 The `if not teacher_response` guard only handled falsy values; a truthy

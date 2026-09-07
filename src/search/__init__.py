@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Search package — drop-in replacement for the monolithic search_engine module."""
 
 from .core import (

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Focused browser-side regression coverage for authoritative email opens."""
 
 import json

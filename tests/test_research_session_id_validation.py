@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests: research session_id must reject path-traversal sequences."""
 
 import re

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // static/sw.js — Pantheon PWA Service Worker
 // Strategy:
 //   - HTML (navigation): stale-while-revalidate. Instant open from cache,

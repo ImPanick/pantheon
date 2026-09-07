@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Guard: chat hot-path background tasks must go through _spawn_bg.
 
 asyncio only holds a weak reference to a bare create_task() result, so the

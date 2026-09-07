@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Unit tests for tests/_taxonomy.py - the test-taxonomy classification module.
 
 These tests pin the conservative classification behavior directly, without

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: manage_notes `update` must parse due_date like `add` does.
 
 The `add` action runs due_date through `parse_due_for_user` (natural language

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests for deep-research search error reporting (issue #344).
 
 When every configured search provider returns no results *without raising*

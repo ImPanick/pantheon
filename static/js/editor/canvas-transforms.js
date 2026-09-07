@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Whole-document transforms: rotate by 90/180/270° or flip horizontal/
  * vertical. These mutate every layer's canvas + the offset map + the

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pantheon companion bridge — additive LAN endpoints.
 
 Read endpoints (/api/companion/ping, /info, owner-scoped /models) so a LAN

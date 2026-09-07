@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: the agent tool-RAG domain classifier had no contacts domain,
 so contact-lookup requests matched no domain, were flagged low_signal, and had
 tool retrieval SKIPPED entirely — the model only received ALWAYS_AVAILABLE tools

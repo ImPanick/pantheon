@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """OpenAI-compatible image API wrapper for MLX image models.
 
 This is intentionally small: it exposes the same `/v1/images/generations`

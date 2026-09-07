@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Search provider implementations: SearXNG, Brave, DuckDuckGo, Google PSE, Tavily, Serper."""
 
 import json

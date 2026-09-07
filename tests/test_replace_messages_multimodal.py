@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """replace_messages must persist readable, path-free multimodal history.
 
 Live model input may contain provider-specific media blocks and inline data

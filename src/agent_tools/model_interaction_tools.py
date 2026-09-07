@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """model_interaction_tools.py - agent tools for talking to other models.
 
 Owns the model-interaction tool implementations (chat_with_model, ask_teacher,

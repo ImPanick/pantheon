@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // AI provider logo SVGs — regex-based matching for self-hosted model names
 // Uses official logos from Simple Icons where available, custom minimal SVGs otherwise
 // All SVGs use viewBox="0 0 24 24" fill="currentColor"

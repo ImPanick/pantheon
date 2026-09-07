@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Owner-scope regression for gallery image endpoint selection.
 
 The image editor/upscale proxies select ``ModelEndpoint`` rows and may copy the

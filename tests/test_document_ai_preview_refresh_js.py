@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression guards for AI document updates while Markdown Preview is visible (#2182)."""
 
 import re

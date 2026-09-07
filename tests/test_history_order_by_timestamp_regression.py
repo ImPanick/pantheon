@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression guard for #1659.
 
 `routes/history_routes.py` ordered three ChatMessage queries by

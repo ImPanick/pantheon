@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Issue #2754 — gallery owner-scoping.
 
 `patch_gallery_image` must validate that the *target album* belongs to the caller

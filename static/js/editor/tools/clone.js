@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Clone tool — Alt-click (desktop) or double-tap (mobile) sets the
  * sample source; a regular click+drag stamps from that source onto the

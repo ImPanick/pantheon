@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Policy checks for explicit host Docker access from a container."""
 
 import os

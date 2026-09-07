@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Shared auth helpers used by all route files."""
 
 import os

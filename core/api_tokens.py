@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The shape of an API token, and the one hook that revokes one.
 
 Four places mint or invalidate API tokens and, before this module existed, all

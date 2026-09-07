@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 from src.document_processor import _is_text_file, _process_text_file
 from src.upload_handler import UploadHandler
 

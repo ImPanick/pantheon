@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests for issue #1044 — "ghost" sessions that appear in the list
 but 404 on every operation and can never be deleted.
 

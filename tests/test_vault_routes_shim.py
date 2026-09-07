@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression test for the vault route shim (slice 2k, #4082/#4071)."""
 
 import importlib

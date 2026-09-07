@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for research query entity extraction (src/search/query.py)."""
 
 from src.search.query import _extract_entities

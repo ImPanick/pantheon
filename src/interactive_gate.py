@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Foreground activity gate for background work.
 
 Background tasks are allowed to run only after normal UI/API traffic has

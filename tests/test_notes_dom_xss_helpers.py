@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression guards for Notes DOM rendering helpers."""
 
 from pathlib import Path

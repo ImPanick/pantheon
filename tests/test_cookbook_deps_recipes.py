@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Guard the llama.cpp Docker pull recipe surfaced in Cookbook → Dependencies.
 
 The upstream repo moved from github.com/ggerganov/llama.cpp to

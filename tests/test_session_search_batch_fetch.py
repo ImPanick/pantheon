@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """FTS session search must fetch hit rows in one query, not one per hit.
 
 _search_fts looked up each FTS hit's full row with its own

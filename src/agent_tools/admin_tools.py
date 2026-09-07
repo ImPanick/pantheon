@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Config/integration admin agent tools (TOOL_HANDLERS).
 
 Moved verbatim from tool_implementations.py as part of the tool-registry

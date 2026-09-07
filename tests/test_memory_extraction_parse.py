@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """_parse_extraction_json must survive reasoning-model noise.
 
 The extraction model wraps its JSON array in <think> blocks, ```json fences,

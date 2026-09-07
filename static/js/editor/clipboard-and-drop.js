@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Paste + drag-and-drop import handlers. Both add an image to the
  * editor as a new layer:

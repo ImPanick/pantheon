@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Google AI Studio / Gemini native Models API capability mapping.
 
 This module maps already-fetched `models.list` and `models.get` payloads into

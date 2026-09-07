@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Focused test selection runner for the pytest taxonomy markers (issue #3442).
 
 This wraps ``pytest -m`` selection over the ``area_*`` / ``sub_*`` markers that

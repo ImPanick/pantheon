@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Memory provider interfaces for native and external memory systems."""
 
 from __future__ import annotations

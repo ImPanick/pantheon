@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Lasso + Magic Wand panel controls — sliders, mode toggles, and the
  * panel action buttons (Invert / Clear / Delete / Copy / To Mask).

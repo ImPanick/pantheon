@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression guards for markdown raw-HTML sanitizer helpers."""
 
 from pathlib import Path

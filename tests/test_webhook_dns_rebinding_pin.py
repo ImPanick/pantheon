@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: webhook delivery must pin the TCP connect to the SSRF-approved IP.
 
 validate_webhook_url resolves the host to accept/reject, but the delivery

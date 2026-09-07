@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """CalDAV → local SQLite sync.
 
 The Settings UI lets users save CalDAV credentials, but the original

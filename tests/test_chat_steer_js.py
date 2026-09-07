@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """P6-18 — the steer control in `static/js/chatStream.js`, driven under node.
 
 `chatStream.js` imports six browser-coupled modules and touches the DOM, so it

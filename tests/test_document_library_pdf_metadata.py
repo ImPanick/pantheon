@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 from types import SimpleNamespace
 
 from routes.document_routes import _aggregate_language_facets, _library_language_for_document

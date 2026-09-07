@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // static/js/chatStream.js
 // SSE event handlers extracted from chat.js handleChatSubmit
 // Handles: ui_control events, background stream management, mid-run steering

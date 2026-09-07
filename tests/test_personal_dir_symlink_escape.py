@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: _resolve_allowed_personal_dir must resolve symlinks (realpath)
 when confining a path to PERSONAL_DIR.
 

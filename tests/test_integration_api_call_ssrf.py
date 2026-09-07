@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: execute_api_call must run the outbound SSRF guard.
 
 The api_call agent tool lets the LLM drive HTTP requests against a

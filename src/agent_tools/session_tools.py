@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """session_tools.py - agent tools for AI-to-AI session management.
 
 Owns create_session, list_sessions, send_to_session and manage_session, moved

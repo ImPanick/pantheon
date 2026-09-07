@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: SMTP envelope recipients must be parsed, not split on bare commas.
 
 The send paths built the RCPT TO list with `field.split(",")`, which corrupts a

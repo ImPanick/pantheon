@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # src/llm_core.py
 import contextvars
 import httpx

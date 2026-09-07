@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """P6-18 — mid-run steering.
 
 The queue holds the NEXT message; a steer redirects the one IN FLIGHT. The

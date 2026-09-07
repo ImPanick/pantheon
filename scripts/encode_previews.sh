@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Encode a source screen-recording (.mkv) into web-optimized preview clips for
 # the landing page: docs/<name>.webm (VP9) + docs/<name>.mp4 (H.264).
 #

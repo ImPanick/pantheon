@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """H16 — three shipped capabilities with no switch a person can reach.
 
 `(b)` is `P2-21`'s and is not touched here. What is left is a shape worth

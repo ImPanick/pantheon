@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """H19 / H20 — three copies of the keybind table, and a find bar with no door.
 
 `H19`: `/shortcuts` was a third hardcoded copy of the keybinds. Seven rows

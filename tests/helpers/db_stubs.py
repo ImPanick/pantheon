@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Shared database stub helpers for CLI and unit tests."""
 import sys
 import types

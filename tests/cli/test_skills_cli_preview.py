@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: the skills CLI summary must tolerate a non-string description.
 
 `_summary` did `(skill.get("description") or "")[:200]`. A non-string

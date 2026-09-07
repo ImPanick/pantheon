@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Push the same numbers the scrape serves, to an address the operator chose.
 
 `P16-19`, the push half of `P16-12`. The pull half covers the ordinary case:

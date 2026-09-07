@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """P7-03 / P7-04 / P7-05 — the trust ladder, and "always allow this".
 
 Two user-facing surfaces, driven under node against the real files in the

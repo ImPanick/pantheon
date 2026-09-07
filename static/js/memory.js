@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Memory Management Functions
 // This module handles all memory-related operations
 

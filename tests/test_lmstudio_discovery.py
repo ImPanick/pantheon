@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for LM Studio model discovery: port scanning, env host scanning,
 and native-API provider fingerprinting."""
 from src.model_discovery import ModelDiscovery

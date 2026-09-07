@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression guard for issue #2467 — cross-document overwrite via a stale AI-edit diff.
 
 document.js keeps the AI-edit diff state (``_diffModeActive`` / ``_diffOldContent`` /

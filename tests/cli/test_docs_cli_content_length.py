@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 from tests.helpers.cli_loader import load_script
 from tests.helpers.db_stubs import make_core_db_stub
 

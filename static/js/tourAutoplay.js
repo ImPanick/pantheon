@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // tourAutoplay.js — auto-fires the matching `/tour-<x>` slash command the
 // first time the user opens a tool modal. One-shot per modal: dismissed or
 // not, the marker is set so reopens never auto-trigger again.

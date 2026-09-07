@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Issue #3222 — native function-calling models (GPT/Claude/Grok/Qwen3/DeepSeek-V,
 etc.) must not have ordinary illustrative Markdown fences in their prose
 (```bash, ```python, ```json examples written for the user to read) executed

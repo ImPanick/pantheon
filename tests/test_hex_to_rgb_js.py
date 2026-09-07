@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pin the pure hexToRgb helper (static/js/color/hex.js).
 
 Driven through `node --input-type=module` (same approach as test_compare_js.py);

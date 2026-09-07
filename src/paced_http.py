@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """One line that is polite. `P15-06`.
 
 The audit behind `P15` inventoried fifty modules making outbound calls and

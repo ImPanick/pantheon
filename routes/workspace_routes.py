@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Workspace API - browse server directories to pick a tool workspace folder."""
 import os
 from fastapi import APIRouter, Request, HTTPException, Query

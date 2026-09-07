@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for _normalize_mistral_content() — Mistral's structured content parser.
 
 Mistral's chat completions API returns content as a typed array when reasoning

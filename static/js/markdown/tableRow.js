@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // static/js/markdown/tableRow.js
 //
 // Pure helper for splitting a markdown table row into cells. No DOM —

@@ -171,6 +171,15 @@ jobs:
       # name was survives; every real hit is a named migration path.
       - name: check-fork-names
         run: python3 .pantheon/check-fork-names.py
+      # P0-18. `AGPL-3.0` and `AGPL-3.0-or-later` are different licences to
+      # anyone combining this with something else, and which one Pantheon is
+      # under was stated exactly once, in a README badge. The second rule is
+      # the one that matters: a vendored file must NOT carry our identifier,
+      # because stamping AGPL on somebody else's MIT build is a claim about
+      # work this project has no standing to relicense — and P0-16's first
+      # attempt already went wrong in that direction once, pointed the other way.
+      - name: check-spdx
+        run: python3 .pantheon/check-spdx.py
 
   law16-egress:
     name: Law 16 — no egress on a fresh install

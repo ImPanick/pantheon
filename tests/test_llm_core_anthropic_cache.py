@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests for Anthropic prompt-cache breakpoints in _build_anthropic_payload (#791)."""
 from src import llm_core
 

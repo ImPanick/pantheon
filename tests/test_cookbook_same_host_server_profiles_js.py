@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression guards for same-host Cookbook SSH server profiles (#3337)."""
 
 from pathlib import Path

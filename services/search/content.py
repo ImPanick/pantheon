@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Webpage content fetching with caching, PDF extraction, and summarization helpers."""
 
 import copy

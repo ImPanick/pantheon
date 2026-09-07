@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Document routes — CRUD for living documents with version history."""
 
 import uuid

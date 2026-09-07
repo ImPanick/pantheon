@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests for issue #1551 — deep research reported "No information
 could be gathered" and showed nothing, even though the search rounds had already
 extracted findings.

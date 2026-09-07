@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests for issue #1346 — attaching more than one file at once made
 the model "not even see" the attachments.
 

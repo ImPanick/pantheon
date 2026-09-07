@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Signature routes — CRUD for the user's saved visual signatures.
 
 Signatures are reusable image stamps (drawn once, applied to many things):

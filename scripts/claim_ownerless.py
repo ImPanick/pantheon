@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Claim all ownerless data for a specific user.
 
 Run once after enabling multi-user auth to assign existing data to the admin.

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: the YouTube handler must live in a single module.
 
 Pantheon carried two independent copies of the handler — ``src.youtube_handler``

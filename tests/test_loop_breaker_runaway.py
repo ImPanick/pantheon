@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression test for the agent loop-breaker's runaway backstop.
 
 A legitimate batch of DISTINCT tool calls (e.g. creating 18 calendar events at

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Verify src.tool_utils has no project imports beyond src.constants.
 
 If someone adds an import from src.settings, src.database, or any other

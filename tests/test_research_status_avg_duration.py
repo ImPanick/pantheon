@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """get_status must not rescan the whole research dir on every SSE poll.
 
 get_avg_duration() globs and JSON-parses every file under the research data dir.

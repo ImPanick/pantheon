@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests for issue #1285 — blind Compare must not leak model
 identities through helper-session names or GET /api/sessions.
 

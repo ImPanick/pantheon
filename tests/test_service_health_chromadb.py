@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for chromadb_health — ok/degraded/down/disabled classification."""
 import pytest
 

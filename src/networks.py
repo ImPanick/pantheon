@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Named network segments, and a scope the agent cannot reason its way out of.
 
 `P16-16`. The owner's north star includes automating things on *"my network

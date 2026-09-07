@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression for #4875: the official Docker image shipped without python-magic
 (and without the libmagic system lib), so content-based MIME detection in
 src/upload_handler.py was dead and uploads were typed by extension only.

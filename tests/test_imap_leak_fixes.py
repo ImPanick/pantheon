@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests for IMAP connection leak fixes.
 
 Each test forces an exception after _imap_connect() succeeds and asserts

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Runs the Node-based streaming-render segmenter suite (tests/streaming/*.test.mjs).
 
 Covers the pure incremental-render segmenter (static/js/streamingSegmenter.js):

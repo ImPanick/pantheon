@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Task- and chat-scoped approval continuation coverage for issue #6112."""
 
 import asyncio

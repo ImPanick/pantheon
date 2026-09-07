@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: _strip_reasoning_prose must not destroy the answer.
 
 It kept the text AFTER the *last* reasoning paragraph. When a reasoning-style

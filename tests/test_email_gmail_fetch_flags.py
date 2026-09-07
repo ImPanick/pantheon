@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests for _group_uid_fetch_records (Gmail FLAGS placement).
 
 imaplib hands back UID FETCH responses as an interleaved list of

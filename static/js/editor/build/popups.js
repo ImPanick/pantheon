@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Static markup for misc floating popups that live above the canvas.
  *

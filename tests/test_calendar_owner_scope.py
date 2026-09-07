@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pin owner-scoping of the autonomous email->calendar event snapshot.
 
 The email auto-calendar pass fans out over EVERY user's mailbox and used to

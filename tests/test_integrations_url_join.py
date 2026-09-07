@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for integration URL construction in execute_api_call.
 
 Covers the trailing-slash regression from #5138: a bare "/" path must

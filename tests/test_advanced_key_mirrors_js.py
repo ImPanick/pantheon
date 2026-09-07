@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """P1-02 / B21 — one advanced-key set, mirrored six times, and nothing that checked.
 
 A theme's *advanced* colours are one object — `theme.colors.advanced` in one

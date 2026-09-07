@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 import src.model_capabilities as mc
 import src.model_capability_readers as readers
 from src.model_capability_readers import generic_openai, google, llamacpp, lmstudio, ollama, openai, openrouter

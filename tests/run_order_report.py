@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Report-only randomized test-order runner (issue #3973).
 
 Runs pytest with the collected test items shuffled by a seeded RNG so

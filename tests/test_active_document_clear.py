@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Issue #1160 — a closed document must not stay 'active' and leak into new chats.
 
 Closing a document tab detaches it (session_id -> NULL) or deletes it, but the

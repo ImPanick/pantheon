@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # routes/personal_routes.py
 """Routes for personal documents management."""
 import asyncio

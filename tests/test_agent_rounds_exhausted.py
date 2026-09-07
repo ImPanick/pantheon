@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: stream_agent_loop emits `rounds_exhausted` only when the round
 cap is hit while still working, and NOT on a normal finish.
 

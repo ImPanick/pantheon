@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Always-on monitor that auto-continues the agent when a background job
 (see src/bg_jobs.py) finishes.
 

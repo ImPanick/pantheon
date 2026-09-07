@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Save a set of cases, run them against a configuration, get a number (`P14-03`).
 
 Every prompt change, model swap, skill edit and retrieval tweak in this codebase

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The fork's old short name, in code, with every survivor named.
 
 `P0-31`. `P0-04` renamed 113 browser storage keys and reported *"no `ody-` /

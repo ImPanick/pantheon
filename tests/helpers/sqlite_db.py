@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Construct a file-backed temp sqlite DB for tests.
 
 Only builds the SQLAlchemy objects from the repeated temp-sqlite block. It

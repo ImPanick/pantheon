@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // compare/index.js — orchestrator module (public API)
 /**
  * Model A/B Comparison module.

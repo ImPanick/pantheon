@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Search and content caching with LRU eviction."""
 
 import hashlib

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Saving prefs with auth disabled must not wipe a multi-user store.
 
 When auth is disabled get_current_user returns None. _save_for_user(None,...)

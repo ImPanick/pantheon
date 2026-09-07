@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Gallery Editor — canvas-based image editor with layers, brush, eraser, text, crop, inpaint mask.
  */

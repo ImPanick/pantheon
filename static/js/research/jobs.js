@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Research job queue — add, start, monitor, cancel research jobs.
  */

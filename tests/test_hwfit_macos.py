@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """macOS / Apple Silicon (Metal) support for Cookbook hardware-fit.
 
 Covers the Metal-specific behavior added for Apple Silicon and locks in the

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Preset routes — /api/presets GET, /api/presets/custom POST, user templates CRUD."""
 
 import asyncio

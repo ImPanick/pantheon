@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Test that do_manage_calendar handles the batch {"events": [...]} format
 that models like deepseek-v4-flash emit instead of individual create_event calls.
 """

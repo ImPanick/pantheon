@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pin the diffusion_server DNS-rebinding + wildcard-CORS regression.
 
 Background: scripts/diffusion_server.py used to ship `allow_origins=["*"]`

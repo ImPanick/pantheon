@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 import json
 
 import src.agent_tools  # noqa: F401  (break agent_tools<->tool_parsing import cycle)

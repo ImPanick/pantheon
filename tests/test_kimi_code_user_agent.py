@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Kimi Code User-Agent fallback list and 403 detection."""
 import pytest
 

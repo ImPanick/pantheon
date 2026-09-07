@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """extract_urls must keep a *balanced* trailing ')' while still trimming
 prose-glued punctuation.
 

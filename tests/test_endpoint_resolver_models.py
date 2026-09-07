@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for endpoint_resolver — endpoint/model selection and enabled-model filtering."""
 import json
 

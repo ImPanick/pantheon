@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 from src.agent_tools.document_tools import _strip_pdf_editor_markers
 
 

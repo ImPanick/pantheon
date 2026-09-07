@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The last zero-configuration leak: a model fetched on the first chat message.
 
 `build_embedding_lanes` returns lanes in preference order -- custom (a local

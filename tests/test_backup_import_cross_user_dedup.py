@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Backup import must dedup memories against the importing user only.
 
 import_data deduped incoming memories against memory_manager.load_all()

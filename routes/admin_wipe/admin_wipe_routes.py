@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Admin Danger Zone — per-category wipes.
 
 Each endpoint is admin-only and truncates exactly one domain so the

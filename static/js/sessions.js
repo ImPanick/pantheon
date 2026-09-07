@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Session Management Functions
 // This module handles all session-related operations
 

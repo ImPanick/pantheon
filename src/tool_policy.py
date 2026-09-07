@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Per-turn tool policy composition for agent execution."""
 
 from __future__ import annotations

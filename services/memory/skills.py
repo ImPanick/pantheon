@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # services/memory/skills.py
 """Skills storage layer.
 

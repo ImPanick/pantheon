@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """P7-06: the ranked effect has to reach the client, on every emit site.
 
 The taxonomy in ``src/tool_capabilities.py`` was correct and unused: a shell

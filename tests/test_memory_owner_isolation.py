@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 from unittest.mock import MagicMock
 
 import routes.memory_routes as memory_routes

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Count element lookups that resolve to nothing — the drift metric.
 
 A backend with no caller and an element id with no markup are the same disease:

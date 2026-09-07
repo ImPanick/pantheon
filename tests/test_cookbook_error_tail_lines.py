@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Behavioral guard for the cookbook error output-tail expansion.
 
 When a task reaches status "error" the status endpoint previously returned

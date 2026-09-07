@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Codex integration routes.
 
 These are small HTTP surfaces intended for the Codex plugin/MCP bridge. They

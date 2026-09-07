@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Search providers must not raise on a non-JSON response body (issue #1129).
 
 `brave_search` already wraps `response.json()` in its own try/except that catches

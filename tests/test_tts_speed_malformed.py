@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: a malformed tts_speed must not crash TTS.
 
 services/tts/tts_service.py read `float(settings.get("tts_speed", "1"))` with no

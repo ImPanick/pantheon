@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """PR #3681 — the surfaces this PR derives from BUILTIN_EMAIL_TOOLS stay in sync.
 
 The review rounds on #3681 each found a hand-maintained copy of the email tool

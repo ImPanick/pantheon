@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """P1-01 — the accent token, and the sites whose fallback was never an accent.
 
 `P1-01` defines `--accent` per theme, beside `--red`, at three sites

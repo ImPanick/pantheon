@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: api_call reaches the model for API-integration intent (#3794).
 
 The repro prompt — "Use the api_call tool to call Home Assistant GET

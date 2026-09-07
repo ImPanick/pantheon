@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """compute_next_run monthly must clamp to short months, not skip them.
 
 Old behavior: now.replace(day=31) raises ValueError in February, the

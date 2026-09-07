@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // static/js/emailLibrary/state.js
 //
 // Shared mutable state for the email-library popup. Keeping these on a

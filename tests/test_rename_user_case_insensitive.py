@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: username rename must migrate mixed-case legacy owner keys.
 
 Before lowercasing was enforced everywhere, rows could be stored with

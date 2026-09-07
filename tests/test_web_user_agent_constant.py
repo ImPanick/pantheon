@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The web scraping path routes its User-Agent through one constant.
 
 Guards the dedup: web_fetch / web_search outbound UAs go through

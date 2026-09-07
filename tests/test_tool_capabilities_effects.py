@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """P7-06: the severity ordering itself, beside the table it ranks.
 
 `tests/test_tool_effect_wire.py` opens by saying it pins the wire and not the

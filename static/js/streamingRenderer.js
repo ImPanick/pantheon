@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // streamingRenderer.js
 //
 // The DOM shell for incremental streaming markdown rendering. One instance owns

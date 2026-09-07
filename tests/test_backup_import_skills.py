@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Backup import must not call the removed skills_manager.save().
 
 Skills migrated from data/skills.json to on-disk SKILL.md files; save() was

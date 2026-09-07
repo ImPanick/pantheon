@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pantheon ships 286 skills and reaches nothing to do it.
 
 The library is ECC (https://github.com/affaan-m/ECC, MIT), vendored under

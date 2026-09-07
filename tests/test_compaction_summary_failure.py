@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression test for #2160: when the compaction summary LLM call fails,
 maybe_compact must return the original messages unchanged, not the older half
 dropped. Uses mock imports to avoid loading the full app stack."""

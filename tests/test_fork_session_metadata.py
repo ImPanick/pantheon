@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Forking a session must not mutate the source session's messages.
 
 ChatMessage.metadata is a dict. add_message() -> _persist_message() stamps

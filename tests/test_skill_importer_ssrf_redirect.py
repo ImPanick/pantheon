@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Skill importer SSRF hardening: redirects must be re-validated per hop.
 
 The importer follows redirects manually (`_get_checked`) and re-runs the SSRF

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """_imap_move must address messages by UID, not sequence number.
 
 The auto-spam poller passes a real IMAP UID (from conn.uid("SEARCH", ...))

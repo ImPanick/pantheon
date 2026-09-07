@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: visual_report markdown helpers must tolerate a non-string.
 
 _autolink_urls did `re.sub(..., md_text)` and _extract_headings did

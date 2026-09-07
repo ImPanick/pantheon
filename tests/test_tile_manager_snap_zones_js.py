@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression coverage for desktop modal tile snap edge zones."""
 
 import json

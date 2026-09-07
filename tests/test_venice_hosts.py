@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Venice host-allowlist behavior (follow-up to provider support).
 
 Venice (https://api.venice.ai/api/v1) is a paid, OpenAI-compatible cloud API

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // static/js/calendar/reminders.js
 //
 // Browser-notification poller for calendar reminder notes. Self-contained:

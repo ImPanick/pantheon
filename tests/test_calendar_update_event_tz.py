@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """update_event must anchor datetimes to the user tz, like create_event.
 
 create_event parses a naive/natural-language dtstart in the USER's

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 from src.action_intents import classify_tool_intent, message_needs_tools
 
 

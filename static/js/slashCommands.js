@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // static/js/slashCommands.js
 // Slash command handlers and dispatcher, extracted from chat.js
 

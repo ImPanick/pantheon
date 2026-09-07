@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """RCE guard for manage_mcp 'add' (#438).
 
 do_manage_mcp("add", ...) used to pass model / prompt-injection-controlled

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Issue #1160 — route-level regression for clearing the active-document pointer.
 
 Exercises the REAL ``PATCH /api/document/{id}`` (session_id="") and

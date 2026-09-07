@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression test for the note route shim (slice 2f, #4082/#4071).
 
 The backward-compat shim at ``routes/note_routes.py`` uses ``sys.modules``

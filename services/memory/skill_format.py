@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """SKILL.md parser & writer.
 
 Reads/writes a single skill from a `SKILL.md` file with YAML frontmatter

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Automatic chat URL fetch failures must remain visible to the model."""
 
 import logging

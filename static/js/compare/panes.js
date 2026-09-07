@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // compare/panes.js — pane lifecycle, actions, layout
 import state from './state.js';
 import { _persistSelections } from './models.js';

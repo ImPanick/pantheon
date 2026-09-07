@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // compare/stream.js — SSE streaming to panes
 import state from './state.js';
 import { addFinishBadge } from './vote.js';

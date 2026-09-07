@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests for Ollama-native multimodal image routing (issue #4723).
 
 Pantheon builds user messages in OpenAI style::

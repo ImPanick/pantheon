@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Workspace confinement.
 
 The agent's per-turn workspace is a single context-local binding set in

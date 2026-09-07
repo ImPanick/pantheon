@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # services/docs/service.py
 """Docs service — personal document RAG."""
 

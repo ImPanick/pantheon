@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Verify that MCP reconnect via the agent tool passes full server metadata."""
 
 import asyncio

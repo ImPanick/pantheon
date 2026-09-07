@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """TOC heading extraction must ignore headings inside code fences.
 
 A "## ..." comment inside a ``` or ~~~ block is not rendered as an <h2>, but

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """P1-03 — the muted foreground token; P1-04 — the backdrop that could never show.
 
 Two rows, one file, because both are claims about what `static/style.css`

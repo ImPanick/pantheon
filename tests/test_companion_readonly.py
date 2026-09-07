@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Owner-scope tests for the read-only companion bridge.
 
 Mirrors the direct-helper style of tests/test_null_owner_gates.py: exercise the

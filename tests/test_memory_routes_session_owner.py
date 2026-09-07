@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Memory routes must owner-scope caller-supplied session ids.
 
 SessionManager.get_session returns any session by id (no owner scoping). The

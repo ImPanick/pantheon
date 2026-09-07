@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Issue #1116 (latent ranking bug) — recency scoring uses UTC, not local time.
 
 `recency_score` measured age with `datetime.now()` (local) against UTC-style

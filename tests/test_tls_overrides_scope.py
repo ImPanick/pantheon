@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Scope tests for src/tls_overrides.
 
 #722 / PR #769 added an opt-in extra CA bundle (LLM_CA_BUNDLE) for

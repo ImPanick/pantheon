@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: parse_due_for_user must handle time-first phrasings.
 
 The tool schema and tool_index both advertise '11pm today' as a valid

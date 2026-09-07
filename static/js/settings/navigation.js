@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Settings navigation primitives.
 //
 // This module owns panel activation and sidebar click routing only. Individual

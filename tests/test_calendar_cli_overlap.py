@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: `pantheon-calendar list` must select events that OVERLAP the
 query window, matching the canonical web-route filter in
 routes/calendar_routes.py (`dtstart < end AND dtend > start`) and the

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * History-panel subsystem — the floating frosted list of labeled
  * undo/redo entries that hangs off the topbar History button.

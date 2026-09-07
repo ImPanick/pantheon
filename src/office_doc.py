@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Auto-create a Document row from an Office attachment.
 
 When a .docx (and friends) lands in chat, the full extracted text is stored

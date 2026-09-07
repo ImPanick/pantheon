@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 from services.hwfit.fit import _lookup_apple_bandwidth, _lookup_bandwidth
 
 

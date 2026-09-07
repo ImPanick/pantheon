@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Topbar wiring — undo/redo/history, Save dropdown, zoom buttons,
  * Save/Export/Download/Project, Edge popup, and the cross-dropdown

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the Google OAuth2 email helpers.
 
 Covers the security-critical surface added for Google Workspace / .edu

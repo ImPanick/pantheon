@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Resolving DuckDuckGo /l/?uddg= redirects must match the host, not a substring.
 
 `_resolve_ddg_redirect` only extracts the embedded `uddg` destination when the

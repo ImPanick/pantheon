@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Model-assisted route helpers must resolve endpoints with owner scope."""
 
 import ast

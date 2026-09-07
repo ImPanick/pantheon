@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 r"""DOM/CSS-injection regression for calendar background-image URL escaping.
 
 CodeQL `js/incomplete-sanitization` (#463 calendar.js:416, #464 calendar.js:1263)

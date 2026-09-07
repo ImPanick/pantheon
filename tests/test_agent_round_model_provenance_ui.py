@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Saved Agent rounds must render and bill with actual per-round provenance."""
 
 import json

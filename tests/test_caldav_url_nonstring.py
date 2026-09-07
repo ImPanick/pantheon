@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: validate_caldav_url must reject a non-string via its normal
 ValueError path, not crash with TypeError.
 

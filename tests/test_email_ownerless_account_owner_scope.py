@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Cross-tenant access control for legacy owner-less email accounts.
 
 `email_accounts` is the one owner-scoped table left out of the legacy-owner

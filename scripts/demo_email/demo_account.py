@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Create/remove the switchable 'Demo' EmailAccount in Pantheon.
 
 Mirrors the existing local-Dovecot account (localhost:31143, STARTTLS) but points

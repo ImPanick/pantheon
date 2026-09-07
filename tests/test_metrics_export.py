@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The scrape answers; it never sends (`P16-12`).
 
 `Law 16` clause 4, as the owner amended it: telemetry is fine, phoning home is

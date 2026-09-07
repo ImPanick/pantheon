@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 r"""Behaviour of the panel-loader registry in `static/js/panels.js`.
 
 The registry is what keeps a lazily-loaded panel honest: it must import a

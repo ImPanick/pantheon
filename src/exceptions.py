@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # src/exceptions.py
 """Backward-compatible shim — the single source of truth is core/exceptions.py.
 

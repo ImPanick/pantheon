@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression coverage for llama-server style /v1 model-list endpoints (#3330)."""
 
 import httpx

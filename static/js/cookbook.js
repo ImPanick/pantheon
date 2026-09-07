@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // ============================================
 // COOKBOOK MODULE (v2 — simplified)
 // What Fits? + Saved presets, inline action panels

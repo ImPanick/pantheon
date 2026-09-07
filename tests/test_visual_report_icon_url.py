@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Hero/section image selection must not drop photos whose slug contains
 'icon' or 'logo' as a substring.
 

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """load_features() must degrade to defaults if features.json is unreadable.
 
 load_settings() already catches PermissionError, but load_features() did not, so

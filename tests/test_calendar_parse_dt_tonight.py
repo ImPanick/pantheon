@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: _parse_dt must understand "tonight" like parse_due_for_user does.
 
 parse_due_for_user's natural-language regex accepts

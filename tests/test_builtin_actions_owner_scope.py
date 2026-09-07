@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests for owner-scoped model resolution in scheduled actions."""
 
 import sqlite3

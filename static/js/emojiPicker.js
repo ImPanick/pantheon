@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * emojiPicker.js — Monochrome icon picker (no colored emojis).
  * Curated set of common icons as inline SVGs. The PICKER shows monochrome SVGs,

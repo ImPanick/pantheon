@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Execute terminal stream-error classification under Node."""
 
 import json

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // liveThinkingThrottle.js
 //
 // Pure trailing-edge coalescer for the live "thinking" block in chat.js.

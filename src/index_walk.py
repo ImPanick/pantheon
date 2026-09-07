@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Shared directory-walk pruning for personal-document indexing (#5559).
 
 Single source of the hidden-dir / junk-dir / hidden-file skip so the vector

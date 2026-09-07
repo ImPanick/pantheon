@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for bg_jobs.kill and the manage_bg_jobs agent tool.
 
 Process-free: the store/dir are redirected to tmp, _pid_alive is forced True so

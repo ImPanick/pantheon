@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Layer panel renderer — rebuilds the right-side layer list from
  * `state.layers` every time it's called. The full row tree per layer:

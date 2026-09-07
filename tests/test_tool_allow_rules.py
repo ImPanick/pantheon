@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """P7-04 — the rule store behind the `allow_listed` rung, and its route layer.
 
 The gate half (`src/tool_capabilities.py`) was already tested on its own; every

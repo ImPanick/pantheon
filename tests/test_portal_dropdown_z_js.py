@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Node-driven regression coverage for body-portaled dropdown z-order.
 
 Tool-modal z climbs unbounded via modalManager's bring-to-front counter, so the

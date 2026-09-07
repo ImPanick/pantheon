@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pin computeSnap (static/js/editor/snap.js) against a non-array otherLayers.
 Driven through `node --input-type=module`; skips without node.
 """

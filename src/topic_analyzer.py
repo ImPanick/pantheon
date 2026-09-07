@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 Topic analysis for conversations — deduplicated from app.py.
 Used by /api/conversations/topics and /api/memory/extract fallback.

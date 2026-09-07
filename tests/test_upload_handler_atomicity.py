@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for ``src.upload_handler.UploadHandler`` uploads.json RMW atomicity.
 
 The production code serialises the read-modify-write of ``uploads.json``

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pin ArrowUp recall on the chat composer (static/js/composerArrowUpRecall.js).
 
 Driven through `node --input-type=module` so we exercise the real JS without a

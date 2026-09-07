@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """ChatGPT subscription / Codex backend OAuth helpers.
 
 This provider is intentionally separate from OpenAI API-key endpoints. It uses

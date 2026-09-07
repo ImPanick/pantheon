@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pin that the login handler keeps bcrypt off the event loop.
 
 `/api/auth/login` is an `async def` and is reachable unauthenticated. bcrypt

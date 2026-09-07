@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # services/youtube/__init__.py
 """YouTube service — transcript extraction."""
 

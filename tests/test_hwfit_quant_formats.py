@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 from services.hwfit.fit import analyze_model, rank_models
 from services.hwfit.models import (
     get_models,

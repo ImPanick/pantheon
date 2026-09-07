@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Move tool — drag a layer around the canvas, with optional snap-on-Ctrl
  * to other layers' edges/centers and to canvas edges/center.

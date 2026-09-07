@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // static/js/model/matchKey.js
 //
 // Pure helper for matching a model name against a set of known keys. No DOM —

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pin the auth exemption for task webhook-trigger URLs.
 
 The task router exposes ``POST /api/tasks/{task_id}/webhook/{token}`` as a

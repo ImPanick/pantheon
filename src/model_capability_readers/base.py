@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Shared helpers for vendor-specific model capability readers.
 
 Readers in this package normalize already-fetched provider payload shapes and

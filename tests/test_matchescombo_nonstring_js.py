@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pin _matchesCombo (static/js/keyboard-shortcuts.js) against a non-string
 keybind. Driven through `node --input-type=module` (same approach as
 tests/test_markdown_table_row_js.py); skips when `node` is missing.

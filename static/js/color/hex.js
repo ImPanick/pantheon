@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // static/js/color/hex.js
 //
 // Parse a CSS hex color into {r, g, b}. Pure — no DOM — so it can be reused

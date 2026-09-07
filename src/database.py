@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Re-export everything from the canonical core.database module
 # so that `from src.database import X` continues to work everywhere.
 from core.database import *  # noqa: F401,F403

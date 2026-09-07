@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

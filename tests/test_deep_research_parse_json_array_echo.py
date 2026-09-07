@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """_parse_json_array must not inject the prompt's example queries.
 
 The query-generation prompt ends with an Example: [...] array. Weak models

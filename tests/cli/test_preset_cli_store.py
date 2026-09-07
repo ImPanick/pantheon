@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 import pytest
 
 from tests.helpers.cli_loader import load_script

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Backend-reported generation/prefill speed metrics.
 
 llama.cpp emits a `timings` block alongside `usage` on the final stream chunk

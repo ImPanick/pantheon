@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // static/js/storage.js
 // Centralized localStorage access with key constants and JSON parse safety
 

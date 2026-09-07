@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pin the vault master-password handling so it never regresses into argv.
 
 `routes.vault_routes._run_bw` launches the Bitwarden CLI with

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Search routes — /api/search/config GET, /api/search POST."""
 
 import logging

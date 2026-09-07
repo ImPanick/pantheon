@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Emoji render with no network, and OpenMoji is credited.
 
 Two findings in one row.

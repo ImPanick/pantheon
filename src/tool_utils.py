@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 This module intentionally imports NOTHING from the project (except
 src.constants which imports nothing from src). Adding a project import here

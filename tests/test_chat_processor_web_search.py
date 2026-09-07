@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 from unittest.mock import MagicMock
 from types import SimpleNamespace
 from src.chat_processor import ChatProcessor

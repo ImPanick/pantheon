@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: check_outbound_url must reject a non-string URL, not crash.
 
 The `if not url or not url.strip()` guard only handled falsy values; a truthy

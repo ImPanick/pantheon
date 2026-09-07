@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Local Cookbook dependency detection — distribution-name mapping (issue #1020).
 
 The Cookbook → Dependencies tab reported `llama-cpp-python[server]` as "not

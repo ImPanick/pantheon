@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for analytics default-merge on load (src/search/analytics.py)."""
 import json
 

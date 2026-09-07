@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """No recurring job fires on an exact boundary (`P15-10`).
 
 Two halves, and the second is the one that lasts.

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regressions for skill-test input and exact-approval boundaries.
 
 _skill_test_task did `skill.get(...)` and _should_check_retrieval_precision did

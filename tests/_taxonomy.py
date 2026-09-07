@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Conservative test taxonomy: classify test files by area and sub-area.
 
 This module is the single source of truth for the collection-time markers added

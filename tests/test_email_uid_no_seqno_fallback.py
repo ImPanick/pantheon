@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Email move/flag must never fall back to sequence-number IMAP ops (#1874 sibling).
 
 `imaplib`'s plain `store()` / `copy()` operate on message SEQUENCE NUMBERS, not

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Draw a luminance histogram of a layer's pixels onto the given
  * canvas. Sampling is capped at ~400×400 so the call stays cheap on

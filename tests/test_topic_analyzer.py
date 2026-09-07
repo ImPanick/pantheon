@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for topic keyword matching (src/topic_analyzer.py)."""
 from types import SimpleNamespace
 import pytest

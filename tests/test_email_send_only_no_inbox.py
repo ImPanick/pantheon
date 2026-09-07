@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """A send-only (SMTP-only) account has no inbox to read.
 
 `_imap_connect` must fail fast with a clear, typed error instead of handing an

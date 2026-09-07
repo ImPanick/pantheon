@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """CalDAV sync must not prune the window when it can't fully read the server.
 
 The prune deletes local caldav rows whose UID the server didn't return. `seen_uids`

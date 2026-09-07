@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Renaming a user must update non-SQL owner stores, not just the SQL DB.
 
 The DB owner-rename loop in the rename_user route updates every SQL-backed

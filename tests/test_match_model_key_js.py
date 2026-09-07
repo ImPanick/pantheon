@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pin matchModelKey (static/js/model/matchKey.js).
 
 Driven through `node --input-type=module` (same approach as test_compare_js.py);

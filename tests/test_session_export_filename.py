@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: _sanitize_export_filename must tolerate a non-string name.
 
 It did `name = name or ""` then `re.sub(..., name)`. A non-string name (e.g. an

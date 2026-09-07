@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Edge feather / edge delete via a two-pass chamfer distance transform.
  *

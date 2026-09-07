@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # routes/mcp_routes.py
 """MCP (Model Context Protocol) server management routes."""
 import json

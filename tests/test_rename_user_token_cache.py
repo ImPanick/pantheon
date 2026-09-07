@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Renaming a user must invalidate the bearer-token cache.
 
 rename_user updates ApiToken.owner (and every other owner-scoped row) in the

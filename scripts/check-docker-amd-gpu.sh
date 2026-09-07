@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # check-docker-amd-gpu.sh - read-only AMD/ROCm Docker passthrough diagnostic.
 #
 # This script does not install packages, edit .env, or restart Docker. It only

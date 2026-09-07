@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # src/app_helpers.py
 import base64
 import logging

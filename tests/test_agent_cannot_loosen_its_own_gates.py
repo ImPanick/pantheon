@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """B42 — the agent could take off the gates that exist to constrain it.
 
 Found while working `H18`, whose framing was "twelve settings the model can

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Personal Assistant — sidebar entry, settings modal, and chat-header extras.
 //
 // The Assistant is just a specially-flagged CrewMember whose pinned Session

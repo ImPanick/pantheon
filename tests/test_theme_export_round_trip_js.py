@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The theme editor's export/import must round-trip everything it stores.
 
 This file exists because of a real export, handed over by the owner, of a theme

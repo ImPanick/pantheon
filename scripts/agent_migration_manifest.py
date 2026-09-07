@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Build a neutral agent migration manifest.
 
 This helper is intentionally read-only. It does not import the Pantheon

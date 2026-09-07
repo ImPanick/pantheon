@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pin harmonize mask helpers against invalid layer lists.
 
 Driven through `node --input-type=module`; skips without node.

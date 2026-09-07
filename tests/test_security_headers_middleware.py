@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # tests/test_security_headers_middleware.py
 """
 Focused regression coverage for `SecurityHeadersMiddleware`

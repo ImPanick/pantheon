@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Tests for the pure streaming-markdown segmenter.
 //
 // The segmenter's one job: given the full accumulated markdown text so far,

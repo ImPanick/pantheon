@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Owner-scope regression for /api/compare/start endpoint-key resolution.
 
 start_comparison() takes caller-supplied endpoint URLs (endpoint_a/endpoint_b),

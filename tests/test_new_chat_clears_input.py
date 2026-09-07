@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression guard for issue #1343 — clicking "New chat" left the previous
 session's draft text in the composer.
 

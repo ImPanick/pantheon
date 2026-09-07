@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // static/js/emailLibrary/replyRecipients.js
 //
 // Pure helpers for building reply-all recipient lists. No DOM, no fetch,

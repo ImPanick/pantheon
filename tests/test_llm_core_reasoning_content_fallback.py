@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests for reasoning_content fallback in non-streaming paths.
 
 Covers the five cases requested during PR review:

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: context_compactor token helpers must tolerate non-string text.
 
 _message_text_token_estimate and _truncate_text_to_token_budget call len(text)

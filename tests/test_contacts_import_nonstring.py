@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """POST /api/contacts/import must not 500 on a non-string vcf/text/csv value.
 
 `text = data.get("vcf") or ... or ""` left a non-string value (e.g. a number)

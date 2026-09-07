@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Node-driven regression coverage for Notes pane z-order selection.
 
 Notes uses a body-level backdrop instead of the shared `.modal` element, so the

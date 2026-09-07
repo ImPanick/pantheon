@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """P7-06 / P6-11 — what a tool can do, on the two surfaces that show it.
 
 `describe_effects()` (`src/tool_capabilities.py`) ranks a tool's effects and

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: document_actions title/content helpers must tolerate non-strings.
 
 _norm_title/_content_fingerprint/_real_len used `(x or "")`, which only guards

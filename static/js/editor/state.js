@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Editor state store — a single mutable object that the gallery editor
  * and its tool modules read and write directly.

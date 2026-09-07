@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Promote/demote users to/from admin (issue #2958).
 
 Covers AuthManager.set_admin (the core logic + last-admin lockout guard +

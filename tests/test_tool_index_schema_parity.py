@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Every FUNCTION_TOOL_SCHEMAS tool must have a ToolIndex description.
 
 Agent mode selects tools by embedding BUILTIN_TOOL_DESCRIPTIONS and

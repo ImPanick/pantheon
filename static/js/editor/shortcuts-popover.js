@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Shortcuts-cheatsheet popover — floating frosted-glass list of every
  * editor keyboard shortcut, anchored above the topbar keyboard icon

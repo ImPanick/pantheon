@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the RateLimiter — pure in-memory, no server needed."""
 import time
 import pytest

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pin the startup shell contract (static/js/startupShell.js).
 
 Driven through `node --input-type=module` against a stub DOM and a manually

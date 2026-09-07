@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """What is quietly wrong, and whether anyone would ever see it.
 
 `service_health.py` answers *can I reach X* — liveness. This module answers *is

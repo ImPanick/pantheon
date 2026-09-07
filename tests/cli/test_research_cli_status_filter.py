@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """`pantheon-research list --status complete` was returning nothing.
 
 The CLI's `--status` argparse choice is "complete" — that is the user-facing

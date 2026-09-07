@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Owner-scope tests for the remaining _resolve_model call sites.
 
 Both the teacher-escalation path and the skill-audit teacher resolution map a

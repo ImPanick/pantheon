@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Prometheus scrape output, built by hand, from data that is already local.
 
 `P16-12`. `Law 16` clause 4 as the owner amended it: *"telemetry is fine, but

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Imported events with a non-positive duration must not vanish from the list.
 
 list_events selects events that overlap the query window with

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // static/js/codeRunner.js
 
 import * as uiModule from './ui.js';

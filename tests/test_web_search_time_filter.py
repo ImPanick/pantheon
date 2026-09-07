@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Issue #2756 — a native web_search function call must preserve time_filter.
 
 The web_search schema advertises a time_filter enum and the executor honors it

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Search service — web search with SearXNG."""
 
 from .core import (

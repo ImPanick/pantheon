@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Attachment reference helpers for chat storage and tool manifests.
 
 Live model calls may need provider-specific data URLs for the current turn.

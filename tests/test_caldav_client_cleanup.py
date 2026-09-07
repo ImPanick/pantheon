@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Issue #4593 — the CalDAV DAVClient must be closed on every path.
 
 `_sync_blocking` (src/caldav_sync.py) and `_writeback_blocking`

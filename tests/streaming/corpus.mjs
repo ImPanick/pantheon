@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // A spread of markdown samples exercising the constructs the renderer supports.
 // Used by the streaming-invariant fuzz test (fed token-by-token) and the renderer
 // integration test. Keep samples small but structurally varied — the fuzz test

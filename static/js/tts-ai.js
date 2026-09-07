@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // static/js/tts-ai.js
 // AI Text-to-Speech Module — supports server TTS and browser Web Speech API
 

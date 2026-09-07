@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Every name `stream_agent_loop` uses must exist where it is used.
 
 `B38`. `H08`'s refactor moved `from src.runtime_limits import lift_cap as

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """edit_file: filesystem-write permission policy + behavior."""
 import json
 import os

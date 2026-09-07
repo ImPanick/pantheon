@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression guard for issue #4002 — clicking the card body outside the
 edit textarea collapsed the skill card and silently discarded unsaved edits.
 

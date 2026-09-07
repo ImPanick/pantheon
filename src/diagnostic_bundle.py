@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """A bug report someone can read in full before it goes anywhere.
 
 `P16-14`. The owner, weighing opt-in vendor telemetry: *"having people report

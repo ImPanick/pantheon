@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: add_directory must not un-exclude files in sibling directories.
 
 ``add_directory`` clears exclusions for files inside the directory being added.

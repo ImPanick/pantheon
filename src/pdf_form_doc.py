@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Bridge between extracted PDF form fields and the document editor.
 
 Design: the user edits the form as readable markdown — labels as bullets,

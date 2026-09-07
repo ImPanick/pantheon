@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: reserved sentinel usernames must not be registerable.
 
 `core.middleware.require_admin` grants admin to any request whose

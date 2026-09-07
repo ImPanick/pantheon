@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Inpaint panel controls — the non-AI side-panel UI for the inpaint
  * tool (the AI Generate/Remove/Outpaint buttons live in

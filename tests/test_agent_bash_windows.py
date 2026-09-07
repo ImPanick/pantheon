@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Windows execution contract for the agent Bash tool."""
 
 import pytest

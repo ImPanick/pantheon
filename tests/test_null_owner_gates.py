@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pin the null-owner-bypass fixes so they don't regress.
 
 The same legacy `if row.owner and row.owner != user` / `(owner == user) |

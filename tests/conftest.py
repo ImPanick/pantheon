@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Shared test configuration - ensure project root is on sys.path and stub heavy deps."""
 import sys
 import os

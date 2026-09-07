@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Persistence contracts for JSON-like text and multimodal chat content.
 
 Plain text that resembles a JSON content-block list must remain an exact

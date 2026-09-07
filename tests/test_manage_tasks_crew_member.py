@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """`manage_tasks` must persist `crew_member_id`, and must scope it to the caller.
 
 P6-10 exposed the field in the tool schema (`src/tool_schemas.py`) before the

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // compare/vote.js — voting, revealing, confetti
 import Storage from '../storage.js';
 import state from './state.js';

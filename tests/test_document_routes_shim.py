@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression test for the document route shim (slice 2m, #4082/#4071).
 
 The backward-compat shims at ``routes/document_routes.py`` and

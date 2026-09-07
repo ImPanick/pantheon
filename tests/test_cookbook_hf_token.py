@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Cookbook HF token persistence and lookup."""
 
 import json

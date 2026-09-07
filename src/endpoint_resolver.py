@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # src/endpoint_resolver.py
 """Unified endpoint resolution for all backend services.
 

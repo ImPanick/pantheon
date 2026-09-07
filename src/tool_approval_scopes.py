@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Shared wire values and scope markers for tool approval continuations."""
 
 from __future__ import annotations

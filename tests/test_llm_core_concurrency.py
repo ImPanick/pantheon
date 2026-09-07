@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests for thread-safe access to llm_core's shared maps (issue #659).
 
 The synchronous llm_call() runs inside FastAPI's threadpool (sync route handlers

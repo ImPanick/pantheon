@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """manage_tasks mutations must fail closed on owner-less / cross-owner tasks.
 
 The edit/delete/pause/run actions of ``do_manage_tasks`` previously gated with

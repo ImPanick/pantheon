@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression guard for issue #1335 — PR review screenshots were committed into
 docs/ (docs/a11y/*.png from #738, docs/gallery-314-*.png from #644) where they
 served no purpose: nothing in the repo referenced them, so they just showed up

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Harden hwfit model-catalog parsing against non-string field values.
 
 `params_b` and `is_prequantized` read free-form fields straight off the HF

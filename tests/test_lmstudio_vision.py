@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for LM Studio vision-capability passthrough: reading capabilities.vision
 from the native /api/v1/models endpoint, with no probing of cloud providers."""
 import pytest

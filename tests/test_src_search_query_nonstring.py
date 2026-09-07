@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Query helpers must tolerate non-string input.
 
 `src.search.query` is a compatibility shim that aliases the canonical

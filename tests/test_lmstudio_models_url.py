@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression coverage for LM Studio /v1 model-list endpoints (issue #25).
 
 LM Studio's OpenAI-compatible surface exposes its model list at

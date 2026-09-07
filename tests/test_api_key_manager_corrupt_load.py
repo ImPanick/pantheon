@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: APIKeyManager.load() must not crash on a corrupt/wrong-shape file.
 
 load() is called during startup (app_initializer). It had no try/except around

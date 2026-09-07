@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Lasso tool — freehand polygon selection. Mouse-down starts a fresh
  * polygon; every move appends a point and redraws the dashed outline;

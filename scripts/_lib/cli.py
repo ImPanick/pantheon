@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """scripts/_lib/cli.py — shared scaffolding for the `pantheon-*` CLIs.
 
 Each top-level CLI imports a few helpers from here so they don't

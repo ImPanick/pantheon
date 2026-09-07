@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """CalDAV SSRF-via-redirect hardening.
 
 ``validate_caldav_url`` resolves and vets the initial host, but the CalDAV

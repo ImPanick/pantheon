@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """One button press must not fire 260 unauthenticated requests at huggingface.co.
 
 Before 2026-08-31, `refresh_hf_collection_models_cache` walked 13 collection

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Concurrency stress tests for AuthManager._config_lock.
 
 Verifies that concurrent create/delete/rename operations don't lose data

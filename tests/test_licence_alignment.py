@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The licence paperwork matches what is actually on disk.
 
 OpenMoji's artwork shipped for months under CC BY-SA 4.0, attributed in no file

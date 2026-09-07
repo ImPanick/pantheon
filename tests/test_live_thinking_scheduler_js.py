@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Runs the live-thinking throttle's behavioral suite under pytest.
 
 Behavior lives in tests/live_thinking_scheduler.test.mjs (node:test, no DOM).

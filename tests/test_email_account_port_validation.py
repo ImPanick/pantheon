@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """User-supplied IMAP/SMTP ports must not crash the email-account endpoints.
 
 A non-numeric port (for example ``"imap"`` or ``"993x"``) previously reached an

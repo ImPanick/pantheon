@@ -11,6 +11,14 @@ RUN bash /usr/local/bin/build-realesrgan-wheels.sh /wheels
 
 FROM python:3.14-slim
 
+# P0-18. A published image is a distribution, and this one declared no licence
+# anywhere in its metadata — the same failure class as P0-30, where the desktop
+# builds shipped a dozen libraries with their attribution stripped because the
+# payload was listed by hand. `docker inspect` now answers the question.
+# `org.opencontainers.image.source` is deliberately absent: it has to point at
+# a repository a reader can actually open, and that waits on P0-17.
+LABEL org.opencontainers.image.licenses="AGPL-3.0-or-later"
+
 # System deps. tmux is required by Cookbook for background downloads/serves.
 # openssh-client is required for Cookbook remote server tests, setup, probes,
 # downloads, and serves from Docker installs.

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # routes/memory_routes.py
 from fastapi import APIRouter, Form, HTTPException, Request, UploadFile, File
 from typing import Dict, Any, Optional, List

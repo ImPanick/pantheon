@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """DB-backed ChatGPT Subscription endpoint provisioning tests."""
 
 import json

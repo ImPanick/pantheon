@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: snippet and subject-term matching must be word-boundary.
 
 #1473 converted the title and sports-hint matches in ranking.py to word

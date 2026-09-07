@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for API token CRUD route handlers.
 
 Covers GET /api/tokens, POST /api/tokens, DELETE /api/tokens/{token_id}.

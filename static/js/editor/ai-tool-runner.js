@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Shared AI-tool runner. Used by Sharpen / Harmonize / Upscale / Style /
  * Bg-Remove / etc. — every tool that flattens the document, POSTs the

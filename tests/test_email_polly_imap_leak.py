@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pin the IMAP connection-cleanup guarantee in the background auto-summarize poller.
 
 `_auto_summarize_pass_single` in `routes/email_pollers.py` is invoked on a

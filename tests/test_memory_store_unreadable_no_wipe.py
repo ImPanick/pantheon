@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """A memory store that cannot be READ must never be overwritten (issue #5673).
 
 `MemoryManager.save` is atomic, and the add/import/extract paths are all

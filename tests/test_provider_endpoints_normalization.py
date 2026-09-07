@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Provider endpoint normalization tests.
 
 Covers ``normalize_base`` (strip whatever path the user pasted), and the

@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Pantheon — one-command quick start for macOS (Apple Silicon).
 #
 #   ./start-macos.sh

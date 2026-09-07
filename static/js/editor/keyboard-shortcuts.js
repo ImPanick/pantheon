@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Editor keyboard shortcuts — bound to `document` so shortcuts work
  * without first clicking into the canvas. Gated by `state.editorOpen`

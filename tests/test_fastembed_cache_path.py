@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: FASTEMBED_CACHE_DIR must tolerate a PRESENT-but-EMPTY
 FASTEMBED_CACHE_PATH.
 

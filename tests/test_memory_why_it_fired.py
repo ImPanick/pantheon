@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """H11 — a person can ask why a memory would fire, without sending the message.
 
 `POST /api/memory/debug` has been live, owner-scoped, and documented as *"Debug

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Per-tool stroke-modifier sliders (Opacity / Flow / Softness) for
  * Eraser, Brush, and Clone. The three sections share identical UX:

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Transform-tool session lifecycle + floating popup wiring.
  *

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: inside_base_dir must fail closed on a non-string input.
 
 The `os.path.realpath(path)` calls run before the try/except (which only wraps

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression guards for the Documents editor scrolling UI.
 
 Issues #1501 and #1496 both come from the same surface: the document editor

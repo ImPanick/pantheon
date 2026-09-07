@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression test for the CORS-preflight auth bypass.
 
 AuthMiddleware is the outermost middleware, so it used to 401 the credential-less

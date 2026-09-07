@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """classify_events must read the Memory `text` column, not a non-existent
 `content` attribute.
 

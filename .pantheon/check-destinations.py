@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """No address ships pre-filled. Armed before there is a hole to guard.
 
 `P16-13`. `Law 16` clause 4, as the owner amended it: *"telemetry is fine, but

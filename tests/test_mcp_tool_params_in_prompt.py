@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression for issue #2509 — MCP tools must expose their input parameters.
 
 ``McpManager.get_tool_descriptions_for_prompt()`` previously emitted only

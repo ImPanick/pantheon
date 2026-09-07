@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: is_markitdown_format must tolerate a non-string path.
 
 It did `os.path.splitext(path)`, which raises TypeError on None / non-string.

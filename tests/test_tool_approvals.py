@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Exact one-use continuation coverage for tainted agent actions."""
 
 import time

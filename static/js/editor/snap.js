@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Snap-while-dragging: when the move tool drags a layer near another
  * layer's edge or the canvas centre/edges, gently lock the proposed

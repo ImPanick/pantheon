@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Search Chat Module — Ctrl+K command palette for searching conversations
 
 import uiModule from './ui.js';

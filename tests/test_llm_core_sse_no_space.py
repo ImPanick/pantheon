@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """SSE lines with no space after \'data:\' must still be parsed.
 
 The SSE spec makes the space after the colon optional ("data:value" is

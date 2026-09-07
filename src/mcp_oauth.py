@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """mcp_oauth.py — generic OAuth for remote (Streamable HTTP) MCP servers.
 
 Bridges the mcp SDK's OAuthClientProvider (RFC 9728 discovery, Dynamic Client

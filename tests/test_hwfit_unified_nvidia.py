@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Unified-memory NVIDIA detection — Grace Blackwell GB10 / DGX Spark (#1340).
 
 GB10 (and other unified-memory NVIDIA parts) report `nvidia-smi

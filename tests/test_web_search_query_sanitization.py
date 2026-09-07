@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests for #4547 — chat-mode web search query sanitization.
 
 Chat-mode web search (``use_web``) selects a search query via the

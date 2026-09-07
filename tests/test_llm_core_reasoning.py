@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: a streamed `reasoning` delta (vLLM 0.20.2 / NIM / Ollama) must surface
 as a thinking chunk, while a `content` delta still streams as normal content. Also
 covers the older `reasoning_content` field name for backward compatibility.

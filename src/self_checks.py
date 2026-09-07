@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Local assertions about state. What is quietly wrong, on your own machine.
 
 `service_health.py` answers *can I reach X* — liveness. This answers *is

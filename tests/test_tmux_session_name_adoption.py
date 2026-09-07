@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """P0-31 — the agent's persistent shell was named after the fork.
 
 Every chat session gets a tmux session, and it was called `ody-agent-<id>`.

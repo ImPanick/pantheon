@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Report focused pytest guidance for changed paths under tests/."""
 
 from __future__ import annotations

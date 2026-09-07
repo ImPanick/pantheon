@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Guard: every public webhook emitter goes through the manager.
 
 Public emitters in `routes/` must schedule their fire through

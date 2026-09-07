@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: CalDAV test_connection must trust the operator's CA bundle.
 
 The pre-flight used httpx with trust_env=False, which ignored

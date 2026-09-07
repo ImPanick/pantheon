@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """A flag turned off is off — for the user and for the agent (`H05`).
 
 THE STATE THIS ROW FOUND.

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """ChatGPT Subscription device-flow setup routes."""
 
 import json

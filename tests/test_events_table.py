@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The time dimension is written down (`P14-01`).
 
 `core/database.py` stored `message_count`, `total_input_tokens` and

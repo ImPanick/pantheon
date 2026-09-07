@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pyodide is served from this origin, and the CSP lets it actually run.
 
 `P16-07`. The old arrangement was worse than it looked: `codeRunner.js` pulled

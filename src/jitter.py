@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """One place that decides when a recurring job actually fires (`P15-10`).
 
 The audit that opened `P15` found this, and the finding is easy to under-read:

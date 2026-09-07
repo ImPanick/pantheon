@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Unit tests for `_promote_image_fields` (PR #2809).
 
 `generate_image` is a text-only MCP tool, so the saved image URL never reaches

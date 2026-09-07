@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """DOM-XSS regressions for email plain-text linkification helpers."""
 
 import json

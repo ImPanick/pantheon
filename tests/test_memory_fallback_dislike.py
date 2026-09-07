@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The fallback memory extractor must not invert dislikes into preferences.
 
 _fallback_memory_candidates matched both positive (prefer/like/love) and

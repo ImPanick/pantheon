@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression test for the task route shim (slice 2p, #4082/#4071).
 
 The backward-compat shim at ``routes/task_routes.py`` uses ``sys.modules``

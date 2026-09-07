@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression guard for the frontend error-surfacing follow-up to #1346.
 
 `uploadPending()` in static/js/fileHandler.js used to read `data.files` from the

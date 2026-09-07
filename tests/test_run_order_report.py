@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Direct tests for the order-sensitivity report runner (tests/run_order_report.py).
 
 The shuffle and argument plumbing are tested without spawning pytest: the

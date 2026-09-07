@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Adaptive input-token budget for the agent loop (#1170).
 
 The agent soft-trims its input context to ``agent_input_token_budget`` (default

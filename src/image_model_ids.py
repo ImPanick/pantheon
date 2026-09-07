@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Small helpers for recognizing image-generation model IDs."""
 
 from __future__ import annotations

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """H13 — the gallery could move images into albums and nothing offered it.
 
 `POST /api/gallery/albums/{id}/add` and `/remove` take a bulk `image_ids` list,

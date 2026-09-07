@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // static/js/slashAutocomplete.js
 // Lightweight popup that surfaces the existing /command registry as users
 // type. Reads COMMANDS from slashCommands.js — no command logic lives here.

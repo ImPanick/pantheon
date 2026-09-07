@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the session tools' move to the agent_tools registry (#3629):
 create_session, list_sessions, send_to_session, manage_session.
 

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Behavioral tests for Cookbook port parsing / picking (#4507 follow-up).
 
 Driven through `node --input-type=module` (same approach as the other

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pin langIcon (static/js/langIcons.js) against an explicit null opts.
 Driven through `node --input-type=module`; skips without node.
 """

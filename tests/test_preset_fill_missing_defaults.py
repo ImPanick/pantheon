@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """An older / partial presets.json must be healed forward on load: built-in
 presets that are missing get filled in, WITHOUT clobbering user edits.
 

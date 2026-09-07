@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 from src.personal_docs import retrieve_personal_keyword, split_chunks
 
 

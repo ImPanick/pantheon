@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """CPU architecture normalization for HW Fit hardware detection."""
 
 import pytest

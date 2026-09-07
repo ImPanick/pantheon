@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression coverage for passwordless Google OAuth reminder senders."""
 
 import asyncio

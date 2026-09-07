@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * AI model dropdown loader — fetches available model endpoints from
  * the backend and populates the editor's model-select surfaces:

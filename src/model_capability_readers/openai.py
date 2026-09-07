@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """OpenAI Models API capability reader.
 
 OpenAI's `/v1/models` list/retrieve shape currently provides model identity

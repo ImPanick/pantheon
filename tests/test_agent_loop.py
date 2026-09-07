@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for agent_loop.py — _detect_admin_intent, _compute_final_metrics,
 and _append_tool_results. Uses mock imports to avoid loading the full app stack."""
 

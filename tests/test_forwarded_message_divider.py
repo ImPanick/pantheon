@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The thread parser must treat the Gmail-style "---------- Forwarded message
 ---------" divider as a quote boundary, like "----- Original Message -----".
 

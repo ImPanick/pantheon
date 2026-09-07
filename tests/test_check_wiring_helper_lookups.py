@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The wiring checker has to see the lookups this codebase actually writes.
 
 For most of this project's life it did not. It matched literal

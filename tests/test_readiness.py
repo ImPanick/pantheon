@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the readiness / integrity self-check (src/readiness.py)."""
 
 from src.readiness import check_readiness

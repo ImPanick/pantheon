@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Display pagination must stay separate from full model-context hydration."""
 
 import json

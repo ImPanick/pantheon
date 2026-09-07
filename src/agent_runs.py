@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Detached agent-run manager.
 
 Keeps an agent/chat stream running server-side after the SSE client disconnects

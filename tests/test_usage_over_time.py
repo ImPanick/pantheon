@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Usage over time, per model and per owner (`P14-05`).
 
 The question that started `P14`. Not *what has this session cost* — the session

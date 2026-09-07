@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests for the remaining ReDoS sinks in tool_parsing.py.
 
 A previous fix (test_redos_llm_parsers.py) hardened the delimiter-bounded

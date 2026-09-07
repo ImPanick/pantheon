@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """P7-03 — the "ask every time" rung, from the stored setting to the gate.
 
 The gate condition itself lives in `src/tool_capabilities.py`. What is covered

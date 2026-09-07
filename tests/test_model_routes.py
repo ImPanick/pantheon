@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for model route helper functions — pure logic, no server needed."""
 import asyncio
 import json

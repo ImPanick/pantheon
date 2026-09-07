@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Opaque exact-action approvals with explicit task and chat scopes.
 
 The server still seals and claims the first displayed action exactly once. The

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * tileManager.js — desktop window tiling for tool modals.
  *

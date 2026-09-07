@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Search consolidation regression tests.
 
 ``src.search`` is still a public import path for agent/deep-research code, but

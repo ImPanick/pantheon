@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # src/research_utils.py
 """Shared utilities for the deep research system.
 

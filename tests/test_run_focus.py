@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Direct tests for the focused test-selection runner (tests/run_focus.py).
 
 Command construction is tested separately from process execution: the pure

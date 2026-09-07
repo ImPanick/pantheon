@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression guard for issue #1291 - CPU-only serve still emitted GPU-only flags.
 
 The llama.cpp serve command builder (static/js/cookbook.js) added

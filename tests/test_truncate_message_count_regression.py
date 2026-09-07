@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: truncate_messages must not set message_count above the real
 number of messages when keep_count exceeds the message total.
 

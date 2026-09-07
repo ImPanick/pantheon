@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: split_chunks must not emit a duplicate trailing chunk.
 
 The loop advanced `i = j - overlap` even after `j` reached the end of the text,

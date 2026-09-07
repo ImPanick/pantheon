@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Stroke pipeline — paints one segment (last-position → current
  * position) onto the active layer (or its active mask sub-layer).

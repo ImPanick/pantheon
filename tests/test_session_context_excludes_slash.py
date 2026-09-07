@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: slash-command / setup messages must not reach LLM context.
 
 Slash replies (and the echoed `/setup ...` command) are persisted to history so

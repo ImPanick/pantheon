@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: is_public_blocked_tool must fail CLOSED on a non-string tool name.
 
 The `if not tool_name` guard only handled falsy values; a truthy non-string

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // static/js/researchSynapse.js
 //
 // Live SVG visualization of a deep-research run: central query node with

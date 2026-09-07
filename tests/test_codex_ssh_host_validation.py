@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The Codex cookbook bridge resolves a task's SSH target (remoteHost / sshPort)
 from cookbook_state.json and interpolates it into an ``ssh ...`` command string
 that runs through a shell. The command body is shlex-quoted, but the host and

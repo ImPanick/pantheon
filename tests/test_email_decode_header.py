@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests for routes.email_helpers._decode_header.
 
 A single email whose Subject/From/To/Cc header declares an unknown or invalid

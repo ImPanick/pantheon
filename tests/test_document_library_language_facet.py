@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Library language facet must SUM NULL-language and "text" docs.
 
 documents_library built the facet with {lang or "text": cnt ...}, so a

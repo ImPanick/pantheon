@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Update the bundled skill library from upstream. Explicit, never automatic.
 
     python3 scripts/update-skill-library.py --check     # what would change

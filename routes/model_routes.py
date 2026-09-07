@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # routes/model_routes.py
 """Routes for model and provider management."""
 import os

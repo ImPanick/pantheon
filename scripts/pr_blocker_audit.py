@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Read-only pull request overlap audit helper.
 
 This script intentionally does not import the Pantheon application package.

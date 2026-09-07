@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression guard for #5558 — POST /api/personal/add_directory must not run
 the indexing job on the event loop.
 

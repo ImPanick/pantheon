@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * emailInbox.js — Email inbox list in sidebar.
  * Follows the session list pattern: list items, click to open as document, archive, etc.

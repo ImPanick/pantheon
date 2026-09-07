@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The `rag` UI toggle must be accepted.
 
 do_ui_control advertises `rag` as a valid toggle in its own docstring and in

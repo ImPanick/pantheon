@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // skills.js — Skills tab in the Memory modal.
 //
 // Skills are SKILL.md files (frontmatter + body) under data/skills/.

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Issue #800 — the calendar write handlers actually trigger CalDAV write-back.
 
 Route-level: proves POST/DELETE /api/calendar/events fire writeback_event for a

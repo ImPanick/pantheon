@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Startup warmup must resolve real endpoint URLs.
 
 The warmup/keepalive loop called `model_discovery.get_endpoints()`, which does

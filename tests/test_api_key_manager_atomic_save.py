@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Test that APIKeyManager.save() uses atomic write to prevent data loss."""
 import os
 import json

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Local text models can leak web_search calls as prose plus bare JSON.
 
 gpt-oss-20b sometimes writes:

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: the tool-execution task inside stream_agent_loop must be
 cancelled (not orphaned) when the SSE consumer stops draining the generator
 early — e.g. a client disconnect mid tool-call.

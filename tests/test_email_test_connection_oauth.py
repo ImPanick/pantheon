@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Google OAuth2 support in the /api/email/accounts/test endpoint.
 
 Covers the changes made to routes/email_routes.py:

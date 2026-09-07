@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // static/js/chatRenderer.js
 // Extracted from chat.js — message rendering, sources, images, metrics
 

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression test for RRULE expansion with a UTC UNTIL value.
 
 Standard ICS exporters (Google Calendar, Apple Calendar, Outlook,

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pin _extractQuoteMeta's Gmail attribution parsing (static/js/emailLibrary/signatureFold.js).
 
 Driven through `node --input-type=module` (same approach as test_hex_to_rgb_js.py);

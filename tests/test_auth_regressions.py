@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pin the auth-gate fixes from the 2026-05-19 v2 review so they
 don't regress. Specifically:
 

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests for Deep Research model probe error messages.
 
 Deep Research probes the selected model before starting a long run. When the

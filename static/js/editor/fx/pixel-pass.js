@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Apply a Brightness/Contrast, Hue/Saturation, Levels, or Color Balance
  * adjustment to a source canvas and return a fresh canvas with the

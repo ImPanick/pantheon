@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pin the ordinal-suffix helper used by the monthly-schedule label in tasks.js.
 
 _scheduleLabel built the suffix with `d === 1 ? 'st' : d === 2 ? 'nd' : ...`,

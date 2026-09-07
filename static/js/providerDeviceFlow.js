@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Shared DOM-free provider device-flow runner.
 
 export const PROVIDER_DEVICE_FLOWS = {

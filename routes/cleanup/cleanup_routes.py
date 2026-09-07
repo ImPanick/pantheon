@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # routes/cleanup_routes.py
 """Routes for cleanup operations."""
 import logging

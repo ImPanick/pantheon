@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Nothing in the app downloads code from a third party and runs it.
 
 `trust_remote_code=True` tells `transformers` to fetch Python from a model

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Issue #2947 — _truncate_message_to_token_budget must shrink oversized tool_calls
 arguments, not just text content.
 

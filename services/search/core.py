@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Core search orchestrators: searxng_search_results, comprehensive_web_search, config, cache invalidation."""
 
 import json

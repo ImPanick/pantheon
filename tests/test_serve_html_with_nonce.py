@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Behavior tests for src.app_helpers.serve_html_with_nonce.
 
 Every caller of this helper serves a fixed, app-bundled template

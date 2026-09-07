@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Settings modal lifecycle primitives.
 //
 // Panel-specific behavior belongs elsewhere. This module owns only the window

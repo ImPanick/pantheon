@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Cookbook Schedule — opens a small inline form (styled with the app's
 // existing .cookbook-* classes) that creates a ScheduledTask with
 // action=cookbook_serve. Mounted from two places:

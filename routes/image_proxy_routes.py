@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Same-origin proxy for remote images in rendered content (`P16-08`).
 
 **The problem.** `img-src` allowed any `https:` host, so an `![](…)` in model

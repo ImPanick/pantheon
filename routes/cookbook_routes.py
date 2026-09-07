@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Cookbook routes — model download, serve, cache scanning, and cookbook state sync."""
 
 import asyncio

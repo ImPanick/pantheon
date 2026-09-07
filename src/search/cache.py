@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Compatibility wrapper for the canonical services.search.cache module.
 
 ``src.search.cache`` stays importable for older agent/deep-research code, but the

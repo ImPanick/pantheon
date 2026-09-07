@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /** Build a terminal stream error while preserving provider-supplied text. */
 export function createTerminalStreamError(payload = {}) {
   const rawError = payload.error;

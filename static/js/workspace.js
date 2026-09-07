@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // static/js/workspace.js
 //
 // Workspace picker: browse server directories in a draggable modal, choose a

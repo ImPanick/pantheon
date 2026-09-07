@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Teacher-escalation loop for self-hosted models in agent mode.
 
 When the student (self-hosted) model finishes a turn, evaluate whether

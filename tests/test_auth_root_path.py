@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Auth middleware must evaluate the same path that Starlette routes."""
 
 import json

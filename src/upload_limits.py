@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Small helpers for route-local upload size caps."""
 
 import os

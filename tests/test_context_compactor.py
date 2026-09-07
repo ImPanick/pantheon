@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for context_compactor.py — constants and prompt templates.
 Uses mock imports to avoid loading the full app stack."""
 

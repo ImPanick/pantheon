@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """H10 — session cleanup, with a dry run, had no door.
 
 `GET /api/cleanup/preview` and `POST /api/cleanup` are live, owner-scoped, and

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Loads the real browser markdown renderer (static/js/markdown.js) under Node by
 // mocking the minimal browser globals it touches and stubbing its sibling imports.
 // This mirrors the loader in tests/test_markdown_rendering_js.py so the streaming

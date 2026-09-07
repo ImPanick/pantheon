@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Path-confinement regression tests for research routes.
 
 Covers the CodeQL py/path-injection alert cluster (#552-#567 and #594) in

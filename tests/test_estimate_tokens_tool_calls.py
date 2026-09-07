@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Issue #2748 — estimate_tokens must count assistant tool_calls (name + arguments).
 
 A tool-only assistant turn is stored with content=None and the real payload (e.g.

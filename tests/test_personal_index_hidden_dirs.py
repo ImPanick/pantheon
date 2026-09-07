@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression guard for #5559 — the KEYWORD index (load_personal_index, which
 PersonalDocsManager.refresh_index builds from) must skip hidden dirs, hidden
 files, and junk dirs at ANY depth, the same as the vector index. Both walkers

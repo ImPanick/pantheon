@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Misc AI-tool wiring — the three AI tools that don't share the
  * inpaint pipeline:

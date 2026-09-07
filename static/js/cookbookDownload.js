@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // ============================================
 // COOKBOOK DOWNLOAD SUB-MODULE
 // Download tab: SSE streaming, model download,

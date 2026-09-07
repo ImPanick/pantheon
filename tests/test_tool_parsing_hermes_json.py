@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Qwen/Hermes text-mode tool calls: bare JSON inside <tool_call> wrappers.
 
 Issue #5187: <tool_call>{"name": "bash", "arguments": {...}}</tool_call>

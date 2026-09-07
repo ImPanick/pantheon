@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Compute intelligent llama.cpp serve profiles from detected hardware.
 
 Given a system (VRAM/RAM/arch) and a model, produce 1-4 ready-to-launch

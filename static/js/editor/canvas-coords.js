@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Convert a pointer event's client coordinates into the canvas's
  * internal pixel coordinates, accounting for current display scale.

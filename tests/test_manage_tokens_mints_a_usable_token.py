@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """B43 — the agent's `manage_tokens` minted credentials that could not work.
 
 Three defects on one tool, all on the same path, all silent:

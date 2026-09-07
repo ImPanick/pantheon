@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # src/middleware.py
 # Shared middleware, decorators, and request helpers
 

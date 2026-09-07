@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Working code with no door, found by a script (`P3-15`).
 
 The hand audit of 2026-08-30 produced the 21 `H` rows, and the row's `Verify:`

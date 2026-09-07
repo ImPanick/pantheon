@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Text-cleanup helpers shared across LLM-output paths.
 
 Single source of truth for `<think>`-tag stripping, Qwen-style "Thinking

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: the gallery image-edit proxies must validate a client-supplied
 ``_endpoint`` through ``check_outbound_url`` before fetching it server-side.
 

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for question-word detection in research query enhancement."""
 
 from src.search.query import _detect_question_type

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // streamingSegmenter.js
 //
 // Pure logic for incremental ("block-at-a-time") streaming markdown rendering.

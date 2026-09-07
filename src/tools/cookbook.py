@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Cookbook (model serving) tool domain — slice 1 (#4082/#4071).
 
 Download, serve, list, stop, tail, search, adopt and cache HuggingFace / model

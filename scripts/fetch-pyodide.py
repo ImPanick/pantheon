@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Vendor Pyodide into static/lib/pyodide/ from a checksum-verified artifact.
 
 Pyodide used to load from cdn.jsdelivr.net at the moment a user ran a Python

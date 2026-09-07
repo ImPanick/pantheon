@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """_owner_filter must separate single-user mode from anonymous callers.
 
 When AUTH_ENABLED=false, get_current_user returns None and gallery routes should

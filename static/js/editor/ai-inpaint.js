@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * AI inpaint subsystem — Generate, Remove, and Outpaint variants
  * all share a single `runInpaint` core; only the prompt, strength,

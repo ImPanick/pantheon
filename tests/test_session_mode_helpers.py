@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pin the leak-safety of the session-mode DB helpers.
 
 chat_routes.py persists a session's "mode" in three best-effort spots (read

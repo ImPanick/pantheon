@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression coverage for SMTP security saved before Google OAuth."""
 
 from pathlib import Path

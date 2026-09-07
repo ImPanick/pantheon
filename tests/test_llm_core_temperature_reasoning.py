@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests: OpenAI reasoning models reject a non-default temperature.
 
 o1/o3/o4/gpt-5 only accept the default temperature (1); sending an explicit

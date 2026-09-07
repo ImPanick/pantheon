@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: fetch_youtube_comments must actually honour its timeout.
 
 The timeout previously wrapped ``create_subprocess_exec`` (which returns as soon

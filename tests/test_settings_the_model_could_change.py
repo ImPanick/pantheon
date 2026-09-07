@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """H18 — settings the model could change and a person could not.
 
 Each of these is read by live code, settable by `manage_settings` under its

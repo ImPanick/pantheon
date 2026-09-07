@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: agent_max_tool_calls must not crash chat_stream when settings.json
 holds a non-numeric string (e.g. {"agent_max_tool_calls": "unlimited"}).
 

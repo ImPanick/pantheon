@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Pure port helpers extracted so they're unit-testable without the
 // browser-bound rest of cookbookRunning.js (issue #4507 follow-up).
 

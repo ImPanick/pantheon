@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Native tool-call results must be threaded by CONVERTED-call position.
 
 When an OpenAI/Anthropic model emits several tool_calls in one round and one

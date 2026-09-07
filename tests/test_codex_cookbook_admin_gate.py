@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Codex cookbook routes require admin for cookie-session callers.
 
 Regression test for issue #4542: non-admin users could reach cookbook

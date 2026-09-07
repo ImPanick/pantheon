@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """do_manage_calendar must honour abbreviated reminder phrasings like "mins"/"hrs".
 
 `_reminder_minutes` parsed the reminder offset with regexes anchored on

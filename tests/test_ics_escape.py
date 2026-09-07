@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for iCalendar TEXT escaping in calendar export (RFC 5545 §3.3.11)."""
 from tests.helpers.calendar_routes import import_calendar_routes
 

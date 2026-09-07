@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the calendar check-in digest windows (src/task_scheduler.py)."""
 from datetime import datetime, timedelta
 

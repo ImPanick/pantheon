@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the model-interaction tools after their move to the agent_tools
 registry (#3629): chat_with_model, ask_teacher, list_models.
 

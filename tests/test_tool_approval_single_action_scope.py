@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Callers with no resumable chat keep the original one-use approval scope.
 
 The chat card reuses the wire value ``approve`` for chat-session scope, so any

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression test: non-native tool-call results must be wrapped as untrusted.
 
 THREAT_MODEL.md requires that tool output (shell/python stdout, file reads,

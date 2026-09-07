@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """`Law 16` — a fresh install must not reach the public internet.
 
 The owner's directive, 2026-08-31:

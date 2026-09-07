@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Provider detection tests — build_chat_url / build_models_url routing (re: #768).
 
 These import the *real* helpers from ``src.llm_core`` (not local copies) so a

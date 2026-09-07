@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """manage_calendar list_events should honor common range aliases.
 
 The agent prompt and schema prefer start/end, but model calls can emit

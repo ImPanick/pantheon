@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Calendar Module — CalDAV-backed month/week/year calendar.
  */

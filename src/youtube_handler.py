@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Compatibility wrapper for the canonical services.youtube.youtube_handler module.
 
 Pantheon historically carried two independent copies of the YouTube handler —

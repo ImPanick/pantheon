@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Issue #4589 — _resolve_model does a blocking httpx.get, so calling it
 directly from an async handler stalls the whole event loop for the duration of
 the probe. The async call sites now wrap it in asyncio.to_thread.

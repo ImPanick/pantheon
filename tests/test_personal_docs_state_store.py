@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 import json
 
 from src.personal_docs import PersonalDocsManager

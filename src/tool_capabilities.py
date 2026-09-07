@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Deterministic capability metadata for agent tools.
 
 Model output requests an action; it never supplies the authority for that

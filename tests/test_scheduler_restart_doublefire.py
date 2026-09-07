@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Validator + regression test for FINDING 6.2 — restart double-fires overdue
 scheduled tasks.
 

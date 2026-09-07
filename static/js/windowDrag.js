@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Shared window-drag helper. Replaces the duplicated mousedown / mousemove
 // / mouseup + snap-to-top fullscreen + left/right edge dock patterns that
 // were copy-pasted across calendar.js, tasks.js, gallery.js, emailLibrary.js,

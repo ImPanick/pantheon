@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Pure helpers that translate between the editor's adjustment-slider
  * UI and CSS `filter` strings / canvas-filter multipliers.

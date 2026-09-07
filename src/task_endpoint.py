@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Shared resolver for background-task AI endpoints."""
 
 from src.endpoint_resolver import (

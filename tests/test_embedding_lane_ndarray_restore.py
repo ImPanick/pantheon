@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Embedding-lane reset must restore rows even when chromadb returns the
 preserved embeddings as a numpy ndarray.
 

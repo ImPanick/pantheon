@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: builtin_actions heuristics must tolerate non-string input.
 
 _result_has_work did `result.lower()` after a falsy-only guard, and

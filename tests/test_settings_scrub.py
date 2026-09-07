@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Security tests for the /api/auth/settings secret scrubbing.
 
 The /settings endpoint is auth-exempt (the frontend + the pre-login page read it

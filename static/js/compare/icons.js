@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // compare/icons.js — SVG icons, prompt templates, and constants
 
 // ── SVG Icons ──

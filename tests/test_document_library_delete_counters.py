@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression for #1809: document library counters must update after delete.
 
 documentLibrary.js is a browser module with several DOM-only imports, so this

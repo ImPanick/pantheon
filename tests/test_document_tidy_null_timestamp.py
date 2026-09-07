@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """run_document_tidy must not crash when a duplicate has NULL timestamps.
 
 The duplicate-keeper sort used key=(real_len, updated_at or created_at). When

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 r"""Regression test for ReDoS in the calendar-extract fallback regex.
 
 CodeQL `py/redos` (#198) flagged the inline array-matcher in

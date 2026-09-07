@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Execute the round-aware live model-provenance state helper under Node."""
 
 import json

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """`pantheon-research list --status complete` must match completed runs.
 
 Completed research runs are persisted with status "done" (research_handler),

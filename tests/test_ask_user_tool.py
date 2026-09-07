@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """`ask_user` — the agent poses a multiple-choice question to the user.
 
 The tool is a pure UI-control marker: it does no I/O. `execute_tool_block`

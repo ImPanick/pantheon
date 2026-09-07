@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 #compdef pantheon pantheon-backup pantheon-calendar pantheon-contacts pantheon-cookbook pantheon-docs pantheon-gallery pantheon-mail pantheon-mcp pantheon-memory pantheon-notes pantheon-personal pantheon-preset pantheon-research pantheon-sessions pantheon-signature pantheon-skills pantheon-tasks pantheon-theme pantheon-webhook
 # Zsh tab-completion for the pantheon umbrella + sub-CLIs.
 #

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Keyword-hint force-include must match on word boundaries, not substrings.
 
 `get_tools_for_query` force-includes whole tool families when a query mentions

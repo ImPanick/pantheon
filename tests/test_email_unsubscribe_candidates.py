@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 from email.message import EmailMessage
 
 from routes.email_routes import (

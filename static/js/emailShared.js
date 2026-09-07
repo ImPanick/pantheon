@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 const API_BASE = window.location.origin;
 
 export function emailAccountQuery(prefix = '&') {

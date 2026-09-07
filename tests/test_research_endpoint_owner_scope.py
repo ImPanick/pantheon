@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Owner-scope regression for /api/research/start endpoint resolution.
 
 `research_start()` resolves a CALLER-SUPPLIED `endpoint_id` (and, with nothing

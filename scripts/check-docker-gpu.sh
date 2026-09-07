@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # check-docker-gpu.sh — Diagnostic and optional setup helper for NVIDIA Docker GPU access.
 #
 # Default mode is READ-ONLY — does not install packages, modify config, or restart Docker.

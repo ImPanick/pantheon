@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // static/js/embeddings.js — Settings → Embeddings (H04)
 //
 // `routes/embedding_routes.py` has been a complete, admin-gated embedding-model

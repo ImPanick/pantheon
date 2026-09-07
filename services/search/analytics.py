@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Search analytics, metrics tracking, and exception hierarchy."""
 
 import json

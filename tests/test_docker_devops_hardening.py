@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Static regressions for Docker/devops hardening contracts."""
 
 import ast

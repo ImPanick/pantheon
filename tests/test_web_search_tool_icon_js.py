@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pin the web_search tool-icon rendering in the agent thread (PR #??).
 
 Verifies:

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Write one row per thing that happened, and keep the window finite.
 
 `P14-01`. `core/database.py` stores `message_count`, `total_input_tokens` and

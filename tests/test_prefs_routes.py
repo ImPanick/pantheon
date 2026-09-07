@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 import json
 
 import routes.prefs_routes as prefs_routes

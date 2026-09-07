@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for searxng_health — probe logic, status classification, and sanitization."""
 import types
 

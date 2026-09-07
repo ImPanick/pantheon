@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """H12 — the voting history lived in one browser and the server's copy was write-only.
 
 The Scoreboard is reachable and always was; the row's headline was corrected on

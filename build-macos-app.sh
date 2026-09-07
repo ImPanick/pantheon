@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Build a downloadable macOS launcher app + .dmg for Pantheon.
 #
 #   ./build-macos-app.sh

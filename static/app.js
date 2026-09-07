@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // ============================================
 // Pantheon UI — Main Application Orchestrator
 // ES6 module — entry point, no exports (wires all modules together)

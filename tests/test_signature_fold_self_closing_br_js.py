@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pin the RFC-3676 "-- " signature delimiter fold for self-closing breaks.
 
 _foldSignature folded the standard "-- " sig delimiter only when the

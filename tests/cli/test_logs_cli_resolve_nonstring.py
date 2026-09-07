@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: logs CLI _resolve must tolerate a non-string name.
 
 `_resolve` did `name in p.name` and `p.name == name`; a non-string `name`

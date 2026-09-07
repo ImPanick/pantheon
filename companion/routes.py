@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Companion bridge — /api/companion/*.
 
 A thin, additive layer so a LAN client (e.g. a phone) can discover what a server

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """B40 — the Brain ranked memories by "contains two capitalised words".
 
 Found while building `H11`, the row that shows a person *why* a memory fired,

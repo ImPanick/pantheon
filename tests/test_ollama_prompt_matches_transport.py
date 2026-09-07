@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """B39 — on a default Ollama endpoint, both tool channels were closed at once.
 
 Not the two tools `H09` names. Every tool.

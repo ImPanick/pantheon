@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """_native_quant must emit canonical quant labels that key the cost maps.
 
 services/hwfit/models.py keys QUANT_BPP and QUANT_QUALITY_PENALTY on

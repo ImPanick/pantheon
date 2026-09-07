@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression coverage for auto-sort session cleanup.
 
 Issue #1851 reported fresh chats being deleted immediately after their first

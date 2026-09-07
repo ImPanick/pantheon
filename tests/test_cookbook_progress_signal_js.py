@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression for issue #1568 — installing a heavy dependency (vllm) in the
 Cookbook crashes in a "stale — restarting" loop.
 

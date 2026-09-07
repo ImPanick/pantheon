@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // compare/selector.js — model selection modal
 import state from './state.js';
 import Storage from '../storage.js';

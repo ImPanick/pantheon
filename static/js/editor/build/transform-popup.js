@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Static markup for the Transform popup that floats over the canvas
  * when the user activates the Resize/Transform tool.

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Seed a throwaway, local-only mailbox with fake demo emails.
 
 This populates the `demo@pantheon.local` Dovecot account (which has NO mbsync

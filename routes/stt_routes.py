@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # routes/stt_routes.py
 """STT API routes — multi-provider (local Whisper, API endpoint, browser)."""
 

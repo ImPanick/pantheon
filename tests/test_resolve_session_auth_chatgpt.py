@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """resolve_session_auth must not persist the ChatGPT Subscription bearer.
 
 The ChatGPT Subscription access token is a short-lived OAuth bearer re-resolved

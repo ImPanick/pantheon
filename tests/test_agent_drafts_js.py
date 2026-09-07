@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The approval surface for mail the agent is holding (`H01`).
 
 THE ROW'S PATHOLOGY IS WHAT THESE TESTS GUARD.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Transform-drag tool — handle drag interactions for the Transform
  * tool (resize via corner/edge handles, rotation via the rot grip).

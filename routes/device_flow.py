@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Shared OAuth/device-flow route scaffolding for provider setup."""
 
 from __future__ import annotations

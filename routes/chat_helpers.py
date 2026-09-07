@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Shared helpers for chat routes — context building, post-response tasks, auth resolution."""
 
 import asyncio

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Provider endpoint URL-building tests.
 
 Covers ``build_chat_url`` and ``build_models_url`` for every provider named in

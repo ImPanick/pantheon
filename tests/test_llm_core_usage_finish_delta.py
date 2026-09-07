@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Token usage must be captured even when it rides on a non-empty finish delta.
 
 Some OpenAI-compatible gateways and local servers send usage on the FINAL

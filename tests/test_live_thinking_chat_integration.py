@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Source-level wiring guards for live-thinking stream lifecycle.
 
 The pure scheduler suite covers timing behavior. These assertions pin the

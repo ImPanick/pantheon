@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # services/tts/__init__.py
 """TTS service — text-to-speech."""
 

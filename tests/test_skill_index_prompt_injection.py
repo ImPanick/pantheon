@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression test for the skill INDEX path in src/agent_loop.py.
 
 The original audit (finding 2.1) found that user-editable skill content

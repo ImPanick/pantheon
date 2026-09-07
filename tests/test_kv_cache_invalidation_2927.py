@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests for issue #2927 — KV-cache invalidation on local backends.
 
 As diagnosed in the issue, three things in Pantheon's request pattern actively

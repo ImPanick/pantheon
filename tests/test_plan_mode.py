@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Plan mode gating regression tests.
 
 Plan mode restricts the agent to read-only/inspection tools so it can investigate

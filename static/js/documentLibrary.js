@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // static/js/documentLibrary.js
 /**
  * Document Library — modal with Chats / Documents / Research / Archive tabs.

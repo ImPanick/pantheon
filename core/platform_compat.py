@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Cross-platform OS compatibility helpers.
 
 Pantheon began as a Linux/macOS/Docker-only app. This module centralizes the

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * ArrowUp on the composer recalls previous user messages from this chat.
  */

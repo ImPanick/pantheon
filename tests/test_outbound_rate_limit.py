@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Politeness to other people's servers, proved rather than asserted.
 
 Written on 2026-08-31, the day GitHub soft-banned the owner's IP for importing a

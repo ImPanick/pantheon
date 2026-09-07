@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # services/search/service.py
 """Search service — clean interface for web search."""
 

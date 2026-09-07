@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """P7-04 — the owner-scoped auto-allow rule store behind the `allow_listed` rung.
 
 `src/tool_capabilities.py` owns the gate. This module owns the rules it asks,

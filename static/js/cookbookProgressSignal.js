@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // static/js/cookbookProgressSignal.js
 /**
  * Liveness signal for a running cookbook download/install. The watchdog treats a

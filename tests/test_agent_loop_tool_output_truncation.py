@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tool-output display truncation uses _truncate with an indicator.
 
 Previously agent_loop sliced tool output to a hard character limit ([:2000]

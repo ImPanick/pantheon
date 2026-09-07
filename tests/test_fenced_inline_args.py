@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """PR #3681 — fenced tool calls with inline args, and the fence-tag boundary.
 
 Local fenced-block models (Ollama etc.) emit calls like ```list_email_accounts {}

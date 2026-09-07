@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression for idle UI polls that must not count as foreground activity."""
 
 from src.interactive_gate import should_track_interactive_request

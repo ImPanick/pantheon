@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: tool-block parsing must tolerate a non-string input.
 
 `_normalize_dsml` did `if "DSML" not in text` (TypeError on None) and the public

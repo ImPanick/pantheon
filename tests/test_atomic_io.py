@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for ``core.atomic_io`` durability and crash-safety behavior.
 
 ``core.atomic_io`` provides ``atomic_write_json`` and ``atomic_write_text``.

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Provider classification from a base URL (REAL src.llm_core).
 
 ROADMAP "Backend → more tests around ... provider setup" and "Provider

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression coverage for the assistant turn an approved-action replay appends.
 
 Anthropic's Messages API rejects a non-final assistant message whose content is

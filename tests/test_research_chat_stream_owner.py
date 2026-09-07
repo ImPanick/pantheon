@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Verify that research launched from the chat stream passes owner to start_research."""
 
 import ast

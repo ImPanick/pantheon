@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Compatibility wrapper for the canonical services.search.providers module.
 
 Historically Pantheon carried duplicate provider implementations under both

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests for issue #1363 — after a deep-research job finishes, asking
 the agent to "check it out / read that report" had it web_fetch the HTML report
 render (and drift into unrelated searches) instead of reading the saved report.

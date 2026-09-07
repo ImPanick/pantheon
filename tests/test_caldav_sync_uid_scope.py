@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """CalDAV sync must not hijack another user's event via a shared VEVENT uid.
 
 CalendarEvent.uid is the global primary key. _sync_blocking looked up the

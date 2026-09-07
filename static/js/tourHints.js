@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // tourHints.js — secret continuation of /tour. The first time the user opens
 // a tool modal (after the welcome experience), surface a single "pro tip"
 // hint pointing out that modals can be snapped to the screen edge or

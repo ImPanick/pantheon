@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 from services.youtube.youtube_handler import extract_youtube_id
 
 

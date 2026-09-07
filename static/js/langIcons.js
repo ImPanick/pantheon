@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // static/js/langIcons.js
 // Bold, distinctive icons for document languages / file types. Each icon
 // fills the 24×24 viewBox with a recognisable silhouette — no fragile little

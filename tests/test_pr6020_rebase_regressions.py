@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Executable regression coverage for behavior lost in PR #6020's rebase."""
 
 import asyncio

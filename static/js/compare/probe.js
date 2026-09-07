@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // compare/probe.js — model probe/check system
 import state from './state.js';
 import { WAVE_FRAMES } from './icons.js';

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # core/models.py
 """
 Pure data models — no database logic, no side effects.

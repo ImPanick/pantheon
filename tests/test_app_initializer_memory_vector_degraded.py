@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: a present-but-unhealthy MemoryVectorStore must survive initialization.
 
 When MemoryVectorStore._initialize() fails (ChromaDB unavailable / embeddings not

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Build the right-hand panel (controls + layers) — DOM creation,
  * controls innerHTML population, mobile bottom-sheet swipe behavior,

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Extended TLS trust store for private-CA LLM providers.
 
 Some upstream LLM providers serve their API over TLS certificates that are

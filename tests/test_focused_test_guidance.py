@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the report-only changed-test guidance helper."""
 
 from __future__ import annotations

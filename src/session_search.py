@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Shared session transcript search for UI and agent tools."""
 
 from __future__ import annotations

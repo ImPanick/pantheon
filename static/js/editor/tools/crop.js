@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Crop tool — drag-rect selection that lets the user cut down the
  * canvas to a smaller region. Supports Shift-lock aspect ratio and

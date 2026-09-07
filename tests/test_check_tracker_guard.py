@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The tracker checker has to fail on the drift it exists to catch.
 
 On 2026-08-31 it did not. Its row regex accepted `**bold**` in the Done column and a

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression for issue #1707 — the agent tool-RAG force-included the entire
 email toolset on any "tell me ..." query, crowding out the relevant tools so the
 model believed it only had email tools and refused web/other tasks.

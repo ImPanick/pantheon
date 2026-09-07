@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Build the editor's top bar (undo/redo/history, zoom group, Image
  * menu, Filter menu, Selection-edge menu, Shortcuts, Import, Save).

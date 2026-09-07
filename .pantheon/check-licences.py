@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Every third-party file we ship is attributed, and the summary still matches.
 
 OpenMoji was the reason this exists. Its artwork was served through `/api/emoji/`

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Gallery routes — browsable library for photos and AI-generated images."""
 
 import os

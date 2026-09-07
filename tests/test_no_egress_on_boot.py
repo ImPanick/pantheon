@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """`Law 16`, enforced by a tripwire rather than by reading.
 
 Every finding in `P16` was found by a person reading code. That works once and

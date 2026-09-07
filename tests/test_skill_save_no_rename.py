@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Saving a skill's markdown must NOT rename it (issue #1333: can't delete skills).
 
 `save_skill_markdown` (POST /api/skills/{id}/markdown) parsed the new markdown

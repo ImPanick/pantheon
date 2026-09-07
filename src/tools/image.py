@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Image-domain tool implementations.
 
 Extracted from tool_implementations.py as part of slice 1 (#4082/#4071).

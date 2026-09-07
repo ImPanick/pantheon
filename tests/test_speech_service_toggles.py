@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 from services.stt.stt_service import STTService
 from services.tts.tts_service import TTSService
 

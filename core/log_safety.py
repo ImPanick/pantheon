@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Helpers for keeping sensitive data out of logs.
 
 Endpoint URLs configured by admins can embed credentials in the userinfo

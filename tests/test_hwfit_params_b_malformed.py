@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: params_b must not crash the ranking pass on a malformed count.
 
 `parameter_count` is matched with `^([\\d.]+)\\s*([BKMGT]?)$`. The `[\\d.]+`

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: the Qwen bare-marker scrub must not eat a lone `end` (#5547).
 
 `_QWEN_BARE_MARKER_RE` cleans Qwen turn markers that leak into content. Its

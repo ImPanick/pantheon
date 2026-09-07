@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 import asyncio
 
 import mcp_servers.memory_server as memory_server

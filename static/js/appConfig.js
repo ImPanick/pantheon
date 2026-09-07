@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // static/js/appConfig.js
 //
 // One shared, invalidatable cache for the two config endpoints that every

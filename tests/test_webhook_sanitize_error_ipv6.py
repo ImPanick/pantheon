@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """sanitize_error must scrub IPv6 addresses, not just IPv4.
 
 Webhook delivery errors are stored in Webhook.last_error and surfaced in the

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression guard for #5559 — directory indexing must skip hidden directories,
 hidden files, and well-known junk directories.
 

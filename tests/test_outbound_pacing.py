@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Every call that leaves the process is paced, or it is named (`P15-06`).
 
 The row's `Verify:` is a checker, so most of this file breaks the checker in

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Outgoing webhook manager — fires HTTP POSTs when events happen."""
 
 import asyncio

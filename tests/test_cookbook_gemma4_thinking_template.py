@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression coverage for issue #2929: Gemma 4 thinking chat template.
 
 Gemma 4 thinking models need the `<|think|>` control token in the system

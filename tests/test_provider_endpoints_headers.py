@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Provider endpoint auth-header tests.
 
 Covers ``build_headers`` for every provider: Anthropic (x-api-key + version

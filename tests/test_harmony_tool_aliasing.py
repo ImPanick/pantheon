@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tools whose names collide with harmony built-ins must be aliased for gpt-oss.
 
 gpt-oss (harmony format) ships BUILT-IN tools named `python` and `browser`,

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: _parse_dt's dateutil fallback must return naive datetimes.
 
 _parse_dt documents that it returns local-naive datetimes to match the DB

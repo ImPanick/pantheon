@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """llama.cpp slot-affinity fields must never reach cloud providers (#3793).
 
 _apply_local_cache_affinity adds session_id + cache_prompt to outgoing

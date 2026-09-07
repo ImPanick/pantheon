@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the fallback indicator in stream_llm_with_fallback.
 
 When the selected model fails *before output* and another candidate answers,

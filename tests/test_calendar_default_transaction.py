@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Default calendar creation belongs to the caller's transaction.
 
 Before this regression, ``_ensure_default_calendar`` committed independently.

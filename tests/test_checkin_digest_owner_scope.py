@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Check-in calendar digest must be scoped to the task owner.
 
 The digest query selected CalendarEvent with no owner scope, so a scheduled

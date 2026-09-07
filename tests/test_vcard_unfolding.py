@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """vCard parsing must unfold RFC 6350 folded lines.
 
 CardDAV servers fold logical lines longer than 75 octets onto continuation

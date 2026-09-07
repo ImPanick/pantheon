@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Explicit foreground Chat and Agent model-routing policy."""
 
 from dataclasses import dataclass

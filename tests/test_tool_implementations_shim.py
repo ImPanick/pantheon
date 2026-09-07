@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Protection test: the tool_implementations compatibility shim must keep
 re-exporting every symbol importers depend on.
 

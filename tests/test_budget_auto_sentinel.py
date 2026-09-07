@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Agent input-token budget contract (review on #4122).
 
 - The DEFAULT value is the AUTO sentinel: it scales to the model's context window.

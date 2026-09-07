@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Sender-signature learning must skip role addresses like support@/info@.
 
 The skip-list compares against the email local-part (before "@"), but the

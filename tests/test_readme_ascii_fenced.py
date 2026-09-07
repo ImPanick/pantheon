@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression guard for the README title presentation.
 
 Originally (#1390) the README opened with an ASCII-art banner that had to live

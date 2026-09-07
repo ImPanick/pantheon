@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # services/memory/__init__.py
 """Memory service — persistent memory storage and retrieval."""
 

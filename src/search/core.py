@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Compatibility wrapper for the canonical services.search.core module.
 
 ``src.search.core`` remains importable for older agent/deep-research code, but

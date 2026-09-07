@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """No recurring job fires on an exact boundary (`P15-10`).
 
     python3 .pantheon/check-jitter.py            # report

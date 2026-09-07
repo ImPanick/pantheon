@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: agent_tools._truncate must always return a string.
 
 It did `len(text)` directly, so `_truncate(None)` raised TypeError. Returning

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: agent_input_token_budget must be settable from chat (not flagged secret)."""
 import asyncio
 import json

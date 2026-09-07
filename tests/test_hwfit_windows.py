@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Windows support for Cookbook hardware-fit.
 
 Pantheon only supports llama.cpp on Windows (vLLM/SGLang are explicitly

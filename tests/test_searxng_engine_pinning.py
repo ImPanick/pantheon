@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """A failed search does not quietly widen who sees the query.
 
 `P16-10`. SearXNG is a metasearch engine: self-hosting it means the aggregator

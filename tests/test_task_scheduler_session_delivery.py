@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests for task-result delivery into chat sessions (issue #326)."""
 import asyncio
 import sys

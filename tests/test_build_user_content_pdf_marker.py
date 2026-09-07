@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: build_user_content must strip the '[PDF content]:' wrapper with
 the prefix-safe helper, not str.lstrip(chars).
 

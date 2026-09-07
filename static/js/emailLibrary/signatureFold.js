@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // static/js/emailLibrary/signatureFold.js
 //
 // Heuristics that turn raw HTML email bodies into folded structures —

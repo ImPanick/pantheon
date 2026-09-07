@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the code-navigation tools (grep, glob, ls) + read_file line range."""
 import os
 import shutil

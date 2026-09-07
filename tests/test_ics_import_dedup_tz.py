@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """ICS re-import must dedup tz-aware timed events.
 
 import_ics stores a tz-aware DTSTART as naive UTC (e.g. 09:00 America/

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Count modules imported under more than one URL — the accidental-fork metric.
 
 ES module identity is keyed on the RESOLVED URL, query string included, and this

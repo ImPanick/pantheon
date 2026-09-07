@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Pure helpers + constants for layers and adjustment sub-layers.
  *

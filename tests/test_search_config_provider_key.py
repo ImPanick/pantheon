@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 from services.search import core, providers
 
 PROVIDER_ENV_KEYS = (

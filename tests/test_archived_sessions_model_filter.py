@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Archive browser model filter must be a CONTAINS match, not suffix-only.
 
 list_archived_sessions filtered with DbSession.model.ilike(f"%{model}") - a

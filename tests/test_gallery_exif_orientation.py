@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Gallery EXIF extraction must report display (EXIF-rotated) dimensions.
 
 A phone photo with EXIF Orientation 6 or 8 is stored e.g. 400x300 but

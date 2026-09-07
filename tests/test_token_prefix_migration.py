@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """P0-31 — the fork's old name was on the credential you paste into a machine.
 
 `ody_` is Odysseus. Every API token this product minted began with it, and an

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Issue #3207 — newly created characters missing from Group participant dropdown.
 
 The fix has two parts:

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: POST /api/contacts/add must not crash when name/email is JSON null.
 
 The handler did `data.get("name", "").strip()`. dict.get returns the default

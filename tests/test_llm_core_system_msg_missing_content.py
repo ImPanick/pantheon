@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression guard for #2350 — KeyError on missing 'content' key in system messages.
 
 A system message dict that lacks a 'content' key (possible via malformed tool

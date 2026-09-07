@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression guards for in-chat document deep-links (#document-<id>).
 
 The frontend module is browser-coupled (window/fetch/document) so there's

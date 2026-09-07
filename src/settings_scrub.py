@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Secret-scrubbing for settings exposed to non-admin / unauthenticated callers.
 
 Deliberately dependency-light (stdlib only) and separate from

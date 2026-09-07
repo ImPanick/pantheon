@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Behavioral coverage for the modular Settings shell.
 
 The leaf harness provides focused assertions around the extracted navigation

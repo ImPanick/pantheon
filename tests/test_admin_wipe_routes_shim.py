@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression test for the admin_wipe route shim (slice 2h, #4082/#4071).
 
 The backward-compat shim at ``routes/admin_wipe_routes.py`` uses

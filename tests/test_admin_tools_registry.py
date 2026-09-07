@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Registry wiring for the config/integration admin tools (#3629).
 
 manage_endpoints/mcp/webhooks/tokens/settings moved from tool_implementations

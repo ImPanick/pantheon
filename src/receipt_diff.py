@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """What changed between the run that worked and the one that did not (`P4-28`).
 
 The question receipts were built to answer. `P4-25` captured the configuration,

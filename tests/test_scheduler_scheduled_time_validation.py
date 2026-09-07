@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: compute_next_run must fail closed on a malformed scheduled_time.
 
 compute_next_run parsed scheduled_time as "HH:MM" with a bare

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression test: extract_memory_from_chat must not crash on bullet lines.
 
 The fallback memory extractor (invoked by routes/memory_routes.py when the LLM

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: _extract_headings must emit a unique slug per heading.
 
 _make_slug disambiguates repeats by appending "-N", but it only tracked the

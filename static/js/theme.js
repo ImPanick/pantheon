@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Theme system — preset themes + custom color editing, stored in localStorage
 // ES6 module
 

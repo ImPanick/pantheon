@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Small helpers for optional PDF runtime dependencies."""
 
 PDF_VIEWER_PYMUPDF_MISSING = (

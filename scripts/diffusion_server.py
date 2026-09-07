@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Minimal OpenAI-compatible image generation API server using diffusers.
 
 Serves /v1/images/generations and /v1/models for compatibility with

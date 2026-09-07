@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: _lookup_bandwidth must tolerate a non-string gpu_name.
 
 It guarded only falsy values; a truthy non-string (e.g. a number from a

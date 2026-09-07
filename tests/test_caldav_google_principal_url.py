@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Google Calendar over CalDAV must surface events, not come back empty (#2507).
 
 Google's CalDAV principal lives at ``.../caldav/v2/<id>/user`` but events are

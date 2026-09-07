@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Pantheon UI — Initialization Scripts
 // ES6 module — extracted from index.html inline scripts
 

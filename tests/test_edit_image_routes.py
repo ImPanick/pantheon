@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """`edit_image` advertised four actions and posted all four to routes that do
 not exist (`H03`).
 

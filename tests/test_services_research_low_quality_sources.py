@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """services/research _extract_sources must gate low-quality findings.
 
 The src/research_handler.py copy filters findings whose summary is junk

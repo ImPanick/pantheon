@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # src/app_initializer.py
 """Initialize all application components and dependencies."""
 import os

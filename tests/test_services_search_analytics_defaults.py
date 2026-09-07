@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Default-merge on load for services/search/analytics.py.
 
 src/search/analytics.py was fixed to merge a loaded analytics file over

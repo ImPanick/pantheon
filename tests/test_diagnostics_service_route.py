@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Route-level regression tests for GET /api/diagnostics/services.
 
 The reviewer asked for explicit coverage of unauthenticated / non-admin / admin

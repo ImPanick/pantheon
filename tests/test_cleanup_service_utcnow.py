@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests for the datetime.utcnow() removal in src/cleanup_service.py (#1116).
 
 Importing src.cleanup_service is cheap and dependency-free: its only module-level

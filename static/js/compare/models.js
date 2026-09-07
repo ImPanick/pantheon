@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // compare/models.js — model classification, fetching, display names, persistence
 import Storage from '../storage.js';
 import state from './state.js';

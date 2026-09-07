@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: session routes must not call datetime.utcnow() (#1116)."""
 
 import inspect

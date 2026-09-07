@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Hardening for issue #2660 — `_format_mcp_params` renders untrusted MCP tool
 schemas into the agent prompt (added in #2509/#2529). MCP servers are
 third-party, so field names and parameter counts are untrusted: names/types must

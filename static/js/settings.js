@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // static/js/settings.js — Settings panel module (ES6)
 // User-facing preferences: AI models, search, appearance
 

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for SessionManager — session isolation and data integrity.
 
 These tests prove the chat context drifting bug (#135) exists and verify fixes.

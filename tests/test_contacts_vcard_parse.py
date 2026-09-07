@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: _parse_vcards must read Apple/iCloud item-grouped properties.
 
 RFC 6350 property groups (the default emitted by Apple Contacts.app / iCloud and

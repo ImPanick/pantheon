@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Paint a transparency-checkerboard pattern across the given canvas
  * context. The editor uses this beneath every layer pass so empty

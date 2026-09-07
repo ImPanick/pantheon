@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The generated Ollama runner must print the install hint, not execute it.
 
 The runner script emitted by /api/model/serve contained:

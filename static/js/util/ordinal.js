@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Pure (browser-free) English ordinal suffix, e.g. 1 -> "st", 21 -> "st",
 // 22 -> "nd", 23 -> "rd", 11/12/13 -> "th". Extracted so it can be unit-tested.
 export function ordinalSuffix(n) {

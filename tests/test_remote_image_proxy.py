@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Content the reader did not write must not make their browser call a stranger.
 
 `img-src` allowed any `https:` host, so an `![](…)` in model output, a RAG

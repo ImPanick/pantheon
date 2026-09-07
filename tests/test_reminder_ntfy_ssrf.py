@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: the reminder ntfy sender must run the same SSRF guard as the
 webhook sender.
 

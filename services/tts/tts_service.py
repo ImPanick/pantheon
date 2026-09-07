@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # src/tts_service.py
 """Multi-provider TTS service — dispatches to local Kokoro, OpenAI-compatible API, or browser."""
 

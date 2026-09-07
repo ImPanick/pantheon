@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression for issue #1961 — read_email (and reply_to_email,
 download_attachment) failed on iCloud IMAP accounts.
 

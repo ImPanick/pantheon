@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests for the configurable LLM connect timeout.
 
 Background: chat uses the streaming path, which (unlike llm_call) does not retry

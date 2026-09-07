@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The retired default fallback editor must not imply active routing."""
 
 from pathlib import Path

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Issue #1320 — the agent's manage_calendar tool can create a recurring event.
 
 The create_event handler already persists `rrule`, but it wasn't documented in the

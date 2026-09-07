@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Ithaca anchor — local-instance readiness / integrity self-check.
 
 Beyond ``/api/health``'s liveness ping, this confirms the self-hosted instance is

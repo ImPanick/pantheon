@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """SSRF-guarded synchronous HTTP fetching primitives.
 
 This module owns outbound URL classification, one-resolution-per-hop DNS

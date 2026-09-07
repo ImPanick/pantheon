@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # src/chat_helpers.py
 """URL extraction, message validation, request parsing."""
 

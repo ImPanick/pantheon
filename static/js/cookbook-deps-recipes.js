@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Per-backend × per-model install recipes for the Dependencies tab.
 //
 // Each entry says: when you're about to serve `model` on `backend`, here's

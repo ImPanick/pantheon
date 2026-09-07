@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression guards for DOM attribute sinks in signature/settings UI."""
 
 from pathlib import Path

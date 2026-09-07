@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: _sanitize_llm_messages must preserve reasoning_content.
 
 Providers like Moonshot (Kimi K2.5/K2.6) require reasoning_content on

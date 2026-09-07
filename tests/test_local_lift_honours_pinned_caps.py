@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """H08 — on the primary deployment, a cap the operator typed was overwritten.
 
 `stream_agent_loop` lifts the agent's round limit to 100,000, generation length

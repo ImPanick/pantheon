@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression guard for #1661 — GET /api/search/config must not leak API keys.
 
 `get_search_config()` returned `SEARCH_CONFIG.copy()`, and `update_search_config()`

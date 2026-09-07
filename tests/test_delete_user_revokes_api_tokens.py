@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Deleting a user must also revoke their API bearer tokens.
 
 Regression test: delete_user purged cookie sessions but left ApiToken

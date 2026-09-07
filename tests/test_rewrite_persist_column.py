@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Rewriting the last assistant message must persist to the DB.
 
 The /api/rewrite persistence path ordered by DBChatMessage.created_at, but

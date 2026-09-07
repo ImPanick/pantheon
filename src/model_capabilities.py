@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Canonical model capability metadata helpers.
 
 This module defines shape and normalization only. It does not probe providers,

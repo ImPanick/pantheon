@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Behavioral guards for dead-session download classification (issue #4017).
 
 A download whose tmux pane is gone must not be reported as stopped when its

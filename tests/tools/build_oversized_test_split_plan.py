@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Build the oversized test-file split plan for issue #3983.
 
 The output is a planning document only. It does not move tests, rewrite

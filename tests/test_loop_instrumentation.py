@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The rest of the loop is measured (`P14-02`).
 
 `P14-01` gave the table a timestamp. This fills it in: how long a turn took,

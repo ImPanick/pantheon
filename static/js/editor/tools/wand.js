@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Magic-wand tool — single-click flood-fill selection on the active
  * layer's pixels. Shift/Alt modifiers override the persistent mode

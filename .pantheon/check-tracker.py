@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Verify ROADMAP.md's status table against its actual ticks.
 
 The table is the thing every agent reads first, and a table that disagrees with the

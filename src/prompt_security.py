@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Prompt-injection hardening helpers."""
 
 from __future__ import annotations

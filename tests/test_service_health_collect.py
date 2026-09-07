@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for rollup logic, aggregate collection, and shared utility helpers (_safe_url, _classify_error)."""
 import pytest
 

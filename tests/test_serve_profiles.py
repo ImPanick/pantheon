@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Intelligent llama.cpp serve profiles computed from hardware.
 
 Locks in that compute_serve_profiles() turns detected VRAM + model size into

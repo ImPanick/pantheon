@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pantheon — first-time setup script.
 
 Creates data directories, initializes the database, and sets up an

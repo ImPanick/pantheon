@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // ============================================
 // COOKBOOK DIAGNOSIS SUB-MODULE
 // Error pattern matching and diagnosis UI

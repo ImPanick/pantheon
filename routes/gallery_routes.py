@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Backward-compat shim - canonical location is routes/gallery/gallery_routes.py.
 
 This module is replaced in ``sys.modules`` by the canonical module object so

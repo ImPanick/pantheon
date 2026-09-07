@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """GET /api/hwfit/models must not 500 on a non-numeric gpu_count.
 
 The handler did `n = int(gpu_count)` with no guard, so `?gpu_count=abc` (or any

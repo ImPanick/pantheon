@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pin the pure emoji shortcode → Unicode helpers in emojiShortcodes.js.
 
 Driven through `node --input-type=module` so we exercise the real JS without a

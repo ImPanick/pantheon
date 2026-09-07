@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Issue #4592 — built-in MCP startup must not leak tasks or subprocesses.
 
 Two defects in src/builtin_mcp.py:

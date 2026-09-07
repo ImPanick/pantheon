@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 from scripts.claim_ownerless import claim_json_entries, owner_arg
 
 

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: session export must tolerate non-string message content.
 
 A message's ``content`` is a plain string for normal turns, but a multimodal

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Ollama native API capability reader."""
 
 from __future__ import annotations

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # src/constants.py
 """Application-wide constants and configuration values."""
 import os

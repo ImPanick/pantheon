@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Owner-scoped note routes must fail closed when the request has no identity.
 
 The notes CRUD routes resolved the acting user with bare get_current_user().

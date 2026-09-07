@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 import os
 import tempfile
 from services.stt.stt_service import STTService

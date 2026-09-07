@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Editor draft routes — persisted in-progress gallery-editor sessions.
 
 The gallery editor (image canvas) lets users layer edits on top of a

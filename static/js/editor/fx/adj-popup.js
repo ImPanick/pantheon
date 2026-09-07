@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * FX / adjustment-popup machinery — the per-layer Brightness/Contrast,
  * Hue/Saturation, Levels, and Color-Balance editor.

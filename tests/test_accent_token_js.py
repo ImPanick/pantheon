@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """P1-01 — `--accent`, defined per theme and at every place the palette is written.
 
 The token is written in three places, because `--red` is written in three

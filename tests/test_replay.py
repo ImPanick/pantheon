@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Re-run a receipt: same inputs, same configuration, new run (`P4-26`).
 
 The only honest way to answer *"did that change help"*, and the prerequisite

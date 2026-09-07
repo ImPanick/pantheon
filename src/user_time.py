@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Per-request user-local time helpers.
 
 Chat routes set this context from browser headers. Prompt builders and tools

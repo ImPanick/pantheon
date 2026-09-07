@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // static/js/trustLadder.js
 //
 // P7-03 / P7-04, user-facing half — and `P7-05`'s correction, which was re-filed

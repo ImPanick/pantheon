@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Focused security tests for gallery endpoint URL hardening.
 
 Covers:

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """DB-backed tests for Copilot endpoint provisioning (routes/copilot_routes.py)."""
 import json
 import pytest

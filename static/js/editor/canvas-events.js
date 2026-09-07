@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Canvas event wiring — mouse, touch (including pinch-zoom on two
  * fingers), and the canvas-area pan handler.

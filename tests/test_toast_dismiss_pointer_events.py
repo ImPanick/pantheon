@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Guard that toast dismissal (via the × close button) correctly resets
 pointer-events so the invisible fixed overlay does not block clicks.
 

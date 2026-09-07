@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """B26 — the sidebar anti-flash guard was renamed on one side only.
 
 `static/js/sidebar-layout.js` and the boot script in `static/index.html` put

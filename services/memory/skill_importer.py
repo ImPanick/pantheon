@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Import SKILL.md bundles from public GitHub (or skills.sh → GitHub) URLs."""
 from __future__ import annotations
 

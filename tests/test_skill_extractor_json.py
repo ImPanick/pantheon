@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: skill-extraction JSON parsing must tolerate a stray brace in prose.
 
 maybe_extract_skill() sliced the LLM response from the first '{' to the last

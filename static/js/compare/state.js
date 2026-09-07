@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // compare/state.js — shared mutable state for compare modules
 const state = {
   API_BASE: '',

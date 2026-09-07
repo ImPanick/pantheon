@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression test for cpu_only backend fallback in hwfit speed estimation."""
 
 import pytest

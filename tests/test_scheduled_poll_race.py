@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: two concurrent callers of `_scheduled_poll_once` (the
 in-process 30s poller and the `pantheon-mail poll-scheduled` CLI, which the
 project's own docstrings warn can race on the same SQLite when

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The bug report is redacted, readable, and goes nowhere on its own.
 
 `P16-14`. Two claims are being tested, and they pull in opposite directions:

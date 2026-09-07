@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression for #2603 — model context-window cache must be keyed per endpoint.
 
 `get_context_length()` cached by model id alone, so two different remote endpoints

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """cmd_add (scripts/pantheon-memory) must tolerate a non-dict row in the
 existing store. Every other command funnels load_all() through
 `_memory_entries()` (which drops non-dicts), but cmd_add iterated the raw

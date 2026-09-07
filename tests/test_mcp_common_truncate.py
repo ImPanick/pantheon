@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Canonical _truncate must tolerate non-string input (regression).
 
 Originally this tested mcp_servers/_common.py's copy, which was deleted

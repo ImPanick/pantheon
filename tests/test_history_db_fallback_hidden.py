@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: the DB fallback in get_session_history must hide the same
 messages the in-memory path hides.
 

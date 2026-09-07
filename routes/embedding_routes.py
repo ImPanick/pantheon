@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # routes/embedding_routes.py
 """Routes for managing local fastembed embedding models and custom endpoints."""
 import os

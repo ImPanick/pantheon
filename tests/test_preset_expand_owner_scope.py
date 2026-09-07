@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Route-level owner-scope test for POST /api/presets/expand.
 
 `expand_character_prompt` resolves a model endpoint to run its LLM call. It must

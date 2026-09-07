@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: rag_server add/remove_directory must not crash on a non-string path.
 
 `directory = arguments.get("directory", "").strip()` runs before the surrounding

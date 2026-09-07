@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pin the dialog accessibility semantics added for the roadmap a11y pass.
 
 Screen readers only announce "dialog" (and its name) when the container

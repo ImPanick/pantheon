@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression test: _sanitize_llm_messages must not drop the no-prose
 assistant tool-call message.
 

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for ResearchHandler.synthesize_query topic/fallback selection.
 
 Deep research asks clarifying questions first. When the user answers with a

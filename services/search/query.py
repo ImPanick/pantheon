@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Query enhancement, entity extraction, and cache duration helpers."""
 
 import re

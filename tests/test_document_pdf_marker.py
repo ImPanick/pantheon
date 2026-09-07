@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression test: the '[PDF content]:' wrapper must be removed without eating
 into the page text that follows it.
 

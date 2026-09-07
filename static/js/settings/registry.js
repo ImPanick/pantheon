@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Canonical metadata for the existing Settings information architecture.
 //
 // This module describes Settings; it does not render the sidebar, load panel

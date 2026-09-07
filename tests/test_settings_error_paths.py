@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Error-path tests for src/settings.py load_settings().
 
 Covers the fallback-to-defaults behaviour when the settings file is

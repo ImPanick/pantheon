@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """[CONTENT i] blocks must map to the [i] sources list.
 
 comprehensive_web_search numbers its sources list by search-result order,

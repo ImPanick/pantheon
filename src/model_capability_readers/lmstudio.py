@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """LM Studio native model metadata reader."""
 
 from __future__ import annotations

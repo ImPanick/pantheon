@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Upload ids must satisfy UPLOAD_ID_RE for every accepted filename.
 
 secure_filename keeps '_' and '-', so a filename whose final extension

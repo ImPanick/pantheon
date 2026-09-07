@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """list_sessions must return only the authenticated user's sessions.
 
 Regression for the enrichment query at routes/session_routes.py:265 which

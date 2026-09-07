@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for extract_quotes (src/search/content.py)."""
 import pytest
 

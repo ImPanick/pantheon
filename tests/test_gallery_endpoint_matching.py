@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 def test_gallery_url_normalization_bug():
     from routes.gallery_routes import _normalize_image_endpoint_base
 

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests for ReDoS in agent_loop's `<think>...</think>` stripping.
 
 CodeQL flagged `py/polynomial-redos` on the lazy `<think>.*?</think>` pattern

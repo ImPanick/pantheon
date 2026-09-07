@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for email_health — probe logic, status classification, sanitization, and bounded timeout."""
 import pytest
 

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # core/session_manager.py
 """
 Session management — all session business logic and DB operations.

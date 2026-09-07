@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests for #4850 — scheduled-task system prompt must not embed
 a minute-level timestamp that busts the Anthropic prompt cache.
 

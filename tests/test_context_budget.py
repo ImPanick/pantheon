@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Issue #1170 — the agent input-token budget adapts to the model context window.
 
 Pins the pure budget computation and the explicit-override detection.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Model Picker — chatbox model selector dropdown
 // Extracted from sessions.js
 

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """web_fetch download budgets (#3812).
 
 MAX_OUTPUT_CHARS only trims what the agent sees; these caps bound what the

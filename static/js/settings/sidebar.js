@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 const STORAGE_WIDTH = 'pantheon-settings-sidebar-width';
 const STORAGE_COLLAPSED = 'pantheon-settings-sidebar-collapsed';
 

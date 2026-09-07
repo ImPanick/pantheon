@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Route-level regression tests for GET /api/diagnostics/logs."""
 
 import pytest

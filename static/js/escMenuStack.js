@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // static/js/escMenuStack.js
 //
 // Dismissal registry for transient, ad-hoc overlays — dropdown menus and

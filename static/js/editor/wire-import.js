@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Image-import wiring — covers all four entry points that drop an
  * image as a new layer:

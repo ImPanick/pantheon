@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Server-side mirror of the built-in characters used for reminder synthesis.
 
 The frontend ships these in static/js/presets.js (PROMPT_TEMPLATES with

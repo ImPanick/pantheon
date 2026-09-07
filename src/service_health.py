@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Consolidated service health / degraded-state reporting.
 
 ROADMAP: "Better degraded-state reporting for ChromaDB, SearXNG, email, ntfy,

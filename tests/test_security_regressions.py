@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pin the security fixes from the 2026-05-19 session so they don't regress:
 
 - `src.secret_storage.encrypt/decrypt` round-trip, idempotent on already-

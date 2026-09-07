@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Token-parameter selection for provider setup (REAL src.llm_core).
 
 Split from `test_provider_classification.py` to keep the token-param quirk

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * emailLibrary.js — Email library popup modal.
  * Similar pattern to documentLibrary.js. Shows emails in a grid with search/filter.

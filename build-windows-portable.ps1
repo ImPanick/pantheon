@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 #Requires -Version 5.1
 <#
   Build a portable Windows distribution for Pantheon.

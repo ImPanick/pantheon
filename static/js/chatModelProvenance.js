@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /** Select and update the response holder for a route-provenance event. */
 export function applyModelRouteEventState(event, holder, roundHolder, defaultModel = '') {
   const target = event && event.round && roundHolder ? roundHolder : holder;

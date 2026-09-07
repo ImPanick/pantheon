@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: PresetManager.save() must persist presets atomically.
 
 save() used a plain open("w") + json.dump, which truncates presets.json before

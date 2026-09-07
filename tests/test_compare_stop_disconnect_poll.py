@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Runtime coverage for stopping a Compare pane mid-stream.
 
 Replaces an earlier source-text version of this test (which only asserted on

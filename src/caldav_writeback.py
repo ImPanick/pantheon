@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """CalDAV write-back: push local create/update/delete out to the remote (#800).
 
 ``src/caldav_sync.py`` is a one-way pull (remote → local). So events created,

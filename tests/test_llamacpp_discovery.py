@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for llama.cpp (llama-server) local discovery: the default scan list
 includes llama-server's port 8080, and `_fingerprint_provider` identifies a
 llama-server via its native ``/props`` endpoint without misfiring on LM Studio,

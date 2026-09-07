@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The three routes behind the approval card, and the one that was missing (`H01`).
 
 The endpoints have existed since before the fork; nothing called them, so

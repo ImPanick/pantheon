@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Scheduled emails with a TZ offset or Z suffix must fire on time.
 
 POST /api/email/schedule validated send_at by parsing it (handling Z and

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Provider endpoint Tailscale URL-resolution tests.
 
 Covers ``resolve_url``: the hop that rewrites an unresolvable hostname to its

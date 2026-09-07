@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Memory consolidation must delete only memories the model explicitly drops.
 
 The AI tidy path computed deletions as the complement of the model's `keep`

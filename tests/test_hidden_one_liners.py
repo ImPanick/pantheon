@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Three findings from the discovery audit, each a few lines and none cosmetic
 (`H14`, `H15`, `H17`).
 

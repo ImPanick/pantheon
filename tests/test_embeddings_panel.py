@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """H04 — a complete embedding-model manager with zero pixels.
 
 `routes/embedding_routes.py` is finished, self-consistent, admin-gated code:

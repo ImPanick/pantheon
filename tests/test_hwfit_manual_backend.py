@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Manual hardware simulator backend handling (Cookbook "what if I had…").
 
 `_apply_manual_hardware` replaces detected hardware with a user-described box so

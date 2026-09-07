@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Issue #2791 — the Notes panel's capture-phase "Esc cancels select mode"
 keydown listener must be tracked and removed on close, not leaked anonymously on
 every open/close cycle.

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """`update_plan` — the agent writes back to the active plan (tick done / revise).
 
 Pure UI-control marker: `execute_tool_block` returns a `plan_update` payload the

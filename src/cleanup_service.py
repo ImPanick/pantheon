@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # src/cleanup_service.py
 import logging
 from datetime import datetime, timedelta, timezone

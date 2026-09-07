@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression coverage for issue #3722 — the message copy button copied the
 full raw model output (``dataset.raw``), which still contains the
 ``<think time="...">...</think>`` reasoning block that the renderer strips for

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Fire-and-forget webhook tasks must be referenced until they finish.
 
 asyncio keeps only a weak reference to a bare create_task() result, so a

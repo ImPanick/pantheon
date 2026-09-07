@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Retired settings stay stored but cannot leak through generic interfaces."""
 
 import asyncio

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The Personal Assistant had no door at all (`H02`).
 
 475 lines of frontend and six live routes — a personality picker, timezone,

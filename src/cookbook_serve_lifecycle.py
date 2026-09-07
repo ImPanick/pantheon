@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Cookbook serve lifecycle: kills scheduler-owned serves whose end-of-
 window has passed.
 

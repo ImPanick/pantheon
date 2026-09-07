@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Streaming tool-call accumulation tests for the OpenAI-compatible path.
 
 Regression for Gemini's OpenAI-compat layer, which (a) attaches an opaque

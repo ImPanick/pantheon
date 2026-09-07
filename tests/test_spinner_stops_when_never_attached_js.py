@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pin the self-termination contract of the canvas spinners in static/js/spinner.js.
 
 Background: the whirlpool spinner drives itself with requestAnimationFrame and

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The push half of the metrics story (`P16-19`).
 
 These tests are about the two things that make a metrics exporter fail

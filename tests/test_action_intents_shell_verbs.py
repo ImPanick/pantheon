@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: shell verbs must not promote informational chat to agent mode.
 
 The shell-verb pattern used to be a bare word match

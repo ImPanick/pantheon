@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression for issue #5210 — SKILL.md frontmatter scalars must round-trip.
 
 ``_emit_scalar`` quotes a scalar with ``json.dumps`` whenever it contains

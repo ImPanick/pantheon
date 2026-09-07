@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The gallery image-edit proxies (inpaint, harmonize) accept an upstream
 diffusion / OpenAI response that may carry an image *URL* instead of inline
 base64, and then fetch that URL server-side. That URL is controlled by whatever

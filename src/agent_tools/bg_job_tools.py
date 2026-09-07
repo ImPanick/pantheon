@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Agent tool to inspect and control detached background `bash` jobs.
 
 `bash` blocks prefixed with a `#!bg` marker run detached via `src.bg_jobs`; the

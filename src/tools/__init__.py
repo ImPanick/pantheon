@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tool implementation package, split by domain (slice 1, #4082/#4071).
 
 Public tool functions live in domain modules. ``src.tool_implementations``

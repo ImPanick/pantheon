@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The /setup guide must offer a llama.cpp (llama-server) local example.
 
 Without it, the port-8080 "llama.cpp" provider label (src/llm_core.py

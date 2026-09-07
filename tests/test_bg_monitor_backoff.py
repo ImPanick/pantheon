@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """A failed background follow-up must not come back in five seconds, forever.
 
 `_loop` polls every 5s and `mark_followed_up` runs only when `_run_followup`

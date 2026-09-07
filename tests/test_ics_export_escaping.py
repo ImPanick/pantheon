@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for ICS export correctness — calendar name escaping and UTC flag."""
 import types
 from datetime import datetime

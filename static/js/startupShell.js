@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Pantheon UI — startup shell sequencing
 // ES6 module — no application dependencies, DOM only.
 //

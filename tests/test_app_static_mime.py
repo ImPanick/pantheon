@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 import ast
 import mimetypes
 from pathlib import Path

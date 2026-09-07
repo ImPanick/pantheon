@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // The centerpiece correctness test: stream every corpus sample in token-by-token,
 // driving the segmenter exactly as the renderer will, and assert the freeze/tail
 // split stays render-equivalent to a single full render at EVERY step.

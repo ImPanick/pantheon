@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """providerLabel() in providers.js must NOT name the serving tool from the port,
 mirroring the Python _provider_label() in src/llm_core.py.
 

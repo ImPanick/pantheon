@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: auto-memory vector dedup must not drop a user's fact because it
 matches ANOTHER tenant's memory.
 

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: the API-key encryption key file (data/.key) must be owner-only
 (0o600).
 

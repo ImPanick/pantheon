@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """P1-05 — the icon-rail gear opens Settings.
 
 Until 2026-08-30 `#rail-settings` (`static/app.js`) unhid `#sidebar`, called

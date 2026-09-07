@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Behavioral test for issue #353 — Local LLM endpoints behind an API key.
 
 The admin "Local" add/test form previously sent only `base_url` (+ model_type),

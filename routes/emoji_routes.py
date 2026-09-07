@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # routes/emoji_routes.py
 # Same-origin emoji SVG proxy. The frontend rewrites emoji in chat to a
 #   <span class="emoji" style="--em:url('/api/emoji/<codepoints>.svg')">

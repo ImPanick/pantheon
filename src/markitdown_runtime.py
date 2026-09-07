@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Helpers for the optional markitdown document-extraction dependency.
 
 markitdown (MIT, Microsoft) converts Office/EPUB documents to Markdown, which is

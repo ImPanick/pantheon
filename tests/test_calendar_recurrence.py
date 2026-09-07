@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests for calendar recurrence expansion.
 
 Tests _expand_rrule and _resolve_base_uid — imported directly from

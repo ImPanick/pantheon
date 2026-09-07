@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Shared device-flow route helper regressions."""
 
 import pytest

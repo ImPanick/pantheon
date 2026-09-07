@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: skill retrieval must match tags as whole tokens, not substrings."""
 import sys
 from unittest.mock import MagicMock

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """H06 / H07 — a fallback written as a default argument fires on absence, not on blank.
 
 Two rows, one defect. `resolve_task_concurrency_cap` asked "did the operator set

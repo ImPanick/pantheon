@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression guard for #1660 — removing one RAG directory must delete only that
 directory's chunks, never wipe the whole shared collection.
 

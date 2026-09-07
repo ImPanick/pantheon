@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Integration regression test for #5435.
 
 llm_call_async must normalise Mistral structured content to a plain string,

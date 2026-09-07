@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """No address ships pre-filled — armed before there is a hole to guard.
 
 `P16-13`. `P16-12` will build the first legitimate place in this codebase for an

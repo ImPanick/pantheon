@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Background Remove (rembg) + Sharpen wiring + the live edge-cleanup
  * tuner that runs on the most-recent rembg cutout.

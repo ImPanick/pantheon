@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: gallery CLI image serialization must tolerate a non-string prompt.
 
 `_serialize_image` did `(i.prompt or "")[:200]`. A non-string prompt is truthy,

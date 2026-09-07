@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Outbound URL safety checks (SSRF hardening).
 
 Run before the server makes a request to a *user-supplied* URL — e.g. the custom

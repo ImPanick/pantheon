@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Tests for the live-thinking throttle that bounds DOM work during long
 // reasoning streams (see static/js/liveThinkingThrottle.js).
 //

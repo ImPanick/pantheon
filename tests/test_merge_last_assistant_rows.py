@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """merge-last-assistant must not delete tool/system rows between the messages.
 
 The in-memory merge removes the second assistant message plus only the

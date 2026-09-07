@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests for the ChromaDB singleton client (issue #326).
 
 Covers the fast-fail preflight (so an unreachable ChromaDB doesn't block

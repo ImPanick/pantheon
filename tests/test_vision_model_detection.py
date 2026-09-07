@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for is_vision_model (issue #124).
 
 Local vision models served through Ollama/llama.cpp show up under many

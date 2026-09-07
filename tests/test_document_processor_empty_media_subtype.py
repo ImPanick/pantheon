@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: extensionless image/audio uploads must get a valid MIME subtype.
 
 The data-URL subtype was derived only from the stored file's extension

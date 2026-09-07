@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Agent-thread timeline dots must stay centred on the vertical rail.
 
 Source-text assertions here are the narrow exception allowed by

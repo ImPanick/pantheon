@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // In-house color picker with live-feedback HSV square, hue bar,
 // eyedropper, recent colors, and harmony suggestions.
 // Non-invasive: wraps existing <input type="color"> elements —

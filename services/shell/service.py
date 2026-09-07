@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # services/shell/service.py
 """Shell service — safe command execution."""
 

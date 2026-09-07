@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression test for the memory route shim (slice 2c, #4082/#4071).
 
 The backward-compat shim at ``routes/memory_routes.py`` uses ``sys.modules``

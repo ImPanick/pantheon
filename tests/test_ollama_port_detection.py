@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pin path-aware Ollama detection for URLs on port 11434.
 
 Port 11434 is Ollama's default, but it is not Ollama-exclusive.

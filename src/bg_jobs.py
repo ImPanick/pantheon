@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Background job execution for the agent's `bash` tool.
 
 Long commands (installs, ffmpeg, model downloads) should NOT block the chat

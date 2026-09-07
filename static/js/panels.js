@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Panel loader registry — imports the modules behind a feature panel the
  * first time that panel is actually used.

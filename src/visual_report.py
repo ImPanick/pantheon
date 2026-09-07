@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # src/visual_report.py
 """
 Generate a self-contained, styled HTML page from deep research results.

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the companion pairing endpoints (split 3/4).
 
 Covers what the review asked for:

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests for the document PDF preview framing headers and PyMuPDF dependency handling."""
 
 import builtins

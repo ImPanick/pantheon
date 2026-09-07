@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // ============================================
 // COOKBOOK SERVE SUB-MODULE
 // Serve tab: cached model list, serve panel building,

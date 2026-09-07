@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """H09 — the compact prompt named two tools the model had no way to call.
 
 `_assemble_prompt(compact=True)` is what every native-tool-calling route gets.

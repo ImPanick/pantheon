@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Endpoint probing behaviour (REAL routes.model_routes helpers).
 
 ROADMAP "Backend → more tests around endpoint probing and provider setup".

@@ -35,6 +35,7 @@ The other files in `.pantheon/` are *reference*, never tracking:
 | `check-outbound.py` | every call that leaves the process is paced, or it is named. P15-06's enforcement |
 | `check-unreachable.py` | routes with no caller. P3-15's automation of the discovery audit |
 | `check-fork-names.py` | the fork's old short name, in code, with every survivor named. P0-31's enforcement |
+| `check-spdx.py` | every file of program text declares its licence, and no vendored file declares ours. P0-18's enforcement |
 | `design/pantheon-v10.html` | the mockup. Reference, not source. |
 
 ---
@@ -59,7 +60,7 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | Phase | Area | Tasks | Ready | Blocked | Done |
 |---|---|---|---|---|---|
 | Setup | Fork, rename, rebuild | 6 | 0 | 0 | **6** |
-| P0 | Fork identity & licence | 33 | 7 | **1** | **25** |
+| P0 | Fork identity & licence | 33 | 6 | **1** | **26** |
 | P1 | Token layer — the free wins | 14 | 8 | 0 | **6** |
 | P2 | Un-nerf | 26 | 12 | 0 | **14** |
 | P3 | Mechanical hygiene | 24 | 18 | **2** | **4** |
@@ -76,7 +77,7 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P14 | Measurement | 8 | 3 | 0 | **5** |
 | P15 | Outbound politeness | 12 | 2 | **1** | **9** |
 | P16 | Self-hosted by default | 20 | 1 | 0 | **19** |
-| **Total** | | **338** | **212** | **9** | **117** |
+| **Total** | | **338** | **211** | **9** | **118** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -98,12 +99,12 @@ Ten of its rows landed on 2026-08-27 — see § Progress. What is left of it:
   agent's call to finalise, even with the evidence pointing that way.
 - **`P0-17`** — the §13 source link, which cannot be written until the repo is public.
 - **`P0-13`** — blocked on a design decision. It gates the public flip alongside `P0-17`.
-- **`P0-21b`** — twelve bundled packages with no licence notice anywhere. **`P0-31` closed
-  2026-09-07**: the API token prefix migrated, the agent's tmux session name with it, and
-  `.pantheon/check-fork-names.py` now fails CI on any survivor that is not a named
-  migration path.
+- **`P0-21b`** — twelve bundled packages with no licence notice anywhere. **`P0-31` and `P0-18`
+  closed 2026-09-07**: the API token prefix migrated (with the agent's tmux session name), and
+  the whole tree now declares `AGPL-3.0-or-later` per file. `.pantheon/check-fork-names.py` and
+  `.pantheon/check-spdx.py` fail CI on any regression in either.
 
-### Next: `P0-18` (SPDX headers, decided), then `P0-21b`. `P0-31` is closed and the standing suite failures are **19 → 14** because five of them were it. `B26`, `B43` and `B44` are fixed; the `H` sweep is closed, `H21` is parked under `Law 1`, and `P3-20`'s ceiling stays. `P3-21`, `P7-12`, `P7-13`, `P13-11` and `P15-07` wait on the owner
+### Next: `P0-21b` (twelve bundled packages with no notice), then `P1`. `P0-18` and `P0-31` are closed — the tree now declares its own licence in 1,463 files and CI has eleven checkers. Standing suite failures **19 → 14**. What is left of `P0` is `P0-05` (needs the live ChromaDB), `P0-08` (needs Docker), `P0-16` and `P0-17` (need the owner), `P0-13` (blocked on design) and `P0-29` (its own session). `P3-21`, `P7-12`, `P7-13`, `P13-11` and `P15-07` wait on the owner
 
 **`P16-05` is the last zero-configuration leak**, and the only one that is not a one-liner: the
 embedding model is pulled from HuggingFace on the *first chat message*, because
@@ -237,6 +238,19 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### P0-18 — 1,463 files that say what they are, and one that must not
+`c44941f..HEAD`. **338 tracked, 118 done. 17 new tests, 0 regressions.**
+`AGPL-3.0` and `AGPL-3.0-or-later` are different licences to anyone combining this with
+something else, and which one Pantheon is under was stated **once**, in a README badge —
+not in `NOTICE`, not in `package.json`, not on the container image, and in none of the
+files. Now in all of them, as the identifier alone: `SPDX-FileCopyrightText: 2026 Panick`
+on a file nobody here wrote would be the `GohuFont.ttf` mistake again (`P0-23`), and
+`NOTICE` is already the authority on copyright. **`LICENSE` is deliberately not touched** —
+its own second paragraph says changing it is not allowed, so the row's "state it in
+`LICENSE`" is refused and the refusal is on the row. `.pantheon/check-spdx.py` enforces both
+directions; the second — *no vendored file carries our identifier* — is the one `P0-16`
+already got wrong once, pointed the other way.
 
 ### P0-31 closes — five red tests were the row, and one green one was worse
 `29accaf..HEAD`. **338 tracked, 117 done. 7 new tests, 5 pre-existing failures fixed.**
@@ -2372,7 +2386,7 @@ genuinely empty and log back in. The only manual step is one line in your `.env`
   **What landed:** the six research/route modules plus `src/deep_research.py` and `src/goal_based_extractor.py`, comment-only and AST-identical to before, proven per file. Refutation caught two defects in the first attempt and both are fixed: the notice's `# Licence: licenses/DeepResearch-Apache-2.0.txt` line was **the only per-file licence declaration in the entire Python tree** and read as declaring those AGPL files Apache-2.0; and "modified for Pantheon" was false on seven of the eight — measured against the fork point, **only `routes/research/research_routes.py` differs**. The notices now name Odysseus as the party that changed them and state the file's own licence as AGPL-3.0-or-later.
   **Why it is still open:** `services/search/` is in the derived-path list because that is **upstream Odysseus's own attribution** — the copyright holder's words, carried forward. It is deliberately unstamped: nine files, 2,222 lines, zero matches for `Tongyi`/`DeepResearch`/`IterResearch`/`Alibaba`, and every one byte-identical to the fork point. Stamping "you changed this" on a file nobody changed is a false statement in the other direction. **That reasoning is recorded in `CREDITS.md` and needs a human ruling before this ticks** — overriding the upstream copyright holder's own attribution is not an agent's call to finalise.
 - [ ] **P0-17** **§13 Source link.** Single footer button in the UI. `href` → the public repo. `title="Built on Odysseus — click to see where Pantheon originated from!"`. Must be present on the logged-in shell and the login page. This is the one licence obligation that is genuinely required and genuinely missing. `Depends:` P0-12.
-- [ ] **P0-18** Decide `AGPL-3.0-only` vs `AGPL-3.0-or-later` and state it in `LICENSE`, `README`, and SPDX headers. Today the qualifier lives in exactly one README line with zero SPDX headers. — **DECIDED — `AGPL-3.0-or-later`, matching upstream, with real SPDX headers** (D-2026-08-26-06).
+- [x] **P0-18** Decide `AGPL-3.0-only` vs `AGPL-3.0-or-later` and state it in `LICENSE`, `README`, and SPDX headers. Today the qualifier lives in exactly one README line with zero SPDX headers. — **DECIDED — `AGPL-3.0-or-later`, matching upstream, with real SPDX headers** (D-2026-08-26-06). — **done 2026-09-07, with one part of the row refused and the refusal is the interesting half.** **1,463 files** of program text now carry `SPDX-License-Identifier: AGPL-3.0-or-later` — every tracked `.py .js .mjs .ts .css .html .sh .zsh .ps1 .swift` outside the vendored roots `check-licences.py` already owns. **The identifier only, with no `SPDX-FileCopyrightText` line**, and that is deliberate: most of this tree is upstream's code that Pantheon modified, `P0-15` established there was no upstream copyright notice to preserve, and `Copyright 2026 Panick` on a file nobody here wrote is the same class of statement as the font that claimed to be GohuFont (`P0-23`). The licence identifier is true of every file; `NOTICE` stays the authority on copyright. **`LICENSE` is deliberately NOT changed.** The row asked for the qualifier there, and the AGPL's own second paragraph says copying it verbatim is permitted and changing it is not — so a project header prepended to it modifies a document nobody here may modify. It goes in `NOTICE` (which already carried the *"or (at your option) any later version"* sentence and now carries the identifier beside it), the README, `package.json` + its lockfile root, and an `org.opencontainers.image.licenses` label on the Docker image, **which declared no licence at all** — the same failure class as `P0-30`, where the desktop builds shipped a dozen libraries with their attribution stripped. `org.opencontainers.image.source` is deliberately absent until `P0-17`: a source label has to point at a repository a reader can open. Enforced by `.pantheon/check-spdx.py` (with `--fix`), whose **second rule is the one that matters** — no vendored file may carry *our* identifier, because `P0-16`'s first attempt already went wrong in that direction once, pointed the other way. 17 tests, 8 mutations, all caught.
 
 ### P0 · Credits — the licence gaps you inherit
 *Do not publish before these close.*

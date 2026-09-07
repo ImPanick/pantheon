@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pin owner-scoping of the cleanup preview and cleanup routes.
 
 Security invariant under test:

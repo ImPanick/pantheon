@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression for issue #5697 — skill timestamps must not use ``datetime.utcnow()``.
 
 ``_now_iso()`` builds the ``created`` value in skill frontmatter. ``utcnow()``

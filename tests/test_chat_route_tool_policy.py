@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Issue #3229 and explicit web-toggle regressions.
 
 Bug: allow_bash and allow_web_search were only read from form_data, so JSON

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """fetch_webpage_content must return plain-text and Markdown bodies verbatim.
 
 raw.githubusercontent.com serves Markdown as `text/plain`, and a lot of code

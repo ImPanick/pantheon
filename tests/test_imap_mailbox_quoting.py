@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression coverage for IMAP mailbox names that contain spaces.
 
 imaplib does not quote mailbox arguments for SELECT/APPEND/MOVE/COPY, so callers

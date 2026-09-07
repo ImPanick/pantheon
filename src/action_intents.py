@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Lightweight routing hints for chat requests that need tools.
 
 These patterns are intentionally conservative. They only promote plain chat

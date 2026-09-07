@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Provider endpoint model-selection tests.
 
 Covers ``_first_chat_model``: auto-picking the first usable chat model from a

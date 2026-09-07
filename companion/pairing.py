@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Shared pairing helpers for the companion bridge.
 
 Token minting + LAN discovery + QR rendering, kept here as small, importable

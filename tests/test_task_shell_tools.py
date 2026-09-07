@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Scheduled tasks must be offered shell/file tools by default.
 
 Regression for #4163: the task runner built `relevant_tools` from RAG output

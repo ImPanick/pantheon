@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """PDF AcroForm field detection and extraction.
 
 Used to decide whether an uploaded PDF should be treated as a fillable form

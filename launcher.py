@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # launcher.py
 """Dedicated entrypoint for the standalone Windows portable launcher.
 

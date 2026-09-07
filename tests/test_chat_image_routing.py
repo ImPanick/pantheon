@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 import sys
 for mod_name in ["src.endpoint_resolver", "src.database", "core.database"]:
     _mod = sys.modules.get(mod_name)

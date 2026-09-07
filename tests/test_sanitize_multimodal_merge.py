@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: merging consecutive user messages must not str() multimodal content."""
 
 from src.llm_core import _sanitize_llm_messages

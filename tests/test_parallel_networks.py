@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Two segments, and a run told to use one cannot reach the other (`P16-16`).
 
 The owner's north star includes automating things on *"my network (even my

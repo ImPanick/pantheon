@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Compatibility re-export shim for the live ranking module.
 
 The real implementation lives in :mod:`services.search.ranking`, which is what

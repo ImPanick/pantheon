@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests: Moonshot/Kimi temperature detection and payload behavior.
 
 Moonshot kimi-k2.5+ models reject custom temperature values; the payload

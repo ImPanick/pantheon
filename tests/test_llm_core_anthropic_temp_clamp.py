@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression guard for #1615 — Anthropic temperature must be clamped to [0.0, 1.0].
 
 Anthropic's Messages API rejects temperature > 1.0 with HTTP 400. The shipped

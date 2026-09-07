@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """CalDAV sync must not prune locally-created events (#2704).
 
 The prune step in `_sync_blocking` deletes events in the synced calendar+window

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Personal assistant routes — resolve the per-user singleton, read/write
 its settings, and list its scheduled check-in tasks.
 

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """AMD ROCm support for Cookbook hardware-fit.
 
 Consumer AMD Radeon (RDNA: gfx10/11/12) can realistically only serve GGUF via

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Issue #2925 — a fenced ```python/```bash block wrapping an <invoke> call that
 can't be converted (e.g. a hyphenated/namespaced tool name that _XML_INVOKE_RE's
 \\w+ won't match, or an unknown tool) must NOT fall through and ship the raw XML

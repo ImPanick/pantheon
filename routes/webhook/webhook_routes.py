@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Webhook, API Token, and sync chat routes."""
 
 import uuid

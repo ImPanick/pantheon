@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Executable regressions for the browser/run-lifecycle review of PR #6020.
 
 These tests intentionally exercise JavaScript under Node rather than treating

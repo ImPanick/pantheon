@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """A receipt per agent run (`P4-25`).
 
 The row's premise was corrected on 2026-08-27: *"all on the wire, none kept" is

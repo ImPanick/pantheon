@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression for issue #1602 — after closing an AI-written document, its "Open"
 button in the Documents library is grayed out, so the user can't reopen it.
 

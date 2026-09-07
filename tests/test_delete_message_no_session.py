@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression guard for issue #1428 — the "x" on a chat output did nothing when
 no model/API was selected.
 

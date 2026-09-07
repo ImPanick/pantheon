@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests: Anthropic temperature clamping.
 
 Anthropic rejects temperature values outside [0.0, 1.0]. The payload builder

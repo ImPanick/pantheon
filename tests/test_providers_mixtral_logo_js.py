@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pin the Mistral provider-logo pattern to cover Mixtral and Ministral.
 
 The pattern was /mistral/i, which does not match "mixtral" (note the x) or

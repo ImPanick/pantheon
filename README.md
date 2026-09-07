@@ -215,6 +215,14 @@ is downstream of it.
 
 **AGPL-3.0-or-later** — see [LICENSE](LICENSE).
 
+Every file of program text in this repository carries
+`SPDX-License-Identifier: AGPL-3.0-or-later`, so a single file in a search result or a diff
+says what it is under without anyone having to find this page. `LICENSE` is the AGPL text
+verbatim and stays that way — the document's own terms forbid changing it — so the *or-later*
+qualifier is stated here, in [`NOTICE`](NOTICE), and in those headers. Vendored third-party
+files keep their own licences and are deliberately not stamped;
+[`CREDITS.md`](CREDITS.md) lists every one.
+
 Pantheon is free software and isn't sold. We'd rather nobody else sold it either, though the
 AGPL doesn't allow that restriction and we won't pretend otherwise. Use it internally at your
 company if it's useful.

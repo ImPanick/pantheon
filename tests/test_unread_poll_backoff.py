@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """A mailbox that will not answer must stop being asked every sixty seconds.
 
 `/unread-state` is index-first *specifically* so periodic UI polling does not

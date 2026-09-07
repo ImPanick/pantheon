@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for model_context.py — local endpoint detection, token estimation, known model lookup."""
 
 import sys

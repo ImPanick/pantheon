@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Deleting a user must invalidate the bearer-token cache.
 
 delete_user removes the user's ApiToken rows from the DB, but the bearer-auth

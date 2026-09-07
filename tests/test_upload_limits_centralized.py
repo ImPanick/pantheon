@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Centralized upload byte-limits (issue #3364).
 
 Every per-route upload limit lives in ``src.upload_limits`` as a module-level

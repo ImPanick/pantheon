@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Admin wipe route domain package (slice 2h, #4082/#4071).
 
 Contains admin_wipe_routes.py, migrated from the flat routes/ directory.

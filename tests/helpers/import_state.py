@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Shared helper for saving and restoring Python import state in tests.
 
 Use ``preserve_import_state`` as a context manager around any block that needs

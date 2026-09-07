@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Owner-scope tests for action_tidy_research.
 
 Broken research files (empty or unparseable JSON) have no readable owner

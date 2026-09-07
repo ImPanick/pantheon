@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 from src.agent_loop import _normalize_stream_document_fences
 from src.tool_parsing import parse_tool_blocks
 

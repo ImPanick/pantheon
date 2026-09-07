@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression coverage for the settings UI after Google OAuth redirects."""
 
 from pathlib import Path

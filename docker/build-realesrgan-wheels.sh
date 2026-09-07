@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Build patched wheels for Real-ESRGAN's unmaintained dependencies.
 #
 # basicsr / gfpgan / facexlib (xinntao, last released 2022) read their version

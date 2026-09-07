@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pin the shared config cache in static/js/appConfig.js.
 
 Background: /api/auth/settings was fetched independently by six modules and

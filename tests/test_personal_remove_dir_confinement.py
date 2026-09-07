@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression: remove_directory_from_rag must confine its path to PERSONAL_DIR.
 
 DELETE /api/personal/remove_directory took a raw ``directory`` query parameter

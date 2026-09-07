@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Task chaining must not cross owner boundaries."""
 
 import tempfile

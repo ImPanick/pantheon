@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Compatibility import for the canonical memory manager.
 
 Historically this package carried a second copy of ``MemoryManager``. The
