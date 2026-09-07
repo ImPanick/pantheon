@@ -1510,6 +1510,50 @@ async function initResearchSearchSettings() {
   searchSel.addEventListener('change', function() { updateSearchLogo(); saveResearchSearch(); });
 }
 
+/* ── Holding agent email for approval (H18 / B42) ──
+   `agent_email_confirm` had no control in `static/` at all, and
+   `manage_settings` could set it — so the only party able to remove the gate
+   was the one the gate exists to gate. `B42` takes that away from the agent,
+   which only works as a trade if the person can reach the switch. */
+async function initEmailConfirm() {
+  var input = el('set-emailConfirm');
+  var msg = el('set-emailConfirmMsg');
+  if (!input || !msg) return;
+
+  function describe(on) {
+    return on
+      ? 'On — agent email waits above the message box until you approve it.'
+      : 'Off — the agent sends email directly, without showing you first.';
+  }
+
+  try {
+    var res = await fetch('/api/auth/settings', { credentials: 'same-origin' });
+    var settings = await res.json();
+    // `!== undefined` rather than truthiness: `false` is a real value here and
+    // reading it as "missing, use the default" would show the gate as on while
+    // mail went out unapproved — the worst direction for this particular
+    // control to be wrong in.
+    input.checked = settings.agent_email_confirm !== undefined
+      ? !!settings.agent_email_confirm : true;
+  } catch (e) { /* saving reports its own errors */ }
+
+  input.addEventListener('change', async function() {
+    try {
+      await _postSettings({ agent_email_confirm: !!input.checked });
+      msg.textContent = describe(input.checked);
+      msg.style.color = 'var(--fg)';
+    } catch (e) {
+      // Put the switch back: a control that looks changed and did not save is
+      // worse here than one that visibly refused.
+      input.checked = !input.checked;
+      msg.textContent = 'Failed to save — left unchanged.';
+      msg.style.color = 'var(--red)';
+    }
+  });
+
+  msg.textContent = describe(input.checked);
+}
+
 /* ── Nightly skill audit (H16) ──
    Three knobs read by a `while True` loop in `app.py` and absent from
    `DEFAULT_SETTINGS`, which is the allowlist `POST /api/auth/settings`
@@ -2269,6 +2313,7 @@ function initAll() {
   initResearchSearchSettings();
   initAgentSettings();
   initSkillAudit();   // H16
+  initEmailConfirm();   // H18 / B42
   initAppearance();
   initShortcuts();
   initAccount();

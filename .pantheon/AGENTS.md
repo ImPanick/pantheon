@@ -333,6 +333,8 @@ The suite takes seven minutes. Editing during those seven minutes is the obvious
 
 **Eight test files in this repo, at eleven call sites, read their own source this way.** A `git checkout` mid-run does it too, and so does a `sed -i` that only adds a comment. Nothing warns; the failure arrives dressed as a regression in whatever the offset happens to land on, which is the most expensive possible disguise.
 
+**The author broke this law within the hour of writing it**, editing `admin_tools.py` a minute into a run because the change was small and obviously safe. It was small; "obviously safe" is not a property anyone can establish about a suite they have not read. The run was killed and restarted, which cost seven minutes and nothing else — the alternative is a green result about a tree that no longer exists, and that is what the previous paragraph cost. Assume you will want to do this. The answer is still no.
+
 So: **start the suite, then keep your hands off the tree until it finishes.** Read, plan, measure something in a scratch copy, write the roadmap entry — all fine. If an edit cannot wait, the run is spent: make the edit and start a new one. A diff against the baseline is only worth running if the tree did not move, and "it was only a comment" is exactly the change that makes `getsource` lie.
 ### Law 20 — a test that greps a file is testing the file, not the code.
 

@@ -525,6 +525,84 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
             "brave_api_key", "google_pse_key", "google_pse_cx",
             "tavily_api_key", "serper_api_key", "app_public_url",
         }
+        # `B42`. Settings that exist to keep a human in the loop, which the
+        # agent may READ and may not WRITE.
+        #
+        # Measured before it was written: `manage_settings set
+        # agent_email_confirm false` moved the stored value from True to False,
+        # and `set trust_rung allow_listed` moved the confirmation ladder from
+        # `gate_on_untrusted`. Both succeeded. The agent could take off the gate
+        # that requires a person to approve an email before it sends, and lower
+        # the ladder that decides when it has to ask at all.
+        #
+        # That is reachable by prompt injection, because the tool call is the
+        # same whether the instruction came from the operator or from a web page
+        # the agent was asked to read. **A gate whose purpose is "a human must
+        # confirm" cannot be removable through the channel the gate exists to
+        # distrust** — not even at what looks like the operator's own request,
+        # because looking like it is precisely what an injection does. Settings
+        # is where a request provably came from the person, and `H18` is the
+        # commit that gives all three of these a control there.
+        #
+        # `agent_loop.py` already argues this for role profiles: a profile "may
+        # only raise strictness — a profile that lowers the rung hands a user a
+        # way to switch their own confirmation gate off." The same sentence
+        # applies with more force to the agent itself.
+        #
+        # Deliberately NOT here: `agent_max_rounds` and `agent_max_tool_calls`.
+        # They are runaway and cost caps with no approval semantics, "give
+        # yourself more steps" is a real thing to ask for, and a restriction
+        # that has to be argued each time is one nobody keeps. Filed as `P7-12`.
+        _SELF_RESTRAINT_KEYS = {
+            "agent_email_confirm",
+            # Added by `H16`, which declared it — and declaring a key hands it
+            # to the agent as well as to the person, because `DEFAULT_SETTINGS`
+            # is the allowlist for both. A checker that the checked party can
+            # switch off is not a check.
+            "agent_verifier_subagent",
+        }
+        #
+        # `trust_rung` is NOT here, and the first version of this set had it.
+        # Removing it is a correction, not a softening.
+        #
+        # The claim was "the agent lowered the confirmation ladder from
+        # `gate_on_untrusted` to `allow_listed`". The measurement was right and
+        # the word "lowered" was not: `allow_listed` is one of
+        # `_RUNGS_THAT_ASK_UNTAINTED`, so it asks in clean runs that
+        # `gate_on_untrusted` lets through. It may well be the *stricter* of
+        # the two.
+        #
+        # And the rungs are not a ladder that can be read from outside.
+        # `decision_for` carries the reproduction: on `ask_every_time`,
+        # approving one harmless command in a clean run used to spend a bypass
+        # that a later hostile page then rode — so "the two stricter rungs were
+        # strictly less protected than the one they sit below." That is fixed,
+        # and the lesson is that no total order exists to check a write against.
+        #
+        # There is also a reasoned test in the other direction:
+        # `test_the_chat_tool_still_sets_a_rung_it_does_implement` sets
+        # `ask_every_time` from chat, and `P7-03`'s framing is "a person being
+        # able to set it". Asking for more confirmation in the same breath as
+        # the work is a real thing to want.
+        #
+        # So: shipping a refusal here would have been a security change resting
+        # on an ordering the codebase says does not hold. Filed as `P7-13`.
+
+        # One sentence per key, because they are not the same kind of thing and
+        # a refusal that describes the wrong one reads as a canned excuse.
+        _SELF_RESTRAINT_WHY = {
+            "agent_email_confirm":
+                "decides whether a person has to approve an email before I send it",
+            "agent_verifier_subagent":
+                "is the check on whether I actually did what I said I did",
+        }
+
+        def _is_self_restraint(k):
+            return k in _SELF_RESTRAINT_KEYS
+
+        def _self_restraint_why(k):
+            return _SELF_RESTRAINT_WHY.get(k, "is a limit a person set on what I can do")
+
         def _is_secret(k):
             # `token` must be a suffix, not a substring: otherwise the int
             # setting `agent_input_token_budget` (which even has a "token budget"
@@ -667,6 +745,14 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
                 return {"error": f"Unknown setting '{raw}'. Use action='list' to see available settings.", "exit_code": 1}
             if _is_secret(key):
                 return {"response": f"'{key}' is a credential/secret. For security I can't set it from chat. Open Settings and set it there.", "exit_code": 0}
+            if _is_self_restraint(key):
+                # Names the setting and says where to change it: a refusal that
+                # does not say where to go is a refusal the person works around.
+                return {"response": f"'{key}' {_self_restraint_why(key)}, so I can't change it "
+                                    f"from chat — including if you ask me to, because a message "
+                                    f"asking for that looks the same whether it came from you or "
+                                    f"from something I was reading. Open Settings and change it "
+                                    f"there.", "exit_code": 0}
             # Structured settings (dicts/lists like keybinds or vision fallbacks)
             # have no safe scalar coercion; _coerce would pass a bare string
             # straight through and clobber the structure. Refuse them here; they're
@@ -700,6 +786,16 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
                 return {"error": f"Unknown setting '{args.get('key')}'.", "exit_code": 1}
             if _is_secret(key):
                 return {"response": f"'{key}' is a credential. Reset it in the panel.", "exit_code": 0}
+            if _is_self_restraint(key):
+                # `reset` writes `DEFAULT_SETTINGS[key]`, which for
+                # `agent_email_confirm` is True and for `trust_rung` is the
+                # default rung — so resetting is usually *safe*. It is refused
+                # anyway: "the agent may only move this in the safe direction"
+                # is a rule that inverts the day someone changes a default, and
+                # a control the agent cannot touch is easier to reason about
+                # than one it can touch carefully.
+                return {"response": f"'{key}' {_self_restraint_why(key)}. Reset it in Settings.",
+                        "exit_code": 0}
             s = load_settings()
             s[key] = DEFAULT_SETTINGS[key]
             save_settings(s)
