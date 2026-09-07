@@ -2628,28 +2628,97 @@ export function openGallery() {
     const _dlIco = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
     const _delIco = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>';
     const _cancelIco = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-    const items = [
+    // H13. The gallery has been able to move images into albums since before
+    // the fork — `POST /api/gallery/albums/{id}/add` and `/remove`, both taking
+    // exactly the bulk `image_ids` list `_selectedIds()` already returns — and
+    // nothing offered it. Creating albums, listing them, uploading into them
+    // and filtering by them were all here; the one missing verb was the one a
+    // person reaches for first.
+    const _albumIco = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+    const _backIco = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>';
+    const _newIco = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
+
+    const rootItems = () => [
       { label: 'Favorite', icon: _favIco, action: () => _bulkFavorite(_selectedIds()) },
       { label: 'Add tag…', icon: _tagIco, action: () => _bulkTag(_selectedIds()) },
+      // `keepOpen`: this one replaces the menu's contents rather than acting,
+      // so it must not dismiss on the way. One dropdown, two pages — a second
+      // popup anchored to the same button would be the second scaffolding
+      // `Law 14` exists to prevent.
+      { label: 'Album…', icon: _albumIco, keepOpen: true, action: () => fill(albumItems()) },
       { label: 'Download', icon: _dlIco, action: () => _bulkDownload(_selectedIds()) },
       { label: 'Delete', icon: _delIco, danger: true, action: () => _bulkDelete(_selectedIds()) },
       { separator: true },
       { label: 'Cancel', icon: _cancelIco, action: () => _exitSelectMode() },
     ];
-    for (const a of items) {
-      if (a.separator) {
-        const sep = document.createElement('div');
-        sep.className = 'dropdown-divider';
-        sep.style.cssText = 'height:1px;background:var(--border);margin:4px 4px;';
-        dropdown.appendChild(sep);
-        continue;
+
+    const albumItems = () => {
+      const out = [
+        { label: 'Back', icon: _backIco, keepOpen: true, action: () => fill(rootItems()) },
+        { separator: true },
+      ];
+      for (const album of _albums) {
+        out.push({
+          label: album.name || '(untitled album)',
+          icon: _albumIco,
+          action: () => _bulkAddToAlbum(_selectedIds(), album.id, album.name),
+        });
       }
-      const it = document.createElement('div');
-      it.className = 'dropdown-item-compact' + (a.danger ? ' dropdown-item-danger' : '');
-      it.innerHTML = `<span class="dropdown-icon">${a.icon}</span><span>${a.label}</span>`;
-      it.addEventListener('click', (e) => { e.stopPropagation(); close(); a.action(); });
-      dropdown.appendChild(it);
+      if (!_albums.length) {
+        out.push({ label: 'No albums yet', icon: _albumIco, disabled: true, action: () => {} });
+      }
+      out.push({ separator: true });
+      out.push({ label: 'New album…', icon: _newIco, action: () => _bulkAddToNewAlbum(_selectedIds()) });
+      // Only offered from inside an album, because "remove from album" has no
+      // meaning in the all-photos view — the endpoint would need an album to
+      // remove from, and guessing one is worse than not offering it.
+      if (_activeAlbum) {
+        const current = _albums.find((a) => a.id === _activeAlbum);
+        out.push({
+          label: `Remove from ${current?.name || 'this album'}`,
+          icon: _cancelIco,
+          danger: true,
+          action: () => _bulkRemoveFromAlbum(_selectedIds(), _activeAlbum),
+        });
+      }
+      return out;
+    };
+
+    function fill(items) {
+      dropdown.textContent = '';
+      for (const a of items) {
+        if (a.separator) {
+          const sep = document.createElement('div');
+          sep.className = 'dropdown-divider';
+          sep.style.cssText = 'height:1px;background:var(--border);margin:4px 4px;';
+          dropdown.appendChild(sep);
+          continue;
+        }
+        const it = document.createElement('div');
+        it.className = 'dropdown-item-compact' + (a.danger ? ' dropdown-item-danger' : '');
+        const icon = document.createElement('span');
+        icon.className = 'dropdown-icon';
+        icon.innerHTML = a.icon;          // fixed SVG literals defined above
+        const label = document.createElement('span');
+        // textContent, not innerHTML: album names are user-supplied and this
+        // list is the first place they have ever been rendered into a menu.
+        label.textContent = a.label;
+        it.append(icon, label);
+        if (a.disabled) {
+          it.style.opacity = '0.5';
+          it.style.pointerEvents = 'none';
+        } else {
+          it.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (!a.keepOpen) close();
+            a.action();
+          });
+        }
+        dropdown.appendChild(it);
+      }
     }
+
+    fill(rootItems());
     document.body.appendChild(dropdown);
     const close = bindMenuDismiss(dropdown, () => { dropdown.remove(); }, (ev) => !dropdown.contains(ev.target) && ev.target !== anchor);
   }
@@ -2753,6 +2822,108 @@ export function openGallery() {
     }
     _renderGrid(); _exitSelectMode();
     if (uiModule) uiModule.showToast(`Favorited ${n} photo${n > 1 ? 's' : ''}`);
+  }
+
+  async function _postAlbumMembership(albumId, ids, verb) {
+    // The two URLs are written out rather than built with `/${verb}`, and that
+    // is deliberate. `check-unreachable.py` matches a caller's path pattern to
+    // a route's, and an interpolated final segment becomes `*`, which does not
+    // match the literal `remove` in the route — so the first version of this
+    // wired both endpoints while the inventory still listed `/remove` as
+    // having no caller. A route this file really does call must be findable by
+    // grepping for it, which is what the checker is enforcing on everyone's
+    // behalf. Two literals cost nothing and read better than one template.
+    const album = encodeURIComponent(albumId);
+    const url = verb === 'add'
+      ? `${API_BASE}/api/gallery/albums/${album}/add`
+      : `${API_BASE}/api/gallery/albums/${album}/remove`;
+    const res = await fetch(url, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_ids: ids }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  }
+
+  async function _bulkAddToAlbum(ids, albumId, albumName) {
+    if (!ids.length || !albumId) return;
+    try {
+      await _postAlbumMembership(albumId, ids, 'add');
+    } catch (e) {
+      uiModule.showError('Could not add to the album');
+      return;
+    }
+    // The server moved them; the local copy has to agree or the grid keeps
+    // showing them under the old album until a reload.
+    for (const item of _items) if (ids.includes(item.id)) item.album_id = albumId;
+    _exitSelectMode();
+    uiModule.showToast(`${ids.length} photo${ids.length === 1 ? '' : 's'} added to ${albumName || 'the album'}`);
+    // Inside an album view the moved photos have just left it, so the grid is
+    // showing something untrue until it refetches. `_bulkDelete`'s idiom.
+    if (_activeAlbum && _activeAlbum !== albumId) {
+      _items = _items.filter((i) => !ids.includes(i.id));
+      _total = Math.max(0, _total - ids.length);
+    }
+    _renderAlbums();
+    _renderGrid();
+    _renderStats();
+  }
+
+  async function _bulkAddToNewAlbum(ids) {
+    if (!ids.length) return;
+    const name = (await uiModule.styledPrompt('', {
+      title: 'New album', placeholder: 'Album name', confirmText: 'Create', maxLength: 80,
+    }) || '').trim();
+    if (!name) return;
+    // Find-or-create by name, matching what the import path at `_handleGalleryDrop`
+    // already does — two albums with the same name is a worse outcome than
+    // reusing one the person clearly means.
+    let album = _albums.find((a) => (a.name || '').toLowerCase() === name.toLowerCase());
+    if (!album) {
+      try {
+        const res = await fetch(`${API_BASE}/api/gallery/albums`, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        album = data.album || data;
+        _albums.push(album);
+      } catch (e) {
+        uiModule.showError('Could not create the album');
+        return;
+      }
+    }
+    await _bulkAddToAlbum(ids, album.id, album.name || name);
+  }
+
+  async function _bulkRemoveFromAlbum(ids, albumId) {
+    if (!ids.length || !albumId) return;
+    const album = _albums.find((a) => a.id === albumId);
+    if (!await uiModule.styledConfirm(
+        `Remove ${ids.length} photo${ids.length === 1 ? '' : 's'} from ${album?.name || 'this album'}? `
+        + 'The photos stay in your library.',
+        { confirmText: 'Remove', danger: true })) return;
+    try {
+      await _postAlbumMembership(albumId, ids, 'remove');
+    } catch (e) {
+      uiModule.showError('Could not remove from the album');
+      return;
+    }
+    for (const item of _items) if (ids.includes(item.id)) item.album_id = null;
+    _exitSelectMode();
+    uiModule.showToast(`${ids.length} photo${ids.length === 1 ? '' : 's'} removed from ${album?.name || 'the album'}`);
+    if (_activeAlbum === albumId) {
+      _items = _items.filter((i) => !ids.includes(i.id));
+      _total = Math.max(0, _total - ids.length);
+    }
+    _renderAlbums();
+    _renderGrid();
+    _renderStats();
   }
 
   async function _bulkTag(ids) {

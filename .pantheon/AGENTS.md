@@ -334,6 +334,24 @@ The suite takes seven minutes. Editing during those seven minutes is the obvious
 **Eight test files in this repo, at eleven call sites, read their own source this way.** A `git checkout` mid-run does it too, and so does a `sed -i` that only adds a comment. Nothing warns; the failure arrives dressed as a regression in whatever the offset happens to land on, which is the most expensive possible disguise.
 
 So: **start the suite, then keep your hands off the tree until it finishes.** Read, plan, measure something in a scratch copy, write the roadmap entry — all fine. If an edit cannot wait, the run is spent: make the edit and start a new one. A diff against the baseline is only worth running if the tree did not move, and "it was only a comment" is exactly the change that makes `getsource` lie.
+### Law 20 — a test that greps a file is testing the file, not the code.
+
+Three times in one session, and each looked like a different mistake until they were put side by side:
+
+  * `H02` asserted a stale sentence was **gone**. The corrected comment *quotes* it, because a reader needs to see what the file used to claim in order to understand why the door was missing. Green expectation, red test, nothing wrong with the code.
+  * `H10` asserted `"innerHTML" not in panel`. The only occurrence was the comment explaining why the panel does not use `innerHTML`.
+  * `B41` asserted `'"memories": relevant' in ROUTES`. It was there — **in a different function**, two handlers below the one being edited, where the accompanying variable was not in scope. The test was green while `POST /api/memory/search` raised a `NameError` on every call.
+
+One cause: **a source file is code and prose about code interleaved, and a substring search can tell you neither which of the two it found nor what scope it landed in.** The third is the dangerous one, because grep will happily confirm that the right line exists somewhere in the wrong place.
+
+So, in order of preference:
+
+1. **Call the thing.** `B41`'s replacement builds the router and invokes the handler; a mutation emptying the original key survives the grep and dies here.
+2. **Resolve the scope first, then assert inside it.** `ast.get_source_segment` for a Python function, a delimited split for a JS block. `check-outbound.py` already does this per function and it is why its `_POLICED_HOSTS` rule is trustworthy.
+3. **Assert the shape, not the word.** `\.innerHTML\b` is a property access; `innerHTML` is a word that appears in English sentences about property accesses.
+
+A file-wide substring is acceptable for one thing only: proving a string is *absent from the whole file* when its presence anywhere would be wrong. Everything else needs a scope.
+
 ## Before you start a task
 
 ```
