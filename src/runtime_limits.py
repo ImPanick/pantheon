@@ -48,3 +48,27 @@ def unlimited() -> bool:
         return bool(_local_mode.get())
     except Exception:
         return False
+
+
+def lift_cap(value: int, lifted: int, *, unlimited: bool, pinned: bool) -> int:
+    """One cap's local-inference lift, as a rule rather than four inline ifs.
+
+    `H08`. This was three copies of `if unlimited(): value = <bigger>` inside
+    `stream_agent_loop`, and two of them raised a number the operator had
+    entered in the settings UI — validated to 1..200 by the admin endpoint and
+    re-clamped in `chat_routes` *with a comment about defending against
+    hand-edits*, then overwritten here on the default deployment.
+
+    `pinned` is the caller's answer to "did a person choose this value?" —
+    `settings.setting_is_explicit` — and it is the whole fix: **lift a default
+    nobody chose, honour a value somebody did**. The caller computes it because
+    this module deliberately imports nothing from the project.
+
+    A falsy `value` already means "no cap" and is returned untouched rather
+    than being given one, and a value above `lifted` is never lowered: this
+    only ever raises, which is what "lift" has to mean for the caller to be
+    able to reason about it.
+    """
+    if not unlimited or pinned or not value:
+        return value
+    return max(value, lifted)

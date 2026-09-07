@@ -1078,16 +1078,65 @@ def _compact_tool_line(name: str, section: str) -> str:
     return f"- `{name}` — " + lines[0][:160]
 
 
+def _schema_backed_tool_names() -> frozenset:
+    """Names in `FUNCTION_TOOL_SCHEMAS` — the tools a native-tools turn can
+    actually call. `H09`.
+
+    Cached because `_assemble_prompt` runs per request and this walks the whole
+    schema list; the schemas are a module-level literal, so it cannot go stale
+    within a process.
+    """
+    global _SCHEMA_BACKED_NAMES
+    if _SCHEMA_BACKED_NAMES is None:
+        _SCHEMA_BACKED_NAMES = frozenset(
+            name for schema in FUNCTION_TOOL_SCHEMAS
+            if (name := schema.get("function", {}).get("name"))
+        )
+    return _SCHEMA_BACKED_NAMES
+
+
+_SCHEMA_BACKED_NAMES = None
+
+
 def _assemble_prompt(tool_names: set, disabled_tools: set = None, compact: bool = False) -> str:
     """Build the system prompt with only the specified tools included."""
     disabled = disabled_tools or set()
     included = tool_names - disabled
 
     if compact:
+        # `H09`. This list is read by a model that has just been told "only the
+        # tool schemas provided by the API are available for this turn… do not
+        # write tool syntax in chat", and for two entries that sentence and this
+        # list contradicted each other: `generate_image` and `manage_research`
+        # are the only members of `TOOL_SECTIONS` with **no `FUNCTION_TOOL_SCHEMAS`
+        # entry**, so no schema was ever sent for them and the fenced fallback
+        # was shut. Both channels closed, both names offered. The same prompt
+        # then says "if a needed tool is missing, say what is missing instead of
+        # pretending" — and trusts this list to tell it what is missing.
+        #
+        # The guard is the fix, not the two instances: a compact list may only
+        # name a tool that has a schema, so a future tool added to
+        # `TOOL_SECTIONS` without one cannot reintroduce this. `_schema_backed()`
+        # is computed rather than hard-coded for the same reason.
+        _callable = _schema_backed_tool_names()
         tool_lines = []
+        _named_without_schema = []
         for name, _default_section in TOOL_SECTIONS.items():
-            if name in included:
+            if name not in included:
+                continue
+            if name in _callable:
                 tool_lines.append(f"- `{name}`")
+            else:
+                _named_without_schema.append(name)
+        if _named_without_schema:
+            # Loud rather than silent: a tool reaching this branch is either a
+            # missing schema or a tool that should not be in `TOOL_SECTIONS`,
+            # and both are worth a line in the log rather than a quiet omission.
+            logger.warning(
+                "H09: omitted from the compact prompt (no FUNCTION_TOOL_SCHEMAS "
+                "entry, so not callable on a native-tools turn): %s",
+                ", ".join(sorted(_named_without_schema)),
+            )
         parts = [
             "You are an AI assistant with native tool/function calling. "
             "Only the tool schemas provided by the API are available for this turn. "
@@ -3674,6 +3723,84 @@ def _detect_runaway_call(call_freq, threshold=15):
     return sig.split(":", 1)[0] if sig else None
 
 
+def _setting_pinned(key: str) -> bool:
+    """Whether an operator deliberately chose `key`, so the local-inference
+    lift must leave it alone. `H08`.
+
+    Returns False — meaning "lift" — if settings cannot be read at all, which
+    is this fork's shipped behaviour and therefore the least surprising thing
+    an unreadable file can do. `setting_is_explicit` already swallows a missing
+    or malformed settings file itself, so only an import failure reaches here.
+    """
+    try:
+        from src.settings import setting_is_explicit
+        return setting_is_explicit(key)
+    except Exception:
+        logger.debug("H08: could not read whether %s is pinned", key, exc_info=True)
+        return False
+
+
+def _lift_cap(value: int, lifted: int, *, unlimited: bool, pinned: bool) -> int:
+    """Module-level wrapper for `runtime_limits.lift_cap`. `H08`.
+
+    It exists at module scope, and not as a local import inside the one
+    function that first needed it, because that is exactly how this broke:
+    the refactor that created `_resolve_local_lifts` moved
+    `from src.runtime_limits import lift_cap as _lift_cap` inside it, and the
+    per-round timeout site 2,000 lines below kept calling `_lift_cap` — a
+    `NameError` on every request, in the hot loop. The targeted tests passed,
+    sixteen mutations passed, eight checkers passed; ninety-six full-suite
+    failures caught it. `B32`/`B33`'s family: a name that is not in scope where
+    it is used.
+
+    The defensive fallback returns the value unchanged, which is the
+    pre-`H08` behaviour for a cap the operator pinned and the pre-fork
+    behaviour for one they did not — the conservative direction either way.
+    """
+    try:
+        from src.runtime_limits import lift_cap
+    except Exception:  # pragma: no cover — stdlib-only module
+        logger.debug("H08: runtime_limits unavailable; cap left as passed", exc_info=True)
+        return value
+    return lift_cap(value, lifted, unlimited=unlimited, pinned=pinned)
+
+
+def _resolve_local_lifts(max_rounds: int, max_tokens: int, *, unlimited: bool):
+    """The local-inference lift for one request. `H08`.
+
+    Returns `(max_rounds, max_tokens, timeout_pinned)`. This is a function
+    rather than six lines inside `stream_agent_loop` because the rule and the
+    settings read were each testable on their own while **the wiring between
+    them was not** — and the wiring is the fix. Two mutations that never
+    consulted the pin survived a suite that tested both halves.
+
+    The two knobs are deliberately independent. `max_tokens` was lifted from
+    *inside* the `max_rounds` branch, which had no observable effect while the
+    outer condition was always true — `chat_routes` clamps rounds to 1..200, so
+    it was — but gating rounds on the pin would have made an explicit ROUNDS
+    setting silently disable the TOKENS lift as well.
+
+    `max_tokens` is passed `pinned=False` because it does not come from
+    settings at all: it is the active preset's value, and every shipped preset
+    sets one deliberately (8000 for Code Analyze, 4096 for Brainstorm, 6000 for
+    Reason). Lifting them all to 1,000,000 on local inference makes a preset's
+    token budget mean nothing, which is a real question and a different one —
+    `P3-21`.
+
+    The timeout is not lifted here: it is recomputed every round from settings,
+    so only the *pin* is resolved, once, since whether an operator chose a value
+    cannot change mid-request and `setting_is_explicit` opens a file.
+    """
+    return (
+        # ~unlimited rounds for long autonomous local runs
+        _lift_cap(max_rounds, 100_000, unlimited=unlimited,
+                  pinned=_setting_pinned("agent_max_rounds")),
+        # ~unbounded generation for local inference
+        _lift_cap(max_tokens, 1_000_000, unlimited=unlimited, pinned=False),
+        _setting_pinned("agent_stream_timeout_seconds"),
+    )
+
+
 async def stream_agent_loop(
     endpoint_url: str,
     model: str,
@@ -5115,10 +5242,16 @@ async def stream_agent_loop(
     except Exception:
         def _cyber_unlimited():
             return False
-    if _cyber_unlimited() and max_rounds and max_rounds < 100_000:
-        max_rounds = 100_000  # ~unlimited rounds for long autonomous local runs
-        if _cyber_unlimited() and max_tokens and max_tokens < 1_000_000:
-            max_tokens = 1_000_000  # ~unbounded generation for local inference
+    # `H08`. The lift stands — on your own GPU a 20-round ceiling is an
+    # arbitrary restriction, and lifting it is the point of this fork — but it
+    # may not overwrite a number a person typed. See `runtime_limits.lift_cap`.
+    #
+    # Both pins are read here, once. The timeout below is recomputed every
+    # round and `setting_is_explicit` opens `settings.json`; whether an
+    # operator pinned it cannot change mid-request, so reading it per round
+    # would buy nothing but file handles.
+    max_rounds, max_tokens, _timeout_pinned = _resolve_local_lifts(
+        max_rounds, max_tokens, unlimited=_cyber_unlimited())
     # --- end cybertooth custom ---
     for round_num in range(1, max_rounds + 1):
         round_response = ""
@@ -5168,8 +5301,11 @@ async def stream_agent_loop(
             _active_route_state["request_messages"] = _initial_route_request_messages
         all_tool_schemas = _tool_schemas_for_route(_active_route_state)
         agent_stream_timeout = int(get_setting("agent_stream_timeout_seconds", 300) or 300)
-        if _cyber_unlimited():
-            agent_stream_timeout = max(agent_stream_timeout, 86_400)  # cybertooth: ~no per-round timeout for local inference
+        # cybertooth: ~no per-round timeout for local inference, unless the
+        # operator set one (`H08`)
+        agent_stream_timeout = _lift_cap(agent_stream_timeout, 86_400,
+                                         unlimited=_cyber_unlimited(),
+                                         pinned=_timeout_pinned)
 
         _tool_names_sent = [t.get("function", {}).get("name") for t in (all_tool_schemas or []) if t.get("function")]
         logger.info(f"[agent-debug] round={round_num} model={model} _is_api_model={_is_api_model} tools_sent={len(_tool_names_sent)} tool_names={_tool_names_sent[:15]} relevant_tools={sorted(_relevant_tools)[:15] if _relevant_tools else 'ALL'}")
