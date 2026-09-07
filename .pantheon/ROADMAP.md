@@ -33,6 +33,7 @@ The other files in `.pantheon/` are *reference*, never tracking:
 | `check-destinations.py` | no address ships pre-filled. Law 16 clause 4's enforcement |
 | `check-jitter.py` | no recurring job fires on an exact boundary. P15-10's enforcement |
 | `check-outbound.py` | every call that leaves the process is paced, or it is named. P15-06's enforcement |
+| `check-unreachable.py` | routes with no caller. P3-15's automation of the discovery audit |
 | `design/pantheon-v10.html` | the mockup. Reference, not source. |
 
 ---
@@ -60,7 +61,7 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P0 | Fork identity & licence | 33 | 8 | **1** | **24** |
 | P1 | Token layer — the free wins | 14 | 8 | 0 | **6** |
 | P2 | Un-nerf | 26 | 12 | 0 | **14** |
-| P3 | Mechanical hygiene | 20 | 15 | **2** | **3** |
+| P3 | Mechanical hygiene | 21 | 15 | **2** | **4** |
 | P4 | The wire — the real glass box | 28 | 24 | 0 | **4** |
 | P5 | Trace & composer restyle | 17 | 17 | 0 | 0 |
 | P6 | Queue & Plan | 18 | 1 | 0 | **17** |
@@ -74,7 +75,7 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P14 | Measurement | 8 | 3 | 0 | **5** |
 | P15 | Outbound politeness | 12 | 2 | **1** | **9** |
 | P16 | Self-hosted by default | 20 | 1 | 0 | **19** |
-| **Total** | | **330** | **206** | **9** | **115** |
+| **Total** | | **331** | **206** | **9** | **116** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -99,7 +100,7 @@ Ten of its rows landed on 2026-08-27 — see § Progress. What is left of it:
 - **`P0-21b`, `P0-31`** — new, from the run: twelve bundled packages with no notice anywhere, and
   49 unaudited `ody-` storage-key hits.
 
-### Next: `P3-15`, then `H14`/`H15`/`H17`. `P15-07` waits on the owner
+### Next: `H14`/`H15`/`H17` (one-liners with real payoff), then `H02`/`H03`. `P15-07` waits on the owner
 
 **`P16-05` is the last zero-configuration leak**, and the only one that is not a one-liner: the
 embedding model is pulled from HuggingFace on the *first chat message*, because
@@ -225,6 +226,15 @@ location was wrong until it was corrected on the row itself; the row is right no
 *The one progress area. Newest first. One entry per completed section — two lines, a
 commit range, and nothing else. The detail lives in the commit messages, which is what
 they are for.*
+
+### P3-15 — the audit, as a script, and the fix that ate half a file
+`30bbff6..HEAD`. **Suite 6,939 → 6,962 passing.**
+
+`.pantheon/check-unreachable.py` rediscovers `H04` and `H10` from a clean checkout with no hints,
+which is the row's `Verify` line. Getting there needed the walk to follow `original_router` — the
+naive recursion reports 23 of 443 routes while looking correct — and needed `check-wiring`'s three
+blind spots closed first, one of whose fixes silently deleted 55% of `gallery.js` before the test
+that measures output length caught it.
 
 ### H05 — seven switches that did nothing, and the one line that undid the eighth
 `ffb88f2..HEAD`. **Suite 6,913 → 6,939 passing.**
@@ -2230,7 +2240,7 @@ shapes. Each is an audit, not a guess.
   overlaps `P2-22`), `doc-*` 11, `cookbook-*` 9 (becomes `forge-*` under `P0-29`),
   `doclib-*` 6, `new-skill-*` 5, `email-*` 4, `gallery-*` 3, `hwfit-*` 3, `rag-*` 2
   (`P2-23`), `tool-*` 2, plus 13 singletons. Lower the ceiling after each batch.
-- [ ] **P3-15** **Extend the check to the other half of the disease** — routes with no caller,
+- [x] **P3-15** **Extend the check to the other half of the disease** — routes with no caller,
   settings keys with no reader, feature flags with no consumer. `P2-18` found three flags with
   zero consumers by hand; a script finds the next three for free.
   **The audit that this script would have automated ran by hand on 2026-08-30 and produced the
@@ -2255,6 +2265,10 @@ shapes. Each is an audit, not a guess.
   the switch that silently uncaps every local agent run (`H08`). 128 read / 54 declared / 55
   forwarded by compose / 33 in `docs/setup.md`.
   `Verify:` the script finds `H01`, `H04` and `H10` from a clean checkout with no hints.
+  — **done 2026-09-07, and it does.** `.pantheon/check-unreachable.py` finds `H04` (`/api/embeddings/models`, `/api/embeddings/endpoint` — the model manager with zero pixels) and `H10` (`/api/cleanup` and its `preview` dry run) from a clean checkout with no hints. `H01` was the third and is fixed, so its *shape* is asserted against a fixture instead — otherwise the checker would only be proven on defects that happen to remain. **443 routes reached, and the row's warning about the walk was the load-bearing sentence.** The first implementation recursed into `route.app` and `route.router`, both of which are `None` on this FastAPI's `_IncludedRouter` — so it recursed, found nothing, and reported **23 routes** while looking entirely correct. The content hangs off `original_router`. **Path matching is pattern-to-pattern**, both sides normalised so every parameter, template hole and variable becomes `*`: `/api/gallery/{image_id}/rename` and `` `${API_BASE}/api/gallery/${id}/rename` `` share no useful substring and are the same route. The head-plus-tail probe the hand audit needed as its second pass is there as every prefix of the pattern. **It reports, it does not accuse** — an API token, a CLI, a webhook sender or the agent's own `app_api` may be the caller — so it is an inventory with a ceiling (`--max-routes 104`) in the shape `check-wiring` and `check-outbound` already use, and every `ALLOWED` prefix names who calls it. A test fails on an entry without a real reason.
+  **The three `check-wiring` blind spots the row required closing first are closed, and one of the fixes was itself the defect this project keeps finding.** The obvious comment stripper — `re.sub(r"/\*.*?\*/", "", src, flags=re.S)` — took `static/js/gallery.js` from **144,034 characters to 64,919**, because a `/*` inside a string opened a comment that ran thousands of lines. Every `id="..."` in the span went with it and the checker reported **153 unresolved ids that are created three lines from where they are looked up**. It is a character scanner now, string- and regex-literal aware, and the test asserts the output length is unchanged. The **variable-indexed collection** blind spot — the shape that hid the audit's highest-harm finding, an agent reporting it had opened a panel with no button behind it — needed two corrections of its own: the first rule ("this file has a computed lookup, so every literal collection in it counts") took UNRESOLVED from 2 to **511**, sweeping up model catalogues and icon names; requiring the collection to be named *at* the lookup brought it to 153, binding iteration to the **loop variable** killed `args: ['-y', 'caldav-mcp']` from an MCP preset table, and requiring kebab shape killed menu labels like `Calendar` and `Done`. **`static/app.js` and `static/sw.js` were never scanned at all** and now are. **UNRESOLVED moves 2 → 9, and nothing regressed** — the checker can see further. The seven new ones are `notes-fullscreen-toggle` and `mode-toggle` (predicted by name in this row's own notes), `notes-panel`, `message-input`, `overflow-research-btn`, `rail-agents` and `tool-agents-btn`; the last two sit behind a `.filter(Boolean)` that has been tolerating their absence. Each is an `H`-class finding and none is fixed here — discovering them was the row. 23 tests, 15 mutations, all caught. *(Two survived and were the same trap as the last five rows: `test_static_app_js_is_actually_scanned` called `tracked()` and checked the file was in the list, which stayed true when `main()` was changed to ignore it. Both assert through the real run now, on ids only that code path can produce.)* **(4) is not done**: the 84 environment variables read by app code and absent from `.env.example` are a separate scan against a separate source of truth, and folding them into a route checker would be one script doing two jobs. Filed as `P3-17`.
+
+- [ ] **P3-17** **84 environment variables are read by app code and absent from `.env.example`.** Measured by the discovery audit on 2026-08-30: **128 read / 54 declared / 55 forwarded by compose / 33 in `docs/setup.md`** — four sources of truth and no two agree. Among the undeclared is the switch that silently uncaps every local agent run (`H08`), which is the argument for the row: an operator cannot turn off a behaviour they cannot discover, and `.env.example` is where they look. Split out of `P3-15` on 2026-09-07 rather than folded into `check-unreachable.py`: the route scan compares a mounted app against frontend strings, this compares `os.getenv` call sites against a declared list, and one script doing both would have two ceilings and one name. `Verify:` a script names every variable read and undeclared, and CI holds the count. Same shape as `check-outbound.py` — the number may fall and never rise. — filed during `P3-15` — agent: `opus-5`
 
 **`check-wiring.py` has two blind spots, and they are worth fixing before extending it**
 *(measured 2026-08-27)*. It scans `tracked("static/js")` only, so **`static/app.js` and

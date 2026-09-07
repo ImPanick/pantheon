@@ -83,7 +83,7 @@ jobs:
       - run: python -m compileall -q app.py core routes src services scripts tests
 
   wiring-ratchet:
-    name: Wiring ratchet (check-wiring.py --max 2)
+    name: Wiring ratchet (check-wiring.py --max 9)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
@@ -96,8 +96,15 @@ jobs:
       # resolve to no markup and no runtime creation. The ceiling may fall and
       # may never rise; a PR that adds an unresolved lookup fails here.
       # No dependencies: the checker is stdlib plus `git ls-files`.
+      #
+      # 2 -> 9 on 2026-09-07, and NOT because anything regressed: P3-15 closed
+      # three blind spots the checker had, so it now sees defects that were
+      # always there. It never scanned static/app.js or static/sw.js at all; it
+      # counted comments as code; and it ignored ids reached through a literal
+      # collection, which is the shape that hid the discovery audit's
+      # highest-harm finding. The nine are listed in P3-15's roadmap entry.
       - name: check-wiring
-        run: python3 .pantheon/check-wiring.py --max 2
+        run: python3 .pantheon/check-wiring.py --max 9
       # Law 14, arrived at by accident. A module imported under two URLs is two
       # modules with two copies of its state, and nothing breaks loudly when it
       # happens — a registry written through one specifier is simply empty when
@@ -143,6 +150,17 @@ jobs:
       # throttled this product.
       - name: check-outbound
         run: python3 .pantheon/check-outbound.py --max 117
+      # P3-15. The other half of the same disease check-wiring measures: an
+      # element id with no markup and a route with no caller are both something
+      # that was built and never wired, and nothing in CI noticed because
+      # nothing was broken. The hand audit that found these produced the 21 `H`
+      # rows — a complete embedding-model manager with zero pixels, session
+      # cleanup with an unreachable dry run — and this rediscovers them from a
+      # clean checkout. An inventory with a ceiling, not an accusation: an API
+      # token, a CLI or the agent's own app_api may be the caller, so the
+      # ALLOWED map names the ones that are not the browser.
+      - name: check-unreachable
+        run: python3 .pantheon/check-unreachable.py --max-routes 104
 
   law16-egress:
     name: Law 16 — no egress on a fresh install
