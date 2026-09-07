@@ -1078,6 +1078,23 @@ def _compact_tool_line(name: str, section: str) -> str:
     return f"- `{name}` — " + lines[0][:160]
 
 
+def _compact_prompt_applies(is_api_model: bool) -> bool:
+    """Whether this route gets the compact (native-tools) system prompt. `B39`.
+
+    It is `is_api_model` and nothing else, and the point of writing that as a
+    function is that **the same predicate gates the schemas**:
+    `_tool_schemas_for_route` sends `FUNCTION_TOOL_SCHEMAS` when
+    `route_state["is_api_model"]` and otherwise sends nothing. The compact
+    prompt's first sentence is *"Only the tool schemas provided by the API are
+    available for this turn"*, so it is true exactly when that branch is taken
+    and false otherwise. Two predicates that must agree are easier to keep in
+    step when one of them has a name.
+
+    They disagreed for Ollama, which was the whole of `B39`.
+    """
+    return bool(is_api_model)
+
+
 def _schema_backed_tool_names() -> frozenset:
     """Names in `FUNCTION_TOOL_SCHEMAS` — the tools a native-tools turn can
     actually call. `H09`.
@@ -4740,7 +4757,34 @@ async def stream_agent_loop(
             needs_admin=_needs_admin,
             relevant_tools=route_tools,
             mcp_disabled_map=_mcp_disabled_map,
-            compact=is_api or is_native_ollama or is_ollama_compat,
+            # `B39`. Was `is_api or is_native_ollama or is_ollama_compat`, and
+            # those last two terms produced the only combination in the product
+            # where the prompt and the transport disagree. When a route is
+            # Ollama, `_agent_route_tool_mode` forces `is_api_model = False`
+            # unless the endpoint row declares `supports_tools` — which is
+            # `nullable, default=None`, and the add-endpoint form has no field
+            # for it, so an admin adding Ollama through Settings gets None. From
+            # that one value: `_tool_schemas_for_route` returns `[]`, so nothing
+            # is sent; `skip_fenced` is False, so the fenced parser is the only
+            # live channel; and `compact` was True, so the prompt said "only the
+            # tool schemas provided by the API are available… do not write tool
+            # syntax in chat" and listed bare names with no fenced syntax, since
+            # only the full prompt carries that. Every tool unreachable, in
+            # silence.
+            #
+            # The rest of the system already handles "no native tools" correctly
+            # and that is the proof this was an oversight rather than a trade: a
+            # `gpt-oss` model on llama.cpp is also `is_api_model = False`, is not
+            # Ollama, gets `compact = False`, and therefore gets the full prompt
+            # with the fenced syntax its parser is running. Ollama was the only
+            # family routed away from that.
+            #
+            # Measured before and after across LM Studio, vLLM local and LAN,
+            # llama.cpp, both Ollama URL forms and OpenAI: **this changes the two
+            # Ollama rows and nothing else.** An Ollama endpoint that does
+            # declare `supports_tools=True` is `is_api`, so it keeps the compact
+            # prompt exactly as before.
+            compact=_compact_prompt_applies(is_api),
             owner=owner,
             suppress_local_context=guide_only,
             suppress_skills=_low_signal_turn,
