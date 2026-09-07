@@ -118,10 +118,20 @@ def test_an_hourly_task_gets_a_useful_spread_and_a_minutely_one_gets_a_small_one
     hourly-and-slower, while a `* * * * *` task delayed half a minute would
     start skipping periods once its own runtime is added."""
     pytest.importorskip("croniter")
+    from datetime import datetime
     from src.task_scheduler import dispatch_hold, DISPATCH_JITTER_CAP_SECONDS
 
-    hourly = [dispatch_hold(_Task("0 * * * *")) for _ in range(200)]
-    minutely = [dispatch_hold(_Task("* * * * *")) for _ in range(200)]
+    # `now` is pinned to the moment a due task is actually dispatched — just
+    # after its cron boundary — because the hold is 5% of the time until the
+    # NEXT run and that period is what varies. Without this the test is flaky by
+    # wall clock: an hourly task evaluated at :59 has a one-minute period and a
+    # hold under three seconds, which is correct behaviour and fails an
+    # assertion about hourly tasks. It went red once in a full sweep at ~:59
+    # and passed alone every time, which is how a flaky test earns its place in
+    # the ignore pile.
+    at_the_boundary = datetime(2026, 9, 7, 10, 0, 1)
+    hourly = [dispatch_hold(_Task("0 * * * *"), now=at_the_boundary) for _ in range(200)]
+    minutely = [dispatch_hold(_Task("* * * * *"), now=at_the_boundary) for _ in range(200)]
     _varies(hourly, what="hourly tasks all dispatch together")
     _varies(minutely, what="minutely tasks all dispatch together")
 

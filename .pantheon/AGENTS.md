@@ -310,6 +310,14 @@ those have a real adversary.
 
 ---
 
+
+### Law 18 — a mutation run that can be killed must restore itself, or it is a commit you did not make.
+
+Twice in one session a `timeout`-killed mutation script left a checker mutated in the working tree: `check-outbound.py`'s `clientish` guard, and `check-jitter.py`'s computed-sleep guard. Both times the next full suite failed in a way that looked exactly like a real regression — `check-jitter` reporting two recurring jobs on a boundary that had been fine an hour earlier — and both times the diagnosis cost more than the mutation was worth.
+
+A `finally:` block does not run when the process is killed. So a mutation harness registers its restore with `atexit` **and** handles `SIGTERM`/`SIGINT`, and prints `git diff --stat` when it finishes so a leftover is visible in the same output that reported the results. `/tmp/mutlib.py` is that harness.
+
+The general form: **any tool that edits the tree to ask a question must be able to answer it while dying.** The measurement is not worth a silent change to the thing being measured.
 ## Before you start a task
 
 ```

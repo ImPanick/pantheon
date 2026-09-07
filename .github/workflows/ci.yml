@@ -149,7 +149,7 @@ jobs:
       # because those policies exist only because those hosts have already
       # throttled this product.
       - name: check-outbound
-        run: python3 .pantheon/check-outbound.py --max 117
+        run: python3 .pantheon/check-outbound.py --max 116
       # P3-15. The other half of the same disease check-wiring measures: an
       # element id with no markup and a route with no caller are both something
       # that was built and never wired, and nothing in CI noticed because

@@ -1035,13 +1035,20 @@ FUNCTION_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "edit_image",
-            "description": "Edit a gallery image: upscale, remove background, inpaint, or harmonize.",
+            # `H03`. `inpaint` was advertised here and cannot work from a tool
+            # call: it needs a mask marking the area to replace, and a caller
+            # holding only an `image_id` has no way to produce one. An action
+            # that cannot work is worse advertised than absent — absent, the
+            # model routes around it; advertised, it burns a turn and reports a
+            # failure the user cannot act on. The gallery's inpaint editor,
+            # which draws the mask, is where that capability lives.
+            "description": "Edit a gallery image: upscale, remove the background, or harmonize (img2img re-blend). Saves the result as a new gallery image and returns its ID. For inpainting, direct the user to the gallery's inpaint editor — it needs a mask this tool cannot draw.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "image_id": {"type": "string", "description": "Gallery image ID"},
-                    "action": {"type": "string", "enum": ["upscale", "rembg", "inpaint", "harmonize"], "description": "Edit action"},
-                    "prompt": {"type": "string", "description": "For inpaint: what to fill the masked area with"},
+                    "action": {"type": "string", "enum": ["upscale", "rembg", "harmonize"], "description": "Edit action"},
+                    "prompt": {"type": "string", "description": "For harmonize: what the re-blended image should look like"},
                     "scale": {"type": "number", "description": "For upscale: scale factor (default 2)"},
                 },
                 "required": ["image_id", "action"]
