@@ -6,6 +6,7 @@ import uuid
 import bcrypt
 from fastapi import APIRouter, HTTPException, Request, Form
 
+from core.api_tokens import TOKEN_PREFIX_LEN, mint_raw_token
 from core.database import get_db_session, ApiToken
 from core.middleware import require_admin
 from src.auth_helpers import get_current_user
@@ -134,7 +135,7 @@ def setup_api_token_routes() -> APIRouter:
         scope_list = _normalize_scopes(scopes, profile)
         scopes_value = ",".join(scope_list)
 
-        raw_token = "ody_" + secrets.token_urlsafe(32)
+        raw_token = mint_raw_token()
         token_hash = bcrypt.hashpw(raw_token.encode(), bcrypt.gensalt()).decode()
         token_id = str(uuid.uuid4())[:8]
 
@@ -144,7 +145,7 @@ def setup_api_token_routes() -> APIRouter:
                 owner=owner,
                 name=name,
                 token_hash=token_hash,
-                token_prefix=raw_token[:8],
+                token_prefix=raw_token[:TOKEN_PREFIX_LEN],
                 scopes=scopes_value,
                 is_active=True,
             ))
@@ -155,7 +156,7 @@ def setup_api_token_routes() -> APIRouter:
             "name": name,
             "owner": owner,
             "token": raw_token,
-            "token_prefix": raw_token[:8],
+            "token_prefix": raw_token[:TOKEN_PREFIX_LEN],
             "scopes": scope_list,
         }
 

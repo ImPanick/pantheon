@@ -462,20 +462,53 @@ async def do_manage_tokens(content: str, owner: Optional[str] = None) -> Dict:
             return {"response": f"{len(items)} API tokens", "tokens": items, "exit_code": 0}
 
         elif action == "create":
-            import uuid as _uuid, secrets, bcrypt
+            import uuid as _uuid, bcrypt
             from datetime import datetime
+            from core.api_tokens import (
+                TOKEN_PREFIX_LEN, invalidate_token_cache, mint_raw_token,
+            )
             name = args.get("name", "API Token")
-            raw_token = secrets.token_urlsafe(32)
+            # B43. A token with no owner is not a weak token, it is a dead one:
+            # `_refresh_token_cache` in app.py resolves every row's owner against
+            # the auth store and skips the ones it cannot place, logging a
+            # warning on every rebuild. Handing the caller a credential that is
+            # guaranteed to 401 is worse than saying no.
+            if not owner:
+                return {
+                    "error": "Cannot create an API token without an owner — "
+                             "the auth middleware ignores ownerless tokens, so "
+                             "the token would never authenticate.",
+                    "exit_code": 1,
+                }
+            # `mint_raw_token()` and not a bare `token_urlsafe`: the middleware
+            # only looks at Authorization headers whose credential carries a
+            # known prefix, so a token minted without one could not authenticate
+            # even with an owner. This path shipped without the prefix.
+            raw_token = mint_raw_token()
             token_hash = bcrypt.hashpw(raw_token.encode(), bcrypt.gensalt()).decode()
             tid = str(_uuid.uuid4())[:8]
-            t = ApiToken(id=tid, name=name, token_hash=token_hash,
-                         token_prefix=raw_token[:8], is_active=True,
+            # `chat` explicitly rather than by column default. It is the same
+            # scope this path already produced — `ApiToken.scopes` defaults to
+            # "chat" on insert — and writing it down is what makes it a decision
+            # instead of an accident. Anything broader is the admin UI's job:
+            # it has the scope allowlist and the profiles, and a tool the model
+            # drives should not be the place that widens a credential.
+            t = ApiToken(id=tid, owner=owner, name=name, token_hash=token_hash,
+                         token_prefix=raw_token[:TOKEN_PREFIX_LEN], scopes="chat",
+                         is_active=True,
                          created_at=datetime.utcnow(), updated_at=datetime.utcnow())
             db.add(t)
             db.commit()
-            return {"response": f"Created token '{name}'", "token": raw_token, "exit_code": 0}
+            # Bearer auth serves from an in-memory map that only rebuilds when
+            # flagged dirty. Without this the new token does not work until
+            # some unrelated token operation or a restart clears the cache.
+            invalidate_token_cache()
+            return {"response": f"Created token '{name}' for {owner} (scope: chat)",
+                    "token": raw_token, "owner": owner, "scopes": ["chat"],
+                    "exit_code": 0}
 
         elif action == "delete":
+            from core.api_tokens import invalidate_token_cache
             tid = args.get("token_id", "")
             t = db.query(ApiToken).filter(ApiToken.id == tid).first()
             if not t:
@@ -483,6 +516,11 @@ async def do_manage_tokens(content: str, owner: Optional[str] = None) -> Dict:
             name = t.name
             db.delete(t)
             db.commit()
+            # The row is gone and the cached copy is not. This is the half of
+            # B43 that matters: without it a revoked token kept authenticating
+            # until the next restart, because nothing else in this tool ever
+            # touched the dirty flag.
+            invalidate_token_cache()
             return {"response": f"Deleted token '{name}'", "exit_code": 0}
 
         else:

@@ -67,6 +67,10 @@ from core.constants import (
     REQUEST_TIMEOUT, OPENAI_API_KEY, AUTH_FILE,
 )
 from core.database import SessionLocal, ApiToken
+from core.api_tokens import (
+    bearer_credential as _bearer_credential,
+    register_cache_invalidator as _register_token_cache_invalidator,
+)
 from core.middleware import (
     SecurityHeadersMiddleware,
     get_application_route_path,
@@ -308,6 +312,12 @@ if AUTH_ENABLED:
         nonlocal_dict = app.state.__dict__
         nonlocal_dict["_token_cache_dirty"] = True
     app.state.invalidate_token_cache = _token_cache_invalidate
+    # Same setter, reachable without a `Request`. Routes keep using
+    # `app.state.invalidate_token_cache` exactly as before; the agent's tool
+    # layer runs inside the model loop and has no request to reach through, so
+    # before this line its `manage_tokens delete` left the revoked token
+    # authenticating out of the cache until the next restart (`B43`).
+    _register_token_cache_invalidator(_token_cache_invalidate)
     app.state._token_cache = _token_cache
     app.state._token_cache_dirty = True
 
@@ -414,9 +424,15 @@ if AUTH_ENABLED:
 
             # --- Bearer token auth (API tokens for external integrations) ---
             auth_header = request.headers.get("authorization", "")
-            if auth_header.startswith("Bearer ody_"):
-                raw_token = auth_header[7:]
-                # Sanity check: tokens are "ody_" + 43 chars of base64
+            # `bearer_credential` knows every prefix this build accepts, which
+            # is one today and two the moment `P0-31`'s rename lands: tokens
+            # already pasted into a scrape config or a paired phone were minted
+            # under the old prefix and have to keep working. It also matches the
+            # scheme case-insensitively, as RFC 7235 requires — that widens what
+            # is *offered* to the bcrypt check below and nothing else.
+            raw_token = _bearer_credential(auth_header)
+            if raw_token is not None:
+                # Sanity check: tokens are a 4-char prefix + 43 chars of base64
                 if len(raw_token) < 12 or len(raw_token) > 100:
                     return JSONResponse(status_code=401, content={"error": "Invalid API token"})
                 prefix = raw_token[:8]
