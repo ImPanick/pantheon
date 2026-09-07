@@ -62,7 +62,7 @@ def test_expand_scopes_model_resolution_to_cookie_user(monkeypatch):
 
 
 def test_expand_attributes_bearer_token_to_its_owner(monkeypatch):
-    # effective_user (not get_current_user) resolves a bearer ody_ caller to the
+    # effective_user (not get_current_user) resolves a bearer API-token caller to the
     # token's real owner instead of the sandbox "api" pseudo-user.
     seen = _patch_model_pipeline(monkeypatch)
     endpoint = _expand_endpoint()

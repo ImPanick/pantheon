@@ -481,7 +481,7 @@ def client(monkeypatch):
 
     from routes import chat_routes
 
-    # `api_token` is what the auth middleware stamps for an `ody_` bearer
+    # `api_token` is what the auth middleware stamps for an API-token bearer
     # caller, and `require_user` reads it before anything else. Carried on the
     # fixture so a test can be that caller without a second app.
     signed_in = {"user": ALICE, "api_token": False, "api_token_owner": None}

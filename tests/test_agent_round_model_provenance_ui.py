@@ -31,6 +31,26 @@ def _function_source(name):
     return match.group(0).replace("export function", "function", 1)
 
 
+def _const_source(name):
+    """The module's own `const <name> = ...;` line, verbatim.
+
+    These harnesses splice real functions out of `chatRenderer.js` and then
+    *retyped* the constants those functions close over — so the tests ran green
+    against the pre-rename cost key for a fortnight after `P0-04` moved the live
+    one. Green, because the harness supplied whatever name the extracted
+    function asked for; wrong, because the key under test was not the key the
+    product uses (`P0-31`). Read the line instead of retyping it."""
+    match = re.search(rf"^const {name} = .*?;$", _SOURCE, re.MULTILINE)
+    assert match, f"chatRenderer.js no longer defines a `const {name}`"
+    return match.group(0)
+
+
+def _const_value(name):
+    match = re.search(rf"^const {name} = ['\"]([^'\"]+)['\"]", _SOURCE, re.MULTILINE)
+    assert match, f"`const {name}` is not a plain string literal any more"
+    return match.group(1)
+
+
 def _run_node(source):
     proc = subprocess.run(
         ["node", "--input-type=module"],
@@ -109,7 +129,7 @@ def test_force_answer_synthesis_segment_is_included_in_fallback_cost():
 @pytest.mark.skipif(not _HAS_NODE, reason="node binary not on PATH")
 def test_repeated_live_metrics_render_records_session_cost_once():
     source = "\n".join([
-        "const _COST_KEY = 'ody-session-cost';",
+        _const_source("_COST_KEY"),
         "const state = {};",
         "const localStorage = {",
         "  getItem(key) { return state[key] || null; },",
@@ -135,8 +155,8 @@ def test_repeated_live_metrics_render_records_session_cost_once():
 @pytest.mark.skipif(not _HAS_NODE, reason="node binary not on PATH")
 def test_replayed_metrics_use_run_identity_for_durable_cost_deduplication():
     source = "\n".join([
-        "const _COST_KEY = 'ody-session-cost';",
-        "const _COST_RUNS_KEY = 'ody-session-cost-runs';",
+        _const_source("_COST_KEY"),
+        _const_source("_COST_RUNS_KEY"),
         "const _MAX_COST_RUNS_PER_SESSION = 256;",
         "const state = {};",
         "const localStorage = {",
@@ -165,8 +185,8 @@ def test_replayed_metrics_use_run_identity_for_durable_cost_deduplication():
 @pytest.mark.skipif(not _HAS_NODE, reason="node binary not on PATH")
 def test_run_cost_ledger_sums_segments_and_updates_repeated_segment_metrics():
     source = "\n".join([
-        "const _COST_KEY = 'ody-session-cost';",
-        "const _COST_RUNS_KEY = 'ody-session-cost-runs';",
+        _const_source("_COST_KEY"),
+        _const_source("_COST_RUNS_KEY"),
         "const _MAX_COST_RUNS_PER_SESSION = 256;",
         "const state = {};",
         "const localStorage = {",
@@ -197,9 +217,9 @@ def test_run_cost_ledger_sums_segments_and_updates_repeated_segment_metrics():
 @pytest.mark.skipif(not _HAS_NODE, reason="node binary not on PATH")
 def test_local_selected_endpoint_does_not_erase_paid_fallback_ledger():
     source = "\n".join([
-        "const _COST_KEY = 'ody-session-cost';",
-        "const _COST_RUNS_KEY = 'ody-session-cost-runs';",
-        "const state = {'ody-session-cost': JSON.stringify({session: 0.125})};",
+        _const_source("_COST_KEY"),
+        _const_source("_COST_RUNS_KEY"),
+        "const state = {'" + _const_value("_COST_KEY") + "': JSON.stringify({session: 0.125})};",
         "const localStorage = {",
         "  getItem(key) { return state[key] || null; },",
         "  setItem(key, value) { state[key] = value; },",

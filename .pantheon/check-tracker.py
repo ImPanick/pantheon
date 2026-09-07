@@ -39,6 +39,14 @@ ROWISH = re.compile(r"^\| (P\d+) \|")
 # different number from the table it sits under.
 SETUP = re.compile(rf"^\| Setup \| (.+?) \| {NUM} \| {NUM} \| {NUM} \| {NUM} \|$")
 TOTAL = re.compile(rf"^\| \*\*Total\*\* \| \| {NUM} \| {NUM} \| {NUM} \| {NUM} \|$")
+# The headline on each § Progress entry: `**338 tracked, 123 done. …**`. It is the
+# Total row restated in prose, and nothing checked it until 2026-09-07, by which
+# point it read 135 against a table saying 116 — the one line in this file whose
+# whole job is to summarise the rest, wrong by fifteen and carried forward
+# unread from entry to entry, because every author copied the line above (`B44`).
+# Only the newest entry is checked: the ones beneath it are a record of what was
+# claimed at the time, and rewriting those is a different kind of dishonesty.
+PROGRESS = re.compile(r"\*\*(\d+) tracked, (\d+) done\.")
 
 
 def count(lines):
@@ -120,6 +128,28 @@ def main() -> int:
             bad.append(
                 f"Total: row says {'/'.join(map(str, t))}, the rows above it sum to "
                 f"{'/'.join(map(str, summed))}  (total/ready/blocked/done)"
+            )
+
+    # The newest § Progress headline, against the Total row it restates.
+    if len(seen) == 1:
+        t = tuple(map(int, TOTAL.match(seen[0]).groups()))
+        newest = None
+        in_progress = False
+        for line in lines:
+            if line.startswith("## Progress"):
+                in_progress = True
+                continue
+            if in_progress:
+                m = PROGRESS.search(line)
+                if m:
+                    newest = (line.strip(), int(m.group(1)), int(m.group(2)))
+                    break
+        if newest is None:
+            bad.append("Progress: no entry carries a `N tracked, M done` headline")
+        elif (newest[1], newest[2]) != (t[0], t[3]):
+            bad.append(
+                f"Progress: the newest entry says {newest[1]} tracked / {newest[2]} done, "
+                f"the status table says {t[0]} / {t[3]}  -- {newest[0]}"
             )
 
     total = sum(sum(v[k] for k in MARKS.values()) for v in per.values())

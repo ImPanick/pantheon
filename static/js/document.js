@@ -3363,7 +3363,7 @@ import { _matchesCombo } from './keyboard-shortcuts.js';   // H20: Find reads th
     if (!list) return;
     menu.dataset.odyAttachKind = kind;
     list.replaceChildren(spinnerModule.createLoadingRow('Loading…', 14));
-    menu.querySelectorAll('[data-ody-attach-kind]').forEach(btn => {
+    menu.querySelectorAll('[data-pan-attach-kind]').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.odyAttachKind === kind);
     });
     const q = (menu.querySelector('.email-pantheon-attach-search')?.value || '').trim();
@@ -3441,11 +3441,11 @@ import { _matchesCombo } from './keyboard-shortcuts.js';   // H20: Find reads th
         Upload file
       </button>
       <div class="email-pantheon-attach-tabs">
-        <button type="button" data-ody-attach-kind="document" class="active">
+        <button type="button" data-pan-attach-kind="document" class="active">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h6"/></svg>
           <span>Documents</span>
         </button>
-        <button type="button" data-ody-attach-kind="gallery">
+        <button type="button" data-pan-attach-kind="gallery">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
           <span>Gallery</span>
         </button>
@@ -3470,7 +3470,7 @@ import { _matchesCombo } from './keyboard-shortcuts.js';   // H20: Find reads th
       _closePantheonAttachMenu();
       document.getElementById('doc-email-file-input')?.click();
     });
-    menu.querySelectorAll('[data-ody-attach-kind]').forEach(btn => {
+    menu.querySelectorAll('[data-pan-attach-kind]').forEach(btn => {
       btn.addEventListener('click', () => _loadPantheonAttachItems(menu, btn.dataset.odyAttachKind));
     });
     let attachSearchTimer = null;

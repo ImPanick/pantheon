@@ -24,6 +24,24 @@ KATEX_SRC = "/static/lib/katex/katex.min.js"
 KATEX_CSS = "/static/lib/katex/katex.min.css"
 
 
+def _module_const(rel, name):
+    """The value of a `const <name> = '<literal>'` in a shipped module.
+
+    Read, not retyped. These four tests spent a fortnight red because they
+    asserted `ody-math-pending` while `static/js/markdown.js` had said
+    `pan-math-pending` since `P0-04`'s rename — a fixture written to prove a
+    contract, pinning the side of it that moved. A test that hardcodes a
+    constant the module owns is testing its own copy (`P0-31`)."""
+    src = (_REPO / rel).read_text(encoding="utf-8")
+    match = re.search(rf"^const {name} = ['\"]([^'\"]+)['\"]", src, re.M)
+    assert match, f"{rel} no longer defines a `const {name}` string"
+    return match.group(1)
+
+
+# `static/js/markdown.js` puts this on every formula it banks for later.
+MATH_PENDING_CLASS = _module_const("static/js/markdown.js", "MATH_PENDING_CLASS")
+
+
 @pytest.fixture(scope="module")
 def node_available():
     if not _HAS_NODE:
@@ -145,7 +163,12 @@ const emit = (value) => console.log(JSON.stringify(value));
 
 
 def _run_node(body: str, timeout: int = 20):
-    script = _HARNESS + textwrap.dedent(body)
+    # `__MATH_PENDING__` rather than an f-string: these blocks are full of JS
+    # braces, and doubling every one of them to interpolate a single class name
+    # would make the harness unreadable to buy nothing.
+    script = (_HARNESS + textwrap.dedent(body)).replace(
+        "__MATH_PENDING__", MATH_PENDING_CLASS
+    )
     result = subprocess.run(
         ["node", "--input-type=module", "-e", script],
         cwd=_REPO,
@@ -282,8 +305,8 @@ def test_md_to_html_defers_math_when_katex_is_not_loaded_yet(node_available):
         """
     )
     html = out["html"]
-    assert 'class="ody-math-pending" data-display="false"' in html
-    assert 'class="ody-math-pending" data-display="true"' in html
+    assert f'class="{MATH_PENDING_CLASS}" data-display="false"' in html
+    assert f'class="{MATH_PENDING_CLASS}" data-display="true"' in html
     # The raw source survives the escaping passes — `y_1` must not become <em>.
     assert "x^2 + y_1" in html
     assert "<em>" not in html
@@ -356,7 +379,7 @@ def test_deferred_entity_math_banks_the_decoded_source(node_available):
         });
         """
     )
-    assert 'class="ody-math-pending"' in out["entity"]
+    assert f'class="{MATH_PENDING_CLASS}"' in out["entity"]
     assert out["entity"] == out["typed"]
     # Escaped once for transport, so the span's textContent is "a < b".
     assert "a &lt; b</span>" in out["entity"]
@@ -380,7 +403,7 @@ def test_detached_container_math_typesets_with_the_real_renderer(node_available)
         el.getAttribute = (name) => (name === 'data-display' ? 'false' : null);
         let written = null;
         Object.defineProperty(el, 'outerHTML', { set(v) { written = v; } });
-        const container = makeContainer({ '.ody-math-pending': [el] });
+        const container = makeContainer({ '.__MATH_PENDING__': [el] });
 
         const pending = mod.renderMath(container);
         globalThis.window.katex = katex;
@@ -392,11 +415,11 @@ def test_detached_container_math_typesets_with_the_real_renderer(node_available)
         """
     )
     # Cold page: mdToHtml could not typeset, so the export HTML starts pending.
-    assert 'class="ody-math-pending"' in out["html"]
+    assert f'class="{MATH_PENDING_CLASS}"' in out["html"]
     # After the export's own render pass it is real KaTeX markup.
     assert 'class="katex"' in out["written"]
     assert "katex-error" not in out["written"]
-    assert "ody-math-pending" not in out["written"]
+    assert MATH_PENDING_CLASS not in out["written"]
 
 
 def test_pdf_export_typesets_its_container_before_html2pdf():
@@ -425,7 +448,7 @@ def test_md_to_html_renders_inline_once_katex_is_loaded(node_available):
         """
     )
     assert '<span class="katex" data-display="false">x^2</span>' in out["html"]
-    assert "ody-math-pending" not in out["html"]
+    assert MATH_PENDING_CLASS not in out["html"]
 
 
 def test_render_math_typesets_deferred_placeholders(node_available):
@@ -437,7 +460,7 @@ def test_render_math_typesets_deferred_placeholders(node_available):
         let written = null;
         Object.defineProperty(el, 'outerHTML', { set(v) { written = v; } });
 
-        const container = makeContainer({ '.ody-math-pending': [el] });
+        const container = makeContainer({ '.__MATH_PENDING__': [el] });
         const pending = mod.renderMath(container);
         const scriptSrcs = injected.scripts.map((s) => s.src);
 

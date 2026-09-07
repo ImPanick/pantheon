@@ -161,6 +161,16 @@ jobs:
       # ALLOWED map names the ones that are not the browser.
       - name: check-unreachable
         run: python3 .pantheon/check-unreachable.py --max-routes 91
+      # P0-31. A rename that finishes on one side of a join is invisible: the
+      # writers move, the readers do not, and nothing raises. It happened four
+      # times from one sweep — the API token prefix a person pastes into
+      # another machine, the tmux session name the agent's shell is *found* by,
+      # sixteen dead stylesheet selectors that killed the pre-paint sidebar
+      # guard, and five suite failures that stood for a fortnight looking like
+      # flake. Reads code and not prose, so a comment explaining what the old
+      # name was survives; every real hit is a named migration path.
+      - name: check-fork-names
+        run: python3 .pantheon/check-fork-names.py
 
   law16-egress:
     name: Law 16 — no egress on a fresh install

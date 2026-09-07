@@ -364,9 +364,9 @@ function _normalizeServeCmdForLaunch(cmd) {
     .replace(/MODEL_FILE=\$\(\{\s+/g, 'MODEL_FILE=$({ ')
     .replace(/\s+\}\s+\|\s+head\s+-1\)/g, ' } | head -1)')
     .replace(/\s*;\s*/g, '; ')
-    .replace(/\s*\|\|\s*/g, ' __ODY_OR__ ')
+    .replace(/\s*\|\|\s*/g, ' __PAN_OR__ ')
     .replace(/\s*\|\s*/g, ' | ')
-    .replace(/\s+__ODY_OR__\s+/g, ' || ')
+    .replace(/\s+__PAN_OR__\s+/g, ' || ')
     .replace(/\s+/g, ' ')
     .trim();
 }

@@ -29,6 +29,19 @@ _STREAM_ERRORS_URI = (_REPO / "static" / "js" / "chatStreamErrors.js").as_uri()
 _HAS_NODE = shutil.which("node") is not None
 
 
+def _js_const(source: str, name: str) -> str:
+    """The value of a `const <name> = '<literal>'` in a shipped module.
+
+    Read rather than retyped. This test spliced the real cost-ledger source
+    into a harness whose stub `localStorage` keyed on the pre-rename spelling
+    of the runs key while `chatRenderer.js` had moved to the new one in
+    `P0-04`'s sweep, so the harness watched a bucket the code never touched and
+    the test was red for a fortnight (`P0-31`)."""
+    match = re.search(rf"^const {name} = ['\"]([^'\"]+)['\"]", source, re.M)
+    assert match, f"chatRenderer.js no longer defines a `const {name}` string"
+    return match.group(1)
+
+
 def _extract_source(source: str, start: str, end: str) -> str:
     """Slice module source between two anchors, failing loudly if one moved.
 
@@ -871,6 +884,7 @@ def test_cost_ledger_serializes_stale_cross_tab_writers():
     ledger = _extract_source(
         _RENDERER, "const _COST_KEY", "/** Create a timestamp span"
     ).replace("export function", "function")
+    cost_runs_key = _js_const(_RENDERER, "_COST_RUNS_KEY")
     script = f"""
       const state = {{}};
       let triggerPeerWrite = true;
@@ -891,7 +905,7 @@ def test_cost_ledger_serializes_stale_cross_tab_writers():
       const localStorage = {{
         getItem(key) {{
           const staleSnapshot = state[key] || null;
-          if (key === 'ody-session-cost-runs' && triggerPeerWrite) {{
+          if (key === '{cost_runs_key}' && triggerPeerWrite) {{
             triggerPeerWrite = false;
             tabB.recordSessionMetricsCost(peerMetrics, 'session');
           }}
@@ -913,7 +927,7 @@ def test_cost_ledger_serializes_stale_cross_tab_writers():
       }};
       await new Promise(resolve => setTimeout(resolve, 0));
       await lockTail;
-      const runs = JSON.parse(state['ody-session-cost-runs'] || '{{}}').session || {{}};
+      const runs = JSON.parse(state['{cost_runs_key}'] || '{{}}').session || {{}};
       console.log(JSON.stringify({{
         queued,
         settled: {{

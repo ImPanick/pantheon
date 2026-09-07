@@ -235,6 +235,11 @@ def test_list_tokens_returns_safe_display_fields_only(monkeypatch, token_routes_
     mod = token_routes_mod
     monkeypatch.setattr(mod, "get_current_user", lambda req: req.state.current_user)
 
+    # The stored `token_prefix` values in this file deliberately keep the
+    # inherited `ody_` spelling. They are what a token minted before `P0-31`
+    # looks like in the database, and the whole point of that row was that such
+    # tokens go on working — a fixture swept to the new prefix would stop
+    # exercising the case the migration exists for.
     row1 = SimpleNamespace(
         id="tok001",
         name="Production",

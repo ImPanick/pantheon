@@ -17,13 +17,13 @@ def test_task_webhook_url_matches_live_route_and_escapes_path_parts(monkeypatch)
     cli = load_script("pantheon-webhook")
 
     url = cli._task_webhook_url(
-        "https://ody.example/",
+        "https://pan.example/",
         "task/with space",
         "token/with space",
     )
 
     assert url == (
-        "https://ody.example/api/tasks/task%2Fwith%20space/"
+        "https://pan.example/api/tasks/task%2Fwith%20space/"
         "webhook/token%2Fwith%20space"
     )
 

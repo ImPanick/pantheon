@@ -38,9 +38,57 @@ async def _create_bash_subprocess(command: str, **kwargs):
     return await asyncio.create_subprocess_shell(command, **kwargs)
 
 
-def _tmux_session_name(session_id: Optional[str]) -> str:
+# The persistent shell each chat session gets is a tmux session named after it.
+# `P0-31` renamed the prefix off the fork's old name, and a bare rename would
+# have been the wrong shape here for the same reason it was wrong for API
+# tokens: a tmux session already running under the old name would not be found,
+# so its cwd, its exported variables and anything it had backgrounded would be
+# silently abandoned — and the session itself would linger as a live process
+# until the machine restarted. So the new name is what gets created, and a
+# session still alive under an older one is adopted rather than orphaned.
+TMUX_SESSION_PREFIX = "pan-agent-"
+LEGACY_TMUX_SESSION_PREFIXES = ("ody-agent-",)
+
+# slug -> the name actually in use. One `tmux has-session` pair on the first
+# command of a session, nothing after that; without it the adoption probe would
+# ride every bash call. Capped because a long-lived process should not grow a
+# dictionary keyed by every chat that ever ran in it.
+_RESOLVED_TMUX_NAMES: Dict[str, str] = {}
+_MAX_RESOLVED_TMUX_NAMES = 512
+
+
+def _tmux_session_slug(session_id: Optional[str]) -> str:
     raw = re.sub(r"[^A-Za-z0-9_.-]+", "-", str(session_id or "default")).strip("-")
-    return f"ody-agent-{raw[:80] or 'default'}"
+    return raw[:80] or "default"
+
+
+def _tmux_session_name(session_id: Optional[str]) -> str:
+    """The name in use for this session — adopted if one was, current if not.
+
+    Reads the resolution rather than recomputing it, so the name reported back
+    to the caller is the session their command actually ran in."""
+    slug = _tmux_session_slug(session_id)
+    return _RESOLVED_TMUX_NAMES.get(slug) or (TMUX_SESSION_PREFIX + slug)
+
+
+async def _resolve_tmux_session_name(session_id: Optional[str]) -> str:
+    """Current name if it exists or nothing older does; otherwise the live
+    older one."""
+    slug = _tmux_session_slug(session_id)
+    cached = _RESOLVED_TMUX_NAMES.get(slug)
+    if cached:
+        return cached
+    name = TMUX_SESSION_PREFIX + slug
+    if not await _tmux_has_session(name):
+        for prefix in LEGACY_TMUX_SESSION_PREFIXES:
+            legacy = prefix + slug
+            if await _tmux_has_session(legacy):
+                name = legacy
+                break
+    if len(_RESOLVED_TMUX_NAMES) >= _MAX_RESOLVED_TMUX_NAMES:
+        _RESOLVED_TMUX_NAMES.pop(next(iter(_RESOLVED_TMUX_NAMES)), None)
+    _RESOLVED_TMUX_NAMES[slug] = name
+    return name
 
 
 async def _run_exec(*args: str, timeout: float = 10) -> Tuple[str, str, int]:
@@ -139,7 +187,7 @@ async def _run_tmux_bash(
     timeout: float,
     progress_cb: Optional[Callable[[Dict], Awaitable[None]]] = None,
 ) -> Tuple[str, str, Optional[int], bool]:
-    name = _tmux_session_name(session_id)
+    name = await _resolve_tmux_session_name(session_id)
     await _ensure_tmux_session(name, cwd, env)
 
     stamp = f"{int(time.time() * 1000)}-{abs(hash(content)) % 1000000}"

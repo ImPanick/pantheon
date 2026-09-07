@@ -7193,11 +7193,11 @@ body.bg-pattern-sparkles {
       outline: 2px solid var(--accent, var(--red)) !important;
       outline-offset: 1px;
       box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent, var(--red)) 18%, transparent);
-      animation: ody-pulse 1.5s ease-in-out infinite;
+      animation: pan-pulse 1.5s ease-in-out infinite;
       z-index: 100;
       position: relative;
     }
-    @keyframes ody-pulse {
+    @keyframes pan-pulse {
       0%, 100% { outline-color: var(--accent, var(--red)); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent, var(--red)) 18%, transparent); }
       50%       { outline-color: color-mix(in srgb, var(--accent, var(--red)) 40%, transparent); box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent, var(--red)) 8%, transparent); }
     }
@@ -7210,7 +7210,7 @@ body.bg-pattern-sparkles {
       border: 3px solid var(--accent, var(--red));
       border-radius: 10px;
       z-index: 10000;
-      animation: ody-breathe 1.4s ease-in-out infinite;
+      animation: pan-breathe 1.4s ease-in-out infinite;
       opacity: 0;
       transform: scale(0.94);
       transition: opacity 0.35s ease-out, transform 0.35s ease-out;
@@ -7219,7 +7219,7 @@ body.bg-pattern-sparkles {
       opacity: 1;
       transform: scale(1);
     }
-    @keyframes ody-breathe {
+    @keyframes pan-breathe {
       0%, 100% {
         box-shadow: 0 0 0 3px  color-mix(in srgb, var(--accent, var(--red)) 55%, transparent),
                     0 0 22px 4px color-mix(in srgb, var(--accent, var(--red)) 40%, transparent);
