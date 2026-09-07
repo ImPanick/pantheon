@@ -2161,6 +2161,21 @@ export async function selectSession(id, { keepSidebar = false, showLoading = tru
       if (msgInput) msgInput.focus();
     }
   }
+
+  // `H02`. One event when the open session changes, so a module that needs to
+  // react does not have to poll for it.
+  //
+  // `assistant.js` was polling `window.sessionModule?.getActiveSession?.()`
+  // every second for two minutes on every page load — a method that does not
+  // exist anywhere in this repository — with `document.body.dataset.activeSessionId`
+  // as its fallback, which nothing sets. So the gear it was waiting to build
+  // was never built, and the cost of never building it was 120 wasted ticks per
+  // load. An event is the fix for both halves.
+  try {
+    document.dispatchEvent(new CustomEvent('pantheon:session-changed', {
+      detail: { sessionId: id },
+    }));
+  } catch (_) { /* a listener that throws is not this function's problem */ }
 }
 
 // Pending session — stored locally until the first message is sent

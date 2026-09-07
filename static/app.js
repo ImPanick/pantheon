@@ -173,6 +173,7 @@ function initRailHoverLabels() {
     'rail-delete-session': 'Delete',
     'rail-chats': 'Chat',
     'rail-documents': 'Docs',
+    'rail-assistant': 'Assistant',   // H02
     'rail-calendar': 'Calendar',
     'rail-compare': 'Compare',
     'rail-cookbook': 'Cookbook',

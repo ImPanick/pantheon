@@ -413,9 +413,21 @@ export async function openAssistantSettings() {
   }
 }
 
-// Sidebar wiring removed — Assistant chat + settings now live as
-// Activity / Settings tabs inside the Tasks modal (see tasks.js). The
-// exports below are still used by tasks.js to surface those views.
+// `H02`. What stood here said: "Sidebar wiring removed — Assistant chat +
+// settings now live as Activity / Settings tabs inside the Tasks modal (see
+// tasks.js). The exports below are still used by tasks.js to surface those
+// views."
+//
+// None of that was true. `tasks.js` has never imported this module, and the
+// exports were used by nothing at all. The migration was described and never
+// performed — and the description is why nobody noticed the entry point had
+// gone: a reader checking whether the assistant was reachable found a sentence
+// saying it had moved, and stopped looking.
+//
+// A comment asserting a state of the world is a claim, and this project has now
+// found four of them false in one audit (`H01`'s three, and this). The door is
+// the rail button wired in `_wireRailButton`; the gear is built when the
+// assistant session becomes the open one.
 
 // ── Chat-header affordances when the assistant session is active ───────────
 
@@ -439,25 +451,50 @@ async function _ensureHeaderAffordances(sessionId) {
   headerRight.appendChild(gear);
 }
 
-// Run a short polling check after session loads so we can add the gear button
-// once the chat header DOM is in place. Fire-and-forget.
+// `H02`. The gear appears when the assistant session becomes the open one,
+// driven by an event rather than by a poll.
+//
+// What was here spun `setInterval` every second for two minutes on every page
+// load, testing `window.sessionModule?.getActiveSession?.()?.id` — and
+// **`getActiveSession` occurs exactly once in this repository, at that call
+// site.** It is not among `sessionModule`'s exports; the real one is
+// `getCurrentSessionId()`. The fallback,
+// `document.body.dataset.activeSessionId`, is likewise referenced nowhere else
+// and set by nothing. So both branches were dead, the gear was never built, and
+// the only observable effect of the whole mechanism was 120 wasted ticks per
+// load.
 function _watchForAssistantActivation() {
-  let retries = 0;
-  const interval = setInterval(async () => {
-    retries += 1;
-    const activeSessionId = window.sessionModule?.getActiveSession?.()?.id
-      || document.body.dataset.activeSessionId
-      || null;
-    if (activeSessionId) {
-      await _ensureHeaderAffordances(activeSessionId);
-    }
-    if (retries > 120) clearInterval(interval); // ~2 minutes
-  }, 1000);
+  document.addEventListener('pantheon:session-changed', (ev) => {
+    const sessionId = ev?.detail?.sessionId;
+    if (sessionId) _ensureHeaderAffordances(sessionId);
+  });
+  // And once at boot, for a reload that lands directly on the assistant
+  // session — the event fires on a CHANGE and there is none on first paint.
+  const current = window.sessionModule?.getCurrentSessionId?.();
+  if (current) _ensureHeaderAffordances(current);
+}
+
+// ── The door (`H02`) ───────────────────────────────────────────────────────
+//
+// `openAssistantChat()` had **zero callers repo-wide**. 475 lines of frontend
+// and six live routes — personality, timezone, endpoint, model, a grouped tool
+// allow-list and three daily check-ins — behind a function nothing invoked.
+//
+// The comment where the sidebar wiring used to be says the views "now live as
+// Activity / Settings tabs inside the Tasks modal (see tasks.js)". They do not:
+// `tasks.js` never imports this module. That migration was described and never
+// performed, which is why the entry point was removed and nothing replaced it.
+function _wireRailButton() {
+  const btn = document.getElementById('rail-assistant');
+  if (!btn || btn.dataset.assistantWired === '1') return;
+  btn.dataset.assistantWired = '1';
+  btn.addEventListener('click', () => { openAssistantChat(); });
 }
 
 // ── Boot ───────────────────────────────────────────────────────────────────
 
 function _boot() {
+  _wireRailButton();
   _watchForAssistantActivation();
 }
 
