@@ -35,6 +35,7 @@ from src.tool_security import (
     blocked_tools_for_owner,
     email_tool_policy_names,
     plan_mode_disabled_tools,
+    feature_disabled_tools,
 )
 from src.tool_policy import GUIDE_ONLY_DIRECTIVE, WEB_TOOL_NAMES, ToolPolicy
 from src.tool_capabilities import (
@@ -3796,6 +3797,15 @@ async def stream_agent_loop(
         # MCP tools are namespaced dynamically, so hide all MCP schemas for
         # public/non-admin users rather than trying to enumerate every tool.
         mcp_mgr = None
+
+    # `H05` — a feature the admin switched off is off for the AGENT too.
+    #
+    # Seven of the eight flags did nothing before this: enforcement was entirely
+    # client-side, so turning off Deep Research hid a button and left the tool
+    # callable. Contributed into the same denylist `plan_mode` uses rather than
+    # as a second gate, so it inherits `execute_tool_block`'s enforcement, the
+    # prompt cache key below, and one set of tests (`Law 14`).
+    disabled_tools.update(feature_disabled_tools())
 
     if plan_mode:
         # Plan mode: investigate read-only, propose a plan, don't execute. The

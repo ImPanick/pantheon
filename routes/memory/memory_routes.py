@@ -53,7 +53,12 @@ def _load_for_update(memory_manager) -> List[Dict[str, Any]]:
 
 def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionManager, memory_vector=None):
     """Set up memory-related routes."""
-    router = APIRouter(prefix="/api/memory", tags=["memory"])
+    # `H05`. `memory` was one of the three flags with NO consumer anywhere —
+    # not in the UI, not on the server, not in the agent. It has all three now.
+    from fastapi import Depends
+    from src.feature_gate import require_feature
+    router = APIRouter(prefix="/api/memory", tags=["memory"],
+                       dependencies=[Depends(require_feature("memory", label="Memory"))])
 
     def _owner(request: Request) -> Optional[str]:
         return get_current_user(request)

@@ -781,6 +781,39 @@ belongs outside the app.
 
 ---
 
+### Turning a feature off actually turns it off
+
+Settings → Features has eight switches. Each one now applies in three places:
+the button disappears, the routes behind it refuse with a `403`, and — the part
+that matters — **the agent loses the tool**. A model cannot call Deep Research or
+the image tools for a feature you have switched off, whether or not it knows the
+URL.
+
+Before this, only the button disappeared. An admin who turned off Deep Research
+got a success response, the toggle stayed off, and the feature answered every
+request; three of the eight flags (`web_fetch`, `memory`, `rag`) did nothing
+anywhere at all.
+
+Two behaviours worth knowing:
+
+- **A disabled feature answers `403`, not `404`.** It exists and your
+  administrator switched it off; the message says so, and says who can turn it
+  back on. Pretending it was never built would be a lie you could disprove by
+  asking a colleague.
+- **If the flags file cannot be read, everything stays ON.** A corrupt
+  `data/features.json` must not silently take half the product away — and that
+  failure would look exactly like somebody having disabled everything on
+  purpose.
+
+`sensitive_filter` is the one switch that gates no capability: it redacts what is
+displayed and removes nothing the agent can do.
+
+Your own Appearance preferences no longer overrule an administrator's switch. A
+"show in sidebar" toggle brings back things you chose to hide, not things
+somebody else turned off.
+
+---
+
 ### Email the agent wrote is held until you say so
 
 When Pantheon composes an email on your behalf it does **not** send it. The

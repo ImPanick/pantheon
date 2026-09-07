@@ -77,7 +77,13 @@ from routes.document_helpers import (
 
 
 def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
-    router = APIRouter(tags=["documents"])
+    # `H05` — the `document_editor` flag. The UI hid two launchers; the routes
+    # answered regardless, and so did the document tools.
+    from fastapi import Depends
+    from src.feature_gate import require_feature
+    router = APIRouter(tags=["documents"],
+                       dependencies=[Depends(require_feature("document_editor",
+                                                             label="The document editor"))])
 
     def _reserve_document_uploads(user: Optional[str], content: str) -> None:
         missing_id = reserve_upload_references(upload_handler, user, content)

@@ -1,5 +1,7 @@
 # src/chat_processor.py
 import logging
+
+from src.feature_gate import feature_enabled   # H05
 import math
 import re
 import time
@@ -359,6 +361,16 @@ class ChatProcessor:
             # agent mode so chat mode and incognito stay clean.)
 
         # RAG: search if enabled and rag_manager available, inject only above threshold
+        #
+        # `H05` — the `rag` flag is honoured HERE and nowhere else, because
+        # retrieval is not a tool the model calls: it is context assembled
+        # before the turn. There is no name to put in a denylist and no router
+        # that is only retrieval, so a flag mapped to either of those would have
+        # been decoration. `rag` was one of the three flags the audit found with
+        # no consumer in any layer at all; this is its consumer.
+        if use_rag and not feature_enabled("rag"):
+            logger.info("RAG retrieval skipped: the `rag` feature is switched off")
+            use_rag = False
         if use_rag:
             try:
                 rag_manager = getattr(self.personal_docs_manager, 'rag_manager', None)

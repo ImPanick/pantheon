@@ -216,7 +216,17 @@ def _resolve_endpoint_runtime(ep, owner=None, model: Optional[str] = None):
 
 
 def setup_research_routes(research_handler, session_manager=None) -> APIRouter:
-    router = APIRouter(tags=["research"])
+    # `H05` — the `deep_research` flag is enforced here, not only in the UI.
+    # An admin who turns it off used to get a 200, a toggle that stayed off, and
+    # a feature that still answered every request. Mounted on the ROUTER so it
+    # covers every route in this file, including the ones nobody has written
+    # yet: per-route decoration is a convention, and the route that forgets is
+    # indistinguishable from the state this row found.
+    from fastapi import Depends
+    from src.feature_gate import require_feature
+    router = APIRouter(tags=["research"],
+                       dependencies=[Depends(require_feature("deep_research",
+                                                             label="Deep research"))])
 
     def _require_user(request: Request) -> str:
         """All research endpoints require an authenticated user. Research

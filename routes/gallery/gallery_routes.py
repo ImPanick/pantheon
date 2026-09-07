@@ -346,7 +346,11 @@ async def _fetch_result_image_b64(url: str) -> Optional[str]:
 
 
 def setup_gallery_routes() -> APIRouter:
-    router = APIRouter(tags=["gallery"])
+    # `H05` — see the note in research_routes. Same gate, same reason.
+    from fastapi import Depends
+    from src.feature_gate import require_feature
+    router = APIRouter(tags=["gallery"],
+                       dependencies=[Depends(require_feature("gallery", label="Gallery"))])
 
     # ---- POST /api/gallery/upload ----
     @router.post("/api/gallery/upload")

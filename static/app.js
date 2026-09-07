@@ -1510,15 +1510,25 @@ function initializeEventListeners() {
       };
       Object.entries(map).forEach(([key, ids]) => {
         if (features[key] === false) {
-          ids.forEach(id => { const e = el(id); if (e) e.style.display = 'none'; });
+          ids.forEach(id => {
+            // Recorded, not just hidden: `applyUIVis` writes `display` for all
+            // 31 UI_VIS_MAP selectors and would otherwise show these again on
+            // its next pass — which is exactly what happened one line below
+            // this, until `H05` (`_featureHiddenIds`).
+            if (window.__pantheonFeatureHiddenIds) window.__pantheonFeatureHiddenIds.add(id);
+            const e = el(id);
+            if (e) e.style.display = 'none';
+          });
         }
       });
-      // Re-apply the user's Appearance UI-vis preferences after the
-      // features fetch finishes hiding things — otherwise an admin-
-      // disabled feature leaves the sidebar entry hidden even when the
-      // user's "Show in sidebar" toggle is on. The user has to toggle
-      // off then on to trigger applyUIVis a second time, which is the
-      // bug they report as "deep research only shows after I toggle".
+      // Re-apply the user's Appearance UI-vis preferences after the features
+      // fetch, which is why it is here: without it an admin-disabled feature
+      // left the sidebar entry hidden even when the user's "Show in sidebar"
+      // toggle was on, and they had to toggle off and on again — reported as
+      // "deep research only shows after I toggle".
+      //
+      // `applyUIVis` now re-hides the recorded ids as its last step, so this
+      // call restores the user's preferences WITHOUT undoing the admin's.
       try { if (window.applyUIVis && window.loadUIVis) window.applyUIVis(window.loadUIVis()); } catch (_) {}
     })
     .catch(() => {});
@@ -2750,6 +2760,29 @@ function initializeEventListeners() {
     Storage.setJSON(UI_VIS_KEY, state);
   }
 
+  // `H05`. Element ids the ADMIN has switched off via a feature flag. The
+  // user's Appearance preferences cannot bring these back — a "show in sidebar"
+  // toggle is not a way to re-enable a feature somebody else turned off — so
+  // `applyUIVis` re-hides them on every pass.
+  //
+  // This is the whole bug the row found. The features fetch hid nine elements
+  // and then, in the SAME `.then()` callback one line later, called
+  // `applyUIVis(loadUIVis())`, which writes `display` for all 31 selectors in
+  // `UI_VIS_MAP` — and for a user with default Appearance prefs every one
+  // resolves visible. Measured by replaying the real sequence: nine hidden,
+  // then seven shown again. The `applyUIVis` call was added deliberately, to
+  // fix "deep research only shows after I toggle", so removing it would put
+  // that back. The fix is precedence, not ordering: the admin's decision is
+  // re-applied last, every time, rather than once.
+  const _featureHiddenIds = new Set();
+  function _reapplyFeatureHiding() {
+    _featureHiddenIds.forEach(id => {
+      const e = el(id);
+      if (e) e.style.display = 'none';
+    });
+  }
+  window.__pantheonFeatureHiddenIds = _featureHiddenIds;
+
   function applyUIVis(state) {
     // resolveVisibility computes selector→visible (pure; ui_visibility.js),
     // including the tools-section parent rule that hides every tool rail
@@ -2759,6 +2792,9 @@ function initializeEventListeners() {
         el.style.display = visible ? '' : 'none';
       });
     }
+    // The admin's feature flags outrank the user's Appearance preferences, so
+    // this runs after the preference pass and not before it (`H05`).
+    _reapplyFeatureHiding();
     // Drag reorder: use body class so dynamically created handles are covered
     const dragEnabled = state['section-drag-reorder'] === true;
     document.body.classList.toggle('rearrange-mode', dragEnabled);

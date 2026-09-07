@@ -170,6 +170,83 @@ _PLAN_MODE_KNOWN_MUTATORS = {
 }
 
 
+# ── Feature flags, made real (`H05`) ────────────────────────────────────────
+#
+# `DEFAULT_FEATURES` has eight switches. Before this, **seven of them did
+# nothing**: `load_features()` had three callers and all three were read-write
+# plumbing, so no server-side code branched on any flag. Enforcement was
+# entirely client-side — `static/app.js` hid four elements — which meant an
+# admin who turned off Deep Research got a success response, the toggle stayed
+# off, and the feature was still there. **And the agent could call the tool
+# regardless**, which is the half that matters: a flag the model does not honour
+# is not a control, it is a label.
+#
+# THIS IS A DENYLIST CONTRIBUTOR, NOT A SECOND GATE.
+#
+# `execute_tool_block` already blocks anything in `disabled_tools`, and
+# `plan_mode_disabled_tools()` above is the precedent for computing that set
+# from a policy rather than storing it. A second enforcement path would be a
+# second thing that can disagree with the first (`Law 14`), so this returns
+# names into the same set and inherits its tests, its cache key and its
+# fail-closed behaviour.
+#
+# `sensitive_filter` is deliberately absent from this map and that is not an
+# oversight. It is a DISPLAY filter — it redacts what is shown, it does not
+# remove a capability — so there is no tool whose absence would implement it.
+# Mapping it to something would be inventing a meaning the switch never had.
+_FEATURE_TOOLS: dict = {
+    "web_search": {"web_search"},
+    "web_fetch": {"web_fetch"},
+    "deep_research": {"trigger_research", "manage_research"},
+    "memory": {"manage_memory"},
+    "document_editor": {
+        "create_document", "edit_document", "update_document",
+        "suggest_document", "manage_documents",
+    },
+    "rag": set(),          # see _FEATURE_NOTES
+    "gallery": {"generate_image", "edit_image"},
+}
+
+# Why a flag maps to nothing, written down rather than left as an empty set for
+# the next reader to guess at.
+_FEATURE_NOTES = {
+    "rag": (
+        "Retrieval is not a tool the model calls — it is context assembled "
+        "before the turn. Turning it off has to stop the retrieval, which is a "
+        "check at the retrieval site, not a name in a denylist. The flag is "
+        "honoured there and in the routes; it has nothing to contribute here."
+    ),
+    "sensitive_filter": (
+        "A display filter, not a capability. It redacts what is shown and "
+        "removes nothing the agent can do."
+    ),
+}
+
+
+def feature_disabled_tools(features: Optional[dict] = None) -> Set[str]:
+    """Tool names to add to the denylist because their feature is switched off.
+
+    Reads `load_features()` when not given a mapping. Fails **open** on a read
+    error and closed on nothing: a features file that will not parse must not
+    silently disable half the product, and `load_features` already falls back to
+    the defaults on every error it can see.
+    """
+    if features is None:
+        try:
+            from src.settings import load_features
+            features = load_features()
+        except Exception as exc:
+            logger.warning("Unable to read feature flags for tool gating: %s", exc)
+            return set()
+    if not isinstance(features, dict):
+        return set()
+    blocked: Set[str] = set()
+    for flag, names in _FEATURE_TOOLS.items():
+        if flag in features and not features.get(flag):
+            blocked |= set(names)
+    return blocked
+
+
 def plan_mode_disabled_tools() -> Set[str]:
     """Tool names to add to the denylist in plan mode.
 
