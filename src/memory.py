@@ -26,6 +26,44 @@ def tokenize(text: str) -> List[str]:
     """Simple tokenizer that splits on whitespace and removes punctuation."""
     return [word.strip('.,!?";') for word in text.split()]
 
+def _is_identity_memory(text: str) -> bool:
+    """Whether a memory looks like it says who someone is. `B40`.
+
+    Lifted verbatim out of `get_relevant_memories` so it can be named, tested
+    and — when someone gets to it — narrowed. It is much broader than it looks:
+    `\\b[A-Z][a-z]+ [A-Z][a-z]+\\b` matches ANY two consecutive capitalised
+    words, so "Bridge Street", "Docker Compose" and "Hacker News" all qualify.
+    Widening this predicate is a retrieval-quality change rather than a bug
+    fix, so it is left exactly as found and filed as `P13-11`.
+    """
+    lowered = (text or "").lower()
+    return any([
+        re.search(r"\b[A-Z][a-z]+ [A-Z][a-z]+\b", text or ""),
+        any(word in lowered for word in
+            ["name is", "i'm", "i am", "called", "my name", "named", "call me"]),
+    ])
+
+
+def _matches_keyword(text: str, word: str) -> bool:
+    """Whether `word` appears in `text` as a WORD, not as a substring. `B40`."""
+    return re.search(r"\b" + re.escape(word) + r"\b", text) is not None
+
+
+def _query_type(query_lower: str, groups):
+    """First group whose keyword appears in the query, or None. `B40`.
+
+    Order matters and is the caller's: identity is checked first, so a query
+    that is genuinely about who someone is wins over one that merely mentions a
+    phone number. That ordering was always the intent; it just never got a
+    chance to run, because substring matching made the first group match
+    everything.
+    """
+    for name, words in groups:
+        if any(_matches_keyword(query_lower, word) for word in words):
+            return name
+    return None
+
+
 def get_text_similarity(text1: str, text2: str) -> float:
     """Calculate Jaccard similarity between two texts."""
     if not text1 or not text2:
@@ -371,44 +409,59 @@ class MemoryManager:
         fact_words = ["what", "when", "where", "how", "why", "explain", "describe", "information", "know"]
         
         query_lower = query.lower()
-        
-        # Determine query type based on keywords
-        query_type = None
-        if any(word in query_lower for word in identity_words):
-            query_type = "identity"
-        elif any(word in query_lower for word in contact_words):
-            query_type = "contact"
-        elif any(word in query_lower for word in preference_words):
-            query_type = "preference"
-        elif any(word in query_lower for word in task_words):
-            query_type = "task"
-        elif any(word in query_lower for word in fact_words):
-            query_type = "fact"
+
+        # Determine query type based on keywords.
+        #
+        # `B40`. This was `any(word in query_lower for word in ...)` — a
+        # SUBSTRING test — and `identity_words` contains `"i"`, `"am"`, `"me"`
+        # and `"my"`. So "what **i**s the weather" is an identity question, and
+        # so is "expla**i**n the code", "f**i**nd the invoice" and "what
+        # ti**me**". Measured over ten ordinary queries: **ten of ten
+        # classified as identity**, which meant the identity branch was
+        # effectively the only branch and the contact, preference and task
+        # boosts below had never run in production.
+        #
+        # Word boundaries, which is what "contains the keyword" was always
+        # meant to say. The same ten now classify as fact, task, contact and
+        # identity in the shapes you would expect, and "who am I" and "what is
+        # my name" are still identity.
+        query_type = _query_type(query_lower, (
+            ("identity", identity_words),
+            ("contact", contact_words),
+            ("preference", preference_words),
+            ("task", task_words),
+            ("fact", fact_words),
+        ))
         
         relevant = []
-        identity_memories = []
         other_memories = []
-        
-        # Separate identity memories from others
+
+        # `B40`. This used to partition the memories in two and score only the
+        # "other" half, so a memory the `_is_identity_memory` test caught was
+        # **never scored at all** unless the query classified as identity — not
+        # even by the exact-phrase rule below, which says in as many words that
+        # a verbatim match is highly relevant. With a memory reading "Joseph
+        # Jeffrey works at Afrog Labs", the query "Afrog Labs" returned
+        # nothing, and so did "where does Joseph Jeffrey work".
+        #
+        # And `_is_identity_memory` catches far more than names: its regex is
+        # any two consecutive capitalised words, so "the office is at 12 Bridge
+        # Street" and "deploys with Docker Compose on Sunday" are both
+        # "identity memories".
+        #
+        # The deliberate part is kept exactly as it was written: for an
+        # identity QUERY, identity memories are admitted at 0.9 regardless of
+        # similarity. That is what the original comment says it wants, and with
+        # classification fixed it now happens only for questions that really
+        # are about identity. What is removed is the accidental half — that
+        # everything else about them was thrown away.
         for memory in memories:
-            memory_text = memory["text"].lower()
-            # Check if this is an identity memory (contains name patterns or identity indicators)
-            is_identity = any([
-                re.search(r'\b[A-Z][a-z]+ [A-Z][a-z]+\b', memory["text"]),
-                any(word in memory_text for word in ["name is", "i'm", "i am", "called", "my name", "named", "call me"])
-            ])
-            if is_identity:
-                identity_memories.append(memory)
-            else:
-                other_memories.append(memory)
-        
-        # For identity queries, include all identity memories regardless of similarity
-        if query_type == "identity" and identity_memories:
-            # Give them high scores to ensure they're included first
-            for memory in identity_memories:
+            if query_type == "identity" and _is_identity_memory(memory.get("text", "")):
                 relevant.append((0.9, memory))  # High score for identity memories in identity queries
-        
-        # Process other memories with similarity scoring
+                continue
+            other_memories.append(memory)
+
+        # Process the rest with similarity scoring
         for memory in other_memories:
             memory_text = memory["text"].lower()
             memory_tokens = set(tokenize(memory_text))
