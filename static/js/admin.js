@@ -336,11 +336,31 @@ function initSignupToggle() {
     .then(d => { toggle.checked = !!d.signup_enabled; })
     .catch(e => console.warn('Auth status fetch failed:', e));
   toggle.addEventListener('change', async () => {
+    // `H17`. This used to POST `/api/auth/signup-toggle`, whose own docstring
+    // has always said *"DEPRECATED: this endpoint uses toggle semantics which
+    // can lead to unsafe state changes. Use PUT /open-signup instead."* — and
+    // the safe idempotent replacement had no caller anywhere in the tree.
+    //
+    // Toggle semantics on a security control are the defect: two admins
+    // clicking, or one double-submit, flips it twice and leaves open
+    // registration ON while both switches read OFF. The state to send is the
+    // one the switch is now showing, so send exactly that.
+    const desired = toggle.checked;
     try {
-      const res = await fetch('/api/auth/signup-toggle', { method: 'POST', credentials: 'same-origin' });
+      const res = await fetch('/api/auth/open-signup', {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: desired }),
+      });
       const data = await res.json();
-      toggle.checked = data.signup_enabled;
-    } catch (e) { toggle.checked = !toggle.checked; }
+      // Trust the server's answer over the optimistic switch — a refused
+      // request must not leave the UI claiming a change that did not happen.
+      toggle.checked = typeof data.signup_enabled === 'boolean'
+        ? data.signup_enabled
+        : desired;
+      if (!res.ok) toggle.checked = !desired;
+    } catch (e) { toggle.checked = !desired; }
   });
 }
 

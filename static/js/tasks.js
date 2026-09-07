@@ -1487,17 +1487,48 @@ function _showForm(existing, initTaskType, initTriggerType) {
     } else if (triggerType === 'webhook') {
       if (existing?.webhook_token) {
         const url = `${API_BASE}/api/tasks/${existing.id}/webhook/${existing.webhook_token}`;
+        // `H17(b)`. This URL carries its own bearer token in the path and the
+        // label says "No auth needed" — which is accurate and is exactly why
+        // the missing control mattered. `POST /api/tasks/{id}/webhook-regenerate`
+        // rotates the token and had **no caller anywhere**, so if the URL leaked
+        // — a pasted screenshot, a shared CI log, a copied support ticket —
+        // there was no revocation path in the product at all. A secret you can
+        // copy but cannot rotate is a secret with no lifecycle.
         triggerOpts.innerHTML = `
           <label class="task-form-label">Webhook URL</label>
           <div style="display:flex;gap:4px;align-items:center;">
             <input type="text" class="task-form-input" value="${url}" readonly style="flex:1;font-size:11px;opacity:0.8;" id="task-form-webhook-url" />
             <button class="task-btn" id="task-form-webhook-copy" style="white-space:nowrap;">Copy</button>
+            <button class="task-btn" id="task-form-webhook-rotate" style="white-space:nowrap;" title="Issue a new token. The current URL stops working immediately.">Rotate</button>
           </div>
-          <div style="font-size:10px;opacity:0.4;margin-top:4px;">POST this URL from any external service to trigger the task. No auth needed.</div>
+          <div style="font-size:10px;opacity:0.4;margin-top:4px;">POST this URL from any external service to trigger the task. Anyone holding it can run the task — rotate if it leaks.</div>
         `;
         document.getElementById('task-form-webhook-copy')?.addEventListener('click', () => {
           navigator.clipboard.writeText(url);
           if (uiModule) uiModule.showToast('Copied');
+        });
+        document.getElementById('task-form-webhook-rotate')?.addEventListener('click', async () => {
+          // Confirmed, because it is irreversible for anything already using
+          // the old URL — which is the point of it, and still a surprise if
+          // nobody said so.
+          const ok = window.confirm(
+            'Issue a new webhook token?\n\nThe current URL stops working immediately. '
+            + 'Anything already using it will need the new one.');
+          if (!ok) return;
+          try {
+            const res = await fetch(`${API_BASE}/api/tasks/${existing.id}/webhook-regenerate`,
+                                    { method: 'POST', credentials: 'same-origin' });
+            const data = await res.json();
+            if (!res.ok || !data.webhook_token) {
+              if (uiModule) uiModule.showError('Could not rotate the token. The old URL still works.');
+              return;
+            }
+            existing.webhook_token = data.webhook_token;
+            renderTriggerOpts();
+            if (uiModule) uiModule.showToast('New webhook URL issued');
+          } catch (e) {
+            if (uiModule) uiModule.showError('Could not reach Pantheon. The old URL still works.');
+          }
         });
       } else {
         triggerOpts.innerHTML = '<div style="font-size:11px;opacity:0.5;margin-top:4px;">Webhook URL will be generated when the task is saved.</div>';

@@ -2996,8 +2996,18 @@ function _rerenderCachedModels() {
             const freeGb = (g.free_mb / 1024).toFixed(1);
             const totalGb = (g.total_mb / 1024).toFixed(1);
             const procCount = (g.processes && g.processes.length) || 0;
+            // `H14`. This said "click to view/kill" and plain click does not
+            // open it — the only call sites are `contextmenu` and `dblclick`
+            // (below), while click toggles GPU selection.
+            //
+            // The tooltip is what moved, not the gesture, and that is the
+            // safe direction: the popup it opens carries per-PID SIGTERM and
+            // SIGKILL buttons, so binding it to the plain click that currently
+            // means *select* would put the most destructive control in the
+            // panel one accidental click away. Both working gestures are named
+            // because right-click does not exist on a touch device.
             const procLine = procCount
-              ? `\n${procCount} process(es) — click to view/kill`
+              ? `\n${procCount} process(es) — right-click or double-click to view/kill`
               : '';
             const backendLine = g.backend || data.backend ? `\nprobe: ${g.source || data.source || g.backend || data.backend}` : '';
             b.title = `GPU ${idx} ${g.name}\n${freeGb} / ${totalGb} GB free · util ${g.util_pct}%${procLine}${backendLine}`;
@@ -3090,7 +3100,11 @@ function _rerenderCachedModels() {
           });
         }
 
-        // After probe, clicking a GPU button opens kill popup (Shift-click also toggles select)
+        // After probe, RIGHT-clicking or DOUBLE-clicking a GPU button opens the
+        // process viewer and killer; plain click toggles GPU selection. The
+        // comment said "clicking" and was wrong in the same way the tooltip was
+        // (`H14`) — a sentence beside the code is read as the code by everyone
+        // except the interpreter.
         panel.querySelectorAll('.cookbook-gpu-btn').forEach(btn => {
           btn.addEventListener('contextmenu', (ev) => {
             if (!panel._gpuProbe.byIdx) return;

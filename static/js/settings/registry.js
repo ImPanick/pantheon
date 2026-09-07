@@ -95,7 +95,15 @@ export const SETTINGS_PANELS = Object.freeze([
     id: 'appearance',
     label: 'Appearance',
     group: 'experience',
-    keywords: ['appearance', 'theme', 'font', 'density', 'peek'],
+    // `H15` — the four words the row named. Harvesting control text makes
+    // "Sensitive Blur" findable by its own label and by "secrets", which is
+    // most of the fix; it cannot make it findable by *privacy*, *security* or
+    // *redact*, because none of those words is anywhere in the markup. That
+    // matters because this panel holds the app's only privacy control, it ships
+    // OFF, and there is no Privacy or Security panel among the thirteen — so
+    // someone about to share their screen types the category, not the label.
+    keywords: ['appearance', 'theme', 'font', 'density', 'peek',
+               'privacy', 'security', 'redact', 'blur', 'sensitive'],
   }),
   definePanel({
     id: 'shortcuts',
@@ -159,7 +167,7 @@ export function isAdminOnlySettingsTab(id) {
   return getSettingsPanel(id)?.adminOnly === true;
 }
 
-export function getSettingsPanelSearchText(panelOrId) {
+export function getSettingsPanelSearchText(panelOrId, controlText = '') {
   const panel = typeof panelOrId === 'string'
     ? getSettingsPanel(panelOrId)
     : panelOrId;
@@ -169,7 +177,53 @@ export function getSettingsPanelSearchText(panelOrId) {
   return [
     panel.label,
     ...(panel.keywords || []),
+    controlText,
   ].join(' ').toLowerCase();
+}
+
+/**
+ * The text of every control inside a panel, harvested from the markup (`H15`).
+ *
+ * Settings search indexed 13 panel labels and **zero of the 96 controls**, so
+ * 31 of the 32 labelled toggles in Appearance were unfindable by any word in
+ * their own label — *Incognito Mode*, *Deep Research*, *Shell*, *Web Search*.
+ *
+ * The sharpest case is why this is not cosmetic. **Sensitive Blur** — *"blur
+ * emails, tokens, and secrets in AI output"* — is the app's only privacy
+ * control, ships OFF, and lives under Appearance, because there is no Privacy
+ * or Security panel among the thirteen. Typing *privacy*, *secret*, *redact* or
+ * *security* returned nothing. Someone about to share their screen could not
+ * find the feature that hides their API keys.
+ *
+ * HARVESTED, NOT LISTED. A hand-written keyword list for 96 controls is a
+ * second copy of the labels that starts drifting the day someone renames one,
+ * and this codebase has spent several rows on exactly that failure. The markup
+ * is the source of truth; `data-settings-panel="<id>"` already links a panel to
+ * its subtree.
+ */
+export function harvestSettingsControlText(modalEl) {
+  if (!modalEl || typeof modalEl.querySelectorAll !== 'function') return {};
+  const out = {};
+  for (const container of modalEl.querySelectorAll('[data-settings-panel]')) {
+    const id = container.dataset && container.dataset.settingsPanel;
+    if (!id) continue;
+    const parts = [];
+    // Labels, headings and the sentence under a toggle — the words a person
+    // would actually type. Not `input` values or ids, which are machine names
+    // and would match half the app on a two-letter query.
+    for (const el of container.querySelectorAll(
+      'label, h2, h3, h4, legend, option, .settings-row-title, .settings-row-desc, ' +
+      '[data-search-text], [placeholder], [title]')) {
+      const text = (el.textContent || '').trim();
+      if (text && text.length < 200) parts.push(text);
+      for (const attr of ('placeholder', 'title', 'data-search-text')) {
+        const value = el.getAttribute && el.getAttribute(attr);
+        if (value && value.length < 200) parts.push(value);
+      }
+    }
+    out[id] = parts.join(' ').toLowerCase();
+  }
+  return out;
 }
 
 function normalizeSettingsSearch(value) {
@@ -189,7 +243,8 @@ export function searchSettingsPanels(query, options = {}) {
   return SETTINGS_PANELS.filter(panel => {
     if (panel.adminOnly && !isAdmin) return false;
 
-    const haystack = getSettingsPanelSearchText(panel);
+    const haystack = getSettingsPanelSearchText(
+      panel, (options.controlText || {})[panel.id] || '');
     return terms.every(term => haystack.includes(term));
   });
 }

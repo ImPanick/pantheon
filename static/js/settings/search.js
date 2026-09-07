@@ -1,10 +1,35 @@
 import {
   SETTINGS_GROUPS,
   getSettingsPanel,
+  harvestSettingsControlText,
   searchSettingsPanels,
 } from './registry.js';
 
 const _boundModals = new WeakSet();
+
+// `H15`. The control index, harvested from the markup the first time somebody
+// searches and re-harvested when the modal's contents change.
+//
+// Lazy rather than at load: panels are populated as they are opened, so
+// building this at startup would index whatever happened to exist then and
+// quietly miss the rest — which is a subtler version of the bug being fixed.
+const _controlText = new WeakMap();
+
+function controlTextFor(modalEl) {
+  if (!modalEl) return {};
+  const cached = _controlText.get(modalEl);
+  // Re-harvest when a panel that had no text now has some: panel bodies are
+  // filled in on first open, and a cache taken before that is a cache of
+  // nothing.
+  const fresh = harvestSettingsControlText(modalEl);
+  const gained = !cached || Object.keys(fresh).some(
+    id => (fresh[id] || '').length > (cached[id] || '').length);
+  if (gained) {
+    _controlText.set(modalEl, fresh);
+    return fresh;
+  }
+  return cached;
+}
 
 function groupLabelFor(panel) {
   const group = SETTINGS_GROUPS.find(candidate => candidate.id === panel.group);
@@ -88,6 +113,7 @@ export function bindSettingsSearch(modalEl, options = {}) {
 
     const matches = searchSettingsPanels(query, {
       isAdmin: isAdmin(),
+      controlText: controlTextFor(modalEl),
     });
 
     if (!matches.length) {
