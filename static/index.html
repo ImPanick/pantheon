@@ -27,7 +27,7 @@
         s.setProperty('--panel', c.panel);
         s.setProperty('--border', c.border);
         if (c.red) s.setProperty('--red', c.red);
-        // P1-01, mirrored from applyColors() in static/js/theme.js. The 554
+        // P1-01, mirrored from applyColors() in static/js/theme.js. The 556
         // `var(--accent, var(--red))` sites in style.css ride the `--red` set
         // on the line above, but the 202 bare `var(--accent)` ones stay voided
         // until the module boots — a visible flash on every cold load without
@@ -1152,6 +1152,39 @@
         <div class="plan-inline-actions queue-panel-foot">
           <button type="button" id="queue-panel-run" class="plan-inline-execute queue-panel-run" hidden>Send now</button>
           <span id="queue-panel-hint" class="queue-panel-hint"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Staged agent mail awaiting approval (H01). The row this closes is the
+         worst kind of gap in the product: `agent_email_confirm` ships ON, so
+         every email the agent composes is stashed in `scheduled_emails` with a
+         far-future send_at the poller never reaches — and THREE places said a
+         UI existed to approve them. The route comment, the stash docstring, and
+         the model's own tool description, which tells the user their mail
+         "awaits approval in the chat UI". `grep -rn "email/pending" static/`
+         returned nothing across 183 frontend files. The default predates the
+         fork, so on every install running it the backlog is a year deep.
+
+         Same dock as the queue panel, directly above the composer, and it
+         appears BY ITSELF the moment a draft exists — nobody has to find a
+         button to discover mail is being held, which is the whole failure this
+         row is about. Drawn by static/js/agentDrafts.js. -->
+    <section id="agent-drafts-panel" class="queue-panel agent-drafts-panel" hidden aria-label="Email awaiting your approval">
+      <div class="queue-panel-head">
+        <button type="button" id="agent-drafts-fold" class="queue-panel-fold" aria-expanded="true" aria-controls="agent-drafts-body" title="Hide the drafts awaiting approval">
+          <span id="agent-drafts-chevron" class="queue-panel-chevron" aria-hidden="true"></span>
+          <span class="queue-panel-icon" aria-hidden="true">✉</span>
+          <span class="queue-panel-title">Awaiting your approval</span>
+          <span id="agent-drafts-count" class="queue-panel-count"></span>
+        </button>
+        <span id="agent-drafts-state" class="queue-panel-state"></span>
+        <button type="button" id="agent-drafts-discard-all" class="queue-panel-pause agent-drafts-discard-all" hidden>Discard all</button>
+      </div>
+      <div id="agent-drafts-body" class="queue-panel-body">
+        <div id="agent-drafts-list" class="queue-panel-list agent-drafts-list"></div>
+        <div class="plan-inline-actions queue-panel-foot">
+          <span id="agent-drafts-hint" class="queue-panel-hint"></span>
         </div>
       </div>
     </section>

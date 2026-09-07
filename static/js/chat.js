@@ -38,6 +38,7 @@ import { createTerminalStreamError, isRecoverableStreamError } from './chatStrea
 import { loadPanel } from './panels.js';
 import planWindow from './planWindow.js';
 import queuePanel from './queuePanel.js';
+import agentDrafts from './agentDrafts.js';   // H01
 
   const RESEARCH_TIMEOUT_MS = 360000;
   const DEFAULT_TIMEOUT_MS = 120000;
@@ -7602,6 +7603,11 @@ import queuePanel from './queuePanel.js';
   const _initDockedPanels = () => {
     planWindow.init();
     queuePanel.init(_queuePanelDriver);
+    // `H01`. Started unconditionally and with no button in front of it: the
+    // failure this closes is that email was held somewhere nobody looked, and a
+    // surface that has to be found is the same bug with a shorter path. It
+    // hides itself when there is nothing staged.
+    try { agentDrafts.start(); } catch (_) {}
     _registerQueueActivitySource();
   };
   if (document.readyState === 'loading') {

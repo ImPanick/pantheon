@@ -10,7 +10,7 @@ the whole stylesheet to one global colour.
 `static/style.css` named `--accent` 828 times before this file, and 817 after.
 Three populations, and they are not the same kind of thing:
 
-  * **563 sites reach the theme's red through their fallback.** 554 of them
+  * **565 sites reach the theme's red through their fallback.** 556 of them
     spell it `var(--accent, var(--red))`; nine take a longer road —
     `var(--red, #e53935)` and two more literals, plus two routed through the
     undefined `--accent-primary` first. They resolved to the theme's red before
@@ -60,7 +60,7 @@ What is pinned below, and why each is a defect if it breaks:
 
   * **`--accent` is defined nowhere in this stylesheet.** The single failure
     mode the row is built to avoid, asserted directly rather than inferred;
-  * **the no-change population stays 554 spelled and 563 resolved**, so a
+  * **the no-change population stays 556 spelled and 565 resolved**, so a
     fallback rewritten in place is visible in the diff of a test rather than
     only in a screenshot;
   * **every token named inside an `--accent` fallback exists**, with the one
@@ -434,14 +434,14 @@ def test_the_no_change_population_holds_at_both_of_its_counts():
 
     Two counts, because the two that get quoted about this row are counts of
     different things and disagreeing about it has already cost one review pass:
-    554 sites spell the fallback `var(--red)` exactly, and a further nine reach
+    556 sites spell the fallback `var(--red)` exactly, and a further nine reach
     the same colour through a chain — `var(--red, #e53935)` and friends, plus
     two that route through the undefined `--accent-primary` first.
     """
     exact = [expr for _, expr in _var_uses("accent")
              if _fallback(expr) == "var(--red)"]
-    assert len(exact) == 554, (
-        f"expected 554 sites spelling the fallback `var(--red)` exactly, found "
+    assert len(exact) == 556, (
+        f"expected 556 sites spelling the fallback `var(--red)` exactly, found "
         f"{len(exact)}. If a site was legitimately added or removed, move this "
         "number and say which site in the commit — do not widen the assertion."
     )
@@ -459,12 +459,12 @@ def test_the_no_change_population_holds_at_both_of_its_counts():
             continue  # a gaining site, counted by the population above
         if painted == red:
             resolving.append(expr)
-    assert len(resolving) == 563, (
-        f"expected 563 sites whose fallback resolves to the theme's red, found "
+    assert len(resolving) == 565, (
+        f"expected 565 sites whose fallback resolves to the theme's red, found "
         f"{len(resolving)}"
     )
-    assert len(_var_uses("accent")) == 817, (
-        f"expected 817 uses of --accent in total, found {len(_var_uses('accent'))}"
+    assert len(_var_uses("accent")) == 819, (
+        f"expected 819 uses of --accent in total, found {len(_var_uses('accent'))}"
     )
 
 

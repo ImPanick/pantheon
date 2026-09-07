@@ -30,7 +30,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from html.parser import HTMLParser as _HTMLParser
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from email.mime.text import MIMEText
@@ -4524,6 +4524,29 @@ def setup_email_routes():
             logger.error(f"cancel_scheduled {sid!r} failed: {e}")
             return {"success": False, "error": "Mail operation failed"}
 
+    def _draft_age_seconds(created_at):
+        """Seconds since a draft was staged, or None when it cannot be read.
+
+        `created_at` is written by `_stash_agent_draft` as
+        `datetime.utcnow().isoformat()` — naive UTC, no suffix. Parsing it as
+        local time would report a backlog as hours newer or older than it is
+        depending on the operator's offset, which is exactly the number this
+        row exists to put in front of somebody. `None` rather than 0 for an
+        unreadable value: 0 reads as "just now", which is the opposite of what
+        an unparseable row usually means.
+        """
+        if not created_at:
+            return None
+        try:
+            stamp = datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            return None
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=timezone.utc)
+        from datetime import datetime as _dt
+        now = _dt.now(timezone.utc)
+        return max(0.0, (now - stamp).total_seconds())
+
     # ── Agent send-confirm: list/approve/cancel ──────────────────────────
     # When `agent_email_confirm` is on, the MCP send_email tool drops the
     # composed email into scheduled_emails with status='agent_draft' (a
@@ -4533,22 +4556,78 @@ def setup_email_routes():
     # cancel (status='cancelled').
     @router.get("/pending")
     async def list_pending_agent_drafts(owner: str = Depends(require_owner)):
+        """Every agent-composed email waiting for a decision (`H01`).
+
+        `cc` and `bcc` are returned, and that is not cosmetic. `_stash_agent_draft`
+        has always stored them; this endpoint did not return them, so the
+        approval card this row exists to build would have shown a message
+        without its recipients — and a blind-carbon-copy you cannot see before
+        pressing Send is a worse failure than the black hole it replaces.
+
+        `oldest_age_seconds` is the headline, not the count. The finding behind
+        this row is that the backlog is a YEAR old on every install running the
+        shipped default, and "47 drafts" does not say that while "oldest: 11
+        months" does.
+        """
         import sqlite3
         try:
             conn = sqlite3.connect(SCHEDULED_DB)
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
-                """SELECT id, to_addr, subject, body, created_at, account_id
+                """SELECT id, to_addr, cc, bcc, subject, body, created_at, account_id
                    FROM scheduled_emails
                    WHERE status = 'agent_draft' AND owner = ?
                    ORDER BY created_at DESC""",
                 (owner or "",),
             ).fetchall()
             conn.close()
-            return {"pending": [dict(r) for r in rows]}
+            pending = [dict(r) for r in rows]
+            oldest = None
+            for row in pending:
+                age = _draft_age_seconds(row.get("created_at"))
+                row["age_seconds"] = age
+                if age is not None and (oldest is None or age > oldest):
+                    oldest = age
+            return {"pending": pending, "count": len(pending),
+                    "oldest_age_seconds": oldest}
         except Exception as e:
             logger.error(f"list_pending_agent_drafts failed: {e}")
-            return {"pending": [], "error": "Mail operation failed"}
+            return {"pending": [], "count": 0, "oldest_age_seconds": None,
+                    "error": "Mail operation failed"}
+
+    @router.post("/pending/discard-all")
+    async def discard_all_agent_drafts(owner: str = Depends(require_owner)):
+        """Discard every staged draft for this owner (`H01`).
+
+        A bulk DISCARD and deliberately no bulk approve. The backlog this row
+        exists to drain can be hundreds of messages a year old, and clicking
+        through them one at a time is not a way out — but a button that SENDS
+        hundreds of year-old model-composed emails to real people, in one press,
+        is the auto-send hole `agent_email_confirm` was added to close, rebuilt
+        with a confirmation dialog in front of it. Approving stays per-message
+        because each one is a separate decision about a separate recipient.
+
+        Discarded is `status='cancelled'`, not a DELETE: the row stays in
+        `scheduled_emails` and can be read back by anyone who wants it. Draining
+        a year-old backlog should not be the destructive act.
+        """
+        import sqlite3
+        try:
+            conn = sqlite3.connect(SCHEDULED_DB)
+            cur = conn.execute(
+                """UPDATE scheduled_emails SET status = 'cancelled'
+                   WHERE status = 'agent_draft' AND owner = ?""",
+                (owner or "",),
+            )
+            conn.commit()
+            affected = cur.rowcount
+            conn.close()
+            logger.info("H01: discarded %d staged agent draft(s) for owner=%r",
+                        affected, owner)
+            return {"success": True, "discarded": affected}
+        except Exception as e:
+            logger.error(f"discard_all_agent_drafts failed: {e}")
+            return {"success": False, "error": "Mail operation failed"}
 
     @router.post("/pending/{sid}/approve")
     async def approve_agent_draft(sid: str, owner: str = Depends(require_owner)):

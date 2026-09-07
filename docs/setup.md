@@ -781,6 +781,36 @@ belongs outside the app.
 
 ---
 
+### Email the agent wrote is held until you say so
+
+When Pantheon composes an email on your behalf it does **not** send it. The
+message is staged and a panel appears above the composer showing every draft
+waiting on you, with the recipients — including any `Bcc` — the full body, and
+how long it has been waiting.
+
+**If you have been running Pantheon or Odysseus for a while, expect a backlog on
+first launch.** This confirmation behaviour has been the default since before
+this fork, and until now there was nowhere to see the drafts it produced: the
+mail was staged, the agent told you it was awaiting your approval, and no such
+screen existed. Everything the agent has ever composed is still there and will
+appear the first time you open the app after this update. Nothing was sent, and
+nothing was lost.
+
+- **Approve & send** delivers that one message now.
+- **Discard** marks it cancelled. It is not deleted — the row stays in
+  `data/scheduled_emails.db` if you ever want it back.
+- **Discard all** is offered when there is more than one, and asks first.
+
+There is deliberately no *Approve all*. A single button that sends hundreds of
+year-old, model-composed emails to real people is the exact hole this
+confirmation step exists to close.
+
+To turn the confirmation off entirely and have the agent send immediately, set
+`agent_email_confirm` to false in Settings. Drain the backlog first — turning it
+off stops new drafts accumulating but does not send the ones already staged.
+
+---
+
 ### Your own machines are never throttled
 
 Pantheon paces the calls it makes out, so a provider does not see a burst where a
