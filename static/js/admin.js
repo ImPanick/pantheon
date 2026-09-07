@@ -2850,6 +2850,151 @@ function initCalDAV() {
   });
 }
 
+/* ── Storage cleanup (H10) ──
+
+   `GET /api/cleanup/preview` and `POST /api/cleanup` have existed, owner-scoped
+   and with a real dry run, with no caller in `static/` at all. The dry run is
+   the whole reason this is worth wiring rather than leaving to the Danger Zone:
+   it returns the sessions it would archive, the ones it would delete, AND the
+   ones it is sparing WITH THE REASON — "part of last 10 sessions", "has 20+
+   messages", "contains keyword: important". A person deciding whether to free
+   340 MB wants to see what survives at least as much as what goes.
+
+   Rendered with createElement and textContent throughout. Session names are
+   user-supplied and go straight into this list; `innerHTML` here would be an
+   XSS hole with a chat title as the payload. */
+let _cleanupPreview = null;
+
+function _cleanupRow(session, extra) {
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:8px;align-items:baseline;padding:2px 0;';
+  const name = document.createElement('span');
+  name.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+  name.textContent = session.name || '(untitled)';
+  const meta = document.createElement('span');
+  meta.style.cssText = 'opacity:0.55;font-size:11px;flex-shrink:0;';
+  meta.textContent = extra;
+  row.append(name, meta);
+  return row;
+}
+
+function _cleanupGroup(title, sessions, describe) {
+  const box = document.createElement('div');
+  box.style.cssText = 'margin-top:10px;';
+  const head = document.createElement('div');
+  head.style.cssText = 'font-size:12px;font-weight:600;margin-bottom:2px;';
+  head.textContent = `${title} (${sessions.length})`;
+  box.appendChild(head);
+  if (!sessions.length) {
+    const none = document.createElement('div');
+    none.style.cssText = 'opacity:0.5;font-size:11px;';
+    none.textContent = 'none';
+    box.appendChild(none);
+    return box;
+  }
+  const list = document.createElement('div');
+  list.style.cssText = 'max-height:180px;overflow-y:auto;font-size:12px;';
+  for (const session of sessions) list.appendChild(_cleanupRow(session, describe(session)));
+  box.appendChild(list);
+  return box;
+}
+
+function _renderCleanupPreview(data) {
+  const host = el('adm-cleanupPreview');
+  if (!host) return;
+  host.textContent = '';
+
+  const archive = data.sessions_to_archive || [];
+  const remove = data.sessions_to_delete || [];
+  const kept = data.preserved_sessions || [];
+
+  const summary = document.createElement('div');
+  summary.style.cssText = 'font-size:12px;margin-bottom:2px;';
+  summary.textContent = remove.length
+    ? `Would free about ${data.estimated_space_freed_mb} MB by deleting ${remove.length} `
+      + `chat${remove.length === 1 ? '' : 's'}, and archive ${archive.length}.`
+    : `Nothing to delete. ${archive.length} chat${archive.length === 1 ? '' : 's'} would be archived.`;
+  host.appendChild(summary);
+
+  const plural = (n) => `${n} message${n === 1 ? '' : 's'}`;
+  host.appendChild(_cleanupGroup('To archive', archive, (x) => plural(x.message_count)));
+  host.appendChild(_cleanupGroup('To delete', remove,
+    (x) => `${plural(x.message_count)} · ${x.estimated_size_kb} KB`));
+  // The reason is the point of this group, so it is what gets shown.
+  host.appendChild(_cleanupGroup('Kept', kept, (x) => x.reason || 'kept'));
+
+  host.hidden = false;
+}
+
+function initCleanup() {
+  const previewBtn = el('adm-cleanupPreviewBtn');
+  const runBtn = el('adm-cleanupRunBtn');
+  const msg = el('adm-cleanupMsg');
+  if (!previewBtn || !runBtn || !msg) return;
+
+  previewBtn.addEventListener('click', async () => {
+    previewBtn.disabled = true;
+    msg.textContent = 'Checking…';
+    msg.style.color = '';
+    try {
+      const res = await fetch('/api/cleanup/preview', { credentials: 'same-origin' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      _cleanupPreview = await res.json();
+      _renderCleanupPreview(_cleanupPreview);
+      const total = (_cleanupPreview.sessions_to_archive || []).length
+                  + (_cleanupPreview.sessions_to_delete || []).length;
+      msg.textContent = total ? '' : 'Nothing to clean up.';
+      // Nothing to do is not a state that should offer to do it.
+      runBtn.hidden = total === 0;
+    } catch (e) {
+      msg.textContent = 'Could not read the cleanup preview.';
+      msg.style.color = 'var(--red)';
+    } finally {
+      previewBtn.disabled = false;
+    }
+  });
+
+  runBtn.addEventListener('click', async () => {
+    if (!_cleanupPreview) return;
+    const remove = (_cleanupPreview.sessions_to_delete || []).length;
+    const archive = (_cleanupPreview.sessions_to_archive || []).length;
+    // Deletion is the irreversible half, so it leads the sentence and the
+    // dialog is `danger` only when something is actually going to be deleted.
+    const detail = remove
+      ? `Delete ${remove} chat${remove === 1 ? '' : 's'} and archive ${archive}? `
+        + 'Deleted chats cannot be recovered.'
+      : `Archive ${archive} chat${archive === 1 ? '' : 's'}? Nothing will be deleted.`;
+    const ok = await uiModule.styledConfirm(detail, {
+      title: 'Run cleanup',
+      confirmText: remove ? 'Delete and archive' : 'Archive',
+      danger: Boolean(remove),
+    });
+    if (!ok) return;
+
+    runBtn.disabled = true;
+    msg.textContent = 'Cleaning up…';
+    msg.style.color = '';
+    try {
+      const res = await fetch('/api/cleanup', { method: 'POST', credentials: 'same-origin' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const d = await res.json();
+      msg.textContent = `Archived ${d.archived_count}, deleted ${d.deleted_count}, `
+        + `freed ${d.space_freed_mb} MB.`;
+      msg.style.color = 'var(--green)';
+      // The preview now describes a world that no longer exists.
+      _cleanupPreview = null;
+      el('adm-cleanupPreview').hidden = true;
+      runBtn.hidden = true;
+      try { window.sessionModule?.loadSessions?.(); } catch (_) { /* the list will catch up on its own */ }
+    } catch (e) {
+      msg.textContent = 'Cleanup failed.';
+      msg.style.color = 'var(--red)';
+    } finally {
+      runBtn.disabled = false;
+    }
+  });
+}
+
 /* ── Data Backup (export/import) ── */
 function initBackup() {
   el('adm-exportDataBtn').addEventListener('click', async () => {
@@ -3538,7 +3683,7 @@ function initAll() {
   modalEl = el('settings-modal');
   const inits = [
     initSignupToggle, initShareDefaultsToggle, initAddUser, initEndpointForm, initMcpForm,
-    initCalDAV, initBackup, initDangerZone, initTokenForm, initLogsView,
+    initCalDAV, initBackup, initCleanup, initDangerZone, initTokenForm, initLogsView,
     () => settingsModule.initIntegrations()
   ];
   for (const fn of inits) {

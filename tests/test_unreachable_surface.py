@@ -2,12 +2,13 @@
 
 The hand audit of 2026-08-30 produced the 21 `H` rows, and the row's `Verify:`
 line is that a script rediscovers its findings **from a clean checkout with no
-hints**. Two of those findings are still open in the tree — `H04`, a complete
-embedding-model manager with zero pixels, and `H10`, session cleanup with a
-dry-run nobody can reach — so those are asserted against the real repository.
-`H01` was the third and is fixed, so its *shape* is asserted against a fixture
-instead: a route with no caller must still be found, or the checker only works
-on defects that happen to remain.
+hints**. One of those findings is still open in the tree — `H04`, a complete
+embedding-model manager with zero pixels — so it is asserted against the real
+repository. `H01` and `H10` are fixed, so their *shape* is asserted against a
+fixture instead: a route with no caller must still be found, or the checker
+only works on defects that happen to remain. `H10`'s own case is kept and
+inverted — the cleanup routes must NOT appear now — because a test that pinned
+a defect argues for the bug if it is left facing the same way.
 
 The rest break the checker in the specific ways it can silently stop working,
 and every one of them is a mistake this file's author actually made:
@@ -52,12 +53,18 @@ def test_it_finds_H04_the_embedding_manager_with_zero_pixels(report):
     assert "/api/embeddings/endpoint" in report
 
 
-def test_it_finds_H10_session_cleanup_and_its_dry_run(report):
-    """`GET /api/cleanup/preview` shows exactly what `POST /api/cleanup` would
-    do first — which is the part that makes it safe and the part nobody can
-    reach."""
-    assert "/api/cleanup/preview" in report
-    assert re.search(r"POST\s+/api/cleanup\b", report)
+def test_H10_is_no_longer_in_the_report_because_it_was_wired(report):
+    """Inverted 2026-09-07, when `H10` shipped.
+
+    This asserted that the checker still found `GET /api/cleanup/preview` with
+    no frontend caller, which was true for as long as the defect existed. The
+    Settings → System panel now calls both halves, so the honest version of
+    this test is the opposite claim: the routes must NOT appear. A test that
+    pins a defect has to be turned around when the defect is fixed, or it
+    starts arguing for the bug — and deleting it instead would give up a
+    regression guard that costs nothing to keep."""
+    assert "/api/cleanup/preview" not in report
+    assert not re.search(r"POST\s+/api/cleanup\b", report)
 
 
 def test_the_walk_recurses_or_it_finds_nothing(report):

@@ -2707,6 +2707,30 @@
             </div>
             <div id="adm-backupMsg" style="margin-top:6px;"></div>
           </div>
+          <!-- Storage cleanup (H10). The backend has had a dry run since
+               before the fork and no way to reach it: GET /api/cleanup/preview
+               says exactly what would happen, POST /api/cleanup does it, and
+               `grep "api/cleanup" static/` returned nothing. Sits above the
+               Danger Zone deliberately — it is the reversible-ish half of the
+               same job, and a person looking for "reclaim space" should meet
+               the one that shows them a list first. -->
+          <div class="admin-card">
+            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>Storage cleanup</h2>
+            <div class="admin-toggle-sub" style="margin-bottom:8px">
+              Archives chats untouched for 7 days, then deletes the archived ones
+              after 14 more if they are not marked important, have fewer than 20
+              messages, and are not among your 10 most recent. Chats whose name
+              contains <em>important</em>, <em>remember</em>, <em>save this</em>,
+              <em>keep</em> or <em>bookmark</em> are always kept. Nothing is
+              touched until you have seen the list.
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <button class="admin-btn-add" id="adm-cleanupPreviewBtn">Preview cleanup</button>
+              <button class="admin-btn-add" id="adm-cleanupRunBtn" hidden>Run cleanup</button>
+            </div>
+            <div id="adm-cleanupMsg" style="margin-top:6px;font-size:12px;" role="status" aria-live="polite"></div>
+            <div id="adm-cleanupPreview" style="margin-top:8px;" hidden></div>
+          </div>
           <div class="admin-card admin-danger-card">
             <h2 style="color:#e55;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.75"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Danger Zone</h2>
             <div class="admin-toggle-sub" style="margin-bottom:8px">Irreversible. Each wipe targets one category — pick exactly what you want gone.</div>
