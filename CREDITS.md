@@ -287,9 +287,23 @@ embedded licence banner.
 | [html2pdf.js](https://github.com/eKoopmans/html2pdf.js) v0.10.2 | `html2pdf.bundle.min.js` | HTML → PDF export (bundles jsPDF + html2canvas) | MIT ([`licenses/html2pdf.js-MIT-LICENSE.txt`](licenses/html2pdf.js-MIT-LICENSE.txt)); bundle sidecar: [`licenses/html2pdf.bundle.min.js.LICENSE.txt`](licenses/html2pdf.bundle.min.js.LICENSE.txt) |
 | [jsPDF](https://github.com/parallax/jsPDF) v2.3.1 | bundled inside `html2pdf.bundle.min.js` | PDF generation | MIT ([`licenses/jsPDF-MIT-LICENSE.txt`](licenses/jsPDF-MIT-LICENSE.txt)) |
 | [html2canvas](https://github.com/niklasvh/html2canvas) v1.0.0 | bundled inside `html2pdf.bundle.min.js` | DOM → canvas rasterization | MIT ([`licenses/html2canvas-MIT-LICENSE.txt`](licenses/html2canvas-MIT-LICENSE.txt)) |
+| [es6-promise](https://github.com/stefanpenner/es6-promise) v4.2.8 | bundled inside `html2pdf.bundle.min.js` | Promise polyfill | MIT ([`licenses/es6-promise-MIT-LICENSE.txt`](licenses/es6-promise-MIT-LICENSE.txt)) |
+| [@babel/runtime-corejs3](https://github.com/babel/babel) | bundled inside `html2pdf.bundle.min.js` | Babel's runtime helpers, core-js-backed | MIT ([`licenses/babel-runtime-corejs3-MIT-LICENSE.txt`](licenses/babel-runtime-corejs3-MIT-LICENSE.txt)) |
+| [canvg](https://github.com/canvg/canvg) | bundled inside `html2pdf.bundle.min.js` | SVG → canvas rendering | MIT ([`licenses/canvg-MIT-LICENSE.txt`](licenses/canvg-MIT-LICENSE.txt)) |
+| [core-js](https://github.com/zloirock/core-js) | bundled inside `html2pdf.bundle.min.js` | ES polyfills (global) | MIT ([`licenses/core-js-MIT-LICENSE.txt`](licenses/core-js-MIT-LICENSE.txt)) |
+| [core-js-pure](https://github.com/zloirock/core-js) | bundled inside `html2pdf.bundle.min.js` | ES polyfills (non-global) | MIT ([`licenses/core-js-pure-MIT-LICENSE.txt`](licenses/core-js-pure-MIT-LICENSE.txt)) |
+| [DOMPurify](https://github.com/cure53/DOMPurify) | bundled inside `html2pdf.bundle.min.js` | HTML sanitisation inside canvg | **Apache-2.0**, chosen from a dual offer (or MPL-2.0) — D-2026-09-07-01 ([`licenses/DOMPurify-Apache-2.0-or-MPL-2.0.txt`](licenses/DOMPurify-Apache-2.0-or-MPL-2.0.txt)) |
+| [fflate](https://github.com/101arrowz/fflate) | bundled inside `html2pdf.bundle.min.js` | DEFLATE, for PDF stream compression | MIT ([`licenses/fflate-MIT-LICENSE.txt`](licenses/fflate-MIT-LICENSE.txt)) |
+| [performance-now](https://github.com/braveg1rl/performance-now) | bundled inside `html2pdf.bundle.min.js` | High-resolution timer shim | MIT ([`licenses/performance-now-MIT-LICENSE.txt`](licenses/performance-now-MIT-LICENSE.txt)) |
+| [raf](https://github.com/chrisdickinson/raf) | bundled inside `html2pdf.bundle.min.js` | `requestAnimationFrame` shim | MIT ([`licenses/raf-MIT-LICENSE.txt`](licenses/raf-MIT-LICENSE.txt)) |
+| [regenerator-runtime](https://github.com/facebook/regenerator) | bundled inside `html2pdf.bundle.min.js` | Generator/async transpilation runtime | MIT ([`licenses/regenerator-runtime-MIT-LICENSE.txt`](licenses/regenerator-runtime-MIT-LICENSE.txt)) |
+| [rgbcolor](https://github.com/canvg/rgbcolor) | bundled inside `html2pdf.bundle.min.js` | CSS colour parsing inside canvg | MIT ([`licenses/rgbcolor-MIT-LICENSE.txt`](licenses/rgbcolor-MIT-LICENSE.txt)) |
+| [stackblur-canvas](https://github.com/flozz/StackBlur) | bundled inside `html2pdf.bundle.min.js` | Canvas blur filter inside canvg | MIT ([`licenses/stackblur-canvas-MIT-LICENSE.txt`](licenses/stackblur-canvas-MIT-LICENSE.txt)) |
+| [svg-pathdata](https://github.com/nfroidure/svg-pathdata) | bundled inside `html2pdf.bundle.min.js` | SVG path parsing inside canvg | MIT ([`licenses/svg-pathdata-MIT-LICENSE.txt`](licenses/svg-pathdata-MIT-LICENSE.txt)) |
 | [node-qrcode](https://github.com/soldair/node-qrcode) | `qrcode.min.js` | QR-code rendering (2FA setup) | MIT ([`licenses/node-qrcode-MIT-LICENSE.txt`](licenses/node-qrcode-MIT-LICENSE.txt)) |
 | [KaTeX](https://github.com/KaTeX/KaTeX) v0.16.22 | `katex/katex.min.{js,css}` + `katex/fonts/*.woff2` | Math typesetting | MIT ([`licenses/KaTeX-MIT-LICENSE.txt`](licenses/KaTeX-MIT-LICENSE.txt)) |
 | [Mermaid](https://github.com/mermaid-js/mermaid) v11.16.1 | `mermaid.min.js` | Diagrams from text | MIT ([`licenses/Mermaid-MIT-LICENSE.txt`](licenses/Mermaid-MIT-LICENSE.txt)) |
+| [vscode-languageserver](https://github.com/microsoft/vscode-languageserver-node) — `vscode-jsonrpc` v8.2.0, `vscode-languageserver-protocol` v3.17.5, `vscode-languageserver-types` v3.17.5 | bundled inside `mermaid.min.js` | Language-server plumbing behind Mermaid's parsers | MIT ([`licenses/vscode-languageserver-MIT-LICENSE.txt`](licenses/vscode-languageserver-MIT-LICENSE.txt)) |
 | [Pyodide](https://github.com/pyodide/pyodide) 0.27.5 | `pyodide/{pyodide.js,pyodide.asm.js,pyodide.asm.wasm,python_stdlib.zip,pyodide-lock.json}` | In-browser Python runtime for `” ```python ”` code blocks | MPL-2.0 ([`licenses/Pyodide-MPL-2.0.txt`](licenses/Pyodide-MPL-2.0.txt)) |
 
 *Versions read out of the shipped bundles on 2026-08-27, not carried from a
@@ -322,14 +336,62 @@ texts are files here rather than a list in this one, and the reason
 [`.pantheon/check-licences.py`](.pantheon/check-licences.py) fails if one goes
 missing or stops being linked.
 
-**The sidecar does not cover everything the bundle contains.**
-`html2pdf.bundle.min.js` pulls in fifteen top-level packages; its `LICENSE.txt`
-carries a copyright notice for **three** of them — `es6-promise`, `html2canvas`
-and `jspdf` — plus html2pdf.js itself. The other twelve, `dompurify` among them,
-have no notice anywhere in this repository, and DOMPurify is dual-licensed
-Apache-2.0 **or** MPL-2.0, which is a choice someone has to make rather than a
-file to fetch. That gap is real, it is tracked as `P0-21b`, and it is recorded
-here rather than left for someone to rediscover.
+**The sidecar does not cover everything the bundle contains, and the rest is
+now here.** `html2pdf.bundle.min.js` ships fifteen top-level packages; its
+webpack-extracted `LICENSE.txt` carries a copyright notice for **three** of them
+— `es6-promise`, `html2canvas` and `jspdf` — plus html2pdf.js itself. The other
+twelve had no notice anywhere in this repository until 2026-09-07 (`P0-21b`).
+All fifteen are in the table above now, each with its own text in
+[`licenses/`](licenses/): the three the sidecar happened to cover got one too,
+so that no package's attribution depends on a minifier having chosen to keep a
+comment.
+
+*How the list was derived, since a minified blob cannot be read:*
+**upstream html2pdf.js 0.10.2's own source map** names all 497 modules it was
+built from, and grouping those by `node_modules/<package>/` gives the fifteen
+exactly. Not a guess and not a grep.
+
+*On versions.* The bundle states six of them in banners it kept —
+`dompurify 2.3.0`, `html2canvas 1.0.0`, `jspdf 2.3.1`, `es6-promise 4.2.8`,
+`core-js 3.16.0`, `core-js-pure 3.15.2` — and states none for the other nine.
+Rather than guess, each of those nine had its `LICENSE` fetched at **two**
+versions spanning the plausible range and compared byte for byte; all nine are
+identical across the pair, so which one was bundled does not change the notice
+that has to travel. The pairs are recorded in `P0-21b`'s roadmap entry.
+
+**The shipped bundle is not upstream's bytes, and the difference is one string.**
+Found 2026-09-07 while re-deriving the package list (`B45`). Against
+html2pdf.js 0.10.2's published `dist/html2pdf.bundle.min.js`, the copy in
+`static/lib/` is identical after normalising CRLF **except** that jsPDF's
+language table reads `"sv-SV":"Swedish (SE)"` where upstream reads
+`"sv-SV":"Swedish (Sweden)"`. One substitution; substituting it back makes the
+two files byte-identical, which is how "one difference" is known rather than
+assumed. It arrived at the fork baseline `fff72ec`, so it is upstream Odysseus's
+edit and Pantheon inherited it — jsPDF is MIT and modifying it is permitted, but
+an undocumented edit to a vendored file is how provenance rots, and a refresh
+from npm would silently revert it with nobody the wiser. It is recorded here
+and pinned by a test so that replacing this file becomes a decision.
+
+**DOMPurify is a choice, not a fetch.** Cure53 offers 2.3.0 under Apache-2.0
+**or** MPL-2.0. Pantheon takes **Apache-2.0** (`DECISIONS.md` D-2026-09-07-01):
+MPL-2.0 §3.2 would oblige us to make DOMPurify's own Source Code Form available
+to everyone who receives the minified bundle — a real, ongoing obligation bought
+for no benefit — while Apache-2.0 asks for attribution and carries an express
+patent grant. The file in [`licenses/`](licenses/) is Cure53's `LICENSE`
+**verbatim, with both texts in it**, because the honest record is what was
+offered plus which half we took, not a trimmed copy of one branch.
+
+**`mermaid.min.js` is a bundle too, and nobody knew** (`B46`, 2026-09-07).
+The rule written for html2pdf derives *which* files are bundles from the tree
+rather than from a list — a list can be emptied and nothing notices, which
+mutation testing demonstrated by emptying it — and the first run turned up three
+Microsoft packages inside Mermaid 11.16.1 with no notice anywhere here:
+`vscode-jsonrpc` 8.2.0, `vscode-languageserver-protocol` 3.17.5 and
+`vscode-languageserver-types` 3.17.5. Versions are not inferred: Mermaid is
+built with pnpm, whose store layout writes them into the module paths
+(`node_modules/.pnpm/vscode-jsonrpc@8.2.0/node_modules/vscode-jsonrpc/…`), and
+they are in the shipped bytes. All three ship the same Microsoft MIT text byte
+for byte, so one file in [`licenses/`](licenses/) covers all three and says so.
 
 KaTeX and Mermaid are loaded on first use by `static/js/markdown.js` rather than
 from `index.html`, so a session that renders no math and no diagram never

@@ -162,3 +162,43 @@ def test_openmoji_is_attributed_and_still_shipped():
     # ... and it is still the thing the product draws with.
     assert (ROOT / "library" / "emoji" / "openmoji-black.json").is_file()
     assert (ROOT / "library" / "emoji" / "MANIFEST.json").is_file()
+
+
+def test_a_bundle_shipping_undeclared_packages_fails(repo):
+    """Rule 7, exercised. The fixture stubs every `.min.js` to an empty file for
+    speed, so the two real bundles are invisible here — which means without this
+    the rule could be deleted outright and this file would stay green. A tiny
+    synthetic bundle is enough: three `node_modules/` paths is what makes a file
+    a bundle, and none of these three is declared anywhere."""
+    fake = repo / "static" / "lib" / "fake.bundle.min.js"
+    fake.parent.mkdir(parents=True, exist_ok=True)
+    fake.write_text(
+        'var a="../node_modules/left-pad/index.js";'
+        'var b="../node_modules/@scope/thing/lib.js";'
+        'var c="../node_modules/is-odd/index.js";',
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    r = run(repo)
+    assert r.returncode == 1, r.stdout + r.stderr
+    out = r.stdout + r.stderr
+    for pkg in ("left-pad", "@scope/thing", "is-odd"):
+        assert pkg in out, (pkg, out)
+
+
+def test_pnpms_store_directory_is_not_reported_as_a_package(repo):
+    """`node_modules/.pnpm/<pkg>@<ver>/node_modules/<pkg>/` is how pnpm lays a
+    store out, and the naive match reads `.pnpm` as a package name. Mermaid is
+    built with pnpm, so this is not hypothetical."""
+    fake = repo / "static" / "lib" / "pnpmish.bundle.min.js"
+    fake.parent.mkdir(parents=True, exist_ok=True)
+    fake.write_text(
+        'var a="../node_modules/.pnpm/one@1.0.0/node_modules/one/i.js";'
+        'var b="../node_modules/.pnpm/two@2.0.0/node_modules/two/i.js";'
+        'var c="../node_modules/.pnpm/three@3.0.0/node_modules/three/i.js";',
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    out = run(repo).stdout + run(repo).stderr
+    assert "UNBUNDLED   one" in out and "UNBUNDLED   three" in out, out
+    assert ".pnpm" not in out, out

@@ -17,7 +17,7 @@ adding its licence here, which means having read it.
     python3 .pantheon/check-licences.py          # report
     python3 .pantheon/check-licences.py --quiet  # findings only
 
-Six rules, each one a way attribution has actually rotted somewhere:
+Seven rules, each one a way attribution has actually rotted somewhere:
 
   1. No undeclared file under a vendored root.        (OpenMoji, 2026-09-01)
   2. Every declared licence text exists in licenses/.
@@ -28,6 +28,12 @@ Six rules, each one a way attribution has actually rotted somewhere:
   6. Every copyleft entry is named in the "Licence scope" section. That section
      summarises the obligations of the default install; a summary that omits one
      is worse than no summary, because it is read instead of the detail.
+  7. Every package inside a shipped bundle is declared -- and both the list of
+     bundles and their contents are read out of the tree, not out of a comment.
+     (P0-21b, 2026-09-07: the html2pdf sidecar named four of fifteen and the
+     other eleven had no notice anywhere. Deriving the bundle list rather than
+     writing one down is what then found B46, three Microsoft `vscode-*`
+     packages inside mermaid.min.js that nobody knew were there.)
 
 Scope (Law 5, so the pass means something): files tracked by git under
 static/lib/, static/fonts/, static/icons/ and library/. Python and JavaScript
@@ -48,6 +54,56 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 # is out of scope here and stays that way until someone adds its root.
 ROOTS = ("static/lib/", "static/fonts/", "static/icons/", "library/")
 
+# `node_modules/<package>/`, with the scoped form. Anchored on the separator so
+# a bare mention of a package name in a string is not mistaken for a module
+# path — the point is what the bundler recorded, not what the code talks about.
+_MODULE_PATH = re.compile(r'node_modules/((?:@[^/"\\]+/)?[^/"\\]+)/')
+
+# pnpm's store layout is `node_modules/.pnpm/<pkg>@<ver>/node_modules/<pkg>/`,
+# so the naive match reports a package called `.pnpm`. Mermaid is built with
+# pnpm and that is how a real bundle first looked like it shipped a package
+# nobody could find on npm.
+_NOT_A_PACKAGE = {".pnpm", ".bin", ".cache", ".store"}
+
+# Suffixes worth reading. A `.woff2` will never carry a module path and reading
+# 28 fonts as text on every CI run buys nothing.
+_BUNDLE_SUFFIXES = {".js", ".mjs", ".cjs", ".css"}
+
+# How many distinct packages make a file a bundle rather than a file that
+# happens to mention `node_modules` once in a comment.
+_BUNDLE_THRESHOLD = 3
+
+
+def bundled_packages(path):
+    """The npm packages a bundle was built from, read out of the shipped bytes."""
+    blob = path.read_bytes().decode("utf-8", "replace")
+    return {m.group(1) for m in _MODULE_PATH.finditer(blob)} - _NOT_A_PACKAGE
+
+
+def discover_bundles(files):
+    """Which shipped files are bundles — derived, not listed.
+
+    A hardcoded list can be emptied and nothing notices; mutation testing said
+    so out loud, by deleting the list and watching every check stay green. So
+    the tree decides: a vendored script carrying module paths for three or more
+    packages *is* a bundle, and its contents have to be declared. That is also
+    how `mermaid.min.js` turned out to ship three Microsoft `vscode-*` packages
+    with no notice anywhere (`B46`) — nobody had listed it as a bundle, because
+    nobody knew it was one.
+    """
+    out = {}
+    for rel in files:
+        path = ROOT / rel
+        if path.suffix.lower() not in _BUNDLE_SUFFIXES:
+            continue
+        try:
+            found = bundled_packages(path)
+        except OSError:
+            continue
+        if len(found) >= _BUNDLE_THRESHOLD:
+            out[rel] = found
+    return out
+
 
 class Entry:
     """One third-party thing we ship, and the paperwork it needs.
@@ -57,13 +113,19 @@ class Entry:
     an entry that rule 6 requires the scope section to name.
     """
 
-    def __init__(self, name, patterns, licence, text, credits, copyleft=False):
+    def __init__(self, name, patterns, licence, text, credits, copyleft=False,
+                 bundled=()):
         self.name = name
         self.patterns = patterns
         self.licence = licence
         self.text = text
         self.credits = credits
         self.copyleft = copyleft
+        # npm package names this entry covers *inside* a bundle. Display names
+        # and package names differ (`jsPDF` / `jspdf`, `DOMPurify` /
+        # `dompurify`), so rule 7 needs the package name written down rather
+        # than lowercased and hoped for.
+        self.bundled = tuple(bundled)
 
     def matches(self, path):
         return any(fnmatch.fnmatch(path, p) for p in self.patterns)
@@ -82,8 +144,50 @@ INVENTORY = [
           "html2pdf.js-MIT-LICENSE.txt", "html2pdf.js"),
     Entry("html2pdf bundle sidecar", [], "MIT (bundled deps)",
           "html2pdf.bundle.min.js.LICENSE.txt", "html2pdf.bundle.min.js.LICENSE.txt"),
-    Entry("jsPDF", [], "MIT", "jsPDF-MIT-LICENSE.txt", "jsPDF"),
-    Entry("html2canvas", [], "MIT", "html2canvas-MIT-LICENSE.txt", "html2canvas"),
+    Entry("jsPDF", [], "MIT", "jsPDF-MIT-LICENSE.txt", "jsPDF", bundled=("jspdf",)),
+    Entry("html2canvas", [], "MIT", "html2canvas-MIT-LICENSE.txt", "html2canvas",
+          bundled=("html2canvas",)),
+    Entry("es6-promise", [], "MIT", "es6-promise-MIT-LICENSE.txt", "es6-promise",
+          bundled=("es6-promise",)),
+    # P0-21b. `html2pdf.bundle.min.js` ships fifteen top-level packages and its
+    # webpack-extracted sidecar carries a notice for four of them. These are the
+    # other eleven plus DOMPurify, enumerated from upstream 0.10.2's own source
+    # map (497 sources) rather than by reading the minified blob. Each has no
+    # file of its own in static/lib/, so `patterns` is empty: the obligation is
+    # attached to the bundle, and this is the paperwork it travels with.
+    Entry("@babel/runtime-corejs3", [], "MIT",
+          "babel-runtime-corejs3-MIT-LICENSE.txt", "@babel/runtime-corejs3",
+          bundled=("@babel/runtime-corejs3",)),
+    Entry("canvg", [], "MIT", "canvg-MIT-LICENSE.txt", "canvg", bundled=("canvg",)),
+    Entry("core-js", [], "MIT", "core-js-MIT-LICENSE.txt", "core-js",
+          bundled=("core-js",)),
+    Entry("core-js-pure", [], "MIT", "core-js-pure-MIT-LICENSE.txt", "core-js-pure",
+          bundled=("core-js-pure",)),
+    # Dual-licensed by Cure53, and the choice is ours to make as the recipient.
+    # Apache-2.0 (D-2026-09-07-01): MPL-2.0 §3.2 would oblige us to make
+    # DOMPurify's own Source Code Form available to anyone who receives the
+    # minified bundle, which is a real obligation bought for nothing, and
+    # Apache-2.0 carries a patent grant MPL's is narrower than. The upstream
+    # LICENSE ships verbatim with BOTH texts, because misrepresenting what was
+    # offered would be worse than stating which half we took.
+    Entry("DOMPurify", [], "Apache-2.0 (dual, or MPL-2.0)",
+          "DOMPurify-Apache-2.0-or-MPL-2.0.txt", "DOMPurify",
+          bundled=("dompurify",)),
+    Entry("fflate", [], "MIT", "fflate-MIT-LICENSE.txt", "fflate", bundled=("fflate",)),
+    Entry("performance-now", [], "MIT",
+          "performance-now-MIT-LICENSE.txt", "performance-now",
+          bundled=("performance-now",)),
+    Entry("raf", [], "MIT", "raf-MIT-LICENSE.txt", "raf", bundled=("raf",)),
+    Entry("regenerator-runtime", [], "MIT",
+          "regenerator-runtime-MIT-LICENSE.txt", "regenerator-runtime",
+          bundled=("regenerator-runtime",)),
+    Entry("rgbcolor", [], "MIT", "rgbcolor-MIT-LICENSE.txt", "rgbcolor",
+          bundled=("rgbcolor",)),
+    Entry("stackblur-canvas", [], "MIT",
+          "stackblur-canvas-MIT-LICENSE.txt", "stackblur-canvas",
+          bundled=("stackblur-canvas",)),
+    Entry("svg-pathdata", [], "MIT", "svg-pathdata-MIT-LICENSE.txt", "svg-pathdata",
+          bundled=("svg-pathdata",)),
     Entry("node-qrcode", ["static/lib/qrcode.min.js"], "MIT",
           "node-qrcode-MIT-LICENSE.txt", "node-qrcode"),
     Entry("KaTeX", ["static/lib/katex/katex.min.js", "static/lib/katex/katex.min.css"],
@@ -92,6 +196,14 @@ INVENTORY = [
           "KaTeX-fonts-OFL.txt", "KaTeX-fonts-OFL.txt"),
     Entry("Mermaid", ["static/lib/mermaid.min.js"], "MIT",
           "Mermaid-MIT-LICENSE.txt", "Mermaid"),
+    # B46, found by rule 7 the first time it derived the bundle list instead of
+    # reading one: mermaid.min.js is a bundle too, and it ships three Microsoft
+    # packages nobody had noticed. All three carry the same MIT text byte for
+    # byte, so one file covers them and the entry names all three.
+    Entry("vscode-languageserver (jsonrpc, protocol, types)", [], "MIT",
+          "vscode-languageserver-MIT-LICENSE.txt", "vscode-languageserver",
+          bundled=("vscode-jsonrpc", "vscode-languageserver-protocol",
+                   "vscode-languageserver-types")),
     Entry("Pyodide", ["static/lib/pyodide/*"], "MPL-2.0",
           "Pyodide-MPL-2.0.txt", "static/lib/pyodide", copyleft=True),
     Entry("Fira Code", ["static/fonts/FiraCode-*.woff2"], "OFL-1.1",
@@ -206,6 +318,31 @@ def main() -> int:
                     f"for instead of the detail; leaving it out is worse\n"
                     f"            than having no summary at all."
                 )
+
+    # 7 — a bundle's own contents, re-derived from the bundle. P0-21b: the
+    # html2pdf sidecar names four of the fifteen packages inside it, and the
+    # other eleven had no notice anywhere for as long as the file has shipped,
+    # because nothing could see past the minification. It can: webpack left
+    # 1,736 `node_modules/<package>/` paths in the blob, so the list is
+    # readable from the shipped bytes rather than carried in a comment. If the
+    # bundle is ever replaced, this recomputes and the new contents have to be
+    # declared before CI is green again.
+    # No "and there must be at least one bundle" guard here. This checker is
+    # also run against a stripped fixture repo (`tests/test_licence_alignment`)
+    # where every `.min.js` is an empty stand-in, so a claim about *this* tree
+    # would fail there and mean nothing. The claim lives where it is true:
+    # `tests/test_bundled_package_notices.py` asserts, against the real tree,
+    # that discovery returns exactly the two bundles it should.
+    bundles = discover_bundles(files)
+    declared = {pkg for e in INVENTORY for pkg in e.bundled}
+    for bundle, found in sorted(bundles.items()):
+        for pkg in sorted(found - declared):
+            problems.append(
+                f"UNBUNDLED   {pkg}  (inside {bundle})\n"
+                f"            Shipped inside that bundle, declared by no Entry. "
+                f"Add one with\n"
+                f"            bundled=({pkg!r},) and its licence text."
+            )
 
     if not quiet:
         copyleft = [e.name for e in INVENTORY if e.copyleft]

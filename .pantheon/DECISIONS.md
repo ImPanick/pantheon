@@ -711,3 +711,35 @@ control, it is a second source of truth.
 **What would reopen this**: an operator asking for it, having actually used the exporter. Not a
 reviewer's intuition that features have on/off switches, and not symmetry with `metrics_enabled` —
 that one is a genuine boolean because a scrape endpoint has no address to be empty.
+
+---
+
+## D-2026-09-07-01 — DOMPurify: Apache-2.0, not MPL-2.0
+
+**What it decides.** `html2pdf.bundle.min.js` ships DOMPurify 2.3.0, which Cure53 offers under
+Apache-2.0 **or** MPL-2.0. A dual offer is not paperwork to copy; it is a choice the recipient
+makes and then has to live with. Pantheon takes **Apache-2.0**.
+
+**Why.** MPL-2.0 is a file-level copyleft with a source-availability obligation: §3.2 says anyone
+who receives the Executable Form must be able to obtain the Source Code Form of the Covered
+Software. DOMPurify arrives here inside a 906 KB minified webpack bundle — that *is* Executable
+Form — so taking the MPL branch would commit this project to distributing or offering DOMPurify's
+own source alongside it, forever, for a dependency of a dependency of the PDF export button.
+AGPL §13 already obliges us to offer *our* source; this would be a second, separate obligation
+about somebody else's, bought for nothing.
+
+Apache-2.0 asks for the notice to travel and adds an express patent grant, which MPL-2.0's §2.1(b)
+is narrower than. It is also already one-way compatible with AGPL-3.0-or-later, which is what this
+work is under (`P0-18`), so nothing about the combination becomes a question.
+
+**What is filed.** The upstream `LICENSE` **verbatim, with both texts in it**, as
+`licenses/DOMPurify-Apache-2.0-or-MPL-2.0.txt`. Shipping a trimmed copy of the Apache half would
+misrepresent what Cure53 offered. `CREDITS.md` and `.pantheon/check-licences.py` both record the
+offer and the branch taken, so the choice is visible rather than implied by which file is on disk.
+
+**What would reopen this.** Cure53 dropping the dual offer in a version we upgrade to, or a
+downstream user who needs the MPL branch for their own combination — in which case nothing here
+stops them taking it; the dual offer is Cure53's and it reaches them too.
+
+**Cost.** Anyone auditing this has to read a licence file that contains two licences and a line
+elsewhere saying which one applies. That is the price of not editing somebody else's licence file.
