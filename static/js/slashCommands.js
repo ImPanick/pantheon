@@ -23,6 +23,16 @@ import cookbookModule from './cookbook.js';
 import { EVAL_PROMPTS } from './compare/index.js?v=20260829trustladder1';
 import { PROVIDER_DEVICE_FLOWS, formatDeviceFlowError, runProviderDeviceFlow } from './providerDeviceFlow.js';
 import { getSettings } from './appConfig.js';
+// H19: `/shortcuts` is generated from the one registry, not a third copy.
+import { KEYBIND_DEFAULTS, KEYBIND_LABELS } from './keyboard-shortcuts.js';
+// H19: the toggle map lives with the toggles. There were FOUR copies of it
+// and three of them were missing `rag`, which is why `/toggle rag` could not
+// have worked even once it was registered.
+// The `?v=` suffix is not decoration: every other importer of this module
+// uses it, and a bare specifier makes the browser load a SECOND copy with
+// its own state — which for a module that owns toggle state is exactly the
+// bug this import was meant to fix. `check-specifiers.py` caught it.
+import { TOGGLE_CHECKBOX_IDS } from './chatStream.js?v=20260829trustladder1';
 
 // ── Module state ──────────────────────────────────────────────────────
 
@@ -917,7 +927,7 @@ function _syncToggleUI(name, state) {
 }
 
 async function _quickToggle(name) {
-  const toggleMap = { web: 'web-toggle', bash: 'bash-toggle', research: 'research-toggle' };
+  const toggleMap = TOGGLE_CHECKBOX_IDS;   // `H19` — one map, not four
   const chk = document.getElementById(toggleMap[name]);
   if (!chk) return false;
   chk.checked = !chk.checked;
@@ -928,7 +938,7 @@ async function _quickToggle(name) {
 }
 
 async function _applyToggle(name, val) {
-  const toggleMap = { web: 'web-toggle', bash: 'bash-toggle', research: 'research-toggle' };
+  const toggleMap = TOGGLE_CHECKBOX_IDS;   // `H19` — one map, not four
   const chk = document.getElementById(toggleMap[name]);
   if (!chk) return;
   const newState = val === 'on' ? true : val === 'off' ? false : !chk.checked;
@@ -1288,7 +1298,7 @@ async function _cmdWorkspace(args, ctx) {
 async function _cmdToggleShow(args, ctx) {
   const name = (args[0] || '').toLowerCase();
   const val = (args[1] || '').toLowerCase();
-  const toggleMap = { web: 'web-toggle', bash: 'bash-toggle', research: 'research-toggle' };
+  const toggleMap = TOGGLE_CHECKBOX_IDS;   // `H19` — one map, not four
   if (!name || !toggleMap[name]) {
     const status = Object.keys(toggleMap).map(k => {
       const chk = document.getElementById(toggleMap[k]);
@@ -5205,16 +5215,18 @@ async function _cmdSetup(args, ctx) {
 // ── Shortcuts ──
 
 async function _cmdShortcuts(args, ctx) {
-  // Try to load user keybinds from settings
-  let keybinds = {
-    search: 'ctrl+k',
-    toggle_sidebar: 'ctrl+b',
-    new_session: 'ctrl+alt+n',
-    star_session: 'ctrl+alt+s',
-    delete_session: 'ctrl+alt+d',
-    admin_panel: 'ctrl+shift+u',
-    cancel: 'escape',
-  };
+  // `H19`. This was a third hardcoded copy of the keybind table, and it was
+  // the worst of the three: seven rows against the runtime's twenty-one, it
+  // **invented two actions that do not exist** — `star_session` and
+  // `admin_panel`, neither of which is bound to anything anywhere — and it
+  // printed `ctrl+b` for `toggle_sidebar` while the dispatcher matches
+  // `ctrl+alt+b`. So a person who ran `/shortcuts` was told about keys that do
+  // nothing, not told about most of the keys that do something, and given the
+  // wrong combo for one of the ones they were told about.
+  //
+  // Generated from `KEYBIND_DEFAULTS` now. An unbound action (an empty combo)
+  // is skipped rather than printed as a shortcut with no key.
+  let keybinds = { ...KEYBIND_DEFAULTS };
 
   try {
     const settings = await getSettings();
@@ -5231,17 +5243,15 @@ async function _cmdShortcuts(args, ctx) {
     return p.charAt(0).toUpperCase() + p.slice(1);
   }).join('+');
 
-  const entries = [
-    [formatCombo(keybinds.search), 'Search conversations'],
-    [formatCombo(keybinds.toggle_sidebar), 'Toggle sidebar'],
-    [formatCombo(keybinds.new_session), 'New session'],
-    [formatCombo(keybinds.star_session), 'Star / unstar session'],
-    [formatCombo(keybinds.delete_session), 'Delete session'],
-    [formatCombo(keybinds.admin_panel), 'Admin panel'],
-    [formatCombo(keybinds.cancel), 'Cancel stream / close panel'],
-    ['Enter', 'Send message'],
-    ['Shift+Enter', 'New line'],
-  ];
+  const entries = Object.keys(KEYBIND_DEFAULTS)
+    // An action with no combo is unbound on purpose (most of the open-tool
+    // shortcuts ship empty so people can assign their own). Printing it as a
+    // shortcut with a blank key is how a help screen starts lying again.
+    .filter((action) => (keybinds[action] || '').trim())
+    .map((action) => [formatCombo(keybinds[action]), KEYBIND_LABELS[action] || action]);
+  // Not keybinds, and not in the registry, because nothing can rebind them.
+  entries.push(['Enter', 'Send message']);
+  entries.push(['Shift+Enter', 'New line']);
   const maxKey = Math.max(...entries.map(e => e[0].length));
   const lines = entries.map(([key, desc]) => `  ${key.padEnd(maxKey + 2)}${desc}`);
   const body = await typewriterReply('Keyboard shortcuts:');
@@ -5778,6 +5788,7 @@ const COMMANDS = {
     subs: {
       'web':       { handler: _cmdToggleWeb,       alias: ['search','s','w'],  help: 'Toggle web search',       usage: '/toggle web' },
       'bash':      { handler: _cmdToggleBash,      alias: ['b','shell'],       help: 'Toggle bash/shell',       usage: '/toggle bash' },
+      'rag':       { handler: _cmdToggleRag,       alias: ['docs','r'],       help: 'Toggle document search', usage: '/toggle rag' },
       'research':  { handler: _cmdToggleResearch,  alias: ['r'],               help: 'Toggle deep research',    usage: '/toggle research' },
       'doc':       { handler: _cmdToggleDoc,       alias: [],     help: 'Toggle document editor',  usage: '/toggle doc' },
       'sidebar':   { handler: _cmdToggleSidebar,   alias: ['sb'], help: 'Cycle sidebar (full/mini/off)', usage: '/toggle sidebar [1|2|3]' },
@@ -6087,8 +6098,7 @@ const COMMANDS = {
   },
   stats: {
     alias: ['df'],
-    category: 'Utility',
-    hidden: true,
+    category: 'Diagnostics',
     help: 'Database statistics',
     handler: _cmdStats,
     usage: '/stats'
@@ -6109,8 +6119,7 @@ const COMMANDS = {
   },
   sh: {
     alias: ['exec', 'run', 'shell'],
-    category: 'Utility',
-    hidden: true,
+    category: 'Diagnostics',
     help: 'Run a shell command',
     handler: _cmdShell,
     usage: '/sh command'
@@ -6118,7 +6127,6 @@ const COMMANDS = {
   shortcuts: {
     alias: ['keys', 'keybinds', 'bind'],
     category: 'Utility',
-    hidden: true,
     help: 'Show keyboard shortcuts',
     handler: _cmdShortcuts,
     usage: '/shortcuts'
@@ -6150,7 +6158,7 @@ const COMMANDS = {
   wisdom:  { alias: ['inspire'],    hidden: true, handler: _cmdWisdom,  usage: '/wisdom' },
   uptime:  { alias: [],             hidden: true, handler: _cmdUptime,  usage: '/uptime' },
   ping:    { alias: ['pong'], category: 'Utility', hidden: true, help: 'Check if model endpoints are alive', handler: _cmdPing, usage: '/ping' },
-  probe:   { alias: ['test-models'], category: 'Utility', hidden: true, help: 'Test which models actually respond', handler: _cmdProbe, usage: '/probe [endpoint]' },
+  probe:   { alias: ['test-models'], category: 'Diagnostics', help: 'Test which models actually respond', handler: _cmdProbe, usage: '/probe [endpoint]' },
   color:   { alias: ['colour'],     hidden: true, handler: _cmdColor,   usage: '/color [hex]' },
 };
 

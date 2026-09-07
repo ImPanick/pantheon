@@ -5,7 +5,28 @@
 import { IS_MAC, isAltGrEvent } from './platform.js';
 import { getSettings } from './appConfig.js';
 
-const _defaultKeybinds = {
+/**
+ * The keybind registry. `H19`.
+ *
+ * There were three copies of this table and they disagreed. This one is the
+ * one that RUNS — the dispatcher below reads it — while `settings.js` had its
+ * own `SHORTCUT_DEFAULTS` saying `toggle_sidebar: 'ctrl+b'`, and
+ * `slashCommands.js` had a third hardcoded list of seven rows that **invented
+ * two actions that do not exist** (`star_session`, `admin_panel`), omitted
+ * fourteen real ones, and printed the wrong combo for `toggle_sidebar` as
+ * well. So `/shortcuts` told people about keys that were not bound to
+ * anything and did not mention most of the keys that were.
+ *
+ * Exported so the other two stop keeping their own. `Law 14`: this is not a
+ * fourth table, it is the first one becoming the only one.
+ *
+ * Adding a key here does NOT bind it — the dispatcher is an explicit chain of
+ * `_matchesCombo` checks, one per action — so an entry can exist purely to be
+ * NAMED by the Shortcuts panel and `/shortcuts`. `doc_find` is exactly that:
+ * the document editor binds Ctrl+F itself, scoped to the editor, and a global
+ * binding here would take browser find away from the whole app.
+ */
+export const KEYBIND_DEFAULTS = {
   search: 'ctrl+k', toggle_sidebar: 'ctrl+alt+b', new_session: 'ctrl+alt+n',
   fav_session: 'ctrl+alt+f', delete_session: 'ctrl+alt+d',
   cancel: 'escape', tts: 'alt+shift+t',
@@ -14,7 +35,42 @@ const _defaultKeybinds = {
   open_calendar: 'ctrl+alt+c', open_compare: '', open_cookbook: '',
   open_research: '', open_gallery: '', open_library: '', open_memory: '',
   open_notes: '', open_tasks: '', open_theme: '',
+  // `H20`. Display-only, and handled where it belongs: `document.js` binds
+  // Ctrl+F while the editor has focus. Listed so the Shortcuts panel and
+  // `/shortcuts` both name a find bar that has existed with no button, no
+  // registry entry and no mention anywhere.
+  doc_find: 'ctrl+f',
 };
+
+/** Actions the dispatcher does not bind; owned by the surface that uses them. */
+export const KEYBIND_LOCAL_ONLY = new Set(['doc_find']);
+
+/** Human labels, so three files stop inventing their own wording. `H19`. */
+export const KEYBIND_LABELS = {
+  search: 'Search conversations',
+  toggle_sidebar: 'Toggle sidebar',
+  new_session: 'New session',
+  fav_session: 'Favorite session',
+  delete_session: 'Delete session',
+  cancel: 'Cancel / close',
+  tts: 'Play/stop TTS',
+  incognito: 'Toggle incognito',
+  settings: 'Toggle Window',
+  focus_input: 'Focus chat input',
+  open_calendar: 'Open Calendar',
+  open_compare: 'Open Compare',
+  open_cookbook: 'Open Cookbook',
+  open_research: 'Open Deep Research',
+  open_gallery: 'Open Gallery',
+  open_library: 'Open Library',
+  open_memory: 'Open Memory',
+  open_notes: 'Open Notes',
+  open_tasks: 'Open Tasks',
+  open_theme: 'Open Theme',
+  doc_find: 'Find in document',
+};
+
+const _defaultKeybinds = KEYBIND_DEFAULTS;
 
 export function _matchesCombo(e, combo, isMac = IS_MAC) {
   if (typeof combo !== 'string' || !combo) return false;

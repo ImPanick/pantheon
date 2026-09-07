@@ -458,16 +458,35 @@ initSteerControl();
  * Handle a ui_control SSE event — AI-driven UI manipulation.
  * Extracted from the duplicated ui_control + tool_output.ui_event handlers.
  */
+/**
+ * Chat toggle name → the hidden checkbox that holds its state. `H19`.
+ *
+ * There were three copies of this map and they disagreed. This one was
+ * complete; the two in `slashCommands.js` were missing `rag` and `incognito`,
+ * which is why `_cmdToggleRag` — a handler that exists, at `:1220` — could not
+ * have worked even if it had been registered: `toggleMap['rag']` was
+ * `undefined`, `getElementById(undefined)` was null, and the function returned
+ * without doing anything or saying so.
+ *
+ * `Law 14`, the same shape as the keybind table two commits earlier: not a
+ * fourth map, the complete one becoming the only one.
+ */
+export const TOGGLE_CHECKBOX_IDS = Object.freeze({
+  web: 'web-toggle',
+  bash: 'bash-toggle',
+  rag: 'rag-toggle',
+  research: 'research-toggle',
+  incognito: 'incognito-toggle',
+});
+
+
 export function handleUIControl(uiData) {
   var uiEvent = uiData.ui_event || uiData;
   var esc = uiModule.esc;
 
   try {
     if (uiEvent === 'toggle' || uiData.ui_event === 'toggle') {
-      var toggleMap = {
-        web: 'web-toggle', bash: 'bash-toggle', rag: 'rag-toggle',
-        research: 'research-toggle', incognito: 'incognito-toggle',
-      };
+      var toggleMap = TOGGLE_CHECKBOX_IDS;
       var btnMap = {
         web: 'web-toggle-btn', bash: 'bash-toggle-btn', rag: 'rag-indicator-btn',
       };

@@ -17,6 +17,7 @@ import { openLibrary, closeLibrary, isLibraryOpen, initLibrary } from './documen
 import signatureModule from './signature.js';
 import * as Modals from './modalManager.js?v=20260723compareicon2';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
+import { _matchesCombo } from './keyboard-shortcuts.js';   // H20: Find reads the registry
 
   let API_BASE = '';
   let isOpen = false;
@@ -4850,6 +4851,14 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
         <button id="doc-header-preview-btn" class="doc-action-icon-btn" title="Run / Preview" style="display:none;opacity:0.85;gap:4px;"></button>
         <span id="doc-stream-indicator" class="doc-stream-indicator" style="display:none"><span class="doc-stream-dot"></span> editing</span>
         <span id="doc-version-badge" class="doc-version-badge" title="Version history" style="display:none">v1</span>
+        <!-- H20. The find bar below has match counts, prev/next and highlight
+             rectangles, and its only caller was a Ctrl+F handler on the editor
+             pane. doc-find appeared zero times in index.html: no button, no
+             registry entry, no mention in the Shortcuts panel or /shortcuts.
+             A feature nobody can discover is a feature nobody has.
+             (No backticks in here: this comment lives inside a template
+             literal, and one backtick ends the string.) -->
+        <button id="doc-find-btn" class="doc-action-icon-btn" title="Find in this document" style="opacity:0.7;gap:4px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><span style="font-size:11px;">Find</span></button>
         <span style="flex:1"></span>
         <button id="doc-export-pdf-btn" class="doc-action-icon-btn" title="Export PDF" style="display:none;opacity:0.7;gap:4px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg> <span style="font-size:11px;">Export PDF</span></button>
         <button id="doc-pdf-view-btn" class="doc-action-icon-btn" title="Toggle PDF view" style="display:none;opacity:0.7;gap:4px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> <span style="font-size:11px;">PDF</span></button>
@@ -6028,13 +6037,28 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
         else if (e.key === 'Enter') { e.preventDefault(); _doFind(e.shiftKey ? 'prev' : 'next', false); }
       });
 
-      // Intercept Ctrl+F on the editor pane
+      // H20. The button. Same entry point as the key, so there is one way in
+      // and both reach it.
+      pane.querySelector('#doc-find-btn')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        _openFindBar();
+      });
+
+      // Find, on the editor pane only. `H20`.
+      //
+      // The combo comes from the keybind registry now rather than being
+      // hardcoded, so the Shortcuts panel can list it AND rebinding it works.
+      // A registry entry the editor ignored would be worse than no entry: the
+      // panel would offer to change a key and nothing would change.
+      //
+      // It stays scoped to this pane. Ctrl+F everywhere else is the browser's
+      // find, and the global dispatcher deliberately does not bind `doc_find`.
       pane.addEventListener('keydown', (e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
-          e.preventDefault();
-          e.stopPropagation();
-          _openFindBar();
-        }
+        const combo = (window._pantheonKeybinds && window._pantheonKeybinds.doc_find) || 'ctrl+f';
+        if (!_matchesCombo(e, combo)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        _openFindBar();
       });
 
       // Delete (or Backspace) over the doc PANEL itself (not while typing in

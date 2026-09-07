@@ -27,6 +27,9 @@ import { providerLogo } from './providers.js';
 import { isAltGrEvent } from './platform.js';
 import { bindMenuDismiss } from './escMenuStack.js';
 import { invalidateSettings } from './appConfig.js';
+// H19: the Shortcuts panel reads the one registry instead of keeping a
+// second copy that disagreed with it about `toggle_sidebar`.
+import { KEYBIND_DEFAULTS, KEYBIND_LABELS } from './keyboard-shortcuts.js';
 
 let initialized = false;
 let modalEl = null;
@@ -1776,30 +1779,12 @@ function syncPrivacyCheckboxes() {
    SHORTCUTS TAB
    ═══════════════════════════════════════════ */
 
-const SHORTCUT_DEFAULTS = {
-  search:         'ctrl+k',
-  toggle_sidebar: 'ctrl+b',
-  new_session:    'ctrl+alt+n',
-  fav_session:    'ctrl+alt+f',
-  delete_session: 'ctrl+alt+d',
-  cancel:         'escape',
-  tts:            'alt+shift+t',
-  incognito:      'ctrl+alt+i',
-  settings:       'ctrl+,',
-  focus_input:    'ctrl+/',
-  // Open-tool shortcuts. Calendar is bound by default; the rest are
-  // unbound (empty) so the user can assign their own in the panel.
-  open_calendar:  'ctrl+alt+c',
-  open_compare:   '',
-  open_cookbook:  '',
-  open_research:  '',
-  open_gallery:   '',
-  open_library:   '',
-  open_memory:    '',
-  open_notes:     '',
-  open_tasks:     '',
-  open_theme:     '',
-};
+// `H19`. Was a second copy of the keybind table, and it disagreed with the
+// one that runs: this file said `toggle_sidebar: 'ctrl+b'`, the dispatcher
+// says `ctrl+alt+b`, and the panel showed the wrong key to anyone who looked.
+// Imported now. The panel keeps its own ICONS and CATEGORIES, which are
+// presentation and belong here; the combos and labels are behaviour and do not.
+const SHORTCUT_DEFAULTS = KEYBIND_DEFAULTS;
 
 const SHORTCUT_ICONS = {
   search:         '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="10" cy="10" r="7"/><path d="M21 21l-4.35-4.35"/></svg>',
@@ -1824,34 +1809,23 @@ const SHORTCUT_ICONS = {
   open_theme:     '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 0 0 20 5 5 0 0 0 5-5 3 3 0 0 0-3-3h-2a3 3 0 0 1-3-3 5 5 0 0 1 5-5"/></svg>',
 };
 
-const SHORTCUT_LABELS = {
-  search:         'Search conversations',
-  toggle_sidebar: 'Toggle sidebar',
-  new_session:    'New session',
-  fav_session:    'Favorite session',
-  delete_session: 'Delete session',
-  cancel:         'Cancel / close',
-  tts:            'Play/stop TTS',
-  incognito:      'Toggle incognito',
-  settings:       'Toggle Window',
-  focus_input:    'Focus chat input',
-  open_calendar:  'Open Calendar',
-  open_compare:   'Open Compare',
-  open_cookbook:  'Open Cookbook',
-  open_research:  'Open Deep Research',
-  open_gallery:   'Open Gallery',
-  open_library:   'Open Library',
-  open_memory:    'Open Memory',
-  open_notes:     'Open Notes',
-  open_tasks:     'Open Tasks',
-  open_theme:     'Open Theme',
-};
+const SHORTCUT_LABELS = KEYBIND_LABELS;   // `H19` — one table, not three
 
 const SHORTCUT_CATEGORIES = [
   { name: 'Navigation', keys: ['search', 'toggle_sidebar', 'focus_input', 'settings'] },
   { name: 'Sessions', keys: ['new_session', 'fav_session', 'delete_session'] },
   { name: 'Tools', keys: ['incognito', 'tts', 'cancel'] },
   { name: 'Open Tools', keys: ['open_calendar', 'open_compare', 'open_cookbook', 'open_research', 'open_gallery', 'open_library', 'open_memory', 'open_notes', 'open_tasks', 'open_theme'] },
+  // `H20`. Rebindable like the rest, and it genuinely works: the editor reads
+  // `_pantheonKeybinds.doc_find` rather than hardcoding Ctrl+F, so a combo set
+  // here takes effect. A `readOnly: true` flag was here first and was removed —
+  // the renderer does not implement one, so it would have been a lie in the
+  // data that nothing enforced.
+  //
+  // What is NOT true of this entry is that the global dispatcher binds it. It
+  // does not, deliberately: Ctrl+F outside a document belongs to the browser,
+  // and the find bar only opens when the editor pane has focus.
+  { name: 'Documents', keys: ['doc_find'] },
 ];
 
 function _formatKeyCaps(combo) {

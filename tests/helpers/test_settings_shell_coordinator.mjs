@@ -780,6 +780,21 @@ const searchModule = functionProxy();
 
 const STUBS = new Map([
   [
+    // H19. The Shortcuts panel reads the keybind registry from the module that
+    // owns it instead of keeping a second copy that disagreed about
+    // `toggle_sidebar`. Stubbed rather than loaded for real: this smoke is
+    // about the settings coordinator, and loading the real one would drag in
+    // `platform.js` and `appConfig.js` behind it. Two entries so a panel that
+    // renders a shortcut row has something to render.
+    path.join(JS, 'keyboard-shortcuts.js'),
+    {
+      KEYBIND_DEFAULTS: { search: 'ctrl+k', toggle_sidebar: 'ctrl+alt+b' },
+      KEYBIND_LABELS: { search: 'Search conversations', toggle_sidebar: 'Toggle sidebar' },
+      KEYBIND_LOCAL_ONLY: new Set(),
+      _matchesCombo() { return false; },
+    },
+  ],
+  [
     path.join(JS, 'ui.js'),
     { default: uiModule },
   ],
