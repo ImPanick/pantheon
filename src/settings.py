@@ -28,6 +28,10 @@ _CACHE_TTL = 2.0
 _settings_cache: tuple[float, dict] | None = None
 _features_cache: tuple[float, dict] | None = None
 
+# Distinguishes "caller passed no default" from "caller passed None", which is
+# a real default for several keys. See `setting_is_explicit`.
+_UNSET = object()
+
 def _invalidate_caches():
     global _settings_cache, _features_cache
     _settings_cache = None
@@ -404,6 +408,79 @@ def save_settings(settings: dict):
 def get_setting(key: str, default: Any = None) -> Any:
     """Read a single setting value."""
     return load_settings().get(key, default)
+
+
+def setting_is_explicit(key: str, *, default: Any = _UNSET) -> bool:
+    """True if ``key`` in the saved file is a deliberate operator choice.
+
+    This is the two-signal version of the question `is_setting_overridden` and
+    `context_budget.budget_is_explicit` each answer with one signal, and it
+    exists because neither signal is sufficient on its own:
+
+    * **Presence** alone is wrong *after* a save. `POST /api/auth/settings`
+      does `current = load_settings()` — which merges `DEFAULT_SETTINGS` — and
+      writes the whole dict back, so one admin save materialises all ~200
+      defaults into `settings.json`. Every key is then "present", including the
+      ~200 nobody has ever looked at.
+    * **Value** alone is wrong *before* a save. With no file at all,
+      `get_setting(key, None)` still returns the shipped default, because the
+      merge happens on every read. A caller comparing to the default cannot
+      tell "no file" from "someone typed the default".
+
+    Presence AND a non-default value is the honest answer: it is true only when
+    the file says something, and says something other than what we ship.
+
+    The cost is stated rather than hidden: **an operator who deliberately
+    chooses the default value is indistinguishable from a materialised
+    default**, and a lower layer will win. That is a property of storing
+    settings as a flat merged dict, not of this function, and it is the same
+    limit `agent_input_token_budget` documents in `DEFAULT_SETTINGS` ("to pin a
+    budget near the default, use a nearby value"). It only bites when a lower
+    layer is *also* configured — i.e. the operator set an env var and then
+    picked the default in the UI — and in that case honouring the environment
+    is the better of two guesses, because the environment is the only one of
+    the two we know was typed on purpose.
+
+    ``default`` may be passed for keys outside ``DEFAULT_SETTINGS``; otherwise
+    the shipped default is used, and an unknown key with no default is never
+    explicit.
+    """
+    if default is _UNSET:
+        if key not in DEFAULT_SETTINGS:
+            return False
+        default = DEFAULT_SETTINGS[key]
+    if not is_setting_overridden(key):
+        return False
+    return load_settings().get(key) != default
+
+
+def env_backed(settings: dict, key: str, env_name: str, default: str = "") -> str:
+    """A stored string, falling back to the environment when it is *blank*.
+
+    `settings.get(key, os.environ.get(env, ""))` is the idiom this replaces and
+    it does not do this: a dict default fires only on **absence**, and the UI
+    writes `""` for a cleared field rather than dropping the key. One save of a
+    blank box therefore masks the environment permanently, with no error and
+    nothing in the settings file that looks wrong — the operator sees their own
+    empty string.
+
+    Blank means unset here. An operator who wants a credential *off* on a host
+    whose environment still defines it should unset it in the environment,
+    which is where it was set; the UI cannot unset a variable in the process
+    environment and must not pretend it can.
+
+    Takes the dict rather than reading it so the two callers that parse
+    `settings.json` themselves (contacts, email) can use the same rule as the
+    ones going through `load_settings`.
+    """
+    import os
+    stored = settings.get(key)
+    if isinstance(stored, str) and stored.strip():
+        return stored
+    if not isinstance(stored, str) and stored not in (None, ""):
+        # A non-string that is not empty (an int port, a bool) is a real value.
+        return stored
+    return os.environ.get(env_name) or default
 
 
 def is_setting_overridden(key: str) -> bool:

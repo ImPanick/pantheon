@@ -1098,23 +1098,32 @@ def _get_email_config(account_id: str | None = None, owner: str = "") -> dict:
 
     # Legacy fallback — flat keys in settings.json / env vars
     settings = _load_settings()
+    # `H07`. Ten fields that read `settings.get(k, os.environ.get(K, ""))` — a
+    # dict default, which fires on **absence** and not on blank. This is the
+    # same idiom that killed CardDAV's three env credentials permanently the
+    # first time anyone pressed Remove. It is latent rather than live here only
+    # because no writer creates these flat keys any more; one future write of
+    # `""` reproduces it across a whole mail configuration, and there would be
+    # nothing in `settings.json` to see. Named before it fires.
+    from src.settings import env_backed
+    _v = lambda k, e, d="": env_backed(settings, k, e, d)  # noqa: E731
     cfg = {
         "account_id": resolved_id,
         "account_name": "legacy",
-        "smtp_host": settings.get("smtp_host", os.environ.get("SMTP_HOST", "")),
-        "smtp_port": int(settings.get("smtp_port", os.environ.get("SMTP_PORT", "465")) or 465),
+        "smtp_host": _v("smtp_host", "SMTP_HOST"),
+        "smtp_port": int(_v("smtp_port", "SMTP_PORT", "465") or 465),
         "smtp_security": _smtp_security_mode({
-            "smtp_security": settings.get("smtp_security", os.environ.get("SMTP_SECURITY", "")),
-            "smtp_port": settings.get("smtp_port", os.environ.get("SMTP_PORT", "465")),
+            "smtp_security": _v("smtp_security", "SMTP_SECURITY"),
+            "smtp_port": _v("smtp_port", "SMTP_PORT", "465"),
         }),
-        "smtp_user": settings.get("smtp_user", os.environ.get("SMTP_USER", "")),
-        "smtp_password": settings.get("smtp_password", os.environ.get("SMTP_PASSWORD", "")),
-        "imap_host": settings.get("imap_host", os.environ.get("IMAP_HOST", "")),
-        "imap_port": int(settings.get("imap_port", os.environ.get("IMAP_PORT", "993")) or 993),
-        "imap_user": settings.get("imap_user", os.environ.get("IMAP_USER", "")),
-        "imap_password": settings.get("imap_password", os.environ.get("IMAP_PASSWORD", "")),
+        "smtp_user": _v("smtp_user", "SMTP_USER"),
+        "smtp_password": _v("smtp_password", "SMTP_PASSWORD"),
+        "imap_host": _v("imap_host", "IMAP_HOST"),
+        "imap_port": int(_v("imap_port", "IMAP_PORT", "993") or 993),
+        "imap_user": _v("imap_user", "IMAP_USER"),
+        "imap_password": _v("imap_password", "IMAP_PASSWORD"),
         "imap_starttls": settings.get("imap_starttls", True),
-        "from_address": settings.get("email_from", os.environ.get("EMAIL_FROM", "")),
+        "from_address": _v("email_from", "EMAIL_FROM"),
     }
     if not (cfg["smtp_host"] and cfg["smtp_user"] and cfg["smtp_password"]):
         logger.warning("SMTP not configured — add an Email Account in Settings or set env vars")

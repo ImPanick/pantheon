@@ -153,16 +153,22 @@ drift**, and calling it velocity is how it accumulates. If you cannot finish the
 same change, the task is not done: it stays open with a note saying what is missing, and the
 unwired half does not merge.
 
-`python3 .pantheon/check-wiring.py` counts it. The number is **2** unresolved
-`getElementById` targets — measured as: static-string lookups across `static/js/**` excluding
+`python3 .pantheon/check-wiring.py` counts it. The number is **124** unresolved element-id
+targets — measured as: static-string lookups across `static/js/**` and `static/*.js` excluding
 `static/lib/**`, minus ids present in any tracked HTML, minus ids the JS itself creates at
 runtime. **It may go down. It may not go up.**
 
 *It said 78 until 2026-08-27, which was the count before wiring run 01 cleared them — the law
-against carrying numbers, carrying a number. Both remaining entries are checker artifacts, not
-drift, and the CI ceiling is `--max 2`. The checker has two known blind spots, written up on
-`P3-15`: it scans neither `static/app.js` nor `static/sw.js`, and it sees only literal
-`getElementById`, so helper lookups like `el('adm-*')` are invisible to it.*
+against carrying numbers, carrying a number. Then it said 2, and then 9, and neither number was
+the truth: the checker saw only literal `getElementById`, and this codebase reaches for elements
+through a one-line helper — `ui.el`, `admin.el`, `settings/dom.byId`, all three of them
+`return document.getElementById(id)` — at 925 call sites against ~1,100 direct ones. **Nearly
+half the wiring in the product was outside the measurement**, and `VERIFY-2026-08-27.md` said
+so at the time ("2 ✔ literal-`getElementById`; 125 helper-aware") without the checker ever being
+changed. `H07` closed it, and the number went 9 → 124 in one commit without a line of product
+code changing. A ratchet nobody widens is a ratchet measuring a smaller and smaller thing; when
+the count jumps because the scan improved, say that in the same breath as the new number,
+because the alternative is a future reader concluding the product got worse.*
 
 > **Incident.** An audit of one phase found a complete webhooks backend with no UI at all, a
 > skills editor behind a flag whose list was never fetched, a Real-ESRGAN upscaler with no
@@ -318,6 +324,16 @@ Twice in one session a `timeout`-killed mutation script left a checker mutated i
 A `finally:` block does not run when the process is killed. So a mutation harness registers its restore with `atexit` **and** handles `SIGTERM`/`SIGINT`, and prints `git diff --stat` when it finishes so a leftover is visible in the same output that reported the results. `/tmp/mutlib.py` is that harness.
 
 The general form: **any tool that edits the tree to ask a question must be able to answer it while dying.** The measurement is not worth a silent change to the thing being measured.
+
+### Law 19 — a suite run is evidence about the tree it started with, and nothing else.
+
+The suite takes seven minutes. Editing during those seven minutes is the obvious way to use them, and it silently invalidates the run.
+
+`H02`'s verification came back with two failures that were not in the baseline, both in `test_task_session_folder.py`, both asserting on `inspect.getsource(TaskScheduler._execute_llm_task)`. The tests were fine and the code was fine. `getsource` finds a function by the `co_firstlineno` recorded when the module was **imported**, then reads the file from **disk** — and `src/task_scheduler.py` had grown twelve lines in between, for unrelated work. It returned a different function's body. Re-running the file alone: three passed.
+
+**Eight test files in this repo, at eleven call sites, read their own source this way.** A `git checkout` mid-run does it too, and so does a `sed -i` that only adds a comment. Nothing warns; the failure arrives dressed as a regression in whatever the offset happens to land on, which is the most expensive possible disguise.
+
+So: **start the suite, then keep your hands off the tree until it finishes.** Read, plan, measure something in a scratch copy, write the roadmap entry — all fine. If an edit cannot wait, the run is spent: make the edit and start a new one. A diff against the baseline is only worth running if the tree did not move, and "it was only a comment" is exactly the change that makes `getsource` lie.
 ## Before you start a task
 
 ```

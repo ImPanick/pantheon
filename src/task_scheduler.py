@@ -105,11 +105,24 @@ def resolve_task_concurrency_cap(owner: str | None = None) -> Tuple[int, str]:
     if role_cap is not None:
         return role_cap, "role profile"
 
+    # `H06`. This layer read `get_setting(KEY, None)` and treated a non-None
+    # answer as an instance setting. `get_setting` calls `load_settings`, which
+    # merges `DEFAULT_SETTINGS` on **every** read — so it could not return None,
+    # returned the shipped 1, and every line below this block was unreachable
+    # code from first boot on a machine with no settings file at all. The env
+    # var has therefore never worked on any install. `B20` filed this as "the
+    # env var dies on the first admin save"; the save is real and does
+    # materialise the key, but it is not the cause and a fix aimed at it would
+    # have left a fresh install just as broken.
+    #
+    # `setting_is_explicit` answers the question this line was trying to ask.
     try:
-        from src.settings import get_setting
-        setting_cap = _coerce_concurrency_cap(
-            get_setting(TASK_CONCURRENCY_CAP_SETTING, None), "instance setting"
-        )
+        from src.settings import get_setting, setting_is_explicit
+        setting_cap = None
+        if setting_is_explicit(TASK_CONCURRENCY_CAP_SETTING):
+            setting_cap = _coerce_concurrency_cap(
+                get_setting(TASK_CONCURRENCY_CAP_SETTING, None), "instance setting"
+            )
     except Exception:
         logger.debug("Task concurrency cap: settings read failed", exc_info=True)
         setting_cap = None

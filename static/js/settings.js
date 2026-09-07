@@ -3012,6 +3012,19 @@ async function initEmailSettings() {
   } catch (_) {}
 
   // Load contacts config
+  //
+  // H07: DEAD, and deliberately kept rather than deleted so the next reader is
+  // not the third person to work this out. `set-carddav-url`, `-user`, `-pass`,
+  // `-save` and `-msg` have NO markup anywhere in the product — the live
+  // CardDAV form is `uf-carddav-*`, built as a template literal in the
+  // integrations panel below. So this fetch runs on every settings open,
+  // spends a round trip, and assigns to nothing; the `set-carddav-save`
+  // handler further down is bound to a button that does not exist. Nothing
+  // caught it because `check-wiring.py` only read literal `getElementById`,
+  // and this file reaches for elements through `byId`. It reads them now
+  // (blind spot 4), and this block is five of the 124 entries in the
+  // inventory that produced. Do not build the missing markup: that would be a
+  // second CardDAV form, which Law 14 exists to prevent.
   try {
     const res = await fetch('/api/contacts/config');
     const cfg = await res.json();
@@ -3937,6 +3950,35 @@ async function initUnifiedIntegrations() {
 
   // ── CardDAV form + contacts manager ──
   async function showCardDavForm() {
+    // H07. Which layer each CardDAV field came from. This exists because the
+    // fix it accompanies is otherwise indistinguishable from a broken delete:
+    // before H07, Remove wrote three empty strings and the reader took them as
+    // real values, so an operator's env credentials died silently. Now blank
+    // means unset and the environment answers again — which means pressing
+    // Remove on a host that sets CARDDAV_URL leaves the field populated. That
+    // is correct (a web form cannot unset a variable in the server's process
+    // environment) and it is baffling without a sentence saying so.
+    // textContent throughout: this renders a server-supplied value.
+    function _renderCarddavEnvNote(sources) {
+      const note = el('uf-carddav-env-note');
+      if (!note) return;
+      const LABELS = {
+        carddav_url: 'URL',
+        carddav_username: 'Username',
+        carddav_password: 'Password',
+      };
+      const fromEnv = Object.keys(LABELS).filter((k) => (sources || {})[k] === 'environment');
+      if (!fromEnv.length) { note.style.display = 'none'; note.textContent = ''; return; }
+      const names = fromEnv.map((k) => LABELS[k]);
+      const list = names.length === 1
+        ? names[0]
+        : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+      note.textContent = list + (names.length === 1 ? ' comes' : ' come')
+        + ' from this server\u2019s environment. Saving a value here overrides it;'
+        + ' Remove clears what is saved and the environment answers again.';
+      note.style.display = '';
+    }
+
     formEl.innerHTML = `
       <div class="admin-card" style="margin-top:8px">
         <h2 style="font-size:13px;display:flex;align-items:center;gap:6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent, var(--red));flex-shrink:0;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Contacts (CardDAV)</h2>
@@ -3944,6 +3986,7 @@ async function initUnifiedIntegrations() {
           <div class="settings-row"><label class="settings-label">URL</label><input id="uf-carddav-url" class="settings-input" placeholder="http://localhost:5232/user/contacts/"></div>
           <div class="settings-row"><label class="settings-label">Username</label><input id="uf-carddav-user" class="settings-input"></div>
           <div class="settings-row"><label class="settings-label">Password</label><input id="uf-carddav-pass" class="settings-input" type="password"></div>
+          <div id="uf-carddav-env-note" class="settings-row" style="display:none;font-size:11px;opacity:0.65;line-height:1.4;margin-top:2px;"></div>
           <div class="settings-row" style="margin-top:10px;align-items:center;justify-content:flex-end;gap:6px;">
             <span id="uf-carddav-msg" style="font-size:11px;flex:1;margin-right:8px"></span>
             <button class="admin-btn-add" id="uf-carddav-save" style="display:inline-flex;align-items:center;gap:5px;background:transparent;color:var(--accent, var(--red));border-color:color-mix(in srgb, var(--accent, var(--red)) 45%, var(--border));font-weight:600;">
@@ -3984,6 +4027,7 @@ async function initUnifiedIntegrations() {
       // can tell their password is already on file without us echoing it.
       const passInput = el('uf-carddav-pass');
       if (passInput && d.password) passInput.placeholder = '(unchanged)';
+      _renderCarddavEnvNote(d.sources);
     } catch (_) {}
     el('uf-carddav-cancel').addEventListener('click', () => { formEl.style.display = 'none'; });
     el('uf-carddav-save').addEventListener('click', async () => {

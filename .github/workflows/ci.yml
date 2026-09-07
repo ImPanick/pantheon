@@ -83,7 +83,7 @@ jobs:
       - run: python -m compileall -q app.py core routes src services scripts tests
 
   wiring-ratchet:
-    name: Wiring ratchet (check-wiring.py --max 9)
+    name: Wiring ratchet (check-wiring.py --max 124)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
@@ -104,7 +104,7 @@ jobs:
       # collection, which is the shape that hid the discovery audit's
       # highest-harm finding. The nine are listed in P3-15's roadmap entry.
       - name: check-wiring
-        run: python3 .pantheon/check-wiring.py --max 9
+        run: python3 .pantheon/check-wiring.py --max 124
       # Law 14, arrived at by accident. A module imported under two URLs is two
       # modules with two copies of its state, and nothing breaks loudly when it
       # happens — a registry written through one specifier is simply empty when

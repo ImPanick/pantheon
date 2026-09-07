@@ -265,6 +265,25 @@ def indirect_lookups(text: str) -> set:
     return found
 
 
+# Blind spot 4: the codebase does not call `getElementById` directly very
+# often. It calls a one-line helper — `ui.el`, `admin.el`, `settings/dom.byId`,
+# all three of which are `return document.getElementById(id)` and nothing else
+# — and there are ~925 such call sites against ~1,100 direct ones. Scanning only
+# the direct form therefore missed nearly half the wiring in the product, which
+# is how `set-carddav-url/user/pass/save/msg` sat in `settings.js` referencing
+# markup that does not exist anywhere: a loader filling five elements that were
+# never built and a click handler bound to a button that is not there.
+#
+# `el(` is matched only with a STRING LITERAL argument, so `el(someVar)` stays
+# out — those are the indirect lookups `indirect_lookups` handles, and sweeping
+# them in here would resurrect the 511-false-positive version.
+_LOOKUPS = (
+    re.compile(r"getElementById\(\s*['\"]([A-Za-z0-9_-]+)['\"]"),
+    re.compile(r"\bel\(\s*['\"]([A-Za-z0-9_-]+)['\"]\s*\)"),
+    re.compile(r"\bbyId\(\s*['\"]([A-Za-z0-9_-]+)['\"]\s*\)"),
+)
+
+
 def main() -> int:
     limit = None
     if "--max" in sys.argv:
@@ -279,19 +298,36 @@ def main() -> int:
     sources = {f: code_only(read(f)) for f in js_files}
     blob = "\n".join(sources.values())
     made = set(re.findall(r"""id=\\?["']([A-Za-z0-9_-]+)""", blob))
+    # An id built by concatenation or interpolation — `id="cmp-history-' + i`
+    # or `id="cmp-history-${i}"` — never appears whole in the source, so the
+    # literal lookup `getElementById('cmp-history-0')` read as unresolved. Both
+    # forms leave the fixed part ending in a separator, which is the signal: a
+    # `made` entry ending in `-` or `_` is a PREFIX, not an id. Length-gated at
+    # four characters — three letters and a separator, the shortest prefix
+    # anyone writes — so a stray `id="a-"` cannot make every id in the
+    # product "known", which is how a ratchet stops measuring without
+    # anyone editing the number.
+    made_prefixes = tuple(sorted(
+        {p for p in made if p.endswith(("-", "_")) and len(p) > 3}
+        | {pre for pre in re.findall(r"""id=\\?["']([A-Za-z0-9_-]*)\$\{""", blob)
+           if "-" in pre and len(pre) > 3}
+    ))
     made |= set(re.findall(r"""\.id\s*=\s*['"]([A-Za-z0-9_-]+)['"]""", blob))
     made |= set(re.findall(r"""setAttribute\(\s*['"]id['"]\s*,\s*['"]([A-Za-z0-9_-]+)['"]""", blob))
 
     where = {}
     for f, text in sources.items():
-        for i in re.findall(r"getElementById\(\s*['\"]([A-Za-z0-9_-]+)['\"]", text):
-            where.setdefault(i, set()).add(f)
+        for pat in _LOOKUPS:
+            for i in pat.findall(text):
+                where.setdefault(i, set()).add(f)
         for i in indirect_lookups(text):
             where.setdefault(i, set()).add(f)
 
     looked = set(where)
     known = html_ids | made
-    dead = sorted(i for i in looked - known if len(i) > 3 and not i.startswith("__"))
+    dead = sorted(i for i in looked - known
+                  if len(i) > 3 and not i.startswith("__")
+                  and not i.startswith(made_prefixes))
 
     print(f"lookups {len(looked)}  ·  in markup {len(looked & html_ids)}  ·  "
           f"made at runtime {len(looked & made - html_ids)}  ·  UNRESOLVED {len(dead)}")

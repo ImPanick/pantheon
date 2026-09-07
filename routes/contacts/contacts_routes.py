@@ -44,17 +44,66 @@ def _save_settings(settings):
     atomic_write_json(str(SETTINGS_FILE), settings, indent=2)
 
 
-def _get_carddav_config():
-    import os
-    settings = _load_settings()
-    password = settings.get("carddav_password", os.environ.get("CARDDAV_PASSWORD", ""))
-    if password and "carddav_password" in settings:
+# `H07`. These three read `settings.get(k, os.environ.get(K, ""))`, and a dict
+# default fires only on **absence**. Three UI paths write these keys
+# unconditionally — including empty values, and one of them is **Remove, which
+# deliberately PUTs three empty strings** (`static/js/settings.js:3059,3990,3598`)
+# — so after any of the three, `CARDDAV_URL/USERNAME/PASSWORD` were unreachable
+# forever, with nothing in `settings.json` that looks wrong: the operator sees
+# their own `""`. Blank now means unset, which is what `env_backed` is for.
+_CARDDAV_ENV = {
+    "carddav_url": "CARDDAV_URL",
+    "carddav_username": "CARDDAV_USERNAME",
+    "carddav_password": "CARDDAV_PASSWORD",
+}
+
+
+def _carddav_password(settings: dict) -> tuple[str, str]:
+    """(password, source). Split out because the decrypt boundary is easy to get
+    wrong: a value from `settings.json` is at rest encrypted and must be
+    decrypted, and a value from the environment is plaintext and must not be.
+    The original expressed that as `if password and "carddav_password" in
+    settings`, which was right, and which silently became `if "" and ...` the
+    moment a writer stored a blank."""
+    stored = settings.get("carddav_password")
+    if isinstance(stored, str) and stored.strip():
         from src.secret_storage import decrypt
-        password = decrypt(password)
+        return decrypt(stored), "settings"
+    env = os.environ.get("CARDDAV_PASSWORD") or ""
+    return env, ("environment" if env else "")
+
+
+def _carddav_sources() -> Dict[str, str]:
+    """Where each field's value actually came from: "settings", "environment"
+    or "" for unset. The panel needs this to be honest about Remove — a
+    deployment whose environment defines `CARDDAV_URL` still has CardDAV
+    configured after Remove, because the UI cannot unset a variable in the
+    process environment, and a form that redisplays the value with no
+    explanation reads as a failed delete."""
+    from src.settings import env_backed
+    settings = _load_settings()
+    out: Dict[str, str] = {}
+    for key, env_name in _CARDDAV_ENV.items():
+        if key == "carddav_password":
+            out[key] = _carddav_password(settings)[1]
+            continue
+        stored = settings.get(key)
+        if isinstance(stored, str) and stored.strip():
+            out[key] = "settings"
+        elif env_backed(settings, key, env_name):
+            out[key] = "environment"
+        else:
+            out[key] = ""
+    return out
+
+
+def _get_carddav_config():
+    from src.settings import env_backed
+    settings = _load_settings()
     return {
-        "url": settings.get("carddav_url", os.environ.get("CARDDAV_URL", "")),
-        "username": settings.get("carddav_username", os.environ.get("CARDDAV_USERNAME", "")),
-        "password": password,
+        "url": env_backed(settings, "carddav_url", "CARDDAV_URL"),
+        "username": env_backed(settings, "carddav_username", "CARDDAV_USERNAME"),
+        "password": _carddav_password(settings)[0],
     }
 
 
@@ -855,6 +904,11 @@ def setup_contacts_routes():
         # Mask password
         if cfg["password"]:
             cfg["password"] = "***"
+        # `H07`. An additive key: which layer each value came from. A panel that
+        # cannot tell a stored value from an environment one cannot explain why
+        # a field repopulates after Remove, and every existing reader of this
+        # endpoint ignores keys it does not know.
+        cfg["sources"] = _carddav_sources()
         return cfg
 
     @router.put("/config")
