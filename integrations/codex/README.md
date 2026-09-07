@@ -12,7 +12,7 @@ This directory contains the Codex plugin/skill bundle for Pantheon.
 
 ```bash
 export PANTHEON_URL=http://your-pantheon-host:7000
-export PANTHEON_API_TOKEN=ody_generated_token
+export PANTHEON_API_TOKEN=pan_generated_token
 mkdir -p ~/plugins
 curl -fsSL -H "Authorization: Bearer $PANTHEON_API_TOKEN" "$PANTHEON_URL/api/codex/plugin.zip" -o /tmp/pantheon-codex-plugin.zip
 python3 -m zipfile -e /tmp/pantheon-codex-plugin.zip ~/plugins

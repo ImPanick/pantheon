@@ -75,6 +75,7 @@ import companion.pairing as P  # noqa: E402
 import companion.routes as R  # noqa: E402
 from companion.routes import mint_pairing_token, setup_companion_routes  # noqa: E402
 from core.middleware import require_admin  # noqa: E402
+from core.api_tokens import TOKEN_PREFIX, bearer_credential  # noqa: E402
 
 
 # --- token minting: shown once, hashed at rest -----------------------------
@@ -86,7 +87,11 @@ def test_mint_token_returns_raw_once_and_stores_only_a_hash(monkeypatch):
         monkeypatch.setattr(parent, "database", _db, raising=False)
 
     token_id, raw = P.mint_token("alice")
-    assert raw.startswith("ody_")
+    # Against the constant, not a literal. `P0-31` renamed this prefix once
+    # already and pinning the spelling here is how a fixture ends up proving
+    # the fork's old name is still being minted.
+    assert raw.startswith(TOKEN_PREFIX)
+    assert bearer_credential(f"Bearer {raw}") == raw
     # The persisted row stores a bcrypt hash + prefix, never the plaintext.
     assert _CAPTURED["token_hash"] != raw
     assert _CAPTURED["token_hash"].startswith("$2")  # bcrypt

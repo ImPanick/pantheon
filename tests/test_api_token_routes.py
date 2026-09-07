@@ -19,6 +19,8 @@ import pytest
 
 from fastapi import HTTPException
 
+from core.api_tokens import TOKEN_PREFIX, bearer_credential
+
 
 # ---------------------------------------------------------------------------
 # Fixture: install per-test stubs via monkeypatch so they are torn down
@@ -171,12 +173,13 @@ def test_create_token_attributes_owner_hashes_secret_and_returns_raw_once(monkey
     create_token = _get_handler(mod, "POST", "/tokens")
     resp = create_token(request=req, name="my-token")
 
-    expected_raw = "ody_" + fake_suffix
+    expected_raw = TOKEN_PREFIX + fake_suffix
     expected_prefix = expected_raw[:8]
     expected_id = fake_uuid_str[:8]
 
     assert resp["token"] == expected_raw
-    assert resp["token"].startswith("ody_")
+    assert resp["token"].startswith(TOKEN_PREFIX)
+    assert bearer_credential("Bearer " + resp["token"]) == resp["token"]
     assert resp["token_prefix"] == expected_prefix
     assert resp["id"] == expected_id
     assert resp["owner"] == "alice"

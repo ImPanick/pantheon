@@ -952,7 +952,7 @@ by shape rather than by promise.
 scrape_configs:
   - job_name: pantheon
     authorization:
-      credentials: ody_your_token_here
+      credentials: pan_your_token_here
     static_configs:
       - targets: ['pantheon.lan:7000']
 ```

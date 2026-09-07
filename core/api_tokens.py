@@ -30,14 +30,20 @@ from typing import Callable, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-# What new tokens are minted with. `P0-31` renames this; see the module
-# docstring for why that is a two-value change and not a one-value one.
-TOKEN_PREFIX = "ody_"
+# What new tokens are minted with. `P0-31` renamed this on 2026-09-07; the
+# fork's old name was the last thing in this product a user was asked to
+# paste into another machine.
+TOKEN_PREFIX = "pan_"
 
 # What the auth middleware will accept. Keep the currently-minted prefix first;
 # every other entry is a prefix this build still honours from tokens minted by
 # an older one. Nothing is ever removed from here without a release note.
-ACCEPTED_TOKEN_PREFIXES: Tuple[str, ...] = ("ody_",)
+#
+# `"ody_"` is the fork's inherited prefix and it stays. Every token minted
+# before 2026-09-07 carries it — in someone's `.env`, in a paired phone that
+# cannot be re-paired without physical access to it, in a Prometheus scrape
+# config. Dropping it would revoke all of them at once, silently, on upgrade.
+ACCEPTED_TOKEN_PREFIXES: Tuple[str, ...] = ("pan_", "ody_")
 
 # 43 characters of base64url. `secrets.token_urlsafe(32)` is 32 bytes, which is
 # what the two mint sites that worked already used; the third used the same
