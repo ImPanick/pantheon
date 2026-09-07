@@ -6,6 +6,7 @@ import Storage from './storage.js';
 import uiModule from './ui.js';
 import { initColorPickers, attachColorPicker } from './colorPicker.js';
 import { hexToRgb } from './color/hex.js';
+import { prefersReducedMotion } from './motion.js';
 import { makeWindowDraggable } from './windowDrag.js';
 import { snapModalToZone } from './tileManager.js';
 
@@ -477,13 +478,25 @@ export function applyBgPattern(pattern) {
   // Clean up any canvas backgrounds
   document.querySelectorAll('#synapse-canvas, #rain-canvas, #constellations-canvas, #perlin-flow-canvas, #petals-canvas, #sparkles-canvas, #embers-canvas').forEach(c => c.remove());
   if (p !== 'none') document.body.classList.add('bg-pattern-' + p);
-  if (_CANVAS_PATTERNS[p]) _CANVAS_PATTERNS[p]();
-  // Hide sliders that do nothing on static patterns.
-  const hide = _STATIC_PATTERNS.has(p);
+  // P1-12. Seven full-screen canvas animators hang off this one line, and a
+  // `requestAnimationFrame` loop is invisible to the stylesheet guard — it is
+  // painting pixels, not running a keyframe. The theme class is still applied,
+  // so whatever static styling the pattern has is kept; only the motion stops.
+  // D-2026-08-26-03 keeps the animated backgrounds; nobody asked for them to
+  // keep running for a person whose operating system says otherwise.
+  const reduced = prefersReducedMotion();
+  if (_CANVAS_PATTERNS[p] && !reduced) _CANVAS_PATTERNS[p]();
+  // Hide sliders that do nothing on static patterns — or, under reduced
+  // motion, on a canvas pattern that is not running to be adjusted. The note
+  // says which of the two it is, because a control that vanishes with no
+  // explanation reads as a bug.
+  const hide = _STATIC_PATTERNS.has(p) || (reduced && !!_CANVAS_PATTERNS[p]);
   const ig = document.getElementById('theme-bg-intensity-group');
   const sg = document.getElementById('theme-bg-size-group');
   if (ig) ig.style.display = hide ? 'none' : '';
   if (sg) sg.style.display = hide ? 'none' : '';
+  const note = document.getElementById('theme-reduced-motion-note');
+  if (note) note.hidden = !(reduced && !!_CANVAS_PATTERNS[p]);
 }
 
 export function getSaved() {

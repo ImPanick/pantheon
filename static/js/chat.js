@@ -12,6 +12,7 @@ import sessionModule from './sessions.js';
 import chatRenderer from './chatRenderer.js?v=20260829trustladder1';
 import chatStream from './chatStream.js?v=20260829trustladder1';
 import { addAITTSButton } from './tts-ai.js';
+import { prefersReducedMotion } from './motion.js';
 import markdownModule from './markdown.js';
 import spinnerModule from './spinner.js';
 import presetsModule from './presets.js';
@@ -3216,7 +3217,8 @@ import agentDrafts from './agentDrafts.js';   // H01
 
       function _startLiveThinkTimer() {
         if (_liveThinkTimerId !== null || !_liveThinkTimerEl) return;
-        _liveThinkReducedMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+        // P1-12: one place owns the query now (`static/js/motion.js`).
+        _liveThinkReducedMotion = prefersReducedMotion();
         const cadence = _liveThinkReducedMotion ? 1000 : 250;
         _liveThinkTimerId = setInterval(() => {
           if (!_liveThinkTimerEl || !_liveThinkTimerEl.isConnected) {

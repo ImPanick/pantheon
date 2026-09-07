@@ -43158,3 +43158,60 @@ body.settings-sidebar-resize-active {
   content: " · superseded";
   opacity: 0.8;
 }
+
+/* ===========================================================================
+   P1-12 — one guard for everything that moves.
+
+   Before this there were 20 narrow `prefers-reduced-motion` blocks against 149
+   `@keyframes` in this file and 5 more injected into `document.head` at
+   runtime. The background effects — seven full-screen canvas animators — ran
+   continuously with nothing stopping them.
+
+   Three things about this block are deliberate, and each one is a way the
+   obvious version fails:
+
+   1. `0.01ms`, not `none`. Modules across this product wait for `animationend`
+      and `transitionend` before cleaning up — `compare/panes.js` clears an
+      inline `animation` in that handler, and `app.js` restarts the welcome
+      animation by toggling it. `animation: none` means those events never
+      fire and the cleanup never runs, so the "safe" spelling is the one that
+      leaves things stuck. A duration below a frame is over before it is seen
+      and still fires the event.
+
+   2. `:is(#\9#\9#\9, *)`, not `*`. `:is()` takes the specificity of its most
+      specific argument, so this matches everything with the weight of three
+      ids. It has to: **21 `!important` declarations of `animation` or
+      `transition` across 34 selectors** already exist in this file — the most
+      specific being `#email-lib-modal.email-lib-fullscreen .modal-content` at
+      (1,2,0) — and between two `!important` author declarations, specificity
+      decides before order does. A universal selector loses to every one of
+      them, silently, and the guard would read as correct while the modals kept
+      animating. `#\9` is an id nothing can have (the escape is a tab), so this
+      buys weight and matches nothing on its own; `*` is what actually matches.
+      Three of them rather than one is headroom, and
+      `tests/test_reduced_motion_guard.py` recomputes the ceiling and fails if
+      anything ever outranks it.
+
+   3. It reaches runtime-injected keyframes for free. An `!important` author
+      declaration beats a normal one no matter which stylesheet it came from,
+      so the five `@keyframes` that `slashCommands.js` writes into
+      `document.head` need no separate handling. (The row that asked for this
+      said a CSS-only guard could not reach them. It can; what it cannot reach
+      is `requestAnimationFrame`, which is why `static/js/motion.js` exists.)
+
+   Left alone on purpose: the 20 narrower blocks above. Several do more than
+   stop motion — they substitute a static appearance rather than freezing a
+   moving one — and Law 1 says we add.
+   =========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  :is(#\9#\9#\9, *),
+  :is(#\9#\9#\9, *)::before,
+  :is(#\9#\9#\9, *)::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
+    scroll-behavior: auto !important;
+  }
+}

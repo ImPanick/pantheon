@@ -382,6 +382,45 @@ export default {
 }
 
 
+_RELATIVE_IMPORT = re.compile(r"""^\s*import\s[^'"]*['"]\.\/([^'"?]+)""", re.M)
+
+
+def _copy_unstubbed_imports(directory: Path, source: Path, stubs: dict) -> None:
+    """Copy any local module the source imports that has no stub.
+
+    Every sandbox here hand-writes a stub per import, which means **adding one
+    import to a sandboxed module breaks every sandbox that copies it**, with a
+    node resolution error that names a path in a temp directory and nothing
+    about the cause. `P1-12` added a four-line `./motion.js` to `theme.js` and
+    took 54 assertions down across two files.
+
+    So: a stub still wins where one exists — that is how these sandboxes keep
+    `storage.js` in memory and `ui.js` silent — and anything else is copied
+    from `static/js/` for real, transitively. A dependency-free helper then
+    costs nothing, and a heavy new import fails loudly on its own missing
+    globals rather than on a path, which is the right way round.
+    """
+    js_root = source.parent
+    seen, queue = set(), [source]
+    while queue:
+        current = queue.pop()
+        try:
+            text = current.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for rel in _RELATIVE_IMPORT.findall(text):
+            if rel in stubs or rel in seen:
+                continue
+            seen.add(rel)
+            real = js_root / rel
+            if not real.is_file():
+                continue
+            target = directory / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(real, target)
+            queue.append(real)
+
+
 def _make_sandbox(directory: Path, source: Path, shim: str, stubs: dict) -> Path:
     (directory / "dom.js").write_text(_DOM)
     (directory / "shim.js").write_text(shim)
@@ -390,6 +429,7 @@ def _make_sandbox(directory: Path, source: Path, shim: str, stubs: dict) -> Path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(src)
     shutil.copy(source, directory / source.name)
+    _copy_unstubbed_imports(directory, source, stubs)
     return directory
 
 
@@ -1385,3 +1425,45 @@ def test_no_new_rule_reaches_for_a_bare_accent():
             assert "var(--accent, var(--red))" in line, (
                 f"--accent is undefined until P1-01; {line.strip()!r} would void its declaration"
             )
+
+
+def test_a_stub_always_beats_the_real_module(tmp_path):
+    """B47's guard. The copier exists so a new import does not break every
+    sandbox — it must never quietly replace a stub with the real thing, or the
+    in-memory `storage.js` and the silent `ui.js` these sandboxes depend on
+    would become the real ones and the failure would look like anything but
+    this."""
+    js = tmp_path / "js"
+    js.mkdir()
+    (js / "subject.js").write_text(
+        "import a from './stubbed.js';\nimport b from './fresh.js';\n"
+    )
+    (js / "stubbed.js").write_text("export default 'THE REAL ONE';\n")
+    (js / "fresh.js").write_text("import c from './deeper.js';\nexport default c;\n")
+    (js / "deeper.js").write_text("export default 'deep';\n")
+
+    box = tmp_path / "box"
+    box.mkdir()
+    _make_sandbox(box, js / "subject.js", "// shim", {"stubbed.js": "export default 'STUB';\n"})
+
+    assert (box / "stubbed.js").read_text() == "export default 'STUB';\n"
+    assert "THE REAL ONE" not in (box / "stubbed.js").read_text()
+    assert (box / "fresh.js").is_file(), "an unstubbed import was not copied"
+    assert (box / "deeper.js").is_file(), "the copy is not transitive"
+
+
+def test_the_copier_ignores_an_import_that_is_not_a_local_module(tmp_path):
+    """`import x from 'somepkg'` is not ours to copy, and a versioned
+    specifier (`./chat.js?v=…`) has to resolve to the file without the query —
+    both spellings exist in this tree."""
+    js = tmp_path / "js"
+    js.mkdir()
+    (js / "subject.js").write_text(
+        "import pkg from 'somepkg';\nimport v from './versioned.js?v=20260829trustladder1';\n"
+    )
+    (js / "versioned.js").write_text("export default 1;\n")
+    box = tmp_path / "box2"
+    box.mkdir()
+    _make_sandbox(box, js / "subject.js", "// shim", {})
+    assert (box / "versioned.js").is_file()
+    assert not (box / "somepkg").exists()
