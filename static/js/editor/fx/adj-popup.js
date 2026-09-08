@@ -47,6 +47,7 @@ import {
   defaultAdjParams,
 } from '../layer-helpers.js';
 import { drawHistogram } from './histogram.js';
+import { topPortalZ } from '../../toolWindowZOrder.js';
 
 export function createAdjPopupSystem({ composite, saveState, renderLayerPanel }) {
   function suppressLayerGhostTap() {
@@ -115,9 +116,15 @@ export function createAdjPopupSystem({ composite, saveState, renderLayerPanel })
         state.fxMenuEl._layerId === layer.id) { closeFxMenu(); return; }
     closeFxMenu();
     if (!layer.adjLayers) layer.adjLayers = [];
+    // `P3-18`. The backdrop and the menu are a pair — the backdrop catches the
+    // outside click and must sit directly under the menu it dismisses — so
+    // they take one reading of the stack, not two. Read once: `topPortalZ()`
+    // is a live max, and calling it twice with an append in between would put
+    // the backdrop *above* its own menu.
+    const _fxZ = topPortalZ();
     const backdrop = document.createElement('div');
     backdrop.id = 'ge-fx-menu-backdrop';
-    backdrop.style.cssText = 'position:fixed;inset:0;z-index:10001;background:transparent;pointer-events:auto;touch-action:none;';
+    backdrop.style.cssText = 'position:fixed;inset:0;z-index:' + _fxZ + ';background:transparent;pointer-events:auto;touch-action:none;';
     document.body.appendChild(backdrop);
     backdrop.addEventListener('pointerdown', (ev) => {
       ev.preventDefault();
@@ -132,7 +139,7 @@ export function createAdjPopupSystem({ composite, saveState, renderLayerPanel })
     menu.className = 'ge-fx-menu ge-frosted';
     menu._layerId = layer.id;
     menu._ignoreActivationUntil = Date.now() + 350;
-    menu.style.zIndex = '10002';
+    menu.style.zIndex = String(_fxZ + 1);
     menu.style.pointerEvents = 'auto';
     const items = [
       { type: 'brightness-contrast', label: 'Brightness / Contrast' },

@@ -39,7 +39,16 @@ _IMPORT_REWRITES = {
     ),
     "import themeModule from './theme.js';": "import themeModule from './theme.mjs';",
     "import spinnerModule from './spinner.js';": "import spinnerModule from './spinner.mjs';",
+    # `P3-18` routed the session ⋯ menu's z-index through the shared helper.
+    "import { topPortalZ } from './toolWindowZOrder.js';": (
+        "import { topPortalZ } from './toolWindowZOrder.mjs';"
+    ),
 }
+
+# Modules with no dependencies of their own, copied into the sandbox whole
+# rather than stubbed: the harness then runs the real arithmetic instead of a
+# fiction of it, and there is one less stub to remember when it changes.
+_VERBATIM = {"toolWindowZOrder.mjs": _REPO / "static" / "js" / "toolWindowZOrder.js"}
 
 _STUBS = {
     "storage.mjs": r"""
@@ -318,6 +327,8 @@ def results(tmp_path_factory):
     sessions_module.write_text(source, encoding="utf-8")
     for name, stub in _STUBS.items():
         (module_dir / name).write_text(stub, encoding="utf-8")
+    for name, real in _VERBATIM.items():
+        (module_dir / name).write_text(real.read_text(encoding="utf-8"), encoding="utf-8")
 
     harness = _HARNESS.replace("SESSIONS_PATH", sessions_module.as_uri()).replace(
         "SHELL_PATH", _SHELL_URL

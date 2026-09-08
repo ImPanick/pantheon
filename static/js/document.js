@@ -19,6 +19,7 @@ import signatureModule from './signature.js';
 import * as Modals from './modalManager.js?v=20260723compareicon2';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { _matchesCombo } from './keyboard-shortcuts.js';   // H20: Find reads the registry
+import { topPortalZ } from './toolWindowZOrder.js';
 
   let API_BASE = '';
   let isOpen = false;
@@ -6551,7 +6552,9 @@ import { _matchesCombo } from './keyboard-shortcuts.js';   // H20: Find reads th
     menu.style.position = 'fixed';
     menu.style.top = (rect.bottom + 4) + 'px';
     menu.style.left = rect.left + 'px';
-    menu.style.zIndex = '9999';
+    // `P3-18`: below the dock-chip floor (10030), so a long-pressed dock chip
+    // covered this menu; and below a tool window raised past it.
+    menu.style.zIndex = String(topPortalZ());
     items.forEach(([md, label, ico]) => {
       const it = document.createElement('button');
       it.className = 'doc-overflow-item';
@@ -9068,7 +9071,10 @@ import { _matchesCombo } from './keyboard-shortcuts.js';   // H20: Find reads th
     if (!_docTabMenu) {
       _docTabMenu = document.createElement('div');
       _docTabMenu.className = 'doc-tab-dropdown';
-      _docTabMenu.style.cssText = 'position:fixed;z-index:1000;min-width:0;width:max-content;padding:4px;background:var(--panel);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.3);backdrop-filter:blur(12px);font-size:12px;display:none;';
+      // `P3-18`: the per-open value below is the one that matters; this
+      // initial one is `display:none` and is kept in step so the two do not
+      // drift into disagreeing about the same element.
+      _docTabMenu.style.cssText = 'position:fixed;z-index:' + topPortalZ() + ';min-width:0;width:max-content;padding:4px;background:var(--panel);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.3);backdrop-filter:blur(12px);font-size:12px;display:none;';
       document.body.appendChild(_docTabMenu);
       // Close on outside click
       document.addEventListener('click', (e) => {
@@ -9136,7 +9142,7 @@ import { _matchesCombo } from './keyboard-shortcuts.js';   // H20: Find reads th
     const tabBar = document.getElementById('doc-tab-bar');
     const barBottom = tabBar ? tabBar.getBoundingClientRect().bottom : rect.bottom;
     _docTabMenu.style.position = 'fixed';
-    _docTabMenu.style.zIndex = '1000';
+    _docTabMenu.style.zIndex = String(topPortalZ());   // `P3-18`
     _docTabMenu.style.left = rect.left + 'px';
     _docTabMenu.style.top = (barBottom + 2) + 'px';
 
@@ -9534,7 +9540,7 @@ import { _matchesCombo } from './keyboard-shortcuts.js';   // H20: Find reads th
     menu.style.top = (rect.bottom + 2) + 'px';
     menu.style.right = (window.innerWidth - rect.right) + 'px';
     menu.style.left = 'auto';
-    menu.style.zIndex = '9999';
+    menu.style.zIndex = String(topPortalZ());   // `P3-18`
 
     const langLabel = lang ? lang.toUpperCase() : 'TXT';
     // Form-backed markdown doc → primary export is the filled PDF, not the

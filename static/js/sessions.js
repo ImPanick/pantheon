@@ -9,6 +9,7 @@ import { providerLogo } from './providers.js';
 import { initModelPicker, updateModelPicker } from './modelPicker.js?v=20260722ctxheader1';
 import themeModule from './theme.js';
 import spinnerModule from './spinner.js';
+import { topPortalZ } from './toolWindowZOrder.js';
 
 const API_BASE = window.location.origin;
 
@@ -640,7 +641,9 @@ function createSessionItem(s) {
         dd.style.top = (rect.bottom + 4) + 'px';
         dd.style.right = 'auto';
         dd.style.display = 'block';
-        dd.style.zIndex = '1000';
+        // `P3-18`: portaled to body and fixed, so it competes with the tool
+        // windows directly; 1000 lost to any of them raised past it.
+        dd.style.zIndex = String(topPortalZ());
         // Clamp to viewport
         requestAnimationFrame(() => {
           const mr = dd.getBoundingClientRect();

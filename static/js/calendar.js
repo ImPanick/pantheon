@@ -6,7 +6,7 @@
 import uiModule from './ui.js';
 import spinnerModule from './spinner.js';
 import * as Modals from './modalManager.js?v=20260723compareicon2';
-import { topPortalZ } from './toolWindowZOrder.js';
+import { topPortalZ, nextToolWindowZ } from './toolWindowZOrder.js';
 import { makeWindowDraggable } from './windowDrag.js';
 import { attachColorPicker } from './colorPicker.js';
 import { bindMenuDismiss } from './escMenuStack.js';
@@ -2523,7 +2523,11 @@ async function _showCalSettings() {
   overlay.id = 'cal-settings-panel';
   overlay.className = 'modal';
   overlay.style.display = 'flex';
-  overlay.style.zIndex = '999';
+  // `P3-18`. This is a `body > .modal`, so the bring-to-front counter counts
+  // it — and a literal cannot keep up with a counter. Open two tool windows
+  // and alternate raising them and the stack passes 999, after which Calendar
+  // Settings opens *behind* the calendar that opened it.
+  overlay.style.zIndex = String(nextToolWindowZ());
   overlay.innerHTML = `
     <div class="modal-content" style="width:420px;max-width:92vw;">
       <div class="modal-header">

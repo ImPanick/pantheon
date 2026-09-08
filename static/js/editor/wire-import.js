@@ -27,6 +27,7 @@
  * @returns {{ handleImportedImage: (img: HTMLImageElement) => void }}
  */
 import { state } from './state.js';
+import { topPortalZ } from '../toolWindowZOrder.js';
 
 export function wireImport({ container, saveState, createLayer, composite, renderLayerPanel, uiModule }) {
   // Hidden <input type="file"> the topbar + File buttons both click.
@@ -113,7 +114,9 @@ export function wireImport({ container, saveState, createLayer, composite, rende
 
       // Picker overlay.
       const overlay = document.createElement('div');
-      overlay.style.cssText = 'position:fixed;inset:0;z-index:10001;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;';
+      // `P3-18`: the editor's own chrome runs 10001-10006, so this picker
+      // shared a layer with the toolbar it is supposed to cover.
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:' + topPortalZ() + ';background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;';
       const panel = document.createElement('div');
       panel.style.cssText = 'background:var(--panel,#1e1e1e);border-radius:12px;padding:16px;max-width:500px;max-height:70vh;overflow-y:auto;width:90%;';
       panel.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;"><span style="font-size:13px;font-weight:600;">Pick from Gallery</span><button id="ge-gallery-close" style="background:none;border:none;color:var(--fg);cursor:pointer;font-size:18px;">✕</button></div>';

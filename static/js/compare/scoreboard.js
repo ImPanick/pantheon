@@ -5,6 +5,7 @@ import state from './state.js';
 import { VOTES_STORAGE_KEY } from './icons.js';
 import themeModule from '../theme.js';
 import uiModule from '../ui.js';
+import { nextToolWindowZ } from '../toolWindowZOrder.js';
 
 const escapeHtml = uiModule.esc;
 
@@ -98,7 +99,10 @@ export async function showScoreboard() {
   const overlay = document.createElement('div');
   overlay.id = 'scoreboard-overlay';
   overlay.className = 'modal';
-  overlay.style.zIndex = '10001';
+  // `P3-18`: 10001 is the exact literal `toolWindowZOrder.js` records as the
+  // one that "eventually rendered them BEHIND their own modal (#4720)". It
+  // must be a live read of the stack, not a number.
+  overlay.style.zIndex = String(nextToolWindowZ());
   overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
   // Esc handling lives in the global "close topmost popup" handler (app.js)
   // so the scoreboard closes first without also dismissing the compare
