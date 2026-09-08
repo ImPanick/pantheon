@@ -539,7 +539,8 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
               // search here could never show the magnifier the same event
               // shows in chat.
               const node = document.createElement('div');
-              applyAgentThreadNode(node, { tool: toolName, state: 'running', command: cmd, round: json.round, approved: json.approved });
+              applyAgentThreadNode(node, { tool: toolName, state: 'running', command: cmd, fullCommand: json.full_command,
+                round: json.round, approved: json.approved });
               // `B56`: no per-node click listener. `chat.js` binds one
               // delegated handler on document.body that covers these nodes
               // too, so a second one here fired alongside it and the card
@@ -610,7 +611,8 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
               const _diff = buildDiffHtml(json.diff);
               applyAgentThreadNode(currentToolBlock, {
                 tool: json.tool, state: 'done', ok, round: json.round, approved: json.approved,
-                command: cmd, output: outHtml, diff: _diff, todo: todoHtml,
+                command: cmd, fullCommand: json.full_command,
+                output: outHtml, diff: _diff, todo: todoHtml,
               });
               currentToolBlock = null;
               // Reset text element so next deltas create a fresh container

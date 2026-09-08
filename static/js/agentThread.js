@@ -139,6 +139,38 @@ export function approvedBadgeHtml(approved) {
     + APPROVED_ICON + 'approved</span>';
 }
 
+/**
+ * `P4-09`. The command block, and the way back to the arguments behind it.
+ *
+ * `command` is what the card has always shown, and for two kinds of action it
+ * is not the action: a document tool sends its **first line, capped at 80
+ * characters**, and the approval replay sends the first 240 of the sealed
+ * content. The rest was on `tool_start` only — live, once, and gone the moment
+ * the tool finished, because the result event that rewrites the card never
+ * carried it. After a reload it did not exist at all.
+ *
+ * The expansion is a `<details>`, not a button: the fold handler is one
+ * delegated listener bound to `.agent-thread-header` (`chat.js`), this sits in
+ * `.agent-thread-content`, and adding a listener of its own is the bug `B56`
+ * was. `<details class="agent-tool-output">` is already how this card folds its
+ * output, so this is that shape and not a second one (`Law 14`).
+ *
+ * The summary states the length, because a reader deciding whether to open
+ * something deserves to know whether it is four lines or four hundred — and
+ * because when the backend had to cap it, the cap says so in the text itself.
+ */
+export function commandBlockHtml(command, fullCommand) {
+  const shown = command == null ? '' : String(command);
+  if (!shown) return '';
+  const block = `<pre class="agent-thread-cmd">${esc(shown)}</pre>`;
+  const full = fullCommand == null ? '' : String(fullCommand);
+  if (!full || full === shown) return block;
+  return block
+    + '<details class="agent-thread-cmd-full"><summary>'
+    + `Full arguments (${full.length.toLocaleString('en-US')} characters)`
+    + `</summary><pre class="agent-thread-cmd">${esc(full)}</pre></details>`;
+}
+
 /** The className an `.agent-thread-node` carries in `state`. */
 export function nodeClassName(state, ok) {
   if (state === 'running') return 'agent-thread-node running';
@@ -155,6 +187,8 @@ export function nodeClassName(state, ok) {
  * @param {string} o.state    'running' | 'done'
  * @param {boolean} [o.ok]    finished cards only: did it succeed
  * @param {string} [o.command] the command line, escaped and wrapped here
+ * @param {string} [o.fullCommand] the untruncated arguments; drawn behind a
+ *                            `<details>` when it differs from `command`
  * @param {string} [o.output]  pre-rendered HTML
  * @param {string} [o.diff]    pre-rendered HTML
  * @param {string} [o.todo]    pre-rendered HTML
@@ -175,7 +209,7 @@ export function agentThreadNodeHtml(o) {
   const todo = o.todo || '';
   const diff = o.diff || '';
   const cmd = (o.command && !todo && !diff)
-    ? `<pre class="agent-thread-cmd">${esc(o.command)}</pre>` : '';
+    ? commandBlockHtml(o.command, o.fullCommand) : '';
   const tail = state === 'running'
     ? '<span class="agent-thread-wave">▁▂▃</span>'
     : `<span class="agent-thread-status">${o.ok ? 'done' : 'failed'}</span>`
@@ -217,5 +251,6 @@ export function applyAgentThreadNode(node, o) {
 }
 
 export default { agentThreadNodeHtml, applyAgentThreadNode, toolLabel, toolIcon,
-                 nodeClassName, roundBadgeHtml, approvedBadgeHtml, TOOL_LABELS,
-                 TOOL_ICONS, SEARCH_ICON, APPROVED_ICON };
+                 nodeClassName, roundBadgeHtml, approvedBadgeHtml,
+                 commandBlockHtml, TOOL_LABELS, TOOL_ICONS, SEARCH_ICON,
+                 APPROVED_ICON };

@@ -10762,6 +10762,29 @@ body.fullwidth-chat .chat-history {
   overflow-x: auto;
 }
 
+/* `P4-09`. The way back to the arguments behind a truncated command line. A
+   `<details>`, so it needs no listener of its own — the fold handler is bound
+   to `.agent-thread-header` and this sits in `.agent-thread-content`, which is
+   why adding a second listener here would be `B56` again. Styled as the output
+   fold beside it is, because it is that shape and not a new one. */
+.agent-thread-cmd-full {
+  margin: 0 0 4px;
+}
+.agent-thread-cmd-full > summary {
+  cursor: pointer;
+  padding: 2px 0;
+  font-size: 0.78em;
+  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  user-select: none;
+}
+.agent-thread-cmd-full > summary:hover {
+  color: var(--fg);
+}
+.agent-thread-cmd-full > .agent-thread-cmd {
+  max-height: 340px;
+  overflow-y: auto;
+}
+
 /* ── The agent's own todo list (P6-17) ──────────────────────────────────────
    Drawn by `chatRenderer.buildTodoCard()` into the `todowrite` tool node, in
    both the live stream (`chat.js`, the `tool_output` branch) and the reloaded

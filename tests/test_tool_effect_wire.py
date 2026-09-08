@@ -55,7 +55,12 @@ TOOL_START_BASE_KEYS = frozenset({"type", "tool", "command", "full_command", "ro
 # `tool_start` sites and on the persisted `tool_event`, so the streamed result
 # card was the one event in the pair that could not say which round it belonged
 # to — the card drew a round after a reload and none while it was live.
-TOOL_OUTPUT_BASE_KEYS = frozenset({"type", "tool", "command", "round", "output", "exit_code"})
+# `P4-09` added `full_command` to both `tool_output` sites and to the persisted
+# `tool_event`. It was on `tool_start` and nowhere else, so the full arguments
+# were live-only and one rewrite deep: the result event that redraws the card
+# never carried them, and after a reload they did not exist at all.
+TOOL_OUTPUT_BASE_KEYS = frozenset(
+    {"type", "tool", "command", "full_command", "round", "output", "exit_code"})
 APPROVED_START_BASE_KEYS = TOOL_START_BASE_KEYS | {"approved"}
 APPROVED_OUTPUT_BASE_KEYS = TOOL_OUTPUT_BASE_KEYS | {"approved"}
 
@@ -367,6 +372,7 @@ def test_main_path_adds_the_effect_keys_and_nothing_else(monkeypatch):
     assert output["type"] == "tool_output"
     assert output["tool"] == "bash"
     assert output["command"] == "printf hi"
+    assert output["full_command"] == "printf hi"
     assert output["output"] == "ok"
     assert output["exit_code"] == 0
 
@@ -390,6 +396,7 @@ def test_replay_path_adds_the_effect_keys_and_nothing_else(monkeypatch):
     assert output["type"] == "tool_output"
     assert output["tool"] == "bash"
     assert output["command"] == "printf hi"
+    assert output["full_command"] == "printf hi"
     assert output["output"] == "ok"
     assert output["exit_code"] == 0
 

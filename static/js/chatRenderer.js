@@ -3197,7 +3197,8 @@ export function addMessage(role, content, modelName, metadata) {
             // or a todo card is its rule now, not three separate copies of it.
             applyAgentThreadNode(node, {
               tool: ev.tool, state: 'done', ok, round: ev.round, approved: ev.approved,
-              command: ev.command, output: outHtml, diff: evDiffHtml, todo: evTodoHtml,
+              command: ev.command, fullCommand: ev.full_command,
+              output: outHtml, diff: evDiffHtml, todo: evTodoHtml,
             });
             // Click handling is delegated globally \u2014 see chat.js init.
             threadWrap.appendChild(node);

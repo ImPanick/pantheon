@@ -4343,7 +4343,8 @@ import agentDrafts from './agentDrafts.js';   // H01
                 threadWrap.classList.add('streaming');
                 lastToolThread = threadWrap;
                 const node = document.createElement('div')
-                applyAgentThreadNode(node, { tool: json.tool, state: 'running', command: cmd, round: json.round, approved: json.approved });
+                applyAgentThreadNode(node, { tool: json.tool, state: 'running', command: cmd, fullCommand: json.full_command,
+                  round: json.round, approved: json.approved });
                 // Expand/collapse via delegated click handler (init at module bottom).
                 threadWrap.appendChild(node);
                 currentToolBubble = node;
@@ -4499,7 +4500,8 @@ import agentDrafts from './agentDrafts.js';   // H01
                   // so no per-node listener is added anywhere.
                   applyAgentThreadNode(currentToolBubble, {
                     tool: json.tool, state: 'done', ok, round: json.round, approved: json.approved,
-                    command: cmd, output: outHtml, diff: diffHtml, todo: todoHtml,
+                    command: cmd, fullCommand: json.full_command,
+                    output: outHtml, diff: diffHtml, todo: todoHtml,
                   });
                   // Reset so thinking spinner between tools says "Thinking" not the old tool's label
                   _lastToolName = '';

@@ -175,6 +175,32 @@ def _effect_fields(tool_name: Any, content: Any) -> Dict[str, Any]:
         return {}
 
 
+def _command_fields(command: Any, full_command: Any) -> Dict[str, Any]:
+    """The full argument text for one action's card (`P4-09`).
+
+    `command` is what the card shows: for a document tool the **first line,
+    capped at 80 characters**, and on the approval replay the first 240 of the
+    sealed content. `full_command` is what was actually run, and the row's
+    complaint is that the truncated version was the only one a person could
+    reach — on `tool_start` alone, live, and never again after a reload.
+
+    It is emitted unconditionally, including when it equals `command`. Sending
+    it only when the two differ would be smaller on the wire and would make
+    "there is more to see" a structural fact rather than a comparison, but it
+    would also delete a field that has been on `tool_start` since the loop was
+    written, and this fork adds rather than subtracts. The builder does the
+    comparison instead, in one place.
+
+    `_truncate` is the same cap the tool *output* already carries — 10k
+    characters with a suffix that states the real length, lifted on a local
+    run by `runtime_limits`. Reusing it means the persisted event has one
+    size policy rather than a second one invented here (`Law 14`), and a
+    `create_document` body cannot put its whole self in the message metrics.
+    """
+    text = full_command if isinstance(full_command, str) else ("" if full_command is None else str(full_command))
+    return {"full_command": _truncate(text)} if text else {}
+
+
 # ── Mid-run steering (P6-18) ────────────────────────────────────────────────
 # A *steer* redirects the response that is ALREADY IN FLIGHT. The queue
 # (`static/js/chat.js` `_queueAgentRequest`) holds the NEXT message and does not
@@ -5105,8 +5131,8 @@ async def stream_agent_loop(
                         "type": "tool_start",
                         "tool": approved.tool_name,
                         "command": approved_display[:240],
-                        "full_command": approved_display,
                         "round": approved_round,
+                        **_command_fields(approved_display[:240], approved_display),
                         "approved": True,
                         **approved_effects,
                     }
@@ -5236,6 +5262,14 @@ async def stream_agent_loop(
             "tool": approved.tool_name,
             "round": approved_round,
             "command": approved_display[:240] if approval_matches else "",
+            # `P4-09`. Gated the same way `command` is, and for the same reason
+            # `approved_effects` is: a binding that failed is blocked before
+            # execution, and the expansion would be the one place on the card
+            # still showing the whole of an action this run was not allowed to
+            # run. Showing more of a refused action than of an approved one is
+            # exactly backwards.
+            **(_command_fields(approved_display[:240], approved_display)
+               if approval_matches else {}),
             "output": _truncate(approved_output),
             "exit_code": approved_result.get("exit_code"),
             "approved": approved_ran,
@@ -5317,6 +5351,8 @@ async def stream_agent_loop(
             "tool": approved.tool_name,
             "desc": desc,
             "command": approved_display[:240] if approval_matches else "",
+            **(_command_fields(approved_display[:240], approved_display)
+               if approval_matches else {}),
             "output": _truncate(approved_output),
             "exit_code": approved_result.get("exit_code"),
             "approved": approved_ran,
@@ -6447,7 +6483,7 @@ async def stream_agent_loop(
                     )
             else:
                 yield (
-                    f'data: {json.dumps({"type": "tool_start", "tool": block.tool_type, "command": cmd_display, "full_command": full_command, "round": round_num, **block_effects})}\n\n'
+                    f'data: {json.dumps({"type": "tool_start", "tool": block.tool_type, "command": cmd_display, "round": round_num, **_command_fields(cmd_display, full_command), **block_effects})}\n\n'
                 )
 
                 # Streaming progress for long-running tools (bash, python).
@@ -6682,7 +6718,10 @@ async def stream_agent_loop(
             # below) has always carried it, so the card drew a round number
             # after a reload and none at all while it was live — the same event,
             # two answers.
-            tool_output_data = {"type": "tool_output", "tool": block.tool_type, "command": cmd_display, "round": round_num, "output": output_text, "exit_code": result.get("exit_code"), **block_effects}
+            # `P4-09`: `full_command`. It was on `tool_start` and nowhere else, so the
+            # card lost the full arguments the moment the tool finished — the
+            # rewrite that draws the result had only the truncated line.
+            tool_output_data = {"type": "tool_output", "tool": block.tool_type, "command": cmd_display, "round": round_num, **_command_fields(cmd_display, full_command), "output": output_text, "exit_code": result.get("exit_code"), **block_effects}
             if is_doc_tool and "action" in result:
                 tool_output_data.update({
                     "doc_id": result.get("doc_id"),
@@ -6900,6 +6939,10 @@ async def stream_agent_loop(
                 }),
                 "desc": desc,
                 "command": cmd_display,
+                # `P4-09`. Without this the expansion is a live-only feature: a
+                # reloaded thread showed the first 80 characters of a document
+                # write and had no way back to the rest.
+                **_command_fields(cmd_display, full_command),
                 "output": output_text,
                 "exit_code": result.get("exit_code"),
                 # P7-06. The same keys the live events carry, so a card is not
