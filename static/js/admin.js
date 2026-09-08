@@ -545,6 +545,25 @@ async function loadEndpoints() {
       const keyLabel = ep.has_key
         ? (ep.api_key_fingerprint ? ` (key ${esc(ep.api_key_fingerprint)})` : ' (key set)')
         : '';
+      // `P3-22`. `supports_tools` decides whether this endpoint is sent tool
+      // schemas at all, and until now an admin who knew the answer had nowhere
+      // to say it. Three states, not a checkbox: unset means "work it out",
+      // and a checkbox would collapse that to `false` for every endpoint
+      // anybody ever edits. The hint says what Pantheon believes *right now*,
+      // because "Auto" on its own is not an answer to the question the admin
+      // came here with — and the server computes it with the same function the
+      // agent runs, not a second description of the rules.
+      const tt = ep.tool_transport || {};
+      const declared = tt.declared === true ? 'true' : (tt.declared === false ? 'false' : '');
+      const usesNative = tt.resolved === 'native';
+      const doing = tt.resolved
+        ? (usesNative ? 'native tool calling' : 'the fenced prompt')
+        : 'an answer it could not work out';
+      const forModel = (tt.model_dependent && tt.sample_model)
+        ? ` for ${esc(tt.sample_model)}` : '';
+      const toolsHint = declared
+        ? `Using ${doing} — you told it so.`
+        : `Working it out: ${doing}${forModel}.`;
       return `
         <div class="admin-user-row${ep.is_enabled ? '' : ' admin-ep-disabled'}${justAddedClass}" data-adm-ep-id="${ep.id}">
           <div style="display:flex;align-items:center;justify-content:space-between;${hasModels ? 'cursor:pointer;' : ''}padding:4px 0;" data-adm-ep-header="${ep.id}">
@@ -562,6 +581,15 @@ async function loadEndpoints() {
               <button class="admin-btn-delete" data-adm-del-ep="${ep.id}" data-adm-ep-online="${ep.online ? '1' : '0'}">Delete</button>
               ${hasModels ? '<svg class="admin-user-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.3;transition:transform 0.2s,opacity 0.2s;"><polyline points="6 9 12 15 18 9"/></svg>' : ''}
             </div>
+          </div>
+          <div class="admin-ep-detail adm-ep-tools-row">
+            <label for="adm-ep-tools-${ep.id}" style="opacity:0.7;">Tool calling</label>
+            <select id="adm-ep-tools-${ep.id}" class="adm-ep-tools-select" data-adm-ep-tools="${ep.id}" title="Whether this endpoint is sent native tool schemas">
+              <option value=""${declared === '' ? ' selected' : ''}>Auto</option>
+              <option value="true"${declared === 'true' ? ' selected' : ''}>Native</option>
+              <option value="false"${declared === 'false' ? ' selected' : ''}>Fenced</option>
+            </select>
+            <span class="adm-ep-tools-hint">${toolsHint}</span>
           </div>
           <div class="admin-ep-detail">${esc(ep.base_url)}${category === 'local' ? `<button type="button" class="admin-ep-copy-btn" data-adm-copy-url="${esc(ep.base_url)}" title="Copy URL" aria-label="Copy URL" style="background:none;border:none;padding:0 2px;margin-left:6px;cursor:pointer;color:inherit;opacity:0.45;vertical-align:-2px;line-height:1;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>` : ''}${keyLabel}</div>
           ${hasModels ? `<div class="mcp-tools-panel hidden" data-adm-ep-models-panel="${ep.id}"></div>` : ''}
@@ -602,6 +630,34 @@ async function loadEndpoints() {
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
         await fetch(`/api/model-endpoints/${btn.dataset.admToggleEp}`, { method: 'PATCH' });
+        await _refreshAfterEndpointChange();
+        loadEndpoints();
+      });
+    });
+    queryAll('[data-adm-ep-tools]').forEach(sel => {
+      // The row header opens the model panel on click; a select inside it must
+      // not do that on its way to being used.
+      sel.addEventListener('click', (e) => e.stopPropagation());
+      sel.addEventListener('change', async (e) => {
+        e.stopPropagation();
+        const v = sel.value;
+        // `null`, not an omitted key: the PATCH route reads `"supports_tools"
+        // in body`, so leaving it out would mean "don't change it" and Auto
+        // could never be chosen again once an admin had picked something.
+        const supports_tools = v === '' ? null : (v === 'true');
+        try {
+          const res = await fetch(`/api/model-endpoints/${sel.dataset.admEpTools}`, {
+            method: 'PATCH',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ supports_tools }),
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        } catch (err) {
+          if (uiModule && uiModule.showError) uiModule.showError('Could not save the tool-calling setting.');
+          loadEndpoints();
+          return;
+        }
         await _refreshAfterEndpointChange();
         loadEndpoints();
       });

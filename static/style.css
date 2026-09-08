@@ -16569,6 +16569,33 @@ span[id$="-logo"] svg:not([width]) {
   margin-top: -4px;
 }
 
+/* `P3-22` — the tri-state tool-calling control on an endpoint row. Shares the
+   detail line's muted treatment, but must not inherit its `nowrap`/ellipsis:
+   the hint beside the select is a sentence and is allowed to wrap. */
+.adm-ep-tools-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
+  margin-top: 2px;
+}
+.adm-ep-tools-select {
+  font: inherit;
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  color: var(--fg);
+  background: var(--panel, var(--bg));
+  border: 1px solid var(--border);
+}
+.adm-ep-tools-hint {
+  min-width: 0;
+  opacity: 0.85;
+}
+
 /* Settings panel — tint each card's h2 title icon with the user's accent
    colour. Direct-child selector (`> h2 > svg`) so SVGs nested inside
    header buttons (Test, kebab, etc.) are untouched. Each title icon uses

@@ -595,6 +595,15 @@ def _is_ollama_openai_compat_url(url: str) -> bool:
     two helpers stay in lockstep: a localhost Ollama on a non-default port
     (custom ``OLLAMA_HOST``, reverse proxy, container port remap) is treated
     the same way here as it is on the native ``/api`` path.
+
+    **`B55`: `src/agent_loop.py` has a function of the same name that is
+    deliberately narrower**, and merging the two is a mistake in both
+    directions. This one is generous on purpose — it decides whether to expect
+    Ollama's *thinking* behaviour, and a false positive there costs nothing.
+    `agent_loop`'s decides whether to withhold *native tool schemas*, where a
+    false positive takes tool calling away from LM Studio on :1234 and a local
+    vLLM on :8000; it requires port 11434 for that reason. Two questions, two
+    right answers, one unfortunate name — see the docstring there.
     """
     try:
         parsed = urlparse(url or "")

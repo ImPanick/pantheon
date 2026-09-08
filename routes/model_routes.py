@@ -1376,6 +1376,74 @@ def _api_key_fingerprint(api_key: Optional[str]) -> str:
     return hashlib.sha256(key.encode("utf-8")).hexdigest()[:8]
 
 
+def _tool_transport_view(row, models) -> Dict[str, Any]:
+    """What the agent will actually do about tools on this endpoint.
+
+    `P3-22`. `supports_tools` decides whether an endpoint is sent tool schemas
+    at all, it is a tri-state (`None` = "work it out"), and until this row there
+    was **no way for an admin to set it and no way to see what it resolved to**.
+    Showing a stored value would not have answered the question either: `None`
+    is the default, so the honest answer is what the ladder produces, and the
+    only way for that to stay true is to call the same function the agent calls
+    (`resolve_tool_transport`) rather than describe it a second time — `H19` is
+    this project's record of what a second copy of a decision table costs.
+
+    `model` matters only while nothing is declared, so `model_dependent` says
+    whether the sample below had any say. An endpoint that declares an answer
+    gives the same one for every model it serves.
+    """
+    from src.agent_loop import resolve_tool_transport
+
+    declared = getattr(row, "supports_tools", None)
+    sample = (models or [""])[0] or ""
+    try:
+        is_api, _native, _compat = resolve_tool_transport(
+            declared, getattr(row, "base_url", "") or "", sample
+        )
+    except Exception as exc:
+        # Never take the endpoint list down for a badge (`P3-17`: and never
+        # quietly, either — an admin looking at a blank field deserves a log).
+        logger.warning("Could not resolve tool transport for endpoint %s: %s",
+                       getattr(row, "id", "?"), exc)
+        return {"declared": declared, "resolved": None, "sample_model": sample,
+                "model_dependent": declared is None}
+    return {
+        "declared": declared,
+        "resolved": "native" if is_api else "fenced",
+        "sample_model": sample,
+        "model_dependent": declared is None,
+    }
+
+
+def _parse_supports_tools(value: Any) -> Optional[bool]:
+    """The tri-state `supports_tools` field, from a form string or JSON.
+
+    `P3-22`. There were **two** parsers for this one field and they disagreed:
+    `POST /api/models/endpoints` read a form string and accepted
+    `true/1/yes` and `false/0/no`, while `PATCH /model-endpoints/{id}` read a
+    JSON body through a dict lookup that knew `true/false/'true'/'false'/1/0`
+    and nothing else — so `"yes"` created an endpoint with native tools and
+    then silently reset it to Auto the next time anybody saved the row.
+
+    Anything unrecognised is `None`, which is the tri-state's "work it out"
+    and the right answer for a value nobody meant: the alternative is
+    guessing `False` and quietly taking tools away from an endpoint that had
+    them.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return True if value == 1 else (False if value == 0 else None)
+    text = str(value).strip().lower()
+    if text in ("true", "1", "yes", "on"):
+        return True
+    if text in ("false", "0", "no", "off"):
+        return False
+    return None
+
+
 def setup_model_routes(model_discovery):
     router = APIRouter(prefix="/api")
 
@@ -1974,6 +2042,7 @@ def setup_model_routes(model_discovery):
                     "ping_error": (ping or {}).get("error") if ping else None,
                     "model_type": getattr(r, "model_type", None) or "llm",
                     "supports_tools": getattr(r, "supports_tools", None),
+                    "tool_transport": _tool_transport_view(r, visible),
                     "endpoint_kind": kind,
                     "category": _classify_endpoint(base, kind),
                     "model_refresh_mode": _endpoint_refresh_mode(r, kind),
@@ -2147,8 +2216,7 @@ def setup_model_routes(model_discovery):
         ep_id = str(uuid.uuid4())[:8]
         db = SessionLocal()
         try:
-            _st_raw = (supports_tools or "").strip().lower()
-            _st = True if _st_raw in ("true", "1", "yes") else (False if _st_raw in ("false", "0", "no") else None)
+            _st = _parse_supports_tools(supports_tools or None)
             _pinned = _normalize_model_ids(pinned_models)
             # Stamp owner so the picker only shows this endpoint to the admin
             # who added it. Pass `shared=true` to mark it null-owner (visible
@@ -2512,8 +2580,10 @@ def setup_model_routes(model_discovery):
                 raise HTTPException(404, "Endpoint not found")
             if body:
                 if "supports_tools" in body:
-                    v = body["supports_tools"]
-                    ep.supports_tools = {True: True, False: False, 'true': True, 'false': False, 1: True, 0: False}.get(v)
+                    # `P3-22`: one parser for the tri-state, shared with the
+                    # create route, which used to accept spellings this one
+                    # silently turned back into Auto.
+                    ep.supports_tools = _parse_supports_tools(body["supports_tools"])
                 if "is_enabled" in body:
                     v_ie = body['is_enabled']
                     ep.is_enabled = v_ie.lower() in ('true', '1', 'yes') if isinstance(v_ie, str) else bool(v_ie)

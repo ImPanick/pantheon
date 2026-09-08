@@ -1234,6 +1234,25 @@ def _is_ollama_openai_compat_url(endpoint_url: str) -> bool:
     Ollama's /v1 endpoint accepts the OpenAI chat shape, but model-level tool
     streaming is uneven. Some local models terminate after a token when schemas
     are present. Keep native schemas opt-in via ModelEndpoint.supports_tools.
+
+    **`B55`: `src/llm_core.py` has a function of the same name that answers a
+    deliberately BROADER question, and the difference is load-bearing in both
+    directions.** That one accepts a local Ollama on *any* port, mirroring
+    `_is_ollama_native_url`, so a custom `OLLAMA_HOST` or a container port remap
+    is classified the same way on both Ollama surfaces — right for the question
+    it asks, which is whether to expect Ollama's thinking behaviour.
+
+    This one asks a different question: *should native tool schemas be withheld
+    from this URL?* Widening it to any localhost `/v1` was tried and is wrong —
+    **LM Studio on :1234 and a local vLLM on :8000 are not Ollama**, and
+    treating them as Ollama takes native tool calling away from every local
+    server that is not Ollama. The suite says so in
+    `test_tool_support_heuristic.py` and `test_ollama_prompt_matches_transport.py`,
+    which are `B39`'s measurements across LM Studio, vLLM, llama.cpp and both
+    Ollama URL forms. Port 11434 is the discriminator that keeps those apart.
+
+    So: two right answers to two questions, and the shared name is the only
+    thing wrong. Kept separate, and each says which question it answers.
     """
     try:
         parsed = urlparse(endpoint_url or "")
@@ -1297,7 +1316,6 @@ def _agent_route_tool_mode(
 ) -> tuple[bool, bool, bool]:
     """Resolve tool transport behavior for the currently active model route."""
 
-    model_lc = (model or "").lower()
     endpoint_supports: Optional[bool] = None
     try:
         from core.database import SessionLocal as _SL, ModelEndpoint as _ME
@@ -1344,6 +1362,36 @@ def _agent_route_tool_mode(
     except Exception as exc:
         logger.debug("endpoint supports_tools lookup failed: %s", exc)
 
+    return resolve_tool_transport(endpoint_supports, endpoint_url, model)
+
+
+def resolve_tool_transport(
+    endpoint_supports: Optional[bool],
+    endpoint_url: str,
+    model: str,
+) -> tuple[bool, bool, bool]:
+    """The tool-transport decision itself: `(is_api_model, is_ollama_native,
+    ollama_openai_compat)` from the endpoint's declared answer, its URL, and the
+    model name.
+
+    Split out of `_agent_route_tool_mode` for `P3-22`, which needed the Settings
+    panel to show an admin **what Pantheon currently believes** about an
+    endpoint. That is only worth showing if it is the same answer the agent will
+    act on, so this is called by both rather than transcribed into the route —
+    `Law 13`, and `H19` is what a second copy of a decision table costs.
+
+    Pure: no database, no headers. `_agent_route_tool_mode` finds the endpoint
+    row and passes its `supports_tools` in.
+
+    The ladder, top first:
+      * the endpoint says True  → native schemas, whatever the model is called;
+      * the endpoint says False, or the model is known not to do tools, or the
+        URL is an Ollama surface → the fenced prompt. Ollama is on this rung by
+        policy rather than by capability: model-level tool streaming there is
+        uneven, so native schemas stay opt-in;
+      * otherwise → a known API host, or a model name on the allowlist.
+    """
+    model_lc = (model or "").lower()
     model_supports_tools = any(kw in model_lc for kw in (
         "gpt-4", "gpt-5", "gpt-o", "claude", "gemini", "gemma",
         "qwen3", "qwen2.5", "mixtral", "mistral", "llama-3.1", "llama-3.2",
@@ -1367,7 +1415,7 @@ def _agent_route_tool_mode(
     ):
         is_api_model = False
     else:
-        is_api_model = any(host in endpoint_url for host in _API_HOSTS) or model_supports_tools
+        is_api_model = any(host in (endpoint_url or "") for host in _API_HOSTS) or model_supports_tools
     return is_api_model, is_ollama_native, ollama_openai_compat
 
 # Admin tool keywords — if the last user message contains any of these, include admin tools
