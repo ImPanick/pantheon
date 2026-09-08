@@ -40,7 +40,11 @@ export function buildRightPanel({ controlsHTML, layerPanelHTML }) {
   {
     let sy = 0, dragging = false;
     controls.addEventListener('touchstart', (e) => {
-      if (window.innerWidth > 700) return;
+      // P3-07: 768, not 700. The CSS block that stacks this editor
+      // (`@media (max-width: 768px)`) and this gesture have to arm on the
+      // same widths, or between them the panel is laid out as a sheet and
+      // cannot be swiped away.
+      if (window.innerWidth > 768) return;
       const rect = controls.getBoundingClientRect();
       const t = e.touches[0];
       // Only engage if touch starts in the top grab zone.
@@ -76,7 +80,8 @@ export function buildRightPanel({ controlsHTML, layerPanelHTML }) {
   // the editor root so it can truly fix to the viewport bottom
   // regardless of the layers-sheet state. On desktop, controls stay
   // docked inside the right panel above the layers list.
-  if (window.innerWidth <= 700 && state.container) {
+  // P3-07: 768, matching the stylesheet that stacks this editor.
+  if (window.innerWidth <= 768 && state.container) {
     state.container.appendChild(controls);
   }
 
@@ -105,7 +110,7 @@ export function buildRightPanel({ controlsHTML, layerPanelHTML }) {
     if (header) {
       let sy = 0, sx = 0, dragging = false, didSwipe = false;
       header.addEventListener('touchstart', (e) => {
-        if (window.innerWidth > 700) return;
+        if (window.innerWidth > 768) return;  // P3-07
         if (e.target.closest('button')) return;
         sy = e.touches[0].clientY;
         sx = e.touches[0].clientX;
@@ -141,7 +146,7 @@ export function buildRightPanel({ controlsHTML, layerPanelHTML }) {
         }
       });
       header.addEventListener('click', (e) => {
-        if (window.innerWidth > 700) return;
+        if (window.innerWidth > 768) return;  // P3-07
         if (e.target.closest('button')) return;
         if (didSwipe) { didSwipe = false; return; }
         // Click cycles between peek and expanded; minimized comes

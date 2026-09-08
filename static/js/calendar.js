@@ -622,7 +622,13 @@ function _collapseSidebar() {
     // Only remember the prior state on desktop. On mobile the sidebar is an
     // overlay that the user intentionally swipes/taps away when the tool
     // opens — popping it back on close is unwanted.
-    if (window.innerWidth >= 700) _sidebarWasOpen = true;
+    //
+    // B50: this read `>= 700`, so 701–768 counted as desktop while every other
+    // test in the product — 105 of them — calls that mobile. On a viewport in
+    // that band the sidebar is an overlay, and closing the calendar popped it
+    // back: exactly what the comment above says is unwanted, in the only place
+    // that disagreed about where mobile ends.
+    if (window.innerWidth > 768) _sidebarWasOpen = true;
     sb.classList.add('hidden');
     if (window.syncRailSide) window.syncRailSide();
   }

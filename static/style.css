@@ -30545,8 +30545,18 @@ button .spinner-whirlpool {
 }
 .ge-inpaint-prompt:focus { border-color: var(--red); outline: none; }
 
-/* Responsive: stack on narrow screens */
-@media (max-width: 700px) {
+/* Responsive: stack on narrow screens.
+
+   P3-07. This said 700px until 2026-09-08, and it was the only place in the
+   product that did. Eighty-eight blocks and 2,648 lines of this stylesheet
+   switch to mobile at 768px, `index.html`'s pre-paint script asks
+   `matchMedia('(max-width: 768px)')`, and 105 JavaScript sites test the same
+   number. Between 701 and 768 the app was in its mobile layout — sidebar
+   hidden, rails collapsed — while the image editor kept the desktop three-
+   column body this block exists to unstack, which is the state its own comment
+   below describes as ending with a zero-width canvas. One outlier against a
+   105-site consensus is a typo with a long life, not a second opinion. */
+@media (max-width: 768px) {
   /* The editor body holds the sidebar | canvas | layers panel; on
      mobile we stack them as toolbar (top) → canvas (middle) → layers
      (bottom). Without this the body stays a flex row and the canvas

@@ -380,7 +380,11 @@ export function initSidebarLayout(Storage, opts) {
 
   // ── Click outside sidebar / icon rail to close (mobile only) ──
   document.addEventListener('click', (e) => {
-    if (window.innerWidth >= 700) return; // desktop keeps sidebar open
+    // B50: this said 700 while seven other tests in this same file say
+    // 768 — including the one that shows the backdrop. Between 700 and
+    // 767 the sidebar was an overlay with a backdrop inviting the click
+    // that closes it, and this handler returned early.
+    if (window.innerWidth >= 768) return; // desktop keeps sidebar open
     const sb = document.getElementById('sidebar');
     const rail = document.getElementById('icon-rail');
     // Ignore clicks on elements removed from DOM (e.g. session list re-render during folder toggle)
@@ -422,7 +426,7 @@ export function initSidebarLayout(Storage, opts) {
   let _sidebarWasOpenBeforeTool = false;
   let _railWasOpenBeforeTool = false;
   document.addEventListener('click', (e) => {
-    if (window.innerWidth >= 700) return;
+    if (window.innerWidth >= 768) return;  // B50
     const btn = e.target.closest('[id^="tool-"], [id^="rail-"]');
     if (!btn) return;
     setTimeout(() => {
@@ -460,7 +464,7 @@ export function initSidebarLayout(Storage, opts) {
   // whatever state it was in before the tool was opened. ──
   // We watch every .modal for the .hidden class going on, and if our
   // remembered "sidebar-was-open" flag is set, undo the auto-close.
-  if (window.innerWidth < 700) {
+  if (window.innerWidth < 768) {  // B50
     const _restoreSidebar = () => {
       const sb = document.getElementById('sidebar');
       const rail = document.getElementById('icon-rail');
