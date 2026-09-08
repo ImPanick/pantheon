@@ -138,7 +138,7 @@ The largest and most central subsystem. Chat submission → backend SSE → prog
 |---|---|
 | **`gallery.js`** / **`galleryEditor.js`** | Gallery/image library and canvas editor entry points. |
 | **`emailInbox.js`** / **`emailLibrary.js`** | Email inbox reader and library modal. Sub-modules handle signatures, reply recipients, state, and signature folding. |
-| **`calendar.js`** / **`calendar/utils.js`** / **`calendar/reminders.js`** | Calendar views, event forms, reminders. |
+| **`calendar.js`** / **`calendar/utils.js`** | Calendar views and event forms. Reminders are stored as Notes; `notes.js` owns notification dispatch so they cannot fire twice. |
 | **`tasks.js`** | Scheduled task/recurring LLM job UI. |
 | **`notes.js`** | Notes and todo panel, reminders, pinboard. |
 
