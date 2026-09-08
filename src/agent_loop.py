@@ -4075,6 +4075,7 @@ async def stream_agent_loop(
       - data: {"type": "agent_step", "round": N}            (next round)
       - data: {"type": "skills_injected", "data": [...]}    (P4-16, once, up front)
       - data: {"type": "verifier", "outcome": "...", ...}    (P4-17, per check)
+      - data: {"type": "tool_blocked", "tool": "...", ...}   (P4-20, never ran)
       - data: {"type": "steer_applied", "round": N, ...}    (P6-18: a mid-run
                                                              steer reached the
                                                              model at round N)
@@ -6591,6 +6592,28 @@ async def stream_agent_loop(
                     "Tool blocked before approval by current policy: %s",
                     block.tool_type,
                 )
+                # `P4-20`. A blocked call never runs, so it gets no `tool_start`
+                # — and `tool_start` is the only event that *creates* a card.
+                # The result then arrived as a `tool_output` with nowhere to go:
+                # with no card open the call vanished from the thread entirely,
+                # and with an earlier card still open in the same round it
+                # **overwrote that one**, so a successful command silently
+                # turned into a blocked one. Its own event, so the card is the
+                # blocked call's and not somebody else's.
+                yield (
+                    "data: "
+                    + json.dumps({
+                        "type": "tool_blocked",
+                        "tool": block.tool_type,
+                        "round": round_num,
+                        "command": cmd_display,
+                        "reason": reason,
+                        "policy": "current_tool_policy",
+                        **_command_fields(cmd_display, full_command),
+                        **block_effects,
+                    })
+                    + "\n\n"
+                )
             elif not security_decision.allowed:
                 approval_document = (
                     active_document
@@ -7145,6 +7168,12 @@ async def stream_agent_loop(
                 # reloaded thread showed the first 80 characters of a document
                 # write and had no way back to the rest.
                 **_command_fields(cmd_display, full_command),
+                # `P4-20`. A refused call and a failed one are different things
+                # — one was attempted and one was not — and after a reload they
+                # looked identical, because both arrive as a non-zero exit code
+                # and nothing else. Carried so the reloaded card can say which.
+                **({"blocked": True, "policy": result.get("policy") or ""}
+                   if result.get("blocked") else {}),
                 "output": output_text,
                 "exit_code": result.get("exit_code"),
                 # P7-06. The same keys the live events carry, so a card is not

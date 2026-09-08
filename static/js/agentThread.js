@@ -163,6 +163,35 @@ export function verifierCardOptions(o) {
 }
 
 /**
+ * `P4-20`. The card for a call the policy refused.
+ *
+ * A blocked call never runs, so it gets no `tool_start` — and `tool_start` is
+ * the only event that creates a card. The refusal then arrived as a
+ * `tool_output` with nowhere to go: with no card open the call **vanished from
+ * the thread**, and with an earlier card still open in the same round it
+ * **overwrote that one**, so a command that had succeeded silently turned into
+ * a blocked one and the successful call disappeared.
+ *
+ * It reads as a refusal and not as a failure, because those are different
+ * things: a failed command was attempted, and this one was not. The reason is
+ * the whole content — the tool's name and the command line above it are what
+ * was refused, and the reason is why.
+ */
+export function blockedCardOptions(o) {
+  const reason = String((o && o.reason) || 'refused by the current tool policy');
+  return {
+    tool: (o && o.tool) || '',
+    label: `${toolLabel((o && o.tool) || '', 'done')} · blocked`,
+    state: 'done',
+    ok: false,
+    round: o && o.round,
+    command: (o && o.command) || '',
+    fullCommand: o && o.full_command,
+    output: `<div class="agent-thread-blocked-reason">${esc(reason)}</div>`,
+  };
+}
+
+/**
  * `P4-12`. The badge on an action the user personally authorised.
  *
  * The flag has been on the wire on four events since exact approvals shipped
@@ -346,5 +375,6 @@ export function applyAgentThreadNode(node, o) {
 export default { agentThreadNodeHtml, applyAgentThreadNode, toolLabel, toolIcon,
                  nodeClassName, roundBadgeHtml, approvedBadgeHtml,
                  commandBlockHtml, highlightCommandBlocks, verifierCardOptions,
+                 blockedCardOptions,
                  TOOL_LABELS, TOOL_ICONS, CMD_LANGUAGES, SEARCH_ICON,
                  APPROVED_ICON, COPY_ICON };

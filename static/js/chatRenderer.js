@@ -18,7 +18,8 @@ import { getTools } from './appConfig.js';
 // card it goes. It returns null unless the server has said it takes rules AND
 // the rung is the one that reads them — see the header of that module.
 import { buildAllowRuleChooser } from './trustLadder.js';
-import { applyAgentThreadNode, verifierCardOptions } from './agentThread.js';
+import { applyAgentThreadNode, verifierCardOptions,
+         blockedCardOptions } from './agentThread.js';
 
 // The decisions that mean yes, and the whole of that set.
 //
@@ -3319,11 +3320,22 @@ export function addMessage(role, content, modelName, metadata) {
             const evTodoHtml = buildTodoCard(ev);
             // `P4-01`: one builder. Hiding the raw-JSON command beside a diff
             // or a todo card is its rule now, not three separate copies of it.
-            applyAgentThreadNode(node, {
-              tool: ev.tool, state: 'done', ok, round: ev.round, approved: ev.approved,
-              command: ev.command, fullCommand: ev.full_command,
-              output: outHtml, diff: evDiffHtml, todo: evTodoHtml,
-            });
+            //
+            // `P4-20`: a refused call reads as a refusal here too. Live it has
+            // its own event; after a reload it is a persisted tool event with
+            // `blocked` on it, and without this it came back as an ordinary
+            // failure — the same card a command that was attempted and went
+            // wrong would draw.
+            applyAgentThreadNode(node, ev.blocked
+              ? { ...blockedCardOptions({
+                    tool: ev.tool, round: ev.round, command: ev.command,
+                    full_command: ev.full_command, reason: ev.output,
+                  }) }
+              : {
+                tool: ev.tool, state: 'done', ok, round: ev.round, approved: ev.approved,
+                command: ev.command, fullCommand: ev.full_command,
+                output: outHtml, diff: evDiffHtml, todo: evTodoHtml,
+              });
             // Click handling is delegated globally \u2014 see chat.js init.
             threadWrap.appendChild(node);
             if (evTodoHtml) demoteSupersededTodoCards();

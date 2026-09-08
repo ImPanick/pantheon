@@ -45,7 +45,10 @@ ROOT = Path(__file__).resolve().parent.parent
 EVENT_TYPES = {"tool_start", "tool_progress", "tool_output", "agent_step",
                # `P4-17`. The completion verifier's verdict draws a card in the
                # same thread and belongs to a round like everything else in it.
-               "verifier"}
+               "verifier",
+               # `P4-20`. A call the policy refused draws its own card, in the
+               # round it was refused in.
+               "tool_blocked"}
 
 # (file, event type, name spread in) -> why that spread carries the round.
 # A spread is the only way a thread event may omit `round`, and only here.

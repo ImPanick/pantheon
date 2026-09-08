@@ -10812,6 +10812,16 @@ body.fullwidth-chat .chat-history {
   overflow-x: auto;
 }
 
+/* `P4-20`. Why a call was refused. Inside the card's fold, beside where the
+   output of a call that ran would be — because that is the question a reader
+   has about a card that says "blocked". */
+.agent-thread-blocked-reason {
+  margin: 4px 0 2px;
+  font-size: 0.85em;
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--fg) 85%, transparent);
+}
+
 /* `P4-17`. The independent verifier's findings, inside its own card's fold.
    A plain list rather than a new card system — the card is the same shell every
    other node in the thread uses (`Law 14`); only the contents differ. */

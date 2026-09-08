@@ -23,6 +23,7 @@ omit; approval is a claim the result is entitled to withdraw.
 
 import asyncio
 import json
+import re
 import shutil
 import subprocess
 import textwrap
@@ -342,8 +343,10 @@ def _calls(text: str) -> list[str]:
 ])
 def test_every_card_built_from_an_event_is_handed_its_approval(rel):
     for call in _calls((_REPO / rel).read_text(encoding="utf-8")):
-        if "verifierCardOptions(" in call:
-            continue  # `P4-17`'s verdict card — nobody approves a verdict either
+        if re.search(r"\b\w+CardOptions\(", call):
+            # Options from a named builder: the builder is a pure function with
+            # its own tests, and nobody approves a verdict or a refusal anyway.
+            continue
         if "tool: ''" in call or 'tool: ""' in call:
             continue  # the document writer's card, which nobody approves
         assert "approved:" in call, (

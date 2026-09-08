@@ -24,7 +24,8 @@ import codeRunnerModule from './codeRunner.js';
 import slashCommands, { initSlashCommands, isCommand, handleSlashCommand, handleSetupInput, handleSetupWizard, typewriterInto } from './slashCommands.js?v=20260815approvalsave1';
 import createResearchSynapse from './researchSynapse.js';
 import { createStreamRenderer } from './streamingRenderer.js';
-import { applyAgentThreadNode, verifierCardOptions, TOOL_LABELS } from './agentThread.js';
+import { applyAgentThreadNode, verifierCardOptions, blockedCardOptions,
+         TOOL_LABELS } from './agentThread.js';
 import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArrowUpRecall.js?v=20260714promptrecall';
 import {
   createIncrementalDisplayProjector,
@@ -4201,6 +4202,27 @@ import agentDrafts from './agentDrafts.js';   // H01
                 // memories pill beside it.
                 if (_isBg) continue;
                 holder._skillsInjected = json.data;
+              } else if (json.type === 'tool_blocked') {
+                // `P4-20`. The call the policy refused. Its own node, because
+                // `currentToolBubble` points at whatever card is open and a
+                // refusal that borrows it silently rewrites a call that
+                // actually happened.
+                if (_isBg) continue;
+                let bThread = lastToolThread;
+                if (!bThread || !bThread.isConnected) {
+                  bThread = document.createElement('div');
+                  bThread.className = 'agent-thread';
+                  document.getElementById('chat-history')?.appendChild(bThread);
+                  lastToolThread = bThread;
+                }
+                const bNode = document.createElement('div');
+                applyAgentThreadNode(bNode, blockedCardOptions(json));
+                bThread.appendChild(bNode);
+                // Not the open card: a refusal is finished the moment it is
+                // drawn, and leaving the pointer on it would hand the next
+                // `tool_output` somebody else's node all over again.
+                currentToolBubble = null;
+                uiModule.scrollHistory();
               } else if (json.type === 'auto_escalated') {
                 // `P4-18`. Silent in both directions until now: the promotion
                 // itself, and the tools the promotion took away.
@@ -4611,6 +4633,13 @@ import agentDrafts from './agentDrafts.js';   // H01
                   });
                 }
 
+                // `P4-20`. The card this result belongs to is finished, so the
+                // pointer is released. It used to survive to the end of the
+                // round, and any later event that had no card of its own —
+                // a policy refusal, an approval request, both of which skip
+                // `tool_start` — rewrote this one instead. `compare/stream.js`
+                // has always cleared it here; the main path had not.
+                currentToolBubble = null;
                 // Schedule a thinking spinner between tool rounds (short delay so
                 // agent_step in the same SSE chunk can cancel it before it shows)
                 _scheduleThinkingSpinner();

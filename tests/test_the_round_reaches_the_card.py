@@ -31,6 +31,7 @@ file (Law 20).
 
 import asyncio
 import json
+import re
 import shutil
 import subprocess
 import textwrap
@@ -378,8 +379,16 @@ def _calls(text: str) -> list[str]:
     return calls
 
 
+# A call whose options come from a named `*CardOptions` builder is exempt: the
+# builder is a pure function with its own tests, and those assert the round and
+# the approval it produces. Naming the exempt builders one at a time meant this
+# list needed editing on every new card kind — three times in one day — which is
+# a rule stated in the wrong place.
+_OPTIONS_BUILDER = re.compile(r"\b\w+CardOptions\(")
+
+
 @pytest.mark.parametrize("rel, expected", [
-    ("static/js/chat.js", 4),
+    ("static/js/chat.js", 5),
     ("static/js/chatRenderer.js", 2),
     ("static/js/compare/stream.js", 2),
 ])
@@ -387,12 +396,10 @@ def test_every_card_built_from_an_event_is_handed_that_event_s_round(rel, expect
     # The builder can only draw a badge it is given. `P4-01` left six call
     # sites; five render a tool event and must pass its round, and the sixth is
     # the document writer's own card, which is not a tool call and has none.
-    # `P4-17` added two more, both handing the whole option object to
-    # `verifierCardOptions`, which is where that card's round is asserted.
     calls = _calls((_REPO / rel).read_text(encoding="utf-8"))
     assert len(calls) == expected, f"{rel} has {len(calls)} calls, expected {expected}"
     for call in calls:
-        if "verifierCardOptions(" in call:
+        if _OPTIONS_BUILDER.search(call):
             continue
         if "tool: ''" in call or 'tool: ""' in call:
             assert "round:" not in call, (
