@@ -93,14 +93,15 @@ def _seed_old_uploads(handler: UploadHandler, rows: list[dict]) -> dict[str, Pat
 
 def _manual_cleanup_endpoint(handler: UploadHandler, monkeypatch):
     import fastapi.dependencies.utils as dependency_utils
-    from routes.upload_routes import router, setup_upload_routes
+    from routes.upload_routes import setup_upload_routes
 
     monkeypatch.setattr(dependency_utils, "ensure_multipart_is_installed", lambda: None)
-    before = len(router.routes)
-    setup_upload_routes(handler)
+    # B53: one call, one router. The `before = len(router.routes)` slice this
+    # replaced was working around a module-level router.
+    router, _cleanup = setup_upload_routes(handler)
     return {
         route.endpoint.__name__: route.endpoint
-        for route in router.routes[before:]
+        for route in router.routes
     }["manual_cleanup"]
 
 

@@ -19,7 +19,7 @@ import types
 from pathlib import Path
 
 import pytest
-from fastapi import APIRouter, HTTPException
+from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import NullPool
@@ -106,9 +106,13 @@ def _image_upload(name="photo.png", content=b"not really png but enough for rout
 
 
 @pytest.fixture(autouse=True)
-def _reset_router(monkeypatch):
-    # Module-level router accumulates routes across setup calls; reset it.
-    monkeypatch.setattr(up, "router", APIRouter(prefix="/api/upload", tags=["upload"]))
+def _freeze_time(monkeypatch):
+    # This used to also swap in a fresh `up.router` before every test, with the
+    # comment "Module-level router accumulates routes across setup calls; reset
+    # it." It did, and three test files carried a workaround for it — that is
+    # `B53`. `setup_upload_routes` builds its own router now and returns it, so
+    # there is nothing to reset.
+    #
     # Freeze time so the seeded "recent upload" is deterministic.
     monkeypatch.setattr(up.time, "time", lambda: _NOW)
 
@@ -117,8 +121,8 @@ async def test_multifile_after_a_recent_upload_is_not_rejected():
     """The bug: one prior upload + a 3-file batch -> 429. Must now succeed."""
     h = _fake_handler()
     h.upload_rate_log["1.2.3.4"] = [_NOW - 1]  # step 1: a single file moments ago
-    up.setup_upload_routes(h)
-    endpoint = _endpoint(up.router)
+    _router, _ = up.setup_upload_routes(h)
+    endpoint = _endpoint(_router)
 
     result = await endpoint(_request(), _files(3))
 
@@ -127,8 +131,8 @@ async def test_multifile_after_a_recent_upload_is_not_rejected():
 
 async def test_fresh_multifile_upload_succeeds():
     h = _fake_handler()
-    up.setup_upload_routes(h)
-    endpoint = _endpoint(up.router)
+    _router, _ = up.setup_upload_routes(h)
+    endpoint = _endpoint(_router)
 
     result = await endpoint(_request(), _files(5))
 
@@ -141,8 +145,8 @@ async def test_genuine_recent_volume_still_throttled():
 
     h = _fake_handler()
     h.upload_rate_log["1.2.3.4"] = [_NOW - 1, _NOW - 2, _NOW - 3]  # 3 recent events
-    up.setup_upload_routes(h)
-    endpoint = _endpoint(up.router)
+    _router, _ = up.setup_upload_routes(h)
+    endpoint = _endpoint(_router)
 
     with pytest.raises(HTTPException) as ei:
         await endpoint(_request(), _files(1))
@@ -211,8 +215,8 @@ def test_batch_cap_sits_between_the_frontend_cap_and_the_rate_limit():
 
 async def test_a_full_frontend_batch_is_accepted_by_the_server():
     h = _fake_handler()
-    up.setup_upload_routes(h)
-    endpoint = _endpoint(up.router)
+    _router, _ = up.setup_upload_routes(h)
+    endpoint = _endpoint(_router)
 
     result = await endpoint(_request(), _files(_max_files_from_frontend()))
 
@@ -221,8 +225,8 @@ async def test_a_full_frontend_batch_is_accepted_by_the_server():
 
 async def test_oversized_batch_is_rejected_before_anything_is_written():
     h = _fake_handler()
-    up.setup_upload_routes(h)
-    endpoint = _endpoint(up.router)
+    _router, _ = up.setup_upload_routes(h)
+    endpoint = _endpoint(_router)
 
     with pytest.raises(HTTPException) as ei:
         await endpoint(_request(), _files(MAX_FILES_PER_REQUEST + 1))
@@ -235,8 +239,8 @@ async def test_oversized_batch_is_rejected_before_anything_is_written():
 
 async def test_batch_at_the_cap_is_accepted():
     h = _fake_handler()
-    up.setup_upload_routes(h)
-    endpoint = _endpoint(up.router)
+    _router, _ = up.setup_upload_routes(h)
+    endpoint = _endpoint(_router)
 
     result = await endpoint(_request(), _files(MAX_FILES_PER_REQUEST))
 
@@ -246,8 +250,8 @@ async def test_batch_at_the_cap_is_accepted():
 async def test_one_rejected_file_does_not_discard_the_files_already_written():
     """The partial-write hazard: file 3 429s after files 1-2 are on disk."""
     h = _fake_handler(reject={"f2.txt"})
-    up.setup_upload_routes(h)
-    endpoint = _endpoint(up.router)
+    _router, _ = up.setup_upload_routes(h)
+    endpoint = _endpoint(_router)
 
     result = await endpoint(_request(), _files(4))
 
@@ -258,8 +262,8 @@ async def test_one_rejected_file_does_not_discard_the_files_already_written():
 
 async def test_a_clean_batch_reports_no_rejections():
     h = _fake_handler()
-    up.setup_upload_routes(h)
-    endpoint = _endpoint(up.router)
+    _router, _ = up.setup_upload_routes(h)
+    endpoint = _endpoint(_router)
 
     result = await endpoint(_request(), _files(3))
 
@@ -270,8 +274,8 @@ async def test_when_every_file_is_rejected_the_original_status_survives():
     """Nothing was written, so there is no partial state to protect — the
     caller keeps the precise reason instead of a blanket 500."""
     h = _fake_handler(reject={"f0.txt"}, status=429)
-    up.setup_upload_routes(h)
-    endpoint = _endpoint(up.router)
+    _router, _ = up.setup_upload_routes(h)
+    endpoint = _endpoint(_router)
 
     with pytest.raises(HTTPException) as ei:
         await endpoint(_request(), _files(1))
@@ -282,8 +286,8 @@ async def test_when_every_file_is_rejected_the_original_status_survives():
 
 async def test_a_400_rejection_also_survives_when_nothing_was_written():
     h = _fake_handler(reject={"f0.txt", "f1.txt"}, status=400, detail="File is empty")
-    up.setup_upload_routes(h)
-    endpoint = _endpoint(up.router)
+    _router, _ = up.setup_upload_routes(h)
+    endpoint = _endpoint(_router)
 
     with pytest.raises(HTTPException) as ei:
         await endpoint(_request(), _files(2))
@@ -349,8 +353,8 @@ async def test_chat_image_upload_is_added_to_gallery(tmp_path, monkeypatch):
     monkeypatch.setattr(up, "GENERATED_IMAGES_DIR", str(gallery_dir))
 
     h = UploadHandler(base_dir=str(tmp_path), upload_dir=str(tmp_path / "uploads"))
-    up.setup_upload_routes(h)
-    endpoint = _endpoint(up.router)
+    _router, _ = up.setup_upload_routes(h)
+    endpoint = _endpoint(_router)
 
     result = await endpoint(_request(user="alice"), [_image_upload()])
     uploaded = result["files"][0]
@@ -380,8 +384,8 @@ async def test_non_image_chat_upload_is_not_added_to_gallery(tmp_path, monkeypat
     monkeypatch.setattr(up, "GENERATED_IMAGES_DIR", str(tmp_path / "generated_images"))
 
     h = UploadHandler(base_dir=str(tmp_path), upload_dir=str(tmp_path / "uploads"))
-    up.setup_upload_routes(h)
-    endpoint = _endpoint(up.router)
+    _router, _ = up.setup_upload_routes(h)
+    endpoint = _endpoint(_router)
 
     result = await endpoint(_request(user="alice"), [types.SimpleNamespace(
         filename="notes.txt",

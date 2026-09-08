@@ -32,13 +32,16 @@ class _Request:
 
 def _upload_endpoints(upload_handler, monkeypatch):
     import fastapi.dependencies.utils as dependency_utils
-    from routes.upload_routes import router, setup_upload_routes
+    from routes.upload_routes import setup_upload_routes
 
     monkeypatch.setattr(dependency_utils, "ensure_multipart_is_installed", lambda: None)
-    before = len(router.routes)
-    setup_upload_routes(upload_handler)
-    routes = router.routes[before:]
-    return {route.endpoint.__name__: route.endpoint for route in routes}
+    # B53: the router is built inside `setup_upload_routes` now, so it carries
+    # this call's routes and nothing else. This used to read
+    # `before = len(router.routes)` and slice off the tail — a workaround for a
+    # module-level router that accumulated a fresh copy of every route on each
+    # call, and the clearest evidence anyone had noticed.
+    router, _cleanup = setup_upload_routes(upload_handler)
+    return {route.endpoint.__name__: route.endpoint for route in router.routes}
 
 
 def _make_upload_store(tmp_path, monkeypatch):

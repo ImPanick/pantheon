@@ -34,7 +34,6 @@ from src.upload_handler import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/upload", tags=["upload"])
 UPLOAD_RESPONSE_HEADERS = {"X-Content-Type-Options": "nosniff"}
 
 def _upload_ids_from_persisted_text(value: object) -> set[str]:
@@ -148,6 +147,15 @@ def _run_reference_safe_cleanup(upload_handler) -> int:
 
 def setup_upload_routes(upload_handler):
     """Setup upload routes with the provided handler"""
+    # B53. This `APIRouter` used to be a module global, decorated by this
+    # function and returned. Calling the function twice therefore registered
+    # every route twice on one router, and FastAPI dispatches to the first
+    # match — so the second call's handlers, and the manager they close over,
+    # were silently ignored while the call appeared to succeed. Production
+    # calls it once, so nothing was broken; two test files that each build a
+    # router were not, and the suite's green depended on which ran first.
+    router = APIRouter(prefix="/api/upload", tags=["upload"])
+
 
     def _upload_root() -> str:
         from src.constants import UPLOAD_DIR

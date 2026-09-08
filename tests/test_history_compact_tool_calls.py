@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 from types import SimpleNamespace
 
-from fastapi import APIRouter, FastAPI
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from core.models import ChatMessage
@@ -138,11 +138,11 @@ def _registered_compact_response(monkeypatch, history, active_run=False):
         captured["messages"] = messages
         return "Summary text"
 
-    monkeypatch.setattr(
-        session_routes,
-        "router",
-        APIRouter(prefix="/api", tags=["sessions"]),
-    )
+    # B53: `setup_session_routes` builds its own router now, so the
+    # `monkeypatch.setattr(session_routes, "router", APIRouter(...))` that
+    # stood here — one of five such workarounds across the suite for a
+    # module-level router that accumulated a fresh copy of every route on each
+    # call — is unnecessary.
     monkeypatch.setattr(session_routes, "_verify_session_owner", lambda request, session_id: None)
     monkeypatch.setattr(history_routes, "_verify_session_owner", lambda request, session_id: None)
     monkeypatch.setattr(history_routes, "SessionLocal", lambda: _FakeDb())

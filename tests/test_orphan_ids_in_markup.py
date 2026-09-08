@@ -18,9 +18,15 @@ by nothing. The action is back in the menu.
 **Two blind spots this measurement had, both corrected here**, because an
 orphan list is only worth what its "nothing reads this" claim is worth:
 
-* ids reached through a **constructed** lookup — `getElementById('adv-' + key)`
+* ids reached through a **prefix** lookup — `getElementById('adv-' + key)`
   covers `adv-brandMixTo` and `adv-hamburgerColor`, which a literal scan calls
   orphans. This is the shape that hid the discovery audit's worst finding.
+* ids reached through a **suffix** lookup — `getElementById(selectEl.id +
+  '-logo')` covers all six `set-…Select-logo` spans. `B52`: the first version of
+  this file checked prefixes only, called those six orphans, and a row was
+  filed asking someone to build a feature that already works. A suffix only
+  counts when the base it is appended to is itself an id the page has, or a
+  generic `-btn` would silence every id ending in it.
 * ids read by an **inline script in `index.html` itself** rather than a `.js`
   file — `loader-wave` is read eleven lines below where it is declared.
 """
@@ -97,10 +103,28 @@ _PREFIX_PATTERNS = (
     r"""['"]#([A-Za-z][\w-]*)['"]\s*\+""",
 )
 
+# The other half, and the half I got wrong first. An id can be built by
+# appending as easily as by prefixing — `document.getElementById(selectEl.id +
+# '-logo')` reaches all six `set-…Select-logo` spans, and a prefix-only scan
+# calls every one of them an orphan. It did, and `P3-25` was filed against a
+# feature that works (`B52`).
+_SUFFIX_PATTERNS = (
+    r"""getElementById\(\s*[^)'"]*\+\s*['"]([-\w]+)['"]\s*\)""",
+    r"""querySelector(?:All)?\(\s*['"]#[^'"]*['"]\s*\+\s*['"]([-\w]+)['"]""",
+    r"""getElementById\(\s*`[^`]*\$\{[^}]*\}([-\w]+)`""",
+)
+
 
 def lookup_prefixes():
     out = set()
     for pat in _PREFIX_PATTERNS:
+        out.update(m.group(1) for m in re.finditer(pat, JS))
+    return out
+
+
+def lookup_suffixes():
+    out = set()
+    for pat in _SUFFIX_PATTERNS:
         out.update(m.group(1) for m in re.finditer(pat, JS))
     return out
 
@@ -130,13 +154,21 @@ def _reference_sets():
 
 
 def unreached_ids():
-    prefixes = lookup_prefixes()
+    prefixes, suffixes = lookup_prefixes(), lookup_suffixes()
     quoted, css_ids, markup, python = _reference_sets()
+    all_ids = set(re.findall(r'\bid="([^"]+)"', INDEX))
     out = []
-    for i in sorted(set(re.findall(r'\bid="([^"]+)"', INDEX))):
+    for i in sorted(all_ids):
         if i in quoted or i in css_ids or i in markup or i in python:
             continue
         if any(i.startswith(p) and i != p for p in prefixes):
+            continue
+        # A suffix constructor only reaches `<base><suffix>` if `<base>` is
+        # itself something the page has — `set-defaultEpSelect-logo` minus
+        # `-logo` is `set-defaultEpSelect`, a real select. Without that check a
+        # generic suffix like `-btn` would silence every id ending in it, which
+        # is a blind spot traded for a blind spot.
+        if any(i.endswith(x) and i != x and i[:-len(x)] in all_ids for x in suffixes):
             continue
         out.append(i)
     return out
@@ -151,18 +183,13 @@ SUPERSEDED_MARKUP = {          # a runtime menu replaced this block
 NEVER_BUILT = {                # empty anchors for features that never shipped
     "pinned-tools-bar", "welcome-setup", "set-reminder-llm-persona-msg",
 }
-NEVER_POPULATED = {            # <span class="adm-model-logo"> beside each select
-    "set-defaultEpSelect-logo", "set-defaultModelSelect-logo",
-    "set-researchModel-logo", "set-utilityEpSelect-logo",
-    "set-utilityModelSelect-logo", "set-vlModelSelect-logo",
-}
 DEAD_ATTRIBUTE = {             # live element, dead id
     "adm-epApiKey-row", "agent-drafts-chevron", "auto-sort-sessions-row",
     "chats-section-label", "chats-section-title", "export-dropdown-wrap",
     "settings-2fa-card", "settings-system-logs-card", "sidebar-user-bar",
     "theme-frosted-group", "theme-save-row",
 }
-ITEMISED = SUPERSEDED_MARKUP | NEVER_BUILT | NEVER_POPULATED | DEAD_ATTRIBUTE
+ITEMISED = SUPERSEDED_MARKUP | NEVER_BUILT | DEAD_ATTRIBUTE
 
 
 def test_the_scan_sees_the_markup():
@@ -246,3 +273,42 @@ def test_the_runtime_menu_still_offers_what_it_carried_across():
     for label in ("<span>Rename</span>", "<span>Archive</span>",
                   "<span>Delete</span>", "<span>Copy Chat</span>"):
         assert label in SESSIONS, label
+
+
+def test_a_suffix_lookup_is_not_an_orphan():
+    """B52. `_syncModelLogo` / `_syncEndpointLogo` in `settings.js` reach
+    `<selectId>-logo` by appending, and both are called from the two functions
+    that fill every one of those selects. The logos work. A prefix-only scan
+    said otherwise and a row was filed against it."""
+    settings = (ROOT / "static" / "js" / "settings.js").read_text(encoding="utf-8")
+    # Each helper's own body. Checking the file as a whole passed with one of
+    # the two broken, because the other still carried the string — the same
+    # "appears somewhere" weakness `B51`'s guard had.
+    for fn in ("_syncModelLogo", "_syncEndpointLogo"):
+        body = settings.split(f"function {fn}(selectEl) {{", 1)[1].split("\n}\n", 1)[0]
+        assert "selectEl.id + '-logo'" in body, f"{fn} no longer finds its span"
+        assert "logoEl.innerHTML" in body, f"{fn} no longer writes one"
+    assert "_syncModelLogo(selectEl);" in settings and "_syncEndpointLogo(selectEl);" in settings
+    orphans = set(unreached_ids())
+    for live in ("set-defaultEpSelect-logo", "set-defaultModelSelect-logo",
+                 "set-researchModel-logo", "set-utilityEpSelect-logo",
+                 "set-utilityModelSelect-logo", "set-vlModelSelect-logo"):
+        assert f'id="{live}"' in INDEX, live
+        assert live not in orphans, f"{live} is filled by a suffix lookup"
+        assert live[: -len("-logo")] in INDEX, "its base select is gone"
+
+
+def test_a_generic_suffix_does_not_silence_everything_that_ends_with_it():
+    """`-btn` and `-toggle` are among the suffixes appended somewhere in this
+    codebase. Excluding every id that merely ends in one would trade a blind
+    spot for a bigger blind spot, so the base has to exist too."""
+    suffixes = lookup_suffixes()
+    assert "-btn" in suffixes, "the suffix scan stopped finding the generic ones"
+    ids = set(re.findall(r'\bid="([^"]+)"', INDEX))
+    ends_in_btn = {i for i in ids if i.endswith("-btn")}
+    assert len(ends_in_btn) > 20, len(ends_in_btn)
+    without_base = {i for i in ends_in_btn if i[: -len("-btn")] not in ids}
+    assert without_base, (
+        "no id ends in `-btn` without a matching base, so this test proves "
+        "nothing about the rule it is checking"
+    )

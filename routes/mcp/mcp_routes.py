@@ -19,7 +19,6 @@ from src.mcp_manager import McpManager
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/mcp", tags=["mcp"])
 
 
 def _mcp_oauth_base_dir() -> Path:
@@ -117,6 +116,15 @@ def _mcp_oauth_redirect_uri() -> str:
 
 def setup_mcp_routes(mcp_manager: McpManager):
     """Setup MCP routes with the provided manager."""
+    # B53. This `APIRouter` used to be a module global, decorated by this
+    # function and returned. Calling the function twice therefore registered
+    # every route twice on one router, and FastAPI dispatches to the first
+    # match — so the second call's handlers, and the manager they close over,
+    # were silently ignored while the call appeared to succeed. Production
+    # calls it once, so nothing was broken; two test files that each build a
+    # router were not, and the suite's green depended on which ran first.
+    router = APIRouter(prefix="/api/mcp", tags=["mcp"])
+
 
     @router.get("/servers")
     def list_servers(request: Request):

@@ -16,7 +16,6 @@ from src.webhook_manager import WebhookManager, validate_webhook_url, validate_e
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api", tags=["webhooks"])
 
 # Input limits
 MAX_NAME_LEN = 100
@@ -68,6 +67,15 @@ def setup_webhook_routes(
     session_manager=None,
     api_key_manager=None,
 ) -> APIRouter:
+    # B53. This `APIRouter` used to be a module global, decorated by this
+    # function and returned. Calling the function twice therefore registered
+    # every route twice on one router, and FastAPI dispatches to the first
+    # match — so the second call's handlers, and the manager they close over,
+    # were silently ignored while the call appeared to succeed. Production
+    # calls it once, so nothing was broken; two test files that each build a
+    # router were not, and the suite's green depended on which ran first.
+    router = APIRouter(prefix="/api", tags=["webhooks"])
+
 
     @router.get("/webhooks")
     def list_webhooks(request: Request):

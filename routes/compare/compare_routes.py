@@ -17,7 +17,6 @@ from routes.session_routes import _reject_raw_endpoint_url_for_non_admin
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/compare", tags=["compare"])
 
 
 def _owned_endpoint_by_url(db, base_url, owner):
@@ -140,6 +139,15 @@ def _history_row(c) -> Dict[str, Any]:
 
 def setup_compare_routes(session_manager: SessionManager):
     """Setup comparison routes."""
+    # B53. This `APIRouter` used to be a module global, decorated by this
+    # function and returned. Calling the function twice therefore registered
+    # every route twice on one router, and FastAPI dispatches to the first
+    # match — so the second call's handlers, and the manager they close over,
+    # were silently ignored while the call appeared to succeed. Production
+    # calls it once, so nothing was broken; two test files that each build a
+    # router were not, and the suite's green depended on which ran first.
+    router = APIRouter(prefix="/api/compare", tags=["compare"])
+
 
     @router.post("/start")
     def start_comparison(
