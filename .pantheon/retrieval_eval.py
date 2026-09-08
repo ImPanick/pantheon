@@ -72,8 +72,8 @@ def _load(path: Path) -> dict:
 # ── the two engines, each reduced to `query -> ranked memory ids` ─────────────
 
 
-def _lexical(corpus: dict, k: int) -> dict:
-    """`src/memory.py` `get_relevant_memories` — Jaccard plus four keyword lists."""
+def _manager(corpus: dict, k: int) -> dict:
+    """`MemoryManager.get_relevant_memories` — the Brain, the agent, the provider."""
     from src.memory import MemoryManager
 
     manager = MemoryManager.__new__(MemoryManager)  # no data dir, no file I/O
@@ -86,8 +86,8 @@ def _lexical(corpus: dict, k: int) -> dict:
     return out
 
 
-def _hybrid(corpus: dict, k: int) -> dict:
-    """`src/chat_processor.py` `_hybrid_retrieve` — BM25 + corpus IDF, no vectors."""
+def _preface(corpus: dict, k: int) -> dict:
+    """`ChatProcessor._hybrid_retrieve` — what the chat preface injects."""
     from src.chat_processor import ChatProcessor
 
     proc = ChatProcessor.__new__(ChatProcessor)
@@ -100,7 +100,21 @@ def _hybrid(corpus: dict, k: int) -> dict:
     return out
 
 
-ENGINES = {"lexical": _lexical, "hybrid": _hybrid}
+# `P13-14` changed what these two names mean, and the change is the row.
+# They were two ALGORITHMS — Jaccard-plus-keyword-lists against BM25-with-IDF —
+# and the measurement that separated them (0.40/0.319 against 0.63/0.633, on
+# this corpus, with no vector service) is what justified deleting the first.
+# They are now two CALL PATHS into one scorer, and they are expected to agree.
+# Scoring both is still worth the milliseconds: the day they disagree, a second
+# scorer has grown back, which is the defect `Law 13` names and the reason this
+# row existed.
+ENGINES = {"manager": _manager, "preface": _preface}
+
+# What the deleted scorer measured on this corpus, kept as the floor. Not a
+# ratchet on an uncalibrated number — `P3-20`'s mistake — because this one is
+# calibrated by being a historical fact: it is what the product did before, and
+# "never worse than what we removed" is the one comparison a deletion owes.
+DELETED_SCORER_BASELINE = {"recall": 0.40, "mrr": 0.319}
 
 
 # ── scoring ───────────────────────────────────────────────────────────────────

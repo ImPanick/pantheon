@@ -66,27 +66,98 @@ def test_a_verbatim_match_says_so(explain, brain):
     assert "word for word" in row["reason"]
 
 
-def test_the_identity_shortcut_admits_that_it_skipped_scoring(explain, brain):
-    """This is the reason most worth surfacing: on an identity query these are
-    admitted at 0.9 WITHOUT being scored, ahead of anything matched on words.
-    A person looking at the list cannot tell that from the ranking alone, and
-    it is precisely the behaviour `B40` was hiding."""
-    row = explain("who am I", brain)[0]
-    assert "without scoring" in row["reason"]
-    assert row["score"] == 0.9
+def test_the_identity_shortcut_is_gone_and_nothing_is_admitted_unscored(explain, brain):
+    """`P13-14` removed the shortcut this test used to pin, and that removal is
+    the decided outcome of `P13-11`(a) and (b) rather than a regression.
+
+    The shortcut admitted any memory `_is_identity_memory` matched at a flat 0.9
+    on any identity query, ahead of everything scored on words — and that
+    predicate is any two consecutive capitalised words, so "deploys with Docker
+    Compose on Sunday" qualified. `P13-11` asked whether to narrow it; the owner
+    chose to replace the scorer instead, which makes the question moot.
+
+    "who am I" is now the sharper illustration of the same area: every one of its
+    words is a stopword, so a lexical engine has no query left at all and
+    correctly returns nothing rather than inventing an identity match. That is
+    the strongest single argument for `P13-16`, and it is why `B61` had to make
+    a downed vector service visible."""
+    assert explain("who am I", brain) == []
+    for row in explain("what does Joseph Jeffrey do", brain):
+        assert "without scoring" not in row["reason"]
+        assert row["score"] != 0.9 or "word for word" in row["reason"]
 
 
 def test_a_boost_says_which_boost_and_why(explain):
-    mems = [{"text": "prefers dark mode in every editor", "id": "p"}]
+    # A corpus, not a single row. `P13-14`'s scorer weights a term by how rare
+    # it is across the memories, and in a corpus of one every term appears in
+    # every document — so nothing is distinctive, everything scores near the
+    # floor, and the test would be measuring the fixture rather than the boost.
+    # The previous version passed on Jaccard because Jaccard has no corpus.
+    mems = [{"text": "prefers dark mode in every editor", "id": "p"},
+            {"text": "the build timeout is 900 seconds", "id": "b"},
+            {"text": "deploys on Sunday evenings", "id": "d"},
+            {"text": "the office is at 12 Bridge Street", "id": "o"}]
     row = explain("does he prefer dark mode", mems)[0]
-    assert "30% boost" in row["reason"]
+    assert row["memory"]["id"] == "p"
+    # `P13-14`. The boost is now stated as a multiplier on the wording score
+    # rather than as a percentage of a Jaccard similarity, because that is what
+    # it is: the reason has to describe the arithmetic that actually ran.
     assert "preference question" in row["reason"]
+    assert "×1.2" in row["reason"]
+
+
+def test_a_verbatim_match_says_so_and_says_nothing_else(explain):
+    """`P13-14` carried the exact-phrase rule across rather than losing it with
+    the scorer it lived in (`Law 1`). It is the one case where wording is not a
+    proxy for relevance but is the relevance, and no amount of IDF weighting
+    reproduces it — a common word inside a verbatim phrase still carries a low
+    IDF. Stated alone, because listing contributing terms beside it would
+    misdescribe why the memory was chosen."""
+    mems = [{"text": "the office is at 12 Bridge Street", "id": "o"}]
+    row = explain("12 Bridge Street", mems)[0]
+    assert row["reason"] == "the query appears in this memory word for word"
+    assert row["score"] >= 0.8
+
+
+def test_a_task_question_still_boosts_a_task_memory(explain):
+    """Also carried across. The deleted scorer boosted task-shaped memories 30%
+    on task-shaped questions, and dropping that while moving would have been a
+    silent behaviour change wearing a refactor's clothes."""
+    mems = [{"text": "remind me to renew the certificate", "id": "t"},
+            {"text": "the renew script lives in scripts/", "id": "s"}]
+    rows = {r["memory"]["id"]: r for r in explain("what do I need to remind myself about", mems)}
+    assert "t" in rows, "the task memory was not returned at all"
+    assert "task question" in rows["t"]["reason"]
 
 
 def test_the_query_type_is_reportable_on_its_own():
+    """`classify_query` still answers. `P13-14` is what it no longer *drives*."""
     assert classify_query("what is the build timeout") == "fact"
     assert classify_query("who am I") == "identity"
     assert classify_query("Afrog Labs") is None
+
+
+def test_the_debug_route_reports_the_intent_that_actually_ranked():
+    """`P13-14`. The route used to report `classify_query`, and after the scorer
+    moved that would have been a classifier reporting on a ranking it no longer
+    drives. A diagnostic that agrees with the truth by coincidence is worse than
+    none, because it is believed.
+
+    The two disagree in a knowable way: `classify_query` has a `fact` group
+    matching "what", "when", "where" and "how" — most questions — and the
+    ranking deliberately has no such group, because a boost that fires for
+    everything is not a boost."""
+    from src import memory_retrieval
+
+    assert classify_query("what is the build timeout") == "fact"
+    assert memory_retrieval.query_intent("what is the build timeout") is None
+    assert memory_retrieval.query_intent("what is my name") == "identity"
+    # Comments stripped before matching. The route explains *why* it stopped
+    # using `classify_query`, so a naive substring test fails on the prose that
+    # documents the very change it is checking — `Law 20`, and my own trap.
+    code = "\n".join(ln for ln in ROUTES.splitlines() if not ln.lstrip().startswith("#"))
+    assert "classify_query" not in code, "the route is back on the classifier that does not rank"
+    assert "memory_retrieval.query_intent(query)" in code
 
 
 def test_the_keyword_groups_are_inspectable():
@@ -166,7 +237,15 @@ def test_the_debug_route_adds_without_changing(monkeypatch, tmp_path):
     assert [m["text"] for m in result["memories"]] == \
         [row["text"] for row in result["relevant_memories"]], \
         "the two lists must describe the same memories in the same order"
-    assert result["query_type"] == "fact"
+    # `P13-14`. `None` is the honest answer and the old `"fact"` was not: the
+    # ranking applies no intent boost to "what is the build timeout", and the
+    # classifier that answered `"fact"` has a group matching "what", "when",
+    # "where" and "how" — which is most questions. A boost that fires for
+    # everything is not a boost, and a diagnostic reporting one that did not
+    # fire is worse than silence because it is believed.
+    assert result["query_type"] is None
+    assert result["query_type"] != classify_query("what is the build timeout"), \
+        "the route must report the intent that ranked, not the classifier that did not"
     assert len(result["explanations"]) == len(result["memories"])
     ids = {m["id"] for m in result["memories"]}
     assert all(row["id"] in ids for row in result["explanations"]), \

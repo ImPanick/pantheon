@@ -1,0 +1,395 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""
+memory_retrieval.py
+
+The memory scorer. One of them.
+
+`P13-14`. Before this module there were two, and the better one served the
+fewer surfaces. `ChatProcessor._hybrid_retrieve` — BM25 over the memory corpus,
+with corpus IDF, an optional vector score and recency as a tiebreaker — fed the
+chat preface and nothing else. `MemoryManager.get_relevant_memories` — Jaccard
+token overlap plus four hand-written keyword lists — fed the Brain panel's
+search, its debug endpoint, the agent's own MCP `memory_search`, the memory
+provider's fallback, and `ai_interaction`. **So the agent got the worse one.**
+
+Measured before anything was deleted, on `.pantheon/fixtures/retrieval_probe.json`
+with no vector service, which is the degraded path a person actually meets:
+
+    lexical (Jaccard + keyword lists)   recall@5 0.40   MRR 0.319
+    hybrid  (BM25 + corpus IDF)         recall@5 0.63   MRR 0.633
+
+That is `Law 9` satisfied — the deletion rests on a number rather than on the
+observation that BM25 is obviously better, which is an adjective. `P13-13` built
+that harness first for exactly this reason.
+
+This is `Law 13`/`Law 14`, not a `Law 1` subtraction: the capability survives and
+improves, and what goes is a duplicate implementation. The same argument `P3-10`
+used to delete `calendar/reminders.js`, with the same obligation — the safety
+case is executable, and it is `tests/test_retrieval_eval_measures_something.py`.
+
+Two views over one scoring pass:
+
+    retrieve(...)  the memories, best first. What five callers want.
+    explain(...)   the same selection with the score and the reason kept.
+                   `H11`'s contract: `POST /api/memory/debug` promises to say
+                   which memories would be triggered, and could only ever answer
+                   the WHICH because the score that produced it was computed and
+                   discarded on the last line.
+
+The reasons are written from what the code does, not from what it is supposed to
+do. That discipline is what found `B40` when `H11` was built, and it is why the
+identity boost below says "admitted ahead of anything matched on words" rather
+than anything more flattering.
+"""
+
+from __future__ import annotations
+
+import math
+import re
+import time
+from collections import Counter
+
+from src import retrieval_engine
+
+# ── tokens ────────────────────────────────────────────────────────────────────
+
+STOPWORDS = frozenset(
+    "a an the is am are was were be been being have has had do does did "
+    "will would shall should can could may might must need ought dare "
+    "i me my mine we us our ours you your yours he him his she her hers "
+    "it its they them their theirs this that these those "
+    "and but or nor not no so if then else than too also very "
+    "in on at to for of by with from up out about into over after "
+    "what when where which who whom how why all each every some any "
+    "just very really actually like well also still already even "
+    "oh ok okay yes yeah hey hi hello thanks thank please sorry "
+    "much more most own other another such only same here there "
+    "because while during before until since through between both "
+    "few many several some none nothing something anything everything "
+    "get got make made go going went been come came take took "
+    "know think want let say tell give see look find way thing "
+    "don doesn didn won wouldn couldn shouldn wasn weren isn aren haven hasn "
+    "don't doesn't didn't won't wouldn't couldn't shouldn't "
+    "it's i'm i've i'll i'd you're you've you'll he's she's we're we've they're they've "
+    "that's there's here's what's who's how's let's can't".split()
+)
+
+_WORD = re.compile(r"[a-z0-9]+(?:[-_][a-z0-9]+)*")
+
+
+def content_tokens(text: str) -> list:
+    """Meaningful content words: no stopwords, min 3 chars, lowercase."""
+    return [w for w in _WORD.findall((text or "").lower())
+            if len(w) >= 3 and w not in STOPWORDS]
+
+
+# ── the shape of the question ─────────────────────────────────────────────────
+
+# What a query is *about*, used only to break ties between memories that already
+# scored. These are the same three tests the scorer has always applied inline;
+# naming them is what lets `POST /api/memory/debug` report a query type that is
+# actually the one used, rather than a second classifier that agrees by
+# coincidence (`Law 14` — `src/memory.py`'s `classify_query` is the other one,
+# and this module does not import it because the two answer different questions:
+# that one drives nothing now, this one drives the boost below).
+_INTENT_CUES = (
+    ("identity", ("name", "who am i", "my name"), 1.4),
+    ("contact", ("phone", "email", "address", "contact"), 1.3),
+    # `P13-14`. Carried across from the deleted scorer, which boosted task-shaped
+    # memories by 30% on task-shaped questions. Dropping it while moving would
+    # have been a silent behaviour change wearing a refactor's clothes, and this
+    # is the one group the surviving scorer did not already have.
+    ("task", ("todo", "task", "remind", "meeting", "appointment", "schedule",
+              "deadline"), 1.3),
+    ("preference", ("like", "prefer", "favorite"), 1.2),
+)
+
+# A memory's own text can qualify it for a boost even when its stored category
+# does not, because categories are assigned by an LLM at extraction time and a
+# memory reading "her name is Ada" is an identity memory whatever it was filed
+# as.
+#
+# `P13-14`: all four lists are now populated, and three of them came from the
+# scorer this replaced. The surviving scorer tested only `@` for contact and
+# nothing at all for preference or task, so those boosts fired **only** when
+# extraction had filed the memory under exactly the right category — and
+# extraction files almost everything as `fact`. A boost gated on a category
+# almost nothing carries is a boost that fires for nobody, which is the same
+# defect as the four dead keyword lists, reached from the other side.
+_INTENT_TEXT_MARKS = {
+    "identity": ("name is", "i am", "called", "named", "call me", "my name"),
+    "contact": ("@", ".com", "phone", "number", "address", "http", "www", "tel:"),
+    "task": ("todo", "task", "remind", "meeting", "appointment", "deadline",
+             "schedule", "need to"),
+    "preference": ("like", "love", "hate", "dislike", "prefer", "favorite",
+                   "enjoy", "interested"),
+}
+
+# BM25 constants. `k1` controls term-frequency saturation and `b` how hard
+# document length is normalised; these are the standard defaults and the term
+# frequency here is binary anyway, because a memory is one short sentence and a
+# word appearing twice in it says nothing.
+_K1, _B = 1.5, 0.75
+
+# BM25 is unbounded; this divisor maps a realistic score onto roughly 0..1 so it
+# can be mixed with a cosine similarity. It is a scaling choice, not a threshold.
+_KEYWORD_SCALE = 6.0
+
+# The smallest corpus IDF is allowed to believe in.
+#
+# `P13-14`. IDF asks how surprising a term is *in general*, and it estimates that
+# from how many documents contain it — so on a tiny corpus it has no sample to
+# estimate from and collapses. A term unique to one memory scores idf 0.288 when
+# there is one memory and 2.639 when there are twenty, a factor of nine, and the
+# relevance gate below is a fixed number: **on a corpus of one or two memories
+# nothing clears it and retrieval returns nothing at all.**
+#
+# That is a real defect and not a rounding error. A person's first week with this
+# product is exactly the small-corpus case, and "the Brain remembers nothing
+# until you have given it twenty things" is not a behaviour anyone chose.
+#
+# Smoothing the denominator toward a floor is the standard answer: below ten
+# documents the corpus is treated as ten, which leaves every realistic corpus
+# untouched — the golden set's twenty memories score identically before and
+# after — and stops a two-memory corpus reporting that nothing is distinctive.
+#
+# **Found by the suite, not by the golden set**, whose fixture carries twenty
+# memories and therefore could not see this. A measurement harness has a shape,
+# and its shape is a blind spot.
+_MIN_IDF_CORPUS = 10
+
+# Weights. Recency is capped at 5% and is a tiebreaker only — never the primary
+# signal, because "most recent" is what a memory system degrades into when
+# nothing else works and it feels like relevance while being nothing of the kind.
+_W_VECTOR, _W_KEYWORD, _W_RECENCY = 0.55, 0.40, 0.05
+_W_KEYWORD_ALONE = 0.95
+
+# Gates. A memory must clear real relevance, not just recency.
+_MIN_VECTOR, _MIN_KEYWORD, _MIN_FINAL = 0.20, 0.08, 0.12
+
+# What a verbatim match is worth. Carried across from the scorer `P13-14`
+# replaces, at the value it used, because changing a number while moving it is
+# how a refactor hides a behaviour change.
+_VERBATIM_SCORE = 0.8
+
+
+def _query_intent(query: str) -> str | None:
+    lowered = (query or "").lower()
+    for intent, cues, _boost in _INTENT_CUES:
+        if any(cue in lowered for cue in cues):
+            return intent
+    return None
+
+
+def _intent_boost(intent: str | None, memory: dict) -> float:
+    if not intent:
+        return 1.0
+    boost = next(b for name, _c, b in _INTENT_CUES if name == intent)
+    if memory.get("category") == intent:
+        return boost
+    text = (memory.get("text") or "").lower()
+    if any(mark in text for mark in _INTENT_TEXT_MARKS.get(intent, ())):
+        return boost
+    return 1.0
+
+
+# ── scoring ───────────────────────────────────────────────────────────────────
+
+
+def _bm25(query_tokens, mem_tokens, doc_freq, n_docs, avg_len):
+    """BM25 over one memory. Binary term frequency; memories are one sentence."""
+    if not mem_tokens or not query_tokens:
+        return 0.0, set()
+    shared = {t for t in query_tokens if t in mem_tokens}
+    if not shared:
+        return 0.0, shared
+    mem_len = len(mem_tokens)
+    score = 0.0
+    for token in shared:
+        df = doc_freq.get(token, 0)
+        idf = math.log((n_docs - df + 0.5) / (df + 0.5) + 1)
+        score += idf * ((_K1 + 1) / (1 + _K1 * (1 - _B + _B * mem_len / avg_len)))
+    return score, shared
+
+
+def _vector_scores(query, memories, vector, k):
+    """What the index said, or nothing, plus whether it was reachable at all."""
+    healthy = bool(vector and getattr(vector, "healthy", False))
+    if not healthy:
+        return {}, False
+    known = {m.get("id") for m in memories}
+    out = {}
+    for row in vector.search(query, k=min(k * 3, 20)) or ():
+        mid = row.get("memory_id") if isinstance(row, dict) else None
+        if mid in known:
+            out[mid] = max(row.get("score") or 0.0, 0.0)
+    return out, True
+
+
+def _rank(query, memories, k, vector, report, now):
+    """One scoring pass. Returns `[(score, memory, reason)]`, best first."""
+    if report is not None:
+        # Written before every early return. A report left empty by a bail-out
+        # reads as "vector search answered", which is the class of lie `B61`
+        # exists to end.
+        report.update({"engine": retrieval_engine.KEYWORD,
+                       "vector_healthy": False, "vector_ids": []})
+    if not memories or not (query or "").strip():
+        return []
+
+    query_tokens = set(content_tokens(query))
+    vectors, healthy = _vector_scores(query, memories, vector, k)
+
+    if report is not None:
+        # `healthy` and not `vectors`: an index that is up and matched nothing
+        # still answered, and reporting that as keyword-only would hide an empty
+        # index behind a missing service — two different problems.
+        report["vector_healthy"] = healthy
+        report["engine"] = retrieval_engine.resolve(
+            vector_used=healthy, keyword_used=bool(query_tokens))
+        report["vector_ids"] = sorted(vectors)
+
+    if not query_tokens and not healthy:
+        # Nothing to match on and nothing to match with. `who am i` lands here:
+        # every one of its words is a stopword, so a lexical engine has no query
+        # left at all. That is not a bug in the tokenizer, it is the strongest
+        # single argument that a downed vector service is a real degradation.
+        #
+        # Except for a verbatim match, which needs no tokens at all — and this
+        # early return would otherwise be the one place the exact-phrase rule
+        # silently does not apply. Found by a test asserting the rule was
+        # unconditional, which it was not.
+        return [(_VERBATIM_SCORE, memory,
+                 _reason(0.0, 0.0, set(), 1.0, None, False, 0, verbatim=True))
+                for memory in memories if _verbatim(query, memory)][:k]
+
+    doc_freq = Counter()
+    tokens_by_id = {}
+    for memory in memories:
+        tokens = set(content_tokens(memory.get("text", "")))
+        tokens_by_id[memory.get("id")] = tokens
+        doc_freq.update(tokens)
+    # `avg_len` uses the real count — average document length is measured, not
+    # estimated, and there is nothing to smooth. Only IDF gets the floor.
+    avg_len = max(sum(len(t) for t in tokens_by_id.values()) / len(memories), 1)
+    n_docs = max(len(memories), _MIN_IDF_CORPUS)
+
+    intent = _query_intent(query)
+    ranked = []
+    for memory in memories:
+        mid = memory.get("id")
+        vector_score = vectors.get(mid, 0.0)
+        raw, shared = _bm25(query_tokens, tokens_by_id.get(mid, set()),
+                            doc_freq, n_docs, avg_len)
+        keyword = min(raw / _KEYWORD_SCALE, 1.0) if raw > 0 else 0.0
+        boost = _intent_boost(intent, memory)
+        keyword = min(keyword * boost, 1.0)
+
+        days_old = max((now - (memory.get("timestamp") or 0)) / 86400, 0)
+        recency = 1.0 / (1.0 + days_old * 0.05)
+
+        # The relevance gates, and the one thing allowed past them. A verbatim
+        # match can score nothing on BM25 — "12 Bridge Street" is three tokens
+        # of which two are common — so gating it out before the check below
+        # would drop the strongest signal there is.
+        cleared = (vector_score >= _MIN_VECTOR or keyword >= _MIN_KEYWORD) if healthy \
+            else (keyword >= _MIN_KEYWORD)
+        if healthy:
+            final = (_W_VECTOR * vector_score) + (_W_KEYWORD * keyword) + (_W_RECENCY * recency)
+        else:
+            final = (_W_KEYWORD_ALONE * keyword) + (_W_RECENCY * recency)
+        if not cleared and not _verbatim(query, memory):
+            continue
+
+        # `P13-14`, carried across from the scorer this replaces rather than
+        # lost with it (`Law 1`). A query that appears in a memory word for word
+        # is the one case where wording is not a proxy for relevance — it *is*
+        # the relevance — and no amount of IDF weighting reproduces it, because
+        # a common word in a verbatim phrase still carries a low IDF.
+        verbatim = _verbatim(query, memory)
+        if verbatim:
+            final = max(final, _VERBATIM_SCORE)
+
+        if final <= _MIN_FINAL:
+            continue
+        ranked.append((final, memory, _reason(vector_score, keyword, shared, boost,
+                                              intent, healthy, days_old, verbatim)))
+
+    ranked.sort(key=lambda row: row[0], reverse=True)
+    return ranked[:k]
+
+
+def _verbatim(query: str, memory: dict) -> bool:
+    """The query appears in the memory word for word."""
+    q = (query or "").strip().lower()
+    return bool(q) and q in (memory.get("text") or "").lower()
+
+
+def _reason(vector_score, keyword, shared, boost, intent, healthy, days_old, verbatim=False) -> str:
+    """Why this memory was chosen, from what the code did.
+
+    `H11`'s discipline. A reason reverse-engineered from a final score is a
+    guess dressed as a diagnostic; each clause below names a term that actually
+    contributed.
+    """
+    if verbatim:
+        # Said first and alone: it is the whole explanation, and burying it in a
+        # list of contributing terms would misdescribe why this was chosen.
+        return "the query appears in this memory word for word"
+    parts = []
+    if vector_score > 0:
+        parts.append(f"means something close to the question ({vector_score:.2f} similarity)")
+    elif healthy:
+        parts.append("the index was searched and did not match this")
+    if shared:
+        words = ", ".join(sorted(shared)[:4])
+        more = f" (+{len(shared) - 4} more)" if len(shared) > 4 else ""
+        parts.append(f"shares {words}{more}")
+    elif not vector_score:
+        parts.append("no words in common with the query")
+    if boost > 1.0:
+        parts.append(f"reads as a {intent} question and this memory answers that kind"
+                     f" (×{boost:g} on the wording score)")
+    if not healthy:
+        parts.append("matched on wording alone — semantic search was unavailable")
+    if days_old > 365:
+        parts.append(f"{int(days_old // 365)}y old, which counts for at most 5%")
+    return "; ".join(parts) or "scored above the floor on wording"
+
+
+# ── the two views ─────────────────────────────────────────────────────────────
+
+
+def retrieve(query: str, memories: list, k: int = 5, *,
+             vector=None, report: dict | None = None, now: float | None = None) -> list:
+    """The memories relevant to `query`, best first.
+
+    `report`, when given, is filled with which engine answered (`B61`). It is an
+    out-parameter rather than a wider return type because callers and their test
+    doubles unpack this list directly, and widening a return value they do not
+    read is how the `_build_base_prompt` 3-tuple broke eleven tests.
+    """
+    return [memory for _score, memory, _why in
+            _rank(query, memories, k, vector, report, now if now is not None else time.time())]
+
+
+def explain(query: str, memories: list, k: int = 5, *,
+            vector=None, report: dict | None = None, now: float | None = None) -> list:
+    """The same selection, with the score and the reason kept. `H11`.
+
+    Returns `[{"memory": dict, "score": float, "reason": str}]`, best first.
+    One scoring pass, not two: a diagnostic that re-scores is a diagnostic that
+    can disagree with the thing it is explaining.
+    """
+    return [{"memory": memory, "score": round(score, 4), "reason": why}
+            for score, memory, why in
+            _rank(query, memories, k, vector, report, now if now is not None else time.time())]
+
+
+def query_intent(query: str) -> str | None:
+    """How the retriever read the question, as the retriever actually read it.
+
+    Exported so `POST /api/memory/debug` reports the intent that drove the
+    ranking rather than a second classifier that agrees by coincidence.
+    """
+    return _query_intent(query)

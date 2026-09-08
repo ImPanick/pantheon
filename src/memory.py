@@ -9,6 +9,8 @@ import re
 from typing import List, Dict, Tuple
 from datetime import datetime
 
+from src import memory_retrieval
+
 logger = logging.getLogger(__name__)
 
 
@@ -44,12 +46,24 @@ QUERY_KEYWORD_GROUPS = (
 
 
 def classify_query(query: str):
-    """How the retriever reads this question: one of the group names, or None.
+    """The older, broader query classifier: one of the group names, or None.
 
-    Public because the diagnostic shows it (`H11`), and because it is the most
-    surprising single fact a person learns there — before `B40` the honest
-    answer for almost any question was "identity", including "what is the
-    build timeout".
+    **`P13-14`: this no longer describes the retriever.** It was written for the
+    Jaccard scorer that used to live in this file, and when that scorer was
+    replaced the ranking's intent test went with it —
+    `src/memory_retrieval.query_intent` is the one the boost consults now, and
+    `POST /api/memory/debug` reports that one. Kept rather than deleted (`Law
+    1`) because it answers a real question and callers may want it; renamed in
+    its documentation rather than in its signature because a function that
+    silently stops meaning what it says is exactly the defect `B61` was about.
+
+    The two differ, and the difference is worth knowing: this one has a `fact`
+    group matching "what", "when", "where" and "how", which is most questions,
+    and `query_intent` deliberately has no such group — a boost that fires for
+    everything is not a boost.
+
+    Before `B40` the honest answer here for almost any question was "identity",
+    including "what is the build timeout".
     """
     return _query_type((query or "").lower(), QUERY_KEYWORD_GROUPS)
 
@@ -424,139 +438,53 @@ class MemoryManager:
         
         return categories
 
-    def get_relevant_memories(self, query: str, memories: list, threshold: float = 0.05, max_items: int = 8):
-        """Get memories that are relevant to the query based on text similarity and semantic keyword matching.
+    def get_relevant_memories(self, query: str, memories: list, threshold: float = 0.05,
+                              max_items: int = 8, vector=None):
+        """Memories relevant to the query, best first.
 
-        Unchanged contract: a plain list of memory dicts, best first. Five
-        callers unpack it that way. The scoring lives in
-        `explain_relevant_memories`, which keeps the score and the reason that
-        this one throws away (`H11`).
+        `P13-14`. **The scoring is `src/memory_retrieval.py` now.** What used to
+        live here — Jaccard token overlap plus four hand-written keyword lists —
+        was the worse of the two scorers this tree carried, and it served the
+        surfaces that mattered most: this method feeds the Brain panel's search
+        and debug endpoints, the agent's own MCP `memory_search`, the memory
+        provider's fallback, and `ai_interaction`. The better one fed the chat
+        preface and nothing else, **so the agent got the worse one.**
+
+        Measured before it was replaced, on `.pantheon/fixtures/retrieval_probe.json`
+        with no vector service: Jaccard `recall@5 0.40, MRR 0.319`; BM25 with
+        corpus IDF `0.63, 0.633`. `Law 9` — a number, not an adjective.
+
+        `threshold` is accepted and ignored, and that is deliberate rather than
+        sloppy: five call sites pass `threshold=0.05`, and the scorer behind
+        this now has three gates that a single similarity floor cannot express.
+        Dropping the parameter breaks all five for no gain; honouring it would
+        mean re-introducing a knob that no longer describes anything. This is a
+        compatibility surface and it says so rather than pretending.
+
+        `vector` is new and optional. A caller holding a live index passes it
+        and gets semantic ranking; one that does not gets BM25, and `B61` makes
+        the difference visible rather than silent.
         """
         return [row["memory"] for row in
-                self.explain_relevant_memories(query, memories, threshold, max_items)]
+                self.explain_relevant_memories(query, memories, threshold, max_items,
+                                               vector=vector)]
 
-    def explain_relevant_memories(self, query: str, memories: list, threshold: float = 0.05, max_items: int = 8):
+    def explain_relevant_memories(self, query: str, memories: list, threshold: float = 0.05,
+                                  max_items: int = 8, vector=None):
         """The same selection, with the score and the reason kept. `H11`.
 
         Returns `[{"memory": dict, "score": float, "reason": str}]`, best first.
 
-        This function is the whole of `H11`. `POST /api/memory/debug` is
-        documented as *"Debug which memories would be triggered for a query"*
-        and could only ever answer the WHICH, because the score and the boost
-        that produced it were computed and discarded on the last line. A person
-        asking "why did it remember that" was being handed a list and told to
-        infer the answer.
+        `POST /api/memory/debug` is documented as *"Debug which memories would
+        be triggered for a query"* and could only ever answer the WHICH, because
+        the score and the boost that produced it were computed and discarded on
+        the last line. Building this is what found `B40`.
 
-        The reasons are written from what the code does, not from what it is
-        supposed to do — which is why building this found `B40`.
+        `P13-14` keeps that contract and changes what is under it. One scoring
+        pass serves both this and `get_relevant_memories`, because a diagnostic
+        that re-scores is a diagnostic that can disagree with the thing it is
+        explaining. The reasons are still written from what the code does rather
+        than from what it is supposed to do — that discipline is why this
+        function found a bug the first time it was built.
         """
-        if not memories or not query.strip():
-            return []
-            
-
-        query_lower = query.lower()
-
-        # Determine query type based on keywords.
-        #
-        # `B40`. This was `any(word in query_lower for word in ...)` — a
-        # SUBSTRING test — and `identity_words` contains `"i"`, `"am"`, `"me"`
-        # and `"my"`. So "what **i**s the weather" is an identity question, and
-        # so is "expla**i**n the code", "f**i**nd the invoice" and "what
-        # ti**me**". Measured over ten ordinary queries: **ten of ten
-        # classified as identity**, which meant the identity branch was
-        # effectively the only branch and the contact, preference and task
-        # boosts below had never run in production.
-        #
-        # Word boundaries, which is what "contains the keyword" was always
-        # meant to say. The same ten now classify as fact, task, contact and
-        # identity in the shapes you would expect, and "who am I" and "what is
-        # my name" are still identity.
-        query_type = classify_query(query)
-        
-        relevant = []
-        other_memories = []
-
-        # `B40`. This used to partition the memories in two and score only the
-        # "other" half, so a memory the `_is_identity_memory` test caught was
-        # **never scored at all** unless the query classified as identity — not
-        # even by the exact-phrase rule below, which says in as many words that
-        # a verbatim match is highly relevant. With a memory reading "Joseph
-        # Jeffrey works at Afrog Labs", the query "Afrog Labs" returned
-        # nothing, and so did "where does Joseph Jeffrey work".
-        #
-        # And `_is_identity_memory` catches far more than names: its regex is
-        # any two consecutive capitalised words, so "the office is at 12 Bridge
-        # Street" and "deploys with Docker Compose on Sunday" are both
-        # "identity memories".
-        #
-        # The deliberate part is kept exactly as it was written: for an
-        # identity QUERY, identity memories are admitted at 0.9 regardless of
-        # similarity. That is what the original comment says it wants, and with
-        # classification fixed it now happens only for questions that really
-        # are about identity. What is removed is the accidental half — that
-        # everything else about them was thrown away.
-        for memory in memories:
-            if query_type == "identity" and _is_identity_memory(memory.get("text", "")):
-                # High score for identity memories in identity queries
-                relevant.append((0.9, memory,
-                                 "this reads as a question about identity, and this memory "
-                                 "looks like it says who someone is — admitted without "
-                                 "scoring, ahead of anything matched on words"))
-                continue
-            other_memories.append(memory)
-
-        # Process the rest with similarity scoring
-        for memory in other_memories:
-            memory_text = memory["text"].lower()
-            memory_tokens = set(tokenize(memory_text))
-            query_tokens = set(tokenize(query_lower))
-            
-            # Calculate base Jaccard similarity
-            if not query_tokens or not memory_tokens:
-                continue
-                
-            shared = query_tokens & memory_tokens
-            base_similarity = len(shared) / len(query_tokens | memory_tokens)
-            final_score = base_similarity
-            why = (("shares " + ", ".join(sorted(shared)[:4])) if shared
-                   else "no words in common with the query")
-            
-            # Apply boosts based on semantic matching
-            if query_type == "contact":
-                # Boost memories with contact information
-                has_contact_info = any(word in memory_text for word in ["@gmail.com", "@", ".com", 
-                                                                     "phone", "number", "address", 
-                                                                     "http", "www", "tel:"])
-                if has_contact_info:
-                    final_score *= 1.4  # 40% boost for contact-related memories
-                    why += f", and got a 40% boost because this reads as a contact question and the memory carries contact details"
-            
-            elif query_type == "preference":
-                # Boost memories with preference indicators
-                has_preference = any(word in memory_text for word in ["like", "love", "hate", "dislike", 
-                                                                   "prefer", "favorite", "enjoy", "interested"])
-                if has_preference:
-                    final_score *= 1.3  # 30% boost for preference-related memories
-                    why += f", and got a 30% boost because this reads as a preference question and the memory carries a preference word"
-            
-            elif query_type == "task":
-                # Boost memories with task indicators
-                has_task = any(word in memory_text for word in ["todo", "task", "remind", "meeting", 
-                                                              "appointment", "schedule", "deadline", "need to"])
-                if has_task:
-                    final_score *= 1.3  # 30% boost for task-related memories
-                    why += f", and got a 30% boost because this reads as a task question and the memory carries a task word"
-            
-            # Always consider exact phrase matches as highly relevant
-            if query.lower() in memory["text"].lower():
-                final_score = max(final_score, 0.8)  # Ensure high relevance for exact matches
-                why = "the query appears in this memory word for word"
-            
-            # Include memory if it meets threshold after boosts
-            if final_score >= threshold:
-                relevant.append((final_score, memory, why))
-        
-        # Sort by final score (descending) and return top matches
-        relevant.sort(key=lambda x: x[0], reverse=True)
-        return [{"memory": mem, "score": round(score, 4), "reason": why}
-                for score, mem, why in relevant[:max_items]]
+        return memory_retrieval.explain(query, memories, max_items, vector=vector)

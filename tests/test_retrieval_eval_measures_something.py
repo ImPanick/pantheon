@@ -138,15 +138,43 @@ def test_both_engines_can_be_scored_over_the_same_corpus():
         assert 0.0 <= out["mrr"] <= 1.0
 
 
-def test_the_hybrid_engine_beats_the_lexical_one_on_this_corpus():
-    # The measured justification for `P13-14`. If this ever fails, the deletion
-    # is wrong and the golden set did its job — which is the stated condition
-    # for reopening `D-2026-09-08-07`.
+def test_no_call_path_is_worse_than_the_scorer_that_was_deleted():
+    # The one comparison a deletion owes. `P13-14` removed Jaccard-plus-keyword-
+    # lists on the strength of a measurement — 0.40 recall@5 and 0.319 MRR on
+    # this corpus — and that number is the floor from here on. It is not a
+    # ratchet on an uncalibrated figure (`P3-20`); it is a historical fact about
+    # what the product used to do, and "never worse than what we removed" is the
+    # claim the deletion rests on.
     corpus = _corpus()
-    lexical = retrieval_eval.score(corpus, retrieval_eval.ENGINES["lexical"](corpus, 5), 5)
-    hybrid = retrieval_eval.score(corpus, retrieval_eval.ENGINES["hybrid"](corpus, 5), 5)
-    assert hybrid["recall@5"] > lexical["recall@5"]
-    assert hybrid["mrr"] > lexical["mrr"]
+    floor = retrieval_eval.DELETED_SCORER_BASELINE
+    for name, engine in retrieval_eval.ENGINES.items():
+        out = retrieval_eval.score(corpus, engine(corpus, 5), 5)
+        assert out["recall@5"] >= floor["recall"], f"{name} is worse than the deleted scorer"
+        assert out["mrr"] >= floor["mrr"], f"{name} ranks worse than the deleted scorer"
+
+
+def test_both_call_paths_return_the_same_ranking():
+    # `P13-14`'s actual property, and the one that would regress. These are two
+    # entry points into one scorer now — the Brain and the agent go through
+    # `MemoryManager`, the chat preface through `_hybrid_retrieve` — and the day
+    # they disagree a second scorer has grown back, which is the defect `Law 13`
+    # names and the reason the row existed.
+    corpus = _corpus()
+    rankings = {name: engine(corpus, 5) for name, engine in retrieval_eval.ENGINES.items()}
+    first, *rest = rankings.values()
+    for other in rest:
+        assert other == first, "the call paths have diverged; a second scorer is back"
+
+
+def test_the_deletion_actually_improved_things():
+    # The measurement that justified `P13-14`, kept as a live assertion rather
+    # than as a sentence in a commit message. `Law 9`: the row cannot be ticked
+    # on "BM25 is obviously better", which is an adjective.
+    corpus = _corpus()
+    out = retrieval_eval.score(corpus, retrieval_eval.ENGINES["manager"](corpus, 5), 5)
+    floor = retrieval_eval.DELETED_SCORER_BASELINE
+    assert out["recall@5"] > floor["recall"], "the replacement is not better, only different"
+    assert out["mrr"] > floor["mrr"] * 1.5, "the ranking gain was the larger half of the case"
 
 
 def test_neither_engine_is_perfect_and_that_is_the_point():

@@ -10,7 +10,7 @@ import time
 from datetime import datetime
 import logging
 # H11: the diagnostic reports how the retriever read the question.
-from src.memory import classify_query
+from src import memory_retrieval
 
 # Leading list-marker like "1.", "12)", or "3:" plus surrounding whitespace.
 # Strips one prefix per call so import-from-LLM-output doesn't leave the
@@ -118,7 +118,15 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
             # How the retriever read the question. Reported once rather than
             # per row, because it is a property of the query and it is the
             # single most surprising thing a person learns here.
-            "query_type": classify_query(query),
+            #
+            # `P13-14`. This was `classify_query`, and after the scorer moved it
+            # would have been a classifier reporting on a ranking it no longer
+            # drives — a diagnostic that agrees with the truth by coincidence is
+            # worse than none, because it is believed. `query_intent` is the
+            # function the boost actually consults. `classify_query` still
+            # exists and still answers; it is simply no longer wired to
+            # ranking, and its own docstring now says so.
+            "query_type": memory_retrieval.query_intent(query),
             "explanations": [
                 {"id": row["memory"].get("id"), "score": row["score"], "reason": row["reason"]}
                 for row in explained

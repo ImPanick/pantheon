@@ -8,7 +8,7 @@ import re
 import time
 from collections import Counter
 from typing import List, Dict, Any, Optional, Tuple
-from src import retrieval_engine
+from src import memory_retrieval, retrieval_engine
 from src.chat_helpers import extract_urls
 from src.youtube_handler import is_youtube_url
 from src.search import comprehensive_web_search, fetch_webpage_content
@@ -57,31 +57,13 @@ def _clean_search_query(query: str, max_len: int = 200) -> str:
 
 # ── Stopwords & tokenizer ──
 
-_STOPWORDS = frozenset(
-    "a an the is am are was were be been being have has had do does did "
-    "will would shall should can could may might must need ought dare "
-    "i me my mine we us our ours you your yours he him his she her hers "
-    "it its they them their theirs this that these those "
-    "and but or nor not no so if then else than too also very "
-    "in on at to for of by with from up out about into over after "
-    "what when where which who whom how why all each every some any "
-    "just very really actually like well also still already even "
-    "oh ok okay yes yeah hey hi hello thanks thank please sorry "
-    "much more most own other another such only same here there "
-    "because while during before until since through between both "
-    "few many several some none nothing something anything everything "
-    "get got make made go going went been come came take took "
-    "know think want let say tell give see look find way thing "
-    "don doesn didn won wouldn couldn shouldn wasn weren isn aren haven hasn "
-    "don't doesn't didn't won't wouldn't couldn't shouldn't "
-    "it's i'm i've i'll i'd you're you've you'll he's she's we're we've they're they've "
-    "that's there's here's what's who's how's let's can't".split()
-)
+_STOPWORDS = memory_retrieval.STOPWORDS
 
-def _content_tokens(text: str) -> list:
-    """Extract meaningful content words: no stopwords, min 3 chars, lowercase."""
-    words = re.findall(r'[a-z0-9]+(?:[-_][a-z0-9]+)*', text.lower())
-    return [w for w in words if len(w) >= 3 and w not in _STOPWORDS]
+# `P13-14`. Re-exported, not reimplemented. The tokenizer and its stopword list
+# moved to `src/memory_retrieval.py` with the scorer that is their only reason
+# to exist; these two names stay because tests and callers import them from here
+# and a second copy is the defect `Law 14` names.
+_content_tokens = memory_retrieval.content_tokens
 
 
 class ChatProcessor:
@@ -163,130 +145,14 @@ class ChatProcessor:
                          report: dict | None = None) -> list:
         """Retrieve memories relevant to the message.
 
-        Uses BM25-style keyword scoring + optional vector similarity.
-        Recency is a tiebreaker only, never the primary signal.
-
-        `B61`. `report`, when given, is filled with which engine actually
-        answered — `engine`, `vector_healthy`, and `vector_ids`, the memories
-        the vector store contributed to. It is an out-parameter rather than a
-        wider return type because the return value is a plain list of memory
-        dicts that callers and test doubles unpack directly, and widening it to
-        report something they do not read is how the `_build_base_prompt`
-        3-tuple broke eleven tests. Callers that do not care pass nothing.
+        `P13-14`. The scoring moved to `src/memory_retrieval.py`, which is now
+        the only memory scorer in the tree — this method is the chat preface's
+        binding to it, not a second implementation. It kept its name and
+        signature because five call sites and their test doubles use both, and
+        renaming a working seam to advertise a refactor is churn.
         """
-        if report is not None:
-            # Set before every early return. A report left empty by a bail-out
-            # would be read as "vector search answered", which is the exact
-            # class of lie this parameter exists to end.
-            report.update({"engine": retrieval_engine.KEYWORD,
-                           "vector_healthy": False, "vector_ids": []})
-        if not mem_entries or not message.strip():
-            return []
-
-        now = time.time()
-        query_tokens = _content_tokens(message)
-
-        # If the query has no meaningful tokens, skip keyword retrieval entirely
-        if not query_tokens:
-            # Fall back to vector-only if available
-            if not (self.memory_vector and self.memory_vector.healthy):
-                return []
-
-        # ── Build IDF from the memory corpus ──
-        N = len(mem_entries)
-        doc_freq = Counter()  # token -> how many memories contain it
-        mem_token_cache = {}  # mem_id -> set of content tokens
-        for mem in mem_entries:
-            toks = set(_content_tokens(mem["text"]))
-            mem_token_cache[mem["id"]] = toks
-            for t in toks:
-                doc_freq[t] += 1
-
-        def _bm25_score(query_toks, mem_id):
-            """BM25-inspired score between query and a memory."""
-            mem_toks = mem_token_cache.get(mem_id, set())
-            if not mem_toks or not query_toks:
-                return 0.0
-            score = 0.0
-            mem_len = len(mem_toks)
-            avg_len = max(sum(len(v) for v in mem_token_cache.values()) / N, 1)
-            k1, b = 1.5, 0.75
-            for qt in query_toks:
-                if qt not in mem_toks:
-                    continue
-                df = doc_freq.get(qt, 0)
-                idf = math.log((N - df + 0.5) / (df + 0.5) + 1)
-                tf = 1  # binary presence (memory entries are short)
-                tf_norm = (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * mem_len / avg_len))
-                score += idf * tf_norm
-            return score
-
-        # ── Score all candidates ──
-        has_vector = bool(self.memory_vector and self.memory_vector.healthy)
-        vector_scores = {}
-
-        if has_vector:
-            results = self.memory_vector.search(message, k=min(k * 3, 20))
-            mem_by_id = {m["id"]: m for m in mem_entries}
-            for r in results:
-                if r["memory_id"] in mem_by_id:
-                    vector_scores[r["memory_id"]] = max(r["score"], 0.0)
-
-        if report is not None:
-            # `has_vector` and not `vector_scores`: a healthy index that matched
-            # nothing still answered, and calling that `keyword` would hide an
-            # empty index behind a missing service.
-            report["vector_healthy"] = has_vector
-            report["engine"] = retrieval_engine.resolve(
-                vector_used=has_vector, keyword_used=bool(query_tokens))
-            report["vector_ids"] = sorted(vector_scores)
-
-        scored = []
-        for mem in mem_entries:
-            mid = mem["id"]
-            vs = vector_scores.get(mid, 0.0)
-            kw = _bm25_score(query_tokens, mid)
-
-            # Normalize BM25 to roughly 0-1 range (cap at a reasonable max)
-            kw_norm = min(kw / 6.0, 1.0) if kw > 0 else 0.0
-
-            # Category-aware boost for identity/contact queries
-            category = mem.get("category", "fact")
-            msg_lower = message.lower()
-            mem_lower = mem["text"].lower()
-            cat_boost = 1.0
-            if any(w in msg_lower for w in ["name", "who am i", "my name"]):
-                if category == "identity" or any(w in mem_lower for w in ["name is", "i am", "called"]):
-                    cat_boost = 1.4
-            elif any(w in msg_lower for w in ["phone", "email", "address", "contact"]):
-                if category == "contact" or "@" in mem_lower:
-                    cat_boost = 1.3
-            elif any(w in msg_lower for w in ["like", "prefer", "favorite"]):
-                if category == "preference":
-                    cat_boost = 1.2
-
-            kw_norm = min(kw_norm * cat_boost, 1.0)
-
-            # Recency — tiebreaker only (max 5% contribution)
-            ts = mem.get("timestamp", 0)
-            days_old = max((now - ts) / 86400, 0)
-            recency = 1.0 / (1.0 + days_old * 0.05)
-
-            # Gate: need real relevance, not just recency
-            if has_vector:
-                if vs < 0.20 and kw_norm < 0.08:
-                    continue
-                final = (0.55 * vs) + (0.40 * kw_norm) + (0.05 * recency)
-            else:
-                if kw_norm < 0.08:
-                    continue
-                final = (0.95 * kw_norm) + (0.05 * recency)
-
-            if final > 0.12:
-                scored.append((final, mem))
-
-        scored.sort(key=lambda x: x[0], reverse=True)
-        return [mem for _, mem in scored[:k]]
+        return memory_retrieval.retrieve(
+            message, mem_entries, k, vector=self.memory_vector, report=report)
 
     def build_context_preface(
         self,
