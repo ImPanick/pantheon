@@ -4447,23 +4447,17 @@ body.bg-pattern-sparkles {
     .overflow-menu-item.active .overflow-active-dot {
       display: block;
     }
-    .attach-strip {
-      display: flex;
-      gap: 6px;
-      flex-wrap: wrap;
-      margin: 0 0 8px;
-      min-height: 0;
-    }
+    /* P3-02. Two `.attach-strip` blocks lived here, three lines apart, at
+       identical specificity — so the second silently replaced the first's
+       `margin` and `min-height` and nothing else, and a third block 5,200
+       lines below replaced the `padding` and added the centring. Three
+       authors, one element, and the rule that actually applied was written
+       by none of them.
+
+       Collapsed into the last of the three, which is where the cascade had
+       already put it. What each contributed is recorded there. */
     .attach-strip:empty {
       display: none;
-    }
-    .attach-strip { 
-      display: flex; 
-      gap: 6px; 
-      flex-wrap: wrap; 
-      margin: 6px 0 0; 
-      min-height: 32px;
-      padding: 2px;
     }
     .attachment-placeholder {
       display: flex;
@@ -9668,7 +9662,29 @@ button.hamburger {
   align-items: flex-end;
 }
 
-#message {
+/* P3-01. Was a bare `#message`, and it is the reason the composer never
+   rendered at the 14px `.chat-input-bar textarea#message` authors 1,200 lines
+   above: four `!important` declarations at id specificity, overriding that
+   rule's font-size, line-height, overflow and font-family.
+
+   It is not a competing opinion about the composer — it belongs to the
+   "Unified chat input area" block above (and that name is written without its
+   comment delimiters on purpose: a `*` `/` inside a CSS comment ends it, which
+   is how the first draft of this note turned half of itself into a selector),
+   and **every other selector in that block is dead**: `.chat-input-area`, `.chat-input-form`,
+   `.chat-controls-row/-left/-right`, `.control-group`, `.control-label`,
+   `.preset-buttons-row`, `.toggle-switch`, `.toggle-slider`,
+   `.action-button` and `#stop-icon` appear in no markup and no script. An
+   older composer layout, kept, with one selector in it that still reaches
+   something because an id is an id wherever it is written.
+
+   Scoped to its own layout rather than deleted (`Law 1`): the rule is intact
+   and exactly reversible, and it now matches only inside the
+   `.chat-input-form` it was written for. The live composer gets what it
+   authors. The 16px touch override (`@media (hover: none) and (pointer:
+   coarse)`) is unaffected — it is `!important` and beats the 14px on its
+   own. */
+.chat-input-form #message {
   flex: 1;
   min-height: 34px;
   max-height: 120px;
@@ -9723,18 +9739,32 @@ button.hamburger {
 /* Attachment strip — centered + max-width to match the chat-input-bar below,
    otherwise the chip floats flush-left while the input is centered (visible on
    desktop where the chat area is wider than 800px). */
+/* P3-02 — the one `.attach-strip`. Three blocks at equal specificity used to
+   set this element, and the values below are exactly what the cascade already
+   resolved to; nothing here changes what anyone sees. Where each came from:
+
+     display / gap / flex-wrap  all three agreed
+     margin: 6px auto 0         `6px 0 0` from the second block, then the
+                                `margin-left/right: auto` this one set as
+                                longhands after it
+     min-height: 32px           the second block (the first said 0)
+     padding: 2px 8px           this block (the second said 2px)
+     max-width / width /
+     box-sizing                 this block only
+
+   The first block's `margin: 0 0 8px` and `min-height: 0` never applied to
+   anything and are recorded here rather than kept as a rule that cannot win. */
 .attach-strip {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+  margin: 6px auto 0;
+  min-height: 32px;
   padding: 2px 8px;
   max-width: 800px;
   width: 100%;
-  margin-left: auto;
-  margin-right: auto;
   box-sizing: border-box;
 }
-.attach-strip:empty { display: none; }
 
 /* Upload-in-progress feedback: the message bubble shows immediately, so while
    the files are still uploading we put a whirlpool ON each attachment chip and

@@ -63,7 +63,7 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P0 | Fork identity & licence | 33 | 5 | **1** | **27** |
 | P1 | Token layer — the free wins | 15 | 7 | 0 | **8** |
 | P2 | Un-nerf | 26 | 12 | 0 | **14** |
-| P3 | Mechanical hygiene | 24 | 15 | **2** | **7** |
+| P3 | Mechanical hygiene | 24 | 13 | **2** | **9** |
 | P4 | The wire — the real glass box | 28 | 24 | 0 | **4** |
 | P5 | Trace & composer restyle | 17 | 17 | 0 | 0 |
 | P6 | Queue & Plan | 18 | 1 | 0 | **17** |
@@ -77,7 +77,7 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P14 | Measurement | 8 | 3 | 0 | **5** |
 | P15 | Outbound politeness | 12 | 2 | **1** | **9** |
 | P16 | Self-hosted by default | 20 | 1 | 0 | **19** |
-| **Total** | | **339** | **206** | **9** | **124** |
+| **Total** | | **339** | **204** | **9** | **126** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -105,7 +105,7 @@ Ten of its rows landed on 2026-08-27 — see § Progress. What is left of it:
   proved it found two more bugs (`B45`, `B46`). `check-fork-names.py`, `check-spdx.py` and
   `check-licences.py`'s new rule 7 fail CI on any regression.
 
-### Next: `P3-01`/`P3-02` (conflicting duplicate rule blocks), then `P3-07`. **`P1-08` needs the owner** — it changes what all sixteen protected themes look like. `P1-12` and `P1-14` are done; `P1-12` left `P1-15` behind. **The `P0` licence block is finished except for six rows that cannot be closed from here** — `P0-05` needs the live ChromaDB, `P0-08` needs Docker, `P0-16` and `P0-17` need the owner, `P0-13` is blocked on a design decision, and `P0-29` is its own session. `P0-18`, `P0-21b` and `P0-31` closed 2026-09-07; standing suite failures **19 → 14**. `P3-21`, `P7-12`, `P7-13`, `P13-11` and `P15-07` wait on the owner
+### Next: `P3-07` (13 breakpoints, canonicalise to three), then `P3-12`. `P3-01`, `P3-02`, `P3-04`, `P3-05` and `P3-06` are done. **`P1-08` needs the owner** — it changes what all sixteen protected themes look like. `P1-12` and `P1-14` are done; `P1-12` left `P1-15` behind. **The `P0` licence block is finished except for six rows that cannot be closed from here** — `P0-05` needs the live ChromaDB, `P0-08` needs Docker, `P0-16` and `P0-17` need the owner, `P0-13` is blocked on a design decision, and `P0-29` is its own session. `P0-18`, `P0-21b` and `P0-31` closed 2026-09-07; standing suite failures **19 → 14**. `P3-21`, `P7-12`, `P7-13`, `P13-11` and `P15-07` wait on the owner
 
 **`P16-05` is the last zero-configuration leak**, and the only one that is not a one-liner: the
 embedding model is pulled from HuggingFace on the *first chat message*, because
@@ -239,6 +239,22 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### P3-01, P3-02 — two elements whose applied style nobody wrote
+`18a9e64..HEAD`. **339 tracked, 126 done. 18 new tests, 0 regressions.**
+The composer has never rendered as authored: a bare `#message` block pins four `!important`
+declarations over `.chat-input-bar textarea#message`'s 14px / 1.5 — **and it belongs to a
+section in which every other selector is dead**, an older composer layout kept in the file with
+one id selector in it that still reaches something. Scoped, not deleted. **What the 13px cost
+was invisible until it was measured**: `#message-ghost` is drawn over the textarea and authors
+14px / 1.5 to match it, so the inline autocomplete ghost drifted further right with every
+character. A test pins the two layers together now. `.attach-strip` was three blocks at equal
+specificity, each replacing part of the last; collapsed at the values the cascade already
+produced, with every declaration's origin recorded.
+
+**One trap, from writing the comment**: a `*` `/` inside a CSS comment ends it, so quoting the
+section name *with its delimiters* turned half the note into a selector — the test's own parser
+caught it on the first run. Same shape as `check-wiring.py`'s comment-stripper incident.
 
 ### P3-04, P3-05, P3-06 — one name, one animation, and two that meant something else
 `b388f6b..HEAD`. **339 tracked, 124 done. 8 new tests, 0 regressions.**
@@ -2595,8 +2611,8 @@ cross one if implemented carelessly.
 
 Provably safe, and each one removes a trap the restyle would otherwise fall into.
 
-- [ ] **P3-01** **Resolve `#message` declared 4×.** The composer never renders at its authored 14px — a later `!important` forces 13px, and a third rule forces 16px on touch. One of the conflicting blocks sits under a class that does not exist. **Do this before any composer work.** *(Note: `max-height` is fine — 200px wins on specificity; only the font-size conflict is real.)*
-- [ ] **P3-02** Resolve `.attach-strip` declared 3× with conflicting margin and padding.
+- [x] **P3-01** **Resolve `#message` declared 4×.** The composer never renders at its authored 14px — a later `!important` forces 13px, and a third rule forces 16px on touch. One of the conflicting blocks sits under a class that does not exist. **Do this before any composer work.** *(Note: `max-height` is fine — 200px wins on specificity; only the font-size conflict is real.)* — **done 2026-09-08, and the row understated it in a way worth reading.** The bare `#message` block does not merely force 13px: it carries **four** `!important` declarations — `font-size`, `line-height`, `overflow-y`, `font-family` — over `.chat-input-bar textarea#message`'s authored 14px / 1.5. **And it is not a competing opinion about the composer.** It sits in the *Unified chat input area* section, and **every other selector in that section is dead**: `.chat-input-area`, `.chat-input-form`, `.chat-controls-row/-left/-right`, `.control-group`, `.control-label`, `.preset-buttons-row`, `.toggle-switch`, `.toggle-slider`, `.action-button` and `#stop-icon` — eleven classes and one id, none of them in any markup or script. An older composer layout, kept in the file, with **one** selector in it that still reaches something because an id is an id wherever it is written. So the row's *"one of the conflicting blocks sits under a class that does not exist"* is right and small: the whole block is under classes that do not exist. Scoped to `.chat-input-form #message` rather than deleted (`Law 1`) — intact, exactly reversible, and matching only the layout it describes. **What the 13px was costing, which nobody had written down:** `#message-ghost` (`.ghost-text-overlay`) is absolutely positioned over the textarea and renders the inline autocomplete suggestion in transparent text so the glyphs line up with what you type. It authors `font-size: 14px; line-height: 1.5` — the composer's *authored* values. Two layers drawn on top of each other were a point apart in size and a tenth apart in leading, so the ghost drifted further right with every character. That is the proof 14px was intended rather than a guess, and a test now pins the two together. The 16px coarse-pointer override is untouched and still wins on touch. 18 tests, 6 mutations, all caught.
+- [x] **P3-02** Resolve `.attach-strip` declared 3× with conflicting margin and padding. — **done 2026-09-08.** Three blocks at identical specificity, **two of them three lines apart** and the third 5,200 lines below, so each replaced part of the one before and the rule that applied was written by none of them: `margin` from the second, `min-height` from the second, `padding` and the centring from the third, and the first's `margin: 0 0 8px` / `min-height: 0` never applying to anything at all. Collapsed into one block **at exactly the values the cascade already resolved to** — nothing changes visually — with each declaration's origin recorded beside it. The duplicate `:empty { display: none }` went with it.
 - [~] **P3-03** Delete the confidently-dead CSS rule blocks. — **BLOCKED (2026-08-27), for two independent reasons, either one sufficient.** **(1) The measurement does not exist.** 510 / 2,590 / 349 came from a classifier that **is not in this repo**, so nobody can reproduce or re-check them — and they are stale besides: the wiring run deleted 1,524 lines of JS *after* they were taken, which moves every one of those numbers. The arithmetic checks out (2,590 / 41,401 = 6.26%) and that is all that can be said for them. **(2) `P2-20` must land first.** 16 `admin-rag-*` rules in `static/style.css` (`.admin-rag-upload-zone` at `:15733-15747` and others) are dead **only because `P2-20`'s markup is missing** — a sweep run today deletes exactly the CSS `P2-20` needs. **This already happened in reverse and proves the risk:** `.rag-upload-zone` (`style.css:2392/:2402`) was an orphan until `P2-23` landed its markup, and is live again now. **Unblock by:** landing `P2-20`, then rebuilding the classifier with the `check-wiring` scope lesson applied — it must resolve helper lookups, not just `getElementById`. Verified 0/55 false positives on two random samples, which is the one part of the old row still worth keeping.
 - [x] **P3-04** Delete duplicate `@font-face` (the whole Fira Code set is declared twice) and the exact-duplicate `@keyframes` — **3 names but 4 duplicate blocks**, because `spin` has two extras rather than one (re-measured 2026-08-27). Deleting three blocks leaves one behind. — **done 2026-09-08, and every number on this row reproduced exactly.** 5 `@keyframes` names were declared more than once and 3 of those were byte-identical (`spin` ×3, `loading-bounce` ×2, `pulse` ×2) = **4 redundant blocks**, as written. `@font-face`: 8 blocks, 5 distinct — the three Fira Code weights each twice. All 7 removed; identical bodies, so nothing changed. 149 → 145 keyframe blocks.
 - [x] **P3-05** **Fix the 2 conflicting `@keyframes` redefinitions** — `research-pulse` and `fadeIn`. These are live bugs: the later definition silently wins for every consumer, including code written against the earlier one. — **done 2026-09-08, and only one of the two was costing anything — which is worth knowing before the next such row.** **`research-pulse` was the live one.** `#research-toggle-btn.research-running` asks for it three lines above a definition that pulses the *background*, and gets a definition 6,800 lines below that pulses *opacity and scale*. The comment above the rule says "Research button glow"; the button throbs in size instead and its background never moves. The other consumer, `.session-star.processing`, is a 10px dot with no background — the scale version is what suits it and what it has always had. So: the background version becomes `research-glow` and the button points at it; the dot keeps `research-pulse`. **`fadeIn` was a trap rather than a defect.** Its only consumer sits beside the definition that wins, so nothing looks wrong; the earlier plain-opacity block in the compare-pane section has simply never applied to anything. Renamed to `compare-fade-in` rather than deleted (`Law 1`) — a plain fade is a reasonable thing for that section to want, and the hazard was that a rule added near it would silently get the 10px slide. **A third defect fell out**, found by the check written for this cluster on its first run: `B49`.
