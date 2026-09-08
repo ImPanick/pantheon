@@ -245,7 +245,21 @@ def load_integrations() -> List[Dict[str, Any]]:
             log.error("Invalid integrations file rows: ignored non-object entries")
         integrations = valid_integrations
         if _has_plaintext_api_key(integrations):
-            save_integrations(_decrypt_integration_secrets(integrations))
+            # `P3-16`, and this is the PandaOS failure with the serial numbers
+            # filed off. This used to pass `_decrypt_integration_secrets(...)`,
+            # which runs **every** row through `decrypt()` — and `decrypt()`
+            # returns "" on failure by design, "so a corrupt or rotated-key row
+            # degrades to unconfigured rather than 500". Right for a read.
+            # Catastrophic here: one hand-edited plaintext row is enough to
+            # trigger this migration, and with a rotated or regenerated
+            # `secret.key` every other row decrypts to "" and is written back
+            # as "" — every stored credential gone, at load time, silently.
+            #
+            # The rows are passed through unchanged instead. `encrypt()` is a
+            # no-op on an already-`enc:` value, so the plaintext rows get
+            # encrypted and the encrypted ones are stored byte-for-byte as they
+            # were. Nothing on the write path decrypts anything.
+            save_integrations(integrations)
         return _decrypt_integration_secrets(integrations)
     except (json.JSONDecodeError, IOError) as exc:
         log.error("Failed to load integrations: %s", exc)
@@ -255,7 +269,10 @@ def load_integrations() -> List[Dict[str, Any]]:
 def save_integrations(integrations: List[Dict[str, Any]]) -> None:
     """Persist integrations list to disk with API keys encrypted at rest."""
     _ensure_data_dir()
-    atomic_write_json(DATA_FILE, _encrypt_integration_secrets(integrations), indent=2)
+    atomic_write_json(
+        DATA_FILE, _encrypt_integration_secrets(integrations), indent=2,
+        preserve_unreadable=True,   # `P3-16`: API keys; a failed read must not become a write
+    )
     safe_chmod(DATA_FILE, 0o600)
 
 

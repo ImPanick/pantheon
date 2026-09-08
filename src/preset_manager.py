@@ -121,7 +121,11 @@ Use precise language. Show causal relationships explicitly. Quantify uncertainty
             # preset. Lazy import keeps this module free of the heavy core
             # package import graph at load time.
             from core.atomic_io import atomic_write_json
-            atomic_write_json(self.presets_file, presets, indent=2)
+            # `P3-16`: `load()` answers a corrupt presets.json with
+            # `DEFAULT_PRESETS.copy()`, and the built-in top-up inside it calls
+            # this — so without the guard a corrupt file is migrated to
+            # defaults and every saved preset is gone.
+            atomic_write_json(self.presets_file, presets, indent=2, preserve_unreadable=True)
             self.presets = presets
             return True
         except Exception as e:

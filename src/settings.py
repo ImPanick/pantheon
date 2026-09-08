@@ -422,16 +422,39 @@ def load_settings() -> dict:
         if not isinstance(saved, dict):
             raise ValueError("settings must be an object")
         merged = {**DEFAULT_SETTINGS, **saved}
-    except (FileNotFoundError, PermissionError, json.JSONDecodeError, ValueError):
+    except FileNotFoundError:
         merged = dict(DEFAULT_SETTINGS)
+    except (PermissionError, json.JSONDecodeError, ValueError) as exc:
+        # `P3-16`. The file is there and could not be read, which is a
+        # different thing from "no settings have been saved yet" — and the
+        # difference matters because nearly every writer in this codebase is
+        # `s = load_settings(); s[key] = value; save_settings(s)`. Returning
+        # defaults from here and letting that run persists the defaults over
+        # the operator's real configuration, credentials included. Callers keep
+        # working on defaults so the app stays up; `save_settings` refuses to
+        # write while the file is in this state.
+        #
+        # Deliberately not cached. A two-second-old set of defaults that
+        # outlives the operator's repair is exactly long enough for the next
+        # save to find a readable file and write the defaults into it.
+        logger.error(
+            "settings.json exists but could not be read (%s: %s) — running on "
+            "defaults, and saves are refused until it can be read",
+            exc.__class__.__name__, exc,
+        )
+        return dict(DEFAULT_SETTINGS)
     _settings_cache = (now, merged)
     return merged
 
 
 def save_settings(settings: dict):
-    """Persist settings to disk (atomic; see core.atomic_io)."""
+    """Persist settings to disk (atomic; see core.atomic_io).
+
+    `preserve_unreadable`: this file holds credentials a person typed and is
+    written by ~20 read-modify-write call sites. `P3-16`.
+    """
     from core.atomic_io import atomic_write_json
-    atomic_write_json(SETTINGS_FILE, settings, indent=2)
+    atomic_write_json(SETTINGS_FILE, settings, indent=2, preserve_unreadable=True)
     _invalidate_caches()
 
 
@@ -580,14 +603,25 @@ def load_features() -> dict:
         if not isinstance(saved, dict):
             raise ValueError("features must be an object")
         merged = {**DEFAULT_FEATURES, **saved}
-    except (FileNotFoundError, PermissionError, json.JSONDecodeError, ValueError):
+    except FileNotFoundError:
         merged = dict(DEFAULT_FEATURES)
+    except (PermissionError, json.JSONDecodeError, ValueError) as exc:
+        # `P3-16`, same reasoning as `load_settings`. An admin who has switched
+        # features off has expressed something that defaults cannot reproduce,
+        # and `H05` is this project's record of what happens when a feature the
+        # admin disabled comes back on by itself.
+        logger.error(
+            "features.json exists but could not be read (%s: %s) — running on "
+            "defaults, and saves are refused until it can be read",
+            exc.__class__.__name__, exc,
+        )
+        return dict(DEFAULT_FEATURES)
     _features_cache = (now, merged)
     return merged
 
 
 def save_features(features: dict):
-    """Persist feature flags to disk (atomic)."""
+    """Persist feature flags to disk (atomic). `preserve_unreadable`: `P3-16`."""
     from core.atomic_io import atomic_write_json
-    atomic_write_json(FEATURES_FILE, features, indent=2)
+    atomic_write_json(FEATURES_FILE, features, indent=2, preserve_unreadable=True)
     _invalidate_caches()

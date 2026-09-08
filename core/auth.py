@@ -20,7 +20,10 @@ import pyotp
 logger = logging.getLogger(__name__)
 
 
-from core.atomic_io import atomic_write_json as _atomic_write_json  # noqa: E402
+from core.atomic_io import (  # noqa: E402
+    UnreadableTargetError,
+    atomic_write_json as _atomic_write_json,
+)
 
 DEFAULT_PRIVILEGES = {
     "can_use_agent": True,
@@ -95,6 +98,11 @@ class AuthManager:
         self.auth_path = auth_path
         self._sessions_path = os.path.join(os.path.dirname(auth_path), "sessions.json")
         self._config: Dict[str, Any] = {}
+        # `P3-16`. Set when `auth.json` exists and could not be read. An
+        # unreadable user database is not an empty one, and the difference
+        # decides whether this process offers first-run setup to a stranger and
+        # then saves their new account over everybody else's.
+        self._load_error: Optional[str] = None
         self._sessions: Dict[str, Dict[str, Any]] = {}  # token -> {username, expiry}
         # Guards mutations of self._sessions and the on-disk sessions.json.
         # Validate/create/revoke run concurrently from the FastAPI threadpool.
@@ -131,7 +139,26 @@ class AuthManager:
                 self._config = {}
                 logger.info("No auth config found — first-run setup required")
         except Exception as e:
-            logger.error(f"Failed to load auth config: {e}")
+            # `P3-16`, and this is the PandaOS failure exactly. The old line
+            # here was `self._config = {}` and nothing else — so a truncated,
+            # unparseable or unreadable `auth.json` became "no users", which
+            # makes `is_configured` False, which puts the app into first-run
+            # setup. The first person to reach that box gets an admin account,
+            # and `create_user` calls `_save()`, which writes the one-user
+            # config straight over the file nobody could read. Total account
+            # loss and a handover, from one failed `json.load`.
+            #
+            # Remembered rather than re-derived: if the operator repairs the
+            # file while this process is running, `self._config` is still the
+            # empty dict this branch produced, and a write-time check alone
+            # would happily persist it over the repaired file.
+            self._load_error = f"{e.__class__.__name__}: {e}"
+            logger.critical(
+                "Failed to load auth config from %s: %s. Refusing to treat this "
+                "as an empty user database: first-run setup stays closed and "
+                "nothing will be written to that file until it can be read.",
+                self.auth_path, e,
+            )
             self._config = {}
 
     def _load_sessions(self):
@@ -220,7 +247,15 @@ class AuthManager:
             self._save()
 
     def _save(self):
-        _atomic_write_json(self.auth_path, self._config, indent=2)
+        if self._load_error:
+            # `P3-16`: no write may be derived from a read that failed.
+            raise UnreadableTargetError(
+                f"refusing to write {self.auth_path}: this process could not read "
+                f"it at startup ({self._load_error}), so the user database in "
+                "memory is empty for that reason and not because there are no "
+                "users. Repair the file and restart."
+            )
+        _atomic_write_json(self.auth_path, self._config, indent=2, preserve_unreadable=True)
 
     @property
     def users(self) -> Dict[str, Any]:
@@ -238,6 +273,15 @@ class AuthManager:
 
     @property
     def is_configured(self) -> bool:
+        # `P3-16`. False is the permissive answer everywhere this is consumed —
+        # it means "first run", which opens setup (`setup`), lets loopback
+        # callers through unauthenticated (`auth_helpers`), redirects to the
+        # setup page (`app.py`) and hands note admin rights to anyone
+        # (`note_routes`). An unreadable file must never produce it. True is
+        # the safe answer: with no users loaded, `is_admin` says no and every
+        # gate closes.
+        if self._load_error:
+            return True
         return len(self.users) > 0
 
     def policy(self) -> dict:

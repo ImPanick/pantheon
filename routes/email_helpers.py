@@ -1006,7 +1006,9 @@ def _load_settings():
 
 def _save_settings(settings):
     from core.atomic_io import atomic_write_json
-    atomic_write_json(str(SETTINGS_FILE), settings, indent=2)
+    # `P3-16`: settings.json holds mail credentials. Same lock as the other
+    # two doors onto this file (`src/settings.py`, `contacts_routes.py`).
+    atomic_write_json(str(SETTINGS_FILE), settings, indent=2, preserve_unreadable=True)
 
 
 def _get_email_config(account_id: str | None = None, owner: str = "") -> dict:

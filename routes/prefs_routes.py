@@ -15,7 +15,14 @@ _FOREGROUND_POLICY_KEYS = (
 
 
 def _load():
-    """Load the raw prefs file (internal use only)."""
+    """Load the raw prefs file (internal use only).
+
+    `{}` here means "nobody has saved a preference yet" to every caller, and
+    `_save` writes whatever the caller then hands back. One file holds every
+    user, so a corrupt read followed by one person changing one preference
+    would erase everybody's — `P3-16`. `_save` refuses while the file is in
+    that state, so the empty dict cannot become the file.
+    """
     try:
         with open(PREFS_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -25,7 +32,7 @@ def _load():
 
 
 def _save(prefs):
-    atomic_write_json(PREFS_FILE, prefs, indent=2)
+    atomic_write_json(PREFS_FILE, prefs, indent=2, preserve_unreadable=True)
 
 
 def _load_for_user(user: Optional[str] = None) -> dict:

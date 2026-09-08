@@ -7,6 +7,10 @@ from unittest.mock import patch, mock_open
 from src.api_key_manager import APIKeyManager
 
 
+def _tmp_siblings(directory):
+    return sorted(p.name for p in directory.iterdir() if ".tmp" in p.name)
+
+
 def test_save_creates_atomic_tmp_file(tmp_path):
     """Verify save() writes to a temp file and replaces atomically."""
     mgr = APIKeyManager(str(tmp_path))
@@ -18,9 +22,11 @@ def test_save_creates_atomic_tmp_file(tmp_path):
         keys = json.load(f)
     assert "openai" in keys
 
-    # The temp file should NOT remain after successful save
-    tmp_file = mgr.api_keys_file + ".tmp"
-    assert not os.path.exists(tmp_file)
+    # No temp sibling may remain after a successful save. `P3-16` moved this
+    # from `core/atomic_io`, whose temp name carries a random suffix — two
+    # concurrent savers must not race for one rename target — so the check is
+    # "nothing left behind" rather than one hard-coded filename.
+    assert _tmp_siblings(tmp_path) == []
 
 
 def test_save_preserves_existing_keys_atomically(tmp_path):
@@ -55,15 +61,16 @@ def test_save_cleans_up_tmp_on_failure(tmp_path):
     mgr = APIKeyManager(str(tmp_path))
     mgr.save("openai", "sk-original")
 
-    tmp_file = mgr.api_keys_file + ".tmp"
-
     # Force a failure after the temp file is opened
     original_open = open
 
     def failing_open(*args, **kwargs):
         f = original_open(*args, **kwargs)
-        if args and isinstance(args[0], str) and args[0].endswith(".tmp"):
-            # Close the file then raise
+        # `.tmp.` rather than a trailing `.tmp`: `P3-16` routed this through
+        # `core/atomic_io`, whose temp name is `<path>.tmp.<uuid>`. Matched on
+        # the old spelling this injected no failure at all, and the test passed
+        # by asserting that a file which was never created does not exist.
+        if args and isinstance(args[0], str) and ".tmp." in args[0]:
             f.close()
             raise OSError("simulated write failure")
         return f
@@ -72,8 +79,8 @@ def test_save_cleans_up_tmp_on_failure(tmp_path):
         with pytest.raises(OSError):
             mgr.save("anthropic", "sk-new")
 
-    # Temp file should be cleaned up
-    assert not os.path.exists(tmp_file)
+    # Whatever temp file it used must be gone.
+    assert _tmp_siblings(tmp_path) == []
 
     # Original should be intact
     loaded = mgr.load()

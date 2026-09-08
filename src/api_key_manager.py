@@ -7,6 +7,8 @@ from cryptography.fernet import Fernet, InvalidToken
 
 from core.platform_compat import safe_chmod
 
+from core.atomic_io import atomic_write_json
+
 logger = logging.getLogger(__name__)
 
 class APIKeyManager:
@@ -83,25 +85,23 @@ class APIKeyManager:
         write them back as plaintext, which then fails to decrypt on the next
         load() and silently drops those providers.
 
-        Uses atomic write (temp file + os.replace) so a crash, disk-full, or
-        mid-write error never truncates the existing keys file.
+        `P3-16`, and this file is the one the row is named after: PandaOS
+        permanently lost user API keys to a silent read failure followed by a
+        destructive save, and the two halves of that were both here. `_load_raw`
+        answers a corrupt or unreadable `api_keys.json` with `{}` — correct for
+        `load()`, which is called at startup and must not crash the app — and
+        this method then wrote `{provider: key}` over the whole store. One
+        truncated file plus one key saved in the admin panel, and every other
+        provider's key was gone with no error anywhere.
+
+        `preserve_unreadable` refuses that write. It also replaces a hand-rolled
+        atomic write whose temp file had a **fixed** name, so two concurrent
+        saves raced for the same path — the exact hazard `core/atomic_io`'s
+        docstring describes and solves with a random suffix.
         """
         keys = self._load_raw()
         keys[provider] = self.encrypt_api_key(api_key)
-        tmp_file = self.api_keys_file + ".tmp"
-        try:
-            with open(tmp_file, 'w', encoding="utf-8") as f:
-                json.dump(keys, f)
-                f.flush()
-                os.fsync(f.fileno())
-            os.replace(tmp_file, self.api_keys_file)
-        except OSError:
-            # Clean up temp file on failure; re-raise so callers see the error
-            try:
-                os.remove(tmp_file)
-            except OSError:
-                pass
-            raise
+        atomic_write_json(self.api_keys_file, keys, preserve_unreadable=True)
 
     def load(self) -> Dict[str, str]:
         """Load and decrypt API keys"""

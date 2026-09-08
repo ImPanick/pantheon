@@ -42,7 +42,9 @@ def _load_settings():
 
 def _save_settings(settings):
     from core.atomic_io import atomic_write_json
-    atomic_write_json(str(SETTINGS_FILE), settings, indent=2)
+    # `P3-16`: the same settings.json `src/settings.py` guards, written here
+    # through a second door. Both doors need the same lock.
+    atomic_write_json(str(SETTINGS_FILE), settings, indent=2, preserve_unreadable=True)
 
 
 # `H07`. These three read `settings.get(k, os.environ.get(K, ""))`, and a dict
@@ -167,7 +169,12 @@ def _load_local_contacts() -> List[Dict]:
 def _save_local_contacts(contacts: List[Dict]) -> None:
     from core.atomic_io import atomic_write_json
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    atomic_write_json(str(LOCAL_CONTACTS_FILE), {"contacts": [_normalize_contact(c) for c in contacts]}, indent=2)
+    # `P3-16`: `_load_local_contacts` answers an unreadable file with `[]`,
+    # and this writes the caller's list over it. That is an address book.
+    atomic_write_json(
+        str(LOCAL_CONTACTS_FILE), {"contacts": [_normalize_contact(c) for c in contacts]},
+        indent=2, preserve_unreadable=True,
+    )
     _contact_cache["contacts"] = [_normalize_contact(c) for c in contacts]
     _contact_cache["fetched_at"] = datetime.utcnow()
 

@@ -180,6 +180,18 @@ jobs:
       # attempt already went wrong in that direction once, pointed the other way.
       - name: check-spdx
         run: python3 .pantheon/check-spdx.py
+      # P3-16. PandaOS permanently lost user API keys to one shape: a read with
+      # a silent fallback (`except: return {}`) feeding a write. Neither half is
+      # wrong alone and they are usually in different files, so no analysis
+      # decides it — but the set of files this app rewrites in place is small
+      # and closed, and each one has an answer. `guarded` stores refuse to
+      # overwrite a target they could not read; `strict-read` ones raise before
+      # the write; `rebuildable` ones must NOT be guarded, because overwriting
+      # a corrupt one is how they are repaired. A new config file with no answer
+      # fails this, which is the point: the decision is cheap now and expensive
+      # after somebody's keys are gone.
+      - name: check-config-writes
+        run: python3 .pantheon/check-config-writes.py
 
   law16-egress:
     name: Law 16 — no egress on a fresh install

@@ -1047,7 +1047,13 @@ class UploadHandler:
 
         uploads_db_path = os.path.join(self.upload_dir, "uploads.json")
         with self._index_lock:
-            current = self._load_upload_index()
+            # `P3-16`: strict. The `if not current` shortcut below happens to
+            # stop an unreadable index (read as `{}`) from being written back,
+            # but that is a "nothing to rename" early return, not a safety
+            # check — it would stop protecting anything the day someone made
+            # the rename handle an empty index. The caller wraps this in a
+            # try/except, so raising here skips the rename and keeps the file.
+            current = self._load_upload_index(fail_on_error=True)
             if not current:
                 return 0
 
@@ -1278,7 +1284,15 @@ class UploadHandler:
         existing_file = None
         existing_key = None
         with self._index_lock:
-            existing_files = self._load_upload_index()
+            try:
+                existing_files = self._load_upload_index(fail_on_error=True)
+            except ValueError:
+                # `P3-16`. Tolerance is fine *here* and stated rather than
+                # inherited from a default: this snapshot only answers "is this
+                # a duplicate", and "no" is a safe answer that costs one
+                # re-upload. Nothing derived from it is written — the stale-key
+                # cleanup below takes its own strict read.
+                existing_files = {}
             stale_keys = []
             for key, info in existing_files.items():
                 if info.get("hash") == file_hash and info.get("owner") == owner:
@@ -1289,10 +1303,18 @@ class UploadHandler:
                         break
                     stale_keys.append(key)
             if stale_keys:
-                for key in stale_keys:
-                    existing_files.pop(key, None)
                 try:
-                    self._atomic_write_json(uploads_db_path, existing_files)
+                    # `P3-16`. The snapshot above was read tolerantly, which is
+                    # right for the duplicate lookup — "no duplicates" is a
+                    # harmless answer — and wrong to write back: an unreadable
+                    # index reads as `{}`, and persisting that replaces every
+                    # upload record with nothing. Re-read strictly and remove
+                    # only the stale keys, so a read that failed raises here
+                    # (caught below) instead of becoming the file.
+                    current = dict(self._load_upload_index(fail_on_error=True))
+                    for key in stale_keys:
+                        current.pop(key, None)
+                    self._atomic_write_json(uploads_db_path, current)
                     logger.info("Removed %d stale upload index entries for missing duplicates", len(stale_keys))
                 except Exception as e:
                     logger.warning(f"Failed to remove stale upload index entries: {e}")
@@ -1302,7 +1324,10 @@ class UploadHandler:
             existing_file["last_accessed"] = datetime.now().isoformat()
             with self._index_lock:
                 try:
-                    current = self._load_upload_index()
+                    # `P3-16`: strict, because this snapshot is written back
+                    # below. An unreadable index reads as `{}` tolerantly, and
+                    # writing that back erases every upload record.
+                    current = self._load_upload_index(fail_on_error=True)
                     # Re-resolve the key inside the lock: a concurrent
                     # insert can have changed the dict's keys.
                     live_key = existing_key
@@ -1392,7 +1417,11 @@ class UploadHandler:
         # Update uploads database
         with self._index_lock:
             try:
-                current = self._load_upload_index() if os.path.exists(uploads_db_path) else {}
+                # `P3-16`: strict — a read that failed must not be written
+                # back. The exception is caught below, so the upload still
+                # succeeds; it just does not get indexed, which is recoverable
+                # in a way that an erased index is not.
+                current = self._load_upload_index(fail_on_error=True) if os.path.exists(uploads_db_path) else {}
                 storage_key = f"{owner}:{file_hash}" if owner else file_hash
                 current[storage_key] = file_metadata
                 self._atomic_write_json(uploads_db_path, current)
