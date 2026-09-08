@@ -4945,7 +4945,7 @@ async function initUnifiedIntegrations() {
 
     // Spinner SVG kept inline so we can swap it back to the original
     // checkmark on completion. ~13px to match the button icon size.
-    const _spinner = '<span style="display:inline-block;width:11px;height:11px;border-radius:50%;border:1.5px solid currentColor;border-top-color:transparent;animation:whirlpool-spin 0.7s linear infinite"></span>';
+    const _spinner = '<span style="display:inline-block;width:11px;height:11px;border-radius:50%;border:1.5px solid currentColor;border-top-color:transparent;animation:spin 0.7s linear infinite"></span>';
     const _checkIcon = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
 
     el('uf-email-test').addEventListener('click', async () => {

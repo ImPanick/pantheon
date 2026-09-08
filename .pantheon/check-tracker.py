@@ -59,6 +59,11 @@ def count(lines):
     looking. Now it is returned, and the caller fails on it.
     """
     phase, fenced, per, order, problems = None, False, {}, [], []
+    # B48: `P3-17` was the id of two different rows for a day — the newer filed
+    # by a run that picked the next number it could see, in a file where the
+    # numbers are not contiguous. Everything else here counted marks and got the
+    # right totals over the wrong rows.
+    seen_ids = {}
     for line in lines:
         if line.startswith("```"):
             fenced = not fenced
@@ -80,7 +85,16 @@ def count(lines):
         owner = t.group(2).split("-")[0]
         if owner != phase:
             problems.append(f"{t.group(2)} is filed under {phase} — one of the two ids is wrong")
+        seen_ids.setdefault(t.group(2), []).append(phase)
         per[phase][MARKS[t.group(1)]] += 1
+    for task_id, phases in seen_ids.items():
+        if len(phases) > 1:
+            problems.append(
+                f"{task_id} is the id of {len(phases)} different rows. An id is how a row is "
+                f"cited — in a commit message, in a `Depends:`, in another row's prose — and two "
+                f"rows sharing one means a citation cannot be resolved and a tick lands on "
+                f"whichever the reader found first."
+            )
     return per, order, problems
 
 

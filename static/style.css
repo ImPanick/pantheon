@@ -1154,7 +1154,7 @@ body.bg-pattern-sparkles {
       border-bottom-color: rgba(255,255,255,0.25);
       opacity: 0;
       pointer-events: none;
-      animation: whirlpool-spin 0.85s linear infinite;
+      animation: spin 0.85s linear infinite;
       transition: opacity 0.15s ease;
     }
     #dock-trash-zone.engaged .whirlpool { opacity: 1; }
@@ -1172,7 +1172,6 @@ body.bg-pattern-sparkles {
       opacity: 0 !important;
       transition: opacity 0.16s ease-out !important;
     }
-    @keyframes whirlpool-spin { to { transform: rotate(360deg); } }
     @keyframes whirlpool-burst {
       0%   { transform: rotate(0deg) scale(1);   opacity: 1; }
       60%  { transform: rotate(540deg) scale(1.5); opacity: 0.6; }
@@ -1510,6 +1509,14 @@ body.bg-pattern-sparkles {
       0%   { opacity: 1; transform: translateY(0)   translateX(0)   scale(1); }
       100% { opacity: 0; transform: translateY(6px) translateX(-3px) scale(0.94); }
     }
+    /* P3-06 — the one spinner. Nine definitions of `to { transform:
+       rotate(360deg) }` shipped under seven names (`admin-spin`, `email-spin`,
+       `email-inline-image-spin`, `ge-canvas-spin`,
+       `model-picker-refresh-spin`, `whirlpool-spin`, and this one three
+       times), every body byte-identical. Nothing was broken by that and
+       nothing is changed by collapsing it — it is the seventh name that was
+       the cost, because each one was invented by someone who could not find
+       the previous six. */
     @keyframes spin { to { transform: rotate(360deg); } }
     .row { display:flex; gap:6px; align-items:center; }
     .list-item:hover,
@@ -3502,13 +3509,20 @@ body.bg-pattern-sparkles {
       color: currentColor !important;
       stroke: currentColor !important;
     }
-    /* Research button glow while actively running */
+    /* Research button glow while actively running.
+       P3-05. This said `research-pulse` and got the *other* `research-pulse` —
+       an opacity-and-scale throb defined 6,800 lines further down, which wins
+       for every consumer because `@keyframes` are global and the last
+       definition takes the name. So the comment said "glow" and the button
+       shrank, grew and faded instead, with its background never changing.
+       Renamed rather than deleted: both animations are wanted, by different
+       elements, and the collision was the whole defect. */
     #research-toggle-btn.research-running {
       opacity: 1 !important;
       color: var(--red);
-      animation: research-pulse 2s ease-in-out infinite;
+      animation: research-glow 2s ease-in-out infinite;
     }
-    @keyframes research-pulse {
+    @keyframes research-glow {
       0%, 100% { background: color-mix(in srgb, var(--red) 12%, transparent); }
       50% { background: color-mix(in srgb, var(--red) 22%, transparent); }
     }
@@ -4063,7 +4077,7 @@ body.bg-pattern-sparkles {
       cursor: default;
     }
     .model-picker-refresh-btn.spinning svg {
-      animation: model-picker-refresh-spin 0.75s linear infinite;
+      animation: spin 0.75s linear infinite;
     }
     .model-picker-action-btn {
       appearance: none;
@@ -6215,9 +6229,6 @@ body.bg-pattern-sparkles {
       #sidebar-backdrop { display:none !important; }
     }
     /* ----- Loading spinner ----- */
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
     .spinner {
       width: 24px;
       height: 24px;
@@ -8518,7 +8529,14 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
       opacity: 0.7; transition: opacity 0.15s, border-color 0.15s; white-space: nowrap; flex-shrink: 0;
     }
     .compare-probe-action-btn:hover { opacity: 1; border-color: var(--accent); }
-    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    /* P3-05. Was `fadeIn`, and a second `fadeIn` 2,500 lines below adds a
+       10px slide — that one wins for every consumer, so this block has never
+       applied to anything. Nothing in this file references it, so nothing
+       changes; what is removed is the trap, where a rule added near here and
+       written against a plain fade would silently get the slide. Renamed and
+       kept, not deleted: a plain opacity fade is a reasonable thing for this
+       section to want, and now it has one that means what it says. */
+    @keyframes compare-fade-in { from { opacity: 0; } to { opacity: 1; } }
     @keyframes pane-shake {
       0%, 100% { transform: translateX(0); }
       15% { transform: translateX(-3px) rotate(-0.5deg); }
@@ -9089,9 +9107,6 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
 /* ── Components (from style.css) ── */
 
 /* Self-hosted Fira Code font */
-@font-face { font-family: 'Fira Code'; font-weight: 300; font-style: normal; font-display: swap; src: url('/static/fonts/FiraCode-Light.woff2') format('woff2'); }
-@font-face { font-family: 'Fira Code'; font-weight: 400; font-style: normal; font-display: swap; src: url('/static/fonts/FiraCode-Regular.woff2') format('woff2'); }
-@font-face { font-family: 'Fira Code'; font-weight: 600; font-style: normal; font-display: swap; src: url('/static/fonts/FiraCode-SemiBold.woff2') format('woff2'); }
 
 /* Scrollbar styling */
 
@@ -9423,9 +9438,6 @@ button.hamburger {
 /* Scrollbar uses --red from :root (set at top of file) */
 
 /* Loading spinner */
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
 .spinner {
   width: 24px;
   height: 24px;
@@ -9476,14 +9488,6 @@ button.hamburger {
 .loading-dot:nth-child(3) {
   animation: loading-bounce 1.4s infinite ease-in-out both;
   animation-delay: -0.64s;
-}
-@keyframes loading-bounce {
-  0%, 80%, 100% {
-    transform: scale(0);
-  }
-  40% {
-    transform: scale(1);
-  }
 }
 
 /* Hamburger menu button */
@@ -9707,11 +9711,6 @@ button.hamburger {
   animation: pulse 1.5s infinite;
 }
 
-@keyframes pulse {
-  0% { opacity: 1; }
-  50% { opacity: 0.7; }
-  100% { opacity: 1; }
-}
 
 #stop-icon {
   display: none;
@@ -16405,12 +16404,9 @@ span[id$="-logo"] svg:not([width]) {
   border: 2px solid var(--border);
   border-top-color: var(--red);
   border-radius: 50%;
-  animation: admin-spin 0.6s linear infinite;
+  animation: spin 0.6s linear infinite;
   vertical-align: -2px;
   margin-right: 2px;
-}
-@keyframes admin-spin {
-  to { transform: rotate(360deg); }
 }
 
 /* Forms */
@@ -24788,9 +24784,6 @@ body:not(.welcome-ready) #welcome-screen {
     transform: scaleY(0.4) translateY(8px);
   }
 }
-@keyframes model-picker-refresh-spin {
-  to { transform: rotate(360deg); }
-}
 
 @keyframes modal-enter {
   from {
@@ -26415,7 +26408,14 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
   flex-shrink: 0;
 }
 #hwfit-cache-scan.spinning svg {
-  animation: modelPickerRefreshSpin 0.75s linear infinite;
+  /* B49. Was `modelPickerRefreshSpin` — camelCase, defined nowhere, so this
+     spinner has never spun. The kebab-case `model-picker-refresh-spin` it was
+     reaching for did exist (now folded into `spin` by P3-06), which is how a
+     one-character-class typo survived: both spellings read as the same name to
+     a person, and CSS drops an animation with an unknown name without a word.
+     Present at the fork baseline `fff72ec`. Found by the check written for
+     P3-04/05/06, on its first run. */
+  animation: spin 0.75s linear infinite;
 }
 #serve-search {
   height: 28px;
@@ -29138,10 +29138,9 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
   border: 3px solid color-mix(in srgb, var(--fg) 25%, transparent);
   border-top-color: var(--accent, var(--red));
   border-radius: 50%;
-  animation: ge-canvas-spin 0.8s linear infinite;
+  animation: spin 0.8s linear infinite;
 }
 .ge-canvas-loading-msg { font-size: 12px; opacity: 0.85; }
-@keyframes ge-canvas-spin { to { transform: rotate(360deg); } }
 
 /* Missing-dependency notice in tool sections (Bg Remove etc.). */
 .ge-dep-notice {
@@ -31564,9 +31563,6 @@ button .spinner-whirlpool {
   0%, 100% { transform: scale(0.9); opacity: 0.55; box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-primary, var(--red)) 35%, transparent); }
   50% { transform: scale(1.1); opacity: 1; box-shadow: 0 0 0 5px transparent; }
 }
-@keyframes email-inline-image-spin {
-  to { transform: rotate(360deg); }
-}
 @media (prefers-reduced-motion: reduce) {
   .email-skeleton-line,
   .email-skeleton-dot,
@@ -32091,7 +32087,7 @@ button .spinner-whirlpool {
   border: 2px solid color-mix(in srgb, var(--fg) 20%, transparent);
   border-top-color: var(--accent, var(--red));
   border-radius: 50%;
-  animation: email-inline-image-spin 0.75s linear infinite;
+  animation: spin 0.75s linear infinite;
 }
 .email-inline-image-placeholder.is-loading .email-inline-image-icon svg {
   display: none;
@@ -33181,10 +33177,9 @@ body.doc-find-active mark.doc-find-mark.current {
 .email-load-more-btn:hover { background: var(--hover-bg, rgba(255,255,255,0.05)); }
 .email-spinner {
   display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(255,255,255,0.3);
-  border-top-color: #fff; border-radius: 50%; animation: email-spin 0.6s linear infinite;
+  border-top-color: #fff; border-radius: 50%; animation: spin 0.6s linear infinite;
   vertical-align: middle; margin-right: 4px;
 }
-@keyframes email-spin { to { transform: rotate(360deg); } }
 
 /* Email section doesn't collapse — hide the auto-injected chevron */
 #email-section .section-collapse-btn { display: none !important; }
