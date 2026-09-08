@@ -3154,6 +3154,9 @@ def setup_email_routes():
                         if _rs and _rs[0]:
                             cached_sender_sig = _rs[0]
                 except Exception:
+                    # `P3-17`: a signature *cache* lookup. Missing it means the
+                    # signature is computed from the message body instead,
+                    # which is the same answer more slowly.
                     pass
                 if _row3:
                     cached_boundaries = {"sig_start": _row3[0], "quote_start": _row3[1]}

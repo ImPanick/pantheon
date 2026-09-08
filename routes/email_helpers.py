@@ -985,8 +985,12 @@ def _init_scheduled_db():
         cols = [r[1] for r in conn.execute("PRAGMA table_info(email_boundaries)").fetchall()]
         if "turns_json" not in cols:
             conn.execute("ALTER TABLE email_boundaries ADD COLUMN turns_json TEXT")
-    except Exception:
-        pass
+    except Exception as exc:
+        # `P3-17`. The guard above means an exception here is a real failure,
+        # not "the column already exists". Swallowed, the column never appears
+        # and the precomputed reply chain silently never caches — for the life
+        # of the install, with nothing anywhere saying why threads are slow.
+        logger.warning("Lazy migration of email_boundaries.turns_json failed: %s", exc)
     # Per-sender signature cache. Populated by `learn_sender_signatures`.
     # Message sender addresses are global, so signatures must be scoped to the
     # mailbox owner before `/read` returns them to the renderer.

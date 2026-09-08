@@ -1929,6 +1929,10 @@ def setup_chat_routes(
                     try:
                         _progress_queue.put_nowait(progress)
                     except Exception:
+                        # `P3-17`: a percentage on a progress bar. The image
+                        # itself is not in this queue, and blocking the
+                        # generation to deliver a tick nobody will see by the
+                        # time it arrives is the worse trade.
                         pass
 
                 if _image_upload:

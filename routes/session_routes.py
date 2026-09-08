@@ -259,6 +259,10 @@ def setup_session_routes(
                         try:
                             session_manager.delete_session(_g.id)
                         except Exception:
+                            # `P3-17`: evicting an in-memory cache entry for a
+                            # row this loop has already deleted. The database
+                            # is the source of truth and the cache is rebuilt
+                            # from it.
                             pass
                 if _ghosts:
                     _purge_db.commit()

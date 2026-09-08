@@ -238,8 +238,11 @@ class ToolIndex:
                 existing = lane.collection.get(where={"tool_type": "mcp"})
                 if existing and existing["ids"]:
                     lane.collection.delete(ids=existing["ids"])
-            except Exception:
-                pass
+            except Exception as exc:
+                # `P3-17`: this clears the previous MCP rows before reindexing.
+                # Swallowed, the new rows are added beside the old ones and the
+                # index serves tools that no longer exist.
+                logger.warning("Failed to clear stale MCP rows before reindexing: %s", exc)
 
         # Get current MCP tools
         try:

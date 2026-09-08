@@ -1300,6 +1300,8 @@ async def do_adopt_served_model(content: str, owner: Optional[str] = None) -> Di
             body = (r.json() or {}).get("stdout", "") if r.headers.get("content-type", "").startswith("application/json") else ""
             server_up = '"data"' in body or '"object"' in body
     except Exception:
+        # `P3-17`: a health probe. Every failure mode — refused, timed out,
+        # not JSON — means the same thing, and `server_up` already says it.
         pass
 
     # Read+modify+write cookbook state. APPEND a task entry; do NOT

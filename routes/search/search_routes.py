@@ -33,6 +33,10 @@ async def _request_values(request: Request) -> Dict[str, Any]:
             form = await request.form()
             values.update(dict(form))
     except Exception:
+        # `P3-17`: this accepts either a JSON body or a form and is called
+        # where both are optional. A body that is neither carries no values,
+        # which is what an absent body means too — the caller's validation
+        # decides whether that is an error, not this shim.
         pass
     return values
 

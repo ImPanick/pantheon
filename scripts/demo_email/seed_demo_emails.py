@@ -305,6 +305,8 @@ def _clear_cache() -> None:
             try:
                 con.execute(f"DELETE FROM {tbl} WHERE message_id = ?", (LOOKUP_MSGID,))
             except sqlite3.OperationalError:
+                # `P3-17`: this sweeps a list of tables that may not all exist
+                # in a given install; a missing one is the expected miss.
                 pass
         con.commit()
     finally:

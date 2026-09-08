@@ -1331,8 +1331,20 @@ class TaskScheduler:
                             cron_expression=task_obj.cron_expression,
                             tz_name=_resolve_task_timezone(db, task_obj),
                         )
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        # `P3-17`. `last_run` was set on the line above, so
+                        # swallowing this leaves `next_run` at a time that has
+                        # already passed — the task either re-fires on every
+                        # tick or never fires again, depending on which way the
+                        # comparison falls, and the schedule the user set is
+                        # not what runs. A malformed cron expression is the
+                        # likely cause and it is worth a line in the log.
+                        logger.warning(
+                            "Could not compute the next run for task %s (%s); its schedule is "
+                            "left at %s: %s",
+                            getattr(task_obj, "id", "?"), getattr(task_obj, "schedule", "?"),
+                            getattr(task_obj, "next_run", None), exc,
+                        )
                 try:
                     db.commit()
                 except Exception as commit_err:
@@ -1825,8 +1837,10 @@ class TaskScheduler:
             _global_disabled = get_setting("disabled_tools", [])
             if isinstance(_global_disabled, list):
                 disabled_tools.update(_global_disabled)
-        except Exception:
-            pass
+        except Exception as exc:
+            # `P3-17`: fails open — a scheduled task would run with tools the
+            # operator disabled globally.
+            logger.warning("Could not read the global disabled-tool list: %s", exc)
 
         # RAG-select relevant tools for this prompt + always-available assistant tools.
         # Without this, all 40+ tools get sent and models hit their tool limit.
@@ -2569,6 +2583,9 @@ class TaskScheduler:
                 if live_ids:
                     db.query(TaskRun).filter(~TaskRun.task_id.in_(list(live_ids))).delete(synchronize_session=False)
             except Exception:
+                # `P3-17`: housekeeping. These rows belong to tasks that no
+                # longer exist; leaving them costs a little disk and nothing
+                # else, and the next sweep tries again.
                 pass
             existing_actions = {
                 row[0] for row in db.query(ScheduledTask.action).filter(

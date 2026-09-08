@@ -605,8 +605,11 @@ class ResearchHandler:
                 data = json.loads(path.read_text(encoding="utf-8"))
                 data["consumed"] = True
                 path.write_text(json.dumps(data), encoding="utf-8")
-            except Exception:
-                pass
+            except Exception as exc:
+                # `P3-17`: this write is the only record that the result was
+                # handed over. Swallowed, the same research result is consumed
+                # again on the next pass.
+                logger.warning("Failed to mark research result %s consumed: %s", path.name, exc)
 
     def _save_result(self, session_id: str, entry: dict):
         """Persist completed research result to disk."""

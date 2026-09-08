@@ -3511,6 +3511,9 @@ def setup_cookbook_routes() -> APIRouter:
                     "value": _state_for_client(storage_state),
                 })
             except Exception:
+                # `P3-17`: warming a read cache after the state was already
+                # written. A miss here costs one re-read; the save above is the
+                # part that had to succeed and it has.
                 pass
             return {"ok": True, "preserved": len(preserved)}
         except Exception as e:
@@ -4321,6 +4324,9 @@ def setup_cookbook_routes() -> APIRouter:
                 elif isinstance(saved_tasks, dict):
                     tasks = list(saved_tasks.values())
             except Exception:
+                # `P3-17`: the saved task list is an optimisation over the
+                # tmux sweep below, which finds the same sessions the slow way.
+                # `tasks` keeps the value it already had.
                 pass
 
         # Orphan-tmux auto-adoption sweep. When the agent (or anyone)

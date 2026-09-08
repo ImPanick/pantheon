@@ -1420,8 +1420,12 @@ async def action_classify_events(owner: str, **kwargs) -> Tuple[str, bool]:
             # Persist heuristic results before LLM pass (in case LLM is slow/unavailable)
             try:
                 db.commit()
-            except Exception:
-                pass
+            except Exception as exc:
+                # `P3-17`. The comment above says this exists so heuristic
+                # results survive a slow or absent LLM. Swallowed, they do not
+                # survive anything and the pass reports the count it would have
+                # saved.
+                logger.warning("Failed to persist heuristic event classification: %s", exc)
 
             # Pass 2: batch LLM classification (10 events per call)
             BATCH = 10
@@ -2129,8 +2133,12 @@ async def action_ping_notes(owner: str, **kwargs) -> Tuple[str, bool]:
         if _legacy.exists() and not STATE.exists():
             try:
                 STATE.write_text(_legacy.read_text(encoding="utf-8"), encoding="utf-8")
-            except Exception:
-                pass
+            except Exception as exc:
+                # `P3-17`: a one-shot migration. If it fails it is not retried
+                # (the next run sees no legacy file, or sees this one still
+                # absent and tries again into the same failure), and the user's
+                # note-ping history is silently back to empty.
+                logger.warning("Failed to seed per-owner note-ping state from the legacy file: %s", exc)
         # Scanner ticks every 60s in _note_pings_loop. 90s window guarantees
         # every note's due time lands inside at least one tick's window.
         WINDOW_SEC = 90

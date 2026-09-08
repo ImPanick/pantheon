@@ -3,10 +3,13 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Iterable, Mapping, Optional, Set, Tuple
+
+_logger = logging.getLogger(__name__)
 
 
 GUIDE_ONLY_DIRECTIVE = (
@@ -193,15 +196,20 @@ def known_tool_names() -> Set[str]:
         from src.agent_loop import TOOL_SECTIONS
 
         names.update(TOOL_SECTIONS.keys())
-    except Exception:
-        pass
+    except Exception as exc:
+        # `P3-17`. Import cycles are the expected failure here — this module is
+        # imported *by* agent_loop — and a partial name set is the designed
+        # degraded answer, so it is not raised. It is said out loud because a
+        # caller reading a short list has no other way to know it is short.
+        _logger.debug("known_tool_names: TOOL_SECTIONS unavailable (%s)", exc)
     try:
         from src.tool_security import PLAN_MODE_READONLY_TOOLS, _PLAN_MODE_KNOWN_MUTATORS
 
         names.update(PLAN_MODE_READONLY_TOOLS)
         names.update(_PLAN_MODE_KNOWN_MUTATORS)
-    except Exception:
-        pass
+    except Exception as exc:
+        # `P3-17`: same shape as above.
+        _logger.debug("known_tool_names: plan-mode tool lists unavailable (%s)", exc)
     return names
 
 

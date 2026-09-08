@@ -4609,8 +4609,11 @@ async def stream_agent_loop(
         try:
             from src.tool_policy import known_tool_names
             disabled_tools.update(known_tool_names())
-        except Exception:
-            pass
+        except Exception as exc:
+            # `P3-17`, and this one fails **open**: the set being built is
+            # `disabled_tools`, so an import that quietly does nothing leaves
+            # tools enabled that an operator switched off.
+            logger.warning("Could not extend the disabled-tool set: %s", exc)
         logger.info("[agent-intent] pantheon general no-tool clamp active")
 
     if (

@@ -667,8 +667,15 @@ def _import_csv_contacts(text: str) -> Dict:
                     created = next((c for c in contacts if email.lower() in [e.lower() for e in c.get("emails", [])]), None)
                     if created and created.get("uid"):
                         _update_contact(created["uid"], name, [email], [phone])
-                except Exception:
-                    pass
+                except Exception as exc:
+                    # `P3-17`. The contact exists at this point; this is the
+                    # second call that fills in the phone number. Swallowed, the
+                    # import reports success and the number is simply not there,
+                    # which reads as "the file was missing it".
+                    logger.warning(
+                        "Contact %s was created but its phone/name update failed: %s",
+                        email, exc,
+                    )
         else:
             failed += 1
 
@@ -862,8 +869,10 @@ def setup_contacts_routes():
                         phones,
                         address,
                     )
-            except Exception:
-                pass
+            except Exception as exc:
+                # `P3-17`: same shape as the import path above — the contact
+                # lands, the detail does not, and nothing says so.
+                logger.warning("Contact was created but its detail update failed: %s", exc)
         return {"success": ok}
 
     @router.post("/import")

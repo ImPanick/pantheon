@@ -192,6 +192,15 @@ jobs:
       # after somebody's keys are gone.
       - name: check-config-writes
         run: python3 .pantheon/check-config-writes.py
+      # P3-17. The row's own acceptance test — zero bare `except:` — passed on
+      # the unfixed tree, so it would have been ticked without a fix. The real
+      # population is `except ...: pass`, and grep cannot count it: `grep -A1`
+      # miscounts multi-line handlers in both directions, which is why the row
+      # carried three different numbers. Two rules, because a flat count would
+      # say the same thing about swallowing `os.unlink(tmp)` as about
+      # swallowing a schema migration. The hard one is zero and stays zero.
+      - name: check-silent-failures
+        run: python3 .pantheon/check-silent-failures.py --max 402
 
   law16-egress:
     name: Law 16 — no egress on a fresh install

@@ -226,6 +226,8 @@ class MemoryVectorStore:
             try:
                 client.delete_collection(name)
             except Exception:
+                # `P3-17`: deleting a collection that is not there raises, and
+                # "not there" is the state this is trying to reach.
                 pass
         # Explicit rebuilds must start from the supplied memory list, so clear
         # legacy unsuffixed collections too.

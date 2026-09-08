@@ -61,6 +61,9 @@ def _publish(run: _Run, ev: str) -> None:
         try:
             q.put_nowait((seq, ev))
         except Exception:
+            # `P3-17`: the event is already in `run.buffer` above and every
+            # subscriber replays from it by `seq`, so a failed live push costs
+            # latency to one subscriber, never the event.
             pass
 
 
@@ -70,6 +73,9 @@ def _wake_run_subscribers(run: _Run) -> None:
         try:
             q.put_nowait((None, None))
         except Exception:
+            # `P3-17`: this *is* the backstop — see the docstring. A subscriber
+            # it cannot reach is one already gone or already closing, and there
+            # is no further fallback to escalate to.
             pass
 
 

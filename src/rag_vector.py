@@ -450,6 +450,8 @@ class VectorRAG:
             try:
                 client.delete_collection(COLLECTION_NAME)
             except Exception:
+                # `P3-17`: deleting a collection that is not there raises, and
+                # "not there" is the state this is trying to reach.
                 pass
             for name in (
                 collection_name(COLLECTION_NAME, LANE_CUSTOM),
@@ -458,6 +460,7 @@ class VectorRAG:
                 try:
                     client.delete_collection(name)
                 except Exception:
+                    # `P3-17`: already-absent is success here.
                     pass
             # Rebuild means empty current lanes. Clear the legacy unsuffixed
             # collection too so startup migration cannot resurrect stale docs.
