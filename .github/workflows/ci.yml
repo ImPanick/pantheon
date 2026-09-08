@@ -201,6 +201,17 @@ jobs:
       # swallowing a schema migration. The hard one is zero and stays zero.
       - name: check-silent-failures
         run: python3 .pantheon/check-silent-failures.py --max 402
+      # P3-23. Four sources of truth about this product's configuration and no
+      # two agree: what the code reads, what .env.example declares, what compose
+      # forwards, what docs/setup.md explains. An operator looks in
+      # .env.example. `H08` is what the gap costs — the switch that uncaps every
+      # local agent run appeared nowhere outside the module that read it, so the
+      # only way to turn the behaviour off was to already know its name. The
+      # second rule is the sharper one and is zero: a knob documented and read
+      # by nothing is worse than an undocumented one, because an operator who
+      # sets it believes something changed.
+      - name: check-env-declared
+        run: python3 .pantheon/check-env-declared.py --max 74
 
   law16-egress:
     name: Law 16 — no egress on a fresh install
