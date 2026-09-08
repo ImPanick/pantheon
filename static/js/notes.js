@@ -941,9 +941,54 @@ function _advanceRecurring(dateStr, repeat) {
   return _toLocalDatetimeStr(d);
 }
 
+// `P3-26`. How far back a missed reminder is still worth delivering.
+//
+// This used to be sixty seconds, and not by decision: `calendar/reminders.js`
+// allowed five minutes and said why, `P3-10` deleted that module, and the
+// narrower number survived by accident. A reminder that came due while the
+// laptop was asleep, the tab was discarded or the browser was closed was marked
+// fired and **never shown** — the branch's own comment said "Past, never seen"
+// and then threw it away.
+//
+// Twelve hours, decided by the owner 2026-09-08, and the reason the number can
+// be this wide is the second half of the fix: a late reminder now says how late
+// it is. The old trade — "take the pasta off" is fine four minutes late,
+// "standup starts now" is not — only bites when the notification pretends to be
+// on time. It does not pretend any more, so the reader decides whether it still
+// matters instead of the window deciding for them.
+//
+// Anything older than the window is still retired silently. Opening a browser
+// after a fortnight must not deliver a fortnight of reminders at once, which is
+// the concern the deleted module was built around and the one thing both
+// positions agreed on.
+const REMINDER_LOOKBACK_MS = 12 * 60 * 60 * 1000;
+
+/** How late a reminder is, in words, or `''` when it is on time.
+ *
+ *  `P3-26`. The sentence that lets the window be twelve hours wide instead of
+ *  sixty seconds: a notification that states its own age cannot mislead about
+ *  timing, however late it arrives. */
+function _reminderLateness(dueMs, nowMs) {
+  const lateMs = nowMs - dueMs;
+  if (!Number.isFinite(lateMs) || lateMs < 60000) return '';
+  const mins = Math.floor(lateMs / 60000);
+  if (mins < 60) return `was due ${mins} minute${mins === 1 ? '' : 's'} ago`;
+  const hours = Math.floor(mins / 60);
+  const rem = mins % 60;
+  if (rem === 0) return `was due ${hours} hour${hours === 1 ? '' : 's'} ago`;
+  return `was due ${hours}h ${rem}m ago`;
+}
+
 function _checkReminders() {
   if (!_notes.length) return;
   const now = Date.now();
+  // `P3-26`. One cutoff, read twice. The fire branch and the retire branch are
+  // two halves of one boundary — a note that is past due is either delivered or
+  // retired, never neither — and writing the subtraction twice is how those two
+  // halves drift apart. Narrowing only the retire branch is undetectable (the
+  // fire branch already claims everything between), and widening it strands
+  // notes in a gap where they are re-checked forever.
+  const cutoff = now - REMINDER_LOOKBACK_MS;
   const fired = _loadFiredReminders();
   let changed = false;
   for (const note of _notes) {
@@ -952,8 +997,8 @@ function _checkReminders() {
     if (fired.has(note.id)) continue;
     const due = new Date(note.due_date).getTime();
     if (isNaN(due)) continue;
-    if (due <= now && due > now - 60000) {
-      _fireReminder(note);
+    if (due <= now && due > cutoff) {
+      _fireReminder(note, _reminderLateness(due, now));
       // Recurring? advance the due_date instead of marking as fired
       if (note.repeat && note.repeat !== 'none') {
         const next = _advanceRecurring(note.due_date, note.repeat);
@@ -966,8 +1011,9 @@ function _checkReminders() {
       }
       fired.add(note.id);
       changed = true;
-    } else if (due <= now - 60000) {
-      // Past, never seen — silently advance recurring or mark fired
+    } else if (due <= cutoff) {
+      // Older than the window — retired without a notification, so a browser
+      // opened after a fortnight does not deliver a fortnight of reminders.
       if (note.repeat && note.repeat !== 'none') {
         const next = _advanceRecurring(note.due_date, note.repeat);
         if (next) {
@@ -985,8 +1031,12 @@ function _checkReminders() {
   _updateRailBadge();
 }
 
-function _fireReminder(note) {
-  const title = note.title || 'Note reminder';
+function _fireReminder(note, lateness) {
+  const base = note.title || 'Note reminder';
+  // `P3-26`. The age rides the *title*, not the body: the body is the note's
+  // own content and on a browser notification it is what gets truncated first.
+  // A reader who sees only the title still learns this is not happening now.
+  const title = lateness ? `${base} — ${lateness}` : base;
   // Include the verbatim note content so the email/notification actually
   // shows what to do, not just a count. Cap the per-item lines (8 max) and
   // total length so the body stays inbox-friendly.

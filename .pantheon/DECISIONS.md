@@ -743,3 +743,208 @@ stops them taking it; the dual offer is Cure53's and it reaches them too.
 
 **Cost.** Anyone auditing this has to read a licence file that contains two licences and a line
 elsewhere saying which one applies. That is the price of not editing somebody else's licence file.
+
+---
+
+## D-2026-09-08-01 — the send button's contrast is a setting, not a computation
+
+**What it decides.** `P1-08` proposed one computed `--on-accent` token, derived per theme, replacing
+the hard-coded `color:#fff` on `.send-btn` and the 33 rules that paint text on an undiluted accent.
+The owner's call: *"Honestly let the user pick the global button design."*
+
+**Why that is a different row than the one filed.** The measurement stands — white-on-accent misses
+4.5:1 on **15 of 16** themes and the accent itself misses on **8 of 16** — but a computed token
+answers *"which foreground is legible on this background"* and the owner is answering a question one
+level up: **whether the button is a filled accent block at all.** A ghost button, an outline button
+or a tinted button changes the background the foreground has to clear, and two of the sixteen
+(`cute`, `retrowave`, `B15`) cannot reach the floor by any foreground choice — so for those the only
+fix available *is* a different button design. The computed token is one of the options the picker
+offers, not the thing that replaces it.
+
+**What this constrains.** The picker is **global** — one choice, all sixteen themes — because the
+owner said global and because a per-theme choice re-creates the sixteen-way divergence `P1-08` was
+filed to end. Every option the picker offers must clear 4.5:1 on all sixteen themes *by
+construction*, so the contrast guard `P1-09` describes moves from "validate what the user picked" to
+"only offer what passes". The themes remain protected territory: this adds a variable, and any new
+token extends `ADV_KEYS` **and** `computeAdvancedDefaults()` in lockstep or all sixteen break.
+
+**Cost.** A setting is a surface with a default, a migration and a place in the UI, where a computed
+token would have been invisible and automatic. That cost is accepted: the owner wants the choice
+visible, and the *automatic* version has been provably wrong on fifteen themes for the entire life
+of the fork without anyone being offered a way to notice.
+
+**What would reopen this.** Nothing about contrast. Only a finding that the option set cannot be
+made to pass on all sixteen without one of the options being a design nobody would pick — at which
+point the honest move is to fix `B15` first and re-derive.
+
+---
+
+## D-2026-09-08-02 — `max_tokens` on local inference belongs to the machine, not the preset
+
+**What it decides.** `P3-21` asked whether the local-inference lift should keep flattening every
+preset's `max_tokens` to 1,000,000, erasing Code Analyze's 8000, Reason's 6000 and Brainstorm's 4096.
+The owner: *"This is the machines defined max_tokens integer — it can change if I put everything on
+stronger hardware instead of my gaming pc."*
+
+**What that settles.** The number is **a property of the deployment, not of the preset**. It is not a
+product opinion about how long a brainstorm should be; it is the ceiling the hardware can actually
+serve, and it moves when the hardware moves. So the lift is correct in kind and the row's framing —
+*"4096 on Brainstorm is not a cost control, it is the preset"* — was wrong: the preset was never
+expressing a length preference through `max_tokens`, it inherited a cloud-era cost cap and nobody
+separated the two.
+
+**What follows, and it is not "leave it alone".** A number that describes the machine has to be
+**settable and visible as such**. Today it is a literal buried in `_resolve_local_lifts`, which means
+the owner cannot answer the question they just posed — *what does this box actually do* — without
+editing source. This becomes an operator-facing local-inference ceiling with the same shape `H08`
+gave `agent_max_rounds`: a configured value wins, `setting_is_explicit` pins it, and the 1,000,000
+becomes the default rather than the law. The presets keep their numbers untouched (`Law 1`) and are
+then read as **floors** — a preset never *lowers* the machine ceiling, which is exactly the middle
+path the row named and found no caller for.
+
+**Cost.** One more setting, and an operator who has never thought about it sees a very large number.
+Accepted: the alternative is a silent 1,000,000 that three layers of validation already failed to
+defend against once (`H08`).
+
+**What would reopen this.** A preset that genuinely wants a *short* answer for product reasons. That
+is a different field — a length preference the prompt expresses — not this ceiling.
+
+---
+
+## D-2026-09-08-03 — a late reminder arrives late and says so
+
+**What it decides.** `P3-26`: a note reminder missed by more than sixty seconds was retired without
+ever being shown. The row framed it as a trade-off between two window widths — one minute (never
+show anything stale) versus five (`calendar/reminders.js`, deleted by `P3-10`). The owner took a
+third option that was not in the row: **show it, and state its age.** Max lookback **12 hours**.
+
+**Why the trade-off dissolves.** The original tension — *"take the pasta off"* wants the late one,
+*"standup starts now"* does not — exists only because the notification **pretended to be on time**.
+A reminder that reads *"Standup — was due 4 hours ago"* is not a wrong notification; it is a correct
+one about a past event, and the person reading it can tell in one glance which of the two cases they
+are in. Nothing has to be guessed on their behalf. The window then only has to answer a much smaller
+question: how far back is worth mentioning at all.
+
+**Why twelve hours.** It covers the two absences that actually generate this bug — a night's sleep
+and a working day — and it stops short of the failure the deleted module was guarding against, which
+was a fresh browser firing every two-week-old reminder at once on first poll. It is the owner's
+number, and it is now a named constant with the reasoning beside it rather than a bare `60000`.
+
+**What ships.** `REMINDER_LOOKBACK_MS = 12 * 60 * 60 * 1000` in `static/js/notes.js`;
+`_reminderLateness(dueMs, nowMs)` returning `''` under a minute and otherwise *"was due N minutes
+ago"* / *"was due N hours ago"* / *"was due Nh Mm ago"*; the age on the notification **title**, where
+it is read before the body. Anything older than the window still retires silently, as before.
+
+**Cost.** A reminder can now arrive up to twelve hours late. That is the point, and the title says so.
+
+**What would reopen this.** A person reporting a wake-up flood — which would mean twelve hours is too
+wide for how they use notes, not that the third option was wrong.
+
+---
+
+## D-2026-09-08-04 — the agent may set its own loop caps, because full automation is the goal
+
+**What it decides.** `P7-12` asked whether `agent_max_rounds` and `agent_max_tool_calls` should stay
+writable by the agent's own `manage_settings` tool. The owner: *"Yes. If its needed, the idea is to
+be able to allow full automation. Full automation only works if the LLM in agent mode can define its
+own parameters (with failsafes and safeguards.. a smarter 'loop detection' than PewDiePie put in)."*
+
+**What that settles, and what it does not.** The caps stay writable — `B42`'s `_SELF_RESTRAINT_KEYS`
+does not grow. But the sentence has two halves and the second is a **precondition, not a caveat**:
+the reason a cap is safe to hand over is that something else is watching the loop. Today
+`agent_max_rounds` is the *only* thing standing between a stuck agent and an unbounded run on the
+owner's electricity, which is precisely why handing it to the agent reads as reckless. Loop
+detection is what makes it not reckless, and it must land **with or before** any widening of these
+writes.
+
+**"Smarter than PewDiePie put in"** is a specification, so it is written down rather than left as
+tone: round-count is not a loop signal. Repeating the same tool call with the same arguments is.
+Cycling between two states is. Producing no new information across N rounds — no new file read, no
+new command, no new content — is. A cap that fires at round 100 cannot tell a productive long run
+from a two-round cycle repeated fifty times, and treating those the same is the defect the owner is
+naming.
+
+**The failsafe that is not negotiable.** A raise the agent grants itself is **scoped to the run that
+asked for it** and does not become the stored default. That keeps *"give yourself more steps for
+this"* — the real and reasonable request `B42` protected — while refusing the one-way ratchet where
+every session inherits the last session's emergency. The `setting_is_explicit` distinction from
+`H06`/`H08` applies on top: a number the owner typed is not raised by the agent without saying so.
+
+**Cost.** More machinery than a refusal would have been, and loop detection is a real row rather than
+a line. Accepted: the owner is asking for autonomy, and autonomy without a governor is not a feature.
+
+**What would reopen this.** A runaway that loop detection did not catch. The answer then is better
+detection, not a restored refusal — that path was already measured and rejected here.
+
+---
+
+## D-2026-09-08-05 — we define the trust rungs ourselves; the inherited ones are not a ladder
+
+**What it decides.** `P7-13` asked whether an ordering exists among the trust rungs, since
+`agent_loop.py` says a role profile *"may only raise strictness"* — a sentence that presumes an order
+nothing defines — while `decision_for` carries a reproduction in which *"the two 'stricter' rungs
+were strictly less protected than the one they sit below"*. The owner: *"we make our own trust rungs.
+Because the current posturing of failure detection etc is incorrectly done."*
+
+**The answer to the question as asked is: no such ordering exists**, and `P7-13`'s two candidate
+outcomes were "name the order" or "record that there is none". The owner takes a third: **replace the
+rungs**. `ASK_EVERY_TIME`, `ALLOW_LISTED` and `GATE_ON_UNTRUSTED` are inherited names whose behaviour
+does not line up with what they suggest — two of them ask in an untainted run where the default does
+not, so `gate_on_untrusted → allow_listed` is plausibly a *tightening* and plausibly a loosening, and
+which one it is cannot be read from outside.
+
+**Law 1 applies and shapes the work.** This is not a deletion. The existing rungs keep working and
+keep their names; the new ladder is defined alongside, with each old rung mapped onto it, so nothing
+that reads a rung today breaks. What changes is that there is finally **one place** that says what
+"stricter" means, which both the role-profile rule and any chat-side rule read instead of assuming
+(`Law 13` — the rule currently exists in prose in one file and in nobody's code).
+
+**What a rung has to be, for the ordering to be real.** Not a name. A set of conditions under which
+the agent stops and asks, such that rung N's set is a strict superset of rung N−1's. If two rungs
+cannot be ordered by that test, they are not two rungs — they are two independent switches wearing
+one field, which is what the current three are.
+
+**The second half of the owner's sentence is a separate finding**: *"the current posturing of failure
+detection etc is incorrectly done."* Failure detection and trust are coupled here — an agent that
+cannot tell a failure from a refusal cannot decide whether to escalate — and that is the same
+observation as `D-2026-09-08-04`'s loop-detection precondition, reached from the other side. The two
+rows are one design conversation.
+
+**Until it lands**, `trust_rung` stays writable from chat, which is what `P7-03` intended and what
+six suite failures said when `B42` tried otherwise.
+
+**What would reopen this.** Nothing about the diagnosis. Only the shape of the replacement, which is
+not yet designed.
+
+---
+
+## D-2026-09-08-06 — the repo is primed for public, and stays private until the owner says otherwise
+
+**What it decides.** `P0-16` (Apache-2.0 §4(b) change notices) and `P0-17` (the AGPL §13 source link)
+both wait on the repository being public. The owner: *"The repo is not ready to go public. prime it,
+but dont flip that switch yet. I intend to later."*
+
+**What "prime it" means concretely**, so no agent reads this as "stop":
+
+- **`P0-16` proceeds to completion now.** Change notices do not depend on visibility; they are
+  accurate or they are not.
+- **`P0-17` is built and left dark.** The footer link, its `title` — *"Built on Odysseus — click to
+  see where Pantheon originated from!"* — and its presence on both the logged-in shell and the login
+  page are all implementable against a configured repository URL that **ships empty**. Empty means
+  the control does not render. This is the `D-2026-09-05-01` shape exactly: the address is the
+  switch, and there is no second boolean beside it.
+- **`B25` is closed the other way, immediately.** `CHANGELOG.md:37` claims under **#### Added** that
+  the §13 source link shipped. It has not, and a changelog is what a stranger reads to audit AGPL
+  conformance. The line comes out now rather than waiting for the flip — a false compliance claim is
+  worse while the repo is private, not better, because nobody can check it.
+- **`P0-13`** stays blocked on its own design decision; it is not unblocked by this.
+
+**Why not just flip it.** Not our call, and the owner has given the reason implicitly by scoping it:
+*ready* is a state the repository has to reach, and the priming work is what gets it there. Flipping
+early would also make `P0-17` true by accident — the obligation attaches on distribution — which is
+the wrong order to satisfy a licence term in.
+
+**Cost.** `P0-17` ships as code nobody can see working until the URL is set, so its test has to prove
+both branches: link present when configured, absent when not.
+
+**What would reopen this.** The owner saying go.

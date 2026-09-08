@@ -42,6 +42,19 @@ _SW = _REPO / "static" / "sw.js"
 _HAS_NODE = shutil.which("node") is not None
 
 
+def _constant(src: Path, name: str) -> str:
+    """The whole `const NAME = ...;` line, ready to paste into a module.
+
+    Lifted rather than re-declared: a harness that writes its own twelve hours
+    would keep passing on the day the real one changes, which is the whole
+    failure mode `P3-26` was filed about.
+    """
+    text = src.read_text(encoding="utf-8")
+    match = re.search(rf"\nconst\s+{re.escape(name)}\s*=.*?;", text, re.S)
+    assert match, f"{name} not found in {src.name}"
+    return match.group(0).strip()
+
+
 def _function(src: Path, name: str) -> str:
     """The whole declaration of `name`, ready to paste into a module."""
     text = src.read_text(encoding="utf-8")
@@ -117,7 +130,20 @@ def _calendar_reminder_note() -> dict:
 # ── half two: what the notes loop dispatches ──────────────────────────────────
 
 _NOTES_HARNESS = """
+    // A pinned clock, when the test asks for one. `Date.now()` is what
+    // `_checkReminders` reads, so the boundary cases have to reach it through
+    // `Date` itself rather than through a note whose offset is already stale by
+    // the time node starts. `globalThis.Date` and not `Date`: the class below
+    // shadows the binding for the whole module, so naming it bare here is a TDZ
+    // error rather than the global.
+    const _RealDate = globalThis.Date;
+    const _PINNED = __NOW__;
+    class Date extends _RealDate {
+      static now() { return _PINNED === null ? _RealDate.now() : _PINNED; }
+    }
+
     const fired = [];
+    const late = [];
     const patched = [];
     let badges = 0;
     let saved = null;
@@ -126,26 +152,52 @@ _NOTES_HARNESS = """
 
     const _loadFiredReminders = () => new Set(alreadyFired);
     const _saveFiredReminders = (s) => { saved = [...s]; };
-    const _fireReminder = (note) => { fired.push(note.id); };
+    const _fireReminder = (note, lateness) => { fired.push(note.id); late.push(lateness || ''); };
     const _patchNote = async (id, patch) => { patched.push([id, patch]); };
     const _updateRailBadge = () => { badges += 1; };
     const _advanceRecurring = () => null;
 
     __HAS_TIME__
 
+    __LOOKBACK__
+
+    __LATENESS__
+
     __CHECK__
 
     _checkReminders();
-    console.log(JSON.stringify({ fired, patched, badges, saved }));
+    console.log(JSON.stringify({ fired, late, patched, badges, saved }));
 """
 
 
-def _check_reminders(notes: list, fired: tuple = ()) -> dict:
+_LATENESS_HARNESS = """
+    __LATENESS__
+    const ms = __MS__;
+    const now = 1_700_000_000_000;
+    console.log(JSON.stringify(_reminderLateness(now - ms, now)));
+"""
+
+
+def _lateness(ms_late) -> str:
+    """`_reminderLateness` itself, with the clock held still."""
+    script = (
+        _LATENESS_HARNESS
+        .replace("__LATENESS__", _function(_NOTES, "_reminderLateness"))
+        # `json.dumps` would write bare NaN, which JSON.parse rejects but JS reads fine.
+        .replace("__MS__", "NaN" if ms_late != ms_late else repr(ms_late))
+    )
+    return _run(script)
+
+
+def _check_reminders(notes: list, fired: tuple = (), now: int | None = None) -> dict:
     script = (
         _NOTES_HARNESS
+        .replace("__NOW__", "null" if now is None else repr(now))
         .replace("__NOTES__", json.dumps(notes))
         .replace("__FIRED__", json.dumps(list(fired)))
         .replace("__HAS_TIME__", _function(_NOTES, "_hasTimeComponent"))
+        .replace("__LOOKBACK__", _constant(_NOTES, "REMINDER_LOOKBACK_MS"))
+        .replace("__LATENESS__", _function(_NOTES, "_reminderLateness"))
         .replace("__CHECK__", _function(_NOTES, "_checkReminders"))
     )
     return _run(script)
@@ -199,16 +251,211 @@ def test_a_reminder_already_fired_does_not_fire_twice():
     assert _check_reminders([note], fired=("cal-1",))["fired"] == []
 
 
-def test_a_reminder_missed_by_more_than_a_minute_is_retired_silently():
-    # The delta the deleted module carried: it allowed a five-minute catch-up,
-    # the live loop allows one minute and then marks the note fired without a
-    # notification. Pinned here so the difference is a decision, not a drift —
-    # see P3-26, which asks whether the window should widen.
+def test_a_reminder_missed_while_you_were_away_is_still_delivered():
+    # `P3-26`, decided 2026-09-08. This used to assert the opposite — a
+    # reminder five minutes late was retired without a notification, and the
+    # sixty-second window that did it was never chosen: `calendar/reminders.js`
+    # allowed five minutes and said why, `P3-10` deleted that module, and the
+    # narrower number survived by accident.
     note = _calendar_reminder_note()
     note["due_date"] = _shift_iso(note["due_date"], -5 * 60)
     out = _check_reminders([note])
+    assert out["fired"] == ["cal-1"]
+    assert out["late"] == ["was due 5 minutes ago"], (
+        "a late reminder that does not say it is late is the reason the window "
+        "had to stay narrow"
+    )
+
+
+def test_a_reminder_hours_late_still_arrives_and_says_how_late():
+    # The case the row was really about: due at 3pm, laptop shut at 2:55,
+    # opened at 8pm. Twelve hours is only a safe window because the
+    # notification states its own age.
+    note = _calendar_reminder_note()
+    note["due_date"] = _shift_iso(note["due_date"], -5 * 60 * 60)
+    out = _check_reminders([note])
+    assert out["fired"] == ["cal-1"]
+    assert out["late"] == ["was due 5 hours ago"]
+
+
+def test_a_reminder_on_time_says_nothing_about_lateness():
+    # The overwhelming majority. A reminder that fires within the minute is not
+    # late and must not be dressed as though it were.
+    out = _check_reminders([_calendar_reminder_note()])
+    assert out["fired"] == ["cal-1"]
+    assert out["late"] == [""]
+
+
+def test_a_reminder_older_than_the_window_is_still_retired_silently():
+    # The one thing both positions always agreed on: a browser opened after a
+    # fortnight must not deliver a fortnight of reminders at once.
+    note = _calendar_reminder_note()
+    note["due_date"] = _shift_iso(note["due_date"], -13 * 60 * 60)
+    out = _check_reminders([note])
     assert out["fired"] == []
     assert out["saved"] == ["cal-1"], "a missed reminder must still be retired, not re-checked forever"
+
+
+_EPOCH = 1_700_000_000_000  # a fixed Tuesday; only its stillness matters
+_TWELVE_HOURS = 12 * 60 * 60 * 1000
+
+
+def _note_due_at(ms: int) -> dict:
+    """A minimal reminder note due at an exact millisecond."""
+    from datetime import datetime, timezone
+
+    when = datetime.fromtimestamp(ms / 1000, tz=timezone.utc)
+    return {"id": "pinned", "title": "Pinned", "due_date": when.isoformat().replace("+00:00", "Z")}
+
+
+def test_the_far_edge_of_the_window_belongs_to_silence():
+    # Exactly twelve hours old, to the millisecond. `due > cutoff` fires and
+    # `due <= cutoff` retires, so the boundary itself has to fall on one side
+    # by decision rather than by whichever comparison was typed first: at the
+    # stated width the answer is "older than the window", and older is silent.
+    note = _note_due_at(_EPOCH - _TWELVE_HOURS)
+    out = _check_reminders([note], now=_EPOCH)
+    assert out["fired"] == []
+    assert out["saved"] == ["pinned"]
+
+
+def test_one_millisecond_inside_the_window_still_arrives():
+    # The other side of the same millisecond. Without this the test above
+    # passes on a loop that retires everything.
+    note = _note_due_at(_EPOCH - _TWELVE_HOURS + 1)
+    out = _check_reminders([note], now=_EPOCH)
+    assert out["fired"] == ["pinned"]
+    assert out["late"] == ["was due 11h 59m ago"]
+
+
+def test_no_past_due_note_is_left_in_the_gap_between_the_two_branches():
+    # The reason `cutoff` is computed once. Two subtractions can disagree, and
+    # if the retire branch is the wider of the two there is a band of notes
+    # that neither fires nor retires — re-read every thirty seconds, forever,
+    # never shown and never consumed. Sampled across three decades of lateness.
+    for hours in (0, 1, 11, 12, 13, 100, 24 * 365):
+        note = _note_due_at(_EPOCH - hours * 60 * 60 * 1000)
+        out = _check_reminders([note], now=_EPOCH)
+        handled = bool(out["fired"]) or bool(out["saved"])
+        assert handled, f"a note {hours}h past due was neither delivered nor retired"
+
+
+def test_the_window_is_twelve_hours_and_says_so():
+    # The row's `Verify:` — a named constant with a sentence saying which way
+    # it was chosen, so the next reader finds a decision and not a magic number.
+    text = _NOTES.read_text(encoding="utf-8")
+    assert "const REMINDER_LOOKBACK_MS = 12 * 60 * 60 * 1000;" in text
+    assert "decided by the owner" in text
+
+
+@pytest.mark.parametrize("ms_late, expected", [
+    (0, ""),
+    (59_000, ""),
+    (60_000, "was due 1 minute ago"),
+    # 90s is 1.5 minutes: floor says one, round says two. A reminder must never
+    # claim to be later than it is.
+    (90_000, "was due 1 minute ago"),
+    (120_000, "was due 2 minutes ago"),
+    (119_000, "was due 1 minute ago"),
+    (59 * 60_000, "was due 59 minutes ago"),
+    (60 * 60_000, "was due 1 hour ago"),
+    (2 * 60 * 60_000, "was due 2 hours ago"),
+    (90 * 60_000, "was due 1h 30m ago"),
+    (float("nan"), ""),
+])
+def test_how_late_is_said_in_words_a_person_reads(ms_late, expected):
+    # Exact milliseconds, straight into the function. Driving the boundaries
+    # through a note instead means the note's own ten-second offset and the
+    # test's own runtime both land on the answer — the 59-second case failed
+    # that way first, and a boundary test that drifts is not testing a boundary.
+    assert _lateness(ms_late) == expected
+
+
+# ── half three: what the notification actually says ───────────────────────────
+
+_FIRE_HARNESS = """
+    let posted = null;
+    const toasts = [];
+    const notified = [];
+    const glowed = [];
+
+    // The 1500ms fallback timer exists so a slow server still produces a
+    // notification. Stubbed to a no-op: this harness is about what the title
+    // says, and a live timer would only make node sit for a second and a half.
+    const setTimeout = () => 0;
+    const clearTimeout = () => {};
+
+    const fetch = async (url, opts) => {
+      posted = { url: String(url), body: JSON.parse(opts.body) };
+      return { ok: true, json: async () => ({}) };
+    };
+    const uiModule = { showToast: (msg) => toasts.push(msg) };
+    class Notification {
+      static permission = 'granted';
+      constructor(title, opts) { notified.push({ title, body: opts.body }); }
+      close() {}
+    }
+    const window = { Notification, focus() {} };
+    const document = { querySelector: () => null };
+    const openPanel = () => {};
+    const _setReminderCardGlow = (id, on) => { glowed.push([id, on]); };
+    const _queuePendingHighlight = () => {};
+    const _hasItems = (note) => Array.isArray(note.items) && note.items.length > 0;
+
+    __FIRE__
+
+    _fireReminder(__NOTE__, __LATENESS__);
+    // Let the resolved fetch drain so the local notification is observed too;
+    // the toast and the browser notification are the two things a person sees.
+    await new Promise(r => setImmediate(r));
+    console.log(JSON.stringify({ posted, toasts, notified, glowed }));
+"""
+
+
+def _fire(note: dict, lateness: str) -> dict:
+    """`_fireReminder` itself — what reaches the wire and the screen."""
+    script = (
+        _FIRE_HARNESS
+        .replace("__FIRE__", _function(_NOTES, "_fireReminder"))
+        .replace("__NOTE__", json.dumps(note))
+        .replace("__LATENESS__", json.dumps(lateness))
+    )
+    return _run(script)
+
+
+def test_the_age_is_on_the_title_where_it_gets_read():
+    # `P3-26`'s visible half, and the only part of it a person ever sees. The
+    # loop can compute the age perfectly and hand it over correctly and the row
+    # is still not done if the notification does not say it.
+    out = _fire({"id": "n1", "title": "Take the pasta off", "content": "now"}, "was due 8 minutes ago")
+    assert out["posted"]["body"]["title"] == "Take the pasta off — was due 8 minutes ago"
+    assert out["notified"][0]["title"] == "Take the pasta off — was due 8 minutes ago"
+    assert out["toasts"] == ["Take the pasta off — was due 8 minutes ago"]
+
+
+def test_an_on_time_reminder_keeps_its_own_title_exactly():
+    # No separator, no trailing punctuation, nothing appended. The overwhelming
+    # majority of reminders are on time and must look untouched.
+    out = _fire({"id": "n1", "title": "Standup", "content": "room 3"}, "")
+    assert out["posted"]["body"]["title"] == "Standup"
+    assert out["notified"][0]["title"] == "Standup"
+
+
+def test_the_age_does_not_leak_into_the_body():
+    # The body is the note's own content. If the age were appended there too it
+    # would be said twice, and the body is what a browser notification truncates
+    # first — which is the whole reason the age rides the title.
+    out = _fire({"id": "n1", "title": "Standup", "content": "room 3"}, "was due 2 hours ago")
+    assert out["posted"]["body"]["body"] == "room 3"
+    assert "was due" not in out["notified"][0]["body"]
+
+
+def test_an_untitled_note_still_says_how_late_it_is():
+    # `note.title || 'Note reminder'` is the fallback, and the age has to attach
+    # to the fallback too — a note with no title is exactly the one whose
+    # timing a reader cannot infer from anything else.
+    out = _fire({"id": "n1", "title": "", "content": "milk"}, "was due 3h 5m ago")
+    assert out["posted"]["body"]["title"] == "Note reminder — was due 3h 5m ago"
 
 
 def _shift_iso(iso: str, seconds: int) -> str:
