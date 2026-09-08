@@ -740,23 +740,6 @@ async def run_teacher_inline(
     from src.tool_approvals import tool_approval_store
     from src.tool_capabilities import capabilities_for_action
 
-    skill_content = _json.dumps(skill, ensure_ascii=False)
-    pending = tool_approval_store.create(
-        owner=owner,
-        session_id=session_id,
-        origin_run_id=f"teacher-skill-{_uuid.uuid4().hex}",
-        tool_name="manage_skills",
-        content=skill_content,
-        workspace=workspace,
-        external_untrusted_context_seen=True,
-        capabilities=capabilities_for_action("manage_skills", skill_content),
-    )
-    approval = pending.public_payload(
-        reason=(
-            "The teacher generated this reusable skill. Review and approve "
-            "the complete skill definition before it is saved."
-        ),
-    )
     persisted_metrics = dict(captured_metrics)
     persisted_tool_events = list(persisted_metrics.get("tool_events") or [])
     persisted_round_texts = list(persisted_metrics.get("round_texts") or [])
@@ -766,6 +749,28 @@ async def run_teacher_inline(
         if isinstance(event, dict) and isinstance(event.get("round"), int)
     ]
     approval_round = max([len(persisted_round_texts), *prior_rounds, 0]) + 1
+
+    skill_content = _json.dumps(skill, ensure_ascii=False)
+    pending = tool_approval_store.create(
+        owner=owner,
+        session_id=session_id,
+        origin_run_id=f"teacher-skill-{_uuid.uuid4().hex}",
+        tool_name="manage_skills",
+        content=skill_content,
+        workspace=workspace,
+        external_untrusted_context_seen=True,
+        # `P4-11`. The same number the escalation's own tool event carries, so
+        # the card the continuation writes after approval reads as the same
+        # step rather than as a stray round 0.
+        requested_round=approval_round,
+        capabilities=capabilities_for_action("manage_skills", skill_content),
+    )
+    approval = pending.public_payload(
+        reason=(
+            "The teacher generated this reusable skill. Review and approve "
+            "the complete skill definition before it is saved."
+        ),
+    )
     approval_tool_event = {
         "round": approval_round,
         "model": teacher_model,

@@ -95,6 +95,24 @@ export function toolIcon(tool, state, ok) {
   return ok ? DONE_ICON : FAILED_ICON;
 }
 
+/**
+ * `P4-11`. The badge naming the agent round a card belongs to.
+ *
+ * The number was on the wire from the first version of the agent loop and
+ * never reached a card: every `json.round` read in `chat.js` belonged to Deep
+ * Research progress instead. So a thread of nine tool cards gave no way to see
+ * that they were three passes of three rather than one pass of nine.
+ *
+ * Returns `''` for anything that is not a positive integer. A round is 1-based
+ * and a card that cannot name its round says nothing rather than guessing —
+ * the document writer's own card is not a tool call and has no round at all.
+ */
+export function roundBadgeHtml(round) {
+  const n = Number(round);
+  if (!Number.isInteger(n) || n < 1) return '';
+  return `<span class="agent-thread-round" title="Agent round ${n}">${n}</span>`;
+}
+
 /** The className an `.agent-thread-node` carries in `state`. */
 export function nodeClassName(state, ok) {
   if (state === 'running') return 'agent-thread-node running';
@@ -114,6 +132,7 @@ export function nodeClassName(state, ok) {
  * @param {string} [o.output]  pre-rendered HTML
  * @param {string} [o.diff]    pre-rendered HTML
  * @param {string} [o.todo]    pre-rendered HTML
+ * @param {number} [o.round]   1-based agent round; anything else draws no badge
  *
  * A `diff` or a `todo` suppresses the command line. For a file edit the
  * "command" is the raw JSON arguments, which is redundant beside the diff; for
@@ -138,6 +157,7 @@ export function agentThreadNodeHtml(o) {
     + '<div class="agent-thread-header">'
     + `<span class="agent-thread-icon">${toolIcon(o.tool, state, o.ok)}</span>`
     + `<span class="agent-thread-tool">${esc(label)}</span>`
+    + roundBadgeHtml(o.round)
     + tail
     + '</div>'
     + todo
@@ -156,9 +176,18 @@ export function applyAgentThreadNode(node, o) {
   const wasOpen = node.classList && node.classList.contains('open');
   node.className = nodeClassName(o.state === 'running' ? 'running' : 'done', o.ok)
     + (wasOpen ? ' open' : '');
-  node.innerHTML = agentThreadNodeHtml(o);
+  // `P4-11`. Same reason as `open`: a card is built twice, once from
+  // `tool_start` and once from `tool_output`, and the second event deciding
+  // the badge means the badge can vanish when the tool finishes. Remember the
+  // round the card was opened with and use it when the rewrite does not bring
+  // one, so a card that showed a round keeps it.
+  const round = Number.isInteger(Number(o.round)) && Number(o.round) >= 1
+    ? Number(o.round) : node._agentRound;
+  if (round) node._agentRound = round;
+  node.innerHTML = agentThreadNodeHtml(round === o.round ? o : { ...o, round });
   return node;
 }
 
 export default { agentThreadNodeHtml, applyAgentThreadNode, toolLabel, toolIcon,
-                 nodeClassName, TOOL_LABELS, TOOL_ICONS, SEARCH_ICON };
+                 nodeClassName, roundBadgeHtml, TOOL_LABELS, TOOL_ICONS,
+                 SEARCH_ICON };

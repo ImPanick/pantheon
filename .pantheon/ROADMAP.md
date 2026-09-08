@@ -64,7 +64,7 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P1 | Token layer — the free wins | 15 | 7 | 0 | **8** |
 | P2 | Un-nerf | 26 | 12 | 0 | **14** |
 | P3 | Mechanical hygiene | 26 | 3 | **2** | **21** |
-| P4 | The wire — the real glass box | 28 | 21 | 0 | **7** |
+| P4 | The wire — the real glass box | 28 | 20 | 0 | **8** |
 | P5 | Trace & composer restyle | 17 | 17 | 0 | 0 |
 | P6 | Queue & Plan | 18 | 1 | 0 | **17** |
 | P7 | Trust ladder & control plane | 14 | 9 | **1** | **4** |
@@ -77,7 +77,7 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P14 | Measurement | 8 | 3 | 0 | **5** |
 | P15 | Outbound politeness | 12 | 2 | **1** | **9** |
 | P16 | Self-hosted by default | 20 | 1 | 0 | **19** |
-| **Total** | | **341** | **191** | **9** | **141** |
+| **Total** | | **341** | **190** | **9** | **142** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -105,7 +105,7 @@ Ten of its rows landed on 2026-08-27 — see § Progress. What is left of it:
   proved it found two more bugs (`B45`, `B46`). `check-fork-names.py`, `check-spdx.py` and
   `check-licences.py`'s new rule 7 fail CI on any regression.
 
-### Next: the rows `P4-01` unblocked — `P4-11` (round numbers on every step and tool event), then `P4-12` and `P4-09`. `P3` is down to three open rows and all three need somebody else: `P3-08` is blocked on a definition, `P3-21` and `P3-26` are product questions for the owner, and `P3-20` triaged to "the ratchet is the value, not the number". `P3-10`, `P3-10b`, `P3-16`, `P3-17`, `P3-18`, `P3-19`, `P3-22` and `P3-23` are done; the last two added the eleventh and twelfth checkers (`check-config-writes.py`, `check-silent-failures.py`). `P3-10` left `P3-26` and `B54` behind, and `B54` is fixed. `P3-26` is a product question and reads like `P3-21` — it may want the owner. `P3-25` is withdrawn — it was never real (`B52`). `P3-01`, `P3-02`, `P3-04`, `P3-05`, `P3-06` and `P3-07` are done. **`P1-08` needs the owner** — it changes what all sixteen protected themes look like. `P1-12` and `P1-14` are done; `P1-12` left `P1-15` behind. **The `P0` licence block is finished except for six rows that cannot be closed from here** — `P0-05` needs the live ChromaDB, `P0-08` needs Docker, `P0-16` and `P0-17` need the owner, `P0-13` is blocked on a design decision, and `P0-29` is its own session. `P0-18`, `P0-21b` and `P0-31` closed 2026-09-07; standing suite failures **19 → 14**. `P3-21`, `P7-12`, `P7-13`, `P13-11` and `P15-07` wait on the owner
+### Next: `P4-12` (the `approved: true` badge — the round badge `P4-11` just added sits beside it and the two share a header), then `P4-09` (`full_command` expand-to-full-arguments), which `P5-07` then depends on. `P3` is down to three open rows and all three need somebody else: `P3-08` is blocked on a definition, `P3-21` and `P3-26` are product questions for the owner, and `P3-20` triaged to "the ratchet is the value, not the number". `P3-10`, `P3-10b`, `P3-16`, `P3-17`, `P3-18`, `P3-19`, `P3-22` and `P3-23` are done; the last two added the eleventh and twelfth checkers (`check-config-writes.py`, `check-silent-failures.py`), and `P4-11` added the fourteenth (`check-event-rounds.py`). `P3-10` left `P3-26` and `B54` behind, and `B54` is fixed. `P3-26` is a product question and reads like `P3-21` — it may want the owner. `P3-25` is withdrawn — it was never real (`B52`). `P3-01`, `P3-02`, `P3-04`, `P3-05`, `P3-06` and `P3-07` are done. **`P1-08` needs the owner** — it changes what all sixteen protected themes look like. `P1-12` and `P1-14` are done; `P1-12` left `P1-15` behind. **The `P0` licence block is finished except for six rows that cannot be closed from here** — `P0-05` needs the live ChromaDB, `P0-08` needs Docker, `P0-16` and `P0-17` need the owner, `P0-13` is blocked on a design decision, and `P0-29` is its own session. `P0-18`, `P0-21b` and `P0-31` closed 2026-09-07; standing suite failures **19 → 14**. `P3-21`, `P7-12`, `P7-13`, `P13-11` and `P15-07` wait on the owner. `B57` and `B58` are filed and not started; both are offline-shell/asset-versioning defects and they want one sitting, not two
 
 **`P16-05` is the last zero-configuration leak**, and the only one that is not a one-liner: the
 embedding model is pulled from HuggingFace on the *first chat message*, because
@@ -239,6 +239,18 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### P4-11 — the number was always on the wire and never on the glass
+`6c07784..HEAD`. **341 tracked, 142 done. 36 new tests, 0 regressions.**
+Nothing rendered the round, so nothing checked it, so it rotted in four places at once — and the
+rot was invisible in exactly the way a number nobody reads always is. The sharpest of the four:
+`tool_start` carried a round and the *persisted* `tool_event` carried a round and the `tool_output`
+between them did not, so one action answered "which round?" after a reload and refused to answer it
+live. The approved-action replay hardcoded `0` at four sites, which would have shipped as a visible
+`0` on the one card in the thread the user personally authorised. That card's honest round is the
+round it was **requested** in, so the pending approval now carries it — outside the binding digest,
+because widening a seal for a badge changes what the seal means, and there is a test saying so
+rather than a comment. Four files, one rule, so the fourteenth checker rather than four fixes.
 
 ### P4-03 — the handler was not dead; the emit was missing
 `95e9d5e..HEAD`. **341 tracked, 141 done. 11 new tests, 0 regressions.**
@@ -2938,7 +2950,7 @@ serialised, sent to the browser and never read.** None of this needs backend wor
 - [ ] **P4-08** Live prep breakdown — request setup, tool selection, prompt build, context trim, each timed. Replaces a static spinner label.
 - [ ] **P4-09** `full_command` on every tool start — expand-to-full-arguments on the running card. The truncated version is what you see now. `Depends:` P4-01.
 - [ ] **P4-10** Loop-breaker detail and the unkept-promise phrase — `"Stopped: called bash with identical arguments 15 times"` instead of a generic message.
-- [ ] **P4-11** Round numbers on every step and tool event. `Depends:` P4-01.
+- [x] **P4-11** Round numbers on every step and tool event. `Depends:` P4-01. The number was on the wire from the first agent loop and never reached a card — every `json.round` read in `chat.js` belonged to Deep Research progress instead, so a thread of nine tool cards gave no way to see it was three passes of three. `roundBadgeHtml` in the one builder (`P4-01`) draws it, so it is one change rather than six. Underneath it, four sites were wrong and nobody could see it: the streamed `tool_output` carried no round while its persisted twin did (**the same action answered the question after a reload and refused to answer it live**), the approved-action replay hardcoded `0` at four sites, the one-shot image path sent nothing, and the skill-test log kept the round on `agent_step` and dropped it from the tool cards inside the step. The approved action's round is now the round it was **requested** in — carried on the pending record, deliberately outside the binding digest, with a test saying that was a decision — so the card the user clicked approve on and the card reporting the result name one round. `check-event-rounds.py` is the fourteenth checker and the reason this is a rule and not four fixes. — **done 2026-09-08** — agent:`P4-11`
 - [ ] **P4-12** `approved: true` badge on tool events — the action you personally authorised is currently indistinguishable from a routine call. `Depends:` P4-01.
 - [ ] **P4-13** Trim and compaction figures — tokens before/after, messages before/after.
 - [ ] **P4-14** Real decode speed, prefill speed, time-to-first-token, context tokens — separating prefill from decode and measured from computed.
@@ -3902,6 +3914,7 @@ fact; then losing their data; then hiding capability they own.*
 
 - [x] **B56** **Clicking a tool card in Compare mode does nothing, because two handlers toggle it and cancel each other out.** `chat.js` binds **one** delegated click listener on `document.body` and says why in a comment: *"One listener on document.body covers every `.agent-thread-node` — running, completed, streaming, history-rendered, **compare-mode**, all of them. Re-attaching per-node listeners on every innerHTML rewrite was the source of the 'needs many clicks' bug."* `compare/stream.js` then attached a per-node listener anyway, on both of its cards. A click on a compare tool card fired the per-node toggle *and* bubbled to the delegated one, so `classList.toggle('open')` ran twice and the card ended exactly where it started — **the fold never opened, and there was nothing to see because nothing visibly happened.** The comment naming compare mode is what makes this a bug rather than an oversight: the file that knew compare was covered is not the file that bound the second listener. Both per-node listeners are gone, and `applyAgentThreadNode`'s docstring says nothing may add one. — **done 2026-09-08** — found while doing `P4-01` — agent:`P4-01`  breaking Chroma release lands on the next `--build` and the collections stop loading —
 
+- [ ] **B58** **`index.html` preloads `chat.js` at one version and then executes it at another, so the largest module in the app is fetched twice on every cold load.** Line 313 is `<link rel="modulepreload" href="/static/js/chat.js?v=20260815toolapproval4">` and line 3128 is `<script type="module" src="/static/js/chat.js?v=20260829trustladder1">`. A module graph is keyed by URL, so those are two different resources: the preload warms a URL nothing ever asks for, and the script tag then goes to the network for the one it needs. **The preload is not merely wasted — it is worse than absent**, because it spends the connection budget it exists to save, on the critical path, at the moment the shell is trying to boot. The version it names is two months stale, which is the tell: whoever bumped the script tag did not know a second copy of the string existed, and `B54` is the same disease one file over — a URL written twice and checked nowhere. The offline-manifest tests compare `index.html` against `sw.js`; nothing compares `index.html` against **itself**. `Verify:` a test asserting every `modulepreload` in `index.html` names a URL that some `<script>` or `<link>` in the same file also names, byte-for-byte — and the same rule for `preload`. Cheap, and it is the third time this shape has cost something. — found while doing `P4-11` — agent:`P4-11`
 - [ ] **B57** **The offline manifest names the app shell's script tags and not the 171 modules behind them.** `B54` fixed the `<script type="module">` URLs; walking the **import graph** from those roots reaches **171 modules, of which 67 are in no precache list under any URL** — including `escMenuStack.js`, `toolWindowZOrder.js`, `modalManager.js` and `windowDrag.js`, each imported by a dozen others. **Severity is lower than it looks and that is the finding, not an excuse.** The fetch handler is network-first with a `cache.put` on every successful JS response, so one online visit populates the whole graph opportunistically; the gap costs a **cold** first offline load, not offline itself. That is also why nothing noticed. `Verify:` a test walks the import graph from `index.html`'s module scripts and reports what no list names, held as a ratchet — and the decision to record first is whether `PRECACHE` is meant to be the shell's transitive closure at all, or whether the opportunistic path is the design and the list should say so. — found while doing `P4-01` — agent:`P4-01`  silently, since nothing validates the schema on connect. `searxng` is pinned to
   `2026.5.31-7159b8aed`, so the convention already exists in the file; these two just
   missed it. Six one-line changes. `Verify:` `grep -c ':latest\|ntfy$' docker-compose*.yml`

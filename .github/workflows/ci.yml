@@ -212,6 +212,16 @@ jobs:
       # sets it believes something changed.
       - name: check-env-declared
         run: python3 .pantheon/check-env-declared.py --max 74
+      # P4-11. The round has been on the wire since the first agent loop and it
+      # was on most events; the gaps were invisible because nothing rendered it.
+      # The streamed result card had none while its persisted twin did, the
+      # approved-action replay hardcoded 0 at four sites, the one-shot image
+      # path sent none, and the skill-test log kept it on the step and dropped
+      # it from the tools inside the step. Four files, one rule — so it is a
+      # checker and not four fixes. Ratchet is zero: a card that cannot name
+      # its round is the whole defect.
+      - name: check-event-rounds
+        run: python3 .pantheon/check-event-rounds.py
 
   law16-egress:
     name: Law 16 — no egress on a fresh install

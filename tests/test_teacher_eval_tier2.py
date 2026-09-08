@@ -291,6 +291,11 @@ async def test_run_teacher_inline_triggers_tier2_escalation(monkeypatch):
     assert pending.tool_name == "manage_skills"
     assert json.loads(pending.content)["name"] == "test-skill"
     assert pending.external_untrusted_context_seen is True
+    # `P4-11`. The sealed record carries the same round the card above shows, so
+    # the continuation that runs after approval labels its own cards with it
+    # instead of the 0 it used to hardcode. Same number, asserted twice, because
+    # the whole defect was the two disagreeing.
+    assert pending.requested_round == persisted_approval["round"] == 2
     tool_approval_store.consume(
         pending.approval_id,
         decision="deny",

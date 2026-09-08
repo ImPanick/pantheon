@@ -5088,6 +5088,15 @@ async def stream_agent_loop(
             if approval_matches
             else {}
         )
+        # `P4-11`. This action's round is the round it was *requested* in, not
+        # a position in this continuation run: the user approved a specific card
+        # in the previous message and the card that reports the result has to
+        # carry the same number, or the two do not read as one action. The three
+        # sites below and the persisted event used to hardcode 0, which showed
+        # as a round no other card in the thread ever has. A pending record made
+        # before this field existed reports 0; 1 is the honest floor, because
+        # something ran and no run has a round below 1.
+        approved_round = int(getattr(approved, "requested_round", 0) or 0) or 1
         if approval_matches:
             yield (
                 "data: "
@@ -5097,7 +5106,7 @@ async def stream_agent_loop(
                         "tool": approved.tool_name,
                         "command": approved_display[:240],
                         "full_command": approved_display,
-                        "round": 0,
+                        "round": approved_round,
                         "approved": True,
                         **approved_effects,
                     }
@@ -5137,7 +5146,7 @@ async def stream_agent_loop(
                         {
                             "type": "tool_progress",
                             "tool": approved.tool_name,
-                            "round": 0,
+                            "round": approved_round,
                             "approved": True,
                             **progress_event,
                         }
@@ -5212,6 +5221,7 @@ async def stream_agent_loop(
         approved_event = {
             "type": "tool_output",
             "tool": approved.tool_name,
+            "round": approved_round,
             "command": approved_display[:240] if approval_matches else "",
             "output": _truncate(approved_output),
             "exit_code": approved_result.get("exit_code"),
@@ -5290,7 +5300,7 @@ async def stream_agent_loop(
             yield "data: " + json.dumps({"delta": approved_anchor}) + "\n\n"
 
         approved_tool_event = {
-            "round": 0,
+            "round": approved_round,
             "tool": approved.tool_name,
             "desc": desc,
             "command": approved_display[:240] if approval_matches else "",
@@ -6400,6 +6410,10 @@ async def stream_agent_loop(
                         ),
                         selected_tools=approval_selected_tools,
                         continuation_query=_retrieval_query or _last_user,
+                        # `P4-11`. Carry the round forward so the continuation
+                        # run can label the completed action with the round it
+                        # was asked for, not with a 0 that means nothing.
+                        requested_round=round_num,
                         capabilities=capabilities_for_action(
                             block.tool_type,
                             block.content,
@@ -6651,7 +6665,11 @@ async def stream_agent_loop(
             # This event also carries the `ask_user` approval payload when the
             # gate fired instead, which is the card P7-06 exists to rank, so it
             # gets the keys on the blocked path too.
-            tool_output_data = {"type": "tool_output", "tool": block.tool_type, "command": cmd_display, "output": output_text, "exit_code": result.get("exit_code"), **block_effects}
+            # `P4-11`: `round`. The persisted twin of this event (`tool_event`
+            # below) has always carried it, so the card drew a round number
+            # after a reload and none at all while it was live — the same event,
+            # two answers.
+            tool_output_data = {"type": "tool_output", "tool": block.tool_type, "command": cmd_display, "round": round_num, "output": output_text, "exit_code": result.get("exit_code"), **block_effects}
             if is_doc_tool and "action" in result:
                 tool_output_data.update({
                     "doc_id": result.get("doc_id"),

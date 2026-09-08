@@ -97,6 +97,17 @@ def _canonical_digest(payload: dict[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _coerced_round(value: Any) -> int:
+    """`P4-11`. A round is a positive integer or nothing. Anything else — a
+    string, a float, a negative — becomes 0, which the reader treats as
+    "unknown" rather than showing a badge nobody can explain."""
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return number if number > 0 else 0
+
+
 def document_content_digest(content: Any) -> str:
     """Return the stable server-side fingerprint used to seal a document."""
     return hashlib.sha256(str(content or "").encode("utf-8")).hexdigest()
@@ -163,6 +174,13 @@ class PendingToolApproval:
     # exposed in the browser payload.
     selected_tools: tuple[str, ...] = ()
     continuation_query: str = ""
+    # `P4-11`. The agent round this action was requested in, so the card that
+    # reports the approved run can carry the same number as the card the user
+    # clicked approve on. Deliberately **outside** `_binding_payload` and so
+    # outside the digest: it is a display integer with no bearing on what runs,
+    # and widening the seal for a badge would mean changing the seal's meaning
+    # for a cosmetic reason. Nothing reads it to make a decision.
+    requested_round: int = 0
 
     def public_payload(self, *, reason: str | None = None) -> dict[str, Any]:
         return {
@@ -389,6 +407,7 @@ class ToolApprovalStore:
         document_digest: Any = None,
         selected_tools: Any = None,
         continuation_query: Any = None,
+        requested_round: Any = 0,
         external_untrusted_context_seen: bool,
         capabilities: ToolCapabilities,
     ) -> PendingToolApproval:
@@ -432,6 +451,7 @@ class ToolApprovalStore:
             expires_at=now + self._ttl_seconds,
             selected_tools=tuple(payload["selected_tools"]),
             continuation_query=payload["continuation_query"],
+            requested_round=_coerced_round(requested_round),
         )
         with self._lock:
             self._purge_expired_locked(now)

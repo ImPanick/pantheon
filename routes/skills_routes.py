@@ -480,12 +480,18 @@ async def _run_skill_test_job(
             elif d.get("type") == "tool_start":
                 _flush_say()
                 cmd = str(d.get("command") or d.get("args") or "")[:300]
-                log.append({"type": "tool_start", "tool": d.get("tool"), "command": cmd})
+                # `P4-11`: `round`. The skill-test panel replays this log, and
+                # it kept the round on `agent_step` while dropping it from the
+                # tool cards inside the step — so the transcript numbered the
+                # rounds and then refused to say which one a tool ran in.
+                log.append({"type": "tool_start", "tool": d.get("tool"),
+                            "command": cmd, "round": d.get("round")})
                 transcript.append(f"\n[tool {d.get('tool')}] {cmd}\n")
             elif d.get("type") == "tool_output":
                 _flush_say()
                 out = str(d.get("output") or "")[:600]
-                tool_log = {"type": "tool_output", "output": out}
+                tool_log = {"type": "tool_output", "output": out,
+                            "round": d.get("round")}
                 approval = d.get("ask_user")
                 if isinstance(approval, dict):
                     tool_log["ask_user"] = approval

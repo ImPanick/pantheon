@@ -51,7 +51,11 @@ EFFECT_KEYS = frozenset(
 # subtract" testable: a renamed or dropped key fails here even though every
 # effect assertion still passes.
 TOOL_START_BASE_KEYS = frozenset({"type", "tool", "command", "full_command", "round"})
-TOOL_OUTPUT_BASE_KEYS = frozenset({"type", "tool", "command", "output", "exit_code"})
+# `P4-11` added `round` to both `tool_output` sites. It was already on both
+# `tool_start` sites and on the persisted `tool_event`, so the streamed result
+# card was the one event in the pair that could not say which round it belonged
+# to — the card drew a round after a reload and none while it was live.
+TOOL_OUTPUT_BASE_KEYS = frozenset({"type", "tool", "command", "round", "output", "exit_code"})
 APPROVED_START_BASE_KEYS = TOOL_START_BASE_KEYS | {"approved"}
 APPROVED_OUTPUT_BASE_KEYS = TOOL_OUTPUT_BASE_KEYS | {"approved"}
 
@@ -378,7 +382,11 @@ def test_replay_path_adds_the_effect_keys_and_nothing_else(monkeypatch):
     assert start["tool"] == "bash"
     assert start["command"] == "printf hi"
     assert start["full_command"] == "printf hi"
-    assert start["round"] == 0
+    # `P4-11`. This grant was sealed with no `requested_round` — the shape a
+    # pending record had before the field existed — so the replay falls back to
+    # the honest floor rather than to the 0 it used to hardcode. A grant that
+    # *does* carry its round is `test_the_round_reaches_the_card.py`.
+    assert start["round"] == 1
     assert output["type"] == "tool_output"
     assert output["tool"] == "bash"
     assert output["command"] == "printf hi"

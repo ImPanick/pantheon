@@ -10639,6 +10639,28 @@ body.fullwidth-chat .chat-history {
   letter-spacing: 0.3px;
   font-size: 0.9em;
 }
+/* `P4-11`. The agent round a card belongs to. Muted on purpose: it is a
+   grouping aid, not a headline — nine cards that are three passes of three
+   should say so without shouting. `--fg` mixes only; this badge adds no
+   `--accent` reference, which the theme editor owns and all sixteen themes
+   depend on staying where it is. */
+.agent-thread-round {
+  flex: 0 0 auto;
+  min-width: 15px;
+  padding: 0 4px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent);
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  font-size: 0.72em;
+  font-weight: 600;
+  line-height: 15px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.agent-thread-header:hover .agent-thread-round {
+  color: color-mix(in srgb, var(--fg) 85%, transparent);
+}
 .agent-thread-status {
   font-size: 0.85em;
   opacity: 0.5;

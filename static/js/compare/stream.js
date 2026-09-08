@@ -539,7 +539,7 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
               // search here could never show the magnifier the same event
               // shows in chat.
               const node = document.createElement('div');
-              applyAgentThreadNode(node, { tool: toolName, state: 'running', command: cmd });
+              applyAgentThreadNode(node, { tool: toolName, state: 'running', command: cmd, round: json.round });
               // `B56`: no per-node click listener. `chat.js` binds one
               // delegated handler on document.body that covers these nodes
               // too, so a second one here fired alongside it and the card
@@ -609,7 +609,7 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
               // listener — see the running branch above.
               const _diff = buildDiffHtml(json.diff);
               applyAgentThreadNode(currentToolBlock, {
-                tool: json.tool, state: 'done', ok,
+                tool: json.tool, state: 'done', ok, round: json.round,
                 command: cmd, output: outHtml, diff: _diff, todo: todoHtml,
               });
               currentToolBlock = null;
