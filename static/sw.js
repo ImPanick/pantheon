@@ -8,7 +8,7 @@
 //   - Other static assets (images/fonts/libs): cache-first with bg refresh.
 //   - API / non-GET: never cached.
 // Bump CACHE_NAME whenever the precache list or SW logic changes.
-const CACHE_NAME = 'pantheon-v390-b54-shell-urls';
+const CACHE_NAME = 'pantheon-v391-p4-01-agent-thread';
 
 // KaTeX resolves these from its own stylesheet, so caching the CSS without them
 // gives offline math fallback glyphs instead of proper typesetting.
@@ -62,6 +62,9 @@ const PRECACHE = [
   '/static/js/document.js?v=20260815approvalsave1',
   '/static/js/gallery.js?v=20260708match1',
   '/static/js/chatRenderer.js?v=20260829trustladder1',
+  // `P4-01`: the one builder for a tool card in the agent thread. On the
+  // critical path via chat.js and chatRenderer.js.
+  '/static/js/agentThread.js',
   '/static/js/trustLadder.js',
   '/static/js/codeRunner.js',
   '/static/js/chatStream.js?v=20260829trustladder1',

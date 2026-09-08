@@ -18,6 +18,7 @@ import { getTools } from './appConfig.js';
 // card it goes. It returns null unless the server has said it takes rules AND
 // the rung is the one that reads them — see the header of that module.
 import { buildAllowRuleChooser } from './trustLadder.js';
+import { applyAgentThreadNode } from './agentThread.js';
 
 // The decisions that mean yes, and the whole of that set.
 //
@@ -1374,6 +1375,49 @@ export function parseTodoList(ev) {
  * @param {{tool?: string, command?: string, output?: string, exit_code?: number}} ev
  * @returns {string} HTML, or '' when nothing to draw.
  */
+/**
+ * A file diff, rendered as the collapsed `<details>` card the agent thread
+ * shows under an edit.
+ *
+ * `P4-01`: this existed twice — here for history replay and in `chat.js` for
+ * the live path — and the two were behaviourally identical, differing only in
+ * their comments and in whether `−` was written as a literal or an escape. So
+ * this extraction needed no decision, unlike the card shell around it. Compare
+ * mode had **no** copy at all, which is why a file edit there could never show
+ * what changed; it calls this now.
+ *
+ * @param {{text?: string, file?: string, added?: number, removed?: number,
+ *          new_file?: boolean}} diff
+ * @returns {string} HTML, or '' when there is nothing to show
+ */
+export function buildDiffHtml(diff) {
+  const d = diff || {};
+  if (!d.text) return '';
+  // Collapsed summary: filename + +adds (green) / −dels (red).
+  const stat = [
+    d.new_file ? '<span class="diff-stat-new">new</span>' : '',
+    d.added ? `<span class="diff-stat-add">+${d.added}</span>` : '',
+    d.removed ? `<span class="diff-stat-del">\u2212${d.removed}</span>` : '',
+  ].filter(Boolean).join(' ');
+  const rows = d.text.split('\n').map(line => {
+    let cls = 'diff-ctx', text = line;
+    if (line.startsWith('+++') || line.startsWith('---')) cls = 'diff-meta';
+    else if (line.startsWith('@@')) cls = 'diff-hunk';
+    // Drop the leading diff marker (+/-/space) — the row colour already
+    // encodes add/del, and keeping it doubles up with markdown "- " bullets
+    // (reads as "+-"/"--").
+    else if (line.startsWith('+')) { cls = 'diff-add'; text = line.slice(1); }
+    else if (line.startsWith('-')) { cls = 'diff-del'; text = line.slice(1); }
+    else if (line.startsWith(' ')) { text = line.slice(1); }
+    return `<span class="${cls}">${esc(text) || '&nbsp;'}</span>`;
+  }).join('');  // spans are display:block — a literal \n would double-space
+  return `<details class="agent-tool-output agent-tool-diff"><summary>`
+    + `<span class="diff-file">${esc(d.file || 'diff')}</span> `
+    + `<span class="diff-summary-stats">${stat}</span></summary>`
+    + `<pre class="diff-pre">${rows}</pre></details>`;
+}
+
+
 export function buildTodoCard(ev) {
   var list = parseTodoList(ev);
   if (!list) return '';
@@ -3142,37 +3186,19 @@ export function addMessage(role, content, modelName, metadata) {
             }
             // File-write/edit diff (persisted in the tool event) \u2014 re-render it
             // so it survives reload, matching the live stream.
-            let evDiffHtml = '';
-            if (ev.diff && ev.diff.text) {
-              const d = ev.diff;
-              const stat = [
-                d.new_file ? '<span class="diff-stat-new">new</span>' : '',
-                d.added ? `<span class="diff-stat-add">+${d.added}</span>` : '',
-                d.removed ? `<span class="diff-stat-del">\u2212${d.removed}</span>` : '',
-              ].filter(Boolean).join(' ');
-              const rows = d.text.split('\n').map(line => {
-                let cls = 'diff-ctx', text = line;
-                if (line.startsWith('+++') || line.startsWith('---')) cls = 'diff-meta';
-                else if (line.startsWith('@@')) cls = 'diff-hunk';
-                // Drop the leading diff marker (+/-/space) — colour encodes add/del.
-                else if (line.startsWith('+')) { cls = 'diff-add'; text = line.slice(1); }
-                else if (line.startsWith('-')) { cls = 'diff-del'; text = line.slice(1); }
-                else if (line.startsWith(' ')) { text = line.slice(1); }
-                return `<span class="${cls}">${esc(text) || '&nbsp;'}</span>`;
-              }).join('');  // spans are display:block \u2014 a literal \n would double-space
-              evDiffHtml = `<details class="agent-tool-output agent-tool-diff"><summary><span class="diff-file">${esc(d.file || 'diff')}</span> <span class="diff-summary-stats">${stat}</span></summary><pre class="diff-pre">${rows}</pre></details>`;
-            }
+            const evDiffHtml = buildDiffHtml(ev.diff);
             const node = document.createElement('div');
-            node.className = 'agent-thread-node' + (ok ? '' : ' error');
             // The agent's own todo list (P6-17) — persisted events carry the
             // same `command`/`output` the live stream sends, so the card
             // survives a reload identically. Same placement as live: between
             // the header and the fold.
             const evTodoHtml = buildTodoCard(ev);
-            // Hide the raw JSON command when a diff or a todo card says it
-            // better (same as live).
-            const evCmdHtml = (ev.command && !(ev.diff && ev.diff.text) && !evTodoHtml) ? `<pre class="agent-thread-cmd">${esc(ev.command)}</pre>` : '';
-            node.innerHTML = `<div class="agent-thread-dot"></div><div class="agent-thread-header"><span class="agent-thread-icon">${ok ? '\u2713' : '\u2717'}</span><span class="agent-thread-tool">${esc(ev.tool)}</span><span class="agent-thread-status">${ok ? 'done' : 'failed'}</span><span class="agent-thread-chevron">\u25B6</span></div>${evTodoHtml}<div class="agent-thread-content">${evCmdHtml}${outHtml}${evDiffHtml}</div>`;
+            // `P4-01`: one builder. Hiding the raw-JSON command beside a diff
+            // or a todo card is its rule now, not three separate copies of it.
+            applyAgentThreadNode(node, {
+              tool: ev.tool, state: 'done', ok,
+              command: ev.command, output: outHtml, diff: evDiffHtml, todo: evTodoHtml,
+            });
             // Click handling is delegated globally \u2014 see chat.js init.
             threadWrap.appendChild(node);
             if (evTodoHtml) demoteSupersededTodoCards();

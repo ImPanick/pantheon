@@ -9,7 +9,7 @@
 import Storage from './storage.js';
 import uiModule from './ui.js';
 import sessionModule from './sessions.js';
-import chatRenderer from './chatRenderer.js?v=20260829trustladder1';
+import chatRenderer, { buildDiffHtml } from './chatRenderer.js?v=20260829trustladder1';
 import chatStream from './chatStream.js?v=20260829trustladder1';
 import { addAITTSButton } from './tts-ai.js';
 import { prefersReducedMotion } from './motion.js';
@@ -24,6 +24,7 @@ import codeRunnerModule from './codeRunner.js';
 import slashCommands, { initSlashCommands, isCommand, handleSlashCommand, handleSetupInput, handleSetupWizard, typewriterInto } from './slashCommands.js?v=20260815approvalsave1';
 import createResearchSynapse from './researchSynapse.js';
 import { createStreamRenderer } from './streamingRenderer.js';
+import { applyAgentThreadNode, TOOL_LABELS } from './agentThread.js';
 import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArrowUpRecall.js?v=20260714promptrecall';
 import {
   createIncrementalDisplayProjector,
@@ -562,8 +563,9 @@ import agentDrafts from './agentDrafts.js';   // H01
         thread.classList.add('has-top');
       }
       const node = document.createElement('div');
-      node.className = 'agent-thread-node running';
-      node.innerHTML = '<div class="agent-thread-dot"></div><div class="agent-thread-header"><span class="agent-thread-icon">▶</span><span class="agent-thread-tool">Writing</span><span class="agent-thread-wave">▁▂▃</span></div><div class="agent-thread-content"></div>';
+      // Not a tool call — the document writer's own thread — so the label is
+      // given rather than looked up. Same shell as every other card (`P4-01`).
+      applyAgentThreadNode(node, { tool: '', state: 'running', label: 'Writing' });
       thread.appendChild(node);
       chatBox.insertBefore(thread, msg);
       msg._docWritingThread = thread;
@@ -3048,42 +3050,20 @@ import agentDrafts from './agentDrafts.js';   // H01
 
       // Tool-aware thinking spinner
       let _lastToolName = '';
-      const _searchIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="vertical-align:-2px;margin-right:4px"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
-      const _toolLabels = {
-        'web_search': 'Searching',
-        'bash': 'Running',
-        'python': 'Running',
-        'read_document': 'Reading',
-        'edit_file': 'Editing',
-        'read_file': 'Reading',
-        'write_file': 'Writing',
-        'create_document': 'Writing',
-        'edit_document': 'Editing',
-        'update_document': 'Rewriting',
-        'suggest_document': 'Reviewing',
-        'list_files': 'Browsing',
-        'image_gen': 'Generating',
-        'generate_image': 'Generating',
-        'manage_memory': 'Remembering',
-        'save_memory': 'Remembering',
-        'search_memory': 'Recalling',
-        'manage_session': 'Organizing',
-        'deep_research': 'Researching',
-        'list_models': 'Browsing',
-        'ui_control': 'Adjusting',
-      };
-      const _toolIcons = {
-        'web_search': _searchIcon,
-      };
+      // `P4-01`: the 21-entry label map, the icon map and the search glyph all
+      // lived here as locals. They are in `./agentThread.js` now, shared with
+      // the card that shows the same tool — the spinner between tools and the
+      // running card beside it were two copies of one vocabulary, and drifting
+      // apart would have read as a rename nobody made.
       function _thinkingLabel() {
         if (!_lastToolName) {
           return 'Thinking';
         }
         // Check exact match first, then prefix match
         const lower = _lastToolName.toLowerCase();
-        if (_toolLabels[lower]) return _toolLabels[lower];
-        for (const [key, label] of Object.entries(_toolLabels)) {
-          if (lower.includes(key) || key.includes(lower)) return label;
+        if (TOOL_LABELS[lower]) return TOOL_LABELS[lower].running;
+        for (const [key, forms] of Object.entries(TOOL_LABELS)) {
+          if (lower.includes(key) || key.includes(lower)) return forms.running;
         }
         return 'Thinking';
       }
@@ -4362,12 +4342,8 @@ import agentDrafts from './agentDrafts.js';   // H01
                 }
                 threadWrap.classList.add('streaming');
                 lastToolThread = threadWrap;
-                const toolLabel = _toolLabels[json.tool.toLowerCase()] || json.tool;
-                const toolIcon = _toolIcons[json.tool.toLowerCase()] || '\u25B6';
                 const node = document.createElement('div')
-                node.className = 'agent-thread-node running';
-                const cmdHtml = cmd ? `<pre class="agent-thread-cmd">${esc(cmd)}</pre>` : '';
-                node.innerHTML = `<div class="agent-thread-dot"></div><div class="agent-thread-header"><span class="agent-thread-icon">${toolIcon}</span><span class="agent-thread-tool">${esc(toolLabel)}</span><span class="agent-thread-wave">▁▂▃</span></div><div class="agent-thread-content">${cmdHtml}</div>`;
+                applyAgentThreadNode(node, { tool: json.tool, state: 'running', command: cmd });
                 // Expand/collapse via delegated click handler (init at module bottom).
                 threadWrap.appendChild(node);
                 currentToolBubble = node;
@@ -4480,30 +4456,9 @@ import agentDrafts from './agentDrafts.js';   // H01
                   if (json.output && json.output.trim()) {
                     outHtml = `<details class="agent-tool-output"><summary>Output</summary><pre>${esc(json.output)}</pre></details>`;
                   }
-                  // File-write diff (write_file): show a before/after unified diff.
-                  let diffHtml = '';
-                  if (json.diff && json.diff.text) {
-                    const d = json.diff;
-                    // Collapsed summary: filename + +adds (green) / −dels (red).
-                    const stat = [
-                      d.new_file ? '<span class="diff-stat-new">new</span>' : '',
-                      d.added ? `<span class="diff-stat-add">+${d.added}</span>` : '',
-                      d.removed ? `<span class="diff-stat-del">−${d.removed}</span>` : '',
-                    ].filter(Boolean).join(' ');
-                    const rows = d.text.split('\n').map(line => {
-                      let cls = 'diff-ctx', text = line;
-                      if (line.startsWith('+++') || line.startsWith('---')) cls = 'diff-meta';
-                      else if (line.startsWith('@@')) cls = 'diff-hunk';
-                      // Drop the leading diff marker (+/-/space) — the row colour
-                      // already encodes add/del, and keeping it doubles up with
-                      // markdown "- " bullets (reads as "+-"/"--").
-                      else if (line.startsWith('+')) { cls = 'diff-add'; text = line.slice(1); }
-                      else if (line.startsWith('-')) { cls = 'diff-del'; text = line.slice(1); }
-                      else if (line.startsWith(' ')) { text = line.slice(1); }
-                      return `<span class="${cls}">${esc(text) || '&nbsp;'}</span>`;
-                    }).join('');  // spans are display:block — a literal \n here would double-space the diff
-                    diffHtml = `<details class="agent-tool-output agent-tool-diff"><summary><span class="diff-file">${esc(d.file || 'diff')}</span> <span class="diff-summary-stats">${stat}</span></summary><pre class="diff-pre">${rows}</pre></details>`;
-                  }
+                  // File-write diff (write_file). `P4-01`: one renderer, shared
+                  // with history replay and compare mode.
+                  const diffHtml = buildDiffHtml(json.diff);
                   // The agent's own todo list (P6-17). `todowrite` keeps a
                   // structured task list and the prompt tells the model to use
                   // it for multi-step work; until now it surfaced only as the
@@ -4512,18 +4467,16 @@ import agentDrafts from './agentDrafts.js';   // H01
                   // so it needs no click (Law 15) — the raw output keeps its
                   // <details> inside the fold, so nothing is taken away.
                   const todoHtml = chatRenderer.buildTodoCard(json);
-                  // For file edits the "command" is the raw JSON args — redundant
-                  // next to the diff, so hide it when we have a diff to show.
-                  // Same for a todo card: it IS that JSON, rendered (P6-17).
-                  const cmdHtml2 = (cmd && !(json.diff && json.diff.text) && !todoHtml) ? `<pre class="agent-thread-cmd">${esc(cmd)}</pre>` : '';
-                  // Preserve the user's .open choice across the innerHTML
-                  // rewrite \u2014 otherwise expanding a running tool collapses
-                  // it as soon as the result lands, forcing the user to
-                  // click again. Click handling is delegated (see init at
-                  // bottom of file) so no per-node listener needed.
-                  const _wasOpen = currentToolBubble.classList.contains('open');
-                  currentToolBubble.className = 'agent-thread-node' + (ok ? '' : ' error') + (_wasOpen ? ' open' : '');
-                  currentToolBubble.innerHTML = `<div class="agent-thread-dot"></div><div class="agent-thread-header"><span class="agent-thread-icon">${ok ? '\u2713' : '\u2717'}</span><span class="agent-thread-tool">${esc(json.tool)}</span><span class="agent-thread-status">${ok ? 'done' : 'failed'}</span><span class="agent-thread-chevron">\u25B6</span></div>${todoHtml}<div class="agent-thread-content">${cmdHtml2}${outHtml}${diffHtml}</div>`;
+                  // `P4-01`: hiding the raw-JSON command next to a diff or a
+                  // todo card, and preserving the user's `.open` choice across
+                  // the rewrite, both moved into `applyAgentThreadNode` — they
+                  // were right here and absent from the other five copies.
+                  // Click handling is delegated (see init at bottom of file),
+                  // so no per-node listener is added anywhere.
+                  applyAgentThreadNode(currentToolBubble, {
+                    tool: json.tool, state: 'done', ok,
+                    command: cmd, output: outHtml, diff: diffHtml, todo: todoHtml,
+                  });
                   // Reset so thinking spinner between tools says "Thinking" not the old tool's label
                   _lastToolName = '';
                   if (todoHtml) chatRenderer.demoteSupersededTodoCards();

@@ -2,7 +2,8 @@
 // compare/stream.js — SSE streaming to panes
 import state from './state.js';
 import { addFinishBadge } from './vote.js';
-import { getModelCost, renderAskUserCard, safeDisplayImageSrc, buildTodoCard } from '../chatRenderer.js?v=20260829trustladder1';
+import { getModelCost, renderAskUserCard, safeDisplayImageSrc, buildTodoCard, buildDiffHtml } from '../chatRenderer.js?v=20260829trustladder1';
+import { applyAgentThreadNode } from '../agentThread.js';
 import markdownModule from '../markdown.js';
 import spinnerModule from '../spinner.js';
 import uiModule from '../ui.js';
@@ -533,14 +534,17 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
               aiMsgEl._imgSpinner = imgSpinner;
               currentToolBlock = null;
             } else {
-              // Agent thread node — matches main chat style
-              const _toolLabels = { bash: 'Terminal', python: 'Python', web_search: 'Web Search', read_file: 'Read File', write_file: 'Write File' };
-              const toolLabel = _toolLabels[toolName.toLowerCase()] || toolName;
-              const cmdHtml = cmd ? `<pre class="agent-thread-cmd">${escapeHtml(cmd)}</pre>` : '';
+              // `P4-01`: the same builder the main chat uses. This copy had
+              // its own five-entry label map and a hardcoded `▶`, so a web
+              // search here could never show the magnifier the same event
+              // shows in chat.
               const node = document.createElement('div');
-              node.className = 'agent-thread-node running';
-              node.innerHTML = `<div class="agent-thread-dot"></div><div class="agent-thread-header"><span class="agent-thread-icon">\u25B6</span><span class="agent-thread-tool">${escapeHtml(toolLabel)}</span><span class="agent-thread-wave">▁▂▃</span></div><div class="agent-thread-content">${cmdHtml}</div>`;
-              node.querySelector('.agent-thread-header').addEventListener('click', () => node.classList.toggle('open'));
+              applyAgentThreadNode(node, { tool: toolName, state: 'running', command: cmd });
+              // `B56`: no per-node click listener. `chat.js` binds one
+              // delegated handler on document.body that covers these nodes
+              // too, so a second one here fired alongside it and the card
+              // toggled twice — clicking a tool card in compare mode did
+              // nothing at all.
               // Animate wave
               const waveEl = node.querySelector('.agent-thread-wave');
               if (waveEl) {
@@ -590,8 +594,6 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
               if (currentToolBlock._waveInterval) { clearInterval(currentToolBlock._waveInterval); currentToolBlock._waveInterval = null; }
               const ok = (json.exit_code === 0 || json.exit_code == null);
               const cmd = json.command || '';
-              const _toolLabels2 = { bash: 'Terminal', python: 'Python', web_search: 'Web Search', read_file: 'Read File', write_file: 'Write File' };
-              const tLabel = _toolLabels2[(json.tool || '').toLowerCase()] || json.tool || '';
               let outHtml = '';
               if (json.output && json.output.trim()) {
                 outHtml = `<details class="agent-tool-output"><summary>Output</summary><pre>${escapeHtml(json.output)}</pre></details>`;
@@ -601,10 +603,15 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
               // list surfaces here as the raw JSON <pre> that P6-17 replaces
               // everywhere else. Same card, same builder — not a second one.
               const todoHtml = buildTodoCard(json);
-              const cmdHtml = (cmd && !todoHtml) ? `<pre class="agent-thread-cmd">${escapeHtml(cmd)}</pre>` : '';
-              currentToolBlock.className = 'agent-thread-node' + (ok ? '' : ' error');
-              currentToolBlock.innerHTML = `<div class="agent-thread-dot"></div><div class="agent-thread-header"><span class="agent-thread-icon">${ok ? '\u2713' : '\u2717'}</span><span class="agent-thread-tool">${escapeHtml(tLabel)}</span><span class="agent-thread-status">${ok ? 'done' : 'failed'}</span><span class="agent-thread-chevron">\u25B6</span></div>${todoHtml}<div class="agent-thread-content">${cmdHtml}${outHtml}</div>`;
-              currentToolBlock.querySelector('.agent-thread-header').addEventListener('click', () => currentToolBlock.classList.toggle('open'));
+              // `P4-01`: `diff` is passed through now. Compare mode's card had
+              // no slot for one, so a file edit here could never show what
+              // changed even when the event carried it. `B56`: no per-node
+              // listener — see the running branch above.
+              const _diff = buildDiffHtml(json.diff);
+              applyAgentThreadNode(currentToolBlock, {
+                tool: json.tool, state: 'done', ok,
+                command: cmd, output: outHtml, diff: _diff, todo: todoHtml,
+              });
               currentToolBlock = null;
               // Reset text element so next deltas create a fresh container
               aiMsgEl._textEl = null;

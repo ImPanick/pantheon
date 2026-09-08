@@ -25,13 +25,30 @@ def test_restored_tool_screenshot_uses_raster_data_url_whitelist():
 
 
 def test_streaming_tool_labels_are_escaped_before_inner_html():
-    chat = (_REPO / "static" / "js" / "chat.js").read_text(encoding="utf-8")
-    compare = (_REPO / "static" / "js" / "compare" / "stream.js").read_text(encoding="utf-8")
+    """The tool name arrives over SSE and is written into `innerHTML`.
 
-    assert '<span class="agent-thread-tool">${esc(toolLabel)}</span>' in chat
-    assert '<span class="agent-thread-tool">${toolLabel}</span>' not in chat
-    assert '<span class="agent-thread-tool">${escapeHtml(toolLabel)}</span>' in compare
-    assert '<span class="agent-thread-tool">${toolLabel}</span>' not in compare
+    `P4-01` moved this markup out of `chat.js` and `compare/stream.js` into one
+    builder, so the exact template strings this used to pin are gone. The claim
+    is unchanged and is now checked where it lives — by **running** the builder
+    on a hostile label, in
+    `test_agent_thread_card_is_one_builder.py::test_the_label_is_escaped` and
+    `::test_the_command_is_escaped`. What is left here is the property that
+    made those checks necessary: the header is built with `innerHTML`, and the
+    only thing that puts a label into it is the escaped interpolation.
+    """
+    builder = (_REPO / "static" / "js" / "agentThread.js").read_text(encoding="utf-8")
+
+    assert '<span class="agent-thread-tool">${esc(label)}</span>' in builder
+    assert '<span class="agent-thread-tool">${label}</span>' not in builder
+    assert "const esc = uiModule.esc;" in builder, (
+        "the escaper must be the shared one, not a local re-implementation"
+    )
+    # And nothing else may write that span any more — the rule `P4-01` added.
+    for name in ("chat.js", "chatRenderer.js"):
+        text = (_REPO / "static" / "js" / name).read_text(encoding="utf-8")
+        assert 'class="agent-thread-tool"' not in text, f"{name} builds the header again"
+    compare = (_REPO / "static" / "js" / "compare" / "stream.js").read_text(encoding="utf-8")
+    assert 'class="agent-thread-tool"' not in compare
 
 
 def test_generated_image_urls_are_vetted_before_assignment_or_open():
