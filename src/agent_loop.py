@@ -176,6 +176,28 @@ def _effect_fields(tool_name: Any, content: Any) -> Dict[str, Any]:
         return {}
 
 
+def _stream_fields(result: Any) -> Dict[str, Any]:
+    """The two streams, apart, for a card that can show them apart (`P4-19`).
+
+    Sent **only when there is something on stderr**. With an empty error stream
+    `output` already *is* stdout, so a second copy of it would double the
+    payload of every successful command to separate one stream from nothing;
+    and the absence of the keys is what "nothing was written to stderr" means
+    on this wire. When there is an error, the duplication is the case worth
+    paying for — the whole row is that the error was the part getting lost.
+    """
+    if not isinstance(result, dict):
+        return {}
+    err = result.get("stderr")
+    if not isinstance(err, str) or not err.strip():
+        return {}
+    out = result.get("stdout")
+    fields: Dict[str, Any] = {"stderr": err}
+    if isinstance(out, str):
+        fields["stdout"] = out
+    return fields
+
+
 def _command_fields(command: Any, full_command: Any) -> Dict[str, Any]:
     """The full argument text for one action's card (`P4-09`).
 
@@ -6904,15 +6926,23 @@ async def stream_agent_loop(
                     output_text = f'Document edited: "{title}" (v{ver}, {result.get("applied", 0)} edit(s))'
                 elif action == "update":
                     output_text = f'Document updated: "{title}" (v{ver})'
-            elif "stdout" in result:
-                # On a bash/python timeout the result carries error + (often
-                # empty) stdout/stderr; fall back to the error so the "timed
-                # out" reason reaches the UI instead of a blank result.
-                raw = result["stdout"] or result["stderr"] or result.get("error", "")
-                output_text = _truncate(raw)
             elif "output" in result:
                 # bash / python canonical result: {"output": ..., "exit_code": ...}
+                #
+                # `P4-19`. This used to come *after* the `stdout` branch below,
+                # which reads `stdout or stderr or error` — so on a timed-out
+                # command, where the result carried both streams, a non-empty
+                # stdout meant **stderr was never shown at all**. That is the
+                # row's "the user only sees stderr when stdout is empty", and
+                # the ordering was the whole of it. The merged view wins now,
+                # and the timeout branches build one.
                 raw = result["output"] or ""
+                output_text = _truncate(raw)
+            elif "stdout" in result:
+                # A result with the two streams and no merged view. Nothing in
+                # the tree produces one any more; kept because a tool outside it
+                # may, and a blank card is the worst outcome here.
+                raw = result["stdout"] or result["stderr"] or result.get("error", "")
                 output_text = _truncate(raw)
             elif "response" in result:
                 # AI interaction tools (chat_with_model, send_to_session)
@@ -6946,7 +6976,7 @@ async def stream_agent_loop(
             # `P4-09`: `full_command`. It was on `tool_start` and nowhere else, so the
             # card lost the full arguments the moment the tool finished — the
             # rewrite that draws the result had only the truncated line.
-            tool_output_data = {"type": "tool_output", "tool": block.tool_type, "command": cmd_display, "round": round_num, **_command_fields(cmd_display, full_command), "output": output_text, "exit_code": result.get("exit_code"), **block_effects}
+            tool_output_data = {"type": "tool_output", "tool": block.tool_type, "command": cmd_display, "round": round_num, **_command_fields(cmd_display, full_command), "output": output_text, "exit_code": result.get("exit_code"), **_stream_fields(result), **block_effects}
             if is_doc_tool and "action" in result:
                 tool_output_data.update({
                     "doc_id": result.get("doc_id"),
@@ -7168,6 +7198,9 @@ async def stream_agent_loop(
                 # reloaded thread showed the first 80 characters of a document
                 # write and had no way back to the rest.
                 **_command_fields(cmd_display, full_command),
+                # `P4-19`. Carried so the reloaded card can put the error in
+                # its own pane, exactly as the live one does.
+                **_stream_fields(result),
                 # `P4-20`. A refused call and a failed one are different things
                 # — one was attempted and one was not — and after a reload they
                 # looked identical, because both arrive as a non-zero exit code

@@ -163,6 +163,52 @@ export function verifierCardOptions(o) {
 }
 
 /**
+ * `P4-19`. The output panes under a finished tool card.
+ *
+ * There were two copies of this markup — the live path and history replay —
+ * and both showed one pane holding stdout and stderr **merged**, joined with a
+ * `STDERR:` marker and truncated as one string. So a failing command with
+ * chatty output lost its error message: measured, 12,000 characters of stdout
+ * and the `ValueError` on the end is gone at a 10,000-character cap. The row's
+ * summary — *"the user only sees stderr when stdout is empty"* — is that, plus
+ * a branch in the loop that read `stdout or stderr` and so never reached the
+ * second one.
+ *
+ * Two panes now when there is an error, and the error's pane opens itself: it
+ * is short, it is the reason the card is red, and a click to reach it is a
+ * click the reader should not have to make (`Law 15`). With no error there is
+ * one pane, as before, because `output` and stdout are then the same string.
+ *
+ * The exit code is shown when it is not zero and not absent. "Exited 0" on
+ * every successful card is noise; `127` and `124` are the difference between
+ * "not installed" and "killed after the timeout", and both used to read as a
+ * red card and nothing else.
+ */
+export function toolOutputPanesHtml(o) {
+  const opts = o || {};
+  const stderr = typeof opts.stderr === 'string' ? opts.stderr : '';
+  const merged = typeof opts.output === 'string' ? opts.output : '';
+  const stdout = typeof opts.stdout === 'string' ? opts.stdout : '';
+  const primary = stderr.trim() && stdout ? stdout : merged;
+  let html = '';
+  if (primary && primary.trim()) {
+    html += '<details class="agent-tool-output"><summary>Output</summary>'
+      + `<pre>${esc(primary)}</pre></details>`;
+  }
+  if (stderr.trim()) {
+    html += '<details class="agent-tool-output agent-tool-stderr" open>'
+      + '<summary>Error output (stderr)</summary>'
+      + `<pre>${esc(stderr)}</pre></details>`;
+  }
+  const code = Number(opts.exit_code);
+  if (opts.exit_code != null && Number.isFinite(code) && code !== 0) {
+    html += `<div class="agent-thread-exit-code">Exited ${esc(String(code))}`
+      + (code === 124 ? ' (timed out)' : '') + '</div>';
+  }
+  return html;
+}
+
+/**
  * `P4-20`. The card for a call the policy refused.
  *
  * A blocked call never runs, so it gets no `tool_start` — and `tool_start` is
@@ -375,6 +421,6 @@ export function applyAgentThreadNode(node, o) {
 export default { agentThreadNodeHtml, applyAgentThreadNode, toolLabel, toolIcon,
                  nodeClassName, roundBadgeHtml, approvedBadgeHtml,
                  commandBlockHtml, highlightCommandBlocks, verifierCardOptions,
-                 blockedCardOptions,
+                 blockedCardOptions, toolOutputPanesHtml,
                  TOOL_LABELS, TOOL_ICONS, CMD_LANGUAGES, SEARCH_ICON,
                  APPROVED_ICON, COPY_ICON };

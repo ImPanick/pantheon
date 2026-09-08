@@ -18,6 +18,43 @@ PROGRESS_TAIL_LINES = 12
 TMUX_CAPTURE_LINES = 2000
 
 
+def split_streams(stdout: str, stderr: str, *, limit: int = MAX_OUTPUT_CHARS) -> Dict[str, str]:
+    """`P4-19`. One result carrying stdout and stderr, neither able to bury the other.
+
+    The two streams were joined into a single blob and then truncated as one,
+    which meant **a failing command with chatty output lost its error message
+    entirely** — measured: 12,000 characters of stdout and the `ValueError` on
+    the end is gone at a 10,000-character cap, from the card and from the
+    model's context alike. The row's summary ("the user only sees stderr when
+    stdout is empty") is that, with the mechanism found.
+
+    So stderr gets a reserved share of the budget rather than the leftovers. A
+    quarter, because an error message is short and decisive where stdout is
+    long and often noise: the reserve is only spent when there is an error to
+    spend it on, and stdout keeps the whole budget whenever stderr is empty.
+    The merged `output` therefore still fits the same cap it always did — this
+    reallocates the budget rather than widening it.
+
+    `output` stays exactly the shape every reader already expects, including
+    the `STDERR:` marker the model has been trained on in this prompt; `stdout`
+    and `stderr` are added beside it so a card can show them apart (`Law 1`).
+    """
+    from src.tool_execution import _truncate
+
+    err = (stderr or "").rstrip()
+    out = (stdout or "").rstrip()
+    reserve = max(0, limit // 4)
+    err_budget = min(len(err), reserve) if err else 0
+    err_text = _truncate(err, reserve) if err else ""
+    out_text = _truncate(out, max(0, limit - err_budget))
+    merged = (out_text + "\nSTDERR: " + err_text).strip() if err_text else out_text
+    return {
+        "output": merged or "(no output)",
+        "stdout": out_text,
+        "stderr": err_text,
+    }
+
+
 async def _create_bash_subprocess(command: str, **kwargs):
     """Start the agent shell with Bash semantics on every supported OS.
 
@@ -367,16 +404,11 @@ class BashTool:
                 return {
                     "error": f"bash: timed out after {DEFAULT_BASH_TIMEOUT}s — sent Ctrl-C to tmux session",
                     "exit_code": 124,
-                    "stdout": _truncate(stdout, MAX_OUTPUT_CHARS),
-                    "stderr": _truncate(stderr, MAX_OUTPUT_CHARS),
+                    **split_streams(stdout, stderr),
                     "tmux_session": _tmux_session_name(str(session_id)),
                 }
-            output = stdout.rstrip()
-            err = stderr.rstrip()
-            if err:
-                output = (output + "\nSTDERR: " + err).strip() if output else "STDERR: " + err
             return {
-                "output": _truncate(output, MAX_OUTPUT_CHARS) or "(no output)",
+                **split_streams(stdout, stderr),
                 "exit_code": rc or 0,
                 "tmux_session": _tmux_session_name(str(session_id)),
             }
@@ -397,13 +429,12 @@ class BashTool:
             progress_cb=progress_cb,
         )
         if timed_out:
-            return {"error": f"bash: timed out after {DEFAULT_BASH_TIMEOUT}s — process killed", "exit_code": 124, "stdout": _truncate(stdout, MAX_OUTPUT_CHARS), "stderr": _truncate(stderr, MAX_OUTPUT_CHARS)}
-        output = stdout.rstrip()
-        err = stderr.rstrip()
-        if err:
-            output = (output + "\nSTDERR: " + err).strip() if output else "STDERR: " + err
-        output = _truncate(output, MAX_OUTPUT_CHARS)
-        return {"output": output or "(no output)", "exit_code": rc or 0}
+            # `P4-19`: `output` too. This branch returned the two streams and no
+            # merged view, so a killed command drew a card with nothing in it —
+            # the one case where what it managed to print matters most.
+            return {"error": f"bash: timed out after {DEFAULT_BASH_TIMEOUT}s — process killed",
+                    "exit_code": 124, **split_streams(stdout, stderr)}
+        return {**split_streams(stdout, stderr), "exit_code": rc or 0}
 
 class PythonTool:
     async def execute(self, content: str, ctx: dict) -> dict:
@@ -423,10 +454,6 @@ class PythonTool:
             progress_cb=progress_cb,
         )
         if timed_out:
-            return {"error": f"python: timed out after {DEFAULT_PYTHON_TIMEOUT}s — process killed", "exit_code": 124, "stdout": _truncate(stdout, MAX_OUTPUT_CHARS), "stderr": _truncate(stderr, MAX_OUTPUT_CHARS)}
-        output = stdout.rstrip()
-        err = stderr.rstrip()
-        if err:
-            output = (output + "\nSTDERR: " + err).strip() if output else "STDERR: " + err
-        output = _truncate(output, MAX_OUTPUT_CHARS)
-        return {"output": output or "(no output)", "exit_code": rc or 0}
+            return {"error": f"python: timed out after {DEFAULT_PYTHON_TIMEOUT}s — process killed",
+                    "exit_code": 124, **split_streams(stdout, stderr)}
+        return {**split_streams(stdout, stderr), "exit_code": rc or 0}

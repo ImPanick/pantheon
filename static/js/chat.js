@@ -25,7 +25,7 @@ import slashCommands, { initSlashCommands, isCommand, handleSlashCommand, handle
 import createResearchSynapse from './researchSynapse.js';
 import { createStreamRenderer } from './streamingRenderer.js';
 import { applyAgentThreadNode, verifierCardOptions, blockedCardOptions,
-         TOOL_LABELS } from './agentThread.js';
+         toolOutputPanesHtml, TOOL_LABELS } from './agentThread.js';
 import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArrowUpRecall.js?v=20260714promptrecall';
 import {
   createIncrementalDisplayProjector,
@@ -4534,10 +4534,11 @@ import agentDrafts from './agentDrafts.js';   // H01
                   }
                   const ok = (json.exit_code === 0 || json.exit_code == null);
                   const cmd = json.command || '';
-                  let outHtml = '';
-                  if (json.output && json.output.trim()) {
-                    outHtml = `<details class="agent-tool-output"><summary>Output</summary><pre>${esc(json.output)}</pre></details>`;
-                  }
+                  // `P4-19`: one builder for the panes. There were two copies
+                  // of this markup and both merged stdout and stderr into one
+                  // pane, which is how a failing command with chatty output
+                  // came to lose its error message.
+                  const outHtml = toolOutputPanesHtml(json);
                   // File-write diff (write_file). `P4-01`: one renderer, shared
                   // with history replay and compare mode.
                   const diffHtml = buildDiffHtml(json.diff);

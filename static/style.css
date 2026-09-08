@@ -10827,6 +10827,24 @@ body.fullwidth-chat .chat-history {
   color: var(--color-error);
 }
 
+/* `P4-19`. The error stream in its own pane, and the exit code that used to be
+   nothing but a red card. The stderr pane opens itself, so it is styled to
+   read as the reason rather than as more output. `--color-error` where a theme
+   has one; no `--accent` reference. */
+.agent-tool-stderr > summary {
+  color: color-mix(in srgb, var(--color-error) 85%, var(--fg));
+}
+.agent-tool-stderr > pre {
+  border-left: 2px solid color-mix(in srgb, var(--color-error) 55%, transparent);
+  padding-left: 8px;
+}
+.agent-thread-exit-code {
+  margin: 4px 0 2px;
+  font-size: 0.78em;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--fg) 60%, transparent);
+}
+
 /* `P4-20`. Why a call was refused. Inside the card's fold, beside where the
    output of a call that ran would be — because that is the question a reader
    has about a card that says "blocked". */

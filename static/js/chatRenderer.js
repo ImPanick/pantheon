@@ -19,7 +19,7 @@ import { getTools } from './appConfig.js';
 // the rung is the one that reads them — see the header of that module.
 import { buildAllowRuleChooser } from './trustLadder.js';
 import { applyAgentThreadNode, verifierCardOptions,
-         blockedCardOptions } from './agentThread.js';
+         blockedCardOptions, toolOutputPanesHtml } from './agentThread.js';
 
 // The decisions that mean yes, and the whole of that set.
 //
@@ -3348,10 +3348,9 @@ export function addMessage(role, content, modelName, metadata) {
               pendingAskUser = askUserWithEffects(ev);
             }
             const ok = (ev.exit_code === 0 || ev.exit_code == null);
-            let outHtml = '';
-            if (ev.output && ev.output.trim()) {
-              outHtml = `<details class="agent-tool-output"><summary>Output</summary><pre>${esc(ev.output)}</pre></details>`;
-            }
+            // `P4-19`: the same builder the live path uses. This was the
+            // second copy of the merged-pane markup.
+            let outHtml = toolOutputPanesHtml(ev);
             const screenshotSrc = safeToolScreenshotSrc(ev.screenshot);
             if (screenshotSrc) {
               outHtml += `<details class="agent-tool-output"><summary>Screenshot</summary><img src="${esc(screenshotSrc)}" style="max-width:100%;border-radius:6px;margin-top:6px;border:1px solid var(--border)" /></details>`;
