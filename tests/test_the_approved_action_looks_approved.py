@@ -342,6 +342,8 @@ def _calls(text: str) -> list[str]:
 ])
 def test_every_card_built_from_an_event_is_handed_its_approval(rel):
     for call in _calls((_REPO / rel).read_text(encoding="utf-8")):
+        if "verifierCardOptions(" in call:
+            continue  # `P4-17`'s verdict card — nobody approves a verdict either
         if "tool: ''" in call or 'tool: ""' in call:
             continue  # the document writer's card, which nobody approves
         assert "approved:" in call, (

@@ -10797,6 +10797,20 @@ body.fullwidth-chat .chat-history {
   overflow-x: auto;
 }
 
+/* `P4-17`. The independent verifier's findings, inside its own card's fold.
+   A plain list rather than a new card system — the card is the same shell every
+   other node in the thread uses (`Law 14`); only the contents differ. */
+.agent-thread-verifier-list {
+  margin: 4px 0 2px;
+  padding-left: 18px;
+  font-size: 0.85em;
+  line-height: 1.45;
+  color: var(--fg);
+}
+.agent-thread-verifier-list li + li {
+  margin-top: 3px;
+}
+
 /* `P5-07`. The executed command is the most copy-worthy string in the product
    and had no way to be copied, no highlight, and (before `P4-09`) no expansion.
    The button sits inside the block rather than in a bar above it, so nothing

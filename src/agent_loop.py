@@ -13,6 +13,7 @@ import json
 import re
 import time
 import logging
+from dataclasses import dataclass
 from typing import Any, AsyncGenerator, List, Dict, Optional, Set
 from urllib.parse import urlparse
 
@@ -3601,6 +3602,7 @@ def _compute_final_metrics(
     backend_gen_tps: float = 0,
     backend_prefill_tps: float = 0,
     injected_skills: Optional[list] = None,
+    verifier_findings: Optional[list] = None,
 ) -> dict:
     """Compute token counts, TPS, and build the final metrics dict."""
     if has_real_usage:
@@ -3669,6 +3671,11 @@ def _compute_final_metrics(
     # site learning about a new field.
     if injected_skills:
         metrics["skills_injected"] = list(injected_skills)
+    # `P4-17`. Same envelope, same reason: a reloaded thread that cannot say
+    # what the independent check concluded is a thread you have to take on
+    # trust about the one step whose job was to not be taken on trust.
+    if verifier_findings:
+        metrics["verifier_findings"] = list(verifier_findings)
     if round_texts:
         metrics["round_texts"] = round_texts
         metrics["round_models"] = list(round_models or [])
@@ -3753,17 +3760,53 @@ def _build_actions_snapshot(tool_events: list, limit: int = 8000) -> str:
     return snap[:limit] if len(snap) > limit else snap
 
 
+@dataclass(frozen=True)
+class VerifierVerdict:
+    """What the completion verifier concluded, including "it could not say".
+
+    `P4-17`. This used to be a bare list of issue strings, and **three
+    different things returned the empty one**: the verifier passed the work, the
+    verifier raised (network, timeout, a model that will not answer), and the
+    verifier answered without ever emitting a `VERIFICATION:` line. Not blocking
+    a valid completion on an error is the right *behaviour* and it stays; saying
+    "an independent model checked this and agreed" when the check never
+    happened is a different claim, and it is the one the row is about.
+
+    `__bool__` is "are there issues to fix", which is what the loop's `if`
+    already meant, so the fix-it branch is untouched and an unavailable verifier
+    still cannot block a finish.
+    """
+
+    outcome: str                       # "pass" | "fail" | "unavailable"
+    issues: tuple[str, ...] = ()
+    detail: str = ""                   # why, when it could not say
+
+    def __bool__(self) -> bool:
+        return bool(self.issues)
+
+    def as_event(self, round_num: int) -> dict:
+        return {
+            "type": "verifier",
+            "round": round_num,
+            "outcome": self.outcome,
+            "issues": list(self.issues),
+            "detail": self.detail,
+        }
+
+
 async def _run_verifier_subagent(
     instruction: str, actions_snapshot: str,
     *, endpoint_url: str, model: str, headers: dict,
-) -> list:
+) -> VerifierVerdict:
     """Fresh-context completion verifier. A second model instance with NO
     shared history reads the user's request + a record of what the agent did
     and judges whether the task is genuinely complete. The independent context
     is the whole point: a model checking its own work rationalizes; one that
-    didn't do the work reads it cold. Returns a list of failure reasons
-    (empty = pass, or silently empty on any error so it can't block a valid
-    completion)."""
+    didn't do the work reads it cold.
+
+    Returns a `VerifierVerdict`. It is falsey unless there are issues, so an
+    error still cannot block a valid completion (`P4-17` kept that and stopped
+    it from also reading as a pass)."""
     from src.llm_core import llm_call_async
     prompt = (
         "You are an independent verifier. Another assistant just claimed the "
@@ -3791,16 +3834,35 @@ async def _run_verifier_subagent(
         )
     except Exception as e:
         logger.warning(f"[agent] verifier subagent failed: {e}")
-        return []
+        return VerifierVerdict("unavailable", detail=f"the check did not run: {e}")
     raw = _strip_think_blocks(raw or "")
     last_v = None
     for line in raw.splitlines():
         if "VERIFICATION:" in line:
             last_v = line.strip()
-    if not last_v or "VERIFICATION: FAIL:" not in last_v:
-        return []
+    if not last_v:
+        return VerifierVerdict(
+            "unavailable",
+            detail="the verifier answered without a verdict line",
+        )
+    if "VERIFICATION: FAIL:" not in last_v:
+        # A bare `VERIFICATION: FAIL` — no colon, so no reasons — used to land
+        # here and be reported as a pass. It is a refusal to sign off, and it
+        # is not a pass.
+        if "FAIL" in last_v.upper():
+            return VerifierVerdict(
+                "fail",
+                issues=("the verifier refused to sign off and gave no reason",),
+            )
+        return VerifierVerdict("pass")
     reasons = last_v.split("VERIFICATION: FAIL:", 1)[1].strip()
-    return [r.strip() for r in reasons.split(";") if r.strip()]
+    issues = tuple(r.strip() for r in reasons.split(";") if r.strip())
+    if not issues:
+        return VerifierVerdict(
+            "fail",
+            issues=("the verifier said FAIL and listed nothing",),
+        )
+    return VerifierVerdict("fail", issues=issues)
 
 
 def _empty_response_fallback(
@@ -4012,6 +4074,7 @@ async def stream_agent_loop(
       - data: {"type": "tool_output", "tool": "...", ...}   (after execution)
       - data: {"type": "agent_step", "round": N}            (next round)
       - data: {"type": "skills_injected", "data": [...]}    (P4-16, once, up front)
+      - data: {"type": "verifier", "outcome": "...", ...}    (P4-17, per check)
       - data: {"type": "steer_applied", "round": N, ...}    (P6-18: a mid-run
                                                              steer reached the
                                                              model at round N)
@@ -5088,6 +5151,9 @@ async def stream_agent_loop(
     # on such turns and at most _VERIFIER_MAX_ROUNDS times.
     _effectful_used = False
     _verifier_rounds = 0
+    # `P4-17`. Every verdict this turn, in order, for the metrics envelope —
+    # the verifier can run twice, and a reloaded thread has to show both.
+    _verifier_findings: list = []
     _verifier_instruction = _extract_last_user_message(messages)
     # Plan execution: the last user message is the bare trigger the Execute
     # button sends ("Execute the approved plan."), which names no deliverables,
@@ -6255,9 +6321,20 @@ async def stream_agent_loop(
                     _build_actions_snapshot(tool_events),
                     endpoint_url=endpoint_url, model=model, headers=headers,
                 )
+                # `P4-17`. A second model reads the work cold and its findings
+                # went into the prompt and nowhere else — the reader got
+                # "_Double-checked the work and found something to fix._" and
+                # never saw *what*. Reported on every outcome, not only on
+                # failure: "an independent model checked this and agreed" is
+                # worth as much as the list of complaints, and "it could not
+                # check" is worth more than either, because that is the state
+                # that used to be indistinguishable from agreement.
+                _verifier_event = _vfail.as_event(round_num)
+                _verifier_findings.append(_verifier_event)
+                yield f'data: {json.dumps(_verifier_event)}\n\n'
                 if _vfail:
                     _verifier_rounds += 1
-                    logger.info(f"[agent] verifier flagged {len(_vfail)} issue(s) on round {round_num}: {_vfail}")
+                    logger.info(f"[agent] verifier flagged {len(_vfail.issues)} issue(s) on round {round_num}: {list(_vfail.issues)}")
                     _note = "\n\n_Double-checked the work and found something to fix._\n\n"
                     yield f'data: {json.dumps({"delta": _note})}\n\n'
                     full_response += _note
@@ -6266,7 +6343,7 @@ async def stream_agent_loop(
                         "content": (
                             "An independent verifier reviewed your work against the "
                             "original request and found issues that must be fixed before "
-                            "this is actually done:\n- " + "\n- ".join(_vfail) +
+                            "this is actually done:\n- " + "\n- ".join(_vfail.issues) +
                             "\n\nFix these now using tools, then finish."
                         ),
                     })
@@ -7271,6 +7348,7 @@ async def stream_agent_loop(
         backend_gen_tps=backend_gen_tps,
         backend_prefill_tps=backend_prefill_tps,
         injected_skills=_injected_skills_seen,
+        verifier_findings=_verifier_findings,
     )
     metrics["requested_model"] = requested_model
     metrics["endpoint_id"] = actual_endpoint_id

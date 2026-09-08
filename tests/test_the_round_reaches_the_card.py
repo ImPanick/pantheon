@@ -379,17 +379,21 @@ def _calls(text: str) -> list[str]:
 
 
 @pytest.mark.parametrize("rel, expected", [
-    ("static/js/chat.js", 3),
-    ("static/js/chatRenderer.js", 1),
+    ("static/js/chat.js", 4),
+    ("static/js/chatRenderer.js", 2),
     ("static/js/compare/stream.js", 2),
 ])
 def test_every_card_built_from_an_event_is_handed_that_event_s_round(rel, expected):
     # The builder can only draw a badge it is given. `P4-01` left six call
     # sites; five render a tool event and must pass its round, and the sixth is
     # the document writer's own card, which is not a tool call and has none.
+    # `P4-17` added two more, both handing the whole option object to
+    # `verifierCardOptions`, which is where that card's round is asserted.
     calls = _calls((_REPO / rel).read_text(encoding="utf-8"))
     assert len(calls) == expected, f"{rel} has {len(calls)} calls, expected {expected}"
     for call in calls:
+        if "verifierCardOptions(" in call:
+            continue
         if "tool: ''" in call or 'tool: ""' in call:
             assert "round:" not in call, (
                 f"{rel}: the document writer's card has no round to name"

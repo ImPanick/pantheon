@@ -18,7 +18,7 @@ import { getTools } from './appConfig.js';
 // card it goes. It returns null unless the server has said it takes rules AND
 // the rung is the one that reads them — see the header of that module.
 import { buildAllowRuleChooser } from './trustLadder.js';
-import { applyAgentThreadNode } from './agentThread.js';
+import { applyAgentThreadNode, verifierCardOptions } from './agentThread.js';
 
 // The decisions that mean yes, and the whole of that set.
 //
@@ -3291,6 +3291,16 @@ export function addMessage(role, content, modelName, metadata) {
             // Click handling is delegated globally \u2014 see chat.js init.
             threadWrap.appendChild(node);
             if (evTodoHtml) demoteSupersededTodoCards();
+          }
+          // `P4-17`. The independent check's verdict, back in the round it
+          // judged. It is not a tool event and does not belong in `tool_events`
+          // — it rides the metrics envelope like `skills_injected` — so it is
+          // matched to the round here rather than swept up with the tools.
+          for (const finding of (metadata?.verifier_findings || [])) {
+            if (Number(finding?.round) !== r + 1) continue;
+            const vNode = document.createElement('div');
+            applyAgentThreadNode(vNode, verifierCardOptions(finding));
+            threadWrap.appendChild(vNode);
           }
           // Check if next round has text — extend line down to connect
           const nextTxt = (roundTexts[r + 1] || '').trim();

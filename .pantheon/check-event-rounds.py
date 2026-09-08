@@ -42,7 +42,10 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # The events that build or advance a card in the agent thread. `metrics`,
 # `ask_user`, `delta` and the rest are not thread cards and have no round.
-EVENT_TYPES = {"tool_start", "tool_progress", "tool_output", "agent_step"}
+EVENT_TYPES = {"tool_start", "tool_progress", "tool_output", "agent_step",
+               # `P4-17`. The completion verifier's verdict draws a card in the
+               # same thread and belongs to a round like everything else in it.
+               "verifier"}
 
 # (file, event type, name spread in) -> why that spread carries the round.
 # A spread is the only way a thread event may omit `round`, and only here.

@@ -24,7 +24,7 @@ import codeRunnerModule from './codeRunner.js';
 import slashCommands, { initSlashCommands, isCommand, handleSlashCommand, handleSetupInput, handleSetupWizard, typewriterInto } from './slashCommands.js?v=20260815approvalsave1';
 import createResearchSynapse from './researchSynapse.js';
 import { createStreamRenderer } from './streamingRenderer.js';
-import { applyAgentThreadNode, TOOL_LABELS } from './agentThread.js';
+import { applyAgentThreadNode, verifierCardOptions, TOOL_LABELS } from './agentThread.js';
 import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArrowUpRecall.js?v=20260714promptrecall';
 import {
   createIncrementalDisplayProjector,
@@ -4201,6 +4201,30 @@ import agentDrafts from './agentDrafts.js';   // H01
                 // memories pill beside it.
                 if (_isBg) continue;
                 holder._skillsInjected = json.data;
+              } else if (json.type === 'verifier') {
+                // `P4-17`. A second model with no shared history judged whether
+                // the work actually matches the request. Its findings went into
+                // the prompt and nowhere else, so the reader saw "Double-checked
+                // the work and found something to fix" and never saw what.
+                //
+                // The card lands in the round's own thread, because that is
+                // where the work it is judging is. There is always one: the
+                // verifier only runs after effectful tool calls. The fallback
+                // is a bare container rather than a copy of the thread-creation
+                // logic above — the has-top / has-bottom connectors describe a
+                // thread that continues into text, and a lone verdict does not.
+                if (_isBg) continue;
+                let vThread = lastToolThread;
+                if (!vThread || !vThread.isConnected) {
+                  vThread = document.createElement('div');
+                  vThread.className = 'agent-thread';
+                  document.getElementById('chat-history')?.appendChild(vThread);
+                  lastToolThread = vThread;
+                }
+                const vNode = document.createElement('div');
+                applyAgentThreadNode(vNode, verifierCardOptions(json));
+                vThread.appendChild(vNode);
+                uiModule.scrollHistory();
               } else if (json.type === 'compacted') {
                 if (!_isBg) {
                   uiModule.showToast('Context compacted — older messages summarized');

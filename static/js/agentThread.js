@@ -120,6 +120,49 @@ export const APPROVED_ICON =
   '<path d="M20 6 9 17l-5-5"/></svg>';
 
 /**
+ * `P4-17`. The completion verifier's card.
+ *
+ * A second model with no shared history reads the request and a record of what
+ * the agent actually did, and judges whether the claim of "done" holds. Its
+ * findings went into the prompt and nowhere else: the reader got the sentence
+ * *"Double-checked the work and found something to fix"* and never saw what.
+ *
+ * Three outcomes, not two. `unavailable` is the one that matters — the check
+ * raised, timed out, or answered without a verdict — and it used to be
+ * indistinguishable from a pass, both in the code and on screen. A card that
+ * says a second model agreed, when no second model spoke, is the worst
+ * available answer.
+ *
+ * Same shell as every other card in the thread (`P4-01`), given a label
+ * because it is not a tool call.
+ */
+export function verifierCardOptions(o) {
+  const outcome = ({ pass: 'pass', fail: 'fail' })[o && o.outcome] || 'unavailable';
+  const issues = Array.isArray(o && o.issues) ? o.issues.filter(Boolean) : [];
+  const label = outcome === 'pass'
+    ? 'Verified'
+    : (outcome === 'fail' ? 'Verification failed' : 'Not verified');
+  const rows = outcome === 'fail'
+    ? issues
+    : (outcome === 'unavailable'
+        ? [String((o && o.detail) || 'the independent check did not run')]
+        : ['An independent model reviewed the work against the request and '
+           + 'found nothing to fix.']);
+  const body = rows.length
+    ? '<ul class="agent-thread-verifier-list">'
+      + rows.map((r) => `<li>${esc(String(r))}</li>`).join('')
+      + '</ul>'
+    : '';
+  return {
+    tool: '', label, state: 'done', round: o && o.round,
+    // `ok` drives the glyph and the error styling. Only a pass is a tick: a
+    // check that could not run has not agreed with anything.
+    ok: outcome === 'pass',
+    output: body,
+  };
+}
+
+/**
  * `P4-12`. The badge on an action the user personally authorised.
  *
  * The flag has been on the wire on four events since exact approvals shipped
@@ -302,6 +345,6 @@ export function applyAgentThreadNode(node, o) {
 
 export default { agentThreadNodeHtml, applyAgentThreadNode, toolLabel, toolIcon,
                  nodeClassName, roundBadgeHtml, approvedBadgeHtml,
-                 commandBlockHtml, highlightCommandBlocks, TOOL_LABELS,
-                 TOOL_ICONS, CMD_LANGUAGES, SEARCH_ICON, APPROVED_ICON,
-                 COPY_ICON };
+                 commandBlockHtml, highlightCommandBlocks, verifierCardOptions,
+                 TOOL_LABELS, TOOL_ICONS, CMD_LANGUAGES, SEARCH_ICON,
+                 APPROVED_ICON, COPY_ICON };
