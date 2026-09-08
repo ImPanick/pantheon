@@ -1275,6 +1275,8 @@ export function buildFindingsBox(findings, expanded) {
    `in progress` chip in words next to the accent-tinted row, a plain box for
    pending. Nothing is hidden that used to be visible — the raw output stays in
    its `<details>` behind the same chevron every other tool card uses. */
+const SKILL_PILL_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>';
+
 const TODO_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>';
 
 /** The three statuses `todowrite` accepts — `coding_tools.py:34`. */
@@ -2134,17 +2136,7 @@ export function createMsgFooter(msgElement) {
     pill.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px"><path d="M12 2a7 7 0 0 1 7 7c0 2.5-1.3 4.8-3.5 6-.3.2-.5.5-.5.9V18h-6v-2.1c0-.4-.2-.7-.5-.9C6.3 13.8 5 11.5 5 9a7 7 0 0 1 7-7z"/><path d="M9 18h6v1a3 3 0 0 1-6 0v-1z"/><path d="M12 2v7"/><path d="M8.5 6.5L12 9l3.5-2.5"/></svg><span class="memory-used-pill-text">${parts.join(', ')}</span>`;
     pill.title = mems.map(m => `[${m.type}] ${m.text}`).join('\n');
 
-    pill.addEventListener('click', (e) => {
-      e.stopPropagation();
-      let detail = pill._openDetail || document.querySelector('.memory-used-detail');
-      if (detail) {
-        if (typeof detail._dismiss === 'function') detail._dismiss();
-        else { detail.remove(); pill._openDetail = null; }
-        return;
-      }
-      detail = document.createElement('div');
-      detail.className = 'memory-used-detail';
-      let closeDetail = () => { detail.remove(); pill._openDetail = null; };
+    bindFooterPopover(pill, 'memory-used-detail', (detail, closeDetail) => {
       mems.forEach(m => {
         const row = document.createElement('div');
         row.className = 'memory-used-row';
@@ -2166,32 +2158,128 @@ export function createMsgFooter(msgElement) {
         });
         detail.appendChild(row);
       });
-      detail.style.visibility = 'hidden';
-      document.body.appendChild(detail);
-      const pillRect = pill.getBoundingClientRect();
-      const detailRect = detail.getBoundingClientRect();
-      const spaceAbove = pillRect.top;
-      const spaceBelow = window.innerHeight - pillRect.bottom;
-      if (spaceAbove >= detailRect.height + 8 || spaceAbove > spaceBelow) {
-        detail.style.top = (pillRect.top - detailRect.height - 8) + 'px';
-      } else {
-        detail.style.top = (pillRect.bottom + 8) + 'px';
-      }
-      detail.style.left = pillRect.left + 'px';
-      if (pillRect.left + detailRect.width > window.innerWidth - 8) {
-        detail.style.left = (window.innerWidth - detailRect.width - 8) + 'px';
-      }
-      if (parseFloat(detail.style.left) < 8) detail.style.left = '8px';
-      detail.style.visibility = '';
-      pill._openDetail = detail;
-      // Close on outside click or Escape (pill click toggles, so it's inside).
-      closeDetail = bindMenuDismiss(detail, () => { detail.remove(); pill._openDetail = null; }, (ev) => !detail.contains(ev.target) && ev.target !== pill);    });
+    });
 
+    footer.appendChild(pill);
+  }
+
+  // `P4-16`. Which skills the agent was shown. Up to a dozen procedures enter a
+  // request and nothing said which — the loop knew all of it and emitted none.
+  // Same footer, same popover mechanics, deliberately the same shape as the
+  // memory pill beside it, because it answers the same kind of question.
+  const skills = msgElement._skillsInjected;
+  if (skills && skills.length > 0) {
+    const pill = document.createElement('button');
+    pill.className = 'skills-used-pill';
+    pill.type = 'button';
+    const taught = skills.filter(s => s.source === 'teacher-escalation').length;
+    const label = skills.length === 1 ? '1 skill' : `${skills.length} skills`;
+    pill.innerHTML = SKILL_PILL_ICON
+      + `<span class="skills-used-pill-text">${esc(label)}</span>`;
+    pill.title = skills
+      .map(s => `${s.name}${s.category ? ` (${s.category})` : ''}`)
+      .join('\n');
+    pill.setAttribute('aria-label',
+      taught ? `${label} available, ${taught} written by the teacher` : `${label} available`);
+    bindFooterPopover(pill, 'skills-used-detail', (detail, closeDetail) => {
+      skills.forEach(s => {
+        const row = document.createElement('div');
+        row.className = 'skills-used-row';
+        row.style.cursor = 'pointer';
+        row.title = 'Click to open the skills tab';
+        const badge = document.createElement('span');
+        const teacherWritten = s.source === 'teacher-escalation';
+        badge.className = 'skills-used-badge' + (teacherWritten ? ' taught' : '');
+        badge.textContent = s.category || 'general';
+        const text = document.createElement('span');
+        text.className = 'skills-used-text';
+        // The provenance the row asks for, stated rather than implied: a
+        // procedure a teacher model wrote after a failure is not the same
+        // claim as one the user wrote, and which teacher wrote it matters
+        // when the answer turns out to be wrong.
+        text.textContent = s.name
+          + (s.status === 'draft' ? ' (draft)' : '')
+          + (teacherWritten && s.teacher_model ? ` — taught by ${s.teacher_model}` : '')
+          + (teacherWritten && !s.teacher_model ? ' — teacher-written' : '');
+        row.appendChild(badge);
+        row.appendChild(text);
+        row.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          closeDetail();
+          // Skills are a tab inside the Brain modal, not a panel of their own,
+          // so this opens the modal and then selects that tab — landing on the
+          // list rather than one screen short of it (Law 15). The first guess
+          // here was a `skills-panel` id that does not exist, and the wiring
+          // ratchet is what caught it.
+          const memModal = document.getElementById('memory-modal');
+          if (memModal) memModal.classList.remove('hidden');
+          const tab = document.querySelector('[data-memory-tab="skills"]');
+          if (tab) tab.click();
+        });
+        detail.appendChild(row);
+      });
+    });
     footer.appendChild(pill);
   }
 
   footer.appendChild(actions);
   return footer;
+}
+
+/**
+ * The footer pill popover, once.
+ *
+ * `P4-16`. The memory pill grew ~50 lines of "measure the pill, flip above or
+ * below depending on room, clamp to the viewport, dismiss on outside click or
+ * Escape" and the skills pill needs exactly that. Two copies of viewport
+ * arithmetic drift in the way `P4-01` documents at length, so it is one
+ * function and each caller supplies only its own rows (`Law 14`).
+ *
+ * `buildRows(detail, close)` fills the popover. `close` is safe to call from a
+ * row handler — it closes whichever popover is actually open.
+ */
+export function bindFooterPopover(pill, detailClass, buildRows) {
+  pill.addEventListener('click', (e) => {
+    e.stopPropagation();
+    let detail = pill._openDetail || document.querySelector('.' + detailClass);
+    if (detail) {
+      if (typeof detail._dismiss === 'function') detail._dismiss();
+      else { detail.remove(); pill._openDetail = null; }
+      return;
+    }
+    detail = document.createElement('div');
+    detail.className = detailClass;
+    // Reassigned below once `bindMenuDismiss` returns its own closer; rows
+    // capture the binding, not the value, so a row clicked after that point
+    // still closes through the dismisser rather than around it.
+    let closeDetail = () => { detail.remove(); pill._openDetail = null; };
+    buildRows(detail, (...args) => closeDetail(...args));
+    detail.style.visibility = 'hidden';
+    document.body.appendChild(detail);
+    const pillRect = pill.getBoundingClientRect();
+    const detailRect = detail.getBoundingClientRect();
+    const spaceAbove = pillRect.top;
+    const spaceBelow = window.innerHeight - pillRect.bottom;
+    if (spaceAbove >= detailRect.height + 8 || spaceAbove > spaceBelow) {
+      detail.style.top = (pillRect.top - detailRect.height - 8) + 'px';
+    } else {
+      detail.style.top = (pillRect.bottom + 8) + 'px';
+    }
+    detail.style.left = pillRect.left + 'px';
+    if (pillRect.left + detailRect.width > window.innerWidth - 8) {
+      detail.style.left = (window.innerWidth - detailRect.width - 8) + 'px';
+    }
+    if (parseFloat(detail.style.left) < 8) detail.style.left = '8px';
+    detail.style.visibility = '';
+    pill._openDetail = detail;
+    // Close on outside click or Escape (pill click toggles, so it's inside).
+    closeDetail = bindMenuDismiss(
+      detail,
+      () => { detail.remove(); pill._openDetail = null; },
+      (ev) => !detail.contains(ev.target) && ev.target !== pill,
+    );
+  });
+  return pill;
 }
 
 /**
@@ -3220,6 +3308,7 @@ export function addMessage(role, content, modelName, metadata) {
       const firstWrap = lastMsgAi || lastWrap;
       if (firstWrap && firstWrap.classList.contains('msg-ai')) {
         if (metadata?.memories_used?.length) firstWrap._memoriesUsed = metadata.memories_used;
+        if (metadata?.skills_injected?.length) firstWrap._skillsInjected = metadata.skills_injected;
         firstWrap.appendChild(createMsgFooter(firstWrap));
         if (metadata) displayMetrics(firstWrap, metadata);
       }
@@ -3542,6 +3631,9 @@ export function addMessage(role, content, modelName, metadata) {
       // survives a page refresh (live-stream path sets it via SSE, but
       // history reloads need this assignment).
       if (metadata?.memories_used?.length) wrap._memoriesUsed = metadata.memories_used;
+      // `P4-16`. Same propagation, same reason: the live stream sets this over
+      // SSE and a reloaded thread has only the saved metadata to read from.
+      if (metadata?.skills_injected?.length) wrap._skillsInjected = metadata.skills_injected;
       wrap.appendChild(createMsgFooter(wrap));
       if (metadata) displayMetrics(wrap, metadata);
     } else {

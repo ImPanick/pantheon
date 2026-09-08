@@ -2397,6 +2397,11 @@ def setup_chat_routes(
                         temperature=ctx.preset.temperature,
                         max_tokens=ctx.preset.max_tokens,
                         prompt_type=preset_id,
+                        # `P4-16`. The chat preface injects a skills index and
+                        # so does the loop; handing this half over lets the loop
+                        # report one merged list instead of two halves each
+                        # knowing only about itself.
+                        preface_injected_skills=ctx.injected_skills,
                         max_tool_calls=_tool_budget,
                         max_rounds=_max_rounds,
                         context_length=_selected_context_length,

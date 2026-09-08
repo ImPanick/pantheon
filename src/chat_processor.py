@@ -312,6 +312,10 @@ class ChatProcessor:
 
         # Memory: core pinned facts + relevant pinned/extended recall.
         self._last_used_memories = []  # track what was injected
+        # `P4-16`. Same idea, one turn later in the same method: the skills
+        # index the agent was shown. Reset here so a turn that injects none
+        # reports none rather than repeating the previous turn's list.
+        self._last_injected_skills = []
         if use_memory:
             mem_entries = self.memory_manager.load(owner=owner)
 
@@ -520,6 +524,20 @@ class ChatProcessor:
             except Exception as e:
                 logger.debug(f"Skills index unavailable: {e}")
                 idx = []
+            # `P4-16`. What went in, recorded where the caller can read it —
+            # the same shape `_last_used_memories` already has, and read by
+            # `build_chat_context` two lines after it reads that one.
+            self._last_injected_skills = [
+                {
+                    "name": s.get("name", ""),
+                    "category": s.get("category", "general"),
+                    "status": s.get("status", "published"),
+                    "source": s.get("source", ""),
+                    "teacher_model": s.get("teacher_model", ""),
+                    "via": "preface",
+                }
+                for s in idx
+            ]
             if idx:
                 by_cat: Dict[str, list] = {}
                 for s in idx:

@@ -2613,8 +2613,17 @@ def _build_system_prompt(
     suppress_skills: bool = False,
     active_email: Optional[Dict[str, str]] = None,
     workspace: Optional[str] = None,
+    context_report: Optional[Dict[str, Any]] = None,
 ) -> List[Dict]:
-    """Build agent system prompt, inject MCP/document context, merge consecutive system msgs."""
+    """Build agent system prompt, inject MCP/document context, merge consecutive system msgs.
+
+    `context_report`, when given, is filled in with what this call put in front
+    of the model — currently `skill_index`, the list behind the "Available
+    skills" block (`P4-16`). It is an out-parameter rather than a return value
+    because the return type belongs to the messages, and rather than module
+    state because two requests share this process and a per-request record that
+    races reports one user's context to another.
+    """
     global _cached_base_prompt, _cached_base_prompt_key
     if suppress_local_context:
         active_document = None
@@ -2640,6 +2649,7 @@ def _build_system_prompt(
             mcp_disabled_map=mcp_disabled_map, compact=compact, owner=owner,
             suppress_local_context=suppress_local_context,
             suppress_skills=suppress_skills,
+            context_report=context_report,
         )
     else:
         agent_prompt, _skill_index_block = _build_base_prompt(
@@ -2652,6 +2662,7 @@ def _build_system_prompt(
             owner=owner,
             suppress_local_context=suppress_local_context,
             suppress_skills=suppress_skills,
+            context_report=context_report,
         )
         if not active_document:
             _cached_base_prompt = agent_prompt
@@ -3250,6 +3261,7 @@ def _build_base_prompt(
     owner: Optional[str] = None,
     suppress_local_context: bool = False,
     suppress_skills: bool = False,
+    context_report: Optional[Dict[str, Any]] = None,
 ):
     """Build the agent prompt with only relevant tools included.
 
@@ -3302,6 +3314,10 @@ def _build_base_prompt(
     # The caller wraps it in untrusted_context_message and ships it as a
     # user-role message — same treatment as the matched-skills block.
     skill_index_block = ""
+    # `P4-16`. Returned alongside the block so the loop can say what it injected
+    # without asking the store a second time — the same list, not a second pass
+    # over it with arguments that can drift out of step (`Law 13`).
+    skill_index_used: list = []
     if not suppress_local_context and not suppress_skills:
         try:
             from services.memory.skills import SkillsManager
@@ -3326,12 +3342,65 @@ def _build_base_prompt(
                         badge = " *(draft)*" if s.get("status") == "draft" else ""
                         lines.append(f"- `{s['name']}` — {s['description']}{badge}")
                 skill_index_block = "\n\n" + "\n".join(lines)
+                skill_index_used = [
+                    {
+                        "name": _s.get("name", ""),
+                        "category": _s.get("category", "general"),
+                        "status": _s.get("status", "published"),
+                        "source": _s.get("source", ""),
+                        "teacher_model": _s.get("teacher_model", ""),
+                        "via": "agent",
+                    }
+                    for _s in skill_idx
+                ]
         except Exception as _e:
             # Skill index is a soft enhancement — never fail prompt assembly on it.
             logger.debug(f"Skill-index injection skipped: {_e}")
 
+    # `P4-16`. An out-parameter rather than a third return value: the stubs in
+    # this suite are `lambda *a, **k: ("PROMPT", "")`, and widening the tuple
+    # broke eleven tests across three files that have nothing to do with skills.
+    # A test double that keeps working when a function learns something new is
+    # a test double describing the contract; one that breaks is describing the
+    # shape, and the shape was never the point.
+    if context_report is not None:
+        context_report["skill_index"] = list(skill_index_used)
     return agent_prompt, skill_index_block
 
+
+
+def _merge_injected_skills(*lists) -> list:
+    """One list of what the model was shown, from however many sites showed it.
+
+    `P4-16`. The skills index is injected twice in agent mode — once by the chat
+    preface and once by this loop — and the two are gated differently, which is
+    `B60`. Reporting each separately would put the same procedure on screen
+    twice and make the count meaningless, so they are merged by name here: the
+    first sighting wins for the descriptive fields, and `via` accumulates every
+    site that showed it. When `B60` is fixed one of those sites stops
+    contributing and this keeps returning the same list, which is the point of
+    merging rather than concatenating.
+    """
+    merged: dict = {}
+    for entries in lists:
+        for entry in entries or []:
+            if not isinstance(entry, dict):
+                continue
+            name = str(entry.get("name") or "").strip()
+            if not name:
+                continue
+            existing = merged.get(name)
+            if existing is None:
+                item = dict(entry)
+                via = item.pop("via", "")
+                item["name"] = name
+                item["via"] = [via] if via else []
+                merged[name] = item
+                continue
+            via = entry.get("via", "")
+            if via and via not in existing["via"]:
+                existing["via"].append(via)
+    return sorted(merged.values(), key=lambda e: (e.get("category", ""), e["name"]))
 
 
 def _resolve_tool_blocks(
@@ -3531,6 +3600,7 @@ def _compute_final_metrics(
     prep_timings: Optional[Dict[str, float]] = None,
     backend_gen_tps: float = 0,
     backend_prefill_tps: float = 0,
+    injected_skills: Optional[list] = None,
 ) -> dict:
     """Compute token counts, TPS, and build the final metrics dict."""
     if has_real_usage:
@@ -3593,6 +3663,12 @@ def _compute_final_metrics(
         }
     if tool_events:
         metrics["tool_events"] = tool_events
+    # `P4-16`. Rides the metrics envelope for the same reason `tool_events`
+    # does: `add_assistant_message` copies it straight into the stored metadata,
+    # so a reloaded thread says what the agent was shown without a fourth call
+    # site learning about a new field.
+    if injected_skills:
+        metrics["skills_injected"] = list(injected_skills)
     if round_texts:
         metrics["round_texts"] = round_texts
         metrics["round_models"] = list(round_models or [])
@@ -3926,6 +4002,7 @@ async def stream_agent_loop(
     _is_teacher_run: bool = False,
     history_session=None,
     defer_context_shaping: bool = False,
+    preface_injected_skills: Optional[List[Dict]] = None,
 ) -> AsyncGenerator[str, None]:
     """Streaming agent loop generator.
 
@@ -3934,6 +4011,7 @@ async def stream_agent_loop(
       - data: {"type": "tool_start", "tool": "...", ...}    (before execution)
       - data: {"type": "tool_output", "tool": "...", ...}   (after execution)
       - data: {"type": "agent_step", "round": N}            (next round)
+      - data: {"type": "skills_injected", "data": [...]}    (P4-16, once, up front)
       - data: {"type": "steer_applied", "round": N, ...}    (P6-18: a mid-run
                                                              steer reached the
                                                              model at round N)
@@ -4726,6 +4804,9 @@ async def stream_agent_loop(
 
     _t2 = time.time()
     _route_context_lengths = {}
+    # `P4-16`. Filled by `_build_route_request_state` (a coroutine, which cannot
+    # yield) and emitted once by the generator below.
+    _injected_skills_seen: list = []
 
     def _trim_route_request_messages(candidate_url, candidate_model, route_messages):
         """Apply the candidate route's own context budget to its request."""
@@ -4826,6 +4907,7 @@ async def stream_agent_loop(
             owner,
             headers=candidate_headers,
         )
+        _prompt_report: Dict[str, Any] = {}
         route_messages, route_mcp_schemas = _build_system_prompt(
             _strip_agent_injected_messages(compacted_source),
             candidate_model,
@@ -4868,6 +4950,19 @@ async def stream_agent_loop(
             suppress_skills=_low_signal_turn,
             active_email=active_email,
             workspace=workspace,
+            context_report=_prompt_report,
+        )
+        # `P4-16`. Up to a dozen procedures enter a request and until now
+        # nothing said which. Merged with whatever the chat preface injected,
+        # because in agent mode both sites inject and neither knows about the
+        # other (`B60`) — one list, no double count.
+        #
+        # Recorded rather than yielded: this runs inside `_build_route_request_state`,
+        # a coroutine, and a `yield` here would quietly turn it into an async
+        # generator and nothing downstream would ever await it. The outer
+        # generator emits the event once, after the first route is built.
+        _injected_skills_seen[:] = _merge_injected_skills(
+            preface_injected_skills, _prompt_report.get("skill_index"),
         )
         if doc_mode and not plan_mode and not approved_plan and not guide_only:
             route_messages = _minimal_pantheon_doc_messages(
@@ -4916,6 +5011,13 @@ async def stream_agent_loop(
         headers,
         _initial_route_source_messages,
     )
+    # `P4-16`. Which skills the model was shown, once, before the first round.
+    # Emitted here rather than inside the builder for the reason recorded there,
+    # and before any `agent_step` so the card reads as context rather than as
+    # something the agent did.
+    if _injected_skills_seen:
+        yield ("data: " + json.dumps(
+            {"type": "skills_injected", "data": list(_injected_skills_seen)}) + "\n\n")
     messages = _route_state["messages"]
     mcp_schemas = _route_state["mcp_schemas"]
     _relevant_tools = _route_state["relevant_tools"]
@@ -7145,6 +7247,7 @@ async def stream_agent_loop(
         prep_timings=prep_timings,
         backend_gen_tps=backend_gen_tps,
         backend_prefill_tps=backend_prefill_tps,
+        injected_skills=_injected_skills_seen,
     )
     metrics["requested_model"] = requested_model
     metrics["endpoint_id"] = actual_endpoint_id

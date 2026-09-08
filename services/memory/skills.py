@@ -703,6 +703,15 @@ class SkillsManager:
                 "description": s.get("description") or s.get("title", ""),
                 "category": s.get("category", "general"),
                 "status": status or "published",
+                # `P4-16`. Where the procedure came from, and — when a teacher
+                # wrote it — which model. The index is what the agent is shown,
+                # so it is also what a report of "what was it shown" has to read
+                # from; deriving those two fields from a second pass over the
+                # store would be a second answer to the same question. Neither
+                # reaches the prompt: the prompt lines are built from `name`,
+                # `description` and `category` only.
+                "source": s.get("source") or "",
+                "teacher_model": s.get("teacher_model") or "",
             })
         out.sort(key=lambda x: (x["category"], x["name"]))
         return out

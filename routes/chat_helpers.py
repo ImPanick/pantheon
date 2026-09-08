@@ -133,6 +133,11 @@ class ChatContext:
     rag_sources: list
     web_sources: list
     used_memories: list
+    # `P4-16`. The skills index the preface put in front of the model. Up to a
+    # dozen procedures enter a request and nothing said which; this is the half
+    # the preface contributes, and `stream_agent_loop` unions it with the index
+    # it injects itself before reporting — one event, one list, no double count.
+    injected_skills: list
     messages: list
     context_length: int
     was_compacted: bool
@@ -739,6 +744,7 @@ async def build_chat_context(
 
     # Capture used memories immediately
     used_memories = getattr(chat_processor, '_last_used_memories', [])
+    injected_skills = getattr(chat_processor, '_last_injected_skills', [])
 
     # Inject pre-fetched search context (compare mode)
     if search_context and allow_tool_preprocessing and not casual_low_signal:
@@ -808,6 +814,7 @@ async def build_chat_context(
         rag_sources=rag_sources,
         web_sources=web_sources,
         used_memories=used_memories,
+        injected_skills=injected_skills,
         messages=messages,
         context_length=context_length,
         was_compacted=was_compacted,
@@ -1052,6 +1059,7 @@ def save_assistant_response(
     rag_sources: list = None,
     research_sources: list = None,
     used_memories: list = None,
+    injected_skills: list = None,
     do_research: bool = False,
     tool_events: list = None,
     incognito: bool = False,
@@ -1086,6 +1094,11 @@ def save_assistant_response(
         md["research_sources"] = research_sources
     if used_memories:
         md["memories_used"] = used_memories
+    # `P4-16`. Persisted for the same reason `memories_used` is: a reloaded
+    # thread that cannot say what the agent was shown is a thread that has to
+    # be taken on trust, and the whole phase is about not doing that.
+    if injected_skills:
+        md["skills_injected"] = injected_skills
     if do_research and not research_sources:
         md["research_clarification"] = True
     if tool_events:

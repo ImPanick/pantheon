@@ -4195,6 +4195,12 @@ import agentDrafts from './agentDrafts.js';   // H01
               } else if (json.type === 'memories_used') {
                 if (_isBg) continue;
                 holder._memoriesUsed = json.data;
+              } else if (json.type === 'skills_injected') {
+                // `P4-16`. Up to a dozen procedures enter a request and until
+                // now nothing said which. Same footer, same shape as the
+                // memories pill beside it.
+                if (_isBg) continue;
+                holder._skillsInjected = json.data;
               } else if (json.type === 'compacted') {
                 if (!_isBg) {
                   uiModule.showToast('Context compacted — older messages summarized');

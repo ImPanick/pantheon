@@ -4599,8 +4599,11 @@ body.bg-pattern-sparkles {
       letter-spacing: 1px;
       font-size: 0.9em;
     }
-    /* Memory-used indicator pill */
-    .memory-used-pill {
+    /* Memory-used indicator pill, and `P4-16`'s skills-injected twin. One
+       rule set, two class names: they answer the same kind of question in
+       the same footer, and two copies of this drift (`Law 14`). */
+    .memory-used-pill,
+    .skills-used-pill {
       display: inline-flex;
       align-items: center;
       background: var(--panel);
@@ -4616,10 +4619,13 @@ body.bg-pattern-sparkles {
       position: relative;
       z-index: 1;
     }
-    .memory-used-pill:hover { opacity: 1; background: var(--border); }
+    .memory-used-pill:hover,
+    .skills-used-pill:hover { opacity: 1; background: var(--border); }
     /* Nudge label text 1px down so it visually centers with the icon. */
-    .memory-used-pill-text { position: relative; top: -1px; display: inline-block; }
-    .memory-used-detail {
+    .memory-used-pill-text,
+    .skills-used-pill-text { position: relative; top: -1px; display: inline-block; }
+    .memory-used-detail,
+    .skills-used-detail {
       position: fixed;
       background: var(--panel);
       border: 1px solid var(--border);
@@ -4633,14 +4639,16 @@ body.bg-pattern-sparkles {
       box-shadow: 0 4px 12px rgba(0,0,0,0.3);
       font-size: 0.75rem;
     }
-    .memory-used-row {
+    .memory-used-row,
+    .skills-used-row {
       display: flex;
       align-items: flex-start;
       gap: 6px;
       padding: 3px 0;
       line-height: 1.3;
     }
-    .memory-used-row + .memory-used-row {
+    .memory-used-row + .memory-used-row,
+    .skills-used-row + .skills-used-row {
       border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
     }
     .memory-used-badge {
@@ -4651,9 +4659,36 @@ body.bg-pattern-sparkles {
     }
     .memory-used-badge.pinned { color: var(--red); }
     .memory-used-badge.recalled { color: var(--fg); opacity: 0.5; }
-    .memory-used-text {
+    .memory-used-text,
+    .skills-used-text {
       color: var(--fg);
       opacity: 0.85;
+    }
+    /* `P4-16`. The skills badge carries a category *word*, not the memory
+       pill's single glyph, so it is the one part of the shared rule set that
+       cannot be shared. `--color-success` marks a procedure the teacher wrote
+       after a failure — the provenance the row asks for, visible before the
+       text is read. No `--accent` reference; the theme editor owns that. */
+    .skills-used-badge {
+      flex-shrink: 0;
+      align-self: center;
+      max-width: 88px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      padding: 0 5px;
+      border-radius: 999px;
+      border: 1px solid color-mix(in srgb, var(--fg) 16%, transparent);
+      background: color-mix(in srgb, var(--fg) 7%, transparent);
+      color: color-mix(in srgb, var(--fg) 60%, transparent);
+      font-size: 0.65rem;
+      line-height: 15px;
+      text-transform: lowercase;
+    }
+    .skills-used-badge.taught {
+      border-color: color-mix(in srgb, var(--color-success) 45%, transparent);
+      background: color-mix(in srgb, var(--color-success) 14%, transparent);
+      color: color-mix(in srgb, var(--color-success) 85%, var(--fg));
     }
 
     .msg-actions {

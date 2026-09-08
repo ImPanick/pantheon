@@ -126,6 +126,9 @@ def _chat_stream_endpoint(
         rag_sources=[],
         web_sources=[],
         used_memories=[],
+        # `P4-16`. This double stands in for `ChatContext`, and the route now
+        # hands the preface's half of the skills index to the agent loop.
+        injected_skills=[],
         uploaded_files=[],
         uprefs={},
         was_compacted=False,
