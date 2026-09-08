@@ -4357,9 +4357,19 @@ import agentDrafts from './agentDrafts.js';   // H01
                     waveEl.textContent = waveFrames[waveIdx];
                   }, 100);
                 }
-                // Smooth per-second "cooking" timer — ticks every second (not
+                // Smooth per-second "cooking" timer — ticks every 50ms (not
                 // just on the 2s backend heartbeat) so a long-running tool
                 // always shows visible motion and never reads as frozen.
+                //
+                // `P4-02`: the anchor is corrected from the server on every
+                // `tool_progress`. Starting the clock here means starting it
+                // when this event was *rendered* — after the dispatch, the
+                // network, and for an approved tool after however long the
+                // person took to press the button — so the number shown was a
+                // client-side guess that could be seconds short. Worse on a
+                // resumed background stream, where `tool_start` replays and
+                // restarts the clock at zero on a tool that has been running
+                // for a minute.
                 node._startTime = Date.now();
                 node._elapsedTicker = setInterval(() => {
                   const hdr2 = node.querySelector('.agent-thread-header');
@@ -4406,11 +4416,25 @@ import agentDrafts from './agentDrafts.js';   // H01
 	                    const label = progressEl.querySelector('.agent-image-progress-label');
 	                    const value = progressEl.querySelector('.agent-image-progress-value');
 	                    if (label) label.textContent = json.message || 'Editing image…';
-	                    if (value) value.textContent = hasExactProgress ? (total ? `${step}/${total}` : `${Math.round(bounded)}%`) : (json.elapsed ? `${json.elapsed}s` : '');
+	                    // `P4-02`: `elapsed_s`. The server has always sent that key
+                    // and this read `json.elapsed`, so the indeterminate case
+                    // showed an empty string rather than a number.
+                    if (value) value.textContent = hasExactProgress ? (total ? `${step}/${total}` : `${Math.round(bounded)}%`) : (json.elapsed_s != null ? `${json.elapsed_s}s` : '');
 	                  }
 	                }
-                // The per-second ticker (started in tool_start) owns the
-                // elapsed display; here we just surface the live output tail.
+                // `P4-02`. The ticker owns the *display* — 50ms so the number
+                // moves — but the server owns the *time*. Re-anchor on every
+                // progress event so the smooth count is a correction of server
+                // truth rather than a local stopwatch that started late and
+                // drifts. `elapsed_s` has been on the wire all along; nothing
+                // read it.
+                if (currentToolBubble && json.elapsed_s != null) {
+                  const _serverElapsed = Number(json.elapsed_s);
+                  if (Number.isFinite(_serverElapsed) && _serverElapsed >= 0) {
+                    currentToolBubble._startTime = Date.now() - _serverElapsed * 1000;
+                  }
+                }
+                // Below: the live output tail.
                 const tailStr = (json.tail || '').trim();
                 if (tailStr) {
                   let tailEl = currentToolBubble.querySelector('.agent-thread-tail');
