@@ -688,6 +688,7 @@ function createSessionItem(s) {
   const _archiveIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>';
   const _deleteIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>';
   const _copyIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+  const _memoryIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4a3 3 0 0 0-3 3v1a3 3 0 0 0-1 5.8V16a3 3 0 0 0 4 2.8"/><path d="M12 4a3 3 0 0 1 3 3v1a3 3 0 0 1 1 5.8V16a3 3 0 0 1-4 2.8"/><path d="M12 4v16"/></svg>';
 
   const renameItem = document.createElement('div');
   renameItem.className = 'dropdown-item-compact';
@@ -787,9 +788,36 @@ function createSessionItem(s) {
     }
   }
 
+  // B51 — "Memory", restored. `memoryModule.extractMemory(sessionId)` is a
+  // complete implementation behind a live route (`POST /api/memory/extract`,
+  // with a `topic_analyzer` fallback) that renders its suggestions into the
+  // memory modal for the person to approve. Nothing called it. The only markup
+  // that ever pointed at it is `#memory-session-option` — "Memory / Extract
+  // memories from this session" — inside a `.dropdown.hidden` in `index.html`
+  // that nothing opens, superseded by this runtime-built menu, which carried
+  // Rename, Archive, Delete and Favorite across and left Memory behind.
+  // Found by `P3-12`'s orphan-id itemisation.
+  //
+  // `window.memoryModule` rather than an import: `memory.js` imports this
+  // file, and `:2147` already reaches it this way for the same reason.
+  const memoryItem = document.createElement('div');
+  memoryItem.className = 'dropdown-item-compact';
+  memoryItem.innerHTML = _icon(_memoryIcon) + '<span>Memory</span>';
+  memoryItem.title = 'Extract memories from this session';
+  memoryItem.addEventListener('click', (e) => {
+    e.stopPropagation();
+    dropdown.style.display = 'none';
+    if (window.memoryModule && window.memoryModule.extractMemory) {
+      window.memoryModule.extractMemory(s.id);
+    } else {
+      uiModule.showError('Memory is still loading — try again in a moment');
+    }
+  });
+
   // Copy & Move to folder
   const folderItem = buildFolderSubmenu(s.id, s.folder, dropdown);
   dropdown.appendChild(copyItem);
+  dropdown.appendChild(memoryItem);
   dropdown.appendChild(folderItem);
 
   // Separator before destructive actions
