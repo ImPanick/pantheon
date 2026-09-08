@@ -66,6 +66,7 @@ def _mark_turn_start() -> None:
 
 
 from routes.chat_helpers import (
+    approval_consume_message,
     escalation_withholds,
     note_escalation,
     resolve_session_auth,
@@ -1241,11 +1242,18 @@ def setup_chat_routes(
                         409,
                         "Tool approvals cannot be consumed while plan mode is active.",
                     )
+                # `P4-21`. Four different things produce `None` here and only
+                # one of them is fixable by asking again. "Could not be
+                # consumed" was the same sentence for a card that lapsed after
+                # ten minutes, a card belonging to somebody else, an id that
+                # never existed, and a decision value nothing recognises.
+                _approval_outcome: dict = {}
                 exact_tool_approval = tool_approval_store.consume(
                     tool_approval_id,
                     decision=decision,
                     owner=owner,
                     session_id=session,
+                    outcome=_approval_outcome,
                 )
                 tool_approval_continuation = True
                 if (
@@ -1254,7 +1262,7 @@ def setup_chat_routes(
                 ):
                     raise HTTPException(
                         409,
-                        "This tool approval could not be consumed.",
+                        approval_consume_message(_approval_outcome.get("reason")),
                     )
                 if not _mark_tool_approval_resolved(
                     sess,

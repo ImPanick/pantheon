@@ -10812,6 +10812,21 @@ body.fullwidth-chat .chat-history {
   overflow-x: auto;
 }
 
+/* `P4-21`. How long an approval card has left. Quiet while it is running and
+   loud once it has lapsed, because a card that looks live and fails on the
+   click is the thing this row removes. `--color-error` where the theme has
+   one; no `--accent` reference. */
+.ask-user-expiry {
+  margin: 6px 0 2px;
+  font-size: 0.78em;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--fg) 55%, transparent);
+}
+.ask-user-expiry.expired {
+  font-weight: 600;
+  color: var(--color-error);
+}
+
 /* `P4-20`. Why a call was refused. Inside the card's fold, beside where the
    output of a call that ran would be — because that is the question a reader
    has about a card that says "blocked". */

@@ -2949,6 +2949,45 @@ function buildApprovalEffects(aq) {
  * same UI can be used both for a live SSE event and for a persisted tool event
  * after a session reload.
  */
+/**
+ * `P4-21`. The line under an approval card saying how long it has left.
+ *
+ * `expires_at` is absolute epoch seconds, on purpose: a card can be rebuilt
+ * from history minutes after it was made, and a remaining-seconds count baked
+ * in at render time would start again from ten minutes on every reload.
+ *
+ * The element updates itself once a second and stops when the card leaves the
+ * page — a timer that outlives its card is the leak that makes a long chat
+ * slow, and this one is torn down by a `MutationObserver`-free check on the
+ * node's own `isConnected`.
+ */
+export function approvalExpiryLine(expiresAt) {
+  const at = Number(expiresAt);
+  if (!Number.isFinite(at) || at <= 0) return null;
+  const line = document.createElement('div');
+  line.className = 'ask-user-expiry';
+  const paint = () => {
+    const left = Math.round(at - (Date.now() / 1000));
+    if (left <= 0) {
+      line.textContent = 'This approval has expired — ask again to get a new one.';
+      line.classList.add('expired');
+      return false;
+    }
+    const mins = Math.floor(left / 60);
+    const secs = left % 60;
+    line.textContent = mins > 0
+      ? `Expires in ${mins}m ${String(secs).padStart(2, '0')}s`
+      : `Expires in ${secs}s`;
+    return true;
+  };
+  if (paint()) {
+    const tick = setInterval(() => {
+      if (!line.isConnected || !paint()) clearInterval(tick);
+    }, 1000);
+  }
+  return line;
+}
+
 export function renderAskUserCard(payload, options) {
   const aq = payload || {};
   if (aq.resolved) return null;
@@ -2997,6 +3036,14 @@ export function renderAskUserCard(payload, options) {
     // answer. The block below stays a verbatim dump of what was sealed.
     const consequences = buildApprovalEffects(aq);
     if (consequences) card.appendChild(consequences);
+
+    // `P4-21`. The card has a ten-minute life and used to say nothing about
+    // it: it stopped working silently, and answering a lapsed one returned
+    // "This tool approval could not be consumed." A deadline the reader can
+    // see, and a card that says so once it passes rather than looking live and
+    // failing on the click.
+    const expiry = approvalExpiryLine(aq.expires_at);
+    if (expiry) card.appendChild(expiry);
 
     const action = document.createElement('div');
     action.className = 'ask-user-option-desc';
@@ -3738,6 +3785,7 @@ const chatRenderer = {
   safeDisplayImageSrc,
   removeAskUserCards,
   renderAskUserCard,
+  approvalExpiryLine,
   buildSourcesBox,
   buildFindingsBox,
   parseTodoList,

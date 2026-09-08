@@ -245,6 +245,14 @@ class PendingToolApproval:
             # `self.effects` stays alphabetical inside `action` for that reason —
             # it is the sealed value — while `effects` here is severity-ranked.
             **describe_effects(self.effects),
+            # `P4-21`. The ten-minute TTL was computed on every card and sent on
+            # none, so the card stopped working with no warning and no
+            # explanation — a button that silently becomes a 409. Absolute
+            # rather than a remaining-seconds count, because a card can be
+            # rebuilt from history minutes after it was made and a countdown
+            # baked in at render time would start again from ten minutes.
+            "expires_at": self.expires_at,
+            "ttl_seconds": max(0, int(round(self.expires_at - self.created_at))),
         }
 
 
@@ -490,6 +498,7 @@ class ToolApprovalStore:
         owner: Any,
         session_id: Any,
         allow_continuation: bool = True,
+        outcome: dict[str, Any] | None = None,
     ) -> ExactToolApproval | None:
         """Consume a pending approval.
 
@@ -499,13 +508,36 @@ class ToolApprovalStore:
         original one-use grant, so a button labelled "Allow once" cannot widen
         into a run-long bypass just because the chat card reuses the same wire
         value.
+
+        `outcome`, when given, is filled in with `{"reason": ...}` saying which
+        of the four ways this returned `None` happened (`P4-21`): `expired`,
+        `unknown`, `not_yours`, `bad_decision`. It is an out-parameter so the
+        four existing callers are untouched and the return type still says
+        exactly what it said. Before it, a card that lapsed after ten minutes
+        and a card belonging to somebody else produced the same `None` and the
+        same "could not be consumed" — and only one of those is fixable by
+        asking again.
+
+        `expired` is reported **only to the owner of the pending action**, for
+        the reason the ownership check below already exists: a bare id must not
+        become an oracle for whether it was ever real.
         """
         now = time.time()
         with self._lock:
-            self._purge_expired_locked(now)
             approval_key = str(approval_id or "")
+            # Read before the purge, so "it lapsed" can be told apart from "it
+            # never existed" — the purge is what erased that difference.
+            lapsed = self._pending.get(approval_key)
+            self._purge_expired_locked(now)
             pending = self._pending.get(approval_key)
             if pending is None:
+                if outcome is not None:
+                    owned = (
+                        lapsed is not None
+                        and lapsed.owner == _normalized_owner(owner)
+                        and lapsed.session_id == str(session_id or "")
+                    )
+                    outcome["reason"] = "expired" if owned else "unknown"
                 return None
             if (
                 pending.owner != _normalized_owner(owner)
@@ -514,11 +546,15 @@ class ToolApprovalStore:
                 # Authentication is checked before destructive consumption so
                 # a leaked/guessed opaque id cannot be used to invalidate
                 # another owner's pending action.
+                if outcome is not None:
+                    outcome["reason"] = "not_yours"
                 return None
             self._pending.pop(approval_key, None)
         normalized_decision = str(decision or "").strip().lower()
         scope = scope_for_decision(normalized_decision)
         if scope is None:
+            if outcome is not None:
+                outcome["reason"] = "bad_decision"
             return None
         if not allow_continuation:
             return ExactToolApproval(

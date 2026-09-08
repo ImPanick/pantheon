@@ -587,6 +587,36 @@ def _normalize_model_id_from_cache(sess) -> Optional[str]:
     return None
 
 
+# `P4-21`. What to tell someone whose approval click did not land. The store
+# returns `None` four different ways and the route used to say
+# "This tool approval could not be consumed." for all of them — a sentence that
+# is true, useless, and identical whether the card lapsed ten minutes ago or
+# belongs to a different chat. Only one of these is fixable by asking again, and
+# that is the one worth saying.
+_APPROVAL_CONSUME_MESSAGES = {
+    "expired": (
+        "This approval expired before it was answered. Ask again and approve "
+        "the new card."
+    ),
+    "unknown": (
+        "This approval is no longer on file. It may have been answered "
+        "already, or replaced by a newer one in this chat."
+    ),
+    "not_yours": (
+        "This approval belongs to a different account or chat, so it cannot be "
+        "answered here."
+    ),
+    "bad_decision": "That is not a choice this approval offers.",
+}
+
+
+def approval_consume_message(reason: str | None) -> str:
+    """The sentence for a failed approval, or the old one when nobody said why."""
+    return _APPROVAL_CONSUME_MESSAGES.get(
+        reason or "", "This tool approval could not be consumed."
+    )
+
+
 def note_escalation(reasons: list, why: str) -> bool:
     """Record why this turn was promoted to agent mode, and return the flag.
 
