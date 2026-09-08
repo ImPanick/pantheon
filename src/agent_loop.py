@@ -5190,6 +5190,15 @@ async def stream_agent_loop(
                 + json.dumps({"type": "ui_control", "data": approved_result})
                 + "\n\n"
             )
+        # `P4-03`: the approved path is the one a teacher-written skill takes —
+        # `teacher_escalation` raises an approval card and the save happens here
+        # once the person says yes.
+        if isinstance(approved_result.get("skill_saved"), dict):
+            yield (
+                "data: "
+                + json.dumps({"type": "skill_saved", **approved_result["skill_saved"]})
+                + "\n\n"
+            )
 
         approved_output = str(
             approved_result.get("output")
@@ -6656,6 +6665,17 @@ async def stream_agent_loop(
                 # Keep enough state in the streamed tool result for alternate
                 # clients to render the prompt without depending on event order.
                 tool_output_data["ask_user"] = _pending_ask_user_event
+            # `P4-03`: and the ordinary path, for a skill the agent saves
+            # without escalating. Emitted beside `tool_output` rather than
+            # folded into it, because the frontend renders it as its own note
+            # in the transcript and the failure events it pairs with
+            # (`skill_save_failed`) are their own events too.
+            if isinstance(result.get("skill_saved"), dict):
+                yield (
+                    "data: "
+                    + json.dumps({"type": "skill_saved", **result["skill_saved"]})
+                    + "\n\n"
+                )
             if "ui_event" in result:
                 tool_output_data["ui_event"] = result["ui_event"]
                 for k in (

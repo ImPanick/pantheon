@@ -156,7 +156,20 @@ async def do_manage_skills(content: str, owner: Optional[str] = None) -> Dict:
                 "\n\nThis skill is a DRAFT. Run through the procedure once to verify, "
                 f"then publish with action='publish', name='{entry['name']}'."
             )
-        return {"results": f"Created skill `{entry['name']}` — {entry.get('description','')}{verify_hint}"}
+        # `P4-03`. The frontend has always had a `skill_saved` handler and
+        # nothing ever emitted the event — while the three *failure* paths in
+        # `teacher_escalation.py` all report. So a skill that saved was the one
+        # outcome the user was never told about. These keys are what the agent
+        # loop turns into that event; the deduped branch above returns before
+        # here, because nothing was saved.
+        return {
+            "results": f"Created skill `{entry['name']}` — {entry.get('description','')}{verify_hint}",
+            "skill_saved": {
+                "name": entry.get("name") or "",
+                "category": entry.get("category") or "",
+                "status": entry.get("status") or "",
+            },
+        }
 
     if action == "edit":
         if not name:
