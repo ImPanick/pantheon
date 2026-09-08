@@ -64,7 +64,7 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P1 | Token layer — the free wins | 15 | 7 | 0 | **8** |
 | P2 | Un-nerf | 26 | 12 | 0 | **14** |
 | P3 | Mechanical hygiene | 26 | 3 | **2** | **21** |
-| P4 | The wire — the real glass box | 28 | 20 | 0 | **8** |
+| P4 | The wire — the real glass box | 28 | 19 | 0 | **9** |
 | P5 | Trace & composer restyle | 17 | 17 | 0 | 0 |
 | P6 | Queue & Plan | 18 | 1 | 0 | **17** |
 | P7 | Trust ladder & control plane | 14 | 9 | **1** | **4** |
@@ -77,7 +77,7 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P14 | Measurement | 8 | 3 | 0 | **5** |
 | P15 | Outbound politeness | 12 | 2 | **1** | **9** |
 | P16 | Self-hosted by default | 20 | 1 | 0 | **19** |
-| **Total** | | **341** | **190** | **9** | **142** |
+| **Total** | | **341** | **189** | **9** | **143** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -105,7 +105,7 @@ Ten of its rows landed on 2026-08-27 — see § Progress. What is left of it:
   proved it found two more bugs (`B45`, `B46`). `check-fork-names.py`, `check-spdx.py` and
   `check-licences.py`'s new rule 7 fail CI on any regression.
 
-### Next: `P4-12` (the `approved: true` badge — the round badge `P4-11` just added sits beside it and the two share a header), then `P4-09` (`full_command` expand-to-full-arguments), which `P5-07` then depends on. `P3` is down to three open rows and all three need somebody else: `P3-08` is blocked on a definition, `P3-21` and `P3-26` are product questions for the owner, and `P3-20` triaged to "the ratchet is the value, not the number". `P3-10`, `P3-10b`, `P3-16`, `P3-17`, `P3-18`, `P3-19`, `P3-22` and `P3-23` are done; the last two added the eleventh and twelfth checkers (`check-config-writes.py`, `check-silent-failures.py`), and `P4-11` added the fourteenth (`check-event-rounds.py`). `P3-10` left `P3-26` and `B54` behind, and `B54` is fixed. `P3-26` is a product question and reads like `P3-21` — it may want the owner. `P3-25` is withdrawn — it was never real (`B52`). `P3-01`, `P3-02`, `P3-04`, `P3-05`, `P3-06` and `P3-07` are done. **`P1-08` needs the owner** — it changes what all sixteen protected themes look like. `P1-12` and `P1-14` are done; `P1-12` left `P1-15` behind. **The `P0` licence block is finished except for six rows that cannot be closed from here** — `P0-05` needs the live ChromaDB, `P0-08` needs Docker, `P0-16` and `P0-17` need the owner, `P0-13` is blocked on a design decision, and `P0-29` is its own session. `P0-18`, `P0-21b` and `P0-31` closed 2026-09-07; standing suite failures **19 → 14**. `P3-21`, `P7-12`, `P7-13`, `P13-11` and `P15-07` wait on the owner. `B57` and `B58` are filed and not started; both are offline-shell/asset-versioning defects and they want one sitting, not two
+### Next: `P4-09` (`full_command` expand-to-full-arguments on the running card), which `P5-07` then depends on. `P4-11` and `P4-12` are done and both went the same way — a field that had been on the wire for months, read by nothing, and wrong in places nobody could see because nothing rendered it. `P3` is down to three open rows and all three need somebody else: `P3-08` is blocked on a definition, `P3-21` and `P3-26` are product questions for the owner, and `P3-20` triaged to "the ratchet is the value, not the number". `P3-10`, `P3-10b`, `P3-16`, `P3-17`, `P3-18`, `P3-19`, `P3-22` and `P3-23` are done; the last two added the eleventh and twelfth checkers (`check-config-writes.py`, `check-silent-failures.py`), and `P4-11` added the fourteenth (`check-event-rounds.py`). `P3-10` left `P3-26` and `B54` behind, and `B54` is fixed. `P3-26` is a product question and reads like `P3-21` — it may want the owner. `P3-25` is withdrawn — it was never real (`B52`). `P3-01`, `P3-02`, `P3-04`, `P3-05`, `P3-06` and `P3-07` are done. **`P1-08` needs the owner** — it changes what all sixteen protected themes look like. `P1-12` and `P1-14` are done; `P1-12` left `P1-15` behind. **The `P0` licence block is finished except for six rows that cannot be closed from here** — `P0-05` needs the live ChromaDB, `P0-08` needs Docker, `P0-16` and `P0-17` need the owner, `P0-13` is blocked on a design decision, and `P0-29` is its own session. `P0-18`, `P0-21b` and `P0-31` closed 2026-09-07; standing suite failures **19 → 14**. `P3-21`, `P7-12`, `P7-13`, `P13-11` and `P15-07` wait on the owner. `B57` and `B58` are filed and not started; both are offline-shell/asset-versioning defects and they want one sitting, not two
 
 **`P16-05` is the last zero-configuration leak**, and the only one that is not a one-liner: the
 embedding model is pulled from HuggingFace on the *first chat message*, because
@@ -239,6 +239,20 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### P4-12 — a badge that asserts authority has to be right about it
+`f0f93f1..HEAD`. **341 tracked, 143 done. 25 new tests, 0 regressions.**
+Same shape as `P4-11` one row earlier: `approved: true` had ridden four events since exact
+approvals shipped and no line of the frontend had ever read it, so the one card in a thread that a
+person stopped and allowed by hand looked exactly like a routine call. Rendering it as it stood
+would have been worse than leaving it: two gates refuse an approved action *after* the card is up —
+this replay's own pre-check and the dispatcher's `claim()`, which also refuses an unarmed run, an
+approval granted before untrusted content arrived, a document action with no sealed target and a
+workspace that stopped being safe — and every one of those still emitted a result card claiming the
+user had authorised it. The result card and its persisted twin now say what happened; `tool_start`
+still says what was believed when it fired. The badge is deliberately **not** remembered across the
+rewrite the way the round is, and that is the row's decision rather than an inconsistency: silence
+about a fact leaves the fact, silence about a claim is not the claim.
 
 ### P4-11 — the number was always on the wire and never on the glass
 `6c07784..HEAD`. **341 tracked, 142 done. 36 new tests, 0 regressions.**
@@ -2951,7 +2965,7 @@ serialised, sent to the browser and never read.** None of this needs backend wor
 - [ ] **P4-09** `full_command` on every tool start — expand-to-full-arguments on the running card. The truncated version is what you see now. `Depends:` P4-01.
 - [ ] **P4-10** Loop-breaker detail and the unkept-promise phrase — `"Stopped: called bash with identical arguments 15 times"` instead of a generic message.
 - [x] **P4-11** Round numbers on every step and tool event. `Depends:` P4-01. The number was on the wire from the first agent loop and never reached a card — every `json.round` read in `chat.js` belonged to Deep Research progress instead, so a thread of nine tool cards gave no way to see it was three passes of three. `roundBadgeHtml` in the one builder (`P4-01`) draws it, so it is one change rather than six. Underneath it, four sites were wrong and nobody could see it: the streamed `tool_output` carried no round while its persisted twin did (**the same action answered the question after a reload and refused to answer it live**), the approved-action replay hardcoded `0` at four sites, the one-shot image path sent nothing, and the skill-test log kept the round on `agent_step` and dropped it from the tool cards inside the step. The approved action's round is now the round it was **requested** in — carried on the pending record, deliberately outside the binding digest, with a test saying that was a decision — so the card the user clicked approve on and the card reporting the result name one round. `check-event-rounds.py` is the fourteenth checker and the reason this is a rule and not four fixes. — **done 2026-09-08** — agent:`P4-11`
-- [ ] **P4-12** `approved: true` badge on tool events — the action you personally authorised is currently indistinguishable from a routine call. `Depends:` P4-01.
+- [x] **P4-12** `approved: true` badge on tool events — the action you personally authorised is currently indistinguishable from a routine call. `Depends:` P4-01. The flag had been on four events since exact approvals shipped and **no line of the frontend ever read it**. Rendering it as it stood would have shipped a second and worse defect: two gates can refuse an approved action *after* the card is on screen — this replay's `approval_matches` pre-check and the dispatcher's `claim()`, which additionally refuses an unarmed run, an approval granted before untrusted content arrived, a document action with no sealed target and a workspace that is no longer safe — and **all four used to emit a result card still saying `approved: true`**. A badge asserting *authority* over an action that was blocked is worse than no badge, so `approved` on the result card and its persisted twin now means *this ran under your approval*; `tool_start` keeps saying what was believed then, which is honest and is what the user needs while they watch. The badge is not carried across the rewrite the way `P4-11`'s round is, and that asymmetry is the row's decision: a round the rewrite omits is a fact left intact, an approval the rewrite omits is a claim nobody made. — **done 2026-09-08** — agent:`P4-12`
 - [ ] **P4-13** Trim and compaction figures — tokens before/after, messages before/after.
 - [ ] **P4-14** Real decode speed, prefill speed, time-to-first-token, context tokens — separating prefill from decode and measured from computed.
 - [ ] **P4-15** `tmux_session` on long shell runs → an "attach to this session" affordance.

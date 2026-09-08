@@ -113,6 +113,32 @@ export function roundBadgeHtml(round) {
   return `<span class="agent-thread-round" title="Agent round ${n}">${n}</span>`;
 }
 
+export const APPROVED_ICON =
+  '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+  'stroke-width="3" stroke-linecap="round" stroke-linejoin="round" ' +
+  'style="vertical-align:-1px;margin-right:3px">' +
+  '<path d="M20 6 9 17l-5-5"/></svg>';
+
+/**
+ * `P4-12`. The badge on an action the user personally authorised.
+ *
+ * The flag has been on the wire on four events since exact approvals shipped
+ * and nothing ever read it, so the one action in a thread that a person stopped
+ * and allowed by hand looked exactly like a routine call — the same icon, the
+ * same label, the same everything.
+ *
+ * It draws only for `true`, and `true` now means what it says: the backend
+ * sends it on the result card only when the action actually ran under the
+ * approval. A grant the replay's pre-check or the dispatcher's `claim()`
+ * refused reports `false`, because a badge asserting *authority* over an action
+ * that was blocked is worse than no badge at all.
+ */
+export function approvedBadgeHtml(approved) {
+  if (approved !== true) return '';
+  return '<span class="agent-thread-approved" title="You approved this action">'
+    + APPROVED_ICON + 'approved</span>';
+}
+
 /** The className an `.agent-thread-node` carries in `state`. */
 export function nodeClassName(state, ok) {
   if (state === 'running') return 'agent-thread-node running';
@@ -133,6 +159,7 @@ export function nodeClassName(state, ok) {
  * @param {string} [o.diff]    pre-rendered HTML
  * @param {string} [o.todo]    pre-rendered HTML
  * @param {number} [o.round]   1-based agent round; anything else draws no badge
+ * @param {boolean} [o.approved] exactly `true` badges the card as authorised
  *
  * A `diff` or a `todo` suppresses the command line. For a file edit the
  * "command" is the raw JSON arguments, which is redundant beside the diff; for
@@ -157,6 +184,7 @@ export function agentThreadNodeHtml(o) {
     + '<div class="agent-thread-header">'
     + `<span class="agent-thread-icon">${toolIcon(o.tool, state, o.ok)}</span>`
     + `<span class="agent-thread-tool">${esc(label)}</span>`
+    + approvedBadgeHtml(o.approved)
     + roundBadgeHtml(o.round)
     + tail
     + '</div>'
@@ -189,5 +217,5 @@ export function applyAgentThreadNode(node, o) {
 }
 
 export default { agentThreadNodeHtml, applyAgentThreadNode, toolLabel, toolIcon,
-                 nodeClassName, roundBadgeHtml, TOOL_LABELS, TOOL_ICONS,
-                 SEARCH_ICON };
+                 nodeClassName, roundBadgeHtml, approvedBadgeHtml, TOOL_LABELS,
+                 TOOL_ICONS, SEARCH_ICON, APPROVED_ICON };

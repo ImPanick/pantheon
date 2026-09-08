@@ -5147,7 +5147,7 @@ async def stream_agent_loop(
                             "type": "tool_progress",
                             "tool": approved.tool_name,
                             "round": approved_round,
-                            "approved": True,
+                            "approved": approval_matches,
                             **progress_event,
                         }
                     )
@@ -5218,6 +5218,19 @@ async def stream_agent_loop(
             or approved_result.get("error")
             or "(no output)"
         )
+        # `P4-12`. `approved` is a claim about *provenance* — "you personally
+        # authorised this, and this is it running" — so it may only be true of an
+        # action that actually ran under the approval. Two gates can refuse after
+        # the card is on screen: this replay's own `approval_matches` pre-check,
+        # and the dispatcher's `claim()`, which additionally refuses an unarmed
+        # run, an approval granted before untrusted content arrived, a document
+        # action with no sealed target and a workspace that is no longer safe.
+        # `tool_start` above fires before either has spoken and says what was
+        # believed then; this event fires after and says what happened. Badging
+        # a refused action as one the user authorised is the same defect class
+        # `P4-11` closed one row ago, and worse, because this badge asserts
+        # authority rather than position.
+        approved_ran = bool(approval_matches) and not approved_result.get("blocked")
         approved_event = {
             "type": "tool_output",
             "tool": approved.tool_name,
@@ -5225,7 +5238,7 @@ async def stream_agent_loop(
             "command": approved_display[:240] if approval_matches else "",
             "output": _truncate(approved_output),
             "exit_code": approved_result.get("exit_code"),
-            "approved": True,
+            "approved": approved_ran,
             **approved_effects,
         }
         for key in (
@@ -5306,7 +5319,7 @@ async def stream_agent_loop(
             "command": approved_display[:240] if approval_matches else "",
             "output": _truncate(approved_output),
             "exit_code": approved_result.get("exit_code"),
-            "approved": True,
+            "approved": approved_ran,
             "approval_digest": approved.digest[:16],
             # Same reason as the main path: the ranking has to survive a reload.
             # `approved_effects` is already `{}` when the binding did not match,

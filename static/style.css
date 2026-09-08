@@ -10639,6 +10639,27 @@ body.fullwidth-chat .chat-history {
   letter-spacing: 0.3px;
   font-size: 0.9em;
 }
+/* `P4-12`. The action you personally stopped and allowed. Louder than the round
+   badge on purpose — the round is where a card sits, this is by whose authority
+   it ran, and it is rare enough that it can afford to be seen. Uses
+   `--color-success`, which every theme defines and the theme editor does not
+   own; no `--accent` reference. */
+.agent-thread-approved {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--color-success) 40%, transparent);
+  background: color-mix(in srgb, var(--color-success) 12%, transparent);
+  color: color-mix(in srgb, var(--color-success) 88%, var(--fg));
+  font-size: 0.7em;
+  font-weight: 700;
+  line-height: 15px;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
 /* `P4-11`. The agent round a card belongs to. Muted on purpose: it is a
    grouping aid, not a headline — nine cards that are three passes of three
    should say so without shouting. `--fg` mixes only; this badge adds no
