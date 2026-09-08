@@ -7623,5 +7623,36 @@ import agentDrafts from './agentDrafts.js';   // H01
     window.__pantheon_thread_click_bound = true;
   }
 
+  // `P5-07`. Copy the executed command. One delegated listener for the same
+  // reason the fold above has one — `B56` is what a per-node listener on these
+  // cards costs, and the card is rebuilt on every rewrite.
+  //
+  // It copies the **whole** command, not the line on screen. That is the point
+  // of the row: for a document tool the visible line is the first 80 characters
+  // and on the approval replay it is the first 240, so copying what is shown
+  // would hand the user a truncated command that looks complete. `P4-09` put
+  // the full text on the card, behind a `<details>`, and this reads it from
+  // there when it is present. Reading `textContent` rather than a `data-`
+  // attribute means what lands on the clipboard is exactly what the card shows,
+  // decoded once by the browser instead of escaped and unescaped by hand.
+  if (!window.__pantheon_thread_copy_bound) {
+    document.body.addEventListener('click', (e) => {
+      const btn = e.target.closest('.agent-thread-cmd-copy');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const node = btn.closest('.agent-thread-node');
+      const full = node?.querySelector('.agent-thread-cmd-full .agent-thread-cmd');
+      const shown = btn.closest('.agent-thread-cmd-block')?.querySelector('.agent-thread-cmd');
+      const text = (full || shown)?.textContent || '';
+      if (!text) return;
+      uiModule.copyToClipboard(text);
+      btn.classList.add('copied');
+      clearTimeout(btn._copiedTimer);
+      btn._copiedTimer = setTimeout(() => btn.classList.remove('copied'), 1500);
+    });
+    window.__pantheon_thread_copy_bound = true;
+  }
+
   export default chatModule;
   window.chatModule = chatModule;

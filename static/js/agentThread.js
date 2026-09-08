@@ -159,16 +159,65 @@ export function approvedBadgeHtml(approved) {
  * something deserves to know whether it is four lines or four hundred — and
  * because when the backend had to cap it, the cap says so in the text itself.
  */
-export function commandBlockHtml(command, fullCommand) {
+export const COPY_ICON =
+  '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<rect x="9" y="9" width="13" height="13" rx="2"/>' +
+  '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+
+const COPY_BUTTON =
+  '<button type="button" class="agent-thread-cmd-copy" title="Copy command" '
+  + 'aria-label="Copy command">' + COPY_ICON + '</button>';
+
+/** Tool id → the highlight.js language its command is written in.
+ *
+ *  Deliberately two entries. For `bash` and `python` the command *is* code in
+ *  that language and colouring it is a straight win; for everything else the
+ *  "command" is a path, a query, or a JSON argument blob, and guessing wrong
+ *  paints a filename in string-literal green and reads as a bug. No entry means
+ *  a plain `<pre>`, which is what every card showed before this row.
+ */
+export const CMD_LANGUAGES = {
+  'bash': 'bash',
+  'python': 'python',
+};
+
+export function commandBlockHtml(command, fullCommand, tool) {
   const shown = command == null ? '' : String(command);
   if (!shown) return '';
-  const block = `<pre class="agent-thread-cmd">${esc(shown)}</pre>`;
   const full = fullCommand == null ? '' : String(fullCommand);
+  const lang = CMD_LANGUAGES[String(tool || '').toLowerCase()];
+  const body = (text) => (lang
+    ? `<pre class="agent-thread-cmd"><code class="language-${lang}">${esc(text)}</code></pre>`
+    : `<pre class="agent-thread-cmd">${esc(text)}</pre>`);
+  const block = '<div class="agent-thread-cmd-block">' + body(shown) + COPY_BUTTON + '</div>';
   if (!full || full === shown) return block;
   return block
     + '<details class="agent-thread-cmd-full"><summary>'
     + `Full arguments (${full.length.toLocaleString('en-US')} characters)`
-    + `</summary><pre class="agent-thread-cmd">${esc(full)}</pre></details>`;
+    + `</summary>${body(full)}</details>`;
+}
+
+/** Syntax-highlight any command block in `node`, if highlight.js is loaded.
+ *
+ *  Runs after the markup is in the DOM because that is what `hljs` needs, and
+ *  matches the `pre code:not(.hljs)` sweep the rest of the app already does
+ *  rather than introducing a second way to highlight (`Law 14`). Everything is
+ *  optional: `hljs` is a page-level global this module does not import, a card
+ *  can be built in a test with no DOM at all, and a highlighter that throws on
+ *  one odd command may not take the tool card down with it — a plain `<pre>` is
+ *  the correct fallback and is exactly what the card showed before this row.
+ */
+export function highlightCommandBlocks(node) {
+  if (typeof window === 'undefined' || !window.hljs) return;
+  if (!node || typeof node.querySelectorAll !== 'function') return;
+  node.querySelectorAll('.agent-thread-cmd code:not(.hljs)').forEach((block) => {
+    try {
+      window.hljs.highlightElement(block);
+    } catch (err) {
+      console.warn('[agentThread] command highlight failed; showing it plain', err);
+    }
+  });
 }
 
 /** The className an `.agent-thread-node` carries in `state`. */
@@ -209,7 +258,7 @@ export function agentThreadNodeHtml(o) {
   const todo = o.todo || '';
   const diff = o.diff || '';
   const cmd = (o.command && !todo && !diff)
-    ? commandBlockHtml(o.command, o.fullCommand) : '';
+    ? commandBlockHtml(o.command, o.fullCommand, o.tool) : '';
   const tail = state === 'running'
     ? '<span class="agent-thread-wave">▁▂▃</span>'
     : `<span class="agent-thread-status">${o.ok ? 'done' : 'failed'}</span>`
@@ -247,10 +296,12 @@ export function applyAgentThreadNode(node, o) {
     ? Number(o.round) : node._agentRound;
   if (round) node._agentRound = round;
   node.innerHTML = agentThreadNodeHtml(round === o.round ? o : { ...o, round });
+  highlightCommandBlocks(node);
   return node;
 }
 
 export default { agentThreadNodeHtml, applyAgentThreadNode, toolLabel, toolIcon,
                  nodeClassName, roundBadgeHtml, approvedBadgeHtml,
-                 commandBlockHtml, TOOL_LABELS, TOOL_ICONS, SEARCH_ICON,
-                 APPROVED_ICON };
+                 commandBlockHtml, highlightCommandBlocks, TOOL_LABELS,
+                 TOOL_ICONS, CMD_LANGUAGES, SEARCH_ICON, APPROVED_ICON,
+                 COPY_ICON };

@@ -10762,6 +10762,51 @@ body.fullwidth-chat .chat-history {
   overflow-x: auto;
 }
 
+/* `P5-07`. The executed command is the most copy-worthy string in the product
+   and had no way to be copied, no highlight, and (before `P4-09`) no expansion.
+   The button sits inside the block rather than in a bar above it, so nothing
+   moves when it appears; the block is the positioning context. It is always
+   present rather than hover-only, because hover-only affordances do not exist
+   on a touch screen and this is the one thing on the card a person reaches
+   for. */
+.agent-thread-cmd-block {
+  position: relative;
+}
+.agent-thread-cmd-copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
+  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  cursor: pointer;
+  opacity: 0.75;
+  transition: opacity 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.agent-thread-cmd-copy:hover,
+.agent-thread-cmd-copy:focus-visible {
+  opacity: 1;
+  color: var(--fg);
+  border-color: var(--border);
+}
+.agent-thread-cmd-copy.copied {
+  opacity: 1;
+  color: var(--color-success);
+  border-color: color-mix(in srgb, var(--color-success) 45%, transparent);
+}
+/* The command can be long and the button overlays its top-right corner, so
+   keep the first line clear of it rather than letting text run underneath. */
+.agent-thread-cmd-block > .agent-thread-cmd {
+  padding-right: 38px;
+}
+
 /* `P4-09`. The way back to the arguments behind a truncated command line. A
    `<details>`, so it needs no listener of its own — the fold handler is bound
    to `.agent-thread-header` and this sits in `.agent-thread-content`, which is
