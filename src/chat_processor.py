@@ -276,7 +276,6 @@ class ChatProcessor:
         character_name: Optional[str] = None,
         agent_mode: bool = False,
         incognito: bool = False,
-        use_skills: bool = True,
     ) -> Tuple[List[Dict[str, str]], List[Dict[str, Any]], List[Dict[str, str]]]:
         """Build the context preface for LLM calls.
 
@@ -312,10 +311,6 @@ class ChatProcessor:
 
         # Memory: core pinned facts + relevant pinned/extended recall.
         self._last_used_memories = []  # track what was injected
-        # `P4-16`. Same idea, one turn later in the same method: the skills
-        # index the agent was shown. Reset here so a turn that injects none
-        # reports none rather than repeating the previous turn's list.
-        self._last_injected_skills = []
         if use_memory:
             mem_entries = self.memory_manager.load(owner=owner)
 
@@ -513,44 +508,22 @@ class ChatProcessor:
                         f"A linked page was not read: {status}.",
                     ))
 
-        # Skills index — progressive disclosure. Only injected when the
-        # model has the `manage_skills` tool available (agent_mode), and
-        # never in incognito mode (the user has explicitly opted out of
-        # context retention this turn). In plain chat mode the model can't
-        # call the tool anyway, so the index would be noise.
-        if agent_mode and not incognito and use_skills and self.skills_manager:
-            try:
-                idx = self.skills_manager.index_for(owner=owner)
-            except Exception as e:
-                logger.debug(f"Skills index unavailable: {e}")
-                idx = []
-            # `P4-16`. What went in, recorded where the caller can read it —
-            # the same shape `_last_used_memories` already has, and read by
-            # `build_chat_context` two lines after it reads that one.
-            self._last_injected_skills = [
-                {
-                    "name": s.get("name", ""),
-                    "category": s.get("category", "general"),
-                    "status": s.get("status", "published"),
-                    "source": s.get("source", ""),
-                    "teacher_model": s.get("teacher_model", ""),
-                    "via": "preface",
-                }
-                for s in idx
-            ]
-            if idx:
-                by_cat: Dict[str, list] = {}
-                for s in idx:
-                    by_cat.setdefault(s.get("category") or "general", []).append(s)
-                lines = ["[Available skills — call manage_skills(action='view', name='...') to load one when relevant]"]
-                for cat in sorted(by_cat):
-                    lines.append(f"  {cat}:")
-                    for s in sorted(by_cat[cat], key=lambda x: x["name"]):
-                        desc = s.get("description") or ""
-                        lines.append(f"    - {s['name']}: {desc}" if desc else f"    - {s['name']}")
-                preface.append(untrusted_context_message(
-                    "available skills index",
-                    "\n".join(lines),
-                ))
+        # `B60`. The skills index used to be assembled here as well as in
+        # `agent_loop._build_base_prompt`, and both landed in the same message
+        # array: `agent_mode` is true only on the route whose `else` branch
+        # calls `stream_agent_loop`, so the two always shipped together. A
+        # duplicated catalogue was the small half. The large half was that the
+        # two were gated differently and *between them every gate was defeated*
+        # — this copy passed `active_toolsets=None`, so it advertised
+        # procedures whose required tools were switched off, while the loop's
+        # copy ignored the `skills_enabled` preference entirely. Turning skills
+        # off did not turn the index off.
+        #
+        # One injection now, at the site that already gates on toolsets. The
+        # gates this one uniquely honoured — the preference, `incognito`,
+        # `allow_tool_preprocessing`, this module's own low-signal predicate —
+        # reach it through the `suppress_skills` the route computes and hands
+        # to `stream_agent_loop`. Nothing was lost; the suppressions started
+        # working.
 
         return preface, rag_sources, web_sources

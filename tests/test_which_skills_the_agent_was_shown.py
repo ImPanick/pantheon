@@ -229,6 +229,10 @@ def test_the_merged_list_is_ordered_and_not_whatever_arrived_first():
 # ── the report reaches the user ───────────────────────────────────────────────
 
 
+REQUEST = ("Please rotate and prune the application log files on the server, "
+           "then summarise what you removed.")
+
+
 def _events(generator):
     async def _drain():
         return [chunk async for chunk in generator]
@@ -262,37 +266,28 @@ def _patch(monkeypatch, replies):
     monkeypatch.setattr(agent_loop, "execute_tool_block", fake_execute, raising=False)
 
 
-def _run(monkeypatch, *, preface_skills=None):
+def _run(monkeypatch, *, suppress_skills=False):
     _patch(monkeypatch, ["Done."])
     return _events(
         agent_loop.stream_agent_loop(
             "http://local.test/v1", "small-local-model",
-            [{"role": "user", "content": "do the thing"}],
+            [{"role": "user", "content": REQUEST}],
             max_rounds=1, relevant_tools={"bash"},
-            preface_injected_skills=preface_skills,
+            suppress_skills=suppress_skills,
         )
     )
 
 
-PREFACE_HALF = [
-    {"name": "tidy-logs", "category": "ops", "status": "published",
-     "source": "learned", "teacher_model": "", "via": "preface"},
-    {"name": "retry-with-backoff", "category": "general", "status": "draft",
-     "source": "teacher-escalation", "teacher_model": "big-teacher:70b",
-     "via": "preface"},
-]
-
-
-def test_the_stream_says_which_skills_were_injected(monkeypatch):
-    events = _run(monkeypatch, preface_skills=PREFACE_HALF)
+def test_the_stream_says_which_skills_were_injected(loop_store, monkeypatch):
+    events = _run(monkeypatch)
     reported = [e for e in events if e.get("type") == "skills_injected"]
     assert reported, "the loop still emits nothing about the skills it was given"
     names = {s["name"] for s in reported[0]["data"]}
     assert {"tidy-logs", "retry-with-backoff"} <= names
 
 
-def test_the_report_carries_the_provenance_the_row_asks_for(monkeypatch):
-    events = _run(monkeypatch, preface_skills=PREFACE_HALF)
+def test_the_report_carries_the_provenance_the_row_asks_for(loop_store, monkeypatch):
+    events = _run(monkeypatch)
     by_name = {s["name"]: s
                for s in next(e for e in events
                              if e.get("type") == "skills_injected")["data"]}
@@ -302,10 +297,10 @@ def test_the_report_carries_the_provenance_the_row_asks_for(monkeypatch):
     assert taught["status"] == "draft"
 
 
-def test_it_is_reported_once_and_before_the_agent_starts_working(monkeypatch):
+def test_it_is_reported_once_and_before_the_agent_starts_working(loop_store, monkeypatch):
     # It is context, not something the agent did, and a card that arrives after
     # the first step reads as an action.
-    events = _run(monkeypatch, preface_skills=PREFACE_HALF)
+    events = _run(monkeypatch)
     types = [e.get("type") for e in events]
     assert types.count("skills_injected") == 1
     first = types.index("skills_injected")
@@ -314,23 +309,24 @@ def test_it_is_reported_once_and_before_the_agent_starts_working(monkeypatch):
             assert first < types.index(later)
 
 
-def test_a_turn_with_no_skills_reports_nothing(monkeypatch):
+def test_a_turn_with_no_skills_reports_nothing(loop_store, monkeypatch):
     # Silence is the honest report for an empty list, and a pill reading
-    # "0 skills" on every message is noise the footer does not need.
-    events = _run(monkeypatch, preface_skills=[])
+    # "0 skills" on every message is noise the footer does not need. `B60`'s
+    # suppression is the cleanest way to produce that state on purpose.
+    events = _run(monkeypatch, suppress_skills=True)
     assert not [e for e in events if e.get("type") == "skills_injected"]
 
 
-def test_the_reloaded_thread_says_what_the_live_one_did(monkeypatch):
+def test_the_reloaded_thread_says_what_the_live_one_did(loop_store, monkeypatch):
     # Same invariant as `P4-11` and `P4-09`: one action, two surfaces, one
     # answer. Without the metrics key the pill vanishes on refresh.
-    events = _run(monkeypatch, preface_skills=PREFACE_HALF)
+    events = _run(monkeypatch)
     live = next(e for e in events if e.get("type") == "skills_injected")["data"]
     metrics = next(e for e in events if e.get("type") == "metrics")["data"]
     assert metrics.get("skills_injected") == live
 
 
-def test_the_report_does_not_reach_into_the_prompt(monkeypatch):
+def test_the_report_does_not_reach_into_the_prompt(loop_store, monkeypatch):
     # The report describes the context; it must not become part of it.
     _patch(monkeypatch, ["Done."])
     seen = {}
@@ -347,22 +343,21 @@ def test_the_report_does_not_reach_into_the_prompt(monkeypatch):
     _events(
         agent_loop.stream_agent_loop(
             "http://local.test/v1", "small-local-model",
-            [{"role": "user", "content": "do the thing"}],
+            [{"role": "user", "content": REQUEST}],
             max_rounds=1, relevant_tools={"bash"},
-            preface_injected_skills=PREFACE_HALF,
         )
     )
     blob = json.dumps(seen.get("messages") or [])
     assert "skills_injected" not in blob
     assert "big-teacher:70b" not in blob, (
-        "the preface's reporting half leaked into the model's context"
+        "the reporting fields leaked into the model's context"
     )
 
 
-def test_a_caller_that_knows_nothing_of_this_still_works(monkeypatch):
+def test_a_caller_that_knows_nothing_of_this_still_works(loop_store, monkeypatch):
     # Five other callers reach `stream_agent_loop` — the skill runner, the
     # background monitor, the teacher, the scheduler, compare mode — and none
-    # of them passes a preface list.
+    # of them computes a `suppress_skills`.
     events = _run(monkeypatch)
     assert [e for e in events if e.get("type") == "metrics"], "the stream did not finish"
 

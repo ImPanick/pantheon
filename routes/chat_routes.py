@@ -2397,11 +2397,13 @@ def setup_chat_routes(
                         temperature=ctx.preset.temperature,
                         max_tokens=ctx.preset.max_tokens,
                         prompt_type=preset_id,
-                        # `P4-16`. The chat preface injects a skills index and
-                        # so does the loop; handing this half over lets the loop
-                        # report one merged list instead of two halves each
-                        # knowing only about itself.
-                        preface_injected_skills=ctx.injected_skills,
+                        # `B60`. Four of the six conditions that decide whether
+                        # the skills index may ship are known only here — the
+                        # user's preference, `incognito`,
+                        # `allow_tool_preprocessing` and the casual-low-signal
+                        # test — and none of them reached the loop, which built
+                        # its own copy regardless. They arrive as one flag now.
+                        suppress_skills=not ctx.skills_enabled,
                         max_tool_calls=_tool_budget,
                         max_rounds=_max_rounds,
                         context_length=_selected_context_length,

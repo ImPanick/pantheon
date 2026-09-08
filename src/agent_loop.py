@@ -4002,7 +4002,7 @@ async def stream_agent_loop(
     _is_teacher_run: bool = False,
     history_session=None,
     defer_context_shaping: bool = False,
-    preface_injected_skills: Optional[List[Dict]] = None,
+    suppress_skills: bool = False,
 ) -> AsyncGenerator[str, None]:
     """Streaming agent loop generator.
 
@@ -4130,6 +4130,14 @@ async def stream_agent_loop(
     _pan_memory_identity_turn = _looks_like_memory_identity_turn(_last_user)
     _intent = _classify_agent_request(messages, _last_user)
     _low_signal_turn = bool(_intent.get("low_signal"))
+    # `B60`. The whole answer to "may the skills index ship this turn", in one
+    # name. The caller contributes what only it knows (the user's preference,
+    # `incognito`, `allow_tool_preprocessing`, its own low-signal predicate) and
+    # this loop contributes what only it knows (`_intent.low_signal`;
+    # `guide_only` rides `suppress_local_context` alongside). A second copy of
+    # the index used to enforce the first half and ship anyway when this half
+    # said no, and vice versa.
+    _skills_suppressed = bool(suppress_skills) or _low_signal_turn
     _casual_low_signal_turn = _is_casual_low_signal(_last_user)
     _existing_conversation = _user_turn_count(messages) > 1
     _active_document_relevant = _turn_targets_active_document(_intent, _last_user, active_document)
@@ -4638,6 +4646,13 @@ async def stream_agent_loop(
     # (grep, read_file, ...) that aren't in its schema list. Keep the schemas
     # in lockstep: manage_skills is callable whenever any skill is indexed,
     # and a matched skill's declared requires_toolsets ride along with it.
+    # `B60` deliberately does NOT widen this gate. It decides whether
+    # `manage_skills` is offered as a *tool*, which is a different question from
+    # whether the catalogue ships, and it already honours the preference two
+    # lines down. Widening it to `_skills_suppressed` would add incognito to it
+    # — arguably right, since `manage_skills add` writes — but there is no seam
+    # in this harness that can observe the tool list, and shipping a behaviour
+    # change no test can see is how the thing this bug is about got in.
     if not guide_only and _relevant_tools is not None and not _low_signal_turn:
         try:
             from services.memory.skills import SkillsManager
@@ -4947,22 +4962,30 @@ async def stream_agent_loop(
             compact=_compact_prompt_applies(is_api),
             owner=owner,
             suppress_local_context=guide_only,
-            suppress_skills=_low_signal_turn,
+            # `B60`. Six conditions decide whether the index may ship and no
+            # single place knew all of them. `suppress_skills` arrives from the
+            # route carrying the four it owns — the user's preference,
+            # `incognito`, `allow_tool_preprocessing` and its own low-signal
+            # predicate — and this loop adds the two it owns. Before this, four
+            # of the six were enforced on a copy of the index that another
+            # copy shipped anyway.
+            suppress_skills=_skills_suppressed,
             active_email=active_email,
             workspace=workspace,
             context_report=_prompt_report,
         )
         # `P4-16`. Up to a dozen procedures enter a request and until now
-        # nothing said which. Merged with whatever the chat preface injected,
-        # because in agent mode both sites inject and neither knows about the
-        # other (`B60`) — one list, no double count.
+        # nothing said which. One source since `B60`: this loop is the only
+        # place the index is assembled, so the merge now deduplicates a single
+        # list rather than reconciling two — which is what it was written to
+        # end up doing.
         #
         # Recorded rather than yielded: this runs inside `_build_route_request_state`,
         # a coroutine, and a `yield` here would quietly turn it into an async
         # generator and nothing downstream would ever await it. The outer
         # generator emits the event once, after the first route is built.
         _injected_skills_seen[:] = _merge_injected_skills(
-            preface_injected_skills, _prompt_report.get("skill_index"),
+            _prompt_report.get("skill_index"),
         )
         if doc_mode and not plan_mode and not approved_plan and not guide_only:
             route_messages = _minimal_pantheon_doc_messages(

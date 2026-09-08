@@ -133,11 +133,13 @@ class ChatContext:
     rag_sources: list
     web_sources: list
     used_memories: list
-    # `P4-16`. The skills index the preface put in front of the model. Up to a
-    # dozen procedures enter a request and nothing said which; this is the half
-    # the preface contributes, and `stream_agent_loop` unions it with the index
-    # it injects itself before reporting — one event, one list, no double count.
-    injected_skills: list
+    # `B60`. Whether the skills index may ship at all this turn: the user's
+    # preference, `incognito`, `allow_tool_preprocessing` and this module's
+    # low-signal predicate, resolved once. The route hands its negation to
+    # `stream_agent_loop` as `suppress_skills`, which is the only place the
+    # index is now assembled. Before this it gated a second, ungated copy
+    # built in the preface, so turning skills off removed one of two.
+    skills_enabled: bool
     messages: list
     context_length: int
     was_compacted: bool
@@ -585,6 +587,31 @@ def _normalize_model_id_from_cache(sess) -> Optional[str]:
     return None
 
 
+def skills_may_ship(*, incognito: bool, uprefs: dict,
+                    allow_tool_preprocessing: bool, casual_low_signal: bool) -> bool:
+    """May the skills index ship this turn, on the four grounds this module owns.
+
+    `B60`. These four used to gate a copy of the index built in the chat
+    preface, while a second copy built inside `stream_agent_loop` shipped
+    regardless — so a user who turned skills off, or opened an incognito turn,
+    still got the catalogue. There is one index now and this is half of the
+    answer to whether it ships; the loop supplies the other half (`guide_only`
+    and its own low-signal read) and the route hands this across as
+    `suppress_skills`.
+
+    It is a named function rather than four lines inside a 200-line context
+    builder because it is the thing a test needs to be able to ask.
+
+      incognito                the user opted out of context retention.
+      skills_enabled           their standing preference, defaulting on.
+      allow_tool_preprocessing off for paths that must not do retrieval at all.
+      casual_low_signal        "hey", "yo mate" — a greeting pulls no catalogue.
+    """
+    if incognito or not allow_tool_preprocessing or casual_low_signal:
+        return False
+    return bool(uprefs.get("skills_enabled", True))
+
+
 def _session_is_research_spinoff(sess) -> bool:
     """True if this session was created via research "Discuss" spin-off.
 
@@ -683,15 +710,16 @@ async def build_chat_context(
 
     # Memory enabled?
     mem_enabled = not incognito and not no_memory and uprefs.get("memory_enabled", True)
-    # Skills injection respects its own enable toggle (mirrors memory_enabled).
-    # When off, the "Available skills" index is not added to the prompt.
-    skills_enabled = not incognito and uprefs.get("skills_enabled", True)
+    skills_enabled = skills_may_ship(
+        incognito=incognito,
+        uprefs=uprefs,
+        allow_tool_preprocessing=allow_tool_preprocessing,
+        casual_low_signal=casual_low_signal,
+    )
     if not allow_tool_preprocessing:
         mem_enabled = False
-        skills_enabled = False
     if casual_low_signal:
         mem_enabled = False
-        skills_enabled = False
     logger.debug(
         "Memory enabled=%s for user=%s (incognito=%s, no_memory=%s, pref=%s)",
         mem_enabled, user, incognito, no_memory, uprefs.get("memory_enabled", "NOT_SET"),
@@ -736,7 +764,6 @@ async def build_chat_context(
         character_name=preset.character_name,
         agent_mode=agent_mode,
         incognito=incognito,
-        use_skills=skills_enabled,
     )
     if use_rag is not None or is_research_spinoff or casual_low_signal:
         _preface_kwargs["use_rag"] = use_rag_val
@@ -744,7 +771,6 @@ async def build_chat_context(
 
     # Capture used memories immediately
     used_memories = getattr(chat_processor, '_last_used_memories', [])
-    injected_skills = getattr(chat_processor, '_last_injected_skills', [])
 
     # Inject pre-fetched search context (compare mode)
     if search_context and allow_tool_preprocessing and not casual_low_signal:
@@ -814,7 +840,7 @@ async def build_chat_context(
         rag_sources=rag_sources,
         web_sources=web_sources,
         used_memories=used_memories,
-        injected_skills=injected_skills,
+        skills_enabled=skills_enabled,
         messages=messages,
         context_length=context_length,
         was_compacted=was_compacted,
@@ -1059,7 +1085,6 @@ def save_assistant_response(
     rag_sources: list = None,
     research_sources: list = None,
     used_memories: list = None,
-    injected_skills: list = None,
     do_research: bool = False,
     tool_events: list = None,
     incognito: bool = False,
@@ -1094,11 +1119,6 @@ def save_assistant_response(
         md["research_sources"] = research_sources
     if used_memories:
         md["memories_used"] = used_memories
-    # `P4-16`. Persisted for the same reason `memories_used` is: a reloaded
-    # thread that cannot say what the agent was shown is a thread that has to
-    # be taken on trust, and the whole phase is about not doing that.
-    if injected_skills:
-        md["skills_injected"] = injected_skills
     if do_research and not research_sources:
         md["research_clarification"] = True
     if tool_events:

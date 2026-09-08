@@ -19,8 +19,7 @@ def test_build_context_preface_web_search_success(monkeypatch):
         session=session,
         use_web=True,
         use_rag=False,
-        use_memory=False,
-        use_skills=False
+        use_memory=False
     )
 
     mock_web_search.assert_called_with("extracted query", time_filter=None, return_sources=True)
@@ -42,8 +41,7 @@ def test_build_context_preface_web_search_fallback_on_llm_failure(monkeypatch):
         session=session,
         use_web=True,
         use_rag=False,
-        use_memory=False,
-        use_skills=False
+        use_memory=False
     )
 
     mock_web_search.assert_called_with("First line", time_filter=None, return_sources=True)
@@ -64,8 +62,7 @@ def test_build_context_preface_web_search_fallback_on_empty_generation(monkeypat
         session=session,
         use_web=True,
         use_rag=False,
-        use_memory=False,
-        use_skills=False
+        use_memory=False
     )
 
     mock_web_search.assert_called_with("Fallback line", time_filter=None, return_sources=True)
@@ -87,8 +84,7 @@ def test_build_context_preface_web_search_query_sanitization(monkeypatch):
         session=session,
         use_web=True,
         use_rag=False,
-        use_memory=False,
-        use_skills=False
+        use_memory=False
     )
 
     called_query = mock_web_search.call_args[0][0]
