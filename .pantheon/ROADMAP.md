@@ -61,7 +61,7 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 |---|---|---|---|---|---|
 | Setup | Fork, rename, rebuild | 6 | 0 | 0 | **6** |
 | P0 | Fork identity & licence | 33 | 5 | **1** | **27** |
-| P1 | Token layer — the free wins | 15 | 8 | 0 | **7** |
+| P1 | Token layer — the free wins | 15 | 7 | 0 | **8** |
 | P2 | Un-nerf | 26 | 12 | 0 | **14** |
 | P3 | Mechanical hygiene | 24 | 18 | **2** | **4** |
 | P4 | The wire — the real glass box | 28 | 24 | 0 | **4** |
@@ -77,7 +77,7 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P14 | Measurement | 8 | 3 | 0 | **5** |
 | P15 | Outbound politeness | 12 | 2 | **1** | **9** |
 | P16 | Self-hosted by default | 20 | 1 | 0 | **19** |
-| **Total** | | **339** | **210** | **9** | **120** |
+| **Total** | | **339** | **209** | **9** | **121** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -105,7 +105,7 @@ Ten of its rows landed on 2026-08-27 — see § Progress. What is left of it:
   proved it found two more bugs (`B45`, `B46`). `check-fork-names.py`, `check-spdx.py` and
   `check-licences.py`'s new rule 7 fail CI on any regression.
 
-### Next: `P1-14`, then `P1-10`. `P1-12` is done and left `P1-15` behind. **The `P0` licence block is finished except for six rows that cannot be closed from here** — `P0-05` needs the live ChromaDB, `P0-08` needs Docker, `P0-16` and `P0-17` need the owner, `P0-13` is blocked on a design decision, and `P0-29` is its own session. `P0-18`, `P0-21b` and `P0-31` closed 2026-09-07; standing suite failures **19 → 14**. `P3-21`, `P7-12`, `P7-13`, `P13-11` and `P15-07` wait on the owner
+### Next: `P1-08`/`P1-09` (the send button fails 4.5:1 on 15 of 16 themes), then `P1-10`. `P1-12` and `P1-14` are done; `P1-12` left `P1-15` behind. **The `P0` licence block is finished except for six rows that cannot be closed from here** — `P0-05` needs the live ChromaDB, `P0-08` needs Docker, `P0-16` and `P0-17` need the owner, `P0-13` is blocked on a design decision, and `P0-29` is its own session. `P0-18`, `P0-21b` and `P0-31` closed 2026-09-07; standing suite failures **19 → 14**. `P3-21`, `P7-12`, `P7-13`, `P13-11` and `P15-07` wait on the owner
 
 **`P16-05` is the last zero-configuration leak**, and the only one that is not a one-liner: the
 embedding model is pulled from HuggingFace on the *first chat message*, because
@@ -239,6 +239,14 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### P1-14 — one name for the curve that decides how everything feels
+`a505720..HEAD`. **339 tracked, 121 done. 5 new tests, 0 regressions.**
+`cubic-bezier(0.34, 1.56, 0.64, 1)` on 34 transitions and animations, never named, so the one
+decision that most defines the product's feel could only be changed by find-and-replace.
+`--ease-signature` now, in `:root`. **Three near-misses stay literal on purpose** — same shape,
+gentler overshoot, and nobody knows whether that is taste or drift; a test pins their counts so
+a later sweep has to be a decision.
 
 ### P1-12 — the guard the row asked for, minus the reason it gave
 `657e14f..HEAD`. **339 tracked, 120 done. 13 new tests, 0 regressions.**
@@ -2492,7 +2500,7 @@ More visible change than any redesign step, and zero markup touched.
 - [ ] **P1-15** **Smooth scrolling ignores `prefers-reduced-motion`, in 52 places.** `P1-12`'s CSS guard sets `scroll-behavior: auto !important`, and that is not enough: `scrollIntoView({behavior: 'smooth'})` and `scrollTo({behavior: 'smooth'})` name the behaviour in the call and override the stylesheet, by design. **52 sites** (measured 2026-09-07, scope: `behavior: 'smooth'` and `scroll-behavior: smooth` in `static/`), the heaviest being `slashCommands.js` (12), `document.js` (8) and `emailLibrary.js` (7). The fix already exists and is one import: `scrollBehavior()` in `static/js/motion.js` returns `'auto'` or `'smooth'`. **This is filed rather than swept because it is 52 edits across 17 files for one line of value each**, and a sweep that size belongs in its own change where the diff can be read. One more thing rides with it: `compare/vote.js:279` is the only `element.animate()` call in the product — the Web Animations API is invisible to both the CSS guard and `scroll-behavior`, and it needs the same helper. `Verify:` no `behavior: 'smooth'` literal remains outside `motion.js`; `element.animate` asks first. `Depends:` P1-12 (done).
 
 - [ ] **P1-13** Elevation tokens: 4 theme-aware shadows replacing **288 declarations / 209 unique values** (re-measured 2026-08-28) (re-measured 2026-08-27, scope: `static/style.css`, comments stripped). **144** hardcode `rgba(0,0,0,α)` — re-counted 2026-08-28 across the whole file — on the four light themes those read as grey smudges. **156 of the 287 are already token-aware**, which the old figures hid: slightly over half the file is done, and the row is smaller than 287 makes it sound. The good theme-aware form already exists and is used 6 times.
-- [ ] **P1-14** Name the signature curve. `cubic-bezier(0.34, 1.56, 0.64, 1)` is used 34 times and has never had a token.
+- [x] **P1-14** Name the signature curve. `cubic-bezier(0.34, 1.56, 0.64, 1)` is used 34 times and has never had a token. — **done 2026-09-07.** `--ease-signature` in `:root`, 34 sites converted, count confirmed at 34 exactly. **Twenty distinct `cubic-bezier()` values live in `style.css`** and only this one is named: the rest are situational and stay literal until someone has a reason. **Three are near-misses on the signature and are deliberately not swept in** — `0.34, 1.2, 0.64, 1` (×2), `0.34, 1.32, 0.55, 1` and `0.34, 1, 0.64, 1` are the same shape with a gentler overshoot, which is either a considered choice or drift, and folding them in would answer that question by accident (`Law 1`). A test pins their counts, so a later sweep has to be a decision rather than a cleanup. `:root` is the right home and the `P1-01` prohibition does not carry: that one existed because 554 sites shipped a `var(--red)` fallback a `:root` rule would have flipped, and no site carries a fallback for an easing curve. 5 tests, 4 mutations, all caught.
 
 ---
 
