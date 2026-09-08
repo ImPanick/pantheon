@@ -587,6 +587,48 @@ def _normalize_model_id_from_cache(sess) -> Optional[str]:
     return None
 
 
+def note_escalation(reasons: list, why: str) -> bool:
+    """Record why this turn was promoted to agent mode, and return the flag.
+
+    `P4-18`. Six places in `chat_routes` promote a chat turn, and each one used
+    to write `auto_escalated = True` with a `logger.info` beside it — the reason
+    went to a log file six times and to the user never. Setting the flag and
+    recording the reason are one expression now (`auto_escalated =
+    note_escalation(...)`), so a seventh site cannot promote a turn silently
+    without the promotion also not happening.
+
+    `why` is read by a person, in a footer popover, so it is a phrase and not a
+    log tag: "the message asks for something on the web", not
+    "explicit web intent".
+    """
+    reasons.append(why)
+    logger.info("chat→agent auto-escalation: %s", why)
+    return True
+
+
+def escalation_withholds(*, promoted: bool, workspace_intent: bool,
+                         allow_browser: bool, browser_tools) -> list[str]:
+    """The tools a light promotion takes away, by name.
+
+    `P4-18`. A chat turn promoted for a notes or calendar intent should not
+    shell its way through the request, so `bash`, `python`, `read_file` and
+    `write_file` go — and the browser tools too unless this turn is allowed
+    them. That is a good rule and it stays. What was missing is that **nothing
+    said it had happened**: a model that could not do something because a tool
+    was taken away read as a model that could not work out how.
+
+    A promotion that grants the shell (`workspace_intent`) withholds nothing,
+    and an unpromoted turn withholds nothing — both return the empty list,
+    which is the honest answer and not a missing one.
+    """
+    if not promoted or workspace_intent:
+        return []
+    withheld = {"bash", "python", "read_file", "write_file"}
+    if not allow_browser:
+        withheld |= set(browser_tools or ())
+    return sorted(withheld)
+
+
 def skills_may_ship(*, incognito: bool, uprefs: dict,
                     allow_tool_preprocessing: bool, casual_low_signal: bool) -> bool:
     """May the skills index ship this turn, on the four grounds this module owns.
@@ -1085,6 +1127,7 @@ def save_assistant_response(
     rag_sources: list = None,
     research_sources: list = None,
     used_memories: list = None,
+    auto_escalation: dict = None,
     do_research: bool = False,
     tool_events: list = None,
     incognito: bool = False,
@@ -1119,6 +1162,12 @@ def save_assistant_response(
         md["research_sources"] = research_sources
     if used_memories:
         md["memories_used"] = used_memories
+    # `P4-18`. The turn was typed in chat mode and answered in agent mode. A
+    # reloaded thread that cannot say that is a thread whose shape has no
+    # explanation — and the withheld tools are why an answer may look thinner
+    # than the same question would get in agent mode on purpose.
+    if auto_escalation:
+        md["auto_escalated"] = auto_escalation
     if do_research and not research_sources:
         md["research_clarification"] = True
     if tool_events:

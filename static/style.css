@@ -4603,7 +4603,8 @@ body.bg-pattern-sparkles {
        rule set, two class names: they answer the same kind of question in
        the same footer, and two copies of this drift (`Law 14`). */
     .memory-used-pill,
-    .skills-used-pill {
+    .skills-used-pill,
+    .promoted-pill {
       display: inline-flex;
       align-items: center;
       background: var(--panel);
@@ -4620,12 +4621,15 @@ body.bg-pattern-sparkles {
       z-index: 1;
     }
     .memory-used-pill:hover,
-    .skills-used-pill:hover { opacity: 1; background: var(--border); }
+    .skills-used-pill:hover,
+    .promoted-pill:hover { opacity: 1; background: var(--border); }
     /* Nudge label text 1px down so it visually centers with the icon. */
     .memory-used-pill-text,
-    .skills-used-pill-text { position: relative; top: -1px; display: inline-block; }
+    .skills-used-pill-text,
+    .promoted-pill-text { position: relative; top: -1px; display: inline-block; }
     .memory-used-detail,
-    .skills-used-detail {
+    .skills-used-detail,
+    .promoted-detail {
       position: fixed;
       background: var(--panel);
       border: 1px solid var(--border);
@@ -4640,7 +4644,8 @@ body.bg-pattern-sparkles {
       font-size: 0.75rem;
     }
     .memory-used-row,
-    .skills-used-row {
+    .skills-used-row,
+    .promoted-row {
       display: flex;
       align-items: flex-start;
       gap: 6px;
@@ -4648,7 +4653,8 @@ body.bg-pattern-sparkles {
       line-height: 1.3;
     }
     .memory-used-row + .memory-used-row,
-    .skills-used-row + .skills-used-row {
+    .skills-used-row + .skills-used-row,
+    .promoted-row + .promoted-row {
       border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
     }
     .memory-used-badge {
@@ -4684,6 +4690,15 @@ body.bg-pattern-sparkles {
       font-size: 0.65rem;
       line-height: 15px;
       text-transform: lowercase;
+    }
+    /* `P4-18`. The withheld-tools line, marked so it does not read as more of
+       the same sentence. `--color-warning` where a theme has one, `--fg`
+       otherwise; no `--accent` reference. */
+    .promoted-withheld {
+      margin-top: 4px;
+      padding-top: 4px;
+      border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+      color: color-mix(in srgb, var(--fg) 75%, transparent);
     }
     .skills-used-badge.taught {
       border-color: color-mix(in srgb, var(--color-success) 45%, transparent);

@@ -4201,6 +4201,11 @@ import agentDrafts from './agentDrafts.js';   // H01
                 // memories pill beside it.
                 if (_isBg) continue;
                 holder._skillsInjected = json.data;
+              } else if (json.type === 'auto_escalated') {
+                // `P4-18`. Silent in both directions until now: the promotion
+                // itself, and the tools the promotion took away.
+                if (_isBg) continue;
+                holder._autoEscalated = json;
               } else if (json.type === 'verifier') {
                 // `P4-17`. A second model with no shared history judged whether
                 // the work actually matches the request. Its findings went into

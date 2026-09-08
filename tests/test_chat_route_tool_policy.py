@@ -121,11 +121,25 @@ def test_disabled_tools_respects_missing_vs_explicit_toggles():
 
 
 def test_workspace_auto_escalation_keeps_shell_tools():
-    """Workspace/shell auto-routing must not use the light typed-tool clamp."""
+    """Workspace/shell auto-routing must not use the light typed-tool clamp.
+
+    `P4-18` moved the clamp out of an inline `if` and into
+    `escalation_withholds`, so this asks the decision instead of matching the
+    line that used to express it — which is the stronger test and the reason
+    that extraction happened.
+    """
+    from routes.chat_helpers import escalation_withholds
     source = _CHAT_ROUTES.read_text(encoding="utf-8")
     assert '_workspace_agent_intent = _tool_intent.category in {"shell", "workspace"}' in source
     assert "allow_bash = \"true\"" in source
-    assert "if auto_escalated and not _workspace_agent_intent:" in source
+    assert escalation_withholds(
+        promoted=True, workspace_intent=True,
+        allow_browser=False, browser_tools={"browser_click"},
+    ) == [], "a workspace promotion must not clamp the shell it was promoted for"
+    assert "bash" in escalation_withholds(
+        promoted=True, workspace_intent=False,
+        allow_browser=False, browser_tools={"browser_click"},
+    ), "the light promotion must still clamp"
 
 
 # ── Functional tests of the disabled-tools logic ───────────────

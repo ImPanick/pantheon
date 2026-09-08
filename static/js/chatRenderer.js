@@ -1275,6 +1275,8 @@ export function buildFindingsBox(findings, expanded) {
    `in progress` chip in words next to the accent-tinted row, a plain box for
    pending. Nothing is hidden that used to be visible — the raw output stays in
    its `<details>` behind the same chevron every other tool card uses. */
+const PROMOTED_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>';
+
 const SKILL_PILL_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>';
 
 const TODO_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>';
@@ -2218,6 +2220,40 @@ export function createMsgFooter(msgElement) {
         });
         detail.appendChild(row);
       });
+    });
+    footer.appendChild(pill);
+  }
+
+  // `P4-18`. The turn was typed in chat mode and answered in agent mode. Six
+  // places promote a turn and every one of them said so to a log file; the
+  // person who typed it saw an agent thread appear and was told nothing —
+  // and when a tool had been withheld, nothing said a tool had been withheld.
+  const promotion = msgElement._autoEscalated;
+  if (promotion && (promotion.reasons?.length || promotion.withheld?.length)) {
+    const pill = document.createElement('button');
+    pill.className = 'promoted-pill';
+    pill.type = 'button';
+    const withheld = promotion.withheld || [];
+    pill.innerHTML = PROMOTED_ICON
+      + `<span class="promoted-pill-text">${esc(
+          withheld.length ? 'Promoted to Agent · tools withheld' : 'Promoted to Agent')}</span>`;
+    pill.title = (promotion.reasons || []).join('\n') || 'Promoted to Agent';
+    bindFooterPopover(pill, 'promoted-detail', (detail) => {
+      const why = document.createElement('div');
+      why.className = 'promoted-row';
+      why.textContent = (promotion.reasons || []).length
+        ? 'Answered in agent mode because ' + promotion.reasons.join('; ') + '.'
+        : 'Answered in agent mode.';
+      detail.appendChild(why);
+      if (withheld.length) {
+        const held = document.createElement('div');
+        held.className = 'promoted-row promoted-withheld';
+        // Named rather than counted. A model that could not do something
+        // because a tool was taken away should not read as a model that could
+        // not work out how.
+        held.textContent = 'Withheld for this turn: ' + withheld.join(', ') + '.';
+        detail.appendChild(held);
+      }
     });
     footer.appendChild(pill);
   }
@@ -3319,6 +3355,7 @@ export function addMessage(role, content, modelName, metadata) {
       if (firstWrap && firstWrap.classList.contains('msg-ai')) {
         if (metadata?.memories_used?.length) firstWrap._memoriesUsed = metadata.memories_used;
         if (metadata?.skills_injected?.length) firstWrap._skillsInjected = metadata.skills_injected;
+        if (metadata?.auto_escalated) firstWrap._autoEscalated = metadata.auto_escalated;
         firstWrap.appendChild(createMsgFooter(firstWrap));
         if (metadata) displayMetrics(firstWrap, metadata);
       }
@@ -3644,6 +3681,7 @@ export function addMessage(role, content, modelName, metadata) {
       // `P4-16`. Same propagation, same reason: the live stream sets this over
       // SSE and a reloaded thread has only the saved metadata to read from.
       if (metadata?.skills_injected?.length) wrap._skillsInjected = metadata.skills_injected;
+      if (metadata?.auto_escalated) wrap._autoEscalated = metadata.auto_escalated;
       wrap.appendChild(createMsgFooter(wrap));
       if (metadata) displayMetrics(wrap, metadata);
     } else {

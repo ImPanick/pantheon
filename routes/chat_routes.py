@@ -66,6 +66,8 @@ def _mark_turn_start() -> None:
 
 
 from routes.chat_helpers import (
+    escalation_withholds,
+    note_escalation,
     resolve_session_auth,
     build_chat_context,
     save_assistant_response,
@@ -1114,28 +1116,27 @@ def setup_chat_routes(
         # withholds shell/code/file tools so the model doesn't try to `bash`
         # its way through a plain chat request (and fail, especially with the
         # shell disabled).
+        _escalations: list[str] = []
+
+        def _escalate(why: str) -> bool:
+            return note_escalation(_escalations, why)
+
         auto_escalated = False
         _tool_intent = _classify_tool_intent(message) if isinstance(message, str) else None
         _workspace_agent_intent = False
         if chat_mode == "chat" and _tool_intent and _tool_intent.needs_tools:
             chat_mode = "agent"
-            auto_escalated = True
+            auto_escalated = _escalate(
+                f"{_tool_intent.category}: {_tool_intent.reason}")
             _workspace_agent_intent = _tool_intent.category in {"shell", "workspace"}
             if _workspace_agent_intent:
                 allow_bash = "true"
-            logger.info(
-                "chat→agent auto-escalation: category=%s reason=%s",
-                _tool_intent.category,
-                _tool_intent.reason,
-            )
         elif chat_mode == "chat" and _search_enabled:
             chat_mode = "agent"
-            auto_escalated = True
-            logger.info("chat→agent auto-escalation: search enabled")
+            auto_escalated = _escalate("web search is switched on for this chat")
         elif chat_mode == "chat" and _explicit_web_intent:
             chat_mode = "agent"
-            auto_escalated = True
-            logger.info("chat→agent auto-escalation: explicit web intent")
+            auto_escalated = _escalate("the message asks for something on the web")
         active_doc_id = form_data.get("active_doc_id", "").strip()
         logger.info(f"[doc-inject] chat_mode={chat_mode}, active_doc_id={active_doc_id!r}")
 
@@ -1325,29 +1326,25 @@ def setup_chat_routes(
             ):
                 _tool_intent = ToolIntent(True, "web", "contextual web lookup follow-up")
                 chat_mode = "agent"
-                auto_escalated = True
+                auto_escalated = _escalate(
+                    f"{_tool_intent.category}: {_tool_intent.reason}")
                 _workspace_agent_intent = False
-                logger.info(
-                    "chat→agent auto-escalation: category=%s reason=%s",
-                    _tool_intent.category,
-                    _tool_intent.reason,
-                )
             if isinstance(message, str) and _is_contextual_browser_followup(message, sess):
                 _explicit_browser_intent = True
                 if chat_mode == "chat":
                     chat_mode = "agent"
-                    auto_escalated = True
+                    auto_escalated = _escalate(
+                        "a follow-up to something already open in the browser")
                     _workspace_agent_intent = False
-                    logger.info("chat→agent auto-escalation: contextual browser/form follow-up")
             if not workspace and isinstance(message, str):
                 _auto_workspace, _ = _resolve_workspace_from_message_path(request, message)
                 if _auto_workspace:
                     workspace = _auto_workspace
                     chat_mode = "agent"
-                    auto_escalated = True
+                    auto_escalated = _escalate(
+                        f"the message names a path in {workspace}")
                     _workspace_agent_intent = True
                     allow_bash = "true"
-                    logger.info("chat→agent auto-escalation: explicit path workspace=%s", workspace)
         except SessionNotFoundError as e:
             raise HTTPException(404, str(e))
         except (ValueError, ValidationError):
@@ -1623,12 +1620,24 @@ def setup_chat_routes(
         # the heavy "do things on the computer" tools — otherwise the model
         # tries to shell out for a request that never needed it, then fails
         # (and looks broken when the shell is disabled).
-        if auto_escalated and not _workspace_agent_intent:
-            disabled_tools.update({
-                "bash", "python", "read_file", "write_file",
-            })
-            if not _allow_browser_for_web_turn:
-                disabled_tools.update(_BROWSER_MCP_TOOLS)
+        # `P4-18`. One answer to "what did the promotion take away", named
+        # rather than counted, and computed where a test can ask it.
+        _escalation_withheld = escalation_withholds(
+            promoted=auto_escalated,
+            workspace_intent=_workspace_agent_intent,
+            allow_browser=_allow_browser_for_web_turn,
+            browser_tools=_BROWSER_MCP_TOOLS,
+        )
+        disabled_tools.update(_escalation_withheld)
+        # `P4-18`. Built once, here, where both halves are known: the reasons
+        # the six promotion sites recorded and the tools the promotion took
+        # away. Streamed below and saved with the message, so a reloaded thread
+        # can still say why it is an agent thread.
+        _auto_escalation_payload = {
+            "type": "auto_escalated",
+            "reasons": list(_escalations),
+            "withheld": list(_escalation_withheld),
+        }
 
         # Disable document tools in compare sessions — they break the pane UI
         if sess.name and sess.name.startswith("[CMP]"):
@@ -1710,6 +1719,14 @@ def setup_chat_routes(
             # Emit which memories were injected into context (captured before stream)
             if ctx.used_memories:
                 yield f"data: {json.dumps({'type': 'memories_used', 'data': ctx.used_memories})}\n\n"
+
+            # `P4-18`. The turn was typed in chat mode and answered in agent
+            # mode, and until now that happened in silence — in both directions.
+            # The reader saw an agent thread they did not ask for, and when the
+            # model could not do something because a tool had been withheld,
+            # nothing said a tool had been withheld.
+            if auto_escalated:
+                yield f"data: {json.dumps(_auto_escalation_payload)}\n\n"
 
             # Run research as a background task (survives page refresh)
             if effective_do_research:
@@ -2311,6 +2328,7 @@ def setup_chat_routes(
                                     rag_sources=ctx.rag_sources,
                                     research_sources=research_sources,
                                     used_memories=ctx.used_memories,
+                                    auto_escalation=_auto_escalation_payload if auto_escalated else None,
                                     do_research=effective_do_research,
                                     incognito=incognito,
                                 )
@@ -2540,6 +2558,7 @@ def setup_chat_routes(
                                             web_sources=web_sources,
                                             rag_sources=ctx.rag_sources,
                                             used_memories=ctx.used_memories,
+                                            auto_escalation=_auto_escalation_payload if auto_escalated else None,
                                             incognito=incognito,
                                         )
                                         _terminal_saved = True
@@ -2586,6 +2605,7 @@ def setup_chat_routes(
                                     web_sources=web_sources,
                                     rag_sources=ctx.rag_sources,
                                     used_memories=ctx.used_memories,
+                                    auto_escalation=_auto_escalation_payload if auto_escalated else None,
                                     incognito=incognito,
                                 )
                                 if _saved_id:
