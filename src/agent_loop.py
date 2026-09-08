@@ -3716,6 +3716,8 @@ def _usage_bucket(
     input_tokens: int,
     output_tokens: int,
     usage_source: str,
+    cache_read: int = 0,
+    cache_write: int = 0,
 ) -> dict:
     """Build non-secret usage attribution for one concrete Agent round."""
 
@@ -3732,6 +3734,12 @@ def _usage_bucket(
     # stable even if the session later selects a different endpoint.
     if isinstance(endpoint_cost_tracked, bool):
         bucket["endpoint_cost_tracked"] = endpoint_cost_tracked
+    # `P4-22`. Only when the provider reported them: a local llama.cpp has no
+    # prompt cache to report, and a zero here would read as "your cache never
+    # hit", which is a different statement and a wrong one.
+    if cache_read or cache_write:
+        bucket["cache_read_input_tokens"] = max(int(cache_read or 0), 0)
+        bucket["cache_creation_input_tokens"] = max(int(cache_write or 0), 0)
     return bucket
 
 
@@ -3744,13 +3752,35 @@ def _usage_bucket_summary(usage_buckets: list) -> dict:
     output_tokens = sum(bucket.get("output_tokens", 0) or 0 for bucket in usage_buckets)
     sources = {bucket.get("usage_source") for bucket in usage_buckets}
     usage_source = next(iter(sources)) if len(sources) == 1 else "mixed"
-    return {
+    summary = {
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "total_tokens": input_tokens + output_tokens,
         "usage_source": usage_source,
         "usage_buckets": [dict(bucket) for bucket in usage_buckets],
     }
+    # `P4-22`. Prompt-cache read and write, summed across the rounds that
+    # reported them. A cached input token costs roughly a tenth of a fresh one,
+    # so a run whose stable prefix stopped being cacheable gets an order of
+    # magnitude more expensive with **no visible change at all** — which is why
+    # the row calls this the single biggest lever on real cost. It reached a
+    # `logger.info` and stopped there.
+    #
+    # Only when a provider reported them. Absence means "not reported" — a
+    # local llama.cpp has no prompt cache to report and a zero would read as
+    # "your cache never hit", which is a different and wrong statement.
+    cache_read = sum(b.get("cache_read_input_tokens", 0) or 0 for b in usage_buckets)
+    cache_write = sum(b.get("cache_creation_input_tokens", 0) or 0 for b in usage_buckets)
+    if cache_read or cache_write:
+        summary["cache_read_tokens"] = cache_read
+        summary["cache_write_tokens"] = cache_write
+        # The ratio the row is about, resolved here so the two surfaces that
+        # show it cannot compute it two ways. Denominator is everything that
+        # went in — fresh, read from cache, and written to it — because a hit
+        # rate against fresh tokens alone flatters itself.
+        billed = input_tokens + cache_read + cache_write
+        summary["cache_hit_ratio"] = round(cache_read / billed, 4) if billed else 0.0
+    return summary
 
 
 # ── Completion verifier ──
@@ -5782,6 +5812,8 @@ async def stream_agent_loop(
         _round_actual_endpoint_id = actual_endpoint_id
         _round_actual_endpoint_label = actual_endpoint_label
         _round_real_input_tokens = 0
+        _round_cache_read = 0    # `P4-22`
+        _round_cache_write = 0   # `P4-22`
         _round_real_output_tokens = 0
         _round_has_real_usage = False
         _round_usage_finalized = False
@@ -5820,6 +5852,8 @@ async def stream_agent_loop(
                 input_tokens=round_input_tokens,
                 output_tokens=round_output_tokens,
                 usage_source=usage_source,
+                cache_read=_round_cache_read,
+                cache_write=_round_cache_write,
             ))
         logger.info(
             "[agent-timing] round_start round=%s model=%s endpoint=%s prompt_tokens=%s tools=%s native_tools=%s timeout=%s",
@@ -5960,6 +5994,8 @@ async def stream_agent_loop(
                         normalized_usage = _normalize_usage_counts(
                             u.get("input_tokens", 0),
                             u.get("output_tokens", 0),
+                            u.get("cache_read_input_tokens", 0),
+                            u.get("cache_creation_input_tokens", 0),
                         )
                         if normalized_usage is None:
                             logger.warning(
@@ -5967,6 +6003,12 @@ async def stream_agent_loop(
                                 round_num,
                             )
                             continue
+                        # `P4-22`. Kept per round, because a prefix that stops
+                        # being cacheable stops being cacheable *at a round* —
+                        # a per-turn total would say the ratio dropped and not
+                        # where.
+                        _round_cache_read += normalized_usage.get("cache_read_input_tokens", 0)
+                        _round_cache_write += normalized_usage.get("cache_creation_input_tokens", 0)
                         round_input = normalized_usage["input_tokens"]
                         round_output = normalized_usage["output_tokens"]
                         real_input_tokens += round_input

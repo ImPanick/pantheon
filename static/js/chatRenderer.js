@@ -2498,6 +2498,30 @@ export function createUserMsgFooter(msgElement) {
 /**
  * Display performance metrics for a message.
  */
+/**
+ * `P4-22`. Prompt-cache read/write and the hit ratio, in Message Stats.
+ *
+ * The two counts were pulled out of the provider's stream, written to a
+ * `logger.info` and dropped. A cached input token costs roughly a tenth of a
+ * fresh one, so a run whose stable prefix stopped being cacheable gets an order
+ * of magnitude more expensive **with no visible change at all** — which is the
+ * row's reason for calling this the single biggest lever on real cost.
+ *
+ * Nothing is drawn when the provider did not report it. A local llama.cpp has
+ * no prompt cache, and a row reading "Cache 0%" there would be a claim about a
+ * mechanism that does not exist rather than a measurement of one that does.
+ */
+export function promptCacheRows(metrics) {
+  const m = metrics || {};
+  const read = Number(m.cache_read_tokens);
+  const write = Number(m.cache_write_tokens);
+  if (!Number.isFinite(read) || !Number.isFinite(write) || (!read && !write)) return '';
+  const ratio = Number(m.cache_hit_ratio);
+  const pct = Number.isFinite(ratio) ? `${Math.round(ratio * 1000) / 10}%` : 'n/a';
+  return `<div><span class="ctx-label">Cache</span> ${pct} hit`
+    + ` (${read.toLocaleString()} read, ${write.toLocaleString()} written)</div>`;
+}
+
 export function displayMetrics(messageElement, metrics) {
   messageElement
     .querySelectorAll('.response-metrics, .metrics-divider, .ctx-divider, .ctx-ring')
@@ -2577,6 +2601,7 @@ export function displayMetrics(messageElement, metrics) {
       <div><span class="ctx-label">Input</span> ${inputTokens.toLocaleString()} tokens${isReal ? '' : '~'}</div>
       <div><span class="ctx-label">Output</span> ${outputTokens.toLocaleString()} tokens${isReal ? '' : '~'}</div>
       <div><span class="ctx-label">Total</span> ${totalTok.toLocaleString()} tokens</div>
+      ${promptCacheRows(metrics)}
       <div><span class="ctx-label">Speed</span> ${speedStr}</div>
       <div><span class="ctx-label">Time</span> ${responseTime}s</div>
       ${prepTime != null ? `<div><span class="ctx-label">Prep</span> ${prepTime}s</div>` : ''}

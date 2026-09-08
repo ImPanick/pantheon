@@ -35,7 +35,7 @@ _LOCAL_MODEL_WAITING_FOREGROUND = 0
 _LOCAL_MODEL_CURRENT: Dict[str, object] = {}
 
 
-def _normalize_usage_counts(input_value=0, output_value=0):
+def _normalize_usage_counts(input_value=0, output_value=0, cache_read=0, cache_write=0):
     """Return safe integer token counts, or ``None`` for malformed usage."""
 
     def _count(value):
@@ -55,10 +55,28 @@ def _normalize_usage_counts(input_value=0, output_value=0):
     output_tokens = _count(output_value)
     if input_tokens is None or output_tokens is None:
         return None
-    return {
+    usage = {
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
     }
+    # `P4-22`. Prompt-cache read/write, when the provider reports them. They
+    # were pulled out of the Anthropic stream, written to a `logger.info` and
+    # dropped — and the row's own words for why that matters are that cache hit
+    # ratio is "the single biggest lever on real cost". A cached input token is
+    # roughly a tenth the price of a fresh one, so a run whose prefix stopped
+    # being cacheable gets an order of magnitude more expensive **with no
+    # visible change at all**.
+    #
+    # Only when non-zero, and only the counts: a provider that does not report
+    # them says nothing rather than reporting a ratio of nothing. Same rule as
+    # every other field added in this phase — absence means "not reported", not
+    # "zero".
+    for key, value in (("cache_read_input_tokens", cache_read),
+                       ("cache_creation_input_tokens", cache_write)):
+        count = _count(value)
+        if count:
+            usage[key] = count
+    return usage
 
 
 def _normalize_http_status(value) -> Optional[int]:
@@ -3051,6 +3069,8 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
     # ── Anthropic streaming ──
     if provider == "anthropic":
         _anth_input_tokens = 0
+        _anth_cache_read = 0
+        _anth_cache_write = 0
         _anth_output_tokens = 0
         _anth_usage_seen = False
         _anth_actual_model = ""
@@ -3133,12 +3153,14 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                             _anth_input_tokens = _u.get("input_tokens", 0)
                             # Surface prompt-cache effectiveness: cache_read > 0 means the
                             # stable system+tools prefix was served from cache this round.
-                            _c_read = _u.get("cache_read_input_tokens", 0)
-                            _c_write = _u.get("cache_creation_input_tokens", 0)
-                            if _c_read or _c_write:
+                            # `P4-22`. Kept, not just logged. The log line was
+                            # the only place these two numbers ever went.
+                            _anth_cache_read = _u.get("cache_read_input_tokens", 0)
+                            _anth_cache_write = _u.get("cache_creation_input_tokens", 0)
+                            if _anth_cache_read or _anth_cache_write:
                                 logger.info(
                                     "[anthropic-cache] read=%s write=%s fresh_input=%s",
-                                    _c_read, _c_write, _anth_input_tokens,
+                                    _anth_cache_read, _anth_cache_write, _anth_input_tokens,
                                 )
                         elif evt == "message_delta":
                             _u = j.get("usage") or {}
@@ -3162,6 +3184,8 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                             normalized_usage = _normalize_usage_counts(
                                 _anth_input_tokens,
                                 _anth_output_tokens,
+                                _anth_cache_read,
+                                _anth_cache_write,
                             )
                             if normalized_usage and _anth_usage_seen:
                                 _annotate_usage_model(
