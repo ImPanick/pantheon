@@ -256,8 +256,40 @@ function generateHarmonyColors(accentHex, harmonyType, mode) {
   };
 }
 
+
+// P3-09 — which colour scheme the browser should paint its own controls in.
+//
+// Native `<select>` popups, scrollbars, checkboxes and form controls are drawn
+// by the browser, not by this stylesheet, and `color-scheme` is the only thing
+// that tells it which way. Four rules hardcoded `dark`, so on the four light
+// themes a light page opened a black dropdown. The fix existed and could not
+// run: `:root.light select { color-scheme: light }` sits behind a class no
+// code has ever added — light themes push values through the five tokens and
+// never add a class (`P3-09`, and `:root.light` is unreachable at the fork
+// point too).
+//
+// Derived from the background rather than from a theme name, so a custom
+// palette gets the right answer without being listed anywhere. WCAG relative
+// luminance, threshold 0.5: the four light themes measure 0.83–0.94 and the
+// lightest of the twelve dark ones measures 0.025, so nothing is near the line.
+//
+// Mirrored in `static/index.html`'s first-paint script and in
+// `static/login.html`, for the same reason `--accent` is — this module has not
+// booted when those paint, and a scrollbar that flips colour after load is the
+// flash they exist to prevent.
+function _isLightBackground(hex) {
+  const d = String(hex || '').replace('#', '');
+  if (d.length !== 6) return false;
+  const lin = [0, 2, 4].map(function (i) {
+    const c = parseInt(d.slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  });
+  return (0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]) > 0.5;
+}
+
 export function applyColors(colors) {
   const s = document.documentElement.style;
+  s.setProperty('color-scheme', _isLightBackground(colors.bg) ? 'light' : 'dark');
   s.setProperty('--bg', colors.bg);
   s.setProperty('--fg', colors.fg);
   s.setProperty('--panel', colors.panel);

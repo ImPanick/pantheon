@@ -24,6 +24,23 @@
         var s = document.documentElement.style;
         var c = t.colors;
         s.setProperty('--bg', c.bg);
+        // P3-09 — see `applyColors()` in static/js/theme.js for why this is
+        // here. Native controls (select popups, scrollbars, checkboxes) are
+        // painted by the browser and `color-scheme` is the only thing that
+        // tells it which way; without this line a light theme opens a black
+        // dropdown until the module boots, and on the login page forever.
+        (function(){
+          var d = String(c.bg || '').replace('#', '');
+          var light = false;
+          if (d.length === 6) {
+            var lin = [0, 2, 4].map(function (i) {
+              var ch = parseInt(d.slice(i, i + 2), 16) / 255;
+              return ch <= 0.03928 ? ch / 12.92 : Math.pow((ch + 0.055) / 1.055, 2.4);
+            });
+            light = (0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]) > 0.5;
+          }
+          s.setProperty('color-scheme', light ? 'light' : 'dark');
+        })();
         s.setProperty('--fg', c.fg);
         s.setProperty('--panel', c.panel);
         s.setProperty('--border', c.border);
