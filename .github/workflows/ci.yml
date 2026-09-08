@@ -223,6 +223,18 @@ jobs:
       - name: check-event-rounds
         run: python3 .pantheon/check-event-rounds.py
 
+      # `P13-13`. NOT a checker and deliberately not a gate — it exits 0
+      # whatever it finds. `P14-02` already records how many memories a search
+      # asked for and how many came back, and "returned 5" is not "returned the
+      # right 5", so this is the first number in the tree that can tell one
+      # retrieval engine from another. It runs here so the figure appears in
+      # every build log and a change in it is noticed, not so a build fails on
+      # it: a ratchet on a number nobody has calibrated is `P3-20`'s mistake.
+      # The shipped corpus is a harness fixture and says so in its own header;
+      # a real measurement needs an operator's own memories.
+      - name: retrieval eval (report only)
+        run: python3 .pantheon/retrieval_eval.py --verbose
+
   law16-egress:
     name: Law 16 — no egress on a fresh install
     runs-on: ubuntu-latest

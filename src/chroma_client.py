@@ -33,7 +33,12 @@ def get_chroma_client():
     """Get or create the singleton ChromaDB HTTP client.
 
     Raises RuntimeError with a clear install hint if the `chromadb` package
-    is not installed — it's an optional dependency (RAG + memory vectors).
+    is not installed. `B61`: it is NOT an optional dependency — `chromadb-client`
+    ships in `requirements.txt`, and `requirements-optional.txt` records the
+    move ("RAG, semantic memory, and tool selection are core paths, so they ship
+    by default now"). What is optional is this *service* being reachable, which
+    is a different failure and the one that actually happens: up at install,
+    down at any moment after.
     """
     global _client
     if _client is not None:
@@ -43,8 +48,9 @@ def get_chroma_client():
         import chromadb
     except ImportError as e:
         raise RuntimeError(
-            "ChromaDB integration is not installed. Install the optional "
-            "dependency with: pip install chromadb-client"
+            "ChromaDB integration is not installed. It ships in "
+            "requirements.txt, so this means the environment is incomplete "
+            "rather than minimal: pip install chromadb-client"
         ) from e
 
     host = os.getenv("CHROMADB_HOST", "localhost")

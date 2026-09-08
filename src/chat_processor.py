@@ -8,6 +8,7 @@ import re
 import time
 from collections import Counter
 from typing import List, Dict, Any, Optional, Tuple
+from src import retrieval_engine
 from src.chat_helpers import extract_urls
 from src.youtube_handler import is_youtube_url
 from src.search import comprehensive_web_search, fetch_webpage_content
@@ -158,12 +159,27 @@ class ChatProcessor:
             selected.append(memory)
         return selected[:self.PINNED_MEMORY_LIMIT]
 
-    def _hybrid_retrieve(self, message: str, mem_entries: list, k: int = 5) -> list:
+    def _hybrid_retrieve(self, message: str, mem_entries: list, k: int = 5,
+                         report: dict | None = None) -> list:
         """Retrieve memories relevant to the message.
 
         Uses BM25-style keyword scoring + optional vector similarity.
         Recency is a tiebreaker only, never the primary signal.
+
+        `B61`. `report`, when given, is filled with which engine actually
+        answered — `engine`, `vector_healthy`, and `vector_ids`, the memories
+        the vector store contributed to. It is an out-parameter rather than a
+        wider return type because the return value is a plain list of memory
+        dicts that callers and test doubles unpack directly, and widening it to
+        report something they do not read is how the `_build_base_prompt`
+        3-tuple broke eleven tests. Callers that do not care pass nothing.
         """
+        if report is not None:
+            # Set before every early return. A report left empty by a bail-out
+            # would be read as "vector search answered", which is the exact
+            # class of lie this parameter exists to end.
+            report.update({"engine": retrieval_engine.KEYWORD,
+                           "vector_healthy": False, "vector_ids": []})
         if not mem_entries or not message.strip():
             return []
 
@@ -206,7 +222,7 @@ class ChatProcessor:
             return score
 
         # ── Score all candidates ──
-        has_vector = self.memory_vector and self.memory_vector.healthy
+        has_vector = bool(self.memory_vector and self.memory_vector.healthy)
         vector_scores = {}
 
         if has_vector:
@@ -215,6 +231,15 @@ class ChatProcessor:
             for r in results:
                 if r["memory_id"] in mem_by_id:
                     vector_scores[r["memory_id"]] = max(r["score"], 0.0)
+
+        if report is not None:
+            # `has_vector` and not `vector_scores`: a healthy index that matched
+            # nothing still answered, and calling that `keyword` would hide an
+            # empty index behind a missing service.
+            report["vector_healthy"] = has_vector
+            report["engine"] = retrieval_engine.resolve(
+                vector_used=has_vector, keyword_used=bool(query_tokens))
+            report["vector_ids"] = sorted(vector_scores)
 
         scored = []
         for mem in mem_entries:
@@ -329,13 +354,20 @@ class ChatProcessor:
                     ),
                 ))
                 for m in selected_pinned:
-                    self._last_used_memories.append({"text": m["text"], "category": m.get("category", "fact"), "type": "pinned"})
+                    # `B61`. Pinned is its own engine: nothing ranked these, so
+                    # reporting them as a keyword or vector hit is the same lie
+                    # pointed the other way.
+                    self._last_used_memories.append({
+                        "text": m["text"], "category": m.get("category", "fact"),
+                        "type": "pinned", "engine": retrieval_engine.PINNED})
                     if m.get("id"):
                         _used_ids.append(m["id"])
 
             remaining_memory_slots = max(self.MEMORY_CONTEXT_LIMIT - len(self._last_used_memories), 0)
             if extended and remaining_memory_slots:
-                relevant = self._hybrid_retrieve(message, extended, k=remaining_memory_slots)
+                recall_report: dict = {}
+                relevant = self._hybrid_retrieve(
+                    message, extended, k=remaining_memory_slots, report=recall_report)
                 if relevant:
                     ext_text = "\n".join([f"- {m['text']}" for m in relevant])
                     preface.append(untrusted_context_message(
@@ -345,8 +377,24 @@ class ChatProcessor:
                             f"about these topics.\n{ext_text}"
                         ),
                     ))
+                    # Indexed, not `.get`. `_hybrid_retrieve` writes `engine` before
+                    # every early return, so a missing key means that guarantee broke
+                    # — and a default here would paper over it with whichever answer
+                    # the default happened to be, which is this row's whole subject.
+                    _run_engine = recall_report["engine"]
+                    _vector_ids = set(recall_report.get("vector_ids") or ())
                     for m in relevant:
-                        self._last_used_memories.append({"text": m["text"], "category": m.get("category", "fact"), "type": "recalled"})
+                        # Per memory, not per run. On a hybrid run some of these
+                        # were found by the index and some only by BM25, and a
+                        # single run-level label would claim the index found
+                        # both. `HYBRID` collapses to what actually applied.
+                        _engine = _run_engine
+                        if _run_engine == retrieval_engine.HYBRID:
+                            _engine = (retrieval_engine.VECTOR if m.get("id") in _vector_ids
+                                       else retrieval_engine.KEYWORD)
+                        self._last_used_memories.append({
+                            "text": m["text"], "category": m.get("category", "fact"),
+                            "type": "recalled", "engine": _engine})
                         if m.get("id"):
                             _used_ids.append(m["id"])
 

@@ -73,6 +73,42 @@ export function safeDisplayImageSrc(raw) {
   return '';
 }
 
+// `B61`. Whether semantic search failed to run for this message.
+//
+// The ChromaDB service is a separate process and can go down long after a
+// working install; without saying so, the Brain gets quietly worse at its one
+// job and the pill looks identical while it happens. Named and exported rather
+// than inlined so it can be executed by a test instead of read by one — a test
+// that greps the renderer is testing the file, not the behaviour.
+//
+// Only recalled memories carry a retrieval engine: pinned ones were injected,
+// not found, so a message with nothing but pinned memories is not degraded —
+// no search ran, and there is nothing to warn about.
+export function memoryRecallDegraded(mems) {
+  const list = Array.isArray(mems) ? mems : [];
+  if (list.some(m => m && m.engine === 'vector')) return false;
+  // `type` is authoritative, not `engine`. The server pairs `pinned` with
+  // `pinned`, but this data arrives over a wire and a pinned memory carrying
+  // some other engine must still not raise a search warning — nothing searched
+  // for it, so there is nothing to warn about.
+  return list.some(m => m && m.type === 'recalled' && m.engine === 'keyword');
+}
+
+// `B61`. What the memory pill says, as data. Extracted with the check above
+// because testing `memoryRecallDegraded` alone proves the ingredient and not
+// the recipe: a mutation that computed the warning correctly and then never
+// put it on the pill survived every test of the helper.
+export function memoryPillParts(mems) {
+  const list = Array.isArray(mems) ? mems : [];
+  const pinned = list.filter(m => m && m.type === 'pinned').length;
+  const recalled = list.filter(m => m && m.type === 'recalled').length;
+  const parts = [];
+  if (pinned) parts.push(`${pinned} pinned`);
+  if (recalled) parts.push(`${recalled} recalled`);
+  if (memoryRecallDegraded(list)) parts.push('keyword only');
+  return parts;
+}
+
 function _makeActionBtn(className, title, text, handler) {
   const btn = document.createElement('button');
   btn.className = className;
@@ -2127,19 +2163,29 @@ export function createMsgFooter(msgElement) {
     actions.appendChild(moreBtn);
   }
 
+  // `B61`. Mirrors `LABELS` in `src/retrieval_engine.py`. Two copies because
+  // one is Python and one is a browser, and a test pins them equal rather than
+  // trusting that whoever adds an engine remembers both.
+  const MEMORY_ENGINE_LABELS = {
+    vector: 'semantic',
+    keyword: 'keyword only',
+    hybrid: 'semantic + keyword',
+    exact: 'exact match',
+    pinned: 'pinned',
+  };
+
   // Memory-used indicator pill
   const mems = msgElement._memoriesUsed;
   if (mems && mems.length > 0) {
     const pill = document.createElement('button');
     pill.className = 'memory-used-pill';
     pill.type = 'button';
-    const pinnedCount = mems.filter(m => m.type === 'pinned').length;
-    const recalledCount = mems.filter(m => m.type === 'recalled').length;
-    const parts = [];
-    if (pinnedCount) parts.push(`${pinnedCount} pinned`);
-    if (recalledCount) parts.push(`${recalledCount} recalled`);
+    const parts = memoryPillParts(mems);
+    const degraded = memoryRecallDegraded(mems);
     pill.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px"><path d="M12 2a7 7 0 0 1 7 7c0 2.5-1.3 4.8-3.5 6-.3.2-.5.5-.5.9V18h-6v-2.1c0-.4-.2-.7-.5-.9C6.3 13.8 5 11.5 5 9a7 7 0 0 1 7-7z"/><path d="M9 18h6v1a3 3 0 0 1-6 0v-1z"/><path d="M12 2v7"/><path d="M8.5 6.5L12 9l3.5-2.5"/></svg><span class="memory-used-pill-text">${parts.join(', ')}</span>`;
-    pill.title = mems.map(m => `[${m.type}] ${m.text}`).join('\n');
+    pill.title = mems.map(m => `[${MEMORY_ENGINE_LABELS[m.engine] || m.type}] ${m.text}`).join('\n')
+      + (degraded ? '\n\nSemantic search did not run for this message — these were '
+                  + 'matched on wording alone. The vector service may be unreachable.' : '');
 
     bindFooterPopover(pill, 'memory-used-detail', (detail, closeDetail) => {
       mems.forEach(m => {
@@ -2150,11 +2196,21 @@ export function createMsgFooter(msgElement) {
         const badge = document.createElement('span');
         badge.className = 'memory-used-badge ' + (m.type === 'pinned' ? 'pinned' : 'recalled');
         badge.textContent = m.type === 'pinned' ? '\u25CF' : '\u21BB';
+        // `B61`. Per row, because a hybrid run finds some of these by index and
+        // some by wording, and one label on the pill would claim the index
+        // found both.
+        badge.title = MEMORY_ENGINE_LABELS[m.engine] || '';
         const text = document.createElement('span');
         text.className = 'memory-used-text';
         text.textContent = m.text;
         row.appendChild(badge);
         row.appendChild(text);
+        if (m.engine && m.engine !== 'pinned') {
+          const eng = document.createElement('span');
+          eng.className = 'memory-used-engine';
+          eng.textContent = MEMORY_ENGINE_LABELS[m.engine] || m.engine;
+          row.appendChild(eng);
+        }
         row.addEventListener('click', (ev) => {
           ev.stopPropagation();
           closeDetail();

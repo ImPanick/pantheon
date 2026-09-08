@@ -490,13 +490,18 @@ async def do_manage_memory(content: str, session_id: Optional[str] = None, owner
         query_lower = query.lower()
         exact_results = [m for m in memories if query_lower in (m.get("text", "").lower())]
 
+        # `B61`. This was named `vector_results` and has never held a vector
+        # result: `get_relevant_memories` is the lexical scorer, and no
+        # embedding is consulted anywhere on this path. The name was the whole
+        # bug — a reader checking whether semantic search reached the agent's
+        # memory tools would have read this line and stopped looking.
         if hasattr(_memory_manager, 'get_relevant_memories'):
-            vector_results = _memory_manager.get_relevant_memories(query, memories, threshold=0.05, max_items=20)
+            scored_results = _memory_manager.get_relevant_memories(query, memories, threshold=0.05, max_items=20)
         else:
-            vector_results = []
+            scored_results = []
         seen = set()
         results = []
-        for m in [*exact_results, *vector_results]:
+        for m in [*exact_results, *scored_results]:
             mid = m.get("id")
             if mid in seen:
                 continue

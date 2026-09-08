@@ -7,6 +7,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional
 
+from src import retrieval_engine
+
 
 @dataclass
 class MemoryRecord:
@@ -29,6 +31,11 @@ class MemorySearchHit:
     memory: MemoryRecord
     provider_id: str
     score: Optional[float] = None
+    # `B61`. Which engine produced this hit. Both branches of `recall` set it
+    # explicitly, so the default never ships a claim. Before this field, a
+    # `score=None` fallback hit was indistinguishable from a vector hit that
+    # scored nothing, and no caller could tell the two apart.
+    engine: str = retrieval_engine.VECTOR
 
 
 class MemoryProvider(ABC):
@@ -197,6 +204,7 @@ class NativeMemoryProvider(MemoryProvider):
                         memory=self._to_record(entry),
                         provider_id=self.provider_id,
                         score=result.get("score"),
+                        engine=retrieval_engine.VECTOR,
                     )
                 )
             if hits:
@@ -211,7 +219,11 @@ class NativeMemoryProvider(MemoryProvider):
             MemorySearchHit(
                 memory=self._to_record(entry),
                 provider_id=self.provider_id,
+                # `B61`. Still None — the lexical scorer's score is discarded by
+                # `get_relevant_memories`, and inventing one here would be a
+                # different lie. What changes is that `engine` says why.
                 score=None,
+                engine=retrieval_engine.KEYWORD,
             )
             for entry in fallback
         ]

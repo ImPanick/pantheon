@@ -948,3 +948,64 @@ the wrong order to satisfy a licence term in.
 both branches: link present when configured, absent when not.
 
 **What would reopen this.** The owner saying go.
+
+---
+
+## D-2026-09-08-07 — the Brain: measure it, tell the truth about it, then give it one path
+
+**What it decides.** `P13-11` asked two retrieval-quality judgements and I brought back five options.
+The owner took three: **honest reporting + a golden set + one retrieval path** (in that order), then
+**cross-session frequency**, then **two-stage retrieval where a model does the selecting**. The
+fourth option — restructuring what extraction *stores* into retrieval-shaped records — was **not
+taken**, and that is coherent rather than an omission: two-stage selection buys the same *"context
+matters more"* win at **query** time, against the memories that already exist, with no migration of
+anybody's `memory.json` and no second record format to keep in step with the first.
+
+**Not a fine-tune, and the reason is worth keeping.** The owner's phrasing was *"the vecetore store
+should be an LLM created fine tune etc."* The instinct — the representation should be made by a
+model, not by word overlap — is right, and is already half-shipped: that is what an embedding is,
+and `fastembed` (local ONNX, ~50MB, zero-config, no network) does it today. But a fine-tune is the
+wrong **mechanism** for facts: it cannot be edited, cannot be deleted when someone says *forget
+that*, cannot be cited, and cannot be told apart from a hallucination. It also contradicts two
+standing calls of this project — training is parked, and data is disposable. A fine-tune is the
+least disposable artefact there is.
+
+**The finding that reordered everything: nothing measures retrieval quality.** `P14-02` records
+`asked` and `returned` per search, and *returned 5* is not *returned the right 5*. Every option here
+would otherwise have shipped on taste, which is the unverifiable self-referential claim `Law 9`
+forbids. So the golden set comes **before** the path change, not after — otherwise *"the new one is
+better"* is a row that cannot honestly be ticked.
+
+**Deleting the Jaccard scorer is `Law 13`/`Law 14`, not a `Law 1` subtraction.** The capability —
+searching memories — survives and improves on `_hybrid_retrieve` (BM25 + corpus IDF + optional
+vectors), which already has the two best callers and already degrades sanely without a vector store.
+What goes is a *duplicate implementation* serving five surfaces worse, including the agent's own
+`memory_search`. This is the same argument `P3-10` used to delete `calendar/reminders.js`, and it
+carries the same obligation: the safety case must be executable before anything is removed. It also
+makes `P13-11`'s (a) and (b) — `_is_identity_memory`'s breadth and identity-above-preference group
+order — **moot rather than answered**, because the scorer they live in is gone.
+
+**Two `Law 14` traps found before writing anything, and both change the shape of the work.**
+
+1. **Reinforcement already ships.** `src/memory.py` keeps a `uses` counter, `chat_processor.py:353`
+   calls `increment_uses` on every injected memory, and the Brain's *"Most used"* sort is that
+   signal on screen. `P13-04` already records this. So *cross-session frequency* is **not** that
+   counter and must not become a second one: `uses` counts **recalls** (how often the system reached
+   for a fact), and what is missing counts **mentions** (how often the person said it, across how
+   many distinct sessions). Both belong on the same record, named apart, or the Brain grows two
+   numbers that disagree.
+2. **The retrieval trace already ships end to end.** `chat_processor` → `chat_helpers:1195` →
+   `chat_routes:1729` (`memories_used`) → `chatRenderer:2134` (`.memory-used-pill`), with a detail
+   popover. `P13-10` records this. So `B61`'s engine attribution rides **that** payload and **that**
+   pill — one more field and one more line of pill text — rather than a second trace surface.
+
+**Order of work.** `B61` (say which engine answered) → the golden set → one retrieval path →
+cross-session mentions → two-stage selection. `B61` is first because it is what makes the golden set
+readable: a scored run whose engine is unknown cannot be compared to another.
+
+**Cost.** Two-stage selection spends one utility-model call per memory-using turn. That is a real
+cost on the owner's own hardware and it is accepted **only** once the golden set can show what it
+buys — which is the same discipline as the ordering above, applied to the most expensive option.
+
+**What would reopen this.** The golden set showing `_hybrid_retrieve` is *not* better than the
+scorer it replaces — in which case the deletion is wrong and the measurement did its job.

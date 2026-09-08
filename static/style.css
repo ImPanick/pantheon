@@ -4676,6 +4676,20 @@ body.bg-pattern-sparkles {
       color: var(--fg);
       opacity: 0.85;
     }
+    /* `B61`. Which engine found this memory, per row — a hybrid run finds some
+       by the index and some by wording, so one label on the pill would claim
+       the index found both. Pushed right and dimmed: it is provenance, read
+       after the memory itself, never before. No `--accent`; the theme editor
+       owns that token and all sixteen themes depend on it staying unclaimed. */
+    .memory-used-engine {
+      flex-shrink: 0;
+      margin-left: auto;
+      padding-left: 8px;
+      font-size: 0.68rem;
+      white-space: nowrap;
+      color: var(--fg);
+      opacity: 0.45;
+    }
     /* `P4-16`. The skills badge carries a category *word*, not the memory
        pill's single glyph, so it is the one part of the shared rule set that
        cannot be shared. `--color-success` marks a procedure the teacher wrote
