@@ -216,7 +216,12 @@ def test_theme_js_asks_before_starting_a_canvas_animator():
     assert "import { prefersReducedMotion } from './motion.js';" in THEME
     body = THEME.split("export function applyBgPattern", 1)[1].split("\nexport ", 1)[0]
     assert "prefersReducedMotion()" in body
-    assert "if (_CANVAS_PATTERNS[p] && !reduced) _CANVAS_PATTERNS[p]();" in body, (
+    # The claim is that the guard is *consulted*, not that it is written on one
+    # line: `P3-19` wrapped this call in a try/catch and the old exact-string
+    # assertion failed on working code. What the guard does is proved by
+    # execution in `test_background_animators_degrade.py`, which runs the real
+    # `applyBgPattern` with the preference on and finds no canvas.
+    assert "_CANVAS_PATTERNS[p] && !reduced" in body, (
         "the seven canvas animators are the whole JS half of this row"
     )
     assert "classList.add('bg-pattern-' + p)" in body, (

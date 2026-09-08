@@ -517,7 +517,21 @@ export function applyBgPattern(pattern) {
   // D-2026-08-26-03 keeps the animated backgrounds; nobody asked for them to
   // keep running for a person whose operating system says otherwise.
   const reduced = prefersReducedMotion();
-  if (_CANVAS_PATTERNS[p] && !reduced) _CANVAS_PATTERNS[p]();
+  if (_CANVAS_PATTERNS[p] && !reduced) {
+    try {
+      _CANVAS_PATTERNS[p]();
+    } catch (err) {
+      // `P3-19`. The animator is decoration; the theme is not. Whatever it hit,
+      // the `bg-pattern-*` class is already on the body, so the pattern falls
+      // back to its static styling and everything after this line still runs.
+      // Not swallowed (`P3-17`) — and any half-built canvas goes with it, so a
+      // failed animator leaves nothing covering the page.
+      // eslint-disable-next-line no-console
+      console.warn(`Background pattern "${p}" could not start; using its static form.`, err);
+      const orphan = document.getElementById(p + '-canvas');
+      if (orphan) orphan.remove();
+    }
+  }
   // Hide sliders that do nothing on static patterns — or, under reduced
   // motion, on a canvas pattern that is not running to be adjusted. The note
   // says which of the two it is, because a control that vanishes with no
@@ -1631,16 +1645,49 @@ export function getCustomThemes() { return _loadCustomThemes(); }
 
 // ── Synapse background effect ──
 // Uses the CSS grid pattern as base, overlays fast-moving small light pulses on grid lines
-function _initSynapse() {
-  if (document.getElementById('synapse-canvas')) return;
+/** The full-screen background canvas for `id`, and its 2D context — or null
+ *  when this browser will not give us one.
+ *
+ *  `P3-19`. All seven animators below opened with the same eight lines:
+ *  `document.body.prepend(canvas); const ctx = canvas.getContext('2d');` and
+ *  then `ctx.setTransform(...)` on the next line. **`getContext` returns null
+ *  rather than throwing** when 2D canvas is unavailable — hardware
+ *  acceleration off, a hardened browser profile, a device out of video memory
+ *  — so that next line threw a TypeError out of `applyBgPattern`, out of
+ *  `applyTheme`, and the theme did not apply at all. A competitor shipped
+ *  exactly this and it took their product down outright on those machines,
+ *  which is the whole reason this row exists.
+ *
+ *  Null means the caller returns early **and the `bg-pattern-*` class stays on
+ *  the body**, so the pattern degrades to its static styling rather than
+ *  failing — which is what the row asks for. The canvas is only inserted once
+ *  a context exists, so a browser that refuses one is left with nothing
+ *  covering the page. */
+function _bgCanvas(id) {
+  if (document.getElementById(id)) return null;
   const canvas = document.createElement('canvas');
-  canvas.id = 'synapse-canvas';
+  canvas.id = id;
   canvas.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;';
   // Decorative background effect — hide from assistive tech so screen readers
   // don't announce an empty canvas and axe's "region" rule doesn't flag it.
   canvas.setAttribute('aria-hidden', 'true');
+  let ctx = null;
+  try { ctx = canvas.getContext('2d'); } catch (_) { ctx = null; }
+  if (!ctx) {
+    // Said out loud rather than swallowed (`P3-17`): the page still works and
+    // the person looking at a background that is not moving deserves a reason.
+    // eslint-disable-next-line no-console
+    console.warn(`Background pattern "${id}" is static: this browser gave no 2D canvas context.`);
+    return null;
+  }
   document.body.prepend(canvas);
-  const ctx = canvas.getContext('2d');
+  return { canvas, ctx };
+}
+
+function _initSynapse() {
+  const surface = _bgCanvas('synapse-canvas');
+  if (!surface) return;
+  const { canvas, ctx } = surface;
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const GRID = 24; // matches CSS grid size
   const MAX_PULSES = 20;
@@ -1728,15 +1775,9 @@ function _initSynapse() {
 
 // ── Rain — thin vertical streaks falling ──
 function _initRain() {
-  if (document.getElementById('rain-canvas')) return;
-  const canvas = document.createElement('canvas');
-  canvas.id = 'rain-canvas';
-  canvas.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;';
-  // Decorative background effect — hide from assistive tech so screen readers
-  // don't announce an empty canvas and axe's "region" rule doesn't flag it.
-  canvas.setAttribute('aria-hidden', 'true');
-  document.body.prepend(canvas);
-  const ctx = canvas.getContext('2d');
+  const surface = _bgCanvas('rain-canvas');
+  if (!surface) return;
+  const { canvas, ctx } = surface;
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   let W, H;
   const drops = [];
@@ -1803,15 +1844,9 @@ function _initRain() {
 
 // ── Constellations — static dots that slowly form/dissolve connecting lines ──
 function _initConstellations() {
-  if (document.getElementById('constellations-canvas')) return;
-  const canvas = document.createElement('canvas');
-  canvas.id = 'constellations-canvas';
-  canvas.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;';
-  // Decorative background effect — hide from assistive tech so screen readers
-  // don't announce an empty canvas and axe's "region" rule doesn't flag it.
-  canvas.setAttribute('aria-hidden', 'true');
-  document.body.prepend(canvas);
-  const ctx = canvas.getContext('2d');
+  const surface = _bgCanvas('constellations-canvas');
+  if (!surface) return;
+  const { canvas, ctx } = surface;
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   let W, H;
   const STAR_COUNT = 50;
@@ -1909,15 +1944,9 @@ function _bgSmoothNoise(x, y) {
 
 // ── Perlin Flow — colored particle streams ──
 function _initPerlinFlow() {
-  if (document.getElementById('perlin-flow-canvas')) return;
-  const canvas = document.createElement('canvas');
-  canvas.id = 'perlin-flow-canvas';
-  canvas.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;';
-  // Decorative background effect — hide from assistive tech so screen readers
-  // don't announce an empty canvas and axe's "region" rule doesn't flag it.
-  canvas.setAttribute('aria-hidden', 'true');
-  document.body.prepend(canvas);
-  const ctx = canvas.getContext('2d');
+  const surface = _bgCanvas('perlin-flow-canvas');
+  if (!surface) return;
+  const { canvas, ctx } = surface;
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   let W, H, t = 0;
   const particles = [];
@@ -1966,15 +1995,9 @@ function _initPerlinFlow() {
 
 // ── Petals — gentle falling flower petals ──
 function _initPetals() {
-  if (document.getElementById('petals-canvas')) return;
-  const canvas = document.createElement('canvas');
-  canvas.id = 'petals-canvas';
-  canvas.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;';
-  // Decorative background effect — hide from assistive tech so screen readers
-  // don't announce an empty canvas and axe's "region" rule doesn't flag it.
-  canvas.setAttribute('aria-hidden', 'true');
-  document.body.prepend(canvas);
-  const ctx = canvas.getContext('2d');
+  const surface = _bgCanvas('petals-canvas');
+  if (!surface) return;
+  const { canvas, ctx } = surface;
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   let W, H;
   const petals = [];
@@ -2023,15 +2046,9 @@ function _initPetals() {
 
 // ── Sparkles — twinkling star-shaped sparkles ──
 function _initSparkles() {
-  if (document.getElementById('sparkles-canvas')) return;
-  const canvas = document.createElement('canvas');
-  canvas.id = 'sparkles-canvas';
-  canvas.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;';
-  // Decorative background effect — hide from assistive tech so screen readers
-  // don't announce an empty canvas and axe's "region" rule doesn't flag it.
-  canvas.setAttribute('aria-hidden', 'true');
-  document.body.prepend(canvas);
-  const ctx = canvas.getContext('2d');
+  const surface = _bgCanvas('sparkles-canvas');
+  if (!surface) return;
+  const { canvas, ctx } = surface;
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   let W, H;
   const sparkles = [];
@@ -2081,15 +2098,9 @@ function _initSparkles() {
 
 // ── Embers — warm particles rising with glow and occasional spark bursts ──
 function _initEmbers() {
-  if (document.getElementById('embers-canvas')) return;
-  const canvas = document.createElement('canvas');
-  canvas.id = 'embers-canvas';
-  canvas.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;';
-  // Decorative background effect — hide from assistive tech so screen readers
-  // don't announce an empty canvas and axe's "region" rule doesn't flag it.
-  canvas.setAttribute('aria-hidden', 'true');
-  document.body.prepend(canvas);
-  const ctx = canvas.getContext('2d');
+  const surface = _bgCanvas('embers-canvas');
+  if (!surface) return;
+  const { canvas, ctx } = surface;
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   let W, H;
   const embers = [];
