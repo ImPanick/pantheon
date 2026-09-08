@@ -8,7 +8,7 @@
 //   - Other static assets (images/fonts/libs): cache-first with bg refresh.
 //   - API / non-GET: never cached.
 // Bump CACHE_NAME whenever the precache list or SW logic changes.
-const CACHE_NAME = 'pantheon-v389-p3-10-dead-reminder-poller';
+const CACHE_NAME = 'pantheon-v390-b54-shell-urls';
 
 // KaTeX resolves these from its own stylesheet, so caching the CSS without them
 // gives offline math fallback glyphs instead of proper typesetting.
@@ -40,8 +40,8 @@ const KATEX_FONTS = [
 // exact URL the browser requests, query string included.
 const PRECACHE = [
   '/',
-  '/static/style.css',
-  '/static/app.js',
+  '/static/style.css?v=20260808startupshell1',
+  '/static/app.js?v=20260815toolapproval4',
   '/static/js/storage.js',
   '/static/js/appConfig.js',
   '/static/js/ui.js',
@@ -59,13 +59,13 @@ const PRECACHE = [
   '/static/js/search.js',
   '/static/js/spinner.js',
   '/static/js/tts-ai.js',
-  '/static/js/document.js',
+  '/static/js/document.js?v=20260815approvalsave1',
   '/static/js/gallery.js?v=20260708match1',
   '/static/js/chatRenderer.js?v=20260829trustladder1',
   '/static/js/trustLadder.js',
   '/static/js/codeRunner.js',
-  '/static/js/chatStream.js',
-  '/static/js/chat.js',
+  '/static/js/chatStream.js?v=20260829trustladder1',
+  '/static/js/chat.js?v=20260829trustladder1',
   '/static/js/planWindow.js',
   '/static/js/cookbook.js',
   '/static/js/search-chat.js',
@@ -74,7 +74,7 @@ const PRECACHE = [
   '/static/js/censor.js',
   '/static/js/settings.js?v=20260815approvalsave1',
   '/static/js/admin.js',
-  '/static/js/init.js',
+  '/static/js/init.js?v=20260715freshroot3',
   '/static/js/slashCommands.js?v=20260815approvalsave1',
   '/static/js/emailInbox.js',
   '/static/js/emailLibrary/utils.js',
@@ -87,6 +87,11 @@ const PRECACHE = [
   '/static/js/group.js',
   '/static/js/keyboard-shortcuts.js',
   '/static/js/sidebar-layout.js',
+  // `B54`. These three load from a <script type="module"> tag in index.html and
+  // were never in this list, so offline they 404 and the boot graph stops.
+  '/static/js/a11y.js',
+  '/static/js/assistant.js',
+  '/static/js/tourAutoplay.js',
   '/static/js/section-management.js',
   '/static/lib/highlight.min.js',
   // Math turns up in ordinary answers and KaTeX is small, so precaching it and

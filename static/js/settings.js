@@ -1910,6 +1910,13 @@ function initAppearance() {
     });
   });
 
+  // The Appearance panel also carries `#set-replay-tours` ("Show again"), and
+  // it is wired in `tourAutoplay.js` rather than here on purpose: that module
+  // owns the `first-run-tours` preference and the per-tour seen markers, and
+  // importing it from this file would close a cycle — settings.js →
+  // tourAutoplay.js → slashCommands.js → settings.js. `P3-11` is this
+  // project's record of what module-identity trouble costs.
+
   modalEl.querySelectorAll('[data-privacy-key]').forEach(function(chk) {
     chk.addEventListener('change', function() {
       if (chk.dataset.privacyKey !== 'sensitive-blur') return;

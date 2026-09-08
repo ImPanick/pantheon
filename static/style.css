@@ -7176,6 +7176,37 @@ body.bg-pattern-sparkles {
     .vis-row:has(input:checked) .vis-icon {
       color: var(--fg);
     }
+    /* An action inside the toggle list — same row rhythm, but it does something
+       when clicked rather than holding a state, so it is a div and not a label
+       and must not inherit the label's pointer affordance. */
+    .vis-row-action {
+      cursor: default;
+    }
+    .vis-action-btn {
+      flex-shrink: 0;
+      font: inherit;
+      font-size: 11px;
+      padding: 3px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      color: var(--fg);
+      background: none;
+      border: 1px solid var(--border);
+      transition: background 0.12s, border-color 0.12s;
+    }
+    .vis-action-btn:hover {
+      /* `--fg`, not the accent: this is a secondary action in a settings list
+         and the house idiom for one (`.tour-nav button:hover`) is an fg mix.
+         An accent here would also be the 557th `var(--accent, var(--red))`
+         site, and `P1-01`'s count is quoted in two comments and pinned by two
+         tests — worth moving for a real need, not for a hover border. */
+      background: color-mix(in srgb, var(--fg) 8%, transparent);
+      border-color: color-mix(in srgb, var(--fg) 30%, var(--border));
+    }
+    .vis-action-btn:disabled {
+      opacity: 0.45;
+      cursor: default;
+    }
     /* Compare model selector — match the calendar modal's clean header
        (no border underline). */
     #compare-model-overlay .modal-header h4 {

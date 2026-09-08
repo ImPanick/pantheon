@@ -297,7 +297,18 @@ function _setupProviderPrompt() {
 // -----------------------------------------------------------------------
 
 /** Persist a message to the current session (fire-and-forget) */
+// A command the user did not type is not conversation. `tourAutoplay.js` fires
+// a `/tour-*` when a tool modal is opened for the first time, and every slash
+// bubble — the echoed command and each reply — goes through `_persistMsg`.
+// Without this it is written to the session, and the first branch below will
+// even **materialise a pending session to hold it**: opening Settings on a
+// fresh install created a chat in the sidebar containing a command nobody
+// wrote. Non-zero while such a command is running. The transcript still shows
+// the tour; the server never hears about it.
+let _transcriptOnlyDepth = 0;
+
 async function _persistMsg(role, content, metadata) {
+  if (_transcriptOnlyDepth > 0) return;
   let sid = sessionModule.getCurrentSessionId();
   if (!sid && sessionModule.hasPendingChat?.()) {
     try {
@@ -6279,7 +6290,16 @@ function _isCmd(str) { return str.startsWith('/') || str.startsWith('!'); }
 
 // ── Main dispatcher ───────────────────────────────────────────────
 
-async function handleSlashCommand(input) {
+/**
+ * Run a slash command.
+ *
+ * `echo` and `persist` both default to what every hand-typed command has always
+ * done, so the chat path is unchanged. They exist for `tourAutoplay.js`, which
+ * fires a tour because a modal opened rather than because anyone typed: that
+ * tour must not put a command into the transcript (`echo`), and none of its
+ * bubbles may reach the session (`persist`).
+ */
+async function handleSlashCommand(input, { echo = true, persist = true } = {}) {
   const parts = input.slice(1).split(/\s+/);
   const rawCmd = parts[0].toLowerCase();
   let args = parts.slice(1);
@@ -6287,8 +6307,9 @@ async function handleSlashCommand(input) {
   let _userShown = false;
   // Tag the echoed command with source:'slash' so it renders in the transcript
   // but is excluded from LLM context (get_context_messages), like the replies.
-  function _showUser() { if (!_userShown) { _userShown = true; _addMessage('user', input); _persistMsg('user', input, { source: 'slash' }); } }
+  function _showUser() { if (!echo || _userShown) return; _userShown = true; _addMessage('user', input); _persistMsg('user', input, { source: 'slash' }); }
 
+  if (!persist) _transcriptOnlyDepth += 1;
   try {
     // --- Check for --help / -h on any command ---
     const wantsHelp = args.includes('--help') || args.includes('-h');
@@ -6406,6 +6427,10 @@ async function handleSlashCommand(input) {
     _showUser();
     slashReply(`Error: ${ctx.esc(err.message)}`);
     return true;
+  } finally {
+    // Every branch above returns from inside the `try`, so the release has to
+    // be here rather than after it.
+    if (!persist) _transcriptOnlyDepth -= 1;
   }
 
   // Unknown slash command — pass through to AI
