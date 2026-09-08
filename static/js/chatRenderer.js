@@ -1276,6 +1276,8 @@ export function buildFindingsBox(findings, expanded) {
    `in progress` chip in words next to the accent-tinted row, a plain box for
    pending. Nothing is hidden that used to be visible — the raw output stays in
    its `<details>` behind the same chevron every other tool card uses. */
+const FALLBACK_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px"><path d="M3 12h13"/><path d="m12 5 7 7-7 7"/><path d="M3 6v12"/></svg>';
+
 const PROMOTED_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>';
 
 const SKILL_PILL_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>';
@@ -2259,8 +2261,68 @@ export function createMsgFooter(msgElement) {
     footer.appendChild(pill);
   }
 
+  // `P4-05`. Which models were tried, and what each one said. The chain was on
+  // the wire from the first version of the fallback and exactly one field of it
+  // reached a reader — `reason`, inside a six-second toast. A reply answered by
+  // a model nobody selected could not say what happened to the one they did.
+  const chain = msgElement._fallbackChain;
+  if (chain && chain.answered_by) {
+    const hops = fallbackChainHops(chain);
+    const pill = document.createElement('button');
+    pill.className = 'fallback-chain-pill';
+    pill.type = 'button';
+    pill.innerHTML = FALLBACK_ICON
+      + `<span class="fallback-chain-pill-text">${esc(fallbackChainSummary(hops))}</span>`;
+    pill.title = hops.map(h => h.label).join('  →  ');
+    bindFooterPopover(pill, 'fallback-chain-detail', (detail) => {
+      hops.forEach((hop) => {
+        const row = document.createElement('div');
+        row.className = 'fallback-chain-row' + (hop.ok ? ' answered' : '');
+        row.textContent = hop.label;
+        detail.appendChild(row);
+      });
+    });
+    footer.appendChild(pill);
+  }
+
   footer.appendChild(actions);
   return footer;
+}
+
+/**
+ * `P4-05`. The fallback chain as a list of hops, newest last.
+ *
+ * `gpt-4o ✗502 → claude ✗429 → llama ✓`. The failures come off the wire with a
+ * model and a status; the candidate that answered is the tail and is the only
+ * one with no status, because it did not fail.
+ *
+ * A status of `502` from a model that "returned no substantive output" is not
+ * an HTTP round trip that happened — the loop synthesises it — so it is shown
+ * as the number the wire carries rather than dressed up as something it is not.
+ */
+export function fallbackChainHops(chain) {
+  const failures = Array.isArray(chain && chain.failures) ? chain.failures : [];
+  const hops = failures
+    .filter((f) => f && f.model)
+    .map((f) => ({
+      model: String(f.model),
+      status: f.status,
+      ok: false,
+      label: `${String(f.model)} ✗${f.status == null ? '?' : f.status}`,
+    }));
+  const answered = chain && chain.answered_by;
+  if (answered) {
+    hops.push({ model: String(answered), status: null, ok: true,
+                label: `${String(answered)} ✓` });
+  }
+  return hops;
+}
+
+/** The pill's own label: how many were tried before one answered. */
+export function fallbackChainSummary(hops) {
+  const tried = (hops || []).filter((h) => !h.ok).length;
+  if (!tried) return 'Fallback';
+  return tried === 1 ? 'Fallback · 1 tried first' : `Fallback · ${tried} tried first`;
 }
 
 /**
@@ -3414,6 +3476,7 @@ export function addMessage(role, content, modelName, metadata) {
         if (metadata?.memories_used?.length) firstWrap._memoriesUsed = metadata.memories_used;
         if (metadata?.skills_injected?.length) firstWrap._skillsInjected = metadata.skills_injected;
         if (metadata?.auto_escalated) firstWrap._autoEscalated = metadata.auto_escalated;
+        if (metadata?.fallback_chain) firstWrap._fallbackChain = metadata.fallback_chain;
         firstWrap.appendChild(createMsgFooter(firstWrap));
         if (metadata) displayMetrics(firstWrap, metadata);
       }
@@ -3740,6 +3803,7 @@ export function addMessage(role, content, modelName, metadata) {
       // SSE and a reloaded thread has only the saved metadata to read from.
       if (metadata?.skills_injected?.length) wrap._skillsInjected = metadata.skills_injected;
       if (metadata?.auto_escalated) wrap._autoEscalated = metadata.auto_escalated;
+      if (metadata?.fallback_chain) wrap._fallbackChain = metadata.fallback_chain;
       wrap.appendChild(createMsgFooter(wrap));
       if (metadata) displayMetrics(wrap, metadata);
     } else {

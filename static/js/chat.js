@@ -4050,6 +4050,15 @@ import agentDrafts from './agentDrafts.js';   // H01
                 // it visible so a misconfigured provider is never silently
                 // masked under the selected model's name.
                 if (!_isBg) {
+                  // `P4-05`. The chain the toast used one field of. Kept on the
+                  // holder so the footer pill can show every candidate and its
+                  // status; the toast stays, because it is the signal in the
+                  // moment and this is the record after it.
+                  holder._fallbackChain = {
+                    selected_model: json.selected_model,
+                    answered_by: json.answered_by,
+                    failures: json.failures || [],
+                  };
                   var _selM = _shortModel(json.selected_model || '');
                   var _ansM = _shortModel(json.answered_by || '');
                   uiModule.showToast('Fallback: ' + _selM + ' failed — answered by ' + _ansM, 6000);

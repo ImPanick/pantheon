@@ -4604,7 +4604,8 @@ body.bg-pattern-sparkles {
        the same footer, and two copies of this drift (`Law 14`). */
     .memory-used-pill,
     .skills-used-pill,
-    .promoted-pill {
+    .promoted-pill,
+    .fallback-chain-pill {
       display: inline-flex;
       align-items: center;
       background: var(--panel);
@@ -4622,14 +4623,17 @@ body.bg-pattern-sparkles {
     }
     .memory-used-pill:hover,
     .skills-used-pill:hover,
-    .promoted-pill:hover { opacity: 1; background: var(--border); }
+    .promoted-pill:hover,
+    .fallback-chain-pill:hover { opacity: 1; background: var(--border); }
     /* Nudge label text 1px down so it visually centers with the icon. */
     .memory-used-pill-text,
     .skills-used-pill-text,
-    .promoted-pill-text { position: relative; top: -1px; display: inline-block; }
+    .promoted-pill-text,
+    .fallback-chain-pill-text { position: relative; top: -1px; display: inline-block; }
     .memory-used-detail,
     .skills-used-detail,
-    .promoted-detail {
+    .promoted-detail,
+    .fallback-chain-detail {
       position: fixed;
       background: var(--panel);
       border: 1px solid var(--border);
@@ -4645,7 +4649,8 @@ body.bg-pattern-sparkles {
     }
     .memory-used-row,
     .skills-used-row,
-    .promoted-row {
+    .promoted-row,
+    .fallback-chain-row {
       display: flex;
       align-items: flex-start;
       gap: 6px;
@@ -4654,7 +4659,8 @@ body.bg-pattern-sparkles {
     }
     .memory-used-row + .memory-used-row,
     .skills-used-row + .skills-used-row,
-    .promoted-row + .promoted-row {
+    .promoted-row + .promoted-row,
+    .fallback-chain-row + .fallback-chain-row {
       border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
     }
     .memory-used-badge {
@@ -4694,6 +4700,17 @@ body.bg-pattern-sparkles {
     /* `P4-18`. The withheld-tools line, marked so it does not read as more of
        the same sentence. `--color-warning` where a theme has one, `--fg`
        otherwise; no `--accent` reference. */
+    /* `P4-05`. One row per candidate. The one that answered is marked, because
+       a list of models where every line looks the same does not say which of
+       them you are reading. `--color-success`; no `--accent` reference. */
+    .fallback-chain-row {
+      font-variant-numeric: tabular-nums;
+      color: color-mix(in srgb, var(--fg) 70%, transparent);
+    }
+    .fallback-chain-row.answered {
+      font-weight: 600;
+      color: color-mix(in srgb, var(--color-success) 85%, var(--fg));
+    }
     .promoted-withheld {
       margin-top: 4px;
       padding-top: 4px;

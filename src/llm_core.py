@@ -3663,6 +3663,29 @@ def _provider_stream_error_status(error, *, default: int = 400) -> int:
     return default
 
 
+def _failure_chain(failures) -> list:
+    """The candidates that were tried and what each one said (`P4-05`).
+
+    One shape, built once. It was inlined at the single site that reported a
+    successful fallback, which is why the terminal "everything failed" error —
+    the case where knowing what was tried matters most — carried nothing.
+
+    `reason` is dropped on purpose: it is a sentence about the *first* failure
+    and the chain is a list of statuses. The card that renders this shows
+    `gpt-4o ✗502 → claude ✗429 → llama ✓`, and a sentence per hop would be a
+    paragraph where a glance is wanted.
+    """
+    return [
+        {
+            "candidate_index": failure.get("candidate_index"),
+            "model": failure.get("model"),
+            "status": failure.get("status"),
+        }
+        for failure in (failures or [])
+        if isinstance(failure, dict)
+    ]
+
+
 async def stream_llm_with_fallback(candidates, messages, **kwargs):
     """Wrap stream_llm with an ordered fallback chain.
 
@@ -3831,14 +3854,7 @@ async def stream_llm_with_fallback(candidates, messages, **kwargs):
                             "answered_by_endpoint_cost_tracked": route_descriptors[i].get("endpoint_cost_tracked"),
                             "candidate_index": i,
                             "reason": primary_reason,
-                            "failures": [
-                                {
-                                    "candidate_index": failure["candidate_index"],
-                                    "model": failure["model"],
-                                    "status": failure["status"],
-                                }
-                                for failure in failures
-                            ],
+                            "failures": _failure_chain(failures),
                         }) + '\n\n')
                     # Metadata must not commit a candidate. Once real output arrives,
                     # flush it after any fallback notice and before the output itself.
@@ -3881,5 +3897,13 @@ async def stream_llm_with_fallback(candidates, messages, **kwargs):
         if not is_last:
             yield f'event: error\ndata: {json.dumps({"error": f"Model {model} returned no substantive output", "status": 502})}\n\n'
             return
-        yield f'event: error\ndata: {json.dumps({"error": "All model candidates returned no substantive output", "status": 502})}\n\n'
+        # `P4-05`. The chain rides the terminal error too. It was attached only
+        # when a *later* candidate answered, so the one case where the reader
+        # most needs to know what was tried — everything failed — was the one
+        # case that reported a single status and nothing else.
+        yield ('event: error\ndata: ' + json.dumps({
+            "error": "All model candidates returned no substantive output",
+            "status": 502,
+            "failures": _failure_chain(failures),
+        }) + '\n\n')
         return

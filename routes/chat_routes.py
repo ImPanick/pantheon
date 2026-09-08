@@ -2038,6 +2038,7 @@ def setup_chat_routes(
             elif chat_mode == "chat":
                 _chat_start = time.time()
                 _answered_by = None  # set if the selected model failed and a fallback answered
+                _fallback_chain = None  # `P4-05`: every candidate tried, with its status
                 _requested_model = sess.model
                 _actual_model = None
                 _requested_route = _foreground_route_descriptors[0]
@@ -2095,6 +2096,17 @@ def setup_chat_routes(
                                     # Forward the notice and remember the real model.
                                     _answered_by = data.get("answered_by") or _answered_by
                                     _actual_model = _actual_model or _answered_by
+                                    # `P4-05`. The chain of candidates and their
+                                    # statuses. It was on the wire and read by
+                                    # one line of a six-second toast; saving it
+                                    # is what lets a reloaded reply still say
+                                    # why it is answered by a model nobody
+                                    # selected.
+                                    _fallback_chain = {
+                                        "selected_model": data.get("selected_model"),
+                                        "answered_by": data.get("answered_by"),
+                                        "failures": data.get("failures") or [],
+                                    }
                                     _actual_candidate_index = data.get("candidate_index", 0)
                                     if not isinstance(_actual_candidate_index, int):
                                         _actual_candidate_index = 0
@@ -2336,6 +2348,7 @@ def setup_chat_routes(
                                     rag_sources=ctx.rag_sources,
                                     research_sources=research_sources,
                                     used_memories=ctx.used_memories,
+                                    fallback_chain=_fallback_chain,
                                     auto_escalation=_auto_escalation_payload if auto_escalated else None,
                                     do_research=effective_do_research,
                                     incognito=incognito,
@@ -2380,6 +2393,7 @@ def setup_chat_routes(
                 _agent_rounds = 0
                 _agent_tool_calls = 0
                 _answered_by = None  # set if the selected model failed and a fallback answered
+                _fallback_chain = None  # `P4-05`: every candidate tried, with its status
                 _requested_model = sess.model
                 _actual_model = None
                 _agent_requested_route = _foreground_route_descriptors[0]
@@ -2511,6 +2525,17 @@ def setup_chat_routes(
                                     # selected model.
                                     _answered_by = data.get("answered_by") or _answered_by
                                     _actual_model = _answered_by or _actual_model
+                                    # `P4-05`. The chain of candidates and their
+                                    # statuses. It was on the wire and read by
+                                    # one line of a six-second toast; saving it
+                                    # is what lets a reloaded reply still say
+                                    # why it is answered by a model nobody
+                                    # selected.
+                                    _fallback_chain = {
+                                        "selected_model": data.get("selected_model"),
+                                        "answered_by": data.get("answered_by"),
+                                        "failures": data.get("failures") or [],
+                                    }
                                     if "answered_by_endpoint_id" in data:
                                         _agent_actual_endpoint_id = data.get("answered_by_endpoint_id")
                                     if data.get("answered_by_endpoint_label"):
@@ -2566,6 +2591,7 @@ def setup_chat_routes(
                                             web_sources=web_sources,
                                             rag_sources=ctx.rag_sources,
                                             used_memories=ctx.used_memories,
+                                            fallback_chain=_fallback_chain,
                                             auto_escalation=_auto_escalation_payload if auto_escalated else None,
                                             incognito=incognito,
                                         )
@@ -2613,6 +2639,7 @@ def setup_chat_routes(
                                     web_sources=web_sources,
                                     rag_sources=ctx.rag_sources,
                                     used_memories=ctx.used_memories,
+                                    fallback_chain=_fallback_chain,
                                     auto_escalation=_auto_escalation_payload if auto_escalated else None,
                                     incognito=incognito,
                                 )

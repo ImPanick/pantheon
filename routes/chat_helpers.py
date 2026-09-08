@@ -1158,6 +1158,7 @@ def save_assistant_response(
     research_sources: list = None,
     used_memories: list = None,
     auto_escalation: dict = None,
+    fallback_chain: dict = None,
     do_research: bool = False,
     tool_events: list = None,
     incognito: bool = False,
@@ -1198,6 +1199,12 @@ def save_assistant_response(
     # than the same question would get in agent mode on purpose.
     if auto_escalation:
         md["auto_escalated"] = auto_escalation
+    # `P4-05`. Every candidate that was tried and what it answered with. The
+    # chain was on the wire already and one line of a six-second toast read one
+    # field of it; saved, a reloaded reply can still say why it is answered by a
+    # model nobody selected.
+    if fallback_chain and fallback_chain.get("answered_by"):
+        md["fallback_chain"] = fallback_chain
     if do_research and not research_sources:
         md["research_clarification"] = True
     if tool_events:
