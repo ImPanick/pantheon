@@ -1009,3 +1009,108 @@ buys — which is the same discipline as the ordering above, applied to the most
 
 **What would reopen this.** The golden set showing `_hybrid_retrieve` is *not* better than the
 scorer it replaces — in which case the deletion is wrong and the measurement did its job.
+
+---
+
+## D-2026-09-09-01 — the assistant learns how you talk, and changes its register rather than its mood
+
+**What the owner asked for**, in their words: *"the idea the llm can build a profile on the user based
+around topics of conversation… much deeper than just 'User's settings say use this level of warmth in
+the response'. It builds off it… recognizes tone by the way the user types, shifts in emotion by the
+amount of swears or laughing, which ties into humor etc… thats how we get a much more 'human'-ized
+LLM — A chat box that does more than thinks and replies, it actually engages and conversates."*
+
+**The seed already ships, in the narrowest form it could take.** `src/agent_loop.py`
+`_is_casual_low_signal` reads *how* a message is written — a short greeting with a two-word tail —
+and changes what the model receives, suppressing skills and stale context. So the product already
+adjusts itself from typing style. It is one regex, one bit, per turn, with one effect. Everything
+below is the general case of a mechanism this codebase already trusts, which is why it is `Law 1`
+growth rather than a new subsystem.
+
+**Nothing here is a "warmth setting".** That phrase describes the pattern the owner is contrasting
+against, and it is worth recording that Pantheon does not have one: there is no `warmth` key
+anywhere in the tree. What exists is **personas** (`src/reminder_personas.py`, `presets.js`) — Razor,
+Socrates, Spark, Nietzsche — which are the **assistant's** voice, chosen explicitly. This work is the
+mirror of that: the **user's** voice, observed.
+
+### The three layers, and why conflating them is the whole failure mode
+
+1. **Style — slow, stable, months.** How this person writes: sentence length, capitalisation,
+   whether profanity is punctuation or emphasis, emoji, technical density, whether they instruct or
+   ask. This is a **profile**.
+2. **State — volatile, this session, expires.** Deviation from *their own* style right now. Shorter
+   than usual, more swearing than usual, no greeting = under pressure. This is a **reading**, and it
+   must decay; a reading that persists becomes a belief.
+3. **Register — the output.** What the assistant does about it. Length, directness, whether to ask a
+   clarifying question or just act, whether a joke is welcome.
+
+An assistant that decided you were angry in March and has been careful with you ever since is what
+happens when 2 is stored like 1.
+
+### The measurement that makes any of it work: the baseline is personal, never population
+
+**A swear count is not an emotion signal. A swear count against this person's own baseline is.**
+The owner writes *"PRESS!!"* and *"lol"* as ordinary register; a population-trained sentiment model
+reads that as elevated and would be wrong every single time. The same three words from someone whose
+baseline is flat prose mean something entirely different. Every signal in this design is a delta
+against the individual, computed from their own history, and a person with no history yet gets no
+reading at all.
+
+### What the assistant does about it: register, not mood
+
+**The assistant must not mirror the mood, and this is the line the whole feature lives or dies on.**
+Detecting pressure and responding with sympathy is the failure everyone ships: it answers impatience
+with *more words*, which is exactly backwards. The useful move is shorter, no caveats, lead with the
+fix, stop asking clarifying questions and make the obvious call. That *is* engagement. Performed
+concern is its opposite.
+
+Put as a rule: **a reading may change how much is said, how directly, and whether the assistant asks
+or acts. It may not change what is true, and it may not add feelings the assistant does not have.**
+
+### Humour is the hardest signal and the most valuable, so it does nothing until it is learned
+
+Detecting that someone jokes is trivial. Knowing what their humour *means* is the whole problem,
+because the same observable has opposite meanings across people:
+
+- joking to defuse → the joke is a **stress** signal;
+- joking when relaxed → the joke is a **green light**;
+- joking to soften a complaint → the complaint is real and the joke is the wrapper.
+
+A counter cannot separate those, so humour is a **learned per-person association** and produces no
+register change until there is evidence for which one this person is. Guessing here is worse than
+abstaining: mistaking a wrapped complaint for a good mood is the single most alienating error the
+feature could make.
+
+### Getting it wrong is worse than doing nothing, so confidence gates action
+
+Softening everything for someone who is not upset is patronising, and it is the failure people
+actually notice and resent. Low confidence means **behave normally** — not "behave gently".
+
+### A profile you cannot see is a profile you cannot correct
+
+It lives in the Brain, in plain sentences, editable and deletable, like a memory. `P13-00` already
+makes legibility the acceptance criterion for the whole phase and this is the row where it matters
+most. **Edits are the error signal**: there is no golden set for this and there cannot be, but "did
+the person change what we wrote about them" is a real measurement and it is the one to keep.
+
+### An explicit choice always beats an inferred one
+
+A chosen persona wins over a reading, every time. This is `setting_is_explicit` — `H06`, `H08`,
+`D-2026-09-08-02` — on its fourth application, and it is now plainly a standing principle of this
+codebase: **a thing a person typed beats a thing the system inferred.** Someone running Razor asked
+for blunt and minimal; a reading that they seem playful today does not get to soften it.
+
+### Law 16, and why this is not a fine-tune either
+
+This is the most intimate data the product would ever hold. It never leaves the machine, it is
+deletable in one action, and deleting it takes effect immediately rather than at the next retrain —
+which is the same argument that ruled out a fine-tune for memory in `D-2026-09-08-07`, reaching the
+same conclusion from a different direction.
+
+**The line between this and surveillance is stated once and enforced by what gets written down:**
+the profile records *how to be useful to this person* and not *how this person is doing*. *"Writes
+shorter under pressure; wants the fix before the explanation"* is a working note. *"Seems anxious
+lately"* is not something a text box should be keeping about anybody, and no row here may produce it.
+
+**What would reopen this.** The owner disliking the result, which for this feature means it feels
+like being watched rather than being known — and that judgement is theirs alone.
