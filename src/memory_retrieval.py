@@ -49,7 +49,7 @@ import re
 import time
 from collections import Counter
 
-from src import retrieval_engine
+from src import retrieval_engine, text_stemmer
 
 # ── tokens ────────────────────────────────────────────────────────────────────
 
@@ -78,9 +78,21 @@ _WORD = re.compile(r"[a-z0-9]+(?:[-_][a-z0-9]+)*")
 
 
 def content_tokens(text: str) -> list:
-    """Meaningful content words: no stopwords, min 3 chars, lowercase."""
-    return [w for w in _WORD.findall((text or "").lower())
-            if len(w) >= 3 and w not in STOPWORDS]
+    """Meaningful content words: no stopwords, min 3 chars, lowercase, stemmed.
+
+    `B62`. Stemming is applied here rather than at the call sites so the query
+    and the corpus are reduced by the same rules — a stemmed query against
+    unstemmed memories matches less than either alone.
+
+    Stopwords are filtered **twice, around the stemmer**, and both passes earn
+    their place. Filtering before stops `does` being bent into `doe` and
+    escaping the list; filtering after catches the inflected forms the list does
+    not itself carry — `having` is not in it, `have` is, and stemming is what
+    connects them.
+    """
+    words = [w for w in _WORD.findall((text or "").lower())
+             if len(w) >= 3 and w not in STOPWORDS]
+    return [s for s in (text_stemmer.stem(w) for w in words) if s not in STOPWORDS]
 
 
 # ── the shape of the question ─────────────────────────────────────────────────
