@@ -459,6 +459,10 @@ function buildFolderSubmenu(sessionId, currentFolder, dropdown) {
       const rect = moveItem.getBoundingClientRect();
       const isMobile = window.innerWidth <= 768;
       sub.style.top = '-9999px';
+      // `P3-24`: one above the dropdown this flies out of, which took the
+      // same reading — `topPortalZ()` does not count either of them, so a
+      // bare call would tie and DOM order would put the submenu behind.
+      sub.style.zIndex = String(topPortalZ() + 1);
       sub.style.display = 'block';
       const subRect = sub.getBoundingClientRect();
 
@@ -860,6 +864,7 @@ function createSessionItem(s) {
       dropdown.style.right = (window.innerWidth - rect.right) + 'px';
       // Show off-screen first to measure height
       dropdown.style.top = '-9999px';
+      dropdown.style.zIndex = String(topPortalZ());   // `P3-24`
       dropdown.style.display = 'block';
       const ddRect = dropdown.getBoundingClientRect();
       // Flip above if not enough room below

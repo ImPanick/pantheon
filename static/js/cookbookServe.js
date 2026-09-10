@@ -2871,6 +2871,7 @@ function _rerenderCachedModels() {
             </div>
             <div class="cookbook-gpu-popup-body">${procHtml}</div>`;
           document.body.appendChild(popup);
+          popup.style.zIndex = String(topPortalZ());   // `P3-24`
           panel._gpuProbe.popup = popup;
 
           // Position below the button using viewport coords (popup is

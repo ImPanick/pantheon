@@ -8325,6 +8325,7 @@ import { topPortalZ } from './toolWindowZOrder.js';
 
     sugg.cardEl = card;
     document.body.appendChild(card);
+    card.style.zIndex = String(topPortalZ());   // `P3-24`
 
     // Position after a tick so scroll has taken effect
     requestAnimationFrame(() => _positionCard(card));

@@ -5,6 +5,8 @@
 // fullscreened by dragging the title bar. Shown once globally — once the
 // user has dismissed it (or it auto-hides), it never returns.
 
+import { topPortalZ } from './toolWindowZOrder.js';
+
 const HINT_SEEN_KEY = 'pantheon-hint-drag-to-snap-seen';
 
 // Allow-list of modals where the snap/fullscreen hint makes sense.
@@ -93,6 +95,10 @@ function _show(modal) {
     <button class="tour-hint-dismiss" type="button">Got it</button>
   `;
   document.body.appendChild(pop);
+  // `P3-24`. Read the live stack, not a literal. `ui.js` promotes every visible
+  // `.modal` from a counter that only climbs, and `#styled-confirm-overlay` is a
+  // `.modal` pinned at 99999 — so any hardcoded z ends up underneath. `B65`.
+  pop.style.zIndex = String(topPortalZ());
 
   // Prefer placing to the right of the modal; fall back to left, then below.
   pop.style.opacity = '0';

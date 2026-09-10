@@ -4,6 +4,7 @@
 // type. Reads COMMANDS from slashCommands.js — no command logic lives here.
 
 import { COMMANDS, LEGACY_ALIASES } from './slashCommands.js?v=20260815approvalsave1';
+import { topPortalZ } from './toolWindowZOrder.js';
 
 const POPUP_ID = 'slash-autocomplete';
 const MAX_VISIBLE = 14;
@@ -136,6 +137,10 @@ function _ensurePopup(textarea) {
   el.setAttribute('role', 'listbox');
   el.setAttribute('aria-label', 'Slash commands');
   document.body.appendChild(el);
+  // `P3-24`. Read the live stack, not a literal. `ui.js` promotes every visible
+  // `.modal` from a counter that only climbs, and `#styled-confirm-overlay` is a
+  // `.modal` pinned at 99999 — so any hardcoded z ends up underneath. `B65`.
+  el.style.zIndex = String(topPortalZ());
   return el;
 }
 

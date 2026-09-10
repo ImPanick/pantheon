@@ -20,6 +20,7 @@
  * }} deps
  */
 import { state } from './state.js';
+import { topPortalZ } from '../toolWindowZOrder.js';
 
 export function wireSliderUx({ registerDocClickAway }) {
   const container = state.container;
@@ -64,6 +65,10 @@ export function wireSliderUx({ registerDocClickAway }) {
   }
   function showSliderBubble(slider, e) {
     if (sliderBubble.parentElement !== document.body) document.body.appendChild(sliderBubble);
+    // `P3-24`. Read the live stack, not a literal. `ui.js` promotes every visible
+    // `.modal` from a counter that only climbs, and `#styled-confirm-overlay` is a
+    // `.modal` pinned at 99999 — so any hardcoded z ends up underneath. `B65`.
+    sliderBubble.style.zIndex = String(topPortalZ());
     sliderBubble.textContent = bubbleText(slider);
     bubblePos(slider, e ? e.clientX : slider.getBoundingClientRect().left + slider.offsetWidth / 2);
     sliderBubble.hidden = false;

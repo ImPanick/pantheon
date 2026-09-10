@@ -94,6 +94,7 @@ function _showNotesFirstOpenHint(pane) {
     <button type="button" class="tour-hint-dismiss">OK</button>
   `;
   document.body.appendChild(hint);
+  hint.style.zIndex = String(topPortalZ());   // `P3-24`
 
   const place = () => {
     const r = pane.getBoundingClientRect();

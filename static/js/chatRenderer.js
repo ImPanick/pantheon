@@ -3,6 +3,7 @@
 // Extracted from chat.js — message rendering, sources, images, metrics
 
 import uiModule from './ui.js';
+import { topPortalZ } from './toolWindowZOrder.js';
 import markdownModule from './markdown.js';
 import { svgifyEmoji } from './markdown.js';
 import { addAITTSButton } from './tts-ai.js';
@@ -336,6 +337,10 @@ function _openImageLightbox(att) {
   overlay.addEventListener('click', _close);
   document.addEventListener('keydown', _onKey);
   document.body.appendChild(overlay);
+  // `P3-24`. Read the live stack, not a literal. `ui.js` promotes every visible
+  // `.modal` from a counter that only climbs, and `#styled-confirm-overlay` is a
+  // `.modal` pinned at 99999 — so any hardcoded z ends up underneath. `B65`.
+  overlay.style.zIndex = String(topPortalZ());
 }
 
 // Vision/OCR editor modal — opened from the corner "Aa" button on a chat photo
@@ -438,6 +443,10 @@ function _openVisionEditor(att, userMsgEl) {
   panel.appendChild(actions);
   overlay.appendChild(panel);
   document.body.appendChild(overlay);
+  // `P3-24`. Read the live stack, not a literal. `ui.js` promotes every visible
+  // `.modal` from a counter that only climbs, and `#styled-confirm-overlay` is a
+  // `.modal` pinned at 99999 — so any hardcoded z ends up underneath. `B65`.
+  overlay.style.zIndex = String(topPortalZ());
   _visionEditorEl = overlay;
 
   // ESC closes the popup. Registered on document so it works regardless of
@@ -2820,6 +2829,7 @@ export function displayMetrics(messageElement, metrics) {
       const rect = ctxRing.getBoundingClientRect();
       popup.style.visibility = 'hidden';
       document.body.appendChild(popup);
+      popup.style.zIndex = String(topPortalZ());   // `P3-24`
       const pr = popup.getBoundingClientRect();
       // Position above the ring, right-aligned
       popup.style.left = Math.max(8, rect.right - pr.width) + 'px';

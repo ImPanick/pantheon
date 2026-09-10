@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // compare/selector.js — model selection modal
 import state from './state.js';
+import { topPortalZ } from '../toolWindowZOrder.js';
 import Storage from '../storage.js';
 import { fetchModels, _persistSelections, getExcludedModels } from './models.js';
 import { showScoreboard } from './scoreboard.js';
@@ -976,6 +977,10 @@ async function showModelSelector() {
         probeOverlay.style.setProperty('z-index', String(_cmpZ + 1), 'important');
       }
       document.body.appendChild(probeOverlay);
+      // `P3-24`. Read the live stack, not a literal. `ui.js` promotes every visible
+      // `.modal` from a counter that only climbs, and `#styled-confirm-overlay` is a
+      // `.modal` pinned at 99999 — so any hardcoded z ends up underneath. `B65`.
+      probeOverlay.style.zIndex = String(topPortalZ());
 
       // ESC to close probe overlay (stopPropagation prevents closing model selector too)
       const _probeEsc = (e) => {

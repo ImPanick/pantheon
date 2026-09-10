@@ -1748,6 +1748,7 @@ function _promptEditServeCmd(currentCmd) {
     const ta = overlay.querySelector('.cookbook-edit-textarea');
     ta.value = currentCmd || '';
     document.body.appendChild(overlay);
+    overlay.style.zIndex = String(topPortalZ());   // `P3-24`
     setTimeout(() => { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }, 0);
 
     const close = (result) => {

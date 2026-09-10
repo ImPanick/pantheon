@@ -2,6 +2,8 @@
 // static/js/slashCommands.js
 // Slash command handlers and dispatcher, extracted from chat.js
 
+import { topPortalZ } from './toolWindowZOrder.js';
+
 window.cancelActiveTour = function cancelActiveTour() {
   document.querySelectorAll('.pantheon-highlight, .pantheon-highlight-click')
     .forEach(e => e.classList.remove('pantheon-highlight', 'pantheon-highlight-click'));
@@ -2308,6 +2310,10 @@ async function _cmdDemo(args, ctx) {
     const halo = document.createElement('div');
     halo.className = 'tour-halo';
     document.body.appendChild(halo);
+    // `P3-24`. Read the live stack, not a literal. `ui.js` promotes every visible
+    // `.modal` from a counter that only climbs, and `#styled-confirm-overlay` is a
+    // `.modal` pinned at 99999 — so any hardcoded z ends up underneath. `B65`.
+    halo.style.zIndex = String(topPortalZ());
     const update = () => {
       const r = target.getBoundingClientRect();
       halo.style.top    = (r.top - 4) + 'px';
@@ -2627,6 +2633,7 @@ async function _cmdTourCompare(args, ctx) {
     const halo = document.createElement('div');
     halo.className = 'tour-halo';
     document.body.appendChild(halo);
+    halo.style.zIndex = String(topPortalZ());
     const update = () => {
       const r = target.getBoundingClientRect();
       halo.style.top    = (r.top - 4) + 'px';
@@ -2908,6 +2915,7 @@ async function _cmdTourCookbook(args, ctx) {
     const halo = document.createElement('div');
     halo.className = 'tour-halo';
     document.body.appendChild(halo);
+    halo.style.zIndex = String(topPortalZ());
     const update = () => {
       const r = target.getBoundingClientRect();
       halo.style.top    = (r.top - 4) + 'px';
@@ -3136,6 +3144,7 @@ async function _cmdTourTheme(args, ctx) {
     const halo = document.createElement('div');
     halo.className = 'tour-halo';
     document.body.appendChild(halo);
+    halo.style.zIndex = String(topPortalZ());
     const update = () => {
       const r = target.getBoundingClientRect();
       halo.style.top    = (r.top - 4) + 'px';
@@ -3380,6 +3389,7 @@ async function _cmdTourSettings(args, ctx) {
     const halo = document.createElement('div');
     halo.className = 'tour-halo';
     document.body.appendChild(halo);
+    halo.style.zIndex = String(topPortalZ());
     const update = () => {
       const r = target.getBoundingClientRect();
       halo.style.top    = (r.top - 4) + 'px';
@@ -3613,6 +3623,7 @@ async function _cmdTourGallery(args, ctx) {
     const halo = document.createElement('div');
     halo.className = 'tour-halo';
     document.body.appendChild(halo);
+    halo.style.zIndex = String(topPortalZ());
     const update = () => {
       const r = target.getBoundingClientRect();
       halo.style.top    = (r.top - 4) + 'px';
@@ -3826,6 +3837,7 @@ async function _cmdTourNotes(args, ctx) {
     const halo = document.createElement('div');
     halo.className = 'tour-halo';
     document.body.appendChild(halo);
+    halo.style.zIndex = String(topPortalZ());
     const update = () => {
       const r = target.getBoundingClientRect();
       halo.style.top    = (r.top - 4) + 'px';
@@ -4026,6 +4038,7 @@ async function _cmdTourBrain(args, ctx) {
     const halo = document.createElement('div');
     halo.className = 'tour-halo';
     document.body.appendChild(halo);
+    halo.style.zIndex = String(topPortalZ());
     const update = () => {
       const r = target.getBoundingClientRect();
       halo.style.top    = (r.top - 4) + 'px';
@@ -4240,6 +4253,7 @@ async function _runTaskTour(steps, doneText, opts) {
     const halo = document.createElement('div');
     halo.className = 'tour-halo';
     document.body.appendChild(halo);
+    halo.style.zIndex = String(topPortalZ());
     const update = () => {
       const r = target.getBoundingClientRect();
       halo.style.top = (r.top - 4) + 'px';
@@ -4471,6 +4485,7 @@ async function _cmdTourResearch(args, ctx) {
     const halo = document.createElement('div');
     halo.className = 'tour-halo';
     document.body.appendChild(halo);
+    halo.style.zIndex = String(topPortalZ());
     const update = () => {
       const r = target.getBoundingClientRect();
       halo.style.top    = (r.top - 4) + 'px';
@@ -4685,6 +4700,7 @@ async function _cmdTourLibrary(args, ctx) {
     const halo = document.createElement('div');
     halo.className = 'tour-halo';
     document.body.appendChild(halo);
+    halo.style.zIndex = String(topPortalZ());
     const update = () => {
       const r = target.getBoundingClientRect();
       halo.style.top    = (r.top - 4) + 'px';
@@ -4973,6 +4989,7 @@ function _showSetupSpotlight(selector, duration = 1800, options = {}) {
   halo.className = 'setup-spotlight-halo';
   if (options.breathe) halo.classList.add('breathing');
   document.body.appendChild(halo);
+  halo.style.zIndex = String(topPortalZ());
   const update = () => {
     const r = target.getBoundingClientRect();
     halo.style.top = (r.top - 5) + 'px';

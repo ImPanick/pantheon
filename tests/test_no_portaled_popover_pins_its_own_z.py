@@ -130,12 +130,9 @@ def _css_pinned_portal_zs() -> list:
                 continue
             if re.search(rf"{re.escape(var)}\.style\.zIndex\s*=", text):
                 continue  # JS sets it live; the stylesheet value is a fallback
-            if "toolWindowZOrder" in text:
-                # The file already reads the live stack somewhere. It may set the
-                # z on a different variable than the one appended, and this scan
-                # cannot follow that — flagging it would be a false positive that
-                # teaches people to add exemptions, which is how a rule dies.
-                continue
+            if re.search(rf"{re.escape(var)}\.style\.setProperty\(\s*['\"]z-index['\"]",
+                         text):
+                continue  # the other spelling of the same thing (notes.js uses it)
             for cls in classes.split():
                 rule = re.search(rf"\.{re.escape(cls)}\s*\{{([^}}]*)\}}", css)
                 if not rule:
@@ -149,25 +146,19 @@ def _css_pinned_portal_zs() -> list:
     return found
 
 
-# The population this scan found when it was written (`B65`). Every one is the
-# same latent defect as `.cp-popover`: portaled to body, fixed, and pinned in CSS
-# below the counter that climbs past it. They are listed rather than fixed
-# because converting fourteen surfaces this session could not exercise is how a
-# deployment breaks quietly — the same argument that left `start-macos.sh` alone
-# in `B64`. `P3-24` converts them; this map only stops the number growing.
+# The CSS half of `BELOW_THE_FLOOR_ON_PURPOSE`, keyed the same way: file and
+# name, with the reason it belongs underneath. `B65` opened this list with nine
+# names it had not yet converted; `P3-24` converted eight of them and this is the
+# one that is genuinely meant to sit low.
 #
-# A ratchet, in the shape `check-silent-failures.py` uses: it may shrink, and a
-# name leaving it must leave because the site was converted.
-NOT_YET_CONVERTED = {
-    "attach-lightbox": "chatRenderer; a lightbox over content, must clear modals",
-    "vision-editor-overlay": "chatRenderer; full-surface editor overlay",
-    "slash-autocomplete-popup": "slashAutocomplete; a menu, must clear modals",
-    "tour-halo": "slashCommands; spotlight ring — may legitimately belong below",
-    "tour-hint": "tourHints; the tour's own callout — may legitimately belong below",
-    "theme-zone-highlight": "theme.js; decorates a drop zone rather than covering it",
-    "ge-slider-bubble": "editor slider value bubble; decorates a control",
-    "compare-probe-overlay": "compare/selector; an overlay, not a popover",
-    "ctx-detail-popup": "chatRenderer; a detail popup opened from the composer",
+# It is a reasoned exemption, not a ratchet, because a ratchet with one entry is
+# a place to hide the tenth. A name may only be added here with a reason someone
+# can argue with.
+CSS_BELOW_THE_FLOOR_ON_PURPOSE = {
+    ("static/js/theme.js", "theme-zone-highlight"):
+        "it outlines page elements to show where a theme colour lands, and "
+        "skips anything inside #theme-modal on purpose — drawn over the modal "
+        "it was opened from, the highlight would be noise rather than a guide",
 }
 
 
@@ -183,7 +174,7 @@ def test_no_portaled_popover_pins_its_z_in_the_stylesheet_either():
     from, on every row, permanently."""
     floor = _floor()
     offenders = [(rel, cls, z) for rel, cls, z in _css_pinned_portal_zs()
-                 if z <= floor and cls not in NOT_YET_CONVERTED]
+                 if z <= floor and (rel, cls) not in CSS_BELOW_THE_FLOOR_ON_PURPOSE]
     assert offenders == [], (
         "these are portaled to document.body by JS and given a fixed position "
         "and a literal z-index by the stylesheet, so they compete with a "
@@ -316,15 +307,68 @@ def test_the_fx_menu_and_its_backdrop_take_one_reading():
     assert "String(_fxZ + 1)" in body
 
 
-def test_the_known_population_only_shrinks():
-    """`B65`'s ratchet. A name may leave `NOT_YET_CONVERTED` only by being
-    converted, and a name that is already clean must not sit there pretending
-    there is work left — an exemption list nobody prunes becomes a place to hide
-    things, which is how the JavaScript-side rule let `.cp-popover` through for
-    months without anyone noticing it was only reading half the codebase."""
+def test_every_css_exemption_is_still_a_real_site():
+    """The counterpart to `test_the_scan_finds_something`, for the CSS half.
+
+    An exemption that no longer names anything the scan finds makes the test
+    above pass forever — either the site was fixed (delete the entry) or the
+    scanner stopped seeing the shape, and those must not look the same. `B65`
+    got through for months precisely because the JS-side rule was reading a
+    population that did not include it."""
     floor = _floor()
-    still_pinned = {cls for _rel, cls, z in _css_pinned_portal_zs() if z <= floor}
-    stale = set(NOT_YET_CONVERTED) - still_pinned
-    assert stale == set(), (
-        f"{stale} are no longer pinned below the floor — remove them from "
-        "NOT_YET_CONVERTED so the list keeps meaning something")
+    found = {(rel, cls) for rel, cls, z in _css_pinned_portal_zs() if z <= floor}
+    missing = set(CSS_BELOW_THE_FLOOR_ON_PURPOSE) - found
+    assert missing == set(), (
+        f"{missing} is exempted from the stylesheet rule but the scan no longer "
+        "finds it below the floor — remove the entry, or find out why the scan "
+        "went blind")
+
+
+def test_p3_24_converted_the_population_b65_found():
+    """`P3-24`. Named because each was a specific site, not because a name is a
+    rule — the rule is `test_no_portaled_popover_pins_its_z_in_the_stylesheet_either`.
+
+    `sessions.js` is the one worth remembering: it already imported the helper
+    and set the z on the *mobile long-press* path, so a file-level "this file
+    reads the live stack" skip in the scanner marked it clean while the desktop
+    open path — the one nearly everybody uses — set no z at all. A scan that
+    exempts a whole file exempts the bug in it."""
+    converted = {
+        "static/js/chatRenderer.js": ("attach-lightbox, vision-editor-overlay, ctx-detail-popup", 3),
+        "static/js/cookbookRunning.js": ("cookbook-edit-overlay", 2),
+        "static/js/cookbookServe.js": ("cookbook-gpu-popup", 5),
+        "static/js/document.js": ("doc-suggestion-card", 5),
+        "static/js/notes.js": ("tour-hint", 3),
+        "static/js/sessions.js": ("session-dropdown-menu, session-folder-submenu", 3),
+        "static/js/slashAutocomplete.js": ("slash-autocomplete-popup", 1),
+        "static/js/slashCommands.js": ("tour-halo", 12),
+        "static/js/tourHints.js": ("tour-hint", 1),
+        "static/js/compare/selector.js": ("compare-probe-overlay", 1),
+        "static/js/editor/slider-ux.js": ("ge-slider-bubble", 1),
+    }
+    for rel, (what, sites) in converted.items():
+        src = (_REPO / rel).read_text(encoding="utf-8")
+        code = "\n".join(ln for ln in src.splitlines() if not ln.lstrip().startswith("//"))
+        helper = "./toolWindowZOrder.js" if rel.count("/") == 2 else "../toolWindowZOrder.js"
+        assert re.search(
+            r"^import\s*\{[^}]*\btopPortalZ\b[^}]*\}\s*from\s*['\"]"
+            + re.escape(helper) + r"['\"]", code, re.M), (
+            f"{rel} no longer imports topPortalZ ({what})")
+        assert code.count("topPortalZ()") >= sites, (
+            f"{rel} reads the live stack fewer than {sites} times ({what})")
+
+
+def test_the_submenu_outranks_the_dropdown_it_flies_out_of():
+    """`topPortalZ()` counts only `body > .modal / .research-overlay /
+    .notes-pane-backdrop`, so a portaled dropdown does not raise the number the
+    next call returns. The session folder submenu and the session dropdown would
+    take the *same* z, and the submenu — appended first — would lose on DOM
+    order and open behind the menu it flew out of."""
+    src = (_REPO / "static" / "js" / "sessions.js").read_text(encoding="utf-8")
+    code = "\n".join(ln for ln in src.splitlines() if not ln.lstrip().startswith("//"))
+    assert "sub.style.zIndex = String(topPortalZ() + 1);" in code
+    assert "dropdown.style.zIndex = String(topPortalZ());" in code
+    assert code.index("document.body.appendChild(sub)") < code.index(
+        "document.body.appendChild(dropdown)"), (
+        "the submenu is no longer appended first, so the tie this guards "
+        "against may now break the other way — re-derive the +1")
