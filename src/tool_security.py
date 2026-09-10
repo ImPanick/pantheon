@@ -204,7 +204,7 @@ _FEATURE_TOOLS: dict = {
         "create_document", "edit_document", "update_document",
         "suggest_document", "manage_documents",
     },
-    "rag": set(),          # see _FEATURE_NOTES
+    "rag": {"manage_rag"},  # see _FEATURE_NOTES
     "gallery": {"generate_image", "edit_image"},
 }
 
@@ -212,10 +212,13 @@ _FEATURE_TOOLS: dict = {
 # the next reader to guess at.
 _FEATURE_NOTES = {
     "rag": (
-        "Retrieval is not a tool the model calls — it is context assembled "
-        "before the turn. Turning it off has to stop the retrieval, which is a "
-        "check at the retrieval site, not a name in a denylist. The flag is "
-        "honoured there and in the routes; it has nothing to contribute here."
+        "Retrieval proper is not a tool the model calls — it is context "
+        "assembled before the turn, and turning that off is a check at the "
+        "retrieval site, not a name in a denylist. That half is still honoured "
+        "there and in the routes. `B66` added the half that does belong here: "
+        "`manage_rag` IS a tool the model calls, and it writes to and searches "
+        "the same store, so a switch that stops retrieval and leaves the agent "
+        "free to write to and read the index was never the whole switch."
     ),
     "sensitive_filter": (
         "A display filter, not a capability. It redacts what is shown and "

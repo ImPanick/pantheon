@@ -114,6 +114,14 @@ jobs:
       - name: check-tracker
         run: python3 .pantheon/check-tracker.py
 
+      # `P17-06`. A tool name has to be registered in up to eight places and a
+      # name missing from any one of them fails silently and differently. That
+      # has shipped three times now — the cookbook family, `tail_serve_output`,
+      # and `B66`'s `manage_rag`, which the system prompt ordered the agent to
+      # use while the fence parser dropped every call without an error.
+      - name: check-tool-surface
+        run: python3 .pantheon/check-tool-surface.py
+
       - name: check-wiring
         run: python3 .pantheon/check-wiring.py --max 124
       # Law 14, arrived at by accident. A module imported under two URLs is two

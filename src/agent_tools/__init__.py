@@ -92,6 +92,15 @@ TOOL_TAGS = {"bash", "python", "web_search", "web_fetch", "read_file", "write_fi
              "manage_endpoints", "manage_mcp", "manage_webhooks",
              "manage_tokens", "manage_documents", "manage_settings",
              "manage_notes", "manage_calendar",
+             # `B66`, and the third time this exact omission has shipped — see
+             # the `tail_serve_output` note below. The system prompt names
+             # `manage_rag` twice and tells the agent to offload large tool
+             # results into it, but the name was in no tag set: `parse_tool_blocks`
+             # gates on this set, so the block returned [] with no ToolBlock, so
+             # not even the "Unknown tool" path ran. No error, no event row, and
+             # `strip_tool_blocks` left the raw fence visible in the reply while
+             # the agent said it had stored the data.
+             "manage_rag",
              "resolve_contact", "manage_contact",
              # Email tool names come from BUILTIN_EMAIL_TOOLS (unioned below)
              # so the fence regex, dispatch, and non-admin blocklist all cover

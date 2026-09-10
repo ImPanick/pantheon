@@ -1249,3 +1249,98 @@ that keeps their answer true.
 
 **What would reopen this.** The owner narrowing it, or a capability whose undo cannot be stated —
 which is a reason not to ship that capability rather than a reason to revisit this.
+
+---
+
+## D-2026-09-10-03 — the native-vs-MCP question is not where the defects come from
+
+**What `P17-06` asked**: *"The tool surface is 28 tools and 4 built-in MCP servers, and there is no
+rule for which a new capability should be… the first honest step is not a list of ideas — it is the
+rule that decides where a new capability goes, because `Law 13` says a capability in one of N places
+is the defect and right now the choice looks like taste."*
+
+The row is right that the choice looks like taste. Counting the surface before writing the rule
+produced a different answer to a better question.
+
+### The rule as asked, and it does predict
+
+A capability is an **MCP server** when it must run in its own process — because it carries a
+dependency set, holds a connection or a client of its own, or has a blast radius the app should not
+take on. It is a **native tool** otherwise. Tested against the four:
+
+| server | lines | own state | rule predicts | actual |
+|---|---|---|---|---|
+| `email` | 2913 | IMAP/SMTP per call, its own sqlite cache | **MCP** | MCP ✓ |
+| `rag` | 243 | `_rag_manager`, `_personal_docs_manager`, a Chroma client | **MCP** | MCP ✓ |
+| `memory` | 286 | imports the app's own `src.memory` | **native** | MCP ✗ — and native in practice |
+| `image_gen` | 185 | none; one `httpx` call and a file write | **native** | MCP ✗ |
+
+Three of four are predicted, and the two misses are informative rather than embarrassing.
+`manage_memory` **is** dispatched natively (`dispatch_ai_tool` → `do_manage_memory`), so the rule
+predicts the behaviour and the *placement* is the error — the connected `memory` server is a second
+`MemoryVectorStore` in a second process serving nothing (`B67`). `image_gen` is 185 lines doing what
+`web_fetch` does natively.
+
+**The rationale in the tree does not survive counting.** `src/builtin_mcp.py` says the four *"each
+carry hundreds of LOC of unique IMAP / HTTP / manager logic not worth duplicating into the native
+path"*. `wc -l` says 2913, 286, 243, 185, and all four import from `src/` — so three of the four are
+refuted by the sentence's own test, and "duplicating into the native path" was never the cost,
+because they already run the native path's code inside a subprocess.
+
+### The rule that actually prevents defects, which is a different rule
+
+Placing a capability has never broken anything here. **Registering one has, four times** — and the
+fourth was found by the ninth register while this was being written, which is the argument for a
+checker made by the surface itself. A tool name has to appear in up to **nine** independent places,
+and a name missing from any one of them fails silently and *differently*:
+
+1. `TOOL_TAGS` — the fence gate; a miss here drops the block with no error at all
+2. `FUNCTION_TOOL_SCHEMAS` — the function-call channel
+3. a dispatch branch, `TOOL_HANDLERS`, or `_MCP_TOOL_MAP`
+4. `TOOL_CAPABILITIES` — what the approval card is allowed to say
+5. `_FEATURE_TOOLS` — the operator's feature flag
+6. the `disable_tool` group alias
+7. the system prompt
+8. the MCP server, when it has one
+9. `BUILTIN_TOOL_DESCRIPTIONS` — the descriptions agent mode embeds to retrieve a tool at all
+
+`TOOL_TAGS` carries its own comment about the first two incidents — the whole cookbook family, then
+`tail_serve_output`, which `do_serve_model` *orders* the agent to call after every serve
+(*"Do not tell the user to check logs; you have the log tool"*), and which both call channels
+rejected. The third is recorded in another test's docstring: `api_call` went missing the same way in `tool_index.py`'s `BUILTIN_TOOL_DESCRIPTIONS`, the ninth register, whose parity test says so in its own docstring — and agent mode selects tools by embedding those descriptions, so a schema without one is never retrieved and never shown to the model. `B66` is the fourth: `manage_rag`, named twice in the system prompt as the place to offload
+large tool results, in no tag set. `parse_tool_blocks` gates on `TOOL_TAGS`, so no `ToolBlock` was
+ever built — which means not even the *"Unknown tool"* branch ran. No error, no `events` row, nothing
+in the receipt, and `strip_tool_blocks` gates on the same set so the raw fence stayed **visible in
+the reply** underneath a sentence saying the data was stored.
+
+**So the rule is `.pantheon/check-tool-surface.py` and not this document.** A paragraph is what was
+missing all four times; a paragraph is not a check. Register 9 is named there and deliberately not
+re-checked — `tests/test_tool_index_schema_parity.py` already pins it in both directions and a
+second copy of a rule is what `Law 14` is about — but the header lists all nine, because a reader
+who cannot see every register cannot tell which one they missed. The checker asserts each of the four things a
+real defect has already exploited, reads the dispatch chain with `ast` rather than a regex (`Law 20`
+— a comment naming a tool is not a dispatch), and refuses a connected built-in server nothing routes
+to.
+
+### What this decides for `P17`
+
+The network capability is an MCP server under the rule above: it holds its own process on the host
+by construction (`D-2026-09-10-01`), which is the whole point of it. That was going to be the answer
+anyway — **the value of asking was the three defects the counting turned up**, which is the same
+shape as `P13-13`, where measuring retrieval before improving it found `B61` and `B62`.
+
+### What is deliberately not decided here
+
+**The gap analysis is not written, and cannot be from this tree.** `P17-06`'s second clause asks for
+one *"derived from what the agent is actually asked to do rather than from imagination"*. This
+checkout holds 0 sessions, 0 chat messages and 1 `events` row; the only fixture in the tree declares
+its own `provenance: "fixture"` and says *"pairs written from imagination test the imagination"*.
+The data exists only on the owner's running deployment. Worse, the single best signal for it is
+computed and thrown away: `src/teacher_escalation.py` classifies *"I don't have a tool for that"* /
+*"I'm not sure which"* replies as a turn failure and `escalate_and_learn` is a stub that logs and
+returns `None`. **A gap analysis needs a gap detector, and one exists unwired.** `P17-07` records
+the signal; `P17-08` runs the analysis against real traffic. `P17-06` stays open until they land,
+because ticking it on the half that could be done here is exactly what `Law 9` forbids.
+
+**What would reopen this.** A capability that is neither clearly in-process nor clearly its own
+process — at which point the table above is the argument, not the taste.

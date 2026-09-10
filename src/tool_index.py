@@ -92,6 +92,7 @@ BUILTIN_TOOL_DESCRIPTIONS: Dict[str, str] = {
     "list_models": "List all available AI models and their endpoints.",
     "manage_session": "Chat management: rename, archive, delete, or fork chats (the UI calls these 'chats'; internally 'sessions'). Use for 'rename my chats', 'rename this chat', 'archive/delete a chat'.",
     "manage_memory": "Memory management: list, add, edit, delete, or search persistent memories. For facts about the USER (their name, preferences, where they live). NOT for info about ANOTHER person — addresses, phones, emails belonging to a contact go in manage_contact, not memory.",
+    "manage_rag": "RAG document index: list indexed files, add or remove a directory, store arbitrary text (add_text), or search the vector store (search). Use add_text to offload a large tool result you must retain and search to get it back, instead of holding it all in context. NOT for durable facts about the user — those go in manage_memory.",
     "manage_skills": "Skill management: add, update, publish, or search reusable skills/presets.",
     "manage_tasks": "Scheduled task management: list, create, edit, delete, pause, resume, or run cron tasks.",
     "manage_endpoints": "Endpoint management: list, add, delete, enable, or disable model API endpoints.",

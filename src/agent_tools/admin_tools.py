@@ -857,6 +857,7 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
                 "documents": ["create_document", "edit_document", "update_document", "suggest_document"],
                 "doc": ["create_document", "edit_document", "update_document", "suggest_document"],
                 "memory": ["manage_memory"],
+                "rag": ["manage_rag"],  # `B66`
                 "skills": ["manage_skills"],
                 "images": ["generate_image"],
                 "image": ["generate_image"],

@@ -455,6 +455,35 @@ FUNCTION_TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "manage_rag",
+            "description": (
+                "Manage the RAG document index: list indexed files, add or remove a "
+                "directory, store arbitrary text (add_text), or search the vector "
+                "store (search). Use this to offload a large tool result you must "
+                "retain and retrieve it later, instead of holding it in context."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string",
+                               "enum": ["list", "add_directory", "remove_directory",
+                                        "add_text", "search"],
+                               "description": "The action to perform"},
+                    "directory": {"type": "string",
+                                  "description": "Directory path (for add_directory/remove_directory)"},
+                    "text": {"type": "string", "description": "Text to store (for add_text)"},
+                    "title": {"type": "string", "description": "Optional label for stored text (for add_text)"},
+                    "source": {"type": "string", "description": "Optional source label (for add_text)"},
+                    "query": {"type": "string", "description": "Search query (for search)"},
+                    "k": {"type": "integer", "description": "Number of matches to return (for search, default 5)"}
+                },
+                "required": ["action"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "list_models",
             "description": "List all available AI models across configured endpoints. Optionally filter by keyword.",
             "parameters": {
@@ -1588,7 +1617,14 @@ def function_call_to_tool_block(name: str, arguments: str) -> Optional[ToolBlock
             content = action
     elif tool_type in ("manage_tasks", "manage_skills", "api_call",
                         "manage_endpoints", "manage_mcp", "manage_webhooks",
-                        "manage_tokens", "manage_documents", "manage_settings"):
+                        "manage_tokens", "manage_documents", "manage_settings",
+                        # `B66`. The trailing `else` already does this, but
+                        # `manage_rag` round-trips through
+                        # `_MCP_JSON_PRIMARY_KEYS["manage_rag"] = ("action",)`
+                        # on the way back out, and that pairing is easy to break
+                        # by accident. Named here so it reads as a decision
+                        # rather than a default nobody checked.
+                        "manage_rag"):
         content = json.dumps(args)
     elif tool_type == "ask_teacher":
         content = args.get("model", "auto") + "\n" + args.get("problem", "")

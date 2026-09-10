@@ -352,6 +352,14 @@ _MCP_TOOL_MAP = {
     "web_search":     ("web_search", "web_search"),
     "web_fetch":      ("web_fetch",  "web_fetch"),
     "generate_image": ("image_gen",  "generate_image"),
+    # `B66`. The `rag` server is registered and connected at startup by
+    # `builtin_mcp.py` and its `manage_rag` schema already carries the exact
+    # actions the system prompt promises (`add_text`, `search`). It was simply
+    # never routed to. `src/ai_interaction.py:do_manage_rag` is a THIRD form of
+    # this tool with a smaller, line-based action set (list/add_directory/
+    # remove_directory) and no reference anywhere — routing there would fail on
+    # `add_text`, which is the action the prompt actually asks for.
+    "manage_rag":     ("rag",        "manage_rag"),
 }
 _EMAIL_MCP_OWNER_ARG = "_pantheon_owner"
 
@@ -403,6 +411,26 @@ def _parse_manage_memory(content: str) -> Dict:
     return args
 
 
+def _parse_manage_rag(content: str) -> Dict:
+    """Line-based fallback for `manage_rag`; JSON args take the path above.
+
+    Mirrors `_parse_manage_memory`. `add_text` takes the whole remainder rather
+    than one line, because the thing the prompt asks the agent to store there is
+    a large tool result, and splitting it on the first newline would silently
+    keep one line of it.
+    """
+    head, _, rest = content.strip().partition("\n")
+    action = head.strip().lower()
+    args: Dict = {"action": action}
+    if action == "add_text":
+        args["text"] = rest.strip()
+    elif action == "search":
+        args["query"] = rest.strip().split("\n")[0].strip()
+    elif action in ("add_directory", "remove_directory"):
+        args["directory"] = rest.strip().split("\n")[0].strip()
+    return args
+
+
 def _parse_write_file(content: str) -> Dict:
     lines = content.split("\n", 1)
     return {"path": lines[0].strip(), "content": lines[1] if len(lines) > 1 else ""}
@@ -417,6 +445,7 @@ _MCP_ARG_PARSERS: Dict[str, Callable[[str], Dict[str, str]]] = {
     "write_file":     _parse_write_file,
     "generate_image": _parse_generate_image,
     "manage_memory":  _parse_manage_memory,
+    "manage_rag":     _parse_manage_rag,
 }
 
 
@@ -443,6 +472,9 @@ _MCP_JSON_PRIMARY_KEYS: Dict[str, tuple] = {
     "read_file":      ("path",),
     "write_file":     ("path",),
     "generate_image": ("prompt",),
+    # `B66`. `manage_rag`'s only required key is `action`, and every fenced call
+    # the prompt teaches is a JSON object carrying it.
+    "manage_rag":     ("action",),
 }
 
 

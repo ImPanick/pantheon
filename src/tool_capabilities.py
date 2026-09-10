@@ -128,6 +128,15 @@ _register(
     result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED,
 )
 _register(
+    # `B66`. Both halves are real: `add_directory` indexes files off disk, and
+    # `search` hands their contents back to the next model round, so results are
+    # workspace-untrusted for the same reason `read_file`'s are.
+    {"manage_rag"},
+    ToolEffect.READ_WORKSPACE,
+    ToolEffect.WRITE_PRIVATE,
+    result_integrity=ResultIntegrity.WORKSPACE_UNTRUSTED,
+)
+_register(
     {"bash", "manage_bg_jobs", "python"},
     ToolEffect.EXECUTE_CODE,
     result_integrity=ResultIntegrity.WORKSPACE_UNTRUSTED,
