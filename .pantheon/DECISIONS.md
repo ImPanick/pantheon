@@ -1213,3 +1213,39 @@ point of noticing.
 **What would reopen this.** A deployment where the container genuinely can reach the LAN — Linux
 with macvlan — where the host process is redundant. The design should let that case skip the extra
 process rather than pretend it needs one.
+
+---
+
+## D-2026-09-10-02 — the operator sets the ceiling; the agent moves inside it
+
+**What the owner decided**, on whether the network agent may ever *configure* rather than only
+observe (`P17-05`): *"The user decides how 'powerful' the LLM agent is... So it is up to the user."*
+
+**So configuration is in scope**, and the boundary this project keeps arriving at is not
+read-versus-write. It is **who set the ceiling**.
+
+That is `setting_is_explicit` on its fifth application — `H06`, `H08` (`agent_max_rounds`),
+`D-2026-09-08-02` (`max_tokens`), `D-2026-09-08-04` (loop caps) — and at five it stops being a
+pattern and becomes the spine of this project's authority model, worth stating once in general
+terms: **a thing a person typed beats a thing the system inferred, and the agent may move within
+the ceiling but never raise it.**
+
+**What follows mechanically:**
+
+- Configuration capability ships **off**.
+- **Each capability is its own switch, not one god-flag.** An operator who turned on DHCP
+  reservations has not thereby asked for firewall rules, and bundling them would make the owner's
+  sentence mean less than they said it.
+- Every switch lives in `_SELF_RESTRAINT_KEYS` (`B42`): the agent reads it and cannot write it,
+  because a gate the gated party can widen is not a gate.
+- `P17-02`'s CIDR allowlist still bounds **where**, regardless of **what**. The two are independent
+  and both apply.
+
+**The one thing this does not license.** A change with no way back. Anything that could sever the
+operator's own access — to their network, or to Pantheon itself — needs a stated undo before it is
+offered, because *"the user decides"* stops meaning anything the moment the user cannot reach the
+surface where deciding happens. That is not a hedge against the owner's answer; it is the condition
+that keeps their answer true.
+
+**What would reopen this.** The owner narrowing it, or a capability whose undo cannot be stated —
+which is a reason not to ship that capability rather than a reason to revisit this.
