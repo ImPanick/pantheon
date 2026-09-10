@@ -100,15 +100,56 @@ def _preface(corpus: dict, k: int) -> dict:
     return out
 
 
-# `P13-14` changed what these two names mean, and the change is the row.
+def _semantic(corpus: dict, k: int) -> dict:
+    """Embeddings only, in process, no ChromaDB service and no network.
+
+    `P13-16` needed the ceiling measured before anything was built, and this is
+    how: `fastembed` ships in `requirements.txt` (`B61`), runs local ONNX, and
+    embedding twenty memories takes under two tenths of a second. Brute-force
+    cosine over a personal Brain is arithmetic, not infrastructure.
+
+    Raises `SkipEngine` when fastembed is not importable, so the report says so
+    rather than quietly scoring one engine and calling it two.
+    """
+    try:
+        import numpy as np
+        from fastembed import TextEmbedding
+    except ImportError as e:
+        raise SkipEngine(f"fastembed unavailable ({e})") from e
+
+    model = TextEmbedding()
+    ids = [m["id"] for m in corpus["memories"]]
+    mem = np.array(list(model.embed([m["text"] for m in corpus["memories"]])))
+    mem /= np.linalg.norm(mem, axis=1, keepdims=True)
+    queries = [p["query"] for p in corpus["probes"]]
+    qs = np.array(list(model.embed(queries)))
+    qs /= np.linalg.norm(qs, axis=1, keepdims=True)
+    scores = qs @ mem.T
+    return {q: [ids[j] for j in np.argsort(-scores[i])[:k]]
+            for i, q in enumerate(queries)}
+
+
+class SkipEngine(RuntimeError):
+    """This engine cannot run here. Reported, never silently dropped."""
+
+
+# `P13-14` changed what the first two names mean, and the change is the row.
 # They were two ALGORITHMS — Jaccard-plus-keyword-lists against BM25-with-IDF —
 # and the measurement that separated them (0.40/0.319 against 0.63/0.633, on
 # this corpus, with no vector service) is what justified deleting the first.
 # They are now two CALL PATHS into one scorer, and they are expected to agree.
-# Scoring both is still worth the milliseconds: the day they disagree, a second
-# scorer has grown back, which is the defect `Law 13` names and the reason this
-# row existed.
-ENGINES = {"manager": _manager, "preface": _preface}
+#
+# `semantic` is the third thing and it is not a call path at all: it is what the
+# product does when the vector store is reachable, measured directly so the
+# lexical numbers can be read against something rather than admired alone.
+ENGINES = {"manager": _manager, "preface": _preface, "semantic": _semantic}
+
+# The two that go through `src/memory_retrieval.py`. They must agree with each
+# other; `semantic` is a different thing being measured and must not be held to
+# that, nor to the "no engine may score perfectly" rule — for the lexical paths
+# a perfect score would mean the corpus had gone soft, and for this one it is
+# the ceiling `P13-16` needed to know.
+CALL_PATHS = ("manager", "preface")
 
 # What the deleted scorer measured on this corpus, kept as the floor. Not a
 # ratchet on an uncalibrated number — `P3-20`'s mistake — because this one is
@@ -207,23 +248,34 @@ def main() -> int:
 
     corpus = _load(args.corpus)
     names = list(ENGINES) if args.engine == "both" else [args.engine]
-    results = {name: score(corpus, ENGINES[name](corpus, args.k), args.k) for name in names}
+    results, skipped = {}, {}
+    for name in names:
+        try:
+            results[name] = score(corpus, ENGINES[name](corpus, args.k), args.k)
+        except SkipEngine as e:
+            skipped[name] = str(e)
+
+
 
     if args.json:
-        json.dump({"provenance": corpus["provenance"],
+        json.dump({"provenance": corpus["provenance"], "skipped": skipped,
                    "results": {n: {k: v for k, v in r.items() if k != "misses"}
                                for n, r in results.items()}},
                   sys.stdout, indent=2)
         print()
         return 0
 
+    # "no ChromaDB service" and not "no vector service": `semantic` below runs
+    # the embedding model in this process, which is the whole point of `P13-21`.
     print(f"retrieval eval · {args.corpus.name} · {len(corpus['memories'])} memories, "
-          f"{len(corpus['probes'])} probes · no vector service")
+          f"{len(corpus['probes'])} probes · no ChromaDB service")
     print(f"provenance: {corpus['provenance']} — "
           f"{PROVENANCE_NOTE.get(corpus['provenance'], 'unrecognised, treat with suspicion')}")
     print()
-    for name in names:
+    for name in results:
         _report(name, results[name], args.k, args.verbose)
+    for name, why in skipped.items():
+        print(f"  {name:<10} not scored — {why}")
     print()
     if corpus["provenance"] != "curated":
         print("This is not a measurement of how well Pantheon remembers. Run")

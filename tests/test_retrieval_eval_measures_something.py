@@ -131,8 +131,8 @@ def test_both_engines_can_be_scored_over_the_same_corpus():
     # neither gets a vector service, because the degraded path is the one a
     # person actually meets.
     corpus = _corpus()
-    for name, engine in retrieval_eval.ENGINES.items():
-        out = retrieval_eval.score(corpus, engine(corpus, 5), 5)
+    for name in retrieval_eval.CALL_PATHS:
+        out = retrieval_eval.score(corpus, retrieval_eval.ENGINES[name](corpus, 5), 5)
         assert out["n"] == len(corpus["probes"])
         assert 0.0 <= out[f"recall@5"] <= 1.0
         assert 0.0 <= out["mrr"] <= 1.0
@@ -147,8 +147,8 @@ def test_no_call_path_is_worse_than_the_scorer_that_was_deleted():
     # claim the deletion rests on.
     corpus = _corpus()
     floor = retrieval_eval.DELETED_SCORER_BASELINE
-    for name, engine in retrieval_eval.ENGINES.items():
-        out = retrieval_eval.score(corpus, engine(corpus, 5), 5)
+    for name in retrieval_eval.CALL_PATHS:
+        out = retrieval_eval.score(corpus, retrieval_eval.ENGINES[name](corpus, 5), 5)
         assert out["recall@5"] >= floor["recall"], f"{name} is worse than the deleted scorer"
         assert out["mrr"] >= floor["mrr"], f"{name} ranks worse than the deleted scorer"
 
@@ -160,7 +160,8 @@ def test_both_call_paths_return_the_same_ranking():
     # they disagree a second scorer has grown back, which is the defect `Law 13`
     # names and the reason the row existed.
     corpus = _corpus()
-    rankings = {name: engine(corpus, 5) for name, engine in retrieval_eval.ENGINES.items()}
+    rankings = {name: retrieval_eval.ENGINES[name](corpus, 5)
+                for name in retrieval_eval.CALL_PATHS}
     first, *rest = rankings.values()
     for other in rest:
         assert other == first, "the call paths have diverged; a second scorer is back"
@@ -182,9 +183,12 @@ def test_neither_engine_is_perfect_and_that_is_the_point():
     # to include cases no lexical scorer can answer — `can I eat prawns` shares
     # not one token with `allergic to shellfish` — so a perfect score here
     # would mean the corpus had been softened, not that retrieval improved.
+    # Scoped to the lexical call paths. `semantic` scores 1.00 and that is the
+    # finding rather than a soft corpus: these probes were chosen so no lexical
+    # scorer could pass them, and embeddings pass them anyway.
     corpus = _corpus()
-    for name, engine in retrieval_eval.ENGINES.items():
-        out = retrieval_eval.score(corpus, engine(corpus, 5), 5)
+    for name in retrieval_eval.CALL_PATHS:
+        out = retrieval_eval.score(corpus, retrieval_eval.ENGINES[name](corpus, 5), 5)
         assert out["recall@5"] < 1.0, f"{name} scores perfectly — the corpus has gone soft"
 
 
@@ -217,7 +221,7 @@ def test_it_is_a_report_and_never_a_gate():
 def test_json_output_is_machine_readable_and_carries_provenance():
     payload = json.loads(_run("--json"))
     assert payload["provenance"] == "fixture"
-    assert set(payload["results"]) == set(retrieval_eval.ENGINES)
+    assert set(payload["results"]) <= set(retrieval_eval.ENGINES)
 
 
 def test_generate_marks_its_output_as_unchecked():
@@ -238,3 +242,46 @@ def test_generate_marks_its_output_as_unchecked():
     assert drafted["provenance"] == "generated"
     assert all("REWRITE ME" in p["query"] for p in drafted["probes"])
     assert retrieval_eval.PROVENANCE_NOTE["generated"].startswith("machine-drafted")
+
+
+# ── the ceiling, measured before `P13-16` is built on a guess ─────────────────
+
+
+def test_the_semantic_engine_is_scored_or_the_report_says_why():
+    """`P13-16` needed the ceiling before anything was designed on top of it.
+
+    Stage 2 can only choose from what stage 1 recalled, so the first question is
+    what stage 1 can reach — and the answer decides whether the row is about
+    recall at all. `fastembed` ships in `requirements.txt` (`B61`), runs local
+    ONNX and needs no service, so the number is obtainable rather than
+    hypothetical.
+
+    Skipping is reported, never silent: an engine quietly dropped would make the
+    report look like it scored everything it lists."""
+    corpus = _corpus()
+    try:
+        ranked = retrieval_eval.ENGINES["semantic"](corpus, 5)
+    except retrieval_eval.SkipEngine as e:
+        pytest.skip(f"fastembed not installed here: {e}")
+    out = retrieval_eval.score(corpus, ranked, 5)
+    assert out["recall@5"] >= 0.95, (
+        f"semantic recall fell to {out['recall@5']:.2f} — `P13-16`'s premise rests on this")
+
+
+def test_widening_k_buys_the_lexical_engine_nothing():
+    """The finding that corrected `P13-16`'s premise. The row said *recall wide,
+    then select*, which assumes the misses are ranked low. They are not — they
+    are **filtered out entirely** by the relevance gates, so recall is flat from
+    k=5 to the whole corpus and a wider stage 1 hands stage 2 exactly nothing
+    new. Without embeddings there is nothing to widen *to*."""
+    corpus = _corpus()
+    at5 = retrieval_eval.score(corpus, retrieval_eval.ENGINES["manager"](corpus, 5), 5)
+    wide = len(corpus["memories"])
+    atall = retrieval_eval.score(corpus, retrieval_eval.ENGINES["manager"](corpus, wide), wide)
+    assert atall[f"recall@{wide}"] == at5["recall@5"], (
+        "lexical recall now improves with k — re-derive P13-16, which assumes it does not")
+
+
+def test_a_skipped_engine_is_named_in_the_json_report():
+    payload = json.loads(_run("--json"))
+    assert set(payload["results"]) | set(payload["skipped"]) == set(retrieval_eval.ENGINES)
