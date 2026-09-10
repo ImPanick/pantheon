@@ -100,6 +100,153 @@ def _pinned_portal_zs() -> list:
     return found
 
 
+# ── the CSS half, added by `B65` ──────────────────────────────────────────────
+#
+# The scan above reads **JavaScript**. `B65` slipped through it for months
+# because `.cp-popover` pins its z-index in **style.css** — the JS only appends
+# the element to `document.body` and sets `left`/`top`. A rule that looks in one
+# language cannot see a defect that lives in the other, and this is the same
+# lesson as `Law 20` pointed sideways: the test was reading the wrong file.
+
+_CLASS_ASSIGN = re.compile(
+    r"([A-Za-z_$][\w$]*)\.className\s*=\s*['\"]([^'\"]+)['\"]")
+
+
+def _css_pinned_portal_zs() -> list:
+    """(file, class, z) for classes JS portals to body whose z is pinned in CSS.
+
+    Only flags a class when the JS **never** sets `.style.zIndex` on that
+    element: a stylesheet fallback beneath a live reading is fine, and is what
+    `.cp-popover` does now.
+    """
+    css = (_REPO / "static" / "style.css").read_text(encoding="utf-8")
+    found = []
+    for rel in _js_files():
+        text = (_REPO / rel).read_text(encoding="utf-8")
+        portaled = set(re.findall(
+            r"document\.body\.appendChild\(\s*([A-Za-z_$][\w$]*)\s*\)", text))
+        for var, classes in _CLASS_ASSIGN.findall(text):
+            if var not in portaled:
+                continue
+            if re.search(rf"{re.escape(var)}\.style\.zIndex\s*=", text):
+                continue  # JS sets it live; the stylesheet value is a fallback
+            if "toolWindowZOrder" in text:
+                # The file already reads the live stack somewhere. It may set the
+                # z on a different variable than the one appended, and this scan
+                # cannot follow that — flagging it would be a false positive that
+                # teaches people to add exemptions, which is how a rule dies.
+                continue
+            for cls in classes.split():
+                rule = re.search(rf"\.{re.escape(cls)}\s*\{{([^}}]*)\}}", css)
+                if not rule:
+                    continue
+                body = rule.group(1)
+                if "position: fixed" not in body.replace(";", "; "):
+                    continue
+                z = _ZVALUE.search(body)
+                if z:
+                    found.append((rel, cls, int(z.group(1))))
+    return found
+
+
+# The population this scan found when it was written (`B65`). Every one is the
+# same latent defect as `.cp-popover`: portaled to body, fixed, and pinned in CSS
+# below the counter that climbs past it. They are listed rather than fixed
+# because converting fourteen surfaces this session could not exercise is how a
+# deployment breaks quietly — the same argument that left `start-macos.sh` alone
+# in `B64`. `P3-24` converts them; this map only stops the number growing.
+#
+# A ratchet, in the shape `check-silent-failures.py` uses: it may shrink, and a
+# name leaving it must leave because the site was converted.
+NOT_YET_CONVERTED = {
+    "attach-lightbox": "chatRenderer; a lightbox over content, must clear modals",
+    "vision-editor-overlay": "chatRenderer; full-surface editor overlay",
+    "slash-autocomplete-popup": "slashAutocomplete; a menu, must clear modals",
+    "tour-halo": "slashCommands; spotlight ring — may legitimately belong below",
+    "tour-hint": "tourHints; the tour's own callout — may legitimately belong below",
+    "theme-zone-highlight": "theme.js; decorates a drop zone rather than covering it",
+    "ge-slider-bubble": "editor slider value bubble; decorates a control",
+    "compare-probe-overlay": "compare/selector; an overlay, not a popover",
+    "ctx-detail-popup": "chatRenderer; a detail popup opened from the composer",
+}
+
+
+def test_no_portaled_popover_pins_its_z_in_the_stylesheet_either():
+    """`B65`. `.cp-popover` was `position: fixed; z-index: 10000` in style.css
+    and portaled to `document.body` by `colorPicker.js`, which set no z at all.
+
+    `ui.js` promotes every visible `.modal` with an `!important` z from a
+    counter that only climbs, and `#styled-confirm-overlay` is a `.modal` at
+    99999 — so the first styled confirm of a session latches that counter to
+    100000, and every modal after it outranks a literal 10000 for the rest of
+    the page's life. The colour picker opened behind the card it was opened
+    from, on every row, permanently."""
+    floor = _floor()
+    offenders = [(rel, cls, z) for rel, cls, z in _css_pinned_portal_zs()
+                 if z <= floor and cls not in NOT_YET_CONVERTED]
+    assert offenders == [], (
+        "these are portaled to document.body by JS and given a fixed position "
+        "and a literal z-index by the stylesheet, so they compete with a "
+        "counter that climbs past them. Set the z from topPortalZ() when the "
+        f"element is shown: {offenders}"
+    )
+
+
+def test_the_css_scan_can_actually_see_the_shape_it_looks_for():
+    """An empty result would make the test above pass forever. `.cp-popover` is
+    still portaled and still styled `position: fixed` in CSS — what changed is
+    that JS now sets its z live, which is exactly the exemption being asserted."""
+    css = (_REPO / "static" / "style.css").read_text(encoding="utf-8")
+    rule = re.search(r"\.cp-popover\s*\{([^}]*)\}", css)
+    assert rule and "position: fixed" in rule.group(1), (
+        ".cp-popover is no longer a fixed-position rule; this scan has lost its anchor")
+    picker = (_REPO / "static" / "js" / "colorPicker.js").read_text(encoding="utf-8")
+    assert "document.body.appendChild(p)" in picker, "the popover is no longer portaled"
+    assert re.search(r"p\.className\s*=\s*'cp-popover'", picker), (
+        "the popover no longer takes its class the way the scan detects")
+
+
+def test_the_colour_picker_reads_the_live_stack():
+    """The import is asserted as a real `import` statement, not as a substring.
+
+    The fix's own comment names both `topPortalZ` and `toolWindowZOrder.js` while
+    explaining why they are there, so a substring test passes with the import
+    deleted — and a deleted import is a `ReferenceError` on the first open that
+    `node --check` cannot see. Mutation testing caught exactly that (`Law 20`,
+    and my own trap for the fourth time this week)."""
+    picker = (_REPO / "static" / "js" / "colorPicker.js").read_text(encoding="utf-8")
+    code = "\n".join(ln for ln in picker.splitlines() if not ln.lstrip().startswith("//"))
+    assert re.search(
+        r"^import\s*\{[^}]*\btopPortalZ\b[^}]*\}\s*from\s*['\"]\./toolWindowZOrder\.js['\"]",
+        code, re.M), "colorPicker.js no longer imports topPortalZ"
+    assert re.search(r"_popover\.style\.zIndex\s*=\s*String\(topPortalZ\(\)\)", code)
+
+
+def test_the_stylesheet_fallback_clears_the_dock_floor():
+    """It only applies between append and open, but if it is below the floor it
+    is below a dragged dock chip — and the whole point is that a literal under
+    the floor is never right for a portaled popover."""
+    css = (_REPO / "static" / "style.css").read_text(encoding="utf-8")
+    rule = re.search(r"\.cp-popover\s*\{([^}]*)\}", css)
+    z = _ZVALUE.search(rule.group(1))
+    assert z and int(z.group(1)) > _floor()
+
+
+def test_a_modal_pinned_at_99999_is_what_latches_the_counter():
+    """The mechanism, named so nobody re-derives it. `#styled-confirm-overlay`
+    is created with `className = 'modal'`, appended to body, and styled
+    `z-index: 99999 !important` — so `ui.js`'s promote counter, which takes a
+    max over every visible `body > .modal`, jumps to six figures the first time
+    a styled confirm is shown and never comes back down."""
+    ui = (_REPO / "static" / "js" / "ui.js").read_text(encoding="utf-8")
+    assert "overlay.id = 'styled-confirm-overlay'" in ui
+    assert re.search(r"overlay\.className\s*=\s*'modal'", ui)
+    assert "document.body.appendChild(overlay)" in ui
+    css = (_REPO / "static" / "style.css").read_text(encoding="utf-8")
+    rule = re.search(r"#styled-confirm-overlay\s*\{([^}]*)\}", css)
+    assert rule and re.search(r"z-index:\s*99999", rule.group(1))
+
+
 def test_the_floor_is_where_the_dock_chips_are():
     # If the chip layer moves and this does not, every dropdown in the product
     # goes under a dragged chip and nothing says so.
@@ -167,3 +314,17 @@ def test_the_fx_menu_and_its_backdrop_take_one_reading():
     assert body.count("topPortalZ()") == 1, "the pair must share one reading"
     assert "z-index:' + _fxZ + ';" in body
     assert "String(_fxZ + 1)" in body
+
+
+def test_the_known_population_only_shrinks():
+    """`B65`'s ratchet. A name may leave `NOT_YET_CONVERTED` only by being
+    converted, and a name that is already clean must not sit there pretending
+    there is work left — an exemption list nobody prunes becomes a place to hide
+    things, which is how the JavaScript-side rule let `.cp-popover` through for
+    months without anyone noticing it was only reading half the codebase."""
+    floor = _floor()
+    still_pinned = {cls for _rel, cls, z in _css_pinned_portal_zs() if z <= floor}
+    stale = set(NOT_YET_CONVERTED) - still_pinned
+    assert stale == set(), (
+        f"{stale} are no longer pinned below the floor — remove them from "
+        "NOT_YET_CONVERTED so the list keeps meaning something")

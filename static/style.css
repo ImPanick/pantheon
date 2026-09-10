@@ -41153,7 +41153,12 @@ input.cp-swatch-input {
 }
 input.cp-swatch-input::selection { background: transparent; }
 .cp-popover {
-  position: fixed; z-index: 10000;
+  /* `B65`. `colorPicker.js` sets the real value from `topPortalZ()` on every
+     open, because a literal cannot keep up with a counter that climbs. This is
+     the fallback for the instant between append and open, and it sits at the
+     dock-chip floor + 1 rather than below it — the old 10000 put the picker
+     under any promoted modal, which is the bug. */
+  position: fixed; z-index: 10031;
   display: none;
   width: 240px;
   background: var(--panel, #1a1a1a);

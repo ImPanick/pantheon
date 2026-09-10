@@ -5,6 +5,8 @@
 // their .value stays the source of truth, and we dispatch 'input'
 // events so existing listeners keep working.
 
+import { topPortalZ } from './toolWindowZOrder.js';
+
 const LS_RECENT = 'pantheon-recent-colors';
 const MAX_RECENT = 12;
 
@@ -340,6 +342,21 @@ function open(inputEl) {
   _popover.style.visibility = 'visible';
   _popover.style.opacity = '1';
   _popover.style.pointerEvents = 'auto';
+  // `B65`. Read the live stack instead of trusting the stylesheet's literal.
+  //
+  // `ui.js` promotes every visible `.modal` with an `!important` z-index from a
+  // counter that only climbs, and `#styled-confirm-overlay` is a `.modal`
+  // pinned at 99999 — so the first styled confirm of a session latches that
+  // counter to 100000 and **every modal opened afterwards outranks a literal
+  // 10000 forever**. The picker then opens behind the very card it was opened
+  // from, on every colour row, for the rest of the page's life.
+  //
+  // This is `#4720` recurring: `toolWindowZOrder.js` was written for exactly
+  // this failure and says so in its own comment. The picker was never
+  // converted because its z lives in `style.css` rather than in JS, and the
+  // rule that enforces this (`test_no_portaled_popover_pins_its_own_z`) only
+  // read JavaScript. The scanner now reads both.
+  _popover.style.zIndex = String(topPortalZ());
   // Let it render with its natural size, then position
   requestAnimationFrame(() => {
     if (_popover && _input) position(_popover, _input);
