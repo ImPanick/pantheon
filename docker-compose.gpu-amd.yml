@@ -75,7 +75,11 @@ services:
       - PANTHEON_STT_MAX_AUDIO_BYTES=${PANTHEON_STT_MAX_AUDIO_BYTES:-26214400}
       - PANTHEON_ICS_MAX_BYTES=${PANTHEON_ICS_MAX_BYTES:-10485760}
       - PANTHEON_BACKUP_IMPORT_MAX_BYTES=${PANTHEON_BACKUP_IMPORT_MAX_BYTES:-26214400}
-      - PANTHEON_TTS_CACHE_MAX_BYTES=${PANTHEON_TTS_CACHE_MAX_BYTES}
+      # `B63`. `:-` and not `:-524288000`: the number lives in
+      # `services/tts/tts_service.py` and duplicating it here would be two
+      # places to change it (`Law 13`). The empty default only silences a
+      # warning compose printed on every single command.
+      - PANTHEON_TTS_CACHE_MAX_BYTES=${PANTHEON_TTS_CACHE_MAX_BYTES:-}
       - DATA_BRAVE_API_KEY=${DATA_BRAVE_API_KEY:-}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
       - GOOGLE_PSE_CX=${GOOGLE_PSE_CX:-}
