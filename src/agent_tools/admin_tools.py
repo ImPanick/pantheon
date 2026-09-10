@@ -794,11 +794,20 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
                                     f"there.", "exit_code": 0}
             # Structured settings (dicts/lists like keybinds or vision fallbacks)
             # have no safe scalar coercion; _coerce would pass a bare string
-            # straight through and clobber the structure. Refuse them here; they're
-            # edited in their dedicated panels. (reset/delete still restore the
-            # default structure, which is safe.)
+            # straight through and clobber the structure. Refuse them here; they
+            # are edited in Settings.
+            #
+            # `B68`. This used to end "(You can reset it to default here.)" on
+            # the reasoning that reset restores the default structure and is
+            # therefore safe. That holds for exactly one of the nine structured
+            # settings. Eight ship **empty**, so for those the offer was an offer
+            # to delete the operator's configuration — and a refusal that
+            # advertises a worse door than the one it closed is not a refusal.
             if isinstance(DEFAULT_SETTINGS[key], (dict, list)):
-                return {"response": f"'{key}' is a structured setting. Edit it in its panel, not from chat. (You can reset it to default here.)", "exit_code": 0}
+                restorable = bool(DEFAULT_SETTINGS[key])
+                tail = (" (You can reset it to default here.)" if restorable
+                        else " It ships empty, so there is nothing to reset it to.")
+                return {"response": f"'{key}' is a structured setting. Edit it in Settings, not from chat.{tail}", "exit_code": 0}
             try:
                 value = _coerce(value, DEFAULT_SETTINGS[key])
             except (ValueError, TypeError):
@@ -835,6 +844,35 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
                 # than one it can touch carefully.
                 return {"response": f"'{key}' {_self_restraint_why(key)}. Reset it in Settings.",
                         "exit_code": 0}
+            # `B68`. The `set` branch above refuses every structured setting and
+            # says "(You can reset it to default here.)" on the reasoning, in its
+            # own comment, that "reset/delete still restore the default
+            # structure, which is safe". That is true of exactly one of the nine
+            # structured settings. The other eight — `networks`,
+            # `search_fallback_chain`, `tool_path_extra_roots`, `eval_suites`,
+            # the two OTLP maps and the two model-fallback lists — **ship
+            # empty**, and for those "restore the default" is not restoring
+            # anything. It is deleting what the operator wrote, in one call, in
+            # response to a sentence in a chat.
+            #
+            # Not a security hole and the row says so: `networks` fails *closed*
+            # — a run scoped to a name that no longer exists refuses every host,
+            # including the operator's own. So this is durability, not
+            # escalation, and writing down the right reason matters because the
+            # wrong one is how the protection gets removed later.
+            #
+            # Computed from `DEFAULT_SETTINGS`, not listed, so a ninth empty
+            # structured setting is covered the day it is added (`Law 13`).
+            default = DEFAULT_SETTINGS[key]
+            if isinstance(default, (dict, list)) and not default:
+                return {
+                    "response": (
+                        f"'{key}' is a structured setting that ships empty, so there "
+                        f"is no default to restore — resetting it would just delete "
+                        f"what is configured. Edit it in Settings."
+                    ),
+                    "exit_code": 0,
+                }
             s = load_settings()
             s[key] = DEFAULT_SETTINGS[key]
             save_settings(s)
