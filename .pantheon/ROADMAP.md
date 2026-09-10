@@ -77,8 +77,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P14 | Measurement | 8 | 3 | 0 | **5** |
 | P15 | Outbound politeness | 12 | 2 | **1** | **9** |
 | P16 | Self-hosted by default | 20 | 1 | 0 | **19** |
-| P17 | The network the agent is hosted on | 9 | 7 | 0 | **2** |
-| **Total** | | **360** | **187** | **9** | **164** |
+| P17 | The network the agent is hosted on | 9 | 6 | 0 | **3** |
+| **Total** | | **360** | **186** | **9** | **165** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -240,6 +240,21 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### P17-09 — the allowlist finally has a front door
+`fbbf7c6..HEAD`. **360 tracked, 165 done. 27 tests, 15 mutations, 0 regressions. Suite 8,397 -> 8,424.**
+`src/networks.py` has been enforcing since `P16-16` — consulted inside `check_outbound_url` and
+`outbound_fetch` *before DNS* — and `grep networks` returned nothing in `static/js/` and nothing in
+`routes/`. The only way to declare one was a hand-built JSON body or editing `settings.json`, and a
+malformed CIDR was accepted with a 200, logged to a file nobody watches, and dropped. **An allowlist
+the operator has no supported way to write is not operator-set**, which is the premise `P17-02` is
+named after. Now a `Networks` tab, a validator that runs **only at the write boundary** (the loader
+stays lenient — a file that loaded yesterday has to load today), and one endpoint answering both of
+the panel's questions in Python, because a CIDR matcher in JavaScript would be the same rule in two
+languages and `B65` is the standing proof of what that costs. **Both first-pass mutation survivors
+were my own tests being loose** — a text window that reached the next validation block's `raise`,
+and a name-scan that a dead `if False:` branch satisfied. Proximity is not reachability, and both
+tests now locate the branch by its test expression.
 
 ### B68 and the allowlist that was already there
 `366eeb2..HEAD`. **360 tracked, 164 done. 9 tests, 6 mutations, 0 regressions. Suite 8,388 -> 8,397.**
@@ -4519,7 +4534,7 @@ radius of a 2.9GB container that runs agent-authored code.*
   itself `blocked` is recorded as `blocked` instead of sharing the word `error` with a tool that ran
   and broke. 19 tests, 15 mutations, all caught.
 
-- [ ] **P17-09** **The named-network allowlist has no front door.** Found by `P17-02` 2026-09-10.
+- [x] **P17-09** **The named-network allowlist has no front door.** Found by `P17-02` 2026-09-10.
   `src/networks.py` is enforcing today — consulted inside `check_outbound_url` and `outbound_fetch`
   **before DNS**, and it is what `P17-02` calls the operator-set boundary. But `grep networks`
   returns **nothing** in `static/js/settings.js`, nothing in `static/js/admin.js`, and no route under
@@ -4532,7 +4547,34 @@ radius of a 2.9GB container that runs agent-authored code.*
   person works around (fixed in `B68`; the panel is still missing). This is `Law 15`: `P16-16` built
   the mechanism and stopped at the seam where a person meets it. `Verify:` an operator can declare a
   network, see what it matches, and get a refusal with a reason when a CIDR will not parse — rather
-  than a stored value that silently does nothing. `Depends:` nothing. — found by `P17-02` — agent:`P17`
+  than a stored value that silently does nothing. `Depends:` nothing. — found by `P17-02` — agent:`P17` — **done 2026-09-10.** A `Networks` tab, admin-only, beside System.
+  **Lenient on read, strict on write, and the asymmetry is the whole design.**
+  `Network.__init__` still drops a bad CIDR with a warning and coerces an unknown trust to the
+  default, because a file that loaded yesterday has to load today and one typo must not take the
+  other four entries down with it (`Law 1`). `validate_networks()` is new and runs **only at the
+  write boundary**, where silence is the defect: the warning went to a log nobody watches, the
+  operator got a 200 with their own text echoed back, and the network they declared classified
+  nothing. That is `B63`'s compose warning and `P16-19`'s unparseable OTLP endpoint wearing a third
+  set of clothes. It reports **every** problem rather than the first, because a form that surfaces
+  one typo per round trip is a form people give up on, and it catches four things the loader cannot:
+  a duplicate name (`network_for` returns the first match, so the second is unreachable and nothing
+  says which), a network listing neither cidrs nor hosts (matches nothing, so a run scoped to it
+  refuses every address and looks like a bug in whatever was being scoped), an invented trust level,
+  and an unnamed entry. **One endpoint, because the alternative is the rule in two languages.**
+  `POST /api/auth/networks/check` answers both questions the panel has — is this valid, and which
+  network claims this address — against **what is on screen rather than what is saved**, so the
+  operator sees where `192.168.1.71` lands before committing to it. A CIDR matcher written in
+  JavaScript would be `Law 13`, and `B65` is the standing proof of what that costs: a rule that
+  reads one language cannot see a defect living in the other. A test asserts the panel contains no
+  netmask arithmetic and does ask the server. **The disabled rows still preview**, deliberately —
+  `declared_networks` excludes them so they classify nothing, but the operator is looking at the row
+  in front of them and answering *no match* for a row that visibly contains the address is how a
+  person concludes the feature is broken. **Two mutations survived the first pass and both were my
+  own tests being loose**: a 400-character window after the `validate_networks` call found the
+  *next* validation block's `raise`, and an `if False:` guard left the call in the AST for a scan
+  that only looked for the name. Both now locate the `if key == "networks"` branch by its test
+  expression and assert the raise lives inside it, guarded by what the validator returned —
+  proximity is not reachability. `CACHE_NAME` `v407` → `v408`. 27 tests, 15 mutations, all caught.
 
 - [ ] **P17-08** **Run the gap analysis against real traffic, because this tree has none.** Measured
   2026-09-10: `data/app.db` holds **0 sessions, 0 chat messages and 1 `events` row**; the only

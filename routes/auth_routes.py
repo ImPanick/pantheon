@@ -725,6 +725,29 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             return settings
         return scrub_settings(settings)
 
+    @router.post("/networks/check")
+    async def check_networks(request: Request):
+        """Admin only: validate a proposed `networks` value and say what it claims.
+
+        `P17-09`. One endpoint answering both questions the panel has, because
+        both are answered by the same Python and a JavaScript copy of CIDR
+        matching would be the rule living in two places (`Law 13`). Nothing is
+        saved here — the panel asks about what is on screen, before the operator
+        commits to it.
+        """
+        user = _get_current_user(request)
+        if not user or not auth_manager.is_admin(user):
+            raise HTTPException(403, "Admin only")
+        body = await request.json()
+        value = body.get("networks", [])
+        probe = str(body.get("probe") or "").strip()
+        from src.networks import matches_for, validate_networks
+        return {
+            "problems": validate_networks(value),
+            "probe": probe,
+            "matched": matches_for(value, probe) if probe else None,
+        }
+
     @router.post("/settings")
     async def set_settings(request: Request):
         """Admin only: update app settings."""
@@ -786,6 +809,23 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
                 except (TypeError, ValueError):
                     raise HTTPException(400, f"{key} must be an integer")
                 val = max(lo, min(val, hi))
+            if key == "networks":
+                # `P17-09`. `src/networks.py` is enforcing — it is consulted
+                # inside `check_outbound_url` and `outbound_fetch` before DNS —
+                # and until now this route accepted it with no validation at all,
+                # purely because the loop iterates `DEFAULT_SETTINGS`. An
+                # unparseable CIDR was stored, then dropped by `Network.__init__`
+                # with a `logger.warning`, and the operator got a 200 with their
+                # own text echoed back and a network that classifies nothing.
+                # Same defect as `B63`'s compose warning and `P16-19`'s
+                # unparseable OTLP endpoint: accepted, logged, and silently inert.
+                #
+                # The validator lives in `src/networks.py` beside the loader, so
+                # the rule and the thing it describes cannot drift (`Law 13`).
+                from src.networks import validate_networks
+                problems = validate_networks(val)
+                if problems:
+                    raise HTTPException(400, "networks: " + " ".join(problems))
             if key in _STRING_MAPS:
                 if not isinstance(val, dict) or not all(
                         isinstance(k, str) and isinstance(v, (str, int, float, bool))

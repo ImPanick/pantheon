@@ -43588,3 +43588,61 @@ body.settings-sidebar-resize-active {
     scroll-behavior: auto !important;
   }
 }
+
+/* ── `P17-09`: the named-networks panel ────────────────────────────────────
+   `src/networks.py` has been enforcing since `P16-16` and had no front door.
+   Laid out with flex-wrap rather than a grid so the row collapses to one
+   column on a phone without a second set of rules to maintain. */
+.networks-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.networks-row:last-child { border-bottom: none; }
+.networks-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.networks-cell .settings-select { width: 100%; }
+.networks-cell-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.55;
+}
+.networks-cell-switch { align-items: flex-start; }
+.networks-remove { flex: 0 0 auto; }
+.networks-problems {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--red, #c0392b);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--red, #c0392b) 8%, transparent);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.networks-problem + .networks-problem { margin-top: 4px; }
+.networks-saved {
+  margin-top: 10px;
+  font-size: 12px;
+  opacity: 0.7;
+}
+.networks-probe-result {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  opacity: 0.8;
+}
+.networks-probe-result.networks-probe-hit {
+  /* Deliberately NOT `var(--accent)`. The accent ratchet counts full-strength
+     accent `color:` declarations and says why: one more fails the contrast floor
+     on seven of the sixteen palettes. A hit is distinguished by weight and full
+     opacity instead, which reads on every theme and costs the palettes nothing. */
+  opacity: 1;
+  font-weight: 600;
+}

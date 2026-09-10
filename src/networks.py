@@ -247,6 +247,110 @@ def hosts_in_scope() -> Optional[List[str]]:
     return out
 
 
+def validate_networks(value: Any) -> List[str]:
+    """Problems with a proposed `networks` value, as sentences an operator reads.
+
+    `P17-09`. **Lenient on read, strict on write, and the asymmetry is the
+    point.** `Network.__init__` drops an unparseable CIDR with a `logger.warning`
+    and coerces an unknown trust level to the default, which is right when
+    loading a file that already exists — a typo in one entry must not take the
+    other four down with it, and `Law 1` says a file that loaded yesterday loads
+    today. It is exactly wrong at the moment somebody is *writing* the value: the
+    warning goes to a log nobody is watching, the operator gets a 200 with their
+    own text echoed back, and the network they declared quietly classifies
+    nothing. That is `B63` and `P16-19`'s defect wearing a third set of clothes.
+
+    So this runs only at the write boundary and it never mutates. It returns
+    every problem rather than the first, because a form that reports one typo per
+    round trip is a form people give up on.
+    """
+    problems: List[str] = []
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except Exception:
+            return ["networks must be a list of objects, or JSON text that parses to one."]
+    if not isinstance(value, list):
+        return [f"networks must be a list, not {type(value).__name__}."]
+
+    seen: Set[str] = set()
+    for i, raw in enumerate(value):
+        where = f"entry {i + 1}"
+        if not isinstance(raw, dict):
+            problems.append(f"{where} is a {type(raw).__name__}, not an object.")
+            continue
+        name = str(raw.get("name") or "").strip()
+        if not name:
+            problems.append(f"{where} has no name. A network is addressed by name, so it needs one.")
+        elif name.lower() in seen:
+            # `network_for` returns the FIRST match, so a duplicate name means
+            # one of the two is unreachable and nothing says which.
+            problems.append(
+                f"{where} repeats the name {name!r}. The first match wins, so the "
+                f"second one would never be selected.")
+        else:
+            seen.add(name.lower())
+            where = f"{name!r}"
+
+        cidrs = raw.get("cidrs") or []
+        hosts = raw.get("hosts") or []
+        if not isinstance(cidrs, list):
+            problems.append(f"{where}: cidrs must be a list.")
+            cidrs = []
+        if not isinstance(hosts, list):
+            problems.append(f"{where}: hosts must be a list.")
+            hosts = []
+        for cidr in cidrs:
+            try:
+                ipaddress.ip_network(str(cidr).strip(), strict=False)
+            except ValueError as e:
+                problems.append(f"{where}: {str(cidr)!r} is not a valid CIDR ({e}).")
+        for host in hosts:
+            if not str(host).strip():
+                problems.append(f"{where}: an empty host does nothing; remove it.")
+        if not cidrs and not hosts:
+            # An empty network is not an error the loader would notice, and it
+            # matches nothing — so a run scoped to it refuses everything, which
+            # looks exactly like a bug in whatever was being scoped.
+            problems.append(
+                f"{where} lists no cidrs and no hosts, so it matches nothing and "
+                f"a run scoped to it would refuse every address.")
+
+        trust = raw.get("trust")
+        if trust is not None and trust not in TRUST_LEVELS:
+            problems.append(
+                f"{where}: trust {trust!r} is not one of {', '.join(TRUST_LEVELS)}.")
+        enabled = raw.get("enabled", True)
+        if not isinstance(enabled, bool):
+            problems.append(f"{where}: enabled must be true or false.")
+    return problems
+
+
+def matches_for(value: Any, probe: str) -> Optional[str]:
+    """Which of a *proposed* network list would claim `probe`, without saving it.
+
+    So the panel can answer "does 192.168.1.71 land in the network I just typed"
+    before the operator commits to it. `network_for` reads the saved setting;
+    this reads what is on screen.
+    """
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except Exception:
+            return None
+    if not isinstance(value, list):
+        return None
+    for raw in value:
+        if not isinstance(raw, dict) or not str(raw.get("name") or "").strip():
+            continue
+        net = Network(name=raw.get("name"), hosts=raw.get("hosts") or [],
+                      cidrs=raw.get("cidrs") or [], trust=raw.get("trust") or DEFAULT_TRUST,
+                      enabled=raw.get("enabled", True))
+        if net.contains(probe):
+            return net.name
+    return None
+
+
 def summary() -> Dict[str, Any]:
     """What is declared and what is in force. For diagnostics and the UI."""
     nets = declared_networks(include_disabled=True)

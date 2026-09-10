@@ -86,6 +86,15 @@ function onSettingsPanelActivated(tab) {
       .then((mod) => mod.open())
       .catch((e) => console.error('Embeddings panel failed to load', e));
   }
+
+  // `P17-09`. Same shape as embeddings and for the same reason: it fetches the
+  // settings on activation, and a panel most installs never open should cost
+  // nothing on first paint.
+  if (tab === 'networks') {
+    import('./networks.js')
+      .then((mod) => mod.open())
+      .catch((e) => console.error('Networks panel failed to load', e));
+  }
 }
 
 function openAdminSettingsTab(tab) {

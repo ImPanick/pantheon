@@ -1758,6 +1758,15 @@
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/><line x1="7" y1="7" x2="10" y2="10"/><line x1="17" y1="7" x2="14" y2="10"/><line x1="7" y1="17" x2="10" y2="14"/><line x1="17" y1="17" x2="14" y2="14"/></svg>
             <span>Embeddings</span>
           </button>
+          <!-- `P17-09`. `src/networks.py` has been enforcing since `P16-16` --
+               it is consulted inside `check_outbound_url` and `outbound_fetch`
+               BEFORE DNS -- and it had no panel, no route and no validation.
+               An allowlist the operator has no supported way to write is not
+               operator-set (`Law 15`). -->
+          <button class="settings-nav-item admin-only" data-settings-tab="networks">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="16" y="16" width="6" height="6" rx="1"/><path d="M12 8v4"/><path d="M5 16v-2h14v2"/></svg>
+            <span>Networks</span>
+          </button>
           <button class="settings-nav-item admin-only" data-settings-tab="system">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v-.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09A1.65 1.65 0 0 0 19.4 15z"/></svg>
             <span>System</span>
@@ -2864,6 +2873,39 @@
               better at finding things and slower to run.
             </div>
             <div id="emb-models"><div style="opacity:0.5;font-size:12px;">Loading…</div></div>
+          </div>
+        </div>
+
+        <!-- ═══ NETWORKS TAB ═══ -->
+        <div data-settings-panel="networks" class="hidden">
+          <div class="admin-card">
+            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><rect x="9" y="2" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="16" y="16" width="6" height="6" rx="1"/><path d="M12 8v4"/><path d="M5 16v-2h14v2"/></svg>Named networks</h2>
+            <div class="admin-toggle-sub" style="margin-bottom:10px;line-height:1.5;">
+              Name the segments you own, so a run can be told which of them it may reach.
+              Nothing is declared out of the box and nothing changes until you add one.
+              A run scoped to a network refuses every address outside it &mdash; including
+              addresses in no declared network at all.
+            </div>
+            <div id="networks-list" class="settings-col"></div>
+            <div class="settings-row" style="margin-top:10px;gap:8px;">
+              <button type="button" id="networks-add" class="memory-toolbar-btn">Add a network</button>
+              <button type="button" id="networks-save" class="memory-toolbar-btn" style="margin-left:auto;">Save</button>
+            </div>
+            <div id="networks-problems" class="networks-problems" hidden></div>
+            <div id="networks-saved" class="networks-saved" hidden>Saved.</div>
+          </div>
+
+          <div class="admin-card" style="margin-top:12px;">
+            <h2>Which network claims an address?</h2>
+            <div class="admin-toggle-sub" style="margin-bottom:8px;line-height:1.5;">
+              Checked against what is on screen, not what is saved &mdash; so you can see
+              where an address lands before you commit to it.
+            </div>
+            <div class="settings-row" style="gap:8px;">
+              <input type="text" id="networks-probe" class="settings-select" placeholder="192.168.1.71" style="flex:1 1 auto;">
+              <button type="button" id="networks-probe-go" class="memory-toolbar-btn">Check</button>
+            </div>
+            <div id="networks-probe-result" class="networks-probe-result" hidden></div>
           </div>
         </div>
 
