@@ -23,13 +23,54 @@ const MEMORY_CATEGORIES = ['fact', 'identity', 'preference', 'contact', 'project
 
 // Sort-option icons for the custom Memory sort picker (and Skills picker
 // once it reuses the same markup). Each value maps to a 13px Feather-style
-// SVG so the icon visually distinguishes Newest / Oldest / A-Z / Most used.
+// SVG so the icon visually distinguishes Newest / Oldest / A-Z / Most used /
+// Most said.
 const _MEMORY_SORT_ICONS = {
   newest: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
   oldest: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><polyline points="3 3 3 8 8 8"/><polyline points="12 7 12 12 16 14"/></svg>',
   alpha:  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h6"/><path d="M3 10h6"/><path d="M3 16h4"/><path d="M14 4l4 12"/><path d="M16 12h4"/><polyline points="17 18 21 14 17 10"/><line x1="21" y1="14" x2="13" y2="14"/></svg>',
   uses:   '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>',
+  // `P13-15`. Two speech bubbles: this order is about what you keep saying,
+  // where `uses` is about what the assistant keeps reaching for.
+  mentions: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"/><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"/></svg>',
 };
+
+// `P13-15`. The two count pills, as data.
+//
+// `uses` counts how often the SYSTEM reached for this memory and put it in a
+// prompt. `mention_sessions` counts how many separate conversations the PERSON
+// raised it in. A memory the assistant keeps injecting and a memory you keep
+// bringing up are different kinds of important, and one number cannot mean
+// both — so they are two pills, built from two fields, and each title says
+// which is which. A bare "11×" beside a bare "said in 3" is a riddle.
+//
+// Exported as data rather than built inline so a test can run it instead of
+// reading it (`Law 20`). `B61` is why: a mutation that computed a value
+// correctly and never put it on screen survived every test of the helper.
+export function memoryCountPills(memory) {
+  const uses = Number((memory && memory.uses) || 0);
+  const sessions = Number((memory && memory.mention_sessions) || 0);
+  const pills = [];
+  if (uses > 0) {
+    pills.push({
+      className: 'memory-item-uses',
+      text: `${uses}×`,
+      title: `Injected into chat context ${uses} time${uses === 1 ? '' : 's'}`,
+    });
+  }
+  // Two or more: one conversation is not a pattern, and "said in 1" beside a
+  // memory that was created by being said once is noise.
+  if (sessions > 1) {
+    pills.push({
+      className: 'memory-item-mentions',
+      text: `said in ${sessions}`,
+      title: `You have brought this up in ${sessions} separate conversations`
+        + ` — which is why it ranks a little higher. Different from the ${uses}× above,`
+        + ` which counts how often it was injected into a chat.`,
+    });
+  }
+  return pills;
+}
 
 function _memorySortIcon(value) {
   return _MEMORY_SORT_ICONS[value] || _MEMORY_SORT_ICONS.newest;
@@ -766,6 +807,13 @@ function getFilteredMemories() {
     filtered.sort((a, b) => (a.text || '').localeCompare(b.text || ''));
   } else if (sort === 'uses') {
     filtered.sort((a, b) => (b.uses || 0) - (a.uses || 0) || (b.timestamp || 0) - (a.timestamp || 0));
+  } else if (sort === 'mentions') {
+    // `P13-15`. Its own sort rather than a tweak to "Most used", because the
+    // two orders answer different questions and merging them would produce a
+    // list nobody could interpret.
+    filtered.sort((a, b) => (b.mention_sessions || 0) - (a.mention_sessions || 0)
+      || (b.mentions || 0) - (a.mentions || 0)
+      || (b.timestamp || 0) - (a.timestamp || 0));
   }
 
   // Pinned always float to top
@@ -890,13 +938,12 @@ export function renderMemoryList() {
       meta.appendChild(reasonSpan);
     }
 
-    const uses = Number(memory.uses || 0);
-    if (uses > 0) {
-      const useSpan = document.createElement('span');
-      useSpan.className = 'memory-item-uses';
-      useSpan.textContent = `${uses}×`;
-      useSpan.title = `Injected into chat context ${uses} time${uses === 1 ? '' : 's'}`;
-      meta.appendChild(useSpan);
+    for (const pill of memoryCountPills(memory)) {
+      const span = document.createElement('span');
+      span.className = pill.className;
+      span.textContent = pill.text;
+      span.title = pill.title;
+      meta.appendChild(span);
     }
 
     if (memory.timestamp) {

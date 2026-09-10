@@ -223,20 +223,57 @@ def _fallback_memory_candidates(messages) -> list[dict]:
     return candidates[:2]
 
 
-def _is_text_duplicate(new_text: str, existing: list, threshold: float = 0.6) -> bool:
-    """Check if new_text is too similar to any existing memory (Jaccard similarity)."""
+def _text_duplicate_of(new_text: str, existing: list, threshold: float = 0.6):
+    """The memory `new_text` restates, or None. Jaccard similarity.
+
+    `P13-15` changed this from a predicate to a lookup, and that is the whole
+    shape of the row: it always knew *which* memory the new fact duplicated and
+    threw the answer away on the return statement. Every caller was about to
+    `continue`, so nobody noticed the information leaving.
+    """
     new_tokens = set(new_text.lower().split())
     if not new_tokens:
-        return False
+        return None
     for entry in _memory_dicts(existing):
         old_tokens = set(entry.get("text", "").lower().split())
         if not old_tokens:
             continue
-        intersection = new_tokens & old_tokens
-        union = new_tokens | old_tokens
-        if len(intersection) / len(union) >= threshold:
-            return True
-    return False
+        if len(new_tokens & old_tokens) / len(new_tokens | old_tokens) >= threshold:
+            return entry
+    return None
+
+
+def _is_text_duplicate(new_text: str, existing: list, threshold: float = 0.6) -> bool:
+    """Whether `new_text` restates something already stored.
+
+    Kept because callers outside this module ask the yes/no question (`Law 1`),
+    and it is one line over the lookup rather than a second implementation of
+    the comparison (`Law 14`).
+    """
+    return _text_duplicate_of(new_text, existing, threshold) is not None
+
+
+def _note_restatement(memory_manager, entry, session, fact_text: str) -> None:
+    """The person said a thing they have said before. `P13-15`.
+
+    All three dedupe paths land here. Before this row each of them located the
+    matching memory and then `continue`d, so **the moment a fact was confirmed
+    for the eleventh time was the moment the observation was discarded** — the
+    strongest signal available for what belongs in a Brain, computed exactly and
+    dropped. Same defect class as the thirteen `P4` rows, reached from the other
+    side: a value computed, used for one branch, and never recorded.
+
+    Guarded, because a counter must never cost a user their extracted facts.
+    """
+    if not isinstance(entry, dict) or not entry.get("id"):
+        return
+    session_id = getattr(session, "session_id", None) or getattr(session, "name", None)
+    try:
+        memory_manager.record_mention(entry["id"], session_id)
+    except Exception as e:  # pragma: no cover - a counter is never worth a failure
+        logger.warning("Could not record a mention for %s: %s", entry["id"], e)
+    else:
+        logger.debug("Memory mention: '%s' restates %s", fact_text[:50], entry["id"])
 
 
 def _parse_extraction_json(raw: str) -> list:
@@ -434,16 +471,19 @@ async def extract_and_store(
                     # text dedup below; cross-tenant/stale matches fall through.
                     _match = next((e for e in existing if e.get("id") == existing_id), None)
                     if _match is not None and (_match.get("owner") == _owner or _match.get("owner") is None):
-                        logger.debug(f"Memory dedup (vector): '{fact_text[:50]}' matches {existing_id}")
+                        _note_restatement(memory_manager, _match, session, fact_text)
                         continue
 
             # Text dedup fallback: exact match + fuzzy similarity
             user_existing = [e for e in existing if e.get("owner") == _owner or e.get("owner") is None] if _owner else existing
-            if memory_manager.find_duplicates(fact_text, user_existing):
+            _exact = memory_manager.find_duplicates(fact_text, user_existing)
+            if _exact:
+                _note_restatement(memory_manager, _exact[0], session, fact_text)
                 continue
             # Fuzzy text similarity check (catches rephrased duplicates when vector index is unavailable)
-            if _is_text_duplicate(fact_text, user_existing):
-                logger.debug(f"Memory dedup (fuzzy): '{fact_text[:50]}' too similar to existing")
+            _fuzzy = _text_duplicate_of(fact_text, user_existing)
+            if _fuzzy is not None:
+                _note_restatement(memory_manager, _fuzzy, session, fact_text)
                 continue
 
             entry = memory_manager.add_entry(fact_text, source="auto", category=category, owner=_owner)

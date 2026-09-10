@@ -308,6 +308,14 @@ class MemoryManager:
                 entry["category"] = "fact"
             if "uses" not in entry:
                 entry["uses"] = 0
+            # `P13-15`. Every memory predates this counter, so the honest
+            # default is zero-mentions-observed rather than one — the store
+            # cannot know how often a fact was said before anyone was counting,
+            # and inventing a 1 would make an old memory look freshly confirmed.
+            if "mentions" not in entry:
+                entry["mentions"] = 0
+            if "mention_sessions" not in entry:
+                entry["mention_sessions"] = 0
             validated.append(entry)
         return validated
     
@@ -369,6 +377,14 @@ class MemoryManager:
             "source": source,
             "category": category,
             "uses": 0,
+            # `P13-15`. Beside `uses` and initialised for the same reason it is:
+            # a caller reading the returned dict should not have to know that
+            # `load` backfills these. Zero, not one — creating a memory is the
+            # first time it was said, and `first_mentioned` records that; a
+            # count of 1 here would double-count the moment of creation.
+            "mentions": 0,
+            "mention_sessions": 0,
+            "first_mentioned": int(time.time()),
         }
         if owner:
             entry["owner"] = owner
@@ -394,6 +410,59 @@ class MemoryManager:
         if changed:
             self.save(entries)
     
+    # `P13-15`. How many distinct conversations a restatement is remembered
+    # from. Extraction runs after every response, so a fact repeated three times
+    # inside one conversation is one conversation's worth of evidence and not
+    # three — the durability signal is *across* sessions. This bounds the list
+    # that makes that distinction; beyond it the count is kept and the ids are
+    # forgotten, because the oldest session id has already done its work.
+    MENTION_SESSION_MEMORY = 32
+
+    def record_mention(self, memory_id: str, session_id: str | None = None) -> dict | None:
+        """The person said this again. `P13-15`.
+
+        **This is not `increment_uses`, and keeping them apart is the row.**
+        `uses` counts **recalls** — how often the system reached for a fact and
+        put it in a prompt. This counts **mentions** — how often the person
+        stated it, and in how many separate conversations. A memory the
+        assistant keeps injecting and a memory the person keeps raising are
+        different kinds of important, and one counter cannot mean both.
+
+        Before this, the moment a restatement was detected was the moment it was
+        discarded: all three dedupe paths in the extractor located the matching
+        memory precisely and then `continue`d. The strongest available signal
+        for what belongs in a Brain was computed and dropped on the floor.
+
+        Returns the updated entry, or None if the id is unknown or the store
+        could not be read — a counter is never worth rewriting the store blind.
+        """
+        if not memory_id:
+            return None
+        try:
+            entries = self.load_all_for_update()
+        except MemoryStoreUnreadable as e:
+            logger.error("Skipping mention bump, memory store unreadable: %s", e)
+            return None
+        for entry in entries:
+            if entry.get("id") != memory_id:
+                continue
+            entry["mentions"] = int(entry.get("mentions", 0) or 0) + 1
+            entry["last_mentioned"] = int(time.time())
+            # `first_mentioned` is the moment the fact entered the store, which
+            # is the first time it was said. Backfilled from `timestamp` rather
+            # than left empty, because "we started counting late" is a worse
+            # answer than the one the record already knows.
+            entry.setdefault("first_mentioned", int(entry.get("timestamp", 0) or 0))
+            if session_id:
+                seen = [s for s in (entry.get("mention_session_ids") or []) if s]
+                if session_id not in seen:
+                    entry["mention_sessions"] = int(entry.get("mention_sessions", 0) or 0) + 1
+                    seen.append(session_id)
+                    entry["mention_session_ids"] = seen[-self.MENTION_SESSION_MEMORY:]
+            self.save(entries)
+            return entry
+        return None
+
     def find_duplicates(self, text: str, entries: List[Dict] = None) -> List[Dict]:
         """Find duplicate memory entries based on text content."""
         if entries is None:

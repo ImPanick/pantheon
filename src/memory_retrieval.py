@@ -176,6 +176,24 @@ _MIN_IDF_CORPUS = 10
 _W_VECTOR, _W_KEYWORD, _W_RECENCY = 0.55, 0.40, 0.05
 _W_KEYWORD_ALONE = 0.95
 
+# `P13-15`. Durability: how many separate conversations the person has raised
+# this in. A fact stated in eleven conversations over three months is something
+# they live with; one stated once is a guess, and until this row the store held
+# them identically.
+#
+# It **shares** recency's 5% rather than taking its own, via `max()` at the call
+# site. Two capped tiebreakers added side by side make a 10% tiebreaker, which
+# is not a tiebreaker any more — and the relevance terms keep exactly the weight
+# they had, so this row cannot quietly re-rank anybody's existing memories.
+# "Most mentioned wins" is "most recent wins" with a better argument.
+#
+# Logarithmic, because the interesting distinction is *one conversation versus
+# several*: the gap between 1 and 3 is evidence, the gap between 9 and 11 is
+# noise, and a linear term would let a much-repeated fact drown a precise one.
+# Saturating at 8 means a fact raised in eight separate conversations is as
+# durable as this scorer will ever call anything.
+_DURABILITY_SATURATION = 8.0
+
 # Gates. A memory must clear real relevance, not just recency.
 _MIN_VECTOR, _MIN_KEYWORD, _MIN_FINAL = 0.20, 0.08, 0.12
 
@@ -299,6 +317,7 @@ def _rank(query, memories, k, vector, report, now):
 
         days_old = max((now - (memory.get("timestamp") or 0)) / 86400, 0)
         recency = 1.0 / (1.0 + days_old * 0.05)
+        durability = _durability(memory)
 
         # The relevance gates, and the one thing allowed past them. A verbatim
         # match can score nothing on BM25 — "12 Bridge Street" is three tokens
@@ -306,10 +325,14 @@ def _rank(query, memories, k, vector, report, now):
         # would drop the strongest signal there is.
         cleared = (vector_score >= _MIN_VECTOR or keyword >= _MIN_KEYWORD) if healthy \
             else (keyword >= _MIN_KEYWORD)
+        # Recency and durability share one 5% slice rather than taking 5% each.
+        # Two capped tiebreakers added side by side is a 10% tiebreaker, which
+        # is not a tiebreaker any more.
+        tiebreak = _W_RECENCY * max(recency, durability)
         if healthy:
-            final = (_W_VECTOR * vector_score) + (_W_KEYWORD * keyword) + (_W_RECENCY * recency)
+            final = (_W_VECTOR * vector_score) + (_W_KEYWORD * keyword) + tiebreak
         else:
-            final = (_W_KEYWORD_ALONE * keyword) + (_W_RECENCY * recency)
+            final = (_W_KEYWORD_ALONE * keyword) + tiebreak
         if not cleared and not _verbatim(query, memory):
             continue
 
@@ -324,11 +347,30 @@ def _rank(query, memories, k, vector, report, now):
 
         if final <= _MIN_FINAL:
             continue
-        ranked.append((final, memory, _reason(vector_score, keyword, shared, boost,
-                                              intent, healthy, days_old, verbatim)))
+        ranked.append((final, memory, _reason(
+            vector_score, keyword, shared, boost, intent, healthy, days_old, verbatim,
+            int(memory.get("mention_sessions", 0) or 0))))
 
     ranked.sort(key=lambda row: row[0], reverse=True)
     return ranked[:k]
+
+
+def _durability(memory: dict) -> float:
+    """0..1, from how many separate conversations this has come up in.
+
+    `mention_sessions` and not `mentions`: extraction runs after every response,
+    so saying one thing three times inside one conversation is one
+    conversation's worth of evidence. And not `uses`, which counts how often the
+    *system* reached for this — a memory the assistant keeps injecting and a
+    memory the person keeps raising are different kinds of important.
+    """
+    sessions = int(memory.get("mention_sessions", 0) or 0)
+    # `max(sessions, 1)` rather than an early return for 0 and 1. A guard would
+    # be belt-and-braces — `log(1)` is already 0, so one conversation scores
+    # nothing whichever way it is written — and a branch that cannot change an
+    # answer is a branch a mutation deletes for free. `P13-14`'s `cutoff` and
+    # `B62`'s seven undistinguishable stemmer rules are the same lesson.
+    return min(math.log(max(sessions, 1)) / math.log(_DURABILITY_SATURATION), 1.0)
 
 
 def _verbatim(query: str, memory: dict) -> bool:
@@ -337,7 +379,8 @@ def _verbatim(query: str, memory: dict) -> bool:
     return bool(q) and q in (memory.get("text") or "").lower()
 
 
-def _reason(vector_score, keyword, shared, boost, intent, healthy, days_old, verbatim=False) -> str:
+def _reason(vector_score, keyword, shared, boost, intent, healthy, days_old,
+            verbatim=False, sessions=0) -> str:
     """Why this memory was chosen, from what the code did.
 
     `H11`'s discipline. A reason reverse-engineered from a final score is a
@@ -364,7 +407,9 @@ def _reason(vector_score, keyword, shared, boost, intent, healthy, days_old, ver
                      f" (×{boost:g} on the wording score)")
     if not healthy:
         parts.append("matched on wording alone — semantic search was unavailable")
-    if days_old > 365:
+    if sessions > 1:
+        parts.append(f"raised in {sessions} separate conversations, which counts for at most 5%")
+    elif days_old > 365:
         parts.append(f"{int(days_old // 365)}y old, which counts for at most 5%")
     return "; ".join(parts) or "scored above the floor on wording"
 

@@ -13510,7 +13510,19 @@ textarea.memory-add-input {
   color: color-mix(in srgb, var(--fg) 55%, transparent);
 }
 
+/* `P13-15`. Sits beside `.memory-item-uses` and deliberately does not look like
+   it: `uses` is a monospace count of injections, this is a phrase about the
+   person. Same weight, different shape, so a glance can tell them apart before
+   either title is read. No `--accent`; the theme editor owns that token and all
+   sixteen themes depend on it staying unclaimed. */
+.memory-item-mentions {
+  font-size: 9px;
+  white-space: nowrap;
+  color: color-mix(in srgb, var(--fg) 45%, transparent);
+}
+
 .memory-item-source::before,
+.memory-item-mentions::before,
 .memory-item-time::before {
   content: '\00b7  ';
 }
