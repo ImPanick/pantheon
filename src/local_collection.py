@@ -87,9 +87,13 @@ class LocalCollection:
             with np.load(self._path, allow_pickle=False) as data:
                 vectors = data["vectors"]
                 rows = json.loads(str(data["rows"].item()))
-            if len(rows) != len(vectors):
-                raise ValueError(f"{len(rows)} rows against {len(vectors)} vectors")
-            fingerprint = rows.get("fingerprint") if isinstance(rows, dict) else None
+            # `rows["ids"]` and not `rows`: `len()` on the payload counts its
+            # *keys*. The first version of this line compared four keys against
+            # N vectors and passed only when N happened to be four — it was
+            # discarding the whole index on every restart and rebuilding it,
+            # silently, because a cache miss is not an error here.
+            if len(rows["ids"]) != len(vectors):
+                raise ValueError(f"{len(rows['ids'])} ids against {len(vectors)} vectors")
         except Exception as e:
             # A corrupt cache is not an error, it is a cache miss. Every vector
             # in it is derivable from memory.json.
@@ -99,7 +103,12 @@ class LocalCollection:
         self._docs = list(rows["docs"])
         self._metas = list(rows["metas"])
         self._vectors = vectors
-        del fingerprint
+        # The lane's embedding fingerprint lives here, because
+        # `_get_or_reset_collection` reads `collection.metadata` to decide
+        # whether the model changed. Without persisting it, every restart would
+        # look like a model change and rebuild an index that was fine.
+        if isinstance(rows.get("metadata"), dict):
+            self.metadata = rows["metadata"]
 
     def _persist(self) -> None:
         """Write the cache atomically, or carry on without one."""
@@ -109,16 +118,30 @@ class LocalCollection:
             return
         try:
             os.makedirs(os.path.dirname(self._path) or ".", exist_ok=True)
-            payload = json.dumps({"ids": self._ids, "docs": self._docs, "metas": self._metas})
+            payload = json.dumps({"ids": self._ids, "docs": self._docs,
+                                  "metas": self._metas, "metadata": self.metadata})
             vectors = (self._vectors if self._vectors is not None
                        else np.zeros((0, 0), dtype=_DTYPE))
             # Written to a sibling and renamed: a half-written index that loads
             # is worse than one that does not, because it would answer queries
             # with a subset and nothing would say so.
-            fd, tmp = tempfile.mkstemp(dir=os.path.dirname(self._path) or ".", suffix=".tmp")
+            fd, tmp = tempfile.mkstemp(dir=os.path.dirname(self._path) or ".", suffix=".npz")
             os.close(fd)
-            np.savez(tmp, vectors=vectors, rows=np.array(payload))
-            os.replace(tmp + ".npz" if not tmp.endswith(".npz") else tmp, self._path)
+            try:
+                # `savez` appends `.npz` unless the name already ends in it,
+                # which is why the suffix above is `.npz` and not `.tmp` — the
+                # first version left a zero-byte `.tmp` behind on every write.
+                np.savez(tmp, vectors=vectors, rows=np.array(payload))
+                os.replace(tmp, self._path)
+            except Exception:
+                try:
+                    os.remove(tmp)
+                # The write already failed and that is what gets reported below.
+                # A cleanup that also fails must not replace the real error with
+                # its own — the operator needs the disk-full, not the unlink.
+                except OSError:
+                    pass
+                raise
         except Exception as e:
             logger.warning("Could not persist local vector index (%s): %s", self.name, e)
 
@@ -240,13 +263,29 @@ class LocalIndexClient:
         self._open: Dict[str, LocalCollection] = {}
         self._lock = threading.RLock()
 
+    def get_collection(self, name: str) -> LocalCollection:
+        """Chroma raises when a collection does not exist, and callers depend on
+        that: `_get_or_reset_collection` uses the exception as its "first run"
+        branch. Returning an empty collection instead would make every start
+        look like a fingerprint match against nothing."""
+        with self._lock:
+            if name in self._open:
+                return self._open[name]
+            if not os.path.exists(self._file_for(name)):
+                raise KeyError(f"collection {name!r} does not exist")
+            return self.get_or_create_collection(name)
+
+    def _file_for(self, name: str) -> str:
+        safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in name)
+        return os.path.join(self._dir, f"{safe}.npz")
+
     def get_or_create_collection(self, name: str, metadata: Optional[Dict[str, Any]] = None,
                                  **_kwargs) -> LocalCollection:
         with self._lock:
             if name not in self._open:
-                safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in name)
-                self._open[name] = LocalCollection(
-                    os.path.join(self._dir, f"{safe}.npz"), name, metadata)
+                self._open[name] = LocalCollection(self._file_for(name), name, metadata)
+            elif metadata:
+                self._open[name].metadata = dict(metadata)
             return self._open[name]
 
     # `delete_collection` is what a lane rebuild reaches for when the embedding
@@ -254,9 +293,10 @@ class LocalIndexClient:
     def delete_collection(self, name: str) -> None:
         with self._lock:
             self._open.pop(name, None)
-            safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in name)
             try:
-                os.remove(os.path.join(self._dir, f"{safe}.npz"))
+                os.remove(self._file_for(name))
+            # Deleting a cache that is already gone is the outcome we wanted.
+            # There is nothing to report and nothing a caller could do.
             except FileNotFoundError:
                 pass
             except OSError as e:

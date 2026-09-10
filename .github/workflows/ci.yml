@@ -103,6 +103,17 @@ jobs:
       # counted comments as code; and it ignored ids reached through a literal
       # collection, which is the shape that hid the discovery audit's
       # highest-harm finding. The nine are listed in P3-15's roadmap entry.
+      # `P10-10`. The tracker checker existed for weeks and CI never ran it —
+      # found by `release-gate.py` on its first run, which reads the checker
+      # list out of *this file* precisely so a gap here shows up there. It
+      # validates the roadmap's own arithmetic: that the status table agrees
+      # with the ticks beneath it, that no id names two rows (`B48`), that the
+      # newest Progress entry matches the totals (`B44`). All three of those
+      # were real defects, and it caught a fresh one on 2026-09-10 — so a
+      # roadmap that lies about itself has been pushable this whole time.
+      - name: check-tracker
+        run: python3 .pantheon/check-tracker.py
+
       - name: check-wiring
         run: python3 .pantheon/check-wiring.py --max 124
       # Law 14, arrived at by accident. A module imported under two URLs is two

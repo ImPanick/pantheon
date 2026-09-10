@@ -308,11 +308,64 @@ def _create_lane(chroma_client, base_name: str, lane_name: str, client: Any) -> 
     )
 
 
-def build_embedding_lanes(base_name: str) -> List[EmbeddingLane]:
-    """Return healthy lanes in retrieval preference order: custom, fastembed."""
+# Which index backed the lanes this process built. Read by diagnostics and by
+# `B61`'s reporting, set by `index_client()` below. A module-level note rather
+# than a return value because `build_embedding_lanes` already returns the thing
+# callers want and widening it would touch every caller for a label.
+_INDEX_BACKEND = "none"
+
+INDEX_CHROMA = "chromadb"
+INDEX_LOCAL = "in-process"
+
+
+def index_backend() -> str:
+    """`chromadb`, `in-process`, or `none`. Which store answered."""
+    return _INDEX_BACKEND
+
+
+def index_client():
+    """The vector index: ChromaDB when it is reachable, otherwise in-process.
+
+    `P13-21`. The embedding model was never the service — `fastembed` is local
+    ONNX and ships in `requirements.txt`. Only the *index* was remote, and for a
+    personal Brain an index is a matrix multiply: brute-force cosine is 0.82ms
+    over ten thousand memories, which is years of daily use.
+
+    **`Law 1`: ChromaDB is not removed and is still tried first.** It stays for
+    deployments that want it and for `P0-05`. What changes is that an
+    unreachable service now degrades to *semantic search* rather than to
+    keyword matching — `recall@5 1.00` against `0.77` on the golden set.
+
+    **The two deployments this actually rescues are the ones nobody was
+    watching** (`B64`): `launch-windows.ps1` mentions chroma zero times, and
+    `start-macos.sh` swaps in a heavier package to avoid a failure mode
+    `src/chroma_client.py` cannot have, since `HttpClient` is the only client it
+    ever builds. Docker — the maintainer's own deployment — is the one that
+    already worked, which is exactly why the gap stayed invisible.
+    """
+    global _INDEX_BACKEND
     from src.chroma_client import get_chroma_client
 
-    chroma_client = get_chroma_client()
+    try:
+        client = get_chroma_client()
+        _INDEX_BACKEND = INDEX_CHROMA
+        return client
+    except Exception as e:
+        from src.constants import DATA_DIR
+        from src.local_collection import LocalIndexClient
+
+        # `info` and not `warning`: on two of three shipped deployments there is
+        # no ChromaDB to reach and never was, so this is the normal path rather
+        # than a fault. It still says which store answered, because `B61` is
+        # about never letting that be a guess.
+        logger.info("ChromaDB unreachable (%s); using the in-process vector index", e)
+        _INDEX_BACKEND = INDEX_LOCAL
+        return LocalIndexClient(os.path.join(DATA_DIR, "vectors"))
+
+
+def build_embedding_lanes(base_name: str) -> List[EmbeddingLane]:
+    """Return healthy lanes in retrieval preference order: custom, fastembed."""
+    chroma_client = index_client()
     lanes: List[EmbeddingLane] = []
 
     try:
@@ -351,6 +404,12 @@ def migrate_legacy_collection(base_name: str, lanes: Sequence[EmbeddingLane]) ->
         return
 
     try:
+        # `get_chroma_client` and deliberately not `index_client` (`P13-21`).
+        # This backfills from a *legacy Chroma* collection, and the in-process
+        # index has no such thing to migrate from — it did not exist before the
+        # lanes did. Routing it through the fallback would have it hunt for an
+        # unsuffixed local file that can never be there, and swallow the
+        # exception, which is a slower way of doing nothing.
         from src.chroma_client import get_chroma_client
 
         chroma_client = get_chroma_client()

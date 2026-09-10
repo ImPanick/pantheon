@@ -1114,3 +1114,102 @@ lately"* is not something a text box should be keeping about anybody, and no row
 
 **What would reopen this.** The owner disliking the result, which for this feature means it feels
 like being watched rather than being known — and that judgement is theirs alone.
+
+---
+
+## D-2026-09-10-01 — the agent gets the LAN, and the container still does not
+
+**What the owner asked for**, in their words: *"It appears the Agent cant touch outside of the
+dockers container network. So we need to give this thing the ability to have an agent that plays as
+the network administrator/engineer. It should have an MCP that allows this. This stemmed from me
+wanting to make an agent perform and organize an ARP table on my network but its stuck inside the
+docker sandbox."*
+
+### The measurement, which states the problem better than the sentence does
+
+From inside the running container, on the owner's own machine:
+
+    192.168.1.1:80    TimeoutError      ← the gateway in the next room
+    192.168.1.1:443   TimeoutError
+    1.1.1.1:53        REACHABLE         ← the public internet
+
+**The agent has more reach to the outside world than to the network it is hosted on.** For a
+project whose first law about dependence is *"we drop external dependence"*, that is precisely
+backwards.
+
+And the ARP case is not a permissions problem, it is topology. The container's ARP table is:
+
+    172.18.0.1 / 172.18.0.3 / 172.18.0.5
+
+— the Docker bridge, its gateway and two sibling containers. ARP is link-layer; a bridged
+container's neighbour table is the bridge's and can never be anything else. The host has 24 real
+entries. **No flag on the container makes the second list appear in the first.**
+
+### Why the obvious fixes do not work here
+
+- **`network_mode: host`** binds the container to the host's network namespace — and on Docker
+  Desktop for Windows the "host" is the **WSL2 VM**, which is itself NAT'd behind Windows. It would
+  move the problem one hop, not solve it. This is the owner's platform, so this option is out on
+  their box specifically.
+- **`macvlan`** gives a container a real address on the LAN and is the right answer on Linux with a
+  physical NIC. It is not available on Docker Desktop for Windows.
+- Both are also **Linux-only answers to a question three shipped deployments ask differently**,
+  which is the shape `B64` just finished punishing.
+
+**So the capability lives in a process on the host, and Pantheon talks to it.** It is the only
+option that works on the owner's topology, and it happens to be the better one anyway — see below.
+
+### The container staying unable to reach the LAN is a feature, not a consolation
+
+The instinct is to read the host process as a workaround with a cost: something else to install and
+keep running. That cost is real. But the alternative is handing LAN reach to a 2.9GB container that
+runs arbitrary agent-authored code, executes bash and python, fetches web pages it was told to
+fetch, and loads skills. **The blast radius of a compromised Pantheon would then include the
+owner's network by construction.**
+
+Splitting it means the LAN capability lives in a small process that does a short list of things and
+can be read in one sitting, and Pantheon holds a token for it. That is the same argument
+`D-2026-09-01-01` makes about the auth boundary, applied one layer out.
+
+### How this sits with `FORBIDDEN.md` Part 2, which never lifts
+
+`FORBIDDEN.md:158` lists *"the five SSRF validators + pinned-IP transports"* against
+*"cloud-metadata and internal-network SSRF"*, and Part 2 does not relax. `Law 17` says
+*"internal comms, LAN to LAN etc is totally fine"*. Both hold, because **they are about different
+surfaces**:
+
+- The SSRF validators guard URLs that arrive **from content** — a page the agent was told to read, a
+  skill it imported, a webhook body. Their threat model is the confused deputy, and it is unchanged
+  by any of this. `web_fetch` still refuses `192.168.1.1`, and that must never become negotiable.
+- The network tools are **operator-initiated against the operator's own named network**.
+
+**What keeps the second from becoming a hole in the first:** the network agent answers only for
+CIDRs the operator wrote down. *"My network is 192.168.1.0/24"* is configuration; a target outside
+it is refused whoever asks and however the asking is phrased. A prompt injection reading *"enumerate
+10.0.0.0/8"* is refused because 10.x was never named — **not because the model declined, which is not
+a security control.**
+
+And that allowlist is **operator-set and not agent-writable**: `_SELF_RESTRAINT_KEYS` (`B42`) is the
+existing mechanism and this is its clearest case yet — a setting the agent may read and may not
+write, because a gate the gated party can widen is not a gate.
+
+### Read before write
+
+Phase one is **observation only**: neighbours (ARP), reachability, DNS, service discovery
+(mDNS/SSDP), open-port checks against named hosts, and DHCP lease reading where the router exposes
+it. *Organising an ARP table* — the owner's actual ask — is entirely inside that.
+
+**Configuration is a separate decision and does not ride in on this one.** Changing firewall rules
+or router settings is a different risk class, and bundling it here would mean the first version of a
+network capability could also break the network it is describing.
+
+### `Law 14`: this is not the companion
+
+`companion/` exists and is **inbound** — a phone discovering and pairing *to* Pantheon. This is
+outbound. Different direction, different process, not a duplicate. But `companion/pairing.py` is
+exactly the right machinery to authenticate Pantheon *to* the network agent, and reusing it is the
+point of noticing.
+
+**What would reopen this.** A deployment where the container genuinely can reach the LAN — Linux
+with macvlan — where the host process is redundant. The design should let that case skip the extra
+process rather than pretend it needs one.
