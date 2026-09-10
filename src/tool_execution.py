@@ -623,6 +623,41 @@ async def _document_tool_dispatch(
 # Dispatcher
 # ---------------------------------------------------------------------------
 
+def _refused(block: Any, result: Dict, *, session_id, owner) -> Tuple[str, Dict]:
+    """Record a refusal that happens before the instrumented section, then return it.
+
+    `P17-07`. Six refusals in `execute_tool_block` return *above* `_t0`, so the
+    `finally` that writes the `tool_call` row never runs for them and they leave
+    no durable trace at all — while every refusal a few lines further down leaves
+    one. A gap analysis reading the events table would therefore see the agent
+    stopped by a disabled-tools list and never by the approval gate, which is not
+    a smaller number, it is a wrong one.
+
+    One helper rather than a `record_event` call at each of six sites, for the
+    reason `Law 13` gives: six copies is how the seventh gets forgotten.
+
+    Guarded and last, like the `finally` it stands in for — instrumentation never
+    changes whether a call was refused.
+    """
+    try:
+        from src.events import record_event
+        record_event(
+            "tool_call",
+            name=getattr(block, "tool_type", None),
+            session_id=session_id,
+            owner=owner,
+            outcome="blocked",
+            detail={"policy": result.get("policy")} if result.get("policy") else None,
+        )
+    except Exception:
+        # `events.py`'s first rule, applied to the refusal path: a missing table
+        # on an old database costs a row of history, never the refusal itself.
+        # The caller is a security gate and its answer must not depend on
+        # whether instrumentation is working.
+        pass
+    return (f"{getattr(block, 'tool_type', None)}: BLOCKED", result)
+
+
 async def execute_tool_block(
     block: Any,
     session_id: Optional[str] = None,
@@ -676,14 +711,16 @@ async def execute_tool_block(
             not isinstance(security_context, ToolRunSecurityContext)
             or not security_context.gate_is_armed
         ):
-            return (
-                f"{getattr(block, 'tool_type', None)}: BLOCKED",
-                {
-                    "error": "Exact-action approval requires an armed run security context.",
-                    "exit_code": 1,
-                    "blocked": True,
-                    "policy": "exact_tool_approval",
-                },
+            return _refused(
+                block,
+    {
+                        "error": "Exact-action approval requires an armed run security context.",
+                        "exit_code": 1,
+                        "blocked": True,
+                        "policy": "exact_tool_approval",
+                    },
+                session_id=session_id,
+                owner=owner,
             )
         # Second half, preserved exactly: an approval granted before untrusted
         # content entered was granted under a different threat model, and taint
@@ -693,17 +730,19 @@ async def execute_tool_block(
             security_context.external_untrusted_context_seen
             and not exact_approval.pending.external_untrusted_context_seen
         ):
-            return (
-                f"{getattr(block, 'tool_type', None)}: BLOCKED",
-                {
-                    "error": (
-                        "This approval was given before untrusted content entered "
-                        "the run, so it cannot authorize an action now."
-                    ),
-                    "exit_code": 1,
-                    "blocked": True,
-                    "policy": "exact_tool_approval",
-                },
+            return _refused(
+                block,
+    {
+                        "error": (
+                            "This approval was given before untrusted content entered "
+                            "the run, so it cannot authorize an action now."
+                        ),
+                        "exit_code": 1,
+                        "blocked": True,
+                        "policy": "exact_tool_approval",
+                    },
+                session_id=session_id,
+                owner=owner,
             )
         if (
             exact_approval.pending.tool_name
@@ -714,31 +753,35 @@ async def execute_tool_block(
                 or not exact_approval.pending.document_digest
             )
         ):
-            return (
-                f"{getattr(block, 'tool_type', None)}: BLOCKED",
-                {
-                    "error": (
-                        "The approved document action has no sealed target and "
-                        "cannot be executed."
-                    ),
-                    "exit_code": 1,
-                    "blocked": True,
-                    "policy": "exact_tool_approval",
-                },
+            return _refused(
+                block,
+    {
+                        "error": (
+                            "The approved document action has no sealed target and "
+                            "cannot be executed."
+                        ),
+                        "exit_code": 1,
+                        "blocked": True,
+                        "policy": "exact_tool_approval",
+                    },
+                session_id=session_id,
+                owner=owner,
             )
         sealed_workspace = exact_approval.pending.workspace
         if sealed_workspace and vet_workspace(sealed_workspace) != sealed_workspace:
-            return (
-                f"{getattr(block, 'tool_type', None)}: BLOCKED",
-                {
-                    "error": (
-                        "The approved workspace is no longer a valid safe "
-                        "directory. Review the action again."
-                    ),
-                    "exit_code": 1,
-                    "blocked": True,
-                    "policy": "exact_tool_approval",
-                },
+            return _refused(
+                block,
+    {
+                        "error": (
+                            "The approved workspace is no longer a valid safe "
+                            "directory. Review the action again."
+                        ),
+                        "exit_code": 1,
+                        "blocked": True,
+                        "policy": "exact_tool_approval",
+                    },
+                session_id=session_id,
+                owner=owner,
             )
         approval_claimed = exact_approval.claim(
             owner=owner,
@@ -748,14 +791,16 @@ async def execute_tool_block(
             workspace=workspace,
         )
         if not approval_claimed:
-            return (
-                f"{getattr(block, 'tool_type', None)}: BLOCKED",
-                {
-                    "error": "The exact-action approval did not match this tool request.",
-                    "exit_code": 1,
-                    "blocked": True,
-                    "policy": "exact_tool_approval",
-                },
+            return _refused(
+                block,
+    {
+                        "error": "The exact-action approval did not match this tool request.",
+                        "exit_code": 1,
+                        "blocked": True,
+                        "policy": "exact_tool_approval",
+                    },
+                session_id=session_id,
+                owner=owner,
             )
 
     if isinstance(security_context, ToolRunSecurityContext) and not approval_claimed:
@@ -768,15 +813,21 @@ async def execute_tool_block(
                 "External-context policy blocked tool=%r",
                 getattr(block, "tool_type", None),
             )
-            return blocked_tool_result(
-                getattr(block, "tool_type", None),
-                decision.reason or "Tool blocked by external-context policy.",
+            return _refused(
+                block,
+                blocked_tool_result(
+                    getattr(block, "tool_type", None),
+                    decision.reason or "Tool blocked by external-context policy.",
+                )[1],
+                session_id=session_id,
+                owner=owner,
             )
 
     token = _active_workspace.set(workspace or None)
     _t0 = time.monotonic()
     _tool_name = getattr(block, "tool_type", None)
     _tool_outcome = "ok"
+    _tool_detail = None
     try:
         output = await _execute_tool_block_impl(
             block,
@@ -813,7 +864,12 @@ async def execute_tool_block(
         # of metric that is worse than none.
         result = output[1] if isinstance(output, tuple) and len(output) > 1 else None
         if isinstance(result, dict) and (result.get("error") or result.get("exit_code")):
-            _tool_outcome = "error"
+            # `P17-07`. "Refused" and "ran and failed" are different facts and
+            # the column could not tell them apart, so a gap analysis reading it
+            # would count a policy block as a broken tool. A result that declares
+            # itself blocked says `blocked`; everything else keeps `error`.
+            _tool_outcome = "blocked" if result.get("blocked") else "error"
+            _tool_detail = {"policy": result.get("policy")} if result.get("policy") else None
         return output
     except Exception:
         _tool_outcome = "exception"
@@ -825,7 +881,7 @@ async def execute_tool_block(
         try:
             from src.events import record_event
             record_event("tool_call", name=_tool_name, session_id=session_id,
-                         owner=owner, outcome=_tool_outcome,
+                         owner=owner, outcome=_tool_outcome, detail=_tool_detail,
                          duration_ms=int((time.monotonic() - _t0) * 1000))
         except Exception:
             pass

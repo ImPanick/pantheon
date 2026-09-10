@@ -7479,6 +7479,27 @@ async def stream_agent_loop(
     metrics["requested_endpoint_label"] = requested_endpoint_label
     yield f"data: {json.dumps({'type': 'metrics', 'data': metrics})}\n\n"
 
+    # `P17-07`. Notice, unconditionally, before the teacher gate below decides
+    # whether to *act* on it. `run_teacher_inline` returns at its first gate
+    # unless a teacher is configured, so until this line the only thing that
+    # detects the agent saying "I don't have a tool for that" never ran in a
+    # default install. Detection is not escalation: escalation needs a teacher,
+    # noticing needs a regex.
+    if not _is_teacher_run and not guide_only and not _awaiting_user:
+        try:
+            from src.teacher_escalation import note_turn_outcome
+            note_turn_outcome(
+                tool_results=tool_events,
+                agent_reply=full_response,
+                session_id=session_id,
+                owner=owner,
+            )
+        except Exception:
+            # `note_turn_outcome` already swallows its own failures; this is the
+            # import guard. Noticing that a turn went badly must never be the
+            # reason a turn goes badly.
+            pass
+
     # Teacher-escalation: inline takeover visible in the chat stream.
     # The student just finished; if Tier 1 flags failure, the teacher
     # gets a turn (with its own tool calls forwarded to the user) and

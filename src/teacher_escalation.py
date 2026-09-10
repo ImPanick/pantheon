@@ -24,6 +24,7 @@ itself wasn't confident about.
 """
 from __future__ import annotations
 
+import ast
 import asyncio
 import logging
 import re
@@ -120,6 +121,108 @@ def evaluate_turn_regex(
                 return ("failure", f"agent reply matched give-up pattern {pat.pattern!r}")
 
     return ("ok", None)
+
+
+# ── The gap detector ──────────────────────────────────────────────
+#
+# `P17-07`. `evaluate_turn_regex` is the only thing in this product that notices
+# the agent saying it has no tool for something, and until now it did not run.
+# Its two callers are `maybe_escalate` — which has **zero callers** — and
+# `run_teacher_inline`, which the agent loop does call at the end of every turn
+# and which returns at its first gate unless `teacher_enabled` is on and a
+# `teacher_model` is set. Both default off, so in a default install the
+# classification was never computed, let alone kept.
+#
+# **Detection is not escalation.** Escalation is rightly gated: you cannot ask a
+# teacher you have not configured. Noticing costs a handful of regexes over a
+# string already in memory, and it is the only evidence `P17-08` can build a gap
+# analysis from.
+
+_GAP_SIGNALS = {
+    "reply_give_up": "the agent said it could not do it",
+    "tool_error": "a tool the agent chose came back an error",
+}
+
+
+def _known_pattern(reason: Optional[str]) -> Optional[str]:
+    """The matched regex out of a reason string, and nothing else.
+
+    **An allowlist, not a sanitiser**, and the difference is the whole point.
+    `evaluate_turn_regex` builds its reason with `!r` interpolation, and two of
+    its three shapes embed conversation: `"tool returned error: {error!r}"` is
+    the tool's own message, and `"tool result matched error pattern {p!r}:
+    {snippet!r}"` carries 120 characters of it. Writing the reason through would
+    have put tool output into a table with a 90-day prune that rides diagnostic
+    bundles — which is exactly what `note_turn_outcome`'s docstring promises not
+    to do, and the promise was false until a test with a real payload in it said
+    so.
+
+    So the candidate is checked against the patterns this module actually
+    declares, and anything else is dropped. A regex pattern is source text; no
+    conversation can survive a comparison against a fixed list.
+    """
+    if not reason:
+        return None
+    # The token is `!r` output, so it may be single- or double-quoted (Python
+    # switches to double quotes for a string containing an apostrophe — which
+    # every "I don't have a tool" pattern does) and its backslashes are escaped.
+    # `literal_eval` undoes both; matching the raw text would compare `\\b`
+    # against `\b` and silently never match.
+    match = re.search(r"pattern ((['\"]).*?\2)(?::|$)", reason)
+    if not match:
+        return None
+    try:
+        candidate = ast.literal_eval(match.group(1))
+    except (ValueError, SyntaxError):
+        return None
+    known = {p.pattern for p in _TOOL_ERROR_PATTERNS} | {p.pattern for p in _REPLY_GIVE_UP_PATTERNS}
+    return candidate if candidate in known else None
+
+
+def note_turn_outcome(
+    *,
+    tool_results: List[Dict[str, Any]],
+    agent_reply: str,
+    session_id: Optional[str] = None,
+    owner: Optional[str] = None,
+) -> Optional[str]:
+    """Record a turn where the agent could not do what was asked. Never raises.
+
+    Returns the signal name if one fired, else None.
+
+    **The user's words are deliberately NOT written here.** They are already in
+    `chat_messages` for as long as the session lives, and this row carries the
+    `session_id` and the `run_id` needed to find them. A second copy would sit in
+    a table with a 90-day prune that rides diagnostic bundles — a duplicate store
+    (`Law 14`) and a privacy regression in one move. What goes in `detail` is
+    which pattern matched, which is the part `chat_messages` cannot tell you.
+
+    `run_teacher_inline` computes the same classification again when the teacher
+    is configured. That is a pure function over the same two arguments, and
+    threading a result into an async generator past its own early-return gates
+    would couple detection to escalation — which is the coupling this row exists
+    to undo.
+    """
+    try:
+        status, reason = evaluate_turn_regex(tool_results, agent_reply)
+        if status != "failure":
+            return None
+        signal = "tool_error" if (reason or "").startswith("tool ") else "reply_give_up"
+        from src.events import record_event
+        record_event(
+            "capability_gap",
+            name=signal,
+            session_id=session_id,
+            owner=owner,
+            outcome="failure",
+            detail={"pattern": _known_pattern(reason)} if _known_pattern(reason) else None,
+        )
+        return signal
+    except Exception as e:
+        # Same rule as `events.py`: measuring is worth nothing if the thing being
+        # measured stops working.
+        logger.debug("capability gap not recorded: %s: %s", type(e).__name__, e)
+        return None
 
 
 # ── Teacher escalation ────────────────────────────────────────────

@@ -77,8 +77,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P14 | Measurement | 8 | 3 | 0 | **5** |
 | P15 | Outbound politeness | 12 | 2 | **1** | **9** |
 | P16 | Self-hosted by default | 20 | 1 | 0 | **19** |
-| P17 | The network the agent is hosted on | 8 | 7 | 0 | **1** |
-| **Total** | | **359** | **187** | **9** | **163** |
+| P17 | The network the agent is hosted on | 8 | 6 | 0 | **2** |
+| **Total** | | **359** | **186** | **9** | **164** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -240,6 +240,24 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### P17-07 — the thing that notices the agent giving up had never run
+`a522999..HEAD`. **359 tracked, 164 done. 19 tests, 15 mutations, 0 regressions. Suite 8,369 -> 8,388.**
+The row said the classification was computed and thrown away. It was worse: `evaluate_turn_regex`'s
+two callers are `maybe_escalate`, which has **zero callers**, and `run_teacher_inline`, which returns
+at its first gate unless a teacher is configured — both default off. **Detection is not escalation.**
+Escalation needs a teacher; noticing needs a regex, and it is the only evidence `P17-08` can be built
+from. **Getting the privacy right took a test with a real payload in it.** The first attempt stored
+`evaluate_turn_regex`'s reason string, and that reason *embeds conversation* — two of its three
+shapes interpolate the tool's own error text with `!r`. What ships is an allowlist, not a sanitiser:
+the extracted token is compared against the patterns this module declares, so a tool whose error
+reads *"Failed to compile pattern 'CUSTOMER-SSN-…'"* cannot smuggle it into a 90-day-pruned table
+that rides diagnostic bundles. **Six refusals returned above `_t0`** and left no row at all while
+every refusal below it left one — one `_refused` helper for all six, and a structural test that every
+refusal return in that function goes through it. The events column can now tell *refused* from *ran
+and broke*. **The last mutation to survive was the call site, for the third time in this project** —
+`B61`'s pill, `P13-15`'s pill, and now a detector nothing invoked, which is the exact state this row
+found `evaluate_turn_regex` in. It has a test.
 
 ### P17-06's rule, and the third time a tool name went unregistered
 `efb96e5..HEAD`. **359 tracked, 163 done. 11 tests, 8 mutations, 0 regressions. Suite 8,358 -> 8,369.**
@@ -4419,7 +4437,7 @@ radius of a 2.9GB container that runs agent-authored code.*
   written from this tree** and that is a finding, not an excuse: 0 sessions, 0 chat messages, 1
   `events` row, and the only fixture declares `provenance: "fixture"`. `P17-07` and `P17-08` carry it.
 
-- [ ] **P17-07** **The gap detector already exists and throws its answer away.** `P17-06` needs a gap
+- [x] **P17-07** **The gap detector already exists and throws its answer away.** `P17-06` needs a gap
   analysis *"derived from what the agent is actually asked to do"*, and the single best signal for one
   is already computed: `src/teacher_escalation.py:70-89` classifies a turn as a failure on
   `_TOOL_ERROR_PATTERNS` and `_REPLY_GIVE_UP_PATTERNS` — *"I don't have a tool"*, *"I'm not sure
@@ -4434,7 +4452,35 @@ radius of a 2.9GB container that runs agent-authored code.*
   *before* `_t0` is set, so those leave no `events` row at all while every other refusal leaves one.
   `Verify:` a turn where the agent says it has no tool for something produces a durable row naming
   what was asked, and a blocked-before-instrumentation refusal stops being invisible. `Depends:`
-  nothing. — `D-2026-09-10-03`
+  nothing. — `D-2026-09-10-03` — **done 2026-09-10, and the row understated it: the
+  classifier was not discarded, it never ran.** `evaluate_turn_regex` has two callers.
+  `maybe_escalate` has **zero callers** — a fire-and-forget entrypoint whose docstring says it is
+  *"called by the agent loop end-of-turn"* and which nothing calls. `run_teacher_inline` **is** called
+  at the end of every agent turn, and returns at its first gate unless `teacher_enabled` is on and a
+  `teacher_model` is set; both default off. So in a default install the only thing in this product
+  that notices the agent saying *"I don't have a tool for that"* never executed. **Detection is not
+  escalation** — escalation is rightly gated, because you cannot ask a teacher you have not
+  configured, but noticing costs a handful of regexes over a string already in memory, and it is the
+  only evidence `P17-08` can be built from. `note_turn_outcome` runs unconditionally, before the
+  teacher gate rather than behind it, and a test pins that ordering so the coupling cannot come back.
+  **The user's words are deliberately not written, and getting that right took a test with a real
+  payload in it.** `chat_messages` already holds the conversation for as long as the session lives
+  and the row carries the `session_id` and `run_id` that find it; a second copy would sit in a
+  90-day-pruned table that rides diagnostic bundles — `Law 14` and a privacy regression in one move.
+  The first attempt stored `reason`, and **`reason` embeds conversation**: two of
+  `evaluate_turn_regex`'s three shapes interpolate the tool's own error text with `!r`, one of them
+  120 characters of it. What ships is an **allowlist, not a sanitiser** — the extracted token is
+  compared against the patterns this module declares and anything else is dropped, so a tool whose
+  error text reads *"Failed to compile pattern 'CUSTOMER-SSN-…'"* cannot smuggle it through. That is
+  a test. **The refusal half was six returns and one word.** Six sites in `execute_tool_block` return
+  above `_t0`, so the `finally` that writes the `tool_call` row never ran for them while every
+  refusal a few lines below wrote one — a gap analysis would have seen the agent stopped by a
+  disabled-tools list and never by the approval gate, which is not a smaller number but a wrong one.
+  One `_refused` helper records all six rather than six `record_event` calls (`Law 13`: six copies is
+  how the seventh is forgotten), and a structural test asserts every refusal return in that function
+  goes through it. **And the column can finally tell refusal from failure**: a result that declares
+  itself `blocked` is recorded as `blocked` instead of sharing the word `error` with a tool that ran
+  and broke. 19 tests, 15 mutations, all caught.
 
 - [ ] **P17-08** **Run the gap analysis against real traffic, because this tree has none.** Measured
   2026-09-10: `data/app.db` holds **0 sessions, 0 chat messages and 1 `events` row**; the only
