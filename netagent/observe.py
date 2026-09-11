@@ -185,3 +185,47 @@ def reach(target: str, ports: List[int] | None = None,
         "elapsed_ms": int((time.monotonic() - started) * 1000),
         "method": "tcp-connect",
     }
+
+
+# ── names ───────────────────────────────────────────────────────────────────
+
+def resolve(target: str) -> Dict[str, object]:
+    """Forward or reverse, whichever the target is. Caller has checked the gate.
+
+    **Why this is gated at all, when a lookup reaches a resolver rather than a
+    target.** A forward lookup is an outbound channel: `resolve(...)` on
+    `<secret>.attacker.example.com` puts the secret in somebody's DNS logs
+    without a single packet going to the "target". So the allowlist applies here
+    exactly as it does to `reach`, which means a forward lookup only works for a
+    name the operator listed with `--allow-host`. Reverse lookups of an allowed
+    address are the common case and are unaffected.
+    """
+    target = str(target or "").strip()
+    try:
+        ipaddress.ip_address(target)
+        is_address = True
+    except ValueError:
+        is_address = False
+
+    if is_address:
+        try:
+            name, aliases, addresses = socket.gethostbyaddr(target)
+            return {"target": target, "direction": "reverse", "name": name,
+                    "aliases": list(aliases), "addresses": list(addresses)}
+        except (OSError, socket.herror, socket.gaierror) as e:
+            # No PTR is the normal state for most home-network addresses, so
+            # this is an answer rather than a failure and says which.
+            return {"target": target, "direction": "reverse", "name": None,
+                    "detail": f"no reverse record ({type(e).__name__})"}
+
+    try:
+        infos = socket.getaddrinfo(target, None)
+    except (OSError, socket.gaierror) as e:
+        return {"target": target, "direction": "forward", "addresses": [],
+                "detail": f"did not resolve ({type(e).__name__})"}
+    addresses: List[str] = []
+    for info in infos:
+        addr = info[4][0]
+        if addr not in addresses:
+            addresses.append(addr)
+    return {"target": target, "direction": "forward", "addresses": addresses}

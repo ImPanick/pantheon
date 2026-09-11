@@ -155,7 +155,34 @@ def test_the_agents_refusal_is_passed_through_rather_than_replaced(monkeypatch):
 
 
 def test_only_the_declared_routes_exist():
-    assert nac.ROUTES == frozenset({"health", "whoami", "networks"})
+    """The whole population, both tables, in one assertion.
+
+    This said `{"health", "whoami", "networks"}` and `P17-03` added three more,
+    so it failed — which is what a population pin is for. It is written as both
+    sets together because splitting the question across two assertions is how one
+    of them goes stale while the other keeps passing, which is exactly what
+    happened to the agent-side copy of this same pin (`Law 13`).
+    """
+    assert nac.ROUTES == frozenset({"health", "whoami", "networks", "neighbours"})
+    assert nac.TARGET_ROUTES == frozenset({"reach", "dns"})
+    assert nac.ROUTES.isdisjoint(nac.TARGET_ROUTES), (
+        "a route is in both tables; whether it needs a target is now ambiguous")
+
+
+def test_the_client_and_the_agent_agree_on_what_routes_exist():
+    """Two tables in two processes, and a name in one and not the other is a 404
+    at best. The agent is the authority — it is the thing that answers — so this
+    reads its tables and requires the client's to be a subset with the same
+    target-ness."""
+    from netagent import server as srv
+    from netagent.allowlist import Allowlist
+    agent_plain = {p.lstrip("/") for p in srv._routes(Allowlist())}
+    agent_target = {p.lstrip("/") for p in srv.TARGET_ROUTES}
+    assert nac.ROUTES <= agent_plain, (
+        f"the client asks for routes the agent does not serve: {nac.ROUTES - agent_plain}")
+    assert nac.TARGET_ROUTES <= agent_target, (
+        f"the client sends targets to routes that take none: "
+        f"{nac.TARGET_ROUTES - agent_target}")
 
 
 @pytest.mark.parametrize("hostile", [

@@ -22,7 +22,22 @@ preference.
 | `GET /health` | that it is running, and that it is this agent |
 | `GET /whoami` | the hostname, and every address this host answers on, classified |
 | `GET /networks` | the private `/24`s it sits on, ready to paste into Settings → Networks |
+| `GET /neighbours` | the ARP/neighbour table — devices this machine has actually talked to |
 | `GET /reach?target=…` | whether something is there, and which ports answered |
+| `GET /dns?target=…` | reverse lookup of an address, forward lookup of an allowed name |
+
+`/neighbours` is **not a scan.** It reads the machine's own cache — devices it
+has exchanged traffic with recently. Nothing is probed and no packet is sent, so
+a quiet device will not appear. That is deliberate: turning "look at my network"
+into a sweep is how a convenience becomes something your IDS reports. Its rows
+are filtered to the allowlist, and the answer says how many were withheld, so a
+short list reads as a narrow allowlist rather than an empty network.
+
+`/dns` is gated like `/reach` and for a reason worth stating: a **forward** lookup
+is an outbound channel. Resolving `<secret>.attacker.example.com` puts the secret
+in somebody's DNS logs without a single packet reaching the "target". So a forward
+lookup works only for a name you listed with `--allow-host`; reverse lookups of
+allowed addresses are unaffected and are the common case.
 
 Every route needs the token. `POST` returns **405** — changing firewall rules,
 router settings or DHCP is a different risk class from reading them, and bundling

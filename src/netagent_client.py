@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 # Every route this client will ever ask for. Declared, not derived: a client
 # that forwards an arbitrary path is a proxy, and a proxy into the host network
 # is precisely what the container is not allowed to have.
-ROUTES = frozenset({"health", "whoami", "networks"})
+ROUTES = frozenset({"health", "whoami", "networks", "neighbours"})
 
 # Routes that take an address. Separate from `ROUTES` for the same reason the
 # agent keeps `TARGET_ROUTES` separate: it makes "does this need a target" a
@@ -48,7 +48,7 @@ ROUTES = frozenset({"health", "whoami", "networks"})
 # because a call that was never going to be allowed should not be made — but if
 # this check were deleted the agent would still refuse, and a test asserts that
 # rather than trusting it.
-TARGET_ROUTES = frozenset({"reach"})
+TARGET_ROUTES = frozenset({"reach", "dns"})
 
 # What a healthy agent calls itself. Checked so "something answered on that
 # port" is not mistaken for "the agent is up" — the most likely something else

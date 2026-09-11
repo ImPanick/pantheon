@@ -33,6 +33,7 @@ from urllib.parse import parse_qs, urlsplit
 if __package__ in (None, ""):  # running the file directly on the host
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from netagent import neighbours as neighbour_table
 from netagent import observe
 from netagent.allowlist import ENV_CIDRS, ENV_HOSTS, Allowlist
 from netagent.tokens import bearer_credential, load_or_create, token_matches
@@ -61,7 +62,27 @@ def _routes(allowlist: Allowlist) -> Dict[str, Callable[[], object]]:
         },
         "/whoami": observe.whoami,
         "/networks": lambda: {"networks": observe.networks_seen()},
+        # `P17-03`, and the owner's original ask. Not a scan: nothing is probed
+        # and a quiet device does not appear. The table is the machine's; what
+        # may be *reported* from it is the allowlist's, so the rows are filtered
+        # here rather than inside the reader — one gate, at the door.
+        "/neighbours": lambda: _neighbours_for(allowlist),
     }
+
+
+def _neighbours_for(allowlist: Allowlist) -> Dict[str, object]:
+    result = neighbour_table.neighbours()
+    rows = result.get("neighbours") or []
+    kept = neighbour_table.filter_to(rows, allowlist.allows)
+    result["neighbours"] = kept
+    result["count"] = len(kept)
+    # Said out loud, because a filtered list that looks complete is worse than a
+    # short one: an operator who allowed the wrong CIDR would otherwise conclude
+    # their network is empty rather than that their allowlist is wrong.
+    result["seen_total"] = len(rows)
+    result["withheld"] = len(rows) - len(kept)
+    result["allowlist"] = allowlist.as_dict()
+    return result
 
 
 # Routes that take a `target`, and therefore go through the allowlist. Kept in
@@ -70,6 +91,12 @@ def _routes(allowlist: Allowlist) -> Dict[str, Callable[[], object]]:
 # required, so a target route that forgot to check is not a shape this file has.
 TARGET_ROUTES: Dict[str, Callable[[str], object]] = {
     "/reach": observe.reach,
+    # A forward lookup is an outbound channel — resolving
+    # `<secret>.attacker.example.com` puts the secret in somebody's DNS logs
+    # without a packet reaching the "target" — so names go through the same gate
+    # as addresses, which means a forward lookup works only for a name the
+    # operator listed with `--allow-host`.
+    "/dns": observe.resolve,
 }
 
 

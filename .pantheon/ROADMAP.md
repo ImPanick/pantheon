@@ -77,8 +77,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P14 | Measurement | 8 | 3 | 0 | **5** |
 | P15 | Outbound politeness | 12 | 2 | **1** | **9** |
 | P16 | Self-hosted by default | 20 | 1 | 0 | **19** |
-| P17 | The network the agent is hosted on | 9 | 4 | 0 | **5** |
-| **Total** | | **360** | **184** | **9** | **167** |
+| P17 | The network the agent is hosted on | 10 | 4 | 0 | **6** |
+| **Total** | | **361** | **184** | **9** | **168** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -240,6 +240,24 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### P17-03 — the ARP table, which on Windows meant the Win32 API
+`038179e..HEAD`. **361 tracked, 168 done. 15 tests, 14 mutations, 0 regressions. Suite 8,505 -> 8,520.**
+The owner's original ask, and the Windows path is what made it real work. `arp -a` is forbidden
+twice over — this package has no shell, and on Windows it would mean parsing a localised,
+format-unstable human table. `ctypes` is standard library, `GetIpNetTable` is the API `arp.exe`
+itself calls, and it returns a struct rather than prose. **It is not a scan**: nothing is probed and
+a quiet device does not appear, because turning a declaration into a sweep is how "look at my
+network" becomes something an IDS reports. **The answer says what it withheld**, since a filtered
+list that looks complete is worse than a short one. `/dns` is gated because a *forward* lookup is an
+outbound channel — resolving `<secret>.attacker.example.com` puts the secret in somebody's DNS logs
+without a packet reaching the target. **Three of this row's defects were in its own tests and all
+three are the same shape**: a shell-smell scan that read a docstring saying the word it forbids
+(`Law 20`, fifth time), a sort test that called the key function instead of the sort
+(ingredient-not-recipe, fourth time), and two route-population pins in two files, one of which went
+stale while the other kept passing (`Law 13` in miniature). mDNS/SSDP and DHCP leases are split to
+`P17-10` rather than claimed: multicast *sends*, which is the scan this row avoided, and leases are
+the router's, which is an integration rather than an observation.
 
 ### P17-02 — the bound lives on the agent, because Pantheon is the gated party
 `1c8dbb7..HEAD`. **360 tracked, 167 done. 28 tests, 15 mutations, 0 regressions. Suite 8,477 -> 8,505.**
@@ -4542,13 +4560,57 @@ radius of a 2.9GB container that runs agent-authored code.*
   the URL, which is strictly stronger and would have caught the original hole too. 28 tests, 15
   mutations, all caught.
 
-- [ ] **P17-03** **Observation tools: neighbours, reachability, names, services.** ARP/neighbour
+- [x] **P17-03** **Observation tools: neighbours, reachability, names, services.** ARP/neighbour
   table, ping, DNS forward and reverse, open-port checks against named hosts, mDNS/SSDP discovery,
   and DHCP leases where the router exposes them. **The owner's actual ask — *organise an ARP
   table* — is entirely inside this row**, and deliberately so: it is the whole first phase.
   `Verify:` the agent lists the host's real neighbours (24 on the owner's machine, against the
   container's 3), and every tool refuses a target outside `P17-02`'s allowlist. `Depends:` `P17-02`.
-  — `D-2026-09-10-01`
+  — `D-2026-09-10-01` — **done 2026-09-11 for neighbours, reachability and names; mDNS/SSDP and DHCP
+  leases are split out to `P17-10` rather than claimed.** **`GET /neighbours` is the owner's original
+  ask, and it is the Windows path that made it real work.** `arp -a` is forbidden twice over: this
+  package has no shell (`P17-05` keeps writes out, and shelling out is one argument-quoting bug away
+  from being one), and on Windows it would also mean parsing a **localised, format-unstable human
+  table**. `ctypes` is standard library, `GetIpNetTable` from `iphlpapi.dll` is the API `arp.exe`
+  itself calls, and it returns a struct rather than prose. Two calls by design — the first returns
+  `ERROR_INSUFFICIENT_BUFFER` and writes the size it needs, which is the documented contract and not
+  a retry loop. Linux reads `/proc/net/arp`, which is a file. An entry with no hardware address
+  (Windows) or flags `0x0` (Linux) is an **incomplete lookup, not a device** — reporting it puts
+  phantom machines on the operator's list. **It is not a scan and that is deliberate**: nothing is
+  probed, no packet is sent, and a quiet device does not appear. Turning a declaration into a sweep
+  is how *"look at my network"* becomes something an IDS reports, which is the same reason
+  `networks.hosts_in_scope` refuses to expand a CIDR. **The answer says what it withheld** —
+  `seen_total`, `withheld` and the allowlist itself — because a filtered list that looks complete is
+  worse than a short one: an operator who allowed the wrong CIDR would conclude their network is
+  empty rather than that their allowlist is wrong. Rows sort by **numeric** address, because
+  lexicographic order on dotted quads puts `.10` before `.9` at exactly the point a list gets long
+  enough to matter. **`GET /dns` is gated for a reason worth stating**: a *forward* lookup is an
+  outbound channel — resolving `<secret>.attacker.example.com` puts the secret in somebody's DNS logs
+  without a packet reaching the "target" — so a forward lookup works only for a name the operator
+  listed with `--allow-host`, while reverse lookups of allowed addresses, the common case, are
+  unaffected. A missing PTR is an **answer**, not a failure; most home-network addresses have none
+  and calling that an error makes the normal case look broken. **Three of this row's defects were in
+  its own tests, and all three are the same shape.** A shell-smell scan read `neighbours.py`'s
+  docstring, which says the word *subprocess* while explaining why it does not use one — `Law 20`,
+  the fifth time my own prose has tripped my own test, now read with `ast` instead. A sort test
+  called `_sort_key` directly and a mutation swapping the sort *inside* `neighbours()` survived it —
+  ingredient tested, recipe not, the fourth time. And **two route-population pins went stale in two
+  files**, which is `Law 13` in miniature: one question with two owners, so one of them keeps passing
+  while the other breaks. There is now a single cross-process pin asserting the client's tables are a
+  subset of the agent's with the same target-ness. 15 tests, 14 mutations, all caught.
+
+- [ ] **P17-10** **Discovery and leases: mDNS, SSDP, and what the router knows.** Split out of
+  `P17-03` 2026-09-11 rather than claimed with it. The two are genuinely different from the
+  neighbour table and from each other. **mDNS/SSDP is multicast**, so it is the first thing in this
+  phase that *sends* — which makes it a scan by the definition `P17-03` deliberately avoided, and
+  the allowlist cannot gate a broadcast the way it gates a target. The honest shape is to filter the
+  *answers* to the allowlist and say so, the way `/neighbours` reports what it withheld, plus an
+  explicit switch: discovery is a thing an operator turns on, not a thing that happens. **DHCP
+  leases are the router's, not this machine's**, so reading them means credentials for a device
+  whose API is per-vendor and undocumented — that is an integration, not an observation, and it
+  wants `P17-05`'s boundary re-read before anything is built. `Verify:` a device that has said
+  nothing to this host still appears, the operator switched that on deliberately, and nothing
+  outside the allowlist is reported. `Depends:` `P17-03`. — split from `P17-03` — agent:`P17`
 
 - [ ] **P17-04** **A device inventory that persists, because an ARP table is a snapshot and the
   question is never about one moment.** *Organising* a network means knowing that `a4:83:e7:…` is

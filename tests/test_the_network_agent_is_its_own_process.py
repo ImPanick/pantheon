@@ -41,6 +41,33 @@ from netagent.tokens import (
 _PKG = Path(__file__).resolve().parent.parent / "netagent"
 
 
+def _uses(module_path, names):
+    """Names actually imported or called in a module, read with `ast`.
+
+    Not a substring scan. The first version of the shell checks below searched
+    the file text for `"subprocess"` and failed on `neighbours.py`'s own
+    docstring, which says the word while explaining why it does not use one.
+    That is `Law 20` — a test that greps a file is testing the file — and it is
+    the fifth time in this project that my own prose has tripped one of my own
+    tests.
+    """
+    tree = ast.parse(Path(module_path).read_text(encoding="utf-8"))
+    used = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            used |= {a.name.split(".")[0] for a in node.names}
+        elif isinstance(node, ast.ImportFrom):
+            used.add((node.module or "").split(".")[0])
+        elif isinstance(node, ast.Attribute):
+            used.add(ast.unparse(node))
+        elif isinstance(node, ast.Name):
+            used.add(node.id)
+        elif isinstance(node, ast.keyword) and node.arg == "shell":
+            used.add("shell=")
+    return {n for n in names if n in used}
+
+
+
 # ── package rule 1: it runs on a host, so it carries nothing ────────────────
 
 def test_the_agent_imports_nothing_from_the_application():
@@ -251,10 +278,9 @@ def test_the_agent_has_no_writer(agent):
 def test_the_route_table_holds_no_writer():
     """The test above proves POST is refused. This one proves nobody added a
     mutating GET — `Law 20`: the refusal is not the rule, the absence is."""
-    src = (_PKG / "server.py").read_text(encoding="utf-8")
-    code = "\n".join(ln for ln in src.splitlines() if not ln.lstrip().startswith("#"))
-    for smell in ("subprocess", "os.system", "shutil.rmtree", "open(", "Popen"):
-        assert smell not in code, f"the agent's surface grew something that writes: {smell!r}"
+    found = _uses(_PKG / "server.py",
+                  {"subprocess", "os.system", "os.popen", "shutil", "Popen", "shell="})
+    assert found == set(), f"the agent's surface grew something that writes: {found}"
 
 
 def test_it_listens_on_loopback_unless_told_otherwise():
@@ -411,7 +437,10 @@ def test_a_target_route_cannot_be_added_without_arriving_at_the_gate():
     body = ast.unparse(branch)
     assert "allowlist.allows" in body, "the target branch does not consult the allowlist"
     assert "403" in body, "the target branch does not refuse"
-    assert set(srv.TARGET_ROUTES) == {"/reach"}
+    # The population itself is pinned by
+    # `test_every_target_route_is_gated_and_none_was_forgotten`, which owns that
+    # question. Two copies of it means one goes stale, and this one did — it
+    # said `{"/reach"}` and `P17-03` added `/dns` (`Law 13`).
 
 
 def test_a_target_route_without_a_target_is_a_400_not_a_crash(gated):
@@ -465,7 +494,158 @@ def test_reachability_uses_no_shell():
     """`ping` would need a raw socket or a subprocess, and this package has
     neither a privilege story nor a shell — shelling out is one argument-quoting
     bug away from being one."""
-    src = (_PKG / "observe.py").read_text(encoding="utf-8")
-    code = "\n".join(ln for ln in src.splitlines() if not ln.lstrip().startswith("#"))
-    for smell in ("subprocess", "os.system", "os.popen", "shell=True"):
-        assert smell not in code, f"the agent grew a shell: {smell!r}"
+    found = _uses(_PKG / "observe.py", {"subprocess", "os.system", "os.popen", "shell="})
+    assert found == set(), f"the agent grew a shell: {found}"
+
+
+# ── `P17-03`: the owner's original ask ──────────────────────────────────────
+#
+# "I wanted to make an agent perform and organize an ARP table on my network but
+# it's stuck inside the docker sandbox." The container's neighbour table is the
+# *bridge's* — three entries — and no flag makes the host's real ones appear in
+# it, because they are not the container's neighbours. Topology, not permissions.
+
+from netagent import neighbours as nbr  # noqa: E402
+
+_LINUX_ARP = """IP address       HW type     Flags       HW address            Mask     Device
+192.168.1.1      0x1         0x2         aa:bb:cc:dd:ee:01     *        eth0
+192.168.1.10     0x1         0x2         aa:bb:cc:dd:ee:0a     *        eth0
+192.168.1.9      0x1         0x4         aa:bb:cc:dd:ee:09     *        eth0
+192.168.1.77     0x1         0x0         00:00:00:00:00:00     *        eth0
+10.0.0.5         0x1         0x2         aa:bb:cc:dd:ee:05     *        eth1
+garbage line
+"""
+
+
+def _arp_file(tmp_path, body=_LINUX_ARP):
+    path = tmp_path / "arp"
+    path.write_text(body, encoding="utf-8")
+    return str(path)
+
+
+def test_the_neighbour_table_is_parsed(tmp_path):
+    rows = nbr._linux_neighbours(_arp_file(tmp_path))
+    assert [r["address"] for r in rows] == [
+        "192.168.1.1", "192.168.1.10", "192.168.1.9", "10.0.0.5"]
+    assert rows[0]["mac"] == "aa:bb:cc:dd:ee:01"
+    assert rows[0]["interface"] == "eth0"
+
+
+def test_an_incomplete_entry_is_not_a_device(tmp_path):
+    """Flags `0x0` is an address the kernel asked about and got no answer for.
+    Reporting it puts a phantom machine on the operator's list."""
+    rows = nbr._linux_neighbours(_arp_file(tmp_path))
+    assert "192.168.1.77" not in [r["address"] for r in rows]
+
+
+def test_a_permanent_entry_is_distinguished_from_a_learned_one(tmp_path):
+    rows = {r["address"]: r["type"] for r in nbr._linux_neighbours(_arp_file(tmp_path))}
+    assert rows["192.168.1.9"] == "static"
+    assert rows["192.168.1.1"] == "dynamic"
+
+
+def test_the_list_is_in_numeric_address_order(monkeypatch):
+    """Lexicographic order on dotted quads is how a device list becomes hard to
+    read at exactly the point it gets long enough to matter: `.10` before `.9`.
+
+    Driven through `neighbours()` rather than by calling `_sort_key`, because the
+    first version did the latter and a mutation swapping the sort *inside*
+    `neighbours()` survived it — the ingredient tested, the recipe not. Fourth
+    time in this project.
+    """
+    scrambled = [{"address": a, "mac": "aa:bb:cc:dd:ee:01", "type": "dynamic"}
+                 for a in ("192.168.1.100", "192.168.1.9", "192.168.1.10",
+                           "192.168.1.2", "not-an-address")]
+    monkeypatch.setattr(nbr.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(nbr, "_linux_neighbours", lambda *a, **k: list(scrambled))
+    result = nbr.neighbours()
+    assert [r["address"] for r in result["neighbours"]] == [
+        "192.168.1.2", "192.168.1.9", "192.168.1.10", "192.168.1.100",
+        "not-an-address"], "the neighbour list is not in numeric address order"
+    assert result["count"] == 5
+
+
+def test_an_unreadable_table_is_an_empty_list_not_a_crash():
+    assert nbr._linux_neighbours("/nonexistent/arp") == []
+
+
+def test_an_unsupported_platform_says_so_rather_than_returning_nothing(monkeypatch):
+    """"No neighbours" and "I cannot see neighbours here" are completely
+    different answers, and an operator reading a bare `[]` would take the first
+    for the second."""
+    monkeypatch.setattr(nbr.platform, "system", lambda: "Plan9")
+    result = nbr.neighbours()
+    assert result["supported"] is False
+    assert result["neighbours"] == []
+    assert "Plan9" in result["detail"]
+
+
+def test_the_reader_uses_no_subprocess():
+    """`arp -a` would be a shell and, on Windows, a localised human table.
+    `GetIpNetTable` is the API `arp.exe` itself calls and returns a struct."""
+    found = _uses(_PKG / "neighbours.py",
+                  {"subprocess", "os.system", "os.popen", "shell="})
+    assert found == set(), f"the neighbour reader grew a shell: {found}"
+    code = (_PKG / "neighbours.py").read_text(encoding="utf-8")
+    assert "GetIpNetTable" in code, "the Windows path no longer uses the Win32 API"
+    assert "/proc/net/arp" in code, "the Linux path no longer reads the kernel's table"
+
+
+def test_what_may_be_reported_is_the_allowlists(tmp_path):
+    rows = nbr._linux_neighbours(_arp_file(tmp_path))
+    allow = Allowlist(["192.168.1.0/24"])
+    kept = nbr.filter_to(rows, allow.allows)
+    assert [r["address"] for r in kept] == ["192.168.1.1", "192.168.1.10", "192.168.1.9"]
+    assert "10.0.0.5" not in [r["address"] for r in kept]
+
+
+def test_the_neighbour_route_says_what_it_withheld(gated):
+    """A filtered list that looks complete is worse than a short one: an operator
+    who allowed the wrong CIDR would conclude their network is empty rather than
+    that their allowlist is wrong."""
+    status, body = gated("/neighbours")
+    assert status == 200
+    for key in ("count", "seen_total", "withheld", "allowlist", "supported"):
+        assert key in body, f"the neighbour answer does not report {key}"
+    assert body["withheld"] == body["seen_total"] - body["count"]
+
+
+def test_nothing_outside_the_allowlist_is_in_the_neighbour_answer(gated):
+    status, body = gated("/neighbours")
+    allow = Allowlist(["127.0.0.0/8"], ["nas.local"])
+    for row in body["neighbours"]:
+        assert allow.allows(row["address"]), f"{row['address']} leaked past the gate"
+
+
+def test_a_reverse_lookup_of_an_allowed_address_works(gated):
+    status, body = gated("/dns?target=127.0.0.1")
+    assert status == 200
+    assert body["direction"] == "reverse"
+
+
+def test_a_forward_lookup_is_gated_because_it_is_an_outbound_channel(gated):
+    """Resolving `<secret>.attacker.example.com` puts the secret in somebody's
+    DNS logs without a single packet reaching the "target". So names go through
+    the same gate as addresses."""
+    status, body = gated("/dns?target=secret.attacker.example.com")
+    assert status == 403
+    assert "not in this agent's allowlist" in body["error"]
+
+
+def test_a_missing_reverse_record_is_an_answer_not_a_failure():
+    """Most home-network addresses have no PTR, and calling that an error would
+    make the normal case look broken."""
+    result = observe.resolve("192.0.2.123")
+    assert result["direction"] == "reverse"
+    assert result["name"] is None
+    assert "no reverse record" in result["detail"]
+
+
+def test_every_target_route_is_gated_and_none_was_forgotten():
+    """The population, so a seventh route cannot quietly join without a target
+    check. `TARGET_ROUTES` is the only way a route receives one."""
+    from netagent import server as srv
+    assert set(srv.TARGET_ROUTES) == {"/reach", "/dns"}
+    plain = set(srv._routes(Allowlist()))
+    assert plain == {"/health", "/whoami", "/networks", "/neighbours"}
+    assert plain.isdisjoint(srv.TARGET_ROUTES), "a route is in both tables"
