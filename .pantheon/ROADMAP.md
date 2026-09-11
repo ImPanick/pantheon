@@ -78,9 +78,9 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P15 | Outbound politeness | 12 | 2 | **1** | **9** |
 | P16 | Self-hosted by default | 20 | 1 | 0 | **19** |
 | P17 | The network the agent is hosted on | 11 | 3 | 0 | **8** |
-| P18 | One button, and it links | 7 | 7 | 0 | 0 |
+| P18 | One button, and it links | 7 | 6 | 0 | **1** |
 | P19 | The proof ledger | 7 | 1 | 0 | **6** |
-| **Total** | | **376** | **191** | **9** | **176** |
+| **Total** | | **376** | **190** | **9** | **177** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -242,6 +242,23 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### P18-01 — the button, the host, and the consent it was spending
+`c502dae..HEAD`. **376 tracked, 177 done. 15 tests, 12 mutations, 0 regressions. Suite 8,671 -> 8,687.**
+*Is this a Google mailbox* had two answers: a hostname comparison on the server, which is the copy
+that runs when the link is used, and a marker on one of eight dropdown presets in the browser. They
+disagreed — **Gmail** filled in `imap.gmail.com` and showed no button, **Google Workspace** filled in
+the identical host and showed one. The fix removes an answer rather than adding one: the server
+serves its host list and the browser asks. **The risk in the row was the password fields**, which the
+old code hid whenever OAuth was available; qualifying Gmail under that rule would have deleted the
+app-password path from the mailboxes most likely to use it, so OAuth is an offer and not a mode.
+**The defect the row did not name is the one that mattered**: the button was live on every install
+(`.env.example` ships both Google credentials commented out) and authorize checked only the client
+id, while the callback needs the secret and posted an empty one. The default path was press Connect,
+account saved, grant **full mailbox read-write**, come back to `invalid_client`. Checking one
+variable meant failing after the only step a person cannot take back. A test slice that asserts the
+browser holds no hostname of its own had to be taught that a `//` comment naming a host is not a rule
+about hosts — the `ast`-not-regex distinction, third appearance.
 
 ### P19 — the proof ledger, and the correction to its own headline number
 `fc254fc..HEAD`. **376 tracked, 176 done. 29 tests, 17 mutations, 0 regressions. Suite 8,642 -> 8,671.**
@@ -4975,7 +4992,7 @@ missing is that **almost nobody can reach it**, and what exists **half-works onc
 Writing a "build OAuth account linking" epic here would have rebuilt a working thing —
 which is the `P17-02` mistake, and it is why these rows are the ones they are.
 
-- [ ] **P18-01** **Picking "Gmail" does not offer the button; picking "Google Workspace" does.**
+- [x] **P18-01** **Picking "Gmail" does not offer the button; picking "Google Workspace" does.**
   `static/js/settings.js:3072-3081` lists eight providers and exactly one carries the
   `oauth: 'google'` marker — `google_workspace` (`:3074`). That marker is the *only* thing
   that reveals the Connect button (`:3131-3133`). So a person with a `@gmail.com` address
@@ -4983,7 +5000,33 @@ which is the `P17-02` mistake, and it is why these rows are the ones they are.
   and never learns the button exists. **The identity provider is the same Google either
   way.** `Verify:` selecting Gmail offers the same one-click link as Workspace, and a test
   asserts no provider marked with Google hosts is missing the marker — because the next
-  preset added will make this mistake again otherwise. `Depends:` nothing. — agent:`P18`
+  preset added will make this mistake again otherwise. `Depends:` nothing. — agent:`P18` — **done 2026-09-11.**
+  **The fix is not a fourth answer, it is one fewer.** `routes/email_routes.py` already decided
+  *is this Google* by hostname — `_normalized_mail_host(imap_host) != _GOOGLE_OAUTH_IMAP_HOST` is
+  the guard that runs when the link is actually used — and `settings.js` decided it a second way,
+  from an `oauth:` marker on one of eight presets. `GET /api/email/oauth/providers` now **serves**
+  the host list and the browser asks rather than restates, so **Gmail, Google Workspace and a
+  hand-typed `imap.gmail.com` all get the same answer** because they are the same mailbox. A test
+  slices out the decision and asserts it contains no hostname of its own; it needed teaching that
+  a `//` comment naming a host is not a rule about hosts, which is `check-tool-surface.py`'s
+  `ast`-not-regex distinction turning up in a third place.
+  **The password fields stay, and that was the whole risk of this row.** The old code hid them
+  whenever OAuth was available. Qualifying Gmail under that rule would have **removed the
+  app-specific-password path from the mailboxes most likely to use it** — `Law 1`, we add and
+  never subtract. OAuth is an offer here, not a mode; the password only disappears once an account
+  is genuinely linked, and a mutation putting the old behaviour back is caught.
+  **The third defect was not in the row and is the one that mattered.** The button was offered on
+  every install — `.env.example` ships both Google credentials commented out — and authorize
+  checked only `GOOGLE_OAUTH_CLIENT_ID`. The **callback** needs the secret too, and posted an
+  empty one to Google's token endpoint. So the default path was: press Connect, **the account is
+  saved**, go to Google, **grant full mailbox access** (`https://mail.google.com/` — read and
+  write), come back, `invalid_client`, raw error page, half-made account. Checking one variable
+  meant failing *after* the only step a person cannot take back. Both are required now, the
+  provider list reports `configured`, and an unusable button says what would fix it instead of
+  being pressed. Two existing tests set only the id because that was all the endpoint read; they
+  are about `redirect_uri` and now set both. `smtp_port` also defaulted to 587 in the Connect
+  handler and 465 in Save, fifteen lines apart. `CACHE_NAME` `v411` → `v412`. 15 tests, 12
+  mutations, all caught.
 
 - [ ] **P18-02** **An account linked with Google works in the web app and fails in the agent's
   email tools.** `mcp_servers/email_server.py` has **zero** occurrences of `oauth`,

@@ -522,6 +522,10 @@ async def test_authorize_redirect_uri_follows_the_request_scheme(scheme, monkeyp
 
     monkeypatch.delenv("GOOGLE_OAUTH_REDIRECT_URI", raising=False)
     monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "client-id.apps.googleusercontent.com")
+    # P18-01: authorize now requires the secret too. This test is about the
+    # redirect_uri and never cared about the one-variable case; it set only the
+    # id because that was all the endpoint used to read.
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_SECRET", "client-secret")
 
     authorize = _authorize_endpoint()
     resp = await authorize(

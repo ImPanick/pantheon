@@ -93,6 +93,53 @@ def _google_oauth_imap_transport_allowed(port: int, starttls: bool) -> bool:
 def _google_oauth_smtp_transport_allowed(port: int, security: str) -> bool:
     return (port == 465 and security == "ssl") or (port == 587 and security == "starttls")
 
+def _google_oauth_configured() -> bool:
+    """Both halves, because checking one lets the flow fail at the worst moment.
+
+    `P18-01`. The authorize route needs `GOOGLE_OAUTH_CLIENT_ID`; the callback
+    needs `GOOGLE_OAUTH_CLIENT_SECRET` as well. Reporting *configured* on the id
+    alone would send the operator to Google, have them grant access to their
+    mailbox, and fail on the way back — after the consent, which is the one step
+    they cannot undo by pressing back.
+    """
+    return bool(
+        os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "").strip()
+        and os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET", "").strip()
+    )
+
+
+def _oauth_providers() -> list:
+    """Which mail hosts can be linked with a button, and whether they are set up.
+
+    **The host is the question, not the dropdown.** `_google_oauth_imap_transport_allowed`
+    and the `_normalized_mail_host(...) != _GOOGLE_OAUTH_IMAP_HOST` guards above
+    already decide *is this Google* by hostname, and they are the code that runs
+    when the link is used. Before `P18-01` the UI answered the same question a
+    second way — a marker on one of eight dropdown entries — and the two
+    disagreed: choosing **Gmail** filled in `imap.gmail.com` and showed no
+    button, while **Google Workspace** filled in the identical host and did. The
+    same mailbox, two answers, because the rule was written twice (`Law 13`, and
+    `B65` is the standing proof of what a rule in two languages costs).
+
+    So the list is served rather than restated: the browser is told which hosts
+    these are and asks no further questions about them.
+    """
+    return [
+        {
+            "id": "google",
+            "label": "Google",
+            "imap_hosts": [_GOOGLE_OAUTH_IMAP_HOST],
+            "smtp_hosts": [_GOOGLE_OAUTH_SMTP_HOST],
+            "authorize": "/api/email/oauth/google/authorize",
+            "configured": _google_oauth_configured(),
+            "setup_hint": (
+                "Set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET in .env "
+                "and restart, then this button will work."
+            ),
+        }
+    ]
+
+
 def _email_style_key(account_id: str | None) -> str:
     return str(account_id or "").strip()
 
@@ -6217,13 +6264,35 @@ def setup_email_routes():
 
     # ── Google OAuth2 routes ──
 
+    @router.get("/oauth/providers")
+    async def oauth_providers(owner: str = Depends(require_user)):
+        """What can be linked with one button, and whether the operator set it up.
+
+        `P18-01`. Two facts the browser could not previously learn: which mail
+        hosts support the button, and whether this deployment can actually
+        complete the flow. Without the second, the button was offered on every
+        install — `.env.example` ships both Google credentials commented out —
+        so the common path was: fill the form, press Connect, **the account is
+        saved**, the browser navigates to a 400, and the person is left with a
+        half-made account and a raw error page. Refusing before the save is the
+        whole point of serving this.
+        """
+        return {"ok": True, "providers": _oauth_providers()}
+
     @router.get("/oauth/google/authorize")
     async def google_oauth_authorize(account_id: str = Query(...), request: Request = None, owner: str = Depends(require_user)):
         import urllib.parse
         _assert_owns_account(account_id, owner)
         client_id = os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "")
-        if not client_id:
-            raise HTTPException(400, "GOOGLE_OAUTH_CLIENT_ID not set — add it to .env")
+        # P18-01: both, not just the id. The secret is not needed until the
+        # callback, and finding it missing there means failing *after* the
+        # person has already granted Google access to their mailbox.
+        if not _google_oauth_configured():
+            raise HTTPException(
+                400,
+                "Google sign-in is not set up on this deployment — set "
+                "GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET in .env and restart",
+            )
         redirect_uri = (
             os.environ.get("GOOGLE_OAUTH_REDIRECT_URI")
             or f"{request.url.scheme}://{request.headers.get('host', 'localhost:7000')}/api/email/oauth/google/callback"

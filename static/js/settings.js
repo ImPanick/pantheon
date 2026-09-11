@@ -3092,9 +3092,9 @@ async function initEmailAccountsSettings() {
         <div class="settings-row"><label class="settings-label">Email${_hint('Your email address. Used as the From: header on outgoing mail and as the display label when Name is blank.')}</label><input id="eaf-from" class="settings-input" placeholder="you@example.com" value="${esc(a.from_address || '')}"></div>
         <div class="settings-row"><label class="settings-label">Display Name${_hint('Your name as it appears in the From: field of emails you send, e.g. Jane Smith. Auto-filled from Google during OAuth.')}</label><input id="eaf-display-name" class="settings-input" placeholder="Your Name" value="${esc(a.display_name || '')}"></div>
         <div id="eaf-oauth-section" style="display:none;margin:8px 0;padding:10px;border:1px solid var(--border);border-radius:6px;background:color-mix(in srgb,var(--accent,#50fa7b) 6%,transparent)">
-          <div style="font-size:11px;font-weight:600;margin-bottom:6px">Google OAuth2 — required for Workspace / .edu accounts</div>
-          <div id="eaf-oauth-status" style="font-size:11px;opacity:0.7;margin-bottom:6px">${a.oauth_provider === 'google' ? '✓ Connected via Google OAuth' : 'Not connected — click below to authorize'}</div>
-          <button type="button" id="eaf-oauth-btn" class="admin-btn-add" style="font-size:11px">${a.oauth_provider === 'google' ? 'Reconnect with Google' : 'Connect with Google'}</button>
+          <div id="eaf-oauth-title" style="font-size:11px;font-weight:600;margin-bottom:6px">Sign in — no password needed</div>
+          <div id="eaf-oauth-status" style="font-size:11px;opacity:0.7;margin-bottom:6px"></div>
+          <button type="button" id="eaf-oauth-btn" class="admin-btn-add" style="font-size:11px">Connect</button>
         </div>
         <div style="font-size:11px;font-weight:600;opacity:0.6;margin:6px 0 2px">IMAP (Receiving)</div>
         <div class="settings-row"><label class="settings-label">Host${_hint('Your IMAP server, e.g. imap.gmail.com, imap.migadu.com, a LAN host, or a Tailscale IP for Dovecot.')}</label><input id="eaf-imap-host" class="settings-input" value="${esc(a.imap_host || '')}"></div>
@@ -3123,14 +3123,63 @@ async function initEmailAccountsSettings() {
       </div>
     `;
 
-    // Show/hide OAuth section and password fields based on provider selection.
-    function _syncOauthUI(providerKey) {
-      const p = PROVIDERS[providerKey];
-      const isOauth = !!(p && p.oauth);
-      el('eaf-oauth-section').style.display = isOauth ? '' : 'none';
+    // P18-01. Whether a mailbox can be linked with one button is a fact about
+    // the HOST, not about which dropdown entry was clicked. The server already
+    // decides it that way — `_normalized_mail_host(imap_host) !=
+    // _GOOGLE_OAUTH_IMAP_HOST` is the guard that runs when the link is used —
+    // and this file used to decide it a second way, from an `oauth:` marker on
+    // one of eight presets. The two disagreed: picking **Gmail** filled in
+    // `imap.gmail.com` and showed no button; picking **Google Workspace**
+    // filled in the identical host and did. Same mailbox, two answers, because
+    // the rule was written twice (`Law 13`; `B65` is what that costs).
+    //
+    // So the host list is fetched from the server and the rule is asked, never
+    // restated. A `Custom…` account with a hand-typed `imap.gmail.com` now gets
+    // the button too, which it always should have.
+    let _oauthProviders = [];
+    const _oauthFor = (host) => {
+      const h = String(host || '').trim().toLowerCase().replace(/\.+$/, '');
+      if (!h) return null;
+      return _oauthProviders.find(p => (p.imap_hosts || []).includes(h)) || null;
+    };
+
+    // Show or hide the OAuth section, driven by the IMAP host.
+    //
+    // **The password fields stay.** An earlier version hid them whenever OAuth
+    // was available, which would have been a subtraction the moment Gmail
+    // qualified: an app-specific password is how most `@gmail.com` mailboxes
+    // are connected today and it still works. OAuth is an *offer* here, not a
+    // mode. They are hidden only once the account is genuinely linked, where a
+    // password field is dead weight that invites somebody to fill it in.
+    function _syncOauthUI() {
+      const provider = _oauthFor(el('eaf-imap-host').value);
+      const section = el('eaf-oauth-section');
+      const linked = a.oauth_provider === 'google';
+      section.style.display = provider ? '' : 'none';
       formEl.querySelectorAll('.eaf-password-section').forEach(r => {
-        r.style.display = isOauth ? 'none' : '';
+        r.style.display = linked ? 'none' : '';
       });
+      if (!provider) return;
+
+      const btn = el('eaf-oauth-btn');
+      const status = el('eaf-oauth-status');
+      el('eaf-oauth-title').textContent =
+        `Sign in with ${provider.label} — no password needed`;
+      // A button that cannot work must say so BEFORE it is pressed. Until
+      // P18-01 it was offered on every install (.env.example ships both Google
+      // credentials commented out), and pressing it saved the account and then
+      // navigated to a raw 400 — leaving a half-made account behind.
+      btn.disabled = !provider.configured;
+      btn.style.opacity = provider.configured ? '' : '0.5';
+      btn.style.cursor = provider.configured ? '' : 'not-allowed';
+      btn.textContent = linked
+        ? `Reconnect with ${provider.label}`
+        : `Connect with ${provider.label}`;
+      status.textContent = !provider.configured
+        ? provider.setup_hint
+        : (linked
+            ? `\u2713 Connected via ${provider.label}`
+            : 'Not connected — click below to authorize. Your password is never stored.');
     }
 
     const eafProviderNotes = {
@@ -3164,11 +3213,21 @@ async function initEmailAccountsSettings() {
       el('eaf-smtp-host').value = p.smtp.host;
       el('eaf-smtp-port').value = p.smtp.port;
       el('eaf-smtp-security').value = p.smtp.security || ((parseInt(p.smtp.port || 465) === 587) ? 'starttls' : 'ssl');
-      _syncOauthUI(e.target.value);
+      _syncOauthUI();
     });
 
-    // Init OAuth UI for accounts already connected via OAuth.
-    if (a.oauth_provider === 'google') _syncOauthUI('google_workspace');
+    // Typed by hand, pasted, or filled by a preset — all three reach the same
+    // rule. Before P18-01 only the third did.
+    el('eaf-imap-host').addEventListener('input', _syncOauthUI);
+
+    // Fetch the host list once, then decide. Until it arrives the section stays
+    // hidden, which is the right failure: an offer that cannot be honoured is
+    // worse than a slightly late one.
+    fetch('/api/email/oauth/providers', { credentials: 'same-origin' })
+      .then(r => r.json())
+      .then(d => { _oauthProviders = (d && d.providers) || []; _syncOauthUI(); })
+      .catch(() => { /* no providers: the section simply never appears */ });
+    _syncOauthUI();
 
     // "Connect with Google" button — save the account first, then redirect to OAuth.
     el('eaf-oauth-btn').addEventListener('click', async () => {
@@ -3182,7 +3241,10 @@ async function initEmailAccountsSettings() {
         imap_user: el('eaf-imap-user').value.trim(),
         imap_starttls: el('eaf-imap-starttls').checked,
         smtp_host: el('eaf-smtp-host').value.trim(),
-        smtp_port: parseInt(el('eaf-smtp-port').value) || 587,
+        // 465, matching the save handler. Two defaults for one field, fifteen
+        // lines apart, meant Connect and Save disagreed about an account nobody
+        // had typed a port for.
+        smtp_port: parseInt(el('eaf-smtp-port').value) || 465,
         smtp_security: el('eaf-smtp-security').value,
         smtp_user: el('eaf-imap-user').value.trim(),
       };
@@ -3193,7 +3255,13 @@ async function initEmailAccountsSettings() {
       const d = await r.json();
       if (!d.ok) { el('eaf-msg').textContent = d.error || 'Save failed'; el('eaf-msg').style.color = 'var(--red)'; return; }
       const accId = isEdit ? a.id : d.id;
-      window.location.href = `/api/email/oauth/google/authorize?account_id=${encodeURIComponent(accId)}`;
+      const provider = _oauthFor(el('eaf-imap-host').value);
+      if (!provider || !provider.configured) {
+        el('eaf-msg').textContent = provider ? provider.setup_hint : 'No sign-in provider for this host';
+        el('eaf-msg').style.color = 'var(--red)';
+        return;
+      }
+      window.location.href = `${provider.authorize}?account_id=${encodeURIComponent(accId)}`;
     });
     el('eaf-smtp-security').value = _smtpSecurity(a);
 
