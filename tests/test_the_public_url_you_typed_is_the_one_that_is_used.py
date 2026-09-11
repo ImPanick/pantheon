@@ -234,7 +234,7 @@ def test_the_provider_list_shows_the_uri_to_register(clean, monkeypatch):
 def test_the_panel_renders_the_redirect_uri():
     js = (ROOT / "static" / "js" / "settings.js").read_text(encoding="utf-8")
     assert "provider.redirect_uri" in js
-    assert "eaf-oauth-redirect" in js
+    assert "uf-oauth-redirect" in js
     # The field's own description used to say it was for deep-links in alert
     # emails only, which was accurate and is the smallest slice of what a
     # setting named "public URL" looks like it does. Asserting the substance

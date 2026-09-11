@@ -236,19 +236,3 @@ def test_the_oauth_form_is_the_one_that_is_mounted():
     assert f'id="{container}"' in html, (
         f"the OAuth form renders into #{container}, which is not in index.html"
     )
-
-
-def test_the_dead_form_is_not_where_the_oauth_logic_lives():
-    """A second copy is how the first fix went into code nobody runs."""
-    js = SETTINGS_JS.read_text(encoding="utf-8")
-    html = INDEX_HTML.read_text(encoding="utf-8")
-    if 'id="set-email-accounts-form"' in html:
-        return  # B69 remounted it deliberately; nothing to guard
-    dead_start = js.index("const formEl = el('set-email-accounts-form')")
-    dead_end = js.index("async function showEmailForm")
-    if dead_start > dead_end:
-        return  # the dead block is gone
-    dead = js[dead_start:dead_end]
-    assert "/api/email/oauth/providers" not in dead or "/api/email/oauth/providers" in js[dead_end:], (
-        "the live form must also fetch the provider list, not only the dead one"
-    )

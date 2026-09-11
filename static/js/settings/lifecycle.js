@@ -127,7 +127,7 @@ export function bindSettingsClose(modalEl, options = {}) {
 
     // Integration/account editors are nested flows. Close the editor first so
     // an accidental Esc does not discard the entire Settings context.
-    const innerForm = modalEl.querySelector('#unified-intg-form, #set-email-accounts-form');
+    const innerForm = modalEl.querySelector('#unified-intg-form');
     if (
       innerForm
       && innerForm.style.display !== 'none'

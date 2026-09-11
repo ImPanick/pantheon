@@ -1310,7 +1310,7 @@ if (!window._odyEscExpandGuard) {
     }
     const settingsModal = document.getElementById('settings-modal');
     if (settingsModal && _isVisible(settingsModal)) {
-      const innerForm = settingsModal.querySelector('#unified-intg-form, #set-email-accounts-form');
+      const innerForm = settingsModal.querySelector('#unified-intg-form');
       if (innerForm && innerForm.style.display !== 'none' && innerForm.children.length > 0) {
         e.preventDefault();
         e.stopImmediatePropagation();

@@ -227,16 +227,26 @@ def test_the_connect_handler_refuses_rather_than_redirecting_into_a_400():
     assert "provider.authorize" in handler, "the redirect must use the served path"
 
 
-def test_connect_and_save_agree_on_the_smtp_port_default():
-    """They disagreed — 587 in one handler and 465 in the other, fifteen lines apart.
+def test_connect_and_save_cannot_disagree_about_defaults():
+    """The dead form had two body builders and they disagreed.
 
-    An account created through Connect without a typed port got a different
-    port from one created through Save, and nothing said so.
+    `smtp_port` defaulted to 587 in its Connect handler and 465 in its Save
+    handler, fifteen lines apart, so an account created by one route got a
+    different port from one created by the other and nothing said so. `B69`
+    deleted that form; the live one has a single `_collectBody()` and every
+    submit path calls it, which makes the defect unrepresentable rather than
+    merely absent. This asserts the structure, because two builders that happen
+    to agree today is the state the old form was in before somebody edited one.
     """
     text = SETTINGS_JS.read_text(encoding="utf-8")
-    defaults = re.findall(r"smtp_port: parseInt\(el\('eaf-smtp-port'\)\.value\) \|\| (\d+)", text)
-    assert len(defaults) == 2, f"expected two smtp_port defaults, found {len(defaults)}"
-    assert defaults[0] == defaults[1], f"Connect and Save disagree: {defaults}"
+    form = text[text.index("async function showEmailForm"):]
+    builders = re.findall(r"const _collectBody = ", form)
+    assert len(builders) == 1, f"expected one body builder, found {len(builders)}"
+    calls = re.findall(r"_collectBody\(\)", form)
+    assert len(calls) >= 3, (
+        f"only {len(calls)} submit paths use the shared builder; a path that "
+        f"builds its own body is how the two defaults drifted apart"
+    )
 
 
 # --------------------------------------------------------------------------

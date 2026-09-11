@@ -243,6 +243,20 @@ they are for.*
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
 
+### B69 — 374 lines of a form that never ran, inherited from upstream
+`5a28754..HEAD`. **376 tracked, 181 done. 6 tests, 0 regressions. Suite 8,744 -> 8,750.**
+The second email-account form is gone, and `git log -S` on the deployment box settles where it came
+from: upstream `ea2778d9`, *"Move email account management to integrations"*, removed the markup and
+left the JavaScript — at the fork point the markup count is already 0. **Not wholly dead**: the
+enclosing function wires three live buttons before it reached the unmounted ids and returned, so the
+deletion stops at the corpse and a test asserts all three still have a handler and an element.
+**The ceiling came down with it**, 124 → 120, which is what makes the deletion stick — leaving it
+would let four new unresolved lookups take the slot in silence. The two `'#unified-intg-form,
+#set-email-accounts-form'` fallbacks went too. And a test changed its mind: it had been pinning that
+two body builders agreed about `smtp_port`, which is the state the old form was in *before* somebody
+edited one; the live form has a single `_collectBody()` every path calls, so it now asserts the
+structure that makes the defect unrepresentable.
+
 ### P18-07 — fifteen fields to zero, and the day I spent fixing a form nobody opens
 `d432b75..HEAD`. **376 tracked, 181 done. 29 tests, 0 regressions. Suite 8,730 -> 8,744.**
 The server already knew every answer — the callback fills ten fields, four of them module constants
@@ -5376,7 +5390,7 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   place for one, so both are now **pinned by the checker** rather than trusted to a future
   editor: change the suite or the tracker without changing the README and CI fails.
 
-- [ ] **B69** **There are two complete email-account forms and one of them is mounted nowhere.**
+- [x] **B69** **There are two complete email-account forms and one of them is mounted nowhere.**
   Found by `P18-07` 2026-09-11, after `P18-01` and the first pass of `P18-07` were both written
   against the wrong one. `static/js/settings.js` carries an `eaf-` form (~line 3060) rendering into
   `set-email-accounts-form` and a `uf-` form (~line 4681) rendering into `unified-intg-form`. Only
@@ -5390,4 +5404,26 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   measured rather than argued**: two separate fixes landed in it before anything noticed, and both
   had tests passing against code the browser never runs. `Verify:` the dead form is gone, the
   wiring ceiling comes down by the ids it was holding, and no test asserts against an unmounted
-  element. `Depends:` `P18-07`. — found by `P18-07` — agent:`P18`
+  element. `Depends:` `P18-07`. — found by `P18-07` — agent:`P18` — **done 2026-09-11.**
+  **374 lines removed, and it arrived dead.** Upstream `ea2778d9` — *"Move email account management
+  to integrations"* — took the markup out and left the JavaScript behind; at the fork point
+  `b4d1293` the markup count is already **0** and the reference count **1**. A migration that moved
+  the hard part and stopped before the last step, which is the pattern this fork's README is about,
+  found this time in its own source file rather than upstream's.
+  **The enclosing function was not wholly dead, which is the difference between removing dead code
+  and removing code.** `initEmailAccountsSettings` wires three live buttons —
+  `set-email-open-library-settings`, `-integrations` and `-tasks`, all three present in the markup —
+  *before* it reached the unmounted ids and returned. Deleting the function wholesale would have
+  taken them with it. A test asserts all three still have a handler **and** an element (`Law 1`).
+  **The ceiling came down with the ids**, 124 → 120, which is the part that makes the deletion
+  stick: leaving it where it was would let four new unresolved lookups take their place in silence,
+  the exact failure a ratchet exists to prevent. The two `'#unified-intg-form,
+  #set-email-accounts-form'` fallbacks in `ui.js` and `lifecycle.js` are gone too — a selector
+  naming a dead id second is the shape of code written around a corpse.
+  **One assertion replaced a test that was checking the wrong thing.** The old form had two body
+  builders whose `smtp_port` defaults disagreed — 587 in Connect, 465 in Save, fifteen lines apart.
+  The live form has a single `_collectBody()` that every submit path calls, so the defect is
+  unrepresentable rather than absent, and the test now pins the structure: two builders that happen
+  to agree today is the state the old form was in before somebody edited one.
+  `CACHE_NAME` `v414` → `v415`. 6 tests.
+
