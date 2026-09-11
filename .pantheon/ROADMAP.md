@@ -242,7 +242,7 @@ they are for.*
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
 
 ### P17-03 — the ARP table, which on Windows meant the Win32 API
-`038179e..HEAD`. **361 tracked, 168 done. 15 tests, 14 mutations, 0 regressions. Suite 8,505 -> 8,520.**
+`038179e..HEAD`. **361 tracked, 168 done. 26 tests, 18 mutations, 0 regressions. Suite 8,505 -> 8,531.**
 The owner's original ask, and the Windows path is what made it real work. `arp -a` is forbidden
 twice over — this package has no shell, and on Windows it would mean parsing a localised,
 format-unstable human table. `ctypes` is standard library, `GetIpNetTable` is the API `arp.exe`
@@ -255,9 +255,14 @@ without a packet reaching the target. **Three of this row's defects were in its 
 three are the same shape**: a shell-smell scan that read a docstring saying the word it forbids
 (`Law 20`, fifth time), a sort test that called the key function instead of the sort
 (ingredient-not-recipe, fourth time), and two route-population pins in two files, one of which went
-stale while the other kept passing (`Law 13` in miniature). mDNS/SSDP and DHCP leases are split to
-`P17-10` rather than claimed: multicast *sends*, which is the scan this row avoided, and leases are
-the router's, which is an integration rather than an observation.
+stale while the other kept passing (`Law 13` in miniature). **And the owner's real table found the
+fourth**: 36 entries, 10 in range, one of them `192.168.1.255 / ff:ff:ff:ff:ff:ff` — a genuine ARP
+entry and not a device. Rows are labelled rather than dropped, because the ask was to *organise*.
+Three more mutations survived that, all one fixture mistake — the broadcast case used the `.255`
+address *and* the broadcast MAC, so deleting either check left the other answering. **A fixture where
+two signals agree cannot tell you which one fired.** mDNS/SSDP and DHCP leases are split to `P17-10`
+rather than claimed: multicast *sends*, which is the scan this row avoided, and leases are the
+router's, which is an integration rather than an observation.
 
 ### P17-02 — the bound lives on the agent, because Pantheon is the gated party
 `1c8dbb7..HEAD`. **360 tracked, 167 done. 28 tests, 15 mutations, 0 regressions. Suite 8,477 -> 8,505.**
@@ -4597,7 +4602,20 @@ radius of a 2.9GB container that runs agent-authored code.*
   ingredient tested, recipe not, the fourth time. And **two route-population pins went stale in two
   files**, which is `Law 13` in miniature: one question with two owners, so one of them keeps passing
   while the other breaks. There is now a single cross-process pin asserting the client's tables are a
-  subset of the agent's with the same target-ness. 15 tests, 14 mutations, all caught.
+  subset of the agent's with the same target-ness. **And the owner's
+  real table found the last one**: a first live run on Cybertooth returned 36 entries, 10 inside
+  `192.168.1.0/24`, and one of those ten was `192.168.1.255 / ff:ff:ff:ff:ff:ff`. A genuine ARP
+  entry — dropping it would be this module editing the kernel's table — but **not a device**, and an
+  operator counting rows to answer *"what is on my network"* counts it as one. Rows are now
+  **labelled** `device` / `broadcast` / `multicast` and a separate `devices` count is reported,
+  because the ask was to *organise* the table and organising means the reader can tell a machine from
+  a protocol artifact without knowing that `01:00:5e` is the IPv4 multicast prefix. The `.255`
+  heuristic is **named** a heuristic in the code: a host legitimately numbered `.255` inside a /23
+  would be mislabelled, which is exactly why the row is labelled rather than removed — the cost of
+  being wrong is a wrong word, not a missing machine. **Three more mutations survived that**, and all
+  three were one fixture mistake: the broadcast case used the `.255` address *and* the broadcast MAC,
+  so deleting either check left the other one answering. **A fixture where two signals agree cannot
+  tell you which one fired.** Each signal now has its own case. 26 tests, 18 mutations, all caught.
 
 - [ ] **P17-10** **Discovery and leases: mDNS, SSDP, and what the router knows.** Split out of
   `P17-03` 2026-09-11 rather than claimed with it. The two are genuinely different from the

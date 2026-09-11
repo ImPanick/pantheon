@@ -42,6 +42,39 @@ _TYPES = {1: "other", 2: "invalid", 3: "dynamic", 4: "static"}
 
 _MAC_RE = re.compile(r"^[0-9a-f]{2}(:[0-9a-f]{2}){5}$")
 
+BROADCAST_MAC = "ff:ff:ff:ff:ff:ff"
+
+
+def _kind(address: str, mac: str) -> str:
+    """Device, broadcast, or multicast.
+
+    Found on the owner's real table 2026-09-11: a first run returned
+    `192.168.1.255 / ff:ff:ff:ff:ff:ff` alongside nine actual machines. It is a
+    genuine ARP entry and dropping it would be this module editing the kernel's
+    table — but it is not a device, and an operator counting rows to answer
+    *"what is on my network"* counts it as one. The row is kept and **labelled**,
+    because the ask was to *organise* the table, and organising means the reader
+    can tell a machine from a protocol artifact without knowing that
+    `01:00:5e` is the IPv4 multicast prefix.
+    """
+    if mac == BROADCAST_MAC:
+        return "broadcast"
+    if mac.startswith("01:00:5e") or mac.startswith("33:33"):
+        return "multicast"
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return "device"
+    if ip.is_multicast:
+        return "multicast"
+    if ip.version == 4 and str(ip).endswith(".255"):
+        # A /24 broadcast. The real prefix length is not visible from here, so
+        # this is a heuristic and is named one rather than asserted: a host
+        # legitimately numbered .255 inside a /23 would be mislabelled, which is
+        # why the row is labelled rather than removed.
+        return "broadcast"
+    return "device"
+
 
 def _format_mac(raw: bytes, length: int) -> str:
     return ":".join(f"{b:02x}" for b in raw[:length])
@@ -90,9 +123,11 @@ def _windows_neighbours() -> List[Dict[str, object]]:
         # `dwAddr` is network byte order already; `inet_ntoa` expects exactly
         # that, so no swap.
         address = socket.inet_ntoa(struct.pack("<I", row.dwAddr))
+        mac = _format_mac(bytes(row.bPhysAddr), row.dwPhysAddrLen)
         out.append({
             "address": address,
-            "mac": _format_mac(bytes(row.bPhysAddr), row.dwPhysAddrLen),
+            "mac": mac,
+            "kind": _kind(address, mac),
             "type": _TYPES.get(row.dwType, f"type{row.dwType}"),
             "interface_index": int(row.dwIndex),
         })
@@ -126,6 +161,7 @@ def _linux_neighbours(path: str = "/proc/net/arp") -> List[Dict[str, object]]:
         out.append({
             "address": address,
             "mac": mac,
+            "kind": _kind(address, mac),
             # `0x4` is NUD_PERMANENT in the ARP flags; everything else the table
             # reports here is a learned entry.
             "type": "static" if flags == "0x4" else "dynamic",
@@ -158,7 +194,10 @@ def neighbours() -> Dict[str, object]:
 
     rows.sort(key=_sort_key)
     return {"supported": True, "platform": system,
-            "count": len(rows), "neighbours": rows}
+            "count": len(rows), "neighbours": rows,
+            # Counted here so a caller does not have to know which MAC prefixes
+            # mean "not a machine" to answer "how many devices".
+            "devices": sum(1 for r in rows if r.get("kind") == "device")}
 
 
 def _sort_key(row: Dict[str, object]):

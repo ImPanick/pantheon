@@ -649,3 +649,87 @@ def test_every_target_route_is_gated_and_none_was_forgotten():
     plain = set(srv._routes(Allowlist()))
     assert plain == {"/health", "/whoami", "/networks", "/neighbours"}
     assert plain.isdisjoint(srv.TARGET_ROUTES), "a route is in both tables"
+
+
+def test_a_broadcast_entry_is_labelled_rather_than_counted_as_a_device(tmp_path):
+    """Found on the owner's real table: `192.168.1.255 / ff:ff:ff:ff:ff:ff` came
+    back alongside nine actual machines. It is a genuine ARP entry, so dropping
+    it would be this module editing the kernel's table — but an operator counting
+    rows to answer "what is on my network" counts it as a machine."""
+    body = ("IP address       HW type     Flags       HW address            Mask     Device\n"
+            "192.168.1.1      0x1         0x2         6c:2b:59:8e:91:36     *        eth0\n"
+            "192.168.1.255    0x1         0x2         ff:ff:ff:ff:ff:ff     *        eth0\n"
+            "224.0.0.251      0x1         0x2         01:00:5e:00:00:fb     *        eth0\n")
+    rows = {r["address"]: r["kind"] for r in nbr._linux_neighbours(_arp_file(tmp_path, body))}
+    assert rows["192.168.1.1"] == "device"
+    assert rows["192.168.1.255"] == "broadcast"
+    assert rows["224.0.0.251"] == "multicast"
+
+
+def test_the_device_count_excludes_what_is_not_a_device(monkeypatch):
+    rows = [
+        {"address": "192.168.1.1", "mac": "6c:2b:59:8e:91:36", "kind": "device"},
+        {"address": "192.168.1.255", "mac": nbr.BROADCAST_MAC, "kind": "broadcast"},
+        {"address": "224.0.0.251", "mac": "01:00:5e:00:00:fb", "kind": "multicast"},
+    ]
+    monkeypatch.setattr(nbr.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(nbr, "_linux_neighbours", lambda *a, **k: list(rows))
+    result = nbr.neighbours()
+    assert result["count"] == 3, "rows were dropped rather than labelled"
+    assert result["devices"] == 1
+
+
+def test_the_broadcast_heuristic_is_named_a_heuristic():
+    """A host legitimately numbered `.255` inside a /23 would be mislabelled.
+    That is why the row is labelled rather than removed — the cost of being
+    wrong is a wrong word, not a missing machine."""
+    assert nbr._kind("192.168.1.255", "aa:bb:cc:dd:ee:ff") == "broadcast"
+    assert nbr._kind("192.168.1.254", "aa:bb:cc:dd:ee:ff") == "device"
+    assert nbr._kind("not-an-address", "aa:bb:cc:dd:ee:ff") == "device"
+
+
+@pytest.mark.parametrize("address,mac,expected", [
+    # Each case isolates ONE of the two signals, because the first version of
+    # these tests used `192.168.1.255` WITH the broadcast MAC and
+    # `224.0.0.251` WITH a multicast MAC — so deleting either check left the
+    # other one answering and the mutation survived. A fixture where two
+    # signals agree cannot tell you which one fired.
+    ("192.168.1.40", "ff:ff:ff:ff:ff:ff", "broadcast"),   # MAC alone
+    ("192.168.1.41", "01:00:5e:00:00:fb", "multicast"),   # IPv4 multicast MAC alone
+    ("192.168.1.42", "33:33:00:00:00:fb", "multicast"),   # IPv6 multicast MAC alone
+    ("192.168.9.255", "aa:bb:cc:dd:ee:01", "broadcast"),  # address alone
+    ("224.0.0.251", "aa:bb:cc:dd:ee:02", "multicast"),    # address alone
+    ("192.168.1.43", "aa:bb:cc:dd:ee:03", "device"),
+])
+def test_each_signal_is_load_bearing_on_its_own(address, mac, expected):
+    assert nbr._kind(address, mac) == expected
+
+
+def _mixed_table():
+    return [
+        {"address": "127.0.0.1", "mac": "aa:bb:cc:dd:ee:01", "kind": "device"},
+        {"address": "127.0.0.255", "mac": nbr.BROADCAST_MAC, "kind": "broadcast"},
+        {"address": "127.0.0.9", "mac": "01:00:5e:00:00:fb", "kind": "multicast"},
+    ]
+
+
+def test_the_route_counts_devices_rather_than_rows(monkeypatch):
+    """Driven through `_neighbours_for`, which is what the route calls, and with
+    a table that actually mixes kinds — the first version used the real machine's
+    table, where everything happened to be a device, so `devices == count` held
+    however the count was computed."""
+    from netagent import server as srv
+    monkeypatch.setattr(srv.neighbour_table, "neighbours",
+                        lambda: {"supported": True, "platform": "Linux",
+                                 "neighbours": _mixed_table(), "count": 3})
+    result = srv._neighbours_for(Allowlist(["127.0.0.0/8"]))
+    assert result["count"] == 3, "rows were dropped rather than labelled"
+    assert result["devices"] == 1, "the device count is just the row count"
+    assert result["withheld"] == 0
+
+
+def test_the_route_reports_devices_separately_from_rows(gated):
+    status, body = gated("/neighbours")
+    assert status == 200
+    assert "devices" in body
+    assert body["devices"] <= body["count"]

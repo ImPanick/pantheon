@@ -80,6 +80,7 @@ def _neighbours_for(allowlist: Allowlist) -> Dict[str, object]:
     # short one: an operator who allowed the wrong CIDR would otherwise conclude
     # their network is empty rather than that their allowlist is wrong.
     result["seen_total"] = len(rows)
+    result["devices"] = sum(1 for r in kept if r.get("kind") == "device")
     result["withheld"] = len(rows) - len(kept)
     result["allowlist"] = allowlist.as_dict()
     return result
