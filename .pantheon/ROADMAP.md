@@ -78,9 +78,9 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P15 | Outbound politeness | 12 | 2 | **1** | **9** |
 | P16 | Self-hosted by default | 20 | 1 | 0 | **19** |
 | P17 | The network the agent is hosted on | 11 | 3 | 0 | **8** |
-| P18 | One button, and it links | 7 | 6 | 0 | **1** |
+| P18 | One button, and it links | 7 | 4 | 0 | **3** |
 | P19 | The proof ledger | 7 | 1 | 0 | **6** |
-| **Total** | | **376** | **190** | **9** | **177** |
+| **Total** | | **376** | **188** | **9** | **179** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -242,6 +242,24 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### P18-02 + P18-03 — the account the agent could not send from
+`127c9c0..HEAD`. **376 tracked, 179 done. 24 tests, 17 mutations (16 caught, 1 equivalent), 0 regressions. Suite 8,687 -> 8,711.**
+*Can this account send mail* was written by hand three times. Two copies read
+`host and user and (password or oauth_provider)`; the third read `host and user and password`, and
+it is the one the agent's own email tools run — so a mailbox linked with the Connect button sent
+mail from the web app, sent mail from notes, and reported **"has no SMTP configured"** to the agent.
+Worse: `mcp_servers/email_server.py` never selected the four `oauth_*` columns, so a linked account
+arrived there **looking like an account with a blank password** and failed as `AUTHENTICATIONFAILED`
+— an error that reads like a wrong password and sends the operator to fix a credential that was
+never wrong. Fixing it by hand would have made XOAUTH2 **six** spellings instead of four, so
+`P18-03` landed in the same change: `src/mail_auth.py` is the single home, **in `src/` because
+`routes/` and `mcp_servers/` both import from there and neither imports the other**. Transport
+stayed with the callers on purpose. Two lessons arrived from tests rather than from reading — a
+lookup table holding a function *object* freezes the binding at import, and a wrapper named for one
+provider should **assert** that provider rather than read it, or a cfg that never carried the field
+quietly stops refreshing. The one surviving mutation is proven equivalent and is recorded as such
+rather than papered over with a test that cannot tell the difference.
 
 ### P18-01 — the button, the host, and the consent it was spending
 `c502dae..HEAD`. **376 tracked, 177 done. 15 tests, 12 mutations, 0 regressions. Suite 8,671 -> 8,687.**
@@ -5028,7 +5046,7 @@ which is the `P17-02` mistake, and it is why these rows are the ones they are.
   handler and 465 in Save, fifteen lines apart. `CACHE_NAME` `v411` → `v412`. 15 tests, 12
   mutations, all caught.
 
-- [ ] **P18-02** **An account linked with Google works in the web app and fails in the agent's
+- [x] **P18-02** **An account linked with Google works in the web app and fails in the agent's
   email tools.** `mcp_servers/email_server.py` has **zero** occurrences of `oauth`,
   `xoauth`, `bearer` or `access_token` in 119KB. `_load_config` (`:305-350`) reads the
   account row and copies host, port, user, password and STARTTLS — and never touches the
@@ -5038,9 +5056,23 @@ which is the `P17-02` mistake, and it is why these rows are the ones they are.
   to create. **This is the `P17` shape again** — a capability that works on one path and is
   absent on the other, invisible until somebody uses the wrong one. `Verify:` the agent can
   read and send from a Google-linked account, and a test drives the MCP server's own config
-  loader rather than the route's. `Depends:` nothing. — agent:`P18`
+  loader rather than the route's. `Depends:` nothing. — agent:`P18` — **done 2026-09-11, with `P18-03`, because they were the same row twice.**
+  **The symptom was measurable and the cause was a predicate.** *Can this account send mail* was
+  written by hand in three places — `routes/email_routes.py`, `routes/note/note_routes.py` and
+  `mcp_servers/email_server.py`. Two read `host and user and (password or oauth_provider)`. The
+  third read `host and user and password`, and it is **the copy the agent's own email tools run**.
+  So a mailbox linked with the Connect button sent mail from the web app, sent mail from notes, and
+  told the agent *"has no SMTP configured"*: the feature working everywhere except where a person
+  would most reasonably try it, and failing silently rather than loudly.
+  **It was worse than one predicate.** `email_server.py`'s `SELECT` never asked for the four
+  `oauth_*` columns at all, so a linked account reached that process **looking like an account with
+  a blank password** and failed as `AUTHENTICATIONFAILED` — which reads like a wrong password and
+  sends the operator to re-enter a credential that was never wrong. The columns are selected
+  conditionally, because this file also opens older databases that predate the migration, and the
+  tokens stay **encrypted on the cfg**: `src/mail_auth.py` decrypts at the moment of use, so a cfg
+  that gets logged or cached carries ciphertext.
 
-- [ ] **P18-03** **XOAUTH2 is written four times and the provider list three.** The SASL
+- [x] **P18-03** **XOAUTH2 is written four times and the provider list three.** The SASL
   string is built at `routes/email_helpers.py:54-66`; the IMAP authenticate at `:1251`; the
   SMTP auth at `:177`; and both again in the test-connection endpoint at
   `routes/email_routes.py:6112` and `:6175`. The provider presets exist at
@@ -5049,7 +5081,29 @@ which is the `P17-02` mistake, and it is why these rows are the ones they are.
   written for the MCP server, so that path simply has none. `Verify:` one XOAUTH2 builder
   and one provider table, both imported rather than repeated, with the count asserted.
   `Depends:` `P18-02` — fix the gap before deduplicating, or the dedupe hides it.
-  — agent:`P18`
+  — agent:`P18` — **done 2026-09-11, with `P18-02`.**
+  Fixing `P18-02` by hand would have made the XOAUTH2 exchange **six** copies instead of four, so
+  they landed together. `src/mail_auth.py` is the one home: provider detection, the SASL string,
+  token refresh and resolution, the send predicate in both its boolean and itemised forms, and the
+  two *authenticate a connection somebody else opened* functions. **It lives in `src/` deliberately**
+  — `routes/` and `mcp_servers/` both import from `src/` and neither imports the other, so leaving
+  it in `routes/email_helpers.py` would have meant the MCP server importing a request-handler module
+  to log in to IMAP. Every old name in `email_helpers` still resolves (`Law 1`: ten test files and
+  three modules import them).
+  **Transport deliberately stayed with the callers.** Ports, STARTTLS and SSL contexts are a
+  different decision from credentials: the connection-test route builds from unsaved form values and
+  must refuse a Google account on the wrong port *before* connecting, while the MCP server opens
+  from a stored row. One shape forced on both would have made the refusals harder to read.
+  **Two things the refactor taught, both found by tests rather than by reading.** A provider →
+  refresher table holding the *function object* freezes the binding at import, so replacing
+  `refresh_google_token` rebinds the module global and leaves the table pointing at the original;
+  it resolves the name inside the call now. And `_get_valid_google_token` **asserts** its provider
+  rather than reading it — the name promises Google, callers pass a cfg that may carry no
+  `oauth_provider` at all (the connection-test path strips those fields from any payload that is
+  not a saved, owner-checked account), and delegating without that would have turned a working
+  refresh into a silent `None`. 24 tests, 17 mutations, **16 caught and one proven equivalent** —
+  `_REFRESHERS.get(x) or (lambda a: None)` returns `None` for exactly the inputs the explicit
+  `is None` guard does, so no test can distinguish them and none was invented to pretend otherwise.
 
 - [ ] **P18-04** **`app_public_url` is a setting an operator can type and no OAuth path
   reads it.** `src/settings.py:232` ships the key and `settings.js:2519` renders the field.

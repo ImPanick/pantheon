@@ -716,7 +716,7 @@ def test_get_valid_google_token_uses_cached_when_fresh():
         "oauth_token_expiry": future_expiry,
     }
 
-    with mock.patch("routes.email_helpers._refresh_google_token") as mock_refresh:
+    with mock.patch("src.mail_auth.refresh_google_token") as mock_refresh:
         result = _get_valid_google_token("acct-fresh", cfg)
 
     assert result == "ya29.fresh_token"
@@ -735,7 +735,7 @@ def test_get_valid_google_token_refreshes_when_expired():
         "oauth_token_expiry": past_expiry,
     }
 
-    with mock.patch("routes.email_helpers._refresh_google_token", return_value="ya29.new_token") as mock_refresh:
+    with mock.patch("src.mail_auth.refresh_google_token", return_value="ya29.new_token") as mock_refresh:
         result = _get_valid_google_token("acct-exp", cfg)
 
     mock_refresh.assert_called_once_with("acct-exp")

@@ -343,13 +343,11 @@ async def dispatch_reminder(
                 bool(cfg.get("smtp_host")), bool(cfg.get("smtp_user")),
                 bool(from_addr), bool(recipient),
             )
-            missing = []
-            if not cfg.get("smtp_host"):
-                missing.append("SMTP host")
-            if not cfg.get("smtp_user"):
-                missing.append("SMTP user")
-            if not (cfg.get("smtp_password") or cfg.get("oauth_provider")):
-                missing.append("SMTP credentials")
+            # P18-02. Same rule as `_smtp_ready`, itemised so the message can
+            # name the missing field. Re-deriving it inline was the third copy.
+            from src import mail_auth as _mail_auth
+
+            missing = _mail_auth.missing_send_fields(cfg)
             if not from_addr:
                 missing.append("from address")
             if not recipient:

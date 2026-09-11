@@ -36,6 +36,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 server = Server("email")
 EMAIL_SOCKET_TIMEOUT = float(os.environ.get("EMAIL_SOCKET_TIMEOUT", "20"))
 from src.constants import DATA_DIR as _DATA_DIR, APP_DB, EMAIL_CACHE_DB, SETTINGS_FILE as _SETTINGS_FILE, MAIL_ATTACHMENTS_DIR
+# P18-02/P18-03. In `src/` rather than `routes/` precisely so this process
+# can import it without reaching into a request-handler module.
+from src import mail_auth as _mail_auth
 DATA_DIR = Path(_DATA_DIR)
 
 
@@ -211,10 +214,24 @@ def _read_accounts_from_db() -> list:
         columns = {r[1] for r in conn.execute("PRAGMA table_info(email_accounts)").fetchall()}
         owner_select = "owner" if "owner" in columns else "NULL AS owner"
         smtp_security_select = "smtp_security" if "smtp_security" in columns else "'' AS smtp_security"
+        # P18-02. These four were never selected, so a mailbox linked with the
+        # Connect button reached this process as an account with a blank
+        # password — and failed as AUTHENTICATIONFAILED, which reads like a
+        # wrong password and sends the operator to fix a credential that was
+        # never wrong. Selected conditionally because this file also reads
+        # older databases, where the columns predate the migration.
+        oauth_selects = ", ".join(
+            (col if col in columns else f"'' AS {col}")
+            for col in (
+                "oauth_provider", "oauth_access_token",
+                "oauth_refresh_token", "oauth_token_expiry",
+            )
+        )
         rows = conn.execute(f"""
             SELECT id, {owner_select}, name, is_default, enabled,
                    imap_host, imap_port, imap_user, imap_password, imap_starttls,
-                   smtp_host, smtp_port, {smtp_security_select}, smtp_user, smtp_password, from_address
+                   smtp_host, smtp_port, {smtp_security_select}, smtp_user, smtp_password, from_address,
+                   {oauth_selects}
             FROM email_accounts WHERE enabled = 1
             ORDER BY is_default DESC, created_at ASC
         """).fetchall()
@@ -348,6 +365,11 @@ def _load_config(account: str | None = None) -> dict:
         cfg["smtp_user"] = row["smtp_user"] or cfg["smtp_user"]
         cfg["smtp_password"] = _decrypt(row["smtp_password"]) if row["smtp_password"] else cfg["smtp_password"]
         cfg["from_address"] = row["from_address"] or row["imap_user"] or cfg["from_address"]
+        # P18-02. Tokens stay encrypted here: `src.mail_auth` decrypts at the
+        # moment of use, so a cfg that gets logged or cached carries ciphertext.
+        for _col in ("oauth_provider", "oauth_access_token",
+                     "oauth_refresh_token", "oauth_token_expiry"):
+            cfg[_col] = row[_col] if _col in row.keys() else ""
     else:
         # Legacy fallback: settings.json flat keys
         try:
@@ -403,7 +425,7 @@ def _imap_connect(account: str | None = None):
     if getattr(conn, "sock", None):
         conn.sock.settimeout(EMAIL_SOCKET_TIMEOUT)
     try:
-        conn.login(cfg["imap_user"], cfg["imap_password"])
+        _mail_auth.authenticate_imap(conn, cfg)
     except Exception:
         # A failed login otherwise orphans the connected socket; close it
         # before propagating (shutdown() is the pre-auth low-level close). (#3174)
@@ -1311,7 +1333,16 @@ def _read_email_across_accounts(uid=None, message_id=None, folder="INBOX"):
 
 
 def _smtp_ready(cfg: dict) -> bool:
-    return bool(cfg.get("smtp_host") and cfg.get("smtp_user") and cfg.get("smtp_password"))
+    """`P18-02`. One rule, in `src/mail_auth.py`, shared with the other callers.
+
+    This used to read `host and user and password` while
+    `routes/email_routes.py` and `routes/note/note_routes.py` both read
+    `host and user and (password or oauth_provider)`. Two agreed; this one —
+    the copy the agent's own email tools run — did not, so a linked Google
+    mailbox sent mail from the web app and reported *"has no SMTP configured"*
+    to the agent.
+    """
+    return _mail_auth.can_send(cfg)
 
 
 def _resolve_send_config(account=None):
@@ -1365,9 +1396,11 @@ def _smtp_connect(account=None, cfg=None):
             port,
             timeout=EMAIL_SOCKET_TIMEOUT,
         )
-    if cfg["smtp_user"] and cfg["smtp_password"]:
+    # P18-02: `authenticate_smtp` keeps the old "no credentials, no AUTH"
+    # behaviour for a local relay, and adds the XOAUTH2 branch that was missing.
+    if _mail_auth.is_oauth(cfg) or (cfg["smtp_user"] and cfg["smtp_password"]):
         try:
-            conn.login(cfg["smtp_user"], cfg["smtp_password"])
+            _mail_auth.authenticate_smtp(conn, cfg)
         except Exception:
             # A failed login otherwise orphans the connected socket; close it
             # before propagating (SMTP has no shutdown(); close() = socket close). (#3174)

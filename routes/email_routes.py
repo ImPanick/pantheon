@@ -1332,9 +1332,10 @@ def _email_attachment_meta_cache_put(owner: str, account_id: str | None, folder:
 
 
 def _smtp_ready(cfg: dict) -> bool:
-    if not cfg.get("smtp_host") or not cfg.get("smtp_user"):
-        return False
-    return bool(cfg.get("smtp_password") or cfg.get("oauth_provider"))
+    """`P18-02`. The rule lives in `src/mail_auth.py`; this is the name callers use."""
+    from src import mail_auth as _mail_auth
+
+    return _mail_auth.can_send(cfg)
 
 
 def _resolve_send_config(account_id: str | None = None, owner: str = "") -> dict:

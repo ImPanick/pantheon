@@ -38,6 +38,8 @@ from typing import Optional, List
 from src.auth_helpers import _auth_disabled, get_current_user
 from src.secret_storage import decrypt as _decrypt
 
+from src import mail_auth as _mail_auth
+
 logger = logging.getLogger(__name__)
 
 
@@ -51,19 +53,11 @@ class EmailNotConfiguredError(RuntimeError):
     """
 
 
-def _xoauth2_raw(user: str, access_token: str) -> str:
-    """The SASL XOAUTH2 initial-response string (unencoded).
-
-    Both smtplib.SMTP.auth() and imaplib.IMAP4.authenticate() base64-encode
-    the value their callback returns, so callers pass this raw form — never
-    pre-encoded — to avoid double base64.
-    """
-    return f"user={user}\x01auth=Bearer {access_token}\x01\x01"
-
-
-def _xoauth2_bytes(user: str, access_token: str) -> bytes:
-    """Raw XOAUTH2 bytes for imaplib's authenticate() callback."""
-    return _xoauth2_raw(user, access_token).encode()
+# P18-03. These four moved to `src/mail_auth.py`, which `mcp_servers/` can
+# import without reaching into a request-handler module. The names stay because
+# ten test files and three modules use them (`Law 1`).
+_xoauth2_raw = _mail_auth.xoauth2_raw
+_xoauth2_bytes = _mail_auth.xoauth2_bytes
 
 
 def make_oauth_state(account_id: str, owner: str) -> str:
@@ -100,55 +94,31 @@ def verify_oauth_state(state: str) -> dict | None:
         return None
 
 
-def _refresh_google_token(account_id: str) -> str | None:
-    """Exchange the stored refresh token for a new access token and persist it."""
-    import httpx
-    from core.database import SessionLocal as _SL, EmailAccount as _EA
-    from src.secret_storage import encrypt as _enc, decrypt as _dec
-    client_id = os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "")
-    client_secret = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET", "")
-    if not client_id or not client_secret:
-        return None
-    db = _SL()
-    try:
-        row = db.get(_EA, account_id)
-        if not row or not row.oauth_refresh_token:
-            return None
-        refresh_token = _dec(row.oauth_refresh_token or "")
-        if not refresh_token:
-            return None
-        resp = httpx.post("https://oauth2.googleapis.com/token", data={
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "refresh_token": refresh_token,
-            "grant_type": "refresh_token",
-        }, timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
-        access_token = data["access_token"]
-        row.oauth_access_token = _enc(access_token)
-        row.oauth_token_expiry = str(int(time.time()) + data.get("expires_in", 3600))
-        db.commit()
-        return access_token
-    except Exception:
-        logger.warning(f"Google token refresh failed for account {account_id}")
-        return None
-    finally:
-        db.close()
+_refresh_google_token = _mail_auth.refresh_google_token
 
 
 def _get_valid_google_token(account_id: str, cfg: dict) -> str | None:
-    """Return a valid Google access token, refreshing if expired or missing."""
-    from src.secret_storage import decrypt as _dec
-    access_token = _dec(cfg.get("oauth_access_token") or "")
-    expiry_str = cfg.get("oauth_token_expiry") or ""
-    if access_token and expiry_str:
-        try:
-            if int(expiry_str) - 60 > time.time():
-                return access_token
-        except (ValueError, TypeError):
-            pass
-    return _refresh_google_token(account_id)
+    """The Google access token for this account. Kept for its two-argument shape.
+
+    `P18-03`. The work moved to `src.mail_auth.access_token_for`, which picks a
+    refresher by the account's `oauth_provider` rather than assuming Google —
+    `P18-05` adds a second provider and a hard-coded refresh call would have
+    been one more place to sweep.
+
+    **The provider is asserted here rather than read**, and that is the whole
+    reason this wrapper still exists. Its name promises Google; callers pass a
+    cfg that may carry no `oauth_provider` at all (the connection-test path
+    strips those fields from any payload that is not a saved, owner-checked
+    account) and the old implementation simply called Google's refresh
+    unconditionally. Dropping to `access_token_for` alone would have turned
+    those calls into a silent `None` — an account that used to refresh quietly
+    ceasing to.
+    """
+    merged = dict(cfg or {})
+    if account_id:
+        merged["account_id"] = account_id
+    merged["oauth_provider"] = "google"
+    return _mail_auth.access_token_for(merged)
 
 
 def _smtp_security_mode(cfg: dict) -> str:
@@ -169,14 +139,9 @@ def _send_smtp_message(cfg: dict, from_addr: str, recipients: list[str], message
     password = cfg.get("smtp_password") or ""
 
     def _auth_smtp(smtp):
-        if cfg.get("oauth_provider") == "google":
-            token = _get_valid_google_token(cfg.get("account_id"), cfg)
-            if not token:
-                raise RuntimeError("Google OAuth token unavailable — reconnect the account")
-            smtp.ehlo()
-            smtp.auth("XOAUTH2", lambda challenge=None: _xoauth2_raw(user, token), initial_response_ok=True)
-        elif user and password:
-            smtp.login(user, password)
+        # P18-03: one spelling, in `src/mail_auth.py`. `user`/`password` above
+        # are read from the same cfg, so passing cfg loses nothing.
+        _mail_auth.authenticate_smtp(smtp, cfg)
 
     security = _smtp_security_mode(cfg)
 
@@ -1244,13 +1209,7 @@ def _imap_connect(account_id: str | None = None, owner: str = "",
         timeout=timeout,
     )
     try:
-        if cfg.get("oauth_provider") == "google":
-            token = _get_valid_google_token(cfg.get("account_id"), cfg)
-            if not token:
-                raise RuntimeError("Google OAuth token unavailable — reconnect the account in Settings → Integrations")
-            conn.authenticate("XOAUTH2", lambda x: _xoauth2_bytes(cfg["imap_user"], token))
-        else:
-            conn.login(cfg["imap_user"], cfg["imap_password"])
+        _mail_auth.authenticate_imap(conn, cfg)
     except Exception:
         # A failed AUTHENTICATE (e.g. an Office 365 app password on an
         # MFA-enabled tenant, #3174, or an expired/revoked OAuth token)
