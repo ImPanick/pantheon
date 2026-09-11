@@ -78,9 +78,9 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P15 | Outbound politeness | 12 | 2 | **1** | **9** |
 | P16 | Self-hosted by default | 20 | 1 | 0 | **19** |
 | P17 | The network the agent is hosted on | 11 | 3 | 0 | **8** |
-| P18 | One button, and it links | 7 | 3 | 0 | **4** |
+| P18 | One button, and it links | 7 | 2 | 0 | **5** |
 | P19 | The proof ledger | 7 | 1 | 0 | **6** |
-| **Total** | | **376** | **187** | **9** | **180** |
+| **Total** | | **376** | **186** | **9** | **181** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -242,6 +242,26 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### P18-07 — fifteen fields to zero, and the day I spent fixing a form nobody opens
+`d432b75..HEAD`. **376 tracked, 181 done. 29 tests, 0 regressions. Suite 8,730 -> 8,744.**
+The server already knew every answer — the callback fills ten fields, four of them module constants
+— so the form was asking for values it pins and values it is about to be told. They collapse into
+one block now, with the button above it rather than below fifteen rows. **Enabling that walked into
+a defect the row did not name and that was already reachable**: the callback set `smtp_port = 587`
+and never touched `smtp_security`, which defaults to `"ssl"`, so an account linked with no SMTP host
+typed came out as **SSL on port 587** — a pair `_google_oauth_smtp_transport_allowed` rejects, and
+one `smtplib.SMTP_SSL` answers by hanging to the socket timeout, which reads like a firewall.
+**Then the real lesson.** `settings.js` holds two complete email-account forms, and `P18-01` plus
+the first pass of this row were both written against the one that mounts nowhere:
+`set-email-accounts-form` appears **zero times** in `index.html`, its initialiser early-returns, and
+two other modules already listed it second behind the live one. Found by a test failing for the
+wrong reason. Everything server-side was live throughout — the providers endpoint, the two-credential
+guard that stops a full-mailbox consent being spent on a flow that cannot finish, `mail_auth`, the
+origin resolver — but three browser halves reached nobody until now. **`check-wiring.py` had caught
+it**: all four ids are in its unresolved list, inside the 124 the ratchet grandfathers. The ratchet
+was working; nobody read the list. `B69` removes the dead form, and a new test pins the narrow rule
+— whichever form carries account linking must render into an id that exists.
 
 ### P18-04 — the setting called app_public_url, and the one that was read
 `261e58b..HEAD`. **376 tracked, 180 done. 19 tests, 13 mutations, 0 regressions. Suite 8,711 -> 8,730.**
@@ -5188,7 +5208,7 @@ which is the `P17-02` mistake, and it is why these rows are the ones they are.
   way it goes, the two flows stop differing by accident. `Depends:` `P18-05`.
   — **needs the owner** — agent:`P18`
 
-- [ ] **P18-07** **One button means the fields are gone, not hidden.** `P18-01` makes the
+- [x] **P18-07** **One button means the fields are gone, not hidden.** `P18-01` makes the
   button appear; this makes it the whole interaction. Today the OAuth path still renders
   the host, port and STARTTLS rows and merely hides the password (`settings.js:3131-3133`),
   and the hosts are re-pinned server-side as constants anyway
@@ -5197,7 +5217,40 @@ which is the `P17-02` mistake, and it is why these rows are the ones they are.
   honest test of it is a count: fifteen fields today, and the target is one click plus the
   Google consent screen. `Verify:` linking a Gmail account requires typing nothing, and a
   test counts the visible inputs on the OAuth path. `Depends:` `P18-01`, `P18-02`.
-  — agent:`P18`
+  — agent:`P18` — **done 2026-09-11.**
+  **Fifteen fields became zero, and the server already knew every answer.** The OAuth callback
+  fills `imap_host`, `imap_port`, `imap_starttls`, `smtp_host`, `smtp_port`, both usernames,
+  `from_address`, `name` and `display_name` — four pinned as module constants, the rest read off
+  the Google identity. The form was asking for values the server pins and values it is about to be
+  told. They now live in one hideable block, the button sits **above** it rather than below fifteen
+  rows, and the block returns once the account is linked, where the same fields are populated and
+  worth reading.
+  **Enabling it walked into a defect the row did not name, and it was already reachable.** The
+  callback set `smtp_port = 587` and never touched `smtp_security`, which defaults to `"ssl"` — and
+  `_google_oauth_smtp_transport_allowed` permits only `(465, ssl)` or `(587, starttls)`. **An
+  account linked without an SMTP host typed came out as SSL on port 587**, a pair this app's own
+  validator rejects; `smtplib.SMTP_SSL` against 587 does not negotiate, it hangs to the socket
+  timeout and reports as a connection failure, which reads like a firewall rather than a config
+  error. Reachable before this row by anyone who left the host blank, and reachable **by default**
+  once linking requires typing nothing. Port and security are now one assignment, asserted through
+  the validator rather than against the literal.
+  **A nameless row is named after its own id**, which is not a placeholder invented here: the
+  callback already tested `row.name == row.id` before overwriting — a branch written for exactly
+  this and unreachable until now, because nothing could create one. The name guard stays for every
+  other caller, gated on an allowlist so `oauth_pending: "yes"` is not a key.
+  **AND THE FIRST PASS OF THIS ROW WENT INTO DEAD CODE.** `static/js/settings.js` holds **two
+  complete email-account forms**. `P18-01` and this row were written against the `eaf-` one, which
+  mounts into `set-email-accounts-form` — an id appearing **zero times** in `static/index.html`,
+  created by nothing, whose initialiser opens `if (!listEl || !addBtn || !formEl) return;` and so
+  does nothing on every page load. Two other modules already treated it as legacy, querying
+  `'#unified-intg-form, #set-email-accounts-form'` with the live one first. Found by a test that
+  failed for the wrong reason. Everything server-side was live and correct throughout; the browser
+  halves of `P18-01`, `P18-04` and this row are now ported to the form a person opens.
+  **`check-wiring.py` caught it** — all four ids sit in its unresolved list, inside the 124 the
+  ratchet grandfathers, which is the ratchet working as designed and also how a whole dead form sat
+  there unnoticed. `test_the_oauth_form_is_the_one_that_is_mounted` is the narrow guard: whichever
+  form carries account linking must render into an id that exists. `B69` removes the other one.
+  `CACHE_NAME` `v413` → `v414`. 29 tests across both files, mutations to follow in `B69`.
 
 
 ---
@@ -5323,3 +5376,18 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   place for one, so both are now **pinned by the checker** rather than trusted to a future
   editor: change the suite or the tracker without changing the README and CI fails.
 
+- [ ] **B69** **There are two complete email-account forms and one of them is mounted nowhere.**
+  Found by `P18-07` 2026-09-11, after `P18-01` and the first pass of `P18-07` were both written
+  against the wrong one. `static/js/settings.js` carries an `eaf-` form (~line 3060) rendering into
+  `set-email-accounts-form` and a `uf-` form (~line 4681) rendering into `unified-intg-form`. Only
+  the second id exists in `static/index.html`; the first appears **zero times** and is created by
+  no script, so `el('set-email-accounts-form')` is always `null` and the initialiser's
+  `if (!listEl || !addBtn || !formEl) return;` makes the whole block a no-op on every load.
+  `static/js/ui.js:1313` and `static/js/settings/lifecycle.js:130` already query
+  `'#unified-intg-form, #set-email-accounts-form'` — the live one first — which is the shape of
+  code written while a migration was half finished. `check-wiring.py` reports all four ids as
+  unresolved today; they are inside the `--max 124` ceiling, so nothing fails. **The cost is
+  measured rather than argued**: two separate fixes landed in it before anything noticed, and both
+  had tests passing against code the browser never runs. `Verify:` the dead form is gone, the
+  wiring ceiling comes down by the ids it was holding, and no test asserts against an unmounted
+  element. `Depends:` `P18-07`. — found by `P18-07` — agent:`P18`

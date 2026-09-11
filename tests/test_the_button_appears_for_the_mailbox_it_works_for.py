@@ -131,8 +131,18 @@ def _oauth_decision_source() -> str:
     must not contain it is the code that makes the decision.
     """
     text = SETTINGS_JS.read_text(encoding="utf-8")
-    start = text.index("const _oauthFor =")
-    end = text.index("const eafProviderNotes", start)
+    # The LIVE form's copy. Two complete email-account forms exist in this file
+    # and `set-email-accounts-form` is mounted nowhere — the first pass of this
+    # row asserted against that one and passed while the browser ran the other.
+    # Anchoring on `showEmailForm` pins the reachable one (`B69` deletes the
+    # other; until then these assertions must not drift back to it).
+    start = text.index("async function showEmailForm")
+    start = text.index("const _oauthFor =", start)
+    # Ends at the input listener, which is the close of `_syncOauthUI`. Wider
+    # than that and the slice swallows the provider-preset handler, which reads
+    # `PROVIDERS[key]` legitimately to autofill host and port — the decision
+    # must not consult it, the autofill must.
+    end = text.index("el('uf-imap-host').addEventListener('input'", start)
     return text[start:end]
 
 
@@ -168,14 +178,14 @@ def test_the_decision_holds_no_hostname_of_its_own():
 
 def test_the_decision_is_driven_by_the_host_field_not_the_dropdown():
     source = _oauth_decision_source()
-    assert "el('eaf-imap-host').value" in source
+    assert "el('uf-imap-host').value" in source
     assert "PROVIDERS[" not in source, "the dropdown must not decide this any more"
 
 
 def test_typing_a_host_by_hand_re_runs_the_rule():
     """The defect was that only the preset path ever asked."""
     text = SETTINGS_JS.read_text(encoding="utf-8")
-    assert "el('eaf-imap-host').addEventListener('input', _syncOauthUI)" in text
+    assert "el('uf-imap-host').addEventListener('input', _syncOauthUI)" in text
 
 
 def test_the_host_list_is_fetched_from_the_endpoint_that_owns_it():
@@ -193,7 +203,7 @@ def test_the_password_fields_are_hidden_only_for_a_linked_account():
     """
     source = _oauth_decision_source()
     hide = re.search(
-        r"eaf-password-section'\)\.forEach\(r => \{\s*r\.style\.display = (\w+) \?", source
+        r"uf-password-section'\)\.forEach\(r => \{\s*r\.style\.display = (\w+) \?", source
     )
     assert hide is not None, "could not find the password-visibility rule"
     assert hide.group(1) == "linked", (
@@ -211,8 +221,8 @@ def test_an_unconfigured_deployment_disables_the_button_before_it_is_pressed():
 def test_the_connect_handler_refuses_rather_than_redirecting_into_a_400():
     """Belt and braces: disabled buttons can be re-enabled from a console."""
     text = SETTINGS_JS.read_text(encoding="utf-8")
-    handler = text[text.index("eaf-oauth-btn').addEventListener"):]
-    handler = handler[: handler.index("el('eaf-smtp-security').value = _smtpSecurity")]
+    handler = text[text.index("uf-oauth-btn').addEventListener"):]
+    handler = handler[: handler.index('"Same as IMAP" toggle')]
     assert "!provider.configured" in handler
     assert "provider.authorize" in handler, "the redirect must use the served path"
 

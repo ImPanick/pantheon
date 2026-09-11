@@ -73,6 +73,7 @@ PANTHEON_MAIL_ORIGIN = "pantheon-ui"
 EMAIL_READ_ATTACHMENT_VERSION = 2
 _GOOGLE_OAUTH_IMAP_HOST = "imap.gmail.com"
 _GOOGLE_OAUTH_SMTP_HOST = "smtp.gmail.com"
+_LINKABLE_PROVIDERS = frozenset({"google"})
 _SERVER_OWNED_OAUTH_FIELDS = {
     "oauth_provider",
     "oauth_access_token",
@@ -5961,7 +5962,15 @@ def setup_email_routes():
         from src.secret_storage import encrypt as _enc
         import uuid as _uuid
         name = (data.get("name") or "").strip()
-        if not name:
+        # P18-07. A row created to be linked has nothing to name itself after
+        # yet — the address comes back from the provider. Naming it after its
+        # own id is not a placeholder invented here: the OAuth callback already
+        # tests `row.name == row.id` before overwriting, a branch written for
+        # exactly this and unreachable until now because nothing could create
+        # one. The guard stays for every other caller, where a nameless account
+        # is a mistake rather than a step.
+        pending_link = str(data.get("oauth_pending") or "").strip().lower()
+        if not name and pending_link not in _LINKABLE_PROVIDERS:
             return {"ok": False, "error": "name required"}
         imap_port, port_err = _coerce_port(data.get("imap_port"), 993)
         if port_err:
@@ -5972,9 +5981,10 @@ def setup_email_routes():
         db = SessionLocal()
         try:
             _lock_email_account_owner_mutation(db, owner)
+            _new_id = _uuid.uuid4().hex
             row = EmailAccount(
-                id=_uuid.uuid4().hex,
-                name=name,
+                id=_new_id,
+                name=name or _new_id,
                 is_default=bool(data.get("is_default", False)),
                 enabled=bool(data.get("enabled", True)),
                 imap_host=(data.get("imap_host") or "").strip(),
@@ -6452,12 +6462,27 @@ def setup_email_routes():
             row.oauth_token_expiry = expiry
             # Auto-fill Google IMAP/SMTP settings if not already configured.
             if not row.imap_host:
-                row.imap_host = "imap.gmail.com"
+                row.imap_host = _GOOGLE_OAUTH_IMAP_HOST
                 row.imap_port = 993
                 row.imap_starttls = False
             if not row.smtp_host:
-                row.smtp_host = "smtp.gmail.com"
+                # P18-07. The port and the security mode are set together
+                # because they were not, and the pair they produced is one this
+                # app's own validator rejects: `smtp_security` defaults to
+                # `"ssl"` (core/database.py:416, and `_smtp_security_mode`
+                # returns `ssl` for the 465 default the create endpoint uses),
+                # so an account whose SMTP host was blank came out of this
+                # branch as **SSL on port 587** — and
+                # `_google_oauth_smtp_transport_allowed` permits only
+                # (465, ssl) or (587, starttls). `smtplib.SMTP_SSL` against 587
+                # does not negotiate; it hangs until the socket timeout and
+                # reports as a connection failure, which reads like a firewall.
+                # Reachable before `P18-07` by anyone who linked an account
+                # with no SMTP host typed, and reachable *by default* once
+                # linking requires typing nothing.
+                row.smtp_host = _GOOGLE_OAUTH_SMTP_HOST
                 row.smtp_port = 587
+                row.smtp_security = "starttls"
             if email_addr:
                 if not row.imap_user:
                     row.imap_user = email_addr

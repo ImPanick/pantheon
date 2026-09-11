@@ -63,6 +63,16 @@ ALLOWED = {
     "/metrics": "Prometheus (P16-12). Deliberately has no UI.",
     "/api/diagnostics/": "the diagnostics panel plus `pantheon-*` CLI tooling",
     "/api/webhooks/incoming": "external senders — a receiver has no caller here by definition",
+    # P18-01/P18-04. The browser no longer holds this path: it reads it from
+    # `GET /api/email/oauth/providers`, whose whole purpose is that "which
+    # hosts can be linked, and where does the flow start" is answered by the
+    # module that enforces it rather than restated in JavaScript (`Law 13` —
+    # the two spellings disagreed, and picking Gmail showed no button while
+    # Google Workspace showed one). Making the caller dynamic is what removed
+    # the literal this checker matches on, so the route reads as orphaned and
+    # is not. The provider endpoint itself stays statically reachable, which is
+    # what keeps this from hiding a genuinely dead pair.
+    "/api/email/oauth/google/authorize": "settings.js follows the `authorize` path served by /api/email/oauth/providers",
     "/openapi.json": "FastAPI mounts this itself; it is the schema, not a feature",
     "/docs": "FastAPI's own Swagger UI, mounted by the framework",
     "/redoc": "FastAPI's own ReDoc UI, mounted by the framework",

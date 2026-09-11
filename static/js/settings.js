@@ -3090,15 +3090,16 @@ async function initEmailAccountsSettings() {
       <div class="settings-col">
         <div class="settings-row"><label class="settings-label">Provider${_hint('Pick a known provider to auto-fill the IMAP and SMTP host/port. Choose Custom to type your own.')}</label><select id="eaf-provider" class="settings-select"><option value="">Custom…</option>${_providerOptions}</select></div>
         <div id="eaf-provider-note" style="display:none;font-size:11px;line-height:1.5;padding:8px 10px;margin:2px 0 4px;border:1px solid color-mix(in srgb, var(--fg) 15%, transparent);border-left:3px solid var(--accent, var(--red));border-radius:4px;background:color-mix(in srgb, var(--fg) 4%, transparent);"></div>
-        <div class="settings-row"><label class="settings-label">Name${_hint('Optional label for this account (e.g. “Work” or “Personal”). Leave blank to use the email address.')}</label><input id="eaf-name" class="settings-input" placeholder="(optional — leave blank to use email)" value="${esc(a.name || '')}"></div>
-        <div class="settings-row"><label class="settings-label">Email${_hint('Your email address. Used as the From: header on outgoing mail and as the display label when Name is blank.')}</label><input id="eaf-from" class="settings-input" placeholder="you@example.com" value="${esc(a.from_address || '')}"></div>
-        <div class="settings-row"><label class="settings-label">Display Name${_hint('Your name as it appears in the From: field of emails you send, e.g. Jane Smith. Auto-filled from Google during OAuth.')}</label><input id="eaf-display-name" class="settings-input" placeholder="Your Name" value="${esc(a.display_name || '')}"></div>
         <div id="eaf-oauth-section" style="display:none;margin:8px 0;padding:10px;border:1px solid var(--border);border-radius:6px;background:color-mix(in srgb,var(--accent,#50fa7b) 6%,transparent)">
           <div id="eaf-oauth-title" style="font-size:11px;font-weight:600;margin-bottom:6px">Sign in — no password needed</div>
           <div id="eaf-oauth-status" style="font-size:11px;opacity:0.7;margin-bottom:6px"></div>
           <button type="button" id="eaf-oauth-btn" class="admin-btn-add" style="font-size:11px">Connect</button>
           <div id="eaf-oauth-redirect" style="display:none;font-size:10px;line-height:1.6;margin-top:8px;opacity:0.85"></div>
         </div>
+        <div id="eaf-manual">
+        <div class="settings-row"><label class="settings-label">Name${_hint('Optional label for this account (e.g. “Work” or “Personal”). Leave blank to use the email address.')}</label><input id="eaf-name" class="settings-input" placeholder="(optional — leave blank to use email)" value="${esc(a.name || '')}"></div>
+        <div class="settings-row"><label class="settings-label">Email${_hint('Your email address. Used as the From: header on outgoing mail and as the display label when Name is blank.')}</label><input id="eaf-from" class="settings-input" placeholder="you@example.com" value="${esc(a.from_address || '')}"></div>
+        <div class="settings-row"><label class="settings-label">Display Name${_hint('Your name as it appears in the From: field of emails you send, e.g. Jane Smith. Auto-filled from Google during OAuth.')}</label><input id="eaf-display-name" class="settings-input" placeholder="Your Name" value="${esc(a.display_name || '')}"></div>
         <div style="font-size:11px;font-weight:600;opacity:0.6;margin:6px 0 2px">IMAP (Receiving)</div>
         <div class="settings-row"><label class="settings-label">Host${_hint('Your IMAP server, e.g. imap.gmail.com, imap.migadu.com, a LAN host, or a Tailscale IP for Dovecot.')}</label><input id="eaf-imap-host" class="settings-input" value="${esc(a.imap_host || '')}"></div>
         <div class="settings-row"><label class="settings-label">Port${_hint('993 for IMAPS (most providers), 143 for plain or STARTTLS. Local servers often use a custom port like 31143.')}</label><input id="eaf-imap-port" class="settings-input" type="number" value="${esc(a.imap_port || 993)}" style="max-width:100px"></div>
@@ -3112,6 +3113,7 @@ async function initEmailAccountsSettings() {
         <div class="settings-row"><label class="settings-label">Same as IMAP${_hint('Use the IMAP username and password for SMTP too (this is right for almost every provider). Turn off to enter separate SMTP credentials.')}</label><label class="admin-switch"><input type="checkbox" id="eaf-smtp-same" ${(!isEdit || (a.smtp_user && a.imap_user && a.smtp_user === a.imap_user)) ? 'checked' : ''}><span class="admin-slider"></span></label></div>
         <div class="settings-row eaf-smtp-creds"><label class="settings-label">Username${_hint('Usually the same as your IMAP username (your email address).')}</label><input id="eaf-smtp-user" class="settings-input" value="${esc(a.smtp_user || '')}"></div>
         <div class="settings-row eaf-smtp-creds"><label class="settings-label">Password${_hint('Your SMTP password — often the same as your IMAP password. Outlook / Office 365 generally requires OAuth and will not work with a normal password here.')}</label><input id="eaf-smtp-pass" class="settings-input" type="password" placeholder="${isEdit && a.has_smtp_password ? '(unchanged)' : ''}"></div>
+        </div>
         <div class="settings-row" style="margin-top:10px;align-items:center;">
           <button class="admin-btn-add" id="eaf-save" style="background:var(--red);border-color:var(--red);color:#fff;display:inline-flex;align-items:center;gap:5px;font-weight:600;">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
@@ -3162,6 +3164,15 @@ async function initEmailAccountsSettings() {
       formEl.querySelectorAll('.eaf-password-section').forEach(r => {
         r.style.display = linked ? 'none' : '';
       });
+      // P18-07. "One button" means the fields are gone, not that the password
+      // one is hidden. Every value below is supplied by the callback from the
+      // Google identity — host, port, STARTTLS, both usernames, the from
+      // address, the display name and the account name — so showing them asks
+      // for four things the server pins as constants and five it is about to
+      // be told. The block returns once the account is linked, where the same
+      // fields are populated and worth reading.
+      const manual = el('eaf-manual');
+      if (manual) manual.style.display = (provider && !linked) ? 'none' : '';
       if (!provider) return;
 
       const btn = el('eaf-oauth-btn');
@@ -3275,7 +3286,10 @@ async function initEmailAccountsSettings() {
         smtp_security: el('eaf-smtp-security').value,
         smtp_user: el('eaf-imap-user').value.trim(),
       };
-      if (!body.name) { el('eaf-msg').textContent = 'Enter a Name or Email first'; el('eaf-msg').style.color = 'var(--red)'; return; }
+      // P18-07. The address comes back from the provider, so there is nothing
+      // to insist on. `oauth_pending` tells the server this row is about to be
+      // named by a callback rather than left anonymous by accident.
+      body.oauth_pending = 'google';
       const url = isEdit ? `/api/email/accounts/${a.id}` : '/api/email/accounts';
       const method = isEdit ? 'PUT' : 'POST';
       const r = await fetch(url, { method, credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -4735,14 +4749,16 @@ async function initUnifiedIntegrations() {
             </div>
           </div>
           <div id="uf-email-provider-note" style="display:none;font-size:11px;line-height:1.5;padding:8px 10px;margin:2px 0 4px;border:1px solid color-mix(in srgb, var(--fg) 15%, transparent);border-left:3px solid var(--accent, var(--red));border-radius:4px;background:color-mix(in srgb, var(--fg) 4%, transparent);"></div>
+          <div id="uf-oauth-section" style="display:none;margin:8px 0;padding:10px;border:1px solid var(--border);border-radius:6px;background:color-mix(in srgb,var(--accent,#50fa7b) 6%,transparent)">
+            <div id="uf-oauth-title" style="font-size:11px;font-weight:600;margin-bottom:6px">Sign in — no password needed</div>
+            <div id="uf-oauth-status" style="font-size:11px;opacity:0.7;margin-bottom:6px"></div>
+            <button type="button" id="uf-oauth-btn" class="admin-btn-add" style="font-size:11px">Connect</button>
+            <div id="uf-oauth-redirect" style="display:none;font-size:10px;line-height:1.6;margin-top:8px;opacity:0.85"></div>
+          </div>
+          <div id="uf-manual">
           <div class="settings-row"><label class="settings-label">Name${_hint('Optional label for this account (e.g. “Work” or “Personal”). Leave blank to use the email address.')}</label><input id="uf-email-name" class="settings-input" placeholder="(optional — leave blank to use email)"></div>
           <div class="settings-row"><label class="settings-label">Email${_hint('Your email address. Used as the From: header on outgoing mail and as the display label when Name is blank.')}</label><input id="uf-email-from" class="settings-input" placeholder="you@example.com"></div>
           <div class="settings-row"><label class="settings-label">Display Name${_hint('Your name as it appears in the From: field of emails you send, e.g. Jane Smith. Auto-filled from Google during OAuth.')}</label><input id="uf-display-name" class="settings-input" placeholder="Your Name"></div>
-          <div id="uf-oauth-section" style="display:none;margin:8px 0;padding:10px;border:1px solid var(--border);border-radius:6px;background:color-mix(in srgb,var(--accent,#50fa7b) 6%,transparent)">
-            <div style="font-size:11px;font-weight:600;margin-bottom:6px">Google OAuth2 — required for Workspace / .edu accounts</div>
-            <div id="uf-oauth-status" style="font-size:11px;opacity:0.7;margin-bottom:6px">${existing && existing.oauth_provider === 'google' ? '✓ Connected via Google OAuth' : 'Not connected — click below to authorize'}</div>
-            <button type="button" id="uf-oauth-btn" class="admin-btn-add" style="font-size:11px">${existing && existing.oauth_provider === 'google' ? 'Reconnect with Google' : 'Connect with Google'}</button>
-          </div>
           <div style="font-size:11px;font-weight:600;opacity:0.6;margin:4px 0 2px;display:flex;align-items:center;gap:5px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent, var(--red));flex-shrink:0;" aria-hidden="true"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>IMAP (Receiving)</div>
           <div class="settings-row"><label class="settings-label">Host${_hint('Your IMAP server, e.g. imap.gmail.com, imap.migadu.com, a LAN host, or a Tailscale IP for Dovecot.')}</label><input id="uf-imap-host" class="settings-input" placeholder="imap.example.com"></div>
           <div class="settings-row"><label class="settings-label">Port${_hint('993 for IMAPS (most providers), 143 for plain or STARTTLS. Local servers often use a custom port like 31143.')}</label><input id="uf-imap-port" class="settings-input" type="number" placeholder="993" style="max-width:100px"></div>
@@ -4756,6 +4772,7 @@ async function initUnifiedIntegrations() {
           <div class="settings-row"><label class="settings-label">Same as IMAP${_hint('Use the IMAP username and password for SMTP too (right for almost every provider). Turn off to enter separate SMTP credentials.')}</label><label class="admin-switch" style="margin-left:0"><input type="checkbox" id="uf-smtp-same" checked><span class="admin-slider"></span></label></div>
           <div class="settings-row uf-smtp-creds"><label class="settings-label">Username${_hint('Usually the same as your IMAP username (your email address).')}</label><input id="uf-smtp-user" class="settings-input"></div>
           <div class="settings-row uf-smtp-creds"><label class="settings-label">Password${_hint('Your SMTP password — often the same as your IMAP password. Outlook / Office 365 generally requires OAuth and will not work with this password form.')}</label><input id="uf-smtp-pass" class="settings-input" type="password" placeholder="${placeholderPass}"></div>
+          </div>
           <div class="settings-row" style="margin-top:4px"><label class="settings-label">Default${_hint('Use this account whenever no specific account is chosen.')}</label><label class="admin-switch" style="margin-left:0"><input type="checkbox" id="uf-email-default"><span class="admin-slider"></span></label><span style="font-size:10px;opacity:0.5;margin-left:6px">Used when nothing else is selected</span></div>
           <div class="settings-row" style="margin-top:10px;align-items:center;justify-content:flex-end;gap:6px;">
             <span id="uf-email-msg" style="font-size:11px;flex:1;margin-right:8px"></span>
@@ -4873,14 +4890,84 @@ async function initUnifiedIntegrations() {
     };
 
     // Show/hide the OAuth section and password fields based on provider selection.
-    function _syncOauthUI(providerKey) {
-      const p = PROVIDERS[providerKey];
-      const isOauth = !!(p && p.oauth);
-      el('uf-oauth-section').style.display = isOauth ? '' : 'none';
+    // P18-01/04/07, ported here after the same work landed in the `eaf-` form
+    // — which turned out to be dead: `set-email-accounts-form` appears nowhere
+    // in `static/index.html`, so its initialiser early-returns on every load.
+    // THIS is the form a person opens. `B69` removes the other one.
+    //
+    // Whether a mailbox can be linked with one button is a fact about the HOST,
+    // not about which dropdown row was clicked. The server already decides it
+    // that way, and this file used to decide it from an `oauth:` marker on one
+    // of eight presets — so picking **Gmail** filled in `imap.gmail.com` and
+    // showed nothing while **Google Workspace** filled in the same host and
+    // showed the button (`Law 13`).
+    let _oauthProviders = [];
+    const _oauthFor = (host) => {
+      const h = String(host || '').trim().toLowerCase().replace(/\.+$/, '');
+      if (!h) return null;
+      return _oauthProviders.find(p => (p.imap_hosts || []).includes(h)) || null;
+    };
+
+    function _syncOauthUI() {
+      const provider = _oauthFor(el('uf-imap-host').value);
+      const linked = !!(existing && existing.oauth_provider === 'google');
+      el('uf-oauth-section').style.display = provider ? '' : 'none';
+      // The password fields stay while OAuth is merely *offered*. Hiding them
+      // the moment Gmail qualified would delete the app-password path from the
+      // mailboxes most likely to use it (`Law 1`). They go once it is linked.
       formEl.querySelectorAll('.uf-password-section').forEach(r => {
-        r.style.display = isOauth ? 'none' : '';
+        r.style.display = linked ? 'none' : '';
       });
+      // P18-07. One button means the fields are gone: every value in this block
+      // is filled by the callback from the Google identity.
+      const manual = el('uf-manual');
+      if (manual) manual.style.display = (provider && !linked) ? 'none' : '';
+      if (!provider) return;
+
+      const btn = el('uf-oauth-btn');
+      const status = el('uf-oauth-status');
+      const title = el('uf-oauth-title');
+      if (title) title.textContent = `Sign in with ${provider.label} — no password needed`;
+      // A button that cannot work says so BEFORE it is pressed: `.env.example`
+      // ships both Google credentials commented out, and pressing it used to
+      // save the account and then navigate to a raw 400.
+      btn.disabled = !provider.configured;
+      btn.style.opacity = provider.configured ? '' : '0.5';
+      btn.style.cursor = provider.configured ? '' : 'not-allowed';
+      btn.textContent = linked ? `Reconnect with ${provider.label}` : `Connect with ${provider.label}`;
+      status.textContent = !provider.configured
+        ? provider.setup_hint
+        : (linked
+            ? `\u2713 Connected via ${provider.label}`
+            : 'Not connected — click below to authorize. Your password is never stored.');
+
+      // P18-04. The exact string to register with Google. Before it was shown,
+      // the only way to learn it was to run the flow and read it back out of a
+      // `redirect_uri_mismatch` — a setup step discoverable only by failing.
+      const uriEl = el('uf-oauth-redirect');
+      if (uriEl && provider.redirect_uri) {
+        const derived = provider.redirect_uri_source === 'request'
+          || provider.redirect_uri_source === 'default';
+        uriEl.innerHTML =
+          `Register this redirect URI with ${esc(provider.label)}:<br>`
+          + `<code style="user-select:all;word-break:break-all">${esc(provider.redirect_uri)}</code><br>`
+          + `<span style="opacity:0.65">from <code>${esc(provider.redirect_uri_source)}</code>`
+          + (derived ? ' — behind a reverse proxy set the Public App URL in Settings instead' : '')
+          + (provider.public_url_overridden
+              ? ' — your Public App URL setting is overridden by an environment variable'
+              : '')
+          + '</span>';
+        uriEl.style.display = '';
+      } else if (uriEl) {
+        uriEl.style.display = 'none';
+      }
     }
+
+    el('uf-imap-host').addEventListener('input', _syncOauthUI);
+    fetch('/api/email/oauth/providers', { credentials: 'same-origin' })
+      .then(r => r.json())
+      .then(d => { _oauthProviders = (d && d.providers) || []; _syncOauthUI(); })
+      .catch(() => { /* no providers: the section simply never appears */ });
 
     // Custom dropdown wire-up — the native <select> stays in the DOM as the
     // data source and accessibility target, but the visible UI is a button +
@@ -4940,9 +5027,11 @@ async function initUnifiedIntegrations() {
     el('uf-email-provider').addEventListener('change', (e) => {
       const key = e.target.value;
       _renderProviderNote(key);
-      _syncOauthUI(key);
       const p = PROVIDERS[key];
-      if (!p) return;
+      // P18-01: the OAuth decision reads the host field, so it has to run
+      // AFTER the autofill — and on the `Custom…` path too, where the early
+      // return below used to skip it entirely.
+      if (!p) { _syncOauthUI(); return; }
       el('uf-imap-host').value = p.imap.host;
       el('uf-imap-port').value = p.imap.port;
       el('uf-imap-starttls').checked = !!p.imap.starttls;
@@ -4954,15 +5043,17 @@ async function initUnifiedIntegrations() {
         el('uf-imap-user').placeholder = p.emailEx;
         el('uf-smtp-user').placeholder = p.emailEx;
       }
+      _syncOauthUI();
     });
-
-    // Init OAuth UI for accounts already connected via OAuth.
-    if (existing && existing.oauth_provider === 'google') _syncOauthUI('google_workspace');
 
     // "Connect with Google" — save the account first, then redirect to OAuth.
     el('uf-oauth-btn').addEventListener('click', async () => {
       const body = _collectBody();
+      // P18-07. The address comes back from the provider, so there is nothing
+      // to insist on here; `oauth_pending` tells the server this row is about
+      // to be named by a callback rather than left anonymous by accident.
       if (!body.name) body.name = body.from_address;
+      body.oauth_pending = 'google';
       if (!body.name) { el('uf-email-msg').textContent = 'Enter a Name or Email first'; el('uf-email-msg').style.color = 'var(--red)'; return; }
       const url = isEdit ? `/api/email/accounts/${editId}` : '/api/email/accounts';
       const method = isEdit ? 'PUT' : 'POST';
@@ -4970,7 +5061,13 @@ async function initUnifiedIntegrations() {
       const d = await r.json();
       if (!(d.ok || d.id)) { el('uf-email-msg').textContent = d.error || 'Save failed'; el('uf-email-msg').style.color = 'var(--red)'; return; }
       const accId = isEdit ? editId : d.id;
-      window.location.href = `/api/email/oauth/google/authorize?account_id=${encodeURIComponent(accId)}`;
+      const provider = _oauthFor(el('uf-imap-host').value);
+      if (!provider || !provider.configured) {
+        el('uf-email-msg').textContent = provider ? provider.setup_hint : 'No sign-in provider for this host';
+        el('uf-email-msg').style.color = 'var(--red)';
+        return;
+      }
+      window.location.href = `${provider.authorize}?account_id=${encodeURIComponent(accId)}`;
     });
 
     // "Same as IMAP" toggle — hide the SMTP creds rows when on.
