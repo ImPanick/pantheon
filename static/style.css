@@ -43646,3 +43646,22 @@ body.settings-sidebar-resize-active {
   opacity: 1;
   font-weight: 600;
 }
+
+/* ── `P17-04`: the device inventory ────────────────────────────────────────
+   Reuses `.networks-row`'s flex-wrap so the two lists read as one panel and
+   collapse the same way on a phone. */
+.device-row { align-items: center; }
+.device-cell {
+  font-size: 12px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.device-address { flex: 0 0 120px; font-variant-numeric: tabular-nums; }
+.device-mac { flex: 0 0 150px; font-family: ui-monospace, monospace; opacity: 0.7; }
+.device-vendor { flex: 1 1 140px; opacity: 0.85; }
+.device-vendor-unknown { opacity: 0.45; font-style: italic; }
+.device-age { flex: 0 0 90px; text-align: right; opacity: 0.6; }
+.device-new { opacity: 1; font-weight: 600; }
+.device-kind { flex: 0 0 auto; opacity: 0.5; text-transform: uppercase; font-size: 10px; }

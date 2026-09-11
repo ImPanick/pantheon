@@ -64,6 +64,12 @@ STORES: dict[tuple[str, str], tuple[str, str]] = {
         GUARDED, "one file holds every user's preferences"),
     ("src/api_key_manager.py", "self.api_keys_file"): (
         GUARDED, "the store this row is named after: `_load_raw` returns {} and `save` wrote it back"),
+    ("src/device_inventory.py", "_store_path()"): (
+        GUARDED, "`P17-04`. The observations rebuild themselves — an ARP table "
+                 "repopulates — but the NAMES do not: 'the printer' is something a "
+                 "person typed while looking at a sticker, and nothing else in the "
+                 "system knows it. A store that is half rebuildable is guarded, "
+                 "because the half that is not is the half somebody would miss"),
     ("src/integrations.py", "DATA_FILE"): (
         GUARDED, "integration API keys, encrypted at rest"),
     ("src/preset_manager.py", "self.presets_file"): (

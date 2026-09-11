@@ -152,3 +152,31 @@ Delete `token.json` in the state directory and restart. A new one is minted and
 printed. The old one stops working immediately, which is the point of storing
 only a hash: the file is not the credential, so losing the file is a
 re-pairing rather than a leak.
+
+## Vendor names
+
+`netagent/oui.py` answers *"who made this?"* from a table that **ships with us** —
+there is no lookup service, no API key, and no runtime fetch. A test asserts the
+module imports nothing that can open a socket, which is a stronger statement than
+*"we do not call one"*.
+
+The shipped seed is deliberately tiny, and every answer says where it came from:
+`seed`, `imported`, or `unknown`. **A table that is wrong about a device you own
+is worse than one that says "I don't know"** — a wrong vendor gets acted on and an
+absent one gets looked up. So `unknown` is a normal answer and reads as one.
+
+A locally administered address — a randomised phone MAC, a VM, a container — says
+so explicitly rather than reporting an unknown vendor, because there is no
+manufacturer to find and you should stop looking.
+
+To widen it, download `oui.csv` from IEEE yourself and import it:
+
+```python
+from pathlib import Path
+from netagent.oui import import_table
+import_table(Path("oui.csv"), Path("data/oui.json"))
+```
+
+Answers then come back as `imported`. The organisation address IEEE publishes is
+dropped on the way in: a postal address is not a thing this product should be
+storing about anybody.

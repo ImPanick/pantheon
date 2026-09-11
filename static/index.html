@@ -2925,6 +2925,21 @@
           </div>
 
           <div class="admin-card" style="margin-top:12px;">
+            <h2>Devices</h2>
+            <div class="admin-toggle-sub" style="margin-bottom:10px;line-height:1.5;">
+              What the agent has seen, remembered. A device is identified by its MAC, so a
+              name you give it survives a DHCP reshuffle &mdash; and something that appears
+              for the first time shows as <b>new</b>. This is the machine's own cache, not a
+              scan: a device that has been quiet will not appear until it speaks.
+            </div>
+            <div class="settings-row" style="gap:8px;margin-bottom:10px;">
+              <button type="button" id="devices-refresh" class="memory-toolbar-btn">Refresh from the agent</button>
+              <span id="devices-summary" class="networks-probe-result" style="margin:0;" hidden></span>
+            </div>
+            <div id="devices-list"></div>
+          </div>
+
+          <div class="admin-card" style="margin-top:12px;">
             <h2>Which network claims an address?</h2>
             <div class="admin-toggle-sub" style="margin-bottom:8px;line-height:1.5;">
               Checked against what is on screen, not what is saved &mdash; so you can see

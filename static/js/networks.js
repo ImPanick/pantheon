@@ -286,6 +286,121 @@ async function checkAgent() {
   }
 }
 
+// ── devices ─────────────────────────────────────────────────────────────────
+
+function _ago(seconds) {
+  if (seconds === null || seconds === undefined) return 'never seen';
+  const days = Math.floor(seconds / 86400);
+  if (days >= 1) return days === 1 ? '1 day' : `${days} days`;
+  const hours = Math.floor(seconds / 3600);
+  if (hours >= 1) return hours === 1 ? '1 hour' : `${hours} hours`;
+  const mins = Math.max(1, Math.floor(seconds / 60));
+  return mins === 1 ? '1 minute' : `${mins} minutes`;
+}
+
+function deviceRow(device) {
+  const row = document.createElement('div');
+  row.className = 'networks-row device-row';
+
+  const name = document.createElement('input');
+  name.type = 'text';
+  name.className = 'settings-select';
+  name.value = device.name || '';
+  name.placeholder = 'name this device';
+  name.style.flex = '1 1 150px';
+  // Saved on blur rather than on every keystroke: a name is a deliberate act and
+  // one request per character is a request per character.
+  name.addEventListener('blur', async () => {
+    if ((device.name || '') === name.value) return;
+    await fetch('/api/auth/networks/devices/name', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mac: device.mac, name: name.value }),
+    });
+    device.name = name.value;
+  });
+  row.appendChild(name);
+
+  const addr = document.createElement('span');
+  addr.className = 'device-cell device-address';
+  addr.textContent = device.address || '—';
+  if (device.previous_addresses && device.previous_addresses.length) {
+    addr.title = `was ${device.previous_addresses.join(', ')}`;
+  }
+  row.appendChild(addr);
+
+  const mac = document.createElement('span');
+  mac.className = 'device-cell device-mac';
+  // The stored MAC is bare hex; shown in the spelling people read it in.
+  mac.textContent = (device.mac || '').replace(/(..)(?=.)/g, '$1:');
+  row.appendChild(mac);
+
+  const vendor = document.createElement('span');
+  vendor.className = 'device-cell device-vendor';
+  const v = device.vendor || {};
+  // An unknown vendor is a normal answer and is rendered as one — saying where
+  // the answer came from is the point, so "not in the shipped table" reads
+  // differently from "randomised address, nobody assigned it".
+  vendor.textContent = v.vendor || (v.locally_administered ? 'randomised / virtual' : 'unknown');
+  if (!v.vendor) vendor.classList.add('device-vendor-unknown');
+  if (v.detail) vendor.title = v.detail;
+  row.appendChild(vendor);
+
+  const age = document.createElement('span');
+  age.className = 'device-cell device-age';
+  age.textContent = device.is_new ? 'new' : _ago(device.age_seconds);
+  if (device.is_new) age.classList.add('device-new');
+  row.appendChild(age);
+
+  if (device.kind && device.kind !== 'device') {
+    const kind = document.createElement('span');
+    kind.className = 'device-cell device-kind';
+    kind.textContent = device.kind;
+    row.appendChild(kind);
+  }
+  return row;
+}
+
+async function loadDevices() {
+  const host = $('devices-list');
+  const summary = $('devices-summary');
+  if (!host) return;
+  host.textContent = '';
+  let state;
+  try {
+    const res = await fetch('/api/auth/networks/devices');
+    if (!res.ok) throw new Error(`devices unavailable (${res.status})`);
+    state = await res.json();
+  } catch (e) {
+    if (summary) { summary.textContent = String(e.message || e); summary.hidden = false; }
+    return;
+  }
+
+  if (summary) {
+    const parts = [`${state.count} known`];
+    if (state.new && state.new.length) parts.push(`${state.new.length} new`);
+    const r = state.refreshed;
+    if (r && r.error) parts.push(r.error);
+    else if (r) parts.push(`${r.seen} seen just now`);
+    else parts.push('no agent configured — showing what is remembered');
+    const table = state.vendor_table || {};
+    if (!table.imported) parts.push('vendor names: shipped seed only');
+    summary.textContent = parts.join(' · ');
+    summary.hidden = false;
+  }
+
+  if (!state.devices || state.devices.length === 0) {
+    const none = document.createElement('div');
+    none.className = 'admin-toggle-sub';
+    none.style.cssText = 'padding:10px 0;opacity:0.65;';
+    none.textContent = 'Nothing remembered yet. Start the agent, allow a network, '
+      + 'and press Refresh.';
+    host.appendChild(none);
+    return;
+  }
+  for (const device of state.devices) host.appendChild(deviceRow(device));
+}
+
 export async function open() {
   if (!_loaded) {
     try {
@@ -308,6 +423,7 @@ export async function open() {
     });
     $('netagent-save')?.addEventListener('click', () => { saveAgent(); });
     $('netagent-check')?.addEventListener('click', () => { checkAgent(); });
+    $('devices-refresh')?.addEventListener('click', () => { loadDevices(); });
 
     try {
       const res = await fetch('/api/auth/settings');
@@ -316,6 +432,7 @@ export async function open() {
     } catch (_) { /* an unreadable settings response leaves the field empty, which is honest */ }
   }
   render();
+  loadDevices();
 }
 
 export const _test = { toValue, fromValue, setRows: (r) => { _rows = r; }, getRows: () => _rows };

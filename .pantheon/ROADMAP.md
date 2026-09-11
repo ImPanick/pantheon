@@ -77,8 +77,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P14 | Measurement | 8 | 3 | 0 | **5** |
 | P15 | Outbound politeness | 12 | 2 | **1** | **9** |
 | P16 | Self-hosted by default | 20 | 1 | 0 | **19** |
-| P17 | The network the agent is hosted on | 10 | 4 | 0 | **6** |
-| **Total** | | **361** | **184** | **9** | **168** |
+| P17 | The network the agent is hosted on | 10 | 3 | 0 | **7** |
+| **Total** | | **361** | **183** | **9** | **169** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -240,6 +240,24 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### P17-04 — MAC is identity, IP is an attribute
+`ad8fcf2..HEAD`. **361 tracked, 169 done. 28 tests, 18 mutations, 0 regressions. Suite 8,531 -> 8,559.**
+A DHCP reshuffle changes every address and no device. Key the record by address and a lease renewal
+reads as the old device vanishing and a new one arriving — the opposite of the question this exists
+to answer. The test is the row: reshuffle three devices, get **one** new device and two moves. It
+lives in `src/` rather than `netagent/`, because the agent observes and Pantheon remembers — which
+keeps the agent restartable without losing anything. **The vendor table is the interesting half**:
+*"from a vendored prefix table"* does not mean *ship 35,000 guessed rows*, because a table that is
+wrong about a device the operator owns is worse than one that says *"I don't know"* — a wrong vendor
+gets acted on, an absent one gets looked up. Every answer carries `provenance`, the seed is tiny,
+and IEEE's own CSV is a deliberate import. **Running it deleted two seed entries** — Docker's and
+QEMU's prefixes are locally administered, so `lookup` answers before the seed is consulted and
+neither could ever have been returned. The first was found by running the lookup; the second by the
+test written after the first, which is the argument for having written it. **Mutation testing hoisted
+a value rather than deleting a branch** (`P13-14`'s move): `is_new`'s guard was provably doing
+nothing because with a real epoch `now - 0` is fifty years, so the two answers now share one `age`,
+and the test that pins it uses a 1970 timestamp with the reason written in.
 
 ### P17-03 — the ARP table, which on Windows meant the Win32 API
 `038179e..HEAD`. **361 tracked, 168 done. 26 tests, 18 mutations, 0 regressions. Suite 8,505 -> 8,531.**
@@ -4630,14 +4648,44 @@ radius of a 2.9GB container that runs agent-authored code.*
   nothing to this host still appears, the operator switched that on deliberately, and nothing
   outside the allowlist is reported. `Depends:` `P17-03`. — split from `P17-03` — agent:`P17`
 
-- [ ] **P17-04** **A device inventory that persists, because an ARP table is a snapshot and the
+- [x] **P17-04** **A device inventory that persists, because an ARP table is a snapshot and the
   question is never about one moment.** *Organising* a network means knowing that `a4:83:e7:…` is
   the printer, that it has been on `192.168.1.40` for three months, and that something new appeared
   last Tuesday. MAC as identity, IP as a changing attribute, OUI vendor lookup **from a vendored
   prefix table and not a web service** (`Law 16`), and names the owner can set that survive a DHCP
   reshuffle. `Verify:` a device keeps its identity across an IP change, a new MAC is reported as
   new, and nothing reaches a network to resolve a vendor. `Depends:` `P17-03`.
-  — `D-2026-09-10-01`
+  — `D-2026-09-10-01` — **done 2026-09-11.** **MAC is identity, IP is an attribute, and that
+  ordering is the whole module.** A DHCP reshuffle changes every address on the network and changes
+  no device; key the record by address and a lease renewal reads as the old device vanishing and a
+  new one arriving, which is the *opposite* of the one question this exists to answer. The test is
+  the row: a full reshuffle of three devices reports **one** new device and two moves. **It lives in
+  `src/`, not `netagent/`** — the agent observes and Pantheon remembers, which holds the agent to its
+  own first rule (small, standard library, no state to corrupt) and keeps it restartable without
+  losing anything. **The vendor table is the interesting half.** The row said *from a vendored prefix
+  table and not a web service*, and the honest reading of that is not *ship 35,000 guessed rows*: a
+  table that is wrong about a device the operator owns is **worse** than one saying *"I don't know"*,
+  because a wrong vendor is acted upon and an absent one is looked up. So every answer carries
+  `provenance` — `seed`, `imported`, `unknown` — the shipped seed is deliberately tiny, `unknown` is
+  a normal answer rendered as one, and `import_table()` turns IEEE's own `oui.csv` into the wide
+  table when a person chooses to download it, which is exactly the shape `Law 16` asks for. **A
+  locally administered address says so** rather than reporting an unknown vendor: a randomised phone
+  MAC or a VM has no manufacturer to find, and *"unknown"* would send someone looking. The import
+  **drops IEEE's organisation address**, because a postal address is not a thing this product should
+  store about anybody. **Running the code deleted two seed entries and the second one is the
+  argument for the test.** `0242ac` (Docker) and `525400` (QEMU) are both locally administered, so
+  `lookup` answers before the seed is ever consulted and neither line could have been returned. The
+  first was found by running the lookup; the second by the test written after the first. **Mutation
+  testing hoisted a value, the `P13-14` move rather than a deletion**: `is_new` and `age_seconds`
+  each carried their own `first_seen` guard, and with a real epoch `now - 0` is fifty years and never
+  inside the newness window — so `is_new`'s guard was provably doing nothing while `age_seconds`'
+  did all the work. One shared `age` makes the guard load-bearing through the half that is tested.
+  The test that pins it uses a **1970 timestamp**, with the reason written into it: `inventory(now=)`
+  is pure, so any `now` is legal, and only a `now` inside the first week of the epoch separates *"we
+  never saw this"* from *"the number is large"*. **The store is classified `guarded`** in
+  `check-config-writes`, and the reason is the half that is not rebuildable: the observations
+  repopulate from an ARP table, but *"the printer"* is something a person typed while looking at a
+  sticker and nothing else in the system knows it. 28 tests, 18 mutations, all caught.
 
 - [x] **P17-05** **Configuration is a separate decision and does not ride in on the others.**
   Changing firewall rules, router settings or DHCP reservations is a different risk class from

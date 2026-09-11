@@ -768,6 +768,52 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         verdict["configured"] = True
         return verdict
 
+    @router.get("/networks/devices")
+    async def network_devices(request: Request):
+        """Admin only: the device inventory, refreshed from the agent if it is up.
+
+        `P17-04`. The agent observes and this remembers, so a refresh is a merge
+        rather than a replacement — a device that has gone quiet keeps its record
+        and its name, because *"where is the printer"* has an answer even on a
+        day the printer has not spoken.
+        """
+        user = _get_current_user(request)
+        if not user or not auth_manager.is_admin(user):
+            raise HTTPException(403, "Admin only")
+        from src import device_inventory, netagent_client
+
+        refreshed = None
+        if netagent_client.configured():
+            answer = await netagent_client.call("neighbours")
+            rows = answer.get("neighbours") if isinstance(answer, dict) else None
+            if isinstance(rows, list):
+                refreshed = device_inventory.observe(rows)
+            elif answer.get("error"):
+                refreshed = {"error": answer["error"]}
+        try:
+            state = device_inventory.inventory()
+        except device_inventory.DeviceStoreUnreadable as e:
+            raise HTTPException(500, str(e))
+        state["refreshed"] = refreshed
+        return state
+
+    @router.post("/networks/devices/name")
+    async def name_network_device(request: Request):
+        """Admin only: give a device a name that survives a DHCP reshuffle.
+
+        It is hung on the MAC, which is the identity, so it survives by
+        construction rather than by anybody remembering to move it.
+        """
+        user = _get_current_user(request)
+        if not user or not auth_manager.is_admin(user):
+            raise HTTPException(403, "Admin only")
+        body = await request.json()
+        from src import device_inventory
+        mac = str(body.get("mac") or "")
+        if not device_inventory.rename(mac, str(body.get("name") or "")):
+            raise HTTPException(400, f"{mac!r} is not a MAC address")
+        return {"ok": True}
+
     @router.post("/settings")
     async def set_settings(request: Request):
         """Admin only: update app settings."""
