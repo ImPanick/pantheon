@@ -78,9 +78,9 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P15 | Outbound politeness | 12 | 2 | **1** | **9** |
 | P16 | Self-hosted by default | 20 | 1 | 0 | **19** |
 | P17 | The network the agent is hosted on | 11 | 3 | 0 | **8** |
-| P18 | One button, and it links | 7 | 4 | 0 | **3** |
+| P18 | One button, and it links | 7 | 3 | 0 | **4** |
 | P19 | The proof ledger | 7 | 1 | 0 | **6** |
-| **Total** | | **376** | **188** | **9** | **179** |
+| **Total** | | **376** | **187** | **9** | **180** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -242,6 +242,22 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### P18-04 — the setting called app_public_url, and the one that was read
+`261e58b..HEAD`. **376 tracked, 180 done. 19 tests, 13 mutations, 0 regressions. Suite 8,711 -> 8,730.**
+There is a setting `app_public_url` and an environment variable `APP_PUBLIC_URL`, and they were
+never connected — the panel has a field, `mcp_oauth` read the variable, and the two names are
+indistinguishable when anybody says the problem out loud. The email OAuth path read neither and
+built its redirect from the `Host` header, which behind a reverse proxy is wrong in the same
+direction as `request.url.scheme`: uvicorn honours `X-Forwarded-Proto` only from a peer inside
+`--forwarded-allow-ips`, so an HTTPS deployment produced an `http://` redirect and Google answered
+`redirect_uri_mismatch`. **The hard part was not breaking what worked** — a direct-access deployment
+works *because* of that header — so nothing was removed and three deliberate sources were added
+above it, with a test pinning the request's place. Environment still outranks the setting, which
+means the panel had to say when a typed value is being overridden, or the fix reproduces the defect
+one layer down. The panel also prints the redirect URI now: every deployment must paste that exact
+string into Google Cloud Console, and the only way to learn it used to be to run the flow and read
+it out of the error.
 
 ### P18-02 + P18-03 — the account the agent could not send from
 `127c9c0..HEAD`. **376 tracked, 179 done. 24 tests, 17 mutations (16 caught, 1 equivalent), 0 regressions. Suite 8,687 -> 8,711.**
@@ -5105,7 +5121,7 @@ which is the `P17-02` mistake, and it is why these rows are the ones they are.
   `_REFRESHERS.get(x) or (lambda a: None)` returns `None` for exactly the inputs the explicit
   `is None` guard does, so no test can distinguish them and none was invented to pretend otherwise.
 
-- [ ] **P18-04** **`app_public_url` is a setting an operator can type and no OAuth path
+- [x] **P18-04** **`app_public_url` is a setting an operator can type and no OAuth path
   reads it.** `src/settings.py:232` ships the key and `settings.js:2519` renders the field.
   The email redirect resolves from `GOOGLE_OAUTH_REDIRECT_URI` or else derives from the
   request's `Host` header (`routes/email_routes.py:6227-6229`); the MCP redirect reads
@@ -5115,7 +5131,37 @@ which is the `P17-02` mistake, and it is why these rows are the ones they are.
   mismatch error naming a URL they never typed. **The same class as `B63` and `P16-19`:
   accepted, stored, and silently not used.** `Verify:` a value in the setting is what the
   redirect is built from, and setting it to something Google will reject is refused at the
-  point of typing rather than at the point of linking. `Depends:` nothing. — agent:`P18`
+  point of typing rather than at the point of linking. `Depends:` nothing. — agent:`P18` — **done 2026-09-11.**
+  **The row is right and the reason is worse than an oversight.** There is a setting
+  `app_public_url` **and** an environment variable `APP_PUBLIC_URL`, and they were never connected:
+  `src/settings.py` ships the setting, the panel has a field for it, and `src/mcp_oauth.py` read
+  the environment variable. Typing the value where it is discoverable changed nothing, and the two
+  names are **indistinguishable when anybody says the problem out loud**. The panel's own label said
+  the field was *"used for deep-links in outgoing alert emails"* — accurate, and the smallest
+  possible slice of what a setting called *public URL* looks like it does.
+  The email path consulted neither, building its redirect from the request's **`Host` header and
+  `request.url.scheme`** — and behind a reverse proxy both are wrong the same way, because uvicorn
+  honours `X-Forwarded-Proto` only from a peer inside `--forwarded-allow-ips` (default `127.0.0.1`,
+  which excludes a proxy on the Docker bridge). An HTTPS deployment built an `http://` redirect and
+  Google answered `redirect_uri_mismatch`: the whole *works on my laptop, not on my server* class,
+  from one header.
+  **The hard part was not breaking what already worked.** Somebody reaching Pantheon at
+  `http://192.168.1.71:7000` works *because* of that header, so replacing it would have fixed one
+  deployment shape by breaking every other (`Law 1`). Nothing was removed — `src/public_origin.py`
+  adds three deliberate sources **above** the request and keeps the derived localhost default
+  below it. Five sources, ranked by how much each could know: `OAUTH_REDIRECT_BASE_URL`,
+  `APP_PUBLIC_URL`, the **setting**, the request, then `http://localhost:{APP_PORT}`. A test pins
+  the request's place specifically.
+  **Environment outranks the setting, so the panel had to say when it is overridden**, or the fix
+  reproduces the defect one layer down — operator types a value, a variable wins, nothing says so.
+  `setting_is_overridden()` exists for that. **And the panel now prints the redirect URI itself**:
+  every deployment has to paste that exact string into Google Cloud Console, and before this the
+  only way to learn it was to run the flow and read it back out of a `redirect_uri_mismatch` — a
+  setup step discoverable only by failing at it (`Law 15`). `mcp_oauth` delegates rather than
+  keeping its own ladder, and still resolves once at import on purpose: its value becomes the
+  `REDIRECT_URI` registered via DCR, so recomputing per call would let a settings edit invalidate
+  registrations that exist. A setting changed after startup needs a restart, stated rather than
+  discovered. `CACHE_NAME` `v412` → `v413`. 19 tests, 13 mutations, all caught.
 
 - [ ] **P18-05** **The second provider, and the abstraction that makes a third cheap.**
   Microsoft is explicitly unsupported today and says so in two places

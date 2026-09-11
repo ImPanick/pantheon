@@ -2480,7 +2480,7 @@
           </div>
           <div class="admin-card">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Public App URL</h2>
-            <div class="admin-toggle-sub" style="margin-bottom:8px">Used to build clickable links back to Pantheon inside outgoing reminder / urgent-email emails (e.g. <code>https://chat.yourdomain.com</code>). Leave blank to omit links.</div>
+            <div class="admin-toggle-sub" style="margin-bottom:8px">Where this Pantheon is reachable from the outside (e.g. <code>https://chat.yourdomain.com</code>). Used to build clickable links back to Pantheon inside outgoing reminder / urgent-email emails, and — behind a reverse proxy — to build the OAuth redirect URI, which is otherwise derived from the request and comes out as <code>http://</code> on an HTTPS deployment. Overridden by the <code>OAUTH_REDIRECT_BASE_URL</code> or <code>APP_PUBLIC_URL</code> environment variables if either is set. Leave blank to omit links and derive the redirect from the request.</div>
             <div class="settings-col">
               <div class="settings-row">
                 <label class="settings-label">URL</label>

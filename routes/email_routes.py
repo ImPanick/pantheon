@@ -93,6 +93,33 @@ def _google_oauth_imap_transport_allowed(port: int, starttls: bool) -> bool:
 def _google_oauth_smtp_transport_allowed(port: int, security: str) -> bool:
     return (port == 465 and security == "ssl") or (port == 587 and security == "starttls")
 
+def _google_redirect_uri(request=None) -> str:
+    """The callback URI, built the same way in both halves of the flow.
+
+    `P18-04`. Google compares the `redirect_uri` sent to `/authorize` with the
+    one sent to the token endpoint and rejects the exchange if they differ by a
+    character, so the two call sites must not be two expressions. They were the
+    same expression before, which is how it worked — and it is one edit away
+    from not being, with a failure that says only `redirect_uri_mismatch`.
+
+    That expression was `{request.url.scheme}://{Host header}`, and behind a
+    reverse proxy **both halves are wrong the same way**: uvicorn honours
+    `X-Forwarded-Proto` only from a peer inside `--forwarded-allow-ips`, which
+    defaults to `127.0.0.1` and excludes a proxy on the Docker bridge. An HTTPS
+    deployment therefore built an `http://` redirect. The request is still
+    consulted — it is right for every direct-access deployment and taking it
+    away would break them (`Law 1`) — but three deliberate sources now outrank
+    it, including the `app_public_url` setting the panel has always offered and
+    nothing on this path ever read.
+    """
+    from src.public_origin import public_origin
+
+    explicit = (os.environ.get("GOOGLE_OAUTH_REDIRECT_URI") or "").strip()
+    if explicit:
+        return explicit
+    return f"{public_origin(request)}/api/email/oauth/google/callback"
+
+
 def _google_oauth_configured() -> bool:
     """Both halves, because checking one lets the flow fail at the worst moment.
 
@@ -108,7 +135,22 @@ def _google_oauth_configured() -> bool:
     )
 
 
-def _oauth_providers() -> list:
+def _redirect_uri_source(request=None) -> str:
+    """Which of the five sources supplied the origin. Shown so no override is silent."""
+    from src.public_origin import source_of
+
+    if (os.environ.get("GOOGLE_OAUTH_REDIRECT_URI") or "").strip():
+        return "GOOGLE_OAUTH_REDIRECT_URI"
+    return source_of(request)
+
+
+def _public_origin_overridden() -> bool:
+    from src.public_origin import setting_is_overridden
+
+    return setting_is_overridden()
+
+
+def _oauth_providers(request=None) -> list:
     """Which mail hosts can be linked with a button, and whether they are set up.
 
     **The host is the question, not the dropdown.** `_google_oauth_imap_transport_allowed`
@@ -132,6 +174,14 @@ def _oauth_providers() -> list:
             "smtp_hosts": [_GOOGLE_OAUTH_SMTP_HOST],
             "authorize": "/api/email/oauth/google/authorize",
             "configured": _google_oauth_configured(),
+            # P18-04. The exact string to paste into Google Cloud Console, and
+            # who decided it. Every deployment needs this value and before it
+            # was shown the only way to learn it was to run the flow and read
+            # it out of a `redirect_uri_mismatch` — a setup step discoverable
+            # only by failing at it (`Law 15`).
+            "redirect_uri": _google_redirect_uri(request),
+            "redirect_uri_source": _redirect_uri_source(request),
+            "public_url_overridden": _public_origin_overridden(),
             "setup_hint": (
                 "Set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET in .env "
                 "and restart, then this button will work."
@@ -6266,7 +6316,7 @@ def setup_email_routes():
     # ── Google OAuth2 routes ──
 
     @router.get("/oauth/providers")
-    async def oauth_providers(owner: str = Depends(require_user)):
+    async def oauth_providers(request: Request = None, owner: str = Depends(require_user)):
         """What can be linked with one button, and whether the operator set it up.
 
         `P18-01`. Two facts the browser could not previously learn: which mail
@@ -6278,7 +6328,7 @@ def setup_email_routes():
         half-made account and a raw error page. Refusing before the save is the
         whole point of serving this.
         """
-        return {"ok": True, "providers": _oauth_providers()}
+        return {"ok": True, "providers": _oauth_providers(request)}
 
     @router.get("/oauth/google/authorize")
     async def google_oauth_authorize(account_id: str = Query(...), request: Request = None, owner: str = Depends(require_user)):
@@ -6294,10 +6344,7 @@ def setup_email_routes():
                 "Google sign-in is not set up on this deployment — set "
                 "GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET in .env and restart",
             )
-        redirect_uri = (
-            os.environ.get("GOOGLE_OAUTH_REDIRECT_URI")
-            or f"{request.url.scheme}://{request.headers.get('host', 'localhost:7000')}/api/email/oauth/google/callback"
-        )
+        redirect_uri = _google_redirect_uri(request)
         state = make_oauth_state(account_id, owner)
         params = urllib.parse.urlencode({
             "client_id": client_id,
@@ -6331,10 +6378,7 @@ def setup_email_routes():
         owner = state_data.get("o", "")
         client_id = os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "")
         client_secret = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET", "")
-        redirect_uri = (
-            os.environ.get("GOOGLE_OAUTH_REDIRECT_URI")
-            or f"{request.url.scheme}://{request.headers.get('host', 'localhost:7000')}/api/email/oauth/google/callback"
-        )
+        redirect_uri = _google_redirect_uri(request)
         import httpx as _httpx
         try:
             resp = _httpx.post("https://oauth2.googleapis.com/token", data={

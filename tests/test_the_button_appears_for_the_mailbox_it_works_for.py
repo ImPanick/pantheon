@@ -264,7 +264,7 @@ def test_the_authorize_route_refuses_a_half_configured_deployment(monkeypatch):
 
     source = Path(er.__file__).read_text(encoding="utf-8")
     guard = source[source.index("async def google_oauth_authorize"):]
-    guard = guard[: guard.index("redirect_uri = (")]
+    guard = guard[: guard.index("redirect_uri = ")]
     assert "_google_oauth_configured()" in guard, (
         "authorize must use the two-part rule; checking the id alone lets the "
         "flow fail after the mailbox consent has been granted"

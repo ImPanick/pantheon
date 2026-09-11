@@ -2509,7 +2509,9 @@ async function initReminderSettings() {
   const root = el('settings-modal');
   if (!root || !root.querySelector('[data-settings-panel="reminders"]')) return;
 
-  // Public URL field (used for deep-links in outgoing alert emails)
+  // Public URL field. P18-04: no longer only deep-links — it is now the
+  // operator-settable source for OAuth redirect URIs too, which is what a
+  // setting called `app_public_url` always looked like it did.
   const pubUrlIn = el('set-app-public-url');
   const pubUrlMsg = el('set-app-public-url-msg');
   if (pubUrlIn) {
@@ -3095,6 +3097,7 @@ async function initEmailAccountsSettings() {
           <div id="eaf-oauth-title" style="font-size:11px;font-weight:600;margin-bottom:6px">Sign in — no password needed</div>
           <div id="eaf-oauth-status" style="font-size:11px;opacity:0.7;margin-bottom:6px"></div>
           <button type="button" id="eaf-oauth-btn" class="admin-btn-add" style="font-size:11px">Connect</button>
+          <div id="eaf-oauth-redirect" style="display:none;font-size:10px;line-height:1.6;margin-top:8px;opacity:0.85"></div>
         </div>
         <div style="font-size:11px;font-weight:600;opacity:0.6;margin:6px 0 2px">IMAP (Receiving)</div>
         <div class="settings-row"><label class="settings-label">Host${_hint('Your IMAP server, e.g. imap.gmail.com, imap.migadu.com, a LAN host, or a Tailscale IP for Dovecot.')}</label><input id="eaf-imap-host" class="settings-input" value="${esc(a.imap_host || '')}"></div>
@@ -3180,6 +3183,30 @@ async function initEmailAccountsSettings() {
         : (linked
             ? `\u2713 Connected via ${provider.label}`
             : 'Not connected — click below to authorize. Your password is never stored.');
+
+      // P18-04. Every deployment has to register this exact string with
+      // Google, and before it was shown the only way to learn it was to run
+      // the flow and read it back out of a `redirect_uri_mismatch` — a setup
+      // step discoverable only by failing at it (`Law 15`). The source is
+      // named beside it because a value that came from the request rather than
+      // from configuration is the one that breaks behind a proxy.
+      const uriEl = el('eaf-oauth-redirect');
+      if (uriEl && provider.redirect_uri) {
+        const derived = provider.redirect_uri_source === 'request'
+          || provider.redirect_uri_source === 'default';
+        uriEl.innerHTML =
+          `Register this redirect URI with ${esc(provider.label)}:<br>`
+          + `<code style="user-select:all;word-break:break-all">${esc(provider.redirect_uri)}</code><br>`
+          + `<span style="opacity:0.65">from <code>${esc(provider.redirect_uri_source)}</code>`
+          + (derived ? ' — behind a reverse proxy set <code>app_public_url</code> in Settings instead' : '')
+          + (provider.public_url_overridden
+              ? ' — your <code>app_public_url</code> setting is overridden by an environment variable'
+              : '')
+          + '</span>';
+        uriEl.style.display = '';
+      } else if (uriEl) {
+        uriEl.style.display = 'none';
+      }
     }
 
     const eafProviderNotes = {

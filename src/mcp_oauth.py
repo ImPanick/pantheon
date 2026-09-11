@@ -27,12 +27,23 @@ def _resolve_redirect_base() -> str:
     this URI is registered with the authorization server (via DCR, or by hand
     for Google clients), so changing the host invalidates registrations that
     already exist.
+
+    P18-04: the operator's `app_public_url` **setting** now counts too, and it
+    did not before — there is a field in the Settings panel with that name and
+    this function only ever read the environment variable `APP_PUBLIC_URL`, so
+    typing the value where it is discoverable changed nothing here. No request
+    is available at import time, so the browser-derived source below it never
+    applies on this path.
+
+    **Read once, at import, on purpose.** This origin becomes `REDIRECT_URI`,
+    which is registered with every authorization server via DCR; recomputing it
+    per call would let a settings edit invalidate registrations that already
+    exist. A setting changed after startup therefore needs a restart, which is
+    the honest trade and is stated here rather than discovered.
     """
-    return (
-        os.environ.get("OAUTH_REDIRECT_BASE_URL")
-        or os.environ.get("APP_PUBLIC_URL")
-        or f"http://localhost:{os.environ.get('APP_PORT', '7000')}"
-    ).rstrip("/")
+    from src.public_origin import public_origin
+
+    return public_origin()
 
 
 # OAuth redirect URI registered with every authorization server via DCR. Loopback
