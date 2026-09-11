@@ -101,7 +101,7 @@ Argued in: `P0-19`, `P0-23`, `P3-10`, `D-2026-08-27-01`.
 
 **Pantheon:** None are merged yet. `P19-06` does the merge.
 
-**How we got there.** **This row exists because a ledger with no limitations section reads as marketing.** The fork's own law says add and never subtract, and declining to take upstream's fixes is subtraction by omission. The five that matter: `#6158` docker cache ownership, `#6228` caching an empty Tailscale lookup, `#6174` task singleflight cleanup on cancellation, `#5937` psycopg2-binary, `#6168` version alignment.
+**How we got there.** **This row exists because a ledger with no limitations section reads as marketing** — and on 2026-09-11 it earned its place. Measuring the gap found that **two of the twelve are a security fix**, shipped through a private advisory fork: a bearer API token inherited its minting admin's tool authority, and a chat-session approval grant was readable back out of caller-writable message metadata. Neither is in this tree. `B70` backports them ahead of the rest, because the full merge carries 18 conflicts over branding and the README and a security fix must not wait on those. The other five that matter are ordinary: `#6158` docker cache ownership, `#6228` caching an empty Tailscale lookup, `#6174` task singleflight cleanup, `#5937` psycopg2-binary, `#6168` version alignment. **A fork that stops taking upstream's fixes does not merely go stale.**
 
 ```
 git rev-list --count b4d1293..upstream/dev
@@ -525,8 +525,11 @@ limitations section reads as marketing.
    a measurement of how well Pantheon remembers in daily use, and no number in
    this repository is. Building one takes an operator's own memories and probes
    they wrote themselves: `.pantheon/retrieval_eval.py --generate`.
-2. **Twelve upstream commits are unmerged.** Five are real fixes. A fork that
-   stops taking upstream's fixes is a snapshot, and this one is twelve behind.
+2. **Twelve upstream commits are unmerged, and two of them are a security fix.**
+   Measured 2026-09-11: a bearer API token inherited its minting admin's tool
+   authority, and an approval grant was readable out of caller-writable message
+   metadata. `B70` backports both ahead of the rest. A fork that stops taking
+   upstream's fixes does not merely go stale.
 3. **Most rows compare code, not outcomes.** *Fewer unreachable handlers* and
    *every silent failure explained* are real and checkable; neither is a
    measurement of a person getting their work done faster.

@@ -186,11 +186,17 @@ CLAIMS: Tuple[Claim, ...] = (
         rows=("P19-05", "P19-06"),
         how=(
             "**This row exists because a ledger with no limitations section reads as "
-            "marketing.** The fork's own law says add and never subtract, and declining "
-            "to take upstream's fixes is subtraction by omission. The five that matter: "
-            "`#6158` docker cache ownership, `#6228` caching an empty Tailscale lookup, "
-            "`#6174` task singleflight cleanup on cancellation, `#5937` psycopg2-binary, "
-            "`#6168` version alignment."
+            "marketing** — and on 2026-09-11 it earned its place. Measuring the gap "
+            "found that **two of the twelve are a security fix**, shipped through a "
+            "private advisory fork: a bearer API token inherited its minting admin's "
+            "tool authority, and a chat-session approval grant was readable back out of "
+            "caller-writable message metadata. Neither is in this tree. `B70` backports "
+            "them ahead of the rest, because the full merge carries 18 conflicts over "
+            "branding and the README and a security fix must not wait on those. The "
+            "other five that matter are ordinary: `#6158` docker cache ownership, "
+            "`#6228` caching an empty Tailscale lookup, `#6174` task singleflight "
+            "cleanup, `#5937` psycopg2-binary, `#6168` version alignment. **A fork that "
+            "stops taking upstream's fixes does not merely go stale.**"
         ),
     ),
 

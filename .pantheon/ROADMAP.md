@@ -243,6 +243,26 @@ they are for.*
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
 
+### B70 filed — upstream shipped a security fix and we do not have it
+`2a54779..HEAD`. **376 tracked, 181 done. 0 new tests, 0 regressions.**
+Went to measure `P19-06`'s merge and found that two of the twelve unmerged upstream commits are
+titled *"Merge commit from fork"* — GitHub's message for merging a **private security advisory** —
+and read the diffs rather than the titles. `grep delegated_credential` returns nothing in this tree.
+**A bearer API token carries its minting owner's authority**, which is `effective_user()` working
+as designed for data and wrong for authority: minting is admin-only, so every token resolves to an
+admin and every *is the owner an admin* gate answers yes for a credential handed to a third party.
+**And a chat-session approval grant was readable back out of caller-writable message metadata** —
+routes that persist a message on the caller's behalf took the blob verbatim, so a caller could write
+the shape of a resolved approval into its own transcript and have the server read it as authority.
+Upstream signs the grant with HMAC over `(session_id, approval_id, decision)`, fails **closed**,
+refuses to stamp anything but an `approve`, and binds both ids so a signature cannot be replayed
+between chats. That second one needs no token and is the one to read first.
+**Backport, do not merge**: the full merge carries 18 conflicts over branding the fork renamed and a
+rewritten README — judgement calls that belong to the owner and must not delay this. The change
+**adds** controls to two `FORBIDDEN.md` Part 2 files, which is what that document protects rather
+than forbids. Filed **needs the owner**, with the analysis written down rather than held in a head.
+The ledger's limitations section is corrected: *twelve behind* was true and incomplete.
+
 ### B69 — 374 lines of a form that never ran, inherited from upstream
 `5a28754..HEAD`. **376 tracked, 181 done. 6 tests, 0 regressions. Suite 8,744 -> 8,750.**
 The second email-account form is gone, and `git log -S` on the deployment box settles where it came
@@ -5427,3 +5447,59 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   to agree today is the state the old form was in before somebody edited one.
   `CACHE_NAME` `v414` → `v415`. 6 tests.
 
+- [ ] **B70** **Upstream shipped a security fix through a private advisory fork and we do not have
+  it.** Found 2026-09-11 while measuring `P19-06`. Two of the twelve unmerged upstream commits are
+  titled *"Merge commit from fork"* — GitHub's default message when merging a **private security
+  advisory** — and the diffs are read, not assumed. `grep delegated_credential` returns **nothing**
+  in this tree. Four related weaknesses, and the second is the one that does not need a token:
+
+  **(1) A bearer API token carries its owner's authority.** `src/auth_helpers.effective_user()`
+  resolves a token to the minting owner *by design*, so a paired client sees the same data as the
+  owner's desktop. But minting is admin-only, so **every token resolves to an admin**, and every
+  gate that asks *is the owner an admin* answers yes for a credential the owner has handed to a
+  third party. `src/tool_execution.py:995` reads
+  `if is_public_blocked_tool(tool) and not _owner_is_admin(owner)`, and
+  `blocked_tools_for_owner()` returns the empty set for an admin. Upstream's fix adds
+  `is_delegated_credential(request)` and `delegated_credential_blocked_tools()` — *"deliberately not
+  owner-dependent… a token is a long-lived credential the owner hands to a third party, so it is
+  capped at the non-admin policy no matter who minted it."*
+
+  **(2) A resolved approval card was forgeable in the transcript, and no token is needed.** The
+  chat-session grant is read back **out of message metadata**, and routes that persist a message on
+  the caller's behalf accepted that blob verbatim — so a caller could write the shape of a resolved
+  approval into its own history and have the server read it as authority. Upstream signs the grant
+  with HMAC over `(session_id, approval_id, decision)` using the persistent app key, verifies it
+  **fails closed** on an absent or malformed signature, refuses to stamp anything but an `approve`
+  (so downgrading a `deny` in the transcript carries no usable signature), and binds both ids so a
+  signature lifted from one chat cannot be replayed into another — plus
+  `sanitize_client_message_metadata()` to keep the state out of the transcript in the first place.
+  **This is the one to read first**: it is a confused deputy, the writable surface is an ordinary
+  authenticated route, and an agent under prompt injection writing session history is a plausible
+  path to it.
+
+  **(3) A token could answer the approval prompt it triggered.** *"A tool approval records that a
+  HUMAN authorized one dangerous action"* — when the token answers, nobody is asked and the gate
+  collapses into an extra round trip. Upstream 403s it.
+
+  **(4) Token scopes were not enforced on the chat and session surfaces.** Upstream adds
+  `require_api_token_scope(request, "chat")` and mounts `require_chat_api_token_scope` as a router
+  dependency on both, plus refusals for `skip_validation` / raw `api_key` on session options and
+  `_current_user_is_admin()` returning **False** for a delegated credential.
+
+  **What this row is NOT.** Not a demonstrated exploit — it is read from our source against
+  upstream's patch, and the holder of a token is someone the admin gave one to, so the severity is
+  about **token scope** rather than an anonymous attacker. `(2)` is the exception and deserves its
+  own reading.
+
+  **Backport, do not merge.** The full `P19-06` merge has **18 conflicts** including the branding
+  files the fork renamed and a heavily rewritten `README.md` — judgement calls that belong to the
+  owner and that must not delay a security fix. The change **adds** controls to
+  `src/tool_security.py` and `src/tool_capabilities.py`, which is what `FORBIDDEN.md` Part 2
+  protects rather than forbids. `Verify:` a bearer token cannot reach a public-blocked tool, cannot
+  answer its own approval, and cannot present a grant it wrote itself; a browser session is
+  unaffected; the suite holds at its standing failures. Reproduce the patch with
+  `git diff b4d1293..upstream/dev -- src/auth_helpers.py src/tool_approval_scopes.py
+  src/tool_security.py src/tool_capabilities.py src/agent_loop.py routes/chat_routes.py
+  routes/session_routes.py` on a checkout carrying the `upstream` remote.
+  `Depends:` nothing — it is deliberately ahead of the rest of `P19-06`.
+  — found by `P19-06` — **needs the owner** — agent:`P19`
