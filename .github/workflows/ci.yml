@@ -211,6 +211,19 @@ jobs:
       # after somebody's keys are gone.
       - name: check-config-writes
         run: python3 .pantheon/check-config-writes.py
+      # P19. The ledger is the copy shown to strangers, which makes it the worst
+      # one to let drift: `.pantheon/ROADMAP.md` records what was done,
+      # `CHANGELOG.md` records what changed because AGPL-3.0 §5(a) requires it,
+      # and a third file restating those numbers in marketing voice is `Law 13`.
+      # So LEDGER.md is generated and this fails when the tree's copy is not what
+      # the claims produce — hand-editing it breaks CI on the next run, which is
+      # the only reliable way to stop somebody doing it. It also refuses a claim
+      # citing a file that no longer exists, a roadmap row that was never
+      # written, an `after` with no `before`, and — the specific honesty this
+      # file would most like to lose — a retrieval number that has quietly
+      # dropped its `fixture` tag.
+      - name: check-ledger
+        run: python3 .pantheon/check-ledger.py
       # P3-17. The row's own acceptance test — zero bare `except:` — passed on
       # the unfixed tree, so it would have been ticked without a fix. The real
       # population is `except ...: pass`, and grep cannot count it: `grep -A1`

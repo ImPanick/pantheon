@@ -9,7 +9,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/licence-AGPL--3.0--or--later-blue" alt="AGPL-3.0-or-later">
   <img src="https://img.shields.io/badge/status-early-orange" alt="Early">
-  <img src="https://img.shields.io/badge/tests-6%2C301%20passing-brightgreen" alt="6,301 tests passing">
+  <img src="https://img.shields.io/badge/tests-8%2C642%20passing-brightgreen" alt="8,642 tests passing">
   <img src="https://img.shields.io/badge/docker-compose-2496ED?logo=docker&logoColor=white" alt="Docker Compose">
   <img src="https://img.shields.io/badge/python-FastAPI-009688?logo=fastapi&logoColor=white" alt="FastAPI">
   <img src="https://img.shields.io/badge/forked%20from-Odysseus-6E5494?logo=github&logoColor=white" alt="Forked from Odysseus">
@@ -19,6 +19,7 @@
   <a href="#quick-start">Quick start</a> ·
   <a href="#whats-inside">What's inside</a> ·
   <a href="#where-this-came-from">Where this came from</a> ·
+  <a href="LEDGER.md"><strong>Proof ledger</strong></a> ·
   <a href="#switching-it-back-on">What we're fixing</a> ·
   <a href=".pantheon/ROADMAP.md">Roadmap</a> ·
   <a href="docs/setup.md">Setup guide</a>
@@ -58,8 +59,11 @@ the `upstream` remote.
   (seven of them animated) chosen independently of each other, web search,
   presets, sessions, 2FA
 
-Added by this fork so far: guardrail caps lifted for self-hosted inference while cloud APIs keep
-theirs, an agent scratchpad, and endpoint probe auth.
+**What this fork has added, and what proves it, is in the [proof ledger](LEDGER.md)** — 25 claims,
+each with where its number came from and a command you can run to check it. The short version:
+the Brain rebuilt around a local embedding model that needs no service, an agent that can reach
+the host it runs on behind a denylist it cannot edit, sixteen checkers in CI that upstream does
+not have, every outbound call paced, and full AGPL attribution for code that shipped without it.
 
 ---
 
@@ -129,19 +133,18 @@ runs in CI and the count only goes down.
 
 ## Status
 
-**296 tracked tasks, 77 done**, plus 21 `H` rows — features that exist and cannot be reached, found by a discovery audit on 2026-08-30. Twenty were setup and the rename. Ten are fixes now running:
+**376 tracked tasks, 176 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
+it is the only place work is tracked — one list, one progress area, validated by a script that
+recounts every phase row against its own ticks. It exists because the summary line was once wrong
+by nineteen and carried forward unread from entry to entry, because each author copied the line
+above.
 
-- Uploaded files reach the model as content rather than a placeholder
-- Upload type blocklist removed — it blocked executables while leaving `.svg` unblocked
-- A server-side files-per-request limit, which did not previously exist
-- Uploads get a sandbox CSP, placed in the middleware where it reaches the browser
-- Four blocks of dead configuration and an uncalled validator, removed
-- A tool prompt that forbade heredocs on one line and instructed their use seven lines later
-- `Your account is not allowed to can use research.`
+Test suite: **8,642 passing**, against 14 standing failures that are tracked rather than hidden.
 
-Test suite: 6,301 collected, no regressions against baseline.
-
----
+Measured against the fork point `b4d1293` (2026-08-20): **156 commits, 1,964 files changed,
+175,966 insertions — 537 files added, 1,387 modified and 4 removed.** That last number is this
+fork's first law as a measurement: *an elevation, not a rewrite — we add, never subtract.* All
+four deletions are named and argued in the [ledger](LEDGER.md).
 
 ## What's next
 

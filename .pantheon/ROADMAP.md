@@ -79,7 +79,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P16 | Self-hosted by default | 20 | 1 | 0 | **19** |
 | P17 | The network the agent is hosted on | 11 | 3 | 0 | **8** |
 | P18 | One button, and it links | 7 | 7 | 0 | 0 |
-| **Total** | | **369** | **190** | **9** | **170** |
+| P19 | The proof ledger | 7 | 1 | 0 | **6** |
+| **Total** | | **376** | **191** | **9** | **176** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -241,6 +242,40 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### P19 — the proof ledger, and the correction to its own headline number
+`fc254fc..HEAD`. **376 tracked, 176 done. 29 tests, 17 mutations, 0 regressions. Suite 8,642 -> 8,671.**
+The owner asked for an evidence trail of every improvement over stock Odysseus, *"a proof ledger to
+set us aside as a no shit better alternative"*, and cited memory retrieval going *"from 0.31 to
+0.77"*. Both figures are real and they are **different metrics** — `0.319` is the lexical engine's
+**MRR**, `0.77` is today's **recall@5** on the manager path. Stated as one ratio it is the first
+thing a sceptic breaks. The defensible pairs on one corpus are **recall@5 `0.40` → `1.00`** and
+**MRR `0.319` → `0.931`**, lexical to semantic: a better result than the one claimed, and one that
+survives being checked. **The upstream turned out to be reachable**, so the comparison is a real
+diff rather than a memory: `upstream/dev` is a remote on the deployment box, the fork point is
+`b4d1293` (2026-08-20), and against it this tree is **156 commits, 1,964 files changed, 175,966
+insertions, 537 files added and 4 removed**. That last figure is `Law 1` as a measurement, and
+`P19-04` exists because a claim of *never subtract* with four counter-examples has to name all four.
+**The ledger is generated and CI fails when the tree's copy disagrees**, because a hand-written
+one is the second place every fact in this file already lives and it is the copy shown to
+strangers. Five provenance tags, ordered by how much weight a row can carry, and **two rows
+labelled `fixture`** — the ones a reader is most likely to quote and the ones least able to carry
+it. Every claim names a command and the paths it depends on, and the checker asserts those paths
+exist: **a claim cannot outlive its evidence**. It also refuses an `after` with no `before` — a
+number with nothing to compare it to reads as an improvement and is not one. A mutation run found
+**three rules I had asserted against the data and never against the checker**, so switching each
+one off changed nothing and every test still passed; the same defect as a scan satisfied by a name
+inside `if False:`, pointed at the wrong object. Writing the fourth of those tests turned up
+something worse than expected: a claim in an undeclared area does not vanish, it **renders a
+summary row with no section under it** — a headline promising detail that is not there, which a
+reader cannot tell has happened. **The README had already rotted twice** (badge `6,301 passing`
+against 8,642; `296 tracked, 77 done` against 376 / 170) and both figures are now pinned by the
+checker. **The suite then found the same defect in my own test**: `test_tracker_total_drift_is_caught`
+hard-coded `376 tracked tasks, 170 done`, which stopped being true six rows later in the same
+sitting — the `.replace` matched nothing, the README stayed correct, the checker reported no
+problem, and the test failed for the opposite of the reason it was written. A pinned figure inside
+the test that pins figures. It derives them now. `P19-06` stays open: twelve upstream commits are
+unmerged, five of them real fixes, and a fork that stops taking upstream's fixes is a snapshot.
 
 ### P17-11 — the container reaches the host, and P18 opens on a correction
 `58d3453..HEAD`. **369 tracked, 170 done. 84 tests, 17 mutations, 0 regressions. Suite 8,559 -> 8,642.**
@@ -5027,3 +5062,121 @@ which is the `P17-02` mistake, and it is why these rows are the ones they are.
 **Provenance.** Every task traces to a row in the Elevation Ledger. Six audit passes,
 one adversarial. Two claims were caught wrong and corrected; assume more remain and
 verify against the source before implementing. See `AGENTS.md` rule 3.
+
+# P19 · The proof ledger
+
+*Opened 2026-09-11 from the owner: **"all improvements we have implemented so far over the
+default Odysseus (including metrics like the memory..) - I want it all included and how we got
+there too. This is going to serve as an evidence trail of *how* we are improving Odysseus as
+Pantheon, and will serve as a proof ledger to set us (pantheon) aside as a no shit better
+alternative."***
+
+**THE PHASE OPENS ON A CORRECTION TO ITS OWN HEADLINE NUMBER, WHICH IS THE POINT OF HAVING IT.**
+The owner cited memory retrieval going *"from 0.31 to 0.77"*. Both figures are real and they are
+**different metrics**: `0.319` is the **MRR** of the lexical engine and `0.77` is today's
+**recall@5** on the manager path. Stated as one ratio it is the first thing a sceptic breaks, and
+they would be right to. The defensible pairs, from `.pantheon/retrieval_eval.py` on one corpus:
+**recall@5 `0.40` → `1.00`** and **MRR `0.319` → `0.931`**, lexical to semantic. That is a better
+result than the one claimed, and it survives being checked.
+
+**A ledger is worth exactly what its weakest number is worth.** Every figure carries where it came
+from, and a figure measured on a fixture says so — `.pantheon/fixtures/retrieval_probe.json`
+declares in its own file *"pairs written from imagination test the imagination"*, and a ledger that
+quotes that caveat and states the number anyway cannot be ambushed with it.
+
+**The upstream is reachable and the comparison is a real diff, not a memory.** `upstream/dev`
+(`pewdiepie-archdaemon/odysseus`) is a remote on the deployment box; the fork point is `b4d1293`,
+2026-08-20. Measured 2026-09-11: **156 commits, 1,964 files changed, 175,966 insertions, 6,625
+deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that last figure.
+
+- [x] **P19-01** **The ledger is generated, or it is fiction by Friday.** A hand-written
+  `LEDGER.md` is the second place every fact in `.pantheon/ROADMAP.md` lives, which is the defect
+  `Law 13` names, and `CHANGELOG.md` already holds a third for AGPL §5(a). The three answer
+  different questions — the changelog says *what changed* because the licence requires it, the
+  tracker says *what was done and what verifies it*, the ledger says *what improved and what
+  proves it* — but three files restating one set of numbers drift, and the one that drifts
+  silently is the one shown to strangers. `Verify:` one command regenerates the ledger, and a
+  checker fails when the file in the tree does not match what the generator produces.
+  `Depends:` nothing. — owner 2026-09-11 — agent:`P19` — **done 2026-09-11.**
+  `LEDGER.md` is rendered from `.pantheon/ledger/claims.py` by `.pantheon/check-ledger.py`, and
+  **verifying is the default while writing takes `--write`** — which is not a style choice.
+  `release-gate.py` discovers `.pantheon/check-*.py` and runs any checker CI does not declare
+  **with no arguments at all**, so a script in that directory that wrote when called bare would
+  rewrite a tracked file mid-gate and the gate would pass because it did. Hand-editing the ledger
+  fails CI on the next run, which is the only reliable way to stop somebody doing it. 16th
+  checker. 29 tests, 17 mutations, all caught.
+
+- [x] **P19-02** **Every claim carries its provenance, and the weak ones are labelled rather than
+  dropped.** Five kinds, and the reader can see which they are looking at: `diffed` (from a diff
+  against a named upstream ref), `measured` (a command was run and its output recorded), `counted`
+  (from counting the tree), `fixture` (measured, but on a corpus that declares itself a harness —
+  the number describes the scorer, not the product), and `cited` (a claim with a file, a line and
+  a test behind it, and no number). A ledger with no `fixture` rows is a ledger that is hiding
+  them. `Verify:` no claim renders without a provenance tag, and a test asserts the retrieval rows
+  are tagged `fixture`. `Depends:` `P19-01`. — owner 2026-09-11 — agent:`P19` — **done 2026-09-11.**
+  Five tags, printed in the ledger with what each means, ordered by how much weight a row can
+  carry. **Two claims are labelled `fixture` and they are the two a reader is most likely to
+  quote** — the corpus says of itself that *"pairs written from imagination test the
+  imagination"*, and a ledger that states the number **and** quotes that caveat cannot be
+  ambushed with it. The tag is pinned by name: `check-ledger.py` fails if `retrieval-recall` or
+  `retrieval-mrr` ever stops saying `fixture`, because losing it would break nothing else in
+  this repository.
+
+- [x] **P19-03** **Every claim carries a command a stranger can run.** *Trust us* is not evidence.
+  Each row names the reproduction — a `git diff` against `upstream/dev`, a checker invocation, a
+  `retrieval_eval.py` run — and the checker asserts the named path or ref still exists, so a claim
+  cannot outlive the thing it cites. `Verify:` a reader who has never seen this repo can reproduce
+  any number in the ledger from the row itself. `Depends:` `P19-01`. — owner 2026-09-11 —
+  agent:`P19` — **done 2026-09-11.**
+  Every row names a command and the paths it depends on, and the checker asserts those paths
+  still exist — **a claim cannot outlive its evidence**. It also refuses an `after` with no
+  `before`, which is the shape worth catching: a number with nothing to compare it to reads as
+  an improvement and is not one.
+
+- [x] **P19-04** **The four deletions are named, because "we never subtract" is a claim with four
+  counter-examples.** Measured against the fork point: `ACKNOWLEDGMENTS.md` (upstream's, superseded
+  by `CREDITS.md` at 105 → 483 lines, `D-2026-08-27-01`), `scripts/_completion/odysseus.zsh` (a
+  rename), `static/fonts/custom/GohuFont.ttf` (verified before deleting: 1,468 bytes, 13 sfnt
+  tables, **3 glyphs**, metadata reading *Untitled1 / Copyright (c) 2025, Unknown* — `P0-23`), and
+  `static/js/calendar/reminders.js` (a dead poller, `P3-10`). A ledger that states 537 added and 4
+  removed and does not say which four has not earned the first number. `Verify:` all four are
+  named with the row that argued each one. `Depends:` `P19-02`. — owner 2026-09-11 — agent:`P19` — **done 2026-09-11.**
+  All four named in the ledger with the row that argued each, and a test asserts all four
+  strings are present — so deleting a fifth file without naming it fails. `537 added, 4 removed`
+  is only evidence if the four are named.
+
+- [x] **P19-05** **State what is not proven, including being twelve commits behind upstream.**
+  `upstream/dev` has moved 12 commits past the fork point and none are merged — five real fixes
+  (`#6158` docker cache ownership, `#6228` Tailscale empty-lookup caching, `#6174` task
+  singleflight cleanup, `#5937` psycopg2-binary, `#6168` version alignment) and the rest docs and
+  dependency bumps. `Law 1` says we add and never subtract, and declining to take upstream's own
+  fixes is subtraction by omission. The ledger states the gap; a separate row does the merge.
+  `Verify:` the ledger has a limitations section naming the gap, and it is generated from a live
+  `git rev-list`, not typed. `Depends:` `P19-03`. — owner 2026-09-11 — agent:`P19` — **done 2026-09-11.**
+  A *What this ledger does not prove* section, and the row's *measured, not typed* clause is met
+  where it can be: `check-ledger.py` runs `git rev-list --count b4d1293..upstream/dev` and fails
+  if the stated `12` has drifted. It cannot always run — the `upstream` remote lives on the
+  deployment box and the mirror's history begins at an import commit — so it verifies where it
+  can and is silent where it cannot, with **both branches tested**, because a rule that only ever
+  takes the silent branch is not a rule.
+
+- [ ] **P19-06** **Merge the twelve upstream commits, because a fork that stops taking fixes is a
+  snapshot.** Split from `P19-05`. Five are real fixes against code this fork still runs.
+  `Verify:` the merge lands, the suite holds at its standing failures, and the ledger's
+  behind-by-N drops to zero. `Depends:` `P19-05`. — owner 2026-09-11 — agent:`P19`
+
+- [x] **P19-07** **The README is the front door and it does not mention any of this.** Owner
+  2026-09-11: *"incorporate it into the readme (which needs updated btw) - could be just a new .md
+  linked document to view, navigable via the readme."* A ledger nobody can find proves nothing.
+  The README is largely upstream's and describes Odysseus's feature set; a reader arriving at this
+  repo has no way to learn what the fork changed, what it measured, or where the evidence lives.
+  `Law 15` — the mechanism exists and the seam where a person meets it does not. `Verify:` a
+  reader landing on the README learns within one screen that this is a fork, what it adds, and
+  follows one link to the ledger. `Depends:` `P19-01`. — owner 2026-09-11 — agent:`P19` — **done 2026-09-11.**
+  The README links the ledger from the nav and from the top of *What's inside*. **It had already
+  rotted twice**: the badge read `6,301 passing` against a suite of 8,642, and the status section
+  said `296 tracked, 77 done` against a tracker saying 376 / 170. A stale number on the front
+  page of a repository whose whole pitch is *our numbers are checkable* is the worst possible
+  place for one, so both are now **pinned by the checker** rather than trusted to a future
+  editor: change the suite or the tracker without changing the README and CI fails.
+
