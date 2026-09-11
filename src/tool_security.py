@@ -42,6 +42,7 @@ BUILTIN_EMAIL_TOOLS = frozenset({
 # functionality).
 NON_ADMIN_BLOCKED_TOOLS = BUILTIN_EMAIL_TOOLS | {
     "bash",
+    "host_shell",  # `P17-11`: runs on the operator's own machine
     "python",
     "manage_bg_jobs",
     "read_file",

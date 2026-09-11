@@ -1543,7 +1543,12 @@ def setup_chat_routes(
         # (`use_web=true`) or agent web toggle (`allow_web_search=true`) must
         # explicitly enable it.
         if allow_bash is not None and str(allow_bash).lower() != "true":
-            disabled_tools.add("bash")
+            # `P17-11`. One switch, two places. The chat's "enable shell" toggle
+            # governs the container shell and the host shell together, because a
+            # second control for "may the agent run commands" is a second thing
+            # to forget to turn off (`Law 14`). The host one is the more
+            # consequential of the two, so it must never be the one still on.
+            disabled_tools.update({"bash", "host_shell"})
         _explicit_web_intent = _explicit_web_intent or bool(_tool_intent and _tool_intent.category == "web")
         if is_web_search_explicitly_denied(allow_web_search) or not _search_enabled:
             disabled_tools.update(WEB_TOOL_NAMES)
@@ -1552,7 +1557,7 @@ def setup_chat_routes(
             # tools or shell fallbacks. It can only use web_search/web_fetch
             # when the request's explicit web setting enabled them.
             disabled_tools.update({
-                "bash", "python",
+                "bash", "host_shell", "python",
                 "search_chats", "manage_skills", "manage_memory",
                 "read_file", "write_file", "edit_file",
                 "create_document", "edit_document", "update_document",

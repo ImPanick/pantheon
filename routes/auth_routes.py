@@ -768,6 +768,31 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         verdict["configured"] = True
         return verdict
 
+    @router.get("/networks/guard")
+    async def host_guard_rules(request: Request):
+        """Admin only: the agent's permanent list, read-only.
+
+        `P17-11`. A boundary nobody can read is a boundary nobody can check, and
+        showing it beside the editable list is the clearest way to say that only
+        one of the two can be edited. Fetched from the agent when one is
+        configured, so what is displayed is what that agent will actually apply —
+        falling back to this build's copy when it is not, rather than showing
+        nothing and letting the page imply there is no boundary.
+        """
+        user = _get_current_user(request)
+        if not user or not auth_manager.is_admin(user):
+            raise HTTPException(403, "Admin only")
+        from src import netagent_client
+        if netagent_client.configured():
+            answer = await netagent_client.call("guard")
+            if isinstance(answer.get("rules"), list):
+                answer["source"] = "the configured agent"
+                return answer
+        from netagent import guard
+        rules = guard.rules()
+        return {"rules": rules, "count": len(rules),
+                "source": "this build (no agent configured)"}
+
     @router.get("/networks/devices")
     async def network_devices(request: Request):
         """Admin only: the device inventory, refreshed from the agent if it is up.
@@ -891,6 +916,14 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
                         "netagent_url must be a plain http(s) origin such as "
                         "http://127.0.0.1:7010 — no path, no query string, and "
                         "no credentials in the URL.")
+            if key in ("host_exec_denylist", "host_exec_allowlist"):
+                # `P17-09`'s lesson a third time: a list stored and then silently
+                # ignored is worse than a refusal, because the operator believes
+                # they set a rule and the rule is not there.
+                from src.host_exec_policy import validate as _validate_host_lists
+                _problems = _validate_host_lists(val, key=key)
+                if _problems:
+                    raise HTTPException(400, " ".join(_problems))
             if key == "networks":
                 # `P17-09`. `src/networks.py` is enforcing — it is consulted
                 # inside `check_outbound_url` and `outbound_fetch` before DNS —

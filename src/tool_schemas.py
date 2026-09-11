@@ -455,6 +455,38 @@ FUNCTION_TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "host_shell",
+            "description": (
+                "Run a shell command on the HOST machine — the real computer — "
+                "outside the Docker container, through the network agent installed "
+                "there. Use this when a task must touch the actual machine: its "
+                "filesystem, its services, its network stack. `bash` cannot reach "
+                "any of that, because it runs inside the container. The host agent "
+                "refuses a permanent list of destructive commands and that list "
+                "cannot be changed from here."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "command": {"type": "string",
+                                "description": "The command to run on the host"},
+                    "elevated": {"type": "boolean",
+                                 "description": "Request elevation (UAC / sudo). Only "
+                                                "works for commands the operator "
+                                                "listed when starting the agent, and "
+                                                "a person still has to consent."},
+                    "cwd": {"type": "string",
+                            "description": "Working directory on the host"},
+                    "timeout": {"type": "integer",
+                                "description": "Seconds before the command is killed"}
+                },
+                "required": ["command"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "manage_rag",
             "description": (
                 "Manage the RAG document index: list indexed files, add or remove a "
@@ -1624,7 +1656,7 @@ def function_call_to_tool_block(name: str, arguments: str) -> Optional[ToolBlock
                         # on the way back out, and that pairing is easy to break
                         # by accident. Named here so it reads as a decision
                         # rather than a default nobody checked.
-                        "manage_rag"):
+                        "manage_rag", "host_shell"):
         content = json.dumps(args)
     elif tool_type == "ask_teacher":
         content = args.get("model", "auto") + "\n" + args.get("problem", "")

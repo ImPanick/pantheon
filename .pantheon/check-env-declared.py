@@ -60,6 +60,8 @@ NOT_OURS = {
     "LOCALAPPDATA": "Windows local application data",
     "ComSpec": "the Windows command interpreter",
     "TERM": "the terminal type, for colour detection",
+    "USERNAME": "Windows' own name for the logged-in user",
+    "USER": "the POSIX name for the logged-in user",
     "COLORTERM": "terminal colour capability",
     "LOG_LEVEL": "the standard-library logging convention, read by scripts/_lib/cli.py",
     # Third-party libraries reading their own settings.

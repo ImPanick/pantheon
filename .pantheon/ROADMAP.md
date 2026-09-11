@@ -77,8 +77,9 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P14 | Measurement | 8 | 3 | 0 | **5** |
 | P15 | Outbound politeness | 12 | 2 | **1** | **9** |
 | P16 | Self-hosted by default | 20 | 1 | 0 | **19** |
-| P17 | The network the agent is hosted on | 10 | 3 | 0 | **7** |
-| **Total** | | **361** | **183** | **9** | **169** |
+| P17 | The network the agent is hosted on | 11 | 3 | 0 | **8** |
+| P18 | One button, and it links | 7 | 7 | 0 | 0 |
+| **Total** | | **369** | **190** | **9** | **170** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -240,6 +241,33 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### P17-11 — the container reaches the host, and P18 opens on a correction
+`58d3453..HEAD`. **369 tracked, 170 done. 84 tests, 17 mutations, 0 regressions. Suite 8,559 -> 8,642.**
+The owner asked for agents to reach *beyond* Docker's sandbox with a non-bypassable list of
+*"super **nuclear level** dangerous commands"*. The premise was right and the containment is not a
+bug: there are four ways past a container and three of them hand over the host, then try to claw
+capability back with rules inside the thing being constrained. `P17-01` had already built the fourth
+and shipped it with no writer; this adds the one writer. **Pantheon gains the ability to ask, not
+the ability to widen what may be asked** — the 52-rule guard is compiled into the host process, on
+the other side of an HTTP call, in a process Pantheon did not start and has no route to edit. Three
+checks run and only the third is a boundary; the operator's editable lists narrow what is *sent*,
+and the panel says so, because an operator who thinks they are the boundary under-protects the real
+one. **Four of the 52 rules were dead on arrival**: `\b` asserts a word boundary and `-` and `/` are
+not word characters, so `\bformat\b` never matched `format C: /fs:ntfs`. Four rules that read
+correctly fired on nothing, which is worse than four absent rules because they were counted. The fix
+was structural — every rule now carries an `example` and `test_every_rule_can_actually_fire` proves
+all 52 trip. `D-2026-09-11-01` records the three design forks, the owner's three answers (all the
+most permissive offered), and one **knowingly accepted** loop: `trust_rung` is agent-writable and
+host execution now inherits it, which widens approval and never capability — written down rather
+than silently closed, because closing it would answer a question the owner already answered.
+**`P18` opened on a correction and that is the useful part**: Google email OAuth is not missing, it
+is built, tested and live across `email_routes.py`, `email_helpers.py`, four `database.py` columns
+and ten test files. What is missing is that almost nobody can reach it — one of eight providers
+carries the `oauth: 'google'` marker, so choosing *Gmail* never shows the button — and that it
+half-works once they do, because `mcp_servers/email_server.py` has no OAuth awareness at all. An
+epic reading *"build OAuth account linking"* would have rebuilt a working thing, which is the
+`P17-02` mistake one phase later.
 
 ### P17-04 — MAC is identity, IP is an attribute
 `ad8fcf2..HEAD`. **361 tracked, 169 done. 28 tests, 18 mutations, 0 regressions. Suite 8,531 -> 8,559.**
@@ -4824,6 +4852,175 @@ radius of a 2.9GB container that runs agent-authored code.*
   that column. `Verify:` a ranked list of capability gaps with a count behind each one, drawn from
   the owner's deployment, and every claim traceable to rows rather than to a hunch. `Depends:`
   `P17-07`. — `D-2026-09-10-03`
+
+
+
+- [x] **P17-11** **Reaching past the container, and the list that never lifts.** Opened 2026-09-11
+  from the owner: *"the agent has 'Shell' mcp and permissions but it doesn't reach outside of the
+  docker host. I want to be able to have something for agents inside of Pantheon to reach out and
+  touch **beyond** docker's sandbox... with explicit permission gating (bypassable with the
+  permissions bypass setting) - and there must be a definitive non-bypassable blacklist of things
+  like 'formatting the users C: drive' etc.. Super **nuclear level** dangerous commands."* The
+  premise is correct and the reason is not a bug: a container cannot reach its host, and the four
+  ways to make it — mounting the Docker socket, `--privileged`, host SSH credentials, or a host
+  process — are three bad answers and one good one. `docker/host-docker.yml` exists as the opt-in
+  overlay and `FORBIDDEN.md` Part 2 pins its flag off, so the first three are already ruled out in
+  writing. `P17-01` already built the fourth and shipped it with **no writer at all** — `netagent/`
+  observes and answers, and every route but one is a `GET`. `Verify:` an agent inside the container
+  runs a command on the host and gets its output; the same agent cannot run `format C:`, cannot
+  make itself able to, and cannot find out from the answer whether the operator's list or the
+  guard stopped it. `Depends:` `P17-01`. — owner 2026-09-11 — agent:`P17` — **done 2026-09-11.**
+  `D-2026-09-11-01` records the three forks and the owner's three answers, all three the most
+  permissive of what was offered. **The design is one sentence: Pantheon gains the ability to ask,
+  not the ability to widen what may be asked.**
+  **Three checks, and only the third is a boundary.** `src/host_exec_policy.py` is the operator's
+  denylist and allowlist, editable in Settings, substrings rather than regexes because an operator
+  typing `rm -rf /` should not have to think about `-`; it narrows what Pantheon will *send*. The
+  trust rung is the second, unchanged and inherited — the owner's answer to *"how does host
+  execution get approved"* was *"inherits the existing trust rung"*, so `host_shell` is classified
+  `EXECUTE_CODE` + `DESTRUCTIVE` and rides the approval machinery `bash` already rides, with the
+  same bypass. `netagent/guard.py` is the third and the only one that holds: **52 rules compiled
+  into the host process**, which Pantheon cannot read past, edit, or switch off, because it lives
+  on the other side of an HTTP boundary in a process Pantheon did not start. A settings-file
+  denylist would have been none of those things.
+  **The guard is 5 opaque rules and 47 nuclear ones, and the first five are the ones worth
+  arguing.** A rule list that inspects a command string is only as good as its ability to *see* the
+  command, so `base64 -d | sh`, `powershell -EncodedCommand`, `curl | sh`, `eval` of a variable and
+  `xxd -r` are refused **as a category** — not because they are dangerous but because they make the
+  other 47 unenforceable. The 47 cover what the owner named and its neighbours: disk formatting and
+  raw writes to a block device, partition table edits, `rm -rf /`, `Remove-Item` at a drive root,
+  bootloader and EFI writes, firmware and BIOS flashing, registry hive deletion, `cipher /w`,
+  `diskpart clean`, BitLocker key destruction, shadow-copy deletion, `fork()` bombs, and the two
+  self-harm cases — deleting the agent's own token and stopping the agent — because an agent that
+  can uninstall its own guard has no guard.
+  **Every rule carries a real example, and that is not documentation.** Four of the 52 were
+  **dead on arrival**: `\b` asserts a word boundary, and `-` and `/` are not word characters, so
+  `\bformat\b` after a space never matched `format C: /fs:ntfs`. Four rules that read correctly
+  fired on nothing. The fix was structural rather than a patch — every rule is now a 4-tuple
+  carrying an `example` string, and `test_every_rule_can_actually_fire` walks all 52 and asserts
+  each one's example trips its own rule. A rule that cannot fire is worse than an absent one,
+  because it is counted.
+  **The refusal says the rule's name and never which list caught it.** An agent told *"your
+  operator's denylist blocked that"* has learned something it can work around; told *"blocked:
+  destroys a partition table"* it has learned only that it cannot. The `why` and the rule name go
+  to the person in the receipt.
+  **Elevation is the operating system's decision, not this file's.** The owner chose *"can elevate
+  for specific named commands"*, so `ExecPolicy.elevated_commands` names them, and an elevated run
+  is handed to `Start-Process -Verb RunAs` or `sudo` — which means a UAC dialog or a sudo password,
+  a consent step **outside** the agent process. That is the only honest way an unelevated process
+  elevates, and the cost is stated in the module rather than discovered later: with nobody at the
+  keyboard it times out, and it reports *timed out waiting for consent* rather than *the command
+  failed*, because those are different facts. The host command's environment is the agent's and not
+  Pantheon's — there is no reason a command on the host should see Pantheon's API keys.
+  **One switch, not two.** The chat's existing *enable shell* toggle already sends `allow_bash`;
+  it now governs `host_shell` as well, and `routes/chat_routes.py` disables both together.
+  `Law 14`: a second control for *"may the agent run commands"* is a second thing to forget to
+  turn off. `netagent/install.py` is the other half of the owner's installer ask — `--dry-run`,
+  `--start`, a settings merge that refuses an unreadable file, and a `host.docker.internal` reach
+  test, so the operator sees the container reach the agent before trusting that it does.
+  **`leading_binary` ate Windows backslashes** — `shlex.split(posix=True)` treats `\` as an escape,
+  so `C:\Windows\System32\cmd.exe` arrived as `C:WindowsSystem32cmd.exe` and matched no named
+  command. Separators are normalised before the split. 84 tests, 17 mutations, all caught.
+  `CACHE_NAME` `v410` → `v411`.
+
+# P18 · One button, and it links
+
+*Opened 2026-09-11 from the owner: **"A single button, account link. It pulls whats needed
+etc. Gets things fired up and ready to go as easy as fucking possible."*** Today linking a
+mailbox means typing an IMAP host, an IMAP port, a username, a password, a STARTTLS flag, an
+SMTP host, an SMTP port, a security mode and two more credentials — **fifteen fields**
+(`static/js/settings.js:3086-3124`).
+
+**THE PHASE OPENS ON A CORRECTION, AND IT IS THE USEFUL PART.** Google email OAuth is not
+missing. It is **built, tested and live**: `routes/email_routes.py:6220` authorises,
+`:6244` handles the callback, `routes/email_helpers.py:103-137` refreshes,
+`core/database.py:424-427` already carries `oauth_provider`, `oauth_access_token`,
+`oauth_refresh_token` and `oauth_token_expiry`, and ten test files cover it. What is
+missing is that **almost nobody can reach it**, and what exists **half-works once they do**.
+Writing a "build OAuth account linking" epic here would have rebuilt a working thing —
+which is the `P17-02` mistake, and it is why these rows are the ones they are.
+
+- [ ] **P18-01** **Picking "Gmail" does not offer the button; picking "Google Workspace" does.**
+  `static/js/settings.js:3072-3081` lists eight providers and exactly one carries the
+  `oauth: 'google'` marker — `google_workspace` (`:3074`). That marker is the *only* thing
+  that reveals the Connect button (`:3131-3133`). So a person with a `@gmail.com` address
+  picks the entry named after their provider, is shown fifteen fields and a password box,
+  and never learns the button exists. **The identity provider is the same Google either
+  way.** `Verify:` selecting Gmail offers the same one-click link as Workspace, and a test
+  asserts no provider marked with Google hosts is missing the marker — because the next
+  preset added will make this mistake again otherwise. `Depends:` nothing. — agent:`P18`
+
+- [ ] **P18-02** **An account linked with Google works in the web app and fails in the agent's
+  email tools.** `mcp_servers/email_server.py` has **zero** occurrences of `oauth`,
+  `xoauth`, `bearer` or `access_token` in 119KB. `_load_config` (`:305-350`) reads the
+  account row and copies host, port, user, password and STARTTLS — and never touches the
+  four `oauth_*` columns sitting beside them. So `conn.login(cfg["imap_user"],
+  cfg["imap_password"])` (`:406`) is called with an empty password, and every one of the
+  sixteen built-in email tools fails on exactly the accounts the product most wants people
+  to create. **This is the `P17` shape again** — a capability that works on one path and is
+  absent on the other, invisible until somebody uses the wrong one. `Verify:` the agent can
+  read and send from a Google-linked account, and a test drives the MCP server's own config
+  loader rather than the route's. `Depends:` nothing. — agent:`P18`
+
+- [ ] **P18-03** **XOAUTH2 is written four times and the provider list three.** The SASL
+  string is built at `routes/email_helpers.py:54-66`; the IMAP authenticate at `:1251`; the
+  SMTP auth at `:177`; and both again in the test-connection endpoint at
+  `routes/email_routes.py:6112` and `:6175`. The provider presets exist at
+  `settings.js:3072`, `settings.js:4596` and `admin.js:1895` — three lists, two of which
+  will go stale. `Law 13`, and `P18-02` is what it already cost: a fifth copy was never
+  written for the MCP server, so that path simply has none. `Verify:` one XOAUTH2 builder
+  and one provider table, both imported rather than repeated, with the count asserted.
+  `Depends:` `P18-02` — fix the gap before deduplicating, or the dedupe hides it.
+  — agent:`P18`
+
+- [ ] **P18-04** **`app_public_url` is a setting an operator can type and no OAuth path
+  reads it.** `src/settings.py:232` ships the key and `settings.js:2519` renders the field.
+  The email redirect resolves from `GOOGLE_OAUTH_REDIRECT_URI` or else derives from the
+  request's `Host` header (`routes/email_routes.py:6227-6229`); the MCP redirect reads
+  `OAUTH_REDIRECT_BASE_URL` then `APP_PUBLIC_URL` from **`os.environ` only**
+  (`src/mcp_oauth.py:31-35`). So an operator behind a reverse proxy sets the field, gets a
+  redirect built from a `Host` header they do not control, and the flow fails with a
+  mismatch error naming a URL they never typed. **The same class as `B63` and `P16-19`:
+  accepted, stored, and silently not used.** `Verify:` a value in the setting is what the
+  redirect is built from, and setting it to something Google will reject is refused at the
+  point of typing rather than at the point of linking. `Depends:` nothing. — agent:`P18`
+
+- [ ] **P18-05** **The second provider, and the abstraction that makes a third cheap.**
+  Microsoft is explicitly unsupported today and says so in two places
+  (`settings.js:3136-3140`, `routes/email_helpers.py:204`). The owner asked for *"a few
+  other account services that are common use"*. **The row is the abstraction, not the
+  list**: `INTEGRATION_PRESETS` (`src/integrations.py:29`) is the obvious home and carries
+  `auth_type` of only `header` or `none` — no client id, no scope, no endpoints — so adding
+  Microsoft to what exists means a second hand-rolled flow beside Google's, and a third
+  means a third. `src/mcp_oauth.py` is the counter-example worth reading first: it already
+  does discovery, dynamic registration and **PKCE**, which Google's email flow does not.
+  `Verify:` a provider is a record — endpoints, scopes, whether it needs a client secret —
+  and adding one is data rather than a flow; Microsoft lands as the proof.
+  `Depends:` `P18-03`. — agent:`P18`
+
+- [ ] **P18-06** **Google's flow has no PKCE, and the MCP flow beside it does.** Google email
+  uses a confidential client with `client_secret` (`routes/email_routes.py:6220-6242`) and
+  no `code_verifier`; `src/mcp_oauth.py:178` and `src/chatgpt_subscription.py:197` both use
+  PKCE. For a self-hosted app the confidential-client model is the awkward one — the secret
+  ships in the operator's own config and every install shares whatever they registered — so
+  this is worth deciding rather than inheriting. **Not filed as a vulnerability**: with a
+  redirect Google will only send to, the authorization-code interception PKCE prevents is
+  not reachable here. Filed because `P18-05` will copy whichever shape it finds, and it
+  should copy the deliberate one. `Verify:` the answer is in `DECISIONS.md`, and whichever
+  way it goes, the two flows stop differing by accident. `Depends:` `P18-05`.
+  — **needs the owner** — agent:`P18`
+
+- [ ] **P18-07** **One button means the fields are gone, not hidden.** `P18-01` makes the
+  button appear; this makes it the whole interaction. Today the OAuth path still renders
+  the host, port and STARTTLS rows and merely hides the password (`settings.js:3131-3133`),
+  and the hosts are re-pinned server-side as constants anyway
+  (`routes/email_routes.py:74-75`) — so the form asks for four values it already knows.
+  **`Law 15`.** The measure the owner set is *"as easy as fucking possible"*, and the
+  honest test of it is a count: fifteen fields today, and the target is one click plus the
+  Google consent screen. `Verify:` linking a Gmail account requires typing nothing, and a
+  test counts the visible inputs on the OAuth path. `Depends:` `P18-01`, `P18-02`.
+  — agent:`P18`
+
 
 ---
 

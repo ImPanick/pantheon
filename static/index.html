@@ -2925,6 +2925,46 @@
           </div>
 
           <div class="admin-card" style="margin-top:12px;">
+            <h2>Host commands</h2>
+            <div class="admin-toggle-sub" style="margin-bottom:10px;line-height:1.5;">
+              <b>Two lists, and only one of them is a boundary.</b>
+              <br><br>
+              The agent's own list is compiled into it, on your machine, and nothing here
+              can widen it &mdash; not this page, not a setting, not a flag. That is what
+              refuses <code>format C:</code> and the rest.
+              <br><br>
+              The lists below are <b>yours</b>, and they are checked <i>here</i>, before a
+              command is sent. They narrow what Pantheon will ask for. They are a
+              preference, not a wall &mdash; a Pantheon that has stopped behaving skips
+              them, which is exactly why the agent keeps its own.
+              <br><br>
+              One pattern per line, matched as plain text against the command. Not regular
+              expressions: a typo in a regex widens a rule silently, and <code>.*</code> is
+              a very easy typo.
+            </div>
+            <div class="settings-col">
+              <label class="settings-label" for="host-exec-allowlist" style="margin-bottom:4px;">
+                Allowlist &mdash; if any lines are present, <b>only</b> these programs may run
+              </label>
+              <textarea id="host-exec-allowlist" class="settings-select" rows="4"
+                        spellcheck="false" placeholder="docker&#10;git&#10;ipconfig"></textarea>
+              <label class="settings-label" for="host-exec-denylist" style="margin:10px 0 4px;">
+                Denylist &mdash; refuse any command containing these, allowlist or not
+              </label>
+              <textarea id="host-exec-denylist" class="settings-select" rows="4"
+                        spellcheck="false" placeholder="git push&#10;rm -rf"></textarea>
+            </div>
+            <div class="settings-row" style="margin-top:10px;gap:8px;">
+              <button type="button" id="host-exec-save" class="memory-toolbar-btn">Save</button>
+              <button type="button" id="host-exec-show-guard" class="memory-toolbar-btn">
+                Show the agent's permanent list
+              </button>
+            </div>
+            <div id="host-exec-result" class="networks-probe-result" hidden></div>
+            <div id="host-exec-guard" class="host-guard-list" hidden></div>
+          </div>
+
+          <div class="admin-card" style="margin-top:12px;">
             <h2>Devices</h2>
             <div class="admin-toggle-sub" style="margin-bottom:10px;line-height:1.5;">
               What the agent has seen, remembered. A device is identified by its MAC, so a

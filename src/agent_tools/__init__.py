@@ -20,6 +20,7 @@ from src.tool_utils import _truncate, get_mcp_manager, set_mcp_manager
 
 logger = logging.getLogger(__name__)
 
+from .host_tools import HostShellTool
 from .subprocess_tools import BashTool, PythonTool
 from .web_tools import WebSearchTool, WebFetchTool
 from .filesystem_tools import ReadFileTool, WriteFileTool, EditFileTool, ApplyPatchTool, LsTool, GlobTool, GrepTool, GetWorkspaceTool
@@ -37,6 +38,7 @@ from .admin_tools import (
 
 TOOL_HANDLERS = {
     "bash": BashTool().execute,
+    "host_shell": HostShellTool().execute,
     "python": PythonTool().execute,
     "web_search": WebSearchTool().execute,
     "web_fetch": WebFetchTool().execute,
@@ -101,6 +103,11 @@ TOOL_TAGS = {"bash", "python", "web_search", "web_fetch", "read_file", "write_fi
              # `strip_tool_blocks` left the raw fence visible in the reply while
              # the agent said it had stored the data.
              "manage_rag",
+             # `P17-11`. A command on the HOST, through the agent the operator
+             # started there. Governed by the same "enable shell" toggle as
+             # `bash` — one switch for "may the agent run commands", because a
+             # second one is a second thing to forget to turn off (`Law 14`).
+             "host_shell",
              "resolve_contact", "manage_contact",
              # Email tool names come from BUILTIN_EMAIL_TOOLS (unioned below)
              # so the fence regex, dispatch, and non-admin blocklist all cover

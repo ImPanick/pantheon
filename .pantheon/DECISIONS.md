@@ -1344,3 +1344,109 @@ because ticking it on the half that could be done here is exactly what `Law 9` f
 
 **What would reopen this.** A capability that is neither clearly in-process nor clearly its own
 process — at which point the table above is the argument, not the taste.
+
+---
+
+## D-2026-09-11-01 — the container reaches the host, and the list that stops it lives where Pantheon cannot edit it
+
+**What the owner asked**, 2026-09-11: *"the intent was the agent has 'Shell' mcp and permissions but
+it doesn't reach outside of the docker host. I want to be able to have something for agents inside of
+Pantheon to reach out and touch **beyond** docker's sandbox... with explicit permission gating
+(bypassable with the permissions bypass setting) - and there must be a definitive non-bypassable
+blacklist of things like 'formatting the users C: drive' etc.. Super **nuclear level** dangerous
+commands."*
+
+Two halves, and they pull in opposite directions on purpose. That tension is the decision.
+
+### The premise is correct and the reason is not a defect
+
+`bash` runs in the container. It cannot reach the host, and the containment is the feature, not an
+oversight to route around. There are exactly four ways past it:
+
+| Way | What it costs |
+| --- | --- |
+| Mount the Docker socket | Root on the host, permanently, for anything that can talk to the socket |
+| `--privileged` | The same, with fewer steps |
+| Host SSH credentials in the container | A credential that survives the container and works from anywhere |
+| A small process on the host that answers a narrow protocol | Only what that process chooses to do |
+
+The first three hand over the host and then try to claw capability back with rules **inside** the
+thing being constrained. The fourth puts the rules on the far side of a boundary the constrained
+party cannot cross. `FORBIDDEN.md` Part 2 already pins the Host-Docker flag off, and
+`docker/host-docker.yml` stays the opt-in overlay it was. `P17-01` already built the fourth for
+observation, deliberately with **no writer**: every route but one is a `GET`. `P17-11` adds the one
+writer.
+
+### The three forks, and the owner picked the most permissive of each
+
+They were put as a question with recommendations, and all three recommendations were declined in the
+permissive direction. Recorded because the alternative — quietly implementing what was recommended —
+is how a tracker starts lying.
+
+| Fork | Offered | **Chosen** |
+| --- | --- | --- |
+| What may the host agent run? | Allowlist / allowlist+denylist / **denylist only** | **Denylist only** |
+| What privilege does it run with? | Never elevates / **elevates for named commands** / always | **Can elevate for specific named commands** |
+| How is host execution approved? | Its own always-ask gate / its own rung / **inherits the existing rung** | **Inherits the existing trust rung** |
+
+*Denylist only* means the default answer is **yes**, and anything not named runs. That is the
+owner's machine and the owner's call, and it is exactly why the denylist has to be somewhere
+Pantheon cannot reach: when the default is yes, the list is the whole boundary.
+
+### So the guard is compiled into the host process, not stored in settings
+
+`netagent/guard.py` holds **52 rules**. Pantheon cannot read past them, edit them, or switch them
+off — not because a flag forbids it but because they are in a different process on the other side of
+an HTTP call, started by the operator, with no route that writes them. `FORBIDDEN.md`'s standing
+rule — *"a bypass exists to be left on"* — is why there is no bypass at all rather than an
+admin-gated one.
+
+Three checks run, and **only the third is a boundary**:
+
+1. `src/host_exec_policy.py` — the operator's denylist and allowlist, in settings, editable in the
+   Networks panel, substrings rather than regexes. It narrows what Pantheon will *send*. The panel
+   says in as many words that it is not the boundary, because an operator who believes it is will
+   under-protect the real one.
+2. The trust rung, inherited, per the owner's third answer. `host_shell` is classified
+   `EXECUTE_CODE` + `DESTRUCTIVE`, so the approval card names both, and the permissions bypass the
+   owner asked for is the one that already exists.
+3. `netagent/guard.py` — the list that never lifts.
+
+**Five of the 52 rules exist to keep the other 47 enforceable.** `base64 -d | sh`,
+`powershell -EncodedCommand`, `curl | sh`, `eval` on a variable, `xxd -r`: none is dangerous by
+itself, and each makes string inspection meaningless. A denylist that can be handed an opaque
+payload is a denylist with one rule.
+
+**The refusal never says which list caught it.** The rule's name and reason go to the person; the
+agent gets *blocked, and why the class is blocked*. Telling an agent that the operator's editable
+list stopped it teaches it where the soft edge is.
+
+### Elevation is delegated to the OS, and that is not a hedge
+
+The agent runs as the person who started it and never elevates itself. `elevated: true` on a named
+command routes to `Start-Process -Verb RunAs` or `sudo` — a UAC dialog, a sudo password, or a
+NOPASSWD rule the operator wrote. An unelevated process has no other honest way to elevate, and the
+side effect is that the OS keeps a veto that a string denylist does not have. The cost is stated
+where it will be met: a background agent raising UAC with nobody at the keyboard times out, and the
+result says *timed out waiting for consent*, not *the command failed*.
+
+### Knowingly accepted: `trust_rung` is agent-writable and host execution now inherits it
+
+`trust_rung` is deliberately **not** in `_SELF_RESTRAINT_KEYS`, so the agent can lower its own
+approval requirement through `manage_settings` — and as of this decision that rung also governs
+`host_shell`. The loop is real: an agent that can write its own rung can reduce the approval it
+needs to run a command on the host.
+
+It is accepted rather than closed, and the reasons are stated so a future reader can reverse it
+knowing what they are reversing:
+
+- The guard is unaffected. The rung governs *whether a person is asked*, never *what may run*, so
+  the loop widens approval and not capability.
+- The owner's answer to fork three was *inherit*. Adding `trust_rung` to `_SELF_RESTRAINT_KEYS`
+  because of this row would be answering a question the owner already answered.
+- `allow_bash` is still upstream of all of it and is per-turn and off by default.
+
+**What would reopen this.** Any path by which Pantheon can change what the host agent will run —
+a settings-sourced guard, a route that writes rules, an agent-reachable restart with different
+arguments. At that point the boundary is gone and the denylist-only choice has to be re-put to the
+owner, because it was made on the assumption the list holds.

@@ -401,6 +401,82 @@ async function loadDevices() {
   for (const device of state.devices) host.appendChild(deviceRow(device));
 }
 
+// ── host commands ───────────────────────────────────────────────────────────
+//
+// Two lists rendered side by side, and the page says which one is the boundary.
+// The agent's list is fetched read-only from `/guard` through Pantheon, because
+// a boundary nobody can read is a boundary nobody can check — and showing it
+// beside the editable one is the clearest way to say that only one of them can
+// be edited.
+
+const _lines = (value) => String(value || '').split('\n').map((s) => s.trim()).filter(Boolean);
+
+async function saveHostLists() {
+  const out = $('host-exec-result');
+  const body = {
+    host_exec_allowlist: _lines($('host-exec-allowlist')?.value),
+    host_exec_denylist: _lines($('host-exec-denylist')?.value),
+  };
+  const res = await fetch('/api/auth/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let detail = `Save failed (${res.status})`;
+    try {
+      const err = await res.json();
+      if (err && err.detail) detail = String(err.detail);
+    } catch (_) { /* a non-JSON error body is still an error; keep the status */ }
+    if (out) { out.textContent = detail; out.classList.remove('networks-probe-hit'); out.hidden = false; }
+    return false;
+  }
+  invalidateSettings();
+  if (out) {
+    const n = body.host_exec_allowlist.length;
+    out.textContent = n
+      ? `Saved. Only these ${n} program${n === 1 ? '' : 's'} may run on the host.`
+      : 'Saved. No allowlist, so the denylist and the agent\'s own list decide.';
+    out.classList.add('networks-probe-hit');
+    out.hidden = false;
+  }
+  return true;
+}
+
+async function showGuard() {
+  const host = $('host-exec-guard');
+  if (!host) return;
+  if (!host.hidden) { host.hidden = true; return; }
+  host.textContent = '';
+  try {
+    const res = await fetch('/api/auth/networks/guard');
+    if (!res.ok) throw new Error(`unavailable (${res.status})`);
+    const data = await res.json();
+    const intro = document.createElement('div');
+    intro.className = 'admin-toggle-sub';
+    intro.style.cssText = 'margin-bottom:8px;line-height:1.5;';
+    intro.textContent = `${data.count} rules, compiled into the agent on your machine. `
+      + 'Read-only from here — there is no setting, flag or request that widens them.';
+    host.appendChild(intro);
+    for (const rule of data.rules || []) {
+      const row = document.createElement('div');
+      row.className = 'host-guard-row';
+      const name = document.createElement('span');
+      name.className = 'host-guard-name';
+      name.textContent = rule.name;
+      const why = document.createElement('span');
+      why.className = 'host-guard-why';
+      why.textContent = rule.why;
+      row.append(name, why);
+      host.appendChild(row);
+    }
+    host.hidden = false;
+  } catch (e) {
+    host.textContent = String(e.message || e);
+    host.hidden = false;
+  }
+}
+
 export async function open() {
   if (!_loaded) {
     try {
@@ -424,11 +500,15 @@ export async function open() {
     $('netagent-save')?.addEventListener('click', () => { saveAgent(); });
     $('netagent-check')?.addEventListener('click', () => { checkAgent(); });
     $('devices-refresh')?.addEventListener('click', () => { loadDevices(); });
+    $('host-exec-save')?.addEventListener('click', () => { saveHostLists(); });
+    $('host-exec-show-guard')?.addEventListener('click', () => { showGuard(); });
 
     try {
       const res = await fetch('/api/auth/settings');
       const settings = res.ok ? await res.json() : {};
       if ($('netagent-url')) $('netagent-url').value = settings.netagent_url || '';
+      if ($('host-exec-allowlist')) $('host-exec-allowlist').value = (settings.host_exec_allowlist || []).join('\n');
+      if ($('host-exec-denylist')) $('host-exec-denylist').value = (settings.host_exec_denylist || []).join('\n');
     } catch (_) { /* an unreadable settings response leaves the field empty, which is honest */ }
   }
   render();

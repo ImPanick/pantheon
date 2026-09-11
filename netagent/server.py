@@ -33,6 +33,8 @@ from urllib.parse import parse_qs, urlsplit
 if __package__ in (None, ""):  # running the file directly on the host
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from netagent import execute as host_exec
+from netagent import guard
 from netagent import neighbours as neighbour_table
 from netagent import observe
 from netagent.allowlist import ENV_CIDRS, ENV_HOSTS, Allowlist
@@ -67,6 +69,10 @@ def _routes(allowlist: Allowlist) -> Dict[str, Callable[[], object]]:
         # may be *reported* from it is the allowlist's, so the rows are filtered
         # here rather than inside the reader — one gate, at the door.
         "/neighbours": lambda: _neighbours_for(allowlist),
+        # `P17-11`. The boundary, readable. An operator should be able to see
+        # what this agent will refuse without running something to find out, and
+        # a list nobody can read is a list nobody can check.
+        "/guard": lambda: {"rules": guard.rules(), "count": len(guard.rules())},
     }
 
 
@@ -106,6 +112,7 @@ class Handler(BaseHTTPRequestHandler):
     sys_version = ""          # do not advertise the Python version
     token_hash = ""           # set by `serve()`
     allowlist: Allowlist = Allowlist()
+    exec_policy: host_exec.ExecPolicy = host_exec.ExecPolicy()
 
     def log_message(self, fmt, *args):  # noqa: A003
         # The default writes to stderr with no level and no logger. Route it so
@@ -176,19 +183,58 @@ class Handler(BaseHTTPRequestHandler):
             logger.exception("route %s failed", path)
             self._send(500, {"error": f"{type(e).__name__}"})
 
+    def _body(self) -> Dict:
+        """The JSON body, bounded. An unbounded read on an authenticated-but-
+        cheap path is still a way to make a small process hold a large string."""
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return {}
+        if length <= 0 or length > 64 * 1024:
+            return {}
+        try:
+            return json.loads(self.rfile.read(length).decode("utf-8")) or {}
+        except (ValueError, UnicodeDecodeError):
+            return {}
+
     def do_POST(self) -> None:  # noqa: N802
-        # `P17-05`: changing firewall rules, router settings or DHCP is a
-        # different risk class from reading them, and bundling it into the first
-        # version would mean the thing that describes your network can also break
-        # it. There is no writer here, and this says so rather than 501-ing by
-        # accident.
-        self._send(405, {"error": "this agent is read-only; see P17-05"})
+        path = urlsplit(self.path).path.rstrip("/") or "/"
+        if not self._authorised():
+            self._send(401, {"error": "unauthorized"})
+            return
+        if path != "/exec":
+            # `P17-05` still holds for everything else: changing firewall rules,
+            # router settings or DHCP is a different risk class from reading
+            # them, and the thing that describes your network still cannot break
+            # it. `/exec` is the one writer, added by `D-2026-09-11-01` because
+            # the owner asked for it and set the ceiling.
+            self._send(405, {"error": "this agent has one writer, /exec; "
+                                      "everything else is read-only (P17-05)"})
+            return
+
+        body = self._body()
+        command = str(body.get("command") or "")
+        result = host_exec.run(
+            command,
+            policy=self.exec_policy,
+            elevated=bool(body.get("elevated")),
+            timeout=body.get("timeout"),
+            cwd=(str(body.get("cwd")) if body.get("cwd") else None),
+        )
+        if not result.get("allowed"):
+            # 403 for a refusal, so it reads the same way an allowlist refusal
+            # does and a caller has one shape to handle.
+            self._send(403, result)
+            return
+        self._send(200, result)
 
 
 def serve(*, bind: str = DEFAULT_BIND, port: int = DEFAULT_PORT,
           state_dir: Path | None = None, serve_forever: bool = True,
-          allowlist: Allowlist | None = None):
+          allowlist: Allowlist | None = None,
+          exec_policy: host_exec.ExecPolicy | None = None):
     allowlist = allowlist if allowlist is not None else Allowlist.from_env_and_args()
+    exec_policy = exec_policy if exec_policy is not None else host_exec.ExecPolicy()
     state = Path(state_dir) if state_dir else Path.home() / ".pantheon-netagent"
     token_hash, minted = load_or_create(state)
     if minted:
@@ -211,8 +257,19 @@ def serve(*, bind: str = DEFAULT_BIND, port: int = DEFAULT_PORT,
     else:
         logger.info("allowlist: %s", allowlist.describe())
 
+    if exec_policy.enabled:
+        logger.warning("host execution is ENABLED. Commands from Pantheon will run "
+                       "on this machine as %s.", os.environ.get("USERNAME")
+                       or os.environ.get("USER") or "this user")
+        if exec_policy.elevated_commands:
+            logger.warning("these may request elevation: %s",
+                           ", ".join(exec_policy.elevated_commands))
+    else:
+        logger.info("host execution is off (start with --allow-exec to enable it)")
+
     handler = type("BoundHandler", (Handler,),
-                   {"token_hash": token_hash, "allowlist": allowlist})
+                   {"token_hash": token_hash, "allowlist": allowlist,
+                    "exec_policy": exec_policy})
     httpd = ThreadingHTTPServer((bind, port), handler)
     logger.info("netagent listening on %s:%s", bind, port)
     if not serve_forever:
@@ -247,11 +304,26 @@ def main(argv=None) -> int:
                     help="a single name this agent may be asked about. Names are "
                          "never resolved to decide membership, so a name matches "
                          f"only by exact listing. Also read from ${ENV_HOSTS}.")
+    ap.add_argument("--allow-exec", action="store_true",
+                    default=os.environ.get("PANTHEON_NETAGENT_ALLOW_EXEC", "").lower()
+                    in ("1", "true", "yes"),
+                    help="run commands sent by Pantheon on this machine. OFF by "
+                         "default; turning it on is a deliberate act.")
+    ap.add_argument("--allow-elevated", action="append", default=[], metavar="CMD",
+                    help="a command that may request elevation, e.g. `net`. "
+                         "Repeatable, empty by default. Elevation is the platform's "
+                         "own (UAC / sudo), so a person still consents to it.")
+    ap.add_argument("--exec-cwd", default=os.environ.get("PANTHEON_NETAGENT_EXEC_CWD", ""),
+                    help="working directory for host commands (default: your home)")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     serve(bind=args.bind, port=args.port,
           state_dir=Path(args.state_dir) if args.state_dir else None,
-          allowlist=Allowlist.from_env_and_args(args.allow, args.allow_host))
+          allowlist=Allowlist.from_env_and_args(args.allow, args.allow_host),
+          exec_policy=host_exec.ExecPolicy(
+              enabled=args.allow_exec,
+              elevated_commands=args.allow_elevated,
+              cwd=args.exec_cwd or None))
     return 0
 
 

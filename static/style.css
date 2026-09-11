@@ -43665,3 +43665,24 @@ body.settings-sidebar-resize-active {
 .device-age { flex: 0 0 90px; text-align: right; opacity: 0.6; }
 .device-new { opacity: 1; font-weight: 600; }
 .device-kind { flex: 0 0 auto; opacity: 0.5; text-transform: uppercase; font-size: 10px; }
+
+/* ── `P17-11`: the agent's permanent list, shown read-only ─────────────────
+   Rendered flat rather than as a table: it is a list of reasons, and a reason
+   that has to be read across a column boundary is a reason people skip. */
+.host-guard-list {
+  margin-top: 10px;
+  max-height: 280px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+}
+.host-guard-row { display: flex; gap: 10px; padding: 3px 0; align-items: baseline; }
+.host-guard-name {
+  flex: 0 0 150px;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  opacity: 0.75;
+}
+.host-guard-why { flex: 1 1 auto; opacity: 0.9; line-height: 1.45; }

@@ -887,7 +887,8 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
             # manage_memory, etc.
             from src.settings import get_setting, save_settings, load_settings
             _ALIASES = {
-                "shell": ["bash"],
+                "shell": ["bash", "host_shell"],  # `P17-11`: one switch, two places
+                "host": ["host_shell"],
                 "terminal": ["bash"],
                 "search": ["web_search", "web_fetch"],
                 "web": ["web_search", "web_fetch"],

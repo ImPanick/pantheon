@@ -216,6 +216,68 @@ async def call(route: str, target: str = "") -> Dict[str, Any]:
     return payload if isinstance(payload, dict) else {"result": payload}
 
 
+async def exec_on_host(command: str, *, elevated: bool = False,
+                       timeout: Any = None, cwd: Optional[str] = None) -> Dict[str, Any]:
+    """Send a command to the agent. Never raises.
+
+    **The destination is still fixed.** `command` is a *body field* to the one
+    `/exec` path on the operator's own agent — it is not a URL and there is no
+    parameter here that names where the request goes. The same property
+    `test_no_parameter_can_change_where_the_request_goes` asserts for `call()`
+    holds for this, and the same test covers it.
+    """
+    base = agent_base()
+    token = _setting("netagent_token")
+    if not base:
+        return {"error": "no network agent is configured", "exit_code": 1}
+    if not token:
+        return {"error": "no network-agent credential is configured", "exit_code": 1}
+    if not str(command or "").strip():
+        return {"error": "an empty command is not a command", "exit_code": 1}
+
+    payload: Dict[str, Any] = {"command": command, "elevated": bool(elevated)}
+    if timeout:
+        payload["timeout"] = timeout
+    if cwd:
+        payload["cwd"] = cwd
+
+    try:
+        from src import paced_http
+        response = await paced_http.post(
+            f"{base}/exec",
+            json=payload,
+            headers={"Authorization": f"Bearer {token}"},
+            # A host command may legitimately take minutes; the agent caps it
+            # itself, and this only has to outlast that cap.
+            timeout=float(timeout or 120) + 30.0,
+            authenticated=True,
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.info("host agent unreachable at %s: %s", base, type(e).__name__)
+        return {"error": f"the network agent did not answer ({type(e).__name__})",
+                "exit_code": 1}
+
+    status = getattr(response, "status_code", 0)
+    try:
+        payload_back = response.json()
+    except Exception:  # noqa: BLE001
+        return {"error": "the network agent answered with something that is not JSON",
+                "exit_code": 1}
+    if status == 401:
+        return {"error": "the network agent refused this credential; re-paste the "
+                         "token it printed when it started", "exit_code": 1}
+    if status == 403:
+        # The agent's own refusal, passed through verbatim. Its sentence names
+        # the rule and says the list cannot be changed from here, which is more
+        # useful than anything this side could invent.
+        return {"error": payload_back.get("error", "refused by the host agent"),
+                "refused_by": payload_back.get("refused_by"),
+                "rule": payload_back.get("rule"), "exit_code": 1}
+    if status != 200:
+        return {"error": f"the network agent answered {status}", "exit_code": 1}
+    return payload_back if isinstance(payload_back, dict) else {"result": payload_back}
+
+
 async def health() -> Dict[str, Any]:
     """Is the agent there, and is it the agent?
 

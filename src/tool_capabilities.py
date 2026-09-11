@@ -137,6 +137,17 @@ _register(
     result_integrity=ResultIntegrity.WORKSPACE_UNTRUSTED,
 )
 _register(
+    # `P17-11`. Deliberately a heavier classification than `bash`, which carries
+    # `EXECUTE_CODE` alone: that one runs inside a container whose worst case is
+    # a rebuild, and this one runs on the machine. `DESTRUCTIVE` is what makes
+    # the approval card say so, and the card is the last thing a person reads
+    # before a command leaves for their own computer.
+    {"host_shell"},
+    ToolEffect.EXECUTE_CODE,
+    ToolEffect.DESTRUCTIVE,
+    result_integrity=ResultIntegrity.WORKSPACE_UNTRUSTED,
+)
+_register(
     {"bash", "manage_bg_jobs", "python"},
     ToolEffect.EXECUTE_CODE,
     result_integrity=ResultIntegrity.WORKSPACE_UNTRUSTED,

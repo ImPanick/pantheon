@@ -647,7 +647,10 @@ def test_every_target_route_is_gated_and_none_was_forgotten():
     from netagent import server as srv
     assert set(srv.TARGET_ROUTES) == {"/reach", "/dns"}
     plain = set(srv._routes(Allowlist()))
-    assert plain == {"/health", "/whoami", "/networks", "/neighbours"}
+    # `/guard` joined in `P17-11`: the nuclear list, readable, because a boundary
+    # nobody can read is a boundary nobody can check. It takes no target — it
+    # describes what the agent refuses rather than acting on anything.
+    assert plain == {"/health", "/whoami", "/networks", "/neighbours", "/guard"}
     assert plain.isdisjoint(srv.TARGET_ROUTES), "a route is in both tables"
 
 

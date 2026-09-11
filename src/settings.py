@@ -167,6 +167,21 @@ DEFAULT_SETTINGS = {
     # declared, which is the point of the suffix rule.
     "netagent_url": "",
     "netagent_token": "",
+    # `P17-11`. **Your** list, beside the agent's. The agent's nuclear denylist
+    # is compiled into it, on the host, and nothing here can widen it — that is
+    # the boundary. These two narrow what Pantheon will even ASK for, and are
+    # checked before a command leaves the container.
+    #
+    # Both are plain substring patterns matched against a normalised command,
+    # not regexes — the same call `src/tool_allow_rules.py` made, for the same
+    # reason: a typo in a regex widens a security-shaped rule silently, and `.*`
+    # is a very easy typo.
+    #
+    # `host_exec_allowlist`, when non-empty, wins: only those leading binaries
+    # may run, and the denylist still applies inside them. Empty means "no
+    # opinion", which is the shipped state for both.
+    "host_exec_denylist": [],
+    "host_exec_allowlist": [],
     # Eval suites (`P14-03`). Ships empty; a suite is a name plus a list of
     # receipts to replay and what to expect of each:
     #
