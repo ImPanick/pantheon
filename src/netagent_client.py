@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Dict, Optional, Tuple
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import urlencode, urlsplit, urlunsplit
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +36,19 @@ logger = logging.getLogger(__name__)
 # that forwards an arbitrary path is a proxy, and a proxy into the host network
 # is precisely what the container is not allowed to have.
 ROUTES = frozenset({"health", "whoami", "networks"})
+
+# Routes that take an address. Separate from `ROUTES` for the same reason the
+# agent keeps `TARGET_ROUTES` separate: it makes "does this need a target" a
+# property of the table rather than of whoever wrote the call, so a new one
+# cannot skip the question.
+#
+# **The bound that matters is on the agent, not here.** `P17-02`: a gate the
+# gated party can widen is not a gate, and Pantheon is the gated party. This
+# side refuses early so the operator gets a sentence instead of a 403, and
+# because a call that was never going to be allowed should not be made — but if
+# this check were deleted the agent would still refuse, and a test asserts that
+# rather than trusting it.
+TARGET_ROUTES = frozenset({"reach"})
 
 # What a healthy agent calls itself. Checked so "something answered on that
 # port" is not mistaken for "the agent is up" — the most likely something else
@@ -104,7 +117,7 @@ def configured() -> bool:
 
 
 def _url_for(route: str) -> Tuple[Optional[str], Optional[str]]:
-    if route not in ROUTES:
+    if route not in ROUTES and route not in TARGET_ROUTES:
         # Not an error the caller can talk its way out of: the route table is
         # in this file and nothing outside it can add a name.
         return None, f"unknown network-agent route {route!r}"
@@ -116,8 +129,34 @@ def _url_for(route: str) -> Tuple[Optional[str], Optional[str]]:
     return f"{base}/{route}", None
 
 
-async def call(route: str) -> Dict[str, Any]:
+def _target_param(target: str) -> Tuple[Optional[str], Optional[str]]:
+    """A `?target=` query string, or a refusal.
+
+    Encoded rather than concatenated, so a target carrying `&` or `#` cannot add
+    a second parameter to a request this file built. The agent reads exactly one
+    `target` and ignores the rest, but "the other end is careful" is not a reason
+    to send something ambiguous.
+    """
+    target = str(target or "").strip()
+    if not target:
+        return None, "this network-agent route needs a target"
+    if len(target) > 255:
+        return None, "that target is too long to be an address or a hostname"
+    if any(c.isspace() for c in target):
+        return None, f"{target!r} is not an address or a hostname"
+    return "?" + urlencode({"target": target}), None
+
+
+async def call(route: str, target: str = "") -> Dict[str, Any]:
     """Ask the agent one of the questions it answers. Never raises.
+
+    **`target` is not an address this function will fetch.** It is a value passed
+    to a route already in the table above, which the *agent* then checks against
+    an allowlist Pantheon cannot edit. There is still no way to name a
+    destination here: the origin comes from the operator's setting and the path
+    from `ROUTES`/`TARGET_ROUTES`. `"reach 169.254.169.254"` produces a request
+    to the operator's own agent, which refuses it — refused because the address
+    was never named, which is `P17-02`'s whole argument.
 
     Paced through `src.paced_http` like every other outbound call in this
     product — the agent's host is local so the policy costs nothing, but
@@ -127,6 +166,15 @@ async def call(route: str) -> Dict[str, Any]:
     url, problem = _url_for(route)
     if problem:
         return {"error": problem, "exit_code": 1}
+
+    if route in TARGET_ROUTES:
+        query, problem = _target_param(target)
+        if problem:
+            return {"error": problem, "exit_code": 1}
+        url = f"{url}{query}"
+    elif target:
+        return {"error": f"the {route!r} route does not take a target",
+                "exit_code": 1}
 
     token = _setting("netagent_token")
     try:
@@ -145,6 +193,16 @@ async def call(route: str) -> Dict[str, Any]:
                 "exit_code": 1}
 
     status = getattr(response, "status_code", 0)
+    if status == 403:
+        # The agent's allowlist refused it. Its own sentence says what the list
+        # is and where it is set, which is more useful than anything this side
+        # could invent, so it is passed through rather than replaced.
+        try:
+            return {"error": response.json().get("error", "refused by the network agent"),
+                    "refused": True, "exit_code": 1}
+        except Exception:  # noqa: BLE001
+            return {"error": "refused by the network agent's allowlist",
+                    "refused": True, "exit_code": 1}
     if status == 401:
         return {"error": "the network agent refused this credential; re-paste the "
                          "token it printed when it started", "exit_code": 1}

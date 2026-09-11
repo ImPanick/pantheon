@@ -15,6 +15,7 @@ from __future__ import annotations
 import ipaddress
 import platform
 import socket
+import time
 from typing import Dict, List
 
 
@@ -123,3 +124,64 @@ def networks_seen() -> List[str]:
         if net and net not in out:
             out.append(str(net))
     return out
+
+
+# ── reachability ────────────────────────────────────────────────────────────
+
+# A TCP connect, not ICMP. `ping` needs a raw socket (root on Linux, a helper on
+# macOS) or a subprocess, and this package has neither a privilege story nor a
+# shell — `P17-05` keeps configuration out, and shelling out to `ping` is one
+# argument-quoting bug away from being a shell. A TCP connect answers the
+# question an operator is actually asking — *is there something there* — and
+# answers it from an unprivileged process on every platform.
+#
+# The honest cost, stated rather than glossed: a host that is up but has nothing
+# listening on the probed port reads as `refused` rather than `up`. That is why
+# the result says WHICH answer came back instead of a bare boolean, because
+# "connection refused" is a live host and "timed out" is not.
+
+REACH_TIMEOUT = 1.5
+# Ports chosen because something answering on any of them means a device worth
+# knowing about: a web UI, a shell, a file share, a printer.
+DEFAULT_PORTS = (80, 443, 22, 445, 9100)
+
+
+def reach(target: str, ports: List[int] | None = None,
+          timeout: float = REACH_TIMEOUT) -> Dict[str, object]:
+    """Is something there, and what answered.
+
+    The caller has already checked the allowlist; this function does not, and
+    says so — a guard in two places is a guard nobody owns, and the one that
+    matters is the one at the door.
+    """
+    ports = list(ports or DEFAULT_PORTS)
+    results = []
+    alive = False
+    started = time.monotonic()
+    for port in ports:
+        sock = None
+        verdict = "error"
+        try:
+            sock = socket.create_connection((target, port), timeout=timeout)
+            verdict = "open"
+            alive = True
+        except socket.timeout:
+            verdict = "timeout"
+        except ConnectionRefusedError:
+            # Refused is a LIVE host saying no. Collapsing it into "down" is the
+            # most common way a reachability check lies.
+            verdict = "refused"
+            alive = True
+        except OSError as e:
+            verdict = f"error:{type(e).__name__}"
+        finally:
+            if sock is not None:
+                sock.close()
+        results.append({"port": port, "result": verdict})
+    return {
+        "target": target,
+        "alive": alive,
+        "ports": results,
+        "elapsed_ms": int((time.monotonic() - started) * 1000),
+        "method": "tcp-connect",
+    }

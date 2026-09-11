@@ -66,14 +66,92 @@ def test_half_configured_is_not_configured(monkeypatch):
 
 # ── the hole that must not open ─────────────────────────────────────────────
 
-def test_there_is_no_parameter_an_address_can_arrive_through():
-    """The structural guarantee, read off the signature. `call(route)` takes a
-    route name and nothing else; a `url=` or `target=` parameter appearing here
-    is the hole, whatever the docstring says about it."""
+def test_no_parameter_can_change_where_the_request_goes():
+    """**This test was weakened once, deliberately, and the reason is here so the
+    next weakening has to argue with it.**
+
+    It used to assert `call` took exactly one parameter — `route` — on the
+    grounds that an address which can be passed in is an address a prompt
+    injection can pass in. `P17-02` added `target`, and the test fired, which is
+    what it was for.
+
+    The property that actually matters was never "no parameter exists". It is
+    **no parameter changes the destination.** `target` is a query value handed to
+    the operator's own agent, which checks it against an allowlist Pantheon
+    cannot edit; the origin still comes from a setting and the path still comes
+    from a table in the file. So the assertion moves from the signature to the
+    URL, which is strictly stronger: it would have caught the original `url=`
+    hole too, and it catches a `base=` or `host=` that a signature count would
+    not.
+    """
+    allowed = {"route", "target"}
     params = set(inspect.signature(nac.call).parameters)
-    assert params == {"route"}, (
-        f"the client grew a parameter: {params}. An address that can be passed "
-        "in is an address a prompt injection can pass in.")
+    assert params <= allowed, (
+        f"the client grew a parameter: {params - allowed}. If it names a "
+        "destination, it is the hole; if it does not, add it here with why.")
+
+
+@pytest.mark.parametrize("hostile_target", [
+    "169.254.169.254",
+    "http://evil.example.com/",
+    "127.0.0.1:7010/../../admin",
+    "a&target=169.254.169.254",
+    "x#@evil.example.com",
+])
+def test_a_hostile_target_still_goes_to_the_operators_own_agent(monkeypatch, hostile_target):
+    """The destination is fixed whatever the target says. A target carrying `&`
+    or `#` must not be able to add a second parameter or a second host to a
+    request this file built."""
+    _configure(monkeypatch, url="http://127.0.0.1:7010")
+    seen = _capture(monkeypatch, _Response(403, {"error": "refused"}))
+    asyncio.run(nac.call("reach", hostile_target))
+    if "url" not in seen:
+        return  # refused before the request, which is also fine
+    from urllib.parse import urlsplit
+    parts = urlsplit(seen["url"])
+    assert parts.scheme == "http" and parts.netloc == "127.0.0.1:7010", (
+        f"a target changed the destination: {seen['url']}")
+    assert parts.path == "/reach", f"a target changed the path: {seen['url']}"
+
+
+def test_a_target_with_whitespace_is_refused_before_a_request_is_made(monkeypatch):
+    _configure(monkeypatch)
+    seen = _capture(monkeypatch, _Response(200, {}))
+    result = asyncio.run(nac.call("reach", "1.2.3.4 ; rm -rf /"))
+    assert result["exit_code"] == 1
+    assert "url" not in seen, "a malformed target still produced a request"
+
+
+def test_a_targetless_route_refuses_a_target(monkeypatch):
+    """`whoami` describes the host this agent runs on. A target on it would be
+    an argument with nowhere to go, and silently ignoring one is how a caller
+    comes to believe it asked about something it did not."""
+    _configure(monkeypatch)
+    _capture(monkeypatch, _Response(200, {}))
+    result = asyncio.run(nac.call("whoami", "192.168.1.1"))
+    assert result["exit_code"] == 1
+    assert "does not take a target" in result["error"]
+
+
+def test_a_target_route_without_a_target_reaches_nothing(monkeypatch):
+    _configure(monkeypatch)
+    seen = _capture(monkeypatch, _Response(200, {}))
+    result = asyncio.run(nac.call("reach", ""))
+    assert result["exit_code"] == 1
+    assert "url" not in seen
+
+
+def test_the_agents_refusal_is_passed_through_rather_than_replaced(monkeypatch):
+    """The agent's own sentence says what the list is and where it is set. This
+    side cannot know either, so inventing a message here would be worse."""
+    _configure(monkeypatch)
+    _capture(monkeypatch, _Response(403, {
+        "error": "'10.0.0.1' is refused: it is not in this agent's allowlist "
+                 "(192.168.1.0/24). The list is set where the agent was started "
+                 "and cannot be changed from Pantheon."}))
+    result = asyncio.run(nac.call("reach", "10.0.0.1"))
+    assert result["refused"] is True
+    assert "cannot be changed from Pantheon" in result["error"]
 
 
 def test_only_the_declared_routes_exist():
@@ -234,3 +312,36 @@ def test_a_non_json_answer_is_reported_rather_than_crashing(monkeypatch):
     result = asyncio.run(nac.call("whoami"))
     assert result["exit_code"] == 1
     assert "not JSON" in result["error"]
+
+
+def test_the_target_is_encoded_into_exactly_one_parameter(monkeypatch):
+    """Encoded, not concatenated.
+
+    Concatenation is not exploitable against *this* agent — it reads
+    `parse_qs(...)["target"][0]`, so a smuggled `&target=` lands second and is
+    ignored, and the allowlist would refuse it anyway. But "the other end is
+    careful" is not a reason to send something ambiguous, and the other end is
+    the only thing making it safe. Mutation testing found this: swapping
+    `urlencode` for string concatenation survived every test above, because they
+    all assert about the *destination* and concatenation does not change it.
+    """
+    from urllib.parse import parse_qs, urlsplit
+    _configure(monkeypatch, url="http://127.0.0.1:7010")
+    seen = _capture(monkeypatch, _Response(200, {}))
+    asyncio.run(nac.call("reach", "1.2.3.4&target=169.254.169.254"))
+    query = parse_qs(urlsplit(seen["url"]).query, keep_blank_values=True)
+    assert list(query) == ["target"], f"a target added a parameter: {seen['url']}"
+    assert query["target"] == ["1.2.3.4&target=169.254.169.254"], (
+        "the target was not round-tripped intact")
+
+
+def test_a_target_carrying_a_fragment_or_a_slash_survives_intact(monkeypatch):
+    from urllib.parse import parse_qs, urlsplit
+    _configure(monkeypatch, url="http://127.0.0.1:7010")
+    for hostile in ("x#@evil.example.com", "a/../../admin", "a?b=c"):
+        seen = _capture(monkeypatch, _Response(200, {}))
+        asyncio.run(nac.call("reach", hostile))
+        parts = urlsplit(seen["url"])
+        assert parts.path == "/reach"
+        assert parse_qs(parts.query)["target"] == [hostile]
+        assert parts.fragment == "", f"a target became a fragment: {seen['url']}"

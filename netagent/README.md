@@ -22,16 +22,48 @@ preference.
 | `GET /health` | that it is running, and that it is this agent |
 | `GET /whoami` | the hostname, and every address this host answers on, classified |
 | `GET /networks` | the private `/24`s it sits on, ready to paste into Settings → Networks |
+| `GET /reach?target=…` | whether something is there, and which ports answered |
 
 Every route needs the token. `POST` returns **405** — changing firewall rules,
 router settings or DHCP is a different risk class from reading them, and bundling
 it in would mean the thing that describes your network can also break it
 (`P17-05`).
 
+## The allowlist
+
+**This is the boundary, and it is set here rather than in Pantheon.** `P17-02`:
+a gate the gated party can widen is not a gate, and Pantheon is the gated party.
+A Pantheon that has been talked into anything at all — by a web page, by a
+document, by anything it was asked to read — still cannot widen this, because
+the widening move does not exist on its side of the wire.
+
+```
+python -m netagent.server --allow 192.168.1.0/24
+```
+
+Repeatable. `--allow-host nas.local` names a single host. Also read from
+`PANTHEON_NETAGENT_ALLOW` and `PANTHEON_NETAGENT_ALLOW_HOSTS`; the command line
+wins.
+
+**With nothing allowed the agent refuses every target.** Not "allow all until
+configured" — the point is that `10.0.0.0/8` is refused *because it was never
+named*, and a list that starts open has no such answer to give. `/whoami` and
+`/networks` still work, because they describe this machine rather than reach
+anything; run them first to see what you have, then allow what you meant.
+
+Names are never resolved to decide membership. `--allow 127.0.0.0/8` does **not**
+allow `localhost`, deliberately: resolving would make the boundary depend on DNS
+answered by whichever network you happen to be on, which is the ambiguity an
+allowlist exists to remove. List the name if you want the name.
+
+An unparseable CIDR is **reported**, not silently dropped — a typo in a security
+boundary that quietly narrows it is the kindest possible failure and still the
+wrong one.
+
 ## Running it
 
 ```
-python -m netagent.server
+python -m netagent.server --allow 192.168.1.0/24
 ```
 
 On first run it mints a token and prints it **once**:
@@ -81,7 +113,8 @@ you already know how to read:
 
 **Windows** — Task Scheduler, *Create Task*:
 - *Triggers*: At log on
-- *Actions*: Start a program — `pythonw.exe`, arguments `-m netagent.server --bind 0.0.0.0`
+- *Actions*: Start a program — `pythonw.exe`, arguments
+  `-m netagent.server --bind 0.0.0.0 --allow 192.168.1.0/24`
 - *Start in*: your Pantheon checkout
 
 **macOS / Linux** — a user-level `launchd` job or `systemd --user` unit in the
@@ -95,6 +128,8 @@ worth stopping to read.
 | `PANTHEON_NETAGENT_BIND` | `127.0.0.1` | address to listen on |
 | `PANTHEON_NETAGENT_PORT` | `7010` | port |
 | `PANTHEON_NETAGENT_STATE` | `~/.pantheon-netagent` | where the token hash is kept |
+| `PANTHEON_NETAGENT_ALLOW` | *(empty — refuses everything)* | networks it may be asked about |
+| `PANTHEON_NETAGENT_ALLOW_HOSTS` | *(empty)* | single names it may be asked about |
 
 ## If the token is lost
 

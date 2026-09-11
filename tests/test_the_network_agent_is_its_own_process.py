@@ -303,3 +303,169 @@ def test_missing_ipv6_is_not_a_failure(monkeypatch):
     result = observe.whoami()
     assert result["hostname"]
     assert isinstance(result["addresses"], list)
+
+
+# ── `P17-02`: the bound the gated party cannot widen ────────────────────────
+#
+# The allowlist lives HERE, not in Pantheon's settings, because Pantheon is the
+# gated party and a gate the gated party can widen is not a gate. These drive the
+# real server, because a gate asserted about rather than driven is a gate that
+# gets refactored around.
+
+from netagent.allowlist import Allowlist  # noqa: E402
+
+
+@pytest.fixture
+def gated():
+    state = Path(tempfile.mkdtemp())
+    _stored, raw = load_or_create(state)
+    allow = Allowlist(["127.0.0.0/8"], ["nas.local"])
+    httpd = serve(bind="127.0.0.1", port=0, state_dir=state,
+                  serve_forever=False, allowlist=allow)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    port = httpd.server_address[1]
+
+    def call(path):
+        req = urllib.request.Request(f"http://127.0.0.1:{port}{path}")
+        req.add_header("Authorization", f"Bearer {raw}")
+        try:
+            with urllib.request.urlopen(req, timeout=8) as r:
+                return r.status, json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            return e.code, json.loads(e.read())
+
+    yield call
+    httpd.shutdown()
+    httpd.server_close()
+
+
+def test_an_empty_allowlist_refuses_everything():
+    """The shipped state, and it is not "allow all until configured". The whole
+    argument of `P17-02` is that a target is refused *because it was never
+    named*, and a list that starts open has no such answer to give."""
+    empty = Allowlist()
+    assert empty.is_empty()
+    for target in ("127.0.0.1", "192.168.1.1", "8.8.8.8", "nas.local"):
+        assert empty.allows(target) is False
+    assert "no allowlist" in empty.refusal("127.0.0.1")
+    assert "--allow" in empty.refusal("127.0.0.1"), "the refusal does not say what to do"
+
+
+def test_a_target_outside_the_list_is_refused_at_the_agent(gated):
+    """The row's first Verify clause: refused *at the agent*, not merely
+    unasked-for."""
+    status, body = gated("/reach?target=192.168.1.1")
+    assert status == 403
+    assert "not in this agent's allowlist" in body["error"]
+    assert "cannot be changed from Pantheon" in body["error"]
+
+
+@pytest.mark.parametrize("target", [
+    "169.254.169.254",       # cloud metadata
+    "10.0.0.1",
+    "8.8.8.8",
+    "evil.example.com",      # a name, and names match only by exact listing
+    "192.168.1.255",
+])
+def test_nothing_outside_the_list_gets_through_however_it_is_phrased(gated, target):
+    assert gated(f"/reach?target={target}")[0] == 403
+
+
+def test_what_is_inside_the_list_works(gated):
+    status, body = gated("/reach?target=127.0.0.1")
+    assert status == 200
+    assert body["target"] == "127.0.0.1"
+    assert body["method"] == "tcp-connect"
+
+
+def test_a_listed_name_works_and_is_case_insensitive():
+    allow = Allowlist([], ["nas.local"])
+    assert allow.allows("nas.local")
+    assert allow.allows("NAS.LOCAL")
+    assert not allow.allows("other.local")
+
+
+def test_a_name_is_never_resolved_to_decide_membership():
+    """`src/networks.py` gives the reason and it holds here: resolving would make
+    membership depend on DNS answered by whichever network we happen to be on,
+    which is the ambiguity an allowlist exists to remove."""
+    allow = Allowlist(["127.0.0.0/8"])
+    assert allow.allows("127.0.0.1")
+    assert not allow.allows("localhost"), (
+        "a name resolved to an allowed address — membership now depends on DNS")
+
+
+def test_a_target_route_cannot_be_added_without_arriving_at_the_gate():
+    """The dispatcher decides a route needs a target by its membership in
+    `TARGET_ROUTES`, so a target route that forgot to check is not a shape this
+    file has. Read structurally: the check must be in the branch that serves
+    them."""
+    from netagent import server as srv
+    src = (_PKG / "server.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    fn = next(n for n in ast.walk(tree)
+              if isinstance(n, ast.FunctionDef) and n.name == "do_GET")
+    branch = next((n for n in ast.walk(fn)
+                   if isinstance(n, ast.If) and "TARGET_ROUTES" in ast.unparse(n.test)), None)
+    assert branch is not None, "the dispatcher no longer routes targets through one branch"
+    body = ast.unparse(branch)
+    assert "allowlist.allows" in body, "the target branch does not consult the allowlist"
+    assert "403" in body, "the target branch does not refuse"
+    assert set(srv.TARGET_ROUTES) == {"/reach"}
+
+
+def test_a_target_route_without_a_target_is_a_400_not_a_crash(gated):
+    status, body = gated("/reach")
+    assert status == 400
+    assert "needs a ?target=" in body["error"]
+
+
+def test_the_allowlist_is_readable_and_there_is_no_route_that_sets_it(gated):
+    """Readable so the operator can see the boundary without guessing. Writable
+    by nothing, which is `P17-02` in one sentence."""
+    status, body = gated("/health")
+    assert status == 200
+    assert body["allowlist"]["cidrs"] == ["127.0.0.0/8"]
+    src = (_PKG / "server.py").read_text(encoding="utf-8")
+    code = "\n".join(ln for ln in src.splitlines() if not ln.lstrip().startswith("#"))
+    assert "self.allowlist =" not in code, "something assigns the allowlist at request time"
+    assert "do_PUT" not in code and "do_PATCH" not in code and "do_DELETE" not in code
+
+
+def test_an_unparseable_cidr_is_recorded_rather_than_silently_dropped():
+    """A typo in a security boundary that silently narrows it is the kindest
+    possible failure and still the wrong one: the operator believes they named a
+    network and nothing tells them otherwise. `P17-09`'s lesson, one layer over."""
+    allow = Allowlist(["192.168.1.0/24", "10.9.0.0/48", "not-a-cidr"])
+    assert [str(c) for c in allow.cidrs] == ["192.168.1.0/24"]
+    assert allow.rejected == ["10.9.0.0/48", "not-a-cidr"]
+    assert allow.as_dict()["rejected"] == ["10.9.0.0/48", "not-a-cidr"]
+
+
+def test_the_command_line_beats_the_environment(monkeypatch):
+    monkeypatch.setenv("PANTHEON_NETAGENT_ALLOW", "10.0.0.0/8")
+    from_args = Allowlist.from_env_and_args(["192.168.1.0/24"])
+    assert [str(c) for c in from_args.cidrs] == ["192.168.1.0/24"]
+    from_env = Allowlist.from_env_and_args()
+    assert [str(c) for c in from_env.cidrs] == ["10.0.0.0/8"]
+
+
+def test_refused_is_a_live_host_and_is_not_collapsed_into_down():
+    """The most common way a reachability check lies. "Connection refused" is a
+    machine saying no; "timed out" is nothing there at all."""
+    result = observe.reach("127.0.0.1", [1], timeout=0.4)
+    verdicts = {p["result"] for p in result["ports"]}
+    assert verdicts <= {"refused", "timeout", "open"} or any(
+        v.startswith("error:") for v in verdicts)
+    if "refused" in verdicts:
+        assert result["alive"] is True, "a refusing host was reported as down"
+
+
+def test_reachability_uses_no_shell():
+    """`ping` would need a raw socket or a subprocess, and this package has
+    neither a privilege story nor a shell — shelling out is one argument-quoting
+    bug away from being one."""
+    src = (_PKG / "observe.py").read_text(encoding="utf-8")
+    code = "\n".join(ln for ln in src.splitlines() if not ln.lstrip().startswith("#"))
+    for smell in ("subprocess", "os.system", "os.popen", "shell=True"):
+        assert smell not in code, f"the agent grew a shell: {smell!r}"

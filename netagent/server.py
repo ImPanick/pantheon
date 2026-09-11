@@ -27,12 +27,14 @@ import os
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Callable, Dict
+from typing import Callable, Dict, Optional
+from urllib.parse import parse_qs, urlsplit
 
 if __package__ in (None, ""):  # running the file directly on the host
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from netagent import observe
+from netagent.allowlist import ENV_CIDRS, ENV_HOSTS, Allowlist
 from netagent.tokens import bearer_credential, load_or_create, token_matches
 
 logger = logging.getLogger("netagent")
@@ -46,19 +48,36 @@ AGENT = "pantheon-netagent"
 VERSION = 1
 
 
-def _routes() -> Dict[str, Callable[[], object]]:
-    """Path -> handler. Every one is a read; there is deliberately no writer."""
+# Routes that need no target. Every one is a read; there is deliberately no
+# writer (`P17-05`).
+def _routes(allowlist: Allowlist) -> Dict[str, Callable[[], object]]:
     return {
-        "/health": lambda: {"agent": AGENT, "version": VERSION, "ok": True},
+        "/health": lambda: {
+            "agent": AGENT, "version": VERSION, "ok": True,
+            # What this agent will answer for, so an operator can see the
+            # boundary without guessing at it. Readable, never writable — there
+            # is no route that sets it, which is the point of `P17-02`.
+            "allowlist": allowlist.as_dict(),
+        },
         "/whoami": observe.whoami,
         "/networks": lambda: {"networks": observe.networks_seen()},
     }
+
+
+# Routes that take a `target`, and therefore go through the allowlist. Kept in
+# their own table so that adding one cannot accidentally skip the gate: the
+# dispatcher checks membership in THIS dict to decide whether a target is
+# required, so a target route that forgot to check is not a shape this file has.
+TARGET_ROUTES: Dict[str, Callable[[str], object]] = {
+    "/reach": observe.reach,
+}
 
 
 class Handler(BaseHTTPRequestHandler):
     server_version = f"{AGENT}/{VERSION}"
     sys_version = ""          # do not advertise the Python version
     token_hash = ""           # set by `serve()`
+    allowlist: Allowlist = Allowlist()
 
     def log_message(self, fmt, *args):  # noqa: A003
         # The default writes to stderr with no level and no logger. Route it so
@@ -83,16 +102,45 @@ class Handler(BaseHTTPRequestHandler):
         raw = bearer_credential(self.headers.get("Authorization", ""))
         return bool(raw) and token_matches(raw, self.token_hash)
 
+    def _target(self) -> Optional[str]:
+        query = parse_qs(urlsplit(self.path).query)
+        values = query.get("target") or []
+        return values[0].strip() if values and values[0].strip() else None
+
     def do_GET(self) -> None:  # noqa: N802  (stdlib naming)
-        path = self.path.split("?", 1)[0].rstrip("/") or "/health"
+        path = urlsplit(self.path).path.rstrip("/") or "/health"
         if not self._authorised():
             # 401 before the route lookup, so an unauthenticated caller cannot
             # learn which paths exist by comparing 401 against 404.
             self._send(401, {"error": "unauthorized"})
             return
-        handler = _routes().get(path)
+
+        plain = _routes(self.allowlist)
+        if path in TARGET_ROUTES:
+            target = self._target()
+            if not target:
+                self._send(400, {"error": f"{path} needs a ?target="})
+                return
+            # `P17-02`. The gate, and it is the only door: the dispatcher decides
+            # a route needs a target by its membership in `TARGET_ROUTES`, so a
+            # new target route cannot be added without arriving here. Refused
+            # because the address was never named — not because anything
+            # declined, which is not a security control.
+            if not self.allowlist.allows(target):
+                self._send(403, {"error": self.allowlist.refusal(target),
+                                 "allowlist": self.allowlist.as_dict()})
+                return
+            try:
+                self._send(200, TARGET_ROUTES[path](target))
+            except Exception as e:  # noqa: BLE001
+                logger.exception("route %s failed", path)
+                self._send(500, {"error": f"{type(e).__name__}"})
+            return
+
+        handler = plain.get(path)
         if handler is None:
-            self._send(404, {"error": "no such route", "routes": sorted(_routes())})
+            self._send(404, {"error": "no such route",
+                             "routes": sorted(list(plain) + list(TARGET_ROUTES))})
             return
         try:
             self._send(200, handler())
@@ -110,7 +158,9 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def serve(*, bind: str = DEFAULT_BIND, port: int = DEFAULT_PORT,
-          state_dir: Path | None = None, serve_forever: bool = True):
+          state_dir: Path | None = None, serve_forever: bool = True,
+          allowlist: Allowlist | None = None):
+    allowlist = allowlist if allowlist is not None else Allowlist.from_env_and_args()
     state = Path(state_dir) if state_dir else Path.home() / ".pantheon-netagent"
     token_hash, minted = load_or_create(state)
     if minted:
@@ -122,7 +172,19 @@ def serve(*, bind: str = DEFAULT_BIND, port: int = DEFAULT_PORT,
         print(f"  {state / 'token.json'}, which holds only its hash.")
         print("=" * 68 + "\n", flush=True)
 
-    handler = type("BoundHandler", (Handler,), {"token_hash": token_hash})
+    if allowlist.rejected:
+        # Loud, because a typo in a security boundary that silently narrows it is
+        # the kindest possible failure and still the wrong one.
+        logger.warning("ignoring unparseable allowlist entries: %s",
+                       ", ".join(allowlist.rejected))
+    if allowlist.is_empty():
+        logger.warning("no allowlist: this agent will refuse every target. "
+                       "Start it with --allow <cidr> to answer for a network.")
+    else:
+        logger.info("allowlist: %s", allowlist.describe())
+
+    handler = type("BoundHandler", (Handler,),
+                   {"token_hash": token_hash, "allowlist": allowlist})
     httpd = ThreadingHTTPServer((bind, port), handler)
     logger.info("netagent listening on %s:%s", bind, port)
     if not serve_forever:
@@ -149,10 +211,19 @@ def main(argv=None) -> int:
     ap.add_argument("--port", type=int,
                     default=int(os.environ.get("PANTHEON_NETAGENT_PORT", DEFAULT_PORT)))
     ap.add_argument("--state-dir", default=os.environ.get("PANTHEON_NETAGENT_STATE", ""))
+    ap.add_argument("--allow", action="append", default=[], metavar="CIDR",
+                    help="a network this agent may be asked about, e.g. "
+                         "192.168.1.0/24. Repeatable. With none given the agent "
+                         f"refuses every target. Also read from ${ENV_CIDRS}.")
+    ap.add_argument("--allow-host", action="append", default=[], metavar="NAME",
+                    help="a single name this agent may be asked about. Names are "
+                         "never resolved to decide membership, so a name matches "
+                         f"only by exact listing. Also read from ${ENV_HOSTS}.")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     serve(bind=args.bind, port=args.port,
-          state_dir=Path(args.state_dir) if args.state_dir else None)
+          state_dir=Path(args.state_dir) if args.state_dir else None,
+          allowlist=Allowlist.from_env_and_args(args.allow, args.allow_host))
     return 0
 
 

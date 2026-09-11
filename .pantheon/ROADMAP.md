@@ -77,8 +77,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P14 | Measurement | 8 | 3 | 0 | **5** |
 | P15 | Outbound politeness | 12 | 2 | **1** | **9** |
 | P16 | Self-hosted by default | 20 | 1 | 0 | **19** |
-| P17 | The network the agent is hosted on | 9 | 5 | 0 | **4** |
-| **Total** | | **360** | **185** | **9** | **166** |
+| P17 | The network the agent is hosted on | 9 | 4 | 0 | **5** |
+| **Total** | | **360** | **184** | **9** | **167** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -240,6 +240,24 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### P17-02 — the bound lives on the agent, because Pantheon is the gated party
+`1c8dbb7..HEAD`. **360 tracked, 167 done. 28 tests, 15 mutations, 0 regressions. Suite 8,477 -> 8,505.**
+The row said *"a gate the gated party can widen is not a gate"*. Following that sentence to its end
+moves the allowlist out of Pantheon's settings entirely: **Pantheon is the gated party**, so the list
+is arguments to the process the operator started, on the machine they started it on. A Pantheon
+talked into anything still cannot widen it, because the widening move does not exist on its side of
+the wire. Not a second `src/networks.py` — that one **directs** (Pantheon's own scoping, narrowable
+by the thing it governs) and this one **bounds** (set outside, and not). **Empty refuses everything**,
+which is the shipped state: `10.0.0.0/8` is refused *because it was never named*, and a list that
+starts open has no such answer. The gate is the only door — the dispatcher decides a route needs a
+target by table membership, so a target route that skipped the check is not a shape the file has.
+`/reach` lands with it rather than after it, because a dead gate is not evidence. **Mutation testing
+changed the code twice**: a guard that could not change an answer was deleted rather than tested
+around (fourth time this phase), and `?target=` was concatenated rather than encoded. **And one of
+this row's own tests was deliberately weakened, with the reason written into it** — it asserted
+`call()` took one parameter, `P17-02` added `target`, and it fired. The property that mattered was
+never *no parameter exists*, it is *no parameter changes the destination*.
 
 ### P17-01 — the process that actually has the LAN
 `b0d4d78..HEAD`. **360 tracked, 166 done. 53 tests, 22 mutations, 0 regressions. Suite 8,424 -> 8,477.**
@@ -4456,7 +4474,7 @@ radius of a 2.9GB container that runs agent-authored code.*
   platform's own scheduler for later. `CACHE_NAME` `v408` → `v409`. 53 tests, 22 mutations, all
   caught.
 
-- [ ] **P17-02** **The CIDR allowlist, operator-set and not agent-writable.** What keeps `P17` from
+- [x] **P17-02** **The CIDR allowlist, operator-set and not agent-writable.** What keeps `P17` from
   becoming a hole in the five SSRF validators, which `FORBIDDEN.md` Part 2 says never lift. The
   validators guard URLs arriving **from content** and are unchanged — `web_fetch` still refuses
   `192.168.1.1` and that never becomes negotiable. These tools answer only for CIDRs **the operator
@@ -4485,7 +4503,44 @@ radius of a 2.9GB container that runs agent-authored code.*
   a hand-built JSON body to `POST /api/auth/settings` or editing `data/settings.json`. `P16-16`
   shipped the mechanism without its front door. **What is genuinely left here** is only the
   agent-side half: a target outside the allowlist refused *at the network agent*, which needs
-  `P17-01` to exist. The `Depends:` is right; the scope is a quarter of what was written.
+  `P17-01` to exist. The `Depends:` is right; the scope is a quarter of what was written. — **done
+  2026-09-11, and the quarter that was left is the half that matters.** The bound lives **on the
+  agent**, in `netagent/allowlist.py`, set as arguments to the process the operator started on the
+  machine they started it on. Not in Pantheon's settings — because the row's own sentence is *"a gate
+  the gated party can widen is not a gate"* and **Pantheon is the gated party**. A Pantheon talked
+  into anything at all, by a web page or a document or anything it was asked to read, still cannot
+  widen this: the widening move does not exist on its side of the wire. `_SELF_RESTRAINT_KEYS` was
+  the right mechanism for a setting; a setting was the wrong place. **`Law 14` deserves the argument
+  rather than a claim, and this is not a second `src/networks.py`.** That module **directs** — it is
+  Pantheon's own scoping, answering *"which of my networks is this run about"*, set by the operator
+  in Pantheon, and its failures are mistakes: an agent tidying the lab and wandering onto the printer
+  VLAN. This **bounds** — it answers *"what may this process be asked about at all"*, it is set
+  outside Pantheon, and its failure mode is not a mistake. One can be narrowed by the thing it
+  governs; the other cannot. The vocabulary is deliberately shared, cidrs and hosts exactly as
+  `Network` splits them, so a reader moving between the files is not learning a second dialect.
+  **Empty refuses everything and that is the shipped state** — not *allow all until configured*,
+  because the whole argument is that `10.0.0.0/8` is refused *because it was never named*, and a
+  list that starts open has no such answer to give. **The gate is the only door**: the dispatcher
+  decides a route needs a target by its membership in `TARGET_ROUTES`, so a target route that forgot
+  to check is not a shape the file has, and a test reads that branch structurally. `/reach` lands
+  with it rather than after it, because a gate with nothing to gate is dead code and a dead gate is
+  not evidence. **Reachability is a TCP connect, not `ping`** — `ping` needs a raw socket or a
+  subprocess, and this package has neither a privilege story nor a shell, which shelling out is one
+  argument-quoting bug away from becoming. The honest cost is stated rather than glossed: the result
+  says *which* answer came back, because **"connection refused" is a live host and "timed out" is
+  not**, and collapsing them is the most common way a reachability check lies. **Mutation testing
+  changed the code twice.** An `is_empty()` guard in `allows()` could not change an answer — an empty
+  list already fails closed, `any()` over nothing being False — so it was deleted rather than tested
+  around, the fourth time this phase (`P13-14`'s cutoff, `P13-15`'s dead `sessions <= 1`, `B62`'s
+  seven stemmer rules). And the client's `?target=` was concatenated rather than encoded: not
+  exploitable against this agent, which reads the first value and would refuse it anyway — but *"the
+  other end is careful"* is not a reason to send something ambiguous when the other end is the only
+  thing making it safe. **And one of this row's own tests was deliberately weakened**, with the
+  reason written into it: it asserted `call()` took exactly one parameter, `P17-02` added `target`,
+  and it fired — which is what it was for. The property that mattered was never *no parameter
+  exists*, it is *no parameter changes the destination*, so the assertion moved from the signature to
+  the URL, which is strictly stronger and would have caught the original hole too. 28 tests, 15
+  mutations, all caught.
 
 - [ ] **P17-03** **Observation tools: neighbours, reachability, names, services.** ARP/neighbour
   table, ping, DNS forward and reverse, open-port checks against named hosts, mDNS/SSDP discovery,
