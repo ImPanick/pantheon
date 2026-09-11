@@ -226,6 +226,66 @@ async function runProbe() {
   }
 }
 
+// ── the agent ───────────────────────────────────────────────────────────────
+//
+// Two fields and two buttons. The token is a password input and is never read
+// back into it after a save: `scrub_settings` masks it for a non-admin, and
+// re-populating a field from a GET is how a masked value gets written back over
+// the real one.
+
+async function saveAgent() {
+  const url = ($('netagent-url')?.value || '').trim();
+  const token = ($('netagent-token')?.value || '').trim();
+  const out = $('netagent-result');
+  const body = { netagent_url: url };
+  // Only send the token when something was typed. An empty box means "leave it
+  // alone", not "clear it" — clearing is what the Remove path would be for, and
+  // silently wiping a credential because a field rendered blank is a support
+  // ticket that looks like the agent going down on its own.
+  if (token) body.netagent_token = token;
+
+  const res = await fetch('/api/auth/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let detail = `Save failed (${res.status})`;
+    try {
+      const err = await res.json();
+      if (err && err.detail) detail = String(err.detail);
+    } catch (_) { /* a non-JSON error body is still an error; keep the status */ }
+    if (out) { out.textContent = detail; out.classList.remove('networks-probe-hit'); out.hidden = false; }
+    return false;
+  }
+  invalidateSettings();
+  if ($('netagent-token')) $('netagent-token').value = '';
+  await checkAgent();
+  return true;
+}
+
+async function checkAgent() {
+  const out = $('netagent-result');
+  if (!out) return;
+  try {
+    const res = await fetch('/api/auth/networks/agent');
+    const verdict = await res.json();
+    if (!verdict.configured) {
+      out.textContent = verdict.detail || 'No agent configured.';
+    } else if (verdict.reachable) {
+      out.textContent = `Reachable — agent version ${verdict.version}.`;
+    } else {
+      out.textContent = verdict.detail || 'Not reachable.';
+    }
+    out.classList.toggle('networks-probe-hit', !!verdict.reachable);
+    out.hidden = false;
+  } catch (e) {
+    out.textContent = String(e.message || e);
+    out.classList.remove('networks-probe-hit');
+    out.hidden = false;
+  }
+}
+
 export async function open() {
   if (!_loaded) {
     try {
@@ -246,6 +306,14 @@ export async function open() {
     $('networks-probe')?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); runProbe(); }
     });
+    $('netagent-save')?.addEventListener('click', () => { saveAgent(); });
+    $('netagent-check')?.addEventListener('click', () => { checkAgent(); });
+
+    try {
+      const res = await fetch('/api/auth/settings');
+      const settings = res.ok ? await res.json() : {};
+      if ($('netagent-url')) $('netagent-url').value = settings.netagent_url || '';
+    } catch (_) { /* an unreadable settings response leaves the field empty, which is honest */ }
   }
   render();
 }

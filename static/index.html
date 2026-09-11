@@ -2896,6 +2896,35 @@
           </div>
 
           <div class="admin-card" style="margin-top:12px;">
+            <h2>Network agent</h2>
+            <div class="admin-toggle-sub" style="margin-bottom:10px;line-height:1.5;">
+              Pantheon runs in a container and cannot reach your LAN &mdash; that is deliberate,
+              not a limitation to work around. The agent is a small read-only process you run
+              on the host; Pantheon holds a credential for it rather than the reach itself.
+              Leave both blank and nothing is called.
+              <br><br>
+              Start it with <code>python -m netagent.server</code> on the machine that has the
+              network. It prints a token once; paste it below. See <code>netagent/README.md</code>
+              for running it at logon.
+            </div>
+            <div class="settings-col">
+              <div class="settings-row">
+                <label class="settings-label" for="netagent-url">Address</label>
+                <input type="text" id="netagent-url" class="settings-select" placeholder="http://127.0.0.1:7010" style="flex:1 1 auto;">
+              </div>
+              <div class="settings-row">
+                <label class="settings-label" for="netagent-token">Token</label>
+                <input type="password" id="netagent-token" class="settings-select" placeholder="pan_&hellip;" autocomplete="off" style="flex:1 1 auto;">
+              </div>
+            </div>
+            <div class="settings-row" style="margin-top:10px;gap:8px;">
+              <button type="button" id="netagent-save" class="memory-toolbar-btn">Save</button>
+              <button type="button" id="netagent-check" class="memory-toolbar-btn">Check connection</button>
+            </div>
+            <div id="netagent-result" class="networks-probe-result" hidden></div>
+          </div>
+
+          <div class="admin-card" style="margin-top:12px;">
             <h2>Which network claims an address?</h2>
             <div class="admin-toggle-sub" style="margin-bottom:8px;line-height:1.5;">
               Checked against what is on screen, not what is saved &mdash; so you can see

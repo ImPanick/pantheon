@@ -151,6 +151,22 @@ DEFAULT_SETTINGS = {
     # [{"name": "lab", "cidrs": ["10.9.0.0/24"], "hosts": ["lab-gpu.lan"],
     #   "trust": "limited", "enabled": true, "notes": "…"}]
     "networks": [],
+    # `P17-01`. Where the network agent listens, and the credential Pantheon
+    # presents to it. **Both ship empty and that is the whole default**: with no
+    # address there is no agent, nothing is called, and this changes nothing
+    # (`Law 16` — we drop external dependence unless the user explicitly links
+    # it, and a process on your own host is still something you linked).
+    #
+    # `netagent_url` is destination-shaped, so `check-destinations.py` requires
+    # it to ship empty regardless — consent makes a destination lawful to USE,
+    # never lawful to SHIP (`D-2026-08-31-01`).
+    #
+    # `netagent_token` ends in "token", so `_is_secret` already classifies it:
+    # the agent may read the setting name and may never write the value, and
+    # `scrub_settings` masks it for a non-admin. That is inherited rather than
+    # declared, which is the point of the suffix rule.
+    "netagent_url": "",
+    "netagent_token": "",
     # Eval suites (`P14-03`). Ships empty; a suite is a name plus a list of
     # receipts to replay and what to expect of each:
     #

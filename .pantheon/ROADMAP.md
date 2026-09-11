@@ -77,8 +77,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P14 | Measurement | 8 | 3 | 0 | **5** |
 | P15 | Outbound politeness | 12 | 2 | **1** | **9** |
 | P16 | Self-hosted by default | 20 | 1 | 0 | **19** |
-| P17 | The network the agent is hosted on | 9 | 6 | 0 | **3** |
-| **Total** | | **360** | **186** | **9** | **165** |
+| P17 | The network the agent is hosted on | 9 | 5 | 0 | **4** |
+| **Total** | | **360** | **185** | **9** | **166** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -240,6 +240,25 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### P17-01 — the process that actually has the LAN
+`b0d4d78..HEAD`. **360 tracked, 166 done. 53 tests, 22 mutations, 0 regressions. Suite 8,424 -> 8,477.**
+`netagent/` is three modules and a README, standard library only, importing nothing from the
+application — two tests walk the imports and enforce it. A host is not a place to install SQLAlchemy
+so a laptop can list its own interfaces, and **its size is the security model**: this process has the
+LAN. The credential is `companion/pairing.py` with the roles swapped — the agent is the verifier, so
+it stores the hash and Pantheon holds the raw. **It is SHA-256 rather than bcrypt and that is argued
+in the file**, because it is the first place the no-dependencies rule costs something: a KDF makes
+guessing a *low-entropy* secret expensive, and this token is 256 machine-generated bits. The compare
+is still constant-time. **The clause that needed proving is the third — the container still cannot
+reach the LAN — and it is structural rather than a promise.** `call(route)` takes a route name from a
+frozenset in the file and the base from an operator setting; there is no parameter an address can
+arrive through, so *"fetch 169.254.169.254 through the network agent"* has nowhere to put it. A test
+reads the signature and fails if a `url=` appears. **Two bugs the work found on itself**: `socket()`
+raises at *construction* for an unavailable family, not at connect — caught by running it in the very
+container it exists to differ from — and the settings route would have stored an unparseable agent
+address exactly the way `P17-09` found it storing an unparseable CIDR. The launcher is deliberately
+not a service installer: a background service is easy to install and hard to remember you installed.
 
 ### P17-09 — the allowlist finally has a front door
 `fbbf7c6..HEAD`. **360 tracked, 165 done. 27 tests, 15 mutations, 0 regressions. Suite 8,397 -> 8,424.**
@@ -4396,13 +4415,46 @@ hop; `macvlan` is not available there at all. The capability lives on the host, 
 staying unable to reach the LAN is a **feature**: it keeps the owner's network out of the blast
 radius of a 2.9GB container that runs agent-authored code.*
 
-- [ ] **P17-01** **A network agent on the host, and a token for it.** The process that actually has
+- [x] **P17-01** **A network agent on the host, and a token for it.** The process that actually has
   the LAN. Small enough to read in one sitting, doing a short list of things, with Pantheon holding
   a credential rather than the capability. **`Law 14`: this is not `companion/`** — that is inbound,
   a phone pairing *to* Pantheon, and this is outbound. Different direction, different process. But
   `companion/pairing.py` is exactly the machinery to authenticate Pantheon *to* this, and reusing it
   is the point of noticing. `Verify:` Pantheon reaches the agent, the agent reaches the LAN, the
-  container still cannot, and a test proves the third. `Depends:` nothing. — `D-2026-09-10-01`
+  container still cannot, and a test proves the third. `Depends:` nothing. — `D-2026-09-10-01` — **done 2026-09-11.** `netagent/` is three
+  modules and a README, standard library only, and **it imports nothing from the application** — not
+  `src`, not `core`, not a web framework. Two tests enforce both by walking the imports, because an
+  agent that needs the app installed is not a separate process, it is the app with an extra port, and
+  a host is not a place to install SQLAlchemy and a vector store so a laptop can list its own
+  interfaces. **Its size is the security model, not a style preference**: this process has the LAN,
+  and a thing with the LAN that nobody has read is worse than no thing at all. **The credential is
+  `companion/pairing.py` with the roles swapped** — that one mints, stores the hash and hands the raw
+  to a phone; here the agent is the *verifier*, so the agent stores the hash and Pantheon holds the
+  raw. Same shape, opposite direction: `Law 14` satisfied by reusing the pattern rather than the
+  module, which is what keeps the standalone rule. **It is SHA-256 rather than bcrypt, and that is
+  argued rather than assumed** because it is the first place the no-dependencies rule costs
+  something: a password KDF exists to make guessing a *low-entropy* secret expensive, and this token
+  is 256 machine-generated bits never chosen by a person and never reused, so the work factor buys
+  nothing while bcrypt is a compiled dependency on the operator's host. The compare is still
+  constant-time — entropy makes brute force pointless, it does not make a timing oracle acceptable.
+  **The 401 fires before the route lookup**, so an unauthenticated caller cannot map the surface by
+  comparing 401 against 404, and `POST` returns 405 saying *"this agent is read-only; see P17-05"* —
+  the decision stated in the code rather than left as an accident. **The third Verify clause is the
+  one that needed proving, and it is structural rather than a promise.** `call(route)` takes a route
+  name and nothing else; the names are a frozenset in the file; the base comes from an operator
+  setting. There is **no parameter an address can arrive through**, so *"fetch
+  `http://169.254.169.254/` through the network agent"* has nowhere to put it — refused because it
+  was never named, which is `P17-02`'s argument one layer over. A test reads the signature and fails
+  if a `url=` appears. The five SSRF validators are untouched and a test re-asserts that `web_fetch`
+  still refuses `192.168.1.1`. **Two bugs the work found on itself**: `socket()` raises
+  `EAFNOSUPPORT` at *construction* for an unavailable family — the container has no IPv6 and the
+  guard was around `connect()` — and the settings route would have stored an unparseable agent
+  address the way `P17-09` found it storing an unparseable CIDR, so `parse_agent_base` was split out
+  pure and the route refuses at the boundary. **The launcher is deliberately not a service
+  installer**: a background service is easy to install and hard to remember you installed, and this
+  process has the LAN, so the README starts you in a terminal you can see and documents the
+  platform's own scheduler for later. `CACHE_NAME` `v408` → `v409`. 53 tests, 22 mutations, all
+  caught.
 
 - [ ] **P17-02** **The CIDR allowlist, operator-set and not agent-writable.** What keeps `P17` from
   becoming a hole in the five SSRF validators, which `FORBIDDEN.md` Part 2 says never lift. The

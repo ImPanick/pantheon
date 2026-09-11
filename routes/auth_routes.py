@@ -748,6 +748,26 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             "matched": matches_for(value, probe) if probe else None,
         }
 
+    @router.get("/networks/agent")
+    async def network_agent_health(request: Request):
+        """Admin only: is the network agent there, and is it the agent?
+
+        `P17-01`. A 200 from the configured address is not enough — the most
+        likely other listener on a LAN port is a router's admin page, and
+        reporting that as a healthy agent sends the operator hunting the wrong
+        fault. `netagent_client.health()` checks the name.
+        """
+        user = _get_current_user(request)
+        if not user or not auth_manager.is_admin(user):
+            raise HTTPException(403, "Admin only")
+        from src import netagent_client
+        if not netagent_client.configured():
+            return {"configured": False, "reachable": False,
+                    "detail": "No agent address and credential are set."}
+        verdict = await netagent_client.health()
+        verdict["configured"] = True
+        return verdict
+
     @router.post("/settings")
     async def set_settings(request: Request):
         """Admin only: update app settings."""
@@ -809,6 +829,22 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
                 except (TypeError, ValueError):
                     raise HTTPException(400, f"{key} must be an integer")
                 val = max(lo, min(val, hi))
+            if key == "netagent_url" and str(val or "").strip():
+                # `P17-01`. Same reasoning as the `networks` block below, and
+                # `P17-09`'s lesson applied before it can happen again: this
+                # route accepts the key only because the loop iterates
+                # `DEFAULT_SETTINGS`, so an unparseable address would be stored
+                # and then rejected silently by `agent_base()` on every call —
+                # leaving the operator with a configured-looking agent that never
+                # answers and nothing saying why. Empty stays legal; empty is
+                # "no agent", which is the shipped state.
+                from src.netagent_client import parse_agent_base
+                if not parse_agent_base(val):
+                    raise HTTPException(
+                        400,
+                        "netagent_url must be a plain http(s) origin such as "
+                        "http://127.0.0.1:7010 — no path, no query string, and "
+                        "no credentials in the URL.")
             if key == "networks":
                 # `P17-09`. `src/networks.py` is enforcing — it is consulted
                 # inside `check_outbound_url` and `outbound_fetch` before DNS —
