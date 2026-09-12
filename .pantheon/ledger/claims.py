@@ -147,28 +147,35 @@ CLAIMS: Tuple[Claim, ...] = (
     Claim(
         id="add-never-subtract",
         area="Scale of the fork",
-        headline="537 files added. Four removed, and all four are argued.",
+        headline="537 files added. Five removed, and all five are argued.",
         stock="Upstream's file set at the fork point.",
         pantheon=(
             "Everything upstream shipped is still here, minus four files, each deleted "
             "with a recorded argument: `ACKNOWLEDGMENTS.md` (superseded by `CREDITS.md`, "
             "105 -> 483 lines), `scripts/_completion/odysseus.zsh` (a rename), "
+            "`docs/pantheon-wordmark.png` (upstream's mark, **renamed and never "
+            "repainted** — the filename said Pantheon and the pixels said Odysseus; "
+            "`P0-13` says in as many words not to reuse it), "
             "`static/fonts/custom/GohuFont.ttf` (verified first: 1,468 bytes, 13 sfnt "
             "tables, **3 glyphs**, metadata reading *Untitled1 / Copyright (c) 2025, "
             "Unknown*), and `static/js/calendar/reminders.js` (a dead poller)."
         ),
         before="—",
-        after="537 added · 1,387 modified · 4 removed",
+        after="537 added · 1,387 modified · 5 removed",
         provenance="diffed",
         repro=f"git diff --name-status {FORK_POINT}..HEAD | grep '^D'",
         evidence=("CREDITS.md", ".pantheon/DECISIONS.md"),
-        rows=("P0-19", "P0-23", "P3-10", "D-2026-08-27-01"),
+        rows=("P0-19", "P0-23", "P3-10", "P0-13", "B71", "D-2026-08-27-01"),
         how=(
             "This is the fork's first law as a measurement — *an elevation, not a rip "
             "and re-write; we add, never subtract*. A ratio of 537 to 4 is only "
             "evidence if the four are named, so they are. The font is the one worth "
             "reading: it was checked before deletion rather than taken on trust, and "
-            "it turned out to be three glyphs under a copyright notice crediting nobody."
+            "it turned out to be three glyphs under a copyright notice crediting nobody. "
+            "**The fifth was found by a failing test nobody had looked at**: the "
+            "orphan-image guard had been red for the whole fork, saying a doc image "
+            "was referenced by nothing — and the reason nothing referenced it was "
+            "that it was upstream's logo wearing our filename."
         ),
     ),
 
@@ -341,11 +348,11 @@ CLAIMS: Tuple[Claim, ...] = (
     Claim(
         id="tests",
         area="Verification apparatus",
-        headline="Test files 792 -> 920, and a suite of 8,642 passing.",
+        headline="Test files 792 -> 929, and a suite of 8,819 passing with nothing red.",
         stock="792 test files.",
-        pantheon="920 test files, 8,642 tests passing.",
+        pantheon="929 test files, 8,819 tests passing, 0 failing.",
         before="792 test files",
-        after="920 test files · 8,642 passing",
+        after="929 test files · 8,819 passing",
         provenance="diffed",
         repro=f"git ls-tree -r --name-only {FORK_POINT} | grep -c '^tests/test_.*\\.py$' && python3 -m pytest -q",
         evidence=("tests",),
@@ -356,7 +363,16 @@ CLAIMS: Tuple[Claim, ...] = (
             "check the new tests actually notice. Mutation runs have repeatedly found "
             "that a passing test was proving nothing — a window that matched the next "
             "block's code, a scan satisfied by a name inside `if False:`. "
-            "**Proximity is not reachability**, and only a mutation run says so."
+            "**Proximity is not reachability**, and only a mutation run says so. "
+            "**The suite carried 14 standing failures for the fork's whole life and "
+            "now carries none** — and the accounting is worth more than the number: "
+            "eight were this container missing dependencies the project already "
+            "declares, so they were never defects; three were test stubs left behind "
+            "by a `headers=` argument, each raising `TypeError` into a broad "
+            "`except` so the probe returned `None` and the assertion read as a "
+            "logic bug; one was a rule written as an allowlist of one name instead "
+            "of the property it meant; and two were pinning upstream's README and "
+            "wordmark against a decision this fork had already recorded."
         ),
     ),
 

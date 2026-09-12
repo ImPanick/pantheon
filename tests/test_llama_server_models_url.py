@@ -39,7 +39,7 @@ def test_model_context_queries_models_for_v1_base(monkeypatch):
     monkeypatch.setattr(endpoint_resolver, "resolve_url", lambda url: url)
     seen = []
 
-    def fake_get(url, timeout=None):
+    def fake_get(url, timeout=None, headers=None):
         seen.append(url)
         request = httpx.Request("GET", url)
         if url.endswith("/slots"):

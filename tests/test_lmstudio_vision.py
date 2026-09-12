@@ -38,8 +38,14 @@ class TestLmStudioSupportsVision:
         chat_helpers._lmstudio_models_cache.clear()
 
     def _serve(self, monkeypatch, payload):
+        # `headers=` is not optional decoration. `_probe_lmstudio_models` passes
+        # it (endpoint auth), and a stub without it raises `TypeError` straight
+        # into that function's `except Exception: return None` — so the probe
+        # silently returned nothing and every assertion in this class read
+        # `None`. The one test expecting `None` kept passing, which is why it
+        # looked like two isolated failures rather than a dead stub.
         monkeypatch.setattr(chat_helpers.httpx, "get",
-                            lambda url, timeout=None: _FakeResponse(payload))
+                            lambda url, timeout=None, headers=None: _FakeResponse(payload))
 
     def test_vision_true_from_capabilities(self, monkeypatch):
         self._serve(monkeypatch, self.PAYLOAD)

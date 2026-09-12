@@ -9,7 +9,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/licence-AGPL--3.0--or--later-blue" alt="AGPL-3.0-or-later">
   <img src="https://img.shields.io/badge/status-early-orange" alt="Early">
-  <img src="https://img.shields.io/badge/tests-8%2C642%20passing-brightgreen" alt="8,642 tests passing">
+  <img src="https://img.shields.io/badge/tests-8%2C819%20passing-brightgreen" alt="8,819 tests passing">
   <img src="https://img.shields.io/badge/docker-compose-2496ED?logo=docker&logoColor=white" alt="Docker Compose">
   <img src="https://img.shields.io/badge/python-FastAPI-009688?logo=fastapi&logoColor=white" alt="FastAPI">
   <img src="https://img.shields.io/badge/forked%20from-Odysseus-6E5494?logo=github&logoColor=white" alt="Forked from Odysseus">
@@ -139,7 +139,10 @@ recounts every phase row against its own ticks. It exists because the summary li
 by nineteen and carried forward unread from entry to entry, because each author copied the line
 above.
 
-Test suite: **8,642 passing**, against 14 standing failures that are tracked rather than hidden.
+Test suite: **8,819 passing**, nothing red. The fourteen standing failures this fork
+inherited and carried were cleared on 2026-09-12 — eight were a container missing dependencies
+the project already declares, three were stale test stubs hiding behind broad `except` blocks,
+and three were rules pinned to upstream's shape rather than this fork's.
 
 Measured against the fork point `b4d1293` (2026-08-20): **156 commits, 1,964 files changed,
 175,966 insertions — 537 files added, 1,387 modified and 4 removed.** That last number is this

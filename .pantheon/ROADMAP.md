@@ -243,6 +243,40 @@ they are for.*
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
 
+### The suite is green — fourteen standing failures, and eight were never failures
+`30dcd0d..HEAD`. **376 tracked, 182 done. 0 new rows, 0 regressions. Suite 8,796 -> 8,819, and 14 -> 0 failing.**
+Every run in this fork's life has compared against a list of fourteen. They are gone, and the
+accounting matters more than the number.
+**Eight were this container missing dependencies the project already declares.** `icalendar` is in
+`requirements.txt` and `markitdown[docx,pptx,xlsx,xls]` in `requirements-optional.txt`; CI installs
+the first, so seven caldav tests would always have passed there, and the markitdown one would have
+**skipped**. They were never defects — they were a baseline measured on an incomplete environment
+and then carried as if it described the code. Worth saying plainly rather than counted as fixes.
+**Three were stale test stubs, and the same one.** `_probe_lmstudio_models` and
+`_query_context_length` both gained a `headers=` argument for endpoint auth; three stubs written as
+`lambda url, timeout=None` did not. Each call raised `TypeError` straight into a broad
+`except Exception`, so the probe returned `None` and the assertion read as a **logic** bug in
+vision detection and context sizing. The tell was that the one test expecting `None` kept passing —
+which is why it looked like isolated failures instead of a dead stub.
+**One was a rule written as the wrong shape.** `tool_utils` may import nothing from the project
+except `src.constants`, because it exists to break a cycle — and `src/runtime_limits.py`, whose own
+docstring says *"imports nothing from the project (stdlib only), so it is safe to import anywhere,
+including lazily from src.tool_utils"*, failed a rule it provably satisfies. The rule is now the
+**invariant**: follow every `src.` import transitively and the closure must never return to
+`tool_utils`. Written first at depth one, which failed immediately — `src.constants` imports
+`src.runtime_paths`, so the allowlist had been hiding that its one permitted module was not a leaf.
+**Two were pinning upstream's identity against a decision this fork had already made.** The README
+guard wanted a wordmark image; `P0-13` says *"do not reuse … the wordmark — the licence grants them
+but they are upstream's identity"*. And the orphan-image guard was right the whole time:
+`docs/pantheon-wordmark.png` was referenced by nothing **because it was upstream's mark renamed and
+never repainted** — the filename said Pantheon, the pixels said Odysseus. Removed; the guard now
+pins the intent and still accepts an image the moment there is an honest one. `B71` filed for the
+rest, including `build-macos-app.sh` using `docs/pantheon.jpg` — a screenshot of the old UI — as the
+**macOS app icon**. `check-fork-names.py` reported zero references throughout, correctly: it reads
+text, and these are pixels.
+**The ledger's limitations section loses its fourteen-failures line and gains a better one**, because
+a green suite is evidence about the code under it and not about a deployment.
+
 ### P19-06 — five upstream fixes, and the eighteen conflicts that never happened
 `18416dc..HEAD`. **376 tracked, 182 done. 0 new tests written, 8 inherited, 0 regressions. Suite 8,788 -> 8,796.**
 The owner chose cherry-pick over merge, and the conflicts **vanished rather than being resolved**:
@@ -5613,3 +5647,17 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   to remember it exists. And the two halves separate — *no external connection* does not help
   against the forged grant, because that caller is already inside.
 
+- [ ] **B71** **The rename renamed the branding files and never repainted them.** Found 2026-09-12
+  by clearing the standing suite failures. `docs/pantheon-wordmark.png`, `docs/pantheon.jpg` and
+  `docs/pantheon-browser.jpg` are **upstream's artwork under this fork's filenames** — the wordmark
+  is the red sailing boat beside the word *Odysseus*, and `pantheon.jpg` is a screenshot of the old
+  UI with *Odysseus* in the sidebar, the title, the placeholder and the tagline. `P0-13` already
+  knew about the browser shot and says *"shipping it would misrepresent the product"*; what it does
+  not say is that **`build-macos-app.sh:31-37` uses `docs/pantheon.jpg` as the macOS app icon**, so
+  the desktop build's icon is a picture of Odysseus. `check-fork-names.py` cannot see this — it
+  reads text, and these are pixels, which is why the sweep reported zero references while three
+  images of the other product sat in `docs/`. The orphaned wordmark is removed here (nothing
+  referenced it, and `P0-13` says not to reuse it); the other two stay because something does.
+  `Verify:` no shipped image depicts upstream's identity, and the macOS icon is Pantheon's.
+  `Depends:` `P0-13`, which is blocked on a design decision no agent can make. — found by the
+  standing-failure sweep — **needs the owner** — agent:`P0`

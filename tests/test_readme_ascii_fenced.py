@@ -5,8 +5,21 @@ Originally (#1390) the README opened with an ASCII-art banner that had to live
 inside a ``` code fence, otherwise GitHub's markdown collapsed its leading
 whitespace and box-drawing rules and rendered it misaligned. The README refresh
 (#4306) dropped that banner in favour of a centered wordmark image, so the guard
-now pins the wordmark identity instead, while still catching the original failure
+pinned the wordmark image instead, while still catching the original failure
 mode if an un-fenced ASCII banner is ever reintroduced.
+
+**THIS FORK HAS NO WORDMARK IMAGE, AND THAT IS A RECORDED DECISION.** `P0-13`
+says so directly: *"Do not reuse the red sailing boat, the wordmark, or the
+per-route favicon shapes — the licence grants them but they are upstream's
+identity."* `docs/pantheon-wordmark.png` was upstream's mark **renamed and never
+repainted** — the file said `pantheon` and the pixels said `Odysseus` — so it was
+orphaned rather than shipped, and `B71` removes it. The README opens with a
+centered `<h1>` until the mark `P0-13` is blocked on exists.
+
+So the guard pins the **intent** — a recognisable Pantheon title in the first few
+lines — and accepts either form. It is not weakened: the `#1390` ASCII-fence
+guard below is untouched, and an image is still accepted the moment there is an
+honest one to use.
 """
 from pathlib import Path
 
@@ -23,11 +36,18 @@ def _fenced_segments(text: str):
     return parts[1::2]
 
 
-def test_readme_opens_with_wordmark_title():
-    # The README must still open with a recognizable Pantheon title: now the
-    # centered wordmark image rather than an H1 / ASCII banner.
+def test_readme_opens_with_a_pantheon_title():
+    # Either form: the wordmark image once one exists (`P0-13`), or the centered
+    # H1 the fork uses meanwhile. What must not happen is the README opening
+    # with neither, or with upstream's identity.
     head = "\n".join(README.read_text(encoding="utf-8").splitlines()[:15])
-    assert 'alt="Pantheon"' in head, "README must open with the Pantheon wordmark image"
+    assert 'alt="Pantheon"' in head or "<h1" in head, (
+        "README must open with a recognisable Pantheon title"
+    )
+    assert "Pantheon" in head
+    assert "Odysseus" not in head.replace("forked%20from-Odysseus", "").replace(
+        'alt="Forked from Odysseus"', ""
+    ), "the README must not open under upstream's identity (the badge is fine)"
 
 
 def test_reintroduced_ascii_banner_stays_fenced():

@@ -32,14 +32,14 @@ are the numbers most likely to be quoted and least able to carry the weight.
 | Measure | Odysseus | Pantheon | Provenance |
 | --- | --- | --- | --- |
 | 156 commits and 175,966 inserted lines past the fork point. | `0 commits` | **`156 commits, 1,964 files changed, 175,966 insertions, 6,625 deletions`** | `diffed` |
-| 537 files added. Four removed, and all four are argued. | `—` | **`537 added · 1,387 modified · 4 removed`** | `diffed` |
+| 537 files added. Five removed, and all five are argued. | `—` | **`537 added · 1,387 modified · 5 removed`** | `diffed` |
 | Twelve upstream commits are not merged, and five of them are real fixes. | `0 behind` | **`7 with no patch-equivalent here (5 docs/deps, 2 advisory merges landed by hand)`** | `measured` |
 | recall@5 on one corpus: 0.40 lexical, 0.77 hybrid, 1.00 semantic. | `recall@5 0.40` | **`recall@5 1.00`** | `fixture` |
 | MRR 0.319 -> 0.931. Rank matters because memory is injected under a slot limit. | `MRR 0.319` | **`MRR 0.931`** | `fixture` |
 | The first scored run found three defects, which is what it was built for. | `0 measured` | **`3 defects on the first run`** | `measured` |
 | Ten thousand memories, under a millisecond a query, no service running. | `a service, or nothing` | **`0.82ms at 10,000 memories (15MB of index)`** | `measured` |
 | Fifteen checkers in CI, each one built from a defect that actually shipped. | `0` | **`15`** | `counted` |
-| Test files 792 -> 920, and a suite of 8,642 passing. | `792 test files` | **`920 test files · 8,642 passing`** | `diffed` |
+| Test files 792 -> 929, and a suite of 8,819 passing with nothing red. | `792 test files` | **`929 test files · 8,819 passing`** | `diffed` |
 | One tracker, checked by a script, after it was silently wrong by nineteen. | `untracked` | **`370 rows, every one recounted against its section`** | `measured` |
 | Agents can run commands on the host. 52 rules they cannot reach say what never runs. | `no host reach` | **`52 compiled-in rules · 0 bypasses`** | `counted` |
 | Five of the 52 rules aren't about danger. They keep the other 47 enforceable. | `—` | **`5 opaque · 47 nuclear`** | `counted` |
@@ -77,21 +77,21 @@ are the numbers most likely to be quoted and least able to carry the weight.
 git diff --shortstat b4d1293..HEAD && git rev-list --count b4d1293..HEAD
 ```
 
-### 537 files added. Four removed, and all four are argued.
+### 537 files added. Five removed, and all five are argued.
 
-**`—` → `537 added · 1,387 modified · 4 removed`**  ·  provenance **`diffed`**
+**`—` → `537 added · 1,387 modified · 5 removed`**  ·  provenance **`diffed`**
 
 **Odysseus:** Upstream's file set at the fork point.
 
-**Pantheon:** Everything upstream shipped is still here, minus four files, each deleted with a recorded argument: `ACKNOWLEDGMENTS.md` (superseded by `CREDITS.md`, 105 -> 483 lines), `scripts/_completion/odysseus.zsh` (a rename), `static/fonts/custom/GohuFont.ttf` (verified first: 1,468 bytes, 13 sfnt tables, **3 glyphs**, metadata reading *Untitled1 / Copyright (c) 2025, Unknown*), and `static/js/calendar/reminders.js` (a dead poller).
+**Pantheon:** Everything upstream shipped is still here, minus four files, each deleted with a recorded argument: `ACKNOWLEDGMENTS.md` (superseded by `CREDITS.md`, 105 -> 483 lines), `scripts/_completion/odysseus.zsh` (a rename), `docs/pantheon-wordmark.png` (upstream's mark, **renamed and never repainted** — the filename said Pantheon and the pixels said Odysseus; `P0-13` says in as many words not to reuse it), `static/fonts/custom/GohuFont.ttf` (verified first: 1,468 bytes, 13 sfnt tables, **3 glyphs**, metadata reading *Untitled1 / Copyright (c) 2025, Unknown*), and `static/js/calendar/reminders.js` (a dead poller).
 
-**How we got there.** This is the fork's first law as a measurement — *an elevation, not a rip and re-write; we add, never subtract*. A ratio of 537 to 4 is only evidence if the four are named, so they are. The font is the one worth reading: it was checked before deletion rather than taken on trust, and it turned out to be three glyphs under a copyright notice crediting nobody.
+**How we got there.** This is the fork's first law as a measurement — *an elevation, not a rip and re-write; we add, never subtract*. A ratio of 537 to 4 is only evidence if the four are named, so they are. The font is the one worth reading: it was checked before deletion rather than taken on trust, and it turned out to be three glyphs under a copyright notice crediting nobody. **The fifth was found by a failing test nobody had looked at**: the orphan-image guard had been red for the whole fork, saying a doc image was referenced by nothing — and the reason nothing referenced it was that it was upstream's logo wearing our filename.
 
 ```
 git diff --name-status b4d1293..HEAD | grep '^D'
 ```
 
-Argued in: `P0-19`, `P0-23`, `P3-10`, `D-2026-08-27-01`.
+Argued in: `P0-19`, `P0-23`, `P3-10`, `P0-13`, `B71`, `D-2026-08-27-01`.
 
 ### Twelve upstream commits are not merged, and five of them are real fixes.
 
@@ -201,15 +201,15 @@ python3 .pantheon/release-gate.py --fast
 
 Argued in: `P3-13`, `P3-14`, `P3-17`, `P3-23`, `D-2026-09-10-03`.
 
-### Test files 792 -> 920, and a suite of 8,642 passing.
+### Test files 792 -> 929, and a suite of 8,819 passing with nothing red.
 
-**`792 test files` → `920 test files · 8,642 passing`**  ·  provenance **`diffed`**
+**`792 test files` → `929 test files · 8,819 passing`**  ·  provenance **`diffed`**
 
 **Odysseus:** 792 test files.
 
-**Pantheon:** 920 test files, 8,642 tests passing.
+**Pantheon:** 929 test files, 8,819 tests passing, 0 failing.
 
-**How we got there.** Every row in this fork's tracker lands with tests **and** mutations: the change is made, then the code is deliberately broken in a dozen ways to check the new tests actually notice. Mutation runs have repeatedly found that a passing test was proving nothing — a window that matched the next block's code, a scan satisfied by a name inside `if False:`. **Proximity is not reachability**, and only a mutation run says so.
+**How we got there.** Every row in this fork's tracker lands with tests **and** mutations: the change is made, then the code is deliberately broken in a dozen ways to check the new tests actually notice. Mutation runs have repeatedly found that a passing test was proving nothing — a window that matched the next block's code, a scan satisfied by a name inside `if False:`. **Proximity is not reachability**, and only a mutation run says so. **The suite carried 14 standing failures for the fork's whole life and now carries none** — and the accounting is worth more than the number: eight were this container missing dependencies the project already declares, so they were never defects; three were test stubs left behind by a `headers=` argument, each raising `TypeError` into a broad `except` so the probe returned `None` and the assertion read as a logic bug; one was a rule written as an allowlist of one name instead of the property it meant; and two were pinning upstream's README and wordmark against a decision this fork had already recorded.
 
 ```
 git ls-tree -r --name-only b4d1293 | grep -c '^tests/test_.*\.py$' && python3 -m pytest -q
@@ -536,8 +536,11 @@ limitations section reads as marketing.
 3. **Most rows compare code, not outcomes.** *Fewer unreachable handlers* and
    *every silent failure explained* are real and checkable; neither is a
    measurement of a person getting their work done faster.
-4. **The suite carries 14 standing failures**, unchanged across every run in this
-   fork's history. They are tracked, not hidden, and no row above depends on them.
+4. **Most rows here are about this fork's own tree.** The suite is green —
+   8,819 passing, nothing red, after 14 standing failures were cleared on
+   2026-09-12 — but a green suite is evidence about the code under it, not
+   about a deployment. `P10-10`'s manual pass over every surface is still
+   not done, and no automated check substitutes for it.
 
 ## Reproducing all of it
 
