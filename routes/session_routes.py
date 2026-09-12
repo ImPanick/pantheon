@@ -5,17 +5,24 @@ import html
 import json
 import uuid
 from datetime import datetime
-from fastapi import APIRouter, Form, HTTPException, Response, Request
+from fastapi import APIRouter, Form, HTTPException, Response, Request, Depends
 import logging
 
 from core.session_manager import SessionManager
 from core.models import ChatMessage
 from src.request_models import SessionResponse
 from core.database import Session as DbSession, SessionLocal, Document, GalleryImage, utcnow_naive
-from src.auth_helpers import effective_user, _auth_disabled, owner_filter
+from src.auth_helpers import (
+    effective_user,
+    _auth_disabled,
+    owner_filter,
+    is_delegated_credential,
+    require_chat_api_token_scope,
+)
 from src.session_image_cleanup import _generated_image_path_for_cleanup, session_image_refs
 from src.session_actions import is_session_recently_active
 from src.upload_handler import reserve_message_upload_references
+from src.tool_approval_scopes import sanitize_client_message_metadata
 
 
 def _sanitize_export_filename(name: str) -> str:
@@ -127,6 +134,10 @@ logger = logging.getLogger(__name__)
 
 
 def _current_user_is_admin(request: Request, user: str | None) -> bool:
+    # B70. The token's owner is an admin by construction, which is precisely
+    # the inference that must not be made about the credential they handed out.
+    if is_delegated_credential(request):
+        return False
     if not user:
         return False
     auth_mgr = getattr(request.app.state, "auth_manager", None)
@@ -219,8 +230,14 @@ def setup_session_routes(
     # were silently ignored while the call appeared to succeed. Production
     # calls it once, so nothing was broken; two test files that each build a
     # router were not, and the suite's green depended on which ran first.
-    router = APIRouter(prefix="/api", tags=["sessions"])
-
+    # B70. Same scope gate as the chat surface: a token reaching session
+    # history and options is reaching the same conversation from the other
+    # side, so requiring `chat` on one and not the other is a door and a wall.
+    router = APIRouter(
+        prefix="/api",
+        tags=["sessions"],
+        dependencies=[Depends(require_chat_api_token_scope)],
+    )
 
     REQUEST_TIMEOUT = config.get("REQUEST_TIMEOUT", 20)
     SESSION_MODEL_VALIDATION_TIMEOUT = min(float(REQUEST_TIMEOUT or 20), 3.0)
@@ -577,7 +594,15 @@ def setup_session_routes(
         except (AttributeError, TypeError, ValueError) as exc:
             raise HTTPException(400, "Invalid message attachment metadata") from exc
         for m in messages:
-            sess.add_message(ChatMessage(m["role"], m["content"], metadata=m.get("metadata")))
+            # B70. This blob is the caller's. Stripping the server-owned keys
+            # keeps an approval card out of a transcript that is later read as
+            # authority; the signature check in `core/models` is what actually
+            # closes the path, and this means nothing has to be trusted twice.
+            sess.add_message(ChatMessage(
+                m["role"],
+                m["content"],
+                metadata=sanitize_client_message_metadata(m.get("metadata")),
+            ))
         session_manager.save_sessions()
         return {"ok": True, "count": len(messages)}
 

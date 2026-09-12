@@ -42,6 +42,46 @@ def _is_api_token_request(request: Request) -> bool:
     return bool(getattr(request.state, "api_token", False))
 
 
+def is_delegated_credential(request: Request) -> bool:
+    """Whether this request arrived on a credential acting FOR a human.
+
+    `B70`. A bearer API token is minted by a person and then handed to
+    something else: an integration, a script, a third party.
+    :func:`effective_user` resolves it back to that person for ownership and
+    attribution, which is **correct for data and wrong for authority**. Only
+    admins can mint tokens, so every token resolves to an admin, and any gate
+    asking *is the owner an admin?* answers yes for a credential the owner has
+    given away.
+
+    Security decisions about what the AGENT may do ask this instead, so a token
+    cannot inherit the shell merely because its owner could use one.
+    """
+    return _is_api_token_request(request)
+
+
+def require_api_token_scope(request: Request, scope: str) -> Optional[str]:
+    """Require ``scope`` when the request is authenticated by an API token.
+
+    Browser sessions are unaffected. Scoped bearer routes call this before
+    touching owner data, so resolving a token back to its owner never also
+    hands it the owner's interactive-session authority.
+    """
+    if not _is_api_token_request(request):
+        return get_current_user(request)
+    scopes = set(getattr(request.state, "api_token_scopes", []) or [])
+    if scope not in scopes:
+        raise HTTPException(403, f"API token missing required scope: {scope}")
+    owner = getattr(request.state, "api_token_owner", None)
+    if not owner:
+        raise HTTPException(403, "API token has no owner")
+    return owner
+
+
+def require_chat_api_token_scope(request: Request) -> Optional[str]:
+    """FastAPI dependency for the chat and session bearer surfaces."""
+    return require_api_token_scope(request, "chat")
+
+
 def require_authenticated_request(request: Request) -> str:
     """Allow either a browser session or a valid bearer API token.
 

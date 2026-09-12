@@ -243,6 +243,24 @@ they are for.*
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
 
+### B70 — the backport, and the forgery an existing test was performing
+`0dd3904..HEAD`. **376 tracked, 181 done. 38 tests, 24 mutations, 0 regressions. Suite 8,750 -> 8,788.**
+Taken now rather than deferred, on the owner's parenthesis: *"there **is** no external connection
+(yet - I may tailscale this out one day…)"*. That is a correct read of today's risk and the reason
+the backport is **cheap**, not the reason it is unnecessary — a control added now costs one session;
+the same control added the week the box reaches a tailnet costs a decision made under pressure by
+somebody who has to remember it exists. **And one half never depended on exposure at all**: the
+approval grant was derived from caller-writable message metadata, which is a confused deputy on an
+ordinary authenticated route — *no external connection* does not help when the caller is already
+inside. It is HMAC-signed now and fails closed. **An existing test had been performing that forgery
+without meaning to** — it hand-wrote a resolved card and expected it honoured, which is the clearest
+possible evidence the path was open; it now resolves the way the server does. Mutation testing found
+three real gaps: the `\x00` separator is the whole canonicalization (`("ab","c")` and `("a","bc")`
+otherwise sign identically), the hex guard is what stops `compare_digest` **raising** on non-ASCII,
+and one survivor was a mis-anchored mutation rather than a missing test. Two are equivalent and one
+— constant-time compare — is timing rather than behaviour and is named as untestable instead of
+being given a flaky test.
+
 ### B70 filed — upstream shipped a security fix and we do not have it
 `2a54779..HEAD`. **376 tracked, 181 done. 0 new tests, 0 regressions.**
 Went to measure `P19-06`'s merge and found that two of the twelve unmerged upstream commits are
@@ -5228,7 +5246,13 @@ which is the `P17-02` mistake, and it is why these rows are the ones they are.
   does discovery, dynamic registration and **PKCE**, which Google's email flow does not.
   `Verify:` a provider is a record — endpoints, scopes, whether it needs a client secret —
   and adding one is data rather than a flow; Microsoft lands as the proof.
-  `Depends:` `P18-03`. — agent:`P18`
+  `Depends:` `P18-03`. — agent:`P18` — **SCOPE CORRECTED 2026-09-12** (`D-2026-09-12-01`). The row
+  was filed about **mailbox** providers; the owner's list — *"Google, GitHub, Slack, etc… Possibly
+  even Anthropic/Claude with OpenAI/Codex/ChatGPT"* — is mostly not mailboxes. That is the row being
+  too narrow rather than the answer being off: one record type serves both, because the difference
+  between a mailbox and a service is **which fields a provider populates, not which flow it runs**.
+  Microsoft stays the proof, being the case with the most constraints — IMAP/SMTP transport *and*
+  OAuth — so a record that satisfies it satisfies the simpler ones, and GitHub afterwards is data.
 
 - [ ] **P18-06** **Google's flow has no PKCE, and the MCP flow beside it does.** Google email
   uses a confidential client with `client_secret` (`routes/email_routes.py:6220-6242`) and
@@ -5447,11 +5471,44 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   to agree today is the state the old form was in before somebody edited one.
   `CACHE_NAME` `v414` → `v415`. 6 tests.
 
-- [ ] **B70** **Upstream shipped a security fix through a private advisory fork and we do not have
+- [x] **B70** **Upstream shipped a security fix through a private advisory fork and we do not have
   it.** Found 2026-09-11 while measuring `P19-06`. Two of the twelve unmerged upstream commits are
   titled *"Merge commit from fork"* — GitHub's default message when merging a **private security
   advisory** — and the diffs are read, not assumed. `grep delegated_credential` returns **nothing**
-  in this tree. Four related weaknesses, and the second is the one that does not need a token:
+  in this tree. Four related weaknesses, and the second is the one that does not need a token: — **done 2026-09-12.**
+  Backported, not merged, exactly as the row argued: seven files of controls with **no behaviour
+  change for a browser session**, and none of the 18 branding/README conflicts came near it.
+  **The forgeable grant is the half worth reading.** `core/models._history_grants_chat_session_approval`
+  trusted `kind`, `resolved` and `session_id` out of `metadata.tool_events[].ask_user`, and
+  `POST /api/sessions/{id}/messages` persisted a caller's metadata blob verbatim — so the *shape* of
+  a resolved approval could be written into a transcript and read back as authority. Now HMAC-signed
+  over `(session_id, approval_id, decision)` with the persistent app key, **failing closed**, and
+  `sanitize_client_message_metadata` keeps the state out of the transcript at all: two controls, the
+  signature being the one that closes the path and the filter meaning nothing is trusted twice.
+  **A cost, stated rather than discovered:** a grant resolved before this shipped carries no
+  signature, so it stops counting and the person is asked once more. Re-arming a gate is the safe
+  direction, and honouring unsigned grants *for a while* is a bypass with an expiry date nobody
+  remembers to remove. An existing test had to be corrected to stamp its card — **it had been
+  performing the forgery without meaning to**, which is the clearest evidence the path was open.
+  **The delegated half.** `is_delegated_credential()` asks *is this a credential acting for a human*
+  where the code used to ask *is the owner an admin* — a question that always answered yes, because
+  minting is admin-only. `delegated_credential_blocked_tools()` takes **no owner argument**, so it
+  cannot be asked the wrong question; the refusal in `decision_for` sits **above** the bypasses and
+  is deliberately independent of `external_untrusted_context_seen`, so it holds on a clean run where
+  that gate never arms and there is no prompt to bypass. A token no longer answers the approval it
+  triggered, the chat and session surfaces require the `chat` scope, and `_current_user_is_admin`
+  returns **False** for a token.
+  **Mutation testing found three real gaps and one thing it cannot test.** `"\x00".join` is not
+  formatting: concatenated without it, `("ab","c")` and `("a","bc")` both sign `"abcapprove"`, so a
+  signature issued for one verifies for the other — reachable, because ids are caller-influenced.
+  The hex and length guards exist because `hmac.compare_digest` **raises** on non-ASCII, so a
+  crafted signature was a 500 rather than a refusal. And a mutation emptying the token cap first hit
+  `blocked_tools_for_owner`, because both functions end on the same line — the anchor was wrong, not
+  the test. The one genuine equivalent: dropping the length check changes no outcome the hex check
+  does not already produce, recorded as such rather than covered by a test that cannot tell.
+  **`compare_digest` → `==` also survives and always will** — the difference is timing, not
+  behaviour, and a timing assertion is a flaky test pretending to be a control. 38 tests,
+  24 mutations, 21 caught, 2 equivalent, 1 untestable and named.
 
   **(1) A bearer API token carries its owner's authority.** `src/auth_helpers.effective_user()`
   resolves a token to the minting owner *by design*, so a paired client sees the same data as the
@@ -5502,4 +5559,12 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   src/tool_security.py src/tool_capabilities.py src/agent_loop.py routes/chat_routes.py
   routes/session_routes.py` on a checkout carrying the `upstream` remote.
   `Depends:` nothing — it is deliberately ahead of the rest of `P19-06`.
-  — found by `P19-06` — **needs the owner** — agent:`P19`
+  — found by `P19-06` — agent:`P19` — **DECIDED 2026-09-12: take it now** (`D-2026-09-12-01`).
+  *"Security risks aren't exactly too much of a concern - there **is** no external connection (yet -
+  I may tailscale this out one day just for my own trusted devices though)."* A correct read of
+  today's risk, and the reason the backport is **cheap** rather than the reason it is unnecessary:
+  the decision was taken on the parenthesis. A control added now costs one session; the same control
+  added the week the box reaches a tailnet costs a decision made under pressure by somebody who has
+  to remember it exists. And the two halves separate — *no external connection* does not help
+  against the forged grant, because that caller is already inside.
+

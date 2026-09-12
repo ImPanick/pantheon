@@ -35,6 +35,7 @@ from src.settings import get_setting
 from src.prompt_security import untrusted_context_message
 from src.tool_security import (
     blocked_tools_for_owner,
+    delegated_credential_blocked_tools,
     email_tool_policy_names,
     plan_mode_disabled_tools,
     feature_disabled_tools,
@@ -4112,6 +4113,7 @@ async def stream_agent_loop(
     uploaded_files: Optional[List[Dict]] = None,
     workload: str = "foreground",
     external_untrusted_context_seen: bool = False,
+    delegated_credential: bool = False,
     exact_approval: Optional[ExactToolApproval] = None,
     _is_teacher_run: bool = False,
     history_session=None,
@@ -4168,6 +4170,7 @@ async def stream_agent_loop(
         approval_gate_bypassed=bool(
             exact_approval and exact_approval.allow_remaining_actions
         ),
+        delegated_credential=bool(delegated_credential),
         rung=_run_rung,
         allow_rule_lookup=(
             _resolve_allow_rule_lookup(owner, session_id)
@@ -4205,6 +4208,12 @@ async def stream_agent_loop(
             mcp_mgr = None
     guide_only = bool(tool_policy and tool_policy.mode == "guide_only")
     public_blocked_tools = blocked_tools_for_owner(owner)
+    if delegated_credential:
+        # B70. `owner` here is the admin who minted the token, so the call
+        # above returns the empty set — a token would otherwise inherit the
+        # full admin tool surface from a person who is not driving it. The cap
+        # is the non-admin policy regardless of who minted it.
+        public_blocked_tools = set(public_blocked_tools) | delegated_credential_blocked_tools()
     if public_blocked_tools:
         disabled_tools.update(public_blocked_tools)
         # MCP tools are namespaced dynamically, so hide all MCP schemas for

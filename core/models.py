@@ -12,6 +12,8 @@ from typing import Dict, List, Any, Optional, TYPE_CHECKING
 from src.tool_approval_scopes import (
     CHAT_SESSION_APPROVAL_CONTEXT_MARKER,
     CHAT_SESSION_APPROVAL_DECISION,
+    CHAT_SESSION_APPROVAL_SIGNATURE_FIELD,
+    verify_chat_session_grant,
 )
 
 if TYPE_CHECKING:
@@ -57,10 +59,29 @@ def _history_grants_chat_session_approval(
             ask_user = event.get("ask_user") if isinstance(event, dict) else None
             if not isinstance(ask_user, dict):
                 continue
-            if (
+            if not (
                 ask_user.get("kind") == "tool_approval"
                 and ask_user.get("resolved") == CHAT_SESSION_APPROVAL_DECISION
                 and str(ask_user.get("session_id") or "") == expected_session
+            ):
+                continue
+            # B70. Every field above is caller-writable: `POST
+            # /api/sessions/{id}/messages` persists a metadata blob verbatim,
+            # so the shape of a resolved approval could be written into a
+            # transcript and read back here as authority. The signature is the
+            # part only the server can produce.
+            #
+            # **Fails closed, and that has a cost worth stating**: a grant
+            # resolved before this shipped carries no signature, so it stops
+            # counting and the person is asked once more. Re-arming a gate is
+            # the safe direction, and the alternative — honouring unsigned
+            # grants for a while — is a bypass with an expiry date nobody
+            # would remember to remove.
+            if verify_chat_session_grant(
+                ask_user.get(CHAT_SESSION_APPROVAL_SIGNATURE_FIELD),
+                expected_session,
+                ask_user.get("approval_id"),
+                CHAT_SESSION_APPROVAL_DECISION,
             ):
                 return True
     return False

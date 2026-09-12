@@ -1450,3 +1450,74 @@ knowing what they are reversing:
 a settings-sourced guard, a route that writes rules, an agent-reachable restart with different
 arguments. At that point the boundary is gone and the denylist-only choice has to be re-put to the
 owner, because it was made on the assumption the list holds.
+
+---
+
+## D-2026-09-12-01 — four answers: one record shape, take the backport, cherry-pick the fixes, leave the rung
+
+Four questions had been sitting open across `P18`, `P19` and `D-2026-09-11-01`. The owner answered
+all four on 2026-09-12, and one of them corrected the row it was answering.
+
+### `P18-05` is broader than it was filed — **both shapes, one record**
+
+The row was written about **mailbox** providers, with Microsoft as the named gap. The owner's list
+— *"Google, GitHub, Slack, etc… Possibly even Anthropic/Claude with OpenAI/Codex/ChatGPT"* — is
+mostly **not mailboxes**. That is not a misunderstanding to correct; it is the row being too narrow.
+
+**So the abstraction serves both, and the row was already pointing at it.** `P18-05` says *"the row
+is the abstraction, not the list"* and names `INTEGRATION_PRESETS` (`src/integrations.py:29`) as the
+obvious home — a table whose `auth_type` is only `header` or `none`, with no client id, no scope and
+no endpoints. That is exactly the shape that cannot express *sign in with GitHub* **or** *sign in
+with Microsoft*. One record type — endpoints, scopes, whether a client secret is needed, what a
+successful link fills in — serves a mailbox and a service equally, because the difference between
+them is which fields a provider populates, not which flow it runs.
+
+**Microsoft stays the proof** because it is the case with the most constraints: it needs a mailbox's
+IMAP/SMTP transport *and* OAuth, so a record that satisfies it satisfies the simpler ones. Adding
+GitHub after that is data.
+
+### `B70` — take the backport now, despite the exposure being low
+
+The owner: *"Security risks aren't exactly too much of a concern - there **is** no external
+connection (yet - I may tailscale this out one day just for my own trusted devices though)."*
+
+That is a correct read of today's risk and it is **why the backport is cheap rather than why it is
+unnecessary**. The choice was taken on the parenthesis: a control added now costs one session and a
+control added the week the box goes onto a tailnet costs a decision made under pressure, by somebody
+who has to remember it exists. The patch **adds** controls and changes nothing for a browser
+session, so there is no behaviour to regret.
+
+**It also stops being only about exposure once the two halves are separated.** The API-token half
+matters when something else holds a credential. The forged-grant half is a **confused deputy on an
+ordinary authenticated route** — the server read an approval grant back out of message metadata that
+a caller could write — and *"no external connection"* does not help there, because the caller is
+already inside. That half would have been worth taking even on the *defer* answer.
+
+### `P19-06` — cherry-pick the five fixes, leave the rest
+
+Not a full merge. The five are real (`#6158` docker cache parent ownership, `#6228` caching a
+successful-but-empty Tailscale lookup, `#6174` task singleflight cleanup on cancellation, `#5937`
+psycopg2-binary, `#6168` version alignment); the rest are documentation restructuring and dependency
+bumps. **The conflicts vanish rather than being resolved**: all 18 were in files these five never
+touch — the branding assets this fork renamed, `README.md`, `specs/`, `website/`. A merge would have
+forced a judgement on every one of them in order to collect five fixes.
+
+`#6228` is the one worth naming: a Tailscale lookup that succeeds and returns nothing was not being
+cached, so the empty answer was re-fetched every time. That is `P15`'s subject exactly, arriving
+from upstream.
+
+### `trust_rung` stays writable — the loop is accepted, again and deliberately
+
+`D-2026-09-11-01` recorded it as knowingly accepted and asked. The answer is to leave it, and it is
+consistent with `D-2026-09-08-04`: *"full automation only works if the LLM in agent mode can define
+its own parameters (with failsafes and safeguards)."* A rung the agent cannot move is a parameter it
+cannot define.
+
+**What keeps this defensible is the split that decision already made.** The rung governs *whether a
+person is asked*; `netagent/guard.py`'s 52 rules govern *what may run*, live in another process, and
+have no writer. So the loop widens approval and never capability — and `allow_bash` remains upstream
+of all of it, per-turn and off by default.
+
+**What would reopen it.** Any path by which the rung starts gating capability rather than approval.
+The moment a rung decides *what* rather than *who is asked*, the agent writing its own is a
+different question and this answer does not cover it.

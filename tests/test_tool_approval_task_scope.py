@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 from core.models import ChatMessage, Session
 from src.tool_approval_scopes import (
+    stamp_chat_session_grant,
     CHAT_SESSION_APPROVAL_CONTEXT_MARKER,
     ToolApprovalScope,
 )
@@ -112,6 +113,11 @@ def test_allow_for_chat_session_applies_to_later_turns_in_only_that_chat():
 
     resolved_card = pending.public_payload()
     resolved_card["resolved"] = "approve"
+    # B70: a card is a grant only once the SERVER has signed it. Setting
+    # `resolved` by hand is exactly the forgery this test used to perform
+    # without meaning to, so it now resolves the way `routes/chat_routes.py`
+    # does. `test_an_unsigned_card_is_not_a_grant` below asserts the other half.
+    stamp_chat_session_grant(resolved_card, "session-1", "approve")
     history = [
         ChatMessage(
             "assistant",
