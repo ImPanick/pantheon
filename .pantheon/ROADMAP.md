@@ -79,8 +79,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P16 | Self-hosted by default | 20 | 1 | 0 | **19** |
 | P17 | The network the agent is hosted on | 11 | 3 | 0 | **8** |
 | P18 | One button, and it links | 7 | 2 | 0 | **5** |
-| P19 | The proof ledger | 7 | 1 | 0 | **6** |
-| **Total** | | **376** | **186** | **9** | **181** |
+| P19 | The proof ledger | 7 | 0 | 0 | **7** |
+| **Total** | | **376** | **185** | **9** | **182** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -242,6 +242,22 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### P19-06 — five upstream fixes, and the eighteen conflicts that never happened
+`18416dc..HEAD`. **376 tracked, 182 done. 0 new tests written, 8 inherited, 0 regressions. Suite 8,788 -> 8,796.**
+The owner chose cherry-pick over merge, and the conflicts **vanished rather than being resolved**:
+all 18 were in files the five fixes never touch. Every one applied clean. **Authorship stays
+upstream's** — `rauljua`, `Vykos`, `daixiheguu`, `cybernetus@xda`, `RaresKeY` — carried with
+`cherry-pick -x` so each commit names the sha it came from; this fork re-authors every other sync to
+the owner because that work is the owner's, and doing it here would be the one place the habit
+becomes a lie. Two of the five brought their own test files, so the suite rose by eight without us
+writing a line. **`#6228` is the interesting one**: a Tailscale lookup that succeeded and returned
+nothing was not cached, so the empty answer was re-fetched every time — `P15`'s whole subject,
+arriving from upstream, which says the concern is shared rather than ours. **And our SPDX checker
+failed the gate on upstream's two new test files**, which ship with no licence header at all: a
+concrete instance of the ledger's *verification apparatus* claim doing work on code that is not
+ours. Behind-by-N is **12 → 7**, and the ledger's live `git rev-list` check will fail until it says
+so, which is the mechanism working rather than a chore.
 
 ### B70 — the backport, and the forgery an existing test was performing
 `0dd3904..HEAD`. **376 tracked, 181 done. 38 tests, 24 mutations, 0 regressions. Suite 8,750 -> 8,788.**
@@ -5414,10 +5430,31 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   can and is silent where it cannot, with **both branches tested**, because a rule that only ever
   takes the silent branch is not a rule.
 
-- [ ] **P19-06** **Merge the twelve upstream commits, because a fork that stops taking fixes is a
+- [x] **P19-06** **Merge the twelve upstream commits, because a fork that stops taking fixes is a
   snapshot.** Split from `P19-05`. Five are real fixes against code this fork still runs.
   `Verify:` the merge lands, the suite holds at its standing failures, and the ledger's
-  behind-by-N drops to zero. `Depends:` `P19-05`. — owner 2026-09-11 — agent:`P19`
+  behind-by-N drops to zero. `Depends:` `P19-05`. — owner 2026-09-11 — agent:`P19` — **done 2026-09-12.**
+  **Cherry-picked, not merged, and the eighteen conflicts simply never happened.** All five applied
+  clean: `#6168` version alignment, `#5937` psycopg2-binary, `#6174` task singleflight cleanup on
+  cancellation, `#6228` caching a successful-but-empty Tailscale lookup, `#6158` docker app-cache
+  parent ownership. 8 files, 274 insertions — including **two test files upstream wrote**, which is
+  why the suite went up by eight without us writing a line of it.
+  **Authorship is upstream's and deliberately not rewritten.** Every other sync in this fork
+  re-authors to the owner because the work is the owner's; these five are `rauljua`, `Vykos`,
+  `daixiheguu`, `cybernetus@xda` and `RaresKeY`, carried across with `cherry-pick -x` so each commit
+  names the upstream sha it came from. Claiming somebody else's fix would be the one place that
+  habit becomes a lie.
+  **`#6228` is the one worth reading**: a Tailscale lookup that succeeds and returns nothing was not
+  cached, so the empty answer was re-fetched every time. That is `P15`'s entire subject arriving
+  from upstream — *a successful query with no results is still knowledge* — and it is a good sign
+  that the concern is shared rather than ours alone.
+  **Our own checker caught something upstream ships without.** `check-spdx.py` failed the gate on
+  the two new test files: no `SPDX-License-Identifier`. Added at `AGPL-3.0-or-later`, which is what
+  the project is; 1,555 files in scope now. A small thing, and a concrete instance of the ledger's
+  *verification apparatus* claim doing work on code that is not ours.
+  The behind-by-N drops **12 → 7**, and the seven that remain are documentation restructuring and
+  dependency bumps the owner declined. `check-ledger.py`'s live `git rev-list` check will fail until
+  the ledger says 7, which is the mechanism working.
 
 - [x] **P19-07** **The README is the front door and it does not mention any of this.** Owner
   2026-09-11: *"incorporate it into the readme (which needs updated btw) - could be just a new .md

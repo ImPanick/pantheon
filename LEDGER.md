@@ -33,7 +33,7 @@ are the numbers most likely to be quoted and least able to carry the weight.
 | --- | --- | --- | --- |
 | 156 commits and 175,966 inserted lines past the fork point. | `0 commits` | **`156 commits, 1,964 files changed, 175,966 insertions, 6,625 deletions`** | `diffed` |
 | 537 files added. Four removed, and all four are argued. | `—` | **`537 added · 1,387 modified · 4 removed`** | `diffed` |
-| Twelve upstream commits are not merged, and five of them are real fixes. | `0 behind` | **`12 behind (5 fixes, 7 docs and dependency bumps)`** | `measured` |
+| Twelve upstream commits are not merged, and five of them are real fixes. | `0 behind` | **`7 behind (documentation and dependency bumps only)`** | `measured` |
 | recall@5 on one corpus: 0.40 lexical, 0.77 hybrid, 1.00 semantic. | `recall@5 0.40` | **`recall@5 1.00`** | `fixture` |
 | MRR 0.319 -> 0.931. Rank matters because memory is injected under a slot limit. | `MRR 0.319` | **`MRR 0.931`** | `fixture` |
 | The first scored run found three defects, which is what it was built for. | `0 measured` | **`3 defects on the first run`** | `measured` |
@@ -95,13 +95,13 @@ Argued in: `P0-19`, `P0-23`, `P3-10`, `D-2026-08-27-01`.
 
 ### Twelve upstream commits are not merged, and five of them are real fixes.
 
-**`0 behind` → `12 behind (5 fixes, 7 docs and dependency bumps)`**  ·  provenance **`measured`**
+**`0 behind` → `7 behind (documentation and dependency bumps only)`**  ·  provenance **`measured`**
 
 **Odysseus:** `upstream/dev` has moved 12 commits past the fork point.
 
 **Pantheon:** None are merged yet. `P19-06` does the merge.
 
-**How we got there.** **This row exists because a ledger with no limitations section reads as marketing** — and on 2026-09-11 it earned its place. Measuring the gap found that **two of the twelve are a security fix**, shipped through a private advisory fork: a bearer API token inherited its minting admin's tool authority, and a chat-session approval grant was readable back out of caller-writable message metadata. Neither is in this tree. `B70` backports them ahead of the rest, because the full merge carries 18 conflicts over branding and the README and a security fix must not wait on those. The other five that matter are ordinary: `#6158` docker cache ownership, `#6228` caching an empty Tailscale lookup, `#6174` task singleflight cleanup, `#5937` psycopg2-binary, `#6168` version alignment. **A fork that stops taking upstream's fixes does not merely go stale.**
+**How we got there.** **This row exists because a ledger with no limitations section reads as marketing** — and it earned its place twice over. Measuring the gap found that **two of the twelve are a security fix**, shipped through a private advisory fork: a bearer API token inherited its minting admin's tool authority, and a chat-session approval grant was readable back out of caller-writable message metadata. Neither is in this tree. `B70` backports them ahead of the rest, because the full merge carries 18 conflicts over branding and the README and a security fix must not wait on those. The other five that matter are ordinary: `#6158` docker cache ownership, `#6228` caching an empty Tailscale lookup, `#6174` task singleflight cleanup, `#5937` psycopg2-binary, `#6168` version alignment. **A fork that stops taking upstream's fixes does not merely go stale.**
 
 ```
 git rev-list --count b4d1293..upstream/dev
@@ -525,11 +525,14 @@ limitations section reads as marketing.
    a measurement of how well Pantheon remembers in daily use, and no number in
    this repository is. Building one takes an operator's own memories and probes
    they wrote themselves: `.pantheon/retrieval_eval.py --generate`.
-2. **Twelve upstream commits are unmerged, and two of them are a security fix.**
-   Measured 2026-09-11: a bearer API token inherited its minting admin's tool
+2. **Seven upstream commits are unmerged** — documentation restructuring and
+   dependency bumps, deliberately declined. The five real fixes were
+   cherry-picked on 2026-09-12 (`P19-06`) and the two that were a security
+   advisory were backported ahead of them (`B70`). Measuring this gap is what
+   found them: a bearer API token had inherited its minting admin's tool
    authority, and an approval grant was readable out of caller-writable message
-   metadata. `B70` backports both ahead of the rest. A fork that stops taking
-   upstream's fixes does not merely go stale.
+   metadata. **A fork that stops taking upstream's fixes does not merely go
+   stale.**
 3. **Most rows compare code, not outcomes.** *Fewer unreachable handlers* and
    *every silent failure explained* are real and checkable; neither is a
    measurement of a person getting their work done faster.

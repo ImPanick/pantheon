@@ -179,14 +179,14 @@ CLAIMS: Tuple[Claim, ...] = (
         stock=f"`{UPSTREAM_REF}` has moved 12 commits past the fork point.",
         pantheon="None are merged yet. `P19-06` does the merge.",
         before="0 behind",
-        after="12 behind (5 fixes, 7 docs and dependency bumps)",
+        after="7 behind (documentation and dependency bumps only)",
         provenance="measured",
         repro=f"git rev-list --count {FORK_POINT}..{UPSTREAM_REF}",
         evidence=(".pantheon/ROADMAP.md",),
         rows=("P19-05", "P19-06"),
         how=(
             "**This row exists because a ledger with no limitations section reads as "
-            "marketing** — and on 2026-09-11 it earned its place. Measuring the gap "
+            "marketing** — and it earned its place twice over. Measuring the gap "
             "found that **two of the twelve are a security fix**, shipped through a "
             "private advisory fork: a bearer API token inherited its minting admin's "
             "tool authority, and a chat-session approval grant was readable back out of "

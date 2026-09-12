@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """A successful Tailscale query with no eligible hosts is still cached knowledge.
 
 `discover_tailscale_hosts` gated its cache on the host list being non-empty, so a
