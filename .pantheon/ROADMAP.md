@@ -5452,9 +5452,17 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   the two new test files: no `SPDX-License-Identifier`. Added at `AGPL-3.0-or-later`, which is what
   the project is; 1,555 files in scope now. A small thing, and a concrete instance of the ledger's
   *verification apparatus* claim doing work on code that is not ours.
-  The behind-by-N drops **12 → 7**, and the seven that remain are documentation restructuring and
-  dependency bumps the owner declined. `check-ledger.py`'s live `git rev-list` check will fail until
-  the ledger says 7, which is the mechanism working.
+  **And the ledger's own check caught the measurement being wrong, which is the best thing that
+  happened here.** `git rev-list FORK..upstream` does **not** fall when a fix is cherry-picked — a
+  cherry-pick is a new commit with a new sha — so after landing all five it still reported *twelve
+  behind*, and the ledger would have been forced to keep claiming a gap it had just closed. The
+  measure is `git cherry`, which compares **patch ids**: five register as `-` and seven as `+`. Two
+  of those seven are the advisory merge commits themselves, whose **content** is in this tree as
+  `B70`, ported by hand — so no patch id matches and the honest count is *seven with no
+  patch-equivalent, of which the substance of two is already in*. Stated that way in the ledger
+  rather than rounded to a nicer number. A mutation swapping the command back survived every test
+  that mocked `subprocess.run` without reading the argv; the command is the correction, so the
+  command is now what a test asserts.
 
 - [x] **P19-07** **The README is the front door and it does not mention any of this.** Owner
   2026-09-11: *"incorporate it into the readme (which needs updated btw) - could be just a new .md

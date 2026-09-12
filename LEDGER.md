@@ -33,7 +33,7 @@ are the numbers most likely to be quoted and least able to carry the weight.
 | --- | --- | --- | --- |
 | 156 commits and 175,966 inserted lines past the fork point. | `0 commits` | **`156 commits, 1,964 files changed, 175,966 insertions, 6,625 deletions`** | `diffed` |
 | 537 files added. Four removed, and all four are argued. | `—` | **`537 added · 1,387 modified · 4 removed`** | `diffed` |
-| Twelve upstream commits are not merged, and five of them are real fixes. | `0 behind` | **`7 behind (documentation and dependency bumps only)`** | `measured` |
+| Twelve upstream commits are not merged, and five of them are real fixes. | `0 behind` | **`7 with no patch-equivalent here (5 docs/deps, 2 advisory merges landed by hand)`** | `measured` |
 | recall@5 on one corpus: 0.40 lexical, 0.77 hybrid, 1.00 semantic. | `recall@5 0.40` | **`recall@5 1.00`** | `fixture` |
 | MRR 0.319 -> 0.931. Rank matters because memory is injected under a slot limit. | `MRR 0.319` | **`MRR 0.931`** | `fixture` |
 | The first scored run found three defects, which is what it was built for. | `0 measured` | **`3 defects on the first run`** | `measured` |
@@ -95,16 +95,16 @@ Argued in: `P0-19`, `P0-23`, `P3-10`, `D-2026-08-27-01`.
 
 ### Twelve upstream commits are not merged, and five of them are real fixes.
 
-**`0 behind` → `7 behind (documentation and dependency bumps only)`**  ·  provenance **`measured`**
+**`0 behind` → `7 with no patch-equivalent here (5 docs/deps, 2 advisory merges landed by hand)`**  ·  provenance **`measured`**
 
 **Odysseus:** `upstream/dev` has moved 12 commits past the fork point.
 
 **Pantheon:** None are merged yet. `P19-06` does the merge.
 
-**How we got there.** **This row exists because a ledger with no limitations section reads as marketing** — and it earned its place twice over. Measuring the gap found that **two of the twelve are a security fix**, shipped through a private advisory fork: a bearer API token inherited its minting admin's tool authority, and a chat-session approval grant was readable back out of caller-writable message metadata. Neither is in this tree. `B70` backports them ahead of the rest, because the full merge carries 18 conflicts over branding and the README and a security fix must not wait on those. The other five that matter are ordinary: `#6158` docker cache ownership, `#6228` caching an empty Tailscale lookup, `#6174` task singleflight cleanup, `#5937` psycopg2-binary, `#6168` version alignment. **A fork that stops taking upstream's fixes does not merely go stale.**
+**How we got there.** **This row exists because a ledger with no limitations section reads as marketing** — and it earned its place twice over. Measuring the gap found that **two of the twelve are a security fix**, shipped through a private advisory fork: a bearer API token inherited its minting admin's tool authority, and a chat-session approval grant was readable back out of caller-writable message metadata. Neither is in this tree. `B70` backports them ahead of the rest, because the full merge carries 18 conflicts over branding and the README and a security fix must not wait on those. The other five that matter are ordinary: `#6158` docker cache ownership, `#6228` caching an empty Tailscale lookup, `#6174` task singleflight cleanup, `#5937` psycopg2-binary, `#6168` version alignment. **A fork that stops taking upstream's fixes does not merely go stale.** Counted with `git cherry` rather than `git rev-list`, and that distinction was found by this ledger's own check failing: a cherry-pick is a new commit with a new sha, so `rev-list` still reported twelve behind after five had landed. `git cherry` compares patch ids. Two of the seven remaining are the advisory merge commits themselves — their **content** is in this tree as `B70`, ported by hand, so no patch id matches and the count says seven where the substance is five.
 
 ```
-git rev-list --count b4d1293..upstream/dev
+git cherry main upstream/dev | grep -c '^+'
 ```
 
 Argued in: `P19-05`, `P19-06`.

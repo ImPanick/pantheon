@@ -355,17 +355,40 @@ def test_the_upstream_gap_is_checked_live_where_the_remote_exists(checker, claim
         def __init__(self, code, out):
             self.returncode, self.stdout = code, out
 
-    monkeypatch.setattr(
-        checker.subprocess, "run", lambda *a, **k: _Result(0, "40\n")
-    )
+    # `git cherry` output: `+` is a commit we have no patch-equivalent for,
+    # `-` is one we do. Counting lines rather than reading a number is the
+    # whole correction — see the checker's own comment for why `rev-list` was
+    # wrong, which this ledger's check is what discovered.
+    def _cherry(plus, minus=0):
+        return _Result(0, "\n".join(["+ " + "a" * 40] * plus + ["- " + "b" * 40] * minus))
+
+    monkeypatch.setattr(checker.subprocess, "run", lambda *a, **k: _cherry(40))
     problems = checker._upstream_gap_problems()
     assert any("upstream moved" in p for p in problems), "drift not caught"
 
-    stated = {c.id: c for c in claims.CLAIMS}["behind-upstream"].after.split()[0]
-    monkeypatch.setattr(
-        checker.subprocess, "run", lambda *a, **k: _Result(0, f"{stated}\n")
-    )
+    stated = int({c.id: c for c in claims.CLAIMS}["behind-upstream"].after.split()[0])
+    monkeypatch.setattr(checker.subprocess, "run", lambda *a, **k: _cherry(stated, minus=5))
     assert checker._upstream_gap_problems() == [], "agreement reported as a problem"
+
+
+def test_a_cherry_picked_fix_stops_counting_as_behind(checker, monkeypatch):
+    """The bug this check had, caught by the check itself.
+
+    `git rev-list FORK..upstream` does not fall when a fix is cherry-picked,
+    because a cherry-pick is a new commit with a new sha — so after landing
+    five upstream fixes the count still said twelve and the ledger would have
+    been forced to keep claiming a gap it had just closed. `git cherry`
+    compares patch ids, so an equivalent patch registers as `-`.
+    """
+
+    class _Result:
+        def __init__(self, code, out):
+            self.returncode, self.stdout = code, out
+
+    # Seven absent, five equivalent: only the seven may count.
+    out = "\n".join(["+ " + "a" * 40] * 7 + ["- " + "b" * 40] * 5)
+    monkeypatch.setattr(checker.subprocess, "run", lambda *a, **k: _Result(0, out))
+    assert checker._upstream_gap_problems() == []
 
 
 def test_a_checkout_without_the_upstream_remote_is_not_a_failure(checker, monkeypatch):
@@ -383,3 +406,29 @@ def test_losing_the_upstream_gap_claim_is_caught(checker, claims, monkeypatch):
     without = tuple(c for c in claims.CLAIMS if c.id != "behind-upstream")
     monkeypatch.setattr(claims, "CLAIMS", without)
     assert any("no longer states the gap" in p for p in checker._upstream_gap_problems())
+
+
+def test_the_gap_is_measured_with_git_cherry_not_rev_list(checker, monkeypatch):
+    """The command IS the correction, so the command is what gets asserted.
+
+    Every other test here mocks `subprocess.run` wholesale and never looks at
+    the argv — so swapping `git cherry` back to `git rev-list` survived them
+    all, which is the one mutation that undoes this fix entirely.
+    """
+    seen = {}
+
+    class _Result:
+        returncode = 0
+        stdout = ""
+
+    def _capture(argv, *a, **k):
+        seen["argv"] = list(argv)
+        return _Result()
+
+    monkeypatch.setattr(checker.subprocess, "run", _capture)
+    checker._upstream_gap_problems()
+    assert seen["argv"][:2] == ["git", "cherry"], (
+        f"the gap is measured with {seen['argv'][:2]}; `rev-list` cannot see a "
+        f"cherry-picked fix and would report a gap that is already closed"
+    )
+    assert "rev-list" not in seen["argv"]

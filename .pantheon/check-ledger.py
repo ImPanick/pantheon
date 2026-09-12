@@ -106,17 +106,28 @@ def _upstream_gap_problems() -> list:
     claim = by_id.get("behind-upstream")
     if claim is None:
         return ["the behind-upstream claim is gone — the ledger no longer states the gap"]
+    # `git cherry`, not `git rev-list`. **This distinction was found by this
+    # check failing**, which is the only reason it is right now.
+    #
+    # `rev-list FORK..upstream` counts commits upstream has that are not
+    # reachable from the fork point — and cherry-picking does not change that,
+    # because a cherry-pick is a NEW commit with a new sha. After landing five
+    # upstream fixes the naive count still said 12, so the ledger would have
+    # been forced to keep claiming a gap it had just closed.
+    #
+    # `git cherry` compares **patch ids**, so a cherry-picked fix registers as
+    # `-` (we have an equivalent) and only genuinely absent work counts as `+`.
     try:
         proc = subprocess.run(
-            ["git", "rev-list", "--count", f"{C.FORK_POINT}..{C.UPSTREAM_REF}"],
-            cwd=str(ROOT), capture_output=True, text=True, timeout=30,
+            ["git", "cherry", "main", C.UPSTREAM_REF],
+            cwd=str(ROOT), capture_output=True, text=True, timeout=60,
         )
     except (OSError, subprocess.SubprocessError):
         return []
     if proc.returncode != 0:
         # No upstream remote here. Not a failure — most checkouts are like this.
         return []
-    live = proc.stdout.strip()
+    live = str(sum(1 for line in proc.stdout.splitlines() if line.startswith("+")))
     stated = re.match(r"(\d+)", claim.after.strip())
     if stated is None:
         return ["behind-upstream: the `after` no longer starts with a count"]

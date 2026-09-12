@@ -179,9 +179,9 @@ CLAIMS: Tuple[Claim, ...] = (
         stock=f"`{UPSTREAM_REF}` has moved 12 commits past the fork point.",
         pantheon="None are merged yet. `P19-06` does the merge.",
         before="0 behind",
-        after="7 behind (documentation and dependency bumps only)",
+        after="7 with no patch-equivalent here (5 docs/deps, 2 advisory merges landed by hand)",
         provenance="measured",
-        repro=f"git rev-list --count {FORK_POINT}..{UPSTREAM_REF}",
+        repro=f"git cherry main {UPSTREAM_REF} | grep -c '^+'",
         evidence=(".pantheon/ROADMAP.md",),
         rows=("P19-05", "P19-06"),
         how=(
@@ -196,7 +196,15 @@ CLAIMS: Tuple[Claim, ...] = (
             "other five that matter are ordinary: `#6158` docker cache ownership, "
             "`#6228` caching an empty Tailscale lookup, `#6174` task singleflight "
             "cleanup, `#5937` psycopg2-binary, `#6168` version alignment. **A fork that "
-            "stops taking upstream's fixes does not merely go stale.**"
+            "stops taking upstream's fixes does not merely go stale.** "
+            "Counted with `git cherry` rather than `git rev-list`, and that "
+            "distinction was found by this ledger's own check failing: a "
+            "cherry-pick is a new commit with a new sha, so `rev-list` still "
+            "reported twelve behind after five had landed. `git cherry` compares "
+            "patch ids. Two of the seven remaining are the advisory merge commits "
+            "themselves — their **content** is in this tree as `B70`, ported by "
+            "hand, so no patch id matches and the count says seven where the "
+            "substance is five."
         ),
     ),
 
