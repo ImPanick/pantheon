@@ -150,7 +150,7 @@ CLAIMS: Tuple[Claim, ...] = (
         headline="537 files added. Five removed, and all five are argued.",
         stock="Upstream's file set at the fork point.",
         pantheon=(
-            "Everything upstream shipped is still here, minus four files, each deleted "
+            "Everything upstream shipped is still here, minus five files, each deleted "
             "with a recorded argument: `ACKNOWLEDGMENTS.md` (superseded by `CREDITS.md`, "
             "105 -> 483 lines), `scripts/_completion/odysseus.zsh` (a rename), "
             "`docs/pantheon-wordmark.png` (upstream's mark, **renamed and never "

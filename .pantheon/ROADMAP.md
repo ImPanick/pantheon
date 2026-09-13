@@ -243,6 +243,20 @@ they are for.*
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
 
+### The same pinned figure, in the test next door
+`71ea0dc..HEAD`. **376 tracked, 182 done. 0 new rows, 0 regressions. Suite 8,819, 0 failing.**
+`test_readme_drift_is_caught` typed `tests-8%2C642%20passing` into its own `.replace`. The suite
+grew to 8,819, the badge moved with it, the `.replace` matched nothing, the README stayed valid,
+the checker correctly reported no problem — and **the assertion failed for the opposite of the
+reason it was written**. This is the identical defect already fixed once this sitting in
+`test_tracker_total_drift_is_caught`, four lines further down the same file, whose docstring
+records the lesson verbatim. Fixing one instance of a defect class and leaving its neighbour is
+`Law 13` in miniature. Both now derive the figure from the ledger claim they are testing against,
+and both assert the *current* value is present before mutating it — so a stale pin fails loudly on
+the first line instead of silently on the last. The ledger's own `add-never-subtract` prose also
+still read *minus four files* under a headline saying *Five removed*; corrected, with the fifth
+(`docs/pantheon-wordmark.png`) named in the test's deleted-file list.
+
 ### The suite is green — fourteen standing failures, and eight were never failures
 `30dcd0d..HEAD`. **376 tracked, 182 done. 0 new rows, 0 regressions. Suite 8,796 -> 8,819, and 14 -> 0 failing.**
 Every run in this fork's life has compared against a list of fourteen. They are gone, and the

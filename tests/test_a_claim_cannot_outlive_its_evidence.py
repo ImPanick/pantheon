@@ -181,18 +181,26 @@ def test_the_readme_test_badge_matches_the_ledger(checker, claims):
     assert f"**{passing} passing**" in readme
 
 
-def test_readme_drift_is_caught(checker, tmp_path, monkeypatch):
+def test_readme_drift_is_caught(checker, claims, tmp_path, monkeypatch):
     """Move the badge, and the checker has to notice.
 
     The badge read `6,301 passing` against a suite of 8,642 before this rule
     existed. A stale number on the front page of a repository whose pitch is
     *our numbers are checkable* is the worst place to keep one.
+
+    Derived, not typed — for the reason spelled out in the sibling below. This
+    test was written with `tests-8%2C642%20passing` hard-coded and went stale
+    the next time the suite grew: the `.replace` matched nothing, the README
+    stayed valid, the checker reported no problem, and the assertion failed for
+    the opposite of the reason it was written. Twice now, in two adjacent tests.
     """
-    stale = README.read_text(encoding="utf-8").replace(
-        "tests-8%2C642%20passing", "tests-9%2C999%20passing"
-    )
+    by_id = {c.id: c for c in claims.CLAIMS}
+    passing = by_id["tests"].after.split("\u00b7")[-1].strip().split()[0]
+    badge = f"tests-{passing.replace(',', '%2C')}%20passing"
+    readme = README.read_text(encoding="utf-8")
+    assert badge in readme, "the README badge is already out of step with the ledger"
     fake = tmp_path / "README.md"
-    fake.write_text(stale, encoding="utf-8")
+    fake.write_text(readme.replace(badge, "tests-9%2C999%20passing"), encoding="utf-8")
     monkeypatch.setattr(checker, "README", fake)
     assert any("badge" in p for p in checker.verify())
 
@@ -265,19 +273,25 @@ def test_the_ledger_states_what_it_does_not_prove(checker):
     assert "unmerged" in rendered or "behind" in rendered
 
 
-def test_the_ledger_names_all_four_deleted_files(claims):
-    """*We add, never subtract* is a claim with four counter-examples.
+def test_the_ledger_names_every_deleted_file(claims):
+    """*We add, never subtract* is a claim with counter-examples, so name them.
 
-    537 added against 4 removed is only evidence if the four are named. A row
-    that states the ratio and not the exceptions has not earned the first number.
+    537 added against 5 removed is only evidence if the five are named. A row
+    that states the ratio and not the exceptions has not earned the first
+    number. The fifth arrived on 2026-09-12 and the claim's headline, its
+    figure and its prose all had to move together — the headline said five
+    while the sentence under it still said four, which no checker catches
+    because both are prose.
     """
     by_id = {c.id: c for c in claims.CLAIMS}
     text = by_id["add-never-subtract"].pantheon
+    assert "minus five files" in text, "the prose must agree with the headline"
     for deleted in (
         "ACKNOWLEDGMENTS.md",
         "odysseus.zsh",
         "GohuFont.ttf",
         "reminders.js",
+        "pantheon-wordmark.png",
     ):
         assert deleted in text, f"{deleted} is deleted in the tree and unnamed in the ledger"
 
