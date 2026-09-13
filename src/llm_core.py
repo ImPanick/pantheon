@@ -2682,6 +2682,32 @@ async def llm_call_async(
 _run_config_recorded: "contextvars.ContextVar[bool]" = contextvars.ContextVar(
     "pantheon_run_config_recorded", default=False)
 
+# `P17-08`. **A latent ordering bug in the latch above, and it is worth saying
+# how it was found because the first account of it was wrong.** Three call
+# sites reach `_capture_run_config`; only `stream_llm` passes `tools`.
+# Whichever fires first in a run wins the latch, so a turn that made a
+# non-streaming call first — tool selection, a preflight, a titler — writes its
+# `run_config` with no tool list and then suppresses the one that has it.
+#
+# **The corpus does not demonstrate this and I said it did.** Chasing why
+# `create_document` was called nineteen times while appearing in one offer
+# fingerprint, I wrote that the latch was the cause. Measuring it said
+# otherwise: 39 of 40 runs on the owner's deployment recorded a tool list, and
+# the real answer is the fenced tool channel, which `run_config` does not
+# describe at all (`P17-12`). So this is a bug read out of the source, not out
+# of the data — reachable, unproven in the wild, and fixed anyway because the
+# cost is one ContextVar and the failure mode is a receipt that quietly
+# under-reports (`Law 9`: the number that would have been quoted for it was
+# not mine to quote).
+#
+# The latch now records *whether the capture it kept carried tools*, and a
+# later capture that does carry them is allowed through exactly once.
+# `events.receipt()` already orders by timestamp and takes the last
+# `run_config` for a run, so a second, richer row supersedes the first with no
+# reader change — which is why this is one more ContextVar and not a schema.
+_run_config_had_tools: "contextvars.ContextVar[bool]" = contextvars.ContextVar(
+    "pantheon_run_config_had_tools", default=False)
+
 
 def _capture_run_config(temperature, max_tokens, session_id, *, tools=None) -> None:
     """Record the resolved configuration for this turn (`P4-25`).
@@ -2704,9 +2730,16 @@ def _capture_run_config(temperature, max_tokens, session_id, *, tools=None) -> N
     """
     try:
         from src.events import record_run_config, current_run_id
-        if not current_run_id() or _run_config_recorded.get():
+        if not current_run_id():
             return
+        if _run_config_recorded.get():
+            # Already captured. The one thing worth a second row is a tool list
+            # the first capture did not have; anything else is a duplicate.
+            if not tools or _run_config_had_tools.get():
+                return
         _run_config_recorded.set(True)
+        if tools:
+            _run_config_had_tools.set(True)
         record_run_config(
             sampling={"temperature": temperature, "max_tokens": max_tokens},
             tools=tools,

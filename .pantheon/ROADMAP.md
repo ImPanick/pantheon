@@ -77,10 +77,10 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P14 | Measurement | 8 | 3 | 0 | **5** |
 | P15 | Outbound politeness | 12 | 2 | **1** | **9** |
 | P16 | Self-hosted by default | 20 | 1 | 0 | **19** |
-| P17 | The network the agent is hosted on | 11 | 3 | 0 | **8** |
+| P17 | The network the agent is hosted on | 14 | 5 | 0 | **9** |
 | P18 | One button, and it links | 7 | 1 | 0 | **6** |
 | P19 | The proof ledger | 8 | 0 | 0 | **8** |
-| **Total** | | **377** | **184** | **9** | **184** |
+| **Total** | | **380** | **186** | **9** | **185** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -242,6 +242,30 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### The gap analysis, run against real traffic — and the first explanation was wrong
+`1dc03f5..HEAD`. **380 tracked, 185 done. 3 new rows (`P17-12`, `P17-13`, `P17-14`), 0 regressions.
+`P17-08` closed.**
+`P17-08` was filed saying the analysis could not be written from this tree — 0 sessions, 0 chat
+messages, 1 `events` row — and that the corpus lived on one running deployment. It does, and it is
+up: 14 sessions, 48 user messages, 40 runs, 45 tool calls. **The script is the artifact, not the
+document**, because a page of figures from a database nobody else can open is exactly the *trust
+us* this fork's ledger refuses; it takes a read-only snapshot, refuses to open a database
+read-write, and prints no message content.
+**The sharpest finding is that the measurement was measuring one of two things.**
+`create_document` was called 19 times and in **17 of them was not in its own run's offer**, against
+0 mismatches for every other tool — the fenced tool channel, which `run_config` does not describe.
+So *offered and never picked* is about the schema channel only, and the deployment's most-used tool
+is not in it. Two more: seven of eight failed tool calls record **no reason at all**, which makes
+`web_fetch`'s 37-offers / 3-calls / 3-failures undiagnosable; and selection offers a median of 11
+of 81 tools per run, so the offer column measures the selector, whose top pick (`web_search`, 37
+offers) was never called once.
+**And a correction.** Chasing the first finding, I wrote that the cause was a latch in
+`_capture_run_config` — and committed that explanation before checking it. Measuring said
+otherwise: 39 of 40 runs recorded a tool list. The latch bug is real and readable in the source, so
+it is fixed as a latent bug found while chasing something else, but **the claim that the data
+proved it has been withdrawn from every place it reached** (`Law 9` — that number was not mine to
+quote). 11 tests.
 
 ### Upstream's newest fix, and the two neighbours it left behind
 `9e3184d..HEAD`. **377 tracked, 184 done. 1 new row (`P19-08`), 0 regressions.**
@@ -5120,7 +5144,7 @@ radius of a 2.9GB container that runs agent-authored code.*
   expression and assert the raise lives inside it, guarded by what the validator returned —
   proximity is not reachability. `CACHE_NAME` `v407` → `v408`. 27 tests, 15 mutations, all caught.
 
-- [ ] **P17-08** **Run the gap analysis against real traffic, because this tree has none.** Measured
+- [x] **P17-08** **Run the gap analysis against real traffic, because this tree has none.** Measured
   2026-09-10: `data/app.db` holds **0 sessions, 0 chat messages and 1 `events` row**; the only
   corpus in the tree is `.pantheon/fixtures/retrieval_probe.json`, which declares its own
   `provenance: "fixture"` and says *"pairs written from imagination test the imagination"*. The data
@@ -5132,7 +5156,81 @@ radius of a 2.9GB container that runs agent-authored code.*
   tool it is offered and never picks are different gaps** and only the second is visible without
   that column. `Verify:` a ranked list of capability gaps with a count behind each one, drawn from
   the owner's deployment, and every claim traceable to rows rather than to a hunch. `Depends:`
-  `P17-07`. — `D-2026-09-10-03`
+  `P17-07`. — `D-2026-09-10-03` — **done 2026-09-13.** `.pantheon/gap-analysis.py` and
+  `.pantheon/GAP-ANALYSIS.md`, run against a read-only snapshot of the deployment: 14 sessions,
+  48 user messages, 40 runs, 45 tool calls, window 2026-09-10 → 09-11. **The script is the
+  artifact, not the document** — a page of figures from a database nobody else can open is the
+  *trust us* this fork's ledger refuses, so the numbers are reproducible by anyone pointing it at
+  their own. It takes a snapshot rather than the live file, refuses to open a database read-write,
+  and prints no message content: every figure is a count or a name.
+  **Three shapes came out, and two are defects in the instrumentation rather than in the tools.**
+  *(1)* **`create_document` was called 19 times and in 17 of them was not in its own run's offer**,
+  against 0 mismatches for every other tool — the fenced tool channel, which `run_config` does not
+  describe at all. So *offered and never picked* is a statement about the **schema channel only**,
+  and the most-used tool on the deployment is not in it (`P17-12`). *(2)* **Seven of eight failed
+  tool calls record no reason**, and one of three `capability_gap` events recorded `{}` — `web_fetch`
+  is offered 37 times, called 3, failed 3, and the rows cannot say whether that was a blocked host,
+  a timeout, a parse failure or a dead URL, which are four different fixes (`P17-13`). *(3)* Tool
+  selection offers a **median of 11 of 81** tools per run, so the offer column measures the
+  *selector*: `ask_user` 39 offers / 1 call, `web_search` 37 / **0**, `manage_memory` 22 / **0**
+  (already `B67`'s subject), `ask_teacher` 20 / **0** (which `P17-07` explains — the teacher returns
+  at its first gate unless two settings default-off are on), against `create_document` at 1 offer
+  and 19 calls (`P17-14`).
+  **And a correction, recorded rather than quietly fixed.** Chasing *(1)*, the cause was first
+  written down as a latch in `_capture_run_config` letting a tools-less capture suppress a later one
+  carrying the list — three call sites, one latch, only `stream_llm` passes `tools`. That bug is
+  real and readable in the source. **It is not what happened here**: 39 of 40 runs recorded a tool
+  list. It is fixed anyway as a latent bug found while chasing something else, and the claim that
+  the data proved it was withdrawn from the commit message and the test that carried it (`Law 9` —
+  the number was not mine to quote). 11 tests.
+
+
+- [ ] **P17-12** **There are two tool channels and the receipt describes one.** Found 2026-09-13 by
+  `P17-08`, and it is the finding that reframes the rest of that analysis. A tool the model has no
+  schema for should be impossible to call — yet on the owner's deployment **`create_document` was
+  called 19 times and in 17 of them was not in its own run's recorded offer**, against **0**
+  mismatches for every other called tool. The cause is not a bug: `src/agent_loop.py` documents a
+  **fenced tool channel** (the agent writes a ```` ```create_document ```` block and it executes)
+  alongside the function-calling channel, and `_capture_run_config` fingerprints only the schemas.
+  So `run_config.detail.tools` answers *what schemas were sent*, is read as *what the agent could
+  do*, and those are different questions — which `B66` already proved expensive once, when the
+  prompt ordered the agent to use `manage_rag` while the fence parser dropped every call with no
+  error. **The consequence is that no gap analysis built on the offer column can be complete**: a
+  tool reachable only by fence is neither offered nor missing and sits in neither column.
+  `Verify:` a receipt says which channels a turn could reach a tool through, and the gap analysis's
+  *called without being offered* column is empty for the right reason rather than by accident.
+  `Depends:` nothing. — found by `P17-08` — agent:`P17`
+
+- [ ] **P17-13** **A failed tool call records that it failed and never why.** Found 2026-09-13 by
+  `P17-08`. **Seven of eight failed `tool_call` rows on the deployment have an empty `detail`**;
+  the eighth says `{"policy": "p"}`. One of three `capability_gap` events recorded `{}` — the event
+  fired and named nothing, so it says a gap happened and not which one, which is the one thing the
+  event exists to say. The cost is concrete and it is the most striking number in the whole
+  analysis: **`web_fetch` is offered 37 times, called 3, and failed 3** — a 100% failure rate on
+  the tool the selector reaches for most often — and the rows cannot distinguish a blocked host, a
+  timeout, a parse failure and a dead URL, which are four different fixes. `P14-02` wrote the
+  outcome column and stopped there; the reason is already in memory at the call site and is
+  discarded. **Not a schema change**: `detail` is a JSON blob and already carries `{"asked",
+  "returned"}` for retrievals. `Verify:` a failed tool call names its failure class, an empty
+  `capability_gap` detail is impossible to write, and the `web_fetch` failures above can be
+  diagnosed from rows alone. `Depends:` nothing. — found by `P17-08` — agent:`P17`
+
+- [ ] **P17-14** **The tool selector's top pick is the least-used tool.** Found 2026-09-13 by
+  `P17-08`. Selection is active and aggressive — a run is offered a **median of 11 of 81** tools,
+  range 0–40 — so the offer column is not *what exists*, it is *what the selector chose*, which
+  makes every figure in it a measurement of the selector rather than of the tools. Over 39 runs:
+  `ask_user` offered 39 / called 1, `web_search` 37 / **0**, `web_fetch` 37 / 3 (all failed),
+  `update_plan` 30 / 5, `manage_memory` 22 / **0**, `ask_teacher` 20 / **0**, `pipeline` 20 / **0**,
+  `manage_tasks` 17 / **0** — against `create_document` at **1 offer and 19 calls**, which arrives
+  by the other channel (`P17-12`). 69 of 81 offered and never picked. **This row is not "delete the
+  unused tools"**: unnecessary, undiscoverable and badly described are three different problems that
+  look identical from outside, and the data cannot tell them apart. Two entries already have
+  explanations elsewhere and must not be counted as selector faults — `manage_memory` is `B67`'s
+  shadow-server row, and `ask_teacher` is unreachable by default because `P17-07` found the teacher
+  returns at its first gate unless two default-off settings are on. `Verify:` the selector is
+  measured against calls rather than asserted, and each of the top unused entries is classified into
+  one of the three problems rather than swept. `Depends:` `P17-12` and `P17-13`, both of which
+  change what the numbers mean. — found by `P17-08` — agent:`P17`
 
 
 

@@ -183,6 +183,10 @@ def _reset_run_context():
         try:
             from src import llm_core as _lc
             _lc._run_config_recorded.set(False)
+            # `P17-08` added the second half of the latch. Resetting one and
+            # not the other leaves a test's first tools-bearing capture looking
+            # like the previous test's upgrade, already spent.
+            _lc._run_config_had_tools.set(False)
         except Exception:
             pass
 
