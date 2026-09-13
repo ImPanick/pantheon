@@ -5236,8 +5236,18 @@ async function initUnifiedIntegrations() {
         fd.append('transport', transport);
         if (transport === 'stdio') {
           fd.append('command', el('uf-mcp-cmd').value);
-          let args = '[]'; try { args = JSON.stringify(JSON.parse(el('uf-mcp-args').value || '[]')); } catch (_) {}
-          let env  = '{}'; try { env  = JSON.stringify(JSON.parse(el('uf-mcp-env').value  || '{}')); } catch (_) {}
+          // Neither is silently defaulted. A swallowed parse error here sends
+          // the server a value it will discard, and the operator is told the
+          // server was added — an empty argv reads as a broken package and an
+          // empty env reads as a bad token, so the typo is the one explanation
+          // nobody reaches for. The server refuses these too (`Law 13` cuts
+          // both ways: a rule in two places is one that can disagree), so this
+          // is here to say *which field* before a round trip, not instead of it.
+          let args, env;
+          try { args = JSON.stringify(JSON.parse(el('uf-mcp-args').value || '[]')); }
+          catch (_) { el('uf-mcp-msg').textContent = 'Args must be valid JSON, e.g. ["-y", "pkg"]'; return; }
+          try { env  = JSON.stringify(JSON.parse(el('uf-mcp-env').value  || '{}')); }
+          catch (_) { el('uf-mcp-msg').textContent = 'Env must be valid JSON, e.g. {"API_KEY": "..."}'; return; }
           fd.append('args', args);
           fd.append('env', env);
         } else {

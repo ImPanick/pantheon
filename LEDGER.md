@@ -33,13 +33,13 @@ are the numbers most likely to be quoted and least able to carry the weight.
 | --- | --- | --- | --- |
 | 156 commits and 175,966 inserted lines past the fork point. | `0 commits` | **`156 commits, 1,964 files changed, 175,966 insertions, 6,625 deletions`** | `diffed` |
 | 537 files added. Five removed, and all five are argued. | `—` | **`537 added · 1,387 modified · 5 removed`** | `diffed` |
-| Twelve upstream commits are not merged, and five of them are real fixes. | `0 behind` | **`7 with no patch-equivalent here (5 docs/deps, 2 advisory merges landed by hand)`** | `measured` |
+| Twelve upstream commits are not merged, and five of them are real fixes. | `0 behind` | **`8 with no patch-equivalent here (5 docs/deps, 2 advisory merges and 1 fix landed by hand)`** | `measured` |
 | recall@5 on one corpus: 0.40 lexical, 0.77 hybrid, 1.00 semantic. | `recall@5 0.40` | **`recall@5 1.00`** | `fixture` |
 | MRR 0.319 -> 0.931. Rank matters because memory is injected under a slot limit. | `MRR 0.319` | **`MRR 0.931`** | `fixture` |
 | The first scored run found three defects, which is what it was built for. | `0 measured` | **`3 defects on the first run`** | `measured` |
 | Ten thousand memories, under a millisecond a query, no service running. | `a service, or nothing` | **`0.82ms at 10,000 memories (15MB of index)`** | `measured` |
 | Fifteen checkers in CI, each one built from a defect that actually shipped. | `0` | **`15`** | `counted` |
-| Test files 792 -> 930, and a suite of 8,862 passing with nothing red. | `792 test files` | **`930 test files · 8,862`** | `diffed` |
+| Test files 792 -> 931, and a suite of 8,878 passing with nothing red. | `792 test files` | **`931 test files · 8,878`** | `diffed` |
 | One tracker, checked by a script, after it was silently wrong by nineteen. | `untracked` | **`370 rows, every one recounted against its section`** | `measured` |
 | Agents can run commands on the host. 52 rules they cannot reach say what never runs. | `no host reach` | **`52 compiled-in rules · 0 bypasses`** | `counted` |
 | Five of the 52 rules aren't about danger. They keep the other 47 enforceable. | `—` | **`5 opaque · 47 nuclear`** | `counted` |
@@ -96,13 +96,13 @@ Argued in: `P0-19`, `P0-23`, `P3-10`, `P0-13`, `B71`, `D-2026-08-27-01`.
 
 ### Twelve upstream commits are not merged, and five of them are real fixes.
 
-**`0 behind` → `7 with no patch-equivalent here (5 docs/deps, 2 advisory merges landed by hand)`**  ·  provenance **`measured`**
+**`0 behind` → `8 with no patch-equivalent here (5 docs/deps, 2 advisory merges and 1 fix landed by hand)`**  ·  provenance **`measured`**
 
 **Odysseus:** `upstream/dev` has moved 12 commits past the fork point.
 
 **Pantheon:** None are merged yet. `P19-06` does the merge.
 
-**How we got there.** **This row exists because a ledger with no limitations section reads as marketing** — and it earned its place twice over. Measuring the gap found that **two of the twelve are a security fix**, shipped through a private advisory fork: a bearer API token inherited its minting admin's tool authority, and a chat-session approval grant was readable back out of caller-writable message metadata. Neither is in this tree. `B70` backports them ahead of the rest, because the full merge carries 18 conflicts over branding and the README and a security fix must not wait on those. The other five that matter are ordinary: `#6158` docker cache ownership, `#6228` caching an empty Tailscale lookup, `#6174` task singleflight cleanup, `#5937` psycopg2-binary, `#6168` version alignment. **A fork that stops taking upstream's fixes does not merely go stale.** Counted with `git cherry` rather than `git rev-list`, and that distinction was found by this ledger's own check failing: a cherry-pick is a new commit with a new sha, so `rev-list` still reported twelve behind after five had landed. `git cherry` compares patch ids. Two of the seven remaining are the advisory merge commits themselves — their **content** is in this tree as `B70`, ported by hand, so no patch id matches and the count says seven where the substance is five.
+**How we got there.** **This row exists because a ledger with no limitations section reads as marketing** — and it earned its place twice over. Measuring the gap found that **two of the twelve are a security fix**, shipped through a private advisory fork: a bearer API token inherited its minting admin's tool authority, and a chat-session approval grant was readable back out of caller-writable message metadata. Neither is in this tree. `B70` backports them ahead of the rest, because the full merge carries 18 conflicts over branding and the README and a security fix must not wait on those. The other five that matter are ordinary: `#6158` docker cache ownership, `#6228` caching an empty Tailscale lookup, `#6174` task singleflight cleanup, `#5937` psycopg2-binary, `#6168` version alignment. **A fork that stops taking upstream's fixes does not merely go stale.** Counted with `git cherry` rather than `git rev-list`, and that distinction was found by this ledger's own check failing: a cherry-pick is a new commit with a new sha, so `rev-list` still reported twelve behind after five had landed. `git cherry` compares patch ids. Two of the seven remaining are the advisory merge commits themselves — their **content** is in this tree as `B70`, ported by hand, so no patch id matches and the count says seven where the substance is five. **Re-measured 2026-09-13**: upstream moved to `9d5c0319` and the count is eight, of which the newest is `#6215` — malformed MCP `args` silently defaulting to `[]`. Taken as `P19-08`, by hand rather than by sha because this fork's three files have diverged and the change is larger here: upstream's argument (*an unparseable value is discarded downstream, so the caller must be told*) applies equally to the `env` one line below it and the `oauth_config` four lines below that, and both were left. So the count stays eight while the substance of three is in, and it is written that way rather than rounded down.
 
 ```
 git cherry main upstream/dev | grep -c '^+'
@@ -202,13 +202,13 @@ python3 .pantheon/release-gate.py --fast
 
 Argued in: `P3-13`, `P3-14`, `P3-17`, `P3-23`, `D-2026-09-10-03`.
 
-### Test files 792 -> 930, and a suite of 8,862 passing with nothing red.
+### Test files 792 -> 931, and a suite of 8,878 passing with nothing red.
 
-**`792 test files` → `930 test files · 8,862`**  ·  provenance **`diffed`**
+**`792 test files` → `931 test files · 8,878`**  ·  provenance **`diffed`**
 
 **Odysseus:** 792 test files.
 
-**Pantheon:** 930 test files, 8,862 tests passing, 0 failing.
+**Pantheon:** 931 test files, 8,878 tests passing, 0 failing.
 
 **How we got there.** Every row in this fork's tracker lands with tests **and** mutations: the change is made, then the code is deliberately broken in a dozen ways to check the new tests actually notice. Mutation runs have repeatedly found that a passing test was proving nothing — a window that matched the next block's code, a scan satisfied by a name inside `if False:`. **Proximity is not reachability**, and only a mutation run says so. **The suite carried 14 standing failures for the fork's whole life and now carries none** — and the accounting is worth more than the number: eight were this container missing dependencies the project already declares, so they were never defects; three were test stubs left behind by a `headers=` argument, each raising `TypeError` into a broad `except` so the probe returned `None` and the assertion read as a logic bug; one was a rule written as an allowlist of one name instead of the property it meant; and two were pinning upstream's README and wordmark against a decision this fork had already recorded.
 

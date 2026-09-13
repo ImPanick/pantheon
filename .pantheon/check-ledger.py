@@ -133,8 +133,8 @@ def _upstream_gap_problems() -> list:
         return ["behind-upstream: the `after` no longer starts with a count"]
     if stated.group(1) != live:
         return [
-            f"behind-upstream says {stated.group(1)} and `git rev-list "
-            f"{C.FORK_POINT}..{C.UPSTREAM_REF}` says {live} — upstream moved"
+            f"behind-upstream says {stated.group(1)} and `git cherry main "
+            f"{C.UPSTREAM_REF}` says {live} — upstream moved"
         ]
     return []
 

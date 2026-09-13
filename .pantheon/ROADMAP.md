@@ -79,8 +79,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P16 | Self-hosted by default | 20 | 1 | 0 | **19** |
 | P17 | The network the agent is hosted on | 11 | 3 | 0 | **8** |
 | P18 | One button, and it links | 7 | 1 | 0 | **6** |
-| P19 | The proof ledger | 7 | 0 | 0 | **7** |
-| **Total** | | **376** | **184** | **9** | **183** |
+| P19 | The proof ledger | 8 | 0 | 0 | **8** |
+| **Total** | | **377** | **184** | **9** | **184** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -242,6 +242,29 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### Upstream's newest fix, and the two neighbours it left behind
+`9e3184d..HEAD`. **377 tracked, 184 done. 1 new row (`P19-08`), 0 regressions.**
+`git fetch upstream` moved `934d23c0 -> 9d5c0319`. Eight commits have no patch-equivalent here;
+seven are docs, deps and the advisory merges already carried by hand as `B70`, and one is a fix:
+**`#6215`, reject malformed Args on Add MCP Server instead of silently defaulting to `[]`**. Taken
+under `P19-06`'s standing answer, *"cherry-pick fixes, skip the rest"*. **Upstream's own reasoning
+is the interesting part** — *an unparseable value is silently discarded downstream, so the caller
+must be told instead* — and it does not stop at `args`: one line below it `env` did the same, and
+four lines below that `oauth_config` did it with a bare `pass`. Three fields, one defect, and the
+failure each produces looks like something else entirely: an empty argv reads as a broken package,
+an empty env as a bad token, a dropped OAuth config as the provider refusing. The typo is the one
+explanation nobody reaches for, because the panel said the server was added. All three now go
+through one validator. The Admin panel never checked Args and never read `res.ok`, so a rejected
+request took the same branch as an accepted one and cleared the form either way — the refused
+values gone before anyone could see which was wrong. 16 tests, 9 mutations, all caught.
+**And a third pinned figure, in the same file as the first two.**
+`test_a_cherry_picked_fix_stops_counting_as_behind` built its fixture as *seven absent, five
+equivalent* with the seven typed in — so the moment upstream moved to eight it failed on a checker
+that was working correctly. It derives the count from the claim now, and asserts the failure path
+as well as the passing one, which caught something else: the checker's own message still named
+`git rev-list`, **the command this check was corrected away from** — it would have sent a reader
+to reproduce the wrong number.
 
 ### The ledger gains the mailbox claim, measured on the box that can measure it
 `f2a81b1..HEAD`. **376 tracked, 183 done. 0 new phase rows, 0 regressions. `B72` closed the same
@@ -5609,6 +5632,35 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   page of a repository whose whole pitch is *our numbers are checkable* is the worst possible
   place for one, so both are now **pinned by the checker** rather than trusted to a future
   editor: change the suite or the tracker without changing the README and CI fails.
+
+- [x] **P19-08** **Upstream shipped another fix, and it names a defect we have three of.**
+  Filed and closed 2026-09-13 under `P19-06`'s standing answer (`D-2026-09-12-01`, *"Cherry-pick
+  fixes, skip the rest"*). `git fetch upstream` moved `934d23c0 -> 9d5c0319`; of the eight commits
+  with no patch-equivalent here, seven are docs, deps and the advisory merges already carried by
+  hand as `B70`, and one is a fix: **`#6215`, *reject malformed Args on Add MCP Server instead of
+  silently defaulting to []***. `Verify:` a malformed value is refused rather than dropped, and the
+  operator is told which field. — upstream — agent:`P19`
+  **The reasoning in it is worth more than the diff**, and it is upstream's own: *"an unparseable
+  value is silently discarded downstream (stdio spawns with an empty argv), so the caller must be
+  told instead."* **That argument does not stop at `args`.** One line below it `env` did the same
+  thing, and four lines below that `oauth_config` did it with a bare `except json.JSONDecodeError:
+  pass`. Three fields, one defect: a malformed value is dropped, the server is saved anyway, and
+  the panel says **added**. What the operator then has is a server that cannot work, failing as
+  something else — an empty argv reads as a broken package, an empty env reads as a bad token, a
+  dropped OAuth config reads as the provider refusing. **The typo is the one explanation nobody
+  reaches for, because the form said it worked.** Fixing the field the issue names and leaving its
+  neighbours is `Law 13` in miniature, so all three go through one `_parsed_json_field`.
+  **The shape a browser guard cannot catch.** `args=5` is valid JSON. It parses, reaches
+  `StdioServerParameters(args=5)` and 500s inside the error formatter — so `JSON.parse` in the
+  panel is the faster half of the check, never the check. The type assertion is on the server, and
+  both panels now run the fast half: the Admin form never validated Args at all, so the new 400
+  landed in its generic branch as *"Added but connection failed: unknown"* — wrong in both halves
+  of one sentence — and it never read `res.ok`, so a **rejected** request took the same branch as
+  an accepted one whose connection failed, clearing the form either way. The values the server had
+  just refused were gone before anyone could see which was wrong (`Law 15`).
+  **Not cherry-picked by sha**, because our three files have diverged and the change is larger than
+  upstream's. Upstream's authorship is credited in the row and the test rather than claimed by a
+  rewritten commit. 16 tests, 9 mutations, all caught.
 
 - [x] **B69** **There are two complete email-account forms and one of them is mounted nowhere.**
   Found by `P18-07` 2026-09-11, after `P18-01` and the first pass of `P18-07` were both written

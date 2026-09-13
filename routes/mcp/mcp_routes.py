@@ -190,25 +190,49 @@ def setup_mcp_routes(mcp_manager: McpManager):
         if transport == "http" and not url:
             raise HTTPException(400, "url is required for HTTP transport")
 
-        # Parse JSON fields
-        try:
-            parsed_args = json.loads(args) if args else []
-        except json.JSONDecodeError:
-            parsed_args = []
-        try:
-            parsed_env = json.loads(env) if env else {}
-        except json.JSONDecodeError:
-            parsed_env = {}
-        if not isinstance(parsed_env, dict):
-            parsed_env = {}
+        # Parse JSON fields. **None of these three is defaulted on a parse
+        # failure**, and that is the whole change: an unparseable value here is
+        # discarded downstream and the server is saved anyway, so what the
+        # operator gets back is *added* and what they have is a server that
+        # cannot work. Each failure then presents as something else — an empty
+        # argv reads as the package being broken, an empty env reads as a bad
+        # token, a dropped OAuth config reads as the provider refusing.
+        #
+        # `args` is upstream's `#6215` (`9d5c0319`), taken as a fix per
+        # `D-2026-09-12-01`. **The other two are the same defect one and four
+        # lines below it** — upstream fixed the one its issue named and left
+        # its neighbours, which is `Law 13` in miniature.
+        def _parsed_json_field(raw, label, kind, example):
+            if not raw:
+                return [] if kind is list else {}
+            try:
+                value = json.loads(raw)
+            except json.JSONDecodeError:
+                raise HTTPException(400, f"{label} must be valid JSON, e.g. {example}")
+            if not isinstance(value, kind):
+                word = "array" if kind is list else "object"
+                raise HTTPException(400, f"{label} must be a JSON {word}, e.g. {example}")
+            return value
+
+        # Valid JSON of the wrong shape is the case a client-side `JSON.parse`
+        # guard cannot catch: `args=5` parses, reaches
+        # `StdioServerParameters(args=5)`, and 500s inside the error formatter.
+        parsed_args = _parsed_json_field(args, "args", list, '["-y", "pkg"]')
+        parsed_env = _parsed_json_field(env, "env", dict, '{"API_KEY": "..."}')
 
         # Parse OAuth config
         parsed_oauth_config = None
         if oauth_config:
+            # Was `except json.JSONDecodeError: pass`, which saved the server
+            # with **no** OAuth config at all — so the next connection attempt
+            # failed as an authorization problem at the provider rather than as
+            # the typo it was. `_sanitize_mcp_oauth_config` still decides what
+            # inside the object is allowed; this only decides that there is an
+            # object.
             try:
                 parsed_oauth_config = _sanitize_mcp_oauth_config(json.loads(oauth_config))
             except json.JSONDecodeError:
-                pass
+                raise HTTPException(400, "oauth_config must be valid JSON")
         _apply_mcp_oauth_env(parsed_env, parsed_oauth_config)
 
         # Write OAuth credentials file if provided (for Google MCP servers)

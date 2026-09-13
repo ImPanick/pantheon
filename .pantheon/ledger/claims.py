@@ -187,7 +187,7 @@ CLAIMS: Tuple[Claim, ...] = (
         stock=f"`{UPSTREAM_REF}` has moved 12 commits past the fork point.",
         pantheon="None are merged yet. `P19-06` does the merge.",
         before="0 behind",
-        after="7 with no patch-equivalent here (5 docs/deps, 2 advisory merges landed by hand)",
+        after="8 with no patch-equivalent here (5 docs/deps, 2 advisory merges and 1 fix landed by hand)",
         provenance="measured",
         repro=f"git cherry main {UPSTREAM_REF} | grep -c '^+'",
         evidence=(".pantheon/ROADMAP.md",),
@@ -212,7 +212,16 @@ CLAIMS: Tuple[Claim, ...] = (
             "patch ids. Two of the seven remaining are the advisory merge commits "
             "themselves — their **content** is in this tree as `B70`, ported by "
             "hand, so no patch id matches and the count says seven where the "
-            "substance is five."
+            "substance is five. "
+            "**Re-measured 2026-09-13**: upstream moved to `9d5c0319` and the count "
+            "is eight, of which the newest is `#6215` — malformed MCP `args` "
+            "silently defaulting to `[]`. Taken as `P19-08`, by hand rather than by "
+            "sha because this fork's three files have diverged and the change is "
+            "larger here: upstream's argument (*an unparseable value is discarded "
+            "downstream, so the caller must be told*) applies equally to the `env` "
+            "one line below it and the `oauth_config` four lines below that, and "
+            "both were left. So the count stays eight while the substance of three "
+            "is in, and it is written that way rather than rounded down."
         ),
     ),
 
@@ -349,11 +358,11 @@ CLAIMS: Tuple[Claim, ...] = (
     Claim(
         id="tests",
         area="Verification apparatus",
-        headline="Test files 792 -> 930, and a suite of 8,862 passing with nothing red.",
+        headline="Test files 792 -> 931, and a suite of 8,878 passing with nothing red.",
         stock="792 test files.",
-        pantheon="930 test files, 8,862 tests passing, 0 failing.",
+        pantheon="931 test files, 8,878 tests passing, 0 failing.",
         before="792 test files",
-        after="930 test files · 8,862",
+        after="931 test files · 8,878",
         provenance="diffed",
         repro=f"git ls-tree -r --name-only {FORK_POINT} | grep -c '^tests/test_.*\\.py$' && python3 -m pytest -q",
         evidence=("tests",),

@@ -385,7 +385,7 @@ def test_the_upstream_gap_is_checked_live_where_the_remote_exists(checker, claim
     assert checker._upstream_gap_problems() == [], "agreement reported as a problem"
 
 
-def test_a_cherry_picked_fix_stops_counting_as_behind(checker, monkeypatch):
+def test_a_cherry_picked_fix_stops_counting_as_behind(checker, claims, monkeypatch):
     """The bug this check had, caught by the check itself.
 
     `git rev-list FORK..upstream` does not fall when a fix is cherry-picked,
@@ -399,10 +399,28 @@ def test_a_cherry_picked_fix_stops_counting_as_behind(checker, monkeypatch):
         def __init__(self, code, out):
             self.returncode, self.stdout = code, out
 
-    # Seven absent, five equivalent: only the seven may count.
-    out = "\n".join(["+ " + "a" * 40] * 7 + ["- " + "b" * 40] * 5)
+    # N absent, five equivalent: only the N may count. **N is read from the
+    # claim, not typed here.** Written first with a literal seven, which went
+    # stale the next time upstream moved and failed on a checker that was
+    # working — the third time this file has been bitten by a pinned figure
+    # inside a test whose job is to check figures.
+    import re
+
+    stated = int(re.match(r"(\d+)", {c.id: c for c in claims.CLAIMS}["behind-upstream"].after).group(1))
+    out = "\n".join(["+ " + "a" * 40] * stated + ["- " + "b" * 40] * 5)
     monkeypatch.setattr(checker.subprocess, "run", lambda *a, **k: _Result(0, out))
     assert checker._upstream_gap_problems() == []
+
+    # And one more absent commit than the claim admits to is the failure this
+    # check exists for.
+    out = "\n".join(["+ " + "a" * 40] * (stated + 1) + ["- " + "b" * 40] * 5)
+    monkeypatch.setattr(checker.subprocess, "run", lambda *a, **k: _Result(0, out))
+    problems = checker._upstream_gap_problems()
+    assert len(problems) == 1 and "upstream moved" in problems[0]
+    assert "git cherry" in problems[0], (
+        "the message named `git rev-list`, which is the command this check was "
+        "corrected away from — it would send a reader to reproduce the wrong number"
+    )
 
 
 def test_a_checkout_without_the_upstream_remote_is_not_a_failure(checker, monkeypatch):
