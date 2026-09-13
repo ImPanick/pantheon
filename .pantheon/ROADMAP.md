@@ -77,10 +77,10 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P14 | Measurement | 8 | 3 | 0 | **5** |
 | P15 | Outbound politeness | 12 | 2 | **1** | **9** |
 | P16 | Self-hosted by default | 20 | 1 | 0 | **19** |
-| P17 | The network the agent is hosted on | 14 | 5 | 0 | **9** |
+| P17 | The network the agent is hosted on | 14 | 4 | 0 | **10** |
 | P18 | One button, and it links | 7 | 1 | 0 | **6** |
 | P19 | The proof ledger | 8 | 0 | 0 | **8** |
-| **Total** | | **380** | **186** | **9** | **185** |
+| **Total** | | **380** | **185** | **9** | **186** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -242,6 +242,27 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### A failure that says which of four fixes it needs
+`113c4a1..HEAD`. **380 tracked, 186 done. 0 new rows, 0 regressions. `P17-13` closed.**
+Yesterday's analysis found seven of eight failed tool calls recording that they failed and never
+why, and the cost was concrete: `web_fetch` offered 37 times, called 3, failed 3, with no way to
+tell a blocked host from a timeout from a parse failure from a dead URL. Four different fixes,
+indistinguishable in the rows. Failures now carry **a class and a redacted first line** — the class
+is what a count can be taken over, the line is what a person reads when the class is `unknown`.
+**The ordering of the nine classes is the design**: `blocked` before `permission`, because an SSRF
+refusal and a 403 both say *not allowed* and the difference is whether this app refused or the far
+end did; `timeout` before `network`, because a timeout is a network error with its own fix.
+**The redaction is load-bearing rather than decorative.** A `web_fetch` failure echoes the request
+it made, and a request carries an `Authorization` header — into a table with a 90-day prune that
+rides diagnostic bundles. It uses the support bundle's own redactor, and a redactor that raises
+drops the line and keeps the class, because failing open there puts the unredacted string in its
+place. **The classifier was wrong until it was run over this codebase's messages rather than
+imagined ones**: `Expecting value: line 1 column 1` is `JSONDecodeError`'s own text and contains
+none of the obvious words. And the empty `capability_gap` row had exactly one cause — one of three
+reason shapes carries no `pattern` token — so the branch that fired is now recorded beside the
+pattern, both still source text, with the no-conversation promise pinned by a test carrying a real
+payload. 34 tests, 9 mutations, all caught.
 
 ### The gap analysis, run against real traffic — and the first explanation was wrong
 `1dc03f5..HEAD`. **380 tracked, 185 done. 3 new rows (`P17-12`, `P17-13`, `P17-14`), 0 regressions.
@@ -5201,7 +5222,7 @@ radius of a 2.9GB container that runs agent-authored code.*
   *called without being offered* column is empty for the right reason rather than by accident.
   `Depends:` nothing. — found by `P17-08` — agent:`P17`
 
-- [ ] **P17-13** **A failed tool call records that it failed and never why.** Found 2026-09-13 by
+- [x] **P17-13** **A failed tool call records that it failed and never why.** Found 2026-09-13 by
   `P17-08`. **Seven of eight failed `tool_call` rows on the deployment have an empty `detail`**;
   the eighth says `{"policy": "p"}`. One of three `capability_gap` events recorded `{}` — the event
   fired and named nothing, so it says a gap happened and not which one, which is the one thing the
@@ -5213,7 +5234,33 @@ radius of a 2.9GB container that runs agent-authored code.*
   discarded. **Not a schema change**: `detail` is a JSON blob and already carries `{"asked",
   "returned"}` for retrievals. `Verify:` a failed tool call names its failure class, an empty
   `capability_gap` detail is impossible to write, and the `web_fetch` failures above can be
-  diagnosed from rows alone. `Depends:` nothing. — found by `P17-08` — agent:`P17`
+  diagnosed from rows alone. `Depends:` nothing. — found by `P17-08` — agent:`P17` — **done
+  2026-09-13.** `_failure_detail()` in `src/tool_execution.py` records **a class and a redacted
+  first line**: the class is what a count can be taken over, the line is what a person reads when
+  the class is `unknown`. Nine classes — `timeout`, `blocked`, `rate_limit`, `permission`,
+  `not_found`, `too_large`, `parse`, `network`, `exit_code` — ordered, because the ordering is the
+  design: **`blocked` before `permission`**, since an SSRF refusal and a 403 both say *not allowed*
+  and the distinction is whether this app refused or the far end did; **`timeout` before
+  `network`**, since a timeout is a network error with its own fix.
+  **The redaction is the load-bearing half, not a nicety.** A `web_fetch` failure echoes the
+  request it made, and a request carries an `Authorization` header or a key in a query string —
+  into a table with a 90-day prune that rides diagnostic bundles. It goes through
+  `diagnostic_bundle.redact`, the same one the support bundle uses (`Law 14` — one redactor, not
+  two that drift), and **a redactor that raises drops the line and keeps the class**: failing open
+  there would put the unredacted string in its place, which is the opposite of the point.
+  **The classifier was wrong until it was run over this codebase's own messages.** Written from
+  imagination, `Expecting value: line 1 column 1 (char 0)` — `json.JSONDecodeError`'s own text —
+  came out `unknown`, because it contains none of the obvious words. Three tests exist only to pin
+  strings a caller in this tree actually produces.
+  **The empty `capability_gap` row had exactly one cause.** `evaluate_turn_regex` builds three
+  reason strings and only two contain a `pattern` token; the third, `"tool returned error:
+  {error!r}"`, does not, so `_known_pattern` returned `None` and the detail was written as `None`.
+  `_reason_kind()` is a **prefix allowlist over the three fixed shapes**, so the branch that fired
+  is recorded beside the pattern and both are source text — the promise that no conversation
+  reaches this table is unchanged and is now pinned by a test with a real payload in it.
+  The exception path gained a detail too: it was the one failure whose reason was never near the
+  events table, because nothing returns a result dict to read it from. 34 tests, 9 mutations, all
+  caught.
 
 - [ ] **P17-14** **The tool selector's top pick is the least-used tool.** Found 2026-09-13 by
   `P17-08`. Selection is active and aggressive — a run is offered a **median of 11 of 81** tools,
@@ -5230,7 +5277,9 @@ radius of a 2.9GB container that runs agent-authored code.*
   returns at its first gate unless two default-off settings are on. `Verify:` the selector is
   measured against calls rather than asserted, and each of the top unused entries is classified into
   one of the three problems rather than swept. `Depends:` `P17-12` and `P17-13`, both of which
-  change what the numbers mean. — found by `P17-08` — agent:`P17`
+  change what the numbers mean. — found by `P17-08` — agent:`P17` — **`P17-13` landed 2026-09-13**,
+  so the next run of the analysis can say *why* `web_fetch` failed three times out of three rather
+  than only that it did. `P17-12` still stands between this row and a complete picture.
 
 
 

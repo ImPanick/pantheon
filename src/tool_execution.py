@@ -623,6 +623,91 @@ async def _document_tool_dispatch(
 # Dispatcher
 # ---------------------------------------------------------------------------
 
+# `P17-13`. Failure classes, in the vocabulary a person debugging asks in.
+#
+# **The row this fixes was measured, not imagined**: on the owner's deployment
+# seven of eight failed `tool_call` rows carried an empty `detail`, and the
+# eighth said `{"policy": "p"}`. `web_fetch` showed 37 offers, 3 calls and 3
+# failures — a 100% failure rate on the tool the selector reaches for most —
+# and the rows could not distinguish a blocked host from a timeout from a parse
+# failure from a dead URL. Those are four different fixes, and `P14-02` wrote
+# the outcome column and stopped one field short of saying which.
+#
+# A **class plus a redacted first line**, rather than the raw error. The class
+# is what a count can be taken over; the line is what a person reads when the
+# class is `unknown`. Order matters — `blocked` before `permission` because an
+# SSRF refusal says *not allowed*, and `timeout` before `network` because a
+# timeout is a network error that has its own fix.
+_FAILURE_CLASSES = (
+    ("timeout", ("timed out", "timeout", "deadline exceeded", "read timeout")),
+    ("blocked", ("blocked", "not allowed", "refused by policy", "denylist",
+                 "outbound", "ssrf", "private address", "loopback")),
+    ("rate_limit", ("rate limit", "too many requests", "429")),
+    ("permission", ("permission denied", "forbidden", "403", "unauthorized",
+                    "401", "access denied", "read-only")),
+    ("not_found", ("not found", "no such file", "404", "does not exist",
+                   "enoent", "unknown action", "unknown tool")),
+    ("too_large", ("too large", "exceeds", "payload too", "413")),
+    # "Expecting value: line 1 column 1" is `json.JSONDecodeError`'s own text
+    # and contains none of the obvious words. Found by running the classifier
+    # over the messages this codebase actually produces rather than over the
+    # ones it seemed like it would.
+    ("parse", ("json", "parse", "decode", "invalid syntax", "malformed",
+               "expecting value")),
+    ("network", ("connection", "dns", "resolve", "unreachable", "ssl",
+                 "certificate", "econnrefused")),
+)
+
+
+def _classify_failure(text: str) -> str:
+    """One of `_FAILURE_CLASSES`, or `unknown`. Never raises, never guesses hard."""
+    low = str(text or "").lower()
+    if not low:
+        return "unknown"
+    for name, needles in _FAILURE_CLASSES:
+        if any(needle in low for needle in needles):
+            return name
+    return "unknown"
+
+
+def _failure_detail(result: Any, policy: Any = None) -> Optional[Dict[str, Any]]:
+    """What went wrong, in a form that can be read back without the conversation.
+
+    **The error text is redacted before it is stored**, through the same
+    `diagnostic_bundle.redact` the support bundle uses (`Law 14` — one redactor,
+    not two that drift). It matters here specifically: a `web_fetch` failure can
+    echo the request it made, and a request can carry an `Authorization` header
+    or an API key in a query string. One line, 200 characters, credentials and
+    home paths and addresses removed.
+
+    Returns `None` when there is nothing to say, so a successful call still
+    writes no detail at all.
+    """
+    detail: Dict[str, Any] = {}
+    if policy:
+        detail["policy"] = policy
+    if isinstance(result, dict):
+        error = result.get("error")
+        exit_code = result.get("exit_code")
+        if exit_code not in (None, 0):
+            detail["exit_code"] = exit_code
+        text = error if isinstance(error, str) else ("" if error is None else str(error))
+        if text:
+            detail["class"] = _classify_failure(text)
+            try:
+                from src.diagnostic_bundle import redact
+                line = redact(text.strip().splitlines()[0])
+            except Exception:
+                # Redaction failing must not put an unredacted string in its
+                # place. The class survives; the line does not.
+                line = ""
+            if line:
+                detail["error"] = line[:200]
+        elif exit_code not in (None, 0):
+            detail["class"] = "exit_code"
+    return detail or None
+
+
 def _refused(block: Any, result: Dict, *, session_id, owner) -> Tuple[str, Dict]:
     """Record a refusal that happens before the instrumented section, then return it.
 
@@ -647,7 +732,7 @@ def _refused(block: Any, result: Dict, *, session_id, owner) -> Tuple[str, Dict]
             session_id=session_id,
             owner=owner,
             outcome="blocked",
-            detail={"policy": result.get("policy")} if result.get("policy") else None,
+            detail=_failure_detail(result, result.get("policy")),
         )
     except Exception:
         # `events.py`'s first rule, applied to the refusal path: a missing table
@@ -869,10 +954,17 @@ async def execute_tool_block(
             # would count a policy block as a broken tool. A result that declares
             # itself blocked says `blocked`; everything else keeps `error`.
             _tool_outcome = "blocked" if result.get("blocked") else "error"
-            _tool_detail = {"policy": result.get("policy")} if result.get("policy") else None
+            # `P17-13`. Was `{"policy": …}` or nothing, so seven of eight real
+            # failures recorded that they happened and never why.
+            _tool_detail = _failure_detail(result, result.get("policy"))
         return output
-    except Exception:
+    except Exception as exc:
         _tool_outcome = "exception"
+        # An exception is the one failure whose reason was never anywhere near
+        # the events table, because nothing returns a result dict to read it
+        # from. The type name is source text; the message goes through the same
+        # redaction as every other stored error.
+        _tool_detail = _failure_detail({"error": f"{type(exc).__name__}: {exc}"})
         raise
     finally:
         _active_workspace.reset(token)

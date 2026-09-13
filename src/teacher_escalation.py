@@ -144,6 +144,32 @@ _GAP_SIGNALS = {
 }
 
 
+# `P17-13`. The three shapes `evaluate_turn_regex` builds its reason in, as a
+# prefix allowlist. **One of them carries no `pattern` token at all** — the
+# `r.get("error")` branch reads `"tool returned error: {error!r}"` — so
+# `_known_pattern` returned `None` for it and the event was written with
+# `detail=None`. On the owner's deployment that is one of three
+# `capability_gap` rows: the event fired and named nothing, which is the one
+# thing it exists to say.
+#
+# A prefix comparison against fixed source text, for the same reason
+# `_known_pattern` is an allowlist: no conversation can survive it.
+_REASON_KINDS = (
+    ("tool returned error:", "tool_error_field"),
+    ("tool result matched error pattern", "tool_output_pattern"),
+    ("agent reply matched give-up pattern", "reply_give_up_pattern"),
+)
+
+
+def _reason_kind(reason: Optional[str]) -> str:
+    """Which branch of `evaluate_turn_regex` fired. Never conversation."""
+    text = str(reason or "").strip()
+    for prefix, kind in _REASON_KINDS:
+        if text.startswith(prefix):
+            return kind
+    return "unclassified"
+
+
 def _known_pattern(reason: Optional[str]) -> Optional[str]:
     """The matched regex out of a reason string, and nothing else.
 
@@ -195,7 +221,8 @@ def note_turn_outcome(
     `session_id` and the `run_id` needed to find them. A second copy would sit in
     a table with a 90-day prune that rides diagnostic bundles — a duplicate store
     (`Law 14`) and a privacy regression in one move. What goes in `detail` is
-    which pattern matched, which is the part `chat_messages` cannot tell you.
+    which pattern matched and which branch fired, both of which are source text
+    and neither of which `chat_messages` can tell you.
 
     `run_teacher_inline` computes the same classification again when the teacher
     is configured. That is a pure function over the same two arguments, and
@@ -215,7 +242,11 @@ def note_turn_outcome(
             session_id=session_id,
             owner=owner,
             outcome="failure",
-            detail={"pattern": _known_pattern(reason)} if _known_pattern(reason) else None,
+            # `P17-13`. Never `None`. The pattern is still the most useful
+            # field and is still an allowlist, but a row that records nothing
+            # says a gap happened without saying which — so the branch that
+            # fired goes in beside it, and that is source text either way.
+            detail={"signal": _reason_kind(reason), "pattern": _known_pattern(reason) or ""},
         )
         return signal
     except Exception as e:

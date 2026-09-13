@@ -153,7 +153,12 @@ def test_a_refusal_above_the_instrumented_section_leaves_a_row(recorded):
     assert row["kind"] == "tool_call"
     assert row["name"] == "edit_document"
     assert row["outcome"] == "blocked"
-    assert row["detail"] == {"policy": "exact_tool_approval"}
+    # `P17-13` widened the detail from *policy only* to policy plus a failure
+    # class and a redacted line. The policy was and remains the thing this row
+    # is about; asserting the whole dict pinned the shape rather than the fact,
+    # and broke on an addition that made the row strictly more useful.
+    assert row["detail"]["policy"] == "exact_tool_approval"
+    assert row["detail"]["exit_code"] == 1
 
 
 def test_a_refusal_says_blocked_and_not_error(recorded):
@@ -218,7 +223,14 @@ def test_a_tool_error_that_imitates_the_reason_format_cannot_smuggle_text(record
     assert len(recorded) == 1
     assert "078-05-1120" not in repr(recorded), (
         "a tool's own error text reached the events table through the reason string")
-    assert recorded[0]["detail"] is None
+    # `P17-13`. The detail is no longer `None` — a row that recorded nothing
+    # said a gap happened without saying which — but **every field in it is
+    # still source text**, which is the invariant this test is actually for.
+    # Asserting `is None` pinned the old shape and would have passed on a
+    # future field that did smuggle text.
+    detail = recorded[0]["detail"]
+    assert detail == {"signal": "tool_error_field", "pattern": ""}
+    assert "CUSTOMER" not in repr(detail)
 
 
 def test_the_extractor_only_ever_returns_a_pattern_this_module_declares():
@@ -248,7 +260,7 @@ async def test_a_refusal_inside_the_instrumented_section_also_says_blocked(recor
     assert len(rows) == 1
     assert rows[0]["outcome"] == "blocked", (
         "a refusal below _t0 is still filed as a broken tool")
-    assert rows[0]["detail"] == {"policy": "guide_only"}
+    assert rows[0]["detail"]["policy"] == "guide_only"
 
 
 @pytest.mark.asyncio
@@ -264,7 +276,13 @@ async def test_a_tool_that_really_failed_still_says_error(recorded, monkeypatch)
         security_context=tx.NO_TOOL_SECURITY_CONTEXT)
     rows = [r for r in recorded if r["kind"] == "tool_call"]
     assert rows[0]["outcome"] == "error"
-    assert rows[0]["detail"] is None
+    # `P17-13`. This used to assert `detail is None`, which was true and was
+    # the defect: a failed call recorded that it failed and never why. It now
+    # names the class, and `command not found` is `not_found` rather than
+    # `blocked` — the distinction the ordering of the class list exists for.
+    assert rows[0]["detail"]["class"] == "not_found"
+    assert rows[0]["detail"]["exit_code"] == 127
+    assert rows[0]["detail"]["error"] == "command not found"
 
 
 def test_the_agent_loop_actually_calls_the_detector():
