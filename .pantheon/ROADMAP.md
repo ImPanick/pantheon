@@ -243,6 +243,22 @@ they are for.*
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
 
+### `P18-06`'s premise was wrong, and the correction improves the question
+`5b87240..HEAD`. **380 tracked, 187 done. 0 new rows, 0 regressions.** Owner asked for `P18-06`
+elaborated. Reading the two files it cites found that **neither is Pantheon doing PKCE**:
+`mcp_oauth.py` has no `code_challenge` at all and inherits it from the vendored SDK, and
+`chatgpt_subscription.py` receives a verifier from OpenAI's device-code endpoint rather than
+generating one. There is no `code_challenge` anywhere in this tree's own source, so the row's
+*Google is the odd one out* framing does not hold and the real question is whether Pantheon
+implements PKCE for the first time. **The cost objection also fell**: the verifier must outlive the
+redirect and the flow is deliberately stateless, but encrypting it into the signed state envelope —
+with machinery `secret_storage` already provides — keeps it stateless and still defeats an
+interceptor, who ends up holding ciphertext. That puts it at about fifteen lines. **The fork worth
+the owner's attention is not *add PKCE* but *confidential or public client*** — a public client
+makes Connect work with no Cloud Console registration at all, which is `P18`'s remaining `Law 15`
+friction, and makes PKCE mandatory rather than optional. Surfaced with three options and a
+recommendation; no code written, because that half is the owner's.
+
 ### Both tool channels, in one receipt
 `cd64e87..HEAD`. **380 tracked, 187 done. 0 new rows, 0 regressions. `P17-12` closed.**
 The finding that reframed yesterday's analysis, closed the day after it was filed. `run_config`
@@ -5620,6 +5636,36 @@ which is the `P17-02` mistake, and it is why these rows are the ones they are.
   should copy the deliberate one. `Verify:` the answer is in `DECISIONS.md`, and whichever
   way it goes, the two flows stop differing by accident. `Depends:` `P18-05`.
   — **needs the owner** — agent:`P18`
+  **PREMISE CORRECTED 2026-09-13, and the correction changes the question.** The row says
+  *"`src/mcp_oauth.py:178` and `src/chatgpt_subscription.py:197` both use PKCE"*. Neither is
+  Pantheon doing PKCE. `mcp_oauth.py` contains **no `code_challenge` and no `code_verifier`** —
+  its docstring's claim is accurate only because it bridges the vendored SDK, where the challenge
+  is generated (`mcp/client/auth/oauth2.py:69`, `code_challenge_method: S256`).
+  `chatgpt_subscription.py` **accepts** a verifier and never creates one: it is a device-code flow,
+  and `poll_device_auth` receives the code *and* the verifier back from OpenAI's endpoint and
+  passes them through. **There is no `code_challenge` anywhere in this tree's own source**, so
+  Google's flow is not the odd one out beside two that do it properly — the question is whether
+  Pantheon implements PKCE for the first time.
+  **And the objection that made this look expensive does not survive either.** The verifier has to
+  outlive the redirect, and this flow is deliberately stateless — `make_oauth_state` is an
+  HMAC-signed envelope with no server-side record. Putting the verifier in that envelope as-is
+  would defeat PKCE outright, since whoever intercepts the code intercepts the state beside it.
+  But `src/secret_storage.encrypt` already exists and already protects the stored tokens:
+  **encrypt** the verifier into the state rather than signing it and the interceptor holds
+  ciphertext, cannot produce the plaintext, and cannot call the token endpoint — while the flow
+  stays stateless, with no transient store, TTL or cleanup job. That puts the confidential-client
+  version at roughly fifteen lines across authorize and callback plus one field in the envelope.
+  **The fork worth the owner's time is not *add PKCE?* but *is this client confidential or
+  public?*** Today every install registers its own app and holds its own secret, which is the
+  `Law 15` friction in `P18` — linking a mailbox needs a Cloud Console or Entra registration
+  first. A public client ships one client id, no secret, and Connect just works; both Google and
+  Microsoft **refuse** public clients without PKCE, so PKCE becomes a prerequisite rather than
+  hardening. It is not a `Law 16` breach — no telemetry, nothing leaves — but it does mean the
+  project owns a shared external identity that can be revoked, which is a policy call and not an
+  engineering one. Surfaced to the owner 2026-09-13 with three options; the recommendation is PKCE
+  on the confidential flow now, because it is cheap, it is defence-in-depth on the one credential
+  this design concentrates risk in, and it is the prerequisite that turns the public-client
+  question into one about identity rather than protocol.
 
 - [x] **P18-07** **One button means the fields are gone, not hidden.** `P18-01` makes the
   button appear; this makes it the whole interaction. Today the OAuth path still renders
