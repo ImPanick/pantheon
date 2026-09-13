@@ -436,6 +436,7 @@ def usage_summary(days: int = 30, owner: Optional[str] = None) -> Dict[str, Any]
 
 def record_run_config(*, sampling: Optional[Dict[str, Any]] = None,
                       tools: Optional[Iterable[Any]] = None,
+                      fenced: Optional[Iterable[str]] = None,
                       skills: Optional[Iterable[Dict[str, Any]]] = None,
                       session_id: Optional[str] = None,
                       owner: Optional[str] = None) -> bool:
@@ -465,6 +466,14 @@ def record_run_config(*, sampling: Optional[Dict[str, Any]] = None,
         payload["sampling"] = {k: sampling[k] for k in keep if k in sampling}
     if tools is not None:
         payload["tools"] = _tool_fingerprints(tools)
+    if fenced is not None:
+        # `P17-12`. **The other tool channel**, and names only — a fenced tool
+        # is reached by writing its name in a code fence, so there is no schema
+        # to hash and nothing a fingerprint would add. `[]` is meaningful and is
+        # written: an empty fenced list says the channel was deliberately shut
+        # for this turn (the compact prompt forbids tool syntax in chat), which
+        # is a different fact from `None`, meaning nobody looked.
+        payload["fenced"] = sorted({str(n) for n in fenced if n})
     if skills is not None:
         payload["skills"] = [
             {"name": str(s.get("name") or "")[:200],
@@ -526,7 +535,24 @@ def receipt(run_id: str) -> Dict[str, Any]:
                         "name": e.name, "outcome": e.outcome,
                         "duration_ms": e.duration_ms, "detail": detail}
                 if e.kind == "run_config":
-                    out["config"] = detail
+                    # `P17-12`. **Merged, not replaced**, and this was a real
+                    # loss. A run writes its config from more than one place —
+                    # sampling and schemas from `stream_llm`, skills and the
+                    # fenced list from the prompt builder — because each is
+                    # resolved somewhere different. Assigning meant the last row
+                    # won and every field only the earlier rows carried
+                    # vanished from the receipt: a turn that injected skills
+                    # *and* sent schemas could show one or the other, never
+                    # both, depending purely on which wrote last.
+                    #
+                    # Later keys still win, so `P17-08`'s supersede — a second
+                    # row carrying a tool list the first did not have —
+                    # continues to work, and now without taking the first row's
+                    # other fields down with it.
+                    if isinstance(detail, dict):
+                        out["config"] = {**(out["config"] or {}), **detail}
+                    elif detail is not None:
+                        out["config"] = detail
                 elif e.kind == "llm_round":
                     out["rounds"].append({**item, "model": e.model,
                                           "endpoint": e.endpoint,

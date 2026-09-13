@@ -39,7 +39,7 @@ are the numbers most likely to be quoted and least able to carry the weight.
 | The first scored run found three defects, which is what it was built for. | `0 measured` | **`3 defects on the first run`** | `measured` |
 | Ten thousand memories, under a millisecond a query, no service running. | `a service, or nothing` | **`0.82ms at 10,000 memories (15MB of index)`** | `measured` |
 | Fifteen checkers in CI, each one built from a defect that actually shipped. | `0` | **`15`** | `counted` |
-| Test files 792 -> 933, and a suite of 8,923 passing with nothing red. | `792 test files` | **`933 test files · 8,923`** | `diffed` |
+| Test files 792 -> 934, and a suite of 8,938 passing with nothing red. | `792 test files` | **`934 test files · 8,938`** | `diffed` |
 | One tracker, checked by a script, after it was silently wrong by nineteen. | `untracked` | **`370 rows, every one recounted against its section`** | `measured` |
 | Agents can run commands on the host. 52 rules they cannot reach say what never runs. | `no host reach` | **`52 compiled-in rules · 0 bypasses`** | `counted` |
 | Five of the 52 rules aren't about danger. They keep the other 47 enforceable. | `—` | **`5 opaque · 47 nuclear`** | `counted` |
@@ -202,13 +202,13 @@ python3 .pantheon/release-gate.py --fast
 
 Argued in: `P3-13`, `P3-14`, `P3-17`, `P3-23`, `D-2026-09-10-03`.
 
-### Test files 792 -> 933, and a suite of 8,923 passing with nothing red.
+### Test files 792 -> 934, and a suite of 8,938 passing with nothing red.
 
-**`792 test files` → `933 test files · 8,923`**  ·  provenance **`diffed`**
+**`792 test files` → `934 test files · 8,938`**  ·  provenance **`diffed`**
 
 **Odysseus:** 792 test files.
 
-**Pantheon:** 933 test files, 8,923 tests passing, 0 failing.
+**Pantheon:** 934 test files, 8,938 tests passing, 0 failing.
 
 **How we got there.** Every row in this fork's tracker lands with tests **and** mutations: the change is made, then the code is deliberately broken in a dozen ways to check the new tests actually notice. Mutation runs have repeatedly found that a passing test was proving nothing — a window that matched the next block's code, a scan satisfied by a name inside `if False:`. **Proximity is not reachability**, and only a mutation run says so. **The suite carried 14 standing failures for the fork's whole life and now carries none** — and the accounting is worth more than the number: eight were this container missing dependencies the project already declares, so they were never defects; three were test stubs left behind by a `headers=` argument, each raising `TypeError` into a broad `except` so the probe returned `None` and the assertion read as a logic bug; one was a rule written as an allowlist of one name instead of the property it meant; and two were pinning upstream's README and wordmark against a decision this fork had already recorded.
 

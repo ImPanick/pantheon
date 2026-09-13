@@ -1166,6 +1166,35 @@ def _schema_backed_tool_names() -> frozenset:
 _SCHEMA_BACKED_NAMES = None
 
 
+def fenced_tool_names(tool_names: set, disabled_tools: set = None,
+                      compact: bool = False) -> frozenset:
+    """Which tools this prompt tells the agent it may reach by writing a fence.
+
+    `P17-12`. **There are two tool channels and the run receipt described one.**
+    `run_config.detail.tools` fingerprints the schemas sent to the API; this is
+    the other channel — the agent writes a ```` ```create_document ```` block
+    and `execute_tool_block` runs it. Nothing anywhere recorded which tools that
+    was, so a call through it appeared in no offer at all.
+
+    It is not hypothetical. On the owner's deployment `create_document` was
+    called 19 times and in 17 of them was not in its own run's recorded offer,
+    against 0 mismatches for every other tool. A gap analysis reading the offer
+    column ranked it as barely-offered while it was the most-used tool in the
+    corpus.
+
+    **Compact mode returns nothing, and that is the answer rather than a gap.**
+    The compact prompt tells the model *"only the tool schemas provided by the
+    API are available for this turn… do not write tool syntax or tool
+    instructions in chat"*, so the fenced channel is shut. Saying so is the
+    point: a turn with an empty fenced set is a turn where one channel was
+    deliberately closed, which is a different fact from one where nobody looked.
+    """
+    if compact:
+        return frozenset()
+    included = set(tool_names or set()) - set(disabled_tools or set())
+    return frozenset(name for name in TOOL_SECTIONS if name in included)
+
+
 def _assemble_prompt(tool_names: set, disabled_tools: set = None, compact: bool = False) -> str:
     """Build the system prompt with only the specified tools included."""
     disabled = disabled_tools or set()
@@ -1222,8 +1251,12 @@ def _assemble_prompt(tool_names: set, disabled_tools: set = None, compact: bool 
     # Collect one-liner tool sections
     one_liners = []
 
+    # `P17-12`. The same set the receipt records, read from one place rather
+    # than recomputed here — a rule in two places is one that can disagree, and
+    # a receipt that disagrees with the prompt is worse than no receipt.
+    _fenced = fenced_tool_names(tool_names, disabled_tools, compact=False)
     for name, _default_section in TOOL_SECTIONS.items():
-        if name not in included:
+        if name not in _fenced:
             continue
         section = _section_text(name, _default_section)
         if section.startswith("```") or section.startswith("-"):
@@ -3275,6 +3308,25 @@ _ADMIN_TOOLS = {
     "send_to_session", "pipeline", "ask_teacher", "list_models",
 }
 
+def _record_fenced_channel(tool_names, disabled, compact, owner) -> None:
+    """Write the fenced half of the offer. Guarded: a receipt never fails a run.
+
+    `P17-12`. Separate from `_capture_run_config` because the two halves are
+    known in different places — the schema list is resolved inside `stream_llm`
+    and the fenced list here, while the prompt is being built — and moving
+    either to meet the other would record the wrong thing (`P4-25`'s lesson:
+    capture where the value is resolved).
+    """
+    try:
+        from src.events import record_run_config
+        record_run_config(
+            fenced=sorted(fenced_tool_names(tool_names, disabled, compact=compact)),
+            owner=owner,
+        )
+    except Exception:
+        pass   # a receipt is never worth a failed run
+
+
 def _build_base_prompt(
     disabled_tools,
     mcp_mgr,
@@ -3310,8 +3362,12 @@ def _build_base_prompt(
         if needs_admin:
             tool_names |= _ADMIN_TOOLS
         agent_prompt = _assemble_prompt(tool_names, disabled, compact=compact)
+        _record_fenced_channel(tool_names, disabled, compact, owner)
     else:
-        # Fallback: full prompt (RAG unavailable)
+        # Fallback: full prompt (RAG unavailable). Every tool with a section is
+        # named, so the fenced channel is at its widest — which is exactly the
+        # turn a receipt most needs to say so about.
+        _record_fenced_channel(set(TOOL_SECTIONS.keys()), disabled, False, owner)
         agent_prompt = AGENT_SYSTEM_PROMPT
         if not needs_admin:
             # At least strip the management section

@@ -54,6 +54,14 @@ deployment is not in it.** A tool reachable the other way is neither offered nor
 missing: it sits in neither column, and a gap analysis that only reads
 `run_config` will never see it. Filed as `P17-12`.
 
+**Fixed 2026-09-13**, the same day. `run_config` now records `fenced` beside
+`tools`, and the script checks calls against both channels. **The numbers above
+are from before that landed** and are kept as they were measured — a corrected
+figure and a recorded one are different things, and this file is the record.
+The next run against a deployment on this code will have a *called without
+being offered* column that is empty for the right reason; if it is not, what is
+in it is a genuine third channel and worth reading.
+
 ## 2. Failures record that they happened, never why
 
 **Seven of eight failed tool calls have an empty `detail`.** The eighth says

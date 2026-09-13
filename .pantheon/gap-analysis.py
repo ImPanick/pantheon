@@ -86,24 +86,47 @@ def offered(conn):
     for *offered and never picked*: a run that recorded no tool list is not
     evidence that nothing was offered, it is evidence of nothing at all.
     """
-    latest = {}
-    for row in conn.execute(
-        "select run_id, ts, detail from events where kind='run_config' "
-        "order by ts asc, id asc"
-    ):
-        latest[row["run_id"]] = _json(row["detail"])
+    latest = _configs(conn)
     counts = collections.Counter()
+    fenced_counts = collections.Counter()
     with_tools = 0
+    with_fenced = 0
     for detail in latest.values():
         tools = detail.get("tools")
-        if not tools:
-            continue
-        with_tools += 1
-        for tool in tools:
-            name = tool.get("name") if isinstance(tool, dict) else tool
-            if isinstance(name, str) and name:
-                counts[name] += 1
-    return counts, len(latest), with_tools
+        if tools:
+            with_tools += 1
+            for tool in tools:
+                name = tool.get("name") if isinstance(tool, dict) else tool
+                if isinstance(name, str) and name:
+                    counts[name] += 1
+        fenced = detail.get("fenced")
+        if fenced:
+            with_fenced += 1
+            for name in fenced:
+                if isinstance(name, str) and name:
+                    fenced_counts[name] += 1
+    return counts, fenced_counts, len(latest), with_tools, with_fenced
+
+
+def _configs(conn):
+    """run_id -> its merged config, the way `events.receipt()` assembles one.
+
+    **Merged rather than last-row-wins**, because a run writes its config from
+    more than one place: sampling and schemas from `stream_llm`, skills and the
+    fenced list from the prompt builder, each captured where its value is
+    resolved. Taking only the last row would drop whichever half wrote first.
+    """
+    out = {}
+    for row in conn.execute(
+        "select run_id, detail from events where kind='run_config' "
+        "order by ts asc, id asc"
+    ):
+        detail = _json(row["detail"])
+        if detail:
+            out.setdefault(row["run_id"], {}).update(detail)
+        else:
+            out.setdefault(row["run_id"], {})
+    return out
 
 
 def called(conn):
@@ -155,16 +178,20 @@ def called_without_being_offered(conn):
     is neither offered nor missing, and it will sit in neither column.
     """
     latest = {}
-    for row in conn.execute(
-        "select run_id, detail from events where kind='run_config' "
-        "order by ts asc, id asc"
-    ):
+    for run_id, detail in _configs(conn).items():
         names = set()
-        for tool in _json(row["detail"]).get("tools") or []:
+        for tool in detail.get("tools") or []:
             name = tool.get("name") if isinstance(tool, dict) else tool
             if isinstance(name, str):
                 names.add(name)
-        latest[row["run_id"]] = names
+        # `P17-12`. Both channels. Before the fenced half was recorded, every
+        # fenced call landed in this column and read as a tool called out of
+        # nowhere — the finding that opened that row, and the thing this column
+        # should stop reporting once the receipt describes both.
+        for name in detail.get("fenced") or []:
+            if isinstance(name, str):
+                names.add(name)
+        latest[run_id] = names
 
     out = collections.Counter()
     total = collections.Counter()
@@ -196,7 +223,10 @@ def gaps(conn):
         rows.append({
             "ts": row["ts"],
             "kind": row["name"],
-            "pattern": detail.get("pattern", ""),
+            # `P17-13` added `signal` for the branch that carries no pattern.
+            # Showing only the pattern printed "(no detail)" over a row that
+            # had one — reporting the old defect against the fix for it.
+            "pattern": detail.get("pattern") or detail.get("signal", ""),
             "empty": not detail,
         })
     return rows
@@ -231,7 +261,9 @@ def corpus(conn):
         "user_messages": one("select count(*) from chat_messages where role='user'"),
         "assistant_messages": one("select count(*) from chat_messages where role='assistant'"),
         "events": one("select count(*) from events"),
-        "runs": one("select count(*) from events where kind='run_config'"),
+        # Distinct runs, not rows: a run writes its config from more than one
+        # place, so counting rows counts several of them twice.
+        "runs": one("select count(distinct run_id) from events where kind='run_config'"),
         "first_event": one("select min(ts) from events", ""),
         "last_event": one("select max(ts) from events", ""),
     }
@@ -240,9 +272,10 @@ def corpus(conn):
 def report(path: str) -> int:
     conn = _open(path)
     stats = corpus(conn)
-    offer_counts, runs, runs_with_tools = offered(conn)
+    offer_counts, fenced_counts, runs, runs_with_tools, runs_with_fenced = offered(conn)
     ev, ev_fail, md, md_fail = called(conn)
     ever_called = set(ev) | set(md)
+    reachable = set(offer_counts) | set(fenced_counts)
 
     print("## Corpus")
     for key in ("sessions", "sessions_with_messages", "user_messages",
@@ -261,10 +294,17 @@ def report(path: str) -> int:
         print(f"  **{runs - runs_with_tools} runs recorded no tool list at all.**"
               " Read the caveat below before")
         print("  quoting anything in this section.")
-    print(f"  {len(offer_counts)} distinct tools offered across those"
-          f" {runs_with_tools} runs; {len(ever_called)} were ever called.")
-    never = [(n, c) for n, c in offer_counts.most_common() if n not in ever_called]
-    print(f"  {len(never)} offered and never picked. The ten offered most often:")
+    print(f"  {runs_with_fenced} recorded a fenced list — the other channel,"
+          " where the agent")
+    print("  reaches a tool by writing its name in a code fence rather than by"
+          " schema.")
+    print(f"  {len(offer_counts)} distinct tools offered by schema,"
+          f" {len(fenced_counts)} by fence,"
+          f" {len(reachable)} either way; {len(ever_called)} were ever called.")
+    never = [(n, c) for n, c in offer_counts.most_common()
+             if n not in ever_called and n not in fenced_counts]
+    print(f"  {len(never)} reachable by schema only and never picked."
+          " The ten offered most often:")
     for name, count in never[:10]:
         print(f"   {name:44} offered {count:>3}  called 0")
     print()
@@ -288,7 +328,8 @@ def report(path: str) -> int:
         calls = ev.get(name, 0)
         fails = ev_fail.get(name, 0)
         rate = f"{fails}/{calls}" if calls else "-"
-        print(f"   {name:28} offered {offer_counts.get(name, 0):>3}"
+        print(f"   {name:28} schema {offer_counts.get(name, 0):>3}"
+              f"  fence {fenced_counts.get(name, 0):>3}"
               f"  events {calls:>3} (failed {rate:>6})"
               f"  metadata {md.get(name, 0):>3} (failed {md_fail.get(name, 0)})")
     print()
@@ -303,6 +344,9 @@ def report(path: str) -> int:
               f"  run had no config {no_config.get(name, 0):>3}")
     if unoffered:
         print()
+        print("  Checked against BOTH channels — the schemas sent to the API and")
+        print("  the fenced list the prompt named. A row here is a call that")
+        print("  reached a tool neither of them offered.")
         print("  A tool the model has no schema for should be impossible to call,")
         print("  so each of these arrived through a channel `run_config` does not")
         print("  describe. The section above is therefore a statement about the")

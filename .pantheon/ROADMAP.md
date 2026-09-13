@@ -77,10 +77,10 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P14 | Measurement | 8 | 3 | 0 | **5** |
 | P15 | Outbound politeness | 12 | 2 | **1** | **9** |
 | P16 | Self-hosted by default | 20 | 1 | 0 | **19** |
-| P17 | The network the agent is hosted on | 14 | 4 | 0 | **10** |
+| P17 | The network the agent is hosted on | 14 | 3 | 0 | **11** |
 | P18 | One button, and it links | 7 | 1 | 0 | **6** |
 | P19 | The proof ledger | 8 | 0 | 0 | **8** |
-| **Total** | | **380** | **185** | **9** | **186** |
+| **Total** | | **380** | **184** | **9** | **187** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -242,6 +242,22 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### Both tool channels, in one receipt
+`cd64e87..HEAD`. **380 tracked, 187 done. 0 new rows, 0 regressions. `P17-12` closed.**
+The finding that reframed yesterday's analysis, closed the day after it was filed. `run_config`
+records `fenced` beside `tools`, computed in one place so the prompt and the receipt cannot
+disagree, and **an empty fenced list is written rather than omitted** — the compact prompt forbids
+tool syntax in chat, so `[]` means *this channel was deliberately shut* where `None` means *nobody
+looked*. **Two more defects fell out of writing it down.** `receipt()` replaced rather than merged,
+so a run whose config was written from two places — sampling and schemas from `stream_llm`, skills
+and the fenced list from the prompt builder, each captured where its value is resolved — kept only
+whichever landed last; a turn that injected skills *and* sent schemas could show one or the other,
+never both. And the analysis counted config rows as runs, where a run can now write two.
+**One mutation survived and deserved to**: replacing the shared read with the inline expression it
+came from is behaviourally identical today. That is not evidence the sharing is pointless, it is
+evidence every test pinned the value and none pinned the link — so the test written for it narrows
+the fenced set and asserts the prompt narrows with it. 13 tests, 7 mutations, all caught.
 
 ### A failure that says which of four fixes it needs
 `113c4a1..HEAD`. **380 tracked, 186 done. 0 new rows, 0 regressions. `P17-13` closed.**
@@ -5206,7 +5222,7 @@ radius of a 2.9GB container that runs agent-authored code.*
   the number was not mine to quote). 11 tests.
 
 
-- [ ] **P17-12** **There are two tool channels and the receipt describes one.** Found 2026-09-13 by
+- [x] **P17-12** **There are two tool channels and the receipt describes one.** Found 2026-09-13 by
   `P17-08`, and it is the finding that reframes the rest of that analysis. A tool the model has no
   schema for should be impossible to call — yet on the owner's deployment **`create_document` was
   called 19 times and in 17 of them was not in its own run's recorded offer**, against **0**
@@ -5220,7 +5236,29 @@ radius of a 2.9GB container that runs agent-authored code.*
   tool reachable only by fence is neither offered nor missing and sits in neither column.
   `Verify:` a receipt says which channels a turn could reach a tool through, and the gap analysis's
   *called without being offered* column is empty for the right reason rather than by accident.
-  `Depends:` nothing. — found by `P17-08` — agent:`P17`
+  `Depends:` nothing. — found by `P17-08` — agent:`P17` — **done 2026-09-13, same day.**
+  `run_config` gains `fenced` beside `tools`, and `agent_loop.fenced_tool_names()` is the one
+  place the set is computed — the prompt renders from it and the receipt records it, so the two
+  cannot disagree (`Law 13`). Names only, no fingerprint: a fenced tool is reached by writing its
+  name in a code fence, so there is no schema to hash.
+  **An empty fenced list is written rather than omitted, and that is the interesting half.** The
+  compact prompt tells the model *"only the tool schemas provided by the API are available for this
+  turn… do not write tool syntax or tool instructions in chat"*, so on those turns the channel is
+  **shut** — and `[]` says *deliberately closed* where `None` says *nobody looked*. `P4-25`'s own
+  distinction, applied one level down.
+  **Two more defects fell out of writing it down.** `events.receipt()` **replaced rather than
+  merged**: a run writes its config from more than one place, because each field is captured where
+  it is resolved — sampling and schemas inside `stream_llm`, skills and the fenced list in the
+  prompt builder — and assigning meant the last row won and every field only an earlier row carried
+  vanished. A turn that injected skills *and* sent schemas could show one or the other, never both,
+  depending purely on which wrote last. It merges now, later keys still winning, so `P17-08`'s
+  supersede keeps working without taking the first row's other fields down with it. And the
+  analysis was counting `run_config` **rows** as runs where a run can now write two.
+  **A mutation survived and it was right to.** Replacing the shared read with the inline expression
+  it came from is behaviourally identical today, because the two compute the same set — so nothing
+  could catch it, and that was evidence the tests pinned the *value* and nothing pinned the *link*.
+  The test added for it narrows `fenced_tool_names` and asserts the prompt narrows with it, which
+  is the property the sharing exists for. 13 tests, 7 mutations, all caught.
 
 - [x] **P17-13** **A failed tool call records that it failed and never why.** Found 2026-09-13 by
   `P17-08`. **Seven of eight failed `tool_call` rows on the deployment have an empty `detail`**;
