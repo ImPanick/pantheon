@@ -59,11 +59,12 @@ the `upstream` remote.
   (seven of them animated) chosen independently of each other, web search,
   presets, sessions, 2FA
 
-**What this fork has added, and what proves it, is in the [proof ledger](LEDGER.md)** — 25 claims,
+**What this fork has added, and what proves it, is in the [proof ledger](LEDGER.md)** — 26 claims,
 each with where its number came from and a command you can run to check it. The short version:
 the Brain rebuilt around a local embedding model that needs no service, an agent that can reach
 the host it runs on behind a denylist it cannot edit, sixteen checkers in CI that upstream does
-not have, every outbound call paced, and full AGPL attribution for code that shipped without it.
+not have, every outbound call paced, mailbox and service sign-in reduced to one record type, and
+full AGPL attribution for code that shipped without it.
 
 ---
 

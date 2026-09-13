@@ -243,6 +243,21 @@ they are for.*
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
 
+### The ledger gains the mailbox claim, measured on the box that can measure it
+`f2a81b1..HEAD`. **376 tracked, 183 done. 0 new phase rows, 0 regressions. `B72` closed the same
+day it was filed.**
+`B72` was filed because this container's clone bottoms out 147 commits deep at a cybertooth
+baseline, with no `upstream` remote — so the fork point `b4d1293` is unreachable here and `Law 9`
+says a row does not close on a number that cannot be checked. The bridge to cybertooth was up, so
+it was measured there instead of deferred: `"google"` written **nine** times in
+`routes/email_routes.py`, two hand-written OAuth routes, **seven** Microsoft mentions in
+`routes/email_helpers.py` — every one an error saying it cannot be used — and **eight** integration
+presets carrying `auth_type` of `bearer`, `header` or `none` only, which is why none of them could
+describe a sign-in. The ledger gains an eleventh area, **Mailboxes and providers**, and its
+twenty-sixth claim, `providers-are-records`, provenance `diffed`. **The repro was run end to end on
+cybertooth** and returns those figures; its last step does not run there because that box has no
+`pytest` installed, which is said out loud rather than trimmed out of the command.
+
 ### Microsoft, and a provider that is a record rather than a flow
 `09a66ff..HEAD`. **376 tracked, 183 done. 0 new phase rows, 0 regressions. `P18-05` closed;
 `B72` filed to the backlog, which sits outside this tally.**
@@ -5744,7 +5759,7 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   `Depends:` `P0-13`, which is blocked on a design decision no agent can make. — found by the
   standing-failure sweep — **needs the owner** — agent:`P0`
 
-- [ ] **B72** **The ledger cannot gain a mailbox claim from this machine.** Found 2026-09-13 while
+- [x] **B72** **The ledger cannot gain a mailbox claim from this machine.** Found 2026-09-13 while
   closing `P18-05`. Every row in `LEDGER.md` is `stock -> pantheon`, and the honest ones are
   `diffed` — measured against the fork point, `b4d1293`. **The cloud container's clone does not
   contain it**: `git log` bottoms out at `baseline: cybertooth c3b2120`, 147 commits deep, and there
@@ -5757,3 +5772,14 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   `.pantheon/ledger/claims.py` with a `diffed` claim whose before-column came from the fork-point
   tree, and `check-ledger.py` passes on it. `Depends:` a run on cybertooth. — found by closing
   `P18-05` — agent:`P18`
+  **DONE 2026-09-13, same day, because the bridge to cybertooth was up.** Measured there against
+  `b4d1293` rather than asserted from here: `"google"` written **9** times in
+  `routes/email_routes.py`, two hand-written routes at lines 6009 and 6033, **7** Microsoft mentions
+  in `routes/email_helpers.py` — every one of them an error saying it cannot be used — **2** *does
+  not support Microsoft* strings in `settings.js`, and **8** integration presets whose `auth_type`
+  is only `bearer` (1), `header` (5) or `none` (2), so none of them can describe a sign-in. No
+  `src/mail_auth.py`, no `src/public_origin.py`, no `src/providers.py`. Against 7 records, 2
+  linkable mailboxes, one route pair and 12 presets now. Ledger area **Mailboxes and providers**,
+  claim `providers-are-records`, provenance `diffed`. The repro was run end to end on cybertooth
+  and returns those figures; its last step (`pytest`) is the one thing that does not run there,
+  because that box has no pytest installed — an environment gap, stated rather than hidden.

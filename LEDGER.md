@@ -46,6 +46,7 @@ are the numbers most likely to be quoted and least able to carry the weight.
 | Four of the 52 rules were dead on arrival. A test now proves all 52 fire. | `4 rules matched nothing` | **`52 of 52 proven to fire`** | `measured` |
 | No shipped default addresses an external service. A checker keeps it that way. | `external by default` | **`0 external destinations in defaults`** | `measured` |
 | The front end fetches nothing at runtime. Fonts, emoji, Pyodide, skills — all local. | `fetched at runtime` | **`vendored, 286 skills, all parsing`** | `counted` |
+| One mail provider, hand-rolled, and Microsoft refused in three places -> a provider is a record, and Microsoft works. | `1 mail provider · 2 hand-written routes · 8 presets · Microsoft refused in 3 places` | **`7 records · 2 linkable mailboxes · 1 route pair · 12 presets · Microsoft supported`** | `diffed` |
 | One click fired up to 260 unauthenticated requests at somebody else's API. | `260 requests per click` | **`40, budgeted and shared`** | `counted` |
 | A failed follow-up retried every 5 seconds forever — 720 attempts an hour. | `720 attempts/hour, forever` | **`exponential with jitter, cap 12`** | `cited` |
 | Three trust rungs, a 13-value capability taxonomy, and 21,360 cases pinning it. | `taxonomy unused` | **`21,360 cases, 0 diverged`** | `measured` |
@@ -322,6 +323,28 @@ python3 .pantheon/check-licences.py && ls library/ecc | wc -l
 ```
 
 Argued in: `P16-03`, `P16-06`, `P16-07`.
+
+---
+
+## Mailboxes and providers
+
+*Signing in to somebody else's service, which Law 16 permits only because a person asked for it.*
+
+### One mail provider, hand-rolled, and Microsoft refused in three places -> a provider is a record, and Microsoft works.
+
+**`1 mail provider · 2 hand-written routes · 8 presets · Microsoft refused in 3 places` → `7 records · 2 linkable mailboxes · 1 route pair · 12 presets · Microsoft supported`**  ·  provenance **`diffed`**
+
+**Odysseus:** Google, spelled out. Two hand-written routes — `/oauth/google/authorize` and `/oauth/google/callback` — a hand-built authorize URL, a hand-built token exchange and a hand-built userinfo fetch, with `"google"` written into `routes/email_routes.py` nine times. **Microsoft appears zero times in that file and seven times in `routes/email_helpers.py`**, all of them an error message saying it cannot be used; `static/js/settings.js` says *does not support Microsoft* twice, and `docs/email-outlook.md` tells the reader Outlook accounts *cannot currently be added*. The eight integration presets carry `auth_type` of `bearer`, `header` or `none` only — no client id, no scope, no endpoint — so they cannot describe a sign-in either.
+
+**Pantheon:** `src/providers.py`: seven records, one type. A mailbox is that record with a `mail` block and a service is the same record without one, so the mail flow and the integration presets read the same shape. Google and Microsoft are linkable mailboxes driven by **one** parameterised route pair; GitHub, Slack, Anthropic and OpenAI project into `INTEGRATION_PRESETS`, taking it from 8 presets to 12. The registered callback URL is unchanged, so no existing deployment's client registration breaks.
+
+**How we got there.** **The proof is not a grep** (`Law 20`). A test invents a provider called `acme`, inserts the record at runtime and drives the served list, the authorize redirect, the transport guards and the refresh table — with no module edited. If any step still asks *which provider is this* by name, `acme` falls out of that step. **The second provider is what taught the record its shape**, three times over: Microsoft has two SMTP hosts against one IMAP host, so a scalar field could not hold it; Microsoft's verified address cannot come from a userinfo call, because Entra will not issue one token covering Graph **and** the `outlook.office.com` resource scopes IMAP and SMTP need, so it is read from the `id_token` — and that value is the reconnect ownership check, not a convenience; and the same vendor is sometimes two records, since OpenAI's platform API is a key while a ChatGPT subscription is a sign-in. **What is deliberately not claimed**: Anthropic and OpenAI have no consumer OAuth for API access. Giving them an `authorize_url` so every row looked alike would have been a lie told for symmetry, so they are `api_key` records and the panel offers a key rather than a button that cannot work. **Two checkers and a mutation run shaped the result.** `check-env-declared.py` refused the first design, in which variable names were composed from a prefix: `MICROSOFT_OAUTH_REDIRECT_URI` was then declared in `.env.example` and appeared **nowhere in the source**, so an operator could set it, believe something changed, and have no way to find out. A mutation run left two rules alive — nothing exercised a refresh that returns a *new* refresh token, so *Microsoft rotates and Google does not* was implemented and unproven; and the never-overwrite rule on the generated presets was asserted against a preset that is not one of the four ids, so it proved nothing. Both are now tested.
+
+```
+git show b4d1293:routes/email_routes.py | grep -c '"google"' && git show b4d1293:routes/email_routes.py | grep -n 'router.get("/oauth' && git show b4d1293:routes/email_helpers.py | grep -ci microsoft && git show b4d1293:src/integrations.py | grep -cE '^    .[a-z_]+.: [{]$' && python3 -c "from src import providers; print(len(providers.PROVIDERS), providers.mail_provider_ids())" && python3 -m pytest tests/test_a_provider_is_a_record.py -q
+```
+
+Argued in: `P18-05`, `D-2026-09-12-01`.
 
 ---
 
