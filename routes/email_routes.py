@@ -6431,7 +6431,12 @@ def setup_email_routes():
                 f"{providers.client_secret_env(provider)} in .env and restart",
             )
         redirect_uri = _provider_redirect_uri(provider, request)
-        state = make_oauth_state(account_id, owner)
+        # `D-2026-09-13-01`. The verifier is minted here, hashed into the
+        # challenge that goes to the provider, and carried back **encrypted**
+        # inside the signed state — so an interceptor who catches the redirect
+        # holds the code and ciphertext, and can redeem neither.
+        verifier = providers.new_code_verifier() if provider.supports_pkce else ""
+        state = make_oauth_state(account_id, owner, verifier)
         params = dict(provider.authorize_params or ())
         params.update({
             "client_id": providers.client_id(provider),
@@ -6440,6 +6445,7 @@ def setup_email_routes():
             "scope": providers.scope_string(provider),
             "state": state,
         })
+        params.update(providers.pkce_authorize_params(provider, verifier))
         from fastapi.responses import RedirectResponse as _RR
         return _RR(
             f"{providers.authorize_url(provider)}?{urllib.parse.urlencode(params)}"
@@ -6479,6 +6485,15 @@ def setup_email_routes():
         client_secret = providers.client_secret(provider)
         if client_secret:
             form["client_secret"] = client_secret
+        # `D-2026-09-13-01`. Sent only when the state carried one, which is the
+        # `Law 1` clause: a state minted before this shipped, or by a provider
+        # that does not declare PKCE, has no verifier and the exchange goes as
+        # it always did. Sending an empty `code_verifier` would be worse than
+        # sending none — the provider treats the parameter as present and
+        # refuses a flow that never presented a challenge.
+        verifier = state_data.get("v") or ""
+        if verifier:
+            form["code_verifier"] = verifier
         import httpx as _httpx
         try:
             resp = _httpx.post(

@@ -78,9 +78,9 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P15 | Outbound politeness | 12 | 2 | **1** | **9** |
 | P16 | Self-hosted by default | 20 | 1 | 0 | **19** |
 | P17 | The network the agent is hosted on | 14 | 3 | 0 | **11** |
-| P18 | One button, and it links | 7 | 1 | 0 | **6** |
+| P18 | One button, and it links | 7 | 0 | 0 | **7** |
 | P19 | The proof ledger | 8 | 0 | 0 | **8** |
-| **Total** | | **380** | **184** | **9** | **187** |
+| **Total** | | **380** | **183** | **9** | **188** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -242,6 +242,27 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### PKCE, and an interceptor who holds ciphertext
+`690b483..HEAD`. **380 tracked, 188 done. 0 new rows, 0 regressions. `P18-06` closed, `P18` clear.**
+The owner decided, and the reason is sharper than the textbook objection: MITM is normally TLS's
+problem, which assumes the redirect leg has TLS on it — and **in this product it frequently does
+not, by design.** `P18-04` made direct access first class and keeps a test whose job is to stop a
+proxy-shaped fix breaking `http://192.168.1.71:7000`, so on those installs `?code=…` crosses a LAN
+in plaintext and the only thing stopping an interceptor redeeming it is one secret in one `.env`.
+Their second argument settles it on its own: the documentation now says we know, in a repository
+meant to go public, and an acknowledged weakness that ships unfixed is worse than an unknown one.
+**The design constraint was staying stateless.** The verifier must outlive the redirect and the
+state envelope keeps no server-side record — so putting the verifier in it would have defeated
+PKCE outright, since whoever catches the code catches the state beside it. It is **encrypted**
+into the state and the state is still signed: the interceptor holds ciphertext, and the HMAC still
+stops the account id being forged. Both, not either. **Provider support was read out of the
+servers rather than their prose**, because Google's web-server page never mentions PKCE — its
+discovery document advertises `S256`, while Microsoft's discovery document omits the field
+entirely and its prose recommends the parameters. The two disagree in shape, and the record says
+which source each answer came from. 19 tests including RFC 7636 Appendix B's own vector, 11
+mutations, all caught — among them the two that matter: signing instead of encrypting, and a
+challenge that is the verifier.
 
 ### `P18-06`'s premise was wrong, and the correction improves the question
 `5b87240..HEAD`. **380 tracked, 187 done. 0 new rows, 0 regressions.** Owner asked for `P18-06`
@@ -5625,7 +5646,7 @@ which is the `P17-02` mistake, and it is why these rows are the ones they are.
   rather than hoped for. Both are the same lesson the mutation harness keeps teaching: **proximity
   is not reachability.**
 
-- [ ] **P18-06** **Google's flow has no PKCE, and the MCP flow beside it does.** Google email
+- [x] **P18-06** **Google's flow has no PKCE, and the MCP flow beside it does.** Google email
   uses a confidential client with `client_secret` (`routes/email_routes.py:6220-6242`) and
   no `code_verifier`; `src/mcp_oauth.py:178` and `src/chatgpt_subscription.py:197` both use
   PKCE. For a self-hosted app the confidential-client model is the awkward one — the secret
@@ -5666,6 +5687,39 @@ which is the `P17-02` mistake, and it is why these rows are the ones they are.
   on the confidential flow now, because it is cheap, it is defence-in-depth on the one credential
   this design concentrates risk in, and it is the prerequisite that turns the public-client
   question into one about identity rather than protocol.
+  **DECIDED AND DONE 2026-09-13** (`D-2026-09-13-01`). The owner: *"PKCE is needed. This is the
+  exact defense against a MITM/DNS Poisoning attack and the like.. If we release to the public and
+  we aren't including PKCE - we open the users to an attack surface. our documentation now says we
+  acknowledge that.. so we need to close this loop."*
+  **And the reasoning is right in a way the textbook objection is not.** MITM is normally TLS's
+  problem — which assumes the redirect leg has TLS on it. **In this product it frequently does
+  not, by design**: `P18-04` made direct access first class and has a test whose whole job is to
+  stop a proxy-shaped fix breaking `http://192.168.1.71:7000`. On those installs the redirect
+  carrying `?code=…` is plaintext on a LAN, and what stops an interceptor redeeming it is one
+  secret in one `.env`. The second argument settles it independently: **the documentation now says
+  we know**, in a repository intended to go public, and an acknowledged weakness that ships
+  unfixed is worse than an unknown one.
+  **Support was taken from the servers, not from prose**, because Google's web-server page never
+  mentions PKCE and an inference there would have been a guess about a security control. Google's
+  discovery document advertises `"code_challenge_methods_supported": ["plain", "S256"]` against
+  exactly the endpoints this flow posts to; Microsoft's discovery document **omits the field
+  entirely** while its prose calls the parameters *recommended for all application types*. The two
+  disagree in shape and the record says which source each answer came from. `plain` is refused —
+  a `plain` challenge **is** the verifier.
+  **The design constraint was staying stateless.** The verifier must outlive the redirect and
+  `make_oauth_state` keeps no server-side record; putting it in that envelope would have defeated
+  PKCE outright, since whoever catches the code catches the state. It is **encrypted** into the
+  state and the state is still signed — the interceptor holds ciphertext, and the HMAC still stops
+  the account id being forged. Both, not either, and a mutation that swaps the encryption back to
+  signing fails on an assertion that decodes the state and looks for the verifier in it.
+  **What is deliberately not claimed**: PKCE does not make plaintext HTTP safe — the session
+  cookie and the returned tokens are still exposed on that path — and whether each provider
+  *enforces* the verifier can only be proven by a negative test against a live provider, which
+  this tree cannot run. Both stated in the decision rather than implied away.
+  The public-client half stays open and stays the owner's: it is `P18`'s remaining `Law 15`
+  friction, and both providers refuse public clients without PKCE, so this is its prerequisite
+  rather than its alternative. 19 tests including RFC 7636 Appendix B's own vector, 11 mutations,
+  all caught.
 
 - [x] **P18-07** **One button means the fields are gone, not hidden.** `P18-01` makes the
   button appear; this makes it the whole interaction. Today the OAuth path still renders

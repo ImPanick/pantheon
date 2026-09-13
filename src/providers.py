@@ -61,8 +61,10 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 import json
 import os
+import secrets
 from typing import Any, Dict, NamedTuple, Optional, Tuple
 
 # ── How a provider proves who you are ──────────────────────────────────────
@@ -155,10 +157,17 @@ class Provider(NamedTuple):
     scopes: Tuple[str, ...] = ()
     authorize_params: Tuple[Tuple[str, str], ...] = ()
     needs_client_secret: bool = True
-    # A fact about the provider, not a description of what this code does.
-    # `P18-06` is the row that decides whether the email flow starts sending a
-    # `code_challenge`, and that row needs the owner. Recording the fact here
-    # is what lets it be a change in one place instead of a survey.
+    # **Load-bearing since `D-2026-09-13-01`.** This was a fact about the
+    # provider with nothing reading it, recorded so that `P18-06` would be a
+    # change in one place instead of a survey. It now is that one place: a
+    # provider with this set gets `code_challenge` on the authorize request and
+    # `code_verifier` on the exchange, and one without gets neither.
+    #
+    # Per-provider rather than always-on, because RFC 7636 only says a server
+    # that does not understand `code_challenge` SHOULD ignore it, and *should*
+    # is not a guarantee to hand an operator whose mailbox stops linking. Both
+    # values below were taken from the authorization servers' own discovery
+    # documents rather than from prose — see the records.
     supports_pkce: bool = False
     identity_source: str = IDENTITY_NONE
     identity_email_fields: Tuple[str, ...] = ()
@@ -212,6 +221,13 @@ _GOOGLE = Provider(
     # token and the account silently stops working an hour later.
     authorize_params=(("access_type", "offline"), ("prompt", "consent")),
     needs_client_secret=True,
+    # `https://accounts.google.com/.well-known/openid-configuration` advertises
+    # `"code_challenge_methods_supported": ["plain", "S256"]`, against exactly
+    # the two endpoints above. Google's prose documents PKCE under *native
+    # apps* and never mentions it on the web-server page — which is why this
+    # was checked against the discovery document instead, that being a
+    # statement about the authorization server rather than about a client type.
+    supports_pkce=True,
     identity_source=IDENTITY_USERINFO,
     identity_email_fields=("email",),
     identity_name_fields=("name",),
@@ -249,6 +265,13 @@ _MICROSOFT = Provider(
     ),
     authorize_params=(("prompt", "consent"), ("response_mode", "query")),
     needs_client_secret=True,
+    # **Microsoft's discovery document does not advertise
+    # `code_challenge_methods_supported` at all**, and its prose does: the
+    # v2.0 authorization-code page lists `code_challenge` and
+    # `code_challenge_method` as *recommended for all application types* and
+    # required for single-page apps. The two sources disagree in shape rather
+    # than in substance, and it is worth knowing which one this was taken from.
+    supports_pkce=True,
     identity_source=IDENTITY_ID_TOKEN,
     # `email` is present when the account has one; personal Microsoft accounts
     # and some work accounts carry the address in `preferred_username`, and
@@ -665,3 +688,53 @@ def identity_email(provider: Provider, claims: Dict[str, Any]) -> str:
 
 def identity_name(provider: Provider, claims: Dict[str, Any]) -> str:
     return _first_field(claims, (provider.identity_name_fields if provider else ()))
+
+
+# ── PKCE ───────────────────────────────────────────────────────────────────
+#
+# `D-2026-09-13-01`. Here rather than beside the email flow because PKCE is
+# OAuth mechanics, not mail: this module already owns the endpoints, the
+# scopes, the client credentials and the id_token decode, and a second copy of
+# these six lines is how the next flow gets a subtly different one (`Law 14`).
+
+PKCE_METHOD = "S256"
+
+# 32 bytes -> 43 characters, which is RFC 7636's stated minimum and the length
+# every reference implementation uses. Longer is allowed to 128 and buys
+# nothing: the challenge is a SHA-256 either way, and this value travels inside
+# a URL parameter that already carries an encrypted envelope.
+_VERIFIER_BYTES = 32
+
+
+def new_code_verifier() -> str:
+    """A fresh PKCE verifier: 43 unreserved characters from a CSPRNG.
+
+    `secrets.token_urlsafe` emits `[A-Za-z0-9_-]`, a subset of RFC 7636's
+    permitted `[A-Za-z0-9-._~]`, so no escaping is needed anywhere it travels.
+    """
+    return secrets.token_urlsafe(_VERIFIER_BYTES)
+
+
+def code_challenge_for(verifier: str) -> str:
+    """`BASE64URL(SHA256(verifier))`, unpadded — RFC 7636 section 4.2.
+
+    Unpadded matters. The `=` of standard base64 is not URL-safe, and a padded
+    challenge is a different string from the one the server computes, so the
+    exchange fails with `invalid_grant` — an error that names nothing.
+    """
+    digest = hashlib.sha256(str(verifier or "").encode("ascii")).digest()
+    return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+
+
+def pkce_authorize_params(provider: Provider, verifier: str) -> Dict[str, str]:
+    """The two authorize-request parameters, or nothing at all.
+
+    Returns `{}` for a provider that does not declare PKCE support, so a caller
+    can merge unconditionally and the per-provider decision stays in the record.
+    """
+    if provider is None or not provider.supports_pkce or not verifier:
+        return {}
+    return {
+        "code_challenge": code_challenge_for(verifier),
+        "code_challenge_method": PKCE_METHOD,
+    }

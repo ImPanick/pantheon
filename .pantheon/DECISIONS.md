@@ -1453,6 +1453,105 @@ owner, because it was made on the assumption the list holds.
 
 ---
 
+## D-2026-09-13-01 — PKCE on the mailbox OAuth flow
+
+**Decided 2026-09-13 by the owner**, answering `P18-06`:
+
+> *"PKCE is needed. This is the exact defense against a MITM/DNS Poisoning attack and the like..
+> If we release to the public and we aren't including PKCE - we open the users to an attack
+> surface. our documentation now says we acknowledge that.. so we need to close this loop."*
+
+**Decided:** the mailbox OAuth flow presents a `code_challenge` and redeems with a
+`code_verifier`, for every provider whose record declares `supports_pkce`. The client stays
+**confidential** — the client secret is still sent. PKCE is added *beside* it, not instead of it.
+
+### Why the owner's reasoning is right, and where the textbook answer would have been wrong
+
+The standard objection is that MITM is TLS's problem and PKCE addresses authorization-code
+interception on the redirect leg. That objection assumes the redirect leg has TLS on it.
+
+**In this product it frequently does not, by design.** `P18-04` made direct-access deployments
+first class and went out of its way to keep them working: somebody reaching Pantheon at
+`http://192.168.1.71:7000` is a supported configuration, and that row's own test
+(`test_the_request_still_wins_over_the_default`) exists specifically to stop a proxy-shaped fix
+breaking it. For those installs the redirect carrying `?code=…` is **plaintext on a LAN**. An
+attacker who poisons DNS or sits in the path reads it. There is no TLS failing here; there is no
+TLS.
+
+What stops them redeeming that code today is the client secret. That is one credential, in one
+`.env`, on a self-hosted box that the operator registered themselves — and a design which
+concentrates the entire defence into a single secret is one leak away from having none.
+
+The owner's second argument is the one that settles it independently of any of that: **the
+documentation now says we know.** `P18-06` is written down, in a repository intended to go
+public, stating that the flow has no PKCE and naming the reason it is not currently reachable. An
+acknowledged weakness that ships unfixed is worse than an unknown one, because the acknowledgement
+is the part an adversary reads first.
+
+### What this does NOT do, stated so the record is not stronger than the fact
+
+**PKCE does not make plaintext HTTP safe.** An attacker on that path can still take the session
+cookie, and can still read the access and refresh tokens as they come back through the callback.
+What PKCE removes is one specific ability: turning an intercepted authorization code into a
+mailbox. It is defence in depth on the leg where this product's supported topology leaves a gap,
+and calling it more than that would be the kind of claim `Law 9` exists to stop.
+
+And one thing that cannot be proven from here: RFC 7636 §4.6 requires the authorization server to
+**reject** an exchange whose verifier does not match. Both servers advertise or document support
+(below), but whether each enforces it can only be established by a negative test against a live
+provider with real credentials, which this tree cannot run. The protection is as good as their
+enforcement, and that sentence is the honest ceiling on this entry.
+
+### Support, taken from the servers rather than from prose
+
+Checked because Google's own web-server documentation never mentions PKCE — it discusses it under
+*native apps* — and an inference from prose would have been a guess about a security control.
+
+| | source | says |
+|---|---|---|
+| Google | `accounts.google.com/.well-known/openid-configuration` | `"code_challenge_methods_supported": ["plain", "S256"]` — a property of the **authorization server**, against exactly the endpoints this flow posts to |
+| Microsoft | the v2.0 authorization-code documentation | `code_challenge` / `code_challenge_method` *"recommended for all application types"*, required for SPAs |
+
+**The two sources disagree in shape.** Microsoft's discovery document does **not** carry
+`code_challenge_methods_supported` at all, while its prose documents the parameters; Google's
+prose omits them for this client type while its discovery document advertises them. Neither is
+wrong, and recording which source each answer came from is the only way a later reader can
+re-check it.
+
+`plain` is legal in RFC 7636 and is refused here: a `plain` challenge **is** the verifier, so an
+interceptor who sees the authorize request already has both halves. `S256` only.
+
+### The design, and the constraint that shaped it
+
+The verifier has to outlive the redirect, and `make_oauth_state` is a signed envelope with **no
+server-side record** — no store, no TTL, no cleanup job. The obvious move, putting the verifier
+into that envelope, would have defeated PKCE completely: whoever catches the code catches the
+state beside it, and a signed payload is readable by anyone holding it.
+
+**So the verifier is encrypted into the state, and the state is still signed.** The interceptor
+holds ciphertext they cannot open without the app key, so they cannot produce the verifier and
+cannot redeem the code — the guarantee PKCE is supposed to give — while the flow stays stateless.
+The signature still covers the ciphertext, because encryption alone would leave the account id and
+owner forgeable, which is what the HMAC was there for. **Both, not either**, and
+`tests/test_the_code_is_useless_without_the_verifier.py` pins exactly that: a mutation replacing
+the encryption with the signing that was already there fails on an assertion that reads the
+decoded state and looks for the verifier in it.
+
+**Cost:** about fifteen lines across authorize and callback, one field in the state envelope, six
+lines of primitives in `src/providers.py`. No new storage, no migration, no operator-visible
+change. `supports_pkce` stops being a fact nobody reads and becomes the switch.
+
+### What would reopen this
+
+**The client becoming public** — one shipped client id, no secret, and no Cloud Console or Entra
+registration before a person can link a mailbox. That is `P18`'s remaining `Law 15` friction and
+it is the larger half of `P18-06`, deliberately left open: both providers **refuse** public
+clients without PKCE, so this decision is its prerequisite rather than its alternative. It is a
+question about whether the project owns a shared external identity that can be revoked — policy,
+not engineering — and it stays the owner's.
+
+---
+
 ## D-2026-09-12-01 — four answers: one record shape, take the backport, cherry-pick the fixes, leave the rung
 
 Four questions had been sitting open across `P18`, `P19` and `D-2026-09-11-01`. The owner answered

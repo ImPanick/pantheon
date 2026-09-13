@@ -60,17 +60,36 @@ _xoauth2_raw = _mail_auth.xoauth2_raw
 _xoauth2_bytes = _mail_auth.xoauth2_bytes
 
 
-def make_oauth_state(account_id: str, owner: str) -> str:
+def make_oauth_state(account_id: str, owner: str, code_verifier: str = "") -> str:
     """Return an HMAC-signed, base64-encoded OAuth state token.
 
     Encodes account_id + owner + a random nonce, signed with the app secret
     so the callback can validate that the flow was initiated by an
     authenticated, owning user (CSRF / state-forgery protection).
+
+    **The PKCE verifier rides here ENCRYPTED, and the distinction is the whole
+    reason this works** (`D-2026-09-13-01`). The verifier has to survive the
+    redirect, and this flow is deliberately stateless — a signed envelope with
+    no server-side record, no TTL and no cleanup job. Signing the verifier into
+    it would have defeated PKCE outright: whoever intercepts the authorization
+    code intercepts the state beside it, and a signed payload is readable.
+    Encrypting it leaves the interceptor holding ciphertext they cannot open
+    without the app key, so they cannot produce the verifier and cannot redeem
+    the code — which is exactly the guarantee PKCE is supposed to give, with
+    the flow still stateless.
+
+    The signature still covers the ciphertext, so the envelope cannot be
+    tampered with; encryption alone would leave the account id and owner
+    forgeable, which is what the HMAC was here for in the first place. Both,
+    not either.
     """
     import hmac as _hmac, hashlib as _hl, secrets as _sec
-    from src.secret_storage import _load_or_create_key
+    from src.secret_storage import _load_or_create_key, encrypt as _enc
     nonce = _sec.token_hex(16)
-    payload = json.dumps({"a": account_id, "o": owner, "n": nonce}, separators=(",", ":"))
+    body = {"a": account_id, "o": owner, "n": nonce}
+    if code_verifier:
+        body["v"] = _enc(str(code_verifier))
+    payload = json.dumps(body, separators=(",", ":"))
     sig = _hmac.new(_load_or_create_key(), payload.encode(), _hl.sha256).hexdigest()
     return base64.urlsafe_b64encode(f"{payload}|{sig}".encode()).decode()
 
@@ -78,18 +97,33 @@ def make_oauth_state(account_id: str, owner: str) -> str:
 def verify_oauth_state(state: str) -> dict | None:
     """Verify an OAuth state token's HMAC signature.
 
-    Returns the decoded payload dict ({"a", "o", "n"}) on success, or None if
-    the token is malformed, tampered, or signed with a different key.
+    Returns the decoded payload dict ({"a", "o", "n"}, and "v" when the flow
+    carried a PKCE verifier) on success, or None if the token is malformed,
+    tampered, or signed with a different key.
+
+    **"v" comes back decrypted, and a verifier that will not decrypt comes back
+    empty rather than raising.** The caller sends no `code_verifier` in that
+    case, the provider refuses the exchange because a challenge was presented,
+    and the person is told to reconnect — which is the correct outcome. The
+    alternative, an exception escaping state verification, turns an unreadable
+    envelope into a 500 on the one route a person reaches by coming back from
+    Google.
     """
     import hmac as _hmac, hashlib as _hl
-    from src.secret_storage import _load_or_create_key
+    from src.secret_storage import _load_or_create_key, decrypt as _dec
     try:
         decoded = base64.urlsafe_b64decode(state.encode()).decode()
         payload, sig = decoded.rsplit("|", 1)
         expected = _hmac.new(_load_or_create_key(), payload.encode(), _hl.sha256).hexdigest()
         if not _hmac.compare_digest(sig, expected):
             return None
-        return json.loads(payload)
+        body = json.loads(payload)
+        if body.get("v"):
+            try:
+                body["v"] = _dec(body["v"])
+            except Exception:
+                body["v"] = ""
+        return body
     except Exception:
         return None
 
