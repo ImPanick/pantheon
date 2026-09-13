@@ -201,6 +201,31 @@ def _provider_payload(provider, request=None) -> dict:
         "setup_url": provider.setup_url,
         "setup_hint": provider.setup_hint,
         "note": provider.note,
+        # `P18-08`. The rest of what an operator has to type somewhere else.
+        # **Served rather than written into the browser**, for the reason the
+        # `imap_hosts` above are: a scope list or a variable name spelled twice
+        # is a rule in two languages, and `B65` is this fork's standing proof
+        # of what that costs. It also means the walkthrough for a provider
+        # added later is already correct.
+        "scopes": list(provider.scopes),
+        "env_vars": [
+            name for name in (providers.client_id_env(provider),
+                              providers.client_secret_env(provider))
+            if name
+        ],
+        # Which of the two halves is missing, so the panel can say so rather
+        # than repeat the whole setup at somebody who has done most of it.
+        "missing_env": [
+            name for name, value in (
+                (providers.client_id_env(provider), providers.client_id(provider)),
+                (providers.client_secret_env(provider), providers.client_secret(provider)),
+            )
+            if name and not value and (
+                name != providers.client_secret_env(provider)
+                or provider.needs_client_secret
+            )
+        ],
+        "pkce": provider.supports_pkce,
     }
 
 

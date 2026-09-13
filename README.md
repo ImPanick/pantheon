@@ -9,7 +9,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/licence-AGPL--3.0--or--later-blue" alt="AGPL-3.0-or-later">
   <img src="https://img.shields.io/badge/status-early-orange" alt="Early">
-  <img src="https://img.shields.io/badge/tests-8%2C957%20passing-brightgreen" alt="8,957 tests passing">
+  <img src="https://img.shields.io/badge/tests-8%2C973%20passing-brightgreen" alt="8,973 tests passing">
   <img src="https://img.shields.io/badge/docker-compose-2496ED?logo=docker&logoColor=white" alt="Docker Compose">
   <img src="https://img.shields.io/badge/python-FastAPI-009688?logo=fastapi&logoColor=white" alt="FastAPI">
   <img src="https://img.shields.io/badge/forked%20from-Odysseus-6E5494?logo=github&logoColor=white" alt="Forked from Odysseus">
@@ -134,13 +134,13 @@ runs in CI and the count only goes down.
 
 ## Status
 
-**380 tracked tasks, 188 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
+**381 tracked tasks, 189 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
 it is the only place work is tracked — one list, one progress area, validated by a script that
 recounts every phase row against its own ticks. It exists because the summary line was once wrong
 by nineteen and carried forward unread from entry to entry, because each author copied the line
 above.
 
-Test suite: **8,957 passing**, nothing red. The fourteen standing failures this fork
+Test suite: **8,973 passing**, nothing red. The fourteen standing failures this fork
 inherited and carried were cleared on 2026-09-12 — eight were a container missing dependencies
 the project already declares, three were stale test stubs hiding behind broad `except` blocks,
 and three were rules pinned to upstream's shape rather than this fork's.

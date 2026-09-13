@@ -78,9 +78,9 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P15 | Outbound politeness | 12 | 2 | **1** | **9** |
 | P16 | Self-hosted by default | 20 | 1 | 0 | **19** |
 | P17 | The network the agent is hosted on | 14 | 3 | 0 | **11** |
-| P18 | One button, and it links | 7 | 0 | 0 | **7** |
+| P18 | One button, and it links | 8 | 0 | 0 | **8** |
 | P19 | The proof ledger | 8 | 0 | 0 | **8** |
-| **Total** | | **380** | **183** | **9** | **188** |
+| **Total** | | **381** | **183** | **9** | **189** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -242,6 +242,24 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### The setup steps are beside the button now, not in a file nobody has open
+`f1ac32d..HEAD`. **381 tracked, 189 done. 1 new row (`P18-08`), closed the same turn. 0 regressions.**
+The owner: *"Ensure the enrollment of these systems is straight forward and not confusing as fuck
+to any end user."* The end user's half was already one button. **The operator's half was a sentence
+naming two environment variables** — the destination and none of the journey — with the actual
+instructions in `.env.example` and a docs file, neither of which is open at the moment the button
+is greyed out. Four numbered steps now render beside it: console link, redirect URI, scopes, `.env`
+block, each with a copy button and **all four served from the provider record**, so a provider
+added later gets a correct walkthrough nobody wrote. A half-configured install is told which half
+is missing rather than shown the whole thing again.
+**The renderer is run rather than read**, against a stub DOM — and it paid for itself immediately:
+the `.env` block's newlines survived into the copied value and rendered as one run-on line, because
+`\n` inside `<code>` collapses without `white-space: pre-wrap`. A substring check would have
+passed. **Two `Law 13` copies fell out**: the outlook note spelled both Microsoft variables a third
+time, and the clipboard handler was bound to one box with a `contains()` check, so every new copy
+button would have silently done nothing. Two tests now assert no scope string and no OAuth variable
+name appears in the browser at all. 16 tests, 10 mutations, all caught.
 
 ### PKCE, and an interceptor who holds ciphertext
 `690b483..HEAD`. **380 tracked, 188 done. 0 new rows, 0 regressions. `P18-06` closed, `P18` clear.**
@@ -5720,6 +5738,38 @@ which is the `P17-02` mistake, and it is why these rows are the ones they are.
   friction, and both providers refuse public clients without PKCE, so this is its prerequisite
   rather than its alternative. 19 tests including RFC 7636 Appendix B's own vector, 11 mutations,
   all caught.
+
+- [x] **P18-08** **Enrollment is one button for the person and a document for the operator.**
+  Opened and closed 2026-09-13 from the owner: *"Ensure the enrollment of these systems is straight
+  forward and not confusing as fuck to any end user."* **The end user's half was already done** —
+  `P18-01` made the button appear, `P18-07` made it the whole interaction, `P18-05` made a second
+  provider data. What stayed hard is the step before any of it: somebody has to register an
+  application, and the only instructions lived in `.env.example` and a docs file — **neither of
+  which is open when the button is greyed out and the panel says only *set
+  `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET`*.** That sentence names the destination
+  and none of the journey, which is `Law 15` stated as a defect.
+  `Verify:` an operator who has never read the docs can link a mailbox from the panel alone, and a
+  provider added later gets a correct walkthrough without anybody writing one. — owner 2026-09-13 —
+  agent:`P18` — **done.** Four numbered steps beside the button: the console link, the redirect URI,
+  the scopes, the `.env` block — each with a copy button, all four **served from the provider
+  record**. A half-configured deployment is told *which* half (`MICROSOFT_OAUTH_CLIENT_SECRET is
+  still missing`) rather than shown the whole setup again, which is how a person concludes they did
+  it wrong and starts over. It disappears once configured or linked: finished work shown again is
+  the panel talking over itself.
+  **Two `Law 13` copies came out with it.** The outlook preset note named both Microsoft variables
+  — a third place they were spelled, after the record and the walkthrough — and the clipboard
+  handler was bound to the provider-note box alone with a `contains()` check, so a copy button
+  anywhere else silently did nothing, which is exactly what the new ones would have done. A second
+  copy *path* would have been `Law 14`; a second *wiring* of the same path is the same mistake one
+  layer down. Two tests now assert that **no scope string and no OAuth variable name appears in
+  `settings.js` at all**, which is the property rather than the spelling.
+  **The renderer is run, not read** — `tests/harness/render_oauth_setup.js` evaluates the real
+  function against a stub DOM, because the claim is *an operator can follow this* and every property
+  worth asserting is a property of the output. It earned its keep immediately: the `.env` block's
+  newlines were correct in the copied value and rendered as one run-on line, because `\n` inside
+  `<code>` collapses without `white-space: pre-wrap`. A substring check would have passed. The
+  walkthrough for a provider called `acme` that does not exist is the test that the steps are data.
+  16 tests, 10 mutations, all caught.
 
 - [x] **P18-07** **One button means the fields are gone, not hidden.** `P18-01` makes the
   button appear; this makes it the whole interaction. Today the OAuth path still renders

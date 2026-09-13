@@ -4400,6 +4400,7 @@ async function initUnifiedIntegrations() {
             <div id="uf-oauth-title" style="font-size:11px;font-weight:600;margin-bottom:6px">Sign in — no password needed</div>
             <div id="uf-oauth-status" style="font-size:11px;opacity:0.7;margin-bottom:6px"></div>
             <button type="button" id="uf-oauth-btn" class="admin-btn-add" style="font-size:11px">Connect</button>
+            <div id="uf-oauth-setup" style="display:none;font-size:11px;line-height:1.65;margin-top:10px"></div>
             <div id="uf-oauth-redirect" style="display:none;font-size:10px;line-height:1.6;margin-top:8px;opacity:0.85"></div>
           </div>
           <div id="uf-manual">
@@ -4471,7 +4472,14 @@ async function initUnifiedIntegrations() {
         // says a working feature does not exist is worse than one that says
         // nothing.
         title: 'Outlook / Office 365 signs in with Microsoft',
-        body: 'Microsoft has disabled normal mailbox passwords for IMAP and SMTP, so the password box below will not work for these accounts — use the Sign in with Microsoft button instead. An operator sets MICROSOFT_OAUTH_CLIENT_ID and MICROSOFT_OAUTH_CLIENT_SECRET once and everybody on this install gets the button.',
+        // `P18-08`. This used to name the two environment variables. It was
+        // the third place they were spelled — after the record and the
+        // walkthrough that renders from it — and a variable name in the
+        // browser is a rule in two languages (`Law 13`). It is also redundant:
+        // the walkthrough appears directly below this note and says the same
+        // thing with a copy button. So the note says what a person needs to
+        // know *here*, and the steps live in one place.
+        body: 'Microsoft has disabled normal mailbox passwords for IMAP and SMTP, so the password box below will not work for these accounts — use the Sign in with Microsoft button instead. If the button is greyed out, the setup steps appear beside it: one person does them once and everybody on this install gets the button.',
         url: 'https://learn.microsoft.com/entra/identity-platform/quickstart-register-app',
         linkLabel: 'How to register the app',
       },
@@ -4501,11 +4509,18 @@ async function initUnifiedIntegrations() {
       ta.remove();
       return ok;
     };
-    if (noteEl && !noteEl._ufProviderCopyWired) {
-      noteEl._ufProviderCopyWired = true;
-      noteEl.addEventListener('click', async (e) => {
+    // `P18-08`. One handler, attached to every container that renders a
+    // `.uf-prov-copy`. It used to be wired to the provider-note box alone and
+    // checked `noteEl.contains()`, so a copy button anywhere else silently did
+    // nothing — which is what the setup walkthrough's buttons would have done.
+    // A second copy path would have been `Law 14`; a second *wiring* of the
+    // same path is the same mistake one layer down.
+    const _wireProviderCopy = (host) => {
+      if (!host || host._ufProviderCopyWired) return;
+      host._ufProviderCopyWired = true;
+      host.addEventListener('click', async (e) => {
         const copyBtn = e.target.closest?.('.uf-prov-copy');
-        if (!copyBtn || !noteEl.contains(copyBtn)) return;
+        if (!copyBtn || !host.contains(copyBtn)) return;
         e.preventDefault();
         e.stopPropagation();
         const url = copyBtn.dataset.url || '';
@@ -4521,7 +4536,9 @@ async function initUnifiedIntegrations() {
           if (copyBtn.isConnected) copyBtn.innerHTML = orig;
         }, 1500);
       });
-    }
+    };
+    _wireProviderCopy(noteEl);
+    _wireProviderCopy(el('uf-oauth-setup'));
     const _renderProviderNote = (key) => {
       const n = PROVIDER_NOTES[key];
       if (!n) { noteEl.style.display = 'none'; noteEl.innerHTML = ''; return; }
@@ -4558,6 +4575,77 @@ async function initUnifiedIntegrations() {
       if (!h) return null;
       return _oauthProviders.find(p => (p.imap_hosts || []).includes(h)) || null;
     };
+
+    // `P18-08`. The operator's half of enrollment, in the panel rather than in
+    // a document nobody opens.
+    //
+    // **The end user's half was already one button.** `P18-01` made it appear,
+    // `P18-07` made it the whole interaction, `P18-05` made a second provider
+    // data. What stayed hard was the step before any of that: somebody has to
+    // register an application, and the only instructions were in `.env.example`
+    // and a docs file — neither of which is open when the button is greyed out
+    // and the panel says only *set these two variables*. That sentence names
+    // the destination and none of the journey (`Law 15`).
+    //
+    // Everything here comes from the served record, so a provider added later
+    // gets a correct walkthrough without anybody writing one. The copy buttons
+    // reuse `.uf-prov-copy`, already wired on this panel — one clipboard path,
+    // not a second that drifts (`Law 14`).
+    const _copyRow = (label, value, hint) => `
+      <div style="margin:6px 0">
+        <div style="opacity:0.7;margin-bottom:2px">${esc(label)}</div>
+        <div style="display:flex;align-items:flex-start;gap:6px">
+          <code style="user-select:all;word-break:break-all;white-space:pre-wrap;flex:1;font-size:10px">${esc(value)}</code>
+          <button type="button" class="uf-prov-copy admin-btn-add"
+                  data-url="${esc(value)}" style="font-size:10px;flex-shrink:0">Copy</button>
+        </div>
+        ${hint ? `<div style="opacity:0.6;font-size:10px;margin-top:2px">${esc(hint)}</div>` : ''}
+      </div>`;
+
+    function _renderOauthSetup(provider, linked) {
+      const box = el('uf-oauth-setup');
+      if (!box) return;
+      // Configured, or already linked: the walkthrough is finished work and
+      // showing it again is the panel talking over itself.
+      if (!provider || provider.configured || linked) {
+        box.style.display = 'none';
+        box.innerHTML = '';
+        return;
+      }
+      const missing = provider.missing_env || provider.env_vars || [];
+      const partly = missing.length < (provider.env_vars || []).length;
+      const envBlock = missing.map(n => `${n}=`).join('\n');
+      const steps = [];
+      if (provider.setup_url) {
+        steps.push(`<li>Register an application:
+          <a href="${esc(provider.setup_url)}" target="_blank" rel="noopener noreferrer"
+             style="color:var(--accent, var(--red))">${esc(provider.setup_url)}</a></li>`);
+      }
+      steps.push(`<li>Add this exact redirect URI to it — character for character,
+        or you get <code>redirect_uri_mismatch</code>, which names the problem and
+        not the answer.${_copyRow('Redirect URI', provider.redirect_uri || '')}</li>`);
+      if ((provider.scopes || []).length) {
+        steps.push(`<li>Grant these permissions (scopes):${
+          _copyRow('Scopes', (provider.scopes || []).join(' '),
+                   'Space-separated, exactly as shown.')}</li>`);
+      }
+      steps.push(`<li>Put ${missing.length > 1 ? 'these' : 'this'} in your
+        <code>.env</code> and restart Pantheon:${
+        _copyRow(missing.length > 1 ? 'Environment variables' : 'Environment variable',
+                 envBlock, 'Paste the value after the = sign.')}</li>`);
+
+      box.innerHTML = `
+        <div style="font-weight:600;margin-bottom:4px">
+          ${partly ? 'Almost there' : 'One-time setup, by whoever runs this install'}
+        </div>
+        <div style="opacity:0.75;margin-bottom:6px">
+          ${partly
+            ? `${esc(missing.join(' and '))} ${missing.length > 1 ? 'are' : 'is'} still missing.`
+            : `Do this once and everybody on this install gets the button.`}
+        </div>
+        <ol style="margin:0;padding-left:18px">${steps.join('')}</ol>`;
+      box.style.display = '';
+    }
 
     function _syncOauthUI() {
       const provider = _oauthFor(el('uf-imap-host').value);
@@ -4601,6 +4689,7 @@ async function initUnifiedIntegrations() {
             ? `\u2713 Connected via ${provider.label}`
             : 'Not connected — click below to authorize. Your password is never stored.');
       status.textContent = provider.note ? `${base} ${provider.note}` : base;
+      _renderOauthSetup(provider, linked);
 
       // P18-04. The exact string to register with Google. Before it was shown,
       // the only way to learn it was to run the flow and read it back out of a

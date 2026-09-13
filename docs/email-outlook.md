@@ -12,6 +12,12 @@ The **Sign in with Microsoft** button on the email account form is the way in.
 It appears once an operator has registered an app, which is a one-time job for
 the whole install.
 
+**The setup steps are also in the app.** Open the email account form, choose the
+Outlook / Office 365 preset, and if the Connect button is greyed out the steps
+appear beside it with your deployment's own redirect URI, the exact scope
+string, and the variable names — each with a copy button. This file is the same
+thing in prose.
+
 ## One-time setup, by an operator
 
 1. Register an application in Microsoft Entra ID —
