@@ -4486,30 +4486,17 @@ async function initUnifiedIntegrations() {
       },
     };
     const noteEl = el('uf-email-provider-note');
+    // `B59`. Was a fifth implementation of copy-to-clipboard, and one of the
+    // two that had the order right. The mechanism is `uiModule.copyText` now;
+    // what stays here is the empty-string guard, which is this caller's rule
+    // rather than the helper's — a copy button with nothing to copy should
+    // report failure, not succeed at copying nothing.
     const _copyProviderUrl = async (text) => {
       const value = String(text || '');
       if (!value) return false;
-      if (navigator.clipboard && window.isSecureContext) {
-        try {
-          await navigator.clipboard.writeText(value);
-          return true;
-        } catch (_) {
-          // Fall through to the textarea path below.
-        }
-      }
-      const ta = document.createElement('textarea');
-      ta.value = value;
-      ta.setAttribute('readonly', 'readonly');
-      ta.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;z-index:-1;';
-      document.body.appendChild(ta);
-      ta.focus();
-      ta.select();
-      ta.setSelectionRange(0, value.length);
-      let ok = false;
-      try { ok = document.execCommand('copy'); } catch (_) { ok = false; }
-      ta.remove();
-      return ok;
+      return uiModule.copyText(value);
     };
+
     // `P18-08`. One handler, attached to every container that renders a
     // `.uf-prov-copy`. It used to be wired to the provider-note box alone and
     // checked `noteEl.contains()`, so a copy button anywhere else silently did

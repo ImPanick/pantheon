@@ -20,6 +20,7 @@ hand it a broken tree.
 from __future__ import annotations
 
 import importlib.util
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -179,6 +180,34 @@ def test_the_readme_test_badge_matches_the_ledger(checker, claims):
     readme = README.read_text(encoding="utf-8")
     assert f"tests-{passing.replace(',', '%2C')}%20passing" in readme
     assert f"**{passing} passing**" in readme
+
+
+def test_the_checker_count_is_checked_against_ci(checker, claims, monkeypatch):
+    """`B59`. The claim said **fifteen** while `ci.yml` listed seventeen.
+
+    It had drifted twice with nobody noticing, because the number lived in
+    prose and nothing compared it to the list — the same shape as the README
+    figures this file already pins, and the same reason it matters: the
+    ledger's own arithmetic is the first thing a sceptic checks.
+    """
+    assert checker._checker_count_problems() == []
+
+    stated = int(re.match(r"(\d+)", {c.id: c for c in claims.CLAIMS}["checkers"].after).group(1))
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    live = len(re.findall(r"^\s*- name: check-[\w-]+\s*$", ci, re.M))
+    assert stated == live, "the claim and CI disagree right now"
+
+
+def test_a_checker_added_without_updating_the_claim_is_caught(checker, claims, monkeypatch):
+    """The failure path, because a check that only ever passes proves nothing."""
+    flattened = tuple(
+        c._replace(after="1") if c.id == "checkers" else c
+        for c in claims.CLAIMS
+    )
+    monkeypatch.setattr(claims, "CLAIMS", flattened)
+    problems = checker._checker_count_problems()
+    assert len(problems) == 1
+    assert "`ci.yml` lists" in problems[0]
 
 
 def test_readme_drift_is_caught(checker, claims, tmp_path, monkeypatch):

@@ -332,14 +332,14 @@ CLAIMS: Tuple[Claim, ...] = (
     Claim(
         id="checkers",
         area="Verification apparatus",
-        headline="Fifteen checkers in CI, each one built from a defect that actually shipped.",
+        headline="Seventeen checkers in CI, each one built from a defect that actually shipped.",
         stock="No repository-level checkers.",
         pantheon=(
-            "`.pantheon/release-gate.py` runs all fifteen, reading the list from "
+            "`.pantheon/release-gate.py` runs all seventeen, reading the list from "
             "`ci.yml` rather than keeping a second copy of it."
         ),
         before="0",
-        after="15",
+        after="17",
         provenance="counted",
         repro="python3 .pantheon/release-gate.py --fast",
         evidence=(".pantheon/release-gate.py", ".github/workflows/ci.yml"),
@@ -358,11 +358,11 @@ CLAIMS: Tuple[Claim, ...] = (
     Claim(
         id="tests",
         area="Verification apparatus",
-        headline="Test files 792 -> 937, and a suite of 8,985 passing with nothing red.",
+        headline="Test files 792 -> 938, and a suite of 9,007 passing with nothing red.",
         stock="792 test files.",
-        pantheon="937 test files, 8,985 tests passing, 0 failing.",
+        pantheon="938 test files, 9,007 tests passing, 0 failing.",
         before="792 test files",
-        after="937 test files · 8,985",
+        after="938 test files · 9,007",
         provenance="diffed",
         repro=f"git ls-tree -r --name-only {FORK_POINT} | grep -c '^tests/test_.*\\.py$' && python3 -m pytest -q",
         evidence=("tests",),

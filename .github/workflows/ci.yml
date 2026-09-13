@@ -224,6 +224,18 @@ jobs:
       # dropped its `fixture` tag.
       - name: check-ledger
         run: python3 .pantheon/check-ledger.py
+      # B59. A `navigator.clipboard.writeText` with no fallback is not a style
+      # preference — `navigator.clipboard` is undefined outside a secure
+      # context, and `Law 17` calls plain http on a LAN the normal way to reach
+      # this app. So the property access throws, nothing is copied, and nothing
+      # is said. Two call sites were exactly that shape and both mattered: the
+      # API-token button, on the one control that shows a token once, and the
+      # webhook-URL button, which said "Copied" afterwards regardless. Image
+      # copies are exempt by the shape of the problem rather than by name —
+      # `execCommand` cannot copy an image, so there is no legacy path to
+      # demand. The ceiling is zero and it starts there.
+      - name: check-clipboard
+        run: python3 .pantheon/check-clipboard.py --max 0
       # P3-17. The row's own acceptance test — zero bare `except:` — passed on
       # the unfixed tree, so it would have been ticked without a fix. The real
       # population is `except ...: pass`, and grep cannot count it: `grep -A1`

@@ -139,6 +139,42 @@ def _upstream_gap_problems() -> list:
     return []
 
 
+def _checker_count_problems() -> list:
+    """The checker count, against the file the gate actually reads.
+
+    `B59`. This claim said **fifteen** while `ci.yml` listed seventeen — it had
+    drifted twice without anybody noticing, because the number lives in prose
+    and nothing compared it to the list. That is the same shape as the README
+    figures two functions down, and the same fix: the ledger's own arithmetic
+    is the first thing a sceptic checks, so it is the last thing that should be
+    typed from memory.
+
+    Counted from `ci.yml` rather than from the gate, because the gate reads
+    `ci.yml` too and a check that consults the same derived value twice proves
+    only that the derivation is deterministic.
+    """
+    by_id = {c.id: c for c in C.CLAIMS}
+    claim = by_id.get("checkers")
+    if claim is None:
+        return ["the checkers claim is gone — the ledger no longer states the count"]
+    try:
+        ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    except OSError:
+        return []
+    live = len(re.findall(r"^\s*- name: check-[\w-]+\s*$", ci, re.M))
+    if not live:
+        return []
+    stated = re.match(r"(\d+)", claim.after.strip())
+    if stated is None:
+        return ["checkers: the `after` no longer starts with a count"]
+    if int(stated.group(1)) != live:
+        return [
+            f"checkers says {stated.group(1)} and `ci.yml` lists {live} "
+            f"`- name: check-*` steps"
+        ]
+    return []
+
+
 def _readme_problems() -> list:
     """The two figures the README restates, checked against their sources.
 
@@ -239,6 +275,7 @@ def verify() -> list:
 
     problems.extend(_readme_problems())
     problems.extend(_upstream_gap_problems())
+    problems.extend(_checker_count_problems())
 
     if not any(c.provenance == "diffed" for c in C.CLAIMS):
         problems.append(

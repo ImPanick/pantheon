@@ -50,29 +50,13 @@ function showOutput(panel, text, isError) {
     cbtn.type = 'button';
     cbtn.className = 'code-runner-copy-inline';
     cbtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy';
-    cbtn.addEventListener('click', (e) => {
+    cbtn.addEventListener('click', async (e) => {
       e.stopPropagation();
       e.preventDefault();
-      let ok = false;
-      try {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        ta.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;';
-        document.body.appendChild(ta);
-        ta.focus();
-        ta.select();
-        ta.setSelectionRange(0, text.length);
-        ok = document.execCommand && document.execCommand('copy');
-        ta.remove();
-      } catch (_) {}
-      if (!ok && navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(text).then(() => {
-          if (uiModule.showToast) uiModule.showToast('Copied');
-          cbtn.textContent = 'Copied!';
-          setTimeout(() => { cbtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy'; }, 1500);
-        }).catch(() => { if (uiModule.showToast) uiModule.showToast('Copy failed'); });
-        return;
-      }
+      // `B59`. This file argued the right order in a comment and implemented
+      // it twice; the mechanism is now one function and the comment moved with
+      // it.
+      const ok = await uiModule.copyText(text);
       if (uiModule.showToast) uiModule.showToast(ok ? 'Copied' : 'Copy failed');
       const orig = cbtn.innerHTML;
       cbtn.textContent = ok ? 'Copied!' : 'Copy failed';
@@ -101,27 +85,12 @@ function addCopyBtn_unused(panel, text) {
   btn.addEventListener('click', async (e) => {
     e.stopPropagation();
     e.preventDefault();
-    // Synchronous copy via a hidden textarea + execCommand — this is the
-    // single most reliable path across browsers / non-secure contexts /
-    // mobile Firefox. Run BEFORE any async navigator.clipboard attempt so
-    // the user-gesture context is preserved.
-    let ok = false;
-    try {
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      ta.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;';
-      document.body.appendChild(ta);
-      ta.focus();
-      ta.select();
-      ta.setSelectionRange(0, text.length);
-      ok = document.execCommand && document.execCommand('copy');
-      ta.remove();
-    } catch (_) {}
-    // As a backup, also try the modern clipboard API (won't hurt if the
-    // legacy path already copied).
-    if (!ok && navigator.clipboard && window.isSecureContext) {
-      try { await navigator.clipboard.writeText(text); ok = true; } catch (_) {}
-    }
+    // `B59`. The argument this comment used to make is now made in `ui.js`,
+    // where every caller can benefit from it: synchronous `execCommand` first
+    // so the copy happens inside the user's gesture, the clipboard API only as
+    // a backup. This was the file that had it right, and having it right in
+    // one file is what `Law 14` calls the problem.
+    const ok = await uiModule.copyText(text);
     if (uiModule && uiModule.showToast) {
       uiModule.showToast(ok ? 'Copied' : 'Copy failed');
     }

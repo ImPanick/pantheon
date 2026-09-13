@@ -5427,6 +5427,21 @@ async function _cmd8Ball(args, ctx) {
     <div style="font-size:0.8em;opacity:0.5;max-width:300px;text-align:center">${ctx.esc(q)}</div>
     <div style="color:${clr};font-weight:600;animation:egg-fade 0.5s 0.8s both;text-align:center">${answer}</div>
   </div>`);
+  // `B59`. Was an inline `onclick="navigator.clipboard.writeText(...)"`, which
+  // cannot reach a module import and so could not use the shared helper — over
+  // plain http it threw on the property access and the swatch just shrank.
+  // Wired after render instead, which is also the only version that can report
+  // failure.
+  document.querySelectorAll('[data-egg-copy]').forEach(sw => {
+    if (sw._eggCopyWired) return;
+    sw._eggCopyWired = true;
+    sw.addEventListener('click', async () => {
+      const ok = await uiModule.copyText(sw.dataset.eggCopy || '');
+      sw.style.transform = 'scale(0.9)';
+      setTimeout(() => { sw.style.transform = ''; }, 150);
+      uiModule.showToast(ok ? 'Copied' : 'Copy failed');
+    });
+  });
   if (!document.getElementById('egg-styles')) { const s=document.createElement('style');s.id='egg-styles';s.textContent='@keyframes egg-spin{0%{transform:rotateY(0) scale(0.5);opacity:0}50%{transform:rotateY(540deg) scale(1.2)}100%{transform:rotateY(720deg) scale(1)}} @keyframes egg-shake{0%,100%{transform:rotate(0)}25%{transform:rotate(-8deg)}75%{transform:rotate(8deg)}} @keyframes egg-fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}';document.head.appendChild(s); }
   return true;
 }
@@ -5716,7 +5731,7 @@ async function _cmdColor(args, ctx) {
   const hex = args[0] || '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6,'0');
   const c = hex.startsWith('#') ? hex : '#' + hex;
   _eggRender(`<div style="display:flex;align-items:center;gap:12px;animation:egg-fade 0.3s ease-out">
-    <div style="width:48px;height:48px;border-radius:4px;border:1px solid var(--border);background:${ctx.esc(c)};cursor:pointer" title="Click to copy" onclick="navigator.clipboard.writeText('${ctx.esc(c)}');this.style.transform='scale(0.9)';setTimeout(()=>this.style.transform='',150)"></div>
+    <div style="width:48px;height:48px;border-radius:4px;border:1px solid var(--border);background:${ctx.esc(c)};cursor:pointer" title="Click to copy" data-egg-copy="${ctx.esc(c)}"></div>
     <div style="display:flex;flex-direction:column;gap:2px"><code style="font-size:1.1em">${ctx.esc(c)}</code>
       <span style="font-size:0.75em;opacity:0.4">click swatch to copy</span>
     </div>

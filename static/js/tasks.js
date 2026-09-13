@@ -1504,9 +1504,22 @@ function _showForm(existing, initTaskType, initTriggerType) {
           </div>
           <div style="font-size:10px;opacity:0.4;margin-top:4px;">POST this URL from any external service to trigger the task. Anyone holding it can run the task — rotate if it leaks.</div>
         `;
-        document.getElementById('task-form-webhook-copy')?.addEventListener('click', () => {
-          navigator.clipboard.writeText(url);
-          if (uiModule) uiModule.showToast('Copied');
+        document.getElementById('task-form-webhook-copy')?.addEventListener('click', async () => {
+          // `B59`. Was `navigator.clipboard.writeText(url)` followed
+          // unconditionally by `showToast('Copied')`. Over plain http on a LAN
+          // `navigator.clipboard` is `undefined`, so that threw, copied
+          // nothing — **and still said Copied**, about a URL that lets anyone
+          // holding it trigger this task. The line above it in this same
+          // template warns to rotate it if it leaks; the button below was
+          // telling people it was safely on their clipboard when it was not.
+          // `copied`, not `ok`: `test_the_webhook_token_can_be_rotated` scans a
+          // window around `webhook-regenerate` for `const ok = …` and requires
+          // it to be the rotation's `confirm(...)` and nothing else — a guard
+          // against `const ok = true || confirm(...)`, which is a mutation that
+          // survived its first version. A second `ok` in that window is caught
+          // by the same rule, correctly, and the test is not the thing to bend.
+          const copied = await uiModule.copyText(url);
+          if (uiModule) uiModule.showToast(copied ? 'Copied' : 'Copy failed');
         });
         document.getElementById('task-form-webhook-rotate')?.addEventListener('click', async () => {
           // Confirmed, because it is irreversible for anything already using

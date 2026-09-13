@@ -218,21 +218,70 @@ _initHoverCardSpaceToggle();
 /**
  * Copy text to clipboard
  */
-export async function copyToClipboard(text) {
+// `B59`. One clipboard mechanism, `execCommand` first — and the order is the
+// whole row.
+//
+// **The browser only lets a page write the clipboard while it is still inside
+// the user's gesture.** An `await` ends that: the continuation after it runs in
+// a microtask, by which time the gesture is over. So a helper that tries
+// `navigator.clipboard.writeText` first and falls back in its `catch` has put
+// the reliable path on the far side of the thing that makes it unreliable.
+//
+// The analysis, because the fix is otherwise a coin flip. **Over plain `http`
+// on a LAN — which `Law 17` calls the normal way to reach this app —
+// `navigator.clipboard` is `undefined`**, so the property access throws
+// *synchronously*, the `catch` runs inside the gesture, and the old order
+// happened to work. It costs something only in a **secure** context where
+// `writeText` *rejects* rather than throwing: there the `catch` is a microtask
+// and the gesture is gone. So this was never broken on the deployment that
+// matters — it was right by accident, in an order another file in this repo
+// already documents as backwards.
+//
+// This function is `async` and still synchronous where it counts: an async
+// body runs to its first `await`, and the `execCommand` work is all before
+// one. `tests/harness/copy_text.js` calls it without awaiting and asserts the
+// copy already happened, which is the only way to check that property.
+export async function copyText(text) {
+  const value = String(text ?? '');
+  let ok = false;
+  // `ta` is declared out here so `finally` can reach it. Found by the harness:
+  // with `ta.remove()` as the last statement of the `try`, an `execCommand`
+  // that **throws** — a permissions policy can — skipped the removal and left
+  // an off-screen textarea in the DOM, one per failed copy, forever.
+  let ta = null;
   try {
-    await navigator.clipboard.writeText(text);
-    showToast('Copied');
-  }
-  catch {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0';
+    ta = document.createElement('textarea');
+    ta.value = value;
+    // Off-screen but not `display:none` — a hidden element cannot be selected,
+    // and `font-size:16px` stops iOS zooming to the focused field.
+    ta.style.cssText =
+      'position:fixed;top:0;left:0;width:1px;height:1px;padding:0;border:0;'
+      + 'opacity:0;font-size:16px;';
+    ta.setAttribute('readonly', 'readonly');
     document.body.appendChild(ta);
+    ta.focus();
     ta.select();
-    document.execCommand('copy');
-    document.body.removeChild(ta);
-    showToast('Copied');
+    try { ta.setSelectionRange(0, value.length); } catch (_) { /* not text-like */ }
+    ok = !!(document.execCommand && document.execCommand('copy'));
+  } catch (_) { /* fall through to the async path */ }
+  finally { try { if (ta) ta.remove(); } catch (_) { /* already gone */ } }
+  // Backup, and only a backup. Guarded on `isSecureContext` rather than left to
+  // throw, so the failure is a branch rather than an exception.
+  if (!ok && navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(value);
+      ok = true;
+    } catch (_) { /* both paths refused */ }
   }
+  return ok;
+}
+
+// The toasting wrapper, kept because thirteen callers use it and expect the
+// toast (`Law 1`). New callers that do their own messaging use `copyText`.
+export async function copyToClipboard(text) {
+  const ok = await copyText(text);
+  showToast(ok ? 'Copied' : 'Copy failed');
+  return ok;
 }
 
 // Wire swipe-to-dismiss on the shared toast element. Runs once, the first
@@ -858,6 +907,7 @@ export function emptyStateIcon(kind) {
 
 const uiModule = {
   copyToClipboard,
+  copyText,
   showToast,
   showError,
   styledConfirm,

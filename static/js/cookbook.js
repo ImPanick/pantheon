@@ -1575,10 +1575,11 @@ async function _fetchDependencies() {
         e.stopPropagation();
         const cmd = btn.dataset.depCmdCopy || '';
         if (!cmd) return;
-        try { await navigator.clipboard.writeText(cmd); }
-        catch { /* fall through */ }
+        // `B59`. The `catch` said *fall through* and fell through to
+        // announcing success: the label read Copied whether or not it was.
+        const ok = await uiModule.copyText(cmd);
         const orig = btn.textContent;
-        btn.textContent = 'Copied';
+        btn.textContent = ok ? 'Copied' : 'Copy failed';
         setTimeout(() => { if (btn.isConnected) btn.textContent = orig; }, 1200);
       });
     });
@@ -1702,10 +1703,13 @@ async function _fetchDependencies() {
         const backend = btn.dataset.depRecipeCopy;
         const pre = list.querySelector(`[data-dep-recipe-cmds="${CSS.escape(backend)}"]`);
         if (!pre) return;
-        try {
-          await navigator.clipboard.writeText(pre.textContent);
+        // `B59`. The fallback below is kept — selecting the text so the
+        // person can press Ctrl+C is a better answer than a failure toast —
+        // and only the mechanism moves to the shared helper, which tries the
+        // synchronous path first instead of last.
+        if (await uiModule.copyText(pre.textContent)) {
           uiModule.showToast('Copied');
-        } catch {
+        } else {
           // Fallback for non-secure contexts: select the pre's text so
           // the user can Ctrl+C themselves.
           const sel = window.getSelection(); const range = document.createRange();

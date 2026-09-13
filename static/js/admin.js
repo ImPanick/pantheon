@@ -1285,26 +1285,9 @@ function initEndpointForm() {
           const copyBtn = status.querySelector('.adm-device-auth-copy');
           if (copyBtn) copyBtn.addEventListener('click', async () => {
             const code = start.user_code || '';
-            let ok = false;
-            try {
-              if (navigator.clipboard && window.isSecureContext) {
-                await navigator.clipboard.writeText(code);
-                ok = true;
-              }
-            } catch (e) {}
-            if (!ok) {
-              // navigator.clipboard is unavailable in non-secure contexts (HTTP
-              // self-host over a LAN IP), so fall back to execCommand('copy').
-              const ta = document.createElement('textarea');
-              ta.value = code;
-              ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;padding:0;border:0;opacity:0;font-size:16px;';
-              document.body.appendChild(ta);
-              ta.focus();
-              ta.select();
-              try { ta.setSelectionRange(0, code.length); } catch (e) {}
-              try { ok = document.execCommand('copy'); } catch (e) {}
-              ta.remove();
-            }
+            // `B59`. This had the right fallback in the wrong order, and its
+            // own comment named the reason the fallback exists.
+            const ok = await uiModule.copyText(code);
             copyBtn.textContent = ok ? 'Copied' : 'Failed';
             setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
           });
@@ -2754,19 +2737,34 @@ function initTokenForm() {
   });
   const TOKEN_COPY_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
   const TOKEN_CHECK_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
-  el('adm-tokenCopyBtn').addEventListener('click', () => {
+  el('adm-tokenCopyBtn').addEventListener('click', async () => {
     const val = el('adm-tokenValue').textContent;
     const btn = el('adm-tokenCopyBtn');
-    navigator.clipboard.writeText(val).then(() => {
-      btn.innerHTML = TOKEN_CHECK_ICON;
-      btn.style.color = 'var(--accent, var(--red))';
-      btn.style.opacity = '1';
-      setTimeout(() => {
-        btn.innerHTML = TOKEN_COPY_ICON;
-        btn.style.color = '';
-        btn.style.opacity = '0.7';
-      }, 1600);
-    });
+    // `B59`, and **this is the site that made the row worth doing.** It was a
+    // bare `navigator.clipboard.writeText(...).then(...)` with no `catch` and
+    // no fallback. Over plain `http` on a LAN `navigator.clipboard` is
+    // `undefined`, so the property access throws, nothing is copied, nothing
+    // is said, and the button appears to do nothing — on the one control in
+    // this app that shows an API token **once**. Losing it means minting
+    // another.
+    const ok = await uiModule.copyText(val);
+    // A checkmark on a failed copy is worse than no button: it tells somebody
+    // the token is safely on their clipboard when it is not, and this one is
+    // shown once. Written first as `.then(...)` on the boolean-returning
+    // helper, which runs on `false` as happily as on `true`.
+    if (!ok) {
+      uiModule.showError?.('Copy failed — select the token and press Ctrl/Cmd+C');
+      el('adm-tokenValue')?.focus?.();
+      return;
+    }
+    btn.innerHTML = TOKEN_CHECK_ICON;
+    btn.style.color = 'var(--accent, var(--red))';
+    btn.style.opacity = '1';
+    setTimeout(() => {
+      btn.innerHTML = TOKEN_COPY_ICON;
+      btn.style.color = '';
+      btn.style.opacity = '0.7';
+    }, 1600);
   });
 }
 
@@ -3608,10 +3606,12 @@ function setupBugReport() {
     copyBtn.addEventListener('click', async () => {
       // Deliberately copies output.value, not the fetched markdown: the edits
       // the person made are the point of showing it to them.
-      try {
-        await navigator.clipboard.writeText(output.value);
+      // `B59`. The graceful degradation below is kept — selecting the text and
+      // telling the person to press Ctrl+C is a better answer than a toast —
+      // and only the mechanism moves to the shared helper.
+      if (await uiModule.copyText(output.value)) {
         say('Copied. Paste it into an issue.');
-      } catch (_e) {
+      } else {
         output.focus();
         output.select();
         say('Clipboard unavailable — the report is selected, press Ctrl/Cmd+C.', true);

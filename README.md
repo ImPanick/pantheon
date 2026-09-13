@@ -9,7 +9,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/licence-AGPL--3.0--or--later-blue" alt="AGPL-3.0-or-later">
   <img src="https://img.shields.io/badge/status-early-orange" alt="Early">
-  <img src="https://img.shields.io/badge/tests-8%2C985%20passing-brightgreen" alt="8,985 tests passing">
+  <img src="https://img.shields.io/badge/tests-9%2C007%20passing-brightgreen" alt="9,007 tests passing">
   <img src="https://img.shields.io/badge/docker-compose-2496ED?logo=docker&logoColor=white" alt="Docker Compose">
   <img src="https://img.shields.io/badge/python-FastAPI-009688?logo=fastapi&logoColor=white" alt="FastAPI">
   <img src="https://img.shields.io/badge/forked%20from-Odysseus-6E5494?logo=github&logoColor=white" alt="Forked from Odysseus">
@@ -62,7 +62,7 @@ the `upstream` remote.
 **What this fork has added, and what proves it, is in the [proof ledger](LEDGER.md)** — 26 claims,
 each with where its number came from and a command you can run to check it. The short version:
 the Brain rebuilt around a local embedding model that needs no service, an agent that can reach
-the host it runs on behind a denylist it cannot edit, sixteen checkers in CI that upstream does
+the host it runs on behind a denylist it cannot edit, seventeen checkers in CI that upstream does
 not have, every outbound call paced, mailbox and service sign-in reduced to one record type, and
 full AGPL attribution for code that shipped without it.
 
@@ -140,7 +140,7 @@ recounts every phase row against its own ticks. It exists because the summary li
 by nineteen and carried forward unread from entry to entry, because each author copied the line
 above.
 
-Test suite: **8,985 passing**, nothing red. The fourteen standing failures this fork
+Test suite: **9,007 passing**, nothing red. The fourteen standing failures this fork
 inherited and carried were cleared on 2026-09-12 — eight were a container missing dependencies
 the project already declares, three were stale test stubs hiding behind broad `except` blocks,
 and three were rules pinned to upstream's shape rather than this fork's.
