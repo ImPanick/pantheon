@@ -226,6 +226,12 @@ def _provider_payload(provider, request=None) -> dict:
             )
         ],
         "pkce": provider.supports_pkce,
+        # `P18-09`. Whether the shorter road exists for this provider, so the
+        # panel can offer it rather than hiding it behind a flow the person may
+        # not need — and can stay quiet where it would be a door that is
+        # bricked up.
+        "password_auth": provider.password_auth,
+        "app_password_url": provider.app_password_url,
     }
 
 

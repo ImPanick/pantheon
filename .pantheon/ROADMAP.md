@@ -78,9 +78,9 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P15 | Outbound politeness | 12 | 2 | **1** | **9** |
 | P16 | Self-hosted by default | 20 | 1 | 0 | **19** |
 | P17 | The network the agent is hosted on | 14 | 3 | 0 | **11** |
-| P18 | One button, and it links | 8 | 0 | 0 | **8** |
+| P18 | One button, and it links | 9 | 0 | 0 | **9** |
 | P19 | The proof ledger | 8 | 0 | 0 | **8** |
-| **Total** | | **381** | **183** | **9** | **189** |
+| **Total** | | **382** | **183** | **9** | **190** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -242,6 +242,23 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### The owner asked whether it was necessary, and the answer was a live defect
+`c5b54de..HEAD`. **382 tracked, 190 done. 1 new phase row (`P18-09`), closed the same turn.
+`B73` filed to the backlog. 0 regressions.**
+The question was *"these are all intended to be self hosted within their own systems/network etc..
+so is it really necessary?"* — and checking it found that `P18-07` had written a comment saying the
+app-password path must not be deleted, three lines above the statement that deletes it.
+`.uf-password-section` lives **inside** `#uf-manual`; setting the child visible and then the parent
+to `none` hides it. **The comment names the exact outcome it is protecting against**, which is why
+nobody caught it — this repo reads files to check browser behaviour, and the file said the path was
+safe. The cost was the owner's point exactly: choosing Gmail left *register an application with
+Google Cloud Console* as the only road, for installs where pasting an app password is thirty
+seconds and needs nothing set up at all. One sentence and one button fix it, sticky because the
+sync re-runs on every keystroke, and offered **only where a password can actually work** — Google
+issues app passwords, Microsoft has disabled basic auth in every tenant, and that is a fact about a
+provider so it lives on the record. The default is `True`: most mail servers take a password, and a
+self-hosted Dovecot needs none of this machinery. 12 tests, 8 mutations, all caught.
 
 ### The setup steps are beside the button now, not in a file nobody has open
 `f1ac32d..HEAD`. **381 tracked, 189 done. 1 new row (`P18-08`), closed the same turn. 0 regressions.**
@@ -5739,6 +5756,37 @@ which is the `P17-02` mistake, and it is why these rows are the ones they are.
   rather than its alternative. 19 tests including RFC 7636 Appendix B's own vector, 11 mutations,
   all caught.
 
+- [x] **P18-09** **A comment that named the defect, three lines above the statement causing it.**
+  Opened and closed 2026-09-13 by the owner asking the right question about `P18-08`: *"I mean
+  these are all intended to be self hosted within their own systems/network etc.. so is it
+  **really** necessary?"* Checking it found a live defect.
+  **`P18-07` wrote:** *"The password fields stay while OAuth is merely offered. Hiding them the
+  moment Gmail qualified would delete the app-password path from the mailboxes most likely to use
+  it (`Law 1`)."* — then set `.uf-password-section` visible and, two statements later, set
+  `#uf-manual` to `none`. **`.uf-password-section` is inside `#uf-manual`.** A child set visible
+  inside a parent set hidden is hidden. The comment names the exact outcome it is protecting
+  against, immediately above the line that produces it — and that is **why it survived**: this repo
+  checks browser behaviour by reading the file, and the file *said* the path was protected.
+  **What it cost is the owner's whole point.** Choosing Gmail deleted the thirty-second road —
+  paste an app password — and left one option: register an application with Google Cloud Console.
+  For a self-hosted install on its own network that is ceremony the situation does not need, and
+  `P18-08` had just turned it into four numbered steps, which is a better wrong answer rather than
+  a right one.
+  `Verify:` a person who does not want to register anything can still reach the password fields
+  from the panel, and is not offered that where a password cannot work. — owner 2026-09-13 —
+  agent:`P18` — **done.** One sentence and one button under the Connect button, and the reveal is
+  **sticky** because `_syncOauthUI` re-runs on every keystroke in the host field. OAuth stays the
+  headline, because it is better where it applies; the alternative is a choice rather than a
+  default.
+  **Offered only where a password can actually work**, which is a fact about a provider and
+  therefore lives on the record: `password_auth` and `app_password_url`. Google issues app
+  passwords; Microsoft has disabled basic authentication in every Exchange Online tenant and nobody
+  — Microsoft support included — can re-enable it, so a button there would be a door that is
+  bricked up. The default is `True`, because most mail servers take a password and a self-hosted
+  Dovecot needs none of this machinery at all.
+  **The containment is pinned**, so that moving `.uf-password-section` out of `#uf-manual` fails a
+  test rather than quietly leaving two mechanisms for one job. 12 tests, 8 mutations, all caught.
+
 - [x] **P18-08** **Enrollment is one button for the person and a document for the operator.**
   Opened and closed 2026-09-13 from the owner: *"Ensure the enrollment of these systems is straight
   forward and not confusing as fuck to any end user."* **The end user's half was already done** —
@@ -6145,6 +6193,20 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   `Verify:` no shipped image depicts upstream's identity, and the macOS icon is Pantheon's.
   `Depends:` `P0-13`, which is blocked on a design decision no agent can make. — found by the
   standing-failure sweep — **needs the owner** — agent:`P0`
+
+- [ ] **B73** **Two mechanisms tell a person where an app password comes from.** Found 2026-09-13
+  by `P18-09`, and narrowed rather than swept. `PROVIDER_NOTES` in `settings.js` is **preset**-keyed
+  (`gmail`, `icloud`, `yahoo`, `outlook`) and carries a title, a body and a URL with a copy button;
+  the provider **record** is OAuth-provider-keyed (`google`, `microsoft`) and now carries
+  `app_password_url`. They overlap on exactly one entry — Gmail — and nowhere else: iCloud and
+  Yahoo have no record to read from, and **`google_workspace` has no `PROVIDER_NOTES` entry**, so
+  for that mailbox the record is the only source. So this is not yet one rule spelled twice; it is
+  two mechanisms that touch at one point, which is the shape that becomes `Law 13` the day somebody
+  edits one of them. `P18-09`'s test asserts the new block reads the record and that the
+  pre-existing copy is the *only* other one, so a third cannot appear unnoticed — which is the
+  ratchet, not the fix. `Verify:` a person is told where an app password comes from by one
+  mechanism, and a preset with no OAuth record still gets an answer. `Depends:` nothing. — found by
+  `P18-09` — agent:`P18`
 
 - [x] **B72** **The ledger cannot gain a mailbox claim from this machine.** Found 2026-09-13 while
   closing `P18-05`. Every row in `LEDGER.md` is `stock -> pantheon`, and the honest ones are

@@ -182,6 +182,17 @@ class Provider(NamedTuple):
     # API-key services
     key_env: str = ""
 
+    # **Whether a password works at all on this provider**, and where one comes
+    # from. `P18-09`. Not a convenience field: for a self-hosted deployment on
+    # its own network, an app password is a thirty-second path and registering
+    # an OAuth application is not, so a panel that offers only the second is
+    # imposing ceremony the situation does not need. And the answer genuinely
+    # differs — Google issues app passwords, while Microsoft has disabled basic
+    # authentication in every Exchange Online tenant, so offering the choice
+    # there would be offering a door that is bricked up.
+    password_auth: bool = True
+    app_password_url: str = ""
+
     # Optional halves
     mail: Optional[MailTransport] = None
     api_base: str = ""
@@ -237,6 +248,8 @@ _GOOGLE = Provider(
         imap_transports=((993, False), (143, True)),
         smtp_transports=((587, "starttls"), (465, "ssl")),
     ),
+    password_auth=True,
+    app_password_url="https://myaccount.google.com/apppasswords",
     setup_url="https://console.cloud.google.com/apis/credentials",
     setup_hint=(
         "Set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET in .env "
@@ -287,6 +300,10 @@ _MICROSOFT = Provider(
         imap_transports=((993, False),),
         smtp_transports=((587, "starttls"),),
     ),
+    # No app-password path exists to offer. Basic authentication is disabled in
+    # every Exchange Online tenant and cannot be re-enabled by anyone, Microsoft
+    # support included.
+    password_auth=False,
     setup_url="https://learn.microsoft.com/entra/identity-platform/quickstart-register-app",
     setup_hint=(
         "Register an app in Microsoft Entra ID, then set "

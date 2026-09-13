@@ -4401,6 +4401,7 @@ async function initUnifiedIntegrations() {
             <div id="uf-oauth-status" style="font-size:11px;opacity:0.7;margin-bottom:6px"></div>
             <button type="button" id="uf-oauth-btn" class="admin-btn-add" style="font-size:11px">Connect</button>
             <div id="uf-oauth-setup" style="display:none;font-size:11px;line-height:1.65;margin-top:10px"></div>
+            <div id="uf-oauth-alt" style="display:none;font-size:11px;margin-top:10px;padding-top:8px;border-top:1px solid var(--border);opacity:0.85"></div>
             <div id="uf-oauth-redirect" style="display:none;font-size:10px;line-height:1.6;margin-top:8px;opacity:0.85"></div>
           </div>
           <div id="uf-manual">
@@ -4647,6 +4648,41 @@ async function initUnifiedIntegrations() {
       box.style.display = '';
     }
 
+    // `P18-09`. Sticky: `_syncOauthUI` runs on every keystroke in the host
+    // field, so a non-sticky reveal would close again as the person typed.
+    let _manualRevealed = false;
+
+    function _renderOauthAlternative(provider, linked) {
+      const box = el('uf-oauth-alt');
+      if (!box) return;
+      if (!provider || linked || !provider.password_auth || _manualRevealed) {
+        box.style.display = 'none';
+        box.innerHTML = '';
+        return;
+      }
+      const where = provider.app_password_url
+        ? ` You generate one at <a href="${esc(provider.app_password_url)}" target="_blank"
+             rel="noopener noreferrer" style="color:var(--accent, var(--red))">${
+               esc(provider.app_password_url)}</a>.`
+        : '';
+      box.innerHTML = `
+        <div style="opacity:0.75;margin-bottom:5px">
+          Do not want to register an application? ${esc(provider.label)} still accepts an
+          app password, and nothing on this install has to be set up first.${where}
+        </div>
+        <button type="button" id="uf-oauth-alt-btn" class="admin-btn-add"
+                style="font-size:11px">Use an app password instead</button>`;
+      box.style.display = '';
+      const btn = el('uf-oauth-alt-btn');
+      if (btn) {
+        btn.addEventListener('click', () => {
+          _manualRevealed = true;
+          _syncOauthUI();
+          el('uf-imap-pass')?.focus();
+        });
+      }
+    }
+
     function _syncOauthUI() {
       const provider = _oauthFor(el('uf-imap-host').value);
       // P18-05. `=== 'google'` here, against a `provider` resolved from the
@@ -4664,8 +4700,21 @@ async function initUnifiedIntegrations() {
       });
       // P18-07. One button means the fields are gone: every value in this block
       // is filled by the callback from the Google identity.
+      //
+      // **`P18-09`. The three lines above were inert and said so out loud.**
+      // `.uf-password-section` lives INSIDE `#uf-manual`, so setting the child
+      // to visible and then the parent to `none` hides it anyway — the comment
+      // names the exact thing it is protecting against and the next statement
+      // does that thing. Choosing Gmail therefore deleted the app-password
+      // path, which for a self-hosted install on its own network is the
+      // thirty-second road, and left only *register an application with Google
+      // Cloud Console*. `_manualRevealed` is the way back, and it is sticky
+      // because this function re-runs on every keystroke in the host field.
       const manual = el('uf-manual');
-      if (manual) manual.style.display = (provider && !linked) ? 'none' : '';
+      if (manual) {
+        manual.style.display = (provider && !linked && !_manualRevealed) ? 'none' : '';
+      }
+      _renderOauthAlternative(provider, linked);
       if (!provider) return;
 
       const btn = el('uf-oauth-btn');

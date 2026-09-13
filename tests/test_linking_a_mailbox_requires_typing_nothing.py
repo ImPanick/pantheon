@@ -276,17 +276,29 @@ def test_the_button_sits_above_the_block_it_replaces():
 
 
 def test_the_block_is_hidden_only_while_a_qualifying_account_is_unlinked():
-    """Three states, and the middle one is the row.
+    """**Four** states now, and the fourth is `P18-09`.
 
-    Not a Google host: everything shows, because nothing else can fill it in.
-    Google host, not linked: the button is the interaction.
-    Linked: the fields come back, populated and worth reading.
+    Not a qualifying host: everything shows, because nothing else can fill it
+    in. Qualifying host, not linked: the button is the interaction. Linked: the
+    fields come back, populated and worth reading. **And: the person asked for
+    them anyway**, because an app password is the shorter road on an install
+    that does not want to register an application with anybody.
+
+    **This test passed for the entire life of the defect it was written to
+    prevent.** `P18-07` set `.uf-password-section` visible and then set
+    `#uf-manual` — its parent — to `none`, so the app-password path this row's
+    own comment promises to keep was hidden anyway. The assertion pinned the
+    *expression*, which was exactly the expression carrying the bug, and a
+    regex cannot see that one element contains another. The behaviour is
+    covered in `test_the_short_road_is_still_on_the_map.py`, which runs the
+    renderer; what stays here is the shape of the rule.
     """
     js = SETTINGS_JS.read_text(encoding="utf-8")
     match = re.search(
-        r"manual\.style\.display = \(provider && !linked\) \? 'none' : ''", js
+        r"manual\.style\.display = \(provider && !linked && !_manualRevealed\) \? 'none' : ''",
+        js,
     )
-    assert match is not None, "the visibility rule is not the three-state one"
+    assert match is not None, "the visibility rule is not the four-state one"
 
 
 def test_the_form_still_works_for_everything_that_is_not_google():
