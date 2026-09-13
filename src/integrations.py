@@ -17,6 +17,7 @@ from core.atomic_io import atomic_write_json
 from core.platform_compat import safe_chmod
 from src.secret_storage import decrypt, encrypt, is_encrypted
 from src.constants import DATA_DIR, INTEGRATIONS_FILE, SETTINGS_FILE
+from src import providers as _providers
 
 log = logging.getLogger(__name__)
 
@@ -157,6 +158,64 @@ INTEGRATION_PRESETS: Dict[str, Dict[str, Any]] = {
         ),
     },
 }
+
+# ---------------------------------------------------------------------------
+# Presets that are provider records
+# ---------------------------------------------------------------------------
+#
+# `P18-05`. The eight presets above are self-hosted services an operator points
+# at their own host, and they carry `auth_type` of only `header` or `none` —
+# no client id, no scope, no endpoints. That is why the registry exists, and it
+# is also why these four are not written out again here: GitHub, Slack,
+# Anthropic and OpenAI are already *provider records*, with a base URL, a way
+# of carrying the credential and an endpoint crib, so a preset for them is a
+# projection of the record rather than a second description of the same service
+# (`Law 14`).
+#
+# `setdefault`, not assignment: a preset that already exists under one of these
+# keys was written by somebody and is not overwritten from here (`Law 1`).
+
+
+def preset_from_provider(provider) -> Dict[str, Any]:
+    """One provider record, in the shape `add_integration` merges."""
+    preset: Dict[str, Any] = {
+        "name": provider.label,
+        "auth_type": provider.api_auth_type or "none",
+        "description": provider.api_hint,
+    }
+    if provider.api_auth_header:
+        preset["auth_header"] = provider.api_auth_header
+    if provider.api_base:
+        # These are hosted services, so the base URL is knowable and typing it
+        # is a step that can only be got wrong. The self-hosted presets above
+        # leave it blank for the opposite reason.
+        preset["base_url"] = provider.api_base
+    return preset
+
+
+PROVIDER_PRESET_IDS = ("github", "slack", "anthropic", "openai")
+
+
+def install_provider_presets(target: Dict[str, Dict[str, Any]],
+                             ids=PROVIDER_PRESET_IDS) -> Dict[str, Dict[str, Any]]:
+    """Add the service records to `target`, never replacing what is there.
+
+    A function rather than a loop at import so the *never replacing* half can
+    be tested. A mutation run turned the `setdefault` into an assignment and
+    nothing failed: the four ids do not collide with any hand-written preset
+    today, so the rule was true and unproven, and would have stayed unproven
+    until the day somebody wrote a `github` preset and had it silently
+    replaced.
+    """
+    for pid in ids:
+        record = _providers.get(pid)
+        if record is not None and record.api_base:
+            target.setdefault(pid, preset_from_provider(record))
+    return target
+
+
+install_provider_presets(INTEGRATION_PRESETS)
+
 
 # ---------------------------------------------------------------------------
 # Storage

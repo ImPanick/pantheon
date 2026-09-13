@@ -4410,7 +4410,7 @@ async function initUnifiedIntegrations() {
           <div class="settings-row"><label class="settings-label">Host${_hint('Your IMAP server, e.g. imap.gmail.com, imap.migadu.com, a LAN host, or a Tailscale IP for Dovecot.')}</label><input id="uf-imap-host" class="settings-input" placeholder="imap.example.com"></div>
           <div class="settings-row"><label class="settings-label">Port${_hint('993 for IMAPS (most providers), 143 for plain or STARTTLS. Local servers often use a custom port like 31143.')}</label><input id="uf-imap-port" class="settings-input" type="number" placeholder="993" style="max-width:100px"></div>
           <div class="settings-row"><label class="settings-label">Username${_hint('Yes — your full email address goes here too (e.g. you@gmail.com). Same as the Email field above for almost every provider.')}</label><input id="uf-imap-user" class="settings-input" placeholder="you@example.com"></div>
-          <div class="uf-password-section"><div class="settings-row"><label class="settings-label">Password${_hint('For Gmail, iCloud, and Yahoo: paste your App Password (NOT your normal account password). For Migadu and Fastmail, your mailbox password usually works. Outlook / Office 365 generally requires OAuth and will not work with this password form.')}</label><input id="uf-imap-pass" class="settings-input" type="password" placeholder="${placeholderPass}"></div></div>
+          <div class="uf-password-section"><div class="settings-row"><label class="settings-label">Password${_hint('For Gmail, iCloud, and Yahoo: paste your App Password (NOT your normal account password). For Migadu and Fastmail, your mailbox password usually works. Outlook / Office 365 takes no password at all — use Sign in with Microsoft.')}</label><input id="uf-imap-pass" class="settings-input" type="password" placeholder="${placeholderPass}"></div></div>
           <div class="settings-row"><label class="settings-label">STARTTLS${_hint('Turn ON for port 143/587 to upgrade plain to TLS. Turn OFF for port 993 (IMAPS — already encrypted) or a local server with no TLS configured.')}</label><label class="admin-switch" style="margin-left:0"><input type="checkbox" id="uf-imap-starttls" checked><span class="admin-slider"></span></label></div>
           <div style="font-size:11px;font-weight:600;opacity:0.6;margin:8px 0 2px;display:flex;align-items:center;gap:5px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent, var(--red));flex-shrink:0;" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>SMTP (Sending) <span style="font-weight:normal;opacity:0.7">— optional, leave blank for read-only</span></div>
           <div class="settings-row"><label class="settings-label">Host${_hint('Your outgoing-mail server, e.g. smtp.gmail.com. Leave blank to make this account read-only.')}</label><input id="uf-smtp-host" class="settings-input" placeholder="smtp.example.com"></div>
@@ -4418,7 +4418,7 @@ async function initUnifiedIntegrations() {
           <div class="settings-row"><label class="settings-label">Security${_hint('SSL for port 465, STARTTLS for port 587, or None for local SMTP bridges such as Proton Mail Bridge.')}</label><select id="uf-smtp-security" class="settings-select"><option value="ssl">SSL</option><option value="starttls">STARTTLS</option><option value="none">None</option></select></div>
           <div class="settings-row"><label class="settings-label">Same as IMAP${_hint('Use the IMAP username and password for SMTP too (right for almost every provider). Turn off to enter separate SMTP credentials.')}</label><label class="admin-switch" style="margin-left:0"><input type="checkbox" id="uf-smtp-same" checked><span class="admin-slider"></span></label></div>
           <div class="settings-row uf-smtp-creds"><label class="settings-label">Username${_hint('Usually the same as your IMAP username (your email address).')}</label><input id="uf-smtp-user" class="settings-input"></div>
-          <div class="settings-row uf-smtp-creds"><label class="settings-label">Password${_hint('Your SMTP password — often the same as your IMAP password. Outlook / Office 365 generally requires OAuth and will not work with this password form.')}</label><input id="uf-smtp-pass" class="settings-input" type="password" placeholder="${placeholderPass}"></div>
+          <div class="settings-row uf-smtp-creds"><label class="settings-label">Password${_hint('Your SMTP password — often the same as your IMAP password. Outlook / Office 365 takes no password at all — use Sign in with Microsoft.')}</label><input id="uf-smtp-pass" class="settings-input" type="password" placeholder="${placeholderPass}"></div>
           </div>
           <div class="settings-row" style="margin-top:4px"><label class="settings-label">Default${_hint('Use this account whenever no specific account is chosen.')}</label><label class="admin-switch" style="margin-left:0"><input type="checkbox" id="uf-email-default"><span class="admin-slider"></span></label><span style="font-size:10px;opacity:0.5;margin-left:6px">Used when nothing else is selected</span></div>
           <div class="settings-row" style="margin-top:10px;align-items:center;justify-content:flex-end;gap:6px;">
@@ -4465,10 +4465,15 @@ async function initUnifiedIntegrations() {
         url: 'https://login.yahoo.com/account/security/app-passwords',
       },
       outlook: {
-        title: 'Outlook / Office 365 needs OAuth',
-        body: 'Microsoft disables normal password login for IMAP/SMTP in most Outlook and Microsoft 365 accounts. Pantheon does not support Microsoft OAuth/Graph mail yet, so this preset is only a placeholder for future support.',
-        url: 'https://learn.microsoft.com/exchange/clients-and-mobile-in-exchange-online/disable-basic-authentication-in-exchange-online',
-        linkLabel: 'Read Microsoft note',
+        // P18-05. This said "Pantheon does not support Microsoft OAuth/Graph
+        // mail yet, so this preset is only a placeholder". That stopped being
+        // true when Microsoft became a provider record, and a panel that still
+        // says a working feature does not exist is worse than one that says
+        // nothing.
+        title: 'Outlook / Office 365 signs in with Microsoft',
+        body: 'Microsoft has disabled normal mailbox passwords for IMAP and SMTP, so the password box below will not work for these accounts — use the Sign in with Microsoft button instead. An operator sets MICROSOFT_OAUTH_CLIENT_ID and MICROSOFT_OAUTH_CLIENT_SECRET once and everybody on this install gets the button.',
+        url: 'https://learn.microsoft.com/entra/identity-platform/quickstart-register-app',
+        linkLabel: 'How to register the app',
       },
     };
     const noteEl = el('uf-email-provider-note');
@@ -4556,7 +4561,12 @@ async function initUnifiedIntegrations() {
 
     function _syncOauthUI() {
       const provider = _oauthFor(el('uf-imap-host').value);
-      const linked = !!(existing && existing.oauth_provider === 'google');
+      // P18-05. `=== 'google'` here, against a `provider` resolved from the
+      // host. A Microsoft-linked account matched the host, failed this, and
+      // would have rendered as "Connect" with the password fields back — the
+      // same rule answered two ways, which is the defect `Law 13` names and
+      // the one this row exists to remove.
+      const linked = !!(existing && provider && existing.oauth_provider === provider.id);
       el('uf-oauth-section').style.display = provider ? '' : 'none';
       // The password fields stay while OAuth is merely *offered*. Hiding them
       // the moment Gmail qualified would delete the app-password path from the
@@ -4581,11 +4591,16 @@ async function initUnifiedIntegrations() {
       btn.style.opacity = provider.configured ? '' : '0.5';
       btn.style.cursor = provider.configured ? '' : 'not-allowed';
       btn.textContent = linked ? `Reconnect with ${provider.label}` : `Connect with ${provider.label}`;
-      status.textContent = !provider.configured
+      // P18-05. `note` is the record's own sentence about this provider —
+      // Microsoft's says a mailbox password cannot work here at all, which is
+      // the single most useful thing to read before typing one. Appended
+      // rather than replacing, so the connection state still leads.
+      const base = !provider.configured
         ? provider.setup_hint
         : (linked
             ? `\u2713 Connected via ${provider.label}`
             : 'Not connected — click below to authorize. Your password is never stored.');
+      status.textContent = provider.note ? `${base} ${provider.note}` : base;
 
       // P18-04. The exact string to register with Google. Before it was shown,
       // the only way to learn it was to run the flow and read it back out of a

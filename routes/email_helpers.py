@@ -114,10 +114,24 @@ def _get_valid_google_token(account_id: str, cfg: dict) -> str | None:
     those calls into a silent `None` — an account that used to refresh quietly
     ceasing to.
     """
+    return _get_valid_oauth_token("google", account_id, cfg)
+
+
+def _get_valid_oauth_token(provider_id: str, account_id: str, cfg: dict) -> str | None:
+    """The access token for this account, under a provider the caller names.
+
+    `P18-05`. The generalisation of the function above, and it keeps that
+    function's one important property: **the provider is asserted, not read.**
+    It comes from the route's own validated view of the request, never out of
+    the cfg — the connection-test path strips the OAuth fields from any payload
+    that is not a saved, owner-checked account, so a cfg carrying no
+    `oauth_provider` would otherwise refresh nothing and return a silent
+    `None`, turning an account that used to work into one that quietly stops.
+    """
     merged = dict(cfg or {})
     if account_id:
         merged["account_id"] = account_id
-    merged["oauth_provider"] = "google"
+    merged["oauth_provider"] = str(provider_id or "")
     return _mail_auth.access_token_for(merged)
 
 
@@ -181,11 +195,16 @@ def _friendly_email_auth_error(protocol: str, host: str, error: object) -> str:
         or ("authentication unsuccessful" in lower and microsoft_host)
     )
     if microsoft_basic_auth_failure:
+        # `P18-05`. This used to end "Pantheon does not support Microsoft
+        # OAuth/Graph mail yet, so Outlook accounts cannot be added with this
+        # password form" — a dead end, and one that stopped being true when
+        # Microsoft became a provider record. The diagnosis was always right;
+        # only the second half was wrong, so the second half is now the way
+        # out rather than a closed door (`Law 15`).
         return (
             "Microsoft no longer accepts normal mailbox passwords for "
-            "Outlook/Office 365 IMAP/SMTP in most accounts. Pantheon "
-            "does not support Microsoft OAuth/Graph mail yet, so Outlook "
-            "accounts cannot be added with this password form."
+            "Outlook/Office 365 IMAP/SMTP. Use the Sign in with Microsoft "
+            "button on this form instead — it needs no password."
         )
     return raw[:200]
 

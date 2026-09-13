@@ -72,7 +72,11 @@ ALLOWED = {
     # the literal this checker matches on, so the route reads as orphaned and
     # is not. The provider endpoint itself stays statically reachable, which is
     # what keeps this from hiding a genuinely dead pair.
-    "/api/email/oauth/google/authorize": "settings.js follows the `authorize` path served by /api/email/oauth/providers",
+    # P18-05 made the provider a path parameter, so the key moved with it. The
+    # URL a browser hits did not change — `/api/email/oauth/google/authorize`
+    # still resolves — but this checker reads the route table, where the path is
+    # now the pattern.
+    "/api/email/oauth/{provider_id}/authorize": "settings.js follows the `authorize` path served by /api/email/oauth/providers",
     "/openapi.json": "FastAPI mounts this itself; it is the schema, not a feature",
     "/docs": "FastAPI's own Swagger UI, mounted by the framework",
     "/redoc": "FastAPI's own ReDoc UI, mounted by the framework",

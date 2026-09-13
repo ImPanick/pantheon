@@ -78,9 +78,9 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P15 | Outbound politeness | 12 | 2 | **1** | **9** |
 | P16 | Self-hosted by default | 20 | 1 | 0 | **19** |
 | P17 | The network the agent is hosted on | 11 | 3 | 0 | **8** |
-| P18 | One button, and it links | 7 | 2 | 0 | **5** |
+| P18 | One button, and it links | 7 | 1 | 0 | **6** |
 | P19 | The proof ledger | 7 | 0 | 0 | **7** |
-| **Total** | | **376** | **185** | **9** | **182** |
+| **Total** | | **376** | **184** | **9** | **183** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -242,6 +242,27 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### Microsoft, and a provider that is a record rather than a flow
+`09a66ff..HEAD`. **376 tracked, 183 done. 0 new phase rows, 0 regressions. `P18-05` closed;
+`B72` filed to the backlog, which sits outside this tally.**
+`src/providers.py` holds one record type for *a thing you sign in to*; a mailbox is that record
+with a `mail` block and a service is the same record without one. Google was written down in
+nineteen places and Microsoft would have been a second copy of each. The proof is not a grep
+(`Law 20`): a test invents a provider called `acme`, inserts the record at runtime, and drives the
+served list, the authorize redirect, the transport guards and the refresh table with no module
+edited. The registered callback URL is byte-identical to before — a Google Cloud Console entry
+holds that string literally, and a rename would have broken every existing install with a
+`redirect_uri_mismatch`. **Three things Microsoft taught the record**: two SMTP hosts against one
+IMAP host, an address that comes from the `id_token` because Entra will not put Graph and the
+Outlook resource scopes in one token, and a vendor that is two records when the platform API is a
+key and the subscription is a sign-in. 38 new tests, 23 mutations, all caught — two survived the
+first run and both were rules that were true and untested. **`check-env-declared.py` refused the first shape** — names
+composed from a prefix meant `MICROSOFT_OAUTH_REDIRECT_URI` was declared in `.env.example` and
+appeared nowhere in the source, so an operator could set it and never find out it did nothing.
+Anthropic and OpenAI are `api_key` records and say so; giving them an `authorize_url` for symmetry
+would have been a lie (`Law 9`). Two places that told people Microsoft was unsupported now tell
+them how to use it.
 
 ### The same pinned figure, in the test next door
 `71ea0dc..HEAD`. **376 tracked, 182 done. 0 new rows, 0 regressions. Suite 8,819, 0 failing.**
@@ -5299,7 +5320,7 @@ which is the `P17-02` mistake, and it is why these rows are the ones they are.
   registrations that exist. A setting changed after startup needs a restart, stated rather than
   discovered. `CACHE_NAME` `v412` → `v413`. 19 tests, 13 mutations, all caught.
 
-- [ ] **P18-05** **The second provider, and the abstraction that makes a third cheap.**
+- [x] **P18-05** **The second provider, and the abstraction that makes a third cheap.**
   Microsoft is explicitly unsupported today and says so in two places
   (`settings.js:3136-3140`, `routes/email_helpers.py:204`). The owner asked for *"a few
   other account services that are common use"*. **The row is the abstraction, not the
@@ -5317,6 +5338,53 @@ which is the `P17-02` mistake, and it is why these rows are the ones they are.
   between a mailbox and a service is **which fields a provider populates, not which flow it runs**.
   Microsoft stays the proof, being the case with the most constraints — IMAP/SMTP transport *and*
   OAuth — so a record that satisfies it satisfies the simpler ones, and GitHub afterwards is data.
+  **DONE 2026-09-13.** `src/providers.py` — one `Provider` record, `mail` optional on it, and
+  `PROVIDERS` a plain dict. Seven records ship: google, microsoft (mailboxes), github, slack
+  (services), anthropic, openai (API keys), openai-chatgpt (the PKCE device-code flow already in
+  `src/chatgpt_subscription.py`, listed so the registry is the inventory rather than a partial one).
+  **The proof is not a grep** (`Law 20`): `test_a_provider_is_a_record.py` invents `acme`, inserts
+  the record at runtime and drives the served list, the authorize redirect, the transport guards and
+  the refresh table with no module edited. **The URL did not move** — `/oauth/{provider_id}/…`
+  resolves `/api/email/oauth/google/callback` byte-identically, which matters because a Google Cloud
+  Console registration holds that string literally and a rename would have broken every existing
+  install with a `redirect_uri_mismatch`. Asserted in
+  `test_the_registered_callback_url_did_not_move`.
+  **Three things the second provider taught the record**, each of which was a second flow under the
+  old shape. *Microsoft has two SMTP hosts* — `smtp.office365.com` and `smtp-mail.outlook.com`
+  against one IMAP host — so a scalar field could not hold it; Google has one of each, which is why
+  it looked scalar. *Microsoft's verified address does not come from a userinfo call*: Entra will
+  not issue one token covering Graph **and** the `https://outlook.office.com/…` resource scopes,
+  so it is read from the `id_token`, and that value is the reconnect ownership check rather than a
+  convenience. *The same vendor is sometimes two records* — OpenAI's platform API is a key and a
+  ChatGPT subscription is a sign-in.
+  **And one thing said plainly instead of papered over**: Anthropic and OpenAI have no consumer
+  OAuth for API access. Giving them an `authorize_url` so every row looked alike would have been a
+  lie told for symmetry (`Law 9`), so `auth` is `api_key` and `is_configured` asks them a different
+  question. A Connect button there would be a button that cannot work.
+  **`check-env-declared.py` refused the first shape.** Env names were composed from an `env_prefix`,
+  which meant `MICROSOFT_OAUTH_REDIRECT_URI` existed in `.env.example` and **nowhere in the source**
+  — an operator could set it, believe something changed, and have no way to find out. The names are
+  now written out per record: still a convention, just one a person can grep and a checker can see.
+  **The other half of the row landed too** (`D-2026-09-12-01`, *"Both — one record shape"*): the
+  four service records project into `INTEGRATION_PRESETS` via `preset_from_provider`, so GitHub,
+  Slack, Anthropic and OpenAI arrive as presets with base URL, credential carriage and an endpoint
+  crib — `setdefault`, so no hand-written preset is overwritten (`Law 1`). Anthropic's
+  `x-api-key` versus everyone else's bearer is the per-service detail a generated preset gets right
+  once and a hand-copied one gets wrong on the third try.
+  **Nineteen Google literals removed**, including eight `oauth_provider == "google"` in
+  `email_routes.py` and one in `settings.js` — `existing.oauth_provider === 'google'` compared
+  against a provider resolved from the host, so a Microsoft-linked account would have rendered as
+  *Connect* with the password fields back (`Law 13`, one step apart). Two places that said Microsoft
+  was unsupported now say how to use it, and `docs/email-outlook.md` is a setup guide instead of a
+  dead end (`Law 15`). `.env.example` and all three compose files carry the Microsoft variables.
+  **38 new tests, 23 mutations, all caught — after a run left two alive.** One: nothing exercised a
+  refresh that *returns* a new refresh token, so *Microsoft rotates its refresh token and Google
+  does not* was implemented and unproven. Two: the never-overwrite rule on the generated presets was
+  asserted against `gitea`, which is hand-written and is **not one of the four ids** — so the
+  assertion proved nothing about the rule and turning the `setdefault` into an assignment broke no
+  test. The population moved into `install_provider_presets(target)` so the collision can be made
+  rather than hoped for. Both are the same lesson the mutation harness keeps teaching: **proximity
+  is not reachability.**
 
 - [ ] **P18-06** **Google's flow has no PKCE, and the MCP flow beside it does.** Google email
   uses a confidential client with `client_secret` (`routes/email_routes.py:6220-6242`) and
@@ -5675,3 +5743,17 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   `Verify:` no shipped image depicts upstream's identity, and the macOS icon is Pantheon's.
   `Depends:` `P0-13`, which is blocked on a design decision no agent can make. — found by the
   standing-failure sweep — **needs the owner** — agent:`P0`
+
+- [ ] **B72** **The ledger cannot gain a mailbox claim from this machine.** Found 2026-09-13 while
+  closing `P18-05`. Every row in `LEDGER.md` is `stock -> pantheon`, and the honest ones are
+  `diffed` — measured against the fork point, `b4d1293`. **The cloud container's clone does not
+  contain it**: `git log` bottoms out at `baseline: cybertooth c3b2120`, 147 commits deep, and there
+  is no `upstream` remote here. So `git show b4d1293:routes/email_routes.py` cannot run, the
+  before-column cannot be measured, and `Law 9` says a row is not ticked on a claim that cannot be
+  checked. `P18-05` is therefore closed **without** a ledger entry, which is a gap in the proof
+  trail rather than a missing feature — the work is real and the evidence for *how much better than
+  stock* is not gathered. The measurement has to happen on cybertooth, which has both the fork point
+  and the `upstream` remote. `Verify:` a `mailboxes-and-providers` area exists in
+  `.pantheon/ledger/claims.py` with a `diffed` claim whose before-column came from the fork-point
+  tree, and `check-ledger.py` passes on it. `Depends:` a run on cybertooth. — found by closing
+  `P18-05` — agent:`P18`

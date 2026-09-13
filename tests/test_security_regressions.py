@@ -262,7 +262,14 @@ def test_outlook_smtp_basic_auth_error_is_actionable():
     )
 
     assert "Microsoft no longer accepts normal mailbox passwords" in msg
-    assert "OAuth/Graph" in msg
+    # `P18-05`. This used to assert "OAuth/Graph", from a sentence that ended
+    # "Pantheon does not support Microsoft OAuth/Graph mail yet, so Outlook
+    # accounts cannot be added with this password form". The diagnosis was
+    # always right and the second half stopped being true, so the second half
+    # is now the way out rather than a closed door. What the test is for — an
+    # *actionable* message that does not leak the raw SMTP code — is unchanged.
+    assert "Sign in with Microsoft" in msg
+    assert "cannot be added" not in msg
     assert "535" not in msg
 
 

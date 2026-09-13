@@ -263,14 +263,58 @@ def test_refresh_stores_encrypted_expiry_not_token():
 # invoke it — they pin the real route's behaviour, not a re-implementation, so
 # they fail if the ownership/state guards are ever removed or weakened.
 
-def _callback_endpoint():
-    """Return the live google_oauth_callback endpoint from the email router."""
+def _provider_endpoint(leaf, provider_id="google"):
+    """The live OAuth endpoint for one provider, bound to its id.
+
+    `P18-05` turned the provider into a path parameter, so the route is now
+    registered once as `/api/email/oauth/{provider_id}/…`. **The URL a browser
+    hits did not change** — that is asserted below, and it matters because the
+    redirect URI in a deployment's Google Cloud Console is a literal string.
+    These tests keep calling the endpoint with `provider_id="google"`, so every
+    assertion under them still pins Google's behaviour; they now pin it
+    *through* the generic route, which is stronger.
+    """
+    from functools import partial
+
     from routes.email_routes import setup_email_routes
     router = setup_email_routes()
     for route in router.routes:
-        if route.path == "/api/email/oauth/google/callback" and "GET" in getattr(route, "methods", set()):
-            return route.endpoint
-    raise AssertionError("google_oauth_callback route not found")
+        if route.path == f"/api/email/oauth/{{provider_id}}/{leaf}" and "GET" in getattr(route, "methods", set()):
+            return partial(route.endpoint, provider_id=provider_id)
+    raise AssertionError(f"oauth {leaf} route not found")
+
+
+def _callback_endpoint(provider_id="google"):
+    return _provider_endpoint("callback", provider_id)
+
+
+def test_the_registered_callback_url_did_not_move():
+    """`Law 1`, and the one change here that no deployment could survive.
+
+    A Google Cloud Console registration holds the redirect URI as a literal
+    string. Parameterising the route had to leave the resolved path identical,
+    character for character, or every install that had already registered one
+    would start failing with `redirect_uri_mismatch` after an upgrade — the
+    error that says nothing about what changed.
+    """
+    from starlette.routing import Route
+
+    from routes.email_routes import setup_email_routes
+    router = setup_email_routes()
+    matched = []
+    for route in router.routes:
+        if not isinstance(route, Route):
+            continue
+        for path in (
+            "/api/email/oauth/google/callback",
+            "/api/email/oauth/google/authorize",
+            "/api/email/oauth/microsoft/callback",
+        ):
+            if route.path_regex.match(path):
+                matched.append(path)
+    assert "/api/email/oauth/google/callback" in matched
+    assert "/api/email/oauth/google/authorize" in matched
+    assert "/api/email/oauth/microsoft/callback" in matched
 
 
 class _FakeRequest:
@@ -431,14 +475,8 @@ async def test_callback_valid_owner_writes_encrypted_tokens_to_intended_account(
 # deployments working without pinning GOOGLE_OAUTH_REDIRECT_URI by hand;
 # hardcoding `http://` produced an unusable redirect behind any TLS front.
 
-def _authorize_endpoint():
-    """Return the live google_oauth_authorize endpoint from the email router."""
-    from routes.email_routes import setup_email_routes
-    router = setup_email_routes()
-    for route in router.routes:
-        if route.path == "/api/email/oauth/google/authorize" and "GET" in getattr(route, "methods", set()):
-            return route.endpoint
-    raise AssertionError("google_oauth_authorize route not found")
+def _authorize_endpoint(provider_id="google"):
+    return _provider_endpoint("authorize", provider_id)
 
 
 def _posted_redirect_uri(mock_post):

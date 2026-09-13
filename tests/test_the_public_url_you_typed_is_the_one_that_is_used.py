@@ -190,7 +190,11 @@ def test_both_halves_of_the_email_flow_build_the_uri_the_same_way():
     from not working — with a failure that says only `redirect_uri_mismatch`.
     """
     source = (ROOT / "routes" / "email_routes.py").read_text(encoding="utf-8")
-    assert source.count("redirect_uri = _google_redirect_uri(request)") == 2
+    # `P18-05` made the provider a parameter, so the shared expression is now
+    # `_provider_redirect_uri(provider, request)`. Still counted rather than
+    # eyeballed: the point is that there is **one** expression used twice, not
+    # what it is spelled.
+    assert source.count("redirect_uri = _provider_redirect_uri(provider, request)") == 2
     assert "request.headers.get('host'" not in source, (
         "the Host header is back in the redirect path"
     )

@@ -43,19 +43,53 @@ import os
 import time
 from typing import Optional
 
+from src import providers
+
 logger = logging.getLogger(__name__)
 
-# Providers that authenticate with a bearer token rather than a password. A
-# frozenset rather than `== "google"` scattered about, so the second provider
-# (`P18-05`) is an entry here and not another sweep.
-OAUTH_PROVIDERS = frozenset({"google"})
+class _MailProviderIds:
+    """The set of providers a mailbox can be linked to, read from the registry.
+
+    `P18-05`. This was `frozenset({"google"})` — a literal, which is what the
+    row exists to remove. It is a live view rather than a snapshot taken at
+    import because the registry is a plain dict that tests insert into: a
+    frozenset built once would answer for the registry as it was, not as it is,
+    and the whole claim of this row is that **adding a provider is data**. Kept
+    under its original name and behaving like a set, because `Law 1` says a
+    working name does not get taken away to make a refactor tidier.
+    """
+
+    __slots__ = ()
+
+    def __contains__(self, value) -> bool:
+        return value in providers.mail_provider_ids()
+
+    def __iter__(self):
+        return iter(providers.mail_provider_ids())
+
+    def __len__(self) -> int:
+        return len(providers.mail_provider_ids())
+
+    def __eq__(self, other) -> bool:
+        return set(providers.mail_provider_ids()) == set(other)
+
+    def __hash__(self):
+        return hash(providers.mail_provider_ids())
+
+    def __repr__(self) -> str:
+        return f"OAUTH_PROVIDERS({set(providers.mail_provider_ids())!r})"
+
+
+OAUTH_PROVIDERS = _MailProviderIds()
 
 # Refresh this far before the stated expiry. A token that expires mid-handshake
 # fails as an authentication error, which reads like a wrong password and sends
 # the operator to re-enter credentials that were never the problem.
 TOKEN_SKEW_SECONDS = 60
 
-GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
+# Kept as a name because it is one; the value now comes from the record so
+# there is one place the endpoint is written down (`Law 13`).
+GOOGLE_TOKEN_ENDPOINT = providers.token_url(providers.get("google"))
 
 RECONNECT_HINT = (
     "Google OAuth token unavailable — reconnect the account in "
@@ -105,16 +139,28 @@ def xoauth2_bytes(user: str, access_token: str) -> bytes:
 # ── Tokens ─────────────────────────────────────────────────────────────────
 
 
-def refresh_google_token(account_id: str) -> Optional[str]:
-    """Exchange the stored refresh token for a new access token and persist it."""
+def refresh_oauth_token(provider_id: str, account_id: str) -> Optional[str]:
+    """Exchange the stored refresh token for a new access token and persist it.
+
+    `P18-05`. One function for every provider, because the exchange is RFC 6749
+    section 6 and the only things that differ are the endpoint and the client
+    credentials — both of which are fields on the record.
+
+    **Microsoft rotates its refresh token and Google does not.** The response
+    is checked for a new one and it is persisted when present. The old
+    Google-only code did not look, which was correct for Google and would have
+    been a mailbox that stops working after the old refresh token expires for
+    anybody who copied it.
+    """
     import httpx
 
     from core.database import EmailAccount as _EA, SessionLocal as _SL
     from src.secret_storage import decrypt as _dec, encrypt as _enc
 
-    client_id = os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "")
-    client_secret = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET", "")
-    if not client_id or not client_secret:
+    provider = providers.get(provider_id)
+    if provider is None or provider.auth != providers.AUTH_OAUTH2:
+        return None
+    if not providers.is_configured(provider):
         return None
     if not account_id:
         # No row to refresh against. Distinguished from a failed refresh
@@ -128,46 +174,63 @@ def refresh_google_token(account_id: str) -> Optional[str]:
         refresh_token = _dec(row.oauth_refresh_token or "")
         if not refresh_token:
             return None
-        resp = httpx.post(
-            GOOGLE_TOKEN_ENDPOINT,
-            data={
-                "client_id": client_id,
-                "client_secret": client_secret,
-                "refresh_token": refresh_token,
-                "grant_type": "refresh_token",
-            },
-            timeout=10,
-        )
+        form = {
+            "client_id": providers.client_id(provider),
+            "refresh_token": refresh_token,
+            "grant_type": "refresh_token",
+        }
+        secret = providers.client_secret(provider)
+        if secret:
+            form["client_secret"] = secret
+        resp = httpx.post(providers.token_url(provider), data=form, timeout=10)
         resp.raise_for_status()
         data = resp.json()
         access_token = data["access_token"]
         row.oauth_access_token = _enc(access_token)
         row.oauth_token_expiry = str(int(time.time()) + data.get("expires_in", 3600))
+        rotated = data.get("refresh_token") or ""
+        if rotated and rotated != refresh_token:
+            row.oauth_refresh_token = _enc(rotated)
         db.commit()
         return access_token
     except Exception:
         # Deliberately not re-raised: every caller's next move is the same —
         # report that the account needs reconnecting — and the account id is
         # the only detail worth keeping. The token never enters the log.
-        logger.warning("Google token refresh failed for account %s", account_id)
+        logger.warning(
+            "%s token refresh failed for account %s", provider.label, account_id
+        )
         return None
     finally:
         db.close()
 
 
-# Provider -> the function that trades a refresh token for an access token.
-# A table rather than a call to Google's refresher inside `access_token_for`,
-# for two reasons. It makes `P18-05`'s second provider an entry instead of a
-# branch; and the old shape would have run **Google's** refresh for any account
-# whose provider was not Google — unreachable today only because every caller
-# checks `is_oauth` first, which is a guarantee living in the callers rather
-# than in the function that depends on it.
+def refresh_google_token(account_id: str) -> Optional[str]:
+    """Google's refresh, kept as a name rather than as an implementation.
+
+    `routes/email_helpers._refresh_google_token` re-exports this and three
+    tests patch `src.mail_auth.refresh_google_token` directly, so the name is
+    load-bearing and `Law 1` says it stays. The behaviour underneath is the
+    generic one — which is the point of the row.
+    """
+    return refresh_oauth_token("google", account_id)
+
+
+# Provider -> a refresher that is *not* the generic one. Empty but for Google,
+# and Google's entry exists only to keep the patchable name above in the path;
+# every other provider, including one inserted into the registry at runtime,
+# goes straight to `refresh_oauth_token`. An override table rather than a
+# branch on the id, so the generic path is the default rather than the
+# fallback.
 # The lambda is not decoration: a table holding the function *object* freezes
 # the binding at import, so replacing `refresh_google_token` — in a test, or to
 # intercept it — rebinds the module global and leaves the table pointing at the
-# original. Resolving the name inside the call makes the table late-bound, which
-# is what a lookup table of behaviour should be.
-_REFRESHERS = {"google": lambda account_id: refresh_google_token(account_id)}
+# original. Resolving the name inside the call makes the table late-bound,
+# which is what a lookup table of behaviour should be.
+_REFRESH_OVERRIDES = {"google": lambda account_id: refresh_google_token(account_id)}
+
+# The old name, unchanged in meaning for the one entry it ever had.
+_REFRESHERS = _REFRESH_OVERRIDES
 
 
 def access_token_for(cfg: dict) -> Optional[str]:
@@ -186,10 +249,14 @@ def access_token_for(cfg: dict) -> Optional[str]:
             # refreshing costs one request while using a dead one costs a
             # failed send the person has to interpret.
             pass
-    refresher = _REFRESHERS.get(provider_of(cfg))
-    if refresher is None:
+    provider_id = provider_of(cfg)
+    if not provider_id:
         return None
-    return refresher(str((cfg or {}).get("account_id") or ""))
+    account_id = str((cfg or {}).get("account_id") or "")
+    override = _REFRESH_OVERRIDES.get(provider_id)
+    if override is not None:
+        return override(account_id)
+    return refresh_oauth_token(provider_id, account_id)
 
 
 def require_token(cfg: dict) -> str:

@@ -273,20 +273,62 @@ def test_gmail_and_workspace_share_a_host_which_is_why_the_split_was_wrong():
 
 
 def test_the_authorize_route_refuses_a_half_configured_deployment(monkeypatch):
-    """The sharp end: refusing here is refusing before the consent is spent."""
+    """The sharp end: refusing here is refusing before the consent is spent.
+
+    **This read the route's source and looked for `_google_oauth_configured()`
+    in it.** That tested the file (`Law 20`) and it broke under `P18-05` while
+    the behaviour was correct — the function is still called, through
+    `providers.is_configured`, from a route that is no longer named after
+    Google. Calling the route and asserting the refusal cannot go stale that
+    way, and it also covers the case the source check never did: a rule that is
+    *named* in the guard but returns the wrong answer.
+    """
     import asyncio
 
     import routes.email_routes as er
     from fastapi import HTTPException
 
+    monkeypatch.setattr(er, "_assert_owns_account", lambda *a, **k: None)
+
+    async def _authorize(provider_id="google"):
+        router = er.setup_email_routes()
+        endpoint = next(
+            r.endpoint for r in router.routes
+            if r.path == "/api/email/oauth/{provider_id}/authorize"
+        )
+        return await endpoint(
+            provider_id=provider_id, account_id="acct-1", request=None, owner="alice"
+        )
+
+    # The id alone is not enough. The secret is not needed until the callback,
+    # and finding it missing there means failing *after* the person has granted
+    # access to their mailbox — the one step they cannot undo by going back.
     monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "cid")
     monkeypatch.delenv("GOOGLE_OAUTH_CLIENT_SECRET", raising=False)
+    assert er._google_oauth_configured() is False
+    with pytest.raises(HTTPException) as caught:
+        asyncio.run(_authorize())
+    assert caught.value.status_code == 400
+    assert "GOOGLE_OAUTH_CLIENT_SECRET" in caught.value.detail
 
-    source = Path(er.__file__).read_text(encoding="utf-8")
-    guard = source[source.index("async def google_oauth_authorize"):]
-    guard = guard[: guard.index("redirect_uri = ")]
-    assert "_google_oauth_configured()" in guard, (
-        "authorize must use the two-part rule; checking the id alone lets the "
-        "flow fail after the mailbox consent has been granted"
+    # The secret alone is not enough either.
+    monkeypatch.delenv("GOOGLE_OAUTH_CLIENT_ID", raising=False)
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_SECRET", "shh")
+    assert er._google_oauth_configured() is False
+    with pytest.raises(HTTPException):
+        asyncio.run(_authorize())
+
+    # Both, and it starts.
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "cid")
+    assert er._google_oauth_configured() is True
+    resp = asyncio.run(_authorize())
+    assert resp.headers["location"].startswith(
+        "https://accounts.google.com/o/oauth2/v2/auth?"
     )
-    assert "GOOGLE_OAUTH_CLIENT_SECRET" in guard
+
+    # And the same rule for the second provider, from the same code.
+    monkeypatch.setenv("MICROSOFT_OAUTH_CLIENT_ID", "mid")
+    monkeypatch.delenv("MICROSOFT_OAUTH_CLIENT_SECRET", raising=False)
+    with pytest.raises(HTTPException) as caught:
+        asyncio.run(_authorize("microsoft"))
+    assert "MICROSOFT_OAUTH_CLIENT_SECRET" in caught.value.detail

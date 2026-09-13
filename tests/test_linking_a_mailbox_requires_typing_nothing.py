@@ -24,9 +24,14 @@ Reachable before this row by anyone who left the SMTP host blank — and reachab
 """
 from __future__ import annotations
 
+import asyncio
+import base64
+import json
 import re
 import sys
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -56,43 +61,132 @@ def _account_form_template() -> str:
 # --------------------------------------------------------------------------
 
 
-def test_the_callback_sets_a_transport_its_own_validator_accepts():
+def _linked_row(provider_id="google", email="alice@nyu.edu"):
+    """Run the real callback against an empty account and hand back the row.
+
+    **This used to read the source with a regex** — three assertions that
+    matched `row.smtp_port = (\\d+)` out of the callback's text and checked the
+    literal against the validator. That tested the file (`Law 20`): it could
+    not see a value the callback computes, and `P18-05` made every one of these
+    values come from the provider record, so all three broke while the
+    behaviour they describe was correct. Driving the callback and reading the
+    row cannot go stale that way, and it is a stronger assertion besides — the
+    old version would have passed on a callback that wrote the right literal to
+    the wrong column.
+    """
+    import unittest.mock as mock
+
+    from core.database import Base, EmailAccount
+    from routes.email_helpers import make_oauth_state
+    from routes.email_routes import setup_email_routes
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(engine)
+    Factory = sessionmaker(bind=engine)
+    db = Factory()
+    # Nothing typed: no host, no port, no security mode. The whole row.
+    db.add(EmailAccount(
+        id="acct-blank", owner="alice", name="acct-blank",
+        imap_host="", smtp_host="", imap_user=email, smtp_user=email,
+    ))
+    db.commit()
+    db.close()
+
+    token_resp = mock.MagicMock()
+    token_resp.raise_for_status = mock.MagicMock()
+    token_resp.json.return_value = {
+        "access_token": "at", "refresh_token": "rt", "expires_in": 3600,
+        # Microsoft's address arrives here rather than from a userinfo call.
+        "id_token": "h." + base64.urlsafe_b64encode(
+            json.dumps({"email": email, "name": "Alice"}).encode()
+        ).decode().rstrip("=") + ".sig",
+    }
+    userinfo_resp = mock.MagicMock()
+    userinfo_resp.is_success = True
+    userinfo_resp.json.return_value = {"email": email, "name": "Alice"}
+
+    router = setup_email_routes()
+    callback = next(
+        r.endpoint for r in router.routes
+        if r.path == "/api/email/oauth/{provider_id}/callback"
+    )
+    state = make_oauth_state("acct-blank", "alice")
+    with mock.patch("httpx.post", return_value=token_resp), \
+         mock.patch("httpx.get", return_value=userinfo_resp), \
+         mock.patch("core.database.SessionLocal", Factory):
+        resp = asyncio.run(
+            callback(provider_id=provider_id, code="4/code", state=state,
+                     error=None, request=None)
+        )
+    assert "email_oauth_success=1" in resp.headers["location"], resp.headers["location"]
+    verify = Factory()
+    row = verify.query(EmailAccount).filter(EmailAccount.id == "acct-blank").first()
+    snapshot = {
+        c.name: getattr(row, c.name) for c in EmailAccount.__table__.columns
+    }
+    verify.close()
+    return snapshot
+
+
+@pytest.mark.parametrize("provider_id", ["google", "microsoft"])
+def test_the_callback_sets_a_transport_its_own_validator_accepts(provider_id):
     """The bug, stated as the rule it broke.
 
-    Asserted through `_google_oauth_smtp_transport_allowed` rather than against
-    the literal 587, so the test tracks the rule instead of restating it.
+    The callback set `smtp_port = 587` and never touched `smtp_security`, which
+    defaults to `"ssl"` — and the SMTP guard permits only the pairs the
+    provider's record lists. So an account linked with no SMTP host typed came
+    out as **SSL on port 587**, which this app refuses and `smtplib` answers by
+    hanging to the socket timeout.
     """
-    import routes.email_routes as er
+    from src import providers
 
-    source = EMAIL_ROUTES.read_text(encoding="utf-8")
-    block = source[source.index('if not row.smtp_host:'):]
-    block = block[: block.index("if email_addr:")]
-    port = int(re.search(r"row\.smtp_port = (\d+)", block).group(1))
-    security = re.search(r'row\.smtp_security = "(\w+)"', block).group(1)
-    assert er._google_oauth_smtp_transport_allowed(port, security), (
-        f"the callback writes ({port}, {security}), which this app refuses"
+    row = _linked_row(provider_id)
+    record = providers.get(provider_id)
+    assert providers.smtp_transport_allowed(
+        record, row["smtp_port"], row["smtp_security"]
+    ), f"the callback wrote ({row['smtp_port']}, {row['smtp_security']}), which this app refuses"
+
+
+@pytest.mark.parametrize("provider_id", ["google", "microsoft"])
+def test_the_callback_sets_an_imap_transport_its_own_validator_accepts(provider_id):
+    from src import providers
+
+    row = _linked_row(provider_id)
+    assert providers.imap_transport_allowed(
+        providers.get(provider_id), row["imap_port"], row["imap_starttls"]
     )
 
 
-def test_the_callback_sets_an_imap_transport_its_own_validator_accepts():
-    import routes.email_routes as er
-
-    source = EMAIL_ROUTES.read_text(encoding="utf-8")
-    block = source[source.index('if not row.imap_host:'):]
-    block = block[: block.index("if not row.smtp_host:")]
-    port = int(re.search(r"row\.imap_port = (\d+)", block).group(1))
-    starttls = re.search(r"row\.imap_starttls = (\w+)", block).group(1) == "True"
-    assert er._google_oauth_imap_transport_allowed(port, starttls)
-
-
-def test_the_callback_uses_the_pinned_hosts_rather_than_literals():
+@pytest.mark.parametrize("provider_id", ["google", "microsoft"])
+def test_the_callback_uses_the_pinned_hosts_rather_than_literals(provider_id):
     """Two spellings of one hostname is how the P18-01 defect started."""
-    source = EMAIL_ROUTES.read_text(encoding="utf-8")
-    block = source[source.index('if not row.imap_host:'):]
-    block = block[: block.index("if email_addr:")]
-    assert "_GOOGLE_OAUTH_IMAP_HOST" in block
-    assert "_GOOGLE_OAUTH_SMTP_HOST" in block
-    assert '"imap.gmail.com"' not in block and '"smtp.gmail.com"' not in block
+    from src import providers
+
+    row = _linked_row(provider_id)
+    record = providers.get(provider_id)
+    assert row["imap_host"] == record.mail.imap_host
+    assert row["smtp_host"] == record.mail.smtp_host
+    assert providers.imap_host_allowed(record, row["imap_host"])
+    assert providers.smtp_host_allowed(record, row["smtp_host"])
+
+
+def test_a_linked_account_needs_nothing_else_typed():
+    """The row's own measure: fifteen fields, then none.
+
+    Every column the form used to ask for, filled by the callback from an
+    account that had none of them.
+    """
+    row = _linked_row()
+    for column in (
+        "imap_host", "imap_port", "smtp_host", "smtp_port", "smtp_security",
+        "imap_user", "smtp_user", "from_address", "name", "display_name",
+        "oauth_provider", "oauth_access_token", "oauth_refresh_token",
+        "oauth_token_expiry",
+    ):
+        assert row[column] not in (None, "", 0), f"{column} was left for a person to type"
+    assert row["name"] != "acct-blank", "the account is still named after its id"
 
 
 # --------------------------------------------------------------------------

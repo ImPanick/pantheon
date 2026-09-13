@@ -40,6 +40,7 @@ from email.mime.multipart import MIMEMultipart
 from fastapi import APIRouter, Query, UploadFile, File, BackgroundTasks, HTTPException, Depends, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from src.constants import DATA_DIR
+from src import mail_auth, providers
 
 from src.llm_core import llm_call_async
 from src.upload_limits import read_upload_limited, EMAIL_COMPOSE_UPLOAD_MAX_BYTES
@@ -51,7 +52,7 @@ from routes.email_helpers import (
     _load_settings, _save_settings, _get_email_config,
     _send_smtp_message, _smtp_security_mode,
     _IMAP_TIMEOUT_SECONDS, _open_imap_connection,
-    _get_valid_google_token, _xoauth2_bytes, _xoauth2_raw,
+    _get_valid_google_token, _get_valid_oauth_token, _xoauth2_bytes, _xoauth2_raw,
     make_oauth_state, verify_oauth_state,
     EmailNotConfiguredError,
     _imap_connect, _imap, _decode_header, _detect_sent_folder, _detect_drafts_folder,
@@ -71,9 +72,12 @@ logger = logging.getLogger(__name__)
 
 PANTHEON_MAIL_ORIGIN = "pantheon-ui"
 EMAIL_READ_ATTACHMENT_VERSION = 2
-_GOOGLE_OAUTH_IMAP_HOST = "imap.gmail.com"
-_GOOGLE_OAUTH_SMTP_HOST = "smtp.gmail.com"
-_LINKABLE_PROVIDERS = frozenset({"google"})
+# `P18-05`. These three were literals and are now views onto the provider
+# registry. The names stay because ten call sites and several tests use them
+# (`Law 1`); the values stop being a second place Google is written down.
+_GOOGLE_OAUTH_IMAP_HOST = providers.get("google").mail.imap_host
+_GOOGLE_OAUTH_SMTP_HOST = providers.get("google").mail.smtp_host
+_LINKABLE_PROVIDERS = mail_auth.OAUTH_PROVIDERS
 _SERVER_OWNED_OAUTH_FIELDS = {
     "oauth_provider",
     "oauth_access_token",
@@ -84,24 +88,32 @@ _SERVER_OWNED_OAUTH_FIELDS = {
 
 def _normalized_mail_host(value) -> str:
     """Normalize a mail hostname for exact provider-bound comparisons."""
-    return str(value or "").strip().lower().rstrip(".")
+    return providers.normalize_host(value)
 
 
 def _google_oauth_imap_transport_allowed(port: int, starttls: bool) -> bool:
-    return (port == 993 and not starttls) or (port == 143 and starttls)
+    """Kept as a name; the pairs it accepts are now the Google record's.
+
+    `P18-05`. Written out longhand this said *993 without STARTTLS, or 143 with
+    it*, which is true of Google and false of Microsoft — a rule that reads as
+    general and is not. The record says which pairs each provider allows and
+    this asks it.
+    """
+    return providers.imap_transport_allowed(providers.get("google"), port, starttls)
 
 
 def _google_oauth_smtp_transport_allowed(port: int, security: str) -> bool:
-    return (port == 465 and security == "ssl") or (port == 587 and security == "starttls")
+    return providers.smtp_transport_allowed(providers.get("google"), port, security)
 
-def _google_redirect_uri(request=None) -> str:
-    """The callback URI, built the same way in both halves of the flow.
+def _provider_redirect_uri(provider, request=None) -> str:
+    """The callback URI, built the same way in both halves of every flow.
 
-    `P18-04`. Google compares the `redirect_uri` sent to `/authorize` with the
-    one sent to the token endpoint and rejects the exchange if they differ by a
-    character, so the two call sites must not be two expressions. They were the
-    same expression before, which is how it worked — and it is one edit away
-    from not being, with a failure that says only `redirect_uri_mismatch`.
+    `P18-04` for the ladder, `P18-05` for the parameter. A provider compares
+    the `redirect_uri` sent to `/authorize` with the one sent to the token
+    endpoint and rejects the exchange if they differ by a character, so the two
+    call sites must not be two expressions. They were the same expression
+    before, which is how it worked — and it is one edit away from not being,
+    with a failure that says only `redirect_uri_mismatch`.
 
     That expression was `{request.url.scheme}://{Host header}`, and behind a
     reverse proxy **both halves are wrong the same way**: uvicorn honours
@@ -112,13 +124,23 @@ def _google_redirect_uri(request=None) -> str:
     away would break them (`Law 1`) — but three deliberate sources now outrank
     it, including the `app_public_url` setting the panel has always offered and
     nothing on this path ever read.
+
+    The per-provider environment override keeps its existing spelling:
+    `GOOGLE_OAUTH_REDIRECT_URI` is `env_prefix` + `_OAUTH_REDIRECT_URI`, so the
+    convention generalises the name that already shipped rather than replacing
+    it, and no deployment's `.env` has to change.
     """
     from src.public_origin import public_origin
 
-    explicit = (os.environ.get("GOOGLE_OAUTH_REDIRECT_URI") or "").strip()
+    explicit = (os.environ.get(providers.redirect_uri_env(provider)) or "").strip()
     if explicit:
         return explicit
-    return f"{public_origin(request)}/api/email/oauth/google/callback"
+    return f"{public_origin(request)}/api/email/oauth/{provider.id}/callback"
+
+
+def _google_redirect_uri(request=None) -> str:
+    """Google's callback URI. A name several tests hold; the body is generic."""
+    return _provider_redirect_uri(providers.get("google"), request)
 
 
 def _google_oauth_configured() -> bool:
@@ -128,20 +150,21 @@ def _google_oauth_configured() -> bool:
     needs `GOOGLE_OAUTH_CLIENT_SECRET` as well. Reporting *configured* on the id
     alone would send the operator to Google, have them grant access to their
     mailbox, and fail on the way back — after the consent, which is the one step
-    they cannot undo by pressing back.
+    they cannot undo by pressing back. `providers.is_configured` is where that
+    rule now lives, so a provider that does not need a secret is not held to a
+    requirement it does not have.
     """
-    return bool(
-        os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "").strip()
-        and os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET", "").strip()
-    )
+    return providers.is_configured(providers.get("google"))
 
 
-def _redirect_uri_source(request=None) -> str:
+def _redirect_uri_source(request=None, provider=None) -> str:
     """Which of the five sources supplied the origin. Shown so no override is silent."""
     from src.public_origin import source_of
 
-    if (os.environ.get("GOOGLE_OAUTH_REDIRECT_URI") or "").strip():
-        return "GOOGLE_OAUTH_REDIRECT_URI"
+    provider = provider or providers.get("google")
+    env_name = providers.redirect_uri_env(provider)
+    if (os.environ.get(env_name) or "").strip():
+        return env_name
     return source_of(request)
 
 
@@ -151,43 +174,57 @@ def _public_origin_overridden() -> bool:
     return setting_is_overridden()
 
 
+def _provider_payload(provider, request=None) -> dict:
+    """One mailbox provider, as the browser needs to see it."""
+    return {
+        "id": provider.id,
+        "label": provider.label,
+        "imap_hosts": list(provider.mail.imap_hosts),
+        "smtp_hosts": list(provider.mail.smtp_hosts),
+        "imap_port": provider.mail.imap_port,
+        "imap_starttls": provider.mail.imap_starttls,
+        "smtp_port": provider.mail.smtp_port,
+        "smtp_security": provider.mail.smtp_security,
+        "authorize": f"/api/email/oauth/{provider.id}/authorize",
+        "configured": providers.is_configured(provider),
+        # P18-04. The exact string to paste into the provider's console, and
+        # who decided it. Every deployment needs this value and before it
+        # was shown the only way to learn it was to run the flow and read
+        # it out of a `redirect_uri_mismatch` — a setup step discoverable
+        # only by failing at it (`Law 15`).
+        "redirect_uri": _provider_redirect_uri(provider, request),
+        "redirect_uri_source": _redirect_uri_source(request, provider),
+        "public_url_overridden": _public_origin_overridden(),
+        # P18-05, `Law 15` again one step earlier: the console URL where the
+        # credentials are created. Knowing the redirect URI does not help if
+        # you do not know where it goes.
+        "setup_url": provider.setup_url,
+        "setup_hint": provider.setup_hint,
+        "note": provider.note,
+    }
+
+
 def _oauth_providers(request=None) -> list:
     """Which mail hosts can be linked with a button, and whether they are set up.
 
-    **The host is the question, not the dropdown.** `_google_oauth_imap_transport_allowed`
-    and the `_normalized_mail_host(...) != _GOOGLE_OAUTH_IMAP_HOST` guards above
-    already decide *is this Google* by hostname, and they are the code that runs
-    when the link is used. Before `P18-01` the UI answered the same question a
-    second way — a marker on one of eight dropdown entries — and the two
-    disagreed: choosing **Gmail** filled in `imap.gmail.com` and showed no
-    button, while **Google Workspace** filled in the identical host and did. The
-    same mailbox, two answers, because the rule was written twice (`Law 13`, and
-    `B65` is the standing proof of what a rule in two languages costs).
+    **The host is the question, not the dropdown.** The transport guards and the
+    host comparisons above already decide *which provider is this* by hostname,
+    and they are the code that runs when the link is used. Before `P18-01` the
+    UI answered the same question a second way — a marker on one of eight
+    dropdown entries — and the two disagreed: choosing **Gmail** filled in
+    `imap.gmail.com` and showed no button, while **Google Workspace** filled in
+    the identical host and did. The same mailbox, two answers, because the rule
+    was written twice (`Law 13`, and `B65` is the standing proof of what a rule
+    in two languages costs).
 
     So the list is served rather than restated: the browser is told which hosts
-    these are and asks no further questions about them.
+    these are and asks no further questions about them. `P18-05` made the list
+    a loop over the registry — before it, the second provider meant a second
+    hand-written entry here and a third meant a third.
     """
     return [
-        {
-            "id": "google",
-            "label": "Google",
-            "imap_hosts": [_GOOGLE_OAUTH_IMAP_HOST],
-            "smtp_hosts": [_GOOGLE_OAUTH_SMTP_HOST],
-            "authorize": "/api/email/oauth/google/authorize",
-            "configured": _google_oauth_configured(),
-            # P18-04. The exact string to paste into Google Cloud Console, and
-            # who decided it. Every deployment needs this value and before it
-            # was shown the only way to learn it was to run the flow and read
-            # it out of a `redirect_uri_mismatch` — a setup step discoverable
-            # only by failing at it (`Law 15`).
-            "redirect_uri": _google_redirect_uri(request),
-            "redirect_uri_source": _redirect_uri_source(request),
-            "public_url_overridden": _public_origin_overridden(),
-            "setup_hint": (
-                "Set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET in .env "
-                "and restart, then this button will work."
-            ),
-        }
+        _provider_payload(providers.get(pid), request)
+        for pid in providers.mail_provider_ids()
     ]
 
 
@@ -6169,31 +6206,42 @@ def setup_email_routes():
         imap_starttls = bool(body.get("imap_starttls"))
         oauth_provider = body.get("oauth_provider") or ""
 
-        google_token = None
-        google_token_loaded = False
+        # `P18-05`. The record, or `None` for password auth. A value naming a
+        # *service* record — `github`, say — resolves to `None` here, so the
+        # mailbox path cannot be entered through a provider that has no mailbox.
+        oauth_record = providers.get(oauth_provider)
+        if oauth_record is not None and oauth_record.id not in providers.mail_provider_ids():
+            oauth_record = None
+
+        oauth_token = None
+        oauth_token_loaded = False
         google_ssl_context = (
             ssl.create_default_context()
-            if oauth_provider == "google"
+            if oauth_record is not None
             else None
         )
 
-        def _google_token():
-            nonlocal google_token, google_token_loaded
-            if not google_token_loaded:
-                google_token = _get_valid_google_token(body.get("account_id"), body)
-                google_token_loaded = True
-            if not google_token:
-                raise RuntimeError("Google OAuth token unavailable — reconnect the account")
-            return google_token
+        def _oauth_token():
+            nonlocal oauth_token, oauth_token_loaded
+            if not oauth_token_loaded:
+                oauth_token = _get_valid_oauth_token(
+                    oauth_record.id, body.get("account_id"), body
+                )
+                oauth_token_loaded = True
+            if not oauth_token:
+                raise RuntimeError(
+                    f"{oauth_record.label} OAuth token unavailable — reconnect the account"
+                )
+            return oauth_token
 
         if imap_port_err:
             imap_result = {"ok": False, "error": imap_port_err}
-        elif not (imap_host and imap_user and (imap_pass or oauth_provider == "google")):
+        elif not (imap_host and imap_user and (imap_pass or oauth_record is not None)):
             imap_result = {"ok": False, "error": "Need IMAP host, username, and password"}
-        elif oauth_provider == "google" and _normalized_mail_host(imap_host) != _GOOGLE_OAUTH_IMAP_HOST:
-            imap_result = {"ok": False, "error": "Google OAuth IMAP requires imap.gmail.com"}
-        elif oauth_provider == "google" and not _google_oauth_imap_transport_allowed(imap_port, imap_starttls):
-            imap_result = {"ok": False, "error": "Google OAuth IMAP requires TLS on port 993 or STARTTLS on port 143"}
+        elif oauth_record is not None and not providers.imap_host_allowed(oauth_record, imap_host):
+            imap_result = {"ok": False, "error": providers.imap_host_error(oauth_record)}
+        elif oauth_record is not None and not providers.imap_transport_allowed(oauth_record, imap_port, imap_starttls):
+            imap_result = {"ok": False, "error": providers.imap_transport_error(oauth_record)}
         else:
             # Connection mode resolution:
             #   STARTTLS on  → plain IMAP4 + .starttls() (upgrade)
@@ -6215,8 +6263,8 @@ def setup_email_routes():
                     **imap_kwargs,
                 )
                 try:
-                    if oauth_provider == "google":
-                        token = _google_token()
+                    if oauth_record is not None:
+                        token = _oauth_token()
                         conn.authenticate("XOAUTH2", lambda x: _xoauth2_bytes(imap_user, token))
                     else:
                         conn.login(imap_user, imap_pass)
@@ -6231,17 +6279,18 @@ def setup_email_routes():
         smtp_port, smtp_port_err = _coerce_port(body.get("smtp_port"), 465)
         if smtp_host and smtp_port_err:
             smtp_result = {"ok": False, "error": smtp_port_err}
-        elif oauth_provider == "google" and smtp_host and _normalized_mail_host(smtp_host) != _GOOGLE_OAUTH_SMTP_HOST:
-            smtp_result = {"ok": False, "error": "Google OAuth SMTP requires smtp.gmail.com"}
+        elif oauth_record is not None and smtp_host and not providers.smtp_host_allowed(oauth_record, smtp_host):
+            smtp_result = {"ok": False, "error": providers.smtp_host_error(oauth_record)}
         elif (
-            oauth_provider == "google"
+            oauth_record is not None
             and smtp_host
-            and not _google_oauth_smtp_transport_allowed(
+            and not providers.smtp_transport_allowed(
+                oauth_record,
                 smtp_port,
                 _smtp_security_mode({"smtp_security": body.get("smtp_security"), "smtp_port": smtp_port}),
             )
         ):
-            smtp_result = {"ok": False, "error": "Google OAuth SMTP requires TLS on port 465 or STARTTLS on port 587"}
+            smtp_result = {"ok": False, "error": providers.smtp_transport_error(oauth_record)}
         elif smtp_host:
             smtp_security = _smtp_security_mode({"smtp_security": body.get("smtp_security"), "smtp_port": smtp_port})
             smtp_user = (body.get("smtp_user") or imap_user).strip()
@@ -6277,8 +6326,8 @@ def setup_email_routes():
                                 pass
                             smtp = None
                             raise
-                if oauth_provider == "google":
-                    token = _google_token()
+                if oauth_record is not None:
+                    token = _oauth_token()
                     smtp.ehlo()
                     smtp.auth("XOAUTH2", lambda challenge=None: _xoauth2_raw(smtp_user, token), initial_response_ok=True)
                 else:
@@ -6340,36 +6389,65 @@ def setup_email_routes():
         """
         return {"ok": True, "providers": _oauth_providers(request)}
 
-    @router.get("/oauth/google/authorize")
-    async def google_oauth_authorize(account_id: str = Query(...), request: Request = None, owner: str = Depends(require_user)):
+    def _linkable_provider_or_400(provider_id: str):
+        """The record for a mailbox provider, or a refusal.
+
+        `P18-05`. The path is a parameter now, so this is where a value that
+        does not name a linkable mailbox provider stops — including one that
+        names a *service* record such as `github`, which has no IMAP host to
+        point at and must not be reachable through the mailbox flow.
+        """
+        provider = providers.get(provider_id)
+        if provider is None or provider.id not in providers.mail_provider_ids():
+            raise HTTPException(404, "Unknown mail provider")
+        return provider
+
+    @router.get("/oauth/{provider_id}/authorize")
+    async def provider_oauth_authorize(
+        provider_id: str,
+        account_id: str = Query(...),
+        request: Request = None,
+        owner: str = Depends(require_user),
+    ):
+        """Send the person to the provider's consent screen.
+
+        `P18-05` made the path a parameter. **The URL did not change**: this
+        matches `/api/email/oauth/google/callback`'s sibling exactly as before,
+        which matters because the redirect URI registered in a deployment's
+        Google Cloud Console is a literal string and a rename would have
+        invalidated every existing registration (`Law 1`).
+        """
         import urllib.parse
+        provider = _linkable_provider_or_400(provider_id)
         _assert_owns_account(account_id, owner)
-        client_id = os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "")
-        # P18-01: both, not just the id. The secret is not needed until the
-        # callback, and finding it missing there means failing *after* the
-        # person has already granted Google access to their mailbox.
-        if not _google_oauth_configured():
+        # P18-01: both halves, not just the id. The secret is not needed until
+        # the callback, and finding it missing there means failing *after* the
+        # person has already granted access to their mailbox.
+        if not providers.is_configured(provider):
             raise HTTPException(
                 400,
-                "Google sign-in is not set up on this deployment — set "
-                "GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET in .env and restart",
+                f"{provider.label} sign-in is not set up on this deployment — set "
+                f"{providers.client_id_env(provider)} and "
+                f"{providers.client_secret_env(provider)} in .env and restart",
             )
-        redirect_uri = _google_redirect_uri(request)
+        redirect_uri = _provider_redirect_uri(provider, request)
         state = make_oauth_state(account_id, owner)
-        params = urllib.parse.urlencode({
-            "client_id": client_id,
+        params = dict(provider.authorize_params or ())
+        params.update({
+            "client_id": providers.client_id(provider),
             "redirect_uri": redirect_uri,
             "response_type": "code",
-            "scope": "https://mail.google.com/ email",
-            "access_type": "offline",
-            "prompt": "consent",
+            "scope": providers.scope_string(provider),
             "state": state,
         })
         from fastapi.responses import RedirectResponse as _RR
-        return _RR(f"https://accounts.google.com/o/oauth2/v2/auth?{params}")
+        return _RR(
+            f"{providers.authorize_url(provider)}?{urllib.parse.urlencode(params)}"
+        )
 
-    @router.get("/oauth/google/callback")
-    async def google_oauth_callback(
+    @router.get("/oauth/{provider_id}/callback")
+    async def provider_oauth_callback(
+        provider_id: str,
         code: str = Query(None),
         state: str = Query(None),
         error: str = Query(None),
@@ -6377,8 +6455,13 @@ def setup_email_routes():
     ):
         import urllib.parse
         from fastapi.responses import RedirectResponse as _RR
+        provider = providers.get(provider_id)
+        if provider is None or provider.id not in providers.mail_provider_ids():
+            return _RR("/?section=integrations&email_oauth_error=unknown_provider")
         if error:
-            return _RR("/?section=integrations&email_oauth_error=google_error")
+            return _RR(
+                f"/?section=integrations&email_oauth_error={provider.id}_error"
+            )
         if not code or not state:
             return _RR("/?section=integrations&email_oauth_error=missing_code")
         state_data = verify_oauth_state(state)
@@ -6386,41 +6469,65 @@ def setup_email_routes():
             return _RR("/?section=integrations&email_oauth_error=invalid_state")
         account_id = state_data.get("a", "")
         owner = state_data.get("o", "")
-        client_id = os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "")
-        client_secret = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET", "")
-        redirect_uri = _google_redirect_uri(request)
+        redirect_uri = _provider_redirect_uri(provider, request)
+        form = {
+            "code": code,
+            "client_id": providers.client_id(provider),
+            "redirect_uri": redirect_uri,
+            "grant_type": "authorization_code",
+        }
+        client_secret = providers.client_secret(provider)
+        if client_secret:
+            form["client_secret"] = client_secret
         import httpx as _httpx
         try:
-            resp = _httpx.post("https://oauth2.googleapis.com/token", data={
-                "code": code,
-                "client_id": client_id,
-                "client_secret": client_secret,
-                "redirect_uri": redirect_uri,
-                "grant_type": "authorization_code",
-            }, timeout=10)
+            resp = _httpx.post(
+                providers.token_url(provider),
+                data=form,
+                # Some providers answer the token endpoint with form-encoded
+                # data unless asked otherwise — GitHub is the documented case.
+                # Asking for JSON costs nothing where it is already the default.
+                headers={"Accept": "application/json"},
+                timeout=10,
+            )
             resp.raise_for_status()
             data = resp.json()
         except Exception:
-            logger.warning("Google token exchange failed")
+            logger.warning("%s token exchange failed", provider.label)
             return _RR("/?section=integrations&email_oauth_error=token_exchange_failed")
         access_token = data.get("access_token", "")
         refresh_token = data.get("refresh_token", "")
         if not access_token or not refresh_token:
-            logger.warning("Google token exchange omitted required offline credentials")
+            logger.warning(
+                "%s token exchange omitted required offline credentials",
+                provider.label,
+            )
             return _RR("/?section=integrations&email_oauth_error=token_exchange_failed")
         expiry = str(int(time.time()) + data.get("expires_in", 3600))
-        # Fetch the email address from userinfo so we can auto-fill imap_user.
-        email_addr = ""
-        display_name = ""
-        try:
-            ui = _httpx.get("https://www.googleapis.com/oauth2/v1/userinfo",
-                            headers={"Authorization": f"Bearer {access_token}"}, timeout=10)
-            if ui.is_success:
-                ui_data = ui.json()
-                email_addr = ui_data.get("email", "")
-                display_name = ui_data.get("name", "")
-        except Exception:
-            pass
+        # The verified address, from wherever this provider keeps it.
+        #
+        # `P18-05`. Google answers a userinfo endpoint. Microsoft cannot: Entra
+        # will not issue one token covering Graph *and* the
+        # `https://outlook.office.com/…` resource scopes IMAP and SMTP need, so
+        # the address comes from the `id_token` that `openid email profile`
+        # returns alongside them. This is not a cosmetic difference — the value
+        # is what the ownership check below compares against, so reading it from
+        # the wrong place means reading nothing, which fails that check closed.
+        userinfo = None
+        if provider.identity_source == providers.IDENTITY_USERINFO and provider.userinfo_url:
+            try:
+                ui = _httpx.get(
+                    providers.resolve_url(provider, provider.userinfo_url),
+                    headers={"Authorization": f"Bearer {access_token}"},
+                    timeout=10,
+                )
+                if ui.is_success:
+                    userinfo = ui.json()
+            except Exception:
+                pass
+        claims = providers.identity_claims(provider, data, userinfo)
+        email_addr = providers.identity_email(provider, claims)
+        display_name = providers.identity_name(provider, claims)
         from core.database import SessionLocal, EmailAccount
         from src.secret_storage import encrypt as _enc
         db = SessionLocal()
@@ -6435,13 +6542,9 @@ def setup_email_routes():
 
             # A reconnect must prove that the token belongs to the mailbox
             # already configured on this row. Otherwise authenticating a
-            # different Google account leaves the saved IMAP/SMTP usernames
-            # paired with credentials for another identity.
-            verified_email = (
-                email_addr.strip().casefold()
-                if isinstance(email_addr, str)
-                else ""
-            )
+            # different account leaves the saved IMAP/SMTP usernames paired
+            # with credentials for another identity.
+            verified_email = email_addr.strip().casefold() if isinstance(email_addr, str) else ""
             configured_logins = {
                 value.strip().casefold()
                 for value in (row.imap_user or "", row.smtp_user or "")
@@ -6451,20 +6554,21 @@ def setup_email_routes():
                 login != verified_email for login in configured_logins
             ):
                 logger.warning(
-                    "Google OAuth mailbox identity verification failed for account %s",
+                    "%s OAuth mailbox identity verification failed for account %s",
+                    provider.label,
                     account_id,
                 )
                 return _RR("/?section=integrations&email_oauth_error=identity_verification_failed")
 
-            row.oauth_provider = "google"
+            row.oauth_provider = provider.id
             row.oauth_access_token = _enc(access_token)
             row.oauth_refresh_token = _enc(refresh_token)
             row.oauth_token_expiry = expiry
-            # Auto-fill Google IMAP/SMTP settings if not already configured.
+            # Auto-fill this provider's IMAP/SMTP settings if not configured.
             if not row.imap_host:
-                row.imap_host = _GOOGLE_OAUTH_IMAP_HOST
-                row.imap_port = 993
-                row.imap_starttls = False
+                row.imap_host = provider.mail.imap_host
+                row.imap_port = provider.mail.imap_port
+                row.imap_starttls = provider.mail.imap_starttls
             if not row.smtp_host:
                 # P18-07. The port and the security mode are set together
                 # because they were not, and the pair they produced is one this
@@ -6472,17 +6576,17 @@ def setup_email_routes():
                 # `"ssl"` (core/database.py:416, and `_smtp_security_mode`
                 # returns `ssl` for the 465 default the create endpoint uses),
                 # so an account whose SMTP host was blank came out of this
-                # branch as **SSL on port 587** — and
-                # `_google_oauth_smtp_transport_allowed` permits only
-                # (465, ssl) or (587, starttls). `smtplib.SMTP_SSL` against 587
-                # does not negotiate; it hangs until the socket timeout and
-                # reports as a connection failure, which reads like a firewall.
-                # Reachable before `P18-07` by anyone who linked an account
-                # with no SMTP host typed, and reachable *by default* once
-                # linking requires typing nothing.
-                row.smtp_host = _GOOGLE_OAUTH_SMTP_HOST
-                row.smtp_port = 587
-                row.smtp_security = "starttls"
+                # branch as **SSL on port 587** — and the transport guard
+                # permits only the pairs the record lists. `smtplib.SMTP_SSL`
+                # against 587 does not negotiate; it hangs until the socket
+                # timeout and reports as a connection failure, which reads like
+                # a firewall. Reachable before `P18-07` by anyone who linked an
+                # account with no SMTP host typed, and reachable *by default*
+                # once linking requires typing nothing. The record's first
+                # transport pair is the default for exactly this reason.
+                row.smtp_host = provider.mail.smtp_host
+                row.smtp_port = provider.mail.smtp_port
+                row.smtp_security = provider.mail.smtp_security
             if email_addr:
                 if not row.imap_user:
                     row.imap_user = email_addr
