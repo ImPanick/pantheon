@@ -2,8 +2,27 @@
 """
 memory_server.py
 
-MCP server exposing memory management (list, add, edit, delete, search).
-Imports MemoryManager and MemoryVectorStore from the Pantheon codebase.
+Standalone MCP server exposing memory management (list, add, edit, delete,
+search). Imports MemoryManager and MemoryVectorStore from the Pantheon
+codebase.
+
+**Pantheon does not spawn this server** (`B67`, `D-2026-09-14-01`). It was in
+`src/builtin_mcp.py:_BUILTIN_SERVERS` and connected on every startup, and
+nothing could ever call it: `manage_memory` dispatches in-process through
+`dispatch_ai_tool` -> `do_manage_memory`, has no `_MCP_TOOL_MAP` entry, and no
+`mcp__*` name is in `TOOL_TAGS`. Measured on the owner's deployment, the tool
+was offered 22 times and called 0.
+
+Routing to it instead would have been worse, not merely equal. The main
+process builds its own `MemoryVectorStore` at `src/app_initializer.py:65` and
+reads it during a turn; a write performed here updates *this* process's index,
+and the app would not see it until a reload.
+
+The file is kept and stays supported because it works on its own terms: point
+any MCP client at `python mcp_servers/memory_server.py` and you get the five
+actions against the same store on disk. Set `PANTHEON_MCP_MEMORY_OWNER` when
+the store is owner-scoped — this server has no session to infer an owner from,
+and refuses rather than guessing.
 """
 
 import asyncio

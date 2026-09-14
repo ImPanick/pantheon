@@ -67,12 +67,38 @@ def _find_npx() -> str:
 # execution (src/tool_execution.py:_direct_fallback). Those trivial subprocess
 # wrappers are gone.
 #
-# image_gen / memory / rag / email still run as stdio MCP servers — each
-# carries hundreds of LOC of unique IMAP / HTTP / manager logic not worth
-# duplicating into the native path right now.
+# image_gen / rag / email still run as stdio MCP servers — each carries
+# hundreds of LOC of unique IMAP / HTTP / manager logic not worth duplicating
+# into the native path right now.
+#
+# **`memory` was here and is not, and the reason is a correctness one rather
+# than a tidiness one** (`B67`, `D-2026-09-14-01`). `manage_memory` dispatches
+# **in-process** through `dispatch_ai_tool` -> `do_manage_memory`; it has no
+# `_MCP_TOOL_MAP` entry and no `mcp__*` name in `TOOL_TAGS`, so nothing could
+# reach `mcp__memory__manage_memory` by any path. Connecting it spawned a
+# subprocess that built a second `MemoryVectorStore` — an embedding model in
+# RAM — and held it for the process lifetime to serve zero calls. On the
+# owner's deployment the tool was offered 22 times and called 0 (`P17-08`).
+#
+# **`B66`'s answer does not transfer, and that is the interesting part.** There
+# the fix was to ROUTE `manage_rag` to its server, because the in-process form
+# was a third, smaller implementation missing the action the prompt asked for.
+# Here the two are identical in surface — the same five actions and the same
+# four properties, the prose descriptions differing in wording only — so
+# routing buys nothing, and it would cost something real:
+# `src/app_initializer.py:65` builds a `MemoryVectorStore` in THIS process and
+# holds it for the process lifetime, and retrieval reads it during a turn. A
+# write performed in the subprocess updates the subprocess's index; this
+# process's does not learn about it. Memory added during a turn would be
+# invisible to retrieval until a reload. That is a regression, not a latency
+# trade.
+#
+# The file stays. `mcp_servers/memory_server.py` is a working standalone MCP
+# server and anybody may point a client at it — what changed is that Pantheon
+# no longer spawns one nothing can call (`Law 1`: no capability a person can
+# reach today stops working).
 _BUILTIN_SERVERS = {
     "image_gen":  ("mcp_servers/image_gen_server.py",  "Built-in: Image Generation"),
-    "memory":     ("mcp_servers/memory_server.py",     "Built-in: Memory"),
     "rag":        ("mcp_servers/rag_server.py",        "Built-in: RAG"),
     "email":      ("mcp_servers/email_server.py",      "Built-in: Email"),
 }

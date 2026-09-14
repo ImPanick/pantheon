@@ -68,16 +68,15 @@ sys.path.insert(0, str(ROOT))
 
 # A connected built-in server whose tools nothing routes to, with the reason.
 # Not a ratchet: a ratchet with one entry is a place to hide the second.
-SHADOWED_ON_PURPOSE = {
-    "memory": (
-        "`B67`. `manage_memory` is in `TOOL_TAGS` and dispatches in-process to "
-        "`do_manage_memory` via `dispatch_ai_tool`, so the connected `memory` "
-        "server never serves a call — it holds a second `MemoryVectorStore` "
-        "client in a second process for nothing. Filed rather than fixed here "
-        "because the fix is either a subtraction (`Law 1`) or a live change to "
-        "the Brain's write path, and neither belongs in a checker's landing."
-    ),
-}
+#
+# **Empty since `B67` closed** (`D-2026-09-14-01`). Its one entry was `memory`,
+# and the entry existed because this checker found the defect and a checker's
+# landing is the wrong place to fix one. The fix was not to route the tool —
+# the in-process and server forms are identical in surface, and routing would
+# have split the vector index across two processes — but to stop connecting a
+# server nothing could call. So the rule below now has nothing to forgive,
+# which is the state an exemption table should be in.
+SHADOWED_ON_PURPOSE = {}
 
 
 def _module(rel: str) -> ast.Module:

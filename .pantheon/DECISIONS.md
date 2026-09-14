@@ -1620,3 +1620,90 @@ of all of it, per-turn and off by default.
 **What would reopen it.** Any path by which the rung starts gating capability rather than approval.
 The moment a rung decides *what* rather than *who is asked*, the agent writing its own is a
 different question and this answer does not cover it.
+
+---
+
+## D-2026-09-14-01 — the `memory` server stops being spawned, and keeps working
+
+`B67` set its own bar: *"either `manage_memory` routes to the server or the server stops being
+connected, and the reason is written down."* This is the reason.
+
+**It stops being connected.** `src/builtin_mcp.py` goes from four built-in servers to three.
+
+### Why the answer is not `B66`'s answer
+
+`B66` was the same shape and got the opposite verdict, so the difference is the whole argument.
+There, `manage_rag` was *named twice in the system prompt* as the place to offload a large tool
+result, the in-process form was a **third, smaller implementation** missing the action the prompt
+asked for, and routing to the server gave the agent the capability the prompt already promised.
+
+Here the two forms are the same size. Both expose `list`, `add`, `edit`, `delete`, `search`; both
+take `action`, `text`, `memory_id`, `category`; the prose descriptions differ in wording and in
+nothing else. So routing gains no capability — and it **costs** one.
+
+`src/app_initializer.py:65` builds a `MemoryVectorStore` in the main process and holds it for the
+process lifetime; retrieval reads that object during a turn. A write that went to the subprocess
+would update the subprocess's index, and this process's index would not learn about it until a
+reload. Memory added mid-conversation would be invisible to the retrieval that is the point of
+having it. **Routing would have converted dead weight into a stale read** — the strictly worse of
+the two ways to be wrong, because dead weight is measurable and a stale index is not.
+
+### What was actually being paid for
+
+`_ensure_init` builds `MemoryManager` *and* a `MemoryVectorStore` on the first call — and the first
+call never came, so in the ordinary case the subprocess sat at idle holding an import of
+`src.memory` and nothing else. The cost is a spawned Python process per startup, its imports, and a
+connection slot in `McpManager`. Small, and paid every single start, for a name no code path could
+produce: `manage_memory` is in `TOOL_TAGS` and dispatches through `dispatch_ai_tool`; there is no
+`_MCP_TOOL_MAP` entry and no `mcp__*` name in any tag set, so `mcp__memory__manage_memory` was
+unreachable by construction rather than by accident.
+
+`P17-08`'s run on the owner's deployment agrees from the other side: **offered 22 times, called 0.**
+That figure is corroboration and not the argument — the argument is readable in the dispatch chain,
+which matters because a zero can also mean *"nobody wanted it"* and here it means *"nobody could."*
+
+### `D-2026-09-10-03` predicted this, and the prediction is the point
+
+That decision's rule — *a capability is an MCP server when it must run in its own process* — was
+tested against the four servers and scored 3 of 4, with `memory` the miss it explicitly named as a
+**placement** error rather than a behaviour one. It is now not a miss. The rule has since predicted
+one defect and mispredicted none, which is a thin record but a real one.
+
+**`image_gen` is the remaining miss and is deliberately left alone.** The rule says native: 185
+lines, no state of its own, one `httpx` call and a file write. But `generate_image` **is reachable**
+— it has an `_MCP_TOOL_MAP` entry — so disconnecting it removes a working capability, which `Law 1`
+forbids, and folding it into the native path is a rewrite of a thing that works. It is a tidiness
+row and it is not this row. The distinction that decides both: **`memory` was disconnected because
+nothing could call it, not because the rule disliked where it sat.**
+
+### The file stays, and stays supported
+
+`Law 1` is *we add, never subtract*, and nothing a person can reach today stops working:
+`mcp_servers/memory_server.py` was never reachable through Pantheon, and remains a working
+standalone MCP server for any client pointed at it. Its module docstring now says so, says Pantheon
+no longer spawns it, and says what `PANTHEON_MCP_MEMORY_OWNER` is for — because a server that used
+to be started for you and now is not needs to tell the next reader how to start it.
+
+### The list of built-in servers was in two places, and removing one entry proved it
+
+Taking `memory` out of `_BUILTIN_SERVERS` left `McpManager.is_builtin` — a **literal set** thirty
+lines long in another module — still answering `True` for it. Two spellings of one list, found by
+changing one of them.
+
+**Saying `True` there mutes a server.** Built-in Python servers are skipped from
+`get_all_openai_schemas` and from `get_tool_descriptions_for_prompt`, which is the mechanism that
+made `mcp__memory__manage_memory` unreachable in the first place. So an operator registering *their
+own* server under the id `memory` — and that is the id the canonical upstream memory server uses, so
+it is a likely collision rather than a contrived one — would have had its tools dropped from both
+call channels with no error in either. That is `B66`'s failure mode, arriving through a stale
+literal instead of a missing tag.
+
+`is_builtin` now reads `_BUILTIN_SERVERS`. The `builtin_` prefix test stays for the NPX servers,
+whose ids all carry it. No checker was added: a derived value has nothing to compare against, and a
+rule that exists twice is what `Law 14` is about.
+
+### What would reopen this
+
+The Brain's live write path moving out of the main process. If `MemoryVectorStore` stops being an
+object `app_initializer` holds, the stale-index cost disappears and routing becomes a free choice
+again rather than a regression.

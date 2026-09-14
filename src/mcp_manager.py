@@ -640,13 +640,27 @@ class McpManager:
         return disabled_map, qualified
 
     def is_builtin(self, server_id: str) -> bool:
-        """Check if a server is a built-in (auto-registered) server."""
-        return server_id.startswith("builtin_") or server_id in {
-            "image_gen",
-            "memory",
-            "rag",
-            "email",
-        }
+        """Check if a server is a built-in (auto-registered) server.
+
+        Derived from `_BUILTIN_SERVERS`, never restated. This set used to be a
+        literal here and it held `"memory"` for a day after `B67` removed the
+        server from `builtin_mcp.py` — two spellings of one list, which is the
+        `Law 13` shape. The divergence was not cosmetic: saying `True` here
+        **mutes a server**. Built-in Python servers are skipped from the
+        function schemas (`get_all_openai_schemas`) and from the prompt's MCP
+        descriptions (`get_tool_descriptions_for_prompt`), and skipped by
+        `task_scheduler`'s check-in discovery. So an operator registering their
+        own server under a stale id — and `memory` is the id of the canonical
+        upstream memory server, so this is a likely id, not a contrived one —
+        would have had its tools hidden from both call channels with no error
+        anywhere, which is exactly how `B66` went unnoticed.
+
+        NPX built-ins keep the prefix test: their ids all start `builtin_`.
+        """
+        if server_id.startswith("builtin_"):
+            return True
+        from src.builtin_mcp import _BUILTIN_SERVERS
+        return server_id in _BUILTIN_SERVERS
 
     def get_server_status(self, server_id: str) -> Dict:
         """Get connection status for a server."""
