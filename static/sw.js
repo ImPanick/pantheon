@@ -75,11 +75,16 @@ const PRECACHE = [
   '/static/js/compare/index.js?v=20260829trustladder1',
   '/static/js/theme.js',
   '/static/js/censor.js',
+  // `B58`. The three entries below carried no query while every importer used
+  // one. `caches.match(e.request)` has no `ignoreSearch`, so a bare entry can
+  // never answer a versioned request: they were fetched at install and served
+  // to nothing. Third recurrence of what `P3-11` and `B54` each fixed, and the
+  // first one a checker can see.
   '/static/js/settings.js?v=20260815approvalsave1',
-  '/static/js/admin.js',
+  '/static/js/admin.js?v=20260716openrouter3',
   '/static/js/init.js?v=20260715freshroot3',
   '/static/js/slashCommands.js?v=20260815approvalsave1',
-  '/static/js/emailInbox.js',
+  '/static/js/emailInbox.js?v=20260815approvalsave1',
   '/static/js/emailLibrary/utils.js',
   '/static/js/emailLibrary/signatureFold.js',
   '/static/js/emailLibrary/state.js',
@@ -89,7 +94,7 @@ const PRECACHE = [
   '/static/js/calendar/utils.js',
   '/static/js/group.js',
   '/static/js/keyboard-shortcuts.js',
-  '/static/js/sidebar-layout.js',
+  '/static/js/sidebar-layout.js?v=20260715startupclean',
   // `B54`. These three load from a <script type="module"> tag in index.html and
   // were never in this list, so offline they 404 and the boot graph stops.
   '/static/js/a11y.js',

@@ -358,11 +358,11 @@ CLAIMS: Tuple[Claim, ...] = (
     Claim(
         id="tests",
         area="Verification apparatus",
-        headline="Test files 792 -> 940, and a suite of 9,029 passing with nothing red.",
+        headline="Test files 792 -> 943, and a suite of 9,057 passing with nothing red.",
         stock="792 test files.",
-        pantheon="940 test files, 9,029 tests passing, 0 failing.",
+        pantheon="943 test files, 9,057 tests passing, 0 failing.",
         before="792 test files",
-        after="940 test files · 9,029",
+        after="943 test files · 9,057",
         provenance="diffed",
         repro=f"git ls-tree -r --name-only {FORK_POINT} | grep -c '^tests/test_.*\\.py$' && python3 -m pytest -q",
         evidence=("tests",),
@@ -788,13 +788,25 @@ CLAIMS: Tuple[Claim, ...] = (
         provenance="measured",
         repro="python3 .pantheon/check-specifiers.py --max 0",
         evidence=(".pantheon/check-specifiers.py",),
-        rows=("P3-11",),
+        rows=("P3-11", "B54", "B58"),
         how=(
             "The same file reached under `./x.js`, `/static/js/x.js` and `x.js` is "
             "three modules to a browser, with three copies of its module state. 42 "
             "specifier rewrites across 27 files, plus **eight service-worker precache "
             "entries that had never matched a request URL** — cached on every install "
-            "and never once served."
+            "and never once served.\n\n"
+            "**The `0` was restated on 2026-09-14 and it had been true of a narrower "
+            "question than the headline asked** (`B58`). The checker read static "
+            "imports, dynamic imports and `<script src>` — four of the six places a "
+            "URL is written here — and had no pattern for `<link rel=\"modulepreload\">` "
+            "or for the service worker's own precache list. Widening it to both found "
+            "**four more forked assets sitting in the blind spots**: `chat.js` "
+            "preloaded at one version and executed at another, so 372 KB was fetched "
+            "twice on every cold load; and `admin.js`, `emailInbox.js` and "
+            "`sidebar-layout.js` precached bare while every importer used a version, "
+            "which is three more entries that could never be served — the same defect "
+            "as the eight above, recurring for the third time. 177 specifiers in "
+            "scope, 0 forked. A ratchet is only as honest as the set it counts."
         ),
     ),
 

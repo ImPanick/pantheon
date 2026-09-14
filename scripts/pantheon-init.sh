@@ -183,7 +183,9 @@ if [[ "$MODE" == "apply" ]]; then
   python3 -m py_compile app.py routes/*.py src/*.py 2>&1 | head -5 || warn "    py_compile reported problems — read them."
   say "    JS syntax (changed modules):"
   git diff --name-only HEAD 2>/dev/null | grep '\.js$' | head -60 | while read -r f; do
-    [[ -f "$f" ]] && node --check "$f" 2>&1 | head -2
+    # B10: piped, not by path — see .pantheon/AGENTS.md. A path lets node pick
+    # CommonJS for anything outside static/js/ and then pass it regardless.
+    [[ -f "$f" ]] && { node --input-type=module --check < "$f" 2>&1 | head -2; }
   done || true
   say ""
   say "    Remaining case-insensitive matches outside attribution files:"

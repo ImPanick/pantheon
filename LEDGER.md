@@ -39,7 +39,7 @@ are the numbers most likely to be quoted and least able to carry the weight.
 | The first scored run found three defects, which is what it was built for. | `0 measured` | **`3 defects on the first run`** | `measured` |
 | Ten thousand memories, under a millisecond a query, no service running. | `a service, or nothing` | **`0.82ms at 10,000 memories (15MB of index)`** | `measured` |
 | Eighteen checkers in CI, each one built from a defect that actually shipped. | `0` | **`18`** | `counted` |
-| Test files 792 -> 940, and a suite of 9,029 passing with nothing red. | `792 test files` | **`940 test files · 9,029`** | `diffed` |
+| Test files 792 -> 943, and a suite of 9,057 passing with nothing red. | `792 test files` | **`943 test files · 9,057`** | `diffed` |
 | One tracker, checked by a script, after it was silently wrong by nineteen. | `untracked` | **`370 rows, every one recounted against its section`** | `measured` |
 | Agents can run commands on the host. 52 rules they cannot reach say what never runs. | `no host reach` | **`52 compiled-in rules · 0 bypasses`** | `counted` |
 | Five of the 52 rules aren't about danger. They keep the other 47 enforceable. | `—` | **`5 opaque · 47 nuclear`** | `counted` |
@@ -202,13 +202,13 @@ python3 .pantheon/release-gate.py --fast
 
 Argued in: `P3-13`, `P3-14`, `P3-17`, `P3-23`, `B74`, `D-2026-09-10-03`.
 
-### Test files 792 -> 940, and a suite of 9,029 passing with nothing red.
+### Test files 792 -> 943, and a suite of 9,057 passing with nothing red.
 
-**`792 test files` → `940 test files · 9,029`**  ·  provenance **`diffed`**
+**`792 test files` → `943 test files · 9,057`**  ·  provenance **`diffed`**
 
 **Odysseus:** 792 test files.
 
-**Pantheon:** 940 test files, 9,029 tests passing, 0 failing.
+**Pantheon:** 943 test files, 9,057 tests passing, 0 failing.
 
 **How we got there.** Every row in this fork's tracker lands with tests **and** mutations: the change is made, then the code is deliberately broken in a dozen ways to check the new tests actually notice. Mutation runs have repeatedly found that a passing test was proving nothing — a window that matched the next block's code, a scan satisfied by a name inside `if False:`. **Proximity is not reachability**, and only a mutation run says so. **The suite carried 14 standing failures for the fork's whole life and now carries none** — and the accounting is worth more than the number: eight were this container missing dependencies the project already declares, so they were never defects; three were test stubs left behind by a `headers=` argument, each raising `TypeError` into a broad `except` so the probe returned `None` and the assertion read as a logic bug; one was a rule written as an allowlist of one name instead of the property it meant; and two were pinning upstream's README and wordmark against a decision this fork had already recorded.
 
@@ -492,11 +492,13 @@ Argued in: `P3-13`, `P3-14`, `P3-15`.
 
 **How we got there.** The same file reached under `./x.js`, `/static/js/x.js` and `x.js` is three modules to a browser, with three copies of its module state. 42 specifier rewrites across 27 files, plus **eight service-worker precache entries that had never matched a request URL** — cached on every install and never once served.
 
+**The `0` was restated on 2026-09-14 and it had been true of a narrower question than the headline asked** (`B58`). The checker read static imports, dynamic imports and `<script src>` — four of the six places a URL is written here — and had no pattern for `<link rel="modulepreload">` or for the service worker's own precache list. Widening it to both found **four more forked assets sitting in the blind spots**: `chat.js` preloaded at one version and executed at another, so 372 KB was fetched twice on every cold load; and `admin.js`, `emailInbox.js` and `sidebar-layout.js` precached bare while every importer used a version, which is three more entries that could never be served — the same defect as the eight above, recurring for the third time. 177 specifiers in scope, 0 forked. A ratchet is only as honest as the set it counts.
+
 ```
 python3 .pantheon/check-specifiers.py --max 0
 ```
 
-Argued in: `P3-11`.
+Argued in: `P3-11`, `B54`, `B58`.
 
 ### 440 silent exception handlers, 12 of them explained. The mutating ones are now zero.
 

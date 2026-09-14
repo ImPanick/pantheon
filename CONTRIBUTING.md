@@ -51,7 +51,10 @@ Run the smallest relevant checks for your change:
 ```bash
 python -m pytest
 python -m py_compile app.py routes/*.py src/*.py
-node --check static/js/<file-you-changed>.js
+# Redirect the file in rather than passing a path: `node --check <path>` picks
+# the module type from the nearest package.json and silently passes anything
+# with an `import` in it when that resolves to CommonJS.
+node --input-type=module --check < <file-you-changed>
 ```
 
 For Docker-related changes:

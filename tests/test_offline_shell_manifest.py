@@ -76,11 +76,19 @@ def test_the_comparison_is_exact_and_not_forgiving_of_query_strings():
 
 
 def test_the_service_worker_still_matches_requests_including_their_query():
-    # The reason exactness matters. `cache.match(request)` compares full URLs
-    # unless `ignoreSearch` is passed; if someone adds that option, every entry
-    # in this file becomes optional and the tests above stop meaning anything.
+    """The reason exactness matters. `cache.match(request)` compares full URLs
+    unless `ignoreSearch` is passed; if someone adds that option, every entry in
+    this file becomes optional and the tests above stop meaning anything.
+
+    **Comments are stripped first, and that is not cosmetic** (`Law 20`). This
+    read the raw file, so it failed on `B58`'s comment *explaining why there is
+    no `ignoreSearch`* — a test that greps a file cannot tell a setting from a
+    sentence about the setting. It now looks at the code.
+    """
     src = _SW.read_text(encoding="utf-8")
-    assert "ignoreSearch" not in src, (
+    code = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
+    code = re.sub(r"(?m)^\s*//.*$", "", code)
+    assert "ignoreSearch" not in code, (
         "sw.js now ignores query strings when matching; the precache list no "
         "longer has to be exact, so revisit B54 and these tests together"
     )

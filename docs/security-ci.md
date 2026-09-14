@@ -74,7 +74,21 @@ This makes the **Merge** button refuse to work until the gating checks pass.
    - `dependency-review (PR gate)`
 
    The first two come from the correctness CI (`ci.yml`); the rest are this
-   security suite. Leave pytest, pip-audit, Trivy, and CodeQL unchecked so they
+   security suite.
+
+   > **`JS syntax (node --check)` was a required check that checked nothing on
+   > the largest module in the app, from the fork baseline until 2026-09-14
+   > (`B10`).** The step ran `node --check <path>`, and node resolves module
+   > type from the nearest `package.json`; the root one declares no `"type"`,
+   > so `static/app.js` — 4,641 lines — parsed as CommonJS, and node's
+   > module-syntax detection then retried the failed parse as ESM and did not
+   > re-check. Any file containing an `import` passed unconditionally,
+   > including one whose entire body is `this is not javascript at all !!! ( [
+   > {`. Measured on node 20 and 22. A required status check is the strongest
+   > assurance this repo offers, which is what made this the worst place for
+   > it to be hollow. The step now calls `.pantheon/release-gate.py`'s own
+   > `_node_check`, which pipes each file in with `--input-type=module`, and
+   > covers 187 files rather than 173. Leave pytest, pip-audit, Trivy, and CodeQL unchecked so they
    stay advisory.
 7. Also enable **Require a pull request before merging** and **Require review
    from Code Owners** (this uses the `.github/CODEOWNERS` file so every change

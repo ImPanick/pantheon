@@ -373,7 +373,12 @@ A file-wide substring is acceptable for one thing only: proving a string is *abs
 □ The task's own `Verify:` line passes
 □ `python -m pytest -q` passes, or every failure is pre-existing and named
 □ `python -m py_compile app.py routes/*.py src/*.py` passes
-□ `node --check static/js/<each file you touched>.js` passes
+□ `node --input-type=module --check < <each .js/.mjs you touched>` passes.
+  **Redirect the file in; do not pass a path** (`B10`). `node --check <path>`
+  resolves module type from the nearest `package.json`, so anything outside
+  `static/js/` parses as CommonJS, and node then retries the failed parse as
+  ESM and does not re-check — a file of pure garbage passes as long as it
+  contains an `import`. That is how CI checked nothing on `static/app.js`.
 □ You ran the app and looked at it (any visual change)
 □ The cache-buster is bumped if you touched a static asset
 □ ROADMAP.md is updated and `python3 .pantheon/check-tracker.py` passes   ← Law 4

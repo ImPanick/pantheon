@@ -23,11 +23,29 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 # stub sqlalchemy/core.database at module scope with `if mod not in sys.modules`,
 # which fires during collection. If the real module hasn't been imported yet,
 # the stub wins and contaminates every subsequent test that needs the real ORM.
+#
+# `src.agent_tools` is here because of `B18`, and it is the one name in every
+# stub list that this block never carried. Six files stub it at module scope
+# (`test_tool_output_prompt_injection.py:34`, `test_prompt_injection_audit.py:30`,
+# `test_skill_index_prompt_injection.py:38`, `test_llm_core_sanitize_tool_calls.py:29`,
+# `test_sanitize_preserves_reasoning.py:19`, `test_llm_core_reasoning_content_fallback.py:109`),
+# and a `MagicMock` there is not one broken import — `src/agent_loop.py:64-76`,
+# `src/tool_parsing.py:16` and `src/tool_schemas.py:17` bind `TOOL_TAGS`,
+# `ToolBlock` and `parse_tool_blocks` BY VALUE at import, so the mock is baked
+# into three more modules permanently. The full suite never saw it because
+# `tests/test_a_refused_call_leaves_a_trace.py` sorts first in root collection
+# order and imports the real module, which makes every `if mod not in
+# sys.modules` guard downstream dead code. Any subset run — a shard, a `-k`,
+# a `--lf`, a file list — re-arms all six. A subset of the six affected files
+# did not merely fail: `parse_tool_blocks` as a mock never satisfies the agent
+# loop's exit condition, so twelve tests ran to the lifted 100,000-round cap
+# and the process was OOM-killed at 6 GB.
 try:
     import sqlalchemy  # noqa: F401
     import sqlalchemy.orm  # noqa: F401
     import core.database  # noqa: F401
     import src.database
+    import src.agent_tools  # noqa: F401  — B18
 except ImportError:
     pass  # not installed - the stubs below will handle it
 
@@ -195,3 +213,44 @@ def _reset_run_context():
         yield
     finally:
         _clear()
+
+
+# `B18`. The pre-import above defuses the six stubs that exist today; this
+# stops the seventh from being silent. A stub installed at module scope lands
+# during COLLECTION, before the first test runs, so by the time anything fails
+# the cause is several files away and the symptom is a `TypeError` about a
+# `MagicMock` — or, for twelve tests in `test_external_context_tool_gate.py`,
+# a 6 GB OOM kill rather than a failure at all.
+#
+# The check is cheap and it is a real observation, not a grep: a stub has no
+# `__file__`. It passes today because collection ends with every one of these
+# names bound to a real module; if that stops being true the session stops
+# with a sentence naming the module, instead of a mystery in whichever shard
+# happened to run without `test_a_refused_call_leaves_a_trace.py`.
+_MUST_BE_REAL_AFTER_COLLECTION = (
+    "src.agent_tools",
+    "src.tool_parsing",
+    "src.tool_schemas",
+    "core.models",
+    "core.database",
+    "src.database",
+)
+
+
+def pytest_collection_finish(session):
+    import pytest
+
+    stubbed = [
+        name
+        for name in _MUST_BE_REAL_AFTER_COLLECTION
+        if (mod := sys.modules.get(name)) is not None
+        and getattr(mod, "__file__", None) is None
+    ]
+    if stubbed:
+        raise pytest.UsageError(
+            "B18: "
+            + ", ".join(stubbed)
+            + " is a stub after collection. A test module replaced it in "
+            "sys.modules at module scope and nothing put the real one back — "
+            "add it to the pre-import block at the top of tests/conftest.py."
+        )

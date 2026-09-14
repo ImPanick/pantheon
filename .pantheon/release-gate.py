@@ -98,17 +98,40 @@ def _python_files() -> list[str]:
     return [f for f in out.stdout.split() if f]
 
 
+# `B10`. Vendored roots, spelled the way `.pantheon/check-licences.py` spells
+# them: not ours to parse, and some are minified past the point node accepts
+# without a module hint.
+_VENDORED = ("static/lib/", "library/")
+
+
 def _js_files() -> list[str]:
-    out = subprocess.run(["git", "ls-files", "static/js/*.js", "static/*.js"],
+    """Every `.js` and `.mjs` in the tree that is ours.
+
+    This used to be `static/js/*.js` + `static/*.js`, which left the two
+    `.github/scripts/` helpers, six test harnesses and seven `.mjs` files
+    checked by nothing while `docs/security-ci.md` advertised "JS syntax" as a
+    merge-blocking status check. Widening it is free — all thirteen already
+    parse — and it makes the gate's number mean what its name says (`B10`).
+    """
+    out = subprocess.run(["git", "ls-files", "*.js", "*.mjs"],
                          cwd=str(ROOT), capture_output=True, text=True)
-    # Vendored bundles are not ours to parse and some are minified past the
-    # point node will accept without a module hint.
-    return [f for f in out.stdout.split() if f and "/lib/" not in f]
+    return [f for f in out.stdout.split()
+            if f and not any(f.startswith(root) for root in _VENDORED)]
 
 
 def _node_check(files: list[str]) -> tuple[bool, str]:
     """`node --check` cannot read ES modules from a path, so each file is piped
-    in with `--input-type=module`. The same trick the JS tests use."""
+    in with `--input-type=module`. The same trick the JS tests use.
+
+    **The piping is the whole check, not a convenience** (`B10`). Given a PATH,
+    node resolves module type from the nearest `package.json` — and the root
+    one has no `"type"`, so `static/app.js` parses as CommonJS. Node's
+    module-syntax detection then retries the failed CJS parse as ESM and does
+    not re-check, so ANY file containing `import`/`export` passes
+    unconditionally: `node --check static/app.js` returns 0 on a file whose
+    body is `this is not javascript at all !!! ( [ {`. Measured on node 20 and
+    22. CI ran exactly that loop, over a path, and was therefore checking
+    nothing at all on the 4,641-line module it named first."""
     if not shutil.which("node"):
         return True, "node not on PATH — skipped"
     bad = []

@@ -165,3 +165,84 @@ def test_vendored_bundles_are_left_alone():
     files = release_gate._js_files()
     assert files, "no JS files found"
     assert not [f for f in files if "/lib/" in f]
+
+
+# --- `B10`: the check that checked nothing -----------------------------------
+
+
+def test_node_check_rejects_a_module_that_does_not_parse():
+    """The negative case, which had no test and is the whole point of the gate.
+
+    Everything above proves `_node_check` says yes to good files. Nothing
+    proved it says no — and for most of this fork's life the CI step that
+    shared its name said yes to literally any text.
+
+    **The probe lives in `static/`, not `static/js/`, and that is the whole
+    test.** `static/js/package.json` declares `{"type": "module"}`, so a file
+    there parses as ESM however you invoke node — a probe placed inside it
+    passes whether or not the gate pipes. `static/` is governed by the root
+    `package.json`, which declares no type: it is where `static/app.js` lives
+    and the only place the defect is visible. A mutation run found this; the
+    first version of this test put the probe in `static/js/` and could not
+    tell the fixed gate from the broken one.
+    """
+    if not release_gate.shutil.which("node"):
+        pytest.skip("node not on PATH")
+    broken = _REPO / "static" / "_b10_probe_not_javascript.js"
+    broken.write_text("import x from './app.js';\nconst broken = ;\n",
+                      encoding="utf-8")
+    try:
+        ok, detail = release_gate._node_check([str(broken.relative_to(_REPO))])
+    finally:
+        broken.unlink()
+    assert ok is False, detail
+    assert "_b10_probe" in detail
+
+
+def test_passing_a_path_to_node_check_is_what_made_it_a_no_op(tmp_path):
+    """Pins the mechanism, so nobody 'simplifies' the piping back out.
+
+    `node --check <path>` resolves module type from the nearest `package.json`.
+    The repo root declares no `"type"`, so anything outside `static/js/` parses
+    as CommonJS — and node's module-syntax detection retries the failed parse
+    as ESM and does not re-check, which passes ANY text containing an `import`.
+    This test builds that layout in a temp directory and shows both answers.
+    """
+    if not release_gate.shutil.which("node"):
+        pytest.skip("node not on PATH")
+    (tmp_path / "package.json").write_text("{}", encoding="utf-8")
+    garbage = tmp_path / "app.js"
+    garbage.write_text("import x from './nowhere.js';\nthis is not javascript ( [ {\n",
+                       encoding="utf-8")
+
+    by_path = subprocess.run(["node", "--check", str(garbage)],
+                             capture_output=True, text=True, cwd=str(tmp_path))
+    piped = subprocess.run(["node", "--input-type=module", "--check"],
+                           input=garbage.read_text(encoding="utf-8"),
+                           capture_output=True, text=True, cwd=str(tmp_path))
+
+    assert by_path.returncode == 0, "node started rejecting this — re-read B10"
+    assert piped.returncode != 0, "the piped form must still catch it"
+
+
+def test_the_gate_checks_every_js_file_that_is_ours():
+    """`Law 13`. CI kept its own list and it had already drifted — CI's loop
+    named 173 files and never `static/sw.js`, which the gate has always
+    checked. There is one list now and this is the shape of it."""
+    files = set(release_gate._js_files())
+    tracked = subprocess.run(["git", "ls-files", "*.js", "*.mjs"],
+                             cwd=str(_REPO), capture_output=True, text=True)
+    ours = {f for f in tracked.stdout.split()
+            if f and not f.startswith("static/lib/") and not f.startswith("library/")}
+    assert files == ours, sorted(ours ^ files)
+    assert "static/app.js" in files
+    assert "static/sw.js" in files
+
+
+def test_ci_does_not_keep_a_second_list_of_js_files():
+    """Read as data, not grepped for a nice sentence: the step must not build
+    its own glob. If it does, the two lists will disagree again."""
+    step = _CI.read_text(encoding="utf-8").split(
+        "- name: node --check", 1)[1].split("- name:", 1)[0]
+    assert "release-gate.py" in step
+    assert "static/js/**" not in step

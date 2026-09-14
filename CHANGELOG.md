@@ -34,10 +34,17 @@ Forked from `pewdiepie-archdaemon/odysseus` @ `b4d1293` (branch `dev`) on 2026-0
 #### Added
 - `.pantheon/` — the Frontier Elevation programme: roadmap, working agreement,
   do-not-touch list, deferred decisions, and per-area handoff notes.
-- Source link in the UI footer, per AGPL-3.0 §13.
+
+<!-- `B25` / `D-2026-09-08-06`. A line here once read "Source link in the UI
+     footer, per AGPL-3.0 §13." It never shipped. A changelog is what a
+     stranger reads to audit AGPL conformance, so a false compliance claim is
+     worse while this repo is private, not better — nobody can check it. The
+     link is `P0-17`; it is built and left dark against a repository URL that
+     ships empty, and it goes back in this file when it renders. -->
 
 #### Fixed
-_(populated as P1 onward lands)_
+_(populated as P1 onward lands; `B24`, `P1-12` and `P1-14` are in and
+belong here the next time this section is written out.)_
 
 ---
 
