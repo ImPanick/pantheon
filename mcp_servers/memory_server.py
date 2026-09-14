@@ -38,6 +38,7 @@ from mcp.types import Tool, TextContent
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.memory import MemoryStoreUnreadable
+from src.tool_schemas import mcp_tool_schema
 
 server = Server("memory")
 
@@ -134,30 +135,9 @@ def _ensure_init():
 
 @server.list_tools()
 async def list_tools() -> list[Tool]:
-    return [
-        Tool(
-            name="manage_memory",
-            description="Manage the user's memory system: list, add, edit, delete, or search memories.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "action": {
-                        "type": "string",
-                        "enum": ["list", "add", "edit", "delete", "search"],
-                        "description": "The action to perform",
-                    },
-                    "text": {"type": "string", "description": "Memory text (add/edit) or search query (search)"},
-                    "memory_id": {"type": "string", "description": "Memory ID (edit/delete)"},
-                    "category": {
-                        "type": "string",
-                        "enum": ["fact", "event", "contact", "preference"],
-                        "description": "Memory category (add/list filter)",
-                    },
-                },
-                "required": ["action"],
-            },
-        )
-    ]
+    # `B74`. Derived, never retyped — `src/tool_schemas.py` is the one schema
+    # for a tool that is both declared to Pantheon and served over MCP.
+    return [Tool(**mcp_tool_schema("manage_memory"))]
 
 
 @server.call_tool()

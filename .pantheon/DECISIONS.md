@@ -1707,3 +1707,77 @@ rule that exists twice is what `Law 14` is about.
 The Brain's live write path moving out of the main process. If `MemoryVectorStore` stops being an
 object `app_initializer` holds, the stale-index cost disappears and routing becomes a free choice
 again rather than a regression.
+
+---
+
+## D-2026-09-14-02 — the schema register is the source, and the servers derive
+
+`B74` asked for *"one schema per tool name, derived rather than retyped."* Two things had to be
+decided to land that: **which copy wins**, and **what to do with what the losing copy said**.
+
+### Which copy wins, and why there was no choice
+
+`src/tool_schemas.py`. The direction is forced rather than preferred: `mcp_servers/*` already import
+from `src/` and nothing imports the other way, so making the servers authoritative would drag
+`mcp.types` into the core schema register — a runtime dependency on the MCP SDK in the module that
+every tool channel reads, in exchange for nothing.
+
+`mcp_tool_schema(name)` returns `{"name", "description", "inputSchema"}` — `mcp.types.Tool`'s keyword
+arguments — deep-copied, so a server that edits what it gets back cannot reach into the register
+everything else reads. A name with no function schema raises `KeyError` instead of inventing an
+empty one, because the two reasons a name is missing look identical from inside that function: it
+is either a fenced-channel tool that correctly has no schema (`download_attachment`, `search_emails`,
+`generate_image`), or a registration somebody missed. Telling those apart is a question about the
+whole surface, so `.pantheon/check-mcp-schemas.py` answers it and the helper refuses.
+
+### What the losing copy said, which is the part that mattered
+
+The servers' schemas were **not** simply a stale echo. Merging them into the register added three
+parameters and relaxed one false constraint, all of which the handlers already honoured:
+
+| tool | the register gained | already true in the handler |
+|---|---|---|
+| `send_email` | `cc`, `bcc` | `_send_email(cc=…, bcc=…)` |
+| `reply_to_email` | `reply_all` | `_reply_to_email(reply_all=…)` |
+| `read_email` | `message_id`; `uid` stops being required | `_read_email` takes either and errors with neither |
+
+**So the agent could not cc anybody.** The capability worked, the server declared it, and both
+registers the model reads — `FUNCTION_TOOL_SCHEMAS` and the system prompt's `send_email` block —
+named neither `cc` nor `bcc`. That is `B66`'s shape exactly, arriving through a schema written twice
+instead of a tag left out, and it is why this row was worth more than its tidiness framing. The
+prompt was fixed alongside the schema, because for email the prompt **is** the live register: bare
+email fences route to the MCP server through `BUILTIN_EMAIL_TOOLS`, and built-in Python servers are
+skipped from the function schemas, so a parameter added to the schema alone would still have been
+unreachable.
+
+Twenty-one machine-readable `default` values were carried over the same way. They existed only on
+the server side and only in prose here — `"IMAP folder (default: INBOX)"` is a sentence, `"default":
+"INBOX"` is something a client can use.
+
+**Nothing was lost, and that is measured rather than asserted.** The served schemas were captured
+from `git archive HEAD` before the change and compared against the new ones: 19 tools served before
+and after, **no property dropped, no default dropped, no `required` field tightened**, one property
+gained (`list_emails.limit`, which the handler already honoured and the server's schema had never
+mentioned). On the register side: 73 function schemas, same names, nothing lost, three parameters
+gained. `Law 1` holds on a diff, not on a claim.
+
+### Why a checker and not a convention
+
+The same reason as every other checker here. The equality could be restored by hand today and drift
+again tomorrow, so the checker asserts **derivation** as well as equality — a hand-written schema
+that happens to match is a finding, because matching by coincidence is the state this row started
+in. Schemas are compared by **calling** `list_tools()` rather than by reading the file, because
+`email_server` builds its schemas at runtime and a server that builds a schema is still serving one
+(`Law 20`).
+
+### What is deliberately not decided here
+
+**The five email tools with no function schema stay as they are.** `download_attachment`,
+`draft_email`, `draft_email_reply`, `ai_draft_email_reply` and `search_emails` are in `TOOL_TAGS` and
+in `BUILTIN_EMAIL_TOOLS`, so the fenced channel reaches them and the fenced channel carries no
+schema. Giving them function schemas would open the function-call channel for them, which is a
+change in behaviour and not a tidying — `P17-12` is where that belongs.
+
+**What would reopen this.** A server that needs to serve a schema Pantheon should not offer, or
+offer one a server should not serve. There is no such case today; the moment there is, the helper
+needs a way to say so and this decision needs revisiting rather than an exemption table.

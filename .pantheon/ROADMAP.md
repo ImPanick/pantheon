@@ -243,6 +243,32 @@ they are for.*
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
 
+### The agent could not CC anybody
+`4407a61..HEAD`. **382 tracked, 190 done. 0 new phase rows, 0 regressions. `B74` closed; the
+backlog sits outside this tally.**
+Filed as *thirteen schemas spelled twice*, which was too kind a description. Every tool an
+`mcp_servers/*.py` serves that Pantheon also declares carried two hand-maintained copies, and an AST
+comparison said **no pair matched**. Merging them found the drift had already cost capability:
+`send_email` accepted `cc` and `bcc` in the handler and declared them on the server, and **both
+registers the model reads named neither**. Same for `reply_to_email` and `reply_all`. `read_email`
+demanded a `uid` the handler does not require and never mentioned the `message_id` it accepts.
+`B66`'s shape, arriving through a schema written twice instead of a tag left out.
+The prompt was fixed with the schema, because **for email the prompt is the live register**: bare
+email fences route to the MCP server through `BUILTIN_EMAIL_TOOLS` and built-in Python servers are
+skipped from the function schemas, so a parameter added to the schema alone would still have been
+unreachable. Twenty-one machine-readable `default` values came across too — *"IMAP folder (default:
+INBOX)"* is a sentence; `"default": "INBOX"` is something a client can act on.
+One source (`src/tool_schemas.mcp_tool_schema`) and three servers deriving. The direction was forced
+rather than chosen: `mcp_servers/*` already import from `src/`, and the reverse would drag
+`mcp.types` into the register every tool channel reads. **`Law 1` is held on a diff, not a claim** —
+the served schemas were captured from `git archive HEAD` and compared after: 19 tools both sides, no
+property dropped, no default dropped, no `required` tightened, one gained.
+An **eighteenth checker** that asserts *derivation* as well as equality, because a hand-written
+schema that happens to match today is exactly the state this row started in. It compares by calling
+`list_tools()` rather than reading the file — `email_server` builds its schemas at runtime, and a
+server that builds a schema is still serving one (`Law 20`). 9 tests, 9 mutations, all caught,
+including the retyped-but-equal case.
+
 ### A server that was started every morning and could not be called
 `72506f5..HEAD`. **382 tracked, 190 done. 0 new phase rows, 0 regressions. `B67` closed;
 `B74` filed to the backlog, which sits outside this tally.**
@@ -6279,7 +6305,7 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   `Depends:` `P0-13`, which is blocked on a design decision no agent can make. — found by the
   standing-failure sweep — **needs the owner** — agent:`P0`
 
-- [ ] **B74** **Thirteen tool schemas are spelled twice, and the two spellings have already
+- [x] **B74** **Thirteen tool schemas are spelled twice, and the two spellings have already
   drifted.** Found 2026-09-14 while closing `B67`, by measuring rather than reading: every tool an
   `mcp_servers/*.py` serves that Pantheon also declares in `FUNCTION_TOOL_SCHEMAS` carries **two
   hand-maintained schemas**, and an AST comparison of all of them says **not one pair matches**.
@@ -6299,7 +6325,36 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   three servers is the same defect the law names, and the email half needs the spread resolved
   before it can be compared at all. `Verify:` one schema per tool name, derived rather than
   retyped, and a checker that fails when a server's served schema stops matching the function
-  schema of the same name. `Depends:` nothing. — found while closing `B67` — agent:`B67`
+  schema of the same name. **done 2026-09-14.** `D-2026-09-14-02`.
+  `src/tool_schemas.mcp_tool_schema(name)` is the one source and all three servers derive; the
+  direction was forced rather than chosen — `mcp_servers/*` already import from `src/` and the
+  reverse would drag `mcp.types` into the register every tool channel reads.
+  **The row's framing was too kind and the measurement said so.** Merging the servers' copies in
+  added three parameters and relaxed one false constraint, all already honoured by the handlers:
+  `send_email` gained `cc` and `bcc`, `reply_to_email` gained `reply_all`, and `read_email` gained
+  `message_id` while `uid` stopped being required. **So the agent could not cc anybody** — the
+  capability ran, the server declared it, and both registers the model reads named neither. That is
+  `B66`'s shape arriving through a schema written twice instead of a tag left out, which is what
+  makes this a defect row rather than a tidiness one. The system prompt was fixed alongside the
+  schema because **for email the prompt is the live register**: bare email fences route to the MCP
+  server via `BUILTIN_EMAIL_TOOLS`, and built-in Python servers are skipped from the function
+  schemas, so a parameter added to the schema alone would still have been unreachable. Twenty-one
+  machine-readable `default` values came across the same way — `"IMAP folder (default: INBOX)"` is a
+  sentence, `"default": "INBOX"` is something a client can use.
+  **`Law 1` is held on a diff rather than a claim**: the served schemas were captured from
+  `git archive HEAD` before the change and compared after — 19 tools served both sides, **no
+  property dropped, no default dropped, no `required` tightened**, one gained (`list_emails.limit`,
+  which the handler already honoured and the server had never declared). On the register side, 73
+  schemas, same names, nothing lost.
+  **`.pantheon/check-mcp-schemas.py` is the eighteenth checker**, and it asserts *derivation* as
+  well as equality: a hand-written schema that happens to match today is a finding, because matching
+  by coincidence is the state this row started in. It compares by **calling** `list_tools()`, not by
+  reading the file, because `email_server` builds its schemas at runtime and a server that builds a
+  schema is still serving one (`Law 20`). Its third check tells a legitimate schema-less tool from a
+  missed registration: the five email drafting tools and `generate_image` have no function schema on
+  purpose and are reachable because they are in `TOOL_TAGS`. 9 tests, 9 mutations, all caught —
+  including a schema retyped by hand that still matched. `Depends:` nothing. — found while closing
+  `B67` — agent:`B67`
 
 - [ ] **B73** **Two mechanisms tell a person where an app password comes from.** Found 2026-09-13
   by `P18-09`, and narrowed rather than swept. `PROVIDER_NOTES` in `settings.js` is **preset**-keyed

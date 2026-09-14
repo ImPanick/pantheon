@@ -9,6 +9,7 @@ Extracted from agent_tools.py to keep schema definitions separate from
 tool parsing / execution logic.
 """
 
+import copy
 import json
 import logging
 from typing import Optional
@@ -1170,7 +1171,7 @@ FUNCTION_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "list_email_accounts",
-            "description": "List configured email accounts. Use this before checking mail when the user names a mailbox/account such as Gmail, work, or a custom domain, then pass the returned account name/email/id to the other email tools.",
+            "description": "List the email accounts configured in Pantheon. Returns each account's name, email address, and whether it is the default. Use this before checking mail when the user names a mailbox/account such as Gmail, work, or a custom domain, then pass the returned account name/email/id to the other email tools.",
             "parameters": {
                 "type": "object",
                 "properties": {},
@@ -1181,13 +1182,15 @@ FUNCTION_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "send_email",
-            "description": "Send a new email. Use resolve_contact first if you only have a name and need to find the email address. If multiple accounts exist, pass account from list_email_accounts.",
+            "description": "Send a new email via SMTP. This sends immediately (or stages for approval when agent_email_confirm is on); for normal assistant-written mail prefer draft_email so the user reviews it first, and for an existing thread use reply_to_email. Use resolve_contact first if you only have a name and need to find the email address. If multiple accounts exist, pass account from list_email_accounts.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "to": {"type": "string", "description": "Recipient email address"},
                     "subject": {"type": "string", "description": "Email subject line"},
                     "body": {"type": "string", "description": "Email body text"},
+                    "cc": {"type": "string", "description": "CC recipients, comma-separated"},
+                    "bcc": {"type": "string", "description": "BCC recipients, comma-separated"},
                     "account": {"type": "string", "description": "Optional account name/email/id from list_email_accounts, e.g. Gmail or user@example.com"},
                 },
                 "required": ["to", "subject", "body"]
@@ -1202,11 +1205,11 @@ FUNCTION_TOOL_SCHEMAS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "folder": {"type": "string", "description": "IMAP folder (default: INBOX)"},
-                    "max_results": {"type": "integer", "description": "Max emails to return (default: 20)"},
+                    "folder": {"type": "string", "description": "IMAP folder (default: INBOX)", "default": "INBOX"},
+                    "max_results": {"type": "integer", "description": "Max emails to return (default: 20)", "default": 20},
                     "limit": {"type": "integer", "description": "Backward-compatible alias for max_results"},
-                    "unread_only": {"type": "boolean", "description": "Only show unread emails. Default false; set true only when the user asks for unread emails."},
-                    "unresponded_only": {"type": "boolean", "description": "Only show unanswered emails. Default false."},
+                    "unread_only": {"type": "boolean", "description": "Only show unread emails. Default false; set true only when the user asks for unread emails.", "default": False},
+                    "unresponded_only": {"type": "boolean", "description": "Only show unanswered emails. Default false.", "default": False},
                     "account": {"type": "string", "description": "Optional account name/email/id from list_email_accounts, e.g. Gmail or user@example.com"},
                 },
             }
@@ -1216,15 +1219,16 @@ FUNCTION_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "read_email",
-            "description": "Read the full content of a specific email by UID.",
+            "description": "Read the full content of a specific email, by UID or by Message-ID. Pass exactly one of them; prefer the UID from the latest list_emails result.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "uid": {"type": "string", "description": "Email UID to read"},
-                    "folder": {"type": "string", "description": "IMAP folder (default: INBOX)"},
+                    "uid": {"type": "string", "description": "Email UID to read. Use this unless you only have a Message-ID."},
+                    "message_id": {"type": "string", "description": "RFC Message-ID to read, when no UID is available"},
+                    "folder": {"type": "string", "description": "IMAP folder (default: INBOX)", "default": "INBOX"},
                     "account": {"type": "string", "description": "Optional account name/email/id from list_email_accounts, especially when the UID came from a non-default mailbox"},
                 },
-                "required": ["uid"]
+                "required": []
             }
         }
     },
@@ -1232,13 +1236,13 @@ FUNCTION_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "scan_email_unsubscribes",
-            "description": "Scan recent email headers for likely spam/newsletter unsubscribe candidates. Does not unsubscribe anything. Review candidates with the user before acting; mailto methods can be executed with unsubscribe_email, web URL methods require browser/web tools after approval.",
+            "description": "Scan recent email headers for likely spam/newsletter unsubscribe candidates. Returns reviewable candidates with UID, sender, subject, score, reasons, and List-Unsubscribe methods. This does not unsubscribe anything. Review candidates with the user before acting; mailto methods can be executed with unsubscribe_email, web URL methods require browser/web tools after approval.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "folder": {"type": "string", "description": "IMAP folder to scan (default: INBOX)"},
-                    "limit": {"type": "integer", "description": "Maximum candidates to return (default: 25)"},
-                    "max_scan": {"type": "integer", "description": "How many newest emails to inspect (default: 150)"},
+                    "folder": {"type": "string", "description": "IMAP folder to scan (default: INBOX)", "default": "INBOX"},
+                    "limit": {"type": "integer", "description": "Maximum candidates to return (default: 25)", "default": 25},
+                    "max_scan": {"type": "integer", "description": "How many newest emails to inspect (default: 150)", "default": 150},
                     "account": {"type": "string", "description": "Optional account name/email/id from list_email_accounts"},
                 },
             }
@@ -1248,14 +1252,14 @@ FUNCTION_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "unsubscribe_email",
-            "description": "Execute one approved unsubscribe action for an email UID. Safe mailto List-Unsubscribe methods are sent/staged. Web URL methods return a requires-browser instruction and exact URL; use browser/web tools only after user approval.",
+            "description": "Execute one approved unsubscribe action for an email UID. Safe mailto List-Unsubscribe methods are sent/staged directly. Web URL methods return requires_browser with the exact URL; use browser/web tools only after user approval.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "uid": {"type": "string", "description": "Email UID from scan_email_unsubscribes/list_emails"},
-                    "folder": {"type": "string", "description": "IMAP folder (default: INBOX)"},
-                    "method_index": {"type": "integer", "description": "Method index from scan_email_unsubscribes (default: 0)"},
-                    "allow_web": {"type": "boolean", "description": "Return browser/web instructions when selected method is URL"},
+                    "folder": {"type": "string", "description": "IMAP folder (default: INBOX)", "default": "INBOX"},
+                    "method_index": {"type": "integer", "description": "Method index from scan_email_unsubscribes (default: 0)", "default": 0},
+                    "allow_web": {"type": "boolean", "description": "Return browser/web instructions when selected method is URL", "default": False},
                     "account": {"type": "string", "description": "Optional account name/email/id from list_email_accounts"},
                 },
                 "required": ["uid"]
@@ -1266,13 +1270,14 @@ FUNCTION_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "reply_to_email",
-            "description": "SEND a reply email immediately by UID. Do not use this when the user asks to write/draft/open/start a reply; use ui_control action=open_email_reply with body instead so the user can review. Only use when the user explicitly says to send now. Use the exact UID from the latest read_email/list_emails result; never invent UID 1. Automatically threads with In-Reply-To/References headers.",
+            "description": "SEND a reply email immediately by UID. Do not use this when the user asks to write/draft/open/start a reply; use ui_control action=open_email_reply with body instead so the user can review. Only use when the user explicitly says to send now. Use the exact UID from the latest read_email/list_emails result; never invent UID 1. Threads automatically with In-Reply-To/References headers, prefixes Re: on the subject, and replies to the original sender — set reply_all=true to also CC the original To/Cc recipients.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "uid": {"type": "string", "description": "Exact UID of the email to reply to from list_emails/read_email; never invent UID 1"},
                     "body": {"type": "string", "description": "Reply body text"},
-                    "folder": {"type": "string", "description": "IMAP folder (default: INBOX)"},
+                    "reply_all": {"type": "boolean", "description": "Reply to all recipients rather than only the sender (default: false)", "default": False},
+                    "folder": {"type": "string", "description": "IMAP folder (default: INBOX)", "default": "INBOX"},
                     "account": {"type": "string", "description": "Optional account name/email/id from list_email_accounts, especially when the UID came from a non-default mailbox"},
                 },
                 "required": ["uid", "body"]
@@ -1283,15 +1288,15 @@ FUNCTION_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "bulk_email",
-            "description": "Perform one action on many emails at once. Use this for 'delete all those', 'archive these', 'mark all read', or any bulk operation after list_emails. Always pass account when the listed emails came from a named account such as Gmail.",
+            "description": "Perform one action on MANY emails at once — the efficient way to 'delete all those', 'archive these', 'mark all read', or any bulk operation after list_emails, and far better than calling archive_email or mark_email_read once per message. Select messages either by an explicit uids list OR by all_unread=true. Always pass account when the listed emails came from a named account such as Gmail.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "action": {"type": "string", "enum": ["mark_read", "mark_unread", "archive", "delete", "junk"], "description": "Bulk action to perform"},
                     "uids": {"type": "array", "items": {"type": "string"}, "description": "UIDs from the latest list_emails result"},
-                    "all_unread": {"type": "boolean", "description": "Operate on all unread messages in folder instead of explicit UIDs"},
-                    "folder": {"type": "string", "description": "IMAP folder (default: INBOX)"},
-                    "permanent": {"type": "boolean", "description": "For delete: hard-delete instead of moving to Trash"},
+                    "all_unread": {"type": "boolean", "description": "Operate on all unread messages in folder instead of explicit UIDs", "default": False},
+                    "folder": {"type": "string", "description": "IMAP folder (default: INBOX)", "default": "INBOX"},
+                    "permanent": {"type": "boolean", "description": "For delete: hard-delete instead of moving to Trash", "default": False},
                     "account": {"type": "string", "description": "Account name/email/id from list_email_accounts, e.g. Gmail or user@example.com"},
                 },
                 "required": ["action"]
@@ -1302,13 +1307,13 @@ FUNCTION_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "delete_email",
-            "description": "Delete one email by UID. For multiple messages, use bulk_email instead. Always pass account when the email came from a named account such as Gmail.",
+            "description": "Delete one email by UID. Moves it to Trash by default; pass permanent=true to expunge immediately. For multiple messages, use bulk_email instead. Always pass account when the email came from a named account such as Gmail.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "uid": {"type": "string", "description": "Email UID from list_emails/read_email"},
-                    "folder": {"type": "string", "description": "IMAP folder (default: INBOX)"},
-                    "permanent": {"type": "boolean", "description": "Hard-delete instead of moving to Trash"},
+                    "folder": {"type": "string", "description": "IMAP folder (default: INBOX)", "default": "INBOX"},
+                    "permanent": {"type": "boolean", "description": "Hard-delete instead of moving to Trash", "default": False},
                     "account": {"type": "string", "description": "Account name/email/id from list_email_accounts"},
                 },
                 "required": ["uid"]
@@ -1319,12 +1324,12 @@ FUNCTION_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "archive_email",
-            "description": "Archive one email by UID. For multiple messages, use bulk_email instead. Always pass account when the email came from a named account such as Gmail.",
+            "description": "Move one email out of the inbox into the Archive folder — use after handling an email you want to keep but no longer need in the inbox. For multiple messages, use bulk_email instead. Always pass account when the email came from a named account such as Gmail.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "uid": {"type": "string", "description": "Email UID from list_emails/read_email"},
-                    "folder": {"type": "string", "description": "IMAP folder (default: INBOX)"},
+                    "folder": {"type": "string", "description": "IMAP folder (default: INBOX)", "default": "INBOX"},
                     "account": {"type": "string", "description": "Account name/email/id from list_email_accounts"},
                 },
                 "required": ["uid"]
@@ -1335,13 +1340,13 @@ FUNCTION_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "mark_email_read",
-            "description": "Mark one email as read or unread by UID. For multiple messages, use bulk_email instead. Always pass account when the email came from a named account such as Gmail.",
+            "description": "Mark one email as read (the \\Seen flag) or unread (read=false) by UID. For multiple messages, use bulk_email instead. Always pass account when the email came from a named account such as Gmail.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "uid": {"type": "string", "description": "Email UID from list_emails/read_email"},
-                    "folder": {"type": "string", "description": "IMAP folder (default: INBOX)"},
-                    "read": {"type": "boolean", "description": "True marks read; false marks unread"},
+                    "folder": {"type": "string", "description": "IMAP folder (default: INBOX)", "default": "INBOX"},
+                    "read": {"type": "boolean", "description": "True marks read; false marks unread", "default": True},
                     "account": {"type": "string", "description": "Account name/email/id from list_email_accounts"},
                 },
                 "required": ["uid"]
@@ -1670,3 +1675,64 @@ def function_call_to_tool_block(name: str, arguments: str) -> Optional[ToolBlock
         content = json.dumps(args)
 
     return ToolBlock(tool_type, content)
+
+
+# ---------------------------------------------------------------------------
+# The one schema for a tool an MCP server also serves
+# ---------------------------------------------------------------------------
+#
+# `B74`. Thirteen tools are served by an `mcp_servers/*.py` **and** declared
+# here, and until 2026-09-14 each carried two hand-maintained schemas. An AST
+# comparison of all thirteen found that **no pair matched**, and the drift was
+# not only cosmetic:
+#
+#   * `send_email` accepted `cc` and `bcc` in the handler and declared them on
+#     the server — and this register, the one Pantheon's own model reads, named
+#     neither. The agent could not cc anybody.
+#   * `reply_to_email` was the same story for `reply_all`.
+#   * `read_email` demanded `uid` here while the handler also accepts
+#     `message_id` and the server required neither.
+#   * `list_emails` declared `limit` here, which the handler honours, and the
+#     server's schema did not mention it.
+#   * `manage_rag`'s description here carries the sentence `B66` landed to make
+#     the tool findable at all; the server's copy never got it.
+#
+# The two copies were read by different audiences — this one by Pantheon, the
+# server's `list_tools()` by any third-party MCP client pointed at
+# `mcp_servers/` (`D-2026-09-14-01` made that an explicitly supported way to
+# use these files). So the copy that rotted was the one nobody here runs, and
+# the reader it misled was the one least able to notice.
+#
+# This module is the single source and the servers derive from it. The
+# direction is forced: `mcp_servers/*` already import from `src/`, and the
+# reverse would drag `mcp.types` into the core schema register.
+def mcp_tool_schema(name: str) -> dict:
+    """Return `mcp.types.Tool(**...)` keyword arguments for `name`.
+
+    `{"name", "description", "inputSchema"}`, built from this module's
+    `FUNCTION_TOOL_SCHEMAS` entry. Deep-copied, so a server that edits what it
+    gets back cannot reach into the register every other caller reads.
+
+    Raises `KeyError` for a name with no function schema. That is deliberate:
+    a server tool with no entry here is either a fenced-channel-only tool
+    (`download_attachment`, `search_emails`, `generate_image` — real, reachable,
+    and correctly absent) or a registration that was missed, and the two look
+    identical from inside this function. `.pantheon/check-mcp-schemas.py`
+    decides which by comparing the served names against the registers, because
+    that is a question about the whole surface rather than about one name.
+    """
+    for entry in FUNCTION_TOOL_SCHEMAS:
+        if entry.get("type") != "function":
+            continue
+        fn = entry.get("function") or {}
+        if fn.get("name") != name:
+            continue
+        return {
+            "name": name,
+            "description": fn["description"],
+            "inputSchema": copy.deepcopy(fn["parameters"]),
+        }
+    raise KeyError(
+        f"{name!r} has no entry in FUNCTION_TOOL_SCHEMAS — an MCP server "
+        f"cannot derive a schema for a tool this register does not declare."
+    )

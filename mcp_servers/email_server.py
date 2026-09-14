@@ -39,6 +39,7 @@ from src.constants import DATA_DIR as _DATA_DIR, APP_DB, EMAIL_CACHE_DB, SETTING
 # P18-02/P18-03. In `src/` rather than `routes/` precisely so this process
 # can import it without reaching into a request-handler module.
 from src import mail_auth as _mail_auth
+from src.tool_schemas import mcp_tool_schema
 DATA_DIR = Path(_DATA_DIR)
 
 
@@ -2121,9 +2122,20 @@ def _download_attachment(uid, index, folder="INBOX", account=None):
 
 @server.list_tools()
 async def list_tools() -> list[Tool]:
+    # `B74`. Eleven of these tools are also declared to Pantheon in
+    # `src/tool_schemas.py`, and each used to be spelled out twice. Those
+    # eleven now derive; the five below it — `download_attachment`,
+    # `draft_email`, `draft_email_reply`, `ai_draft_email_reply` and
+    # `search_emails` — have no function schema and so are still written out
+    # here. That is correct rather than an oversight: all five are in
+    # `TOOL_TAGS` and in `BUILTIN_EMAIL_TOOLS`, so Pantheon reaches them
+    # through the fenced channel, which takes no schema.
+    # `.pantheon/check-mcp-schemas.py` is what keeps that distinction honest.
+    #
     # The user may have multiple IMAP accounts configured. Every tool accepts an
     # optional `account` param — match by name (e.g. "work"), email address,
-    # or account id. Leave it out to use the default account.
+    # or account id. Leave it out to use the default account. The derived
+    # eleven carry it in their schema; the five below spread it in.
     ACCOUNT_PROP = {
         "account": {
             "type": "string",
@@ -2132,90 +2144,10 @@ async def list_tools() -> list[Tool]:
         },
     }
     return [
-        Tool(
-            name="list_email_accounts",
-            description=(
-                "List the email accounts configured in Pantheon. Returns each account's "
-                "name, email address, and whether it's the default. Use this first when "
-                "the user asks about a specific inbox by name (e.g. 'check work')."
-            ),
-            inputSchema={"type": "object", "properties": {}, "required": []},
-        ),
-        Tool(
-            name="list_emails",
-            description=(
-                "List unread or unresponded emails from the inbox. "
-                "Returns subject, sender, date, and cached AI summary for each. "
-                "Use this to check what emails need attention. "
-                "Pass `account` to scan a non-default mailbox."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "folder": {
-                        "type": "string",
-                        "description": "IMAP folder to check (default: INBOX)",
-                        "default": "INBOX",
-                    },
-                    "max_results": {
-                        "type": "integer",
-                        "description": "Maximum number of emails to return (default: 20)",
-                        "default": 20,
-                    },
-                    "unresponded_only": {
-                        "type": "boolean",
-                        "description": "Only show emails without replies (default: false)",
-                        "default": False,
-                    },
-                    "unread_only": {
-                        "type": "boolean",
-                        "description": "Only show unread emails. Default false so latest/all inbox requests match normal mail clients.",
-                        "default": False,
-                    },
-                    **ACCOUNT_PROP,
-                },
-                "required": [],
-            },
-        ),
-        Tool(
-            name="scan_email_unsubscribes",
-            description=(
-                "Scan recent email headers for likely spam/newsletter unsubscribe candidates. "
-                "Returns reviewable candidates with UID, sender, subject, score, reasons, and "
-                "List-Unsubscribe methods. This does not unsubscribe anything. For mailto "
-                "methods, use unsubscribe_email after user approval. For web URL methods, use "
-                "browser/web tools after user approval to open the exact URL and complete the page."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "folder": {"type": "string", "description": "IMAP folder to scan", "default": "INBOX"},
-                    "limit": {"type": "integer", "description": "Maximum candidates to return", "default": 25},
-                    "max_scan": {"type": "integer", "description": "How many newest messages to inspect", "default": 150},
-                    **ACCOUNT_PROP,
-                },
-                "required": [],
-            },
-        ),
-        Tool(
-            name="unsubscribe_email",
-            description=(
-                "Execute one approved unsubscribe action for an email UID. Supports safe mailto "
-                "List-Unsubscribe directly. If the selected method is a web URL, this returns "
-                "requires_browser with the exact URL; use browser/web tools only after user approval."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "uid": {"type": "string", "description": "Email UID from scan_email_unsubscribes/list_emails"},
-                    "folder": {"type": "string", "description": "IMAP folder", "default": "INBOX"},
-                    "method_index": {"type": "integer", "description": "Unsubscribe method index from scan_email_unsubscribes", "default": 0},
-                    "allow_web": {"type": "boolean", "description": "Return web unsubscribe URL instructions when the method is URL", "default": False},
-                    **ACCOUNT_PROP,
-                },
-                "required": ["uid"],
-            },
-        ),
+        Tool(**mcp_tool_schema("list_email_accounts")),
+        Tool(**mcp_tool_schema("list_emails")),
+        Tool(**mcp_tool_schema("scan_email_unsubscribes")),
+        Tool(**mcp_tool_schema("unsubscribe_email")),
         Tool(
             name="download_attachment",
             description=(
@@ -2235,28 +2167,7 @@ async def list_tools() -> list[Tool]:
                 "required": ["uid", "index"],
             },
         ),
-        Tool(
-            name="send_email",
-            description=(
-                "Send a new email via SMTP. Provide recipient(s), subject, and body. "
-                "This sends immediately; for normal assistant-written email, prefer "
-                "draft_email so the user can review and send from Pantheon. "
-                "For replying to an existing thread, use reply_to_email instead. "
-                "Pass `account` to send from a non-default mailbox."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "to": {"type": "string", "description": "Recipient email address(es), comma-separated"},
-                    "subject": {"type": "string", "description": "Email subject line"},
-                    "body": {"type": "string", "description": "Plain text body"},
-                    "cc": {"type": "string", "description": "CC address(es), comma-separated (optional)"},
-                    "bcc": {"type": "string", "description": "BCC address(es), comma-separated (optional)"},
-                    **ACCOUNT_PROP,
-                },
-                "required": ["to", "subject", "body"],
-            },
-        ),
+        Tool(**mcp_tool_schema("send_email")),
         Tool(
             name="draft_email",
             description=(
@@ -2280,30 +2191,7 @@ async def list_tools() -> list[Tool]:
                 "required": ["to", "subject", "body"],
             },
         ),
-        Tool(
-            name="reply_to_email",
-            description=(
-                "Reply to an existing email by UID. This sends immediately. Do NOT use "
-                "for normal 'write/draft a reply saying X' requests; use "
-                "draft_email_reply so the user can review and send from Pantheon. "
-                "Only use this when the user explicitly says to send now. Automatically threads the reply with "
-                "In-Reply-To and References headers, prefixes 'Re:' on the subject, and "
-                "uses the original sender as the recipient. Set reply_all=true to also CC "
-                "the original To/Cc recipients. For follow-up 'reply ...' requests, use "
-                "the exact UID from the latest list_emails/read_email result; never invent UID 1."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "uid": {"type": "string", "description": "Exact Email UID from list_emails/read_email; never invent UID 1"},
-                    "body": {"type": "string", "description": "Reply body text"},
-                    "folder": {"type": "string", "description": "IMAP folder (default: INBOX)", "default": "INBOX"},
-                    "reply_all": {"type": "boolean", "description": "Reply to all recipients (default: false)", "default": False},
-                    **ACCOUNT_PROP,
-                },
-                "required": ["uid", "body"],
-            },
-        ),
+        Tool(**mcp_tool_schema("reply_to_email")),
         Tool(
             name="draft_email_reply",
             description=(
@@ -2347,81 +2235,10 @@ async def list_tools() -> list[Tool]:
                 "required": ["uid"],
             },
         ),
-        Tool(
-            name="archive_email",
-            description="Move an email out of the inbox into the Archive folder. Use after handling an email you want to keep but no longer need in the inbox.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "uid": {"type": "string", "description": "Email UID from list_emails"},
-                    "folder": {"type": "string", "description": "Source folder (default: INBOX)", "default": "INBOX"},
-                    **ACCOUNT_PROP,
-                },
-                "required": ["uid"],
-            },
-        ),
-        Tool(
-            name="delete_email",
-            description="Delete an email. By default moves it to the Trash folder; pass permanent=true to expunge immediately.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "uid": {"type": "string", "description": "Email UID from list_emails"},
-                    "folder": {"type": "string", "description": "Source folder (default: INBOX)", "default": "INBOX"},
-                    "permanent": {"type": "boolean", "description": "Hard-delete instead of move to Trash", "default": False},
-                    **ACCOUNT_PROP,
-                },
-                "required": ["uid"],
-            },
-        ),
-        Tool(
-            name="mark_email_read",
-            description="Mark an email as read (\\Seen flag) or unread (read=false).",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "uid": {"type": "string", "description": "Email UID"},
-                    "folder": {"type": "string", "description": "IMAP folder", "default": "INBOX"},
-                    "read": {"type": "boolean", "description": "True to mark read, false to mark unread", "default": True},
-                    **ACCOUNT_PROP,
-                },
-                "required": ["uid"],
-            },
-        ),
-        Tool(
-            name="bulk_email",
-            description=(
-                "Perform one action on MANY emails at once — the efficient way to "
-                "'mark all as read', 'archive these', 'delete all spam', etc. Select "
-                "messages either by an explicit `uids` list OR by `all_unread: true` "
-                "(operates on every unread message in the folder). Far better than "
-                "calling mark_email_read / archive_email once per message."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "action": {
-                        "type": "string",
-                        "enum": ["mark_read", "mark_unread", "archive", "delete", "junk"],
-                        "description": "What to do to every selected message.",
-                    },
-                    "uids": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Explicit list of UIDs. Omit if using all_unread.",
-                    },
-                    "all_unread": {
-                        "type": "boolean",
-                        "description": "Operate on ALL unread messages in the folder (ignores uids).",
-                        "default": False,
-                    },
-                    "folder": {"type": "string", "description": "IMAP folder", "default": "INBOX"},
-                    "permanent": {"type": "boolean", "description": "For delete: expunge instead of moving to Trash.", "default": False},
-                    **ACCOUNT_PROP,
-                },
-                "required": ["action"],
-            },
-        ),
+        Tool(**mcp_tool_schema("archive_email")),
+        Tool(**mcp_tool_schema("delete_email")),
+        Tool(**mcp_tool_schema("mark_email_read")),
+        Tool(**mcp_tool_schema("bulk_email")),
         Tool(
             name="search_emails",
             description=(
@@ -2454,34 +2271,7 @@ async def list_tools() -> list[Tool]:
                 "required": ["query"],
             },
         ),
-        Tool(
-            name="read_email",
-            description=(
-                "Read the full content of a specific email. "
-                "Provide either the UID (from list_emails) or a Message-ID. "
-                "Returns the subject, sender, date, and full body text."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "uid": {
-                        "type": "string",
-                        "description": "Email UID from list_emails results",
-                    },
-                    "message_id": {
-                        "type": "string",
-                        "description": "RFC Message-ID header value",
-                    },
-                    "folder": {
-                        "type": "string",
-                        "description": "IMAP folder (default: INBOX)",
-                        "default": "INBOX",
-                    },
-                    **ACCOUNT_PROP,
-                },
-                "required": [],
-            },
-        ),
+        Tool(**mcp_tool_schema("read_email")),
     ]
 
 

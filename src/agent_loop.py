@@ -996,7 +996,7 @@ Notes, checklists, AND user reminders. Use this for "create/add/write a note", t
 ```send_email
 {"to": "recipient@example.com", "subject": "Re: Your question", "body": "Hi, ...", "account": "gmail"}
 ```
-Send a new email via SMTP. Use `resolve_contact` first if you only have a name. If multiple email accounts exist, call `list_email_accounts` first and pass the chosen `account`.
+Send a new email via SMTP. Use `resolve_contact` first if you only have a name. If multiple email accounts exist, call `list_email_accounts` first and pass the chosen `account`. `cc` and `bcc` take comma-separated addresses when the user asks to copy somebody.
 
 CRITICAL — signatures: DO NOT invent a sign-off name. End the body with just `Thanks,` or similar — never type a person's name unless the user explicitly told you what to sign as. When `agent_email_confirm` is on (default), the tool returns `{pending: true, pending_id: ...}` and stages the email for the user to approve in the chat UI instead of SMTPing immediately.""",
     "list_emails": """\
@@ -1009,7 +1009,7 @@ List recent emails from a folder, newest first, including read messages by defau
 ```reply_to_email
 {"uid": "1234", "body": "Sounds good — talk Friday.", "account": "gmail"}
 ```
-SEND a reply email immediately by UID. Do not use this for "write/draft a reply", "open a reply", or "start a reply" — those should use `ui_control` with `open_email_reply <uid> <folder> reply <body>` (or structured `body`) to open the email draft document. Only use this when the user explicitly says to send now. Never invent UID `1`. Threads automatically (In-Reply-To/References handled).
+SEND a reply email immediately by UID. Do not use this for "write/draft a reply", "open a reply", or "start a reply" — those should use `ui_control` with `open_email_reply <uid> <folder> reply <body>` (or structured `body`) to open the email draft document. Only use this when the user explicitly says to send now. Never invent UID `1`. Threads automatically (In-Reply-To/References handled) and replies to the original sender — pass `"reply_all": true` when the user says reply all / reply to everyone.
 
 CRITICAL — signatures: DO NOT invent a sign-off name. End the body with just `Thanks,` or similar — never type a person's name unless the user explicitly told you what to sign as. When `agent_email_confirm` is on (default), the tool returns `{pending: true, pending_id: ...}` and stages the email for the user to approve in the chat UI instead of SMTPing immediately.""",
     "bulk_email": """\

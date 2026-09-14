@@ -121,6 +121,18 @@ jobs:
       # use while the fence parser dropped every call without an error.
       - name: check-tool-surface
         run: python3 .pantheon/check-tool-surface.py
+      # B74. The register above says a tool name must be in every register; this
+      # one says the registers have to AGREE. Thirteen tools are served by an
+      # MCP server and declared to Pantheon, each spelled out twice, and no pair
+      # matched. `send_email` accepted `cc` and `bcc` in the handler and
+      # declared them on the server while the register the model reads named
+      # neither — so the agent could not cc anybody, on a capability that
+      # worked. Same for `reply_to_email` and `reply_all`. The two copies are
+      # read by different audiences, so the one that rots is the one nobody here
+      # runs. Schemas are compared by CALLING `list_tools()`, because a server
+      # that builds its schema at runtime is still serving one (Law 20).
+      - name: check-mcp-schemas
+        run: python3 .pantheon/check-mcp-schemas.py
 
       - name: check-wiring
         run: python3 .pantheon/check-wiring.py --max 120

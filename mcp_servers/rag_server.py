@@ -2,7 +2,11 @@
 """
 rag_server.py
 
-MCP server exposing RAG document management (list, add_directory, remove_directory).
+Standalone MCP server exposing RAG document management: `list`,
+`add_directory`, `remove_directory`, `add_text` and `search`. The last two were
+missing from this line and from the schema this file used to spell out by hand
+(`B66`, `B74`) — `add_text` is the action Pantheon's own prompt names as the
+place to offload a large tool result.
 """
 
 import asyncio
@@ -15,6 +19,8 @@ from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from src.tool_schemas import mcp_tool_schema  # noqa: E402 — needs the path above
 
 server = Server("rag")
 
@@ -64,29 +70,12 @@ def _ensure_init():
 
 @server.list_tools()
 async def list_tools() -> list[Tool]:
-    return [
-        Tool(
-            name="manage_rag",
-            description="Manage RAG indexed documents. List indexed files, add or remove directories, store arbitrary text (add_text), or search the vector store (search).",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "action": {
-                        "type": "string",
-                        "enum": ["list", "add_directory", "remove_directory", "add_text", "search"],
-                        "description": "The action to perform",
-                    },
-                    "directory": {"type": "string", "description": "Directory path (for add/remove)"},
-                    "text": {"type": "string", "description": "Text to store in the RAG vector store (for add_text)"},
-                    "title": {"type": "string", "description": "Optional title/source label for stored text (for add_text)"},
-                    "source": {"type": "string", "description": "Optional source label for stored text (for add_text)"},
-                    "query": {"type": "string", "description": "Search query (for search)"},
-                    "k": {"type": "integer", "description": "Number of matches to return (for search, default 5)"},
-                },
-                "required": ["action"],
-            },
-        )
-    ]
+    # `B74`. Derived, never retyped. The copy that used to live here was
+    # missing the sentence `B66` added to the schema register to make this
+    # tool findable at all — *"use this to offload a large tool result you
+    # must retain and retrieve it later, instead of holding it in context"* —
+    # which is the whole reason a client would reach for `add_text`.
+    return [Tool(**mcp_tool_schema("manage_rag"))]
 
 
 @server.call_tool()

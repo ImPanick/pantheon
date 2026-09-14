@@ -9,9 +9,6 @@ read-only fix the alias gate requires). The wider advertising/registry
 consolidation (schemas, prompt sections, RAG index, UI selector, assistant
 seed) lives in a follow-up PR with its own sync tests.
 """
-import re
-from pathlib import Path
-
 import src.agent_tools  # noqa: F401 — resolve the circular-import cluster first
 from src.tool_security import (
     BUILTIN_EMAIL_TOOLS,
@@ -19,13 +16,23 @@ from src.tool_security import (
     PLAN_MODE_READONLY_TOOLS,
 )
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-
 
 def test_email_server_tools_match_builtin_set():
-    """BUILTIN_EMAIL_TOOLS must equal exactly what the email server exposes."""
-    source = (_REPO_ROOT / "mcp_servers" / "email_server.py").read_text()
-    served = set(re.findall(r'Tool\(\s*name="(\w+)"', source))
+    """BUILTIN_EMAIL_TOOLS must equal exactly what the email server exposes.
+
+    This used to read the source and match `Tool(name="…")` with a regex, which
+    is `Law 20` — it tested the file rather than the server. `B74` made eleven
+    of these tools derive their schema from `src/tool_schemas.py`, so the
+    literal `name=` vanished and the regex saw a server with five tools; the
+    test noticed a real change and diagnosed it wrongly, which is what a text
+    match buys you. It calls `list_tools()` now, so it sees what a client sees
+    and would also catch a tool that is constructed and never served.
+    """
+    import asyncio
+
+    import mcp_servers.email_server as email_server
+
+    served = {tool.name for tool in asyncio.run(email_server.list_tools())}
     assert served == set(BUILTIN_EMAIL_TOOLS), (
         f"email_server tools != BUILTIN_EMAIL_TOOLS; "
         f"server-only: {sorted(served - BUILTIN_EMAIL_TOOLS)}, "

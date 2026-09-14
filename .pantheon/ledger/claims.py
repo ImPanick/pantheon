@@ -332,18 +332,18 @@ CLAIMS: Tuple[Claim, ...] = (
     Claim(
         id="checkers",
         area="Verification apparatus",
-        headline="Seventeen checkers in CI, each one built from a defect that actually shipped.",
+        headline="Eighteen checkers in CI, each one built from a defect that actually shipped.",
         stock="No repository-level checkers.",
         pantheon=(
-            "`.pantheon/release-gate.py` runs all seventeen, reading the list from "
+            "`.pantheon/release-gate.py` runs all eighteen, reading the list from "
             "`ci.yml` rather than keeping a second copy of it."
         ),
         before="0",
-        after="17",
+        after="18",
         provenance="counted",
         repro="python3 .pantheon/release-gate.py --fast",
         evidence=(".pantheon/release-gate.py", ".github/workflows/ci.yml"),
-        rows=("P3-13", "P3-14", "P3-17", "P3-23", "D-2026-09-10-03"),
+        rows=("P3-13", "P3-14", "P3-17", "P3-23", "B74", "D-2026-09-10-03"),
         how=(
             "**Not one of these was designed in advance.** Each replaced a paragraph "
             "that had already failed to prevent the same defect twice or more — a tool "
@@ -358,11 +358,11 @@ CLAIMS: Tuple[Claim, ...] = (
     Claim(
         id="tests",
         area="Verification apparatus",
-        headline="Test files 792 -> 939, and a suite of 9,020 passing with nothing red.",
+        headline="Test files 792 -> 940, and a suite of 9,029 passing with nothing red.",
         stock="792 test files.",
-        pantheon="939 test files, 9,020 tests passing, 0 failing.",
+        pantheon="940 test files, 9,029 tests passing, 0 failing.",
         before="792 test files",
-        after="939 test files · 9,020",
+        after="940 test files · 9,029",
         provenance="diffed",
         repro=f"git ls-tree -r --name-only {FORK_POINT} | grep -c '^tests/test_.*\\.py$' && python3 -m pytest -q",
         evidence=("tests",),
