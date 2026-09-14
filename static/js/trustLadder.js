@@ -60,19 +60,34 @@
 // the promise. Someone who switches to one without being told what it will feel
 // like switches back angrily, and trusts the next control less.
 //
-// CORRECTED 2026-08-29. The paragraph above used to finish *"'Ask every time'
-// means a confirmation before everything that writes, runs, sends or deletes"*,
-// and both strict rungs' sentences promised the same four verbs. That was
-// false, and measurably so. Both rungs gate on `POST_EXTERNAL_BLOCKED_EFFECTS`
-// (`src/tool_capabilities.py`), which carries `read_private` alongside the four
-// write-ish ones: 72 of the 81 known tools are gated, and the nine that are not
-// are `ask_user`, `get_workspace`, `glob`, `grep`, `ls`, `read_file`,
-// `search_hf_models`, `update_plan` and `web_search`. Reading your mail, your
-// calendar, your notes and the agent's own memory of earlier chats all stop and
-// ask. That may well be the right set — but a person choosing this rung on the
-// old sentence would meet a confirmation for reading a note and conclude the
-// product was broken, which is the same wound `Law 15` exists to close. The
-// sentences and the cost lines below name the reads.
+// CORRECTED 2026-08-29, and corrected the other way 2026-09-14 (`B19`).
+//
+// The paragraph above used to finish *"'Ask every time' means a confirmation
+// before everything that writes, runs, sends or deletes"*, and both strict
+// rungs' sentences promised the same four verbs. That was false, and measurably
+// so: both rungs gated on `POST_EXTERNAL_BLOCKED_EFFECTS`, which carries
+// `read_private` alongside the four write-ish ones, so 74 of the 83 known tools
+// were gated — **17 of them by `read_private` alone**, plus 30 multiplexed read
+// actions. So the copy was rewritten to name the reads.
+//
+// The measurement was right and the conclusion was backwards. *"That may well
+// be the right set"* is the sentence to withdraw: it is not. An untainted
+// strict rung asks *is this about to change or send something*;
+// post-external asks *could this act on what a stranger told the model*. The
+// second question is the reason `read_private` is in that set, and it has no
+// force until something from outside has actually come in. Asking a person to
+// approve the agent reading back a note it wrote itself is how a security
+// control gets switched off — the same wound `Law 15` exists to close, which
+// the 2026-08-29 note named and then treated by changing the promise instead of
+// the behaviour.
+//
+// So the strict rungs now gate on `RUNG_BLOCKED_EFFECTS` while untainted, and
+// on the full `POST_EXTERNAL_BLOCKED_EFFECTS` the moment the run is tainted —
+// which happens on the **first** private read, because every private-read tool
+// and action is `EXTERNAL_UNTRUSTED` and arms the gate. Nothing is relaxed:
+// `FORBIDDEN.md` Part 2's post-external gate is untouched and still applies in
+// full. The sentences below say both halves, because the second is the part
+// that surprises people.
 
 import { getSettings, invalidateSettings } from './appConfig.js';
 import uiModule from './ui.js';
@@ -119,11 +134,12 @@ export const TRUST_RUNGS = [
     badge: '',
     band: 'some',
     sentence:
-      'Pantheon stops and waits for your yes before nearly everything it does '
-      + '— saving a file, running code, sending anything, deleting anything, '
-      + 'and looking at things of yours such as your mail, your calendar, your '
-      + 'notes and what it remembers from earlier chats — except the things '
-      + 'you have already said yes to, which it goes ahead and does.',
+      'Pantheon stops and waits for your yes before it changes or sends '
+      + 'anything — saving a file, running code, sending anything, deleting '
+      + 'anything — except the things you have already said yes to, which it '
+      + 'goes ahead and does. Reading things of yours — your mail, your '
+      + 'calendar, your notes, what it remembers from earlier chats — does not '
+      + 'stop and ask, until something from outside the conversation comes in.',
     cost:
       'What this costs you: a run of questions to begin with. They thin out as '
       + 'you approve the things you do often, but anything new still stops and '
@@ -139,16 +155,18 @@ export const TRUST_RUNGS = [
     badge: '',
     band: 'high',
     sentence:
-      'Pantheon stops and waits for your yes before nearly everything it does '
-      + '— saving a file, running code, sending anything, deleting anything, '
-      + 'and looking at things of yours such as your mail, your calendar, your '
-      + 'notes and what it remembers from earlier chats — every single time, '
-      + 'even when nothing has gone wrong and nothing came in from outside.',
+      'Pantheon stops and waits for your yes before it changes or sends '
+      + 'anything — saving a file, running code, sending anything, deleting '
+      + 'anything — every single time, even when nothing has gone wrong and '
+      + 'nothing came in from outside. Reading things of yours — your mail, '
+      + 'your calendar, your notes, what it remembers from earlier chats — '
+      + 'does not stop and ask on its own; the moment anything from outside '
+      + 'the conversation comes in, it asks about those too.',
     cost:
-      'What this costs you: a great many interruptions, some of which will '
-      + 'feel absurd. A job that touches twenty files asks you twenty times, '
-      + 'and Pantheon stops to ask before it so much as looks up your calendar '
-      + 'or reads back a note it wrote in an earlier chat. Nothing happens at '
+      'What this costs you: a great many interruptions. A job that touches '
+      + 'twenty files asks you twenty times, and once anything has come in '
+      + 'from outside — a web page, an email, a file it fetched — it stops to '
+      + 'ask before it so much as looks up your calendar. Nothing happens at '
       + 'all while you are away from the screen.',
   },
 ];

@@ -1781,3 +1781,54 @@ change in behaviour and not a tidying — `P17-12` is where that belongs.
 **What would reopen this.** A server that needs to serve a schema Pantheon should not offer, or
 offer one a server should not serve. There is no such case today; the moment there is, the helper
 needs a way to say so and this decision needs revisiting rather than an exemption table.
+
+---
+
+## D-2026-09-14-03 — the themes are not repainted, because they are the user's to repaint
+
+**The owner's ruling, verbatim:** *"We don't have to touch themes unless its absolutely critical.
+They're all customizable (look at how themes work as a whole)."*
+
+This settles `B15`, `B16`, `B22` and `B23`, which had been queued behind a contrast decision.
+
+### What it settles
+
+`B15` measured every one of the sixteen palettes and found two — `cute` at **3.44:1** and
+`retrowave` at **4.15:1** — putting body text under WCAG AA against their own panel. Re-measured
+2026-09-14: unchanged to two decimal places. `B22` found nineteen semantic tokens as static `:root`
+literals, several unreadable on the light palettes (`--green` on `paper` is **1.37:1**). `B23` found
+five link idioms where the row claimed two.
+
+All of that stands as measurement and none of it gets repainted. The reason is the shape of the
+feature: **a theme here is data a person edits**, not a constant the program ships. Sixteen presets,
+fourteen advanced keys each, an editor, an export/import round trip, and a `create_theme` tool. A
+default that reads badly is a default somebody changes in thirty seconds.
+
+**`B16` also carried a false headline, and it is withdrawn rather than acted on.** It says the
+accent *"falls below the 3:1 graphic floor on three light themes"* and then quotes `light` at
+**3.03** — above 3.0. Against `--panel` exactly two fail (`paper` 2.24, `cute` 2.56); the third is
+true only against `--bg`. The row conflated two surfaces.
+
+### What it does not settle, and the distinction matters
+
+**`B21` is not a theme row.** It is the customiser being broken, and the owner's argument is what
+makes it load-bearing: *they're all customizable* has to be true for a bad default to be acceptable.
+It is not, quite. The advanced-key list exists in **eleven** places, and the four `src/` copies have
+drifted from the seven front-end ones in both directions:
+
+  * `create_theme` accepts `accentPrimary`, `accentError`, `sectionAccent` and `toggleBg` — **four
+    keys no writer writes**. They validate, they persist into the user's stored theme, they survive
+    export and import, and `ai_interaction.py` reports *"with N advanced overrides"* counting them.
+    The agent asserts an effect that never happened.
+  * `brandMixTo` and `hamburgerColor` are **real editor keys the tool does not accept**, and the
+    parse loop has no final `else` — so asking for one is dropped with no error and no message.
+
+So the two failures are *lying about a change that did not land* and *silently discarding one that
+should have*. Both are about whether a person can actually repaint a theme, which is the premise of
+this decision. `B21` stays open and stays worked.
+
+### What would reopen the rest
+
+A palette shipping as the default that a person cannot see, or an accessibility commitment made to
+somebody outside this repo. Neither is true today: the default is `dark` at 12.72:1, and the two
+under-floor palettes are opt-in by name.

@@ -932,7 +932,21 @@ import agentDrafts from './agentDrafts.js';   // H01
   let _queuedRerenderTimer = null;
   let _queuedHistoryObserver = null;
   let _queuedRestoreDone = false;
-  let _pendingApprovedPlan = '';
+  // `B06`. There is no `_pendingApprovedPlan` any more, and its absence is the
+  // fix. It was a module-level `let` holding a copy of the approved plan text,
+  // appended to the first turn and then blanked — so every continuation turn
+  // sent no `approved_plan`, and `build_active_plan_note` returned "" for the
+  // rest of the run. The agent lost the checklist it was executing, lost the
+  // agent-mode forcing at the send site, and on a Pantheon-finetuned local
+  // model lost its tool schemas entirely (`agent_loop.py` gates three
+  // `route_mcp_schemas` branches on `and not approved_plan`).
+  //
+  // It was also a second plan store, and the only one that did not survive a
+  // reload — `planWindow` keeps the plan in `localStorage` and the approval in
+  // its own meta. The plan is sourced from there at send time now, and
+  // `planWindow.isExecuting()` is the stop condition: approved, unfinished, and
+  // belonging to this chat, which is the same rule the tool binding already
+  // used rather than a second one (`Law 14`).
   // Attachment meta for a send whose bytes were uploaded earlier (a queue
   // drain). Consumed in the same place, and by the same rule, as
   // `_pendingRegenAttachments` — one attachment path, not two.
@@ -972,7 +986,10 @@ import agentDrafts from './agentDrafts.js';   // H01
   function _executeStoredPlan(fallbackPlan) {
     const approved = _getStoredPlan() || _extractPlanText(fallbackPlan || '');
     if (!approved.trim()) return false;
-    _pendingApprovedPlan = approved;
+    // `B06`. `markApproved()` IS the record that this plan is executing — it
+    // is persisted, session-bound, and survives a reload. Nothing is copied
+    // into this module.
+    if (!_getStoredPlan()) _setStoredPlan(approved);
     planWindow.markApproved();
     if (window.__pantheonSetPlanMode) window.__pantheonSetPlanMode(false);
     if (window.__pantheonSetChatMode) window.__pantheonSetChatMode('agent');
@@ -2682,7 +2699,12 @@ import agentDrafts from './agentDrafts.js';   // H01
 	      let isAgentMode = (toggleState.mode || 'chat') === 'agent';
       const isIncognito = isIncognitoForSend;
 	      const workspaceAgentIntent = !isIncognito && /\b(fix|debug|implement|change|update|refactor|patch|review|test|run|execute|start|launch|build|lint|typecheck|benchmark|eval|terminal[- ]bench|tbench|repo|repository|codebase|project|app|server|api|frontend|backend|bug|issue|pr|file|folder|directory|source|logs?|trace|stacktrace|traceback|docker|container|tmux|terminal|shell|git|branch|commit|diff|pytest|process|port|endpoint|computer|machine|laptop|device|system)\b/i.test(String(msg || ''));
-	      if (isPlanMode || _pendingApprovedPlan) {
+	      // `B06`. Asked of `planWindow` rather than of a local copy, so it is
+	      // still true on turn two.
+	      const executingPlan = (!isPlanMode && planWindow.isExecuting())
+	        ? (_getStoredPlan() || '')
+	        : '';
+	      if (isPlanMode || executingPlan) {
 	        isAgentMode = true;
 	      }
 	      if (!isAgentMode && workspaceAgentIntent) {
@@ -2695,9 +2717,11 @@ import agentDrafts from './agentDrafts.js';   // H01
 	      }
 	      fd.append('mode', isAgentMode ? 'agent' : 'chat');
 	      fd.append('plan_mode', isPlanMode ? 'true' : 'false');
-	      if (!isPlanMode && _pendingApprovedPlan) {
-	        fd.append('approved_plan', _pendingApprovedPlan.slice(0, 8192));
-	        _pendingApprovedPlan = '';
+	      if (executingPlan) {
+	        // Every turn, not just the first — `build_active_plan_note`'s
+	        // docstring asks for exactly that. `planWindow.clearPlan()` and the
+	        // last step being ticked are the two ways this stops.
+	        fd.append('approved_plan', executingPlan.slice(0, 8192));
 	      }
 	      if (el('web-toggle').checked) {
 	        if (!isAgentMode) {

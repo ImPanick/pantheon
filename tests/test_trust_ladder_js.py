@@ -438,22 +438,28 @@ _READS = ("mail", "calendar", "notes", "remembers")
 def test_the_strict_rungs_promise_the_reads_their_gate_actually_stops(ladder_sandbox):
     """`documentation-is-false`, measured.
 
-    Both strict rungs gate on `POST_EXTERNAL_BLOCKED_EFFECTS`, and that set
-    carries `read_private` alongside the four write-ish effects: 72 of the 81
-    known tools are gated, and reading your mail, your calendar, your notes and
-    the agent's own memory of earlier chats all stop and ask. The copy used to
-    promise a confirmation "before it saves a file, runs code, sends anything or
-    deletes anything" and no more.
+    Both strict rungs used to gate on `POST_EXTERNAL_BLOCKED_EFFECTS`, and that
+    set carries `read_private` alongside the four write-ish effects, so reading
+    your mail, your calendar, your notes and the agent's own memory of earlier
+    chats all stopped and asked while the copy promised a confirmation "before
+    it saves a file, runs code, sends anything or deletes anything" and no more.
 
-    Bound to the effect set rather than to a wording, in both directions. If
-    somebody later gives these rungs their own writes/executes/sends/deletes set
-    — which is the other way to close this, and a `src/` change — this fails and
-    tells them the copy is now over-promising instead.
+    **This test read the wrong constant and would have gone on passing while
+    the copy it guards became false** (`B19`). It asked whether `read_private`
+    is in `POST_EXTERNAL_BLOCKED_EFFECTS` — which it still is, and must remain,
+    because `FORBIDDEN.md` Part 2 forbids relaxing that gate. What the strict
+    rungs consult while a run is untainted is now `RUNG_BLOCKED_EFFECTS`, and
+    that is the set the sentences describe. The binding is only worth having if
+    it points at the constant the copy is about.
+
+    Bound to the effect set rather than to a wording, in both directions: if
+    somebody puts `read_private` back into the untainted rung set, this fails
+    and says the copy is under-promising.
     """
 
-    from src.tool_capabilities import POST_EXTERNAL_BLOCKED_EFFECTS, ToolEffect
+    from src.tool_capabilities import RUNG_BLOCKED_EFFECTS, ToolEffect
 
-    gates_private_reads = ToolEffect.READ_PRIVATE in POST_EXTERNAL_BLOCKED_EFFECTS
+    gates_private_reads = ToolEffect.READ_PRIVATE in RUNG_BLOCKED_EFFECTS
 
     out = _ladder("""
         %s
@@ -474,18 +480,38 @@ def test_the_strict_rungs_promise_the_reads_their_gate_actually_stops(ladder_san
                 f"{by_value[value]['sentence']!r}"
             )
         else:
-            assert not named, (
-                f"{value}: the gate no longer stops private reads, so the "
-                f"sentence is now over-promising: {named}"
+            # **Not silence.** The first draft of this branch asserted the
+            # sentence must stop naming the reads at all, on the assumption
+            # that naming them means gating them. That is the wrong binary: a
+            # person on the strictest rung needs to know both halves — that
+            # reading their own things does not stop and ask, AND that it
+            # starts the moment anything comes in from outside, because that
+            # transition is the one that surprises people (`Law 15`). Silence
+            # would under-inform in exactly the direction the 2026-08-29
+            # correction was trying to fix.
+            assert len(named) >= 3, (
+                f"{value}: the rung no longer stops private reads, and the "
+                f"sentence has gone quiet about them instead of saying so: "
+                f"{by_value[value]['sentence']!r}"
+            )
+            assert "outside" in sentence, (
+                f"{value}: the sentence says the reads do not stop and ask, "
+                f"and does not say that changes once something comes in from "
+                f"outside the conversation — which is when they do"
             )
 
     # And the strictest rung's price says it out loud, because a confirmation
     # before reading a note is the interruption that reads as a bug.
     cost = (by_value["ask_every_time"]["cost"] or "").lower()
-    if gates_private_reads:
-        assert "calendar" in cost or "note" in cost, (
-            "the cost line warns about twenty files and says nothing about the "
-            "confirmation before Pantheon reads its own notes"
+    assert "calendar" in cost or "note" in cost, (
+        "the cost line warns about twenty files and says nothing about what "
+        "happens to reads — whichever way the gate currently answers, the "
+        "price of the strictest rung has to name them"
+    )
+    if not gates_private_reads:
+        assert "outside" in cost, (
+            "the cost line implies reading your calendar always asks; since "
+            "`B19` it only asks once something has come in from outside"
         )
 
 

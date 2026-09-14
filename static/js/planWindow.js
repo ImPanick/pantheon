@@ -601,6 +601,34 @@ export function markApproved() {
  *     a global store plus a session switch is how work lands in the wrong chat).
  */
 function bindingAllowed() {
+  return isExecuting();
+}
+
+/**
+ * `B06`. Is there an approved plan, still unfinished, belonging to this chat?
+ *
+ * This was `bindingAllowed()`'s private body. It is exported now because
+ * `chat.js` needs to answer the same question at send time: it used to hold its
+ * own copy of the approved plan text in a module-level `let`, append it to the
+ * FIRST turn and blank it — so every continuation turn (the `Continue ▸` button
+ * after `rounds_exhausted`, and any follow-up the user simply types) sent no
+ * `approved_plan` at all. `agent_loop.py:build_active_plan_note`'s own docstring
+ * states the contract the frontend was breaking: *"Sent back by the frontend
+ * each turn so a long plan on a weak model survives history truncation — the
+ * agent can always re-read it."*
+ *
+ * One question, one implementation, and one plan store (`Law 13`/`Law 14`).
+ * The copy in `chat.js` was also the only one that did not survive a reload,
+ * while the plan itself lives in `localStorage`.
+ *
+ * The four conditions are unchanged from the tool-binding rule they came from:
+ *   · there is a step still outstanding — a finished plan must stop being sent,
+ *     or it leaks into unrelated later messages, which is the opposite failure;
+ *   · the user actually pressed Execute;
+ *   · plan mode is off, i.e. the agent is executing rather than drafting;
+ *   · the plan belongs to the chat we are looking at (the `P6-01` lesson).
+ */
+export function isExecuting() {
   if (!_steps.length || activeIndex() < 0) return false;
   if (!_meta.approvedAt || isPlanModeOn()) return false;
   const sid = currentSessionId();
@@ -788,6 +816,7 @@ const planWindow = {
   setPlan,
   clearPlan,
   markApproved,
+  isExecuting,
   noteToolStart,
   noteToolEnd,
   onExecute,

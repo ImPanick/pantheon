@@ -435,7 +435,61 @@ _ACTION_ALIASES: Mapping[str, Mapping[str, str]] = MappingProxyType(
     }
 )
 
+class _ActionArgumentTooDeep(Exception):
+    """`B17`. A tool argument nested past `_MAX_ACTION_JSON_DEPTH`.
+
+    Internal to this module: every raise is caught by
+    `capabilities_for_action`, which answers `_UNKNOWN_CAPABILITIES`.
+    """
+
+
 _LINE_ACTION_TOOLS = frozenset({"manage_memory", "manage_session"})
+
+# `B17`. A nesting depth beyond which we refuse to parse rather than ask CPython
+# to. `json.loads` recurses per level and raises `RecursionError`, which is a
+# `RuntimeError` and therefore named by neither `TypeError` nor `ValueError` —
+# so a deeply nested argument escaped this function, escaped six unguarded call
+# sites, and was caught only by `src/agent_runs.py`'s outer handler, which ends
+# the run. The user gets a generic `Agent run failed before completion.` and —
+# worse — `save_assistant_response` is INSIDE the `async for` body in
+# `routes/chat_routes.py`, so the turn's partial reply is discarded.
+#
+# The threshold is not a Pantheon constant. Measured, the first failing nesting
+# depth is `sys.getrecursionlimit() - frames_at_call - 4`, so the row's "1,984
+# characters" is exactly `2 x (1000 - 4 - 4)` at the stock limit from a bare
+# call, and it moves with the ambient stack. A property of the interpreter is
+# not something to leave load-bearing.
+#
+# 64 is three orders of magnitude above any real tool argument, and the bound is
+# on DEPTH, not length: a large-but-flat argument is legitimate and keeps
+# working (`Law 1`). It is checked before parsing, so nothing recurses.
+_MAX_ACTION_JSON_DEPTH = 64
+
+
+def _json_depth_exceeds(raw: str, limit: int) -> bool:
+    """Single pass, string-literal and escape aware. No recursion, by design —
+    a recursive depth check would be the same defect in a new function."""
+    depth = 0
+    in_string = False
+    escaped = False
+    for ch in raw:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch in "[{":
+            depth += 1
+            if depth > limit:
+                return True
+        elif ch in "]}":
+            depth -= 1
+    return False
 
 
 def _action_from_content(tool_name: str, content: Any) -> str | None:
@@ -446,9 +500,19 @@ def _action_from_content(tool_name: str, content: Any) -> str | None:
         raw = content.strip()
         if tool_name in _LINE_ACTION_TOOLS and raw and not raw.startswith("{"):
             return raw.splitlines()[0].strip().replace("-", "_").casefold() or None
+        if _json_depth_exceeds(raw, _MAX_ACTION_JSON_DEPTH):
+            # `B17`. Not `None` — that falls through to the tool's base
+            # capabilities, which is the silent degradation the row warns
+            # about. Raising here lets `capabilities_for_action` answer with
+            # `_UNKNOWN_CAPABILITIES`, so the approval card says
+            # "unknown/high-impact" out loud instead of guessing low.
+            raise _ActionArgumentTooDeep(tool_name)
         try:
             payload = json.loads(raw) if raw else {}
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, RecursionError):
+            # `RecursionError` is belt-and-braces: the depth bound above should
+            # make it unreachable, and a parse path that recurses some other way
+            # must not be able to end a run.
             return None
     else:
         payload = {}
@@ -498,7 +562,16 @@ def capabilities_for_action(tool_name: Any, content: Any) -> ToolCapabilities:
     ):
         tool_name = tool_name[len("mcp__email__"):]
 
-    action = _action_from_content(tool_name, content)
+    try:
+        action = _action_from_content(tool_name, content)
+    except _ActionArgumentTooDeep:
+        # `B17`. The argument is unclassifiable, so say so rather than guess.
+        # `_UNKNOWN_CAPABILITIES` carries `known=False`, which `decision_for`
+        # already renders as "because it can cause unknown/high-impact" and
+        # `describe_effects` already bands as serious — so the approval card is
+        # truthful by construction and no second vocabulary is invented
+        # (`Law 14`).
+        return _UNKNOWN_CAPABILITIES
     destructive = action in _ACTION_DESTRUCTIVE.get(tool_name, ())
     if tool_name not in _PRIVATE_ACTION_READS:
         if not destructive:
@@ -741,6 +814,34 @@ POST_EXTERNAL_BLOCKED_EFFECTS = frozenset(
     }
 )
 
+# `B19`. What the strict rungs ask about **before** a run is tainted.
+#
+# `ask_every_time` and `allow_listed` reused `POST_EXTERNAL_BLOCKED_EFFECTS`,
+# which is the set for *after* untrusted content has entered the run. The two
+# questions are different: post-external asks "could this act on something the
+# model was told by a stranger", and an untainted strict rung asks "is this
+# about to change or send something". Reading the user's own notes is neither.
+#
+# Measured on the tree that had the defect: 74 of 83 registry tools were gated
+# on a clean run, **17 of them solely by `read_private`** — plus 30 multiplexed
+# read actions across `manage_calendar`, `manage_contact`, `manage_documents`,
+# `manage_memory`, `manage_notes`, `manage_research`, `manage_session`,
+# `manage_skills` and `manage_tasks`. So the strictest rungs asked permission
+# for the agent to read back a note it had written itself, which is how a
+# security control gets switched off.
+#
+# **Derived, not retyped** (`Law 13`): a second eight-item literal is the
+# defect class, and the two would drift the first time an effect is added.
+#
+# This does not relax `POST_EXTERNAL_BLOCKED_EFFECTS`, which `FORBIDDEN.md`
+# Part 2 forbids relaxing. The moment a run is tainted the full set applies
+# again — and it always taints promptly, because every private-read tool and
+# every private-read action carries `result_integrity=EXTERNAL_UNTRUSTED` and
+# arms the gate on success, with **zero exceptions** (verified by enumerating
+# the registry). So the first private read in a clean run stops asking; the
+# read→exfiltrate path stays exactly as closed as it was.
+RUNG_BLOCKED_EFFECTS = POST_EXTERNAL_BLOCKED_EFFECTS - frozenset({ToolEffect.READ_PRIVATE})
+
 
 # ── The trust ladder (P7-03, P7-04) ─────────────────────────────────────────
 #
@@ -967,16 +1068,27 @@ class ToolRunSecurityContext:
         # It is not even the caller that would matter. `_effect_fields` catches
         # and logs; this method and `tool_result_should_arm_gate` do not, and
         # nothing between here and the SSE stream does either. A payload that
-        # makes `json.loads` raise something other than `TypeError`/`ValueError`
+        # made `json.loads` raise something other than `TypeError`/`ValueError`
         # — a deeply nested one raises `RecursionError`, which the `except` in
-        # `_action_from_content` does not name — ends the run at whichever of
-        # those two is reached first, at every rung.
+        # `_action_from_content` did not name — ended the run at whichever of
+        # those two was reached first, at every rung. **Fixed in `B17`**:
+        # `_action_from_content` bounds nesting depth before parsing and
+        # `capabilities_for_action` answers `_UNKNOWN_CAPABILITIES`, so a
+        # pathological argument is refused with a truthful card instead of
+        # ending the turn and discarding its reply.
         asks_untainted = self.rung in _RUNGS_THAT_ASK_UNTAINTED
         if not self.external_untrusted_context_seen and not asks_untainted:
             return ToolGateDecision(True)
 
         capabilities = capabilities_for_action(tool_name, content)
-        blocked_effects = capabilities.effects & POST_EXTERNAL_BLOCKED_EFFECTS
+        # `B19`. Tainted runs keep the full set, byte for byte. Only the
+        # untainted strict rungs narrow, and only by `read_private`.
+        gate_effects = (
+            POST_EXTERNAL_BLOCKED_EFFECTS
+            if self.external_untrusted_context_seen
+            else RUNG_BLOCKED_EFFECTS
+        )
+        blocked_effects = capabilities.effects & gate_effects
         if capabilities.known and not blocked_effects:
             return ToolGateDecision(True)
 
