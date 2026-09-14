@@ -1865,12 +1865,16 @@ export function buildImageBubble(imageUrl, prompt, model, size, quality, imageId
       const input = document.getElementById('message');
       if (input) input.focus();
       reuseBtn.innerHTML = CHECK_ICON;
-      if (window.showToast) window.showToast('Image attached');
+      // `B03` / `Law 14`. These two lines read `window.showToast`, which is
+      // assigned nowhere in the tree, so neither has ever produced a toast —
+      // the attach silently succeeded and the failure silently failed. This
+      // module already imports and uses `uiModule` (see the OCR save above).
+      uiModule.showToast('Image attached');
       setTimeout(() => { reuseBtn.innerHTML = PAPERCLIP_ICON; reuseBtn.disabled = false; }, 1400);
     } catch (err) {
       console.warn('Attach generated image failed', err);
       reuseBtn.textContent = '\u2717';
-      if (window.showToast) window.showToast('Could not attach image');
+      uiModule.showError('Could not attach image');
       setTimeout(() => { reuseBtn.innerHTML = PAPERCLIP_ICON; reuseBtn.disabled = false; }, 1600);
     }
   });

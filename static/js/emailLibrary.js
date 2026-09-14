@@ -6666,8 +6666,17 @@ function _wireAttachmentHandlers(reader, folder) {
         }
         const json = await res.json().catch(() => ({}));
         if (!res.ok || !json.doc_id) {
+          // B02. Dropping `_OPENABLE_RE` puts an Open on every attachment,
+          // including genuinely binary ones, whose backend answer is
+          // `Unsupported attachment type`. This used to dead-end in a toast.
+          // document.js already had the right shape for that case — when
+          // as-doc says no, hand the user the download route instead — so
+          // reuse it rather than re-deriving which suffixes are binary on the
+          // client. The user's click lands somewhere either way.
           const msg = (json && json.error) || `HTTP ${res.status}`;
-          try { const { showError } = await import('./ui.js'); showError(`Couldn't open ${name}: ${msg}`); } catch (_) { alert(`Couldn't open ${name}: ${msg}`); }
+          const dlUrl = `${API_BASE}/api/email/attachment/${encodeURIComponent(uid)}/${encodeURIComponent(index)}?folder=${folderQs}${_acct()}`;
+          try { const { showError } = await import('./ui.js'); showError(`Couldn't open ${name} in the editor: ${msg} — downloading it instead.`); } catch (_) { alert(`Couldn't open ${name}: ${msg}`); }
+          try { window.open(dlUrl, '_blank'); } catch (_) { location.href = dlUrl; }
           return;
         }
         try {
@@ -6807,7 +6816,34 @@ function _isLikelySignatureImage(a) {
 // out so both the initial-open and the swap-reader paths can render it.
 function _buildAttsHtmlFor(uid, data) {
   if (!data) return '';
-  const _OPENABLE_RE = /\.(pdf|docx|txt|md|markdown|eml)$/i;
+  // B02. There was an `_OPENABLE_RE = /\.(pdf|docx|txt|md|markdown|eml)$/i`
+  // here and the Open button was rendered only for those six suffixes. The
+  // backend (`POST /api/email/attachment-as-doc`) handles those six and then
+  // falls through to a byte sniff that accepts ANY attachment decoding as
+  // text — `.log`, `.csv`, `.json`, `.yaml`, `.ini`, `.py`, `.html`, `.sql`,
+  // `.toml`, `.tsv` and extensionless files all open server-side. Every one of
+  // them reached the UI with no Open affordance at all: not a disabled button,
+  // simply nothing to click. The gate made the sniff unreachable.
+  //
+  // So the button is now unconditional and the backend sniff is the single
+  // decision point (DECISIONS.md D-2026-08-26-06). What that costs is an Open
+  // on `photo.png`, whose answer is `Unsupported attachment type` — handled in
+  // the click handler by falling back to the download route, the same shape
+  // document.js already uses when as-doc says no. A client-side binary
+  // denylist was not added on purpose: it would be `_OPENABLE_RE` inverted,
+  // i.e. the same gate, in the same place, with the same drift.
+  //
+  // Left as found, and worth a row of its own: `.email-attachment-open` in
+  // style.css paints through `var(--accent-primary, var(--red))`, and
+  // `--accent-primary` has ZERO declarations in the tree — no rule, no
+  // setProperty — so all five of its colour stops resolve to `--red` and this
+  // button looks identical on all 16 themes. `--accent` is the token that is
+  // actually written. Swapping it is one line, but it moves three counts that
+  // `tests/test_accent_fallback_semantics_css.py` and
+  // `tests/test_accent_token_js.py` pin exactly (556 / 187, plus the P1-01
+  // comments in theme.js and index.html), so it belongs to whoever owns that
+  // accounting, not to this row. Dropping the gate makes the button far more
+  // visible, which is why it is written down here rather than left unsaid.
   const currentAttachments = Array.isArray(data.attachments) ? data.attachments : [];
   const relatedAttachments = Array.isArray(data.related_attachments) ? data.related_attachments : [];
   if (!currentAttachments.length && !relatedAttachments.length) return '';
@@ -6815,12 +6851,9 @@ function _buildAttsHtmlFor(uid, data) {
   const hidden = currentAttachments.filter(a => _isLikelySignatureImage(a));
   const related = relatedAttachments.filter(a => !_isLikelySignatureImage(a));
   const renderChip = (a, extraClass = '') => {
-    const openable = _OPENABLE_RE.test(a.filename || '');
     const chipUid = a.source_uid || a.uid || uid;
     const chipFolder = a.source_folder || data.folder || state._libFolder || 'INBOX';
-    const openBtn = openable
-      ? `<span class="email-attachment-open" title="Open in document editor" data-open-uid="${_esc(chipUid)}" data-open-index="${a.index}" data-open-name="${_esc(a.filename)}" data-open-folder="${_esc(chipFolder)}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><line x1="8" y1="9" x2="10" y2="9"/></svg><span class="email-attachment-open-label">Open</span></span>`
-      : '';
+    const openBtn = `<span class="email-attachment-open" title="Open in document editor" data-open-uid="${_esc(chipUid)}" data-open-index="${a.index}" data-open-name="${_esc(a.filename)}" data-open-folder="${_esc(chipFolder)}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><line x1="8" y1="9" x2="10" y2="9"/></svg><span class="email-attachment-open-label">Open</span></span>`;
     return `<button type="button" class="email-attachment-chip${extraClass}" data-att-uid="${_esc(chipUid)}" data-att-index="${a.index}" data-att-name="${_esc(a.filename)}" data-att-folder="${_esc(chipFolder)}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 17.93 8.8l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg><span>${_esc(a.filename)}</span><span class="att-size">${Math.round((a.size||0)/1024)} KB</span>${openBtn}</button>`;
   };
   const chips = visible.map(a => renderChip(a)).join('');

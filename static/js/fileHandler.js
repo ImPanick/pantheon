@@ -14,6 +14,13 @@ let uploaded = [];
 // uploadPending() so callers can stamp width/height onto their attachment
 // objects without changing uploadPending()'s return signature.
 let _lastUploadedMeta = [];
+// `B03`. The `rejected` half of the most recent `/api/upload` response, and a
+// per-input-file outcome in the order the files were submitted. `_lastUploadedMeta`
+// (and the ids uploadPending returns) are COMPACTED — the server skips rejected
+// files — so nothing downstream could recover which attachment got which id
+// without this.
+let _lastUploadRejected = [];
+let _lastUploadOutcome = [];
 let API_BASE = '';
 let _uploadSpinners = [];
 let _uploadAbortCtrl = null;
@@ -27,6 +34,17 @@ let _expanded = false;
 
 function _isMobileViewport() {
   return window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
+}
+
+// The name a pending file is sent under, and the only name the server echoes
+// back verbatim: `rejected[].name` is the raw form filename, while `files[].name`
+// is `secure_filename()`'d (spaces → `_`, non-ASCII stripped), so matching an
+// upload result against a pending file by the ACCEPTED name is wrong for any
+// filename a human typed. Derived once here because the FormData append and
+// every name-keyed pairing have to agree on it — they did not: the append used
+// `'paste.png'` for a nameless blob and getPendingInfo() used `'pasted-image'`.
+function _wireName(f) {
+  return (f && f.name) || 'paste.png';
 }
 
 function _isCroppableImage(f) {
@@ -271,6 +289,10 @@ export function removePending(idx) {
 export async function uploadPending(opts = {}) {
   if (pendingFiles.length === 0) return [];
   _lastUploadCancelled = false;
+  // Stale results from the previous batch must not be readable as if they
+  // described this one — every early return below leaves them empty.
+  _lastUploadRejected = [];
+  _lastUploadOutcome = [];
 
   // The message bubble is shown immediately, but the upload can take a moment —
   // dim the chips and overlay a whirlpool so it's clear the files are still
@@ -294,7 +316,8 @@ export async function uploadPending(opts = {}) {
   }
 
   const fd = new FormData();
-  pendingFiles.forEach(f => fd.append('files', f, f.name || 'paste.png'));
+  const submitted = pendingFiles.slice();   // input order, frozen for the pairing below
+  submitted.forEach(f => fd.append('files', f, _wireName(f)));
   if (opts.sessionId) fd.append('session_id', opts.sessionId);
   _uploadAbortCtrl = new AbortController();
   _uploading = true;
@@ -323,15 +346,67 @@ export async function uploadPending(opts = {}) {
     }
     const data = await res.json();
     uploaded = (data.files || []);
+    // `B03`. A partial batch answers 200 with both halves. This read only
+    // `files` — the refused half was parsed and thrown away.
+    const rejected = Array.isArray(data.rejected) ? data.rejected : [];
     if (uploaded.some(x => x && x.gallery_id)) {
       try { localStorage.setItem('gallery-fresh-chat-upload', String(Date.now())); } catch (_) {}
       window.dispatchEvent(new CustomEvent('gallery-refresh', { detail: { source: 'chat-upload' } }));
     }
-    pendingFiles = [];          // clear only on success
+
+    // Rebuild which submitted file got which id. `files` preserves input order
+    // but SKIPS the rejected ones, so for [f0, f1✗, f2, f3✗, f4] it is three
+    // entries long and index i in it is not file i. `rejected[].name` is the
+    // raw form filename — the one this module chose in `_wireName` — so the
+    // compaction is recoverable here and nowhere else. Counted, not just
+    // tested for membership, so two attachments sharing a name consume one
+    // rejection each instead of both being called rejected.
+    const remaining = new Map();
+    for (const r of rejected) {
+      const k = (r && r.name) || 'paste.png';
+      remaining.set(k, (remaining.get(k) || 0) + 1);
+    }
+    let taken = 0;
+    const outcome = submitted.map((f) => {
+      const name = _wireName(f);
+      const left = remaining.get(name) || 0;
+      if (left > 0) {
+        remaining.set(name, left - 1);
+        return { name, accepted: false, id: null, meta: null, file: f };
+      }
+      const meta = uploaded[taken++] || null;
+      return { name, accepted: true, id: meta ? meta.id : null, meta, file: f };
+    });
+    // The pairing is only worth publishing if it consumed exactly the files
+    // the server said it kept. If it did not (a server that renamed them, a
+    // response shape that moved), say nothing rather than attribute a
+    // thumbnail from a pairing we cannot trust — callers fall back to their
+    // previous positional behaviour, which is no worse than before.
+    const reconciled = taken === uploaded.length;
+
+    // "clear only on success" was the rule, and a 200 carrying `rejected` is
+    // not a success. Clearing the whole list on any 2xx is what made a refused
+    // file vanish from the composer with nothing to click and nothing to read:
+    // it could not be retried because it was no longer there. Keep exactly the
+    // refused Files pending — the `finally` below re-renders the strip with
+    // them — and drop the ones that landed so a retry does not re-upload what
+    // the server already has.
+    //
+    // Their preview blob URLs are deliberately not revoked: the optimistic
+    // message bubble chat.js rendered a moment ago is still displaying them,
+    // and the pre-existing clear did not revoke either.
+    pendingFiles = reconciled ? outcome.filter(o => !o.accepted).map(o => o.file) : [];
+    _lastUploadOutcome = reconciled ? outcome : [];
+    _lastUploadRejected = rejected;
     // Stash the full meta (incl. width/height for images) on the module so
     // callers that want it can grab it via getLastUploadedMeta(). Keep the
     // returned shape as `ids` for backward-compatibility with existing call sites.
     _lastUploadedMeta = uploaded;
+    if (rejected.length) {
+      uiModule.showUploadRejections(rejected, {
+        suffix: pendingFiles.length ? 'Kept in the composer so you can retry.' : '',
+      });
+    }
     return uploaded.map(x => x.id);
   } catch (e) {
     if (e && e.name === 'AbortError') {
@@ -386,20 +461,20 @@ export async function cropForMobileUpload(file) {
   }
 }
 
+// `B03` / `Law 14`. This used to read `window.showToast` and, when it was
+// absent, build and style its own `#_attach-toast` div. `window.showToast` is
+// ASSIGNED NOWHERE in the tree — three files read it, zero write it — so the
+// branch was never taken and the private div was the only path this function
+// has ever run. That made a second toast implementation, with its own markup,
+// its own 2.5s timer and no dismiss control, live permanently beside ui.js's.
+//
+// Delegate to the one toast. `showError` and not `showToast` for all four
+// call sites because the private div was red-on-panel unconditionally — every
+// message that reached it, "Upload cancelled" included, already looked like an
+// error, so routing them all to the error toast is what keeps the appearance
+// the user has today (Law 1) rather than a judgement about severity.
 function _showToast(msg) {
-  if (window.showToast) { window.showToast(msg); return; }
-  // Fallback inline toast
-  let t = document.getElementById('_attach-toast');
-  if (!t) {
-    t = document.createElement('div');
-    t.id = '_attach-toast';
-    t.style.cssText = 'position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--red);color:var(--red);padding:6px 14px;border-radius:6px;font-size:13px;z-index:9999;opacity:0;transition:opacity .3s';
-    document.body.appendChild(t);
-  }
-  t.textContent = msg;
-  t.style.opacity = '1';
-  clearTimeout(t._timer);
-  t._timer = setTimeout(() => { t.style.opacity = '0'; }, 2500);
+  uiModule.showError(msg);
 }
 
 /**
@@ -424,6 +499,11 @@ export function getPendingInfo() {
     const isImage = f.type?.startsWith('image/') || /\.(png|jpg|jpeg|gif|webp|svg|bmp)$/i.test(f.name || '');
     return {
       name: f.name || 'pasted-image',
+      // The name this file is POSTed under, which is what an upload result
+      // can be matched against. Kept separate from `name` because `name` is
+      // what the composer and the message bubble display, and 'paste.png' is
+      // a worse label than 'pasted-image' (`B03`).
+      uploadName: _wireName(f),
       size: f.size || 0,
       mime: f.type || '',
       previewUrl: isImage ? _getPreviewUrl(f) : '',
@@ -444,6 +524,30 @@ export function clearPending() {
 /** Full meta (incl. width/height for images) from the most recent uploadPending(). */
 export function getLastUploadedMeta() {
   return _lastUploadedMeta;
+}
+
+/**
+ * The `rejected` half of the most recent `/api/upload` response — `[{name,
+ * status, error}]`, empty when the batch was clean or the request never got a
+ * body. `B03`.
+ */
+export function getLastUploadRejections() {
+  return _lastUploadRejected.slice();
+}
+
+/**
+ * Per-submitted-file outcome of the most recent `uploadPending()`, in the
+ * order the files were POSTed: `{name, accepted, id, meta, file}`.
+ *
+ * Empty when there is nothing trustworthy to say (a failed request, a
+ * cancellation, or a `rejected` list that did not reconcile against `files`),
+ * so an empty array means "fall back", never "everything was rejected".
+ * Callers pairing their own per-file state against the upload need this: the
+ * ids `uploadPending()` returns are compacted and cannot be indexed by the
+ * position of the file the user attached. `B03`.
+ */
+export function getLastUploadOutcome() {
+  return _lastUploadOutcome.map(o => ({ ...o }));
 }
 
 export function isUploading() {
@@ -476,6 +580,8 @@ const fileHandlerModule = {
   getPendingRaw,
   clearPending,
   getLastUploadedMeta,
+  getLastUploadRejections,
+  getLastUploadOutcome,
   isUploading,
   wasLastUploadCancelled,
   cancelUpload,

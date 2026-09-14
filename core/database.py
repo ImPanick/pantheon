@@ -881,22 +881,25 @@ class EditorDraft(TimestampMixin, Base):
 #            status delivers the result and advances a `then_task_id` chain.
 #   error    The task itself failed; message in `error`.
 #            `_execute_task_locked`.
-#            INTENDED to be the only status counting against a task's error
-#            rate. Two known violations, both real, both open — do not read
-#            this line as a description of current behaviour:
+#            The only status counting against a task's error rate. Two
+#            violations were found and both are closed:
 #              (a) `static/js/tasks.js` `_entryStatus` text-scanned `result`
 #                  for /error|failed|exception|traceback/ and scored an
 #                  `aborted` run as an error if its partial output happened to
 #                  contain one of those words. Fixed 2026-08-27 to prefer the
 #                  row's own status, matching its correct sibling in the same
 #                  file.
-#              (b) `src/task_scheduler.py` sets `error` on an admin-privilege
-#                  refusal where the task never ran and is then paused. By the
-#                  definitions in this block that is `skipped`. Still open —
-#                  changing a persisted status value earns its own row.
+#              (b) `src/task_scheduler.py` set `error` on an admin-privilege
+#                  refusal where the task never ran and was then paused. By the
+#                  definitions in this block that is `skipped`. Fixed 2026-09-14
+#                  (`B07`): both refusal sites now go through
+#                  `src.task_action_policy.record_admin_refusal`, and
+#                  `_migrate_reclassify_admin_refusals` below re-files the rows
+#                  written before the fix.
 #   skipped  Deliberately did not run — the task was paused or deleted while
-#            the run sat queued, or the action raised TaskNoop ("nothing to
-#            do"). Not a failure. `_execute_task_locked`.
+#            the run sat queued, the action raised TaskNoop ("nothing to do"),
+#            or the owner lacks the privilege the action needs. Not a failure.
+#            `_execute_task_locked`, `record_admin_refusal`.
 #   aborted  An infrastructure event ended the run: user stop, foreground
 #            takeover, server restart, or a failed commit. Not a failure.
 #            **Folding `aborted` into `error` corrupts every error-rate
@@ -2372,6 +2375,56 @@ def init_db():
     _migrate_encrypt_signatures()
     _migrate_encrypt_endpoint_keys()
     _migrate_backfill_task_folders()
+    _migrate_reclassify_admin_refusals()
+
+
+def _migrate_reclassify_admin_refusals():
+    """Re-file pre-`B07` admin-privilege refusals from `error` to `skipped`.
+
+    **Migrated rather than left, and the reason is that leaving them is the
+    worse of the two wrongs.** Doing nothing would leave the Errors chip in the
+    Activity view showing historical refusals while every new one is filed as
+    `skipped` and stays out of it — the same event classified two ways
+    depending on when it happened. Anyone reading an error rate across the
+    upgrade sees a step change that looks like the product got more reliable,
+    and the rows that remain say `error` about something the code beside them
+    now documents as not a failure.
+
+    The predicate is exact, which is what makes this safe to run unattended.
+    `TaskRun.error` is written at seven sites in `src/task_scheduler.py` and one
+    in `task_action_policy`; only the refusal ever ends it with
+    `ADMIN_REFUSAL_SUFFIX` (the others write a traceback, an abort reason, a
+    commit failure or a "no longer active" line), and a task action name
+    cannot contain that sentence because `ADMIN_ONLY_TASK_ACTIONS` is a closed
+    frozenset of four identifiers. Narrowing to `status = 'error'` means a row
+    already re-filed is not touched again, so the migration is idempotent and a
+    later genuine failure of the same task is left alone.
+
+    The cost of migrating is the mirror of the cost of not: a person who
+    remembers a red row in Activity will find it grey. That is one-time, it is
+    in the direction of the truth, and the row's text is unchanged — it still
+    says why the task was paused.
+    """
+    try:
+        from src.task_action_policy import ADMIN_REFUSAL_SUFFIX
+    except Exception:
+        return
+    try:
+        with engine.connect() as conn:
+            res = conn.execute(
+                text(
+                    "UPDATE task_runs SET status = 'skipped' "
+                    "WHERE status = 'error' AND error LIKE :pat"
+                ),
+                {"pat": f"%{ADMIN_REFUSAL_SUFFIX}"},
+            )
+            conn.commit()
+            if res.rowcount:
+                logging.getLogger(__name__).info(
+                    f"Re-filed {res.rowcount} admin-privilege refusal run(s) from "
+                    f"'error' to 'skipped' (B07)")
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"admin refusal reclassification: {e}")
 
 
 def _migrate_backfill_task_folders():

@@ -431,6 +431,29 @@ function _absoluteTime(iso) {
   return `${mo}/${da} ${hh}:${mm}`;
 }
 
+// The six stored run statuses (core/database.py documents them) reduced to the
+// three things every renderer here actually needs to know. Four sites had their
+// own ladder over the same values and they did not agree: the Activity chip
+// mapped `skipped`/`aborted` to neutral, the run-history list gave them the
+// *running* style, and the task card's last-run badge tested `=== 'error'` and
+// so painted a green tick on anything that was not a failure — including the
+// admin-privilege refusal `B07` re-filed as `skipped`, and every `aborted` run.
+// `queued`/`running` are not terminal and are `pending`, not `ok`, so a task
+// mid-flight no longer claims success.
+export function runStatusTone(status) {
+  switch (status) {
+    case 'success': return 'ok';
+    case 'error':
+    case 'failed': return 'error';      // `failed` is not in the vocabulary;
+                                        // accepted because older rows carry it.
+    case 'queued':
+    case 'running': return 'pending';
+    case 'skipped':
+    case 'aborted': return 'info';
+    default: return null;               // unknown / absent — caller decides.
+  }
+}
+
 function _statusDot(status) {
   const colors = { active: '#4caf50', paused: '#ff9800', completed: '#888', error: '#f44336', failed: '#f44336' };
   const c = colors[status] || '#888';
@@ -961,13 +984,25 @@ function _renderList() {
       detail.appendChild(ex);
     }
     if (task.last_run_status) {
-      const isErr = task.last_run_status === 'error' || task.last_run_status === 'failed';
-      const color = isErr ? 'var(--red,#e06c75)' : 'var(--green,#50fa7b)';
+      // Three outcomes, not two. The old form was `isErr ? red ✗ : green ✓`,
+      // so "Action 'x' requires admin privileges" got a green tick the moment
+      // B07 re-filed it as `skipped` — and `aborted` and `running` always had
+      // one. Anything that is neither a success nor a failure gets the neutral
+      // dot and says what it was.
+      const tone = runStatusTone(task.last_run_status);
+      const isErr = tone === 'error';
+      const color = isErr ? 'var(--red,#e06c75)'
+        : tone === 'ok' ? 'var(--green,#50fa7b)'
+        : 'color-mix(in srgb, var(--fg) 45%, transparent)';
+      const mark = isErr ? '✗' : tone === 'ok' ? '✓' : '·';
+      const empty = isErr ? 'Failed (no detail)'
+        : tone === 'ok' ? 'Success (no output)'
+        : `${task.last_run_status} (no detail)`;
       const result = (task.last_run_result || '').trim();
       const prev = result.length > 200 ? result.slice(0, 200) + '…' : result;
       const lr = document.createElement('div');
       lr.style.cssText = `font-size:11px;margin-bottom:6px;padding:4px 8px;border-left:2px solid ${color};background:color-mix(in srgb, ${color} 8%, transparent);border-radius:2px;line-height:1.4;cursor:pointer;`;
-      lr.innerHTML = `<span style="font-weight:600;color:${color};">${isErr ? '✗' : '✓'}</span> <span style="opacity:0.9;">${_esc(prev) || (isErr ? 'Failed (no detail)' : 'Success (no output)')}</span>`;
+      lr.innerHTML = `<span style="font-weight:600;color:${color};">${mark}</span> <span style="opacity:0.9;">${_esc(prev) || empty}</span>`;
       lr.title = 'Open full history';
       lr.addEventListener('click', (e) => { e.stopPropagation(); _showRunHistory(task.id, task.name); });
       detail.appendChild(lr);
@@ -1860,10 +1895,18 @@ async function _showRunHistory(taskId, taskName) {
   } else {
     html += '<div class="task-runs-list">';
     for (const run of runs) {
-      const statusClass = run.status === 'success' ? 'task-run-success' : (run.status === 'error' || run.status === 'failed') ? 'task-run-error' : 'task-run-running';
+      // `skipped` and `aborted` fell into the trailing `task-run-running`
+      // branch — a terminal run drawn with the in-flight style. They get the
+      // neutral class now; the derivation is shared so this list and the task
+      // card cannot drift apart again.
+      const _tone = runStatusTone(run.status);
+      const statusClass = _tone === 'ok' ? 'task-run-success'
+        : _tone === 'error' ? 'task-run-error'
+        : _tone === 'info' ? 'task-run-skipped'
+        : 'task-run-running';
       html += `<div class="task-run-item ${statusClass}">
         <div class="task-run-item-header">
-          ${_statusDot(run.status === 'success' ? 'active' : run.status)}
+          ${_statusDot(_tone === 'ok' ? 'active' : run.status)}
           <span>${run.status}</span>
           ${run.model ? `<span class="task-run-model" style="font-size:10px;opacity:0.5;">${_esc(run.model.split('/').pop())}</span>` : ''}
           <span class="task-run-time" title="${run.started_at ? _esc(_relativeTime(run.started_at)) : ''}">${run.started_at ? _absoluteTime(run.started_at) : ''}</span>
@@ -2323,10 +2366,10 @@ async function _renderActivityView() {
   // events into `error` corrupts every error-rate statistic; this is where it
   // was happening. Text-scan remains the fallback for older rows with no status.
   const _entryStatus = (e) => {
-    if (e.status === 'success') return 'ok';
-    if (e.status === 'error' || e.status === 'failed') return 'error';
-    if (e.status === 'skipped' || e.status === 'aborted') return 'info';
-    if (e.status === 'queued' || e.status === 'running') return 'info';
+    const tone = runStatusTone(e.status);
+    // `pending` is not a chip bucket — an in-flight row is neither a success
+    // nor an error, so it reads as `info` here exactly as it did before.
+    if (tone) return tone === 'pending' ? 'info' : tone;
     const scanned = _classifyResult(e.result);
     return scanned === 'ok' ? 'ok' : scanned === 'error' ? 'error' : 'info';
   };
@@ -2873,19 +2916,18 @@ function _renderActivityEntry(entry, opts = {}) {
     : '';
   const tsLabel = _relativeTime(entry.ts);
   const tsAbs = entry.ts ? new Date(entry.ts).toLocaleString() : '';
-  // Prefer the run's own status (queued / running / success / error / skipped)
-  // over heuristic text classification. Fall back to text-scan for older
-  // rows where entry.status is missing.
+  // Prefer the run's own status over heuristic text classification; fall back
+  // to the text-scan only for older rows where entry.status is missing.
+  // The dot/stripe keeps the row's own status name where one exists (there is
+  // a `.task-log-status-*` rule per value); `runStatusTone` only decides which
+  // of the two *scored* names — ok / error — a status collapses to, so this and
+  // the Errors chip cannot disagree about what counts as a failure.
   let status;
-  if (entry.status === 'queued' || entry.status === 'running' || entry.status === 'skipped' || entry.status === 'aborted') {
-    status = entry.status;
-  } else if (entry.status === 'error' || entry.status === 'failed') {
-    status = 'error';
-  } else if (entry.status === 'success') {
-    status = 'ok';
-  } else {
-    status = _classifyResult(entry.result);
-  }
+  const _tone = runStatusTone(entry.status);
+  if (_tone === 'ok') status = 'ok';
+  else if (_tone === 'error') status = 'error';
+  else if (_tone) status = entry.status;
+  else status = _classifyResult(entry.result);
   const statusDot = `<span class="task-log-status task-log-status-${status}" title="${status}"></span>`;
   const failedTag = status === 'error'
     ? '<span class="task-log-failed-tag">(failed)</span>'
@@ -3025,6 +3067,14 @@ function _renderActivityEntry(entry, opts = {}) {
     const skippedStop = _controls.stop
       ? `<button class="task-log-stop" type="button" title="${_escHtml(_stopLabel(entry))}"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg></button>`
       : '';
+    // `actionBtn` is computed above and this template used to drop it on the
+    // floor, so a skipped row had no Copy log and no Run again — and clicking
+    // it does nothing either, because `_wireActivityRows` gives `.is-skipped`
+    // no expand handler. Harmless while `skipped` only ever meant a cron
+    // no-op; the moment B07 filed the admin-privilege refusal here it became a
+    // subtraction, because that row had both buttons as an `error`. Kept in
+    // the head rather than in a `.task-log-row-actions` footer: the footer is
+    // hidden until a row expands, and this one cannot expand.
     return `
       <div class="task-log-row is-skipped${rowStatusClass}" data-kind="${_escHtml(entry.kind)}" data-entry-idx="${entryIdx}" style="${styleVars}">
         <div class="task-log-row-head">
@@ -3033,6 +3083,7 @@ function _renderActivityEntry(entry, opts = {}) {
           <span class="task-log-name">${_escHtml(entry.taskName)}</span>${_taskAiMark(entry)}
           ${repeatBadge}
           <span class="task-log-skipped-reason">skipped${reason ? ' — ' + _escHtml(reason) : ''}</span>
+          ${actionBtn}
           ${skippedStop}
           <span class="task-log-time" title="${_escHtml(tsAbs)}">${_escHtml(tsLabel)}</span>
         </div>

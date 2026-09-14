@@ -268,11 +268,26 @@ def test_status_block_documents_the_same_six_values(sandbox):
 def test_entry_status_still_prefers_the_rows_own_status_over_a_text_scan(sandbox):
     # Fixed 2026-08-27 and called out in core/database.py: an `aborted` run whose
     # partial output mentions "error" must not be filed under Errors.
-    src = TASKS_JS.read_text()
-    body = src.split("const _entryStatus = (e) => {")[1].split("};")[0]
-    first = body.strip().splitlines()[0]
-    assert "e.status === 'success'" in first, (
-        "_entryStatus must branch on the row's status before any text scan"
-    )
-    assert "e.status === 'skipped' || e.status === 'aborted'" in body
-    assert body.index("e.status === 'error'") < body.index("_classifyResult")
+    #
+    # This was three assertions about the SHAPE of `_entryStatus`'s source — the
+    # order of its lines and the exact spelling of one condition — which is a
+    # test of the file, not of the code (`Law 20`). It failed when `B07` moved
+    # the same decision behind the shared `runStatusTone`, while the behaviour it
+    # names was unchanged. Asserted by calling the derivation now, so the next
+    # refactor of the ladder is free and the next change of MEANING is not.
+    out = _run(sandbox, """
+        const t = await import('./tasks.js');
+        const all = {};
+        for (const s of ['queued','running','success','error','skipped','aborted','failed']) {
+          all[s] = t.runStatusTone(s);
+        }
+        all._unknown = t.runStatusTone('something-new');
+        console.log(JSON.stringify(all));
+    """)
+    assert out["aborted"] == "info", "an infra event is not a failure"
+    assert out["skipped"] == "info", "a deliberate non-run is not a failure"
+    assert out["error"] == "error" and out["failed"] == "error"
+    assert out["success"] == "ok"
+    # Only an unrecognised status may fall through to the text scan. Anything
+    # the vocabulary names is decided here, whatever its output happens to say.
+    assert out["_unknown"] is None

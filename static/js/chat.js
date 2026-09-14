@@ -2499,18 +2499,64 @@ import agentDrafts from './agentDrafts.js';   // H01
       // re-render so the thumbnail appears live, no refresh needed.
       if (_userMsgEl && _pendingAttachInfo && ids.length) {
         const _meta = fileHandlerModule.getLastUploadedMeta?.() || [];
-        for (let i = 0; i < _pendingAttachInfo.length && i < ids.length; i++) {
-          _pendingAttachInfo[i].id = ids[i];
-          const _m = _meta[i];
+        // `B03`. This paired `_pendingAttachInfo[i]` — one entry per file the
+        // user attached, in input order — with `ids[i]`. `ids` comes from the
+        // server's `files` array, which preserves input order but SKIPS every
+        // file it rejected, so a partial batch compacts it: [f0, f1✗, f2, f3✗,
+        // f4] returns three ids and this loop gave f1's row f2's id. The
+        // bubble then showed the WRONG THUMBNAIL under the RIGHT FILENAME —
+        // mis-attribution, not the omission the row describes, and independent
+        // of whether any toast is shown.
+        //
+        // `getLastUploadOutcome()` is the same length as the submitted batch
+        // and carries the rejections in place, so each row can be keyed to the
+        // file it actually describes. It is empty whenever the module has
+        // nothing trustworthy to say (request failed, cancelled, or the
+        // rejections did not reconcile), and empty on a queue drain, where
+        // `_pendingAttachInfo` travelled on the queued item and the last
+        // upload was somebody else's — hence the length and per-row NAME
+        // check before any of it is believed.
+        const _outcome = fileHandlerModule.getLastUploadOutcome?.() || [];
+        const _aligned = _outcome.length === _pendingAttachInfo.length;
+        // What the bubble should show. A refused file was never sent with this
+        // message, so leaving its card in the user's own turn claims something
+        // that did not happen — and with no id it would sit as a permanent
+        // pre-upload skeleton. It is still in the composer strip, and the
+        // toast named it.
+        const _shown = [];
+        for (let i = 0; i < _pendingAttachInfo.length; i++) {
+          const _info = _pendingAttachInfo[i];
+          let _id = null;
+          let _m = null;
+          if (_aligned) {
+            const _o = _outcome[i];
+            // The name each file was POSTed under. A mismatch means these two
+            // lists are not describing the same batch, so stamp nothing rather
+            // than stamp something wrong.
+            if (!_o || _o.name !== (_info.uploadName || _info.name)) continue;
+            if (!_o.accepted) continue;   // rejected: it has no id, and must not borrow one
+            _id = _o.id;
+            _m = _o.meta;
+          } else {
+            if (i >= ids.length) break;
+            _id = ids[i];
+            _m = _meta[i];
+          }
+          if (!_id) continue;
+          _info.id = _id;
           // Never overwrite a dimension the info already carries: on a queue
           // drain it was stamped from that item's own upload, and
           // getLastUploadedMeta() now describes some later upload.
           if (_m) {
-            if (_m.width && !_pendingAttachInfo[i].width)   _pendingAttachInfo[i].width  = _m.width;
-            if (_m.height && !_pendingAttachInfo[i].height) _pendingAttachInfo[i].height = _m.height;
+            if (_m.width && !_info.width)   _info.width  = _m.width;
+            if (_m.height && !_info.height) _info.height = _m.height;
           }
+          _shown.push(_info);
         }
-        chatRenderer.updateMessageAttachments(_userMsgEl, _pendingAttachInfo);
+        chatRenderer.updateMessageAttachments(
+          _userMsgEl,
+          _aligned && _shown.length ? _shown : _pendingAttachInfo,
+        );
       }
 
       // Offer to import text files to document library

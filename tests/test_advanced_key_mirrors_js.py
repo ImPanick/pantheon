@@ -78,14 +78,26 @@ a hand-kept list; every set is read out of the file that owns it:
   * **the four retired keys are gone from all three files**, and
     `--accent-primary`'s population is re-derived rather than quoted, so the
     "synonym for `--accent`" finding cannot quietly stop being true;
-  * **the `src/` residue is bounded.** `create_theme` still accepts the four —
-    that is a dead parameter now, not a stale token, and `src/` is not this
-    batch's to edit. The gap may shrink but not grow.
+  * **`src/` is the same set, not a bounded gap** (`B21`, 2026-09-14). It used
+    to be four more copies — an `adv_keys` set and the usage error string in
+    `ai_interaction.py`, an `adv_keys` list and the `create_theme` JSON schema
+    in `tool_schemas.py` — agreeing with each other at 16 keys and with the
+    front end at neither end: they accepted `accentPrimary`, `accentError`,
+    `sectionAccent` and `toggleBg`, which no writer writes, and lacked
+    `brandMixTo` and `hamburgerColor`, which the editor offers. All four derive
+    from `src/theme_advanced_keys.py`, which parses `ADV_KEYS` out of
+    `static/js/theme.js`, and each is still measured separately here — by
+    running it — because a half-applied derivation is the same defect with
+    fewer places to look. The old bound also could not see two of the four: it
+    matched `adv_keys\\s*=\\s*[\\{\\[]` and the error string and JSON schema had
+    no such literal.
 
 Counts were re-derived from the tree on 2026-08-30 and move as it grows; the
 tests below re-derive rather than trust them.
 """
 
+import asyncio
+import functools
 import json
 import re
 import shutil
@@ -94,6 +106,8 @@ import textwrap
 from pathlib import Path
 
 import pytest
+
+from src import ai_interaction, theme_advanced_keys, tool_schemas
 
 # One harness — the DOM shim and sandbox builder the JS suites share — and the
 # palette-writing-script selector from the closest sibling row, so "the inline
@@ -106,8 +120,6 @@ THEME = ROOT / "static" / "js" / "theme.js"
 INDEX = ROOT / "static" / "index.html"
 LOGIN = ROOT / "static" / "login.html"
 STATIC = ROOT / "static"
-AI_INTERACTION = ROOT / "src" / "ai_interaction.py"
-TOOL_SCHEMAS = ROOT / "src" / "tool_schemas.py"
 
 pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
 
@@ -342,6 +354,8 @@ def adv_keys(sandbox) -> dict:
         console.log(JSON.stringify({
           keys: tm._ADV_KEYS.map((e) => e.key),
           css: tm._ADV_KEYS.map((e) => e.css),
+          labels: tm._ADV_KEYS.map((e) => e.label),
+          groups: tm._ADV_KEYS.map((e) => e.group),
           defaults: Object.keys(tm._computeAdvancedDefaults(tm.THEMES.dark)),
         }));
         """,
@@ -594,38 +608,163 @@ def _token_uses(token: str):
 # ── What `src/` still accepts ───────────────────────────────────────────────
 
 
-def _src_keys() -> set:
-    """The advanced keys `create_theme` accepts, from both `src/` copies."""
-    sets = {}
-    for path in (AI_INTERACTION, TOOL_SCHEMAS):
-        text = path.read_text(encoding="utf-8")
-        block = re.search(r"adv_keys\s*=\s*[\{\[](.*?)[\}\]]", text, re.S)
-        assert block, f"{path.name} no longer declares an `adv_keys` literal"
-        sets[path.name] = set(re.findall(r'"(\w+)"', block.group(1)))
-    left, right = sets.values()
-    assert left == right, f"the two `src/` copies of adv_keys disagree: {sorted(left ^ right)}"
-    return left
+def _ui(command: str) -> dict:
+    return asyncio.run(ai_interaction.do_ui_control(command))
 
 
-def test_the_src_residue_may_shrink_but_not_grow(adv_keys):
-    """`create_theme` still accepts the four retired keys. They are inert now —
-    nothing under `static/` maps them, so they are a dead parameter rather than
-    a stale token — and closing them is a `src/` edit this batch does not own.
-    Bounded in both directions so the gap cannot widen while it waits.
+def _create(tail: str = "") -> dict:
+    """One real `create_theme` call over a fixed base palette."""
+    return _ui(f"create_theme probe #000000 #ffffff #111111 #222222 #ff00ff {tail}".strip())
+
+
+def _schema_color_properties() -> dict:
+    """The `colors` properties block of the shipped `create_theme` schema."""
+    tools = [s for s in tool_schemas.FUNCTION_TOOL_SCHEMAS if s["function"]["name"] == "ui_control"]
+    assert len(tools) == 1, f"expected one ui_control schema, found {len(tools)}"
+    return tools[0]["function"]["parameters"]["properties"]["colors"]["properties"]
+
+
+def _schema_keys() -> set:
+    return set(_schema_color_properties()) - set(theme_advanced_keys.BASE_COLOR_KEYS)
+
+
+def _usage_error_keys() -> set:
+    """The keys the usage error names — the list the model is handed when it
+    gets the call wrong, and one of the two sites the old regex could not see."""
+    err = _ui("create_theme too-few-args").get("error", "")
+    named = re.search(r"advanced color key=value pairs \(([^)]*)\)", err)
+    assert named, f"the usage error no longer names the advanced keys: {err[:200]}"
+    return {k.strip() for k in named.group(1).split(",") if k.strip()}
+
+
+def _accepted_keys(probe: set) -> set:
+    """The keys a real `create_theme` call lands in `colors.advanced`.
+
+    Driven rather than parsed: the acceptance test is `is_advanced_key(ak)` in
+    a loop whose branches also claim `bgPattern` and friends, and only running
+    it says which name reaches which branch.
     """
-    src = _src_keys()
-    front = set(adv_keys["keys"])
+    landed = set()
+    for key in sorted(probe):
+        out = _create(f"{key}={MARK}")
+        if out.get("colors", {}).get("advanced", {}).get(key) == MARK:
+            landed.add(key)
+    return landed
 
-    phantom = src - front - set(RETIRED)
-    assert not phantom, (
-        f"`create_theme` accepts {sorted(phantom)}, which no front-end writer "
-        "maps — a new write-only key, which is the defect P1-02 closed"
+
+@functools.lru_cache(maxsize=1)
+def _src_keys() -> frozenset:
+    """The advanced keys `src/` describes — all four sites, driven not grepped.
+
+    `B21` found this helper matching `adv_keys\\s*=\\s*[\\{\\[]` and therefore
+    reading two of the four: the usage error string and the `create_theme` JSON
+    schema were invisible to it, and both had drifted with the literals. All
+    four derive from `src/theme_advanced_keys.py` now, which parses `ADV_KEYS`
+    out of `static/js/theme.js` — the file `applyColors()` walks. They are still
+    measured one by one, because a half-applied derivation leaves exactly the
+    same defect with fewer places to look.
+    """
+    sets = {
+        "src/theme_advanced_keys.py ADVANCED_KEYS": set(theme_advanced_keys.ADVANCED_KEY_NAMES),
+        "create_theme's JSON schema": _schema_keys(),
+        "create_theme's usage error": _usage_error_keys(),
+    }
+    # Probe with every name any writer, mirror or retired list has ever used, so
+    # "the loop rejects it" is distinguishable from "the test never asked".
+    probe = set().union(*sets.values()) | set(RETIRED) | _picker_ids()
+    sets["the keys do_ui_control lands"] = _accepted_keys(probe)
+
+    reference = sets["src/theme_advanced_keys.py ADVANCED_KEYS"]
+    for label, keys in sets.items():
+        assert keys == reference, (
+            f"`{label}` and the derived ADVANCED_KEYS disagree — "
+            f"only in {label}: {sorted(keys - reference)}; "
+            f"only in ADVANCED_KEYS: {sorted(reference - keys)}"
+        )
+    return frozenset(reference)
+
+
+def test_src_and_the_front_end_describe_one_set(adv_keys):
+    """`B21`, and it is an equality now rather than a bound.
+
+    It used to allow the gap to shrink but not grow, because `src/` was not
+    that batch's to edit: `create_theme` accepted `accentPrimary`, `accentError`,
+    `sectionAccent` and `toggleBg` — four keys no writer under `static/` writes,
+    validated into the user's stored theme and counted in "with N advanced
+    overrides" — and could not set `brandMixTo` or `hamburgerColor`, which the
+    editor offers. Measured 2026-09-14 the four `src/` sites still carried 16
+    keys against the front end's 14, wrong at both ends.
+
+    `src/theme_advanced_keys.py` reads `ADV_KEYS` out of `static/js/theme.js`
+    rather than restating it, so this equality is what a broken parse looks like
+    as well as what drift looks like — which is why there is no fallback list
+    behind the parse for it to pass on.
+    """
+    front = set(adv_keys["keys"])
+    src = set(_src_keys())
+    assert src == front, (
+        "`create_theme` and the theme editor disagree about what a theme is — "
+        f"only src/: {sorted(src - front)}; only ADV_KEYS: {sorted(front - src)}"
     )
-    missing = front - src - {"brandMixTo", "hamburgerColor"}
-    assert not missing, (
-        f"`create_theme` cannot set {sorted(missing)}, which the theme editor "
-        "can — a theme made through the assistant cannot reach a real key"
-    )
+    assert src, "no advanced keys parsed at all — ADV_KEYS in theme.js is unreadable to src/"
+
+
+def test_the_model_is_told_each_key_by_its_editor_row_label(adv_keys):
+    """The schema descriptions were hand-written prose and had drifted with the
+    keys — `sectionAccent` was still documented as "Section header accent
+    color" for a row that no longer exists. They come from `ADV_KEYS`'s own
+    `label` and `group` now, so the name the model is given and the name the
+    person reads above the colour input are the same string. The labels here
+    come out of node evaluating the module; the schema's come out of `src/`
+    parsing it, so agreeing means the parse read the whole entry.
+    """
+    properties = _schema_color_properties()
+    for key, label, group in zip(adv_keys["keys"], adv_keys["labels"], adv_keys["groups"]):
+        description = properties[key]["description"]
+        assert label in description, f"`{key}` is described as {description!r}, not as `{label}`"
+        assert group in description, f"`{key}` is described as {description!r}, not under `{group}`"
+
+
+def test_the_native_call_converter_is_not_a_fifth_copy():
+    """The fourth `src/` site was a filter, and a filter is a copy.
+
+    `function_call_to_tool_block` held its own `adv_keys` list and appended only
+    colours on it, so a key the list lacked was dropped between the model's
+    arguments and `do_ui_control` — the same silent drop as the missing `else`,
+    one layer up, where no error could ever be raised because the key was gone
+    before anything validated it. It forwards every non-positional colour now,
+    known or not, leaving `do_ui_control` as the one validator.
+    """
+    base = {"bg": "#000000", "fg": "#ffffff", "panel": "#111111", "border": "#222222", "accent": "#ff00ff"}
+    for probe in ("brandMixTo", "hamburgerColor", "accentPrimary", "notAKeyAtAll"):
+        block = tool_schemas.function_call_to_tool_block(
+            "ui_control",
+            json.dumps({"action": "create_theme", "name": "probe", "colors": dict(base, **{probe: MARK})}),
+        )
+        assert f"{probe}={MARK}" in block.content, (
+            f"the converter dropped `{probe}` before any validator saw it: {block.content}"
+        )
+        out = asyncio.run(ai_interaction.do_ui_control(block.content))
+        if probe in _src_keys():
+            assert out.get("colors", {}).get("advanced", {}).get(probe) == MARK, out
+        else:
+            assert "error" in out and probe in out["error"], (
+                f"`{probe}` reached do_ui_control and was neither applied nor refused: {out}"
+            )
+
+
+def test_the_retired_four_are_refused_by_every_src_surface():
+    """`P1-02` deleted them from the front end; they lived on here as a dead
+    parameter — accepted, stored, exported, and counted. The schema no longer
+    offers them, the usage error no longer names them, and a call that asks for
+    one fails instead of reporting an override that nothing will paint.
+    """
+    for key in RETIRED:
+        assert key not in _schema_keys(), f"`{key}` is still advertised to the model"
+        assert key not in _usage_error_keys(), f"the usage error still names `{key}`"
+        out = _create(f"{key}={MARK}")
+        assert "error" in out, f"`{key}` was accepted: {out}"
+        assert "advanced" not in out.get("colors", {}), f"`{key}` still reached a stored theme: {out}"
 
 
 # ── The favicon ─────────────────────────────────────────────────────────────

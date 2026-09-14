@@ -42,8 +42,13 @@ BELOW_THE_FLOOR_ON_PURPOSE = {
         "the edge-dock stripe sits just above the modal base layer, by design",
     ("static/js/editor/ai-inpaint.js", "canvasWpEl"):
         "a canvas wrapper inside the editor, not a popover",
-    ("static/js/fileHandler.js", "t"):
-        "the fallback toast; toasts have their own layer and sit below dialogs",
+    # `static/js/fileHandler.js` / `t` — "the fallback toast" — was exempt here
+    # until `B03` deleted it. It was the second toast implementation in the
+    # tree, reached whenever `window.showToast` was missing, which nothing ever
+    # assigned; `_showToast` calls `ui.js` now, so there is no private div left
+    # to pin a z-index on. `test_the_scan_finds_something` is what caught the
+    # stale entry — leaving it would have failed that test, which is the point
+    # of it.
 }
 
 

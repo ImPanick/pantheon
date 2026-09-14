@@ -17,8 +17,10 @@ from src.auth_helpers import get_current_user
 from src.constants import DATA_DIR, EMAIL_URGENCY_CACHE_DIR
 from src.task_action_policy import (
     ADMIN_ONLY_TASK_ACTIONS,
+    admin_refusal_message,
     is_admin_only_task_action,
     owner_has_admin_task_privileges,
+    record_admin_refusal,
 )
 from src.task_scheduler import compute_next_run, HOUSEKEEPING_DEFAULTS
 from routes.prefs_routes import _load_for_user, _save_for_user
@@ -443,8 +445,11 @@ def setup_task_routes(task_scheduler) -> APIRouter:
         return owner_has_admin_task_privileges(user)
 
     def _require_admin_for_task_action(user: str | None, task_type: str | None, action: str | None) -> None:
+        # The CRUD gate deliberately records nothing: nothing ran and nothing
+        # was scheduled, so there is no run to file. Only the message is shared
+        # — it was the third hand-typed copy of the same sentence.
         if is_admin_only_task_action(task_type, action) and not _is_admin(user):
-            raise HTTPException(403, f"Action '{action}' requires admin privileges")
+            raise HTTPException(403, admin_refusal_message(action))
 
     def _validate_then_task_id(db, then_task_id: Optional[str], user: Optional[str], current_task_id: Optional[str] = None) -> Optional[str]:
         target_id = (then_task_id or "").strip()
@@ -1097,10 +1102,11 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                 is_admin_only_task_action(task.task_type, task.action)
                 and not owner_has_admin_task_privileges(task.owner)
             ):
-                task.status = "paused"
-                task.next_run = None
-                db.commit()
-                raise HTTPException(403, f"Action '{task.action}' requires admin privileges")
+                # This used to pause the task and write no run row, so the only
+                # trace was a 403 handed to whoever POSTed the webhook — not the
+                # owner, who just found a paused task. Same rule as the
+                # scheduler's, now the same recording (Law 13).
+                raise HTTPException(403, record_admin_refusal(db, task))
         finally:
             db.close()
         started = await task_scheduler.run_task_now(task_id)

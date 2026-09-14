@@ -25519,6 +25519,19 @@ body:not(.welcome-ready) #welcome-screen {
   min-width: 0;
 }
 .task-log-row.is-skipped:hover { opacity: 0.7; }
+/* B07: the slim row carries its action buttons inline now (it cannot expand,
+   so the usual footer would never be reachable). The reason text is the only
+   thing allowed to shrink — without this the buttons compress to unreadable
+   slivers on a narrow modal instead of the reason ellipsising. */
+.task-log-row.is-skipped .task-log-open-chat,
+.task-log-row.is-skipped .task-log-open-report,
+.task-log-row.is-skipped .task-log-copy,
+.task-log-row.is-skipped .task-log-clear-cache,
+.task-log-row.is-skipped .task-log-run-again {
+  flex: 0 0 auto;
+  font-size: 9px;
+  padding: 0 5px;
+}
 
 .task-log-account-tag {
   display: inline-block;

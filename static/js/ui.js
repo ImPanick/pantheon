@@ -500,6 +500,63 @@ export function showError(msg) {
 }
 
 /**
+ * Name the files a partial `POST /api/upload` batch refused.
+ *
+ * `B03`. That endpoint used to fail the whole request when any file was
+ * rejected. It now answers **200** with `{files: [...], rejected: [{name,
+ * status, error}]}` and keeps the files that did land — so every caller
+ * written against "2xx means all of them landed" silently discards the
+ * `rejected` half. Six frontend call sites read the response; none reads
+ * `rejected`. Two of them can reach the partial path (the chat composer and
+ * the markdown image insert); the other four post a single file, and a
+ * single-file batch with nothing written re-raises the original status
+ * instead, so they cannot.
+ *
+ * This lives here, once, rather than at each of those two sites: the message
+ * is about a response shape the server owns, and two hand-built versions of it
+ * are how the composer and the editor end up telling a user different things
+ * about the same refusal (`Law 13`).
+ *
+ * @param {Array<{name?: string, status?: number, error?: string}>} rejected
+ * @param {{suffix?: string}} [opts] extra clause appended after the reason —
+ *        each caller says what it did with the files that DID land.
+ * @returns {number} how many rejections were surfaced (0 = nothing shown).
+ */
+export function showUploadRejections(rejected, opts = {}) {
+  const list = (Array.isArray(rejected) ? rejected : []).filter(Boolean);
+  if (!list.length) return 0;
+  // Name them. The row's own Verify is "drop 30 files, see a message naming
+  // the 5 that did not upload" — the names ARE the message, a count alone
+  // does not tell the user which chip to retry. Capped at five because the
+  // composer allows ten files and ten filenames in a toast is a wall nobody
+  // reads; the remainder is counted, never dropped.
+  const MAX_NAMED = 5;
+  const names = list.map(r => (r && r.name) || 'unnamed file');
+  const named = names.slice(0, MAX_NAMED).join(', ');
+  const more = names.length > MAX_NAMED ? ` and ${names.length - MAX_NAMED} more` : '';
+  // One reason per file, and they are usually identical — a rate limit hits
+  // the tail of a batch, so every entry carries the same detail. Collapse the
+  // duplicates; when the reasons genuinely differ, say the first and say that
+  // there are others rather than picking one and implying it covers all.
+  // Server details are whole sentences ("…Please try again later.") and this
+  // sentence ends in its own full stop, so trim theirs rather than print "..".
+  const reasons = [...new Set(
+    list.map(r => String((r && r.error) || '').trim().replace(/\.+$/, '')).filter(Boolean),
+  )];
+  const why = reasons.length === 1
+    ? ` — ${reasons[0]}`
+    : reasons.length > 1
+      ? ` — ${reasons[0]} (+${reasons.length - 1} other reason${reasons.length > 2 ? 's' : ''})`
+      : '';
+  const head = list.length === 1
+    ? '1 file was not uploaded'
+    : `${list.length} files were not uploaded`;
+  const tail = opts && opts.suffix ? ` ${opts.suffix}` : '';
+  showError(`${head}: ${named}${more}${why}.${tail}`);
+  return list.length;
+}
+
+/**
  * Smooth-scroll chat history to bottom using rAF lerp.
  * Throttled during streaming so it doesn't fight user scrolling.
  */
@@ -910,6 +967,7 @@ const uiModule = {
   copyText,
   showToast,
   showError,
+  showUploadRejections,
   styledConfirm,
   styledPrompt,
   scrollHistory,

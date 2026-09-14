@@ -24,6 +24,7 @@ from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
 
 from src.constants import GENERATED_IMAGES_DIR
 from src.memory import MemoryStoreUnreadable
+from src.theme_advanced_keys import advanced_keys_prose, is_advanced_key
 
 logger = logging.getLogger(__name__)
 
@@ -757,7 +758,7 @@ async def do_ui_control(content: str, session_id: Optional[str] = None, owner: O
         parts = lines[0].strip().split()
         # create_theme <name> <bg> <fg> <panel> <border> <accent> [key=value ...]
         if len(parts) < 7:
-            return {"error": "create_theme needs: create_theme <name> <bg> <fg> <panel> <border> <accent> (all hex colors). Optional advanced color key=value pairs (userBubbleBg, aiBubbleBg, bubbleBorder, sidebarBg, sectionAccent, brandColor, inputBg, inputBorder, sendBtnBg, sendBtnHover, codeBg, codeFg, toggleBg, toggleActive, accentPrimary, accentError). Optional background EFFECTS: bgPattern=<none|dots|synapse|rain|constellations|perlin-flow|petals|sparkles|embers>, bgEffectColor=#RRGGBB, bgEffectIntensity=<num e.g. 1>, bgEffectSize=<num e.g. 1>, frosted=true|false"}
+            return {"error": "create_theme needs: create_theme <name> <bg> <fg> <panel> <border> <accent> (all hex colors). Optional advanced color key=value pairs (" + advanced_keys_prose() + "). Optional background EFFECTS: bgPattern=<none|dots|synapse|rain|constellations|perlin-flow|petals|sparkles|embers>, bgEffectColor=#RRGGBB, bgEffectIntensity=<num e.g. 1>, bgEffectSize=<num e.g. 1>, frosted=true|false"}
         name = parts[1].lower().replace(" ", "-")
         colors = {"bg": parts[2], "fg": parts[3], "panel": parts[4], "border": parts[5], "red": parts[6]}
         # Validate base hex colors
@@ -765,14 +766,12 @@ async def do_ui_control(content: str, session_id: Optional[str] = None, owner: O
         for k, v in colors.items():
             if not _re.match(r'^#[0-9a-fA-F]{6}$', v):
                 return {"error": f"Invalid hex color for {k}: '{v}'. Use format #RRGGBB"}
-        # Parse optional advanced key=value pairs
-        adv_keys = {
-            "userBubbleBg", "aiBubbleBg", "bubbleBorder", "sidebarBg",
-            "sectionAccent", "brandColor", "inputBg", "inputBorder",
-            "sendBtnBg", "sendBtnHover", "codeBg", "codeFg",
-            "toggleBg", "toggleActive", "accentPrimary", "accentError",
-        }
+        # Parse optional advanced key=value pairs. `B21`: this set used to be a
+        # literal here, one of four in `src/`, and all four had drifted from the
+        # editor's `ADV_KEYS` in both directions. It is derived now, so the keys
+        # this accepts are exactly the keys `applyColors()` can paint.
         advanced = {}
+        ignored_bare = []
         # Background-effect fields (animated pattern + frosted glass). Different
         # value types than the hex-only advanced keys, so parse separately.
         _BG_PATTERNS = {"none", "dots", "synapse", "rain", "constellations",
@@ -780,9 +779,16 @@ async def do_ui_control(content: str, session_id: Optional[str] = None, owner: O
         bg = {}
         for part in parts[7:]:
             if "=" not in part:
+                # Not a key at all. A bare word is as likely to be a trailing
+                # comment as a mistyped option, and rejecting the whole call
+                # over one would fail a `create_theme` that is otherwise
+                # complete — so it is reported in the result instead of erroring
+                # (an unrecognised *key*, below, does error). Either way it does
+                # not vanish, which is the half that was broken.
+                ignored_bare.append(part)
                 continue
             ak, av = part.split("=", 1)
-            if ak in adv_keys:
+            if is_advanced_key(ak):
                 if not _re.match(r'^#[0-9a-fA-F]{6}$', av):
                     return {"error": f"Invalid hex color for advanced key {ak}: '{av}'. Use format #RRGGBB"}
                 advanced[ak] = av
@@ -801,6 +807,14 @@ async def do_ui_control(content: str, session_id: Optional[str] = None, owner: O
                     return {"error": f"Invalid number for {ak}: '{av}'"}
             elif ak == "frosted":
                 bg["frosted"] = av.lower() in ("true", "1", "yes", "on")
+            else:
+                # `B21`. There was no `else` here: a key nothing recognised was
+                # dropped with no error and no message, so `brandMixTo=#abcdef`
+                # — a real editor key this tool did not accept — produced a
+                # theme reported as created and a gradient that never changed.
+                # It errors rather than warning because the model can act on it:
+                # the valid names are right here and one retry lands the colour.
+                return {"error": f"Unknown create_theme key '{ak}'. Advanced colors: {advanced_keys_prose()}. Background effects: bgPattern, bgEffectColor, bgEffectIntensity, bgEffectSize, frosted"}
         if advanced:
             colors["advanced"] = advanced
         return {
@@ -808,9 +822,14 @@ async def do_ui_control(content: str, session_id: Optional[str] = None, owner: O
             "theme_name": name,
             "colors": colors,
             "bg": bg or None,
+            # `len(advanced)` is only an honest count because the loop above now
+            # rejects anything outside `ADVANCED_KEYS`. It used to accept four
+            # keys no writer writes, so "with 5 advanced overrides" could mean
+            # one override and four claims.
             "results": f"Custom theme '{name}' created and applied"
                        + (f" with {len(advanced)} advanced overrides" if advanced else "")
-                       + (f" + background effect ({bg.get('pattern', 'frosted' if bg.get('frosted') else 'custom')})" if bg else ""),
+                       + (f" + background effect ({bg.get('pattern', 'frosted' if bg.get('frosted') else 'custom')})" if bg else "")
+                       + (f" (ignored, not key=value: {' '.join(ignored_bare)})" if ignored_bare else ""),
         }
 
     elif action == "highlight":

@@ -288,7 +288,10 @@ async def test_scheduler_pauses_stale_non_admin_cookbook_serve_task(
         run = db.query(TaskRun).filter(TaskRun.id == "run-1").first()
         assert task.status == "paused"
         assert task.next_run is None
-        assert run.status == "error"
+        # `skipped`, not `error` — the action never ran (`B07`). What this suite
+        # is about is the *gate*; whether the refusal is a failure, and what the
+        # renderers do with it, live in test_admin_refusal_is_not_a_failure.py.
+        assert run.status == "skipped"
         assert run.error == "Action 'cookbook_serve' requires admin privileges"
     finally:
         db.close()

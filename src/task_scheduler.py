@@ -16,6 +16,7 @@ from src.owner_identity import REQUEST_SENTINEL_OWNERS
 from src.task_action_policy import (
     is_admin_only_task_action,
     owner_has_admin_task_privileges,
+    record_admin_refusal,
 )
 
 logger = logging.getLogger(__name__)
@@ -1054,22 +1055,17 @@ class TaskScheduler:
                 is_admin_only_task_action(task.task_type, task.action)
                 and not owner_has_admin_task_privileges(task.owner)
             ):
-                msg = f"Action '{task.action}' requires admin privileges"
-                blocked = db.query(TaskRun).filter(TaskRun.id == run_id).first()
-                if blocked:
-                    blocked.status = "error"
-                    blocked.result = msg
-                    blocked.error = msg
-                    blocked.finished_at = _utcnow()
-                task.status = "paused"
-                task.next_run = None
-                task.last_run = _utcnow()
+                # `skipped`, not `error` — the action never ran, so by the
+                # vocabulary in core/database.py this is not a failure. Recorded
+                # through the shared helper because the webhook path in
+                # routes/task/task_routes.py enforces the same rule and used to
+                # record nothing at all.
+                record_admin_refusal(db, task, run_id=run_id)
                 logger.warning(
                     "Paused admin-only task %s for non-admin owner %r",
                     task_id,
                     task.owner,
                 )
-                db.commit()
                 return
 
             if gate_foreground:

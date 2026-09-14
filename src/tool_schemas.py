@@ -15,6 +15,7 @@ import logging
 from typing import Optional
 
 from src.agent_tools import ToolBlock, TOOL_TAGS
+from src.theme_advanced_keys import BASE_COLOR_KEYS, advanced_schema_properties
 from src.tool_parsing import _TOOL_NAME_MAP
 from src.tool_security import BUILTIN_EMAIL_TOOLS
 
@@ -551,22 +552,12 @@ FUNCTION_TOOL_SCHEMAS = [
                                    "panel": {"type": "string", "description": "Panel/sidebar background color (hex)"},
                                    "border": {"type": "string", "description": "Border/divider color (hex)"},
                                    "accent": {"type": "string", "description": "Accent color for buttons, brand, highlights (hex)"},
-                                   "userBubbleBg": {"type": "string", "description": "User chat bubble background (hex, optional)"},
-                                   "aiBubbleBg": {"type": "string", "description": "AI chat bubble background (hex, optional)"},
-                                   "bubbleBorder": {"type": "string", "description": "Chat bubble border color (hex, optional)"},
-                                   "sidebarBg": {"type": "string", "description": "Sidebar background override (hex, optional)"},
-                                   "sectionAccent": {"type": "string", "description": "Section header accent color (hex, optional)"},
-                                   "brandColor": {"type": "string", "description": "Brand/logo color (hex, optional)"},
-                                   "inputBg": {"type": "string", "description": "Chat input background (hex, optional)"},
-                                   "inputBorder": {"type": "string", "description": "Chat input border (hex, optional)"},
-                                   "sendBtnBg": {"type": "string", "description": "Send button background (hex, optional)"},
-                                   "sendBtnHover": {"type": "string", "description": "Send button hover color (hex, optional)"},
-                                   "codeBg": {"type": "string", "description": "Code block background (hex, optional)"},
-                                   "codeFg": {"type": "string", "description": "Code block text color (hex, optional)"},
-                                   "toggleBg": {"type": "string", "description": "Toggle switch off background (hex, optional)"},
-                                   "toggleActive": {"type": "string", "description": "Toggle switch on color (hex, optional)"},
-                                   "accentPrimary": {"type": "string", "description": "Primary accent override (hex, optional)"},
-                                   "accentError": {"type": "string", "description": "Error/danger color (hex, optional)"}
+                                   # `B21`. The sixteen advanced colour keys used
+                                   # to be hand-written here and had drifted from
+                                   # the theme editor in both directions. They are
+                                   # derived from `ADV_KEYS` and spliced in below
+                                   # the list — see
+                                   # `_install_theme_advanced_color_properties`.
                                },
                                "required": ["bg", "fg", "panel", "border", "accent"]}
                 },
@@ -1371,6 +1362,35 @@ FUNCTION_TOOL_SCHEMAS = [
 ]
 
 
+def _install_theme_advanced_color_properties() -> None:
+    """Add `create_theme`'s advanced colour keys, derived from the theme editor.
+
+    `B21`. They are spliced in here instead of being written as
+    `**advanced_schema_properties()` inside the literal above because
+    `FUNCTION_TOOL_SCHEMAS` is read with `ast.literal_eval` — by
+    `tests/test_tool_index_schema_parity.py`, which checks every schema tool has
+    a retrieval description without importing the embedding stack. A `**call`
+    inside the literal makes that parse raise, so the list stays literal and the
+    derived half arrives immediately after it.
+
+    A missing `ui_control` schema is logged rather than raised: an import-time
+    failure here would take the whole app down over a colour list, and
+    `tests/test_advanced_key_mirrors_js.py` fails on an empty properties block.
+    """
+    for schema in FUNCTION_TOOL_SCHEMAS:
+        function = schema.get("function", {})
+        if function.get("name") != "ui_control":
+            continue
+        function["parameters"]["properties"]["colors"]["properties"].update(
+            advanced_schema_properties()
+        )
+        return
+    logger.error("ui_control schema not found; create_theme advertises base colors only")
+
+
+_install_theme_advanced_color_properties()
+
+
 # ---------------------------------------------------------------------------
 # Converter: native function call -> ToolBlock
 # ---------------------------------------------------------------------------
@@ -1640,16 +1660,19 @@ def function_call_to_tool_block(name: str, arguments: str) -> Optional[ToolBlock
             border = colors.get("border", "#355a66")
             accent = colors.get("accent", "#e06c75")
             content = f"create_theme {theme_name} {bg} {fg} {panel} {border} {accent}"
-            # Append advanced overrides as key=value
-            adv_keys = [
-                "userBubbleBg", "aiBubbleBg", "bubbleBorder", "sidebarBg",
-                "sectionAccent", "brandColor", "inputBg", "inputBorder",
-                "sendBtnBg", "sendBtnHover", "codeBg", "codeFg",
-                "toggleBg", "toggleActive", "accentPrimary", "accentError",
-            ]
-            for ak in adv_keys:
-                if colors.get(ak):
-                    content += f" {ak}={colors[ak]}"
+            # Append every non-positional colour as key=value. `B21`: this was a
+            # fourth hand-kept copy of the advanced-key list, and filtering
+            # against it meant a key the list lacked was dropped here silently —
+            # the same defect as the missing `else` in `do_ui_control`, one
+            # layer up. Nothing is filtered now: `do_ui_control` is the one
+            # validator, so an unknown key comes back as an error naming the
+            # real ones instead of disappearing between the two.
+            for ck, cv in colors.items():
+                if ck in BASE_COLOR_KEYS or cv is None or isinstance(cv, (dict, list)):
+                    continue  # the five are already positional; a container has no key=value spelling
+                text = str(cv).strip()
+                if text:
+                    content += f" {ck}={text}"
         else:
             content = action
     elif tool_type in ("manage_tasks", "manage_skills", "api_call",

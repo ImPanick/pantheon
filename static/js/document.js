@@ -2960,9 +2960,44 @@ import { topPortalZ } from './toolWindowZOrder.js';
       if (fields.attachments && fields.attachments.length > 0 && fields.sourceUid) {
         attDiv.style.display = '';
         for (const att of fields.attachments) {
+          // B02, second gate. `isPdf` used to decide whether the attachment
+          // could reach `attachment-as-doc` AT ALL: the PDF chip called it, and
+          // every other chip went straight to the download route. So this file
+          // held a second, narrower copy of emailLibrary.js's `_OPENABLE_RE` —
+          // one suffix instead of six — and dropping only the regex would have
+          // left the backend's decode fallback still unreachable from here.
+          //
+          // `isPdf` now chooses the chip's PRIMARY action only: a PDF opens on
+          // click as it always has, everything else downloads on click as it
+          // always has (Law 1 — the Save dialog the comment below defends is
+          // untouched), and every non-PDF additionally carries the same "Open"
+          // affordance the email reader uses. One `_openAsDoc` below serves
+          // both, so the as-doc call and its download fallback exist once.
           const isPdf = (att.filename || '').toLowerCase().endsWith('.pdf');
           const sizeKb = att.size > 0 ? `${Math.round(att.size / 1024)} KB` : '';
+          const openHtml = '<span class="email-attachment-open" title="Open in document editor"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><line x1="8" y1="9" x2="10" y2="9"/></svg><span class="email-attachment-open-label">Open</span></span>';
           const chipHtml = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 17.93 8.8l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg><span>${_escHtml(att.filename)}</span><span class="att-size">${sizeKb}</span>`;
+          const folderQs = encodeURIComponent(fields.sourceFolder || 'INBOX');
+          const dlUrl = `${API_BASE}/api/email/attachment/${encodeURIComponent(fields.sourceUid)}/${att.index}?folder=${folderQs}`;
+          // The one as-doc call site in this file. When the backend declines
+          // (binary bytes → `Unsupported attachment type`) the click lands on
+          // the download route instead of dead-ending in a toast — this is the
+          // idiom emailLibrary.js was missing and now shares.
+          const _openAsDoc = async () => {
+            try {
+              const res = await fetch(`${API_BASE}/api/email/attachment-as-doc/${encodeURIComponent(fields.sourceUid)}/${att.index}?folder=${folderQs}`, { method: 'POST' });
+              const data = await res.json();
+              if (data.doc_id) {
+                await loadDocument(data.doc_id);
+                return;
+              }
+              if (uiModule) uiModule.showError(`Couldn't open ${att.filename} in the editor: ${data.error || 'unsupported'} — downloading it instead.`);
+              window.open(dlUrl, '_blank');
+            } catch (e) {
+              console.error('Open attachment as doc failed:', e);
+              if (uiModule) uiModule.showError(`Couldn't open ${att.filename}`);
+            }
+          };
           // Helper: swap chip content for a whirlpool spinner while busy.
           const _withSpinner = async (chip, fn) => {
             if (chip.dataset.loading === '1') return;
@@ -2986,22 +3021,7 @@ import { topPortalZ } from './toolWindowZOrder.js';
             // Full filename on hover — chip ellipsis-truncates long names.
             chip.title = att.filename;
             chip.innerHTML = chipHtml;
-            chip.addEventListener('click', () => _withSpinner(chip, async () => {
-              try {
-                const folderQs = encodeURIComponent(fields.sourceFolder || 'INBOX');
-                const res = await fetch(`${API_BASE}/api/email/attachment-as-doc/${encodeURIComponent(fields.sourceUid)}/${att.index}?folder=${folderQs}`, { method: 'POST' });
-                const data = await res.json();
-                if (data.doc_id) {
-                  await loadDocument(data.doc_id);
-                } else if (uiModule) {
-                  uiModule.showError(data.error || 'Failed to open PDF');
-                  window.open(`${API_BASE}/api/email/attachment/${encodeURIComponent(fields.sourceUid)}/${att.index}?folder=${folderQs}`, '_blank');
-                }
-              } catch (e) {
-                console.error('Open PDF attachment failed:', e);
-                if (uiModule) uiModule.showError('Failed to open PDF');
-              }
-            }));
+            chip.addEventListener('click', () => _withSpinner(chip, _openAsDoc));
             attDiv.appendChild(chip);
           } else {
             // Non-PDF: download via fetch+blob+anchor — browser-native download
@@ -3012,11 +3032,10 @@ import { topPortalZ } from './toolWindowZOrder.js';
             chip.className = 'email-attachment-chip';
             // Full filename on hover for the chip ellipsis-truncated label.
             chip.title = `Download ${att.filename}`;
-            chip.innerHTML = chipHtml;
-            chip.addEventListener('click', () => _withSpinner(chip, async () => {
+            chip.innerHTML = chipHtml + openHtml;
+            const _download = async () => {
               try {
-                const folderQs = encodeURIComponent(fields.sourceFolder || 'INBOX');
-                const res = await fetch(`${API_BASE}/api/email/attachment/${encodeURIComponent(fields.sourceUid)}/${att.index}?folder=${folderQs}`);
+                const res = await fetch(dlUrl);
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const blob = await res.blob();
                 const url = URL.createObjectURL(blob);
@@ -3030,7 +3049,19 @@ import { topPortalZ } from './toolWindowZOrder.js';
                 console.error('Download attachment failed:', e);
                 if (uiModule) uiModule.showError('Download failed: ' + e.message);
               }
-            }));
+            };
+            chip.addEventListener('click', (ev) => {
+              // Delegated, not bound to the span: `_withSpinner` restores the
+              // chip by re-assigning innerHTML, which would drop a listener
+              // attached to the span itself. Same shape emailLibrary.js uses.
+              const onOpen = ev && ev.target && ev.target.closest && ev.target.closest('.email-attachment-open');
+              if (onOpen) {
+                ev.stopPropagation();
+                ev.preventDefault();
+                return _withSpinner(chip, _openAsDoc);
+              }
+              return _withSpinner(chip, _download);
+            });
             attDiv.appendChild(chip);
           }
         }
@@ -3575,7 +3606,19 @@ import { topPortalZ } from './toolWindowZOrder.js';
       const uploaded = Array.isArray(data?.files) ? data.files : [];
       if (!uploaded.length) throw new Error('No uploaded files returned');
       _insertMarkdownImages(uploaded);
-      if (uiModule) uiModule.showToast(images.length === 1 ? 'Image inserted' : 'Images inserted');
+      // `B03`. The success toast was counted off `images` — the files chosen —
+      // while only `uploaded` were inserted, so a partial batch announced
+      // "Images inserted" for images that the server had refused and that are
+      // nowhere in the document. Count what landed, and name what did not
+      // through the one helper the chat composer also calls.
+      const rejected = Array.isArray(data?.rejected) ? data.rejected : [];
+      if (rejected.length && uiModule) {
+        uiModule.showUploadRejections(rejected, {
+          suffix: uploaded.length === 1 ? '1 image inserted.' : `${uploaded.length} images inserted.`,
+        });
+      } else if (uiModule) {
+        uiModule.showToast(uploaded.length === 1 ? 'Image inserted' : 'Images inserted');
+      }
     } catch (err) {
       console.error('Failed to insert markdown image:', err);
       if (uiModule) uiModule.showError('Failed to insert image');

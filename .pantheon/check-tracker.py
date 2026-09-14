@@ -39,6 +39,23 @@ ROWISH = re.compile(r"^\| (P\d+) \|")
 # against ticks -- but it does have to be part of the Total, or the Total is a
 # different number from the table it sits under.
 SETUP = re.compile(rf"^\| Setup \| (.+?) \| {NUM} \| {NUM} \| {NUM} \| {NUM} \|$")
+# `B79`. The backlog — `B` and `H` rows — was outside this table entirely, and
+# so outside the Total, and so outside the `N tracked, M done` headline that
+# restates it. Ninety-eight rows, seventy-seven of them done, invisible to the
+# one line whose whole job is to say how much of this tracker is finished.
+#
+# **This is `B44` one level up, and it is worse.** `B44` was a prose headline
+# that had drifted from a table; the table was right. Here the table itself was
+# answering a narrower question than its own heading asks, and `check-tracker.py`
+# validated it perfectly against the rows it had decided to count — internally
+# consistent and externally wrong, which is the kind that survives a checker.
+# It surfaced when eleven backlog rows closed in one day and the headline did
+# not move, and the owner asked why.
+#
+# Counted here rather than left in prose for the same reason every other number
+# in this file is: a figure nothing recomputes is a figure that rots.
+BACKLOG = re.compile(rf"^\| Backlog \| (.+?) \| {NUM} \| {NUM} \| {NUM} \| {NUM} \|$")
+BACKLOG_TASK = re.compile(r"^- \[([ x~·])\] \*\*([BH]\d+)\*\*")
 TOTAL = re.compile(rf"^\| \*\*Total\*\* \| \| {NUM} \| {NUM} \| {NUM} \| {NUM} \|$")
 # The headline on each § Progress entry: `**338 tracked, 123 done. …**`. It is the
 # Total row restated in prose, and nothing checked it until 2026-09-07, by which
@@ -111,6 +128,14 @@ def main() -> int:
         if st:
             rows.append(tuple(map(int, st.groups()[1:])))
             continue
+        # `B79`. The Backlog row counts toward the Total for the same reason
+        # Setup does: a Total that omits a row printed above it is a different
+        # number from the table it sits under. Its own figures are recounted
+        # from the `B`/`H` ticks below.
+        bl = BACKLOG.match(line)
+        if bl:
+            rows.append(tuple(map(int, bl.groups()[1:])))
+            continue
         m = ROW.match(line)
         if not m:
             rough = ROWISH.match(line)
@@ -128,6 +153,38 @@ def main() -> int:
             bad.append(
                 f"{ph}: table says {tasks}/{ready}/{blocked}/{done}, ticks say "
                 f"{real[0]}/{real[1]}/{real[2]}/{real[3]}  (total/ready/blocked/done)"
+            )
+
+    # `B79`. The Backlog row, recounted from the `B`/`H` ticks the same way every
+    # phase row is recounted from its own. Adding an unchecked number to this
+    # table would have been the defect it is meant to close.
+    backlog_marks = {v: 0 for v in MARKS.values()}
+    fenced = False
+    for line in lines:
+        if line.startswith("```"):
+            fenced = not fenced
+            continue
+        if fenced:
+            continue
+        m = BACKLOG_TASK.match(line)
+        if m:
+            backlog_marks[MARKS[m.group(1)]] += 1
+    backlog_real = (
+        sum(backlog_marks.values()), backlog_marks["ready"],
+        backlog_marks["blocked"], backlog_marks["done"],
+    )
+    backlog_seen = [ln for ln in lines if BACKLOG.match(ln)]
+    if len(backlog_seen) != 1:
+        bad.append(
+            f"Backlog: expected exactly one Backlog row, found {len(backlog_seen)} "
+            f"— the B and H rows are {backlog_real[0]} tasks and they belong in the table"
+        )
+    else:
+        claimed = tuple(map(int, BACKLOG.match(backlog_seen[0]).groups()[1:]))
+        if claimed != backlog_real:
+            bad.append(
+                f"Backlog: row says {'/'.join(map(str, claimed))}, the B and H ticks "
+                f"count {'/'.join(map(str, backlog_real))}  (total/ready/blocked/done)"
             )
 
     # The Total row is a sum nobody was checking. It had silently accumulated 27

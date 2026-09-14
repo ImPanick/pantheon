@@ -10,11 +10,40 @@ import tempfile
 from typing import List, Dict, Any
 
 from src.llm_core import llm_call
+from src.markitdown_runtime import MARKITDOWN_EXTS
+from src.pdf_runtime import PDF_EXTS
 
 logger = logging.getLogger(__name__)
 
 MAX_INLINE_ATTACHMENT_CHARS = 24000
 MIN_INLINE_ATTACHMENT_SLICE = 500
+
+# The extensions the text arm of ``build_user_content`` can actually read.
+# One register per extractor: this one, ``MARKITDOWN_EXTS`` (Office/EPUB) and
+# ``PDF_EXTS``. Nothing else may spell a fourth copy — see ``INGESTIBLE_EXTS``.
+TEXT_EXTS = frozenset({
+    ".txt", ".py", ".html", ".htm", ".md", ".json", ".csv", ".log", ".js", ".nix",
+    ".bash", ".c", ".cpp", ".css", ".go", ".h", ".java", ".jsx", ".php", ".rb",
+    ".rs", ".sh", ".sql", ".ts", ".tsx", ".xml", ".yaml", ".yml",
+})
+
+# Every extension chat ingest has an extractor for, and therefore exactly the
+# set ``upload_handler.is_document_file`` accepts — it imports this name rather
+# than keeping a list of its own.
+#
+# `B05` claimed the rule was ``document_extensions ⊆ _is_text_file`` and asked
+# for a test. Measured, that rule is one we must never satisfy: the 34 accepted
+# extensions minus the 28 text ones are ``.docx .epub .pdf .pptx .xls .xlsx``,
+# and putting ``.pdf`` in the text arm would feed the model a binary stream.
+# The rule that is actually true is this three-way union — 28 + 5 + 1 = 34, with
+# zero slack — and stating it as a union makes it an identity that cannot drift,
+# rather than a subset relation a checker has to police (`Law 13`).
+#
+# This is a superset of, not a substitute for, the ``mime.startswith("text/")``
+# arm at the dispatch below: a libmagic sniff can still rescue an extension no
+# register names. A set alone can never model that, which is the other reason
+# `B05`'s "three-line test" would not have been a proof.
+INGESTIBLE_EXTS = TEXT_EXTS | MARKITDOWN_EXTS | PDF_EXTS
 
 
 def _is_text_file(path: str) -> bool:
@@ -23,9 +52,8 @@ def _is_text_file(path: str) -> bool:
     This is an *ingestion gate*, not a security check. ``build_user_content``
     calls it as the fallback arm of ``mime.startswith("text/") or
     _is_text_file(path)``; anything that fails both falls through to
-    ``_process_office_document``, which returns the literal
-    ``[Attached document file]`` banner for a non-markitdown format — zero bytes
-    of the file reach the model.
+    ``_process_office_document``, which returns a banner for a non-markitdown
+    format — zero bytes of the file reach the model.
 
     ``upload_handler.is_document_file`` admits 34 extensions, and the mime it is
     compared against is a libmagic sniff of the first 1 KiB with
@@ -35,19 +63,17 @@ def _is_text_file(path: str) -> bool:
     to ``None`` and ``.yaml .yml .rs .sql .rb .xml`` to non-``text/*`` types.
     Those eleven were silently discarded.
 
-    Keep this set a superset of the ``language_map`` / ``code_extensions`` fence
-    sets in ``_process_text_file`` below: an extension that has a fence label but
-    never reaches the fencer is a contradiction. ``.h`` is here for determinism
-    only — ``mimetypes.guess_type`` already resolves it to ``text/x-chdr``.
+    Keep ``TEXT_EXTS`` a superset of the ``language_map`` / ``code_extensions``
+    fence sets in ``_process_text_file`` below: an extension that has a fence
+    label but never reaches the fencer is a contradiction. ``.h`` is there for
+    determinism only — ``mimetypes.guess_type`` already resolves it to
+    ``text/x-chdr``.
+
+    Suffix matching, not ``os.path.splitext``: a bare dotfile named ``.md`` has
+    no splitext extension but is still markdown, and it was accepted before the
+    set was lifted out of this function.
     """
-    return any(
-        path.lower().endswith(ext)
-        for ext in (
-            ".txt", ".py", ".html", ".htm", ".md", ".json", ".csv", ".log", ".js", ".nix",
-            ".bash", ".c", ".cpp", ".css", ".go", ".h", ".java", ".jsx", ".php", ".rb",
-            ".rs", ".sh", ".sql", ".ts", ".tsx", ".xml", ".yaml", ".yml",
-        )
-    )
+    return any(path.lower().endswith(ext) for ext in TEXT_EXTS)
 
 
 def _process_text_file(path: str) -> str:
@@ -247,7 +273,17 @@ def _process_office_document(
     )
 
     if not is_markitdown_format(path):
-        return "\n\n[Attached document file]"
+        # Sibling of the "no extractor" banner in build_user_content, reached by
+        # the other route into this state: `is_document_file` said yes on the
+        # *mime* half (a libmagic sniff or the mimetypes table), so no register
+        # named the extension and nothing here can read it. Same rule — name the
+        # file and say the contents are missing, rather than a bare noun phrase
+        # that reads like a successful attachment.
+        return (
+            f"\n\n[Attached file: {display_name} — contents not read. It was "
+            f"classified as a document by its MIME type, but no extractor covers "
+            f"this file type, so nothing from the file is in this message.]"
+        )
 
     markdown = convert_to_markdown(path)
     if markdown and markdown.strip():
@@ -617,10 +653,35 @@ def build_user_content(
             else:
                 content.insert(0, {"type": "text", "text": extracted_text.lstrip()})
         else:
+            # Reached when the upload is neither image, audio, nor a type any
+            # extractor covers — `.markdown .tsv .rst .toml .ini .conf .env
+            # .ipynb .doc .odt .rtf` all land here, measured by driving this
+            # function. There is deliberately no upload type blocklist
+            # (`upload_handler.save_upload`, D-2026-08-26-01), so the upload
+            # succeeds and the chip renders; only the bytes are missing.
+            #
+            # Not rejected at upload, and not silently dropped either. Rejecting
+            # would subtract a capability people use today: `.markdown` opens in
+            # the document editor from the email library
+            # (`static/js/emailLibrary.js`, `routes/email_routes.py`), and any
+            # upload can be downloaded again afterwards. So the fix is the
+            # banner, which is already persisted verbatim as the user's own
+            # message (`routes/chat_helpers.add_user_message` stores
+            # `user_content`; `routes/session_routes.py` returns `content` as-is)
+            # and therefore already reaches the screen. What it did not do was
+            # say anything: `[Attached non-text file]` names no file, so three
+            # unreadable attachments produced three identical lines, and neither
+            # the reader nor the model could tell that the contents were gone
+            # rather than merely uninteresting.
+            banner = (
+                f"[Attached file: {display_name} — contents not read. No extractor "
+                f"covers this file type, so nothing from the file is in this "
+                f"message. The upload itself is intact and can be downloaded.]"
+            )
             if content and content[0]["type"] == "text":
-                content[0]["text"] += "\n\n[Attached non-text file]"
+                content[0]["text"] += f"\n\n{banner}"
             else:
-                content.insert(0, {"type": "text", "text": "[Attached non-text file]"})
+                content.insert(0, {"type": "text", "text": banner})
 
     has_media = any(item.get("type") in ["image_url", "audio"] for item in content if isinstance(item, dict))
     if not has_media and content:

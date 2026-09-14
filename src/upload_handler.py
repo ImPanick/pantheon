@@ -15,6 +15,12 @@ from typing import Dict, Any, Optional
 from fastapi import HTTPException, UploadFile
 
 from src.upload_limits import format_byte_limit, get_chat_upload_max_bytes
+# Derived, not copied: `is_document_file` below used to hand-list 34 extensions
+# that had to stay in step with three registers in other files. Importing the
+# union makes them the same object. The edge is one-way — document_processor
+# takes the handler as a parameter and never imports this module — so a cycle
+# here would fail loudly at import rather than existing quietly.
+from src.document_processor import INGESTIBLE_EXTS
 
 
 def secure_filename(filename: str) -> str:
@@ -334,14 +340,16 @@ class UploadHandler:
         return False
         
     def is_document_file(self, filename: str, content_type: str = None) -> bool:
-        """Check if a file is a document based on extension or content type."""
-        document_extensions = {
-            '.pdf', '.docx', '.xlsx', '.pptx', '.xls', '.epub',
-            '.txt', '.py', '.js', '.html', '.htm',
-            '.css', '.json', '.md', '.csv', '.log', '.xml', '.yml',
-            '.yaml', '.nix', '.sql', '.sh', '.bash', '.c', '.cpp', '.h',
-            '.java', '.go', '.rs', '.php', '.rb', '.ts', '.jsx', '.tsx'
-        }
+        """Check if a file is a document based on extension or content type.
+
+        The extension half is `INGESTIBLE_EXTS` itself, not a copy of it. What
+        this call means is "chat ingest has an extractor for this file", and the
+        extractors are the three registers that set is built from, so accepting
+        an extension none of them handles is never right: the upload succeeds,
+        the chip renders, and `build_user_content` emits a banner instead of the
+        file. The hand-written list this replaces was exactly equal to the union
+        when measured — the point is that it can no longer stop being.
+        """
         document_mime_types = {
             'application/pdf', 
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -354,7 +362,7 @@ class UploadHandler:
         
         # Check by extension
         _, ext = os.path.splitext(filename.lower())
-        if ext in document_extensions:
+        if ext in INGESTIBLE_EXTS:
             return True
             
         # Check by content type if provided
