@@ -169,6 +169,33 @@ def _get_valid_oauth_token(provider_id: str, account_id: str, cfg: dict) -> str 
     return _mail_auth.access_token_for(merged)
 
 
+def _starttls(raw) -> bool:
+    """`IMAP_STARTTLS`, spelled the way the other resolver of it spells it.
+
+    `env_backed` hands back a stored bool unchanged and an environment value as
+    the string it is, so this coercion is the same one `smtp_port` does with
+    `int(...)` a few lines up. `"false"` is truthy to Python, which is the whole
+    reason a bare `bool()` here would have been a second defect wearing the
+    first one's clothes.
+
+    `== "true"` and not the wider `{"1","yes","on"}` set: `mcp_servers/
+    email_server.py:312` reads this same variable on this same host and accepts
+    only `true`, and two resolvers of one variable disagreeing about what `1`
+    means is the defect this line is fixing, not a style to add to. The four
+    incompatible spellings of environment truthiness in this tree are `B91`.
+
+    Split on `isinstance(str)` rather than on `isinstance(bool)`: the branch has
+    to be the one that says *where the value came from*, and only the string
+    case is an environment value needing a spelling rule. A first draft tested
+    for `bool` instead and a mutation deleting that branch survived — `str(True)`
+    happens to lowercase to `"true"`, so the guard was decoration resting on
+    Python's repr rather than on anything stated here.
+    """
+    if not isinstance(raw, str):
+        return bool(raw)
+    return raw.strip().lower() == "true"
+
+
 def _smtp_security_mode(cfg: dict) -> str:
     raw = str(cfg.get("smtp_security") or "").strip().lower()
     if raw in {"ssl", "starttls", "none"}:
@@ -1147,7 +1174,21 @@ def _get_email_config(account_id: str | None = None, owner: str = "") -> dict:
         "imap_port": int(_v("imap_port", "IMAP_PORT", "993") or 993),
         "imap_user": _v("imap_user", "IMAP_USER"),
         "imap_password": _v("imap_password", "IMAP_PASSWORD"),
-        "imap_starttls": settings.get("imap_starttls", True),
+        # `B20`. The eleventh field. `H07` converted the ten above and left this
+        # one on `settings.get(k, True)`, so `IMAP_STARTTLS` was honoured by
+        # `mcp_servers/email_server.py:312` and ignored here — same host, same
+        # mailbox, two answers. Measured with the variable set to `false` and
+        # nothing else configured: that resolver said False, this one said True,
+        # and `_imap_connect` therefore dialled a plaintext socket at an
+        # implicit-TLS port and failed every poll with nothing in settings.json
+        # to look at.
+        #
+        # This is NOT the `H06` shape. The default here is truthy, but the read
+        # is `settings.get` on a flat key that `DEFAULT_SETTINGS` does not ship,
+        # so no merge fires and no default is materialised — `setting_is_explicit`
+        # has nothing to compare against and is the wrong tool. `env_backed` is
+        # the right one and is what the other ten already use.
+        "imap_starttls": _starttls(_v("imap_starttls", "IMAP_STARTTLS", "true")),
         "from_address": _v("email_from", "EMAIL_FROM"),
     }
     if not (cfg["smtp_host"] and cfg["smtp_user"] and cfg["smtp_password"]):

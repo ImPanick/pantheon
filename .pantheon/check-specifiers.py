@@ -101,11 +101,71 @@ def resolve(importer: str, spec: str):
     return resolved
 
 
+def strip_comments(text: str, html: bool) -> str:
+    """Blank out comments so a *sentence about* an import is not an import.
+
+    `B84`. This file read raw source, and a docstring in `static/js/runStatus.js`
+    explaining why a module is loaded as `import('./tasks.js?v=…')` was counted
+    as a second specifier for `tasks.js` — a literal ellipsis reported as a
+    forked module. That is `Law 20` in the checker itself: it was testing the
+    file rather than the code, and the same law bit
+    `test_offline_shell_manifest.py` two days earlier when a comment explaining
+    why there is no `ignoreSearch` failed a grep for `ignoreSearch`.
+
+    Characters are replaced with spaces rather than deleted so every offset and
+    line number downstream is unchanged. String and template literals are
+    tracked, because `'https://x'` contains `//` and blanking from there would
+    silently delete the rest of the line — a checker that quietly stops looking
+    is worse than one that over-reports.
+    """
+    out = list(text)
+    i, n = 0, len(text)
+    quote = ""
+    while i < n:
+        ch = text[i]
+        if quote:
+            if ch == "\\" and quote != "`":
+                i += 2
+                continue
+            if ch == quote:
+                quote = ""
+            i += 1
+            continue
+        if ch in "\"'`":
+            quote = ch
+            i += 1
+            continue
+        if not html and text.startswith("//", i):
+            while i < n and text[i] != "\n":
+                out[i] = " "
+                i += 1
+            continue
+        if not html and text.startswith("/*", i):
+            end = text.find("*/", i + 2)
+            end = n if end < 0 else end + 2
+            for k in range(i, end):
+                if out[k] != "\n":
+                    out[k] = " "
+            i = end
+            continue
+        if html and text.startswith("<!--", i):
+            end = text.find("-->", i + 4)
+            end = n if end < 0 else end + 3
+            for k in range(i, end):
+                if out[k] != "\n":
+                    out[k] = " "
+            i = end
+            continue
+        i += 1
+    return "".join(out)
+
+
 def scan():
     """path -> {query: [importer, ...]}. A bare import has query ''."""
     seen = collections.defaultdict(lambda: collections.defaultdict(list))
     for f in tracked():
         text = (ROOT / f).read_text(encoding="utf-8", errors="replace")
+        text = strip_comments(text, html=f.endswith(".html"))
         matches = (list(IMPORT_RE.finditer(text))
                    + list(SCRIPT_RE.finditer(text))
                    + list(LINK_RE.finditer(text))

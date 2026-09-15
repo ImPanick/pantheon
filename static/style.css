@@ -11017,6 +11017,38 @@ body.fullwidth-chat .chat-history {
   font-weight: 650;
   white-space: nowrap;
 }
+/* B11 — the line each card uses to say which list it is.
+
+   The rows in these two cards are one shared system and stay that way; the
+   heads were the problem. Measured with tests/harness/checklist_surfaces.js:
+   two of the three row states come out structurally identical, and the heads
+   read "Active plan · N of M done" against "Task list · N of M done" — while
+   the todo card's own aria-label already said "Agent task list", so the eye
+   was told less than the screen reader. The words are the tell, because a new
+   badge or tint is a symbol someone has to be taught (Law 15).
+
+   One rule for both, joined by selector like the icon and title above: the
+   sentences differ, their treatment must not, or the difference reads as
+   decoration rather than as content. No accent here — this line is quieter
+   than the title it sits under, never louder. */
+.plan-window-blurb,
+.todo-card-note {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--fg) 58%, transparent);
+}
+.plan-window-blurb {
+  padding: 0 10px 6px 12px;
+}
+.todo-card-note {
+  padding: 0 4px 5px;
+}
+/* A superseded list keeps its identity line — knowing which card you are
+   looking at is exactly what a stack of collapsed cards needs most. */
+.todo-card-superseded .todo-card-note {
+  opacity: 0.9;
+}
 .todo-card-count {
   margin-left: auto;
   font-variant-numeric: tabular-nums;
@@ -35756,6 +35788,20 @@ body.notes-drag-mode .note-card-pin svg {
 }
 .note-checkbox-agent.is-agent-stream-complete {
   color: #50fa7b;
+  opacity: 0.9;
+}
+/* `B08`. `notes.js` emitted `.is-agent-running` and `.is-agent-queued` from the
+   day it was written and this stylesheet answered neither, so of the four agent
+   states only the FINISHED one was visible without hovering the row: the button
+   base is `opacity: 0`. A live run forced itself visible with an inline style
+   and so looked fine; a run persisted by a page that has since been reloaded or
+   closed had nothing forcing it, which made the state a person most needs to act
+   on the only one they could not see. Opacity only — colour stays the base
+   `var(--accent, var(--red))`, and the inline style keeps the WIDTH it needs for
+   the queue-position glyph. Same specificity as the rule above, so
+   `.note-checkbox:hover` still dims and `:hover` still lifts, identically. */
+.note-checkbox-agent.is-agent-running,
+.note-checkbox-agent.is-agent-queued {
   opacity: 0.9;
 }
 .note-checkbox-agent svg {

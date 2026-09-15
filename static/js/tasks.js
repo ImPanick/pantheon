@@ -12,6 +12,7 @@ import { sortModelIds } from './modelSort.js';
 import { ordinalSuffix } from './util/ordinal.js';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { getSettings, invalidateSettings } from './appConfig.js';
+import { runStatusLabel, runStaleLabel } from './runStatus.js';
 
 const API_BASE = window.location.origin;
 let _open = false;
@@ -3032,17 +3033,27 @@ function _renderActivityEntry(entry, opts = {}) {
          Run again
        </button>`;
   }
-  // Running rows replace the relative-time on the right with "Running NN" + a
-  // live whirlpool spinner. Queued shows "Queued" the same way (no timer —
-  // hasn't actually started yet). The elapsed counter ticks every second via
-  // `_startActivityTimers` after the row is in the DOM.
+  // Running rows replace the relative-time on the right with "<word> NN" + a
+  // live whirlpool spinner. A queued row gets the word the same way and no
+  // timer — it has not actually started yet. The elapsed counter ticks every
+  // second via `_startActivityTimers` after the row is in the DOM.
+  //
+  // `B13`: this view renders task runs AND the composer's queued messages, from
+  // `registerActivitySource`. Both said "Queued"/"Running" while the docked
+  // queue panel said "Waiting"/"Sending" for the very same row object, so one
+  // message had two names with both surfaces open. The word now comes from
+  // `runStatus.js`, picked by what the row is ABOUT — a row declares that
+  // itself, because a renderer inferring it from a source id would be a second
+  // place that has to learn every new source. Absent, it is a job, which is
+  // what every task run is and what this branch has always said.
   let rightHtml;
   if (_isRunning) {
     const isQueued = entry.status === 'queued';
+    const subject = entry.subject === 'message' ? 'message' : 'job';
     // Initial elapsed for the first paint; the 1s interval below keeps it live.
     const startMs = entry.ts ? new Date(entry.ts).getTime() : Date.now();
     const stale = !isQueued && (Date.now() - startMs) > 30 * 60 * 1000;
-    const label = isQueued ? 'Queued' : stale ? 'Still running' : 'Running';
+    const label = stale ? runStaleLabel(subject) : runStatusLabel(entry.status, subject);
     const elapsedInit = isQueued ? '' : `<span class="task-log-running-elapsed" data-since="${startMs}">${_fmtElapsed(Date.now() - startMs)}</span>`;
     // P6-07: the same two controls serve a registered source's rows — they just
     // dispatch to the entry's own callback instead of the task endpoints.

@@ -42,6 +42,10 @@ import { createTerminalStreamError, isRecoverableStreamError } from './chatStrea
 import { loadPanel } from './panels.js';
 import planWindow from './planWindow.js';
 import queuePanel from './queuePanel.js';
+import { runStatusLabel } from './runStatus.js';
+// `.plan-inline-execute` is one control with two builders — this one and the
+// docked window's — and each drew its own play triangle (`B12`).
+import { PLAY_POINTS } from './checklist.js';
 import agentDrafts from './agentDrafts.js';   // H01
 
   const RESEARCH_TIMEOUT_MS = 360000;
@@ -1003,7 +1007,7 @@ import agentDrafts from './agentDrafts.js';   // H01
 	    actions.className = 'plan-inline-actions';
 	    actions.innerHTML = `
 	      <button type="button" class="plan-inline-execute">
-	        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><polygon points="7 4 20 12 7 20 7 4"></polygon></svg>
+	        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><polygon points="${PLAY_POINTS}"></polygon></svg>
 	        Execute
 	      </button>
 	      <button type="button" class="plan-inline-clear">Clear</button>`;
@@ -1132,10 +1136,14 @@ import agentDrafts from './agentDrafts.js';   // H01
     const n = (item.attachments && item.attachments.length) || 0;
     const play = '<svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>';
     const clip = '<svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M21 12.8L12.2 21.6a5 5 0 0 1-7-7L14 5.7a3.3 3.3 0 0 1 4.7 4.7l-8.8 8.8a1.7 1.7 0 0 1-2.4-2.4l8.2-8.1"/></svg>';
+    // `B13`: the pill said "Queued" while the docked panel said "Waiting" about
+    // this same message, three inches below it. One word, from `runStatus.js`,
+    // asked for as a message — which is what a composer queue item is.
+    const word = runStatusLabel('queued', 'message');
     let label;
     if (item.pendingUpload) label = `<span class="queued-pill">Uploading…</span>`;
-    else if (item.restored) label = `<span class="queued-pill">${play}Queued · click to send</span>`;
-    else label = `<span class="queued-pill">${play}Queued</span>`;
+    else if (item.restored) label = `<span class="queued-pill">${play}${word} · click to send</span>`;
+    else label = `<span class="queued-pill">${play}${word}</span>`;
     const attach = n ? ` <span class="queued-pill">${clip}${n}</span>` : '';
     return `<div class="role">You ${label}${attach}</div><div class="body">${_escapeQueueText(item.message)}</div>`;
   }
@@ -1143,11 +1151,15 @@ import agentDrafts from './agentDrafts.js';   // H01
   function _paintQueuedBubble(item) {
     if (!item || !item.el || !item.el.isConnected) return;
     item.el.innerHTML = _queuedBubbleHtml(item);
+    // The tooltip opens with the same word the pill shows, derived rather than
+    // retyped — a pill reading "Waiting" over a tooltip reading "Queued" is the
+    // two-vocabulary defect again, one hover deep.
+    const word = runStatusLabel('queued', 'message');
     item.el.title = item.pendingUpload
       ? 'Uploading attachment - this sends when the current response finishes'
       : (item.restored
-        ? 'Queued before a reload - click to send it now'
-        : 'Queued - click to send now and stop the current response');
+        ? `${word} since before a reload - click to send it now`
+        : `${word} to send - click to send now and stop the current response`);
   }
 
   function _createQueuedBubble(item) {
@@ -1627,6 +1639,12 @@ import agentDrafts from './agentDrafts.js';   // H01
         // epoch number, but a contract honoured only by accident is not one.
         ts: new Date(it.createdAt || Date.now()).toISOString(),
         status,
+        // What the row is ABOUT, which is what picks its wording (`B13`). The
+        // queue holds messages; the Tasks list holds jobs; the Activity view
+        // renders both and cannot tell them apart from the status alone. Set
+        // here, at the one place these rows are built, so the panel, the
+        // Activity view and the bubble cannot end up with three names for it.
+        subject: 'message',
         model: it.model || '',
         endpointUrl: it.endpointUrl || '',
         endpointId: it.endpointId || '',
@@ -4766,6 +4784,16 @@ import agentDrafts from './agentDrafts.js';   // H01
               } else if (json.type === 'ui_control') {
                 if (_isBg) continue;
                 chatStream.handleUIControl(json.data || {});
+
+              } else if (json.type === 'stream_steerable') {
+                // B14. This run's own answer to whether a steer can reach it,
+                // first event on the stream. Same `_isBg` rule as
+                // `steer_applied` below and for the same reason: the bar
+                // belongs to the foreground composer, and a background run's
+                // verdict would take down a bar that belongs to a different
+                // run. `steerable` is at the top level, like `round` is.
+                if (_isBg) continue;
+                chatStream.handleStreamSteerable(json);
 
               } else if (json.type === 'steer_applied') {
                 // P6-18. The steer bar lives in the foreground composer, so a

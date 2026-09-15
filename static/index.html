@@ -1166,12 +1166,20 @@
         <button type="button" id="plan-window-fold" class="plan-window-fold" aria-expanded="true" aria-controls="plan-window-body" title="Hide the plan steps">
           <span id="plan-window-chevron" class="plan-window-chevron" aria-hidden="true"></span>
           <span id="plan-window-icon" class="plan-window-icon" aria-hidden="true"></span>
-          <span class="plan-window-title">Active plan</span>
+          <span id="plan-window-title" class="plan-window-title">Active plan</span>
           <span id="plan-window-count" class="plan-window-count"></span>
         </button>
         <span id="plan-window-origin" class="plan-window-origin" hidden>from another chat</span>
         <span id="plan-window-status" class="plan-window-status"></span>
       </div>
+      <!-- B11: this window and the agent's todo card render the same rows out
+           of the same shared row system, and their heads had converged too —
+           "Active plan · N of M done" against "Task list · N of M done". One is
+           a commitment the user approved and the other is the model's scratch
+           list, so each now says which it is in words. Both sentences live in
+           static/js/checklist.js; the title here is the pre-JS paint and
+           planWindow.init() writes both from that one table. -->
+      <p id="plan-window-blurb" class="plan-window-blurb"></p>
       <div class="plan-window-track" aria-hidden="true"><span id="plan-window-fill" class="plan-window-fill"></span></div>
       <div id="plan-window-body" class="plan-window-body">
         <ul id="plan-window-steps" class="plan-window-steps"></ul>

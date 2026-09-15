@@ -1832,3 +1832,95 @@ this decision. `B21` stays open and stays worked.
 A palette shipping as the default that a person cannot see, or an accessibility commitment made to
 somebody outside this repo. Neither is true today: the default is `dark` at 12.72:1, and the two
 under-floor palettes are opt-in by name.
+
+---
+
+## D-2026-09-14-04 — `PRECACHE` is the shell's transitive closure, and install derives it
+
+`B57` asked the question before it asked for a fix: *is `PRECACHE` meant to be the shell's
+transitive closure at all, or is the opportunistic `cache.put` the design and the list should say
+so?* It is the closure, install derives it, and the runtime path keeps the job it is actually good
+at.
+
+### The measurement the decision rests on
+
+Walking the imports out of the 32 `<script type="module">` tags in `static/index.html` reaches
+**172 modules**. `PRECACHE` and `PANEL_PRECACHE` together named **105** of them; **67** were named
+by no entry under any URL, including `toolWindowZOrder.js` (27 importers), `escMenuStack.js` (18),
+`windowDrag.js` (12) and `modalManager.js` (11). Measured twice, from opposite ends — a Python walk
+from index.html's tags and the worker's own JS walk from the precache seeds — and the two sets are
+identical, which is the only reason the number is quotable.
+
+### Why it cannot be the opportunistic path
+
+The tempting answer is that the fetch handler already does this: `/static/*.js` is network-first
+with a `cache.put` on every OK response, so one online visit fills the graph in. That is true and it
+is why nothing noticed for 415 `CACHE_NAME` bumps. It is still the wrong answer, for three reasons
+that are all mechanism rather than preference:
+
+  * **`activate` deletes what the fetch handler wrote.** It drops every cache whose key is not the
+    current `CACHE_NAME`, so a bump discards the whole opportunistic population. The bump is not a
+    rare event: 415 of them, **13 in the week this was found** — the policy is to bump whenever the
+    list or the worker logic changes. A store that is emptied by the same event that refreshes it
+    is not a guarantee; it is a cache.
+  * **On the visit that matters most it contributes nothing.** `index.html:3272` registers the
+    worker from the bottom of the document, after the page has already fetched its own module
+    graph. Those fetches are uncontrolled — `clients.claim()` arrives long after them — so a cold
+    install caches exactly the two lists and nothing else.
+  * **An ES module graph loads whole or not at all.** This is what makes the gap qualitative. A root
+    whose imports are missing does not degrade, it does not run. With 67 modules absent, **21 of the
+    32 roots could not complete**, `app.js` and `chat.js` among them. Offline from a fresh install
+    the shell painted — `/` and `style.css` are precached — and nothing ran. "Some features missing"
+    would have been a defensible design point. "Nothing runs" is not one.
+
+So the two lists were never a smaller version of the right list. As an offline guarantee they were
+worth the 11 leaf roots that import nothing.
+
+### Why the list is derived rather than lengthened
+
+Adding 67 lines would have fixed these 67 and left the 68th to be found by hand, which is how
+`P3-11`, `B54`, `B58` and this row all arrived — four rows, one defect class, each a fresh batch of
+URLs somebody had to notice. `Law 13`: the closure is one fact and it is already written down, in
+the imports themselves.
+
+There is **no build step in this repo** — `package.json` has no `scripts` block and nothing
+generates `static/`. That rules out the usual answer (generate the manifest at build time) and
+leaves two:
+
+  * a checked-in generator plus a test asserting the file is up to date. Rejected: it still depends
+    on a human remembering to run it, and `D-2026-09-14-01` has already ruled against holding a
+    derived value next to the thing it was derived from.
+  * **derive at install time, in the worker.** Taken. `precacheShellGraph` reads each module it
+    fetches — it has the body in hand, it is about to store it — follows the import specifiers, and
+    walks breadth-first until nothing new appears. Three rounds on this tree.
+
+The lists stay, and their job changes from *manifest* to *seed*. That is not a hedge: the seeds are
+exactly what a walk cannot derive — the HTML shell, the stylesheet, the fonts and vendored libs
+nothing imports, and any module reached through a computed specifier, of which `login.html`'s
+`import(f('/static/js/theme.js'))` is the one in this tree. `Law 1` holds literally: every entry
+that was precached before is still precached, and a test asserts it rather than assuming it.
+
+**`PANEL_PRECACHE` is now derived too, and is deliberately kept.** Seeding the walk from `PRECACHE`
+alone builds a byte-identical cache, because `js/panels.js` is in the shell graph and
+`import('./galleryEditor.js')` is a specifier like any other. Removing the list would be a
+behaviour-neutral tidy that deletes the sentence explaining why a lazily-loaded panel belongs in an
+offline manifest, and would silently become wrong the day `panels.js` leaves the critical path. It
+stays as the declaration of intent and as the floor.
+
+### What it costs, stated rather than buried
+
+Install now fetches **172 modules (6.7 MB) instead of 105 (4.6 MB)** — about **+2 MB per install**,
+paid on a cold install and on every `CACHE_NAME` bump, with `cache: 'reload'` forcing a full 200 on
+each. That is the same currency in which mermaid was refused a precache slot, and the trade is
+different for a reason worth writing down: mermaid's 3.5 MB are bytes most sessions never need,
+while these 2 MB are the shell's own static imports, which every cold load downloads anyway. The
+duplicate is the install's, not the user's. `/static/lib/` stays outside the walk so mermaid's
+refusal survives the change.
+
+### What would reopen this
+
+A build step arriving, which would make generate-and-check cheaper than a runtime walk. Or the
+install cost mattering: `app.py`'s `_RevalidatingStatic` stamps `Cache-Control: no-cache` on every
+`.js`, so an install that dropped `cache: 'reload'` would revalidate into 304s instead of refetching
+6.7 MB. That is a real saving and a separate question — it changes what install does for the 105
+URLs that were already there, not just the 67 this row added.

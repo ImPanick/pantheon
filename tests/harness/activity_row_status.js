@@ -23,6 +23,17 @@ const path = require('path');
 const SRC = path.join(__dirname, '..', '..', 'static', 'js', 'tasks.js');
 const source = fs.readFileSync(SRC, 'utf8');
 
+// `B13`/`B87`. The word table is a real module and it is **evaluated, not
+// stubbed**. This harness was written for `B07` and the renderer it extracts
+// later grew a call to `runStaleLabel`, which was in no stub list — so the
+// harness threw `ReferenceError` the first time both changes stood in one tree.
+// A stub would have fixed the symptom and left the test asserting a word this
+// file made up; reading `runStatus.js` means the row is checked against the
+// spelling the app actually ships. It is a leaf module with no imports, which
+// is what makes that cheap.
+const RUN_STATUS_SRC = path.join(__dirname, '..', '..', 'static', 'js', 'runStatus.js');
+const runStatusModule = fs.readFileSync(RUN_STATUS_SRC, 'utf8').replace(/^export\s+/gm, '');
+
 function slice(startMark, endMark, label) {
   const from = source.indexOf(startMark);
   if (from < 0) {
@@ -100,6 +111,7 @@ const deps = {
 
 const names = Object.keys(deps);
 const make = new Function(...names, 'document', 'detail', 'task', `
+  ${runStatusModule}
   ${tone}
   ${controls}
   ${stopLabel}

@@ -27,6 +27,39 @@ Two directions, and they are not symmetrical.
                purpose, because a false alarm here would send someone deleting
                a variable that works.
 
+`B20` adds a third direction, and it is the same operator question the other
+two ask — *can this variable do anything?* — from the one side neither could
+see. A variable can be declared in `.env.example`, forwarded by compose,
+explained in the docs, and read by a line that cannot execute:
+
+  UNREACHABLE  read beneath a settings key whose SHIPPED DEFAULT IS TRUTHY.
+               `settings.get_setting` merges `DEFAULT_SETTINGS` on every read,
+               so `get_setting(K, None) or os.getenv(E)` never reaches the
+               `or` — not after the first save, which is what `B20` originally
+               claimed, but **at import, on a fresh install, with no settings
+               file at all**. `H06` found `PANTHEON_TASK_CONCURRENCY_CAP` dead
+               that way on every install this product has ever had. Hard rule,
+               max 0, and 0 today: this is a ratchet against the reintroduction
+               rather than a backlog. A scope that asks the question properly —
+               `settings.setting_is_explicit`, or `settings.env_backed` — is
+               not flagged, because those are the two answers.
+
+  MIXED        one dict, some values through `env_backed` and one straight off
+               `settings.get`. `H07` converted ten fields of the legacy mail
+               config and left the eleventh; `IMAP_STARTTLS` was therefore
+               honoured by `mcp_servers/email_server.py` and ignored by
+               `routes/email_helpers.py` **on the same host, for the same
+               mailbox**. Hard rule, max 0. Narrow on purpose: the finding is
+               a sibling left behind, and a rule that fired on every settings
+               read near an `env_backed` would be noise nobody reads.
+
+Both new rules are blind in the same way and it is worth stating: they see one
+scope, or one dict, at a time. A resolver that reads the setting in one
+function and the environment in another is invisible to them — so is
+`services/search/providers._get_provider_key`, where the pairing lives in two
+dict literals rather than in a name. What they catch is the shape that has
+actually shipped twice.
+
 `NOT_OURS` holds the names Pantheon reads but does not define: the operating
 system's, the shell's, and third-party libraries' own conventions. Declaring
 `PATH` or `HF_TOKEN` in our example file would be a claim we have no standing
@@ -47,6 +80,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 ENV_EXAMPLE = ROOT / ".env.example"
 SKIP_PREFIXES = ("tests/", ".pantheon/")
+# Parsed, never imported. Importing `src.settings` to read `DEFAULT_SETTINGS`
+# would make a checker's verdict depend on the whole application importing
+# cleanly, and on `PANTHEON_DATA_DIR` in whatever shell ran it.
+SETTINGS_SOURCE = ROOT / "src" / "settings.py"
 
 # Names read from the environment that belong to somebody else. Declaring these
 # in our own example file would be a claim about their meaning that we do not
@@ -147,6 +184,186 @@ def unreferenced(names) -> list[str]:
     return sorted(n for n in names if not any(n in text for text in corpus))
 
 
+# ── `B20`: can the variable do anything once it is read? ────────────────────
+
+
+def _str(node):
+    return node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else None
+
+
+def shipped_defaults() -> dict:
+    """`DEFAULT_SETTINGS` as written in `src/settings.py`.
+
+    Only what a literal can express: a key whose default is built by a call or
+    a comprehension is recorded as `None`, i.e. falsy, i.e. never flagged.
+    Under-reporting is the right direction for a hard rule — a checker that
+    guesses at a value it cannot see would fail a build over its own guess.
+    """
+    try:
+        tree = ast.parse(SETTINGS_SOURCE.read_text(encoding="utf-8"))
+    except (SyntaxError, OSError):
+        return {}
+    out: dict = {}
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Assign) and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id == "DEFAULT_SETTINGS"
+                and isinstance(node.value, ast.Dict)):
+            continue
+        for key, value in zip(node.value.keys, node.value.values):
+            name = _str(key)
+            if name is None:
+                continue
+            try:
+                out[name] = ast.literal_eval(value)
+            except (ValueError, TypeError, SyntaxError, MemoryError, RecursionError):
+                out[name] = None
+    return out
+
+
+def _env_name_of(node, consts: dict):
+    """The variable an `os.getenv(...)`-shaped call reads, or None.
+
+    Resolves a module-level string constant, unlike `literal_reads` above. That
+    asymmetry is deliberate and is the reason this is a second walk rather than
+    a widening of the first: `literal_reads` feeds the UNDECLARED ratchet, whose
+    ceiling an operator reads off `ci.yml`, and a scan that suddenly sees more
+    names would move that number without a line of product code changing.
+    `PANTHEON_TASK_CONCURRENCY_CAP` is read as `os.getenv(TASK_CONCURRENCY_CAP_ENV)`
+    and is exactly the variable `H06` found dead, so a rule that could not see
+    it would not have caught the defect it exists for.
+    """
+    func = node.func
+    getenvish = (
+        (isinstance(func, ast.Attribute) and (
+            func.attr == "getenv"
+            or (func.attr in ("get", "pop")
+                and isinstance(func.value, ast.Attribute)
+                and func.value.attr == "environ")))
+        or (isinstance(func, ast.Name) and func.id == "getenv"))
+    if not (getenvish and node.args):
+        return None
+    arg = node.args[0]
+    return _str(arg) or (consts.get(arg.id) if isinstance(arg, ast.Name) else None)
+
+
+def _called(node) -> str:
+    func = node.func
+    if isinstance(func, ast.Name):
+        return func.id
+    return func.attr if isinstance(func, ast.Attribute) else ""
+
+
+def _settings_receiver(node) -> bool:
+    """Whether `<x>.get("k")` is reading settings rather than any other dict."""
+    try:
+        receiver = ast.unparse(node.func.value)
+    except Exception:
+        return False
+    return "etting" in receiver
+
+
+def _module_consts(tree) -> dict:
+    return {n.targets[0].id: _str(n.value) for n in ast.walk(tree)
+            if isinstance(n, ast.Assign) and len(n.targets) == 1
+            and isinstance(n.targets[0], ast.Name) and _str(n.value)}
+
+
+def unreachable(defaults: dict) -> list[str]:
+    """Env reads that sit beneath a settings key shipping a truthy default.
+
+    The pairing is by name — `PANTHEON_TASK_CONCURRENCY_CAP` to
+    `task_concurrency_cap` — which is how every pair in this tree is spelled
+    and is the only correspondence a reader can check without running anything.
+    """
+    found = []
+    for rel in _tracked("*.py"):
+        if rel.startswith(SKIP_PREFIXES):
+            continue
+        try:
+            tree = ast.parse((ROOT / rel).read_text(encoding="utf-8"))
+        except (SyntaxError, OSError):
+            continue
+        consts = _module_consts(tree)
+        scopes = [n for n in ast.walk(tree)
+                  if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))] + [tree]
+        for scope in scopes:
+            keys, envs, asked = {}, {}, False
+            for node in ast.walk(scope):
+                if not isinstance(node, ast.Call):
+                    continue
+                name = _env_name_of(node, consts)
+                if name:
+                    envs.setdefault(name, node.lineno)
+                called = _called(node)
+                if called in ("setting_is_explicit", "is_setting_overridden", "env_backed"):
+                    asked = True
+                if called in ("get_setting", "get_user_setting") and node.args:
+                    arg = node.args[0]
+                    key = _str(arg) or (consts.get(arg.id) if isinstance(arg, ast.Name) else None)
+                    if key:
+                        keys.setdefault(key, node.lineno)
+            if asked:
+                continue
+            for key, line in keys.items():
+                if not defaults.get(key):
+                    continue
+                for env, env_line in envs.items():
+                    stem = env[len("PANTHEON_"):] if env.startswith("PANTHEON_") else env
+                    if stem.lower() == key:
+                        found.append(
+                            f"{rel}:{env_line} {env} is read beneath {key}, which ships "
+                            f"{defaults[key]!r} — get_setting merges DEFAULT_SETTINGS on "
+                            f"every read (:{line}), so this line cannot run")
+    return sorted(set(found))
+
+
+def mixed_layers() -> list[str]:
+    """One dict, some values env-backed and one read straight off settings."""
+    found = []
+    for rel in _tracked("*.py"):
+        if rel.startswith(SKIP_PREFIXES):
+            continue
+        try:
+            tree = ast.parse((ROOT / rel).read_text(encoding="utf-8"))
+        except (SyntaxError, OSError):
+            continue
+        # `routes/email_helpers.py` spells it `_v = lambda k, e, d="": env_backed(...)`
+        # and eleven values later that lambda is the only thing distinguishing the
+        # ten fields that reach the environment from the one that does not.
+        alias = {n.targets[0].id for n in ast.walk(tree)
+                 if isinstance(n, ast.Assign) and len(n.targets) == 1
+                 and isinstance(n.targets[0], ast.Name) and isinstance(n.value, ast.Lambda)
+                 and any(isinstance(c, ast.Call) and _called(c) == "env_backed"
+                         for c in ast.walk(n.value.body))}
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Dict):
+                continue
+            backed, raw = set(), []
+            for value in node.values:
+                for call in ast.walk(value):
+                    if not isinstance(call, ast.Call):
+                        continue
+                    called = _called(call)
+                    if called == "env_backed" and len(call.args) >= 3 and _str(call.args[1]):
+                        backed.add(_str(call.args[1]))
+                    elif called in alias and call.args and _str(call.args[0]):
+                        backed.add(_str(call.args[0]))
+                    elif called == "get" and call.args and _str(call.args[0]) \
+                            and _settings_receiver(call):
+                        raw.append((_str(call.args[0]), call.lineno))
+            if not backed:
+                continue
+            for key, line in raw:
+                if key in backed:
+                    continue
+                found.append(
+                    f"{rel}:{line} {key} is read straight off settings while "
+                    f"{len(backed)} siblings in the same dict go through env_backed — "
+                    f"its environment layer is unreachable here and reachable elsewhere")
+    return sorted(set(found))
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--max", type=int, default=74,
@@ -158,12 +375,30 @@ def main() -> int:
     reads = literal_reads()
     missing = sorted(set(reads) - set(known) - set(NOT_OURS))
     dead = unreferenced(known)
+    stranded = unreachable(shipped_defaults())
+    split = mixed_layers()
 
     print(f"env vars  read {len(reads)}  ·  declared {len(known)}  ·  "
           f"not ours {len(NOT_OURS)}  ·  UNDECLARED {len(missing)} (max {args.max})  ·  "
-          f"UNREFERENCED {len(dead)} (max 0)")
+          f"UNREFERENCED {len(dead)} (max 0)  ·  UNREACHABLE {len(stranded)} (max 0)  ·  "
+          f"MIXED {len(split)} (max 0)")
 
     failed = False
+    if stranded:
+        failed = True
+        print("\n  Read beneath a settings key whose shipped default is truthy. "
+              "`get_setting` merges DEFAULT_SETTINGS on every read, so this is dead "
+              "code from first boot — ask `settings.setting_is_explicit` whether the "
+              "operator chose the value, or ship a falsy default (`H06`, `B20`):")
+        for line in stranded:
+            print(f"    {line}")
+    if split:
+        failed = True
+        print("\n  One dict, two rules. A field left on `settings.get` beside fields "
+              "that go through `env_backed` has an environment layer everywhere except "
+              "here, and nothing in settings.json looks wrong (`H07`, `B20`):")
+        for line in split:
+            print(f"    {line}")
     if dead:
         failed = True
         print("\n  Declared in .env.example and used by nothing — an operator who sets "

@@ -8,7 +8,7 @@ import re
 import time
 import logging
 from datetime import datetime
-from typing import Dict, Any, AsyncGenerator, List, Optional
+from typing import Callable, Dict, Any, AsyncGenerator, List, Optional, Union
 
 from fastapi import APIRouter, Request, HTTPException, Form, Query, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -144,10 +144,11 @@ _STEER_REFUSAL_STATUS = {
 def _stream_is_steerable(
     *,
     chat_mode: str,
-    is_image_session: bool,
+    is_image_session: Union[bool, Callable[[], bool]],
     do_research: bool,
+    compare_mode: bool = False,
 ) -> bool:
-    """Whether the stream about to be detached will reach `stream_agent_loop`.
+    """Whether a steer sent during this stream can actually reach the model.
 
     `stream_with_save` picks one of three destinations, and only the last of
     them drains the steer inbox (`consume_steers_for_round` and `clear_steers`
@@ -161,14 +162,31 @@ def _stream_is_steerable(
     steer that is queued instead of applied; the cost of the opposite error is
     the user's words accepted into an inbox nothing reads.
 
-    Kept as one named predicate rather than an expression at the call site so
-    the three conditions are stated once, next to the reason for each.
+    ``compare_mode`` is a fourth refusal and a different KIND of one: a compare
+    pane's stream is fine in itself, but it is returned raw and never reaches
+    `agent_runs.start`, so `is_steerable` — which reads the registry — answers
+    False for it no matter what this returns. It was previously outside the
+    predicate because the only caller ran after compare mode had returned.
+    `B14` gave the predicate a second reader, the `stream_steerable` event,
+    which IS emitted on a compare pane; leaving the clause at one call site
+    would have made the announcement the one inaccurate thing this produces.
+
+    ``is_image_session`` accepts a thunk because it is the only expensive term:
+    `_is_image_generation_session` opens a DB session and queries the endpoint
+    table, while the other three are locals. The route cannot hand over the
+    answer it already has — `image_generation_session` at `:1457` is computed
+    BEFORE `build_chat_context` normalises the session's model, and this
+    predicate's question is about the normalised one — so the choice is a second
+    query or a deferred one. Deferred: a chat turn, a research turn and a compare
+    pane are all settled by terms that are already in registers. Bools still
+    work, and the table test passes them.
+
+    Kept as one named predicate rather than an expression at the call sites so
+    the four conditions are stated once, next to the reason for each.
     """
-    return (
-        chat_mode != "chat"
-        and not is_image_session
-        and not do_research
-    )
+    if chat_mode == "chat" or do_research or compare_mode:
+        return False
+    return not (is_image_session() if callable(is_image_session) else is_image_session)
 
 
 def _stream_failure_status(chunk: str) -> Optional[int]:
@@ -1744,6 +1762,18 @@ def setup_chat_routes(
         if _effective_mode in ('agent', 'research', 'chat'):
             set_session_mode(session, _effective_mode)
 
+        # `B14`. Decided here, once, and read twice: `agent_runs.start` gates the
+        # steer route on it, and the stream announces it so the composer can stop
+        # guessing. Everything it depends on is settled by this line — `chat_mode`
+        # took its last value above, `effective_do_research` two lines up, and the
+        # image check reads the model `build_chat_context` already normalised.
+        _turn_is_steerable = _stream_is_steerable(
+            chat_mode=chat_mode,
+            is_image_session=lambda: _is_image_generation_session(sess, owner=_user),
+            do_research=bool(effective_do_research),
+            compare_mode=compare_mode,
+        )
+
         async def stream_with_save() -> AsyncGenerator[str, None]:
             # _effective_mode is read-only here; closure captures it from
             # the outer scope. (Was `nonlocal` but never reassigned.)
@@ -1752,6 +1782,24 @@ def setup_chat_routes(
 
             # Register active stream for partial-save safety net
             _active_streams[session] = {"status": "streaming", "partial": "", "query": message, "is_research": effective_do_research, "mode": _effective_mode}
+
+            # `B14`. First event on every stream, before any conditional yield,
+            # because the composer has already drawn the steer bar by the time
+            # this POST goes out and the sooner it is corrected the shorter the
+            # wrong state lasts. `agent_runs.subscribe` replays a run's buffer
+            # from the start, so a reconnect through `/api/chat/resume` re-learns
+            # this too rather than inheriting the last turn's answer.
+            #
+            # The client could not work this out for itself, and its existing
+            # guess is wrong in both directions. Research: `research_pending`
+            # auto-triggers research on the NEXT message (above, ~:1424) while
+            # `chat.js` clears the research toggle at send (~:2947), so the
+            # composer says "not research" for a turn that is. Auto-escalation:
+            # a chat-mode turn promoted to agent IS steerable, and the composer
+            # still says "chat", so the bar is withheld from a run that would
+            # have taken the steer. Image sessions and compare panes it never
+            # knew about at all.
+            yield f"data: {json.dumps({'type': 'stream_steerable', 'steerable': bool(_turn_is_steerable)})}\n\n"
 
             # The client sent a workspace the server refused to bind (deleted
             # folder, file path, sensitive dir, filesystem root). Tell it up
@@ -2793,20 +2841,16 @@ def setup_chat_routes(
         if compare_mode:
             return StreamingResponse(_safe_stream(), media_type="text/event-stream")
 
-        # Registering the run also decides whether it can be steered. The
-        # destination is settled by now — `chat_mode` takes its last value well
-        # above, and the image check reads the model `build_chat_context` has
-        # already normalised — so this answers the same question the branch
-        # inside `stream_with_save` will ask, at the only moment the steer
-        # route can be told about it.
+        # Registering the run also decides whether it can be steered, and the
+        # answer is the one the stream already announced — computed once beside
+        # `_effective_mode` rather than a second time here, so the refusal and
+        # the affordance cannot disagree (`B14`, `Law 13`). `compare_mode` has
+        # returned above, so the clause folded into `_turn_is_steerable` for the
+        # announcement's sake changes nothing on this path.
         _detached_run = agent_runs.start(
             session,
             _safe_stream(),
-            steerable=_stream_is_steerable(
-                chat_mode=chat_mode,
-                is_image_session=_is_image_generation_session(sess, owner=_user),
-                do_research=bool(effective_do_research),
-            ),
+            steerable=_turn_is_steerable,
         )
         return StreamingResponse(
             agent_runs.subscribe(session, _detached_run),

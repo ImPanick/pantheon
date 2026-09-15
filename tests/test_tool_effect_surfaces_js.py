@@ -333,12 +333,12 @@ _PLAN_SHIM = r"""
 import { installDom, Node } from './dom.js';
 export const document = installDom();
 
-const IDS = [
-  'plan-window', 'plan-window-fold', 'plan-window-chevron', 'plan-window-icon',
-  'plan-window-count', 'plan-window-status', 'plan-window-origin',
-  'plan-window-fill', 'plan-window-body', 'plan-window-steps',
-  'plan-window-execute', 'plan-window-clear', 'plan-window-hint',
-];
+// Derived from static/index.html, not transcribed. `collectEls()` refuses to
+// draw a window that is missing ANY of its elements, so a hand-kept list here
+// turns "index.html gained a span" into nine failures in a file about tool
+// effects. It already had: this list went stale the moment `B11` added the
+// title and blurb ids, and the test that noticed was this one.
+const IDS = __PLAN_WINDOW_IDS__;
 const root = document.body.appendChild(new Node('div'));
 for (const id of IDS) {
   const n = root.appendChild(new Node(id === 'plan-window-steps' ? 'ul' : 'div'));
@@ -440,10 +440,21 @@ def card_sandbox(tmp_path_factory):
     )
 
 
+def _plan_window_ids() -> list:
+    """Every `id` inside `<section id="plan-window">` in the shipped markup."""
+    html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+    start = html.index('<section id="plan-window"')
+    end = html.index("</section>", start)
+    ids = re.findall(r'\bid="([^"]+)"', html[start:end])
+    assert "plan-window-steps" in ids, "the plan window markup moved"
+    return ids
+
+
 @pytest.fixture(scope="module")
 def plan_sandbox(tmp_path_factory):
+    shim = _PLAN_SHIM.replace("__PLAN_WINDOW_IDS__", json.dumps(_plan_window_ids()))
     return _make_sandbox(
-        tmp_path_factory.mktemp("effectplan"), PLAN_WINDOW, _PLAN_SHIM, _PLAN_STUBS
+        tmp_path_factory.mktemp("effectplan"), PLAN_WINDOW, shim, _PLAN_STUBS
     )
 
 

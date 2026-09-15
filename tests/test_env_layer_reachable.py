@@ -61,9 +61,75 @@ def test_env_cap_wins_on_a_fresh_install_with_no_settings_file(datadir, monkeypa
     assert _resolve(monkeypatch, 8) == (8, "PANTHEON_TASK_CONCURRENCY_CAP")
 
 
+def test_get_setting_merges_the_shipped_defaults_onto_whatever_was_saved(datadir):
+    """Half the premise, and the half `H06` turns on.
+
+    A settings file holding one key still answers every other key with the
+    shipped default, so `get_setting(K, None)` cannot return None and a
+    fallback written below it never runs. Driven against a file that exists and
+    is missing the key, which is the case `test_..._no_settings_file` cannot
+    reach."""
+    import src.settings as S
+    S.save_settings({"agent_max_rounds": 42})
+    S._invalidate_caches()
+    assert S.get_setting("task_concurrency_cap", None) == 1, (
+        "the merge is why the env leg below this read was unreachable"
+    )
+    assert S.is_setting_overridden("task_concurrency_cap") is False, (
+        "and the raw file is the only place that can tell you it was never set"
+    )
+
+
+def test_one_admin_save_materialises_every_shipped_default(datadir, monkeypatch):
+    """The other half, driven through `POST /api/auth/settings` itself.
+
+    The route is the thing that materialises, so asserting the property against
+    `save_settings(load_settings())` in the test proves the idiom and not the
+    endpoint. The count is asserted against `DEFAULT_SETTINGS` rather than a
+    number: `H06` and `src/settings.py` both carried "~200" for a dict that
+    holds 89, and `B20` re-drove it.
+    """
+    import asyncio
+    import json
+    import types
+    import routes.auth_routes as auth_routes
+    import src.settings as S
+
+    class _AdminOnly:
+        def get_username_for_token(self, token):
+            return "admin" if token == "admin-session" else None
+
+        def is_admin(self, username):
+            return username == "admin"
+
+    monkeypatch.setattr(auth_routes, "migrate_from_settings", lambda: None)
+    router = auth_routes.setup_auth_routes(_AdminOnly())
+    endpoint = next(r.endpoint for r in router.routes
+                    if r.path == "/api/auth/settings" and "POST" in r.methods)
+
+    class _Request(types.SimpleNamespace):
+        async def json(self):
+            return {"agent_max_rounds": 42}
+
+    assert not os.path.exists(S.SETTINGS_FILE), "precondition: nothing saved yet"
+    asyncio.run(endpoint(_Request(cookies={auth_routes.SESSION_COOKIE: "admin-session"})))
+    S._invalidate_caches()
+
+    on_disk = json.load(open(S.SETTINGS_FILE, encoding="utf-8"))
+    assert set(on_disk) == set(S.DEFAULT_SETTINGS), (
+        "one key was sent and every shipped default landed on disk"
+    )
+    assert [k for k in S.DEFAULT_SETTINGS if not S.is_setting_overridden(k)] == [], (
+        "every key is now 'present', which is why presence is not the signal"
+    )
+    assert S.setting_is_explicit("task_concurrency_cap") is False, (
+        "and why the two-signal version is"
+    )
+
+
 def test_env_cap_still_wins_after_an_admin_save_materialises_the_default(datadir, monkeypatch):
     """`POST /api/auth/settings` does `save_settings(load_settings())`, which
-    writes all ~200 defaults to disk. A presence-only check — which is what
+    writes every shipped default to disk. A presence-only check — which is what
     `is_setting_overridden` gives — reads that as a deliberate choice and would
     leave this case broken."""
     import src.settings as S
@@ -273,16 +339,123 @@ def test_legacy_email_config_falls_back_to_env_on_blank(tmp_path, monkeypatch):
     importlib.reload(src.settings)
     import routes.email_helpers as E
     importlib.reload(E)
-    for k, v in {"SMTP_HOST": "smtp.example.com", "SMTP_USER": "u",
-                 "SMTP_PASSWORD": "p", "IMAP_HOST": "imap.example.com",
-                 "IMAP_USER": "u", "IMAP_PASSWORD": "p",
-                 "EMAIL_FROM": "me@example.com", "SMTP_PORT": "2465"}.items():
+    for k, v in {"SMTP_HOST": "smtp.example.com", "SMTP_USER": "su",
+                 "SMTP_PASSWORD": "sp", "IMAP_HOST": "imap.example.com",
+                 "IMAP_USER": "iu", "IMAP_PASSWORD": "ip",
+                 "EMAIL_FROM": "me@example.com", "SMTP_PORT": "2465",
+                 "IMAP_PORT": "2993", "SMTP_SECURITY": "starttls"}.items():
         monkeypatch.setenv(k, v)
     E._save_settings({k: "" for k in (
-        "smtp_host", "smtp_user", "smtp_password", "imap_host",
-        "imap_user", "imap_password", "email_from", "smtp_port")})
+        "smtp_host", "smtp_user", "smtp_password", "smtp_port", "smtp_security",
+        "imap_host", "imap_user", "imap_password", "imap_port", "email_from")})
     cfg = E._get_email_config()
+    # `B20`. Every field this test blanks is now asserted. It blanked eight and
+    # asserted four, so a mutation putting `imap_password` back on the raw idiom
+    # — the exact credential loss `H07` is about — survived the whole file. The
+    # ten the row claims are ten only if ten are checked.
     assert cfg["smtp_host"] == "smtp.example.com"
-    assert cfg["imap_host"] == "imap.example.com"
-    assert cfg["from_address"] == "me@example.com"
+    assert cfg["smtp_user"] == "su"
+    assert cfg["smtp_password"] == "sp"
     assert cfg["smtp_port"] == 2465
+    assert cfg["smtp_security"] == "starttls"
+    assert cfg["imap_host"] == "imap.example.com"
+    assert cfg["imap_user"] == "iu"
+    assert cfg["imap_password"] == "ip"
+    assert cfg["imap_port"] == 2993
+    assert cfg["from_address"] == "me@example.com"
+
+
+# ── B20: the eleventh field ────────────────────────────────────────────────
+#
+# `H07` names ten latent email fields and fixes ten. The dict has eleven.
+# `imap_starttls` stayed on `settings.get(k, True)`, so `IMAP_STARTTLS` reached
+# `mcp_servers/email_server.py:312` and not `routes/email_helpers.py` — one
+# variable, one host, one mailbox, two answers. These drive the real resolver.
+
+
+def _legacy_mail(tmp_path, monkeypatch, stored=None, **env):
+    """The legacy flat-key path of `_get_email_config`, with a data dir of our
+    own. No `email_accounts` row exists here, which is what sends the resolver
+    down the branch under test."""
+    monkeypatch.setenv("PANTHEON_DATA_DIR", str(tmp_path))
+    import src.constants, src.settings
+    importlib.reload(src.constants)
+    importlib.reload(src.settings)
+    import routes.email_helpers as E
+    importlib.reload(E)
+    for k in ("IMAP_HOST", "IMAP_USER", "IMAP_PASSWORD", "IMAP_STARTTLS", "IMAP_PORT"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("IMAP_HOST", "imap.example.com")
+    monkeypatch.setenv("IMAP_USER", "u")
+    monkeypatch.setenv("IMAP_PASSWORD", "p")
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    E._save_settings(stored if stored is not None else {})
+    return E
+
+
+def test_imap_starttls_reaches_the_environment_like_its_ten_siblings(tmp_path, monkeypatch):
+    """The live defect. Measured before the fix: this resolver answered True
+    while `mcp_servers/email_server.py` answered False for the same variable, so
+    `_imap_connect` opened a plaintext socket and called STARTTLS on a server
+    the operator had just said does not offer it."""
+    E = _legacy_mail(tmp_path, monkeypatch, IMAP_STARTTLS="false")
+    assert E._get_email_config()["imap_starttls"] is False
+
+
+def test_imap_starttls_is_not_fooled_by_the_string_false(tmp_path, monkeypatch):
+    """`env_backed` returns the environment value as the string it is, and
+    `bool("false")` is True. Converting this field without coercing would have
+    been the same defect wearing the fix's clothes."""
+    E = _legacy_mail(tmp_path, monkeypatch, IMAP_STARTTLS="false")
+    value = E._get_email_config()["imap_starttls"]
+    assert isinstance(value, bool), f"a raw {value!r} would reach _imap_connect"
+    assert bool("false") is True, "precondition: this is the trap being avoided"
+    assert value is False
+
+
+def test_imap_starttls_stays_on_when_neither_layer_says_otherwise(tmp_path, monkeypatch):
+    """`Law 1`. Every operator who has not set the variable had True and keeps
+    True — the change is reachable only to somebody who typed the name."""
+    E = _legacy_mail(tmp_path, monkeypatch)
+    assert E._get_email_config()["imap_starttls"] is True
+
+
+def test_imap_starttls_env_on_is_honoured_too(tmp_path, monkeypatch):
+    E = _legacy_mail(tmp_path, monkeypatch, IMAP_STARTTLS="true")
+    assert E._get_email_config()["imap_starttls"] is True
+
+
+@pytest.mark.parametrize("stored,expected", [(True, True), (False, False)])
+def test_a_stored_imap_starttls_still_outranks_the_environment(
+        tmp_path, monkeypatch, stored, expected):
+    """The documented order for this layer pair is stored value → environment →
+    default, the same one the other ten fields follow. A stored ``False`` is a
+    real value and not an absence — `env_backed` is what makes that distinction
+    and it is why a plain `or` would have been wrong here."""
+    E = _legacy_mail(tmp_path, monkeypatch, stored={"imap_starttls": stored},
+                     IMAP_STARTTLS="true" if not stored else "false")
+    assert E._get_email_config()["imap_starttls"] is expected
+
+
+def test_the_starttls_coercion_matches_the_other_resolver_of_the_variable(tmp_path, monkeypatch):
+    """Two resolvers of one variable must agree about every spelling, not only
+    about `false`. `mcp_servers/email_server.py:312` accepts `true` and nothing
+    else; accepting `1` here would have replaced a silent disagreement about
+    `false` with a silent disagreement about `1`."""
+    import routes.email_helpers as E
+    for raw in ("true", "TRUE", " true ", "false", "1", "yes", "on", ""):
+        sibling = raw.strip().lower() == "true"       # email_server.py:312, verbatim
+        assert E._starttls(raw) is sibling, raw
+
+
+def test_the_starttls_coercion_keeps_a_stored_bool_and_spells_an_env_string(tmp_path, monkeypatch):
+    """Both halves of the branch, because a mutation deleting either one has to
+    fail here. A stored value arrives typed and is believed; an environment
+    value arrives as a string and is judged on its spelling — and `bool("false")`
+    is True, which is why the string half cannot be the `bool()` one."""
+    import routes.email_helpers as E
+    assert E._starttls(True) is True
+    assert E._starttls(False) is False, "a stored False is a choice, not an absence"
+    assert E._starttls("false") is False, "and a string is not judged by truthiness"
+    assert E._starttls("True") is True, "the string half must not depend on repr casing"

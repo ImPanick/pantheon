@@ -1930,9 +1930,10 @@ function _renderNotes() {
             : (agentStatus === 'running' ? ' is-agent-running' : ''));
         // `.note-checkbox-agent` is `opacity:0; width:14px` until the row is
         // hovered, so a queued/running badge has to force itself visible and
-        // widen the button. Inline, because style.css is not this batch's file
-        // — `.is-agent-queued` / `.is-agent-running` are emitted alongside so
-        // the rules can move into the stylesheet later without touching this.
+        // WIDEN the button for the badge glyph. That widening is live-only and
+        // stays inline; the opacity half now lives in `static/style.css`
+        // alongside the `.is-agent-stream-complete` rule that was already
+        // there, so a stored `running` is visible without hovering it (`B08`).
         const agentBadge = agentLive === 'queued'
           ? `<span class="note-agent-queue-pos" style="font-size:9px;line-height:1">${agentQueuePos}</span>`
           : (agentLive === 'running'
@@ -1941,9 +1942,18 @@ function _renderNotes() {
         const agentStyleAttr = agentLive
           ? ' style="opacity:.9;width:auto;min-width:14px;gap:2px"'
           : '';
+        // `B08`. The `running` sentence promises a menu entry, so it is only
+        // told when the menu will have one. An orphan — `running` with no
+        // session id, so neither this page nor the server can be asked about it
+        // — gets a sentence that offers nothing, because the menu offers
+        // nothing.
+        const agentStopKind = _agentRunStopKind(note.id, i, item);
         const agentTitle = agentStatus === 'stream_complete'
           ? 'Agent stream finished for this todo'
-          : (agentStatus === 'running' ? 'Agent is working on this todo - open the menu to stop it'
+          : (agentStatus === 'running'
+            ? (agentStopKind === 'orphan'
+              ? 'An agent run was started for this todo and never reported back'
+              : 'Agent is working on this todo - open the menu to stop it')
             : (agentStatus === 'queued' ? `Waiting for the agent (#${agentQueuePos}) - open the menu to remove it`
               : (agentStatus === 'error' ? 'The last agent run for this todo failed'
                 : (agentStatus === 'aborted' ? 'The last agent run for this todo was stopped'
@@ -4545,6 +4555,13 @@ function _openTodoAgentMenu(btn) {
   const idx = parseInt(btn.dataset.idx);
   const sid = btn.dataset.sessionId || '';
   const state = _agentSolveState(noteId, idx);   // '' | 'queued' | 'running'
+  // `B08`. The Stop entry used to be gated on `state` alone, which is live-only,
+  // so the one case where a person most needs it — a run outliving the page that
+  // started it — was the one case with no entry, under a tooltip telling them to
+  // open this menu. Read from the item so the menu and the tooltip cannot
+  // disagree about whether a run is stoppable.
+  const _item = ((_notes.find(n => n.id === noteId) || {}).items || [])[idx];
+  const stopKind = _agentRunStopKind(noteId, idx, _item);
   const menu = document.createElement('div');
   menu.className = 'note-corner-menu-dropdown note-agent-item-menu';
   menu.innerHTML = `
@@ -4552,7 +4569,7 @@ function _openTodoAgentMenu(btn) {
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14L21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
       <span>Open</span>
     </button>` : ''}
-    ${state ? `<button type="button" class="ncm-item" data-act="cancel">
+    ${(state || stopKind === 'detached') ? `<button type="button" class="ncm-item" data-act="cancel">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
       <span>${state === 'queued' ? `Remove from queue (#${_agentSolveQueuePosition(_agentSolveKey(noteId, idx))})` : 'Stop this run'}</span>
     </button>` : ''}
@@ -4573,7 +4590,10 @@ function _openTodoAgentMenu(btn) {
   if (cancelBtn) {
     cancelBtn.addEventListener('click', () => {
       menu.remove();
-      _cancelAgentSolve(noteId, idx);
+      // Live runs are this page's to cancel directly; a detached one has to be
+      // found on the server first (`B08`).
+      if (state) { _cancelAgentSolve(noteId, idx); return; }
+      _stopDetachedAgentRun(noteId, idx, sid);
     });
   }
   menu.querySelector('[data-act="run"]').addEventListener('click', () => {
@@ -4616,6 +4636,38 @@ function _agentSolveState(noteId, idx) {
 function _agentSolveQueuePosition(key) {
   const i = _agentSolveQueue.findIndex(j => j.key === key);
   return i < 0 ? 0 : i + 1;
+}
+
+/** Who, if anyone, can stop the agent run this checklist item claims to be in.
+ *
+ * `B08`. `agent_status` is persisted — `_runAgentSolveJob` patches `running` at
+ * the moment the run starts — and `_agentSolveRuns` is not. A reload, or the
+ * tab closing mid-run (the `P6-09` scenario), therefore leaves `running` on the
+ * item with nothing in this page's queue behind it. The render folded the two
+ * together (`agentLive || item.agent_status`), so such an item drew the live
+ * tooltip — *open the menu to stop it* — while `_openTodoAgentMenu` gated its
+ * Stop entry on the live state alone and rendered none. Measured: menu entries
+ * for a stale `running` item were Open + Run again, and nothing else.
+ *
+ * A stored `running` is not usually a lie about the server. The run is
+ * DETACHED (`routes/chat_routes.py` hands `_safe_stream()` to
+ * `agent_runs.start`): dropping the SSE only removes a subscriber, so after a
+ * reload the run is very often still going, and still stoppable. What died with
+ * the old page is the run id, and `/api/chat/stop` fails closed without one
+ * (`src/agent_runs.py`). `/api/chat/resume/{sid}` hands one back, or 404s
+ * because the run is over — both answers end the claim, which is why
+ * 'detached' offers a Stop rather than quietly clearing the row.
+ *
+ *   'live'     — this page owns the job; Stop is `_cancelAgentSolve`.
+ *   'detached' — stored `running` plus a session id to ask the server about.
+ *   'orphan'   — stored `running` with no session id: nothing to ask and
+ *                nothing to stop, so the tooltip stops promising a menu entry.
+ *   ''         — no run to stop.
+ */
+function _agentRunStopKind(noteId, idx, item) {
+  if (_agentSolveState(noteId, idx)) return 'live';
+  if (String((item && item.agent_status) || '').toLowerCase() !== 'running') return '';
+  return (item && item.agent_session_id) ? 'detached' : 'orphan';
 }
 
 function _agentSolvePending() {
@@ -4663,9 +4715,19 @@ function _postAgentSolveStop(run) {
 /** Cancelled before the chat_stream POST returned its headers, so the run id
  *  never reached us and /api/chat/stop would fail closed. /api/chat/resume
  *  re-advertises the same header for a still-detached run (404s when there is
- *  nothing running, which is also the answer we want). */
+ *  nothing running, which is also the answer we want).
+ *
+ *  Three answers, not two. `B08` needs them separated: the same recovery now
+ *  serves a run that outlived its page, where what the server said decides what
+ *  the item is allowed to claim afterwards.
+ *
+ *    true  — a run was live and has been told to stop.
+ *    false — the server answered, and there is no run. That is a fact.
+ *    null  — the server could not be reached. That is not a fact, and reporting
+ *            it as one would tell a person their run had finished because their
+ *            wifi dropped. */
 async function _recoverAgentRunIdAndStop(sid) {
-  if (!sid) return;
+  if (!sid) return null;
   try {
     const ctrl = new AbortController();
     const res = await fetch(`${API_BASE}/api/chat/resume/${encodeURIComponent(sid)}`, {
@@ -4673,8 +4735,37 @@ async function _recoverAgentRunIdAndStop(sid) {
     });
     const runId = res.ok ? (res.headers.get('X-Pantheon-Run-Id') || '') : '';
     try { ctrl.abort(); } catch (_) {}     // the header was all we wanted
-    if (runId) _postAgentSolveStop({ sid, runId });
-  } catch (_) { /* nothing further we can do from here */ }
+    if (runId) { _postAgentSolveStop({ sid, runId }); return true; }
+  } catch (_) { return null; }             // asked and never heard back
+  return false;
+}
+
+/** Stop a run this page did not start — the reload / closed-tab case (`B08`).
+ *
+ *  The run id died with the page that had it, so this is `_recoverAgentRunIdAndStop`
+ *  with its answer read rather than a second stop path built (`Law 14`). A run
+ *  still in flight is stopped and recorded as `aborted`, exactly as
+ *  `_runAgentSolveJob`'s own abort path records it. A 404 proves one thing —
+ *  the stream is over — so the item is recorded as `stream_complete`, which is
+ *  a status the render already has a sentence for; no second vocabulary.
+ *
+ *  A request that never completed proves nothing, and writes nothing. Marking
+ *  the item finished because the network dropped would replace a stale claim
+ *  with a false one, which is the same defect wearing the fix's clothes. */
+async function _stopDetachedAgentRun(noteId, idx, sid) {
+  if (!sid) return null;
+  uiModule.showToast?.('Stopping the agent run…');
+  const stopped = await _recoverAgentRunIdAndStop(sid);
+  if (stopped === null) {
+    uiModule.showError?.('Could not reach the server to stop that run — it may still be going');
+    return null;
+  }
+  _markTodoAgentStatus(noteId, idx, stopped ? 'aborted' : 'stream_complete');
+  _renderNotes();
+  if (!stopped) {
+    uiModule.showToast?.('That run had already finished — open it to see what it did');
+  }
+  return stopped;
 }
 
 /** Build the job for a note-level or item-level solve and put it in the queue. */

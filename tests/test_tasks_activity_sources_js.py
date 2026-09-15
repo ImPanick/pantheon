@@ -81,6 +81,11 @@ def sandbox(tmp_path_factory):
     for name, src in _STUBS.items():
         (d / name).write_text(src)
     shutil.copy(TASKS_JS, d / "tasks.js")
+    # `B13`: the status words are a leaf module with no imports of its own, so
+    # the real one is copied rather than stubbed — a stub here would let the
+    # Activity view and the queue panel drift apart again without this file
+    # noticing, which is the defect that module exists to close.
+    shutil.copy(ROOT / "static" / "js" / "runStatus.js", d / "runStatus.js")
     return d
 
 

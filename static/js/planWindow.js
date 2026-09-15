@@ -35,6 +35,8 @@
  */
 
 import Storage from './storage.js';
+import { CHECKLIST_SURFACES, checklistProgress, stepChipClass, PLAY_POINTS }
+  from './checklist.js';
 
 /** The active plan markdown. Same key `chat.js` has always used. */
 export const PLAN_STORAGE_KEY = 'pantheon-active-plan';
@@ -273,6 +275,8 @@ function collectEls() {
     fold: document.getElementById('plan-window-fold'),
     chevron: document.getElementById('plan-window-chevron'),
     icon: document.getElementById('plan-window-icon'),
+    title: document.getElementById('plan-window-title'),
+    blurb: document.getElementById('plan-window-blurb'),
     count: document.getElementById('plan-window-count'),
     status: document.getElementById('plan-window-status'),
     origin: document.getElementById('plan-window-origin'),
@@ -327,7 +331,9 @@ function truncate(text, max) {
 
 function chip(cls, text, title) {
   const span = document.createElement('span');
-  span.className = 'plan-step-chip' + (cls ? ' ' + cls : '');
+  // The class comes from `checklist.js`, not from this line: the todo card's
+  // renderer was spelling the same base class for itself (`B12`).
+  span.className = stepChipClass(cls);
   span.textContent = text;
   if (title) span.title = title;
   return span;
@@ -427,7 +433,7 @@ function render() {
   const active = activeIndex();
   const state = planState();
 
-  _els.count.textContent = `${done} of ${total} done`;
+  _els.count.textContent = checklistProgress(done, total);
   _els.status.textContent = STATE_TEXT[state];
   _els.status.dataset.planState = state;
   _els.hint.textContent = STATE_HINT[state];
@@ -446,7 +452,7 @@ function render() {
   play.setAttribute('fill', 'currentColor');
   play.setAttribute('aria-hidden', 'true');
   const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-  poly.setAttribute('points', '7 4 20 12 7 20 7 4');
+  poly.setAttribute('points', PLAY_POINTS);
   play.appendChild(poly);
   _els.execute.appendChild(play);
   _els.execute.appendChild(
@@ -793,6 +799,14 @@ export function init() {
   }
   _els.chevron.innerHTML = ICON_CHEVRON;
   _els.icon.innerHTML = ICON_PLAN;
+  // `B11`. Said in words, from the one table that also holds the todo card's
+  // sentence, so the pair is written together and cannot converge again. The
+  // title is also in `index.html` so the head is not blank before this module
+  // runs; writing it here is what makes that copy a paint rather than a second
+  // source, and `test_two_checklists_that_look_alike.py` holds the two equal.
+  _els.title.textContent = CHECKLIST_SURFACES.plan.title;
+  _els.root.setAttribute('aria-label', CHECKLIST_SURFACES.plan.ariaLabel);
+  _els.blurb.textContent = CHECKLIST_SURFACES.plan.blurb;
   wire();
   const stored = getPlan();
   _planText = stored;

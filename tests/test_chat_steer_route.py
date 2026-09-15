@@ -563,3 +563,28 @@ def test_chat_js_routes_the_steer_confirmation_to_its_only_consumer():
     steer_applied = chat_js.index("json.type === 'steer_applied'")
     ask_user = chat_js.index("json.type === 'ask_user'")
     assert ui_control < steer_applied < ask_user
+
+
+def test_chat_js_routes_the_steerability_verdict_to_its_only_consumer():
+    """`B14`'s outbound leg, wired the same way and pinned the same way.
+
+    What the event says is tested by driving both ends —
+    `tests/test_stream_announces_its_steerability.py` reads the payload off the
+    real route, and `tests/test_chat_steer_js.py` drives `handleStreamSteerable`
+    with it. Only the join is left, and the join lives in a dispatch chain the
+    node sandbox cannot reach for the reason given above: `chat.js` imports
+    twenty-odd browser-coupled modules. So this checks the same three things the
+    test above checks, and nothing about behaviour.
+    """
+    chat_js = (ROOT / "static" / "js" / "chat.js").read_text(encoding="utf-8")
+    chat_stream_js = (ROOT / "static" / "js" / "chatStream.js").read_text(encoding="utf-8")
+
+    # The whole event: `steerable` is at the top level, like `round` is.
+    assert "chatStream.handleStreamSteerable(json)" in chat_js
+    assert "export function handleStreamSteerable" in chat_stream_js
+    assert "handleStreamSteerable," in chat_stream_js, "reachable on the default export"
+
+    ui_control = chat_js.index("json.type === 'ui_control'")
+    steerable = chat_js.index("json.type === 'stream_steerable'")
+    ask_user = chat_js.index("json.type === 'ask_user'")
+    assert ui_control < steerable < ask_user

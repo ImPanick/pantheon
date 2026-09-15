@@ -78,6 +78,7 @@
 
 import { formatElapsed } from './research/jobs.js?v=20260630researchthumb';
 import dragSortModule from './dragSort.js';
+import { runStatusLabel } from './runStatus.js';
 
 /** Injected by chat.js at init. See the contract in `init()`. */
 let _driver = null;
@@ -128,17 +129,20 @@ function statusClass(status) {
   return 'info';
 }
 
-/** Human label for the six shipped values. Never says "failed" for `aborted`. */
+/**
+ * Human label for the six shipped values. Never says "failed" for `aborted`.
+ *
+ * `B13`: this switch WAS the vocabulary, and the Activity view — rendering the
+ * same rows from the same `getQueueActivityEntries` source — had its own, so
+ * one message read *Waiting* here and *Queued* there with both panels open.
+ * The words moved to `runStatus.js` unchanged; every one of them is still this
+ * file's wording, because a queue row is a message and that is the column it
+ * asks for. Kept as an exported function rather than inlined at the one call
+ * site below: it is part of this module's surface and something else may yet
+ * want the panel's word for a row it is about to add.
+ */
 function statusLabel(status) {
-  switch (status) {
-    case 'queued':  return 'Waiting';
-    case 'running': return 'Sending';
-    case 'success': return 'Sent';
-    case 'error':   return 'Failed';
-    case 'skipped': return 'Skipped';
-    case 'aborted': return 'Stopped';
-    default:        return status || '';
-  }
+  return runStatusLabel(status, 'message');
 }
 
 // ── Element collection ──────────────────────────────────────────────────────

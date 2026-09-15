@@ -108,3 +108,86 @@ def test_scan_actually_reads_the_service_worker_precache_list():
     importers = check_specifiers.scan()["static/js/admin.js"]
     (query,) = importers
     assert "static/sw.js" in importers[query], importers
+
+
+# --- `B84`: the checker was reading text, not code ---------------------------
+
+
+@pytest.mark.parametrize("source,html,label", [
+    ("// import './x.js?v=1';\nimport y from './y.js';", False, "line comment"),
+    ("/* import './x.js?v=1'; */\nimport y from './y.js';", False, "block comment"),
+    ("<!-- <script src='/static/js/x.js'></script> -->\n"
+     "<script src='/static/js/y.js'></script>", True, "html comment"),
+])
+def test_a_sentence_about_an_import_is_not_an_import(source, html, label):
+    """A docstring in `runStatus.js` explaining why a module is loaded as
+    `import('./tasks.js?v=…')` was counted as a second specifier for
+    `tasks.js` — a literal ellipsis reported as a forked module.
+
+    That is `Law 20` in the checker itself. The same law bit
+    `test_offline_shell_manifest.py` two days earlier, when a comment
+    explaining why there is no `ignoreSearch` failed a grep for
+    `ignoreSearch`. A rule about code has to read code.
+    """
+    stripped = check_specifiers.strip_comments(source, html=html)
+    found = ([m.group(1) for m in check_specifiers.IMPORT_RE.finditer(stripped)]
+             + [m.group(1) for m in check_specifiers.SCRIPT_RE.finditer(stripped)])
+    assert len(found) == 1, (label, found)
+    assert "x.js" not in found[0], (label, found)
+
+
+@pytest.mark.parametrize("source", [
+    "const u = 'https://a.example/b';\nimport y from './y.js';",
+    'const u = "https://a.example/b";\nimport y from "./y.js";',
+    "const t = `http://x//y`;\nimport y from './y.js';",
+])
+def test_a_double_slash_inside_a_string_is_not_a_comment(source):
+    """The failure this guards against is silent: blanking from a `//` inside a
+    URL would delete the rest of that line, and a checker that quietly stops
+    looking is worse than one that over-reports.
+
+    **The assertion is that the string SURVIVES, not that the import is still
+    found.** The first draft put the URL and the import on separate lines, so
+    eating the rest of the URL's line left the import untouched and a mutation
+    removing string tracking walked straight past. What the rule is actually
+    about is how much of the file the scanner can still see.
+    """
+    stripped = check_specifiers.strip_comments(source, html=False)
+    assert "a.example" in stripped or "x//y" in stripped, stripped
+    assert stripped.split("\n")[0] == source.split("\n")[0], (
+        "the line holding the string was truncated — a // inside it was read "
+        "as a comment"
+    )
+    found = [m.group(1) for m in check_specifiers.IMPORT_RE.finditer(stripped)]
+    assert found == ["./y.js"], found
+
+
+def test_an_import_after_a_url_on_the_same_line_is_still_found():
+    """The same rule from the side that actually loses a specifier."""
+    source = "const u = 'https://a.example/b'; import('./y.js?v=2');\n"
+    stripped = check_specifiers.strip_comments(source, html=False)
+    found = [m.group(1) for m in check_specifiers.IMPORT_RE.finditer(stripped)]
+    assert found == ["./y.js?v=2"], (found, stripped)
+
+
+def test_stripping_preserves_every_offset():
+    """Comments are blanked, not deleted, so line numbers in any message the
+    checker prints still point at the real line."""
+    source = "// hidden\nimport y from './y.js';\n/* also\nhidden */\n"
+    stripped = check_specifiers.strip_comments(source, html=False)
+    assert len(stripped) == len(source)
+    assert stripped.count("\n") == source.count("\n")
+
+
+def test_an_escaped_quote_does_not_end_the_string_early():
+    """Written as a raw string so the backslash count is unambiguous.
+
+    An earlier draft of this case used two backslashes, which in JS is an
+    escaped BACKSLASH — the string closes and what follows really is a comment.
+    The stripper was right and the test was wrong, which is worth a sentence
+    because it is the failure a test like this exists to avoid making.
+    """
+    source = r"const e = 'a\'//b'; import('./y.js?v=3');" + "\n"
+    stripped = check_specifiers.strip_comments(source, html=False)
+    found = [m.group(1) for m in check_specifiers.IMPORT_RE.finditer(stripped)]
+    assert found == ["./y.js?v=3"], (found, stripped)

@@ -22,6 +22,12 @@ What is pinned, and why each one is a defect if it breaks:
     pressed — the `P6-01` defect class.
   * Nothing in the user-facing copy claims the redirect is immediate; the
     backend cannot interrupt a round in progress.
+  * `B14`: the RUN's own verdict outranks the composer's guess, in both
+    directions, and does not survive into the next run. The guess below —
+    `test_no_steer_bar_is_drawn_for_a_plain_chat_turn` — passed from `P6-18`
+    until this row while the bar was still being offered on research turns,
+    image sessions and compare panes, because it only ever asked about the one
+    case `P6-18` knew about.
 """
 
 import json
@@ -431,6 +437,199 @@ def test_no_steer_bar_is_drawn_for_a_plain_chat_turn(sandbox):
     """)
     assert out["chatMode"] is False, "chat mode must not advertise steering"
     assert out["agentMode"] is True, "agent mode still gets the bar"
+
+
+# ── the run's own verdict (B14) ─────────────────────────────────────────────
+#
+# The composer's mode getter above closed the chat-mode case and left three
+# open: a research turn, an image-generation session and a compare pane all draw
+# a bar the server refuses with `no_active_run`. None of them is visible from the
+# composer — research in particular is decided server-side, from
+# `research_pending`, on a message whose research toggle `chat.js` has already
+# cleared. So the run says what it is, on the same SSE dispatch chain that
+# carries `steer_applied`, and that answer outranks the guess.
+
+
+def test_a_run_that_says_it_cannot_be_steered_takes_the_bar_down(sandbox):
+    out = _run(sandbox, """
+        globalThis.__sid = 'sess-a';
+        mockFetch(async () => res(200, { supported: true }));
+        const mod = await import('./chatStream.js');
+        setBusy(true); await tick();
+        const beforeAnswer = !!document.querySelector('.steer-bar');
+        mod.handleStreamSteerable({ type: 'stream_steerable', steerable: false });
+        const afterAnswer = !!document.querySelector('.steer-bar');
+        console.log(JSON.stringify({ beforeAnswer, afterAnswer }));
+    """)
+    assert out["beforeAnswer"] is True, "the bar is drawn on the busy edge, before the POST answers"
+    assert out["afterAnswer"] is False, (
+        "a research turn, an image session and a compare pane can only decline; "
+        "leaving the bar up is the Law 15 half of the defect P6-18 fixed elsewhere"
+    )
+
+
+def test_a_run_that_cannot_be_steered_hands_the_key_binding_back(sandbox):
+    """No round trip spent being refused, and no `Steering…` toast in front of
+    the queue. `app.js`'s plain-Enter binding does not exclude the modifier, so
+    the text lands in the same queue the refusal would have put it in."""
+    out = _run(sandbox, """
+        globalThis.__sid = 'sess-a';
+        mockFetch(async () => res(200, { supported: true }));
+        const mod = await import('./chatStream.js');
+        setBusy(true); await tick();
+        mod.handleStreamSteerable({ steerable: false });
+        calls.fetch.length = 0;
+        composer.value = 'change of plan';
+        const ev = pressSteerKey();
+        await tick();
+        console.log(JSON.stringify({
+          prevented: ev.prevented, posts: calls.fetch.length,
+          composer: composer.value, toasts: calls.toasts,
+        }));
+    """)
+    assert out["prevented"] is False, "the key falls through to the queue, as it does with no route"
+    assert out["posts"] == 0
+    assert out["composer"] == "change of plan", "the words are still where the user left them"
+    assert out["toasts"] == []
+
+
+def test_a_run_that_says_it_CAN_be_steered_overrides_the_composers_guess(sandbox):
+    """`Law 1`, and the direction the row does not mention. A chat-mode turn
+    auto-escalated to agent IS steerable — the server runs the agent loop — and
+    the composer still says 'chat', so the guess was withholding a bar from a run
+    that would have taken the steer. The key already worked there; only the
+    discoverable half was missing."""
+    out = _run(sandbox, """
+        globalThis.__sid = 'sess-a';
+        mockFetch(async () => res(200, { supported: true }));
+        globalThis.window.__pantheonGetChatMode = () => 'chat';
+        const mod = await import('./chatStream.js');
+        setBusy(true); await tick();
+        const guessed = !!document.querySelector('.steer-bar');
+        mod.handleStreamSteerable({ steerable: true });
+        const answered = !!document.querySelector('.steer-bar');
+        composer.value = 'use the staging db';
+        const ev = pressSteerKey();
+        await tick();
+        console.log(JSON.stringify({ guessed, answered, prevented: ev.prevented }));
+    """)
+    assert out["guessed"] is False, "the composer's mode getter hid it"
+    assert out["answered"] is True, "the run said otherwise, and the run is the authority"
+    assert out["prevented"] is True
+
+
+@pytest.mark.parametrize("answer, drawn", [(True, True), (False, False)])
+def test_a_verdict_that_beats_the_capability_probe_still_wins(sandbox, answer, drawn):
+    """The first run of a page load is the one case where the two answers race:
+    the probe is a round trip and the stream's first event is on its way while it
+    is in flight. The busy-change listener resumes after the `await` and has to
+    re-read the verdict rather than fall back to the guess it was about to use —
+    in both directions, since the guess can be wrong either way.
+
+    Driven by holding the probe's response open until the verdict has landed."""
+    out = _run(sandbox, """
+        globalThis.__sid = 'sess-a';
+        let releaseProbe;
+        const held = new Promise((r) => { releaseProbe = r; });
+        mockFetch(async () => { await held; return res(200, { supported: true }); });
+        globalThis.window.__pantheonGetChatMode = () => 'chat';
+        const mod = await import('./chatStream.js');
+        setBusy(true);                                  // listener parks on the probe
+        await tick();
+        const beforeProbe = !!document.querySelector('.steer-bar');
+        mod.handleStreamSteerable({ steerable: ANSWER });
+        releaseProbe();
+        await tick();
+        console.log(JSON.stringify({
+          beforeProbe, bar: !!document.querySelector('.steer-bar'),
+        }));
+    """.replace("ANSWER", "true" if answer else "false"))
+    assert out["beforeProbe"] is False, "nothing is drawn until the build is known to support it"
+    assert out["bar"] is drawn
+
+
+def test_the_verdict_does_not_carry_from_one_run_to_the_next(sandbox):
+    """Steerability is a property of the run, which is the whole reason the
+    capability probe could not answer it.
+
+    Both edges are driven, because `chat.js` produces both: the ordinary
+    finish-then-start pair, and two `active: true` edges in a row —
+    `_setForegroundChatBusy(true)` fires at send-path entry and
+    `_syncForegroundStreamGlobals()` fires again once the stream is up, with no
+    `false` in between. A reset on the end edge alone would look correct on the
+    first sequence and leave the second run of the second sequence permanently
+    unsteerable."""
+    out = _run(sandbox, """
+        globalThis.__sid = 'sess-a';
+        mockFetch(async () => res(200, { supported: true }));
+        const mod = await import('./chatStream.js');
+        setBusy(true); await tick();
+        mod.handleStreamSteerable({ steerable: false });
+        const duringResearch = !!document.querySelector('.steer-bar');
+        setBusy(false); await tick();
+        setBusy(true); await tick();          // an ordinary agent turn follows
+        const nextRun = !!document.querySelector('.steer-bar');
+        composer.value = 'and now steer';
+        const ev = pressSteerKey();
+        await tick();
+
+        // Now the back-to-back case: refused, then a new run starts with no
+        // end edge between them.
+        mod.handleStreamSteerable({ steerable: false });
+        const refusedAgain = !!document.querySelector('.steer-bar');
+        setBusy(true); await tick();
+        const backToBack = !!document.querySelector('.steer-bar');
+        console.log(JSON.stringify({
+          duringResearch, nextRun, prevented: ev.prevented, refusedAgain, backToBack,
+        }));
+    """)
+    assert out["duringResearch"] is False
+    assert out["nextRun"] is True, "the next run is steerable until it says otherwise"
+    assert out["prevented"] is True, "and the key comes back with it"
+    assert out["refusedAgain"] is False
+    assert out["backToBack"] is True, (
+        "a second `active` edge with no `inactive` between them is still a new run"
+    )
+
+
+def test_a_replayed_verdict_after_the_run_ended_does_not_resurrect_the_bar(sandbox):
+    """`/api/chat/resume` replays a run's buffer from the start, so this event
+    arrives again on every reconnect — including one that lands after the run
+    has finished."""
+    out = _run(sandbox, """
+        globalThis.__sid = 'sess-a';
+        mockFetch(async () => res(200, { supported: true }));
+        const mod = await import('./chatStream.js');
+        setBusy(true); await tick();
+        setBusy(false); await tick();
+        mod.handleStreamSteerable({ steerable: true });
+        console.log(JSON.stringify({ bar: !!document.querySelector('.steer-bar') }));
+    """)
+    assert out == {"bar": False}
+
+
+def test_a_server_that_never_announces_behaves_exactly_as_before(sandbox):
+    """`Law 1`. An older server sends no `stream_steerable`, and the composer's
+    guess has to keep standing alone or steering would vanish from every build
+    that has the route but not the event."""
+    out = _run(sandbox, """
+        globalThis.__sid = 'sess-a';
+        mockFetch(async () => res(200, { supported: true }));
+        let mode = 'agent';
+        globalThis.window.__pantheonGetChatMode = () => mode;
+        await import('./chatStream.js');
+        setBusy(true); await tick();
+        const agentMode = !!document.querySelector('.steer-bar');
+        composer.value = 'steer it';
+        const ev = pressSteerKey();
+        await tick();
+        setBusy(false); await tick();
+        mode = 'chat';
+        setBusy(true); await tick();
+        const chatMode = !!document.querySelector('.steer-bar');
+        console.log(JSON.stringify({ agentMode, chatMode, prevented: ev.prevented }));
+    """)
+    assert out == {"agentMode": True, "chatMode": False, "prevented": True}
 
 
 def test_a_route_that_vanishes_hides_the_control_and_queues_instead(sandbox):

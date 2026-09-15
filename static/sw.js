@@ -8,7 +8,7 @@
 //   - Other static assets (images/fonts/libs): cache-first with bg refresh.
 //   - API / non-GET: never cached.
 // Bump CACHE_NAME whenever the precache list or SW logic changes.
-const CACHE_NAME = 'pantheon-v415-b69-one-email-form';
+const CACHE_NAME = 'pantheon-v416-b57-shell-closure';
 
 // KaTeX resolves these from its own stylesheet, so caching the CSS without them
 // gives offline math fallback glyphs instead of proper typesetting.
@@ -35,6 +35,11 @@ const KATEX_FONTS = [
 //                    off the critical path, not out of the offline manifest:
 //                    without them here, a panel the user never opened while
 //                    online could not open offline at all.
+//
+// `B57`: both are ENTRY POINTS, not the shell. Install walks the imports out of
+// them (see `precacheShellGraph`), so a module reached only through another
+// module does not need to appear here — and must not be added here, because the
+// walk already has it and a second copy is a second thing to keep in step.
 //
 // Both are fetched at install time, in the background. Entries must match the
 // exact URL the browser requests, query string included.
@@ -70,6 +75,13 @@ const PRECACHE = [
   '/static/js/chatStream.js?v=20260829trustladder1',
   '/static/js/chat.js?v=20260829trustladder1',
   '/static/js/planWindow.js',
+  // `B11`/`B13`. Two leaf tables on the critical path: what the plan window and
+  // the todo card call themselves, and the word the six run statuses are shown
+  // as. Imported by chat.js, chatRenderer.js, planWindow.js and tasks.js — so
+  // they load before first paint and belong in the shell list, not behind the
+  // network-first fallback that happens to cache them on a first online visit.
+  '/static/js/checklist.js',
+  '/static/js/runStatus.js',
   '/static/js/cookbook.js',
   '/static/js/search-chat.js',
   '/static/js/compare/index.js?v=20260829trustladder1',
@@ -101,6 +113,12 @@ const PRECACHE = [
   '/static/js/assistant.js',
   '/static/js/tourAutoplay.js',
   '/static/js/section-management.js',
+  // `B57`. index.html:3263 loads this one as a CLASSIC script — no
+  // `type="module"` — so nothing imports it and the walk below cannot reach
+  // it. It was in no list either, and the manifest test could not see it:
+  // that test read `<script type="module">` only, and the type attribute
+  // decides how a script is evaluated, not whether it is requested.
+  '/static/js/cookbookSchedule.js',
   '/static/lib/highlight.min.js',
   // Math turns up in ordinary answers and KaTeX is small, so precaching it and
   // its fonts keeps formulas typeset offline. Mermaid is deliberately NOT
@@ -173,18 +191,131 @@ const PANEL_PRECACHE = [
   '/static/js/editor/wire-topbar.js',
 ];
 
+// `B57`. The two lists name entry points. They are not the shell, and the
+// difference is the whole of this row: an ES module graph loads whole or not at
+// all, so a root whose imports are absent from the cache does not partially
+// work — it does not run.
+//
+// Measured on this tree the day this landed: the 32 <script type="module"> tags
+// in index.html reach 172 modules, and the two lists together named 105 of
+// them. The 67 named by no entry under any URL included toolWindowZOrder.js
+// (27 importers), escMenuStack.js (18), windowDrag.js (12) and modalManager.js
+// (11) — which put 21 of the 32 roots, app.js and chat.js among them, out of
+// reach of the cache. Offline from a fresh install the shell painted and
+// nothing ran.
+//
+// Nothing noticed because the fetch handler below caches every OK JS response,
+// so any online visit fills the graph in. **That is a freshness path, not a
+// completeness path**, and two ordinary events empty it back to this list:
+//
+//   * `activate` deletes every cache but the current one, so a CACHE_NAME bump
+//     discards everything the fetch handler wrote. There have been 415 of them,
+//     13 in the week this was found.
+//   * a first visit registers this worker from the bottom of index.html, after
+//     the page has already fetched its module graph uncontrolled — none of it
+//     passes through the fetch handler, so a cold install caches the list and
+//     nothing else.
+//
+// So the closure is DERIVED here rather than written down (`Law 13`): install
+// reads each module it fetches and follows its import specifiers. Adding an
+// import is all it takes to have the target precached — there is no list to
+// update, and no build step in this repo to update it from.
+//
+// The seeds stay hand-written because they are exactly what a walk cannot
+// derive: the HTML shell, the stylesheet, and the fonts and libs nothing
+// imports — plus any module reached through a computed specifier, of which
+// login.html's `import(f('/static/js/theme.js'))` is the one in this tree.
+const MODULE_SPECIFIER =
+  /(?:^|[^\w.])(?:import\s*\(?\s*|from\s+)['"]([^'"]+\.js(?:\?[^'"]*)?)['"]/g;
+
+// What the walk will read and follow. `/static/lib/` is deliberately outside
+// it: mermaid is 3.5 MB and is deliberately not precached (see above), and
+// following imports into the vendored libs would drag it in by the back door.
+function isWalkable(url) {
+  return url.startsWith('/static/')
+    && !url.startsWith('/static/lib/')
+    && /\.js(\?|$)/.test(url);
+}
+
+// Cache identity is the resolved URL, query included — the defect `P3-11`,
+// `B54` and `B58` each found a fresh batch of. `new URL(spec, base)` resolves
+// to exactly what the browser will request: the specifier's own query, never
+// the importer's.
+function importsOf(source, url) {
+  const base = new URL(url, self.location.origin);
+  const found = [];
+  // `matchAll` scans against its own copy of the regex, so the shared
+  // module-scope `lastIndex` never leaks from one module's scan into the next —
+  // a hazard `exec` in a loop carries and that no test can see, because a scan
+  // that runs to its end resets it anyway.
+  for (const m of source.matchAll(MODULE_SPECIFIER)) {
+    let resolved;
+    try {
+      resolved = new URL(m[1], base);
+    } catch (err) {
+      continue;
+    }
+    if (resolved.origin !== base.origin) continue;
+    const request = resolved.pathname + resolved.search;
+    if (isWalkable(request)) found.push(request);
+  }
+  return found;
+}
+
+// Fetch one URL, store it, and report what it imports. addAll is atomic — if
+// any item fails, none are cached — so this puts one at a time and swallows its
+// own failures: a single 404 must not block the whole install, and must not
+// stop the walk reaching the rest of the graph either.
+async function precacheOne(cache, url) {
+  let res;
+  try {
+    res = await fetch(url, { cache: 'reload' });
+  } catch (err) {
+    return [];
+  }
+  if (!res || !res.ok) return [];
+  // Read the copy, store the original: cache.put consumes the body.
+  let source = '';
+  if (isWalkable(url)) {
+    try {
+      source = await res.clone().text();
+    } catch (err) {
+      source = '';
+    }
+  }
+  try {
+    await cache.put(url, res);
+  } catch (err) {
+    /* storage quota, or a response that cannot be stored — the walk carries on */
+  }
+  return source ? importsOf(source, url) : [];
+}
+
+// Breadth-first from the seeds. `seen` is what makes this terminate: the graph
+// has cycles and the set is the entire argument. The round ceiling is a guard
+// against a pathological tree, not the termination proof — this tree settles in
+// three rounds.
+async function precacheShellGraph(cache, seeds) {
+  const seen = new Set(seeds);
+  let frontier = [...seen];
+  for (let round = 0; round < 32 && frontier.length; round += 1) {
+    const discovered = await Promise.all(frontier.map(url => precacheOne(cache, url)));
+    frontier = [];
+    for (const list of discovered) {
+      for (const url of list) {
+        if (seen.has(url)) continue;
+        seen.add(url);
+        frontier.push(url);
+      }
+    }
+  }
+  return seen;
+}
+
 self.addEventListener('install', (e) => {
   e.waitUntil(
     caches.open(CACHE_NAME).then(cache =>
-      // addAll is atomic — if any item fails, none are cached. Use individual
-      // puts so a single 404 can't block the whole install.
-      Promise.all(
-        [...PRECACHE, ...PANEL_PRECACHE].map(url =>
-          fetch(url, { cache: 'reload' })
-            .then(res => res.ok ? cache.put(url, res) : null)
-            .catch(() => null)
-        )
-      )
+      precacheShellGraph(cache, [...PRECACHE, ...PANEL_PRECACHE])
     )
   );
   self.skipWaiting();

@@ -77,6 +77,14 @@ let _steerStyleInjected = false;
 // is the difference between "the confirmation channel is live and this steer
 // missed the run" and "we have no confirmation channel, so say nothing".
 let _steerConfirmSeen = false;
+// `B14`. null until THIS run says what it is; then true | false. The capability
+// probe answers a per-BUILD question and `_steerChatModeOnly` answers a
+// per-COMPOSER one, and steerability is neither: the server decides it per run
+// (`routes/chat_routes.py` `_stream_is_steerable`) and now announces the same
+// value it gates the refusal on. Null keeps today's behaviour exactly — an old
+// server never sends the event and the composer's guess stands — so nothing
+// that works now stops working.
+let _steerRunAnswer = null;
 
 const STEER_PENDING_TEXT = ' — lands at the next step';
 
@@ -115,6 +123,10 @@ function _steerSessionId() {
  * Unknown counts as steerable: the server is the authority and refuses what it
  * cannot deliver, so a missing getter costs one honest refusal rather than
  * silently hiding a working control.
+ *
+ * `B14`: this is a GUESS, and it is only consulted until the run says otherwise.
+ * It reads the composer's mode toggle, which is not what the server decides the
+ * turn is — see `_steerRunAnswer`.
  */
 function _steerChatModeOnly() {
   try {
@@ -380,6 +392,11 @@ function _steerKeydown(e) {
   if (e.key !== 'Enter' || e.isComposing || e.repeat) return;
   if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey) return;
   if (_steerSupported !== true) return;
+  // The run has said it cannot consume a steer (`B14`). Hand the key back
+  // rather than spending a round trip to be refused: app.js's plain-Enter
+  // binding does not exclude the modifier, so the text lands in the same queue
+  // the refusal would have put it in, with no "Steering…" toast in front of it.
+  if (_steerRunAnswer === false) return;
   const input = _steerComposer();
   if (!input || e.target !== input) return;
   if (!_steerChatBusy()) return;
@@ -416,18 +433,32 @@ export function initSteerControl() {
         } catch (_) {}
       }
       _removeSteerBar();
+      _steerRunAnswer = null;
       return;
     }
+    // A new run: what the last one said about itself does not carry over. This
+    // is the whole reason the answer is per-run rather than per-page (`B14`).
+    _steerRunAnswer = null;
     if (_steerSupported === null) await probeSteerSupport();
     if (_steerSupported !== true) return;
+    // The stream can beat the probe on the first run of a page, so its verdict
+    // is re-read after the await rather than assumed not to have arrived (`B14`).
+    if (_steerRunAnswer === false) { _removeSteerBar(); return; }
     // Chat mode has no rounds, so it has no step boundary to deliver a steer
     // at, and the server refuses one — correctly, since accepting it would
     // report words as landing that nothing would ever read. Drawing the bar
     // anyway would offer a control that always declines, which is the `Law 15`
-    // failure this whole feature exists to avoid. The composer already knows
-    // the mode; asking it is cheaper and more honest than a probe, which fires
-    // once per page load and cannot answer a per-run question.
-    if (_steerChatModeOnly()) { _removeSteerBar(); return; }
+    // failure this whole feature exists to avoid.
+    //
+    // This stays the PROVISIONAL answer only (`B14`). The composer's mode is
+    // not the turn's mode: `research_pending` runs research on a message sent
+    // with the toggle cleared, and auto-escalation runs the agent loop on a
+    // turn typed in chat mode — so this guess is wrong in both directions, and
+    // in the second it withholds a bar from a run that would have taken the
+    // steer. It is kept because it costs nothing and is right most of the time
+    // in the window before the run answers, and because a server that does not
+    // send `stream_steerable` must keep behaving exactly as it does today.
+    if (_steerRunAnswer === null && _steerChatModeOnly()) { _removeSteerBar(); return; }
     // A run that belongs to a different chat than the one on screen gets a
     // fresh bar rather than another session's accepted-steer list.
     if (_steerBar && _steerBoundSessionId && _steerBoundSessionId !== _steerSessionId()) {
@@ -436,6 +467,35 @@ export function initSteerControl() {
     _ensureSteerBar();
   });
   return true;
+}
+
+/**
+ * `stream_steerable` from `routes/chat_routes.py`: this run's own answer to
+ * "can a steer reach you", emitted as the stream's first event and carrying the
+ * exact value `agent_runs.start` was given (`B14`).
+ *
+ * `P6-18` gated the bar on the composer's mode getter, which closed the
+ * chat-mode case and left three others open — a research turn, an
+ * image-generation session, and a compare pane all draw a bar the server then
+ * refuses with `no_active_run`. None of them is visible from the composer:
+ * research in particular is decided server-side from `research_pending` on a
+ * message whose research toggle `chat.js` has already cleared. So the fix is
+ * not a fourth client-side rule but the end of client-side rules — the one
+ * predicate that decides the refusal now also decides the affordance.
+ *
+ * It runs in both directions. `false` takes the bar down; `true` puts it up,
+ * which is a control the user did not have before on an auto-escalated turn —
+ * chat mode promoted to agent IS steerable, and the composer's guess was hiding
+ * a bar that would have worked.
+ */
+export function handleStreamSteerable(data) {
+  const steerable = !!(data && data.steerable);
+  _steerRunAnswer = steerable;
+  if (!steerable) { _removeSteerBar(); return; }
+  // Only while a run is actually live: this event is replayed from the run's
+  // buffer on `/api/chat/resume`, and a replay that arrives after the run ended
+  // must not resurrect the bar.
+  if (_steerSupported === true && _steerChatBusy()) _ensureSteerBar();
 }
 
 /**
@@ -797,10 +857,13 @@ const chatStream = {
   notifyResearchComplete,
   // P6-18. `handleSteerApplied` is the consumer for the `steer_applied` SSE
   // event; `chat.js` owns the SSE dispatch chain and routes it here.
+  // `B14` adds `handleStreamSteerable` on the same chain, for the event that
+  // says whether this run can take a steer at all.
   initSteerControl,
   probeSteerSupport,
   submitSteer,
   handleSteerApplied,
+  handleStreamSteerable,
 };
 
 export default chatStream;

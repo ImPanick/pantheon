@@ -14,6 +14,7 @@ import { bindMenuDismiss } from './escMenuStack.js';
 import { loadPanel } from './panels.js';
 import { matchModelKey } from './model/matchKey.js';
 import { getTools } from './appConfig.js';
+import { CHECKLIST_SURFACES, checklistProgress, stepChipClass } from './checklist.js';
 // P7-04's "always allow this". The chooser and its words live beside the trust
 // ladder's, because they are one vocabulary; this file only decides where on the
 // card it goes. It returns null unless the server has said it takes rules AND
@@ -1482,13 +1483,13 @@ export function buildTodoCard(ev) {
     else if (item.status === 'in_progress') cls += ' plan-step-now';
     var chips = '';
     if (item.status === 'in_progress') {
-      chips += '<span class="plan-step-chip todo-now-chip">in progress</span>';
+      chips += '<span class="' + stepChipClass('todo-now-chip') + '">in progress</span>';
     }
     // `medium` is the schema default and what an unknown value is coerced to,
     // so printing it on every row would be noise rather than information.
     // `high` and `low` are a deliberate choice by the model and are shown.
     if (item.priority !== 'medium') {
-      chips += '<span class="plan-step-chip todo-prio-' + item.priority + '">' + esc(item.priority) + '</span>';
+      chips += '<span class="' + stepChipClass('todo-prio-' + item.priority) + '">' + esc(item.priority) + '</span>';
     }
     // The box is decorative in `markdown.js` because a `- [x]` line carries no
     // other state; here the state is structured, so the box can name it and a
@@ -1505,21 +1506,37 @@ export function buildTodoCard(ev) {
       + (chips ? '<span class="plan-step-meta">' + chips + '</span>' : '')
       + '</span></li>';
   }
-  if (list.cleared) {
-    return '<div class="todo-card todo-card-cleared" role="group" aria-label="Agent task list">'
-      + '<div class="todo-card-head">'
-      + '<span class="todo-card-icon" aria-hidden="true">' + TODO_ICON + '</span>'
-      + '<span class="todo-card-title">Task list</span>'
-      + '<span class="todo-card-count">cleared</span>'
-      + '</div></div>';
-  }
-  var count = list.done + ' of ' + list.total + ' done';
-  return '<div class="todo-card" role="group" aria-label="Agent task list">'
-    + '<div class="todo-card-head">'
+  // `B11`. This card and the docked plan window draw the same rows out of the
+  // same row system — deliberately, and it stays that way — but they mean
+  // opposite things: a plan is a commitment the user approved, this is the
+  // model's own list. The heads had converged to "<icon> <title> N of M done"
+  // in both, and this one's visible title said less than its OWN aria-label,
+  // which already read "Agent task list". Title, accessible name and the
+  // sentence saying whose list it is all come from `checklist.js` now, where
+  // they sit beside the plan window's so the pair is written as a contrast.
+  var surface = CHECKLIST_SURFACES.agentTodo;
+  var head = '<div class="todo-card-head">'
     + '<span class="todo-card-icon" aria-hidden="true">' + TODO_ICON + '</span>'
-    + '<span class="todo-card-title">Task list</span>'
-    + '<span class="todo-card-count">' + esc(count) + '</span>'
-    + '</div>'
+    + '<span class="todo-card-title">' + esc(surface.title) + '</span>';
+  var note = '<p class="todo-card-note">' + esc(surface.blurb) + '</p>';
+  var open = function (extra) {
+    return '<div class="todo-card' + (extra ? ' ' + extra : '') + '"'
+      + ' data-checklist="' + esc(surface.kind) + '" role="group"'
+      + ' aria-label="' + esc(surface.ariaLabel) + '">';
+  };
+  // A cleared list keeps its head and its identity line and loses only its
+  // rows, the same shape `demoteSupersededTodoCards` leaves behind — knowing
+  // which card you are looking at is what a stack of collapsed cards needs
+  // most, so the line is above the `<ul>` and outlives it.
+  if (list.cleared) {
+    return open('todo-card-cleared')
+      + head + '<span class="todo-card-count">cleared</span></div>'
+      + note + '</div>';
+  }
+  return open('')
+    + head + '<span class="todo-card-count">'
+    + esc(checklistProgress(list.done, list.total)) + '</span></div>'
+    + note
     + '<ul class="todo-card-list">' + rows + '</ul>'
     + '</div>';
 }

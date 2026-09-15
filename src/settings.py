@@ -503,9 +503,12 @@ def setting_is_explicit(key: str, *, default: Any = _UNSET) -> bool:
 
     * **Presence** alone is wrong *after* a save. `POST /api/auth/settings`
       does `current = load_settings()` — which merges `DEFAULT_SETTINGS` — and
-      writes the whole dict back, so one admin save materialises all ~200
-      defaults into `settings.json`. Every key is then "present", including the
-      ~200 nobody has ever looked at.
+      writes the whole dict back, so one admin save materialises **every**
+      default into `settings.json`. Every key is then "present", including the
+      ones nobody has ever looked at. (`H06` and this docstring both said
+      "~200"; `B20` re-drove it on an empty data directory and counted 89 —
+      the count that matters is `len(DEFAULT_SETTINGS)`, which a test now
+      asserts rather than a comment claiming a number that rots.)
     * **Value** alone is wrong *before* a save. With no file at all,
       `get_setting(key, None)` still returns the shipped default, because the
       merge happens on every read. A caller comparing to the default cannot

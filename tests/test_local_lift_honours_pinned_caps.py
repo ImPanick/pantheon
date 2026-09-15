@@ -86,7 +86,7 @@ def test_an_untouched_install_does_not_pin_the_round_cap(datadir):
 
 
 def test_a_materialised_default_does_not_pin_it_either(datadir):
-    """One admin save writes all ~200 defaults to disk. If that counted as
+    """One admin save writes every shipped default to disk. If that counted as
     pinning, opening Settings once would quietly disable the lift for everyone
     — the mirror image of the bug being fixed, and just as invisible."""
     import src.settings as S
