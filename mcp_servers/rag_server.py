@@ -20,6 +20,26 @@ from mcp.types import Tool, TextContent
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+# `B131`. `src.agent_tools` FIRST, and the order is load-bearing.
+# `src/tool_schemas.py` imports `src.agent_tools` at its top, and
+# `src/agent_tools/__init__.py:164` imports `FUNCTION_TOOL_SCHEMAS` back out of
+# `src.tool_schemas` — a cycle that resolves only if `agent_tools` is imported
+# first. `B74` made this fatal here: these servers began importing
+# `mcp_tool_schema` as their first `src` import, and **both stopped starting at
+# all** with `ImportError: cannot import name 'FUNCTION_TOOL_SCHEMAS' from
+# partially initialized module`. Eleven email tools and RAG were down from the
+# moment `B74` landed until 2026-09-15.
+#
+# Nothing in-process could see it. Every test, and `check-mcp-schemas.py`, runs
+# where `src.agent_tools` is already imported — `tests/conftest.py` pre-imports
+# it, which is `B18`'s own fix masking this one. Only a fresh interpreter that
+# imports the server the way `builtin_mcp.py` spawns it shows the failure, and
+# `tests/test_a_server_starts_in_its_own_process.py` is that test.
+#
+# Fixing the cycle itself is a bigger change than a live outage should wait for:
+# `tool_schemas` annotates a module-level function with `Optional[ToolBlock]`
+# and there is a second cycle through `src.tool_parsing` behind it. Filed.
+import src.agent_tools  # noqa: F401 — import order, see above
 from src.tool_schemas import mcp_tool_schema  # noqa: E402 — needs the path above
 
 server = Server("rag")

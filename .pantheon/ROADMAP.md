@@ -80,8 +80,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P17 | The network the agent is hosted on | 14 | 3 | 0 | **11** |
 | P18 | One button, and it links | 9 | 0 | 0 | **9** |
 | P19 | The proof ledger | 8 | 0 | 0 | **8** |
-| Backlog | Bugs and hardening found in flight | 125 | 30 | 0 | **95** |
-| **Total** | | **507** | **213** | **9** | **285** |
+| Backlog | Bugs and hardening found in flight | 126 | 30 | 0 | **96** |
+| **Total** | | **508** | **213** | **9** | **286** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -243,6 +243,30 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### The deploy that found the outage: two MCP servers had not started since `B74`
+`dad47cb..HEAD`. **508 tracked, 286 done. 0 new phase rows, 1 regression closed. `B131` closed;
+1 row filed.** A rebuild-and-redeploy asked for as a routine checkpoint, which is how it was found.
+The image built and came up clean, and every check that was supposed to pass did: `precacheShellGraph`,
+`env_backed_flag`, `looks_like_text` and `mcp_tool_schema` all present in the running image, `B67`'s
+`servers: ['email', 'image_gen', 'rag']` confirmed live, `B90`'s three keys shipping `None` with every
+effective value `False`. **Then the startup log had two tracebacks in it.**
+**`B74` took the RAG and Email servers offline on the day it landed and nothing noticed for a week.**
+`src/tool_schemas.py` imports `src.agent_tools` at its top and `src/agent_tools/__init__.py` imports
+`FUNCTION_TOOL_SCHEMAS` back out of it — a cycle that resolves only if `agent_tools` is imported first.
+`B74` gave three servers `from src.tool_schemas import mcp_tool_schema` as their **first** `src` import,
+and two of them died on `ImportError: cannot import name 'FUNCTION_TOOL_SCHEMAS' from partially
+initialized module`. Eleven email tools and the whole RAG surface, gone.
+**Nothing in-process could see it, and that is the real finding.** Every test and
+`check-mcp-schemas.py` run where `src.agent_tools` is already imported — `tests/conftest.py`
+pre-imports it, which is `B18`'s own fix masking this one. 9,580 passing tests said the tree was fine.
+Only a fresh interpreter importing the server the way `builtin_mcp.py` spawns it shows the failure, so
+that is the test: `tests/test_a_server_starts_in_its_own_process.py` imports each of the four servers
+in a subprocess and drives `list_tools()` in another. Nine tests, and they fail on the tree as it stood
+an hour ago. The fix is an import-order guard in the three servers, not a rewrite of the cycle —
+`tool_schemas` annotates a module-level function with `Optional[ToolBlock]` and a second cycle runs
+through `src.tool_parsing` behind it. Both attempts to unpick it are reverted and filed; a live outage
+does not wait for the tidier fix.
 
 ### A Law 16 gate an env var could force open, and a tool that nearly wrote into another agent's tree
 `1d1975a..HEAD`. **507 tracked, 285 done. 0 new phase rows, 0 regressions. `B76`, `B77`, `B78`,
@@ -6917,6 +6941,31 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   assertion itself, one is a rename that moves every reference together).
   **A third instance came out of the same fix and it is the one with teeth.** The original fixture set `PANTHEON_DATA_DIR` and relied on the reload to re-derive `SETTINGS_FILE` from it — so until the reload landed, `save_settings` wrote to the **repo's real `data/settings.json`**, storing `allow_model_download: false` in the developer's own install. Two tests in other files then failed for a correct reason: they assert an env var reaches a *clean* install, and the install was no longer clean. `data/` is gitignored so nothing reached the patch, but CI would have gone red on any run where the writer sorted first — which it does. Rebinding the name instead of reloading fixes the leak as a side effect, because `monkeypatch` takes effect before the first write rather than after it.
   — found by the suite while merging four parallel patches — agent:`merge`
+
+- [x] **B131** **`B74` stopped two MCP servers from starting, and the whole suite was blind to it
+  because `B18`'s fix hid the symptom.** Found 2026-09-15 on the owner's deployment, by reading the
+  startup log after a rebuild — five pushes after `B74` landed. `B74` gave `rag_server.py` and
+  `email_server.py` a `from src.tool_schemas import mcp_tool_schema` as their **first** `src`
+  import. `src/tool_schemas.py` imports `src.agent_tools` at its top, and
+  `src/agent_tools/__init__.py:164` imports `FUNCTION_TOOL_SCHEMAS` back out — a cycle that
+  resolves **only if `agent_tools` is imported first**. Both servers died at import with
+  `ImportError: cannot import name 'FUNCTION_TOOL_SCHEMAS' from partially initialized module`, and
+  `builtin_mcp.py` logged *"Built-in MCP server failed to connect"* and carried on. **Eleven email
+  tools and RAG were down the whole time.**
+  **Why nothing caught it is the finding worth keeping.** These servers are spawned as *fresh
+  interpreters*. Every test, and `check-mcp-schemas.py`, imports them into a process where
+  `src.agent_tools` is **already loaded** — because `tests/conftest.py` pre-imports it, and that
+  pre-import is **`B18`'s own fix**. One defect's remedy hid another's symptom, and the checker
+  built for `B74` could not help: calling `list_tools()` proved the schemas were right, in the one
+  process where the module loads. `Law 20` says a test that greps a file is testing the file; this
+  is its neighbour — **a test that imports a module in the wrong process is testing that process**.
+  The fix is `import src.agent_tools` ahead of the `tool_schemas` import in all three servers, with
+  the reason written at each site, and a test that imports and drives each server **in a subprocess
+  with nothing pre-imported** — the only condition that shows it. **Fixing the cycle itself was
+  attempted and abandoned deliberately**: moving the import below `FUNCTION_TOOL_SCHEMAS` breaks a
+  module-level annotation (`Optional[ToolBlock]`) and uncovers a second cycle through
+  `src.tool_parsing`, which is a bigger change than a live outage should wait for. Filed as the
+  remaining half. 9 tests, 3 mutations, all caught. — found on the deployment — agent:`deploy`
 
 - [ ] **B95** **Three settings an operator can only change by hand-writing JSON, and one of them
   is the `Law 16` gate.** Measured 2026-09-15 while closing `B90`, by grepping every `.js` and
