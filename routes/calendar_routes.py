@@ -64,6 +64,11 @@ def _ensure_positive_duration(start_dt, end_dt, all_day):
 # are rejected instead of silently writing to this address.
 import os as _os
 FALLBACK_OWNER = _os.environ.get("PANTHEON_FALLBACK_OWNER", "owner@localhost")
+# env-spelling: `B91` holds this one. Measured 2026-09-15:
+# `PANTHEON_SINGLE_USER=false` leaves single-user mode ON, because only the
+# literal `"0"` turns it off. Under the shared vocabulary that host would start
+# rejecting unauthenticated calendar requests — the correct behaviour and a live
+# outage for whoever is relying on the fallback owner. Release note, not sweep.
 _SINGLE_USER_MODE = _os.environ.get("PANTHEON_SINGLE_USER", "1") != "0"
 
 

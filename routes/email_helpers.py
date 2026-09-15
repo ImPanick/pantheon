@@ -178,11 +178,15 @@ def _starttls(raw) -> bool:
     reason a bare `bool()` here would have been a second defect wearing the
     first one's clothes.
 
-    `== "true"` and not the wider `{"1","yes","on"}` set: `mcp_servers/
-    email_server.py:312` reads this same variable on this same host and accepts
-    only `true`, and two resolvers of one variable disagreeing about what `1`
-    means is the defect this line is fixing, not a style to add to. The four
-    incompatible spellings of environment truthiness in this tree are `B91`.
+    `B20` wrote `== "true"` here **and said why**: `mcp_servers/email_server.py`
+    reads this same variable on this same host and accepted only `true`, and two
+    resolvers of one variable disagreeing about what `1` means was the defect
+    that row was fixing, not a style to add to. That constraint is unchanged and
+    the agreement it demanded is still what matters; what changed is that both
+    resolvers now read the same rule out of `env_flags` instead of two people
+    keeping one spelling in step by hand (`B91`, `Law 13`). `IMAP_STARTTLS=1`
+    moves from *off* to *on* at both of them together — the direction is toward
+    TLS, and neither can drift from the other again.
 
     Split on `isinstance(str)` rather than on `isinstance(bool)`: the branch has
     to be the one that says *where the value came from*, and only the string
@@ -190,10 +194,16 @@ def _starttls(raw) -> bool:
     for `bool` instead and a mutation deleting that branch survived — `str(True)`
     happens to lowercase to `"true"`, so the guard was decoration resting on
     Python's repr rather than on anything stated here.
+
+    A string outside the vocabulary answers `False`, not `True`: this field is
+    reached only when the legacy flat-key path is in play, its own default is
+    supplied by the caller, and a word nobody recognises must not be read as
+    permission to skip TLS negotiation.
     """
+    from src.env_flags import env_truthy
     if not isinstance(raw, str):
         return bool(raw)
-    return raw.strip().lower() == "true"
+    return env_truthy(raw) is True
 
 
 def _smtp_security_mode(cfg: dict) -> str:

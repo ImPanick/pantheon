@@ -23,6 +23,7 @@ import time
 from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
 
 from src.constants import GENERATED_IMAGES_DIR
+from src.env_flags import env_flag
 from src.memory import MemoryStoreUnreadable
 from src.theme_advanced_keys import advanced_keys_prose, is_advanced_key
 
@@ -1169,7 +1170,7 @@ async def do_generate_image(content: str, session_id: Optional[str] = None, owne
                 result_url = img["url"]
                 ok, reason = check_outbound_url(
                     result_url,
-                    block_private=os.getenv("IMAGE_BLOCK_PRIVATE_IPS", "false").lower() == "true",
+                    block_private=env_flag("IMAGE_BLOCK_PRIVATE_IPS", False),
                 )
                 if not ok:
                     return {"error": f"Image API returned unsafe image URL: {reason}"}
@@ -1451,7 +1452,7 @@ async def do_edit_image(
                 result_url = img["url"]
                 ok, reason = check_outbound_url(
                     result_url,
-                    block_private=os.getenv("IMAGE_BLOCK_PRIVATE_IPS", "false").lower() == "true",
+                    block_private=env_flag("IMAGE_BLOCK_PRIVATE_IPS", False),
                 )
                 if not ok:
                     return {"error": f"Image edit API returned unsafe image URL: {reason}"}

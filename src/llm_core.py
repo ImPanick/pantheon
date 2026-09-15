@@ -101,7 +101,8 @@ def _normalize_http_status(value) -> Optional[int]:
 
 
 def _local_model_gate_enabled() -> bool:
-    return os.getenv("PANTHEON_LOCAL_MODEL_GATE", "true").lower() not in {"0", "false", "no", "off"}
+    from src.env_flags import env_flag
+    return env_flag("PANTHEON_LOCAL_MODEL_GATE", True)
 
 
 def _gate_workload(workload: Optional[str]) -> str:

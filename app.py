@@ -88,6 +88,7 @@ from core.exceptions import (
 import bcrypt as _bcrypt
 
 from src.app_helpers import abs_join, serve_html_with_nonce
+from src.env_flags import env_flag
 from src.generated_images import GENERATED_IMAGE_HEADERS, resolve_generated_image_path
 from src.owner_identity import auth_disabled
 from starlette.responses import RedirectResponse
@@ -261,6 +262,11 @@ from routes.auth_routes import setup_auth_routes, SESSION_COOKIE
 auth_manager = AuthManager()
 app.state.auth_manager = auth_manager
 AUTH_ENABLED = not auth_disabled()
+# env-spelling: `B91` holds this one. Widening to the shared vocabulary would
+# turn an AUTH BYPASS on for every host already carrying `LOCALHOST_BYPASS=1`,
+# where it does nothing today — an upgrade that silently unlocks loopback.
+# `.pantheon/FORBIDDEN.md` Part 2 lists this control. Moves only with a release
+# note and the same change made at `src/auth_helpers.py` in the same commit.
 LOCALHOST_BYPASS = os.getenv("LOCALHOST_BYPASS", "false").lower() == "true"
 if LOCALHOST_BYPASS:
     logger.warning("LOCALHOST_BYPASS is enabled, loopback requests bypass authentication. Do not expose this instance to a network.")
@@ -1102,7 +1108,7 @@ async def _startup_event():
     # Startup warmups are opt-in. They make later requests a little warmer, but
     # they also compete with the first seconds of real UI use on slow or busy
     # machines. Default to clear/idle startup and let requests warm what they use.
-    _startup_warmups_enabled = str(os.getenv("PANTHEON_STARTUP_WARMUPS", "")).lower() in {"1", "true", "yes", "on"}
+    _startup_warmups_enabled = env_flag("PANTHEON_STARTUP_WARMUPS", False)
     if _startup_warmups_enabled:
         async def _warmup_tool_index():
             try:
@@ -1140,7 +1146,7 @@ async def _startup_event():
     # Keep-alive is opt-in. The ping path performs model discovery, and when
     # stale LAN endpoints are configured it can add periodic backend pressure
     # that delays unrelated UI requests such as Notes/Documents.
-    _keepalive_enabled = str(os.getenv("PANTHEON_MODEL_KEEPALIVE", "")).lower() in {"1", "true", "yes", "on"}
+    _keepalive_enabled = env_flag("PANTHEON_MODEL_KEEPALIVE", False)
     if _keepalive_enabled:
         async def _keepalive_loop():
             # `P15-10` — jittered. This one pings every configured endpoint,
@@ -1232,8 +1238,10 @@ async def _startup_event():
     # Start scheduled task runner — skip when running under a cron-driven
     # deployment where an external worker drives task firing. Mirrors
     # `PANTHEON_INPROCESS_POLLERS` from the email pollers.
-    _tasks_inprocess = os.environ.get("PANTHEON_INPROCESS_TASKS", "1").strip().lower()
-    if _tasks_inprocess not in ("0", "false", "no", "off", ""):
+    # `B91`. Was an inline off-list that read a bare `PANTHEON_INPROCESS_TASKS=`
+    # as *off*; blank now means unset, which is the rule `settings.env_backed`
+    # already established for the string half of this question.
+    if env_flag("PANTHEON_INPROCESS_TASKS", True):
         await task_scheduler.start()
     else:
         logger.info(

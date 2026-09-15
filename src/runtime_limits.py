@@ -10,8 +10,11 @@ and keeps the platform's default caps when the active model is a CLOUD provider
 The agent loop sets per-request "local mode" from the active endpoint; truncation
 and limit sites read `unlimited()` to decide whether to apply caps.
 
-Imports nothing from the project (stdlib only), so it is safe to import anywhere,
-including lazily from src.tool_utils (which forbids project imports to avoid cycles).
+Imports nothing from the project except `src.env_flags`, which is itself
+stdlib-only and exists for that reason (`B91`) — so this module is still safe to
+import anywhere, including lazily from src.tool_utils (which forbids project
+imports to avoid cycles). `tests/test_tool_utils_import_clean.py` enforces the
+closure transitively, so the exemption is measured rather than asserted.
 
 Env overrides:
   PANTHEON_UNLIMITED_LOCAL=0   -> keep caps even for local inference
@@ -20,15 +23,17 @@ Env overrides:
 import contextvars
 import os
 
+from src.env_flags import env_flag
+
 _local_mode = contextvars.ContextVar("pantheon_local_mode", default=False)
 
 
-def _truthy(name: str, default: str) -> bool:
-    return os.getenv(name, default).strip().lower() not in ("0", "false", "no", "off", "")
-
-
-_LIFT_WHEN_LOCAL = _truthy("PANTHEON_UNLIMITED_LOCAL", "1")
-_FORCE_UNLIMITED = _truthy("PANTHEON_FORCE_UNLIMITED", "0")
+# `B91`. This module carried one of the two private `_truthy` helpers in the
+# tree, covering these two variables and nothing else. It is gone rather than
+# exported: `src/env_flags` is the vocabulary and is stdlib-only for exactly the
+# reason stated at the top of this file — nothing here may import the project.
+_LIFT_WHEN_LOCAL = env_flag("PANTHEON_UNLIMITED_LOCAL", True)
+_FORCE_UNLIMITED = env_flag("PANTHEON_FORCE_UNLIMITED", False)
 
 
 def set_local_mode(is_local: bool):

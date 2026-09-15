@@ -14,6 +14,7 @@ rather than reading either file, because the thing that matters is whether the
 bytes reach the model, not what the sets look like.
 """
 import io
+import os
 import zipfile
 
 import pytest
@@ -52,12 +53,54 @@ EXPECTED_ACCEPTED = EXPECTED_TEXT | EXPECTED_BINARY_DOC
 # the extractors.
 NO_EXTRACTOR = "No extractor covers this file type"
 
-# Extensions no register names, measured by driving build_user_content: each
-# one uploads fine, renders a chip, and delivers zero bytes.
-UNREGISTERED = (
+# Extensions no register names. `B05` measured all of these delivering zero
+# bytes; `B76` split them by the only thing that decides whether they can be
+# read, which is the bytes and not the suffix.
+#
+# Rescued by the decode gate — plain text that `_process_text_file` could always
+# have handled, and that only the register was stopping. `.svg` is here because
+# it is XML and was classified as neither image nor document. `.rtf` is here
+# because RTF is ASCII markup: the model reading `{\rtf1\ansi …}` gets the prose
+# out of it, which beats a banner.
+DECODES_AS_TEXT = (
     ".markdown", ".tsv", ".rst", ".toml", ".ini", ".conf", ".env", ".ipynb",
-    ".doc", ".odt", ".rtf",
+    ".patch", ".diff", ".cfg", ".properties", ".swift", ".kt", ".lua", ".pl",
+    ".vue", ".scss", ".less", ".gradle", ".ps1", ".r", ".svg", ".rtf",
 )
+
+# The honest other half: rich formats with genuinely binary containers and no
+# extractor. These keep the banner, and the banner is true.
+BINARY_NO_EXTRACTOR = (".doc", ".odt")
+
+UNREGISTERED = DECODES_AS_TEXT + BINARY_NO_EXTRACTOR
+
+
+def _ole2_doc(text: str) -> bytes:
+    """A .doc header as Word actually writes it: OLE2 magic, then NUL padding.
+
+    Driving the real gate means handing it real bytes (`Law 20`). The previous
+    fixture wrote the ASCII sentinel into a file named `.doc` and asserted a
+    banner — which pinned the *suffix* as the reason, the exact premise `B76`
+    refutes. A file whose bytes are text is text whatever it is called.
+    """
+    return b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 512 + text.encode()
+
+
+def _odt(text: str) -> bytes:
+    """A real ODF zip — a container, so NUL bytes and no decodable prefix."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("mimetype", "application/vnd.oasis.opendocument.text")
+        z.writestr("content.xml", f"<office:body>{text}</office:body>")
+    return buf.getvalue()
+
+
+def _unreadable_body(ext: str, text: str) -> bytes:
+    if ext == ".doc":
+        return _ole2_doc(text)
+    if ext == ".odt":
+        return _odt(text)
+    return text.encode()
 
 
 def _handler(tmp_path):
@@ -230,7 +273,7 @@ def test_no_accepted_extension_renders_an_anonymous_dead_end(tmp_path, ext):
 # What happens to a file nothing can read
 # --------------------------------------------------------------------------
 
-@pytest.mark.parametrize("ext", UNREGISTERED)
+@pytest.mark.parametrize("ext", BINARY_NO_EXTRACTOR)
 def test_unreadable_attachment_banner_names_the_file(tmp_path, ext):
     """The upload is accepted, the bytes are dropped — say so, and say which file.
 
@@ -238,10 +281,13 @@ def test_unreadable_attachment_banner_names_the_file(tmp_path, ext):
     render a chip. The banner is persisted as the user's own message, so it is
     already on screen; before this it read `[Attached non-text file]`, which
     named no file and did not say the contents were gone.
+
+    `B76` narrowed this list from eleven to two. The other nine were never
+    unreadable — they were unnamed.
     """
     handler = _handler(tmp_path)
     name = "document" + ext
-    rendered = _render(tmp_path, handler, name, SENTINEL.encode())
+    rendered = _render(tmp_path, handler, name, _unreadable_body(ext, SENTINEL))
     assert name in rendered, ext
     assert "contents not read" in rendered, ext
     assert NO_EXTRACTOR in rendered, ext
@@ -295,3 +341,252 @@ def test_mime_classified_document_with_no_extractor_names_the_file(tmp_path):
     assert "book.bin" in rendered
     assert "contents not read" in rendered
     assert "[Attached document file]" not in rendered
+
+
+# --------------------------------------------------------------------------
+# `B76` — the gate asks the bytes, not the suffix
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize("ext", DECODES_AS_TEXT)
+def test_a_text_file_reaches_the_model_whatever_it_is_called(tmp_path, ext):
+    """The row's `Verify`, and the reason the register was not extended.
+
+    Each of these was measured delivering **zero bytes** before `B76`. None of
+    them is in any register now either — `is_document_file` still says no. The
+    bytes are what changed the answer.
+    """
+    handler = _handler(tmp_path)
+    assert not handler.is_document_file("probe" + ext), (
+        f"{ext} was appended to a register — that is the defect, not the fix"
+    )
+    rendered = _render(tmp_path, handler, "notes" + ext, SENTINEL.encode())
+    assert SENTINEL in rendered, ext
+    assert NO_EXTRACTOR not in rendered, ext
+
+
+def test_the_gate_is_the_bytes_and_not_the_name(tmp_path):
+    """The same suffix, two files, two answers — which a suffix list cannot give.
+
+    A register can only ever answer per-extension. This is the assertion that
+    fails if someone replaces the probe with a longer list.
+    """
+    handler = _handler(tmp_path)
+    text = _render(tmp_path, handler, "a.wibble", SENTINEL.encode())
+    binary = _render(tmp_path, handler, "b.wibble", b"\x89PNG\r\n\x1a\n\x00\x00IHDR")
+    assert SENTINEL in text
+    assert NO_EXTRACTOR in binary and "b.wibble" in binary
+
+
+@pytest.mark.parametrize("body", [
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x01\x00",   # png
+    b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01",                   # jpeg
+    b"\x1f\x8b\x08\x00\x00\x00\x00\x00",                       # gzip
+    b"MZ\x90\x00\x03\x00\x00\x00\x04\x00\x00\x00",             # pe/exe
+    bytes(range(256)) * 4,                                     # dense binary
+])
+def test_binary_bytes_still_get_the_banner(tmp_path, body):
+    """`Law 1`'s other direction: the gate opening must not open for everything.
+
+    Every one of these carries a NUL in its first bytes, which is the check
+    doing the real work — a zip of pure ASCII scores 0.02 on the replacement
+    ratio and would sail through it.
+    """
+    handler = _handler(tmp_path)
+    rendered = _render(tmp_path, handler, "payload.unknown", body)
+    assert NO_EXTRACTOR in rendered
+    assert "payload.unknown" in rendered
+
+
+def test_nul_free_binary_is_caught_by_the_replacement_ratio(tmp_path):
+    """The NUL check is not the whole probe, and this is the half it misses.
+
+    High bytes with no NUL anywhere — a latin-1-ish blob, a stripped binary, a
+    raw sample buffer. Every byte here starts an invalid UTF-8 sequence, so the
+    prefix decodes to almost pure U+FFFD and only the ratio rejects it.
+    """
+    handler = _handler(tmp_path)
+    rendered = _render(tmp_path, handler, "blob.unknown", bytes(range(0x80, 0x100)) * 32)
+    assert NO_EXTRACTOR in rendered
+    assert "blob.unknown" in rendered
+
+
+def test_text_with_a_few_bad_bytes_is_still_text(tmp_path):
+    """The ratio is a threshold, not a purity test — the other direction.
+
+    A config saved in latin-1 with one accented character is text that someone
+    wants read. It decodes to one U+FFFD in a page of ASCII, well under the
+    bound, and rejecting it would be the probe failing at its own job.
+    """
+    handler = _handler(tmp_path)
+    body = (SENTINEL * 40).encode() + "café naïve".encode("latin-1") + b"\ntail\n"
+    rendered = _render(tmp_path, handler, "server.unknown", body)
+    assert NO_EXTRACTOR not in rendered
+    assert SENTINEL in rendered
+
+
+def test_a_zip_of_ascii_is_not_mistaken_for_text(tmp_path):
+    """The case the replacement-char ratio alone gets wrong."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("readme.txt", SENTINEL * 200)
+    handler = _handler(tmp_path)
+    rendered = _render(tmp_path, handler, "bundle.unknownzip", buf.getvalue())
+    assert NO_EXTRACTOR in rendered
+    assert SENTINEL not in rendered
+
+
+def test_the_probe_is_bounded_and_is_not_paid_by_files_that_already_work(tmp_path):
+    """The cost the row asked to have bounded, measured rather than asserted.
+
+    Two claims: a file an extractor already covers triggers **no** probe read at
+    all, and a file that needs the probe is read once, at most
+    `TEXT_SNIFF_BYTES`. A probe that slurped the whole file would show up here
+    as a multi-megabyte read on a file that then gets truncated anyway.
+    """
+    import src.document_processor as dp
+
+    handler = _handler(tmp_path)
+    reads: list[int] = []
+    real = dp.looks_like_text
+
+    def counting(path, probe_bytes=dp.TEXT_SNIFF_BYTES):
+        reads.append(min(os.path.getsize(path), probe_bytes))
+        return real(path, probe_bytes)
+
+    dp.looks_like_text = counting
+    try:
+        big = (SENTINEL * 200_000).encode()
+        assert len(big) > 4_000_000
+        _render(tmp_path, handler, "covered.md", big)
+        assert reads == [], "a registered extension paid for a probe it never needed"
+        _render(tmp_path, handler, "uncovered.toml", big)
+        assert reads == [dp.TEXT_SNIFF_BYTES], reads
+    finally:
+        dp.looks_like_text = real
+
+
+def test_an_unreadable_encoding_keeps_the_banner_it_has_today(tmp_path):
+    """`Law 1` again, stated as a limit rather than a gap.
+
+    UTF-16 is text and this probe rejects it, because its NUL padding is
+    indistinguishable from a binary container without sniffing the encoding.
+    That is the behaviour these files already have, so nothing is taken away —
+    but the limit is real and belongs in a test rather than only in a comment.
+    """
+    handler = _handler(tmp_path)
+    rendered = _render(tmp_path, handler, "wide.unknown", SENTINEL.encode("utf-16"))
+    assert NO_EXTRACTOR in rendered
+
+
+def test_an_empty_prefix_is_not_binary(tmp_path):
+    handler = _handler(tmp_path)
+    rendered = _render(tmp_path, handler, "blank.unknown", b"")
+    assert NO_EXTRACTOR not in rendered
+    assert "blank.unknown" in rendered
+
+
+def test_chat_ingest_calls_the_shared_probe_rather_than_a_copy(tmp_path):
+    """`Law 13`, proved by moving the probe and watching chat ingest move.
+
+    The probe shipped as a closure inside `attachment_as_doc`, where chat could
+    not reach it — so the product had already decided a `.toml` attachment is
+    text, for the mailbox and not for the composer. A re-inlined copy in
+    `document_processor` would keep every other test in this file green; it
+    cannot pass this one.
+    """
+    import src.document_processor as dp
+
+    handler = _handler(tmp_path)
+    real = dp.looks_like_text
+    dp.looks_like_text = lambda path, probe_bytes=dp.TEXT_SNIFF_BYTES: False
+    try:
+        rendered = _render(tmp_path, handler, "config.toml", SENTINEL.encode())
+        assert NO_EXTRACTOR in rendered, (
+            "build_user_content is not calling the shared probe"
+        )
+    finally:
+        dp.looks_like_text = real
+
+
+def _drive_attachment_as_doc(tmp_path, monkeypatch, name, body: bytes):
+    """Call the real `POST /api/email/attachment-as-doc` over one real file.
+
+    Only the mailbox is faked — IMAP and the attachment extractor. Everything
+    from the containment check through the decode decision is the shipped code.
+    """
+    import contextlib
+    import email as email_mod
+    import routes.email_routes as email_routes
+
+    raw = b"Subject: t\r\nMessage-ID: <m@x>\r\n\r\nbody\r\n"
+    target = tmp_path / "extract"
+    target.mkdir(parents=True, exist_ok=True)
+    (target / name).write_bytes(body)
+
+    @contextlib.contextmanager
+    def fake_imap(account_id=None, owner=""):
+        yield type("C", (), {"select": lambda self, *a, **k: None})()
+
+    monkeypatch.setattr(email_routes, "_imap", fake_imap)
+    monkeypatch.setattr(
+        email_routes, "_imap_uid_fetch", lambda *a, **k: ("OK", [(None, raw)])
+    )
+    monkeypatch.setattr(
+        email_routes, "attachment_extract_dir", lambda folder, uid: target
+    )
+    monkeypatch.setattr(
+        email_routes,
+        "_extract_attachment_to_disk",
+        lambda msg, index, d: target / name,
+    )
+    monkeypatch.setattr(
+        "src.auth_helpers.get_current_user", lambda request: "tester"
+    )
+    assert email_mod.message_from_bytes(raw)["Message-ID"]
+
+    router = email_routes.setup_email_routes()
+    endpoint = next(
+        r.endpoint for r in router.routes
+        if r.path == "/api/email/attachment-as-doc/{uid}/{index}"
+        and "POST" in getattr(r, "methods", set())
+    )
+    return endpoint("42", 0, request=None, folder="INBOX",
+                    account_id=None, owner="tester")
+
+
+def test_the_mailbox_asks_the_same_question_chat_ingest_does(tmp_path, monkeypatch):
+    """`Law 13`, driven rather than grepped.
+
+    The probe used to be a closure here, so the mailbox and the composer could
+    give different answers about the same bytes and nothing would notice. Both
+    callers are driven over the same two files and must agree — and the
+    monkeypatch below proves the route is *calling* the shared function rather
+    than merely importing it.
+    """
+    import src.document_processor as dp
+
+    handler = _handler(tmp_path)
+    png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
+
+    text_result = _drive_attachment_as_doc(
+        tmp_path / "t", monkeypatch, "config.toml", SENTINEL.encode())
+    binary_result = _drive_attachment_as_doc(
+        tmp_path / "b", monkeypatch, "photo.png", png)
+
+    # The refusal is only reachable when the probe says binary, so it is the
+    # discriminator in both directions.
+    assert binary_result.get("error") == "Unsupported attachment type: .png"
+    assert text_result.get("doc_id"), text_result
+    assert text_result.get("filename") == "config.toml"
+
+    # And chat ingest answers the same two files the same way.
+    assert NO_EXTRACTOR not in _render(tmp_path, handler, "config.toml", SENTINEL.encode())
+    assert NO_EXTRACTOR in _render(tmp_path, handler, "photo.unknown", png)
+
+    # One function: break it, and the mailbox breaks with it.
+    monkeypatch.setattr(dp, "looks_like_text", lambda p, probe_bytes=0: False)
+    flipped = _drive_attachment_as_doc(
+        tmp_path / "f", monkeypatch, "config.toml", SENTINEL.encode())
+    assert flipped.get("error") == "Unsupported attachment type: .toml", (
+        "the mailbox is not calling the shared probe"
+    )

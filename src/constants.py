@@ -3,6 +3,7 @@
 """Application-wide constants and configuration values."""
 import os
 
+from src.env_flags import env_flag
 from src.runtime_paths import get_app_root, get_default_data_dir
 
 APP_VERSION = "1.0.3"
@@ -102,7 +103,11 @@ SEARXNG_INSTANCE = os.getenv("SEARXNG_INSTANCE", "http://localhost:8080")
 
 
 # Cleanup configuration
-CLEANUP_ENABLED = os.getenv("CLEANUP_ENABLED", "True").lower() == "true"
+# `B91`. This was the one site of 38 that never called `.strip()`, so
+# `CLEANUP_ENABLED=" true"` — a trailing space in a `.env` file — silently
+# disabled cleanup. Measured 2026-09-15.
+from src.env_flags import env_flag
+CLEANUP_ENABLED = env_flag("CLEANUP_ENABLED", True)
 CLEANUP_INTERVAL_HOURS = int(os.getenv("CLEANUP_INTERVAL_HOURS", "24"))
 
 # Auth policy

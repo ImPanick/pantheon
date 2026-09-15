@@ -16,6 +16,7 @@ from fastapi import HTTPException
 from core.atomic_io import atomic_write_json
 from core.platform_compat import safe_chmod
 from src.secret_storage import decrypt, encrypt, is_encrypted
+from src.env_flags import env_flag
 from src.constants import DATA_DIR, INTEGRATIONS_FILE, SETTINGS_FILE
 from src import providers as _providers
 
@@ -636,9 +637,10 @@ async def execute_api_call(
     # because LAN integrations (Home Assistant, Miniflux, ntfy) are the
     # primary use case.
     from src.url_safety import check_outbound_url, _default_resolver
-    block_private = os.getenv(
-        "INTEGRATION_API_BLOCK_PRIVATE_IPS", "false"
-    ).lower() == "true"
+    # `B91`. Was `.lower() == "true"`, so `INTEGRATION_API_BLOCK_PRIVATE_IPS=1`
+    # left RFC-1918 reachable while the operator believed they had locked it
+    # down. One vocabulary now; the widening only ever turns the guard ON.
+    block_private = env_flag("INTEGRATION_API_BLOCK_PRIVATE_IPS", False)
     # Resolve the host exactly once and remember the IPs the guard validated so
     # the request below can be pinned to them. check_outbound_url only reports
     # (ok, reason); a plain httpx client re-resolves the host at connect time,

@@ -305,6 +305,11 @@ def main(argv=None) -> int:
                          "never resolved to decide membership, so a name matches "
                          f"only by exact listing. Also read from ${ENV_HOSTS}.")
     ap.add_argument("--allow-exec", action="store_true",
+                    # env-spelling: `B91` holds this one. Widening would turn
+                    # remote command execution on for a host carrying
+                    # `PANTHEON_NETAGENT_ALLOW_EXEC=on`, which does nothing
+                    # today. "Turning it on is a deliberate act" is this flag's
+                    # own documented promise.
                     default=os.environ.get("PANTHEON_NETAGENT_ALLOW_EXEC", "").lower()
                     in ("1", "true", "yes"),
                     help="run commands sent by Pantheon on this machine. OFF by "

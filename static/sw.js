@@ -8,10 +8,18 @@
 //   - Other static assets (images/fonts/libs): cache-first with bg refresh.
 //   - API / non-GET: never cached.
 // Bump CACHE_NAME whenever the precache list or SW logic changes.
-const CACHE_NAME = 'pantheon-v416-b57-shell-closure';
+const CACHE_NAME = 'pantheon-v417-b86-asset-closure';
 
 // KaTeX resolves these from its own stylesheet, so caching the CSS without them
 // gives offline math fallback glyphs instead of proper typesetting.
+//
+// `B86`: this list is now DERIVED — the walk reads katex.min.css and follows
+// its `url()`s, which produces exactly these 20 and nothing else. It stays for
+// the reason `PANEL_PRECACHE` stays: it is the sentence explaining why a
+// library's fonts belong in an offline manifest, and it is the floor if the
+// stylesheet ever stops naming them. It is also the check on the new walk —
+// reproducing a 20-entry hand-list that has been right for 416 cache
+// generations is how the `url()` derivation was shown to work.
 const KATEX_FONTS = [
   'AMS-Regular', 'Caligraphic-Bold', 'Caligraphic-Regular',
   'Fraktur-Bold', 'Fraktur-Regular',
@@ -40,6 +48,11 @@ const KATEX_FONTS = [
 // them (see `precacheShellGraph`), so a module reached only through another
 // module does not need to appear here — and must not be added here, because the
 // walk already has it and a second copy is a second thing to keep in step.
+//
+// `B86`: the same is now true of anything a document REFERENCES rather than
+// imports — a font in a stylesheet, a PWA manifest or an icon on a <link>, an
+// icon named by the manifest. Those are derived too (see `assetsOf`) and must
+// not be listed here either.
 //
 // Both are fetched at install time, in the background. Entries must match the
 // exact URL the browser requests, query string included.
@@ -222,9 +235,13 @@ const PANEL_PRECACHE = [
 // update, and no build step in this repo to update it from.
 //
 // The seeds stay hand-written because they are exactly what a walk cannot
-// derive: the HTML shell, the stylesheet, and the fonts and libs nothing
-// imports — plus any module reached through a computed specifier, of which
-// login.html's `import(f('/static/js/theme.js'))` is the one in this tree.
+// derive: the HTML shell, and the libs nothing imports — plus any module
+// reached through a computed specifier, of which login.html's
+// `import(f('/static/js/theme.js'))` is the one in this tree.
+//
+// `B86` shrank that list of exceptions. "The stylesheet and the fonts nothing
+// imports" used to be in it; the stylesheet is on a `<link>` in the shell and
+// the fonts are in `url()`s inside it, so both are derivable and now are.
 const MODULE_SPECIFIER =
   /(?:^|[^\w.])(?:import\s*\(?\s*|from\s+)['"]([^'"]+\.js(?:\?[^'"]*)?)['"]/g;
 
@@ -241,6 +258,23 @@ function isWalkable(url) {
 // `B54` and `B58` each found a fresh batch of. `new URL(spec, base)` resolves
 // to exactly what the browser will request: the specifier's own query, never
 // the importer's.
+//
+// One resolver for every reference grammar (`B86` added two more), so the
+// origin check exists once. Dropping it would turn a reference that merely
+// LOOKS local — `https://cdn.example/static/js/x.js` — into a request to our
+// own /static/ for a file that lives on somebody else's host. Returns '' for
+// anything unresolvable or off-origin; each caller adds its own predicate.
+function resolveRef(spec, base) {
+  let resolved;
+  try {
+    resolved = new URL(spec, base);
+  } catch (err) {
+    return '';
+  }
+  if (resolved.origin !== base.origin) return '';
+  return resolved.pathname + resolved.search;
+}
+
 function importsOf(source, url) {
   const base = new URL(url, self.location.origin);
   const found = [];
@@ -249,34 +283,169 @@ function importsOf(source, url) {
   // a hazard `exec` in a loop carries and that no test can see, because a scan
   // that runs to its end resets it anyway.
   for (const m of source.matchAll(MODULE_SPECIFIER)) {
-    let resolved;
-    try {
-      resolved = new URL(m[1], base);
-    } catch (err) {
-      continue;
-    }
-    if (resolved.origin !== base.origin) continue;
-    const request = resolved.pathname + resolved.search;
-    if (isWalkable(request)) found.push(request);
+    const request = resolveRef(m[1], base);
+    if (request && isWalkable(request)) found.push(request);
   }
   return found;
 }
 
-// Fetch one URL, store it, and report what it imports. addAll is atomic — if
+
+// `B86`. The walk above follows `import` out of the JS it fetches. The shell
+// has a second reference grammar that nothing followed, and the gap had the
+// same shape: five `@font-face` woff2 in style.css and three more in
+// index.html's inline <style> — 978 KB, the app font, the code font and the
+// accessibility font — were in no list, while KaTeX's 20 were, on the argument
+// the KATEX_FONTS comment makes. Nothing could catch it either:
+// `test_offline_shell_manifest.py` compares `<script src>` and
+// `<link rel=stylesheet>` against the lists, and a font named INSIDE a
+// stylesheet is neither.
+//
+// Listing them is the half that rots, and this tree shows why by how much. The
+// hand-list the row asked for was seven URLs. The derivation finds twelve: the
+// three Inter faces are declared in an inline <style> block, which is not a
+// stylesheet the page links, and icons/icon-512.png and
+// icons/icon-maskable-512.png are named only by manifest.json, which nothing
+// but the manifest reads. Five of twelve missed by the list that was supposed
+// to fix the problem (`Law 13`).
+//
+// So references are derived from the documents install already has in hand:
+//
+//   *.css          `url()` targets
+//   / and *.html   <link> hrefs, plus the same `url()` scan — an inline
+//                  <style> block carries the identical grammar, and that is
+//                  what reaches the three Inter faces
+//   *.json         a PWA manifest's icons[].src, resolved against the manifest
+//
+// Only the format a browser will actually request is followed. `@font-face`
+// takes the first `format()` the browser supports and every browser with a
+// service worker supports woff2, so the legacy entries are never fetched:
+// katex.min.css names 60 url()s — 20 woff2 and 40 .woff/.ttf this repo did not
+// even vendor. Following all of them would be 40 requests per install that
+// 404, and a closure no test could assert. Following woff2 reproduces
+// KATEX_FONTS exactly.
+const CSS_URL = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
+const LINK_TAG = /<link\b[^>]*>/gi;
+
+// The <link> rels that name something the shell needs offline. This list
+// decides WHICH references are followed, and nothing more: it is not what
+// keeps the module graph out. A <link> names a script through `modulepreload`
+// or `preload as=script`, and both are stopped by `isNotAScript` below —
+// adding `modulepreload` here is a mutation that changes no output, which is
+// how this comment came to say so instead of implying a guard that is not
+// here.
+const ASSET_RELS = new Set(['stylesheet', 'manifest', 'icon', 'apple-touch-icon', 'preload']);
+
+// What a `url()` may pull in — fonts and images, the things a stylesheet
+// actually fetches.
+const STYLE_ASSET = /\.(?:woff2|png|svg|webp|gif|jpe?g|ico)(?:\?|$)/i;
+
+// The one thing this walk must never reach is a script. `/static/lib/` holds
+// mermaid's 3.5 MB and `isWalkable` is what keeps it out of the JS walk; a
+// <link> can name a script too (`rel=preload as=script`), so the exclusion is
+// stated once here rather than left to the rel list to imply.
+function isNotAScript(url) {
+  return !/\.js(?:\?|$)/i.test(url);
+}
+
+// Which reference grammar this document is written in — and, for a module,
+// whether the walk is allowed to read it at all. A `.json` is only ever
+// reached through a `<link rel="manifest">`, so reading one as a PWA manifest
+// is not a guess about its content.
+function docKind(url) {
+  const path = url.split('?')[0];
+  if (/\.js$/.test(path)) return isWalkable(url) ? 'js' : '';
+  if (/\.css$/.test(path)) return 'css';
+  if (path === '/' || /\.html$/.test(path)) return 'html';
+  if (/\.(?:json|webmanifest)$/.test(path)) return 'manifest';
+  return '';
+}
+
+function assetsOf(source, url) {
+  const base = new URL(url, self.location.origin);
+  const kind = docKind(url);
+  const found = [];
+  const add = (spec, accept) => {
+    const request = resolveRef(spec, base);
+    if (request && request.startsWith('/static/') && accept(request)) found.push(request);
+  };
+
+  if (kind === 'html') {
+    for (const tag of source.match(LINK_TAG) || []) {
+      const rel = (tag.match(/\brel\s*=\s*"([^"]*)"/i) || ['', ''])[1].trim().toLowerCase();
+      if (!ASSET_RELS.has(rel)) continue;
+      add((tag.match(/\bhref\s*=\s*"([^"]*)"/i) || ['', ''])[1], isNotAScript);
+    }
+  }
+  if (kind === 'html' || kind === 'css') {
+    for (const m of source.matchAll(CSS_URL)) add(m[2], u => STYLE_ASSET.test(u));
+  }
+  if (kind === 'manifest') {
+    let icons = [];
+    try {
+      const parsed = JSON.parse(source);
+      if (parsed && Array.isArray(parsed.icons)) icons = parsed.icons;
+    } catch (err) {
+      icons = [];
+    }
+    for (const icon of icons) {
+      if (icon && typeof icon.src === 'string') add(icon.src, u => STYLE_ASSET.test(u));
+    }
+  }
+  return found;
+}
+
+// Fetch one URL, store it, and report what it references. addAll is atomic — if
 // any item fails, none are cached — so this puts one at a time and swallows its
 // own failures: a single 404 must not block the whole install, and must not
 // stop the walk reaching the rest of the graph either.
+//
+// `B85`. This fetched with `{ cache: 'reload' }`, which bypasses the HTTP cache
+// and forces a full 200 for every entry. Install is paid on a cold install AND
+// on every CACHE_NAME bump — 416 of those, 13 in the week `B57` was measured,
+// because the policy at the top of this file is to bump whenever the list or
+// the worker logic changes. So roughly twice a day every installed client
+// re-downloaded the whole shell at full size while holding a byte-identical
+// copy the server would have confirmed for free.
+//
+// `reload` was there for a reason that has to survive: install must never fill
+// the OFFLINE cache from a stale HTTP-cache copy. `{ cache: 'default' }` does
+// not preserve it. Measured 2026-09-15, one request per class through the real
+// ASGI app:
+//
+//   /static/*.js|.css          Cache-Control: no-cache   ETag   Last-Modified
+//   /static/*.woff2|.png|.json      (no Cache-Control)   ETag   Last-Modified
+//   /                    (no Cache-Control, no ETag, no Last-Modified)
+//
+// `_RevalidatingStatic` (app.py:510) stamps `no-cache` on `.js`, `.css` and
+// `.html` and nothing else, so the fonts, icons and PWA manifest carry
+// validators but no freshness directive. Under `default` that means heuristic
+// freshness (RFC 9111 §4.2.2) — served from disk for days without asking the
+// server, which is exactly the stale install `reload` existed to prevent. The
+// row that filed this concluded those URLs must keep `reload`; that is the
+// wrong menu. `{ cache: 'no-cache' }` is the mode that means what install
+// needs: ALWAYS revalidate, never serve a stored response the server has not
+// just confirmed. It is the `reload` guarantee for all 213 entries — including
+// the ones the response header does not cover — and it takes the 304 instead
+// of the body. Measured: every class above answers a conditional request with
+// `304` and a zero-byte body.
+//
+// `/` is the one that cannot revalidate, under any mode: `serve_html_with_nonce`
+// (src/app_helpers.py:31) builds a fresh HTMLResponse per request with no ETag
+// and no Last-Modified, so it is a full 283 KB every install. `B121`.
 async function precacheOne(cache, url) {
   let res;
   try {
-    res = await fetch(url, { cache: 'reload' });
+    res = await fetch(url, { cache: 'no-cache' });
   } catch (err) {
     return [];
   }
   if (!res || !res.ok) return [];
-  // Read the copy, store the original: cache.put consumes the body.
+  // Read the copy, store the original: cache.put consumes the body. Only a
+  // document that CAN name something is read — a woff2 or a png is stored
+  // without ever being turned into a string.
+  const kind = docKind(url);
   let source = '';
-  if (isWalkable(url)) {
+  if (kind) {
     try {
       source = await res.clone().text();
     } catch (err) {
@@ -288,13 +457,15 @@ async function precacheOne(cache, url) {
   } catch (err) {
     /* storage quota, or a response that cannot be stored — the walk carries on */
   }
-  return source ? importsOf(source, url) : [];
+  if (!source) return [];
+  return kind === 'js' ? importsOf(source, url) : assetsOf(source, url);
 }
 
 // Breadth-first from the seeds. `seen` is what makes this terminate: the graph
 // has cycles and the set is the entire argument. The round ceiling is a guard
 // against a pathological tree, not the termination proof — this tree settles in
-// three rounds.
+// three rounds (frontiers of 133, 74 and 6 after `B86`; the third is the icons
+// reached through manifest.json, which is itself reached through the shell).
 async function precacheShellGraph(cache, seeds) {
   const seen = new Set(seeds);
   let frontier = [...seen];

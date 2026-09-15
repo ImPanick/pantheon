@@ -911,6 +911,26 @@ class EditorDraft(TimestampMixin, Base):
 # terminal.
 TASK_RUN_ACTIVE_STATUSES = ("queued", "running")
 
+# `B78`. The vocabulary above was prose plus ONE constant covering two of the
+# six, and everything else was a string literal. Recounted 2026-09-15 with
+# comments blanked first, because a rule about code has to read code (`B87`):
+# 25 status literals in `src/task_scheduler.py`, 37 in `static/js/tasks.js`,
+# 25 in `static/js/chat.js`, 121 across the seven files that own the
+# vocabulary. The drift had already begun where the guard rail was:
+# `src/metrics_export.py` re-typed `("queued", "running")` inline rather than
+# importing the constant that sat in the same import statement.
+#
+# These are DERIVED, not re-typed: the terminal set is the complement of the
+# active one, so a seventh status added to `TASK_RUN_STATUSES` lands in exactly
+# one of the two and cannot be forgotten by both. `static/js/runStatus.js`
+# carries the same three lists for the client, and a test asserts the two
+# languages still agree — which is the check that was missing when
+# `_pollTaskNotifications` came to know two of the six.
+TASK_RUN_STATUSES = ("queued", "running", "success", "error", "skipped", "aborted")
+TASK_RUN_TERMINAL_STATUSES = tuple(
+    s for s in TASK_RUN_STATUSES if s not in TASK_RUN_ACTIVE_STATUSES
+)
+
 
 class TaskRun(Base):
     """Record of a single execution of a ScheduledTask."""

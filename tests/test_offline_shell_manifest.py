@@ -37,9 +37,12 @@ these execute it (`Law 20`).
 """
 
 import json
+import os
+import re
 import shutil
 import subprocess
-import re
+import sys
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -360,3 +363,416 @@ def test_the_install_stores_the_body_it_just_read(installed):
     assert len(installed["cached"]) == len(installed["fetched"])
     assert "/" in installed["cached"]
     assert installed["cacheName"].startswith("pantheon-v")
+
+
+# ── `B85`: the install's REQUEST, not just its result ─────────────────────────
+
+
+@_needs_node
+def test_install_revalidates_instead_of_refetching_the_whole_shell(installed):
+    """`{ cache: 'reload' }` bypasses the HTTP cache and forces a full 200 for
+    every entry. Install is paid on a cold install *and on every `CACHE_NAME`
+    bump* — 416 bumps, 13 in the week `B57` was measured — so the shell came
+    down at full size roughly twice a day against a server holding a
+    byte-identical copy.
+
+    `{ cache: 'no-cache' }` is the mode that keeps what `reload` was for
+    (never serve a stored response the server has not just confirmed) and
+    drops what it cost (the body). Asserted over every URL install fetches,
+    not a sample: a mode is a per-request argument and the cheap way to get
+    this wrong is to change it for the list and miss the walk.
+    """
+    modes = installed["modes"]
+    assert len(modes) == len(installed["cached"]), "a URL was fetched twice"
+    assert set(modes.values()) == {"no-cache"}, {
+        m for m in set(modes.values()) if m != "no-cache"
+    }
+
+    # Named individually because each is a different bug with the same symptom.
+    # '(none)' is the harness's spelling for "the option was dropped", which
+    # behaves as 'default' and would be the easiest of the three to not notice.
+    bad = sorted(u for u, m in modes.items() if m in ("reload", "default", "(none)"))
+    assert bad == [], bad
+
+
+@_needs_node
+def test_the_install_covers_urls_the_revalidating_header_does_not(installed):
+    """Why the mode is `no-cache` and not `default`, held as a ratchet.
+
+    `app.py`'s `_RevalidatingStatic` stamps `Cache-Control: no-cache` on `.js`,
+    `.css` and `.html` — and nothing else. Under `{ cache: 'default' }` a
+    response with validators but no freshness directive gets *heuristic*
+    freshness (RFC 9111 §4.2.2) and can be served from disk for days without
+    asking the server, which is the stale install `reload` existed to prevent.
+    The row that filed `B85` concluded those URLs must therefore keep `reload`;
+    the answer is that `default` was the wrong alternative, not that they are
+    special.
+
+    This asserts the condition that makes `default` unsafe still holds. If it
+    ever fails, that is good news and not a bug — see the message.
+    """
+    covered = (".js", ".css", ".html")
+    uncovered = sorted(u for u in installed["cached"]
+                       if not u.split("?")[0].endswith(covered))
+    assert uncovered, (
+        "every precached URL is now served by a handler that forces "
+        "revalidation, so `{cache: 'default'}` would be safe and cheaper than "
+        "`no-cache` on a warm HTTP cache — revisit B85 and this test together"
+    )
+    # The classes the header does not reach: fonts, icons, the PWA manifest,
+    # and the app route itself.
+    assert "/" in uncovered
+    assert any(u.endswith(".woff2") for u in uncovered)
+
+
+def test_a_conditional_request_is_actually_cheap_on_this_server(tmp_path):
+    """The saving `B85` claims, measured rather than asserted about.
+
+    `no-cache` only pays if the server answers `If-None-Match` with a 304. That
+    is a property of `app.py` and `StaticFiles`, not of `sw.js`, so it is
+    measured by driving the real ASGI app — one request per class the install
+    fetches (`Law 20`: the worker's fetch mode is worth nothing if the server
+    has stopped sending validators).
+
+    Run out-of-process because importing `app` pulls the whole application up;
+    same shape as `test_auth_root_path.py`.
+    """
+    env = os.environ.copy()
+    env.update({
+        "AUTH_ENABLED": "false",
+        "CHROMADB_CONNECT_TIMEOUT": "0.01",
+        "CHROMADB_HOST": "127.0.0.1",
+        "CHROMADB_PORT": "9",
+        "DATABASE_URL": f"sqlite:///{tmp_path / 'app.db'}",
+        "PANTHEON_DATA_DIR": str(tmp_path),
+        "PANTHEON_DISABLE_MCP": "1",
+        "PYTHONPATH": str(_REPO),
+        "PYTHON_DOTENV_DISABLED": "1",
+    })
+    probe = textwrap.dedent(
+        """
+        import json
+        import app as app_module
+        from fastapi.testclient import TestClient
+
+        client = TestClient(app_module.app)
+        out = {}
+        for label, url in [
+            ("js", "/static/app.js?v=20260815toolapproval4"),
+            ("css", "/static/style.css?v=20260808startupshell1"),
+            ("woff2", "/static/fonts/FiraCode-Regular.woff2"),
+            ("png", "/static/icons/icon-192.png"),
+            ("json", "/static/manifest.json"),
+            ("root", "/"),
+        ]:
+            first = client.get(url)
+            etag = first.headers.get("etag")
+            second = (client.get(url, headers={"If-None-Match": etag})
+                      if etag else first)
+            out[label] = {
+                "status": first.status_code,
+                "cache_control": first.headers.get("cache-control"),
+                "etag": bool(etag),
+                "full_bytes": len(first.content),
+                "revalidated_status": second.status_code,
+                "revalidated_bytes": len(second.content),
+            }
+        print("RESULT=" + json.dumps(out, sort_keys=True))
+        """
+    )
+    result = subprocess.run([sys.executable, "-c", probe], cwd=str(_REPO), env=env,
+                            capture_output=True, text=True, timeout=300, check=False)
+    assert result.returncode == 0, result.stderr
+    line = next((l for l in result.stdout.splitlines() if l.startswith("RESULT=")), None)
+    assert line is not None, result.stdout
+    got = json.loads(line.removeprefix("RESULT="))
+
+    # Every class install fetches answers a conditional request with an empty
+    # 304 — including the fonts, icons and manifest, which carry no
+    # `Cache-Control` at all. That is the whole of `B85`'s saving.
+    for label in ("js", "css", "woff2", "png", "json"):
+        row = got[label]
+        assert row["status"] == 200, row
+        assert row["etag"], f"{label} lost its validator; `no-cache` now costs a full body"
+        assert row["revalidated_status"] == 304, row
+        assert row["revalidated_bytes"] == 0, row
+        assert row["full_bytes"] > 0
+
+    # `_RevalidatingStatic` reaches the source files and nothing else — the
+    # measurement that rules out `{cache: 'default'}`.
+    assert got["js"]["cache_control"] == "no-cache"
+    assert got["css"]["cache_control"] == "no-cache"
+    assert got["woff2"]["cache_control"] is None
+    assert got["png"]["cache_control"] is None
+    assert got["json"]["cache_control"] is None
+
+    # `/` is the exception in both directions and `B121` is about it: the app
+    # route rebuilds the HTML per request to inject the CSP nonce, so it has no
+    # ETag and no Last-Modified and cannot be revalidated under any mode.
+    assert got["root"]["status"] == 200
+    assert got["root"]["etag"] is False
+    assert got["root"]["full_bytes"] > 100_000
+
+
+# ── `B86`: a font named inside a stylesheet is a shell request too ────────────
+
+_STYLE_BLOCK = re.compile(r"<style\b[^>]*>(.*?)</style>", re.S | re.I)
+_CSS_URL = re.compile(r"""url\(\s*(['"]?)([^'")]+)\1\s*\)""")
+
+
+def _stylesheet_sources() -> dict:
+    """Every stylesheet the app shell carries, by the URL it is cached under.
+
+    Deliberately includes `index.html`'s inline `<style>` blocks. That is the
+    half `B86` did not name and the half a hand-list would have missed: three
+    `Inter` faces — the UI font — are declared there, so they are in no
+    stylesheet the page links and no `<link rel=stylesheet>` scan can see them.
+    """
+    index = (_REPO / "static" / "index.html").read_text(encoding="utf-8")
+    return {
+        "/static/style.css": (_REPO / "static" / "style.css").read_text(encoding="utf-8"),
+        "/": "\n".join(_STYLE_BLOCK.findall(index)),
+    }
+
+
+@_needs_node
+def test_every_font_a_shell_stylesheet_names_is_installed(installed):
+    """`B86`'s `Verify:`, and the reason the row exists: nothing could see this.
+
+    The manifest tests above compare `<script src>` and `<link rel=stylesheet>`
+    against the lists, and a font referenced from *inside* a stylesheet is
+    neither — so five `@font-face` woff2 in `style.css` and three more in
+    `index.html`'s inline `<style>` sat outside every list while KaTeX's 20
+    were in one.
+
+    This reads the stylesheets with a deliberately BROADER rule than the worker
+    uses — every `url()`, no format filter — so narrowing the worker's own
+    filter fails here instead of quietly shrinking the guarantee.
+    """
+    cached = set(installed["cached"])
+    referenced = sorted({
+        target
+        for source in _stylesheet_sources().values()
+        for _, target in _CSS_URL.findall(source)
+        if target.startswith("/static/")
+    })
+    assert len(referenced) >= 8, f"only found {len(referenced)} — parser drift?"
+    assert [u for u in referenced if u not in cached] == [], [
+        u for u in referenced if u not in cached
+    ]
+
+
+@_needs_node
+def test_install_caches_everything_the_documents_it_stores_reference(installed):
+    """The `B86` ratchet, and the same induction `B57` used for imports: the
+    cache is closed under *reference* as well as under import. `assets` is the
+    worker's own reading of each cached stylesheet, page and manifest, so this
+    test needs no second extractor to disagree with the one in `sw.js`."""
+    cached = set(installed["cached"])
+    assets = installed["assets"]
+
+    # A `docKind` that quietly stopped recognising a document type would empty
+    # the map and make the closure below vacuous, which is how `B57`'s
+    # `cookbookSchedule.js` hid: pin the documents that must be read.
+    assert set(assets) == {
+        "/",
+        "/static/style.css?v=20260808startupshell1",
+        "/static/lib/katex/katex.min.css",
+        "/static/manifest.json",
+    }, sorted(assets)
+
+    wanted = {target for targets in assets.values() for target in targets}
+    assert len(wanted) >= 28, f"the walk read suspiciously few references: {len(wanted)}"
+    unreachable = sorted(wanted - cached)
+    assert unreachable == [], (
+        "cached documents reference these and they are in no cache entry, so "
+        f"offline they fall back to a system font or a missing icon: {unreachable}"
+    )
+
+
+@_needs_node
+def test_the_katex_font_list_is_exactly_what_its_stylesheet_says(installed):
+    """The check on the new walk. `KATEX_FONTS` is a 20-entry hand-list that has
+    been correct for 416 cache generations; deriving `url()` out of
+    `katex.min.css` has to reproduce it exactly or the derivation is wrong.
+
+    It also pins the format rule in both directions. `katex.min.css` names 60
+    url()s — 20 `.woff2` and 40 `.woff`/`.ttf` legacy fallbacks this repo never
+    vendored. A browser takes the first `format()` it supports and every
+    browser with a service worker supports woff2, so following all 60 would be
+    40 requests per install that 404; following none of the fonts would be
+    `B86` reopened for KaTeX.
+    """
+    source = _SW.read_text(encoding="utf-8")
+    names = re.search(r"const KATEX_FONTS = \[(.*?)\]\.map", source, re.S)
+    assert names, "KATEX_FONTS is no longer a list of names"
+    listed = {f"/static/lib/katex/fonts/KaTeX_{n}.woff2"
+              for n in re.findall(r"'([^']+)'", names.group(1))}
+    assert len(listed) == 20, sorted(listed)
+
+    derived = set(installed["assets"]["/static/lib/katex/katex.min.css"])
+    assert derived == listed, {
+        "only in the list": sorted(listed - derived),
+        "only derived": sorted(derived - listed),
+    }
+
+
+@_needs_node
+def test_the_manifest_and_its_icons_are_there_by_derivation(installed):
+    """What a hand-list would have got wrong, stated as a test. `B86` named
+    seven URLs to add: five fonts, `manifest.json` and `icon-192.png`. The
+    walk finds twelve. Two of the five it would have missed are named only by
+    `manifest.json` itself — nothing else in the tree reads that file — and
+    three are the `Inter` faces in `index.html`'s inline `<style>`.
+
+    So: they are cached, and their URLs appear nowhere in `sw.js`."""
+    cached = set(installed["cached"])
+    derived = {
+        "/static/manifest.json",
+        "/static/icons/icon-192.png",
+        "/static/icons/icon-512.png",
+        "/static/icons/icon-maskable-512.png",
+        "/static/fonts/Inter-Regular.woff2",
+        "/static/fonts/Inter-Medium.woff2",
+        "/static/fonts/Inter-SemiBold.woff2",
+        "/static/fonts/FiraCode-Light.woff2",
+        "/static/fonts/FiraCode-Regular.woff2",
+        "/static/fonts/FiraCode-SemiBold.woff2",
+        "/static/fonts/OpenDyslexic-Regular.woff2",
+        "/static/fonts/OpenDyslexic-Bold.woff2",
+    }
+    assert derived <= cached, sorted(derived - cached)
+    source = _SW.read_text(encoding="utf-8")
+    listed_anyway = [u for u in sorted(derived) if f"'{u}'" in source]
+    assert listed_anyway == [], (
+        f"{listed_anyway} was added to a precache list; the walk already has it "
+        "and a second copy is a second thing to keep in step"
+    )
+
+
+@_needs_node
+def test_the_asset_walk_reads_the_grammar_and_not_more():
+    """The scope of `assetsOf`, pinned on its own — the lesson
+    `test_a_script_tag_is_a_shell_request_whether_or_not_it_is_a_module`
+    records. The closure test above is over the worker's *own* notion of a
+    reference, so a filter that silently narrowed would shrink both sides of it
+    and stay green. This shows the extractor what it must match and what it
+    must not."""
+    css = "\n".join([
+        "@font-face { src: url('/static/fonts/A.woff2') format('woff2'); }",
+        '@font-face { src: url("./rel.woff2"); }',
+        "@font-face { src: url(/static/fonts/unquoted.woff2); }",
+        "@font-face { src: url('/static/fonts/Q.woff2?v=7'); }",
+        # The legacy formats KaTeX lists and this repo never vendored.
+        "@font-face { src: url('/static/fonts/A.woff') format('woff'); }",
+        "@font-face { src: url('/static/fonts/A.ttf') format('truetype'); }",
+        # An off-origin reference whose path deliberately looks local.
+        "@font-face { src: url('https://cdn.example/static/fonts/away.woff2'); }",
+        ".x { background: url('/static/icons/bg.png'); }",
+        ".y { background: url('data:image/gif;base64,R0lGOD'); }",
+        # Outside /static/ — the same boundary `isWalkable` draws for modules.
+        # A stylesheet can point at user content (`/uploads/...`) and an
+        # install-time guarantee is about the shipped shell, not about whatever
+        # a user has uploaded.
+        ".z { background: url('/uploads/whatever.png'); }",
+        # A stylesheet naming a script is not a thing, but `/static/lib/` holds
+        # mermaid's 3.5 MB and this is one of the two doors into it.
+        ".w { background: url('/static/lib/mermaid.min.js'); }",
+    ])
+    got = _run({"op": "assets", "url": "/static/css/deep/theme.css?v=IGNOREME",
+                "source": css})["assets"]
+    assert got == [
+        "/static/fonts/A.woff2",
+        "/static/css/deep/rel.woff2",     # relative, resolved against the sheet
+        "/static/fonts/unquoted.woff2",
+        "/static/fonts/Q.woff2?v=7",      # its OWN query, never the referrer's
+        "/static/icons/bg.png",
+    ], got
+
+    html = "\n".join([
+        '<link rel="manifest" href="/static/manifest.json">',
+        '<link rel="apple-touch-icon" href="/static/icons/icon-192.png">',
+        '<link rel="preload" as="font" crossorigin href="/static/fonts/P.woff2">',
+        '<link rel="stylesheet" href="/static/style.css?v=9">',
+        # A data: URI favicon — same-origin only by accident of syntax.
+        '<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg/%3E">',
+        # The module graph is the import walk's job. Note WHY this one is
+        # absent from the output: not because `modulepreload` is off the rel
+        # list — putting it on changes nothing — but because `isNotAScript`
+        # refuses every `.js` a <link> can name. A mutation run established
+        # that; the rel list is an allow-list of reference kinds, not the
+        # script guard.
+        '<link rel="modulepreload" href="/static/js/chat.js?v=9">',
+        '<link rel="alternate" href="/static/feed.xml">',
+        '<link rel="preload" as="script" href="/static/lib/mermaid.min.js">',
+        '<link rel="manifest" href="/outside-static.json">',
+        "<style>@font-face { src: url('/static/fonts/Inline.woff2'); }</style>",
+    ])
+    got = _run({"op": "assets", "url": "/", "source": html})["assets"]
+    assert got == [
+        "/static/manifest.json",
+        "/static/icons/icon-192.png",
+        "/static/fonts/P.woff2",
+        "/static/style.css?v=9",
+        "/static/fonts/Inline.woff2",
+    ], got
+
+    manifest = json.dumps({"icons": [
+        {"src": "icons/a.png"},                       # relative to the manifest
+        {"src": "/static/icons/b.png"},
+        {"src": "https://cdn.example/static/icons/away.png"},
+        {"src": 17},
+    ]})
+    got = _run({"op": "assets", "url": "/static/manifest.json",
+                "source": manifest})["assets"]
+    assert got == ["/static/icons/a.png", "/static/icons/b.png"], got
+
+
+@_needs_node
+def test_the_asset_walk_cannot_reach_a_script():
+    """The mermaid guard, re-proved for the grammar `B86` added. `isWalkable`
+    keeps `/static/lib/` out of the *import* walk; a stylesheet or a `<link>`
+    is a second door into the same 3.5 MB — `rel="preload" as="script"` names a
+    script outright — so the exclusion is stated once in `isNotAScript` and
+    tested on a tree built to tempt it.
+
+    `static/lib/` itself is NOT excluded here, and must not be: KaTeX's 20
+    fonts live there and have been precached since long before this row.
+    """
+    out = _run({"op": "walk", "seeds": ["/"], "files": {
+        "/": "\n".join([
+            '<link rel="preload" as="script" href="/static/lib/mermaid.min.js">',
+            '<link rel="stylesheet" href="/static/lib/katex/katex.min.css">',
+        ]),
+        "/static/lib/katex/katex.min.css":
+            "@font-face{src:url(fonts/KaTeX_Main-Regular.woff2)}"
+            "@font-face{src:url(../../js/sneaky.js)}",
+        "/static/lib/mermaid.min.js": "// 3.5 MB",
+        "/static/lib/katex/fonts/KaTeX_Main-Regular.woff2": "font",
+        "/static/js/sneaky.js": "// not a font",
+    }})
+    assert out["cached"] == [
+        "/",
+        "/static/lib/katex/fonts/KaTeX_Main-Regular.woff2",
+        "/static/lib/katex/katex.min.css",
+    ]
+    assert "/static/lib/mermaid.min.js" not in out["fetched"]
+    assert "/static/js/sneaky.js" not in out["fetched"]
+
+
+@_needs_node
+def test_a_manifest_that_is_not_json_does_not_take_the_install_with_it():
+    """Same rule as the 404 above: one broken document costs its own references
+    and nothing else. A PWA manifest is the one thing here that is *parsed*
+    rather than scanned, so it is the one that can throw."""
+    out = _run({"op": "walk", "seeds": ["/"], "files": {
+        "/": "\n".join([
+            '<link rel="manifest" href="/static/manifest.json">',
+            "<style>@font-face{src:url('/static/fonts/A.woff2')}</style>",
+        ]),
+        "/static/manifest.json": "<!doctype html>an error page, not a manifest",
+        "/static/fonts/A.woff2": "font",
+    }})
+    assert out["cached"] == [
+        "/", "/static/fonts/A.woff2", "/static/manifest.json",
+    ]

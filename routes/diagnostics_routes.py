@@ -93,12 +93,14 @@ def setup_diagnostics_routes(
         configured is attack surface nobody asked for.
         """
         from fastapi.responses import PlainTextResponse
-        from src.settings import get_setting
+        from src.settings import env_backed_flag, load_settings
 
-        enabled = bool(get_setting("metrics_enabled", False)) or (
-            (os.environ.get("PANTHEON_METRICS_ENABLED") or "").strip().lower()
-            in ("1", "true", "yes", "on")
-        )
+        # `B90`. This was `bool(get_setting(...)) or <env truthy>`, and an `or`
+        # is one-way: measured 2026-09-15 with `metrics_enabled` stored `False`
+        # and `PANTHEON_METRICS_ENABLED=1`, the endpoint answered. An operator
+        # who found this open and turned it off in settings still had it open.
+        enabled = env_backed_flag(
+            load_settings(), "metrics_enabled", "PANTHEON_METRICS_ENABLED")
         if not enabled:
             # 404 rather than 403: a disabled endpoint should be indistinguishable
             # from one that was never built.

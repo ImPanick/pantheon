@@ -107,6 +107,13 @@ def _secure_cookie(request: Request) -> bool:
     that a client talking to the app directly can set the header and lock
     its own session out over plain HTTP.
     """
+    # env-spelling: `B91` holds this one, and it is the only site whose
+    # tri-state is deliberate rather than accidental — `env_flags.env_truthy`
+    # returns `None` for exactly this shape and this site is why. It stays on
+    # its own rule because widening it would make `SECURE_COOKIES=1` mean *true*
+    # where it means *auto-detect* today, and on a plain-HTTP deployment that
+    # sets a Secure cookie the browser will not send back: the operator is
+    # locked out of their own instance by an upgrade.
     configured = os.getenv("SECURE_COOKIES", "").strip().lower()
     if configured in ("true", "false"):
         return configured == "true"

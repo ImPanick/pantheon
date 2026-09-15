@@ -2,8 +2,9 @@
 // static/js/runStatus.js
 
 /**
- * `B13`. The words the six shipped run statuses are shown as — once, for every
- * surface that shows them.
+ * `B13`, extended by `B78`+`B84`. Everything derived from the six shipped run
+ * statuses — the word, the tone, the dot class, and which values mean "still
+ * in flight" — once, for every surface that reads them.
  *
  * ── What was measured ───────────────────────────────────────────────────────
  * One queued composer message can be on screen in three places at the same
@@ -29,14 +30,34 @@
  * renderer guessing from an id.
  *
  * ── Why this is a leaf module ───────────────────────────────────────────────
- * `runStatusTone` — the other thing derived from a status — lives in
- * `tasks.js`, and stays there: it decides a CSS class and every one of its
- * callers is inside that file. These words have three callers in three modules,
- * and `tasks.js` is only ever reached by `import('./tasks.js?v=…')`. A static
+ * `tasks.js` is only ever reached by `import('./tasks.js?v=…')`. A static
  * import of it from `queuePanel.js` would both pull the whole Tasks view onto
  * every page with a composer and register a SECOND module instance under the
- * query-less URL — two `_activitySources` maps, one of them invisible. So the
- * words live in a module with no imports of its own, which all three can take.
+ * query-less URL — two `_activitySources` maps, one of them invisible. So
+ * everything three modules need lives here, in a module with no imports of its
+ * own, which all three can take.
+ *
+ * ── `B78`: why `runStatusTone` moved here ───────────────────────────────────
+ * `B13` left it in `tasks.js` on the stated ground that "every one of its
+ * callers is inside that file". Measured on the tree that shipped, that was
+ * false: `queuePanel.js` `statusClass` is a caller outside the file, and being
+ * unable to import `tasks.js` it had HAND-WRITTEN the same ladder — which is
+ * how the two came to disagree. `runStatusDotClass('failed')` answered `info`
+ * in the panel and `error` in the Activity view, off one input, because the
+ * copy was made by a reader rather than by a call. The tone lives here now and
+ * `tasks.js` re-exports it, so nothing that imported it from there breaks.
+ *
+ * ── `B84`: why the `job` column is six entries now ──────────────────────────
+ * It held two, on the argument that the Activity view shows a relative time
+ * rather than a word once a run is terminal, so a third-to-sixth entry would be
+ * a column filled past its consumers (`Law 13`). The Activity view still shows
+ * a time and that is still right — but it was never the only `job` surface.
+ * The run-history list and the task card's last-run badge are both about jobs,
+ * both were already on screen when `B13` landed, and both were spelling their
+ * own words: the history list printed the STORED ENUM at the user (`success`,
+ * `aborted`) and the badge mixed *Failed (no detail)* with a raw
+ * `${last_run_status} (no detail)` six lines apart. The column was not past its
+ * consumers; it was two consumers short of them.
  *
  * The status *values* are not this file's business and are not touched here:
  * they are stored in rows and pinned by `FORBIDDEN.md`.
@@ -44,6 +65,12 @@
 
 /** `queued → running → success | error | skipped | aborted` — core/database.py. */
 export const RUN_STATUSES = ['queued', 'running', 'success', 'error', 'skipped', 'aborted'];
+
+/** The two that mean "still in flight". The same pair Python exports as
+ *  `TASK_RUN_ACTIVE_STATUSES`; a test asserts the two lists are equal, because
+ *  before `B78` the JS half was spelled out by hand at each site that needed
+ *  it and one of them had quietly grown a third member. */
+export const RUN_ACTIVE_STATUSES = ['queued', 'running'];
 
 /** Both subjects a run status can belong to. An enum, not a boolean: a third
  *  kind of thing is a new column here, not a new argument (`Law 10`). */
@@ -53,21 +80,80 @@ const WORDS = {
   //          job         message
   queued:   ['Queued',   'Waiting'],
   running:  ['Running',  'Sending'],
-  // The Activity view shows a relative time instead of a word once a run is
-  // over, so there is no `job` word to give — an empty string, which every
-  // caller already treats as "use what you used before".
-  success:  ['',         'Sent'],
-  error:    ['',         'Failed'],
-  skipped:  ['',         'Skipped'],
-  aborted:  ['',         'Stopped'],
+  // `B84`. These four were empty strings while the run-history list printed the
+  // raw stored value at the user and the badge said `${status} (no detail)`.
+  // `Success` and `Failed` are the badge's OWN two words, moved rather than
+  // rewritten, so the string on that surface is byte-identical after the change
+  // — the Activity view is untouched because it only ever asks for a word
+  // inside its in-flight branch, which these four cannot reach.
+  success:  ['Success',  'Sent'],
+  error:    ['Failed',   'Failed'],
+  skipped:  ['Skipped',  'Skipped'],
+  aborted:  ['Stopped',  'Stopped'],
 };
+
+/**
+ * The three things every renderer needs to know about a status, from the six.
+ *
+ * `B07` derived three of the four JS ladders from this; `B78` moved it here
+ * from `tasks.js` because the fourth — `queuePanel.js` `statusClass` — could
+ * not import that file and so re-typed the rule instead of calling it.
+ *
+ * `ok` / `error` are the two SCORED names: a status collapsing to `error` here
+ * is what the Errors chip counts, so `core/database.py`'s rule that neither an
+ * infrastructure abort nor a deliberate skip may corrupt an error rate is
+ * enforced in exactly one expression.
+ */
+export function runStatusTone(status) {
+  switch (status) {
+    case 'success': return 'ok';
+    case 'error':
+    case 'failed': return 'error';      // `failed` is not in the vocabulary;
+                                        // accepted because older rows carry it.
+    case 'queued':
+    case 'running': return 'pending';
+    case 'skipped':
+    case 'aborted': return 'info';
+    default: return null;               // unknown / absent — caller decides.
+  }
+}
+
+/**
+ * The `.task-log-status-*` suffix a row's dot and stripe take.
+ *
+ * `''` for a value outside the vocabulary, because the two callers answer that
+ * differently on purpose: the docked panel has nothing else to go on and says
+ * `info`, while the Activity view falls back to a text scan of the result,
+ * which is how rows written before the column existed still get a colour.
+ * Returning a made-up answer here would delete that fallback (`Law 1`).
+ *
+ * `failed` is the one input the two callers used to disagree about — `info` in
+ * the panel, `error` in the Activity view. `error` wins because that is what
+ * `runStatusTone` already scores it as and what the Errors chip already counts,
+ * and because `.task-log-status-failed` is not a rule that exists.
+ */
+export function runStatusDotClass(status) {
+  const tone = runStatusTone(status);
+  if (!tone) return '';
+  if (tone === 'ok') return 'ok';
+  if (tone === 'error') return 'error';
+  return status;                        // queued | running | skipped | aborted
+}
+
+/** Whether a stored status means the run is over. The four terminal values,
+ *  stated as the complement of the active pair so a seventh status added to
+ *  `RUN_STATUSES` is terminal-by-default rather than silently neither. */
+export function isRunFinished(status) {
+  return !RUN_ACTIVE_STATUSES.includes(status || '');
+}
 
 /**
  * The word to show for `status` on a row about `subject`.
  *
- * Returns `''` when the pair has no word, and the raw status for a value
- * outside the six — older rows carry `failed`, and printing what the row
- * actually says beats printing nothing.
+ * Every one of the twelve pairs has a word since `B84`; `''` is now reachable
+ * only for an absent status. A value outside the six returns the raw status —
+ * older rows carry `failed`, and printing what the row actually says beats
+ * printing nothing.
  */
 export function runStatusLabel(status, subject = 'job') {
   const row = WORDS[status];

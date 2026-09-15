@@ -17,6 +17,11 @@ RESERVED_AUTH_USERNAMES = REQUEST_SENTINEL_OWNERS | {DEFAULT_LOCAL_OWNER}
 
 def auth_disabled() -> bool:
     """Return True only when auth is explicitly disabled by configuration."""
+    # env-spelling: `B91` holds this one, and it is the sharpest of the nine.
+    # Measured 2026-09-15: `AUTH_ENABLED=0` leaves authentication ENABLED,
+    # because only the literal `false` disables it. Under the shared vocabulary
+    # that same host would boot unauthenticated. The value is wrong and the
+    # correction is a release-note change, not a sweep.
     return os.getenv("AUTH_ENABLED", "true").strip().lower() == "false"
 
 

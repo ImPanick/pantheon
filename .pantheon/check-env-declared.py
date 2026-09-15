@@ -53,8 +53,21 @@ explained in the docs, and read by a line that cannot execute:
                a sibling left behind, and a rule that fired on every settings
                read near an `env_backed` would be noise nobody reads.
 
-Both new rules are blind in the same way and it is worth stating: they see one
-scope, or one dict, at a time. A resolver that reads the setting in one
+  SPELLING     an environment value judged by an inline `== "true"` or
+               `in ("1","true","yes")` instead of by `src/env_flags.env_flag`.
+               `B91` counted **38 environment booleans and 10 incompatible
+               rules** on 2026-09-15: `PANTHEON_STARTUP_WARMUPS=1` on and
+               `IMAP_STARTTLS=1` off in one process, `AUTH_ENABLED=0` leaving
+               auth enabled, `CLEANUP_ENABLED=" true"` off at the one site that
+               never stripped. Hard rule, max 0 unexempted — a site that must
+               keep its own rule says so with `# env-spelling: <reason>`, and
+               nine do, each one a case where the shared vocabulary would loosen
+               a control or flip a live deployment. The reason lives at the
+               site, because a list of exempt names inside a checker is a list
+               nobody reads next to the code it is about.
+
+The three new rules are blind in the same way and it is worth stating: they see
+one scope, one dict, or one comparison at a time. A resolver that reads the setting in one
 function and the environment in another is invisible to them — so is
 `services/search/providers._get_provider_key`, where the pairing lives in two
 dict literals rather than in a name. What they catch is the shape that has
@@ -152,9 +165,27 @@ def literal_reads() -> dict[str, set]:
                             and func.value.attr == "environ")))
                     or (isinstance(func, ast.Name) and func.id == "getenv")
                 )
+                # `B91`. `env_flags.env_flag("X", default)` IS a literal read of
+                # X, and adopting it at 22 sites took this scan from 143 names
+                # to 121 — twelve of them undeclared, which would have lowered
+                # the ratchet by hiding the variables rather than documenting
+                # them. A helper that makes the checker blinder than the code it
+                # replaced is a worse defect than the one it fixed.
+                if isinstance(func, ast.Name) and func.id == "env_flag":
+                    getenvish = True
                 if getenvish and node.args and isinstance(node.args[0], ast.Constant) \
                         and isinstance(node.args[0].value, str):
                     name = node.args[0].value
+                # `env_backed(settings, key, ENV)` and its boolean twin name the
+                # variable in the THIRD argument. These were invisible here
+                # before `B91` — `H07` converted ten mail fields to `env_backed`
+                # and this scan stopped seeing all ten, which is why the ratchet
+                # had been falling for reasons that were not documentation.
+                elif isinstance(func, ast.Name) \
+                        and func.id in ("env_backed", "env_backed_flag") \
+                        and len(node.args) >= 3 and isinstance(node.args[2], ast.Constant) \
+                        and isinstance(node.args[2].value, str):
+                    name = node.args[2].value
             elif isinstance(node, ast.Subscript) and isinstance(node.value, ast.Attribute) \
                     and node.value.attr == "environ" and isinstance(node.slice, ast.Constant) \
                     and isinstance(node.slice.value, str):
@@ -195,9 +226,15 @@ def shipped_defaults() -> dict:
     """`DEFAULT_SETTINGS` as written in `src/settings.py`.
 
     Only what a literal can express: a key whose default is built by a call or
-    a comprehension is recorded as `None`, i.e. falsy, i.e. never flagged.
-    Under-reporting is the right direction for a hard rule — a checker that
-    guesses at a value it cannot see would fail a build over its own guess.
+    a comprehension is recorded as `UNREADABLE`, which is falsy, i.e. never
+    flagged. Under-reporting is the right direction for a hard rule — a checker
+    that guesses at a value it cannot see would fail a build over its own guess.
+
+    `B90` is why that is a sentinel and not `None` any more. A literal `None` in
+    `DEFAULT_SETTINGS` became meaningful — it is the tri-state a stored `False`
+    needs to mean *no* — so "ships None" and "we could not read it" stopped
+    being the same fact. `UNREADABLE` is falsy so every existing caller reading
+    this by truthiness is unchanged, and `is None` now means what it says.
     """
     try:
         tree = ast.parse(SETTINGS_SOURCE.read_text(encoding="utf-8"))
@@ -217,7 +254,7 @@ def shipped_defaults() -> dict:
             try:
                 out[name] = ast.literal_eval(value)
             except (ValueError, TypeError, SyntaxError, MemoryError, RecursionError):
-                out[name] = None
+                out[name] = UNREADABLE
     return out
 
 
@@ -269,6 +306,27 @@ def _module_consts(tree) -> dict:
             and isinstance(n.targets[0], ast.Name) and _str(n.value)}
 
 
+class _Unreadable:
+    """A default this checker could not evaluate — a call, a comprehension.
+
+    **Deliberately neither truthy nor falsy in meaning, and not `None`.** It was
+    written falsy first, so that `not shipped` would skip it the way a bare
+    `None` used to, and a mutation removing the explicit guard survived: the
+    guard was decoration resting on the sentinel's own `__bool__`. That is the
+    same shape `B20` found and restructured rather than left. Unknown is not
+    false; the caller must say so, and now it has to, because without the guard
+    an unreadable default falls through to the truthy-default rule and reports
+    a finding nobody can act on."""
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "<unreadable>"
+
+
+UNREADABLE = _Unreadable()
+_NO_SUCH_KEY = object()
+
+
 def unreachable(defaults: dict) -> list[str]:
     """Env reads that sit beneath a settings key shipping a truthy default.
 
@@ -306,14 +364,39 @@ def unreachable(defaults: dict) -> list[str]:
             if asked:
                 continue
             for key, line in keys.items():
-                if not defaults.get(key):
+                shipped = defaults.get(key, _NO_SUCH_KEY)
+                if shipped is _NO_SUCH_KEY or isinstance(shipped, UNREADABLE.__class__):
+                    # Not a key we ship, or a default we could not evaluate.
+                    # Guessing at a value this checker cannot see is how a hard
+                    # rule starts failing builds over its own arithmetic.
+                    continue
+                if shipped is not None and not shipped:
+                    # A falsy literal default. The env leg beneath it is
+                    # genuinely reachable — that is `H06`'s whole distinction —
+                    # and a key that is not tri-state has nothing to flatten.
                     continue
                 for env, env_line in envs.items():
                     stem = env[len("PANTHEON_"):] if env.startswith("PANTHEON_") else env
-                    if stem.lower() == key:
+                    if stem.lower() != key:
+                        continue
+                    if shipped is None:
+                        # `B90`. A key shipping `None` is tri-state on purpose:
+                        # absent, yes, and **no**. `get_setting` merges the
+                        # default on every read, so `bool(get_setting(K, False))`
+                        # collapses the stored `no` back into the absence it was
+                        # added to be distinguishable from — which is the exact
+                        # line that let `PANTHEON_ALLOW_MODEL_DOWNLOAD=1` beat a
+                        # `Law 16` gate an operator had turned off. Measured
+                        # 2026-09-15: stored `False`, effective `True`.
+                        found.append(
+                            f"{rel}:{env_line} {env} is read beside {key} (:{line}), "
+                            f"which ships None because its stored False has to mean "
+                            f"*no* — get_setting flattens that back to absence; use "
+                            f"settings.env_backed_flag")
+                    else:
                         found.append(
                             f"{rel}:{env_line} {env} is read beneath {key}, which ships "
-                            f"{defaults[key]!r} — get_setting merges DEFAULT_SETTINGS on "
+                            f"{shipped!r} — get_setting merges DEFAULT_SETTINGS on "
                             f"every read (:{line}), so this line cannot run")
     return sorted(set(found))
 
@@ -364,6 +447,125 @@ def mixed_layers() -> list[str]:
     return sorted(set(found))
 
 
+def _env_derived(node, consts: dict) -> list[str]:
+    """Environment names an expression subtree reads, resolving module consts."""
+    names = []
+    for child in ast.walk(node):
+        if isinstance(child, ast.Call):
+            name = _env_name_of(child, consts)
+            if name:
+                names.append(name)
+        elif isinstance(child, ast.Subscript) and isinstance(child.value, ast.Attribute) \
+                and child.value.attr == "environ":
+            name = _str(child.slice) or (consts.get(child.slice.id)
+                                         if isinstance(child.slice, ast.Name) else None)
+            if name:
+                names.append(name)
+    return names
+
+
+# `B91`. Every token any site in the tree accepted as yes or no on 2026-09-15.
+# A comparison drawn wholly from this set is a truthiness rule; one that is not
+# — `TERM == "dumb"`, `PANTHEON_SCRIPT_HOST in ("", "localhost", …)`, a duration,
+# a hostname — is a different question and is none of this rule's business.
+_TRUTH_TOKENS = {"1", "0", "true", "false", "yes", "no", "on", "off", "y", "n",
+                 "t", "f", "enable", "disable", "enabled", "disabled",
+                 # `""` is a member of three real off-lists in this tree —
+                 # `not in ("0","false","no","off","")`. Leaving it out made the
+                 # rule silently skip the whole comparison; a test caught it.
+                 ""}
+_SPELLING_EXEMPT = re.compile(r"env-spelling:\s*(.+)")
+
+
+def spellings() -> list[str]:
+    """Environment truthiness spelled inline instead of read from `env_flags`.
+
+    `B91`. Measured 2026-09-15 by this same walk: **38 environment booleans, 10
+    incompatible rules**. `PANTHEON_STARTUP_WARMUPS=1` was on and
+    `IMAP_STARTTLS=1` was off in one process; `AUTH_ENABLED=0` left auth
+    enabled; `CLEANUP_ENABLED=" true"` was off because one site of the 38 never
+    called `.strip()`. Nothing errored and `.env.example` documented none of it.
+
+    A site may keep its own rule by saying so — `# env-spelling: <reason>` on the
+    line or in the three above it. Nine do, and every one of them is a case
+    where adopting the shared vocabulary would loosen a control or flip a live
+    deployment. The exemption carries the reason **at the site** rather than in a
+    list here, for the same reason `NOT_OURS` makes each entry say whose it is:
+    a list of names in a checker is a list nobody reads next to the code it is
+    about. Hard rule, max 0 unexempted.
+
+    Blind the same way `unreachable` and `mixed_layers` are, and worth saying:
+    it sees a comparison, so a site that assigns `os.environ.get(X)` to a name
+    in one function and judges it in another is invisible here. What it catches
+    is the shape that produced all ten rules — the comparison written inline
+    beside the read.
+    """
+    found = []
+    for rel in _tracked("*.py"):
+        if rel.startswith(SKIP_PREFIXES) or rel == "src/env_flags.py":
+            continue
+        try:
+            source = (ROOT / rel).read_text(encoding="utf-8")
+            tree = ast.parse(source)
+        except (SyntaxError, OSError):
+            continue
+        lines = source.splitlines()
+        consts = _module_consts(tree)
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Compare) and len(node.ops) == 1):
+                continue
+            op, right = node.ops[0], node.comparators[0]
+            if isinstance(op, (ast.Eq, ast.NotEq)):
+                values = [_str(right)] if _str(right) is not None else []
+            elif isinstance(op, (ast.In, ast.NotIn)) and isinstance(
+                    right, (ast.Tuple, ast.Set, ast.List)):
+                values = [_str(e) for e in right.elts]
+            else:
+                continue
+            if not values or any(v is None for v in values):
+                continue
+            if not all(v.strip().lower() in _TRUTH_TOKENS for v in values):
+                continue
+            names = _env_derived(node.left, consts)
+            if not names:
+                continue
+            # Walk up through the contiguous comment block rather than a fixed
+            # window: the reasons these sites are held run to five and six lines
+            # and a window sized to today's longest one is a trap for tomorrow's.
+            index = node.lineno - 1
+            while index >= 0 and (lines[index].lstrip().startswith("#")
+                                  or index == node.lineno - 1):
+                if _SPELLING_EXEMPT.search(lines[index]):
+                    break
+                index -= 1
+            else:
+                index = -1
+            if index >= 0:
+                continue
+            found.append(
+                f"{rel}:{node.lineno} {'/'.join(sorted(set(names)))} is judged by an "
+                f"inline {sorted(values)} — call env_flags.env_flag, or say why not "
+                f"with `# env-spelling: <reason>`")
+    return sorted(set(found))
+
+
+def exempt_spellings() -> list[str]:
+    """The `# env-spelling:` holds, so `--list` can print the whole set."""
+    out = []
+    for rel in _tracked("*.py"):
+        if rel.startswith(SKIP_PREFIXES):
+            continue
+        try:
+            lines = (ROOT / rel).read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for lineno, line in enumerate(lines, 1):
+            match = _SPELLING_EXEMPT.search(line)
+            if match:
+                out.append(f"{rel}:{lineno} {match.group(1).strip()}")
+    return sorted(out)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--max", type=int, default=74,
@@ -377,19 +579,30 @@ def main() -> int:
     dead = unreferenced(known)
     stranded = unreachable(shipped_defaults())
     split = mixed_layers()
+    spelled = spellings()
+    held = exempt_spellings()
 
     print(f"env vars  read {len(reads)}  ·  declared {len(known)}  ·  "
           f"not ours {len(NOT_OURS)}  ·  UNDECLARED {len(missing)} (max {args.max})  ·  "
           f"UNREFERENCED {len(dead)} (max 0)  ·  UNREACHABLE {len(stranded)} (max 0)  ·  "
-          f"MIXED {len(split)} (max 0)")
+          f"MIXED {len(split)} (max 0)  ·  SPELLING {len(spelled)} (max 0, "
+          f"{len(held)} held)")
 
     failed = False
+    if spelled:
+        failed = True
+        print("\n  Environment truthiness spelled inline. Ten incompatible rules is "
+              "how `PANTHEON_X=1` came to mean yes in one module and no in the next, "
+              "with nothing to error and nothing to log (`B91`):")
+        for line in spelled:
+            print(f"    {line}")
     if stranded:
         failed = True
-        print("\n  Read beneath a settings key whose shipped default is truthy. "
-              "`get_setting` merges DEFAULT_SETTINGS on every read, so this is dead "
-              "code from first boot — ask `settings.setting_is_explicit` whether the "
-              "operator chose the value, or ship a falsy default (`H06`, `B20`):")
+        print("\n  Read beside a settings key `get_setting` cannot answer for. The "
+              "merge runs on every read, so a truthy shipped default makes the line "
+              "below it dead (`H06`, `B20`) and a `None` one — the tri-state a "
+              "stored `False` needs to mean *no* — is flattened back to absence "
+              "(`B90`). Ask `setting_is_explicit`, `env_backed` or `env_backed_flag`:")
         for line in stranded:
             print(f"    {line}")
     if split:
@@ -423,6 +636,9 @@ def main() -> int:
         print()
         for name in missing:
             print(f"  {name:44} {sorted(reads[name])[0]}")
+        print("\n  Sites keeping their own truthiness rule, and why (`B91`):")
+        for line in held:
+            print(f"    {line}")
     return 1 if failed else 0
 
 

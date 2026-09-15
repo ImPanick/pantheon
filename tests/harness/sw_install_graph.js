@@ -6,12 +6,16 @@
 //
 //   {"op":"install"}                     install against the real tree; the
 //                                        result also reports what each cached
-//                                        module imports, read back with the
-//                                        worker's own `importsOf`
+//                                        module imports and what each cached
+//                                        document references, read back with
+//                                        the worker's own `importsOf` and
+//                                        `assetsOf`, plus the `cache` mode each
+//                                        fetch asked for (`B85`)
 //   {"op":"install","fail":[url,...]}    ... with those URLs answering 404
 //   {"op":"walk","files":{url:src},"seeds":[url,...]}
 //                                        drive the walk over a synthetic tree
 //   {"op":"imports","url":...,"source":...}   call importsOf directly
+//   {"op":"assets","url":...,"source":...}    call assetsOf directly (`B86`)
 //
 // A Response here refuses to be read twice, because `cache.put` consumes the
 // body: a walk that stores before it clones would pass a forgiving stub and
@@ -57,6 +61,11 @@ function run(cmd) {
   const fail = new Set(cmd.fail || []);
   const files = cmd.files || null;
   const fetched = [];
+  // `B85`. The install's REQUEST is half of what this row is about, so the stub
+  // records the `cache` mode it was asked for. `undefined` is recorded as the
+  // string '(none)' so "the option was dropped" and "the option says default"
+  // stay distinguishable — they are different bugs with the same symptom.
+  const modes = new Map();
   const stored = new Map();
 
   const cache = {
@@ -77,9 +86,10 @@ function run(cmd) {
       async delete() { return true; },
       async match() { return undefined; },
     },
-    async fetch(url) {
+    async fetch(url, options) {
       const key = String(url);
       fetched.push(key);
+      modes.set(key, (options && options.cache) || '(none)');
       if (fail.has(key)) return makeResponse('<!doctype html>not found', false);
       const body = files ? (key in files ? files[key] : null) : diskBody(key);
       return body === null
@@ -102,6 +112,11 @@ function run(cmd) {
     return { imports: importsOf(cmd.source, cmd.url) };
   }
 
+  if (cmd.op === 'assets') {
+    const assetsOf = vm.runInContext('assetsOf', context);
+    return { assets: assetsOf(cmd.source, cmd.url) };
+  }
+
   // A synthetic tree drives the shipped walk directly, with seeds of the
   // test's choosing — the shipped lists stay as they are.
   if (cmd.op === 'walk') {
@@ -109,6 +124,7 @@ function run(cmd) {
     return Promise.resolve(precacheShellGraph(cache, cmd.seeds)).then(seen => ({
       cached: [...stored.keys()].sort(),
       fetched: fetched.slice().sort(),
+      modes: Object.fromEntries(modes),
       seen: [...seen].sort(),
     }));
   }
@@ -120,19 +136,28 @@ function run(cmd) {
   if (!waited) throw new Error('the install handler did not call waitUntil');
   // `imports` is read back with the worker's OWN `importsOf`, so the closure
   // assertion in the test has no second opinion about what a specifier is —
-  // there is one walker and this is it.
+  // there is one walker and this is it. `assets` is the same arrangement for
+  // the reference grammars `B86` added: `assetsOf` decides what a stylesheet,
+  // a page or a manifest names, and the test asserts closure over that.
   const importsOf = vm.runInContext('importsOf', context);
+  const assetsOf = vm.runInContext('assetsOf', context);
   const isWalkable = vm.runInContext('isWalkable', context);
+  const docKind = vm.runInContext('docKind', context);
   return Promise.resolve(waited).then(() => {
     const imports = {};
+    const assets = {};
     for (const [url, body] of stored) {
       if (isWalkable(url)) imports[url] = importsOf(body, url);
+      const kind = docKind(url);
+      if (kind && kind !== 'js') assets[url] = assetsOf(body, url);
     }
     return {
       cached: [...stored.keys()].sort(),
       fetched: fetched.slice().sort(),
+      modes: Object.fromEntries(modes),
       cacheName: vm.runInContext('CACHE_NAME', context),
       imports,
+      assets,
     };
   });
 }

@@ -313,9 +313,13 @@ def _collect_queue_depth(out: _Out) -> None:
         except Exception as e:
             logger.debug("agent_mail depth unavailable: %s", e)
         try:
-            from core.database import TaskRun
+            # `B78`: this re-typed `("queued", "running")` inline while the one
+            # constant the vocabulary exports sat in the same import. A metric
+            # named "queue depth" that learns a new in-flight status later than
+            # the scheduler does reports a number that is quietly wrong.
+            from core.database import TaskRun, TASK_RUN_ACTIVE_STATUSES
             n = (db.query(func.count(TaskRun.id))
-                   .filter(TaskRun.status.in_(("queued", "running"))).scalar())
+                   .filter(TaskRun.status.in_(TASK_RUN_ACTIVE_STATUSES)).scalar())
             out.add("pantheon_queue_depth", int(n or 0), {"queue": "task_runs"})
         except Exception as e:
             logger.debug("task_runs depth unavailable: %s", e)

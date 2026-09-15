@@ -20,7 +20,7 @@ from src.upload_limits import format_byte_limit, get_chat_upload_max_bytes
 # union makes them the same object. The edge is one-way — document_processor
 # takes the handler as a parameter and never imports this module — so a cycle
 # here would fail loudly at import rather than existing quietly.
-from src.document_processor import INGESTIBLE_EXTS
+from src.document_processor import INGESTIBLE_EXTS, upload_display_name
 
 
 def secure_filename(filename: str) -> str:
@@ -1303,13 +1303,52 @@ class UploadHandler:
                 existing_files = {}
             stale_keys = []
             for key, info in existing_files.items():
-                if info.get("hash") == file_hash and info.get("owner") == owner:
-                    stored_path = info.get("path")
-                    if stored_path and os.path.exists(stored_path) and self._inside_upload_dir(stored_path):
-                        existing_key = key
-                        existing_file = info
-                        break
+                # `B77`: the comparison used to be hash + owner alone, so
+                # uploading `notes.md` and then a byte-identical `config.yaml`
+                # returned `id=<same>.md name=notes.md mime=text/markdown` —
+                # the second file served under the first file's identity.
+                # Driven end to end, that is not cosmetic: `_process_text_file`
+                # takes the fence language and the `[Type: …]` label from the
+                # stored path, so YAML rendered as markdown; the composer chip
+                # showed the wrong filename; `download_file` set
+                # `Content-Disposition: filename=notes.md`; and
+                # `build_user_content` told the model it had received a file the
+                # user did not attach.
+                #
+                # The name is compared through `upload_display_name` — the same
+                # derivation `build_user_content` uses to decide what the model
+                # is told — so "the dedup considers these the same file" and
+                # "the model would be told the same thing" cannot come apart
+                # (`Law 13`). Re-sanitised on both sides because a row may carry
+                # only the raw `original_name`, and `secure_filename` is
+                # idempotent on an already-safe name.
+                #
+                # The row suggested keying on hash + *extension*. That does not
+                # fix the row's own headline case: two projects' `LICENSE` (and
+                # `LICENSE` vs `COPYING`) are both extensionless, so they would
+                # still collapse. Measured before changing anything.
+                #
+                # The early `break` is gone deliberately: several rows can now
+                # share a hash, and the dead ones past the first live match
+                # still have to be swept. The scan is dict comparisons over an
+                # index `_load_upload_index` has already parsed in full, so the
+                # JSON read dominates either way.
+                if info.get("hash") != file_hash or info.get("owner") != owner:
+                    continue
+                stored_path = info.get("path")
+                if not (stored_path and os.path.exists(stored_path)
+                        and self._inside_upload_dir(stored_path)):
+                    # Dead row. Staleness is a property of the file, not of the
+                    # name, so this stays keyed on hash + owner exactly as it
+                    # was — narrowing it to same-name rows would leave the other
+                    # names' dead rows behind.
                     stale_keys.append(key)
+                    continue
+                if existing_file is None and secure_filename(
+                    upload_display_name(info)
+                ) == safe_filename:
+                    existing_key = key
+                    existing_file = info
             if stale_keys:
                 try:
                     # `P3-16`. The snapshot above was read tolerantly, which is
@@ -1341,7 +1380,14 @@ class UploadHandler:
                     live_key = existing_key
                     if live_key not in current:
                         for k, v in current.items():
-                            if v.get("hash") == file_hash and v.get("owner") == owner:
+                            # `B77`: the name belongs in this predicate too. It
+                            # is the same question as the lookup above, and a
+                            # re-resolution that dropped it would hand the
+                            # write-back a different file's row precisely in the
+                            # race the strict re-read exists to survive.
+                            if (v.get("hash") == file_hash
+                                    and v.get("owner") == owner
+                                    and secure_filename(upload_display_name(v)) == safe_filename):
                                 live_key = k
                                 existing_file = v
                                 break
@@ -1367,7 +1413,16 @@ class UploadHandler:
                     "path": existing_file["path"],
                     "mime": existing_file["mime"],
                     "size": existing_file["size"],
-                    "name": existing_file["original_name"],
+                    # `name` is the sanitized name on the fresh-insert path
+                    # (that path returns `file_metadata` whole) and was the raw
+                    # `original_name` here, so the *same* file uploaded twice
+                    # came back as `my_report_final.txt` and then `my report
+                    # (final).txt`. Two spellings of one identity is the same
+                    # defect `B77` names, one layer down. Both keys now carry
+                    # what the fresh path puts in them.
+                    "name": existing_file.get("name") or existing_file["original_name"],
+                    "original_name": existing_file.get("original_name")
+                    or existing_file.get("name"),
                     "hash": file_hash,
                     "checksum_sha256": existing_file.get("checksum_sha256") or file_hash,
                     "uploaded_at": existing_file["uploaded_at"],
@@ -1430,7 +1485,27 @@ class UploadHandler:
                 # succeeds; it just does not get indexed, which is recoverable
                 # in a way that an erased index is not.
                 current = self._load_upload_index(fail_on_error=True) if os.path.exists(uploads_db_path) else {}
-                storage_key = f"{owner}:{file_hash}" if owner else file_hash
+                # `B77`: the key shape does NOT change, so an existing
+                # uploads.json needs no migration — every read path here
+                # (`get_upload_info`, `reserve_upload`, `resolve_upload`,
+                # `_upload_index_keys_for_file`, the download route) already
+                # scans rows by field and never parses a key. What changes is
+                # that `{owner}:{hash}` can now be taken by a different-named
+                # row, so the insert goes through the collision helper that
+                # `rename_owner` has always used rather than assigning blind.
+                # Reusing it is `Law 14`: the "this key is occupied" machinery
+                # already exists, and `_renamed_upload_index_key` already feeds
+                # `_unique_upload_index_key`, so owner rename keeps working on a
+                # hash that now has two rows without a line of change.
+                #
+                # Blind assignment was also a latent row-loss: the duplicate
+                # lookup above reads the index *tolerantly* and answers `{}` on
+                # a corrupt read, so a corrupt-then-recovered index could reach
+                # here with a live row already at this key and overwrite it.
+                base_key = f"{owner}:{file_hash}" if owner else file_hash
+                storage_key = self._unique_upload_index_key(
+                    base_key, set(current.keys()), set(), file_metadata
+                )
                 current[storage_key] = file_metadata
                 self._atomic_write_json(uploads_db_path, current)
             except Exception as e:

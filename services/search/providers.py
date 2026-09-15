@@ -144,16 +144,23 @@ def _widen_engines_allowed() -> bool:
     Reachable through the env because the default is falsy. Beneath a truthy
     default this function would be dead code, which is `H06`/`B20` and is the
     same distinction `P16-05` turned on.
+
+    `B90`. Reachable was never the problem; **unbeatable** was. This read
+    `bool(get_setting(K, False)) or <env truthy>`, and measured 2026-09-15 with
+    the setting stored `False` and `SEARXNG_WIDEN_ENGINES=1` it answered True —
+    so the pin an operator had just re-asserted was still being dropped on the
+    third attempt, which is the whole reason this switch exists.
     """
     try:
-        from src.settings import get_setting
-        if bool(get_setting("searxng_widen_engines", False)):
-            return True
+        from src.settings import env_backed_flag, load_settings
+        return env_backed_flag(
+            load_settings(), "searxng_widen_engines", "SEARXNG_WIDEN_ENGINES")
     except Exception:
-        pass
-    return (os.environ.get("SEARXNG_WIDEN_ENGINES") or "").strip().lower() in (
-        "1", "true", "yes", "on"
-    )
+        # Settings unreadable is not permission to widen. The `except` is here
+        # because this runs inside a search path that must not die on a config
+        # error, and the fallback is the shipped answer, which is off.
+        from src.env_flags import env_flag
+        return env_flag("SEARXNG_WIDEN_ENGINES", False)
 
 
 def searxng_search_api(query: str, count: Optional[int] = None, categories: str = "general",

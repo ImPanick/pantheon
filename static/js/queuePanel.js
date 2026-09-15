@@ -78,7 +78,7 @@
 
 import { formatElapsed } from './research/jobs.js?v=20260630researchthumb';
 import dragSortModule from './dragSort.js';
-import { runStatusLabel } from './runStatus.js';
+import { runStatusLabel, runStatusDotClass } from './runStatus.js';
 
 /** Injected by chat.js at init. See the contract in `init()`. */
 let _driver = null;
@@ -121,12 +121,24 @@ const ICON_SEQUENTIAL = '<svg width="16" height="16" viewBox="0 0 24 24" fill="n
  * Map a run status onto the CSS dot the Tasks activity view already ships.
  * `success` is drawn by `.task-log-status-ok`; every other value keeps its own
  * name. `aborted` has its own dot on purpose — see the header.
+ *
+ * `B78`: this switch WAS a hand-written second copy of the ladder inside
+ * `tasks.js` `_renderActivityEntry`, written out longhand because this module
+ * cannot import that one (`runStatus.js`'s header says why). Measured, the two
+ * copies disagreed on legacy `failed` — `info` here, `error` there — off the
+ * same input. Latent rather than visible: no row this panel builds carries
+ * `failed` today, because `getQueueActivityEntries` writes only `queued` and
+ * `noteLaunched`/`noteLaunchResult` write only `running`/`success`/`error`/
+ * `aborted`. Fixed anyway, because the next value either of them learns is the
+ * one that has to be learned twice.
+ *
+ * The `info` fallback stays here and is NOT in the shared function: the
+ * Activity view answers an unknown status by text-scanning the row's result,
+ * and this panel has no result text to scan. Two honest answers to the same
+ * question, so the shared function returns `''` and each caller says its own.
  */
 function statusClass(status) {
-  if (status === 'success') return 'ok';
-  if (status === 'queued' || status === 'running' || status === 'error'
-      || status === 'skipped' || status === 'aborted') return status;
-  return 'info';
+  return runStatusDotClass(status) || 'info';
 }
 
 /**

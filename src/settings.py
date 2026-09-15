@@ -64,7 +64,17 @@ DEFAULT_SETTINGS = {
     # server was already answering. This is the switch that permits it, and the
     # answer to "why is memory unavailable" on a machine with no local
     # embedding server and no network.
-    "allow_model_download": False,
+    #
+    # `B90`. Ships `None`, not `False`, and the difference is the whole row.
+    # `load_settings` merges this dict on every read, so a shipped `False` and a
+    # stored `False` are the same byte to every reader — which is why
+    # `bool(get_setting(k, False)) or <env truthy>` could not see an operator's
+    # deliberate *no* and `PANTHEON_ALLOW_MODEL_DOWNLOAD=1` won over it.
+    # Measured 2026-09-15: stored `False`, effective `True`. `None` is the third
+    # value that lets the flat dict hold the difference; `bool(None)` is `False`,
+    # so nothing that reads this key with `bool()` changes. See
+    # `env_backed_flag`.
+    "allow_model_download": None,
     # Where the diagnostic bundle's "report this" link points (`P16-14`).
     #
     # Ships EMPTY, deliberately, and the emptiness is load-bearing twice over.
@@ -84,7 +94,10 @@ DEFAULT_SETTINGS = {
     # query; the retry that dropped the pin handed it to Google, DuckDuckGo and
     # Brave on the third attempt, silently. Off keeps the choice; on is one
     # switch away and the switch says what it does.
-    "searxng_widen_engines": False,
+    #
+    # `None` rather than `False` — `B90`, and see `allow_model_download` above
+    # for why the third value is needed to hold *no* apart from *unset*.
+    "searxng_widen_engines": None,
     # How many days of the events table to keep (`P14-01`). 0 = keep everything.
     #
     # Finite by default, because an append-only table with no ceiling is a
@@ -112,7 +125,10 @@ DEFAULT_SETTINGS = {
     # the operator turning it on is the same act as pointing something at it.
     #
     # Falsy, so PANTHEON_METRICS_ENABLED is genuinely reachable beneath it.
-    "metrics_enabled": False,
+    #
+    # `None` rather than `False` — `B90`. Reachable was never the problem here;
+    # *unbeatable* was. See `allow_model_download` above.
+    "metrics_enabled": None,
     # Push the same readings to the operator's OWN collector (`P16-19`).
     #
     # SHIPS EMPTY, AND EMPTY IS ENFORCED, NOT MERELY INTENDED:
@@ -568,6 +584,87 @@ def env_backed(settings: dict, key: str, env_name: str, default: str = "") -> st
         # A non-string that is not empty (an int port, a bool) is a real value.
         return stored
     return os.environ.get(env_name) or default
+
+
+_warned_stored_no: set[str] = set()
+
+
+def _warn_stored_no_beats_env(key: str, env_name: str) -> None:
+    """Say so, once, when a stored `False` is the reason an env var lost.
+
+    `B90`'s `Law 1` cost, made visible rather than argued away. Before
+    2026-09-15 these keys shipped `False`, so one admin save materialised a
+    `False` that nobody chose, and the environment beat it. Now a stored `False`
+    wins — which is the fix — but on an install carrying such a materialised
+    `False` **and** a truthy variable, the behaviour changes at upgrade.
+
+    That is exactly the pair this fires on, so it is silent on every install
+    that is not affected. A migration would have been the alternative and there
+    is no mechanism for one: `data/settings.json` carries no schema version, and
+    a materialised `False` is byte-identical to a chosen one, so a rewrite would
+    have had to guess at intent for the one case where intent is the question.
+    Telling the operator which layer answered is the honest half of the
+    `public_origin.source_of` answer `B90` weighed, kept where it costs nothing.
+    """
+    if key in _warned_stored_no:
+        return
+    from src.env_flags import env_truthy
+    import os
+    if env_truthy(os.environ.get(env_name)) is not True:
+        return
+    _warned_stored_no.add(key)
+    logger.warning(
+        "%s is set in the environment and %s is stored false in settings.json — "
+        "the stored value wins (`B90`). Before 2026-09-15 the environment won "
+        "here, including over a false nobody chose. To let %s decide again, "
+        "remove %s from data/settings.json.",
+        env_name, key, env_name, key,
+    )
+
+
+def env_backed_flag(settings: dict, key: str, env_name: str,
+                    default: bool = False) -> bool:
+    """`env_backed` for a boolean: stored choice → environment → default.
+
+    `B90`. Three keys resolved as `bool(get_setting(K, False)) or <env truthy>`
+    and an `or` is one-way: `metrics_enabled`, `searxng_widen_engines` and
+    `allow_model_download` all stored `False` and all three measured effective
+    `True` on a host whose environment set them. The operator's *off* was not
+    overridden loudly — it was not read at all.
+
+    `setting_is_explicit` is the wrong tool and that is not a defect in it: the
+    stored `False` **was** the shipped default, so presence-and-a-non-default-
+    value is correctly `False`. The fix had to be in the storage shape, and it
+    is: those three keys now ship `None`. `env_backed` already resolves stored →
+    environment → default in exactly the order the rest of this tree documents,
+    and already returns a stored `False` in preference to the environment — this
+    is that function with the one thing it cannot do, which is decide what an
+    environment *string* means. `bool("false")` is `True`; the coercion belongs
+    to `env_flags.env_truthy` and not to an eleventh inline spelling (`B91`).
+
+    So this is not a third layering rule. It is `env_backed` plus the shared
+    vocabulary, and the reason it is a function rather than two lines at each of
+    the three call sites is that two lines at each of three call sites is how
+    this row was written in the first place (`Law 13`).
+    """
+    from src.env_flags import env_flag, env_truthy
+    stored = settings.get(key)
+    if isinstance(stored, bool):
+        # A stored bool is a typed choice out of `settings.json`. It outranks
+        # the environment — the order every other layer pair in this tree
+        # documents, and the one `env_backed` already implements for strings.
+        if not stored:
+            _warn_stored_no_beats_env(key, env_name)
+        return stored
+    if stored is not None and not isinstance(stored, str):
+        return bool(stored)
+    # A string in a boolean slot is somebody hand-editing the file. Judge it by
+    # the same vocabulary the environment is judged by rather than by
+    # truthiness, or `"false"` reads as yes.
+    answer = env_truthy(stored) if isinstance(stored, str) else None
+    if answer is not None:
+        return answer
+    return env_flag(env_name, default)
 
 
 def is_setting_overridden(key: str) -> bool:

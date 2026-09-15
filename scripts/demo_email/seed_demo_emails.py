@@ -330,6 +330,10 @@ def _wipe(conn: imaplib.IMAP4) -> int:
     wipe a real mailbox. Override only with DEMO_ALLOW_WIPE=1 (you must mean it).
     """
     safe_target = USER.endswith("@pantheon.local") or HOST in ("localhost", "127.0.0.1", "::1")
+    # env-spelling: `B91` holds this one. It guards an irreversible expunge and
+    # its own docstring says `DEMO_ALLOW_WIPE=1` ("you must mean it"). Widening
+    # the set of words that mean yes is the wrong direction for a destructive
+    # override.
     if not safe_target and os.getenv("DEMO_ALLOW_WIPE") != "1":
         raise SystemExit(
             f"refusing to wipe non-demo target {USER}@{HOST}:{PORT} — "

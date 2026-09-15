@@ -45,6 +45,98 @@ TEXT_EXTS = frozenset({
 # `B05`'s "three-line test" would not have been a proof.
 INGESTIBLE_EXTS = TEXT_EXTS | MARKITDOWN_EXTS | PDF_EXTS
 
+# How much of a file the decode probe below reads before answering.
+TEXT_SNIFF_BYTES = 8192
+
+
+def looks_like_text(path: str, probe_bytes: int = TEXT_SNIFF_BYTES) -> bool:
+    """True when a bounded prefix of *path* reads as text.
+
+    `B76`: 26 extensions a person can upload were measured delivering **zero
+    bytes** to the model. **24 of them are text** — `.markdown .tsv .rst .toml
+    .ini .conf .env .ipynb .patch .diff .cfg .properties .swift .kt .lua .pl
+    .vue .scss .less .gradle .ps1 .r .svg .rtf` — and `_process_text_file`
+    could read every one today; the only thing stopping them was that no
+    register spelled their suffix. (The other two, `.doc` and `.odt`, are
+    genuinely binary containers and still get the banner.) Appending the 24 is
+    the defect itself: the register has been extended twice already and the
+    25th format arrives next month. The right question is whether the bytes
+    decode; the registers keep their real job, which is picking *which*
+    extractor, not *whether* to read.
+
+    **This is not a new gate — it is `B02`'s, given a home.** The same probe
+    already shipped as a closure named `_looks_like_text` inside
+    `routes/email_routes.attachment_as_doc`, where nothing else could call it.
+    So the product already decided a `.toml` attachment is text — it decided it
+    for the mailbox and not for the composer. Lifting the closure to module
+    scope and calling it from both is `Law 13`; writing a second probe next to
+    it would have been `Law 14`. The email route's behaviour is unchanged
+    because this is literally the function it used to define inline.
+
+    Cost, bounded, because this reads bytes the caller would otherwise skip:
+    ``build_user_content`` calls this **only when no register claimed the
+    file** — i.e. only on the path whose current cost is a banner and zero
+    reads. A file that reaches the model today is answered by
+    ``is_document_file`` and never reaches this call, so the added I/O for
+    every upload that works today is zero. For the rest it is one
+    ``read(8192)`` — 8 KiB, once, no decode of the tail, no libmagic.
+
+    Deliberately stdlib-only: ``detect_content_type`` is a libmagic call and
+    python-magic ships only in the Docker image, so routing this through it
+    would accept different files on a Docker install than on a pip/venv one.
+    """
+    try:
+        with open(path, "rb") as fh:
+            head = fh.read(probe_bytes)
+    except Exception as exc:
+        logger.warning("text sniff failed for %s: %s", path, exc)
+        return False
+    if not head:
+        return True  # empty file — nothing binary about it
+    if b"\x00" in head:
+        # NUL byte: the classic binary tell, and the check doing the real work
+        # here — png/jpeg/zip/gzip prefixes all carry one. (A zip of ASCII
+        # scores only 0.02 on the ratio below, so the ratio alone would let it
+        # through.) Cost: UTF-16/32 text reads as binary and keeps the banner
+        # it already gets today.
+        return False
+    decoded = head.decode("utf-8", errors="replace")
+    if not decoded:
+        return False
+    # Backstop for binary carrying no NUL in its first KiBs: such a prefix is
+    # mostly U+FFFD. `B02` measured 0.43 for NUL-free random bytes, so 0.30
+    # clears binary. It does NOT clear all text: legacy single-byte prose
+    # scores far higher than one number suggests — `B02` measured German 0.148,
+    # Spanish 0.125, French 0.193, Icelandic 0.229, Polish cp1250 0.396 and
+    # cp1251 Russian 0.815, and `B76` re-measured the last two at 0.412 and
+    # 0.793 on different samples. The number moves with the text and the
+    # verdict does not: everything past latin-1, and UTF-16/32 with it, keeps
+    # the banner. That is the pre-existing behaviour and therefore safe, but it
+    # makes this a UTF-8-and-Western-latin probe rather than a general one, and
+    # widening it means sniffing the encoding — not raising this number (`B101`).
+    return decoded.count("\ufffd") / len(decoded) <= 0.30
+
+
+def upload_display_name(info: Dict[str, Any], fallback_path: str | None = None) -> str:
+    """The one name a stored upload is known by.
+
+    `B77`: the name the model is told it received, the name the dedup key must
+    distinguish on, and the name `Content-Disposition` serves are the same
+    question, and were answered in three places. This is that answer, derived
+    once — ``upload_handler.save_upload`` keys on it and ``build_user_content``
+    renders it, so a row the dedup considers identical is by construction one
+    the model would be told the same thing about.
+
+    Falls back to ``basename``, not the full path: the previous
+    ``... or path`` in ``build_user_content`` put the server's upload directory
+    layout into the prompt whenever a row carried no name.
+    """
+    for key in ("name", "original_name"):
+        value = info.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+    return os.path.basename(fallback_path or "") or ""
+
 
 def _is_text_file(path: str) -> bool:
     """Check if file has text extension.
@@ -76,8 +168,17 @@ def _is_text_file(path: str) -> bool:
     return any(path.lower().endswith(ext) for ext in TEXT_EXTS)
 
 
-def _process_text_file(path: str) -> str:
-    """Process text file with enhanced formatting and metadata."""
+def _process_text_file(path: str, display_name: str | None = None) -> str:
+    """Process text file with enhanced formatting and metadata.
+
+    *display_name* is the name the user attached the file under. Without it
+    this function read both the header and the fence language off the **stored**
+    path, which is ``<uuid32>.md`` — so the model was told ``=== File:
+    310f424428ee47c3b4f2794eb061de3b.md ===`` for every text attachment ever
+    sent (measured through the real ``save_upload`` → ``build_user_content``
+    path). That is the same defect `B77` names for the dedup case, except it
+    fired on *every* upload, not only on a hash collision.
+    """
     language_map = {
         ".py": "python", ".js": "javascript", ".html": "html", ".htm": "html", ".css": "css",
         ".json": "json", ".md": "markdown", ".txt": "text", ".csv": "csv",
@@ -88,8 +189,13 @@ def _process_text_file(path: str) -> str:
         ".rb": "ruby", ".ts": "typescript", ".jsx": "javascript", ".tsx": "typescript",
     }
 
-    filename = os.path.basename(path)
-    _, ext = os.path.splitext(path.lower())
+    # Name and language both come from what the user called the file, falling
+    # back to the stored path. They must come from the same string or the
+    # `[Type: …]` label contradicts the filename printed one line above it.
+    filename = os.path.basename(display_name or path)
+    _, ext = os.path.splitext(filename.lower())
+    if not ext:
+        _, ext = os.path.splitext(path.lower())
     language = language_map.get(ext, "text")
     max_len = 30000 if ext != ".log" else 10000
 
@@ -496,9 +602,30 @@ def build_user_content(
 
         _, ext = os.path.splitext(path.lower())
         mime = upload_info.get("mime") or mimetypes.guess_type(path)[0] or "application/octet-stream"
-        display_name = upload_info.get("name") or upload_info.get("original_name") or path
+        display_name = upload_display_name(upload_info, path)
 
-        if upload_handler.is_image_file(display_name, mime):
+        is_image = upload_handler.is_image_file(display_name, mime)
+        is_audio = False if is_image else upload_handler.is_audio_file(display_name, mime)
+        # `B76`. Two questions, kept apart. The registers answer "which
+        # extractor", and they are good at that. They were also answering "read
+        # it at all", and at that they were wrong 26 times over: a `.toml` is
+        # text whatever the register says, and appending the 26 only moves the
+        # wrong answer to the 27th format.
+        #
+        # So ask the registers first, and only when none of them claims the
+        # file, ask the bytes. Every `False if …` below short-circuits, so a
+        # file that reaches the model today never pays for the probe: the added
+        # read is confined to the path whose current behaviour is a banner and
+        # zero bytes, and there it is one bounded `read(8192)`.
+        is_doc = (
+            False if (is_image or is_audio)
+            else upload_handler.is_document_file(display_name, mime)
+        )
+        decoded_as_text = (
+            False if (is_image or is_audio or is_doc) else looks_like_text(path)
+        )
+
+        if is_image:
             try:
                 with open(path, "rb") as image_file:
                     encoded_string = base64.b64encode(image_file.read()).decode("utf-8")
@@ -517,7 +644,7 @@ def build_user_content(
                 else:
                     content.insert(0, {"type": "text", "text": "[Image attached but could not be processed]"})
 
-        elif upload_handler.is_audio_file(display_name, mime):
+        elif is_audio:
             try:
                 with open(path, "rb") as audio_file:
                     encoded_string = base64.b64encode(audio_file.read()).decode("utf-8")
@@ -533,7 +660,7 @@ def build_user_content(
                 else:
                     content.insert(0, {"type": "text", "text": "[Audio attached but could not be processed]"})
 
-        elif upload_handler.is_document_file(display_name, mime):
+        elif is_doc or decoded_as_text:
             if mime == "application/pdf":
                 extracted_text = None
                 if session_id:
@@ -632,8 +759,15 @@ def build_user_content(
                         logger.warning(f"PDF auto-doc creation failed for {path}: {e}")
                 if extracted_text is None:
                     extracted_text = _process_pdf(path, owner=owner)
-            elif mime.startswith("text/") or _is_text_file(path):
-                extracted_text = _process_text_file(path)
+            elif mime.startswith("text/") or _is_text_file(path) or decoded_as_text:
+                # `decoded_as_text` is the `B76` arm. It can only be true when
+                # no register claimed the file, so it cannot divert anything
+                # that has an extractor — it is reachable only from what used
+                # to be the banner. `.svg` arrives here too, and reading its
+                # source is the better answer than the image arm: it was in
+                # neither `image_mime_types` nor any register, and a model that
+                # sees the XML can edit it.
+                extracted_text = _process_text_file(path, display_name)
             else:
                 extracted_text = _process_office_document(
                     path,
@@ -653,10 +787,14 @@ def build_user_content(
             else:
                 content.insert(0, {"type": "text", "text": extracted_text.lstrip()})
         else:
-            # Reached when the upload is neither image, audio, nor a type any
-            # extractor covers — `.markdown .tsv .rst .toml .ini .conf .env
-            # .ipynb .doc .odt .rtf` all land here, measured by driving this
-            # function. There is deliberately no upload type blocklist
+            # Reached when the upload is neither image, audio, a type any
+            # extractor covers, nor bytes that decode as text. `B05` measured
+            # `.markdown .tsv .rst .toml .ini .conf .env .ipynb .doc .odt .rtf`
+            # landing here; `B76` moved the first eight out of it, because they
+            # were text all along. What is left is the honest half — `.doc`
+            # `.odt` `.rtf` and every genuine binary — where the answer is an
+            # extractor or this banner, and this banner is true.
+            # There is deliberately no upload type blocklist
             # (`upload_handler.save_upload`, D-2026-08-26-01), so the upload
             # succeeds and the chip renders; only the bytes are missing.
             #

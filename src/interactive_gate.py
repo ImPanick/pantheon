@@ -22,7 +22,8 @@ _COND_LOOP: asyncio.AbstractEventLoop | None = None
 
 
 def _enabled() -> bool:
-    return os.getenv("BACKGROUND_TASK_FOREGROUND_GATE", "true").lower() not in {"0", "false", "no", "off"}
+    from src.env_flags import env_flag
+    return env_flag("BACKGROUND_TASK_FOREGROUND_GATE", True)
 
 
 def _quiet_seconds() -> float:

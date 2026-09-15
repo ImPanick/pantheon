@@ -16,6 +16,7 @@ import sys
 
 from core.platform_compat import IS_WINDOWS, which_tool
 from src.runtime_paths import get_app_root
+from src.env_flags import env_flag
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +114,7 @@ _BUILTIN_NPX_SERVERS = {
 }
 
 # Global flag to disable MCP if there are compatibility issues
-MCP_DISABLED = os.environ.get("PANTHEON_DISABLE_MCP", "").lower() in ("1", "true", "yes")
+MCP_DISABLED = env_flag("PANTHEON_DISABLE_MCP", False)
 # Default ON as of 2026-08-31 (`Law 16`). This used to default OFF, which meant
 # `npx -y @playwright/mcp@latest` ran ~3 seconds after every boot — installing
 # from registry.npmjs.org on first start and re-checking the `@latest` dist-tag
@@ -124,9 +125,7 @@ MCP_DISABLED = os.environ.get("PANTHEON_DISABLE_MCP", "").lower() in ("1", "true
 # The capability is not removed. Browser automation still starts the instant the
 # package is present in the npm cache or vendored into the image. What changed is
 # that Pantheon no longer goes and gets it uninvited.
-BROWSER_MCP_REQUIRE_CACHE = os.environ.get(
-    "PANTHEON_BROWSER_MCP_REQUIRE_CACHE", "1"
-).lower() in ("1", "true", "yes")
+BROWSER_MCP_REQUIRE_CACHE = env_flag("PANTHEON_BROWSER_MCP_REQUIRE_CACHE", True)
 
 
 # Strong references to the fire-and-forget startup tasks scheduled below.
@@ -175,10 +174,18 @@ def _browser_mcp_args(args: list[str]) -> list[str]:
         browser = _find_browser_executable()
         if browser:
             out.extend(["--executable-path", browser])
+    # env-spelling: `B91` holds this one, and it is the mirror image of its
+    # neighbour below. Widening the OFF-list drops `--isolated` for a host
+    # carrying `PANTHEON_BROWSER_ISOLATED=off`, so the browser would start
+    # reusing a persistent profile — a loosening, where `NO_SANDBOX` widening is
+    # a tightening. Same shape, opposite direction, so only one moved.
     if os.environ.get("PANTHEON_BROWSER_ISOLATED", "1").lower() not in ("0", "false", "no"):
         if "--isolated" not in out and "--user-data-dir" not in out:
             out.append("--isolated")
-    if os.environ.get("PANTHEON_BROWSER_NO_SANDBOX", "1").lower() not in ("0", "false", "no"):
+    # `B91`. `PANTHEON_BROWSER_NO_SANDBOX=off` used to leave `--no-sandbox` on,
+    # because `off` was in no off-list here. Widening only ever restores the
+    # sandbox.
+    if env_flag("PANTHEON_BROWSER_NO_SANDBOX", True):
         if "--no-sandbox" not in out and "--sandbox" not in out:
             out.append("--no-sandbox")
     return out

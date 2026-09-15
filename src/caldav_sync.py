@@ -50,6 +50,8 @@ _BLOCKED_HOSTS = {
 
 
 def _private_caldav_allowed() -> bool:
+    # env-spelling: `B91` holds this one. It disables an SSRF guard; widening
+    # would disable it for a host carrying `PANTHEON_ALLOW_PRIVATE_CALDAV=on`.
     return os.environ.get("PANTHEON_ALLOW_PRIVATE_CALDAV", "0").lower() in {"1", "true", "yes"}
 
 

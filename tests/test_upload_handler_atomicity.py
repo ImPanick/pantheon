@@ -198,7 +198,12 @@ async def test_duplicate_vs_insert_race_preserves_both(tmp_path):
         # The post-fix code must preserve both entries in uploads.json
         # and flag the duplicate as ``is_duplicate=True`` with the
         # original's id.
-        fake_dup = SimpleNamespace(filename="shared.txt", file=io.BytesIO(shared_content))
+        # `B77`: same bytes AND same name. This fixture used to be called
+        # "shared.txt" and was a duplicate only because the key ignored the
+        # name — the scenario this test is about (a duplicate racing an insert
+        # for the index write) needs a real duplicate, which is what the
+        # docstring above already claims it is.
+        fake_dup = SimpleNamespace(filename="seed.txt", file=io.BytesIO(shared_content))
         fake_new = SimpleNamespace(
             filename="other.txt", file=io.BytesIO(b"different-content")
         )

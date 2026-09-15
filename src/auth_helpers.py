@@ -152,6 +152,9 @@ def require_user(request: Request) -> str:
     # LOCALHOST_BYPASS=true is the dev-only "I'm on loopback, skip auth"
     # switch. Mirror the middleware so routes don't 401 the same caller
     # the middleware just let through.
+    # env-spelling: the middleware half of this switch is held on its own rule
+    # for the reason written at `app.py`. The two must always agree, so neither
+    # moves alone (`B91`).
     if is_loopback and os.getenv("LOCALHOST_BYPASS", "false").lower() == "true":
         return ""
     if auth_mgr is not None and getattr(auth_mgr, "is_configured", False):

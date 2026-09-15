@@ -12,7 +12,16 @@ import { sortModelIds } from './modelSort.js';
 import { ordinalSuffix } from './util/ordinal.js';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { getSettings, invalidateSettings } from './appConfig.js';
-import { runStatusLabel, runStaleLabel } from './runStatus.js';
+import {
+  runStatusLabel, runStaleLabel, runStatusTone, runStatusDotClass, isRunFinished,
+} from './runStatus.js';
+
+// `B78`. `runStatusTone` was defined in this file and re-exported here instead,
+// because `queuePanel.js` needs the same derivation and cannot import this
+// module (see `runStatus.js`'s header). Kept on this module's surface because
+// four call sites and two tests already import it from here, and taking an
+// export away to move a function is a subtraction (`Law 1`).
+export { runStatusTone };
 
 const API_BASE = window.location.origin;
 let _open = false;
@@ -432,32 +441,35 @@ function _absoluteTime(iso) {
   return `${mo}/${da} ${hh}:${mm}`;
 }
 
-// The six stored run statuses (core/database.py documents them) reduced to the
-// three things every renderer here actually needs to know. Four sites had their
-// own ladder over the same values and they did not agree: the Activity chip
-// mapped `skipped`/`aborted` to neutral, the run-history list gave them the
-// *running* style, and the task card's last-run badge tested `=== 'error'` and
-// so painted a green tick on anything that was not a failure — including the
-// admin-privilege refusal `B07` re-filed as `skipped`, and every `aborted` run.
-// `queued`/`running` are not terminal and are `pending`, not `ok`, so a task
-// mid-flight no longer claims success.
-export function runStatusTone(status) {
-  switch (status) {
-    case 'success': return 'ok';
-    case 'error':
-    case 'failed': return 'error';      // `failed` is not in the vocabulary;
-                                        // accepted because older rows carry it.
-    case 'queued':
-    case 'running': return 'pending';
-    case 'skipped':
-    case 'aborted': return 'info';
-    default: return null;               // unknown / absent — caller decides.
-  }
-}
+// `runStatusTone` — the six stored run statuses (core/database.py documents
+// them) reduced to the three things every renderer needs — is imported above
+// and re-exported. It was defined here until `B78` measured a fifth ladder
+// outside this file; see `runStatus.js` for why it moved and what it decides.
+
+// `B78`. Two vocabularies met in this one map and only one of them had keys.
+// `active`/`paused`/`completed` are TASK statuses; `error`/`failed` are RUN
+// statuses; and the single caller (`_showRunHistory`) passes `'active'` for a
+// successful run and the raw run status otherwise. Measured on the pre-fix
+// tree, that left `queued`, `running`, `skipped` and `aborted` with no key at
+// all, so four of the six runs a person can see drew the SAME grey dot — an
+// aborted run and a queued one were indistinguishable in the list whose job is
+// to say what happened. The three task-status keys are unreachable from the one
+// caller and are kept rather than deleted: they are the map's documented other
+// half and removing them is a subtraction.
+//
+// The four colours are the ones `.task-log-status-*` already paints in
+// `style.css`, copied rather than invented, so the same run does not get an
+// amber dot in the Activity list and a grey one in its own history. `skipped`
+// and `aborted` stay on the neutral: the sheet separates those two with a
+// dashed border, which an 8px inline span has no room for, and a colour the
+// sheet does not use would be a second palette (`Law 14`).
+const _RUN_DOT_COLORS = {
+  queued: '#fbbf24', running: '#60a5fa', skipped: '#888', aborted: '#888',
+};
 
 function _statusDot(status) {
   const colors = { active: '#4caf50', paused: '#ff9800', completed: '#888', error: '#f44336', failed: '#f44336' };
-  const c = colors[status] || '#888';
+  const c = colors[status] || _RUN_DOT_COLORS[status] || '#888';
   return `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c};box-shadow:0 0 6px ${c}, 0 0 3px ${c};flex-shrink:0;position:relative;top:4px;"></span>`;
 }
 
@@ -996,9 +1008,14 @@ function _renderList() {
         : tone === 'ok' ? 'var(--green,#50fa7b)'
         : 'color-mix(in srgb, var(--fg) 45%, transparent)';
       const mark = isErr ? '✗' : tone === 'ok' ? '✓' : '·';
-      const empty = isErr ? 'Failed (no detail)'
-        : tone === 'ok' ? 'Success (no output)'
-        : `${task.last_run_status} (no detail)`;
+      // `B84`. Three registers in six lines: two human sentences and, for
+      // `skipped`/`aborted`/`running`, the raw stored value — *skipped (no
+      // detail)* beside *Failed (no detail)*. All three read the same word out
+      // of the shared table now. `Success` and `Failed` are that table's `job`
+      // entries BECAUSE they were these two strings, so both sentences are
+      // byte-identical to what shipped and only the third one changes.
+      const word = runStatusLabel(task.last_run_status, 'job');
+      const empty = tone === 'ok' ? `${word} (no output)` : `${word} (no detail)`;
       const result = (task.last_run_result || '').trim();
       const prev = result.length > 200 ? result.slice(0, 200) + '…' : result;
       const lr = document.createElement('div');
@@ -1900,6 +1917,13 @@ async function _showRunHistory(taskId, taskName) {
       // branch — a terminal run drawn with the in-flight style. They get the
       // neutral class now; the derivation is shared so this list and the task
       // card cannot drift apart again.
+      //
+      // `B84`: the word beside the dot was `${run.status}` — the STORED ENUM,
+      // lowercase and unglossed, shown to a person working out why a task did
+      // not do what they expected. It reads out of the shared table now, as a
+      // job, because a task run is one. The raw value moves to the `title` so
+      // anyone who was reading it off the screen to match a log line still can
+      // (`Law 1`): the gloss is added, the fact is not taken away.
       const _tone = runStatusTone(run.status);
       const statusClass = _tone === 'ok' ? 'task-run-success'
         : _tone === 'error' ? 'task-run-error'
@@ -1908,7 +1932,7 @@ async function _showRunHistory(taskId, taskName) {
       html += `<div class="task-run-item ${statusClass}">
         <div class="task-run-item-header">
           ${_statusDot(_tone === 'ok' ? 'active' : run.status)}
-          <span>${run.status}</span>
+          <span title="${_esc(run.status || '')}">${_esc(runStatusLabel(run.status, 'job'))}</span>
           ${run.model ? `<span class="task-run-model" style="font-size:10px;opacity:0.5;">${_esc(run.model.split('/').pop())}</span>` : ''}
           <span class="task-run-time" title="${run.started_at ? _esc(_relativeTime(run.started_at)) : ''}">${run.started_at ? _absoluteTime(run.started_at) : ''}</span>
         </div>
@@ -2129,12 +2153,25 @@ function _runToActivityEntry(r) {
   };
 }
 
+// `B78` names this as a consumer that "excludes `skipped` from finished".
+// Measured: it had exactly one caller, and for that caller the exclusion was
+// right and the NAME was wrong. A stale-skipped run carries
+// `error = "Task no longer active (status=paused)"`, which `_runToActivityEntry`
+// promotes into `result` — so admitting `skipped` here would put that sentence
+// in a list captioned *"Completed assistant/research outputs you can open in
+// chat"*. Nothing a person sees changes: `finished` now means what the stored
+// vocabulary says it means (not `queued`, not `running` — the same pair Python
+// exports), and the `skipped` rule moved to the caller whose question it
+// actually answers.
 function _isFinishedRun(entry) {
-  return !['queued', 'running', 'skipped'].includes(entry.status || '');
+  return isRunFinished(entry.status);
 }
 
 function _isChatResultRun(entry) {
   return _isFinishedRun(entry)
+    // A skipped run's only text is the reason it did not run, which is not an
+    // output and cannot be opened in a chat.
+    && entry.status !== 'skipped'
     && (entry.kind === 'llm' || entry.kind === 'research')
     && !!(entry.result || '').trim();
 }
@@ -2923,12 +2960,15 @@ function _renderActivityEntry(entry, opts = {}) {
   // a `.task-log-status-*` rule per value); `runStatusTone` only decides which
   // of the two *scored* names — ok / error — a status collapses to, so this and
   // the Errors chip cannot disagree about what counts as a failure.
-  let status;
-  const _tone = runStatusTone(entry.status);
-  if (_tone === 'ok') status = 'ok';
-  else if (_tone === 'error') status = 'error';
-  else if (_tone) status = entry.status;
-  else status = _classifyResult(entry.result);
+  //
+  // `B78`: this ladder was spelled out here AND, by hand, in `queuePanel.js`
+  // `statusClass`, which cannot import this module. Measured, the two answered
+  // differently for legacy `failed` — `error` here, `info` there. It is one
+  // call to `runStatusDotClass` in both places now. The text-scan fallback is
+  // still this file's, and only this file's: the panel has no result text to
+  // scan and says `info` instead, which is why the shared function answers `''`
+  // for an unknown value rather than picking one of the two for both.
+  const status = runStatusDotClass(entry.status) || _classifyResult(entry.result);
   const statusDot = `<span class="task-log-status task-log-status-${status}" title="${status}"></span>`;
   const failedTag = status === 'error'
     ? '<span class="task-log-failed-tag">(failed)</span>'
@@ -3466,9 +3506,30 @@ async function _pollTaskNotifications() {
         if (!fired && uiModule) uiModule.showToast(title + ': ' + n.body.slice(0, 140), { duration: 7000 });
         continue;
       }
-      const msg = `Task ${ok ? 'finished' : 'failed'}: ${n.task_name}`;
+      // `B78`. This was `ok ? 'finished' : 'failed'` — two outcomes over a
+      // six-value vocabulary, so every non-`success` status was announced in a
+      // red error toast as *"Task failed: <name>"* and raised the failure dot
+      // with it. `core/database.py` is explicit that neither `skipped` (the
+      // task deliberately did not run) nor `aborted` (a restart, a stop, a
+      // foreground takeover) is a failure, and `B07` had to leave the
+      // admin-privilege refusal SILENT rather than let this line call it one.
+      //
+      // Measured before the fix: no such notification is emitted today, because
+      // both terminal branches in `_execute_task_locked` return before the
+      // notify block — so this is the client being made honest so the server
+      // may speak, not a lie currently on screen. Three outcomes now, from the
+      // same `runStatusTone` the Errors chip and the badge already use:
+      // `ok` toasts, `error` shouts, and a named non-failure says what it was
+      // in a plain toast without touching the failure dot. An UNRECOGNISED
+      // status still takes the loud branch — quietening something we cannot
+      // name is the wrong direction to be wrong in (`Law 1`).
+      const _tone = runStatusTone(n.status);
+      const _quiet = _tone === 'info';
+      const msg = _quiet
+        ? `Task ${runStatusLabel(n.status, 'job').toLowerCase()}: ${n.task_name}`
+        : `Task ${ok ? 'finished' : 'failed'}: ${n.task_name}`;
       if (!uiModule) continue;
-      if (ok) uiModule.showToast(msg, { duration: 5000 });
+      if (ok || _quiet) uiModule.showToast(msg, { duration: 5000 });
       else {
         _setTaskFailurePending(true);
         uiModule.showError(msg);

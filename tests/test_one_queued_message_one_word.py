@@ -20,8 +20,22 @@ disagreement survived a hover.
 **And the two surfaces do not merely use different words — they disagree about
 whether there is a word at all.** The Activity row replaces the label with a
 relative time once a run is terminal, so it has no wording for four of the six
-values. That is why the shared table has a `job` column of two entries rather
-than six: a column filled past its consumers is the drift `Law 13` names.
+values. That was the argument for a `job` column of two entries rather than
+six: a column filled past its consumers is the drift `Law 13` names.
+
+**`B84` (2026-09-15) filled the other four, and the argument above was
+half-right.** The Activity view still shows a time rather than a word, and the
+test at the bottom of this section still pins exactly that — filling the table
+did not change one character of what any of the three surfaces below prints,
+which is measured, not assumed. What the argument missed is that the Activity
+view was never the only `job` surface: the run-history list and the task card's
+last-run badge are both about jobs, both were on screen when `B13` landed, and
+both were spelling their own words — the history list printed the STORED ENUM
+at the user and the badge mixed *Failed (no detail)* with a raw
+`${last_run_status} (no detail)` six lines apart. The column was not past its
+consumers; it was two consumers short of them. Those two are pinned in
+`tests/test_run_status_is_one_vocabulary.py`, so the four words have named
+callers and the `Law 13` objection is answered rather than ignored.
 
 **What did not change.** A task run still reads *Queued* and *Running*. The row
 asks for the panel's wording *for the composer's queue*, because *Waiting /
@@ -136,15 +150,53 @@ def test_a_row_that_has_been_in_flight_too_long_says_so_in_its_own_vocabulary():
 
 
 def test_the_activity_view_still_shows_a_time_rather_than_a_word_when_a_run_ends():
-    """The asymmetry that decides the table's shape: four of the six values
-    have no `job` word because that surface shows elapsed time instead. If a
-    later pass gives terminal rows a label, this fails and says the table needs
-    those four entries — which is the honest order to do it in."""
+    """This was written to fail if a later pass gave terminal rows a label, so
+    that filling the `job` column would be visible rather than silent. `B84`
+    filled it and this still passes, which is the finding: the hole was never in
+    the TABLE, it was in this renderer's own branch. `_renderActivityEntry` only
+    asks for a word inside `if (_isRunning)`, so the four entries are
+    unreachable from here and the relative time stays."""
     v = run("vocabularies")
     for status in ("success", "error", "skipped", "aborted"):
         assert v[status]["activityJob"] is None
         assert v[status]["activityMessage"] is None
         assert v[status]["activityStaleJob"] is None
+
+
+def test_the_job_column_is_full_and_every_entry_has_a_consumer():
+    """`B84`. The four terminal `job` words exist now, and the objection they
+    were withheld under — a column filled past its consumers is `Law 13` drift —
+    is answered by naming the two surfaces that read them: the run-history list
+    and the task card's last-run badge, both pinned in
+    `tests/test_run_status_is_one_vocabulary.py`.
+
+    `Success` and `Failed` are not new wording. They are the badge's own two
+    strings, moved into the table, so the sentence on that surface is
+    byte-identical after the change and only the third register — the raw stored
+    value — is gone."""
+    proc = subprocess.run(
+        ["node", "--input-type=module", "--eval",
+         "import { RUN_STATUSES, runStatusLabel } from '%s';\n"
+         "console.log(JSON.stringify(Object.fromEntries(RUN_STATUSES.map("
+         "  s => [s, [runStatusLabel(s, 'job'), runStatusLabel(s, 'message')]]))));"
+         % WORDS_JS],
+        capture_output=True, text=True, timeout=30)
+    assert proc.returncode == 0, proc.stderr
+    words = json.loads(proc.stdout)
+    assert [w for w in words.values() if not w[0]] == [], "a `job` cell is still empty"
+    assert words["success"][0] == "Success" and words["error"][0] == "Failed"
+    assert words["skipped"][0] == "Skipped" and words["aborted"][0] == "Stopped"
+    # The subject still earns its keep: three of the six differ by column, and
+    # the three that do are the three a person meets in the composer's queue.
+    differ = [s for s, (job, msg) in words.items() if job != msg]
+    assert differ == ["queued", "running", "success"], differ
+    # The two consumers are not asserted by grepping for the call (`Law 20`:
+    # that tests the file, and a reformat would fail it for nothing). They are
+    # asserted by RUNNING both renderers over all six statuses, in
+    # `tests/test_run_status_is_one_vocabulary.py` —
+    # `test_the_run_history_shows_a_word_and_not_the_stored_enum` and
+    # `test_the_last_run_badge_uses_one_register`. Delete either call site and
+    # those fail on the word a person would then be shown.
 
 
 # ---------------------------------------------------------------------------

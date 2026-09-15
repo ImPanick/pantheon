@@ -94,6 +94,14 @@ def test_the_closure_stays_small_and_named():
     assert _closure("src.tool_utils") == {
         "src.tool_utils",
         "src.constants",
+        # `B91`. The vocabulary for environment truthiness. It is in this
+        # closure deliberately and it is why that module imports nothing but
+        # `os`: `src.constants` and `src.runtime_limits` both read a boolean
+        # variable, both are in here already, and the alternative was a third
+        # and fourth private `_truthy` that disagreed with each other — which is
+        # the defect `B91` is, arriving inside the one closure that must stay
+        # small.
+        "src.env_flags",
         "src.runtime_limits",
         "src.runtime_paths",
     }, sorted(_closure("src.tool_utils"))

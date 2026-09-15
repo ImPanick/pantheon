@@ -681,6 +681,22 @@ Common internal-only ports from the default docs/compose setup:
 ## Configuration
 Most setup is done inside the app with `/setup` or **Settings**. Use `.env`
 for deployment-level defaults and secrets you want present before first boot.
+
+**Switches: what counts as on.** Every on/off variable below reads the same words:
+
+| | accepted |
+|---|---|
+| **on** | `1` `true` `yes` `on` |
+| **off** | `0` `false` `no` `off` |
+
+Case does not matter and surrounding spaces are ignored. Anything else — an empty value, or a
+word not in those lists — means *not set*, and the switch keeps its documented default: a
+variable you never set and a variable you set to nothing are the same thing.
+
+Nine switches keep their own older rule because changing them would flip a running deployment.
+They are listed at the top of `.env.example`, and `AUTH_ENABLED` is the one to know: only the
+literal `false` disables authentication, so `AUTH_ENABLED=0` leaves it **on**.
+
 Key settings:
 
 | Variable | Default | Description |

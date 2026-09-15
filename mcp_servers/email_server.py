@@ -36,6 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 server = Server("email")
 EMAIL_SOCKET_TIMEOUT = float(os.environ.get("EMAIL_SOCKET_TIMEOUT", "20"))
 from src.constants import DATA_DIR as _DATA_DIR, APP_DB, EMAIL_CACHE_DB, SETTINGS_FILE as _SETTINGS_FILE, MAIL_ATTACHMENTS_DIR
+from src.env_flags import env_flag
 # P18-02/P18-03. In `src/` rather than `routes/` precisely so this process
 # can import it without reaching into a request-handler module.
 from src import mail_auth as _mail_auth
@@ -308,15 +309,21 @@ def _load_config(account: str | None = None) -> dict:
         "imap_port": int(os.environ.get("IMAP_PORT", "31143")),
         "imap_user": os.environ.get("IMAP_USER", ""),
         "imap_password": os.environ.get("IMAP_PASSWORD", ""),
-        "imap_ssl": os.environ.get("IMAP_SSL", "false").lower() == "true",
-        "imap_starttls": os.environ.get("IMAP_STARTTLS", "true").lower() == "true",
+        # `B91`. These four read `.lower() == "true"`, so `IMAP_STARTTLS=1` was
+        # *off* on the same host where `PANTHEON_STARTUP_WARMUPS=1` was on.
+        # Measured 2026-09-15. Widening moves all four in one direction only —
+        # toward TLS — and `routes/email_helpers._starttls` reads the same two
+        # variables and now shares this vocabulary, which is the agreement
+        # `B20` pinned a test on.
+        "imap_ssl": env_flag("IMAP_SSL", False),
+        "imap_starttls": env_flag("IMAP_STARTTLS", True),
         "smtp_host": os.environ.get("SMTP_HOST", ""),
         "smtp_port": int(os.environ.get("SMTP_PORT", "465")),
         "smtp_security": os.environ.get("SMTP_SECURITY", ""),
         "smtp_user": os.environ.get("SMTP_USER", ""),
         "smtp_password": os.environ.get("SMTP_PASSWORD", ""),
-        "smtp_starttls": os.environ.get("SMTP_STARTTLS", "false").lower() == "true",
-        "smtp_ssl": os.environ.get("SMTP_SSL", "true").lower() == "true",
+        "smtp_starttls": env_flag("SMTP_STARTTLS", False),
+        "smtp_ssl": env_flag("SMTP_SSL", True),
         "from_address": os.environ.get("EMAIL_FROM", ""),
         "archive_folder": os.environ.get("ARCHIVE_FOLDER", "Archive"),
         "trash_folder": os.environ.get("TRASH_FOLDER", "Trash"),

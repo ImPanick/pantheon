@@ -376,8 +376,17 @@ def test_no_prometheus_client_dependency():
 # --- the route ------------------------------------------------------------
 
 def test_metrics_ship_off_and_the_env_layer_is_reachable():
+    """`B90` changed the shipped value from `False` to `None` and this test now
+    asserts the property instead of the byte.
+
+    Off is still off — `bool(None)` is `False` — and the third value is what
+    lets a stored `False` mean *no* rather than being indistinguishable from the
+    default that was merged in beneath it. `None` is stricter than the old
+    assertion in both directions: a shipped `True` fails it, and so does a
+    shipped `False`, which would silently re-flatten the tri-state."""
     from src.settings import DEFAULT_SETTINGS
-    assert DEFAULT_SETTINGS["metrics_enabled"] is False
+    assert DEFAULT_SETTINGS["metrics_enabled"] is None
+    assert bool(DEFAULT_SETTINGS["metrics_enabled"]) is False, "off by default"
     src = (ROOT / "routes" / "diagnostics_routes.py").read_text(encoding="utf-8")
     assert "PANTHEON_METRICS_ENABLED" in src
 

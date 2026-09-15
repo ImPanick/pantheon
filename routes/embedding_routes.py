@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Form, Depends
 from core.constants import EMBEDDING_ENDPOINT_FILE, FASTEMBED_CACHE_DIR
 from core.middleware import require_admin
 from src.runtime_paths import get_app_root
+from src.env_flags import env_flag
 
 logger = logging.getLogger(__name__)
 
@@ -267,7 +268,7 @@ def setup_embedding_routes():
         from src.url_safety import check_outbound_url
         ok, reason = check_outbound_url(
             url,
-            block_private=os.getenv("EMBEDDING_BLOCK_PRIVATE_IPS", "false").lower() == "true",
+            block_private=env_flag("EMBEDDING_BLOCK_PRIVATE_IPS", False),
         )
         if not ok:
             raise HTTPException(400, f"Rejected endpoint URL: {reason}")

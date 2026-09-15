@@ -16,6 +16,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from core.database import SessionLocal, GalleryImage, GalleryAlbum, ModelEndpoint
 from core.database import Session as DbSession
 from src.auth_helpers import get_current_user, owner_filter, require_privilege
+from src.env_flags import env_flag
 from src.upload_limits import (
     read_upload_limited,
     GALLERY_UPLOAD_MAX_BYTES,
@@ -335,7 +336,7 @@ async def _fetch_result_image_b64(url: str) -> Optional[str]:
 
     ok, reason = check_outbound_url(
         url,
-        block_private=os.getenv("IMAGE_BLOCK_PRIVATE_IPS", "false").lower() == "true",
+        block_private=env_flag("IMAGE_BLOCK_PRIVATE_IPS", False),
     )
     if not ok:
         raise HTTPException(502, f"Upstream returned an unsafe image URL: {reason}")
@@ -1276,7 +1277,7 @@ def setup_gallery_routes() -> APIRouter:
             from src.url_safety import check_outbound_url
             ok, reason = check_outbound_url(
                 requested_base,
-                block_private=os.getenv("IMAGE_BLOCK_PRIVATE_IPS", "false").lower() == "true",
+                block_private=env_flag("IMAGE_BLOCK_PRIVATE_IPS", False),
             )
             if not ok:
                 raise HTTPException(400, f"Rejected endpoint URL: {reason}")
@@ -1540,7 +1541,7 @@ def setup_gallery_routes() -> APIRouter:
             from src.url_safety import check_outbound_url
             ok, reason = check_outbound_url(
                 requested_base,
-                block_private=os.getenv("IMAGE_BLOCK_PRIVATE_IPS", "false").lower() == "true",
+                block_private=env_flag("IMAGE_BLOCK_PRIVATE_IPS", False),
             )
             if not ok:
                 raise HTTPException(400, f"Rejected endpoint URL: {reason}")

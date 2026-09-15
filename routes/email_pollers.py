@@ -1525,9 +1525,10 @@ def _inprocess_pollers_enabled() -> bool:
     `pantheon-mail poll-scheduled` is the sole external driver. The legacy
     auto-summary/reply poller no longer starts here; scheduled Tasks own that
     work so Email settings are only feature gates, not a second scheduler."""
-    import os
-    raw = os.environ.get("PANTHEON_INPROCESS_POLLERS", "1").strip().lower()
-    return raw not in ("0", "false", "no", "off", "")
+    from src.env_flags import env_flag
+    # `B91`. One vocabulary; the only value whose answer moves is a bare
+    # `PANTHEON_INPROCESS_POLLERS=`, which read *off* and now means unset.
+    return env_flag("PANTHEON_INPROCESS_POLLERS", True)
 
 
 def _start_poller():

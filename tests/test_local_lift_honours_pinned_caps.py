@@ -236,16 +236,41 @@ def test_env_example_says_a_configured_limit_is_still_honoured():
     assert "does NOT override a limit you set yourself" in section
 
 
-def test_runtime_limits_still_imports_nothing_from_the_project():
-    """Its docstring promises this so `src.tool_utils` — which forbids project
-    imports to avoid cycles — can import it lazily. `lift_cap` takes `pinned`
-    as an argument rather than reading settings for exactly this reason."""
-    tree = ast.parse((ROOT / "src" / "runtime_limits.py").read_text(encoding="utf-8"))
+def _project_imports_of(rel: str) -> set:
+    tree = ast.parse((ROOT / rel).read_text(encoding="utf-8"))
+    found = set()
     for node in ast.walk(tree):
         mod = None
         if isinstance(node, ast.ImportFrom):
             mod = node.module or ""
         elif isinstance(node, ast.Import):
             mod = node.names[0].name
-        if mod and (mod.startswith(("src.", "routes.", "core.", "services."))):
-            raise AssertionError(f"project import in runtime_limits.py: {mod}")
+        if mod and mod.startswith(("src.", "routes.", "core.", "services.")):
+            found.add(mod)
+    return found
+
+
+def test_runtime_limits_reaches_nothing_that_can_reach_back():
+    """Its docstring promises this so `src.tool_utils` — which forbids project
+    imports to avoid cycles — can import it lazily. `lift_cap` takes `pinned`
+    as an argument rather than reading settings for exactly this reason.
+
+    **The rule used to be "no project import at all" and that was the wrong
+    shape**, which is the same lesson `tests/test_tool_utils_import_clean.py`
+    records about its own earlier allowlist. `B91` gave this module one import,
+    `src.env_flags`, and that module exists precisely so this one can read a
+    boolean without carrying its own `_truthy` — the two private ones it
+    replaced disagreed with each other, which is the whole row. Forbidding it by
+    name prefix would have been a rule protecting a proxy for the property
+    rather than the property.
+
+    So: a project import is allowed here only if it is itself a leaf. That IS
+    the invariant — the cycle cannot exist through a module that imports
+    nothing — and it is checked by walking rather than by listing a name.
+    """
+    for module in sorted(_project_imports_of("src/runtime_limits.py")):
+        onward = _project_imports_of(module.replace(".", "/") + ".py")
+        assert onward == set(), (
+            f"runtime_limits imports {module}, which is not a leaf: {sorted(onward)}. "
+            f"The cycle this module exists to break reopens through it."
+        )

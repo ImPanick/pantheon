@@ -72,8 +72,15 @@ def test_the_widening_retry_still_exists_when_asked_for(calls, monkeypatch):
 
 
 def test_the_setting_ships_off():
+    """`B90`: `None`, not `False`, and off either way — `bool(None)` is `False`.
+
+    The tri-state is what lets an operator's stored `False` beat a truthy
+    `SEARXNG_WIDEN_ENGINES`, which it could not while *no* and *unset* were the
+    same byte. Pinning engines is a choice about who sees the query, and a
+    switch that cannot be turned off is not a choice."""
     from src.settings import DEFAULT_SETTINGS
-    assert DEFAULT_SETTINGS["searxng_widen_engines"] is False
+    assert DEFAULT_SETTINGS["searxng_widen_engines"] is None
+    assert bool(DEFAULT_SETTINGS["searxng_widen_engines"]) is False
 
 
 def test_the_env_layer_is_reachable(monkeypatch):

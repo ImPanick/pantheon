@@ -3951,49 +3951,17 @@ def setup_email_routes():
             # raise on arbitrary bytes. Genuinely binary attachments still
             # fall through to the unsupported-type rejection, unchanged.
             #
-            # The sniff is stdlib-only on purpose: detect_content_type() is a
-            # libmagic call and python-magic ships only in the Docker image, so
-            # reusing it would make this branch accept different files on a
-            # Docker install than on a pip/venv one.
-            #
-            # Ordering note: this sits BELOW the commonpath containment check
-            # and the dotfile rejection above, which still gate every path
-            # that can reach here. Do not hoist it above them.
-            def _looks_like_text(path_obj, probe_bytes: int = 8192) -> bool:
-                try:
-                    with path_obj.open("rb") as fh:
-                        head = fh.read(probe_bytes)
-                except Exception as _e:
-                    logger.warning("attachment text sniff failed for %s: %s", base, _e)
-                    return False
-                if not head:
-                    return True  # empty file — nothing binary about it
-                if b"\x00" in head:
-                    # NUL byte: the classic binary tell, and the check doing
-                    # the real work here — png/jpeg/zip/gzip prefixes all
-                    # carry one. (A zip of ASCII scores only 0.02 on the
-                    # ratio below, so the ratio alone would let it through.)
-                    # Cost: UTF-16/32 text reads as binary and keeps the
-                    # rejection it already gets today.
-                    return False
-                decoded = head.decode("utf-8", errors="replace")
-                if not decoded:
-                    return False
-                # Backstop for binary carrying no NUL in its first KiBs: such
-                # a prefix is mostly U+FFFD. Measured 0.43 for NUL-free random
-                # bytes, so 0.30 clears binary. It does NOT clear all text:
-                # legacy single-byte prose scores far higher than one number
-                # suggests — German 0.148, Spanish 0.125, French 0.193,
-                # Icelandic 0.229, and Polish cp1250 at 0.396 is rejected today,
-                # as is every non-Western legacy encoding (cp1251 Russian 0.815)
-                # along with UTF-16/32. Those attachments fall through to the
-                # unchanged rejection below, which is the pre-existing behaviour
-                # and therefore safe — but this is a UTF-8-and-Western-latin
-                # fallback, not a general one. Widening it means sniffing the
-                # encoding, not raising this number.
-                return decoded.count("\ufffd") / len(decoded) <= 0.30
+            # The sniff used to be a closure defined right here, which meant
+            # chat ingest could not reach the decision the mailbox was already
+            # making: `B76` measured 26 extensions that a person can upload into
+            # the composer and that deliver zero bytes to the model, every one
+            # of which this closure would have called text. It now lives in
+            # `src/document_processor.looks_like_text` and both callers share
+            # it (`Law 13`). Behaviour here is unchanged — same probe size, same
+            # NUL check, same replacement-char ratio, same thresholds.
+            from src.document_processor import looks_like_text
 
-            if _looks_like_text(filepath):
+            if looks_like_text(str(filepath)):
                 try:
                     content = filepath.read_text(encoding="utf-8", errors="replace")
                 except Exception as e:

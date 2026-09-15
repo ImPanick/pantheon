@@ -366,6 +366,14 @@ def test_the_undeclared_ratchet_does_not_move_because_the_new_rule_sees_more(fix
 def test_a_key_whose_default_is_not_a_literal_is_never_flagged(fixture_repo):
     # Under-reporting is the right direction for a hard rule: a checker that
     # guessed at a value it cannot evaluate would fail a build over its guess.
+    #
+    # `B90` made this a sentinel rather than `None`. A literal `None` in
+    # DEFAULT_SETTINGS became meaningful — it is the tri-state a stored `False`
+    # needs to mean *no* — so "ships None" and "could not be read" stopped being
+    # the same fact and this rule needed to tell them apart. The sentinel is
+    # deliberately NOT falsy: it was written falsy first and a mutation removing
+    # the explicit guard survived, because the guard was resting on `__bool__`
+    # rather than on anything the code said.
     mod = fixture_repo(
         'import os\n'
         'from src.settings import get_setting\n'
@@ -374,7 +382,10 @@ def test_a_key_whose_default_is_not_a_literal_is_never_flagged(fixture_repo):
         "PANTHEON_COMPUTED=1\n",
         extra={"src/settings.py": 'DEFAULT_SETTINGS = {\n    "computed": build_it(),\n}\n'},
     )
-    assert mod.shipped_defaults() == {"computed": None}
+    assert mod.shipped_defaults() == {"computed": mod.UNREADABLE}
+    assert mod.shipped_defaults()["computed"] is not None, (
+        "unknown is not None, or the tri-state rule fires on every computed default"
+    )
     assert mod.unreachable(mod.shipped_defaults()) == []
 
 
@@ -522,3 +533,248 @@ def test_a_field_left_off_env_backed_fails_the_run_and_not_only_the_report(
     out = capsys.readouterr().out
     assert "MIXED 1 (max 0)" in out
     assert "imap_starttls" in out
+
+
+# ── `B91` / `B90`: the spelling rule, and the tri-state it protects ──────────
+#
+# `B91` counted 38 environment booleans judged by 10 incompatible rules, so
+# `PANTHEON_STARTUP_WARMUPS=1` was on while `IMAP_STARTTLS=1` was off in one
+# process. The rule went inside this checker rather than into a nineteenth file
+# for the same reason `B20`'s did: this walker already exists (`Law 14`), and
+# "can this variable do anything?" and "does this variable mean what the next
+# module thinks it means?" are one operator question from two sides.
+
+
+def test_an_inline_truthiness_comparison_on_an_env_read_is_reported(fixture_repo):
+    mod = fixture_repo(
+        'import os\n'
+        'def warm():\n'
+        '    return os.getenv("PANTHEON_STARTUP_WARMUPS", "").lower() == "true"\n',
+        "PANTHEON_STARTUP_WARMUPS=1\n",
+    )
+    found = mod.spellings()
+    assert len(found) == 1, found
+    assert "PANTHEON_STARTUP_WARMUPS" in found[0]
+
+
+@pytest.mark.parametrize("comparison", [
+    '.lower() == "true"',
+    '.lower() in ("1", "true", "yes")',
+    '.lower() in ("1", "true", "yes", "on")',
+    '.lower() not in ("0", "false", "no")',
+    '.lower() not in ("0", "false", "no", "off", "")',
+    '!= "0"',
+    '== "false"',
+])
+def test_every_one_of_the_measured_spellings_is_caught(fixture_repo, comparison):
+    # These are the real shapes, transcribed from the sites `B91` counted. A
+    # rule that caught only the one everybody writes would have left six.
+    mod = fixture_repo(
+        f'import os\n'
+        f'def f():\n'
+        f'    return os.getenv("SOME_FLAG", ""){comparison}\n',
+        "SOME_FLAG=1\n",
+    )
+    assert len(mod.spellings()) == 1, comparison
+
+
+def test_a_comparison_that_is_not_about_truthiness_is_left_alone(fixture_repo):
+    # `TERM == "dumb"`, `PANTHEON_SCRIPT_HOST in ("", "localhost")`, a duration,
+    # a hostname. The first draft of this rule fired on all of them, which is
+    # how a checker becomes noise nobody reads.
+    mod = fixture_repo(
+        'import os\n'
+        'def f():\n'
+        '    a = os.environ.get("TERM") == "dumb"\n'
+        '    b = os.environ.get("PANTHEON_SCRIPT_HOST", "") in ("", "localhost")\n'
+        '    c = os.environ.get("PANTHEON_POLL_EVERY", "") == "1d"\n'
+        '    return a, b, c\n',
+        "TERM=x\nPANTHEON_SCRIPT_HOST=x\nPANTHEON_POLL_EVERY=x\n",
+    )
+    assert mod.spellings() == []
+
+
+def test_a_truthiness_comparison_on_something_that_is_not_the_environment_is_left_alone(
+        fixture_repo):
+    # 16 of the 33 `.lower() == "true"` sites in this tree parse an HTTP form
+    # field, a model-emitted tool argument or a line of skill frontmatter.
+    # `B91` counted them in its "50 sites" and they are a different question
+    # with a different trust boundary — unifying them would be `Law 14`.
+    mod = fixture_repo(
+        'def handler(form, body):\n'
+        '    a = str(form.get("plan_mode", "")).lower() == "true"\n'
+        '    b = str(body.get("shared")).strip().lower() in ("true", "1", "yes")\n'
+        '    return a, b\n',
+        "",
+    )
+    assert mod.spellings() == []
+
+
+def test_a_site_may_keep_its_own_rule_by_saying_why(fixture_repo):
+    mod = fixture_repo(
+        'import os\n'
+        'def bypass():\n'
+        '    # env-spelling: widening this turns an auth bypass on for every host\n'
+        '    # already carrying LOCALHOST_BYPASS=1, where it does nothing today.\n'
+        '    return os.getenv("LOCALHOST_BYPASS", "false").lower() == "true"\n',
+        "LOCALHOST_BYPASS=false\n",
+    )
+    assert mod.spellings() == []
+    assert mod.exempt_spellings() and "auth bypass" in mod.exempt_spellings()[0]
+
+
+def test_the_exemption_is_found_above_a_comment_block_of_any_length(fixture_repo):
+    # A fixed lookback window sized to today's longest reason is a trap for
+    # tomorrow's. The real holds run to six lines.
+    reason = "\n".join(f"    # line {n}" for n in range(12))
+    mod = fixture_repo(
+        'import os\n'
+        'def f():\n'
+        '    # env-spelling: held, and the reason is long\n'
+        f'{reason}\n'
+        '    return os.getenv("SOME_FLAG", "").lower() == "true"\n',
+        "SOME_FLAG=1\n",
+    )
+    assert mod.spellings() == []
+
+
+def test_the_exemption_does_not_reach_across_real_code(fixture_repo):
+    # An exemption that leaks down the file silences sites nobody meant to hold.
+    mod = fixture_repo(
+        'import os\n'
+        'def held():\n'
+        '    # env-spelling: this one only\n'
+        '    return os.getenv("A_FLAG", "").lower() == "true"\n'
+        'def not_held():\n'
+        '    return os.getenv("B_FLAG", "").lower() == "true"\n',
+        "A_FLAG=1\nB_FLAG=1\n",
+    )
+    found = mod.spellings()
+    assert len(found) == 1 and "B_FLAG" in found[0], found
+
+
+def test_env_flags_itself_is_not_reported_for_defining_the_vocabulary(fixture_repo):
+    mod = fixture_repo(
+        "x = 1\n", "",
+        extra={"src/env_flags.py":
+               'import os\n'
+               'def env_flag(name, default=False):\n'
+               '    return os.environ.get(name, "").strip().lower() in ("1", "true")\n'},
+    )
+    assert mod.spellings() == []
+
+
+def test_calling_the_helper_clears_the_finding(fixture_repo):
+    mod = fixture_repo(
+        'from src.env_flags import env_flag\n'
+        'def warm():\n'
+        '    return env_flag("PANTHEON_STARTUP_WARMUPS", False)\n',
+        "PANTHEON_STARTUP_WARMUPS=1\n",
+    )
+    assert mod.spellings() == []
+
+
+def test_the_helper_does_not_hide_the_variable_from_the_undeclared_scan(fixture_repo):
+    # The trap this rule could have set for itself. Adopting `env_flag` at 22
+    # sites took `literal_reads` from 143 names to 121 before the scan learned
+    # the helper — twelve of them undeclared, so the ratchet would have fallen
+    # by hiding variables rather than by documenting them.
+    mod = fixture_repo(
+        'from src.env_flags import env_flag\n'
+        'x = env_flag("WANTED", False)\n',
+        "",
+    )
+    assert "WANTED" in mod.literal_reads()
+
+
+def test_env_backed_names_its_variable_in_the_third_argument_and_the_scan_reads_it(
+        fixture_repo):
+    # `H07` moved three CardDAV fields onto `env_backed` and this scan stopped
+    # seeing two of them — `CARDDAV_URL` and `CARDDAV_USERNAME` were undeclared
+    # and invisible for that whole time. Found while closing `B91`.
+    mod = fixture_repo(
+        'from src.settings import env_backed, env_backed_flag\n'
+        'def cfg(s):\n'
+        '    return (env_backed(s, "carddav_url", "CARDDAV_URL"),\n'
+        '            env_backed_flag(s, "metrics_enabled", "PANTHEON_METRICS_ENABLED"))\n',
+        "",
+    )
+    assert {"CARDDAV_URL", "PANTHEON_METRICS_ENABLED"} <= set(mod.literal_reads())
+
+
+def test_an_env_read_beside_a_tri_state_key_is_reported(fixture_repo):
+    # `B90` in miniature. `allow_model_download` ships `None` so that a stored
+    # `False` can mean *no*; `bool(get_setting(K, False))` flattens that back
+    # into the absence it was made distinguishable from, and the `or` beneath it
+    # then wins. Measured 2026-09-15: stored `False`, effective `True`.
+    mod = fixture_repo(
+        'import os\n'
+        'from src.settings import get_setting\n'
+        'def allowed():\n'
+        '    return bool(get_setting("allow_model_download", False)) or bool(\n'
+        '        os.environ.get("PANTHEON_ALLOW_MODEL_DOWNLOAD"))\n',
+        "PANTHEON_ALLOW_MODEL_DOWNLOAD=0\n",
+        extra={"src/settings.py": _settings(allow_model_download=None)},
+    )
+    found = mod.unreachable(mod.shipped_defaults())
+    assert len(found) == 1, found
+    assert "env_backed_flag" in found[0], "and it names the tool that answers"
+
+
+def test_env_backed_flag_clears_the_tri_state_finding(fixture_repo):
+    mod = fixture_repo(
+        'from src.settings import env_backed_flag, load_settings\n'
+        'def allowed():\n'
+        '    return env_backed_flag(load_settings(), "allow_model_download",\n'
+        '                           "PANTHEON_ALLOW_MODEL_DOWNLOAD")\n',
+        "PANTHEON_ALLOW_MODEL_DOWNLOAD=0\n",
+        extra={"src/settings.py": _settings(allow_model_download=None)},
+    )
+    assert mod.unreachable(mod.shipped_defaults()) == []
+
+
+def test_a_key_the_settings_file_does_not_ship_is_still_never_flagged(fixture_repo):
+    # The `None` rule had to be told apart from "no such key", which
+    # `defaults.get(key)` also answers `None` for. A sentinel does it; without
+    # one, every unknown key would be flagged as tri-state.
+    mod = fixture_repo(
+        'import os\n'
+        'from src.settings import get_setting\n'
+        'def f():\n'
+        '    return get_setting("not_a_shipped_key", False) or os.getenv("NOT_A_SHIPPED_KEY")\n',
+        "NOT_A_SHIPPED_KEY=1\n",
+        extra={"src/settings.py": _settings(unrelated=1)},
+    )
+    assert mod.unreachable(mod.shipped_defaults()) == []
+
+
+def test_the_spelling_rule_is_clean_against_the_real_tree():
+    proc = _run()
+    assert proc.returncode == 0, proc.stdout
+    assert "SPELLING 0 (max 0," in proc.stdout
+
+
+def test_every_held_site_in_the_real_tree_states_a_reason():
+    mod = _load(_REPO)
+    held = mod.exempt_spellings()
+    assert held, "the hold list is not empty and the checker can enumerate it"
+    for entry in held:
+        reason = entry.split(" ", 1)[1]
+        assert len(reason) > 30, f"an exemption with no reason is a silenced finding: {entry}"
+
+
+def test_an_inline_spelling_fails_the_run_and_not_only_the_report(
+        fixture_repo, monkeypatch, capsys):
+    mod = _fixture_that_only_fails_on_the_rule_under_test(
+        fixture_repo,
+        'import os\n'
+        'def f():\n'
+        '    return os.getenv("SOME_FLAG", "").lower() == "true"\n',
+        "SOME_FLAG=1\n",
+        _settings(unrelated=1),
+    )
+    monkeypatch.setattr(sys, "argv", ["check-env-declared.py"])
+    assert mod.main() == 1
+    out = capsys.readouterr().out
+    assert "SPELLING 1 (max 0" in out
+    assert "SOME_FLAG" in out

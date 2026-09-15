@@ -25,6 +25,7 @@ from typing import List, Dict, Optional
 
 from core.middleware import require_admin
 from src.url_safety import check_outbound_url
+from src.env_flags import env_flag
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +120,7 @@ def _validate_carddav_url(url: str) -> str:
     cleaned = (url if isinstance(url, str) else "").strip().rstrip("/")
     ok, reason = check_outbound_url(
         cleaned,
-        block_private=os.getenv("CARDDAV_BLOCK_PRIVATE_IPS", "false").lower() == "true",
+        block_private=env_flag("CARDDAV_BLOCK_PRIVATE_IPS", False),
     )
     if not ok:
         raise ValueError(f"Rejected CardDAV URL: {reason}")

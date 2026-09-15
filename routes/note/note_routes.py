@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from core.database import SessionLocal, Note
 from core.middleware import INTERNAL_TOOL_USER
 from src.auth_helpers import require_user
+from src.env_flags import env_flag
 from src.constants import DATA_DIR
 from src.upload_handler import reserve_upload_references
 from sqlalchemy.orm.attributes import flag_modified
@@ -450,7 +451,7 @@ async def dispatch_reminder(
                         # RFC-1918 ranges for locked-down deployments.
                         import os as _os
                         from src.url_safety import check_outbound_url as _chk
-                        _block = _os.getenv("REMINDER_WEBHOOK_BLOCK_PRIVATE_IPS", "false").lower() == "true"
+                        _block = env_flag("REMINDER_WEBHOOK_BLOCK_PRIVATE_IPS", False)
                         _ok, _reason = _chk(url, block_private=_block)
                         if not _ok:
                             webhook_error = f"Webhook URL rejected: {_reason}"
@@ -491,7 +492,7 @@ async def dispatch_reminder(
                 # so a ntfy base_url can't be pointed at internal services.
                 import os as _os
                 from src.url_safety import check_outbound_url as _chk
-                _block = _os.getenv("REMINDER_WEBHOOK_BLOCK_PRIVATE_IPS", "false").lower() == "true"
+                _block = env_flag("REMINDER_WEBHOOK_BLOCK_PRIVATE_IPS", False)
                 _ok, _reason = _chk(f"{base}/{topic}", block_private=_block)
                 if not _ok:
                     ntfy_error = f"ntfy URL rejected: {_reason}"

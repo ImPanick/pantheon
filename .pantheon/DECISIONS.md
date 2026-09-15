@@ -1924,3 +1924,157 @@ install cost mattering: `app.py`'s `_RevalidatingStatic` stamps `Cache-Control: 
 `.js`, so an install that dropped `cache: 'reload'` would revalidate into 304s instead of refetching
 6.7 MB. That is a real saving and a separate question — it changes what install does for the 105
 URLs that were already there, not just the 67 this row added.
+
+---
+
+## D-2026-09-15-01 — a boolean setting gets a third value, so *no* can be said
+
+`B90` asked whether an operator can turn three switches off and have them stay off. They could
+not, and the reason was the storage shape rather than any caller: `metrics_enabled`,
+`searxng_widen_engines` and `allow_model_download` each resolved as
+`bool(get_setting(K, False)) or <env truthy>`, and an `or` is one-way.
+
+### The measurement the decision rests on
+
+Driven 2026-09-15 against a fresh `PANTHEON_DATA_DIR`, through the three real resolvers rather
+than by reading them. With all three **stored `False`** and `PANTHEON_METRICS_ENABLED=1`,
+`SEARXNG_WIDEN_ENGINES=1`, `PANTHEON_ALLOW_MODEL_DOWNLOAD=1`: **effective `True`, `True`,
+`True`.** The operator's explicit *off* was not overridden loudly — it was never read.
+
+Two further facts shaped the fix. **All three ship in every `docker-compose*.yml`** as
+`${VAR:-0}`, so every Docker install carries the variables; the scenario is an operator who set
+one to `1` once to fetch a model and later turned the switch off in settings. And **none of the
+three has a field in the settings UI** — grepped across `static/` and the templates, zero hits —
+so the only way to write one is `POST /api/auth/settings`, which writes the whole merged dict.
+
+### Why `setting_is_explicit` is the wrong tool, and that is not a defect in it
+
+It answers presence AND a non-default value. The stored `False` **was** the shipped default, so
+it correctly answered `False`, and its own docstring names this cost. No change at any of the
+three call sites could have recovered the distinction, because the distinction was not in the
+data. This is what makes `B90` a storage row rather than a caller row.
+
+### Decided: the shipped default becomes `None`, and a stored bool outranks the environment
+
+`DEFAULT_SETTINGS` now ships `None` for the three keys. `None` means *nobody has chosen*; `True`
+and `False` are both choices. `src/settings.env_backed_flag` resolves **stored choice → environment
+→ default**, which is the order `env_backed` already implements for strings and the order
+`resolve_task_concurrency_cap` documents — these three were the only pairs in the tree where the
+environment sat *above* the stored value, and they got there through the `or` rather than through
+a decision.
+
+`bool(None)` is `False`, so every consumer reading these keys with `bool()` is unchanged, and the
+shipped behaviour is still off — which `Law 16` requires of `allow_model_download` and which three
+existing tests now assert as a property rather than as a byte.
+
+### The alternatives, and why each was rejected
+
+* **Record explicitness alongside the value.** A second store of a fact the value can hold itself.
+  `Law 13`: the tri-state *is* the explicitness, and a parallel ledger drifts from the thing it
+  describes.
+* **A sentinel string in `settings.json`.** Every JSON consumer would have to learn it, and
+  `bool("__unset__")` is `True` — the `bool("false")` trap `B20` names, rebuilt deliberately.
+* **Invert precedence for these three keys.** Cheapest to write and impossible to explain: an
+  operator would have three keys where settings beat the environment and 24 where it does not,
+  with nothing saying which is which. It also does not fix the row — it moves the operator who
+  loses from one side to the other.
+* **A UI field.** Necessary eventually and not sufficient now: a toggle writing `false` into a
+  store that cannot tell `false` from the default changes nothing. Filed as `B95`.
+* **`public_origin.source_of` — let the environment keep winning and say so.** `B90` names this
+  as the cheap option and it is genuinely cheaper. Rejected as the *whole* answer because
+  `allow_model_download` is the `Law 16` gate: an interface that explains why Pantheon is
+  fetching a model from HuggingFace against the operator's written *no* is a better error
+  message, not a fix. **Kept as the other half** — `env_backed_flag` logs once, at WARNING, naming
+  the variable and the key, whenever a stored `False` is the reason the environment lost.
+
+### What it costs, stated rather than buried
+
+**One class of install changes behaviour at upgrade**, and only one: an install that already
+carries a materialised `False` on disk — written by a pre-2026-09-15 admin save — **and** a truthy
+variable for the same key. There the environment won yesterday and the stored value wins today.
+All three fail closed: `/metrics` starts answering 404, a failed search stops widening to Google,
+and a model stops being fetched. For two of the three that is the `Law 16` direction; for
+`metrics_enabled` it is a Prometheus scrape that breaks, and that is the real cost.
+
+It is not silent. The warning fires on exactly that pair and on nothing else, names both layers,
+and says which line of `data/settings.json` to delete to hand the decision back to the
+environment. A migration was weighed and rejected: `data/settings.json` carries no schema version,
+and a materialised `False` is byte-identical to a chosen one, so a rewrite would have had to guess
+at intent in precisely the case where intent is the question.
+
+Every *other* install is unaffected, including the common one. A materialising save now writes
+`null` rather than `False`, so opening the settings panel no longer manufactures a choice — which
+is `Law 1` held where `B20` found it broken.
+
+### What would reopen this
+
+A settings store that records when and by whom each key was written, which would make the
+tri-state unnecessary and the migration decidable. Or a fourth key needing the same treatment
+without a UI field — the shape generalises, but three keys is not yet a pattern, and
+`.pantheon/check-env-declared.py` now fails the build if a tri-state key is read back through
+`get_setting`, so a fourth cannot arrive quietly.
+
+---
+
+## D-2026-09-15-02 — one vocabulary for environment switches, and nine sites that keep their own
+
+`B91` counted the spellings of "is this environment variable true". Re-measured 2026-09-15 by AST
+across every tracked `.py` outside `tests/` and `.pantheon/`: **38 environment booleans judged by
+10 incompatible rules.** `PANTHEON_STARTUP_WARMUPS=1` was on and `IMAP_STARTTLS=1` was off in one
+process. `AUTH_ENABLED=0` left authentication **enabled**. `CLEANUP_ENABLED=" true"` was off, at
+the one site of the 38 that never called `.strip()`.
+
+### Decided: the vocabulary is the union of what the tree already accepted
+
+    ON   1  true  yes  on          OFF  0  false  no  off
+
+Case-folded, whitespace-stripped, and **nothing admitted that no site accepted before**. `y` and
+`n` were considered and refused: no site in this tree accepted `y` on an environment variable, so
+admitting it would widen 38 sites on a preference, and admitting `n` is worse — the six
+`not in (...)` sites read an unrecognised word as ON, so `n` would silently turn six switches off.
+The asymmetry with `yes` is the price and it is the smaller one.
+
+`env_truthy` returns **three** values. Blank, whitespace and an unrecognised word all answer
+`None`, and the caller's own default decides. That is not a new rule: `settings.env_backed` already
+settled *blank means unset* for the string half of this question and says so in its docstring
+(`Law 14`). It is also what makes adoption nearly behaviour-preserving — a site spelled
+`== "true"` is *off unless true*, a site spelled `not in ("0","false","no")` is *on unless one of
+these*, and passing that site's own default reproduces its answer for every value it already knew.
+
+The module is `src/env_flags.py` and imports nothing but `os`, because `src/runtime_limits` is one
+of its callers and is imported lazily from `src/tool_utils`, which forbids project imports to
+avoid a cycle. `tests/test_tool_utils_import_clean.py` enforces that closure transitively, so the
+exemption is measured rather than asserted.
+
+### Why nine sites keep their own rule
+
+`Law 1`. Unifying a spelling changes meaning for an operator who already typed a value, and at
+nine sites the direction of that change is a loosened control or a live deployment flipping:
+
+| site | today | under the shared rule | why it is held |
+|---|---|---|---|
+| `AUTH_ENABLED` | `=0` leaves auth **on** | `=0` disables auth | a host boots unauthenticated after an upgrade |
+| `LOCALHOST_BYPASS` ×2 | `=1` does nothing | `=1` bypasses auth on loopback | `FORBIDDEN.md` Part 2; both sites move together or not at all |
+| `PANTHEON_SINGLE_USER` | `=false` stays single-user | `=false` rejects unauthenticated requests | correct, and an outage for whoever relies on the fallback owner |
+| `SECURE_COOKIES` | `=1` auto-detects the scheme | `=1` means true | a Secure cookie over plain HTTP locks the operator out |
+| `PANTHEON_NETAGENT_ALLOW_EXEC` | `=on` does nothing | `=on` permits remote command execution | its own docs promise "a deliberate act" |
+| `PANTHEON_ALLOW_PRIVATE_CALDAV` | `=on` does nothing | `=on` disables an SSRF guard | a guard should not widen by sweep |
+| `PANTHEON_BROWSER_ISOLATED` | `=off` keeps `--isolated` | `=off` drops it | the mirror image of its neighbour: widening loosens here and tightens there |
+| `DEMO_ALLOW_WIPE` | only `=1` | four spellings | an irreversible expunge |
+
+The exemption is a `# env-spelling: <reason>` comment **at the site**, not a list inside the
+checker — the same reasoning that makes each `NOT_OURS` entry say whose variable it is. A list of
+names in a checker is a list nobody reads next to the code it is about.
+
+### What it costs
+
+**22 sites changed meaning, all in one direction each, and all enumerated in `B91`.** Eleven SSRF
+switches and four mail TLS flags now turn ON for `1`/`yes`/`on` where they silently did nothing —
+a tightening in every case. `CLEANUP_ENABLED` gained a `.strip()`. Three sites read a bare `X=`
+as *unset* where they read it as *off*. Nothing moved in the permissive direction.
+
+### What would reopen this
+
+A held site becoming safe to unify — most likely `SECURE_COOKIES`, whose `=1` meaning
+*auto-detect* is indefensible and needs only a release note. Or a genuine need for `y`/`n`, which
+should arrive as a request from an operator rather than as a tidy.

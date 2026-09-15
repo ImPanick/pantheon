@@ -12,9 +12,17 @@
 // shows what a person sees, and the row's claim is precisely about what a
 // person sees when two surfaces are open together.
 //
+// `B78` adds a third mode for the same pair of surfaces, one question deeper.
+// The words were one table; the CLASS each surface puts on the dot was still
+// two ladders, because `queuePanel.js` cannot import `tasks.js` and so had
+// written the second one out by hand. `classes` runs both and reports what each
+// names for the same status — the only way to see that they answered `info` and
+// `error` to one input, since neither file mentions the other.
+//
 // Usage:
 //   node queue_status_words.js vocabularies
 //   node queue_status_words.js together
+//   node queue_status_words.js classes
 const fs = require('fs');
 const path = require('path');
 
@@ -93,8 +101,12 @@ const panel = new Function('document', 'formatElapsed', 'modelChoices', 'choiceK
 `);
 
 // ── The Activity view ───────────────────────────────────────────────────────
-const tone = unexport(slice(tasksSrc, 'export function runStatusTone(status) {',
-                            'function _statusDot(status) {', 'runStatusTone'));
+// `B78`: `runStatusTone` used to be sliced out of `tasks.js` here. It lives in
+// `runStatus.js` now — the panel above needs the same derivation and cannot
+// import `tasks.js` — so it arrives inside `wordsSrc`, which both halves of
+// this harness already evaluate. That is the point of the move: the panel and
+// the Activity view get the tone from the same eight lines, and this file can
+// no longer feed them two different copies of it.
 const controls = unexport(slice(tasksSrc, 'export function activityEntryControls(entry) {',
                                 '/** Tooltip for the shared stop control.', 'activityEntryControls'));
 const stopLabel = slice(tasksSrc, 'function _stopLabel(entry) {',
@@ -112,7 +124,6 @@ const deps = {
 const names = Object.keys(deps);
 const activity = new Function(...names, `
   ${wordsSrc}
-  ${tone}
   ${controls}
   ${stopLabel}
   ${renderer}
@@ -170,7 +181,40 @@ function bubbleWord(item) {
 const SIX = ['queued', 'running', 'success', 'error', 'skipped', 'aborted'];
 const mode = process.argv[2] || 'vocabularies';
 
-if (mode === 'vocabularies') {
+if (mode === 'classes') {
+  // Read off the emitted markup, not off the two functions: `buildRow` puts the
+  // class on the row AND on the dot, and `_renderActivityEntry` builds its own
+  // from a different expression, so "they agree" has to mean the markup agrees.
+  const out = {};
+  // Legacy `failed` and an unknown value are in the list on purpose: they are
+  // where the two ladders differed, and `''` is where they still differ FOR A
+  // REASON — the Activity view text-scans a result it has and the panel has none.
+  for (const status of [...SIX, 'failed', 'not-a-status']) {
+    const entry = {
+      queueId: 'q1', taskName: 'ship the thing', kind: 'llm', status,
+      ts: new Date(Date.now() - 3000).toISOString(), result: '', position: 1,
+    };
+    const row = panelApi.buildRow(entry);
+    const panelRow = (row.attrs.class || '').split(/\s+/)
+      .filter(c => c.startsWith('task-log-row-')).map(c => c.slice(13));
+    const dotEl = (function find(n) {
+      if (!n || !n.attrs) return null;
+      if ((n.attrs.class || '').split(/\s+/).includes('task-log-status')) return n;
+      for (const c of n.children || []) { const h = find(c); if (h) return h; }
+      return null;
+    })(row);
+    const panelDot = ((dotEl && dotEl.attrs.class) || '').split(/\s+/)
+      .filter(c => c.startsWith('task-log-status-')).map(c => c.slice(16));
+    const html = activityApi._renderActivityEntry(entry);
+    out[status] = {
+      panel: panelDot[0] || null,
+      panelRow: panelRow[0] || null,
+      activity: (html.match(/task-log-status task-log-status-(\S+?)"/) || [])[1] || null,
+      agree: (panelDot[0] || null) === ((html.match(/task-log-status task-log-status-(\S+?)"/) || [])[1] || null),
+    };
+  }
+  console.log(JSON.stringify(out));
+} else if (mode === 'vocabularies') {
   // Every word each surface has for each of the six, both subjects.
   const out = {};
   for (const status of SIX) {

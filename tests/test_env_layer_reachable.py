@@ -440,13 +440,27 @@ def test_a_stored_imap_starttls_still_outranks_the_environment(
 
 def test_the_starttls_coercion_matches_the_other_resolver_of_the_variable(tmp_path, monkeypatch):
     """Two resolvers of one variable must agree about every spelling, not only
-    about `false`. `mcp_servers/email_server.py:312` accepts `true` and nothing
-    else; accepting `1` here would have replaced a silent disagreement about
-    `false` with a silent disagreement about `1`."""
+    about `false`. Accepting `1` at one of them and not the other would have
+    replaced a silent disagreement about `false` with a silent disagreement
+    about `1`.
+
+    **The agreement is unchanged; what it is measured against is.** `B20` wrote
+    this line as a transcription of `mcp_servers/email_server.py`'s rule —
+    `raw.strip().lower() == "true"`, copied by hand — because there was nothing
+    to call. `B91` gave both resolvers `env_flags.env_flag`, so the comparison
+    is now against the shared rule, and a transcription that could go stale
+    without either resolver moving is gone. `IMAP_STARTTLS=1` moves from *off*
+    to *on* at both together; the direction is toward TLS, and neither can drift
+    from the other again because there is only one rule.
+    """
+    import os
     import routes.email_helpers as E
-    for raw in ("true", "TRUE", " true ", "false", "1", "yes", "on", ""):
-        sibling = raw.strip().lower() == "true"       # email_server.py:312, verbatim
+    from src.env_flags import env_flag
+    for raw in ("true", "TRUE", " true ", "false", "1", "0", "yes", "on", "off", ""):
+        monkeypatch.setenv("IMAP_STARTTLS", raw)
+        sibling = env_flag("IMAP_STARTTLS", False)    # what email_server.py now calls
         assert E._starttls(raw) is sibling, raw
+        assert os.environ["IMAP_STARTTLS"] == raw, "precondition: the env holds the spelling"
 
 
 def test_the_starttls_coercion_keeps_a_stored_bool_and_spells_an_env_string(tmp_path, monkeypatch):

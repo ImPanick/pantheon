@@ -13,10 +13,21 @@
 // only running the function and looking at the emitted HTML shows that the
 // row's Copy log and Run again buttons are gone.
 //
+// `B78`/`B84` add two more surfaces, for the same reason. The run-history
+// list's word is built inside an `async` function that fetches, then writes a
+// string into `body.innerHTML` — reading the template tells you the expression,
+// not the sentence a person ends up looking at. And the notification client's
+// wording is chosen three branches into a poll loop, where whether it SHOUTS
+// matters as much as what it says: the old form raised the failure dot on every
+// status that was not `success`, and no amount of reading `'failed'` in the
+// template shows that.
+//
 // Usage:
-//   node activity_row_status.js row   '<entry-json>'
-//   node activity_row_status.js badge '<task-json>'
+//   node activity_row_status.js row     '<entry-json>'
+//   node activity_row_status.js badge   '<task-json>'
 //   node activity_row_status.js tone
+//   node activity_row_status.js history '<runs-json-array>'
+//   node activity_row_status.js notify  '<notifications-json-array>'
 const fs = require('fs');
 const path = require('path');
 
@@ -52,9 +63,12 @@ const unexport = (s) => s.replace(/^export\s+/gm, '');
 
 // Extracted, never re-declared: a harness that reimplements the rule tests the
 // harness. `runStatusTone` in particular must be the shipped one — it is the
-// single source the other three sites now derive from.
-const tone = unexport(slice('export function runStatusTone(status) {',
-                            'function _statusDot(status) {', 'runStatusTone'));
+// single source the other sites derive from. `B78` moved it OUT of `tasks.js`
+// into `runStatus.js` (a fifth ladder, in `queuePanel.js`, could not import
+// `tasks.js` and so had copied it by hand), so it now arrives with the word
+// table above rather than as its own slice. The anchor that used to cut it out
+// of `tasks.js` is deliberately not kept as a fallback: a harness that silently
+// accepts either layout stops being able to say which one shipped.
 const renderer = slice('function _renderActivityEntry(entry, opts = {}) {',
                        'function _escHtml(s) {', '_renderActivityEntry');
 const controls = unexport(slice('export function activityEntryControls(entry) {',
@@ -74,6 +88,25 @@ const badge = slice('    if (task.last_run_status) {',
 // one — so a button that renders is not yet a button that does anything.
 const wire = slice('function _wireActivityRows(list) {',
                    'function _renderCompletedPreviewEntry(entry) {', '_wireActivityRows');
+// `B84`. The run-history list — the surface that printed the stored enum at a
+// person. Lifted whole, because the word, the row class and the dot colour are
+// three expressions inside one loop and the question is what the three of them
+// say TOGETHER about a single run.
+const history = slice('async function _showRunHistory(taskId, taskName) {',
+                      '// ---- Actions ----', '_showRunHistory');
+// `B78`. The notification client. Lifted whole for the same reason: `msg` and
+// the branch that decides between `showToast` and `showError` are separate
+// statements, and the defect was that one status set could reach both.
+const notify = slice('async function _pollTaskNotifications() {',
+                     'function startNotificationPolling() {', '_pollTaskNotifications');
+// `_isChatResultRun` decides the Completed tab's contents and `_isFinishedRun`
+// is its only consumer, so the pair is lifted together — the whole point of
+// `B78`'s third claim is what the CALLER does with the answer.
+const finished = slice('function _isFinishedRun(entry) {',
+                       'async function _renderCompletedView() {', '_isFinishedRun');
+// The real dot, not a stub: its colour map is half of what `B78` says is short
+// of the six, and a stubbed one would report the harness's palette.
+const dot = slice('const _RUN_DOT_COLORS = {', 'const _TASK_ICONS = {', '_statusDot');
 
 const escHtml = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -112,7 +145,6 @@ const deps = {
 const names = Object.keys(deps);
 const make = new Function(...names, 'document', 'detail', 'task', `
   ${runStatusModule}
-  ${tone}
   ${controls}
   ${stopLabel}
   ${entryStatus}
@@ -124,6 +156,25 @@ const make = new Function(...names, 'document', 'detail', 'task', `
   return { _renderActivityEntry, activityEntryControls, _entryStatus, runStatusTone,
            _renderBadge, _wireActivityRows };
 `);
+
+// `B78`/`B84`. A second factory rather than more parameters on the first: the
+// run-history list and the notification poller need a DOM and a `fetch` that
+// the four original modes must NOT have, and widening the shared factory would
+// let a renderer start depending on one without this file noticing.
+function makeExtra(extra) {
+  const local = { ...deps, ...extra };
+  const ks = Object.keys(local);
+  return new Function(...ks, `
+    let _viewingRuns = null;
+    let _open = false;
+    ${runStatusModule}
+    ${dot}
+    ${finished}
+    ${history}
+    ${notify}
+    return { _showRunHistory, _pollTaskNotifications, _isFinishedRun, _isChatResultRun };
+  `)(...ks.map((k) => local[k]));
+}
 
 // Selectors `_wireActivityRows` asks each row for. A row stub answers by
 // looking for the class in the HTML the renderer actually emitted, so this
@@ -163,6 +214,75 @@ if (mode === 'tone') {
     green: el ? el.style.cssText.includes('--green') : null,
     html: el ? el.innerHTML : null,
   }));
+} else if (mode === 'history') {
+  // What the run-history list SAYS about each run, read off the markup it
+  // writes into the panel rather than off its template.
+  const runs = JSON.parse(process.argv[3] || '[]');
+  let written = '';
+  const bodyEl = {
+    set innerHTML(v) { written = String(v); },
+    get innerHTML() { return written; },
+    appendChild() {}, querySelectorAll: () => [],
+  };
+  const doc = {
+    getElementById: (id) => (id === 'tasks-modal'
+      ? { querySelector: () => bodyEl }
+      : { addEventListener() {} }),
+  };
+  const api = makeExtra({
+    document: doc,
+    _fetchRuns: async () => runs,
+    _absoluteTime: () => '09/15 10:00',
+    _renderMainView: () => {},
+    spinnerModule: { createLoadingRow: () => ({}), createWhirlpool: () => ({ element: { style: {} } }) },
+  });
+  api._showRunHistory('t1', 'Nightly tidy').then(() => {
+    // One record per rendered run, in order.
+    const items = written.split('<div class="task-run-item ').slice(1);
+    console.log(JSON.stringify(items.map((chunk, i) => ({
+      status: runs[i] && runs[i].status,
+      rowClass: (chunk.match(/^([a-z-]+)"/) || [])[1] || null,
+      // The word a person reads. `null` would mean the slot vanished.
+      word: (chunk.match(/<span title="[^"]*">([^<]*)<\/span>/) || [])[1] ?? null,
+      // The stored value, which must still be reachable somewhere.
+      title: (chunk.match(/<span title="([^"]*)">/) || [])[1] ?? null,
+      // The inline dot colour, so two different outcomes cannot share one.
+      dot: (chunk.match(/background:(#[0-9a-f]{3,6})/) || [])[1] || null,
+    }))));
+  });
+} else if (mode === 'notify') {
+  // What the notification client says, and — the half that matters — whether it
+  // shouts. `failure` is `_setTaskFailurePending(true)`: the red dot on the
+  // Tasks button that tells a person something is wrong.
+  const notes = JSON.parse(process.argv[3] || '[]');
+  const said = [];
+  let failure = false;
+  const api = makeExtra({
+    document: { querySelector: () => null },
+    fetch: async () => ({ ok: true, json: async () => ({ notifications: notes }) }),
+    _setTaskFailurePending: (v) => { if (v) failure = true; },
+    _setTaskCompletionPending: () => {},
+    _renderCompletedView: () => {},
+    _renderActivityView: () => {},
+    uiModule: {
+      showToast: (m) => said.push({ how: 'toast', msg: m }),
+      showError: (m) => said.push({ how: 'error', msg: m }),
+      copyToClipboard() {},
+    },
+  });
+  api._pollTaskNotifications().then(() => {
+    console.log(JSON.stringify({ said, failure }));
+  });
+} else if (mode === 'completed') {
+  // Which runs reach the Completed tab. `_isFinishedRun` is the name `B78`
+  // complains about; `_isChatResultRun` is what the tab actually filters on.
+  const entries = JSON.parse(process.argv[3] || '[]');
+  const api = makeExtra({});
+  console.log(JSON.stringify(entries.map((e) => ({
+    status: e.status, kind: e.kind,
+    finished: api._isFinishedRun(e),
+    inCompletedTab: api._isChatResultRun(e),
+  }))));
 } else if (mode === 'wire') {
   const entry = JSON.parse(process.argv[3] || '{}');
   const api = make(...names.map((n) => deps[n]), null, null, null);

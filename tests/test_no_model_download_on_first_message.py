@@ -104,9 +104,16 @@ def test_a_refusal_degrades_the_lane_list_rather_than_raising(monkeypatch):
 
 
 def test_permission_ships_off():
+    """`Law 16`, and `B90` moved the shipped value from `False` to `None`.
+
+    Off is still off — `bool(None)` is `False`. The third value exists because a
+    stored `False` and the shipped default were the same byte, so an operator
+    who turned this gate off could not outrank `PANTHEON_ALLOW_MODEL_DOWNLOAD`:
+    measured 2026-09-15, stored `False`, effective `True`."""
     from src.settings import DEFAULT_SETTINGS
 
-    assert DEFAULT_SETTINGS["allow_model_download"] is False
+    assert DEFAULT_SETTINGS["allow_model_download"] is None
+    assert bool(DEFAULT_SETTINGS["allow_model_download"]) is False
 
 
 def test_the_env_fallback_is_reachable(monkeypatch):

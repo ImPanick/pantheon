@@ -135,17 +135,25 @@ def model_download_allowed() -> bool:
     Note the default is falsy, which is what makes the env fallback below
     reachable — see `H06`/`B20` for the numeric-default case where the same
     shape is dead code.
+
+    `B90`, and this is the sharpest of the three because it is the `Law 16`
+    gate. It read `bool(get_setting(K, False)) or <env truthy>`; measured
+    2026-09-15 with `allow_model_download` stored `False` and
+    `PANTHEON_ALLOW_MODEL_DOWNLOAD=1`, it answered True. Every
+    `docker-compose*.yml` forwards that variable, so an operator who set it once
+    to fetch the model and then turned the switch off in settings kept
+    permission to reach HuggingFace, with nothing to see either in the panel or
+    in the file. An `or` cannot be told *no*.
     """
     try:
-        from src.settings import get_setting
+        from src.settings import env_backed_flag, load_settings
 
-        if bool(get_setting("allow_model_download", False)):
-            return True
+        return env_backed_flag(
+            load_settings(), "allow_model_download", "PANTHEON_ALLOW_MODEL_DOWNLOAD")
     except Exception:
-        pass
-    return (os.environ.get("PANTHEON_ALLOW_MODEL_DOWNLOAD") or "").strip().lower() in (
-        "1", "true", "yes",
-    )
+        # A settings file we cannot read is not consent to fetch a model.
+        from src.env_flags import env_flag
+        return env_flag("PANTHEON_ALLOW_MODEL_DOWNLOAD", False)
 
 
 class ModelDownloadNotPermitted(RuntimeError):
