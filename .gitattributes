@@ -20,7 +20,20 @@ docker/entrypoint.sh text eol=lf
 # to satisfy `git diff --check` would desync them from the upstream release. Turn
 # the whitespace check off for that tree instead, and keep the bundles out of
 # GitHub's language statistics.
-static/lib/** -whitespace linguist-vendored
+#
+# `-text` is the half this line was missing until `B362`, and it was missing on
+# the side that matters. The rule above says these files must stay byte-identical
+# to what upstream ships; without `-text` they resolved to `text: auto`, so on any
+# clone with `core.autocrlf=true` — the Git for Windows default — git rewrote
+# every LF to CRLF **on checkout**. Measured 2026-09-16 on the deployment host:
+# **twelve of the thirty-eight files under `static/lib/` differed from their own
+# git blobs**, `git status` reported the tree clean, and stripping the carriage
+# returns reproduced each blob hash exactly. That working tree is the Docker
+# build context, so the image was being built from bytes the repository does not
+# contain. Nothing broke — JavaScript and CSS tolerate CRLF — which is precisely
+# why it went unnoticed, and why an SRI hash or `check-vendored-versions.py`
+# would have failed on that host and passed on Linux for the same commit.
+static/lib/** -text -whitespace linguist-vendored
 
 # Binary assets — never normalize.
 *.png  binary

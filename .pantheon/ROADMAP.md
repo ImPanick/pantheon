@@ -80,8 +80,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P17 | The network the agent is hosted on | 14 | 3 | 0 | **11** |
 | P18 | One button, and it links | 9 | 0 | 0 | **9** |
 | P19 | The proof ledger | 8 | 0 | 0 | **8** |
-| Backlog | Bugs and hardening found in flight | 205 | 33 | 0 | **172** |
-| **Total** | | **587** | **216** | **9** | **362** |
+| Backlog | Bugs and hardening found in flight | 206 | 33 | 0 | **173** |
+| **Total** | | **588** | **216** | **9** | **363** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -245,14 +245,21 @@ they are for.*
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
 
 ### Going public: the dependencies nobody was watching, and a README that printed 2 where the checker printed 120
-`394e619..HEAD`. **587 tracked, 362 done. 0 new phase rows, 0 regressions. `B320`–`B323`,
-`B330`–`B334`, `B337`, `B340`–`B347`, `B350`–`B355` and `B360` closed; twelve rows filed.** Four
+`394e619..HEAD`. **588 tracked, 363 done. 0 new phase rows, 0 regressions. `B320`–`B323`,
+`B330`–`B334`, `B337`, `B340`–`B347`, `B350`–`B355`, `B360` and `B362` closed; twelve rows
+filed.** Four
 worktrees. **`B330`'s new checker found three corrupt files on its first integration run** —
 working copies disagreeing with their own git blobs by up to twenty thousand bytes, which
 `git diff` and `git status` both reported as clean, because `.gitattributes` silences whitespace
 on exactly those files for exactly the right reason (`B360`). Nothing shipped; the committed
 bytes were never affected. It was written to stop *version* drift in prose and caught *byte*
-drift in the tree. The owner asked two questions — *are we current on dependencies* and *is the public
+drift in the tree. Running that same sweep on the **Windows deployment host** rather than only in
+the Linux container then found `B362`, which is the larger half: `core.autocrlf=true` plus a
+`.gitattributes` line that said `-whitespace` and not `-text` meant git rewrote LF to CRLF on
+checkout for **twelve** of the thirty-eight vendored files — and that working tree is the Docker
+build context, so the image has been built from bytes the repository does not contain. Nothing
+broke, because JavaScript tolerates CRLF, which is why it survived. `check-vendored-versions.py`
+would have failed on that host and passed on Linux for the same commit. The owner asked two questions — *are we current on dependencies* and *is the public
 markdown ready* — and the honest answer to the first was **no, and nothing was watching**.
 **The pip half of `dependabot.yml` had been configured, reviewed and merged, and could not have
 opened a single pull request.** `requirements.txt` carried 31 dependencies and **zero `==`**, and
@@ -11516,3 +11523,31 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   and makes the fix a merge-procedure change rather than a checker. `Verify:` the count is
   measured and written down, and whatever guard follows fails on a re-introduced drift.
   `Depends:` `B330` (landed), `B360` (landed). — found while merging `B330` — agent:`integrator`
+
+- [x] **B362** **The deployment host was building the image from bytes the repository does not
+  contain, on twelve files, and every tool reported the tree clean.** Found 2026-09-16 on the
+  merge of `B360`, by running that row's own sweep on the Windows deployment host instead of only
+  in the Linux container. **Twelve of the thirty-eight files under `static/lib/` disagreed with
+  their git blobs** — `html2pdf.bundle.min.js`, `katex.min.css`, `mammoth.browser.min.js`,
+  `mermaid.min.js`, `qrcode.min.js`, `xlsx.full.min.js`, both `swagger-ui` assets, both
+  `MANIFEST.json` files and more — while `git status` printed nothing at all.
+  **Not corruption. Line endings.** `core.autocrlf` is `true` on that host, which is the Git for
+  Windows default, and `.gitattributes:23` set `static/lib/** -whitespace linguist-vendored`
+  without `-text`, so every one of those files resolved to `text: auto` and git rewrote LF to
+  CRLF **on checkout**. Proved rather than assumed: stripping the carriage returns reproduces the
+  blob hash **exactly** for every file tested, and the byte deltas are precisely the newline
+  counts (`katex.min.css` +1 on 1 line, `xlsx.full.min.js` +24 on 24, `swagger-ui.css` +2).
+  **The consequence is that the working tree is the Docker build context**, so the running image
+  has been built from CRLF-translated copies of every vendored bundle. Nothing broke, because
+  JavaScript and CSS tolerate CRLF — which is exactly why it survived: the failure mode of this
+  defect is silence. What it does break is every argument from bytes. An SRI hash would not
+  match. `B330`'s `check-vendored-versions.py` would have failed on that host and passed on Linux
+  **for the same commit**, which is the worst property a checker can have.
+  The comment above that line already stated the rule — *"must stay byte-identical to what npm
+  ships"* — and the attribute enforcing half of it was missing. `-text` is the half. The blobs are
+  stored LF and are unchanged, so this is a checkout-behaviour fix with no content churn.
+  `Verify:` on a host with `core.autocrlf=true`, every file under `static/lib/` matches its blob
+  after a fresh checkout, and `check-vendored-versions.py` gives the same answer on Windows and
+  Linux for one commit. **`B360`'s three container files were a different mechanism — `git apply`
+  on a minified single-line bundle — and the same class**: bytes drifting from the index where
+  nothing looks. — found while merging `B360` — agent:`integrator`
