@@ -8,8 +8,11 @@ body:
       value: |
         **Before submitting:** search [open issues](https://github.com/ImPanick/pantheon/issues)
         and [discussions](https://github.com/ImPanick/pantheon/discussions) first.
-        Feature requests that duplicate [the roadmap](https://github.com/ImPanick/pantheon/blob/main/.pantheon/ROADMAP.md)
+        Feature requests that duplicate [the roadmap](https://github.com/ImPanick/pantheon/blob/main/ROADMAP.md)
         or an existing open issue will be closed as duplicates.
+
+        The roadmap is one very large file. Searching it in a clone
+        (`grep -n "your idea" .pantheon/ROADMAP.md`) is faster than reading it on the web.
 
         If your idea needs community input before it becomes a concrete proposal,
         start a [discussion](https://github.com/ImPanick/pantheon/discussions/categories/ideas) instead.

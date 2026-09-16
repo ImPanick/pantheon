@@ -11,3 +11,9 @@ contact_links:
   - name: Security Vulnerability
     url: https://github.com/ImPanick/pantheon/security/advisories/new
     about: Report vulnerabilities privately via GitHub Security Advisories — never as a public issue. Read SECURITY.md before reporting.
+
+  # Same reasoning as the security link above: the harm is done by the time a public issue exists,
+  # so the chooser has to offer the private route before someone reaches for "New issue".
+  - name: Code of Conduct Report
+    url: https://github.com/ImPanick/pantheon/blob/main/CODE_OF_CONDUCT.md
+    about: Conduct reports go to the maintainer privately, never as a public issue. CODE_OF_CONDUCT.md has the channel and what to expect.

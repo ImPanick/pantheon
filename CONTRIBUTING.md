@@ -22,6 +22,64 @@ three places a newcomer meets the project first: cloning, contributing, and hard
 - Avoid broad rewrites, formatting-only changes, or moving many files unless the issue is specifically about structure.
 - If you want to work on a large feature, open an issue first and describe the approach.
 
+## How work is tracked, and what "done" means here
+
+This project does not work the way most repositories of its size do, and a first-time contributor
+who guesses will guess wrong. It is worth the five minutes.
+
+**Every change is a row.** [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) is the only tracker —
+no GitHub Projects board, no milestones, no per-area handoff files. A row states the defect, what
+was measured, what the fix is, and a `Verify:` clause naming the observation that would prove it.
+Marks are `- [ ]` ready, `- [~]` blocked, `- [·]` claimed, `- [x]` done. If what you are fixing has
+no row, write one. If you find a second defect on the way, that is a second row — not a second
+paragraph in the first, and not a quiet extra commit in the same PR.
+
+**The roadmap is updated every turn.** Ticked a row, corrected a premise, found a bug, got blocked,
+did nothing — it goes in. `python3 .pantheon/check-tracker.py` recounts the ticks and fails if the
+status table has drifted from the rows beneath it, so a stale tracker is a red check rather than a
+thing somebody notices in a month.
+
+**A row cannot be ticked on a claim nobody can check.** "I wrote a test and it passes" is not
+evidence that a defect is gone: a test written after the fix passes on a tree where the bug never
+existed. The evidence is a test that **fails on the tree as it stood before your change**. Produce
+it, and put the result in the PR:
+
+```bash
+git stash                                     # set your fix aside
+python -m pytest -q tests/test_the_thing.py   # must FAIL here — record what it says
+git stash pop
+python -m pytest -q tests/test_the_thing.py   # must PASS here
+```
+
+A test that passes in both states is testing something other than your fix. Say which test and what
+it reported on the unfixed tree; "added tests" on its own does not carry a review.
+
+**Then try to break the test.** The internal standard is mutation testing, and you can do the
+useful part of it by hand: change the line you fixed — revert it, invert the condition, drop the
+argument — and confirm your test goes red. If the mutation survives, the test is passing for a
+reason that is not your fix. This is where most nearly-good patches are caught.
+
+**A test that greps a file is testing the file, not the code.** A substring search cannot tell you
+whether it found code or a comment about code, or which function it landed in — the project has
+been burned three separate ways by exactly that. Call the thing you are asserting about: build the
+router and invoke the handler, evaluate the module, run the function. If you genuinely must assert
+on source text, resolve the scope first (`ast.get_source_segment` for Python, a delimited split for
+JS) and strip comments.
+
+**Half-wiring is the defect, not a smaller version of the fix.** If a behaviour is set in five
+places and you fix one, the row is not done. Find the other four before you open the PR — this is
+the single most common reason a correct-looking patch gets sent back.
+
+**Read [`.pantheon/FORBIDDEN.md`](.pantheon/FORBIDDEN.md) before touching anything security-shaped.**
+Part 1 lists names that cannot be renamed — class names, tool ids, enum values, storage keys —
+because renaming them silently resets user data or breaks a join. Part 2 lists security controls
+that never lift, each with the property it holds. A PR that removes one of those will be closed
+even if the surrounding change is good; if a task seems to require it, open an issue and say so.
+
+The full set of rules is in [`.pantheon/AGENTS.md`](.pantheon/AGENTS.md). It is written for agents
+working on this repository, but the reasoning is the same for people, and every rule cites the
+incident that produced it.
+
 ## Setup
 
 Docker is the recommended path for normal testing:
@@ -46,16 +104,41 @@ Windows is not actively tested. Docker on Linux or a Linux/macOS manual install 
 
 ## Running Checks
 
-Run the smallest relevant checks for your change:
+**While you work**, run the files your change touches. The suite is large — around a thousand test
+files — and running all of it on every edit is not a workflow:
 
 ```bash
-python -m pytest
+python -m pytest -q tests/test_the_thing.py tests/test_the_other_thing.py
 python -m py_compile app.py routes/*.py src/*.py
 # Redirect the file in rather than passing a path: `node --check <path>` picks
 # the module type from the nearest package.json and silently passes anything
 # with an `import` in it when that resolves to CommonJS.
 node --input-type=module --check < <file-you-changed>
 ```
+
+**Before you open the PR**, run the gate. It is one command instead of a memory, and it runs the
+same checkers CI runs — it reads the list out of `.github/workflows/ci.yml` rather than keeping a
+second copy of it, so it cannot drift from what will actually block your merge:
+
+```bash
+python3 .pantheon/release-gate.py --list    # what will run, and where it came from
+python3 .pantheon/release-gate.py --fast    # every checker, skipping the suite
+python3 .pantheon/release-gate.py           # everything, including the suite
+```
+
+Exit code zero is the gate. `--fast` takes about a minute and catches the things reviews
+otherwise spend time on: tracker drift, an element lookup that resolves to nothing, an env var read
+but never declared in `.env.example`, a vendored file nobody attributed, a source file with no SPDX
+header, a recurring job scheduled on an exact boundary, an outbound call that is not rate-limited.
+Each checker prints a one-line summary and several carry a ceiling — if you push a number up, the
+checker fails and tells you which one.
+
+Run the suite once before you push, and **do not edit the tree while it runs.** Fifteen files under
+`tests/`, at twenty call sites, read their own source with `inspect.getsource` (counted 2026-09-16),
+and `getsource` finds a function by the line number recorded when the module was *imported* and then
+reads the file from *disk*. Adding so much as a comment mid-run makes it return a different
+function's body, and the failure arrives looking exactly like a regression in whatever the offset
+happened to land on. If an edit cannot wait, the run is spent — make the edit and start a new one.
 
 For Docker-related changes:
 
@@ -134,5 +217,18 @@ Issues with only "help", "does not work", or a screenshot without context may be
 
 Do not post secrets, API keys, private logs, personal documents, or public IPs in issues or pull requests.
 
-For security reports, follow [SECURITY.md](SECURITY.md).
+**Never report a vulnerability as an issue.** [`SECURITY.md`](SECURITY.md) has the private channel,
+what to put in a report, and what response to expect. For this project in particular, naming the
+affected component is often most of the exploit — it ships shell execution, file read/write, mail,
+and MCP process launch — so the usual "I'll file a vague issue" instinct does real harm here.
+
+## Code of conduct
+
+[`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) applies to issues, pull requests, reviews and
+discussions. It is the Contributor Covenant v2.1 with an enforcement section written for a project
+run by one person, and it says how to report and what happens next.
+
+Worth separating from it: a review that says your pull request is wrong, cites the file and the
+line, and declines to merge it is not a conduct problem. This document sets a high evidence bar and
+applies it to everyone. Being told the bar was not met is the process working.
 

@@ -305,6 +305,38 @@ jobs:
       # its round is the whole defect.
       - name: check-event-rounds
         run: python3 .pantheon/check-event-rounds.py
+      # `B320`/`B322`. requirements.txt held 31 dependencies and zero `==`
+      # pins, which made the build irreproducible, let a yanked or compromised
+      # release land on the next build with nobody's name on it, and — the part
+      # that is easy to miss — made the pip half of .github/dependabot.yml
+      # inert. Dependabot bumps a pinned version; a bare `fastapi` is satisfied
+      # by every release fastapi ever made, so the automation was configured,
+      # reviewed, merged, and could not have opened a single Python PR. The
+      # ratchet is zero: a new dependency added without a pin fails here.
+      # Second rule, same file: every entry in
+      # .pantheon/dependency-advisories.toml must name the bug, why it cannot
+      # be reached here, what upstream offers, what would change the answer,
+      # the DECISIONS.md entry behind it, and a review date — which the checker
+      # fails on once it passes. An unexplained suppression is the defect class
+      # this project keeps finding. Offline by construction (`Law 16`); the
+      # half that needs a network is the blocking pip-audit job in
+      # .github/workflows/dependency-review.yml.
+      - name: check-pins
+        run: python3 .pantheon/check-pins.py
+
+      # `B330`. A vendored library's version lived in CREDITS.md prose and
+      # nowhere a machine looked, so the versions drifted and the only way
+      # anyone learned how far was a hand research pass — which on 2026-09-16
+      # found mammoth.js eighteen releases behind, html2pdf.js carrying a jsPDF
+      # with twelve open advisories, and node-qrcode with no recorded version at
+      # all because the file matched no published artifact. This fingerprints
+      # every file under static/lib/ against a recorded sha256 and checks that
+      # CREDITS.md prints the recorded version, so the bytes and the record
+      # cannot disagree. Offline by construction (`Law 16`): asking a registry
+      # whether something NEWER exists is a different question and lives in
+      # .github/workflows/vendored-freshness.yml, which is allowed the network.
+      - name: check-vendored-versions
+        run: python3 .pantheon/check-vendored-versions.py
 
       # `P13-13`. NOT a checker and deliberately not a gate — it exits 0
       # whatever it finds. `P14-02` already records how many memories a search

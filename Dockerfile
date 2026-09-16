@@ -82,14 +82,18 @@ WORKDIR /app
 # Install Python deps first (layer cache). Optional extras (PyMuPDF AGPL, etc.)
 # are opt-in so the default image stays MIT-core; see requirements-optional.txt.
 ARG INSTALL_OPTIONAL=false
-COPY requirements.txt requirements-optional.txt ./
+COPY requirements.txt requirements-optional.txt requirements-image.txt ./
 RUN pip install --no-cache-dir -r requirements.txt \
     && if [ "$INSTALL_OPTIONAL" = "true" ]; then pip install --no-cache-dir -r requirements-optional.txt; fi
 
 # python-magic powers content-based MIME sniffing in src/upload_handler.py.
 # Image-only (not in requirements.txt) because it needs the libmagic1 system
 # lib installed above; see the apt note near the top of this stage.
-RUN pip install --no-cache-dir python-magic==0.4.27
+#
+# `B321`. The version used to be written inline here, where Dependabot and the
+# dependency audit could not see it. It now lives in requirements-image.txt for
+# exactly that reason — same package, same pin, visible to the tooling.
+RUN pip install --no-cache-dir -r requirements-image.txt
 
 # Pre-install the patched basicsr/gfpgan/facexlib wheels built in the
 # realesrgan-wheels stage (--no-deps keeps the image lean — torch & friends are

@@ -29,6 +29,9 @@
 
 ## Quick start
 
+You need Docker with the Compose v2 plugin (`docker compose`, not `docker-compose`) and
+nothing else. Everything the app serves is in the image.
+
 ```bash
 git clone https://github.com/ImPanick/pantheon.git
 cd pantheon
@@ -36,8 +39,13 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-Open `http://localhost:7000` once the containers are healthy. Your first admin password is
-printed in `docker compose logs pantheon`.
+Open `http://localhost:7000` once the containers are healthy. The app binds to `127.0.0.1`
+unless you set `APP_BIND`, and the port is `APP_PORT`. Your first admin password is generated
+on first boot and printed in `docker compose logs pantheon` as `Temporary password:` — set
+`PANTHEON_ADMIN_PASSWORD` in `.env` beforehand to choose your own.
+
+`.env.example` is the whole configuration surface, commented; copying it unedited is a working
+default.
 
 Native installs, GPU setup, Windows and macOS, HTTPS and configuration are in the
 [setup guide](docs/setup.md). `main` is the only branch here; upstream's `dev` is available on
@@ -62,9 +70,11 @@ the `upstream` remote.
 **What this fork has added, and what proves it, is in the [proof ledger](LEDGER.md)** — 26 claims,
 each with where its number came from and a command you can run to check it. The short version:
 the Brain rebuilt around a local embedding model that needs no service, an agent that can reach
-the host it runs on behind a denylist it cannot edit, twenty checkers in CI that upstream does
-not have, every outbound call paced, mailbox and service sign-in reduced to one record type, and
-full AGPL attribution for code that shipped without it.
+the host it runs on behind a denylist it cannot edit, a checker in CI for each way a fact in this
+project has been caught rotting, every outbound call paced, mailbox and service sign-in reduced to
+one record type, and full AGPL attribution for code that shipped without it. The checker count is
+a ledger claim rather than a sentence here, because it is read out of `.github/workflows/ci.yml`
+and a number typed twice is a number that will disagree with itself.
 
 ---
 
@@ -80,11 +90,13 @@ at `odysseus-dev/odysseus`. Both are the same upstream project and we credit bot
 
 Then we tried to change something small and ended up reading all 42,739 lines of the stylesheet.
 
-`--accent` — the colour behind every highlight, hover state and drag handle — is referenced 813
-times and defined nowhere. 206 style rules resolve to nothing. Nothing errors; the rules simply
-never apply.
+`--accent` — the colour behind every highlight, hover state and drag handle — was referenced 813
+times and defined nowhere. 206 style rules resolved to nothing. Nothing errored; the rules simply
+never applied. It is defined now, and deliberately **not** in `:root`: a `:root` definition would
+retire the `var(--accent, var(--red))` fallback the rest of the stylesheet leans on and hand all
+sixteen themes the same accent. Each theme carries its own instead (`P1-01`).
 
-Most of what we found after that is finished work that never got connected:
+Most of what we found after that was finished work that had never been connected:
 
 - A **webhooks admin panel** with a complete backend and no interface. Two of its functions crash
   on the missing element inside a silent `try`, so nothing ever reported it.
@@ -106,16 +118,30 @@ quickly. We forked it to finish that last step.
 ## Switching it back on
 
 We wrote a script that counts element lookups with nothing behind them. It found **78**, across
-six subsystems — and **that number is now 2**, which is the point of writing the script rather
-than the list. What follows is the original finding, kept because it is the honest picture of
-what a fork inherits; the notes say where each one now stands.
+six subsystems, which is the point of writing the script rather than writing the list. What
+follows is that original finding, kept because it is the honest picture of what a fork inherits.
 
-Two cautions the table cannot carry. The count only measures lookups whose argument is a
-*string literal* — a lookup that indexes a map with a variable scores as clean, and on
-2026-08-30 exactly that hid a live defect where the agent reported opening a panel that had no
-button behind it. And a script that counts one shape of unreachability says nothing about the
-others: routes with no caller, settings nothing reads, features whose only door is an
-undocumented keystroke. Those are `P3-15` and the `H` rows.
+**Run it today and it says 120.** That is not 42 regressions — it is the same script looking at
+more than it used to. It has been widened three times since the 78 was taken, each time because
+it turned out to be measuring less than it claimed: it read `static/js/` and never `static/app.js`,
+the largest module in the product; it counted a lookup *described in a comment* as a lookup; and
+it scored a lookup that indexes a map with a variable as clean, which on 2026-08-30 hid a live
+defect where the agent reported opening a panel that had no button behind it. Closing that last
+one moved the count from 9 to 124 with no product code changing. **So 78 and 120 are two
+different measurements and the difference between them means nothing.** The ratchet is what
+means something: `check-wiring.py` runs in CI at a ceiling that may come down and may not go up,
+so a *new* unreachable id shows up the day it is written.
+
+**Nor are the 120 all defects.** Classified by how each id is reached rather than by name, at
+least 87 of the 124 measured at triage are guarded by construction — code that knows the markup
+may be absent and returns early. That is a feature removed cleanly with its wiring left behind
+on purpose, costing one null check. The triage is `P3-20`, and its finding was that driving the
+number down is the wrong goal: it would mean deleting guarded code that costs nothing, which
+this fork's first law forbids.
+
+And a script that counts one shape of unreachability says nothing about the others: routes with
+no caller, settings nothing reads, features whose only door is an undocumented keystroke. Those
+are `check-unreachable.py` (`P3-15`) and the `H` rows.
 
 | Area | Built, but unreachable |
 |---|---|
@@ -126,15 +152,17 @@ undocumented keystroke. Those are `P3-15` and the `H` rows.
 | **Knowledge** | RAG document upload — the endpoint works and always has |
 | **Email** | folder switching, attachment view, load-more |
 
-Each is classified before anything changes: a stale reference to a renamed element gets fixed,
-dead code gets deleted, a real feature gets its markup and its event wiring. `check-wiring.py`
-runs in CI and the count only goes down.
+Two of those six are wired: the image upscaler (`P2-22`) and RAG document upload (`P2-23`). The
+rest are open rows in the tracker's `P2` section, which is where their current status lives.
+Each is classified before anything changes — a stale reference to a renamed element gets fixed,
+a real feature gets its markup and its event wiring, and code is deleted only when an audit has
+proved it dead.
 
 ---
 
 ## Status
 
-**550 tracked tasks, 337 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
+**587 tracked tasks, 362 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
 it is the only place work is tracked — one list, one progress area, validated by a script that
 recounts every phase row against its own ticks. It exists because the summary line was once wrong
 by nineteen and carried forward unread from entry to entry, because each author copied the line
@@ -145,15 +173,18 @@ inherited and carried were cleared on 2026-09-12 — eight were a container miss
 the project already declares, three were stale test stubs hiding behind broad `except` blocks,
 and three were rules pinned to upstream's shape rather than this fork's.
 
-Measured against the fork point `b4d1293` (2026-08-20): **156 commits, 1,964 files changed,
-175,966 insertions — 537 files added, 1,387 modified and 4 removed.** That last number is this
-fork's first law as a measurement: *an elevation, not a rewrite — we add, never subtract.* All
-four deletions are named and argued in the [ledger](LEDGER.md).
+Measured against the fork point `b4d1293`: **156 commits, 1,964 files changed, 175,966
+insertions — 537 files added, 1,387 modified and 5 removed.** That last number is this fork's
+first law as a measurement: *an elevation, not a rewrite — we add, never subtract.* All five
+deletions are named and argued in the [ledger](LEDGER.md); the fifth was found by a failing
+test nobody had looked at, and turned out to be upstream's logo wearing our filename.
 
 ## What's next
 
-- **The wire** — the backend streams 39 kinds of event per agent turn and discards
-  more than thirty before display. A failed turn currently renders the same as a successful one.
+- **The wire** — the backend emits 39 distinct kinds of event per agent turn through one
+  `if`/`else if` chain, and anything without a branch is dropped before it reaches the screen.
+  Most of that phase has landed; the conspicuous gap left is that the metrics footer and the
+  stats popup report a failed turn with the same shape and styling as a successful one.
 - **The Workshop** — build a skill from scratch, wire automations on a canvas, create an MCP
   server end to end, with the model assisting throughout.
 - **Persistent memory** — project knowledge that survives restarts, gains confidence as sources
@@ -165,7 +196,7 @@ four deletions are named and argued in the [ledger](LEDGER.md).
 - **More themes** — new palettes, and subtle ASCII-art backgrounds as a ninth pattern, picked
   the same way the seven animated ones already are: independently of the palette.
 
-Fifteen phases, every task written down: [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md).
+Twenty phases, every task written down: [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md).
 
 ---
 
@@ -174,8 +205,8 @@ Fifteen phases, every task written down: [`.pantheon/ROADMAP.md`](.pantheon/ROAD
 **Add, never subtract.** Features survive. This is an elevation of Odysseus rather than a
 rewrite.
 
-Fifteen rules are written down in [`.pantheon/AGENTS.md`](.pantheon/AGENTS.md), each one added
-after something went wrong. Two examples:
+Twenty laws are written down in [`.pantheon/AGENTS.md`](.pantheon/AGENTS.md), each one added
+after something went wrong, and nine of them cite the incident that produced them. Two examples:
 
 > **Nothing ships half-wired.** A backend with no caller and a button with no handler get treated
 > the same way. A script counts them and CI enforces the number.
@@ -196,10 +227,27 @@ task.
 - Keep `LOCALHOST_BYPASS=false` outside local development.
 - Don't expose raw model or service ports publicly.
 
+If you are upgrading rather than installing, read
+[Changed — read this before upgrading](CHANGELOG.md#changed--read-this-before-upgrading)
+first. `AUTH_ENABLED=0`, `=no` and `=off` used to leave authentication **on**; they turn it off
+now, which is what an operator who typed them meant and is not what their instance has been
+doing.
+
 This fork removes restrictions, so it's worth naming the ones it doesn't. About thirty controls
 are on a never-lift list: authentication, CSRF posture, the approval store's seal, path-traversal
 and SSRF guards, command-injection guards, secrets redaction, and the extension allowlist on
 uploaded fonts, which is the one place an uploaded file is served back.
+
+**Dependencies.** `.github/dependabot.yml` opens grouped weekly pull requests for the Python and
+npm packages, the Docker base image, and the pinned versions of the GitHub Actions themselves. On
+every pull request, dependency review blocks a change that pulls in a package with a known
+advisory; `pip-audit` reports advisories in what is already installed and deliberately does not
+block, because it flags things no particular pull request introduced. Front-end libraries are
+vendored rather than fetched at runtime, and `.pantheon/check-licences.py` treats that inventory
+as an allowlist — a file under `static/lib/`, `static/fonts/`, `static/icons/` or `library/` that
+is not listed in [`CREDITS.md`](CREDITS.md) fails the build, so adding one means having read its
+licence. What each check does, whether it can block a merge, and where its findings land is in
+the [security CI guide](docs/security-ci.md).
 
 Deployment details: [setup guide](docs/setup.md#security-notes).
 

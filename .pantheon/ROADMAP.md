@@ -80,8 +80,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P17 | The network the agent is hosted on | 14 | 3 | 0 | **11** |
 | P18 | One button, and it links | 9 | 0 | 0 | **9** |
 | P19 | The proof ledger | 8 | 0 | 0 | **8** |
-| Backlog | Bugs and hardening found in flight | 168 | 21 | 0 | **147** |
-| **Total** | | **550** | **204** | **9** | **337** |
+| Backlog | Bugs and hardening found in flight | 205 | 33 | 0 | **172** |
+| **Total** | | **587** | **216** | **9** | **362** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -243,6 +243,60 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### Going public: the dependencies nobody was watching, and a README that printed 2 where the checker printed 120
+`394e619..HEAD`. **587 tracked, 362 done. 0 new phase rows, 0 regressions. `B320`–`B323`,
+`B330`–`B334`, `B337`, `B340`–`B347`, `B350`–`B355` and `B360` closed; twelve rows filed.** Four
+worktrees. **`B330`'s new checker found three corrupt files on its first integration run** —
+working copies disagreeing with their own git blobs by up to twenty thousand bytes, which
+`git diff` and `git status` both reported as clean, because `.gitattributes` silences whitespace
+on exactly those files for exactly the right reason (`B360`). Nothing shipped; the committed
+bytes were never affected. It was written to stop *version* drift in prose and caught *byte*
+drift in the tree. The owner asked two questions — *are we current on dependencies* and *is the public
+markdown ready* — and the honest answer to the first was **no, and nothing was watching**.
+**The pip half of `dependabot.yml` had been configured, reviewed and merged, and could not have
+opened a single pull request.** `requirements.txt` carried 31 dependencies and **zero `==`**, and
+a bare `fastapi` is a constraint that is always satisfied, so there was never anything to bump.
+The config looked like coverage for weeks. All 37 direct dependencies are pinned now, with
+`.pantheon/check-pins.py` keeping it that way — and `python-magic==0.4.27`, which had been pinned
+*inline in the `Dockerfile`* where neither Dependabot nor the audit could see it, moved into a
+`requirements-image.txt` the Dockerfile installs with `-r` (`B321`).
+**The one vulnerable package in the image was invisible to the scanner that was supposed to see
+it, twice over.** `basicsr` 1.4.2 (`CVE-2024-27763`) is in **neither** requirements file — it
+enters through `docker/build-realesrgan-wheels.sh` and a `--no-deps` install, so `pip-audit -r`
+never looked at it; and `container-trivy.yml`, which did see it, carried `ignore-unfixed: true`
+and had been silently dropping it since the job was written (`B323`). There is **no fix and there
+can be none**: 1.4.2 is the newest release, the project has been dormant since 2022, and
+`realesrgan>=1.4.2` cannot resolve to anything unflagged. It is an accepted risk now — written
+down as `D-2026-09-16-01` with the reachability argument, the conditions that would change the
+answer, and a review date that **fails the gate when it passes**, rather than an unexplained
+suppression, which is the defect class this tracker keeps finding.
+**Three agents corrected the brief they were given, which is the behaviour worth keeping.** The
+`CVE-2025-11849` in `mammoth` 1.8.0 that the research pass called the one reachable vulnerability
+**does not reach the browser build** — `package.json` maps the vulnerable module to a browser
+variant that rejects external files, byte-identical across both versions. The bump landed anyway,
+on better evidence: 1.8.0 threw an *unhandled* `TypeError` on a `.docx` with `mc:AlternateContent`
+and no fallback, killing the import outright, and silently dropped Word form checkboxes.
+`html2pdf.js` 0.14.0 was expected to carry jsPDF 4.2.1; it carries **4.0.0**, nine advisories
+short, so `B334` ticks saying so and `B336` costs the three ways out rather than implying a clean
+bundle. And `CYBERTOOTH_CHANGES.md`, which the brief called an orphan safe to fold away, is
+referenced **twice** by `scripts/pantheon-init.sh` — once in the never-sweep pathspec beside
+`LICENSE` and `NOTICE`. It was kept and corrected instead of deleted.
+**The going-public findings are worse than the dependency ones.** The README's `How we work`
+section — whose entire argument is *our numbers are checkable* — claimed the unreachable-element
+count "is now 2" while `check-wiring.py` prints **`UNRESOLVED 120`** and CI runs `--max 120`, with
+the command one line away in the same paragraph. Not a regression: the checker was widened three
+times and closing the third alone moved it 9 → 124 with no product code changing. The
+`pull_request_template.md` and `ISSUE_TEMPLATE/bug_report.yml` both directed contributors to a
+**`dev` branch that has never existed here**, and the bug form made it `required: true` — the one
+box a reporter could not file without ticking was one they could not truthfully tick.
+`THREAT_MODEL.md` carried **four claims that were already false**, including a CSP description
+naming a CDN allowance removed on 2026-09-01, and an SSRF listed as live that
+`validate_public_http_url` had closed. It also cited `#1058` and `#1039` — **upstream Odysseus
+issue numbers, which on a public repository link into this one.**
+`SECURITY.md` told vulnerability reporters to *"open a minimal issue"*, which for software
+shipping a shell tool, file read/write and email send/read is asking them to disclose publicly;
+it names a private channel and a response expectation now. `CODE_OF_CONDUCT.md` did not exist.
 
 ### The comment blanker that erased 7,203 lines of live code, and a row that closed on a false Verify
 `fdf0e31..HEAD`. **550 tracked, 337 done. 0 new phase rows, 0 regressions. `B160`, `B201`, `B202`,
@@ -10604,3 +10658,861 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   quoting an import specifier does not fail any scan, and no assertion in the roadmap-claim tests
   changes value when a Progress entry is added. — found while merging `B230`/`B231`/`B241` —
   agent:`integrator`
+
+- [x] **B320** **Thirty-one Python dependencies, zero pins, and a Dependabot config that could
+  never have bumped one.** Measured 2026-09-16: `requirements.txt` held **31 dependencies and
+  zero `==` pins** (three carried a floor or a ceiling — `httpcore>=1.0,<2.0`, `pydantic>=2.13.4`,
+  `mcp<2` — which is a range, not a version); `requirements-optional.txt` held 6, of which 2 were
+  pinned. Three consequences and the third is the one that is easy to walk past. **(1)** The build
+  is not reproducible: `docker build` on two days produces two different images from one commit,
+  and "it worked yesterday" has no answer. **(2)** A yanked or compromised release lands on the
+  next build with nothing and nobody in between. **(3) `.github/dependabot.yml`'s pip section
+  looked like coverage and provided none.** Dependabot raises a pull request when a *pinned*
+  version falls behind; a bare `fastapi` is satisfied by every release fastapi has ever made, so
+  there was never anything to compare against. That config had been written, reviewed and merged,
+  and could not have opened a single Python pull request in the time it had been there. The
+  automation was not broken — it was answering a question nobody had asked it.
+  **Fixed** by pinning all 37 direct dependencies across the two files plus the one in the new
+  `requirements-image.txt` (`B321`), and by `.pantheon/check-pins.py`, which fails the release
+  gate on an unpinned requirement and on a pinned requirements file sitting in a directory
+  Dependabot's pip ecosystem does not cover — pinning without automation swaps drift for rot, and
+  both are versions nobody owns.
+  **Where the numbers came from, stated plainly because it matters.** The brief called for
+  `pip freeze` inside the running production image. **That was not possible here: there is no
+  Docker daemon in this environment** (`docker ps` fails on the socket). So the resolution was
+  reproduced instead — for each dependency, the newest non-yanked release satisfying the
+  constraint already written on its line, whose `Requires-Python` admits **both** 3.11 (every CI
+  job) and 3.14 (the image). That is what a fresh `docker build` resolves to *today*, because the
+  image installs these files unpinned; pinning to it therefore cannot change what today's build
+  ships, only freeze it so tomorrow's build ships the same thing. **The integrator should diff
+  `docker run --rm <image> pip freeze` against these pins before merging**; the procedure is
+  written into `requirements.txt`'s header for the next person.
+  **Law 1 on the comments.** `requirements.txt` carries 27 comment lines and
+  `requirements-optional.txt` 39, and they are the only record of why `mcp` is held below 2, why
+  `httpx2` is test-client only, why `psycopg2-binary` rather than `psycopg2`, and that PyMuPDF is
+  AGPL-3.0. All 66 survive verbatim, and `test_pinning_did_not_cost_a_single_line_of_the_prose`
+  compares against every one of them rather than sampling — a sweep that rewrites 37 lines is
+  exactly the change that quietly takes a paragraph with it. The constraint ranges that used to
+  live on the requirement line (`>=1.0,<2.0`, `>=2.13.4`, `<2`) are kept as comments beside the
+  pin: they are the reason the pin may not move past a boundary.
+  **Resolution verified**, since the image could not be built: `pip install --dry-run` succeeds
+  for `requirements.txt` alone (44 packages) and for all three files together on CPython 3.11,
+  and for `requirements.txt` on **3.14 with `--only-binary=:all:`** — 31 direct requirements
+  resolving to 101 packages, every one of them a wheel, so the slim image compiles nothing. The
+  optional file resolves on 3.14 too once `kokoro`/`soundfile` are excluded, which is what their
+  `python_version < "3.13"` markers do there; `pip --python-version` evaluates markers against the
+  *running* interpreter, so that exclusion has to be done by hand when cross-checking.
+  `Verify:` a new dependency added without a pin fails `python3 .pantheon/check-pins.py`, which
+  CI runs and `release-gate.py` reads out of `ci.yml`. — found while auditing dependency currency
+  — agent:`pins`
+
+- [x] **B321** **The one Python package in the image pinned by hand was the one package no tool
+  could see.** Measured 2026-09-16. The Dockerfile installed `python-magic==0.4.27` with the
+  version written inline in a `RUN pip install` line. The pin was correct and invisible:
+  Dependabot's pip ecosystem reads requirements files, so it never saw it and would never have
+  offered a bump; `.github/workflows/dependency-review.yml` audits requirements files, so a
+  published advisory against python-magic would not have failed a build. Same shape as `B320` —
+  a control that exists and is not connected to anything. **Fixed** by moving the line to
+  `requirements-image.txt`, installed by the Dockerfile with `-r`, which changes nothing about
+  what the image contains and makes both of those true. The file is deliberately separate from
+  `requirements.txt` and not installed on hosts, because python-magic resolves the libmagic
+  shared library at import time and the import can block or raise where the image's `libmagic1`
+  apt package is absent — the reason it was image-only in the first place, which is kept.
+  `Verify:` `test_the_image_installs_no_python_package_that_no_requirements_file_declares` fails
+  if any `pip install` in the Dockerfile names a package instead of a requirements file or a
+  local wheel path. — found while auditing dependency currency — agent:`pins`
+
+- [x] **B322** **Twenty checkers in CI and not one of them audited a dependency.** Measured
+  2026-09-16. `pip-audit` did run — in `.github/workflows/dependency-review.yml`, under
+  `continue-on-error: true`, with a comment explaining that it must not block because it can flag
+  a pre-existing issue in an already-shipped dependency. That reasoning is right about the problem
+  and wrong about the remedy: an advisory check that never fails is a check nobody reads, and
+  Dependabot opens bump PRs but does not fail a build on a known CVE. So a known-vulnerable pinned
+  dependency could be merged, and the only thing standing in the way was somebody scrolling an
+  advisory job's log. **Fixed** in two halves, split on `Law 16`'s line. The **offline** half is
+  `.pantheon/check-pins.py` in the release gate: it answers only questions the repository can
+  answer about itself and needs no network, which is what lets a developer with no connection
+  still run the whole gate. The **network** half is the existing `pip-audit` job, made blocking
+  rather than duplicated (`Law 14`) — it now runs on Python 3.14 (the image's version, so the
+  optional file's `python_version < "3.13"` markers exclude the same packages CI audits as the
+  image installs) and calls `.pantheon/audit-dependencies.py`, which audits all three requirements
+  files **plus the Real-ESRGAN wheel pins read out of `docker/build-realesrgan-wheels.sh`** — three
+  packages installed into every image that appear in no requirements file and were therefore
+  audited by nothing. What makes a blocking gate survivable is the register:
+  `.pantheon/dependency-advisories.toml`, where an accepted risk has to name the bug, why this
+  code cannot reach it, what upstream offers, what would make the answer different, the
+  `DECISIONS.md` entry behind it, and a review date the checker **fails on once it passes**. The
+  audit prints each accepted risk's full reasoning next to whatever did fail, so the justification
+  lands in a log somebody is already reading. A suppression whose finding is no longer reported
+  fails too: an ignore list that describes nothing is how people stop reading one.
+  **Measured after the change**: 101 packages audited from `requirements.txt` +
+  `requirements-image.txt` and 134 from `requirements-optional.txt`, zero advisories in either.
+  `Verify:` a pinned dependency with a known advisory fails the network job; `basicsr` does not,
+  and the reason is printed in the same output. — found while auditing dependency currency —
+  agent:`pins`
+
+- [x] **B323** **`ignore-unfixed: true` had been silently dropping the only advisory this image
+  actually carries.** Measured 2026-09-16. `pip-audit` inside the running production image flags
+  exactly one package: `basicsr` 1.4.2, **PYSEC-2026-1215 / CVE-2024-27763**, with **no fix
+  version** — because 1.4.2 *is* the latest release, published 2022-08-30, and `realesrgan`
+  requires `basicsr>=1.4.2`, so no satisfying version exists that is not flagged. The bug is
+  `basicsr/utils/dist_util.py`'s `_init_dist_slurm`, which interpolates `SLURM_NODELIST` into
+  `subprocess.getoutput(f'scontrol show hostname {node_list} | head -n1')` unquoted. It is
+  reachable only through `init_dist(launcher='slurm')` — the distributed-*training* entry point.
+  Real-ESRGAN inference never calls it, no Pantheon path calls it, and an attacker who can set
+  environment variables on the process already has local execution. Meanwhile
+  `.github/workflows/container-trivy.yml` passes `ignore-unfixed: true` in both its jobs, which
+  drops every finding with no published fix — precisely this one — and said nothing anywhere about
+  what it was dropping. **That is the unexplained-suppression defect class, already shipped.**
+  **Fixed** by writing the decision down rather than by changing the flag: `D-2026-09-16-01`
+  records what the bug is, why it is unreachable here, that no fix exists or can exist, the four
+  things that would make the answer different, and that the review date is 2027-03-16 with the
+  offline checker failing the gate once it passes. The Trivy flag stays — a fixless CVE in an
+  upstream package must not block a merge on an advisory scan — and both call sites now name the
+  decision. `.pantheon/dependency-advisories.toml` carries the same reasoning in the form the
+  audit prints. `Verify:` `basicsr` does not fail the audit, and the reason it does not appears in
+  the audit's own output. — found while auditing dependency currency — agent:`pins`
+
+- [ ] **B324** **The pins are direct-only: there is no hash-pinned transitive lock, and one
+  cannot be generated honestly from this environment.** `B320` pinned the 37 direct dependencies,
+  which is what makes the build reproducible at the level a reviewer controls. It is not the whole
+  answer: `requirements.txt` alone resolves to **101 packages on 3.14**, so 64 of them are still
+  whatever the resolver picks on the day, and none of the 101 is hash-verified — `pip-audit` says
+  as much on every run ("users are encouraged to fully hash their pinned dependencies"). The
+  stronger answer is `requirements.in` + a `pip-compile --generate-hashes` lock. It was **not**
+  done in this wave, for a reason worth recording rather than repeating: a correct lock has to be
+  generated on the interpreter and platform the image uses, and this environment has CPython 3.11
+  on one architecture while the image is CPython 3.14 built for **both** `linux/amd64` and
+  `linux/arm64` (`docker-publish.yml`). Environment markers are evaluated by the generating
+  interpreter — `pip --python-version` does not change that, as `B320` measured when
+  `kokoro`'s `python_version < "3.13"` marker stayed true under `--python-version 3.14` — so a
+  lock generated here would be wrong about markers and would carry only one architecture's wheel
+  hashes. A lock that is wrong is worse than no lock: it fails the arm64 build at install time,
+  or silently pins the wrong set. **Do this on a 3.14 host with both platforms available**, keep
+  `requirements.txt`'s 27 comment lines as `requirements.in`'s comments (`Law 1`), and teach
+  `.pantheon/check-pins.py` that a lock file must be newer than the `.in` it came from.
+  `Verify:` `pip install --require-hashes -r requirements.lock` succeeds in the image on both
+  architectures, and changing `requirements.in` without regenerating the lock fails the gate.
+  `Depends:` `B320` (landed). — found while pinning dependencies — agent:`pins`
+
+- [ ] **B325** **The environment the suite passes in does not satisfy `requirements.txt`, so the
+  suite is evidence about a dependency set the image never installs.** Measured 2026-09-16 in the
+  agent environment that runs this project's tests: **six of the 31 core dependencies are not
+  installed at all** — `chromadb-client`, `youtube-transcript-api`, `caldav`, `qrcode`, `httpx2`,
+  `psycopg2-binary` (verified by `importlib.util.find_spec`, not by reading a lockfile) — and two
+  more are installed **below the floor the file declared**: `pydantic` 2.13.3 against
+  `pydantic>=2.13.4`, and `pydantic-settings` 2.14.0 against `>=2.14.1`. The interpreter is 3.11;
+  the image is 3.14. This is not a complaint about the sandbox, it is a statement about what a
+  green suite proves: every test that would exercise CalDAV sync, the Chroma HTTP client, TOTP QR
+  rendering, YouTube transcripts or a Postgres `DATABASE_URL` is either skipping, stubbed, or
+  passing because the import guard it hits is the one written for "dependency absent". `B320`'s
+  own pins were therefore taken from a resolution rather than from this environment, because this
+  environment is not the product. **What to do**: make the absence loud rather than silent — a
+  session-scoped check that reports which declared dependencies are missing and which are below
+  their pin, printed once at collection, so a reader of a green run knows what it did not cover.
+  Not a hard failure: a contributor without Postgres must still be able to run the suite, which is
+  the whole reason those imports are guarded. `Verify:` a suite run in an environment missing a
+  declared dependency says so in its output, and the count is not zero here today.
+  `Depends:` `B320` (landed). — found while pinning dependencies — agent:`pins`
+
+- [x] **B330** **A vendored library's version lived in `CREDITS.md` prose and nowhere a machine
+  looked, so the versions drifted and nobody could tell.** Measured 2026-09-16. `CREDITS.md`
+  named a version for every vendored library but one, and nothing in the repository compared any
+  of those strings to the bytes beside them. `.pantheon/check-licences.py` checks *attribution* —
+  that every shipped third-party file is credited and its licence text present and linked — and is
+  deliberately silent about versions, because attribution does not change when a library is
+  upgraded. **The cost, measured the same day**: `mammoth.js` 18 releases behind, `html2pdf.js` on
+  a bundle carrying jsPDF 2.3.1 with twelve open advisories including two CRITICALs, `highlight.js`
+  three minors behind two unnumbered ReDoS fixes, and `node-qrcode` with no version recorded at all
+  — the only row in the table missing one, because the file matched no published artifact at any
+  version and could not be identified by looking at it. **A one-time bump fixes none of that**; it
+  drifts again within a month, and the only reason anyone knew how far behind it had got was that a
+  person went and looked. The deliverable is the mechanism, and it is split along the one line that
+  matters — whether the network is required. **Offline**:
+  `.pantheon/check-vendored-versions.py`, added to `ci.yml` and therefore to `release-gate.py`,
+  which reads its checker list out of the workflow. It fingerprints all **38 files** under
+  `static/lib/` against a recorded sha256, and checks that `CREDITS.md` prints the recorded version
+  on the row that links that library's licence text. Replace a byte and it fails; bump a library
+  without recording it and it fails; add a file to `static/lib/` and it fails until somebody writes
+  down which release it is. **Network**: `.github/workflows/vendored-freshness.yml`, weekly and on
+  demand, asks `registry.npmjs.org` what the latest release is and `api.osv.dev` what it knows
+  against what we ship. `Law 16` is why these are two things and not one: developers run
+  `release-gate.py --fast` offline and constantly, and a checker that resolved a registry would make
+  the local gate depend on somebody else's uptime, intermittently. `Law 14` is why the offline one
+  does **not** own a second list of these files: `check-licences.py`'s `INVENTORY` is the list, it
+  is imported, and each version record is keyed by an entry's name there — rule 1 fails if either
+  side names something the other does not. Pyodide and Swagger UI keep their hashes in the
+  `MANIFEST.json` their own fetch scripts already write, and the checker reads those rather than
+  copying them; the manifest's own `version` has to agree with the record. **Two things were
+  deliberately not made ratchets.** `checked` — the date somebody last confirmed a version against
+  upstream — does not fail the offline gate by default (`--max-age-days` opts in), because failing
+  CI on a repository nobody changed teaches people to ignore it, which is `P3-20`'s mistake. And
+  being behind upstream does not fail the freshness workflow when a `behind_ok` field names the
+  roadmap row that owns the decision — six libraries name `B335` today — because a light that is
+  always on is a light nobody reads. `Verify:` **yes** — `tests/test_vendored_versions.py`, 17
+  tests: the real tree passes, and eleven mutations of a fixture copy each produce the right
+  failure by name (a replaced file, an unpinned file inside a glob entry, a hash for a file that is
+  gone, a record naming no inventory entry, a file with no record, a manifest that disagrees about
+  the version, an emptied manifest, a `CREDITS.md` row that lost its version, a malformed date, a
+  future date, the staleness ratchet). Mutation: **11 run, 11 caught** on the checker. — agent:`vendored`
+
+- [x] **B331** **`mammoth.browser.min.js` was 1.8.0, eighteen releases behind, and 1.8.0 refuses
+  documents other people's tools produce.** Measured 2026-09-16. `static/js/documentLibrary.js:1459`
+  calls `window.mammoth.convertToHtml({ arrayBuffer: buf })` on a `.docx` the user picked — parsing
+  a document somebody else authored *is* the feature, so whatever that library does with a
+  malformed one is a user-facing behaviour, not an edge case. Bumped to **1.12.3** (npm tarball,
+  registry `dist.integrity` verified before extraction, sha256
+  `f9465c0e4b91c6ab5fe03db285aa3c5bd33a1d20da781b8dffc5676bc9689a95`; the jsDelivr copy is
+  byte-identical, so two origins agree). **What the bump actually fixes here, measured by running
+  both bundles**: a `.docx` carrying `mc:AlternateContent` with no `mc:Fallback` — which Word always
+  writes and other producers do not — made 1.8.0's `collapseAlternateContent` call
+  `node.first("mc:Fallback")` and read `.children` off `undefined`, throwing
+  `TypeError: Cannot read properties of undefined (reading 'children')` as an **unhandled**
+  rejection, so the import died without reaching the `.catch` the call site relies on. 1.12.3
+  converts it. And a Word form checkbox (`FORMCHECKBOX` complex field) was dropped silently by
+  1.8.0 — a requirements document imported with every box gone and no message — where 1.12.3 emits
+  `<input type="checkbox" checked="checked">`.
+  **The advisory this bump was planned around does not apply to us, and saying so is part of the
+  row.** `CVE-2025-11849` / `GHSA-rmjr-87wv-gf87` (MODERATE) is a directory traversal: mammoth does
+  not validate the path or file type of an image with an external `r:link`, and reads it with
+  `fs.readFile`. **The browser build has never had that code.** `package.json` maps
+  `lib/docx/files.js` to `browser/docx/files.js`, whose `read()` is one line — reject with *"cannot
+  open linked files from a web browser"* — and that file is **byte-identical in 1.8.0 and 1.12.3**.
+  The shipped 1.8.0 bundle contains that string once and no `require("fs")` at all. So the bump is
+  right for the eighteen releases of fixes, not for the CVE; 1.12.3 additionally carries the
+  `externalFileAccess: false` default, which is defence in depth on a door that was already shut.
+  `Verify:` **yes** — `tests/test_vendored_libraries_still_work.py` runs the shipped bundle through
+  `readFileContent`, lifted out of `documentLibrary.js` and evaluated, over `.docx` files built in
+  the test. Two of its assertions **fail on the tree as it stood** (1.8.0 returns
+  `ok: false, unhandled: true` for the `mc:AlternateContent` document and HTML with no `<input>` for
+  the checkbox), measured by checking the old bundle back out and re-running the same harness.
+  Mutation: renaming the `{arrayBuffer:}` key at the call site and disabling the `.docx` branch are
+  both **CAUGHT**. — agent:`vendored`
+
+- [x] **B332** **`highlight.min.js` was 11.9.0 and 11.12.0 fixes ReDoS in two grammars, with no CVE
+  and no advisory anywhere.** Measured 2026-09-16. No scanner will ever flag this one: the fixes are
+  recorded only in highlight.js's own `CHANGES.md`, as unnumbered ReDoS repairs in the C/C++ and XML
+  grammars. We highlight code the user did not write — a pasted snippet, a model's output, a file
+  from the library — so a grammar that backtracks catastrophically is a hang somebody else can
+  choose to cause. Bumped to **11.12.0** from `@highlightjs/cdn-assets` (sha256
+  `8ab71eb09c51f501e5e25157d9cff100e46cc29bcbfc744d0b746d451fca7f53`, 129,254 bytes). The old file
+  was byte-identical to `@highlightjs/cdn-assets@11.9.0`, which is how the source was confirmed
+  rather than assumed. Its banner moved from *"v11.9.0 (git: f47103d4f1) (c) 2006-2023"* to
+  *"v11.12.0 (git: f7f7d3803b) (c) 2006-2026 Josh Goebel"*, and `CREDITS.md`'s quotation of that
+  banner was updated with it. `Verify:` **yes** — the recorded version, the recorded hash and the
+  `CREDITS.md` row now have to agree (`B330`), and `tests/test_vendored_versions.py` fails if any
+  two of the three drift. **What this row does NOT deliver**: no test exercises the C/C++ or XML
+  grammars against a pathological input. Writing one means choosing a backtracking string and a
+  time limit, and a timing assertion in a suite that runs on shared CI is a flake generator; the
+  claim here is the version, which is checkable, not the timing, which is not. — agent:`vendored`
+
+- [x] **B333** **`xlsx` 0.20.3 is newer than anything on npm, every npm-based scanner calls it
+  vulnerable, and an `npm install` would downgrade us into two HIGH CVEs.** Measured 2026-09-16
+  against OSV. SheetJS left npm; its releases are on `cdn.sheetjs.com`, and npm's `xlsx`
+  `dist-tags.latest` is **0.18.5, from 2022-03-24** — four years older than what Pantheon ships.
+  Querying `api.osv.dev` for `xlsx@0.20.3` returns `GHSA-4r6h-8v6p-xvw6` (CVE-2023-30533, prototype
+  pollution) and `GHSA-5pgg-2g8v-p4x9` (CVE-2024-22363, ReDoS), both HIGH, and **both reports are
+  wrong**. The reason is mechanical rather than a judgement call: each advisory's npm range is
+  `{"introduced": "0"}` with **no `fixed` event**, because the versions that fix them — 0.19.3 and
+  0.20.2 — were never published to npm for a range to close against, so an unbounded range matches
+  0.20.3 exactly as it matches 0.1.0. The consequence that matters is the second one: a well-meant
+  *"let's pull it from npm like the others"* is a **downgrade into both CVEs** that every dashboard
+  would score as a fix. Recorded in three places a person will actually meet it: a section of
+  `CREDITS.md` headed *"SheetJS is 0.20.3 and npm says 0.18.5. npm is wrong."*; the
+  `registry="sheetjs"` field on the record in `.pantheon/check-vendored-versions.py`, which is why
+  the freshness workflow asks `cdn.sheetjs.com` and never npm; and an `osv_known` entry against each
+  advisory id, written beside the version it excuses so that bumping the version leaves an excuse
+  that no longer matches and somebody has to look again. `Verify:` **yes** — the freshness workflow
+  reports both hits under *"explained in the record"* rather than failing on them, and names SheetJS
+  under *"could not be asked"* so a library with no machine-readable index stays somebody's job
+  rather than quietly exempt. — agent:`vendored`
+
+- [x] **B334** **`html2pdf.bundle.min.js` was 0.10.2, whose string source path is CVE-2026-22787,
+  and it carried jsPDF 2.3.1 with twelve open advisories.** Measured 2026-09-16 against OSV. Bumped
+  to **0.14.0** (npm tarball, `dist.integrity` verified, sha256
+  `9563c45f032179c73454293a649929e60fc24c05a326e8ab2811cfa8f25c3607`, 946,030 bytes), which the
+  owner approved because it crosses jsPDF 2 → 4. **Three piles, measured:**
+  `GHSA-w8x4-x68c-m6fc` / CVE-2026-22787 (HIGH) in html2pdf itself — 0.10.2's `createElement` set
+  `innerHTML` from a string source and then removed `<script>` elements, which does nothing about
+  `<img onerror>`, `<svg onload>` or `<iframe srcdoc>`, none of which is a `<script>` and all of
+  which run; 0.14.0's `src/utils.js:20` is `el.innerHTML = DOMPurify.sanitize(opt.innerHTML)`.
+  **jsPDF 2.3.1's twelve advisories**, two of them CRITICAL, drop to **nine** at the 4.0.0 the
+  0.14.0 bundle actually carries (`M.version="4.0.0"` in the shipped blob) — see `B336`, which owns
+  the remaining nine and is not hidden behind this tick. **DOMPurify 2.3.0's nineteen advisories**
+  (five when the plan was written; OSV had grown by the time it was measured), including a CRITICAL,
+  become eighteen at the 3.3.1 the bundle carries — also `B336`.
+  **The bundle's contents changed and a count would not have caught it**: fifteen packages before,
+  fifteen after, but `fast-png`, `iobuffer`, `pako` and `@babel/runtime` arrived and
+  `@babel/runtime-corejs3`, `core-js-pure`, `es6-promise` and `regenerator-runtime` left. The four
+  that arrived have licence texts and `INVENTORY` entries now; the four that left **keep theirs**
+  (`Law 1`) and their `CREDITS.md` rows say which version of the bundle they were last inside,
+  because they ship in every tag of this repository up to 0.10.2 and deleting the notice for bytes
+  somebody can still check out rots attribution backwards. `html2canvas` also moved 1.0.0 → 1.4.1.
+  **`B45` is closed by this row, exactly the way it was designed to be.** The vendored 0.10.2 bundle
+  differed from upstream in one string — jsPDF's `"sv-SV":"Swedish (SE)"` where upstream has
+  `"Swedish (Sweden)"` — inherited at the fork baseline `fff72ec` and pinned by a test *so that
+  replacing this file would be a decision rather than an accident*. The refresh reverts it. The test
+  was rewritten to record the new bundle and to assert the file is upstream's published bytes; both
+  strings stay in `CREDITS.md` so a reader who finds one in prose and the other in the file is told
+  which is now true. `Verify:` **yes** — `tests/test_vendored_libraries_still_work.py` runs
+  `exportAsPdf`, lifted out of `static/js/document.js` and evaluated, against the real bundle: every
+  option survives the jsPDF major (`margin: 10` comes back normalised to `[10,10,10,10]`, which is
+  what proves `set()` *understood* it), `from()` receives a `DIV` and not a string, and a string
+  source no longer hands the payload back. That last assertion **fails on the tree as it stood** —
+  0.10.2 returns `'<img src=x onerror="pantheonWasHere()"><b>kept</b>'` verbatim, in the tree the
+  exporter was about to rasterise. Mutation: rewriting the call site to `.from(container.innerHTML)`
+  and renaming any of three option keys are all **CAUGHT**. — agent:`vendored`
+
+- [ ] **B335** **Six vendored libraries are behind upstream and this wave bumped none of them.**
+  Measured 2026-09-16 by `.github/workflows/vendored-freshness.yml` on its first run, which is the
+  point of it: nobody had this list before, because nothing asked. `docx` **8.5.0 → 9.7.1**, KaTeX
+  (and its fonts) **0.16.22 → 0.18.7**, Mermaid **11.16.1 → 12.0.0**, Swagger UI **5.32.15 →
+  5.33.0**, Pyodide **0.27.5** against an npm `dist-tags.latest` of **314.0.7** — which is not the
+  runtime's own version line at all and is the one entry here whose comparison needs a human before
+  it means anything. **None of the six has an open advisory**: OSV returns zero for every one at the
+  version we ship, so this is currency, not exposure, and that is why it is a filed row rather than
+  a bump made in a hurry. Each is a real decision with a real cost: three are majors, `docx` is
+  behind `exportAsDocx` which is a user-visible path, Mermaid is 3.5 MB of parser whose bundled
+  `vscode-*` set has to be re-derived with it (`B46`), and Swagger UI moves through
+  `scripts/fetch-swagger-ui.py --version`, which re-pins hashes and rewrites `MANIFEST.json`. Each
+  record in `.pantheon/check-vendored-versions.py` names this row in its `behind_ok` field, which is
+  what keeps the freshness workflow green while they are known — and the workflow fails the moment a
+  seventh library falls behind without a row. `Verify:` each of the six either bumped, with a
+  feature test for the path it serves and its version and hash recorded, or carrying a written
+  reason to stay. `Depends:` `B330` (landed). — found by the freshness workflow — agent:`vendored`
+
+- [ ] **B336** **The published html2pdf.js 0.14.0 bundle carries jsPDF 4.0.0 and DOMPurify 3.3.1,
+  and neither is its project's current release.** Measured 2026-09-16 against OSV, in the shipped
+  bytes: `M.version="4.0.0"` and the sidecar's `/*! @license DOMPurify 3.3.1 */`. **jsPDF 4.0.0 has
+  nine open advisories** — one CRITICAL (`GHSA-wfv2-pwc8-crg5`), six HIGH, two MODERATE — down from
+  2.3.1's twelve, and **4.2.1 returns zero**. **DOMPurify 3.3.1 has eighteen**, down from 2.3.0's
+  nineteen; **3.4.15 returns zero**. So `B334` cleared thirteen of thirty-one advisories and left
+  twenty-seven, and the tick on that row says so rather than implying the bundle is clean.
+  **Neither is reachable on Pantheon's path today**, which is why this is a filed row and not a
+  P0: `exportAsPdf` passes a DOM element, so `createElement`'s `innerHTML` — the only place
+  html2pdf itself calls `DOMPurify.sanitize` — is never entered, and a test pins that (`B334`).
+  DOMPurify's other consumer inside the bundle is canvg, which our path does not reach either.
+  **The cost of closing it is the thing to decide.** Every vendored file in `static/lib/` except
+  `qrcode.min.js` is byte-identical to a published upstream artifact, and that property is what
+  makes `check-vendored-versions.py`'s hashes verifiable by a stranger against the registry.
+  Rebuilding the bundle with `jspdf@4.2.1` and `dompurify@3.4.15` gives up that property for this
+  file: the shipped bytes would then be reproducible only from a webpack build nobody has pinned, its
+  webpack-extracted `LICENSE.txt` sidecar would have to be regenerated, and `check-licences.py` rule
+  7 would re-derive a package list from a bundle we built. **Three honest options**, and they want a
+  decision rather than a default: (a) wait for html2pdf.js to publish a release built against
+  current dependencies, and record the wait; (b) rebuild the bundle here, pin the toolchain, and
+  extend `scripts/fetch-swagger-ui.py`'s shape to a build rather than a fetch; (c) drop the bundled
+  build and vendor `html2pdf.js`, `jspdf` and `html2canvas` as three published files loaded in order,
+  which keeps every file upstream's bytes and makes each version independently bumpable. (c) is
+  probably right and is the largest. `Verify:` `api.osv.dev` returns zero advisories for every
+  package inside `static/lib/html2pdf.bundle.min.js`, **or** this row carries a written decision
+  naming which of the three was taken and why. `Depends:` `B334` (landed). — found while closing
+  `B334` — agent:`vendored`
+
+- [x] **B337** **`qrcode.min.js` matched no published artifact at any version, and that is why it
+  had no version.** Measured 2026-09-16. It was the only row in `CREDITS.md`'s vendored table with
+  a file, a purpose and a licence but no version — 24,853 bytes, md5
+  `c08c989b3fc084a1a5572dca6edd1f8a`, no version string anywhere in it, and no match against any
+  npm or cdnjs release of node-qrcode from 0.0.1 to 1.5.4 (all fifty checked, byte for byte).
+  **The reason it could not be found is that it was never fetched**: node-qrcode has published no
+  browser build to npm since 1.5.1 — `build/qrcode.js` is absent from the 1.5.2, 1.5.3 and 1.5.4
+  tarballs — so somebody built it. It was identified by **reproducing** it:
+  `esbuild lib/browser.js --bundle --minify --format=iife --global-name=QRCode` under esbuild
+  0.25.0 reproduces those exact bytes at node-qrcode **1.5.1 and 1.5.3**, which are
+  indistinguishable because their `lib/` trees are byte-identical; 1.5.2 (25,333 bytes) and 1.5.4
+  (24,303) produce different output and are ruled out. The file now shipping is the same build at
+  **1.5.4** — sha256 `d59af15f40bc321f78871fe9d892d1dbbf05e35e20ad22aa51203c68185b58b6` — and the
+  command that produces it is recorded beside the hash in `.pantheon/check-vendored-versions.py`'s
+  `build` field, which is the difference between a file and a provenance. **A second finding fell
+  out of the rebuild**: the bundle contains `dijkstrajs`, behind node-qrcode's segment optimiser,
+  and it had no notice anywhere in this repository. It has an `INVENTORY` entry, a licence text and
+  a `CREDITS.md` row now. `check-licences.py` rule 7 could not have found it — see `B339`.
+  `Verify:` **yes** — the version, the hash and the build command are recorded, the `CREDITS.md`
+  row carries v1.5.4, and `tests/test_vendored_versions.py` fails if any of those disagree with the
+  shipped bytes. Re-vendoring is zero-risk here for the reason `B338` records: nothing loads this
+  file. — agent:`vendored`
+
+- [ ] **B338** **`static/lib/qrcode.min.js` is loaded by nothing, and `CREDITS.md` said it was the
+  2FA QR code.** Measured 2026-09-16 while closing `B337`. No `<script>` in `static/index.html`
+  names it, no module imports it, and `static/sw.js` does not precache it — the only two references
+  to the file in the whole repository were the `CREDITS.md` row and the `check-licences.py`
+  inventory entry. The QR code a user actually sees during 2FA setup is produced **server-side** by
+  the Python `qrcode[pil]` package (`routes/auth_routes.py:268-269`) and delivered as a data URL,
+  which `static/js/settings.js:2507` renders through `safeRasterDataUrl`. So the table's *"QR-code
+  rendering (2FA setup)"* had never been true of this file. The row now says what is true and the
+  file is **kept, not deleted** (`Law 1` — this is somebody's decision, not a tidy-up made in
+  passing), but it is 24 KB of unreferenced third-party JavaScript in a repository about to go
+  public, and it carries its own bundled `dijkstrajs`. Two options: delete it and its paperwork, or
+  wire it up — a client-side renderer would let the 2FA setup page draw the code without the server
+  rasterising a PNG, which is the reason somebody vendored it in the first place. `Verify:` either
+  the file is gone along with its inventory entry and licence texts, or something in
+  `static/` loads it and `CREDITS.md` says what for. `Depends:` `B337` (landed). — found while
+  closing `B337` — agent:`vendored`
+
+- [ ] **B339** **`check-licences.py` rule 7 can see inside a webpack bundle and is blind to an
+  esbuild one, so a package shipped with no notice for as long as the file has existed.** Measured
+  2026-09-16 while closing `B337`. Rule 7 derives a bundle's contents from `node_modules/<package>/`
+  paths left in the shipped bytes — 1,460 of them in `html2pdf.bundle.min.js`, and pnpm's store
+  layout in `mermaid.min.js` even carries the versions (`B46`). **esbuild leaves none.** It rewrites
+  every module to a local function and keeps no path, so `discover_bundles` finds zero packages in
+  `static/lib/qrcode.min.js`, which is below the threshold of three, so the file is not a bundle as
+  far as the rule is concerned — and `dijkstrajs` shipped inside it, undeclared, from before the
+  fork until it was found by rebuilding the file rather than by reading it. This is the same defect
+  as `P0-21b` and `B46` in a third minifier, and the population is not one file: any future vendored
+  asset built with esbuild, rollup or Vite is invisible to this rule. **It is not obvious how to fix
+  it well.** Deriving contents from bytes is what made rule 7 trustworthy, and a hand-written list
+  of "what is inside `qrcode.min.js`" is exactly the thing `B46` proved can be emptied without
+  anything noticing. The honest options: record the build's input tree next to the build command
+  `B337` already stores — `check-vendored-versions.py` knows how these files are produced, so the
+  package list can be derived from `package-lock.json` at build time rather than read back out of
+  the artifact — or refuse to vendor a self-built bundle that cannot state its own contents.
+  `Verify:` a vendored file built by a minifier that strips module paths either declares the
+  packages inside it from a record produced by its own build, or fails `check-licences.py`.
+  `Depends:` `B337` (landed), `B330` (landed). — found while closing `B337` — agent:`vendored`
+
+- [x] **B340** **`CYBERTOOTH_CHANGES.md` opens by calling this a "private customization" and names
+  five environment variables that no longer exist — in a repository being made public.** Measured
+  2026-09-16. Its first sentence is *"Private customization of Odysseus … this file tracks local
+  changes"*, which describes a private machine fork and is the first thing a stranger finds if they
+  click it. Worse, it is **wrong about the tree in five places**: `ODYSSEUS_PHRASE_LOOP_MIN`,
+  `ODYSSEUS_UNLIMITED_LOCAL`, `ODYSSEUS_FORCE_UNLIMITED`, `ODYSSEUS_MCP_RAG_OWNER` and
+  `ODYSSEUS_DOCUMENT_OWNER` each return **zero occurrences** across the tree; all five live under
+  `PANTHEON_` now (`src/llm_core.py:442`, `src/runtime_limits.py`, `mcp_servers/rag_server.py`). An
+  operator copying any of them into `.env` gets silence. Two file paths are stale the same way —
+  `web_tools.py` and `filesystem_tools.py` are under `src/agent_tools/`. That is `Law 9` pointed at
+  documentation: a claim a reader can check, that fails when they check it.
+  **The brief's premise that nothing references the file is wrong and the correction matters.**
+  `scripts/pantheon-init.sh` names it twice — `:53` puts it in the never-sweep pathspec beside
+  `LICENSE`, `NOTICE`, `CREDITS.md` and `CHANGELOG.md`, and `:196` names it in the post-run warning
+  listing the provenance files deliberately not swept. So deleting it silently changes what that
+  script protects and leaves the warning naming a file that is not there. No *document* references
+  it; that half of the finding holds.
+  — **done 2026-09-16. Kept, reframed, and every claim in it re-checked rather than restated.**
+  `Law 1` and the init script both say keep the file; the brief's deletion option was only open if
+  the content survived elsewhere, and the content is fork lineage, which `CHANGELOG.md` already
+  carries a summary of under *Before the fork was named*. So the fix is `Law 14`: extend the
+  existing home rather than build a second one. The file is retitled *the five changes this fork
+  started as*, the "private customization" opening is replaced with what it actually is — the
+  record of the pre-Pantheon `custom` branch — and it now says in its own first screen that it is
+  dated history and not documentation, pointing a reader at `README.md`, `docs/setup.md` and
+  `.env.example` for the present tense. **Every stale address is corrected in a dated block under
+  the change it belongs to rather than edited in place**, because a lineage file that is silently
+  kept current has stopped being lineage. The substance was checked too and holds:
+  `_DegenerateStreamGuard` is at `src/llm_core.py:391`, `_is_local_openai_compat_url` at
+  `src/agent_loop.py:1348`, and all three lifted caps are live — `100_000` rounds
+  (`src/agent_loop.py:4135`), `1_000_000` max tokens (`:4138`), `86_400s` stream timeout (`:5779`).
+  `CHANGELOG.md` now links it from the *Before the fork was named* block, so it stops being an
+  orphan from the documentation side. `Verify:` no env var named in the file is absent from the
+  tree under the spelling the file gives, or the absence is stated on the line. — found while
+  bringing the public-facing markdown current — agent:`readme`
+
+- [x] **B341** **The README says the unreachable-element count "is now 2". The checker says 120.**
+  Measured 2026-09-16: `python3 .pantheon/check-wiring.py` prints `UNRESOLVED 120`, and CI runs it
+  at `--max 120`. The README's *Switching it back on* section says *"It found **78** … and **that
+  number is now 2**"*. This is the single worst claim in the repository to be carrying into a
+  public flip, because the whole pitch of that section is *our numbers are checkable* and the
+  command is one line away in the same paragraph. **It is not a regression and the README must not
+  imply one.** The 2 was true under a narrower checker; `P3-15`/`H07` widened the scope three times
+  and `check-wiring.py`'s own docstring records it — `static/app.js` and `static/sw.js` were never
+  scanned, comments were counted as code, and a lookup indexing a map with a variable scored clean.
+  Closing the third alone took the count **9 → 124 with no product code changing**. The README also
+  still prints that third blind spot as a *current* caution, two years of tense out of date: it was
+  closed 2026-09-07 and literal collections are resolved now.
+  — **done 2026-09-16.** The section now states the live number, says in the same breath that 78
+  and 120 are two different measurements and that subtracting them means nothing, names all three
+  widenings, and carries `P3-20`'s triage: at least 87 of the 124 measured at triage are guarded by
+  construction, so driving the number down means deleting guarded code, which `Law 1` forbids. The
+  stale caution is rewritten as the history it is. The sentence *"the count only goes down"* is
+  replaced with what CI actually enforces — a ceiling that may come down and may not go up.
+  `Verify:` the number in the README is the number `check-wiring.py` prints, or the README says why
+  it is not. — found while bringing the public-facing markdown current — agent:`readme`
+
+- [x] **B342** **The README undercounts the project's own laws and phases by five each.** Measured
+  2026-09-16. *"Fifteen rules are written down in `.pantheon/AGENTS.md`"* — `AGENTS.md` has twenty,
+  `### Law 1` through `### Law 20`, and `.pantheon/ROADMAP.md`'s own preamble says *"The other
+  nineteen laws are in `AGENTS.md`"*. *"Fifteen phases, every task written down"* — the tracker has
+  twenty phase sections, `# P0 ·` through `# P19 ·`, which `check-tracker.py` recounts every run.
+  Both numbers were right when written and neither is pinned to anything, so both aged silently.
+  — **done 2026-09-16**, corrected to twenty and twenty. The laws sentence also now says nine of
+  them cite the incident that produced them, which is the fact that makes the file worth opening.
+  `Verify:` `grep -c '^### Law ' .pantheon/AGENTS.md` and `grep -c '^# P[0-9]* · ' .pantheon/ROADMAP.md`
+  agree with the README. — found while bringing the public-facing markdown current — agent:`readme`
+
+- [x] **B343** **The README says four files were removed since the fork; the ledger says five, and
+  the ledger is the pinned source.** Measured 2026-09-16. `README.md` *Status* read *"537 files
+  added, 1,387 modified and 4 removed … All four deletions are named and argued in the ledger"*.
+  `.pantheon/ledger/claims.py`'s `add-never-subtract` claim reads `537 added · 1,387 modified · 5
+  removed`, and `LEDGER.md:81` is headed *"537 files added. Five removed, and all five are
+  argued."* `check-ledger.py` pins the README's test count and its tracked/done line but **not**
+  this one, which is why it drifted. The number carries weight the others do not: it is the fork's
+  first law stated as a measurement, so it is the number a sceptic checks first.
+  — **done 2026-09-16.** The README says five, and the fifth's story is added in one clause because
+  it is the one that argues the law rather than restating it — it was found by a failing test
+  nobody had looked at, and was upstream's logo wearing our filename. **Not fixed here:**
+  `LEDGER.md:89`'s generated body still reads *"A ratio of 537 to 4"* and *"the four are named"* in
+  the same paragraph whose heading says five. `LEDGER.md` is generated from `claims.py` and both are
+  outside this row's ownership — see `B348`. `Verify:` every place in the repository that states the
+  deletion count states the same one. — found while bringing the public-facing markdown current —
+  agent:`readme`
+
+- [x] **B344** **The README promises notes the table underneath does not have.** Measured
+  2026-09-16. *Switching it back on* says *"the notes say where each one now stands"*, and the table
+  that follows has two columns — Area, and what is unreachable in it. There are no notes and there
+  never were. A reader looking for the status of the six subsystems finds nothing and has no reason
+  to trust the next sentence either. The same paragraph also said *"dead code gets deleted"*, which
+  `P3-20`'s triage has since contradicted: most of what the checker finds is guarded by
+  construction, and deleting it is what `Law 1` forbids.
+  — **done 2026-09-16, and the replacement is verified rather than asserted.** The promise is
+  replaced with the two statuses I could confirm from ticks — the image upscaler (`P2-22`) and RAG
+  document upload (`P2-23`) are both `[x]` — and a pointer to the tracker's `P2` section for the
+  other four, because that is where their status actually lives and it is script-validated. **I did
+  not invent a status column**: the remaining four have no single owning row I could name with
+  confidence, and a fabricated Status column on the front page is a worse defect than the missing
+  one. The deletion clause is rewritten to what the project actually does — code is deleted only
+  when an audit has proved it dead. `Verify:` the README promises nothing the page underneath does
+  not deliver. — found while bringing the public-facing markdown current — agent:`readme`
+
+- [x] **B345** **The root `ROADMAP.md` gives a reason for existing that the tree stopped supporting.**
+  Measured 2026-09-16. The file ends *"The path is kept rather than deleted because
+  `.github/ISSUE_TEMPLATE/feature_request.yml` links it by absolute URL"*. That template links
+  `https://github.com/ImPanick/pantheon/blob/main/.pantheon/ROADMAP.md` — the `.pantheon/` path, not
+  this one — and a grep for an absolute URL ending `/ROADMAP.md` that is not the `.pantheon/` one
+  returns **nothing anywhere in the tree**. So the single stated justification for keeping a file is
+  false, in a file whose entire subject is a documentation claim that was false and got corrected.
+  — **done 2026-09-16.** The original reason is left standing and marked re-checked with today's
+  date rather than quietly swapped, because it is *why the file was kept* and it stopped being true
+  without anyone noticing, which is the thing worth recording. A reason that does not depend on one
+  template is given underneath: `ROADMAP.md` at a repository root is an address people and tools try
+  by convention, and this one served upstream's roadmap under our name for three days, so a 404
+  would leave that with no explanation at the address where it happened. **The template is correct
+  and needs no change** — it points where it should have pointed all along. `Verify:` every reason
+  this file gives for existing is true of the tree it ships in. — found while bringing the
+  public-facing markdown current — agent:`readme`
+
+- [x] **B346** **The README transcribed the CI checker count into prose, where nothing validates it —
+  the same defect the ledger already fixed one level down.** Measured 2026-09-16. *What's inside*
+  read *"twenty checkers in CI that upstream does not have"*. Twenty happens to be right today, and
+  that is luck: `check-ledger.py:_checker_count_problems` exists **because this exact number had
+  already drifted twice** in the ledger — its own comment records the claim saying fifteen while
+  `ci.yml` listed seventeen — and that function counts `- name: check-*` steps out of the workflow
+  and fails on disagreement. `release-gate.py` parses the same file for the same reason, stating it
+  outright: *"a ceiling that lives in two files is a ceiling that will disagree with itself"*. The
+  README was the one copy left with nothing behind it (`Law 13`, and `Law 7`).
+  — **done 2026-09-16 by removing the transcription rather than pinning a third copy.** The sentence
+  now describes the apparatus — a checker for each way a fact in this project has been caught
+  rotting — and says in one clause that the count is a ledger claim rather than a sentence here,
+  because it is read out of `.github/workflows/ci.yml` and a number typed twice will disagree with
+  itself. The count still reaches a reader, through `LEDGER.md`, where a script keeps it honest.
+  **A third pinning in `check-ledger.py` was the alternative and was rejected**: it would be a
+  second derivation of a value that already derives, and this row's whole subject is the cost of
+  one fact in two places. `Verify:` no count in the README is stated in a place nothing checks.
+  — found while bringing the public-facing markdown current — agent:`readme`
+
+- [x] **B347** **Nothing on the front door tells a prospective self-hoster how dependencies are kept
+  current, and the two upgrade warnings written today were unreachable from it.** Measured
+  2026-09-16. The README's *Security* section named the controls that never lift and said nothing
+  about supply chain, while the apparatus has existed for some time and is checkable:
+  `.github/dependabot.yml` (grouped weekly pip, npm, Docker base image and pinned Actions),
+  `.github/workflows/dependency-review.yml` (blocking on pull requests, with `pip-audit` advisory
+  alongside), and `.pantheon/check-licences.py`, whose vendored inventory is an allowlist against
+  `CREDITS.md`. `docs/security-ci.md` says what each check does and whether it blocks a merge, and
+  **nothing in the repository linked it**. Separately, `B96` and `B152` landed *Changed — read this
+  before upgrading* blocks in `CHANGELOG.md` covering three switches that now honour values meaning
+  *no* — including `AUTH_ENABLED=0`, which can take authentication off a running instance — and an
+  operator's two entry points, `README.md` and the top of `CHANGELOG.md`, both led past them.
+  — **done 2026-09-16.** One paragraph under *Security* describing the dependency posture, written
+  only from what is in the tree today and linking `docs/security-ci.md` as where the audit lives. A
+  pointer to the upgrade block from the README's *Security* section naming the `AUTH_ENABLED`
+  change, and a second at the top of `CHANGELOG.md` naming all three switches. `CHANGELOG.md`'s two
+  `#### Added` sections under one release are merged into one, so the `B95` entry stops being
+  invisible under a duplicate heading. **Deliberately not written: anything about pinning.**
+  `requirements.txt` has zero `==` today; another agent is pinning it this wave, and a README that
+  claims pinned dependencies before the pins land is this row's own defect wearing a fix's clothes.
+  `Verify:` every dependency mechanism the README names can be found in the tree by the path given.
+  — found while bringing the public-facing markdown current — agent:`readme`
+
+- [ ] **B348** **The proof ledger carries `B341`'s defect one level down: its `wiring` claim says 2
+  and the checker says 120.** Measured 2026-09-16. `.pantheon/ledger/claims.py`'s `wiring` claim is
+  `before 78 → after 2`, headline *"Unreachable UI 78 -> 2"*, repro `check-wiring.py --max 124`;
+  `check-wiring.py` prints `UNRESOLVED 120` and CI runs `--max 120`. **The repro command in the
+  claim disagrees with CI's ceiling as well** — 124 against 120 — so a reader following the ledger's
+  own instruction runs a different gate from the one that guards the tree. `check-ledger.py` does
+  not catch this: it validates the `checkers` claim against `ci.yml` and the README's two figures
+  against their sources, and no rule compares a claim's `after` to the checker its `repro` names.
+  Same root cause as `B343`: `LEDGER.md:89`'s generated body still says *"A ratio of 537 to 4"* and
+  *"the four are named"* under a heading that says five, so two claims in one file are stale in the
+  same way. **This is the ledger's own thesis failing on the ledger** — every claim carries a
+  command you can run, and for this one the command disproves the claim. `Verify:` running the
+  command a claim names produces the number the claim states, or the claim says why it does not;
+  and a rule in `check-ledger.py` fails when a claim whose repro is a `check-*.py` invocation
+  disagrees with that checker's live output. **Out of scope for `agent:readme`** — `claims.py`,
+  `LEDGER.md` and every checker are outside its ownership. — found while fixing `B341` —
+  agent:`readme`
+
+- [ ] **B349** **The fork date is 2026-08-20 in two places and 2026-08-24 in four, and only a human
+  knows which is which.** Measured 2026-09-16. `2026-08-24`: `CHANGELOG.md:18`, `NOTICE:27` (*"Date
+  of fork"*), `NOTICE:36`, `CREDITS.md:34` and `:44`, and `README.md`'s *Licence* section (*"forked
+  from commit `b4d1293` on 24 August 2026"*). `2026-08-20`: `.pantheon/ledger/claims.py:52`
+  (`FORK_POINT_DATE`) and `:132` (`stock="Odysseus at b4d1293, 2026-08-20"`), and — until this row —
+  `README.md`'s *Status* section, so **the README stated both dates for the same event, sixty lines
+  apart.** The two readings are both defensible and mean different things: the date `b4d1293` was
+  authored upstream, versus the date this repository was cloned from it. `b4d1293` is not reachable
+  in this worktree (`git diff b4d1293..HEAD` → *unknown revision*), so **neither can be confirmed
+  from here** and guessing would put a wrong date on the AGPL §5(a) attribution surface. The README
+  contradiction is removed — *Status* now names the commit and leaves the date to the *Licence*
+  section, which agrees with `NOTICE`, `CREDITS.md` and `CHANGELOG.md` — but that is a patch over
+  the disagreement, not a resolution. `Verify:` one date, stated once per meaning, and if both
+  meanings are real then each is labelled; a checker compares `claims.py`'s `FORK_POINT_DATE` with
+  `NOTICE`'s *Date of fork*. **Needs the owner**, and touches `NOTICE`, `CREDITS.md` and
+  `claims.py`, all outside `agent:readme`'s ownership. — found while bringing the public-facing
+  markdown current — agent:`readme`
+
+- [x] **B350** **The security policy asked reporters to publish the bug.** Found 2026-09-16 while
+  reading the community surface ahead of the repository going public. `SECURITY.md`'s `## Reporting`
+  section was one sentence — *"report vulnerabilities privately via GitHub security advisories if
+  available, or by opening a minimal issue that does not disclose exploit details"* — and the second
+  half is the defect. This project ships a shell tool, file read/write, mail send and read, and MCP
+  process launch; for most of that surface **naming the component is the exploit**, so a reporter
+  following the instruction discloses to everyone watching the repository at the moment they file.
+  It was survivable while the repository was private and stops being survivable the day it is not.
+  It also promised nothing back: no response time, no triage outcome, no statement of what is out of
+  scope, so a reporter had no way to tell a slow maintainer from a dropped report.
+  **Fixed** by rewriting `## Reporting a Vulnerability` as the first section of the file: the
+  private advisory form as the channel, an explicit instruction for what to do when that page 404s
+  (a one-sentence public issue with **no** component named, not a "minimal" bug report), what to
+  include — revision, install method, `AUTH_ENABLED`/`LOCALHOST_BYPASS`, starting privilege, which
+  `THREAT_MODEL.md` boundary it crosses — and what comes back: acknowledgement in 5 days,
+  assessment in 14, one maintainer, no bounty, advisory published with the fix and not before.
+  **The response times are deliberately small enough to keep**; an invented SLA fails the first time
+  it is tested and takes the rest of the file with it. An `### Out of scope` list says plainly that
+  admin shell is the product working, that a deployment this file warned against is not a finding,
+  and that the `THREAT_MODEL.md` Known Gaps are already on the record. `Verify:` `SECURITY.md`
+  contains no instruction to open an issue describing a vulnerability, and names a private channel,
+  a response time and an escalation for when the channel is unavailable. — found while auditing the
+  community surface for the public release — agent:`community`
+
+- [x] **B351** **The threat model described a CSP the middleware had stopped setting, and three of
+  its four Known Gaps had been closed without anybody telling it.** Measured 2026-09-16 against the
+  tree. Four false claims in one file, and the file exists to be read *instead of* the auth and
+  middleware stack, which is what makes each of them expensive.
+  **(1) The CSP.** `## Security Headers` said *"nonce-based `script-src 'self' 'nonce-{nonce}'
+  https://cdn.jsdelivr.net`"*. Both halves were dead: the jsDelivr allowance came out on 2026-09-01
+  (`P16-07`) when Pyodide was vendored, and inline scripts moved from a per-request nonce to a
+  per-file `'sha256-…'` on 2026-09-16 (`B141`). The live policy is `script-src 'self'
+  'wasm-unsafe-eval'` plus the hashes `src/app_helpers.serve_html_with_nonce` stamps on
+  `request.state`, and it contains **no external origin at all** — a stronger property than the one
+  the document was claiming, which is the worst direction for a stale security doc to be wrong in,
+  because nobody re-reads a paragraph that looks pessimistic.
+  **(2) SSRF via `/api/v1/chat` `base_url`** was listed as live with *"PR #1039 fixes this"*. It is
+  fixed in this tree: `routes/webhook/webhook_routes.py:298` puts a token-supplied `base_url`
+  through `src/url_security.validate_public_http_url` and answers `400`.
+  **(3) `src/search/` partial consolidation** claimed five of seven modules were "independent copies
+  that can drift". All seven are shims: `analytics`, `cache`, `content`, `core`, `providers` and
+  `query` alias `services.search` by `sys.modules` replacement and `ranking` re-exports — 120 lines
+  across the whole package.
+  **(4) "Token scopes are coarse"** claimed tokens carry *"either `chat` or `admin` scope"*.
+  `routes/api_token_routes.ALLOWED_SCOPES` has 16 scopes with read/write splits plus
+  `TOKEN_PROFILES`, and there is **no `admin` scope in it at all**.
+  **And the issue numbers.** The gaps cited `#1058` twice, for two unrelated things, and `#1039`.
+  Neither number appears anywhere else in this tree and every issue referenced elsewhere in the
+  repository is three digits (`#485`, `#593`, `#622`), so both are upstream Odysseus's, carried over
+  by the fork. On a public repository a bare `#NNNN` renders as a link into **this** repository's
+  issue of that number, whatever that turns out to be.
+  **Fixed**: the CSP bullet rewritten to the live policy with the two dates that moved it; the three
+  closed gaps moved to a `### Closed gaps` subsection with what actually fixed each, rather than
+  deleted, so a reader who saw the old list learns what happened to it; the stale gap list replaced
+  with three that were checked today — no OS sandbox for `bash` (with the scope corrected: the file
+  tools *are* confined by `_resolve_tool_path`, the shell is not), token scopes that do not narrow
+  the agent, and prompt-injection hardening being a convention nothing enforces. Added: the
+  `AUTH_ENABLED=0` parse (`B91`) under `## Authentication`, and a `## Uploaded And Rendered Content`
+  section for the upload sandbox CSP and the SVG reference allowlist (`B160`), both `FORBIDDEN.md`
+  Part 2 controls that the threat model had never mentioned. `Verify:` every control `THREAT_MODEL.md`
+  names can be found doing what it says in the file it names, and no `#NNNN` in it refers to an issue
+  this repository does not have. — found while auditing the community surface for the public release
+  — agent:`community`
+
+- [x] **B352** **Every pull request and every bug report started by asserting something about a
+  branch that has never existed here.** Found 2026-09-16. `.github/pull_request_template.md` opened
+  with a `## Target branch` section — *"This PR targets **`dev`**, not `main`. All PRs land in
+  `dev`... If your PR is on `main` by accident, click 'Edit' and change the base"* — and repeated it
+  as a checklist item. `.github/ISSUE_TEMPLATE/bug_report.yml` made it **`required: true`**: a
+  reporter could not file a bug without ticking *"I am running the latest code from the `dev` branch
+  (the default branch you get on clone)"*. `git branch -a` has only ever shown one branch in this
+  repository; `dev` is upstream Odysseus's.
+  **This is the same defect `CONTRIBUTING.md` corrected on 2026-08-30 and it is `Law 13`**: that
+  correction names "the three places a newcomer meets the project first: cloning, contributing, and
+  hardening CI", fixed `CONTRIBUTING.md` and `docs/security-ci.md`, and did not reach the two forms
+  GitHub puts in front of a contributor *automatically*, which are the two a newcomer cannot avoid.
+  A required checkbox that is false is worse than a wrong sentence: it teaches the reporter that the
+  form is a formality, on the first screen they see.
+  **Fixed** in both files, each with the correction recorded in a comment beside it so the next
+  sweep can see what it used to say. The pull request checklist also gained the two things a
+  reviewer here actually needs and had no box for: `release-gate.py --fast` passing, and a test that
+  **fails on the tree before the change** with an explicit escape hatch for typo and docs PRs.
+  `Verify:` no template under `.github/` instructs a contributor to target, pull or verify against
+  `dev`, and the bug form's required boxes are all truthfully tickable by someone who cloned an hour
+  ago. — found while auditing the community surface for the public release — agent:`community`
+
+- [x] **B353** **No `CODE_OF_CONDUCT.md`, on a repository about to accept public contributions.**
+  Found 2026-09-16. GitHub's community-standards check flags the absence, it is one of the files
+  contributors look for before their first PR, and this project has an unusually blunt review
+  culture — `CONTRIBUTING.md` says outright that PRs ignoring the visual style "will be closed
+  without merge, no matter how correct the underlying code is" — which makes the *absence* read
+  worse than it is.
+  **Fixed** by adopting the Contributor Covenant v2.1 deliberately rather than by reflex: it is the
+  document contributors already recognise, and a bespoke one written for a project this size would
+  be a worse version of it that nobody has read before. The two sections a copy-paste always gets
+  wrong are written for this project. **Scale is stated**: the Covenant says "community leaders",
+  plural; here it is one person, named, with no committee and no appeal stage, and the file says so
+  rather than implying a process that does not exist. **The contact is real and matches
+  `SECURITY.md`** — the private advisory form, because it is the only channel this repository has
+  that is private, reaches the maintainer and notifies nobody else, with the reason written down and
+  `github.com/contact/report-abuse` named as the route when the report is *about* the maintainer or
+  the private form is unavailable. **A code of conduct naming an address nobody reads is worse than
+  none**, and this repository publishes no email anywhere, so inventing one was the failure mode to
+  avoid. `Scope` also separates a hard review from a conduct problem, because on this project that
+  distinction will be tested. Licensing is stated per section: the Covenant text is CC BY 4.0 with
+  attribution, the project's own sections are AGPL-3.0-or-later. `Verify:` `CODE_OF_CONDUCT.md`
+  exists, its enforcement channel is the same one `SECURITY.md` names, and every URL in it resolves.
+  — found while auditing the community surface for the public release — agent:`community`
+
+- [x] **B354** **`CONTRIBUTING.md` documented a project that works like every other project, and
+  this one does not.** Found 2026-09-16. The file was specific and good about branch model, setup,
+  visual style and code conventions, and said **nothing** about how work is actually tracked or what
+  "done" means here: not that every change is a row in `.pantheon/ROADMAP.md`, not that the tracker
+  is updated every turn and recounted by `check-tracker.py`, not that `.pantheon/release-gate.py`
+  exists at all, not that a claim needs a test that **fails before the change**, not that mutation
+  survival is how a test is judged, not that a test which greps a file is testing the file, and not
+  that `FORBIDDEN.md` Part 2 lists controls a PR may not remove. A first-time contributor could
+  follow the file exactly and still have their PR sent back for a standard they were never shown.
+  **Fixed** by adding `## How work is tracked, and what "done" means here` before `## Setup`, and
+  rewriting `## Running Checks` into three stages: targeted runs while working, the gate before
+  pushing, the suite once — with the `git stash` recipe that produces before/after evidence a
+  reviewer can check, and the `Law 19` warning against editing during a suite run, because **fifteen
+  files under `tests/` at twenty call sites read their own source with `inspect.getsource`**
+  (counted 2026-09-16; `AGENTS.md` records eight and eleven, which was true when it was written).
+  Every command in the section was run in this worktree before it was written down. The mutation
+  standard is described as something a contributor can do **by hand** — revert the fixed line,
+  confirm the test reddens — because the harness the project uses internally is not in the
+  repository and pointing a contributor at a tool they cannot run is the same defect in a new place.
+  `Verify:` a contributor who reads only `CONTRIBUTING.md` can run the gate, produce before/after
+  evidence, and knows where the roadmap and the forbidden-controls list are; and every command in
+  the file executes as written from a clean clone. — found while auditing the community surface for
+  the public release — agent:`community`
+
+- [x] **B355** **The feature request form sent people to a 1.4 MB file to check whether their idea
+  was already on the roadmap.** Found 2026-09-16. `.github/ISSUE_TEMPLATE/feature_request.yml`
+  linked `blob/main/.pantheon/ROADMAP.md`, which is **1,462,499 bytes over 10,606 lines** — the
+  correct file, and not a thing to hand somebody as a duplicate check before they are allowed to
+  file. The instruction above it says requests duplicating the roadmap "will be closed as
+  duplicates", so the reader is being held to a search the link does not let them perform.
+  **Fixed** by pointing at root `ROADMAP.md`, the 23-line pointer page that renders and links
+  onward, plus a line telling the reader to `grep` the real file in a clone, which is what anyone
+  would end up doing. **This also makes root `ROADMAP.md`'s stated reason for existing true again** —
+  see `B356`. `Verify:` every link in `.github/ISSUE_TEMPLATE/*.yml` resolves to a file present in
+  the tree at the path the URL spells. — found while auditing the community surface for the public
+  release — agent:`community`
+
+- [ ] **B356** **Root `ROADMAP.md` explains its own existence with a fact that stopped being true.**
+  Found 2026-09-16 while closing `B355`. The file ends: *"The path is kept rather than deleted
+  because `.github/ISSUE_TEMPLATE/feature_request.yml` links it by absolute URL, and a link that
+  404s is not an improvement on a link that lies."* That was true when it was written; the template
+  was later repointed at `.pantheon/ROADMAP.md`, so for some time the pointer page was justified by
+  a link that no longer came to it. `B355` has repointed the template back at root `ROADMAP.md` for
+  an independent reason (the `.pantheon/` file is 1.4 MB), so **the sentence is true again as of this
+  change** — but it is true by coincidence, and it is a load-bearing sentence: it is the reason
+  nobody deletes the file. **Not fixed here**: root `ROADMAP.md` belongs to another agent this wave
+  and a two-line edit from this worktree would conflict with whatever they are doing to it. The fix
+  is to restate the reason so it does not depend on a link that has moved once already — the page is
+  the rendering entry point for a tracker too large for GitHub to serve usefully, which is a reason
+  that survives the next template edit. `Verify:` root `ROADMAP.md` states why it exists in terms
+  that do not go stale when a link is repointed, and something names it so the next person to
+  consider deleting it finds the reason. `Depends:` coordination with whoever owns root
+  `ROADMAP.md`. — found while closing `B355` — agent:`community`
+
+- [ ] **B357** **Three documents now route reporters to a GitHub feature nobody has confirmed is
+  switched on.** Filed 2026-09-16. `SECURITY.md` (`B350`), `CODE_OF_CONDUCT.md` (`B353`) and
+  `.github/ISSUE_TEMPLATE/config.yml` all send private reports to
+  `https://github.com/ImPanick/pantheon/security/advisories/new`. That URL only works when **Private
+  vulnerability reporting** is enabled in the repository's Code security settings; with it off the
+  page 404s and the reporter is standing in front of a dead end holding a vulnerability.
+  **This could not be verified from the worktree** — `api.github.com` is not reachable from here
+  (403 at the egress proxy) and the repository is not public yet, so this row is filed rather than
+  ticked. Each of the three documents carries an explicit 404 fallback, so the failure is handled
+  rather than silent, but a fallback is not the fix. **The fix is a repository setting, not a
+  commit**: Settings → Code security → *Private vulnerability reporting* → Enable, before the
+  repository is made public and not after. `docs/security-ci.md` already has a "One-time settings to
+  turn on" section and this belongs in it as a third item, alongside the branch-protection and
+  Dependabot steps. `Verify:` the advisory URL returns the report form rather than a 404 for a
+  logged-out visitor, and `docs/security-ci.md` lists enabling it. — found while closing `B350` —
+  agent:`community`
+
+- [ ] **B358** **The one dependency with a known unfixable advisory is in the default image and in
+  no requirements file, so the audit that would name it cannot see it.** Found 2026-09-16 while
+  writing `SECURITY.md`'s dependency section. `docker/build-realesrgan-wheels.sh` pins
+  `basicsr==1.4.2 gfpgan==1.3.8 facexlib==0.3.0`, and `Dockerfile` installs the built wheels with
+  `pip install --no-deps`, so **every Docker user has `basicsr` 1.4.2 on disk whether or not they
+  ever touch Real-ESRGAN**. `basicsr` 1.4.2 carries GHSA-86w8-vhw6-q9qq / CVE-2024-27763 (command
+  injection through `SLURM_NODELIST` in `basicsr/utils/dist_util.py`), recorded as `last_affected:
+  1.4.2` with **no fixed version**: 1.4.2 is the newest release, published 2022-08-30, and
+  `realesrgan` 0.3.0 — also the newest, 2022-09-20 — declares `basicsr>=1.4.2`, so no resolution of
+  that constraint reaches anything unflagged.
+  **The acceptance is sound and is now written down** in `SECURITY.md`: the vulnerable path is the
+  SLURM branch of distributed-training setup, which inference never calls, and the CVSS vector is
+  `AV:L/AC:L/PR:L` — anyone who can set environment variables on the process already has local
+  execution. **The coverage gap is the row.** `pip-audit` runs against `requirements.txt` and
+  `requirements-optional.txt` only, and the package is in neither, so the advisory-only scan that
+  exists to surface exactly this reports nothing. Trivy sees it, because it scans the built image —
+  which means the project's knowledge of its own accepted risk currently depends on a scanner that
+  is `continue-on-error` and reports into a tab. There is a second, worse case: the Cookbook's
+  "install realesrgan" button runs a plain `pip install realesrgan` at runtime
+  (`routes/shell_routes.py:1394`), which is a dependency entering a live deployment that **no**
+  scanner in CI sees. `Verify:` the accepted `basicsr` advisory appears in whatever CI output the
+  maintainer actually reads, and a future bump of the pinned version in
+  `docker/build-realesrgan-wheels.sh` is noticed by something other than a person remembering.
+  `Depends:` coordinates with the dependency-pinning and CI vulnerability-gate work landing this
+  wave — the fix may be as small as adding the image-only pins to a requirements file the audit
+  already reads, but that file is not this agent's to edit. — found while closing `B350` —
+  agent:`community`
+
+- [x] **B360** **The new vendored-hash checker found three corrupt files on its first integration
+  run, and `git status` could not see any of them.** Found 2026-09-16 on the merge of `B330`.
+  `check-vendored-versions.py` reported `HASH` mismatches for `katex.min.css`,
+  `xlsx.full.min.js` and `docx.umd.min.js`. The first read was that the merge had damaged them or
+  the recorded hashes were wrong; both were wrong. **The working copies in the integration tree
+  disagreed with their own git blobs** — `docx.umd.min.js` was **762,974 bytes on disk against
+  742,858 in `HEAD`, twenty thousand bytes of difference** — while `git diff HEAD` reported the
+  files unmodified and `git status` listed nothing.
+  The mechanism is `git apply --3way` on a minified single-line bundle in an earlier wave, and
+  the reason nothing complained is in the repo on purpose: `.gitattributes:23` sets
+  `static/lib/** -whitespace`, which exists so that vendored minified artifacts do not spray
+  whitespace warnings — and which therefore also silences the one signal that would have shown
+  this. Neither half is wrong on its own. **The committed bytes were never affected**, so nothing
+  shipped: the deployment host applies patches with `git am` and builds from that, and the
+  four-file diff against `HEAD` after the fix is exactly the four libraries this wave bumped.
+  What this row records is that **a working tree can drift from its own index in a way every
+  existing tool reports as clean**, and that the only thing that saw it was a checker built this
+  same day for an unrelated reason — `B330` was written to stop *version* drift in prose, and it
+  caught *byte* drift in the tree. That is the argument for fingerprinting shipped bytes rather
+  than trusting the VCS to notice.
+  Fixed by `rm` + `git checkout HEAD --` on the three files; verified by hashing **every** file
+  under `static/lib/` against its blob, which now differs for four files and only those four.
+  `Verify:` a working copy that disagrees with its blob fails the gate, whatever `git status`
+  says — which `B330`'s checker already does, and this row is the evidence that it matters.
+  **What this does NOT deliver**: the sweep was `static/lib/` only, because that is what the
+  checker fingerprints. Whether the same drift exists elsewhere in the tree is unmeasured, and
+  `B361` is the row for measuring it. — found while merging `B330` — agent:`integrator`
+
+- [ ] **B361** **Nothing outside `static/lib/` is fingerprinted, so the `B360` drift class is
+  invisible everywhere else.** Filed 2026-09-16. `B360` found three working-tree files
+  disagreeing with their git blobs while `git status` reported clean, and it was caught only
+  because `B330`'s checker hashes shipped bytes. That checker's root is `static/lib/` — chosen
+  because vendored third-party files are what it is about. The tree has ~1,600 other files of
+  program text and nothing hashes any of them. **Measure before building anything**: hash every
+  tracked file against `git cat-file -p HEAD:<path>` and find out whether the drift is three
+  files or three hundred. If it is three, the answer is a one-line guard in the gate, not a
+  second fingerprint manifest (`Law 14`) — and if it is none outside `static/lib/`, that is worth
+  writing down too, because it narrows the cause to `git apply` on minified single-line files
+  and makes the fix a merge-procedure change rather than a checker. `Verify:` the count is
+  measured and written down, and whatever guard follows fails on a re-introduced drift.
+  `Depends:` `B330` (landed), `B360` (landed). — found while merging `B330` — agent:`integrator`

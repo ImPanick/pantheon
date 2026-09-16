@@ -18,6 +18,16 @@ The original is not lost — it is in this repository's git history, and it is l
 [pewdiepie-archdaemon/odysseus](https://github.com/pewdiepie-archdaemon/odysseus). If you came
 here looking for Odysseus's plans, that is where they are, and they are worth reading.
 
-Replaced 2026-08-27 (`P0-28`, D-2026-08-26-06). The path is kept rather than deleted because
-`.github/ISSUE_TEMPLATE/feature_request.yml` links it by absolute URL, and a link that 404s is
-not an improvement on a link that lies.
+Replaced 2026-08-27 (`P0-28`, D-2026-08-26-06).
+
+The reason recorded here for keeping the path was that
+`.github/ISSUE_TEMPLATE/feature_request.yml` linked it by absolute URL. **Re-checked
+2026-09-16: it does not, and no longer does anywhere in the tree** — that template links
+`.pantheon/ROADMAP.md` directly, which is the right target and is where it should have pointed
+all along. The original reason is left standing above rather than quietly swapped, because it
+is why the file was kept and it stopped being true without anyone noticing.
+
+The path is still kept, for a reason that does not depend on one template. `ROADMAP.md` at a
+repository root is an address people and tools try by convention, and this one served
+upstream's roadmap under our name for three days. A 404 would leave that with no explanation
+at the address where it happened.

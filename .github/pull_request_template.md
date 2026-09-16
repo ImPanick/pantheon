@@ -4,7 +4,14 @@
 
 ## Target branch
 
-- [ ] This PR targets **`dev`**, not `main`. All PRs land in `dev`; `main` is curated by the maintainer at each release. If your PR is on `main` by accident, click "Edit" on this PR and change the base.
+- [ ] This PR targets **`main`**. It is the only branch here, so this is also the default base — you should not have to change anything.
+
+<!-- Until 2026-09-16 this box said the opposite: "This PR targets `dev`, not `main`", with
+     instructions to edit the base. `dev` is upstream Odysseus's branch and has never existed in
+     this repository — `git branch -a` has only ever shown one — so every contributor who followed
+     it went looking for a base that is not there. CONTRIBUTING.md corrected the same mistake on
+     2026-08-30; this template and the bug report form were missed in that sweep. -->
+
 
 ## Linked Issue
 
@@ -25,10 +32,12 @@ Fixes #
 ## Checklist
 
 - [ ] I searched [open issues](https://github.com/ImPanick/pantheon/issues) and [open PRs](https://github.com/ImPanick/pantheon/pulls) — this is not a duplicate.
-- [ ] This PR targets `dev`
+- [ ] This PR targets `main` (the only branch, and the default base)
 - [ ] My changes are limited to the scope described above — no unrelated refactors or whitespace changes mixed in.
 - [ ] I actually ran the app (`docker compose up` or `uvicorn app:app`) and verified the change works end-to-end. Type-checks and unit tests are not enough.
 - [ ] I did not run the app/runtime validation and stated that gap in **How to Test**. Leave this unchecked when the app-run box above is checked.
+- [ ] `python3 .pantheon/release-gate.py --fast` passes on my branch. If a checker fails for a reason my change did not cause, I named it in **How to Test** rather than leaving it red.
+- [ ] **Evidence, not assertion.** I have a test that *fails* on the tree as it stood before my change and passes after it, and **How to Test** says which test and what it reported on the unfixed tree. Leave this unchecked for a change with no testable behaviour (a typo, a comment, a docs edit) and say which it is.
 
 ## How to Test
 

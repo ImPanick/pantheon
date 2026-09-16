@@ -16,7 +16,7 @@ automatically; you do not start them.
 | **Secret scan** (gitleaks) | An API key, token, or password being committed by mistake or on purpose | Yes |
 | **Workflow security** (actionlint + zizmor) | A broken or insecure automation file that could leak the repo's access token | Yes |
 | **Dependency review** | A pull request that adds a software library with a known security hole | Yes |
-| **pip-audit** | Known security holes in the Python libraries already used | No (advisory) |
+| **pip-audit** | Known security holes in the Python libraries already used | Yes |
 | **Container scan: hadolint** | Mistakes and insecure patterns in the `Dockerfile` | Yes |
 | **Container scan: Trivy** | Known security holes in the Docker image | No (advisory) |
 | **CodeQL** | Real bugs in the app's own code: injection, auth mistakes, path traversal | No (advisory) |
@@ -28,6 +28,24 @@ the setting below, the **Merge** button is disabled until it is fixed.
 you can review them on your own schedule, but it never stops a merge. These are
 advisory on purpose: they often flag long-standing issues in other people's
 libraries, not something a given pull request introduced.
+
+**pip-audit was advisory until 2026-09-16 (`B322`) and now blocks.** The
+reasoning for leaving it advisory was the paragraph above: it can flag a
+pre-existing issue that the pull request in front of you did not introduce. That
+is true, and it is an argument for a way to say "we looked at this one" — not
+for a check that never fails, which is a check nobody reads. So there is now a
+register of accepted risks, `.pantheon/dependency-advisories.toml`. A finding
+with an entry there does not fail the build, and the audit prints that entry's
+full reasoning — what the bug is, why this code cannot reach it, what upstream
+offers, when somebody looks again — right next to whatever did fail. A finding
+with no entry fails. Adding an entry is a reviewable diff with a `DECISIONS.md`
+entry behind it, and `.pantheon/check-pins.py` refuses one that does not explain
+itself or whose review date has passed.
+
+Trivy stays advisory: it scans the whole image, including operating-system
+packages this project does not choose, and a fixless CVE in one of those must
+not stop a merge. It runs with `ignore-unfixed`, and what that flag was silently
+dropping is now written down in `D-2026-09-16-01`.
 
 ## Where results appear
 
@@ -72,6 +90,7 @@ This makes the **Merge** button refuse to work until the gating checks pass.
    - `zizmor (Actions SAST)`
    - `hadolint (Dockerfile lint)`
    - `dependency-review (PR gate)`
+   - `pip-audit (blocking)`
 
    The first two come from the correctness CI (`ci.yml`); the rest are this
    security suite.
@@ -88,8 +107,11 @@ This makes the **Merge** button refuse to work until the gating checks pass.
    > assurance this repo offers, which is what made this the worst place for
    > it to be hollow. The step now calls `.pantheon/release-gate.py`'s own
    > `_node_check`, which pipes each file in with `--input-type=module`, and
-   > covers 187 files rather than 173. Leave pytest, pip-audit, Trivy, and CodeQL unchecked so they
-   stay advisory.
+   > covers 187 files rather than 173.
+
+   Add `pip-audit (blocking)` to the list above as well, once it has run on one
+   pull request (`B322`). Leave pytest, Trivy, and CodeQL unchecked so they stay
+   advisory.
 7. Also enable **Require a pull request before merging** and **Require review
    from Code Owners** (this uses the `.github/CODEOWNERS` file so every change
    needs your sign-off).

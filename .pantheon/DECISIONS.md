@@ -2078,3 +2078,87 @@ as *unset* where they read it as *off*. Nothing moved in the permissive directio
 A held site becoming safe to unify — most likely `SECURE_COOKIES`, whose `=1` meaning
 *auto-detect* is indefensible and needs only a release note. Or a genuine need for `y`/`n`, which
 should arrive as a request from an operator rather than as a tidy.
+
+---
+
+## D-2026-09-16-01 — `basicsr` 1.4.2 ships with a published advisory, and that is a decision
+
+*Rows `B320`, `B322`, `B323`. Written the day the dependency audit was made blocking, because a
+gate that blocks needs an honest answer for the first finding it cannot fix.*
+
+**Decided:** Pantheon ships `basicsr` 1.4.2 with **PYSEC-2026-1215 / CVE-2024-27763** open against
+it, as a recorded accepted risk with an expiry, rather than suppressing it quietly or dropping the
+feature that depends on it.
+
+### What was measured
+
+`pip-audit` run inside the running production image flags exactly one package. `basicsr`
+1.4.2's `basicsr/utils/dist_util.py` builds a shell command by interpolation:
+
+```python
+subprocess.getoutput(f'scontrol show hostname {node_list} | head -n1')
+```
+
+`node_list` comes from the `SLURM_NODELIST` environment variable, unquoted and unvalidated, and
+`subprocess.getoutput` runs the string through a shell. A node list containing shell
+metacharacters therefore executes as a command.
+
+### Why it does not apply here
+
+That line sits in `_init_dist_slurm`, reachable only via `init_dist(launcher='slurm')` —
+basicsr's distributed **training** entry point. Pantheon installs basicsr only as a transitive
+dependency of Real-ESRGAN, and uses it only for upscaling **inference**. No Pantheon code path
+calls `init_dist`; Real-ESRGAN's inference path does not either. Reaching the bug additionally
+requires setting an environment variable on the process, and anybody who can do that already has
+local code execution — a strictly larger capability than the one the bug grants.
+
+### Why there is no fix to take
+
+**1.4.2 is the latest release of basicsr.** It was published 2022-08-30 and the project has had no
+release in four years. `realesrgan` requires `basicsr>=1.4.2`, so no version exists that satisfies
+the dependency and is not flagged. "Upgrade" is not an option that was declined; it is an option
+that does not exist. `pip-audit` reports the advisory with no fix version for that reason.
+
+### Why this is written down rather than added to an ignore list
+
+An unexplained entry on an ignore list is the defect class this project keeps finding. It fails
+in one of two ways, both observed elsewhere in this tree: the next person deletes the entry
+because nothing says why it is there, or they stop reading the tool's output because part of it
+is noise they have been told to skip.
+
+Two suppressions of this finding now point here:
+
+* `.pantheon/dependency-advisories.toml` carries the full reasoning and is what
+  `.pantheon/audit-dependencies.py` consults before failing a build. The audit **prints the
+  reasoning next to the findings that did fail**, so it lands in a log somebody is already
+  reading rather than in a file they would have to know to open.
+* `.github/workflows/container-trivy.yml` passes `ignore-unfixed: true`, which has been silently
+  dropping exactly this finding since the job was written — an unexplained suppression that
+  predates this decision and had no reasoning anywhere. The flag stays (a fixless CVE in an
+  upstream OS package must not block a merge on an advisory scan), and now says why.
+
+### What it costs
+
+An operator who installs the Real-ESRGAN upscaler gets a package with a published advisory in
+their environment, and any scanner they run will say so. That is a real cost and the register
+records it rather than hiding it. The alternative — dropping Real-ESRGAN — removes a working
+feature to make a report cleaner, which `Law 1` forbids and which would not make anybody safer.
+
+### What would reopen this
+
+Any of the following makes this entry wrong, and `.pantheon/check-pins.py` fails the gate on the
+first two by construction:
+
+* basicsr publishes a release after 1.4.2 — pin to it and delete the register entry.
+* Pantheon, Real-ESRGAN, or a future dependency calls `basicsr.utils.dist_util.init_dist` on any
+  path, including a training or fine-tuning feature. The code path is then live and this reasoning
+  is void.
+* Real-ESRGAN is replaced by an upscaler that does not pull basicsr in — the entry is then stale.
+* A second, unrelated advisory is published against basicsr. The register accepts exactly one
+  advisory by id; a new id is a new decision.
+
+### Who looks again, and when
+
+`review_by = 2027-03-16`, six months out, and the offline checker **fails the release gate** once
+that date passes. The remedy for that red gate is to re-read the advisory and record what is true
+then. Moving the date without looking is the failure this entry exists to prevent.

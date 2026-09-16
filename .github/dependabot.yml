@@ -7,10 +7,26 @@
 # pinned Actions themselves -- so staying patched does not require manual work.
 # Updates are grouped so a week's bumps arrive as one PR per ecosystem, not a
 # flood of separate ones.
+#
+# `B320`. Read the paragraph above and then read requirements.txt as it stood
+# until 2026-09-16: 31 dependencies, zero `==` pins. Dependabot raises a pull
+# request when a PINNED version falls behind. A bare `fastapi` is satisfied by
+# every release fastapi has ever made, so there was nothing for the pip
+# ecosystem below to compare against and it could not have opened a single
+# Python pull request in the months it had been configured. It was not broken;
+# it was answering a question nobody had asked it. That is the shape worth
+# remembering -- automation that looks like coverage on the config page and
+# provides none -- and it is why `.pantheon/check-pins.py` now fails the release
+# gate on an unpinned requirement, and why that checker also refuses a pinned
+# requirements file sitting in a directory no entry below covers.
 
 version: 2
 updates:
-  # Python dependencies (requirements.txt + requirements-optional.txt).
+  # Python dependencies. Directory "/" covers every requirements*.txt at the top
+  # of the tree: requirements.txt (core), requirements-optional.txt (opt-in
+  # features) and requirements-image.txt (installed by the Dockerfile only).
+  # `.pantheon/check-pins.py` fails if a pinned requirements file ever lands
+  # outside a directory listed here.
   - package-ecosystem: pip
     directory: "/"
     schedule:

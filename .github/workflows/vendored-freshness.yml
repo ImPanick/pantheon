@@ -1,0 +1,149 @@
+# The half of `B330` that needs the network, kept out of the offline gate.
+#
+# `.pantheon/check-vendored-versions.py` answers "do the bytes match the record"
+# and must work with no network, because developers run
+# `.pantheon/release-gate.py --fast` offline and constantly (`Law 16`: the
+# *product* never reaches an external service; CI may).
+#
+# This workflow answers the other question — "is the record still the newest
+# thing upstream published, and does anyone know of an advisory affecting what
+# we ship" — which cannot be answered without asking somebody. It asks two
+# places, both read-only and unauthenticated:
+#
+#   registry.npmjs.org   what `dist-tags.latest` is for each package
+#   api.osv.dev          which advisories affect package@version
+#
+# It runs weekly and on demand, never on push: a PR should not go red because
+# somebody else cut a release while it was open, and a developer should not have
+# to wait on two APIs to find out whether their own change is sound.
+#
+# SheetJS is the reason `registry` is a field rather than an assumption. Its
+# releases live on `cdn.sheetjs.com`; npm's `xlsx` stopped at 0.18.5 in 2022,
+# which is OLDER than what Pantheon ships, so asking npm about it would report a
+# downgrade as an upgrade and both of its CVEs as live. See CREDITS.md.
+name: Vendored freshness
+
+on:
+  schedule:
+    # Mondays, 06:17 UTC. Off the hour on purpose: every scheduled workflow on
+    # GitHub fires at :00 and the queue for that minute is the longest one.
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vendored-freshness
+  cancel-in-progress: false
+
+jobs:
+  freshness:
+    name: Are the vendored libraries still current?
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: "3.11"
+
+      # The offline check first. If the recorded hashes do not match the tree,
+      # asking upstream anything is premature — we do not yet know what we ship.
+      - name: The record matches the bytes
+        run: python3 .pantheon/check-vendored-versions.py
+
+      - name: Ask npm and OSV about every recorded version
+        run: |
+          python3 - <<'PY'
+          import json, subprocess, sys, urllib.error, urllib.request
+
+          UA = {"User-Agent": "pantheon-vendored-freshness"}
+
+          def get(url, data=None):
+              req = urllib.request.Request(url, data=data, headers=dict(UA))
+              if data is not None:
+                  req.add_header("Content-Type", "application/json")
+              with urllib.request.urlopen(req, timeout=60) as r:
+                  return json.load(r)
+
+          records = json.loads(subprocess.run(
+              [sys.executable, ".pantheon/check-vendored-versions.py", "--json"],
+              capture_output=True, text=True, check=True).stdout)
+
+          behind, vulnerable, unknown, filed, excused = [], [], [], [], []
+          for rec in records:
+              pkg, ver, reg = rec["package"], rec["version"], rec["registry"]
+
+              # 1 — is there something newer?
+              if reg == "npm":
+                  try:
+                      latest = get(
+                          "https://registry.npmjs.org/"
+                          + urllib.request.quote(pkg, safe="@")
+                      )["dist-tags"]["latest"]
+                  except (urllib.error.URLError, KeyError, ValueError) as exc:
+                      unknown.append(f"{pkg}: registry said {exc}")
+                      latest = None
+                  if latest and latest != ver:
+                      line = f"{rec['entry']}: shipping {ver}, npm latest is {latest}"
+                      # Being behind is allowed only when a roadmap row owns the
+                      # decision. A light that is always on is a light nobody
+                      # reads, and "we know, here is the row" is the difference
+                      # between a backlog and a shrug.
+                      (filed if rec["behind_ok"] else behind).append(
+                          line + (f"  [{rec['behind_ok']}]" if rec["behind_ok"] else "")
+                      )
+              else:
+                  # No machine-readable index. Named rather than skipped, so a
+                  # library whose upstream cannot be polled is still somebody's
+                  # job rather than quietly exempt.
+                  unknown.append(
+                      f"{rec['entry']}: registry={reg!r} has no index this job "
+                      f"can read — check {rec['source']} by hand"
+                  )
+
+              # 2 — does anyone know of an advisory against what we ship?
+              # OSV is asked for the npm coordinate whatever the registry is:
+              # the advisories are about the code, not about where it was
+              # downloaded from. Read CREDITS.md before believing an `xlsx` hit.
+              try:
+                  vulns = get("https://api.osv.dev/v1/query", json.dumps({
+                      "package": {"name": pkg, "ecosystem": "npm"},
+                      "version": ver,
+                  }).encode()).get("vulns", [])
+              except (urllib.error.URLError, ValueError) as exc:
+                  unknown.append(f"{pkg}@{ver}: OSV said {exc}")
+                  vulns = []
+              for v in vulns:
+                  sev = (v.get("database_specific") or {}).get("severity", "")
+                  line = f"{rec['entry']} {pkg}@{ver}: {v['id']} {sev}"
+                  why = rec["osv_known"].get(v["id"])
+                  if why:
+                      excused.append(f"{line}\n      {why}")
+                  else:
+                      vulnerable.append(line)
+
+          def section(title, lines):
+              print(f"\n## {title}")
+              print("\n".join(f"  {l}" for l in lines) if lines else "  none")
+
+          section("Behind upstream, with no row that owns it", behind)
+          section("Advisories against what we ship", vulnerable)
+          section("Behind upstream, filed", filed)
+          section("Advisory hits explained in the record", excused)
+          section("Could not be asked", unknown)
+
+          if behind or vulnerable:
+              print(
+                  "\nFAIL. Bump the library, record the new version, hash and "
+                  "today's date in .pantheon/check-vendored-versions.py, and "
+                  "update the CREDITS.md row.\nIf a hit is a false positive — "
+                  "`xlsx` always is, see CREDITS.md — say so in the record's "
+                  "`note` and in the roadmap row, not in a comment here."
+              )
+              sys.exit(1)
+          print("\nOK — every vendored library is at its upstream latest and "
+                "OSV knows nothing against it.")
+          PY

@@ -280,27 +280,32 @@ embedded licence banner.
 
 | Library | File | Purpose | Licence |
 |---|---|---|---|
-| [highlight.js](https://github.com/highlightjs/highlight.js) v11.9.0 | `highlight.min.js` | Code syntax highlighting | BSD-3-Clause ([`licenses/highlight.js-BSD-3-Clause.txt`](licenses/highlight.js-BSD-3-Clause.txt)) |
+| [highlight.js](https://github.com/highlightjs/highlight.js) v11.12.0 | `highlight.min.js` | Code syntax highlighting | BSD-3-Clause ([`licenses/highlight.js-BSD-3-Clause.txt`](licenses/highlight.js-BSD-3-Clause.txt)) |
 | [SheetJS / xlsx](https://github.com/SheetJS/sheetjs) v0.20.3 | `xlsx.full.min.js` | Spreadsheet (`.xlsx`) read/write | Apache-2.0 ([`licenses/SheetJS-Apache-2.0.txt`](licenses/SheetJS-Apache-2.0.txt)) |
 | [docx](https://github.com/dolanmiu/docx) v8.5.0 | `docx.umd.min.js` | Generate `.docx` documents | MIT ([`licenses/docx-MIT-LICENSE.txt`](licenses/docx-MIT-LICENSE.txt)) |
-| [mammoth.js](https://github.com/mwilliamson/mammoth.js) v1.8.0 | `mammoth.browser.min.js` | Convert `.docx` → HTML | BSD-2-Clause ([`licenses/mammoth.js-BSD-2-Clause.txt`](licenses/mammoth.js-BSD-2-Clause.txt)) |
-| [html2pdf.js](https://github.com/eKoopmans/html2pdf.js) v0.10.2 | `html2pdf.bundle.min.js` | HTML → PDF export (bundles jsPDF + html2canvas) | MIT ([`licenses/html2pdf.js-MIT-LICENSE.txt`](licenses/html2pdf.js-MIT-LICENSE.txt)); bundle sidecar: [`licenses/html2pdf.bundle.min.js.LICENSE.txt`](licenses/html2pdf.bundle.min.js.LICENSE.txt) |
-| [jsPDF](https://github.com/parallax/jsPDF) v2.3.1 | bundled inside `html2pdf.bundle.min.js` | PDF generation | MIT ([`licenses/jsPDF-MIT-LICENSE.txt`](licenses/jsPDF-MIT-LICENSE.txt)) |
-| [html2canvas](https://github.com/niklasvh/html2canvas) v1.0.0 | bundled inside `html2pdf.bundle.min.js` | DOM → canvas rasterization | MIT ([`licenses/html2canvas-MIT-LICENSE.txt`](licenses/html2canvas-MIT-LICENSE.txt)) |
-| [es6-promise](https://github.com/stefanpenner/es6-promise) v4.2.8 | bundled inside `html2pdf.bundle.min.js` | Promise polyfill | MIT ([`licenses/es6-promise-MIT-LICENSE.txt`](licenses/es6-promise-MIT-LICENSE.txt)) |
-| [@babel/runtime-corejs3](https://github.com/babel/babel) | bundled inside `html2pdf.bundle.min.js` | Babel's runtime helpers, core-js-backed | MIT ([`licenses/babel-runtime-corejs3-MIT-LICENSE.txt`](licenses/babel-runtime-corejs3-MIT-LICENSE.txt)) |
+| [mammoth.js](https://github.com/mwilliamson/mammoth.js) v1.12.3 | `mammoth.browser.min.js` | Convert `.docx` → HTML | BSD-2-Clause ([`licenses/mammoth.js-BSD-2-Clause.txt`](licenses/mammoth.js-BSD-2-Clause.txt)) |
+| [html2pdf.js](https://github.com/eKoopmans/html2pdf.js) v0.14.0 | `html2pdf.bundle.min.js` | HTML → PDF export (bundles jsPDF + html2canvas) | MIT ([`licenses/html2pdf.js-MIT-LICENSE.txt`](licenses/html2pdf.js-MIT-LICENSE.txt)); bundle sidecar: [`licenses/html2pdf.bundle.min.js.LICENSE.txt`](licenses/html2pdf.bundle.min.js.LICENSE.txt) |
+| [jsPDF](https://github.com/parallax/jsPDF) v4.0.0 | bundled inside `html2pdf.bundle.min.js` | PDF generation | MIT ([`licenses/jsPDF-MIT-LICENSE.txt`](licenses/jsPDF-MIT-LICENSE.txt)) |
+| [html2canvas](https://github.com/niklasvh/html2canvas) v1.4.1 | bundled inside `html2pdf.bundle.min.js` | DOM → canvas rasterization | MIT ([`licenses/html2canvas-MIT-LICENSE.txt`](licenses/html2canvas-MIT-LICENSE.txt)) |
+| [es6-promise](https://github.com/stefanpenner/es6-promise) v4.2.8 | bundled inside `html2pdf.bundle.min.js` **through 0.10.2**; not in 0.14.0 | Promise polyfill | MIT ([`licenses/es6-promise-MIT-LICENSE.txt`](licenses/es6-promise-MIT-LICENSE.txt)) |
+| [@babel/runtime-corejs3](https://github.com/babel/babel) | bundled inside `html2pdf.bundle.min.js` **through 0.10.2**; not in 0.14.0 | Babel's runtime helpers, core-js-backed | MIT ([`licenses/babel-runtime-corejs3-MIT-LICENSE.txt`](licenses/babel-runtime-corejs3-MIT-LICENSE.txt)) |
 | [canvg](https://github.com/canvg/canvg) | bundled inside `html2pdf.bundle.min.js` | SVG → canvas rendering | MIT ([`licenses/canvg-MIT-LICENSE.txt`](licenses/canvg-MIT-LICENSE.txt)) |
 | [core-js](https://github.com/zloirock/core-js) | bundled inside `html2pdf.bundle.min.js` | ES polyfills (global) | MIT ([`licenses/core-js-MIT-LICENSE.txt`](licenses/core-js-MIT-LICENSE.txt)) |
-| [core-js-pure](https://github.com/zloirock/core-js) | bundled inside `html2pdf.bundle.min.js` | ES polyfills (non-global) | MIT ([`licenses/core-js-pure-MIT-LICENSE.txt`](licenses/core-js-pure-MIT-LICENSE.txt)) |
+| [core-js-pure](https://github.com/zloirock/core-js) | bundled inside `html2pdf.bundle.min.js` **through 0.10.2**; not in 0.14.0 | ES polyfills (non-global) | MIT ([`licenses/core-js-pure-MIT-LICENSE.txt`](licenses/core-js-pure-MIT-LICENSE.txt)) |
+| [@babel/runtime](https://github.com/babel/babel) | bundled inside `html2pdf.bundle.min.js` (0.14.0) | Babel's runtime helpers | MIT ([`licenses/babel-runtime-MIT-LICENSE.txt`](licenses/babel-runtime-MIT-LICENSE.txt)) |
+| [fast-png](https://github.com/image-js/fast-png) | bundled inside `html2pdf.bundle.min.js` (0.14.0) | PNG encode/decode, behind jsPDF 4's image path | MIT ([`licenses/fast-png-MIT-LICENSE.txt`](licenses/fast-png-MIT-LICENSE.txt)) |
+| [iobuffer](https://github.com/image-js/iobuffer) | bundled inside `html2pdf.bundle.min.js` (0.14.0) | Byte-level reader/writer used by fast-png | MIT ([`licenses/iobuffer-MIT-LICENSE.txt`](licenses/iobuffer-MIT-LICENSE.txt)) |
+| [pako](https://github.com/nodeca/pako) | bundled inside `html2pdf.bundle.min.js` (0.14.0) | zlib in JavaScript, for PNG streams | MIT ([`licenses/pako-MIT-LICENSE.txt`](licenses/pako-MIT-LICENSE.txt)) |
 | [DOMPurify](https://github.com/cure53/DOMPurify) | bundled inside `html2pdf.bundle.min.js` | HTML sanitisation inside canvg | **Apache-2.0**, chosen from a dual offer (or MPL-2.0) — D-2026-09-07-01 ([`licenses/DOMPurify-Apache-2.0-or-MPL-2.0.txt`](licenses/DOMPurify-Apache-2.0-or-MPL-2.0.txt)) |
 | [fflate](https://github.com/101arrowz/fflate) | bundled inside `html2pdf.bundle.min.js` | DEFLATE, for PDF stream compression | MIT ([`licenses/fflate-MIT-LICENSE.txt`](licenses/fflate-MIT-LICENSE.txt)) |
 | [performance-now](https://github.com/braveg1rl/performance-now) | bundled inside `html2pdf.bundle.min.js` | High-resolution timer shim | MIT ([`licenses/performance-now-MIT-LICENSE.txt`](licenses/performance-now-MIT-LICENSE.txt)) |
 | [raf](https://github.com/chrisdickinson/raf) | bundled inside `html2pdf.bundle.min.js` | `requestAnimationFrame` shim | MIT ([`licenses/raf-MIT-LICENSE.txt`](licenses/raf-MIT-LICENSE.txt)) |
-| [regenerator-runtime](https://github.com/facebook/regenerator) | bundled inside `html2pdf.bundle.min.js` | Generator/async transpilation runtime | MIT ([`licenses/regenerator-runtime-MIT-LICENSE.txt`](licenses/regenerator-runtime-MIT-LICENSE.txt)) |
+| [regenerator-runtime](https://github.com/facebook/regenerator) | bundled inside `html2pdf.bundle.min.js` **through 0.10.2**; not in 0.14.0 | Generator/async transpilation runtime | MIT ([`licenses/regenerator-runtime-MIT-LICENSE.txt`](licenses/regenerator-runtime-MIT-LICENSE.txt)) |
 | [rgbcolor](https://github.com/canvg/rgbcolor) | bundled inside `html2pdf.bundle.min.js` | CSS colour parsing inside canvg | MIT ([`licenses/rgbcolor-MIT-LICENSE.txt`](licenses/rgbcolor-MIT-LICENSE.txt)) |
 | [stackblur-canvas](https://github.com/flozz/StackBlur) | bundled inside `html2pdf.bundle.min.js` | Canvas blur filter inside canvg | MIT ([`licenses/stackblur-canvas-MIT-LICENSE.txt`](licenses/stackblur-canvas-MIT-LICENSE.txt)) |
 | [svg-pathdata](https://github.com/nfroidure/svg-pathdata) | bundled inside `html2pdf.bundle.min.js` | SVG path parsing inside canvg | MIT ([`licenses/svg-pathdata-MIT-LICENSE.txt`](licenses/svg-pathdata-MIT-LICENSE.txt)) |
-| [node-qrcode](https://github.com/soldair/node-qrcode) | `qrcode.min.js` | QR-code rendering (2FA setup) | MIT ([`licenses/node-qrcode-MIT-LICENSE.txt`](licenses/node-qrcode-MIT-LICENSE.txt)) |
+| [node-qrcode](https://github.com/soldair/node-qrcode) v1.5.4 | `qrcode.min.js` | Browser QR-code rendering. **Loaded by nothing** — see below | MIT ([`licenses/node-qrcode-MIT-LICENSE.txt`](licenses/node-qrcode-MIT-LICENSE.txt)) |
+| [dijkstrajs](https://github.com/tcort/dijkstrajs) | bundled inside `qrcode.min.js` | Shortest-path search, behind node-qrcode's segment optimiser | MIT ([`licenses/dijkstrajs-MIT-LICENSE.txt`](licenses/dijkstrajs-MIT-LICENSE.txt)) |
 | [KaTeX](https://github.com/KaTeX/KaTeX) v0.16.22 | `katex/katex.min.{js,css}` + `katex/fonts/*.woff2` | Math typesetting | MIT ([`licenses/KaTeX-MIT-LICENSE.txt`](licenses/KaTeX-MIT-LICENSE.txt)) |
 | [Mermaid](https://github.com/mermaid-js/mermaid) v11.16.1 | `mermaid.min.js` | Diagrams from text | MIT ([`licenses/Mermaid-MIT-LICENSE.txt`](licenses/Mermaid-MIT-LICENSE.txt)) |
 | [vscode-languageserver](https://github.com/microsoft/vscode-languageserver-node) — `vscode-jsonrpc` v8.2.0, `vscode-languageserver-protocol` v3.17.5, `vscode-languageserver-types` v3.17.5 | bundled inside `mermaid.min.js` | Language-server plumbing behind Mermaid's parsers | MIT ([`licenses/vscode-languageserver-MIT-LICENSE.txt`](licenses/vscode-languageserver-MIT-LICENSE.txt)) |
@@ -320,19 +325,24 @@ the rest is served, so none of the rest ships. Apache-2.0 is permissive: the
 obligation is the notice and the licence text, both above, and §4(d) is why
 upstream's own `NOTICE` travels with it.
 
-*Versions read out of the shipped bundles on 2026-08-27, not carried from a
-document: `highlight.min.js` v11.9.0 from its own banner, `katex.min.js`
-`version:"0.16.22"`, `mermaid.min.js` `11.16.1`.*
+*Versions read out of the shipped bundles, not carried from a document:
+`highlight.min.js` v11.12.0 from its own banner, `katex.min.js`
+`version:"0.16.22"`, `mermaid.min.js` `11.16.1`. (Measured 2026-08-27; re-read
+2026-09-16 after the bumps in `B331`, `B332`, `B334` and `B337`.)*
+
+**Every version in the table above is now checked against the shipped bytes.**
+See [How these stay current](#how-these-stay-current) — the versions here are no
+longer prose that a reader has to trust.
 
 **Where each notice currently lives.** Two of the eight bundles carry their
-notice inline — `highlight.min.js` opens with *"Highlight.js v11.9.0 (git:
-f47103d4f1) (c) 2006-2023 undefined and other contributors License:
+notice inline — `highlight.min.js` opens with *"Highlight.js v11.12.0 (git:
+f7f7d3803b) (c) 2006-2026 Josh Goebel and other contributors License:
 BSD-3-Clause"*, and `xlsx.full.min.js` opens with *"xlsx.js (C) 2013-present
 SheetJS -- http://sheetjs.com"*. `html2pdf.bundle.min.js` opens with *"For
 license information please see html2pdf.bundle.min.js.LICENSE.txt"*, and that
 sidecar file is now in
 [`licenses/html2pdf.bundle.min.js.LICENSE.txt`](licenses/html2pdf.bundle.min.js.LICENSE.txt)
-— fetched verbatim from html2pdf.js 0.10.2, not reconstructed. **The other
+— fetched verbatim from html2pdf.js 0.14.0, not reconstructed. **The other
 seven files carry no banner at all**: docx, mammoth.js, KaTeX (`.js` and
 `.css`), Mermaid, node-qrcode, and — inside the html2pdf bundle — jsPDF and
 html2canvas. *(Measured 2026-09-01: zero `/*!` markers and zero occurrences of
@@ -353,47 +363,62 @@ missing or stops being linked.
 **The sidecar does not cover everything the bundle contains, and the rest is
 now here.** `html2pdf.bundle.min.js` ships fifteen top-level packages; its
 webpack-extracted `LICENSE.txt` carries a copyright notice for **three** of them
-— `es6-promise`, `html2canvas` and `jspdf` — plus html2pdf.js itself. The other
-twelve had no notice anywhere in this repository until 2026-09-07 (`P0-21b`).
-All fifteen are in the table above now, each with its own text in
+— `es6-promise`, `html2canvas` and `jspdf` at 0.10.2 — plus html2pdf.js itself.
+The other twelve had no notice anywhere in this repository until 2026-09-07
+(`P0-21b`). All of them are in the table above now, each with its own text in
 [`licenses/`](licenses/): the three the sidecar happened to cover got one too,
 so that no package's attribution depends on a minifier having chosen to keep a
 comment.
 
-*How the list was derived, since a minified blob cannot be read:*
-**upstream html2pdf.js 0.10.2's own source map** names all 497 modules it was
-built from, and grouping those by `node_modules/<package>/` gives the fifteen
-exactly. Not a guess and not a grep.
+*How the list was derived, since a minified blob cannot be read:* webpack leaves
+`node_modules/<package>/` in the shipped bytes — 1,736 such paths at 0.10.2,
+1,460 at 0.14.0 — and grouping them by package gives the list exactly.
+[`.pantheon/check-licences.py`](.pantheon/check-licences.py) rule 7 re-derives it
+on every run, from the file as shipped, so replacing the bundle cannot quietly
+introduce a package with no notice. Not a guess and not a grep.
 
-*On versions.* The bundle states six of them in banners it kept —
-`dompurify 2.3.0`, `html2canvas 1.0.0`, `jspdf 2.3.1`, `es6-promise 4.2.8`,
-`core-js 3.16.0`, `core-js-pure 3.15.2` — and states none for the other nine.
-Rather than guess, each of those nine had its `LICENSE` fetched at **two**
-versions spanning the plausible range and compared byte for byte; all nine are
-identical across the pair, so which one was bundled does not change the notice
-that has to travel. The pairs are recorded in `P0-21b`'s roadmap entry.
+**Fifteen packages at 0.14.0 too — but not the same fifteen** (`B334`,
+2026-09-16). Crossing jsPDF 2 → 4 brought in `fast-png`, `iobuffer`, `pako` and
+`@babel/runtime`, and took out `@babel/runtime-corejs3`, `core-js-pure`,
+`es6-promise` and `regenerator-runtime`. The four that arrived have licence
+texts here now. **The four that left keep theirs**, and their rows above say
+which version they were last in: they ship in every tag of this repository up to
+0.10.2, and deleting the paperwork for bytes somebody can still `git checkout`
+would rot attribution backwards. A count would not have caught any of this —
+fifteen before, fifteen after — which is why the list is written down.
 
-**The shipped bundle is not upstream's bytes, and the difference is one string.**
-Found 2026-09-07 while re-deriving the package list (`B45`). Against
-html2pdf.js 0.10.2's published `dist/html2pdf.bundle.min.js`, the copy in
-`static/lib/` is identical after normalising CRLF **except** that jsPDF's
-language table reads `"sv-SV":"Swedish (SE)"` where upstream reads
-`"sv-SV":"Swedish (Sweden)"`. One substitution; substituting it back makes the
-two files byte-identical, which is how "one difference" is known rather than
-assumed. It arrived at the fork baseline `fff72ec`, so it is upstream Odysseus's
-edit and Pantheon inherited it — jsPDF is MIT and modifying it is permitted, but
-an undocumented edit to a vendored file is how provenance rots, and a refresh
-from npm would silently revert it with nobody the wiser. It is recorded here
-and pinned by a test so that replacing this file becomes a decision.
+*On versions.* The 0.14.0 bundle states four of them in banners or `version`
+assignments it kept — `html2pdf.js 0.14.0`, `html2canvas 1.4.1`, `jspdf 4.0.0`
+(`M.version="4.0.0"` in the blob), `DOMPurify 3.3.1`, plus `core-js 3.47.0` —
+and states none for the rest. Rather than guess, each of those had its `LICENSE`
+fetched at **two** versions spanning the plausible range and compared byte for
+byte; all are identical across the pair, so which one was bundled does not change
+the notice that has to travel. The pairs are recorded in `P0-21b`'s and `B334`'s
+roadmap entries.
 
-**DOMPurify is a choice, not a fetch.** Cure53 offers 2.3.0 under Apache-2.0
+**The deviation from upstream is gone, because the file was replaced** (`B45`,
+closed by `B334`). Until 2026-09-16 the vendored 0.10.2 bundle differed from
+upstream's published `dist/html2pdf.bundle.min.js` in exactly one string:
+jsPDF's language table read `"sv-SV":"Swedish (SE)"` where upstream reads
+`"sv-SV":"Swedish (Sweden)"`. It arrived at the fork baseline `fff72ec`, so it
+was upstream Odysseus's edit and Pantheon inherited it. `B45` recorded it and
+pinned it with a test precisely so that replacing the file would be a decision
+rather than an accident — and that is what happened: the 0.14.0 refresh reverts
+it, the pinning test was updated to record the new bundle, and the shipped bytes
+are now byte-identical to upstream html2pdf.js 0.14.0's published artifact
+(sha256 `9563c45f…`, checked against the registry's own `dist.integrity` for the
+tarball they came out of). The language string reads `"Swedish (Sweden)"` now.
+
+**DOMPurify is a choice, not a fetch.** Cure53 offers it under Apache-2.0
 **or** MPL-2.0. Pantheon takes **Apache-2.0** (`DECISIONS.md` D-2026-09-07-01):
 MPL-2.0 §3.2 would oblige us to make DOMPurify's own Source Code Form available
 to everyone who receives the minified bundle — a real, ongoing obligation bought
 for no benefit — while Apache-2.0 asks for attribution and carries an express
 patent grant. The file in [`licenses/`](licenses/) is Cure53's `LICENSE`
 **verbatim, with both texts in it**, because the honest record is what was
-offered plus which half we took, not a trimmed copy of one branch.
+offered plus which half we took, not a trimmed copy of one branch. The decision
+was recorded against 2.3.0 and is unchanged by the bundle moving to DOMPurify
+3.3.1: it is a choice between two offers, and Cure53 still makes both.
 
 **`mermaid.min.js` is a bundle too, and nobody knew** (`B46`, 2026-09-07).
 The rule written for html2pdf derives *which* files are bundles from the tree
@@ -412,6 +437,94 @@ from `index.html`, so a session that renders no math and no diagram never
 fetches either. Only the `.woff2` KaTeX fonts are shipped, matching
 `static/fonts/`; the `.woff` and `.ttf` variants its stylesheet also lists are
 never requested by a browser that supports `woff2`.
+
+### SheetJS is 0.20.3 and npm says 0.18.5. npm is wrong.
+
+Read this before "fixing" a scanner report about `xlsx`, and before running
+`npm install xlsx` anywhere near this repository.
+
+SheetJS left npm. Its releases are published on its own CDN,
+`https://cdn.sheetjs.com/`, and **npm's `xlsx` package has not moved since
+0.18.5, released 2022-03-24**. Pantheon ships **0.20.3**, from
+`https://cdn.sheetjs.com/xlsx-0.20.3/`, which is newer than anything on npm and
+is past both of the CVEs below.
+
+Two consequences, both measured against OSV on 2026-09-16:
+
+- **Every npm-based scanner reports Pantheon as vulnerable to
+  CVE-2023-30533 (GHSA-4r6h-8v6p-xvw6, prototype pollution) and CVE-2024-22363
+  (GHSA-5pgg-2g8v-p4x9, ReDoS), and every one of them is wrong.** The reason is
+  mechanical rather than a matter of judgement: both advisories' npm range is
+  `{"introduced": "0"}` with **no `fixed` event**, because the versions that fix
+  them — 0.19.3 and 0.20.2 — were never published to npm for the range to close
+  against. An unbounded range matches 0.20.3 the same way it matches 0.1.0.
+  Querying `https://api.osv.dev/v1/query` for `xlsx@0.20.3` returns both.
+- **`npm install xlsx` would downgrade this repository into both CVEs**, because
+  npm's `dist-tags.latest` is 0.18.5 and that is four years older than what is
+  in `static/lib/`. A well-meant "let's just pull it from npm like the others"
+  is a security regression that every dashboard would score as a fix.
+
+`.pantheon/check-vendored-versions.py` records `registry="sheetjs"` for this
+entry for exactly that reason: the freshness workflow asks
+`https://cdn.sheetjs.com/` what the current release is and never asks npm. The
+same record is what the next person will find when a scanner shouts at them.
+
+### `qrcode.min.js` was unidentifiable, and is not loaded by anything
+
+Two separate findings, both 2026-09-16, both worth a stranger's time.
+
+**It had no version, and that was not an oversight.** node-qrcode has published
+no browser build to npm since 1.5.1 — `build/qrcode.js` is absent from the
+1.5.2, 1.5.3 and 1.5.4 tarballs — so the file in `static/lib/` was never a copy
+of a published artifact. It carried no version string, matched no npm or cdnjs
+release at any version from 0.0.1 to 1.5.4, and could not be identified by
+looking at it. It was identified by **reproducing it**: bundling node-qrcode's
+`lib/browser.js` with
+
+    esbuild lib/browser.js --bundle --minify --format=iife --global-name=QRCode
+
+under esbuild 0.25.0 reproduces the old bytes exactly (24,853 bytes, sha256
+`0935de51…`) at node-qrcode **1.5.1 and 1.5.3**, which are indistinguishable
+because their `lib/` trees are byte-identical; 1.5.2 and 1.5.4 produce different
+output, so those two are ruled out. The file now shipping is the same build at
+**1.5.4** (24,303 bytes, sha256 `d59af15f…`), and the command that produces it
+is recorded in `.pantheon/check-vendored-versions.py` beside the hash. That is
+the difference between a file and a provenance.
+
+**Nothing loads it.** `static/index.html` has no `<script>` for it, no module
+imports it, and `static/sw.js` does not precache it. The 2FA QR code a user
+actually sees is produced **server-side** by the Python `qrcode[pil]` package
+(`routes/auth_routes.py:268`) and delivered as a data URL. The table above said
+"QR-code rendering (2FA setup)" until 2026-09-16 and that had never been true of
+this file. It is kept rather than deleted — `B338` is the open row for that
+decision — and its row now says what is true.
+
+### How these stay current
+
+The versions in the table above used to live in this file's prose and nowhere a
+machine could read. [`.pantheon/check-licences.py`](.pantheon/check-licences.py)
+checks *attribution* and is deliberately silent about which release the bytes
+are, because attribution does not change when a library is upgraded. So the
+versions drifted, and on 2026-09-16 the only way anyone learned how far behind
+they were was that a person went and looked (`B330`).
+
+There are now two checks, split along the one line that matters — whether the
+network is required.
+
+| | What it asks | Where it runs |
+|---|---|---|
+| [`.pantheon/check-vendored-versions.py`](.pantheon/check-vendored-versions.py) | Do the recorded version and hash match the shipped bytes, and does this file's prose carry that version? | The offline gate, and CI. **Never touches the network** (`Law 16`). |
+| [`.github/workflows/vendored-freshness.yml`](.github/workflows/vendored-freshness.yml) | Is there a newer release upstream, and does OSV know an advisory affecting what we ship? | CI only, weekly and on demand. |
+
+The offline checker does not own a second list of these files.
+`check-licences.py`'s `INVENTORY` is the list; each version record is keyed by an
+entry's name there, and the check fails if either side names something the other
+does not. Pyodide and Swagger UI keep their hashes in the `MANIFEST.json` their
+own fetch scripts write, and the checker reads those rather than copying them.
+
+Run `python3 .pantheon/check-vendored-versions.py --report` for the table: every
+vendored file, its library, its version, the date somebody last confirmed that
+version against upstream, and its sha256 recomputed from the tree.
 
 ---
 
@@ -482,7 +595,7 @@ Modified Version and OFL §3's Reserved Font Name restriction then applies.
 | [Fira Code](https://github.com/tonsky/FiraCode) | `static/fonts/FiraCode-{Light,Regular,SemiBold}.woff2` | SIL Open Font License 1.1 ([`licenses/FiraCode-OFL.txt`](licenses/FiraCode-OFL.txt)) | Nikita Prokopov & contributors | none declared |
 | [Inter](https://github.com/rsms/inter) | `static/fonts/Inter-{Regular,Medium,SemiBold}.woff2` | SIL Open Font License 1.1 ([`licenses/Inter-OFL.txt`](licenses/Inter-OFL.txt)) | Rasmus Andersson | none declared |
 | [OpenDyslexic](https://opendyslexic.org/) | `static/fonts/OpenDyslexic-{Regular,Bold}.woff2` | SIL Open Font License 1.1 ([`licenses/OpenDyslexic-OFL.txt`](licenses/OpenDyslexic-OFL.txt)) | Abbie Gonzalez | **yes — `OpenDyslexic`** |
-| KaTeX (20 faces) | `static/lib/katex/fonts/*.woff2` | SIL Open Font License 1.1 ([`licenses/KaTeX-fonts-OFL.txt`](licenses/KaTeX-fonts-OFL.txt)) | Design Science, Inc. and Khan Academy | **yes — every face** |
+| KaTeX (20 faces) v0.16.22 | `static/lib/katex/fonts/*.woff2` | SIL Open Font License 1.1 ([`licenses/KaTeX-fonts-OFL.txt`](licenses/KaTeX-fonts-OFL.txt)) | Design Science, Inc. and Khan Academy | **yes — every face** |
 
 The 20 KaTeX faces are `KaTeX_AMS`, `KaTeX_Caligraphic`, `KaTeX_Fraktur`,
 `KaTeX_Main`, `KaTeX_Math`, `KaTeX_SansSerif`, `KaTeX_Script`, `KaTeX_Size1–4`

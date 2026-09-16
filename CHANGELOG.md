@@ -3,6 +3,12 @@
 All notable changes to Pantheon. Modifications relative to upstream Odysseus are
 listed under **Diverged from Odysseus**, which satisfies AGPL-3.0 §5(a).
 
+**Upgrading an existing instance?** Read
+[Changed — read this before upgrading](#changed--read-this-before-upgrading) first. It is
+the only section that can change what your host does without you editing anything: three
+switches — `AUTH_ENABLED`, `PANTHEON_SINGLE_USER` and the `use_rag` field on
+`POST /api/chat_stream` — used to ignore values meaning *no*, and now honour them.
+
 ---
 
 ## [Unreleased]
@@ -12,6 +18,12 @@ listed under **Diverged from Odysseus**, which satisfies AGPL-3.0 §5(a).
 Forked from `pewdiepie-archdaemon/odysseus` @ `b4d1293` (branch `dev`) on 2026-08-24.
 
 #### Before the fork was named — local customisation (branch `custom`)
+
+The five changes below were made on one machine, under the working name *Cybertooth*,
+before this became a named fork. They are what the fork was started to keep. The detail
+as it was written at the time — with every stale path and variable name corrected and
+dated rather than rewritten — is in [`CYBERTOOTH_CHANGES.md`](CYBERTOOTH_CHANGES.md).
+
 - Guardrail caps are lifted when inference runs on local, self-hosted
   infrastructure, and kept when the active model is a cloud provider. Gated on a
   per-request context variable set from the active endpoint, with env overrides.
@@ -34,6 +46,12 @@ Forked from `pewdiepie-archdaemon/odysseus` @ `b4d1293` (branch `dev`) on 2026-0
 #### Added
 - `.pantheon/` — the Frontier Elevation programme: roadmap, working agreement,
   do-not-touch list, deferred decisions, and per-area handoff notes.
+- `B95`. The three settings that could previously only be changed by
+  hand-writing `data/settings.json` — `allow_model_download` (the `Law 16` gate
+  on fetching a model from HuggingFace), `searxng_widen_engines` and
+  `metrics_enabled` — now have controls in **Settings → System**. Each is
+  three-state: *yes*, *no*, or *use the environment variable or the default*,
+  and the panel says which of those three layers is answering on this host.
 
 <!-- `B25` / `D-2026-09-08-06`. A line here once read "Source link in the UI
      footer, per AGPL-3.0 §13." It never shipped. A changelog is what a
@@ -87,14 +105,6 @@ value meaning no, this upgrade changes what you get back.**
 - **Pantheon's own web UI is unaffected.** It sends the literal `'false'` and
   nothing else, so this can only reach a hand-written API client. The first
   affected call logs a warning naming the value.
-
-#### Added
-- `B95`. The three settings that could previously only be changed by
-  hand-writing `data/settings.json` — `allow_model_download` (the `Law 16` gate
-  on fetching a model from HuggingFace), `searxng_widen_engines` and
-  `metrics_enabled` — now have controls in **Settings → System**. Each is
-  three-state: *yes*, *no*, or *use the environment variable or the default*,
-  and the panel says which of those three layers is answering on this host.
 
 #### Fixed
 _(populated as P1 onward lands; `B24`, `P1-12` and `P1-14` are in and

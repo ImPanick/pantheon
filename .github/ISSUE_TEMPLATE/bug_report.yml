@@ -23,7 +23,12 @@ body:
           required: true
         - label: This is **not** a security vulnerability. (Vulnerabilities go to [GitHub Security Advisories](https://github.com/ImPanick/pantheon/security/advisories/new) — see [SECURITY.md](https://github.com/ImPanick/pantheon/blob/main/SECURITY.md).)
           required: true
-        - label: I am running the latest code from the `dev` branch (the default branch you get on clone, where fixes land first) and the bug still reproduces there. Please `git pull` the latest `dev` before filing.
+        # Until 2026-09-16 this REQUIRED box said "the latest code from the `dev` branch (the
+        # default branch you get on clone)". `dev` is upstream Odysseus's branch and has never
+        # existed here, so the one box a reporter could not file without ticking was one they
+        # could not truthfully tick. CONTRIBUTING.md corrected the same mistake on 2026-08-30;
+        # this form and the pull request template were missed in that sweep.
+        - label: I am running the latest code from `main` (the only branch here, and the one you get on clone) and the bug still reproduces there. Please `git pull` before filing.
           required: true
 
   - type: input

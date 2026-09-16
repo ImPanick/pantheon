@@ -1,0 +1,26 @@
+# Python packages the container image installs that no other requirements file
+# declares.
+#
+# WHY THIS FILE EXISTS (`B321`). The Dockerfile used to install python-magic
+# with a version written inline in a `RUN pip install` line. That version was
+# pinned, which is good, and completely invisible to every piece of dependency
+# tooling this repository has, which is not:
+#
+#   * Dependabot's pip ecosystem reads requirements files. It never saw
+#     python-magic, so the one package in the image that is pinned by hand was
+#     also the one package nothing would ever offer to bump.
+#   * `.github/workflows/dependency-review.yml` audits requirements files. It
+#     never saw python-magic either, so a published advisory against it would
+#     not have failed a build.
+#
+# Moving the line here changes nothing about what the image installs and makes
+# both of those true instead. The Dockerfile installs this file with `-r`.
+#
+# This file is deliberately NOT installed by `pip install -r requirements.txt`
+# on a host: python-magic resolves the libmagic shared library at import time,
+# and on a host without it the import can block or raise. The image installs
+# libmagic1 via apt first, which is why this is image-only.
+
+# Content-based MIME sniffing in src/upload_handler.py. Needs the libmagic1
+# system library, installed by the Dockerfile's apt step.
+python-magic==0.4.27

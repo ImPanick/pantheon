@@ -74,6 +74,14 @@ jobs:
         with:
           image-ref: pantheon:ci
           format: table
+          # `B323`. This flag silently drops every finding with no published
+          # fix — which is exactly PYSEC-2026-1215 against basicsr 1.4.2, the
+          # one advisory this image actually carries. The flag stays: a fixless
+          # CVE in an upstream package must not block a merge on an advisory
+          # scan. What was missing was any record of what it was dropping, and
+          # that is now D-2026-09-16-01 plus the entry in
+          # .pantheon/dependency-advisories.toml, which the blocking pip-audit
+          # job in dependency-review.yml prints with its full reasoning.
           ignore-unfixed: true
         env:
           # Pin the vuln DB source to GHCR to avoid rate-limited Docker Hub
@@ -114,6 +122,8 @@ jobs:
           image-ref: pantheon:ci
           format: sarif
           output: trivy-results.sarif
+          # See the note on the same flag in the `scan` job above, and
+          # D-2026-09-16-01.
           ignore-unfixed: true
         env:
           TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2

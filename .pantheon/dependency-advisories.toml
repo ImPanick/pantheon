@@ -1,0 +1,87 @@
+# Accepted dependency risks — the register the audit reads before it fails.
+#
+# `B322`. A dependency audit that blocks a build is only useful if there is an
+# honest way to say "we looked at this one, it does not apply, here is why".
+# Without that, the first unfixable finding forces somebody to choose between a
+# permanently red build and deleting the check. Both choices end with nobody
+# reading the output.
+#
+# So suppressions live here, and every one of them has to justify itself. The
+# offline checker `.pantheon/check-pins.py` refuses an entry that is missing a
+# field, that points at a decision which does not exist, that names a package
+# this repository does not install, or whose review date has passed. The
+# network audit `.pantheon/audit-dependencies.py` prints each suppressed
+# finding **with its reasoning** next to the findings that did fail, so the
+# reasoning is in the build log a person is already reading rather than in a
+# file they would have to know to open.
+#
+# This is deliberate. An unexplained entry on an ignore list is the defect class
+# this project keeps finding: the next person deletes it because nothing says
+# why it is there, or stops reading the output because part of it is noise.
+#
+# Required fields, all of them non-empty strings:
+#
+#   id                     the advisory identifier the audit tool reports
+#   aliases                other identifiers for the same advisory (may be [])
+#   package                the distribution name, as pip spells it
+#   version                the exact version this applies to
+#   declared_in            the file in this repository that pins that version
+#   what_it_is             the bug, concretely — not the CVSS score
+#   why_it_does_not_apply  why this code path cannot be reached here
+#   fix_available          what upstream offers, including "nothing"
+#   what_would_change_this what would make this entry wrong
+#   decision               the `.pantheon/DECISIONS.md` entry that settled it
+#   review_by              ISO date; the checker FAILS once it is in the past
+#   reviewed_by            who does that review
+#
+# `review_by` failing the gate is the point. A suppression with no expiry is a
+# suppression that outlives its reasoning. When the gate goes red on a date,
+# the remedy is to re-read the advisory and record what is true now — not to
+# push the date forward without looking.
+
+[[advisory]]
+id = "PYSEC-2026-1215"
+aliases = ["CVE-2024-27763"]
+package = "basicsr"
+version = "1.4.2"
+declared_in = "docker/build-realesrgan-wheels.sh"
+what_it_is = """
+`basicsr/utils/dist_util.py`, in `_init_dist_slurm`, interpolates the
+`SLURM_NODELIST` environment variable straight into a shell string:
+
+    subprocess.getoutput(f'scontrol show hostname {node_list} | head -n1')
+
+`subprocess.getoutput` runs that through a shell, and `node_list` is not quoted
+or validated, so a node list containing shell metacharacters executes as a
+command."""
+why_it_does_not_apply = """
+`_init_dist_slurm` is reachable only through `init_dist(launcher='slurm')`,
+which is basicsr's distributed *training* entry point. Pantheon installs
+basicsr as a transitive dependency of Real-ESRGAN and uses it for upscaling
+inference only: no Pantheon code path calls `init_dist`, and Real-ESRGAN's
+inference path does not either. Reaching the bug additionally requires the
+ability to set environment variables on the process — an attacker who can do
+that already has local code execution on the host, which is a strictly larger
+capability than the one this bug grants."""
+fix_available = """
+Nothing, and nothing can be. 1.4.2 IS the latest release of basicsr; it was
+published 2022-08-30 and the project has had no release since. Real-ESRGAN
+requires `basicsr>=1.4.2`, so there is no version that satisfies the dependency
+and is not flagged. Upgrading is not an option that exists."""
+what_would_change_this = """
+Any of these makes this entry wrong and it must be re-decided:
+
+  * basicsr publishes a release after 1.4.2 — then pin to it and delete this.
+  * Pantheon, Real-ESRGAN, or a future dependency starts calling
+    `basicsr.utils.dist_util.init_dist` on any path, including a training or
+    fine-tuning feature. Then the code path is live and this reasoning is void.
+  * The Real-ESRGAN dependency is replaced by an upscaler that does not pull
+    basicsr in. Then the entry is stale and should go.
+  * A second, unrelated advisory is published against basicsr. This entry
+    accepts exactly one advisory by id; a new id is a new decision."""
+decision = "D-2026-09-16-01"
+review_by = "2027-03-16"
+reviewed_by = """
+Whoever merges the next Real-ESRGAN or image-dependency change, and in any case
+at the review date above, when the gate goes red until somebody records what is
+true then."""

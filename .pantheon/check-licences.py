@@ -155,9 +155,26 @@ INVENTORY = [
     # map (497 sources) rather than by reading the minified blob. Each has no
     # file of its own in static/lib/, so `patterns` is empty: the obligation is
     # attached to the bundle, and this is the paperwork it travels with.
+    #
+    # B334, 2026-09-16: the bundle moved to 0.14.0 and its contents changed.
+    # Still fifteen packages, but not the same fifteen — `fast-png`, `iobuffer`,
+    # `pako` and `@babel/runtime` arrived, and `@babel/runtime-corejs3`,
+    # `core-js-pure`, `es6-promise` and `regenerator-runtime` left. The four
+    # that left keep their entries and their licence texts: they ship in every
+    # tag of this repository
+    # up to 0.10.2, and deleting the paperwork for bytes somebody can still
+    # check out is how attribution rots backwards.
+    Entry("@babel/runtime", [], "MIT",
+          "babel-runtime-MIT-LICENSE.txt", "@babel/runtime",
+          bundled=("@babel/runtime",)),
     Entry("@babel/runtime-corejs3", [], "MIT",
           "babel-runtime-corejs3-MIT-LICENSE.txt", "@babel/runtime-corejs3",
           bundled=("@babel/runtime-corejs3",)),
+    Entry("fast-png", [], "MIT", "fast-png-MIT-LICENSE.txt", "fast-png",
+          bundled=("fast-png",)),
+    Entry("iobuffer", [], "MIT", "iobuffer-MIT-LICENSE.txt", "iobuffer",
+          bundled=("iobuffer",)),
+    Entry("pako", [], "MIT", "pako-MIT-LICENSE.txt", "pako", bundled=("pako",)),
     Entry("canvg", [], "MIT", "canvg-MIT-LICENSE.txt", "canvg", bundled=("canvg",)),
     Entry("core-js", [], "MIT", "core-js-MIT-LICENSE.txt", "core-js",
           bundled=("core-js",)),
@@ -190,6 +207,14 @@ INVENTORY = [
           bundled=("svg-pathdata",)),
     Entry("node-qrcode", ["static/lib/qrcode.min.js"], "MIT",
           "node-qrcode-MIT-LICENSE.txt", "node-qrcode"),
+    # B337. `qrcode.min.js` is esbuild output, not a published artifact —
+    # node-qrcode has shipped no browser build to npm since 1.5.1 — and the
+    # bundle pulls `dijkstrajs` in with it. Rule 7 cannot see it: esbuild
+    # rewrites module paths away, so the blob carries no `node_modules/` string
+    # for the derivation to find, and the package had no notice anywhere here
+    # until the file was rebuilt and its inputs read off the build.
+    Entry("dijkstrajs", [], "MIT", "dijkstrajs-MIT-LICENSE.txt", "dijkstrajs",
+          bundled=("dijkstrajs",)),
     Entry("KaTeX", ["static/lib/katex/katex.min.js", "static/lib/katex/katex.min.css"],
           "MIT", "KaTeX-MIT-LICENSE.txt", "KaTeX"),
     Entry("KaTeX fonts", ["static/lib/katex/fonts/*.woff2"], "OFL-1.1",
