@@ -91,7 +91,7 @@ bcrypt==5.0.0
 # Ceiling before pinning: <2. That ceiling is still the rule — a Dependabot PR
 # that moves this pin to 2.x is a migration, not a bump, and is refused until
 # the built-in servers move together.
-mcp==1.30.0
+mcp==2.2.0
 pyotp==2.10.0
 qrcode[pil]==8.2
 croniter==6.2.4
