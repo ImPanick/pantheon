@@ -235,6 +235,13 @@ def test_the_two_svg_callers_share_one_gate(tmp_path, monkeypatch):
     The emoji route and the upload preview ask the same question about the same
     kind of bytes. A copy of the check in either file passes every other test
     here and cannot pass this one.
+
+    `B160` moved the decision one function deeper — ``is_safe_svg`` is now
+    ``svg_refusal_reason(...) is None``, because the preview needs the reason and
+    the emoji route does not — so the function patched here is the one both
+    routes reach, through two different doors. The emoji route asks
+    ``is_safe_svg``; the preview asks ``svg_refusal_reason``; breaking the latter
+    still has to break both, or there are two gates again.
     """
     import routes.emoji_routes as emoji_routes
     import src.svg_runtime as svg_runtime
@@ -247,11 +254,16 @@ def test_the_two_svg_callers_share_one_gate(tmp_path, monkeypatch):
     assert upload_routes.SVG_SECURITY_HEADERS is svg_runtime.SVG_SECURITY_HEADERS
 
     # And one function answers for both routes: break it, and both refuse.
-    monkeypatch.setattr(svg_runtime, "is_safe_svg", lambda content, *a, **k: False)
+    monkeypatch.setattr(
+        svg_runtime, "svg_refusal_reason",
+        lambda content, *a, **k: svg_runtime.SVG_REFUSAL_ACTIVE_CONTENT,
+    )
     monkeypatch.setattr(emoji_routes, "_GLYPHS", {"1f600": '<path d="M0 0"/>'})
     assert asyncio.run(_emoji_endpoint()("1f600")).body == svg_runtime.BLANK_SVG
     response, _ = _serve(tmp_path, monkeypatch, SAFE_SVG, thumb=1)
-    assert response.body == svg_runtime.BLANK_SVG
+    assert response.body != SAFE_SVG
+    assert response.headers[svg_runtime.SVG_REFUSAL_HEADER] == \
+        svg_runtime.SVG_REFUSAL_ACTIVE_CONTENT
 
 
 def _emoji_endpoint():

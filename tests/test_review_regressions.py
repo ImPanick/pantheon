@@ -78,9 +78,57 @@ def _default_chat_endpoint():
     raise AssertionError("/api/default-chat route not found")
 
 
+_REAL_PACKAGE_PATHS: dict = {}
+
+
+def _package_stub(name: str) -> types.ModuleType:
+    """A stand-in package that does **not** hide the submodules nobody stubbed.
+
+    `B202`. The three installers below each built `types.ModuleType("core")` and
+    set `__path__ = []` — a package that contains nothing. While it sits in
+    `sys.modules`, every `core.*` submodule the stub list does not name is
+    unimportable, so this file's stubs silently decided which of the real
+    package's modules exist. It cost three failures: `routes/model_routes.py:21`
+    grew `from core.log_safety import redact_url`, and
+    `test_providers_requires_admin_before_discovery_and_cache`,
+    `test_default_chat_does_not_auto_pick_shared_endpoint_for_fresh_user` and
+    `test_default_chat_uses_owned_endpoint_as_regular_user_last_resort` started
+    failing with `ModuleNotFoundError: No module named 'core.log_safety'`
+    without a line of this file changing.
+
+    A stub list somebody has to remember is the defect class (`Law 13`), not the
+    one missing name. Borrowing the real package's `__path__` means the
+    submodules that are deliberately stubbed are stubbed — they are in
+    `sys.modules` and win — and every other one still loads from disk.
+
+    The path is read once and cached, and only from a module that has a
+    `__file__`: a stub another test installed must never become the cached
+    answer. The cache is seeded below at import time, while `core` in
+    `sys.modules` is unquestionably the real package (`tests/conftest.py`
+    imports `core.database` before any test module loads).
+    """
+    if name not in _REAL_PACKAGE_PATHS:
+        real = sys.modules.get(name)
+        if real is None:
+            try:
+                real = importlib.import_module(name)
+            except Exception:  # pragma: no cover - the package is genuinely absent
+                real = None
+        _REAL_PACKAGE_PATHS[name] = (
+            list(getattr(real, "__path__", None) or [])
+            if getattr(real, "__file__", None) is not None
+            else []
+        )
+    stub = types.ModuleType(name)
+    stub.__path__ = list(_REAL_PACKAGE_PATHS[name])
+    return stub
+
+
+_package_stub("core")  # seed the cache while the real package is the one loaded
+
+
 def _install_model_route_import_stubs(monkeypatch):
-    core_mod = types.ModuleType("core")
-    core_mod.__path__ = []
+    core_mod = _package_stub("core")
     db_mod = types.ModuleType("core.database")
     db_mod.SessionLocal = lambda: _FakeDb([])
     db_mod.ModelEndpoint = _FakeModelEndpoint
@@ -113,8 +161,7 @@ def _install_model_route_import_stubs(monkeypatch):
 
 def _install_core_auth_stub(monkeypatch):
     """Install the narrow auth surface needed by tool-policy tests."""
-    core_mod = types.ModuleType("core")
-    core_mod.__path__ = []
+    core_mod = _package_stub("core")
     auth_mod = types.ModuleType("core.auth")
     auth_mod.AuthManager = MagicMock()
     core_mod.auth = auth_mod
@@ -125,8 +172,7 @@ def _install_core_auth_stub(monkeypatch):
 
 def _install_core_middleware_stub(monkeypatch):
     """Install the narrow middleware surface needed by loopback tool tests."""
-    core_mod = types.ModuleType("core")
-    core_mod.__path__ = []
+    core_mod = _package_stub("core")
     middleware_mod = types.ModuleType("core.middleware")
     middleware_mod.INTERNAL_TOOL_HEADER = "X-Internal-Tool"
     middleware_mod.INTERNAL_TOOL_TOKEN = "test-token"
@@ -134,6 +180,69 @@ def _install_core_middleware_stub(monkeypatch):
     monkeypatch.setitem(sys.modules, "core", core_mod)
     monkeypatch.setitem(sys.modules, "core.middleware", middleware_mod)
     return middleware_mod
+
+
+# The names three tests below used to hand a `MagicMock` whenever they were not
+# already imported. They are a fallback now, not the normal path — see
+# `_import_chat_helpers`.
+_CHAT_HELPERS_FALLBACK_STUBS = (
+    "starlette.middleware",
+    "starlette.middleware.base",
+    "core.models",
+    "core.database",
+    "routes.prefs_routes",
+    "routes.research_routes",
+    "src.llm_core",
+    "src.context_compactor",
+    "src.model_context",
+    "src.auth_helpers",
+)
+
+
+def _import_chat_helpers(monkeypatch):
+    return _import_without_mocks(monkeypatch, "routes.chat_helpers",
+                                 _CHAT_HELPERS_FALLBACK_STUBS)
+
+
+def _import_without_mocks(monkeypatch, target, fallback_stubs):
+    """Import `target` without leaving mocks baked into it.
+
+    `B202`, and the same shape as `B18`/`B130`/`B131`. Three tests here opened
+    with `if mod_name not in sys.modules: monkeypatch.setitem(sys.modules,
+    mod_name, MagicMock())` over ten names and then imported
+    `routes.chat_helpers`. `monkeypatch` puts `sys.modules` back at the end of
+    the test — but `routes.chat_helpers` is not something it patched, so the
+    module object it *created* under those mocks stays in `sys.modules` for the
+    rest of the process, and that module binds four of them **by value**:
+
+        from src.context_compactor import maybe_compact, trim_for_context
+        from src.model_context import estimate_tokens, get_context_length
+        from src.auth_helpers import effective_user
+        from routes.prefs_routes import _load_for_user as load_prefs_for_user
+
+    Measured on this tree: running `tests/test_review_regressions.py` alone
+    leaves `routes.chat_helpers.maybe_compact`, `.trim_for_context`,
+    `.effective_user` and `.load_prefs_for_user` as `MagicMock`s. The one that
+    matters is `effective_user` — `_enforce_chat_privileges` reads it to decide
+    *who is asking*, so every later test in that process exercises the chat
+    privilege gate against a mock that answers truthily to anything, and
+    `tests/test_chat_helpers.py` is four assertions about exactly that gate.
+    The full suite never shows it because some file that imports
+    `routes.chat_helpers` for real sorts earlier, which makes all ten guards
+    dead code; any subset run re-arms them (`B18`, same sentence).
+
+    The fix is to stop creating that module in the first place: import it for
+    real, and fall back to the mocks only if the real import genuinely fails.
+    On this tree the fallback never fires, so no mock is ever bound; if a
+    dependency does become unimportable the old behaviour is still there.
+    """
+    try:
+        return importlib.import_module(target)
+    except Exception:
+        for mod_name in fallback_stubs:
+            if mod_name not in sys.modules:
+                monkeypatch.setitem(sys.modules, mod_name, MagicMock())
+        return importlib.import_module(target)
 
 
 def test_providers_requires_admin_before_discovery_and_cache(monkeypatch):
@@ -313,22 +422,7 @@ def test_preset_manager_migrates_legacy_default_custom_preset_disabled(tmp_path)
 
 
 def test_normalize_thinking_handles_lowercase_thinking_process(monkeypatch):
-    for mod_name in [
-        "starlette.middleware",
-        "starlette.middleware.base",
-        "core.models",
-        "core.database",
-        "routes.prefs_routes",
-        "routes.research_routes",
-        "src.llm_core",
-        "src.context_compactor",
-        "src.model_context",
-        "src.auth_helpers",
-    ]:
-        if mod_name not in sys.modules:
-            monkeypatch.setitem(sys.modules, mod_name, MagicMock())
-
-    chat_helpers = importlib.import_module("routes.chat_helpers")
+    chat_helpers = _import_chat_helpers(monkeypatch)
 
     text = (
         "Thinking process:\n"
@@ -346,22 +440,7 @@ def test_normalize_thinking_handles_lowercase_thinking_process(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_build_chat_context_incognito_does_not_duplicate_current_user_message(monkeypatch):
-    for mod_name in [
-        "starlette.middleware",
-        "starlette.middleware.base",
-        "core.models",
-        "core.database",
-        "routes.prefs_routes",
-        "routes.research_routes",
-        "src.llm_core",
-        "src.context_compactor",
-        "src.model_context",
-        "src.auth_helpers",
-    ]:
-        if mod_name not in sys.modules:
-            monkeypatch.setitem(sys.modules, mod_name, MagicMock())
-
-    chat_helpers = importlib.import_module("routes.chat_helpers")
+    chat_helpers = _import_chat_helpers(monkeypatch)
     chat_helpers._INCOGNITO_CONTEXTS.clear()
 
     async def fake_preprocess(chat_handler, message, att_ids, sess, **kwargs):
@@ -428,22 +507,7 @@ async def test_build_chat_context_incognito_does_not_duplicate_current_user_mess
 
 @pytest.mark.asyncio
 async def test_build_chat_context_incognito_ignores_saved_session_history(monkeypatch):
-    for mod_name in [
-        "starlette.middleware",
-        "starlette.middleware.base",
-        "core.models",
-        "core.database",
-        "routes.prefs_routes",
-        "routes.research_routes",
-        "src.llm_core",
-        "src.context_compactor",
-        "src.model_context",
-        "src.auth_helpers",
-    ]:
-        if mod_name not in sys.modules:
-            monkeypatch.setitem(sys.modules, mod_name, MagicMock())
-
-    chat_helpers = importlib.import_module("routes.chat_helpers")
+    chat_helpers = _import_chat_helpers(monkeypatch)
     chat_helpers._INCOGNITO_CONTEXTS.clear()
 
     async def fake_preprocess(chat_handler, message, att_ids, sess, **kwargs):
@@ -1448,3 +1512,142 @@ def test_visible_models_empty_cached_returns_empty(monkeypatch):
 
     result = _visible_models([], None)
     assert result == []
+
+
+# ── `B202`: this file's own shared mutable state, and the two shapes it took ──
+
+
+def test_a_core_submodule_no_stub_names_still_imports(monkeypatch):
+    """The failure this row was filed for, reduced to one line.
+
+    `_install_model_route_import_stubs` used to put a `core` package with
+    `__path__ = []` in `sys.modules`, which makes every `core.*` module the
+    stub list does not name unimportable. `routes/model_routes.py:21` imports
+    `core.log_safety`, which is in no stub list, and on the tree before this
+    change these three failed with `ModuleNotFoundError: No module named
+    'core.log_safety'`:
+
+        test_providers_requires_admin_before_discovery_and_cache
+        test_default_chat_does_not_auto_pick_shared_endpoint_for_fresh_user
+        test_default_chat_uses_owned_endpoint_as_regular_user_last_resort
+
+    Naming `core.log_safety` in the stub list would have fixed those three and
+    left the next `core.*` import to be found the same way (`Law 13`). This
+    asserts the property instead: a module the stubs did not decide to replace
+    is still the real one.
+    """
+    # Ask the import system, not the cache: `routes/chat_routes.py` imports
+    # `core.log_safety` too, so by the time this runs in a full file it is
+    # usually already in `sys.modules` and the empty `__path__` never gets a
+    # vote. `monkeypatch` puts the original module object back afterwards; the
+    # one imported here is a leaf of pure functions that nothing binds by value
+    # during this test.
+    monkeypatch.delitem(sys.modules, "core.log_safety", raising=False)
+    _install_model_route_import_stubs(monkeypatch)
+
+    log_safety = importlib.import_module("core.log_safety")
+
+    assert getattr(log_safety, "__file__", None) is not None
+    assert callable(log_safety.redact_url)
+    # ...and what the stubs DID name is still stubbed, or they would not work.
+    assert sys.modules["core.database"].ModelEndpoint is _FakeModelEndpoint
+
+
+def test_no_stub_installer_hides_the_real_core_package(monkeypatch):
+    """All three, because one fixed installer is not a fixed defect class.
+
+    `_install_core_auth_stub` and `_install_core_middleware_stub` carried the
+    identical `__path__ = []`. Neither has cost a failure yet — the modules
+    their tests import happen not to reach an unstubbed `core.*` — which is
+    exactly the argument for pinning the property rather than the symptom.
+    """
+    import core as real_core
+
+    real_path = list(real_core.__path__)
+    assert real_path, "the real core package has no __path__ — probe drift?"
+
+    for install in (_install_model_route_import_stubs,
+                    _install_core_auth_stub,
+                    _install_core_middleware_stub):
+        with pytest.MonkeyPatch.context() as mp:
+            install(mp)
+            stub = sys.modules["core"]
+            assert stub is not real_core, f"{install.__name__} stopped stubbing core"
+            assert list(stub.__path__) == real_path, (
+                f"{install.__name__} installs a core package that contains "
+                "nothing, so every core.* submodule it did not name is "
+                "unimportable while it is in sys.modules"
+            )
+
+
+def test_the_import_helper_never_binds_a_mock_into_the_module_it_returns(
+        monkeypatch, tmp_path):
+    """`B18`'s shape, driven on a tree built for it.
+
+    The mechanism is the one that poisoned `routes.chat_helpers`: a module that
+    binds a name **by value** from a dependency, imported at the moment that
+    dependency is a `MagicMock`. `monkeypatch` restores `sys.modules`; it does
+    not restore a module object that was *created* while it was patched, and
+    that object stays for the rest of the process.
+
+    Driven here on two throwaway modules rather than on `routes.chat_helpers`,
+    and the reason is the row itself. Popping the real module to re-import it
+    means there are briefly two of it, and `import_module` rebinds the child on
+    the parent package as well as in `sys.modules` —
+    `monkeypatch.setattr("routes.chat_helpers.effective_user", …)` resolves its
+    target by walking attributes from `routes`, so a test that restored only
+    `sys.modules` would hand `tests/test_chat_helpers.py` a different module
+    object from the one its `from routes.chat_helpers import
+    _enforce_chat_privileges` is closed over, and its four privilege tests
+    would fail with `DID NOT RAISE` while patching a module nobody reads. That
+    was reproduced on the way to writing this — a test for `B202` that was
+    itself an instance of `B202`. A synthetic pair has no such second reader.
+    """
+    (tmp_path / "_b202_dep.py").write_text("thing = 'the real one'\n", encoding="utf-8")
+    (tmp_path / "_b202_target.py").write_text(
+        "from _b202_dep import thing\n", encoding="utf-8")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    for name in ("_b202_dep", "_b202_target"):
+        monkeypatch.delitem(sys.modules, name, raising=False)
+
+    module = _import_without_mocks(monkeypatch, "_b202_target", ("_b202_dep",))
+
+    assert module.thing == "the real one", (
+        "the helper stubbed a dependency that imports perfectly well, and the "
+        "module it returned has that mock baked in by value")
+    assert not isinstance(module.thing, MagicMock)
+    assert not isinstance(sys.modules["_b202_dep"], MagicMock)
+
+    # The fallback still exists, and still does what it used to: a dependency
+    # that genuinely cannot be imported is stood in for rather than fatal
+    # (`Law 1` — the old behaviour is the floor, not the normal path).
+    (tmp_path / "_b202_broken.py").write_text(
+        "from _b202_missing import nothing\n", encoding="utf-8")
+    for name in ("_b202_broken", "_b202_missing"):
+        monkeypatch.delitem(sys.modules, name, raising=False)
+
+    broken = _import_without_mocks(monkeypatch, "_b202_broken", ("_b202_missing",))
+
+    assert isinstance(broken.nothing, MagicMock)
+
+
+def test_the_chat_privilege_gate_still_reads_the_real_effective_user():
+    """The consequence, asserted where it lands.
+
+    `tests/test_chat_helpers.py` has four tests that assert
+    `_enforce_chat_privileges` raises `HTTPException` — and it returns early
+    when `effective_user(request)` is falsy or raises. With a `MagicMock` in
+    that slot the gate is being measured against a stand-in that answers
+    truthily to anything, so the four either fail with `DID NOT RAISE` or pass
+    for the wrong reason depending on which module object each side is holding.
+
+    This runs last in file order, after the three tests that import
+    `routes.chat_helpers`, and it is the assertion that whatever they did to
+    `sys.modules` did not survive them.
+    """
+    import src.auth_helpers
+    import routes.chat_helpers as chat_helpers
+
+    assert chat_helpers.effective_user is src.auth_helpers.effective_user
+    for name in ("maybe_compact", "trim_for_context", "load_prefs_for_user"):
+        assert not isinstance(getattr(chat_helpers, name), MagicMock), name

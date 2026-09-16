@@ -87,7 +87,12 @@ from core.exceptions import (
 
 import bcrypt as _bcrypt
 
-from src.app_helpers import abs_join, serve_html_with_nonce
+from src.app_helpers import (
+    abs_join,
+    inline_script_hashes_for_file,
+    serve_generated_html,
+    serve_html_with_nonce,
+)
 from src.env_flags import env_flag
 from src.generated_images import GENERATED_IMAGE_HEADERS, resolve_generated_image_path
 from src.owner_identity import auth_disabled
@@ -135,6 +140,17 @@ app = FastAPI(
     title="AI Chat Application",
     description="Comprehensive AI chat with memory, research, and multi-modal capabilities",
     version="1.0.0",
+    # `B212`. The framework's own `/docs` and `/redoc` handlers are switched
+    # off so this file can serve the same documents from this origin instead —
+    # see `serve_swagger_ui` below. This is not "docs off": `/docs` is
+    # registered again a few hundred lines down, from vendored bytes, and it
+    # renders for the first time in this repository's history. `openapi_url` is
+    # deliberately NOT disabled — `src/tools/system.py` (`do_app_api`,
+    # `action: "endpoints"`) fetches `/openapi.json` over the loopback with the
+    # internal-tool header, so the schema is a shipped feature with a caller in
+    # the tree and turning it off would break the agent's API discovery.
+    docs_url=None,
+    redoc_url=None,
 )
 
 # ========= CORS =========
@@ -520,13 +536,71 @@ class _RevalidatingStatic(StaticFiles):
     versioned URLs, so browsers were caching modules across deploys — a code
     change wouldn't appear without a manual hard-refresh. `no-cache` keeps the
     cached bytes but requires a conditional request; unchanged files still
-    return a cheap 304 (ETag/Last-Modified are preserved)."""
+    return a cheap 304 (ETag/Last-Modified are preserved).
+
+    `B211`: it also authorises the inline scripts of the HTML documents it
+    serves. `serve_html_with_nonce` gives `/` and `/login` a `'sha256-…'`
+    source per inline block (`B141`); the documents under this mount went out
+    with nothing, because a mount has no route handler to stamp
+    `request.state` from. A `script-src` naming any nonce or hash source
+    refuses every inline block it does not name, so
+    `static/wave-variants.html` and `static/whirlpool-variants.html` — which
+    are *entirely* one inline block each — have been served 200 and rendered
+    an empty frame since before the fork.
+
+    **The fix is at the mount and not at the two pages** (`Law 13`). Fixing the
+    two that are broken today leaves the third `*-variants.html` prototype and
+    the next page anyone adds to be found by whoever opens it. Every `.html`
+    this mount serves gets the sources for its own inline blocks, derived from
+    the bytes on disk and written down nowhere.
+
+    **This is not a widening and it cannot become one.** A hash authorises
+    exactly the bytes it was computed over, and `STATIC_DIR` is the shipped
+    bundle: no route in this tree writes into it (`grep STATIC_DIR` is
+    `src/constants.py`, `theme_advanced_keys.py`, the `makedirs` above and this
+    mount), so nothing user-supplied can arrive here and be hashed. If that
+    ever changes, this is the line that has to change with it.
+    """
 
     async def get_response(self, path, scope):
         resp = await super().get_response(path, scope)
         if path.endswith((".js", ".css", ".html")):
             resp.headers["Cache-Control"] = "no-cache"
         return resp
+
+    def file_response(self, full_path, stat_result, scope, status_code=200):
+        """Stamp the page's inline-script sources, then serve it as usual.
+
+        **This override is here and not in `get_response`, and the reason is
+        the `304`.** `StaticFiles.file_response` is the one place both answers
+        come from: it builds the `FileResponse`, and when the client's copy is
+        still good it throws that away and returns a `NotModifiedResponse`
+        carrying only headers — no body and no `.path` to hash. A hook further
+        out sees a 304 it cannot identify a file from, and a `304` that goes
+        out under a policy naming no hashes is the RFC 9111 §4.3.4 hazard
+        `B121` measured: the client updates its stored headers from the `304`
+        and is left holding the stored HTML under a policy that authorises
+        none of it. Hashing here means both answers carry the same sources
+        because both are functions of the same file.
+
+        A read failure leaves the response exactly as it was — no sources,
+        every inline block refused, which is where this started. It may not
+        turn a served file into a 500.
+        """
+        page = os.fspath(full_path)
+        if page.endswith(".html"):
+            try:
+                hashes = inline_script_hashes_for_file(page)
+            except Exception:
+                logger.exception("Failed to hash inline scripts in %s", page)
+            else:
+                if hashes:
+                    # `SecurityHeadersMiddleware` reads this off its own
+                    # `Request` after `call_next`; both are views on the same
+                    # `scope["state"]` dict, which is the channel
+                    # `serve_html_with_nonce` uses from a route handler.
+                    scope.setdefault("state", {})["csp_script_hashes"] = hashes
+        return super().file_response(full_path, stat_result, scope, status_code)
 
 
 app.mount("/static", _RevalidatingStatic(directory=STATIC_DIR), name="static")
@@ -995,6 +1069,116 @@ async def serve_login(request: Request):
     if not AUTH_ENABLED:
         return RedirectResponse(url="/", status_code=302)
     return serve_html_with_nonce(request, abs_join(BASE_DIR, "static/login.html"))
+
+
+# ========= API BROWSER (`B212`) =========
+# FastAPI's own `/docs` and `/redoc` are off at the constructor above, and
+# these replace them. What changed and why, measured 2026-09-16 against the
+# real app:
+#
+#   * `/docs` named `cdn.jsdelivr.net` twice and `fastapi.tiangolo.com` once;
+#     `/redoc` named `cdn.jsdelivr.net`, `fonts.googleapis.com` and
+#     `fastapi.tiangolo.com`. No request left — `default-src 'self'`,
+#     `font-src 'self'` and `img-src 'self' data: blob:` refused all of them —
+#     so this was never a live leak. It was a **published intent to fetch from
+#     three hosts nobody chose**, sitting in the one part of the served surface
+#     the CDN scan could not see, because that scan read `static/**` and these
+#     documents are generated by a library at request time.
+#
+#   * The Swagger page has never rendered in this repository. Its bootstrap is
+#     an inline `<script>` with no nonce attribute, and the app CSP has named a
+#     nonce or a hash since the fork baseline (`fff72ec`) — a `script-src`
+#     naming either refuses every inline block it does not name. So there is no
+#     working behaviour here to preserve and none to lose: vendoring the two
+#     assets and hashing the bootstrap makes `/docs` work for the first time,
+#     which is an addition (`Law 1`).
+#
+#   * `/redoc` is the one that DID work at the baseline — its only script is
+#     external and `script-src` allowed jsDelivr until `P16-07`. It is not
+#     restored here and the reason is stated rather than waved at: the
+#     `redoc.standalone.js` bundle builds its search index in
+#     `new Worker(URL.createObjectURL(new Blob(…)))`, and `worker-src` falls
+#     back through `child-src` to `default-src 'self'`, so a `blob:` worker is
+#     refused; it also carries an Ajv `new Function(…)` code path, which needs
+#     `'unsafe-eval'`. Both would mean widening the policy, and the policy does
+#     not widen. So `/redoc` keeps its route and answers honestly — the
+#     `B140` shape — instead of shipping 1.1 MB under a policy that refuses
+#     part of it. Vendoring it properly is filed as `B261`.
+
+
+def _swagger_docs_html(request: Request) -> str:
+    """FastAPI's own docs page, with every URL pointing at this origin.
+
+    Built by `fastapi.openapi.docs.get_swagger_ui_html` rather than by a
+    template of ours (`Law 14`): the page is FastAPI's, the parameters are
+    FastAPI's, and the only edits are the three URLs that used to leave.
+    `openapi_url` is taken from the app so a `root_path` deployment keeps
+    working.
+    """
+    from fastapi.openapi.docs import get_swagger_ui_html
+
+    return get_swagger_ui_html(
+        openapi_url=app.openapi_url,
+        title=f"{app.title} - Swagger UI",
+        oauth2_redirect_url=app.swagger_ui_oauth2_redirect_url,
+        # Vendored by `scripts/fetch-swagger-ui.py`, hashes pinned in
+        # `static/lib/swagger-ui/MANIFEST.json`. The stylesheet's every `url()`
+        # is a `data:` URI, so the page needs nothing from `font-src`.
+        swagger_js_url="/static/lib/swagger-ui/swagger-ui-bundle.js",
+        swagger_css_url="/static/lib/swagger-ui/swagger-ui.css",
+        # Was `https://fastapi.tiangolo.com/img/favicon.png`. This app has its
+        # own icon and it is already served.
+        swagger_favicon_url="/static/icons/icon-192.png",
+    ).body.decode("utf-8")
+
+
+@app.get("/docs", include_in_schema=False)
+async def serve_swagger_ui(request: Request):
+    """The interactive API browser, served from this origin.
+
+    The inline bootstrap is authorised the way `B141` authorises the app's
+    own inline blocks: a `'sha256-…'` over exactly those bytes, derived from
+    the document being served and written down nowhere. Not `'unsafe-inline'`,
+    which a browser ignores anyway whenever a hash source is present, and which
+    would read safe while behaving safe only until the hashes went away.
+    """
+    return serve_generated_html(request, _swagger_docs_html(request))
+
+
+@app.get("/docs/oauth2-redirect", include_in_schema=False)
+async def serve_swagger_ui_oauth2_redirect(request: Request):
+    """Swagger's OAuth2 callback page — 3,012 bytes of inline script.
+
+    A fourth route `B212` did not name and the same defect: FastAPI mounts it
+    alongside `/docs`, it is all inline script, and it was refused. Kept rather
+    than dropped (`Law 1`) — the Authorize dialog needs somewhere to land the
+    moment this app's schema grows an OAuth2 security scheme — and now hashed
+    like the page that opens it.
+    """
+    from fastapi.openapi.docs import get_swagger_ui_oauth2_redirect_html
+
+    return serve_generated_html(
+        request, get_swagger_ui_oauth2_redirect_html().body.decode("utf-8")
+    )
+
+
+@app.get("/redoc", include_in_schema=False)
+async def serve_redoc(request: Request):
+    """ReDoc is not vendored in this build, and this says so instead of
+    serving a blank page that names three hosts.
+
+    The route is **not removed** (`Law 1`): a build that vendors ReDoc serves
+    it from here, and until then the reply names what to use instead. Same
+    shape as `GET /backgrounds` (`B140`) — the route stays, the answer becomes
+    honest. `/docs` is the same schema, rendered by a bundle this app ships.
+    """
+    raise HTTPException(
+        404,
+        "ReDoc is not vendored in this build — its search worker and its Ajv "
+        "code path need CSP allowances this app does not grant (B212). The "
+        "API browser is at /docs and the schema is at /openapi.json.",
+    )
+
 
 @app.get("/api/version")
 async def get_version():

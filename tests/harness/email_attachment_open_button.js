@@ -17,6 +17,7 @@
 // "no Open button" from "no chip at all" would be measuring the wrong thing.
 const fs = require('fs');
 const path = require('path');
+const { iconsSource } = require('./icons_source');
 
 const SRC = path.join(__dirname, '..', '..', 'static', 'js', 'emailLibrary.js');
 const START = 'function _isLikelySignatureImage(a) {';
@@ -35,7 +36,10 @@ const _esc = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const state = { _libFolder: 'INBOX' };
 
-const make = new Function('_esc', 'state', `${body}\n return { _buildAttsHtmlFor, _isLikelySignatureImage };`);
+// `B230`: the chip's fold caret comes from the shared icon table now, so the
+// slice needs the real table in scope — inlined, never stubbed.
+const make = new Function('_esc', 'state',
+  `${iconsSource()}\n${body}\n return { _buildAttsHtmlFor, _isLikelySignatureImage };`);
 const api = make(_esc, state);
 
 // One attachment per interesting class. Sizes are 60 KB so the

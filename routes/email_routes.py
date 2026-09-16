@@ -3714,6 +3714,27 @@ def setup_email_routes():
             import os as _os
             title = _os.path.splitext(filepath.name)[0]
 
+            # The registers and the readers this door shares with chat ingest.
+            # Imported in one place so the branches below cannot each reach for
+            # a different answer, and imported here rather than at module scope
+            # because every other heavy dependency in this file is too.
+            #
+            # `B240`: `OFFICE_EXTS` is *every* non-PDF document format any
+            # extractor covers — `.docx .pptx .xlsx .xls .epub` through
+            # markitdown, `.odt .doc` through the bundled readers `B102` wrote.
+            # The mailbox used to name one of those seven.
+            from src.document_processor import (
+                ENCODING_UNIDENTIFIED,
+                decode_text_file,
+                looks_like_text,
+                text_refusal_reason,
+            )
+            from src.markitdown_runtime import (
+                OFFICE_EXTS,
+                convert_to_markdown,
+                office_extraction_gap,
+            )
+
             # Capture the source email's identity so the doc can later be used
             # to thread a signed-reply back to the original sender.
             src_message_id = (msg.get("Message-ID") or "").strip()
@@ -3898,50 +3919,42 @@ def setup_email_routes():
                 doc_id = _create_markdown_doc(content, "Imported attached email")
                 return {"doc_id": doc_id, "filename": filepath.name}
 
-            # ── DOCX path: extract text → markdown document ───────────
-            if ext == ".docx":
-                try:
-                    from docx import Document as _Docx
-                except ImportError:
-                    return {"error": "python-docx not installed", "filename": base}
-                try:
-                    d = _Docx(str(filepath))
-                except Exception as e:
-                    return {"error": f"Failed to read docx: {e}", "filename": base}
-                # Convert paragraphs to markdown — preserve heading styles as #/##/###,
-                # bullet lists as `- `, numbered lists as `1.`, and keep tables as
-                # simple pipe-delimited rows.
-                lines: list[str] = []
-                for p in d.paragraphs:
-                    text = p.text or ""
-                    style = (p.style.name if p.style else "") or ""
-                    if not text.strip():
-                        lines.append("")
-                        continue
-                    if style.startswith("Heading 1"): lines.append(f"# {text}")
-                    elif style.startswith("Heading 2"): lines.append(f"## {text}")
-                    elif style.startswith("Heading 3"): lines.append(f"### {text}")
-                    elif style.startswith("Heading "): lines.append(f"#### {text}")
-                    elif style.startswith("List Bullet"): lines.append(f"- {text}")
-                    elif style.startswith("List Number"): lines.append(f"1. {text}")
-                    else: lines.append(text)
-                for tbl in d.tables:
-                    lines.append("")
-                    for ri, row in enumerate(tbl.rows):
-                        cells = [(c.text or "").replace("|", "\\|").replace("\n", " ").strip() for c in row.cells]
-                        lines.append("| " + " | ".join(cells) + " |")
-                        if ri == 0:
-                            lines.append("|" + "|".join(["---"] * len(cells)) + "|")
-                    lines.append("")
-                content = "\n".join(lines).strip() or f"_(empty {base})_"
-
-                doc_id = _create_markdown_doc(content, "Imported from DOCX")
-                return {"doc_id": doc_id, "filename": filepath.name}
+            # ── Office / EPUB: ask the extractor chat ingest already asks ──
+            # `B240`. This branch used to read `.docx` only, with a second
+            # hand-rolled `python-docx` reader sitting right here — so one
+            # `.docx` had two renderings in one product, and `.doc .epub .odt
+            # .pptx .xls .xlsx` were all answered `Unsupported attachment type`
+            # by the mailbox while being in `INGESTIBLE_EXTS` and read for the
+            # model by `src/markitdown_runtime` when they arrived in the
+            # composer. Driven and measured on the tree before this change: six
+            # refusals and one divergent rendering.
+            #
+            # The register is `OFFICE_EXTS` — the union of *every* non-PDF
+            # document format any extractor here reads — so this door cannot go
+            # out of step with the other two again (`Law 13`). The `python-docx`
+            # reader was not deleted: it moved into `markitdown_runtime` as the
+            # first rung of the `.docx` chain, where every consumer gets it
+            # (`Law 1`, `Law 14`).
+            if ext in OFFICE_EXTS:
+                content = convert_to_markdown(str(filepath))
+                if content and content.strip():
+                    doc_id = _create_markdown_doc(
+                        content, f"Imported from {ext.lstrip('.').upper()}"
+                    )
+                    return {"doc_id": doc_id, "filename": filepath.name}
+                # A refusal that names why. `office_extraction_gap` is the same
+                # fact the composer banner prints — markitdown missing, or a
+                # document with no text a reader can see — rather than a fifth
+                # opinion written at this call site.
+                return {
+                    "error": f"{base}: {office_extraction_gap(str(filepath))}",
+                    "filename": base,
+                }
 
             # ── Plain text / markdown ────────────────────────────────
             if ext in (".txt", ".md", ".markdown"):
                 try:
-                    content = filepath.read_text(encoding="utf-8", errors="replace")
+                    content = decode_text_file(str(filepath))
                 except Exception as e:
                     return {"error": f"Failed to read text file: {e}", "filename": base}
                 doc_id = _create_markdown_doc(content, "Imported from email attachment")
@@ -3952,10 +3965,21 @@ def setup_email_routes():
             # to hit the unconditional rejection below, even when it was plain
             # text — .log, .csv, .json, .yaml, .py, .html, .ini and files with
             # no extension at all. Sniff a prefix of the bytes; if it reads as
-            # text, open it with exactly the primitive the .txt branch just
-            # above already relies on — read_text(errors="replace") cannot
-            # raise on arbitrary bytes. Genuinely binary attachments still
-            # fall through to the unsupported-type rejection, unchanged.
+            # text, open it with the reader the composer uses. Genuinely binary
+            # attachments still fall through to the unsupported-type rejection,
+            # unchanged.
+            #
+            # `B240`: that read was `read_text(encoding="utf-8",
+            # errors="replace")` here and in the `.txt`/`.md` branch above — a
+            # fourth reader, which ignored the encoding the probe had just
+            # identified. Measured on the tree before this change, driven
+            # through the route: a cp1251 `.txt` attachment opened as 52
+            # characters of U+FFFD, a cp1250 `.csv` as `Za??? g?l? ja??`, and a
+            # BOM'd UTF-16 `.txt` as NUL-separated letters — all three of which
+            # the composer reads correctly, because `B101` gave it
+            # `decode_text_file`. The probe saying "this is cp1251" and the
+            # reader then opening it as UTF-8 is the same split `B101` closed on
+            # the other door.
             #
             # The sniff used to be a closure defined right here, which meant
             # chat ingest could not reach the decision the mailbox was already
@@ -3963,18 +3987,28 @@ def setup_email_routes():
             # the composer and that deliver zero bytes to the model, every one
             # of which this closure would have called text. It now lives in
             # `src/document_processor.looks_like_text` and both callers share
-            # it (`Law 13`). Behaviour here is unchanged — same probe size, same
-            # NUL check, same replacement-char ratio, same thresholds.
-            from src.document_processor import looks_like_text
-
+            # it (`Law 13`) — same probe size, same NUL check, same
+            # replacement-char ratio, same thresholds.
             if looks_like_text(str(filepath)):
                 try:
-                    content = filepath.read_text(encoding="utf-8", errors="replace")
+                    content = decode_text_file(str(filepath))
                 except Exception as e:
                     return {"error": f"Failed to read text file: {e}", "filename": base}
                 doc_id = _create_markdown_doc(content, "Imported from email attachment (decoded as text)")
                 return {"doc_id": doc_id, "filename": filepath.name}
 
+            # Nothing read it. Say which of the two reasons it was: a format
+            # with no extractor, or text whose encoding a short sample could not
+            # name (`B201`). Both are `{error}` answers and the UI falls back to
+            # the download route on either, but only one of them is about the
+            # file type.
+            why = text_refusal_reason(str(filepath))
+            if why == ENCODING_UNIDENTIFIED:
+                return {
+                    "error": f"{base}: text in an encoding that could not be "
+                             f"identified from so few bytes",
+                    "filename": base,
+                }
             return {"error": f"Unsupported attachment type: {ext}", "filename": base}
         except Exception as e:
             logger.error(f"attachment-as-doc {uid}/{index} failed: {e}")

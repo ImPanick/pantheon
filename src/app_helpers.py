@@ -254,6 +254,64 @@ def serve_html_with_nonce(request: Request, file_path: str) -> Response:
     return HTMLResponse(page.body, headers=headers)
 
 
+def inline_script_hashes_for_file(file_path: str) -> tuple[str, ...]:
+    """The `'sha256-…'` sources for a page on disk, cached per version of it.
+
+    `B211`. `serve_html_with_nonce` is the route-handler front door and reads
+    its page through `_read_page`; the `/static` mount serves HTML documents
+    too and has no route handler to go through. This is the same `_read_page`
+    — the same parse, the same digest, the same `(dev, ino, mtime_ns, size)`
+    cache key — so a document served both ways is hashed once and cannot be
+    hashed two different ways (`Law 14`).
+    """
+    return _read_page(file_path).hashes
+
+
+def authorise_inline_scripts(request: Request, html: str) -> tuple[str, ...]:
+    """Stamp the `'sha256-…'` sources for `html`'s inline blocks on this
+    request, and return them.
+
+    `B212`. `serve_html_with_nonce` above does this for a page read off disk;
+    the docs UI is a document a **library** builds at request time, so there is
+    no file to read and its bytes depend on the app's own title, the schema URL
+    and the parameters passed in. Same derivation either way — the hashes are a
+    property of the document being served and are written down nowhere
+    (`Law 13`) — so this is the same `inline_script_hashes` call, exposed for a
+    caller that already holds the HTML (`Law 14`).
+
+    Returns the sources so a caller can assert on them; the side effect on
+    `request.state` is what `SecurityHeadersMiddleware` reads after
+    `call_next`.
+    """
+    hashes = inline_script_hashes(html)
+    request.state.csp_script_hashes = hashes
+    return hashes
+
+
+def serve_generated_html(request: Request, html: str) -> Response:
+    """Serve HTML this process just generated, under a CSP that authorises its
+    own inline blocks, with a validator over exactly the bytes sent.
+
+    The docs pages are deterministic for a given build — same routes, same
+    title, same asset URLs — so they can carry an ETag for the same reason `/`
+    can since `B141`: nothing in the body varies per request. The `304` path is
+    safe for the same reason too, and it is not a coincidence. Both sides of
+    the response are functions of the same bytes: same ETag ⟹ same document ⟹
+    same hash set ⟹ same policy, so a client that updates its stored headers
+    from a `304` (RFC 9111 §4.3.4) writes back the policy the stored body was
+    already running under.
+    """
+    authorise_inline_scripts(request, html)
+    body = html.encode("utf-8")
+    headers = {
+        "ETag": '"' + hashlib.sha256(body).hexdigest()[:32] + '"',
+        "Cache-Control": "no-cache",
+    }
+    if _is_not_modified(headers, request):
+        return NotModifiedResponse(Headers(headers))
+    return HTMLResponse(body, headers=headers)
+
+
 def _is_not_modified(response_headers: dict, request: Request) -> bool:
     """Whether the client's copy is still good.
 

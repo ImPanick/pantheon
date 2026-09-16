@@ -501,14 +501,35 @@ def test_the_offline_manifest_only_names_files_that_exist():
 _IMPORT = re.compile(r"""(?:import|export)[^'"]*?from\s*['"](\.[^'"]+)['"]|import\(\s*['"](\.[^'"]+)['"]""")
 
 
+def _specifier_checker():
+    """`B310`. `.pantheon/check-specifiers.py`'s comment stripper, not a second one.
+
+    `B87` built that stripper because this same scan counted a *docstring about*
+    an import as an import. It is the same defect here and it took two more
+    forms before the day was out: `static/sw.js:305` explains the phantom
+    precache entry `B231` removed, and the explanation has to quote the thing —
+    ``import('./tasks.js?v=…')``, literal ellipsis and all. A scan that reads
+    text rather than code finds it and calls it a dangling import.
+    """
+    import importlib.util
+
+    checker = _REPO / ".pantheon" / "check-specifiers.py"
+    spec = importlib.util.spec_from_file_location("check_specifiers_dangling", checker)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def test_no_module_imports_a_file_that_is_not_there():
     # The other half of a deletion going wrong: a live importer left pointing
     # at a module that no longer exists. The browser fails the whole graph.
+    strip_comments = _specifier_checker().strip_comments
     dangling = []
     for js in sorted((_REPO / "static").rglob("*.js")):
         if "/lib/" in js.as_posix():
             continue
-        for static_spec, dynamic_spec in _IMPORT.findall(js.read_text(encoding="utf-8")):
+        source = strip_comments(js.read_text(encoding="utf-8"), html=False)
+        for static_spec, dynamic_spec in _IMPORT.findall(source):
             spec = static_spec or dynamic_spec
             target = (js.parent / spec.split("?")[0]).resolve()
             if not target.is_file():

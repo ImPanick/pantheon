@@ -77,9 +77,13 @@ ALLOWED = {
     # still resolves — but this checker reads the route table, where the path is
     # now the pattern.
     "/api/email/oauth/{provider_id}/authorize": "settings.js follows the `authorize` path served by /api/email/oauth/providers",
-    "/openapi.json": "FastAPI mounts this itself; it is the schema, not a feature",
-    "/docs": "FastAPI's own Swagger UI, mounted by the framework",
-    "/redoc": "FastAPI's own ReDoc UI, mounted by the framework",
+    # `B212`, 2026-09-16: these three used to say "mounted by the framework",
+    # which stopped being true when `app.py` took `/docs` and `/redoc` over to
+    # serve them from vendored bytes. The schema has a caller in the tree and
+    # it is not a browser, which is why no page links it.
+    "/openapi.json": "src/tools/system.py's do_app_api (action: endpoints) fetches it over the loopback",
+    "/docs": "the API browser, served by app.py from static/lib/swagger-ui; an operator types this URL",
+    "/redoc": "kept as a route so a build that vendors ReDoc can serve it; answers 404 naming /docs until then",
 }
 
 _FRONTEND_GLOBS = ("static/*.js", "static/js", "static/*.html")

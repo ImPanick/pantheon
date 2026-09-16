@@ -8,7 +8,7 @@
 //   - Other static assets (images/fonts/libs): cache-first with bg refresh.
 //   - API / non-GET: never cached.
 // Bump CACHE_NAME whenever the precache list or SW logic changes.
-const CACHE_NAME = 'pantheon-v418-b120-shell-routes';
+const CACHE_NAME = 'pantheon-v419-b231-comment-walk';
 
 // KaTeX resolves these from its own stylesheet, so caching the CSS without them
 // gives offline math fallback glyphs instead of proper typesetting.
@@ -300,6 +300,81 @@ function resolveRef(spec, base) {
   return resolved.pathname + resolved.search;
 }
 
+// `B231`. A *sentence about* a reference is not a reference, and this walk read
+// raw source until it was measured. `static/js/runStatus.js:33` is a JSDoc line
+// explaining why the Tasks view is reached as `import('./tasks.js?v=…')`, with a
+// literal ellipsis — and install fetched `/static/js/tasks.js?v=%E2%80%A6`, got
+// a 200 (the static handler ignores the query), and stored a second 178 KB copy
+// of `tasks.js` under a URL no importer spells and `caches.match` can never
+// serve. Paid on every cold install and every `CACHE_NAME` bump; there have
+// been 418 of those.
+//
+// This is `B87` one layer down: `.pantheon/check-specifiers.py` was taught to
+// blank comments for **that same docstring** and `sw.js` never was, which is
+// `Law 20` in the worker — reading the file instead of the code. The walk is the
+// place to fix it (`Law 13`): deleting the sentence would fix this module and
+// leave the next comment that mentions an import to be found by hand.
+//
+// Characters become spaces rather than vanishing, so nothing downstream shifts.
+// Three grammars, because they disagree about what a comment is and getting that
+// wrong is worse than not stripping at all:
+//
+//   js    `//` to end of line and `/* … */`, tracking string and template
+//         literals — `'https://x'` contains `//`, and blanking from there would
+//         silently swallow the rest of the line.
+//   css   `/* … */` ONLY. `//` is not a CSS comment, and these stylesheets are
+//         minified onto one line: treating one as a comment would blank the
+//         whole file and take all 20 KaTeX fonts out of the install with it.
+//   html  `<!-- … -->` only.
+//
+// A manifest is JSON, which has no comments, and is returned untouched.
+function withoutComments(source, kind) {
+  if (kind !== 'js' && kind !== 'css' && kind !== 'html') return source;
+  const out = source.split('');
+  const n = source.length;
+  const blank = (from, to) => {
+    for (let k = from; k < to; k += 1) if (out[k] !== '\n') out[k] = ' ';
+  };
+  let i = 0;
+  let quote = '';
+  while (i < n) {
+    const ch = source[i];
+    if (quote) {
+      if (ch === '\\' && quote !== '`') { i += 2; continue; }
+      if (ch === quote) quote = '';
+      i += 1;
+      continue;
+    }
+    if (kind === 'js' && (ch === '"' || ch === "'" || ch === '`')) {
+      quote = ch;
+      i += 1;
+      continue;
+    }
+    if (kind === 'js' && source.startsWith('//', i)) {
+      const end = source.indexOf('\n', i);
+      blank(i, end < 0 ? n : end);
+      i = end < 0 ? n : end;
+      continue;
+    }
+    if ((kind === 'js' || kind === 'css') && source.startsWith('/*', i)) {
+      const end = source.indexOf('*/', i + 2);
+      const stop = end < 0 ? n : end + 2;
+      blank(i, stop);
+      i = stop;
+      continue;
+    }
+    if (kind === 'html' && source.startsWith('<!--', i)) {
+      const end = source.indexOf('-->', i + 4);
+      const stop = end < 0 ? n : end + 3;
+      blank(i, stop);
+      i = stop;
+      continue;
+    }
+    i += 1;
+  }
+  return out.join('');
+}
+
 function importsOf(source, url) {
   const base = new URL(url, self.location.origin);
   const found = [];
@@ -307,7 +382,7 @@ function importsOf(source, url) {
   // module-scope `lastIndex` never leaks from one module's scan into the next —
   // a hazard `exec` in a loop carries and that no test can see, because a scan
   // that runs to its end resets it anyway.
-  for (const m of source.matchAll(MODULE_SPECIFIER)) {
+  for (const m of withoutComments(source, 'js').matchAll(MODULE_SPECIFIER)) {
     const request = resolveRef(m[1], base);
     if (request && isWalkable(request)) found.push(request);
   }
@@ -390,9 +465,16 @@ function docKind(url) {
   return '';
 }
 
-function assetsOf(source, url) {
+function assetsOf(rawSource, url) {
   const base = new URL(url, self.location.origin);
   const kind = docKind(url);
+  // `B231`. The same rule as the import walk, stated at the other reader rather
+  // than at one of them: a commented-out `<link>` or a `url()` inside `/* … */`
+  // is a sentence, not a request. Nothing measured has been costing anything
+  // here — the twelve fonts and three icons are identical either way, and a test
+  // pins that — but a walk that reads comments in one grammar and not the other
+  // is the shape `Law 13` is about.
+  const source = withoutComments(rawSource, kind);
   const found = [];
   const add = (spec, accept) => {
     const request = resolveRef(spec, base);

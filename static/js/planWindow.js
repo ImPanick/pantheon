@@ -37,6 +37,7 @@
 import Storage from './storage.js';
 import { CHECKLIST_SURFACES, checklistProgress, stepChipClass, PLAY_POINTS }
   from './checklist.js';
+import { chevronIcon } from './icons.js';
 
 /** The active plan markdown. Same key `chat.js` has always used. */
 export const PLAN_STORAGE_KEY = 'pantheon-active-plan';
@@ -251,10 +252,7 @@ let _els = null;
 let _renderedSession = null; // what `render()` last resolved the session id to
 let _renderedActive = -2;    // which step was last drawn as the active one
 
-const ICON_CHEVRON =
-  '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" ' +
-  'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-  '<polyline points="6 9 12 15 18 9"/></svg>';
+const ICON_CHEVRON = chevronIcon({ size: 12, ariaHidden: true });
 const ICON_PLAN =
   '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" ' +
   'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +

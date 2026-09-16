@@ -315,6 +315,24 @@ def main() -> int:
     ))
     made |= set(re.findall(r"""\.id\s*=\s*['"]([A-Za-z0-9_-]+)['"]""", blob))
     made |= set(re.findall(r"""setAttribute\(\s*['"]id['"]\s*,\s*['"]([A-Za-z0-9_-]+)['"]""", blob))
+    # Blind spot 3 (`B230`): an id handed to a BUILDER instead of written into
+    # markup. `static/js/icons.js` emits the `<svg>` for the play, stop and
+    # chevron glyphs, and one caller gives it the element's id as an option —
+    # `chevronIcon({ id: 'uf-codex-toggle-config-caret' })`, the Codex config
+    # caret `settings.js` looks up and rotates. The three forms above cannot see
+    # it, so moving a literal onto the shared table turned a defined id into an
+    # unresolved one with the element, the lookup and the behaviour unchanged.
+    #
+    # The builders are NAMED rather than matched by a bare `id:`, and that is
+    # the careful half: `id:` is an ordinary object key in this tree — 63 of
+    # them, of which 5 look like element ids and one, `notes-panel`, is a
+    # genuinely unresolved lookup. A blanket rule would have "resolved" it by
+    # accident, which is a ratchet that stops measuring without anyone editing
+    # the number. A new builder is therefore invisible here and its id reads as
+    # unresolved, which fails loudly rather than passing quietly.
+    made |= set(re.findall(
+        r"""\b(?:iconSvg|playIcon|stopIcon|chevronIcon)\([^)]*\bid:\s*"""
+        r"""['"]([A-Za-z0-9_-]+)['"]""", blob))
 
     where = {}
     for f, text in sources.items():

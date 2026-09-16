@@ -7,6 +7,7 @@ import uiModule from './ui.js';
 import settingsModule from './settings.js?v=20260815approvalsave1';
 import { sortModelObjects } from './modelSort.js';
 import spinnerModule from './spinner.js';
+import { chevronIcon } from './icons.js';
 
 const API_BASE = window.location.origin;
 
@@ -609,7 +610,7 @@ function _initModelPickerDropdown() {
         const header = document.createElement('div');
         header.className = 'mp-provider-header';
         header.innerHTML =
-          `<svg class="mp-provider-chevron${isCollapsed ? ' collapsed' : ''}" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`
+          chevronIcon({ strokeWidth: 3, className: `mp-provider-chevron${isCollapsed ? ' collapsed' : ''}` })
           + `<span class="mp-provider-name">${_providerGroupName(provider)}</span>`
           + `<span class="mp-provider-count">${models.length}</span>`;
         header.addEventListener('click', (e) => {

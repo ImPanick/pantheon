@@ -15,6 +15,7 @@ import {
   _TALON_WROTE, _TALON_FROM, _TALON_SENT, _TALON_ORIG_RE,
   _SIG_BLOAT_MIN_CHARS,
 } from './utils.js';
+import { chevronIcon } from '../icons.js';
 
 // No leading icon on the signature fold — the user explicitly does not
 // want a star/emoji-style glyph in this header.
@@ -124,7 +125,7 @@ export function _foldSummary(label, iconSvg, meta) {
     + iconSvg
     + `<span class="email-fold-summary-name">${_esc(primary)}</span>`
     + metaSpan
-    + '<svg class="email-summary-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-left:auto;transition:transform .15s ease;"><polyline points="6 9 12 15 18 9"/></svg>'
+    + chevronIcon({ className: 'email-summary-chevron', style: 'margin-left:auto;transition:transform .15s ease;' })
     + '</summary>'
   );
 }

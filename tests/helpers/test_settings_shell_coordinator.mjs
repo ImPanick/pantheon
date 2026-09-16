@@ -15,6 +15,11 @@ const SETTINGS_JS = path.join(JS, 'settings.js');
 
 const REAL_MODULES = new Set([
   SETTINGS_JS,
+  // `B230`. `settings.js` draws the Codex config caret from the shared icon
+  // table, so `icons.js` is part of the real shell graph — loaded for real
+  // rather than stubbed, because a stub would hand this smoke a glyph nobody
+  // ships and the caret's `id` is what the settings page looks up to rotate it.
+  path.join(JS, 'icons.js'),
   path.join(JS, 'settings/dom.js'),
   path.join(JS, 'settings/registry.js'),
   path.join(JS, 'settings/search.js'),

@@ -10,6 +10,7 @@ import { initModelPicker, updateModelPicker } from './modelPicker.js?v=20260722c
 import themeModule from './theme.js';
 import spinnerModule from './spinner.js';
 import { topPortalZ } from './toolWindowZOrder.js';
+import { chevronIcon } from './icons.js';
 
 const API_BASE = window.location.origin;
 
@@ -681,7 +682,7 @@ function createSessionItem(s) {
 
   // Create a dropdown menu button
   const menuBtn = document.createElement('button');
-  menuBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+  menuBtn.innerHTML = chevronIcon({ size: 18, strokeWidth: 2 });
   menuBtn.title = 'Session actions';
   menuBtn.className = 'hamburger session-menu-btn';
 

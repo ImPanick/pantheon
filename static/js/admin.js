@@ -8,6 +8,7 @@ import { providerLogo, providerLogoFromUrl } from './providers.js';
 import { sortModelObjects } from './modelSort.js';
 import { PROVIDER_DEVICE_FLOWS, formatDeviceFlowError, runProviderDeviceFlow } from './providerDeviceFlow.js';
 import { getSettings, getTools, invalidateSettings, invalidateTools } from './appConfig.js';
+import { chevronIcon } from './icons.js';
 
 let initialized = false;
 let modalEl = null;
@@ -61,7 +62,7 @@ async function loadUsers() {
           <button class="admin-btn-sm" data-adm-toggle-admin="${esc(u.username)}" data-make-admin="${u.is_admin ? '0' : '1'}" style="font-size:11px;">${u.is_admin ? 'Revoke admin' : 'Make admin'}</button>
           <button class="admin-btn-sm" data-adm-rename-user="${esc(u.username)}" style="font-size:11px;">Rename</button>
           ${u.is_admin ? '' : `<button class="admin-btn-delete" data-adm-del-user="${esc(u.username)}" style="font-size:11px;">Remove</button>`}
-          ${u.is_admin ? '' : '<svg class="admin-user-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.3;transition:transform 0.2s,opacity 0.2s;"><polyline points="6 9 12 15 18 9"/></svg>'}
+          ${u.is_admin ? '' : chevronIcon({ size: 12, className: 'admin-user-chevron', style: 'opacity:0.3;transition:transform 0.2s,opacity 0.2s;' })}
         </div>
       `;
       row.appendChild(header);
@@ -579,7 +580,7 @@ async function loadEndpoints() {
             <div style="display:flex;gap:4px;align-items:center;">
               <button class="admin-btn-sm" data-adm-toggle-ep="${ep.id}">${ep.is_enabled ? 'Disable' : 'Enable'}</button>
               <button class="admin-btn-delete" data-adm-del-ep="${ep.id}" data-adm-ep-online="${ep.online ? '1' : '0'}">Delete</button>
-              ${hasModels ? '<svg class="admin-user-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.3;transition:transform 0.2s,opacity 0.2s;"><polyline points="6 9 12 15 18 9"/></svg>' : ''}
+              ${hasModels ? chevronIcon({ size: 12, className: 'admin-user-chevron', style: 'opacity:0.3;transition:transform 0.2s,opacity 0.2s;' }) : ''}
             </div>
           </div>
           <div class="admin-ep-detail adm-ep-tools-row">
@@ -1997,7 +1998,7 @@ async function loadBuiltinTools() {
               <input type="checkbox" data-tool-cat-toggle="${catId}" ${allEnabled ? 'checked' : ''}>
               <span class="admin-slider"></span>
             </label>
-            <svg class="admin-tool-cat-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.3;transition:transform 0.2s,opacity 0.2s;"><polyline points="6 9 12 15 18 9"/></svg>
+            ${chevronIcon({ size: 12, className: 'admin-tool-cat-chevron', style: 'opacity:0.3;transition:transform 0.2s,opacity 0.2s;' })}
           </span>
         </div>
         <div class="admin-tool-cat-body hidden" id="${catId}">`;
@@ -2147,7 +2148,7 @@ async function loadMcpServers() {
             <button class="admin-btn-sm" data-adm-mcp-reconnect="${s.id}">Reconnect</button>
             <button class="admin-btn-delete" style="border-color:${s.is_enabled ? 'color-mix(in srgb, var(--red) 30%, transparent)' : 'color-mix(in srgb, var(--fg) 30%, transparent)'};color:${s.is_enabled ? 'var(--red)' : 'var(--fg)'};" data-adm-mcp-toggle="${s.id}" data-adm-mcp-enable="${!s.is_enabled}">${s.is_enabled ? 'Disable' : 'Enable'}</button>
             <button class="admin-btn-delete" data-adm-mcp-delete="${s.id}">Delete</button>
-            ${hasTools ? '<svg class="admin-user-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.3;transition:transform 0.2s,opacity 0.2s;"><polyline points="6 9 12 15 18 9"/></svg>' : ''}
+            ${hasTools ? chevronIcon({ size: 12, className: 'admin-user-chevron', style: 'opacity:0.3;transition:transform 0.2s,opacity 0.2s;' }) : ''}
           </div>
         </div>
         ${hasTools ? `<div class="mcp-tools-panel hidden" data-adm-mcp-tools-panel="${s.id}"></div>` : ''}

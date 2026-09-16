@@ -10,7 +10,7 @@ import uiModule from './ui.js';
 import * as spinnerModule from './spinner.js';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { topPortalZ } from './toolWindowZOrder.js';
-import { PLAY_GLYPH } from './icons.js';
+import { PLAY_GLYPH, chevronIcon } from './icons.js';
 
 const API = window.location.origin;
 let skills = [];
@@ -484,7 +484,7 @@ function _buildBuiltinCards() {
         </div>
         ${b.description ? `<div class="doclib-card-session" title="${esc(b.description)}" style="font-size:10px;opacity:0.55;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(b.description)}</div>` : ''}
       </div>
-      <span class="doclib-card-chevron"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
+      <span class="doclib-card-chevron">${chevronIcon({ size: 14 })}</span>
     `;
     card.appendChild(header);
 
@@ -708,7 +708,7 @@ function renderSkillsList() {
         ${_necessityPill(sk)}
         ${_duplicatePriorityPill(sk)}
         <span class="skill-stats">${_auditMarks(sk)}<span class="skill-conf" style="color:${confColor};">${conf}%</span> · ${uses}u</span>
-        <span class="skill-chevron-up" title="Collapse"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg></span>
+        <span class="skill-chevron-up" title="Collapse">${chevronIcon({ direction: 'up', size: 14 })}</span>
         <button class="skill-kebab-btn" title="Actions" aria-label="Actions"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button>
       </div>
     `;
@@ -857,7 +857,7 @@ function renderSkillsList() {
     hdr.className = 'skills-section-label skills-section-header' + (collapsed ? ' collapsed' : '');
     hdr.dataset.section = sectionId;
     hdr.innerHTML =
-      `<svg class="skills-section-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>` +
+      chevronIcon({ className: 'skills-section-chevron' }) +
       `<span>${esc(title)}</span>` +
       `<span class="skills-section-count">${count}</span>`;
     hdr.addEventListener('click', () => {

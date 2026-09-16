@@ -39,6 +39,7 @@ from src.markitdown_runtime import (
 )
 from src.pdf_runtime import PDF_EXTS
 from src.upload_handler import UploadHandler
+from tests.helpers.office_fixtures import DOC_FIXTURE_GZ_B64, FOOT_DOC_GZ_B64
 
 SENTINEL = "SENTINELattachmentBODY7f3a"
 
@@ -894,60 +895,12 @@ def _write(tmp_path, name, body: bytes):
 # `B102` — the two formats that had no extractor
 # --------------------------------------------------------------------------
 
-# A real Word 97-2003 file, produced by LibreOffice ("doc:MS Word 97"), gzipped
-# and base64'd so the patch stays text. It is a real one on purpose: a `.doc` is
-# an OLE2 container holding a piece table, and a fixture written by the same
-# person who wrote the reader would agree with the reader's assumptions rather
-# than with Word's. It contains a heading, a Cyrillic paragraph, a hyperlink
-# field, a two-row table and the sentinel.
-#
-# LibreOffice writes every piece as UTF-16 (measured on three of its outputs), so
-# the CP1252-compressed piece — what Word writes for a document that fits in that
-# codepage, and half of the piece-table format — is covered by
-# `_word97_doc_compressed` below, which re-encodes this same real file's piece
-# rather than inventing a container.
-DOC_FIXTURE_GZ_B64 = (
-    "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"
-)
+# `B240` moved the two real Word 97 fixtures into
+# `tests/helpers/office_fixtures.py`, which is now the one home for real office
+# bytes in this suite — that row needed real files of six more formats and a
+# second pile of base64 in a second test file is what `Law 14` is about. The
+# offsets below stay here, because they are assertions *about* the fixture and
+# belong with the test that makes them.
 
 # An ODF text document, built here rather than vendored: `.odt` is a zip of XML,
 # so the fixture is readable in the diff and says exactly what the extractor is
@@ -975,45 +928,11 @@ ODT_CONTENT_XML = """<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
-# A second real Word 97 file, this one carrying a footnote. Word keeps footnote
+# The footnote fixture's shape, for the assertions below: Word keeps footnote
 # text in the same stream, *after* the body, and `ccpText` in the FIB is where
-# the body stops — 104 characters of the 152 stored here.
-FOOT_DOC_GZ_B64 = (
-    "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"
-)
-
-# Where the fixture above keeps its one piece. Both are read out of the file
+# the body stops — 104 characters of the 152 stored in it.
+#
+# Where `DOC_FIXTURE_GZ_B64` keeps its one piece. Both are read out of the file
 # itself by the assertions in `_word97_doc_compressed`, so a regenerated fixture
 # fails loudly rather than being silently re-encoded at the wrong offset.
 _PIECE_STREAM_OFFSET = 2048     # `fc` in the piece-table entry

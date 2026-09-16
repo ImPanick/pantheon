@@ -21,6 +21,7 @@
 //                        ternary that produces them
 const fs = require('fs');
 const path = require('path');
+const { iconsSource } = require('./icons_source');
 
 const SRC = path.join(__dirname, '..', '..', 'static', 'js', 'notes.js');
 const source = fs.readFileSync(SRC, 'utf8');
@@ -147,12 +148,14 @@ if (mode === 'menu' && arg === 'live') {
   _agentSolveRuns.set('item:note-1#0', { abort: { abort() {} }, sid: 'sess-9', runId: 'run-1' });
 }
 
+// `B230`: the menu's stop glyph comes from the shared icon table now, so the
+// slice needs the real table in scope — inlined, never stubbed (`B250`).
 const make = new Function(
   'document', 'window', 'uiModule', 'API_BASE', 'fetch', 'AbortController',
   '_notes', '_agentSolveRuns', '_agentSolveQueue', '_renderNotes', '_patchNote',
   '_attrEsc', '_linkify', '_positionNoteMenu', 'bindMenuDismiss', 'topPortalZ',
   'closePanel', 'dismissOrRemove', '_agentSolveTodoItem',
-  parts.join('\n\n') + '\n return { _agentRunStopKind, _agentSolveState, _openTodoAgentMenu, _stopDetachedAgentRun, _markTodoAgentStatus, __renderItem };',
+  iconsSource() + '\n' + parts.join('\n\n') + '\n return { _agentRunStopKind, _agentSolveState, _openTodoAgentMenu, _stopDetachedAgentRun, _markTodoAgentStatus, __renderItem };',
 );
 const api = make(
   document, window, uiModule, API_BASE, fetchStub, AbortController,

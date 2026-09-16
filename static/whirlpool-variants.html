@@ -1,5 +1,13 @@
 <!doctype html>
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- A developer sandbox, not a page the app links to. It exists to tune the
+     loading whirlpool side by side, and it is driven entirely by the one
+     inline <script> at the bottom — the four variant cards do not exist in
+     this markup, the block builds them. `B211`: that block carried no nonce
+     and was refused by the app CSP for this page's whole life, so the page
+     rendered a header and an empty grid; the `/static` mount now derives a
+     'sha256-…' source for the inline blocks of every HTML document it serves
+     (app.py, `_RevalidatingStatic`), which is what makes it run. -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -132,6 +140,7 @@
       <div>
         <h1>Whirlpool Loop Variants</h1>
         <p class="hint">Tune the loading whirlpool before replacing the app spinner.</p>
+        <p class="hint">Developer sandbox. Nothing in the app links here &mdash; it is opened by hand at <code>/static/whirlpool-variants.html</code> to compare variants before one is wired into the real spinner.</p>
       </div>
       <div class="controls">
         <label>Size <input id="size" type="range" min="14" max="42" value="24"></label>

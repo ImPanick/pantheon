@@ -62,6 +62,85 @@ def _load(root: Path):
     return module
 
 
+@pytest.fixture(autouse=True)
+def _the_tree_under_test_is_never_written_to(monkeypatch):
+    """No test in this file may write into the repository it is measuring.
+
+    `B221`. `test_the_exemption_list_cannot_go_stale` used to prove the
+    stale-exemption rule by editing `.pantheon/check-env-declared.py` in place,
+    spawning it, and putting the original back in a `finally:`. The restore is
+    right in the normal case and cannot run in the one that matters: a `finally:`
+    block does not execute when the process is killed, so for the ~19s that
+    window was open, a `timeout`-killed, `Ctrl-C`-ed or OOM-killed suite left a
+    **tracked checker mutated in the working tree**, and the next run failed in
+    a way that looks like a real regression. This container has killed this
+    suite twice for memory (exit 137, and one silent death at 38%), and
+    `/tmp/mutlib.py`'s own header records the same accident happening twice to
+    `check-outbound.py` and `check-jitter.py`. It is also a `Law 19` hazard in
+    its own right: a suite run is evidence about the tree it started with.
+
+    Two halves, because they catch different failures:
+
+      * the write intercept stops the window from existing at all — a test that
+        calls `Path.write_text`/`write_bytes`/`open('w')` on anything inside the
+        repo fails on that line instead of mutating the tree;
+      * the digest comparison runs afterwards and catches any route the
+        intercept does not know about (a `subprocess`, an `os.replace`), which
+        is the honest limit of an intercept written against three methods.
+
+    `write_text` and `write_bytes` are wrapped as well as `open`, and on CPython
+    3.11 that is belt and braces: both delegate to `Path.open`, so removing
+    either wrapper is a mutation with no observable effect (measured — it
+    survives). They are kept because the message names the method the test
+    actually called, and because "write_text goes through open" is an
+    implementation detail of one interpreter, not a property of the API.
+
+    `tmp_path` is outside the repository, so `fixture_repo` and every synthetic
+    tree below are unaffected.
+    """
+    before = _CHECKER.read_bytes()
+    real_write_text = Path.write_text
+    real_write_bytes = Path.write_bytes
+    real_open = Path.open
+
+    def _inside_repo(path: Path) -> bool:
+        try:
+            return _REPO in Path(path).resolve().parents
+        except OSError:  # pragma: no cover - unresolvable path
+            return False
+
+    def _refuse(path):
+        raise AssertionError(
+            f"B221: a test tried to write {path} — a file inside the tree this "
+            "suite is evidence about. A kill does not run a `finally:`, so a "
+            "write-then-restore leaves the repository mutated. Drive a copy, or "
+            "patch the loaded module through `monkeypatch`.")
+
+    def _guarded_write_text(self, *args, **kwargs):
+        if _inside_repo(self):
+            _refuse(self)
+        return real_write_text(self, *args, **kwargs)
+
+    def _guarded_write_bytes(self, *args, **kwargs):
+        if _inside_repo(self):
+            _refuse(self)
+        return real_write_bytes(self, *args, **kwargs)
+
+    def _guarded_open(self, mode="r", *args, **kwargs):
+        if any(c in mode for c in "wxa+") and _inside_repo(self):
+            _refuse(self)
+        return real_open(self, mode, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", _guarded_write_text)
+    monkeypatch.setattr(Path, "write_bytes", _guarded_write_bytes)
+    monkeypatch.setattr(Path, "open", _guarded_open)
+    yield
+    monkeypatch.undo()
+    assert _CHECKER.read_bytes() == before, (
+        "B221: the checker's source is not what this test started with. "
+        "A test rewrote it and the restore did not hold.")
+
+
 @pytest.fixture
 def fixture_repo(tmp_path):
     def build(python: str, env_example: str, extra: dict | None = None):
@@ -224,8 +303,13 @@ def _run(*args) -> subprocess.CompletedProcess:
 
 
 def _spawn(*args) -> subprocess.CompletedProcess:
-    """The script, as a script. Kept for the one test that rewrites the
-    checker's own source and therefore needs a fresh interpreter."""
+    """The script, as a script.
+
+    `B221` removed the reason this existed — no test rewrites the checker's
+    source any more, so none of them needs a fresh interpreter to reread it —
+    and it stays for the reason that outlives that one: `main()` called in
+    process proves the logic, and only a spawn proves the *file* still runs
+    under `python3` the way `ci.yml` and `release-gate.py` run it."""
     return subprocess.run([sys.executable, str(_CHECKER), *args],
                           cwd=str(_REPO), capture_output=True, text=True, timeout=180)
 
@@ -258,25 +342,81 @@ def test_the_ratchet_bites():
     assert "only comes down" in proc.stdout
 
 
-def test_the_exemption_list_cannot_go_stale():
-    # An exemption that outlives its call site hides the next variable that
-    # needs looking at. Proved by adding one nothing reads.
-    original = _CHECKER.read_text(encoding="utf-8")
-    try:
-        _CHECKER.write_text(
-            original.replace(
-                'NOT_OURS = {',
-                'NOT_OURS = {\n    "NOBODY_READS_THIS": "a name invented by a test",',
-                1,
-            ),
-            encoding="utf-8",
-        )
-        proc = _spawn()
-        assert proc.returncode == 1
-        assert "NOBODY_READS_THIS" in proc.stdout
-    finally:
-        _CHECKER.write_text(original, encoding="utf-8")
-    assert _spawn().returncode == 0
+def test_the_exemption_list_cannot_go_stale(monkeypatch):
+    """An exemption that outlives its call site hides the next variable that
+    needs looking at. Proved by adding one nothing reads.
+
+    `B221`. This used to add that name by **rewriting**
+    `.pantheon/check-env-declared.py` on disk and restoring it in a `finally:`.
+    It asks the same question of the same code with nothing on disk changed:
+    `main()` reads `NOT_OURS` as a module global at call time, so putting the
+    invented name into the loaded module's dict is the identical input, and
+    `monkeypatch` takes it back out whether this test passes, fails, or is
+    interrupted between the two. The fixture at the top of this file is what
+    stops the old shape coming back.
+    """
+    mod = _real()
+    monkeypatch.setitem(mod.NOT_OURS, "NOBODY_READS_THIS", "a name invented by a test")
+
+    proc = _run()
+
+    assert proc.returncode == 1
+    assert "NOBODY_READS_THIS" in proc.stdout
+    assert "NOT_OURS names variables nothing reads any more" in proc.stdout
+
+
+def test_a_test_that_writes_into_the_tree_under_test_is_refused(tmp_path):
+    """The guard at the top of this file, exercised rather than trusted.
+
+    `B221`. A fixture nothing drives is a fixture somebody deletes by accident,
+    and this one is the whole of the row.
+
+    **What this test may touch is itself part of the row.** The obvious way to
+    write it is `pytest.raises(AssertionError): _CHECKER.write_text("x")` — and
+    that test, run against a tree where the guard has been broken, does exactly
+    what the guard exists to prevent: it replaces `.pantheon/check-env-declared.py`
+    with the word it was writing. Measured, not imagined — a mutation run that
+    disabled the guard left the real checker holding one line. So the two
+    write doors are aimed at an untracked scratch path inside the repository
+    (the guard is about *where*, not about *which file*), and the checker
+    itself is only ever opened in append mode, which changes no byte even if
+    the guard is gone.
+
+    `tmp_path` is outside the repository and must still be writable, or every
+    synthetic tree in this file stops working.
+    """
+    probe = _REPO / "tests" / "_b221_write_guard_probe.tmp"
+    # Cleared rather than asserted about: a run in which the guard was broken
+    # leaves this behind, and a test that then fails for every future run until
+    # somebody deletes a file by hand is a second version of the problem this
+    # row is about. The assertion that matters is the one after the writes.
+    probe.unlink(missing_ok=True)
+
+    with pytest.raises(AssertionError, match="B221"):
+        probe.write_text("refused", encoding="utf-8")
+    with pytest.raises(AssertionError, match="B221"):
+        probe.write_bytes(b"refused")
+    with pytest.raises(AssertionError, match="B221"):
+        handle = _CHECKER.open("a", encoding="utf-8")
+        handle.close()  # unreachable while the guard holds; appends nothing if not
+
+    assert not probe.exists(), "the guard let a write into the repository through"
+
+    (tmp_path / "scratch.txt").write_text("fine", encoding="utf-8")
+    assert (tmp_path / "scratch.txt").read_text(encoding="utf-8") == "fine"
+    # Reading the guarded file is untouched — the guard is about writes.
+    assert _CHECKER.read_text(encoding="utf-8").startswith("#!")
+
+
+def test_the_exemption_list_is_not_stale_on_this_tree():
+    """The other half of what the rewrite-and-restore test used to assert, and
+    the one place this file still runs the checker as a *script*: the rule holds
+    on the real tree, through `python3 .pantheon/check-env-declared.py`, with
+    the real `NOT_OURS` and a fresh interpreter (`Law 1` — the spawn covered
+    "the file works when run the way CI runs it", and that coverage stays)."""
+    proc = _spawn()
+    assert proc.returncode == 0, proc.stdout
+    assert "NOBODY_READS_THIS" not in proc.stdout
 
 
 # ── the entries this row added ────────────────────────────────────────────────

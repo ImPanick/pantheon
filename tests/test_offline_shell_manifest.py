@@ -1244,3 +1244,144 @@ def test_every_module_the_shell_can_reach_is_served_offline():
                         if not out["answered"][u].get("handled")
                         or out["answered"][u].get("sha") != out["hashes"].get(u))
     assert unanswered == [], unanswered
+
+
+# ── `B231`: the walk reads code, and what it stores is what the shell asks for ─
+
+
+@_needs_node
+def test_a_sentence_about_an_import_is_not_an_import():
+    """`B231`, and `B87` one layer down.
+
+    `importsOf` read raw source. `static/js/runStatus.js:33` is a JSDoc line
+    explaining that the Tasks view is reached as `import('./tasks.js?v=…')` —
+    with a literal ellipsis — and the walk followed it: install fetched
+    `/static/js/tasks.js?v=%E2%80%A6`, the static handler answered 200 because
+    it ignores the query, and the worker stored a second 178 KB copy of
+    `tasks.js` under a URL no importer spells and `caches.match` (no
+    `ignoreSearch`) can never serve. Every cold install and every `CACHE_NAME`
+    bump, of which there have been 418.
+
+    `.pantheon/check-specifiers.py` was taught to blank comments for *that same
+    docstring*; the worker never was. The last three cases are the reason the
+    stripper tracks quotes: `'https://x'` contains `//`, and a stripper that
+    blanked from there would silently stop looking.
+    """
+    source = "\n".join([
+        "import './real.js';",
+        "// import './line-comment.js';",
+        "/* import './block-comment.js'; */",
+        "/**",
+        " * `tasks.js` is only ever reached by `import('./doc-comment.js?v=…')`.",
+        " */",
+        "const u = 'https://cdn.example/x'; import './after-a-url.js';",
+        "const t = `//not a comment`; import './after-a-template.js';",
+        "import './last.js';",
+    ])
+    got = _run({"op": "imports", "url": "/static/js/x.js", "source": source})["imports"]
+    assert got == [
+        "/static/js/real.js",
+        "/static/js/after-a-url.js",
+        "/static/js/after-a-template.js",
+        "/static/js/last.js",
+    ], got
+
+
+@_needs_node
+def test_the_comment_rule_knows_which_grammar_it_is_reading():
+    """Three grammars, because getting one wrong is worse than not stripping.
+
+    `//` is a comment in JS and **not** in CSS, and the stylesheets this worker
+    installs are minified onto one line — `katex.min.css` is a single line
+    naming 60 `url()`s. Treating a protocol-relative `url(//…)` as a comment
+    there would blank the rest of the file and take all 20 KaTeX fonts out of
+    the install, which is a worse outcome than the phantom entry this row
+    started from. HTML gets `<!-- -->` and JSON gets nothing, having no
+    comments to strip.
+    """
+    css = ("@font-face { src: url('//cdn.example/away.woff2'); } "
+           "/* @font-face { src: url('/static/fonts/Commented.woff2'); } */ "
+           "@font-face { src: url('/static/fonts/Kept.woff2'); }")
+    assert _run({"op": "assets", "url": "/static/style.css",
+                 "source": css})["assets"] == ["/static/fonts/Kept.woff2"]
+
+    html = ("<!-- <link rel=\"stylesheet\" href=\"/static/gone.css\"> -->\n"
+            '<link rel="stylesheet" href="/static/kept.css">')
+    assert _run({"op": "assets", "url": "/", "source": html})["assets"] == [
+        "/static/kept.css"]
+
+    manifest = json.dumps({"icons": [{"src": "/static/icons/kept.png"}]})
+    assert _run({"op": "assets", "url": "/static/manifest.json",
+                 "source": manifest})["assets"] == ["/static/icons/kept.png"]
+
+
+@_needs_node
+def test_nothing_is_installed_that_the_shell_cannot_reach(installed):
+    """The converse of `test_every_module_the_shell_can_reach_is_installed`,
+    and the direction nothing checked.
+
+    That test asks whether the closure is a subset of the cache. Both walks can
+    agree on every module the shell really imports and the worker can still
+    store things nobody will ask for — a phantom URL costs a full download per
+    install and a cache entry that can never be served, and it is invisible to
+    a one-directional containment. On the tree this row was filed against there
+    was exactly one: `/static/js/tasks.js?v=%E2%80%A6`, from a comment.
+
+    A seed is allowed to be here without being reachable from `index.html` —
+    that is what a seed is for (`/login`'s graph, and `PANEL_PRECACHE`).
+    """
+    closure = set(_shell_module_closure())
+    seeds = {u for u in _precached() if u.startswith("/static/js/")}
+    unreachable = sorted(u for u in installed["cached"]
+                         if u.startswith("/static/js/")
+                         and u not in closure and u not in seeds)
+    assert unreachable == [], (
+        "install fetches and stores these, and no importer in the shell graph "
+        "and no seed spells them — so each is a download per install for a "
+        f"cache entry the fetch handler can never match: {unreachable}")
+
+
+@_needs_node
+def test_the_two_leaf_tables_this_row_named_are_installed_by_derivation(installed):
+    """`B231` as filed said `static/js/icons.js` and
+    `static/js/attachmentLanguage.js` are "in no precache list" and that a cold
+    offline load therefore 404s on both. Re-measured here: the first half is
+    true and the second does not follow. Both are reached from
+    `index.html`'s script tags — `icons.js` through `markdown.js`,
+    `attachmentLanguage.js` through `document.js` — so `B57`'s install walk
+    fetches them, and adding them to a list is the second copy the comment
+    above `PRECACHE` forbids.
+
+    Same shape as `test_the_modules_no_list_names_are_there_by_derivation`, and
+    kept separate from it because these two are what the row is about.
+    """
+    named = {"/static/js/icons.js", "/static/js/attachmentLanguage.js"}
+    closure = _shell_module_closure()
+    assert named <= set(closure), sorted(named - set(closure))
+    cached = set(installed["cached"])
+    assert named <= cached, sorted(named - cached)
+    source = _sw_code()
+    assert [u for u in named if u in source] == [], (
+        "these are derived; a list entry would be a second thing to keep in step")
+
+
+@_needs_node
+def test_a_module_a_shelled_module_imports_and_the_walk_misses_is_caught():
+    """`B231`'s `Verify:`, second half, driven rather than asserted about.
+
+    The claim under test is that the manifest test fails when a module a
+    shelled module imports is not itself installed. Here the walk is given a
+    tree where it can see the root's import and not the leaf's, which is what a
+    narrowed `MODULE_SPECIFIER` or a shrunken `isWalkable` does in the large.
+    """
+    out = _run({"op": "walk", "seeds": ["/static/js/root.js"],
+                "files": {
+                    "/static/js/root.js": "import './mid.js';",
+                    # The specifier is spelled in a way the grammar does not
+                    # match — a template literal — so the leaf is reachable in
+                    # a browser and invisible to the walk.
+                    "/static/js/mid.js": "import(`./leaf.js`);",
+                    "/static/js/leaf.js": "",
+                }})
+    assert out["cached"] == ["/static/js/mid.js", "/static/js/root.js"], out["cached"]
+    assert "/static/js/leaf.js" not in out["cached"]

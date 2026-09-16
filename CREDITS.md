@@ -305,6 +305,20 @@ embedded licence banner.
 | [Mermaid](https://github.com/mermaid-js/mermaid) v11.16.1 | `mermaid.min.js` | Diagrams from text | MIT ([`licenses/Mermaid-MIT-LICENSE.txt`](licenses/Mermaid-MIT-LICENSE.txt)) |
 | [vscode-languageserver](https://github.com/microsoft/vscode-languageserver-node) — `vscode-jsonrpc` v8.2.0, `vscode-languageserver-protocol` v3.17.5, `vscode-languageserver-types` v3.17.5 | bundled inside `mermaid.min.js` | Language-server plumbing behind Mermaid's parsers | MIT ([`licenses/vscode-languageserver-MIT-LICENSE.txt`](licenses/vscode-languageserver-MIT-LICENSE.txt)) |
 | [Pyodide](https://github.com/pyodide/pyodide) 0.27.5 | `pyodide/{pyodide.js,pyodide.asm.js,pyodide.asm.wasm,python_stdlib.zip,pyodide-lock.json}` | In-browser Python runtime for `” ```python ”` code blocks | MPL-2.0 ([`licenses/Pyodide-MPL-2.0.txt`](licenses/Pyodide-MPL-2.0.txt)) |
+| [Swagger UI](https://github.com/swagger-api/swagger-ui) v5.32.15 | `swagger-ui/{swagger-ui.css,swagger-ui-bundle.js}` | The API browser at `/docs` | Apache-2.0 ([`licenses/SwaggerUI-Apache-2.0.txt`](licenses/SwaggerUI-Apache-2.0.txt), [`licenses/SwaggerUI-NOTICE.txt`](licenses/SwaggerUI-NOTICE.txt)); bundle sidecar: [`licenses/swagger-ui-bundle.js.LICENSE.txt`](licenses/swagger-ui-bundle.js.LICENSE.txt) |
+
+**Swagger UI is here because of `/docs`, and it is two files out of a package
+of fifty.** FastAPI generates that page itself and its HTML named
+`cdn.jsdelivr.net` for the stylesheet and the bundle and `fastapi.tiangolo.com`
+for a favicon — in the one part of the served surface a scan of `static/**`
+cannot see, because the document does not exist until the request arrives
+(`B212`). `static/lib/swagger-ui/` holds the stylesheet and the bundle with a
+`MANIFEST.json` pinning each one's SHA-256; `scripts/fetch-swagger-ui.py`
+re-verifies them and is how a version bump happens. The published package
+unpacks to 11.7 MB — ES bundles, a standalone preset, source maps — and none of
+the rest is served, so none of the rest ships. Apache-2.0 is permissive: the
+obligation is the notice and the licence text, both above, and §4(d) is why
+upstream's own `NOTICE` travels with it.
 
 *Versions read out of the shipped bundles on 2026-08-27, not carried from a
 document: `highlight.min.js` v11.9.0 from its own banner, `katex.min.js`
@@ -420,6 +434,19 @@ known limit of the checker and this table is the compensating control.
 *Measured 2026-08-27: `static/js/codeRunner.js:156,158` is the only third-party
 CDN load left in the tree — Mermaid and KaTeX used to load this way and are now
 vendored.*
+
+**And the measurement above was of the tree, which is not the same as the
+surface.** `B212`, 2026-09-16: FastAPI's `/docs` and `/redoc` were built by the
+framework at request time and named the CDN host and two more —
+`fonts.googleapis.com` for ReDoc's webfonts and `fastapi.tiangolo.com` for a
+favicon — so a file scan of `static/**` found nothing and three hosts were in
+the served HTML anyway. Nothing ever left: `default-src 'self'`, `font-src
+'self'` and `img-src 'self' data: blob:` refused all five subresources. Swagger
+UI is vendored now and `/docs` is served from this origin; ReDoc is not, and
+`/redoc` says so rather than serving a page that names hosts it cannot reach.
+The guard that would have caught it asks the running app for every page it
+serves, not the directory the files are in
+(`tests/test_no_cdn_anywhere_in_served_frontend.py`).
 
 **Pyodide is MPL-2.0 and the paperwork landed with the bytes.** The five files
 live in `static/lib/pyodide/` with a `MANIFEST.json` pinning each one's SHA-256.

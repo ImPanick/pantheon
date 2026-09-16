@@ -108,6 +108,7 @@ import { wireInpaintControls } from './editor/wire-inpaint-controls.js?v=2026070
 import { wireTopbar, closeOtherTopbarMenus as _closeOtherTopbarMenus } from './editor/wire-topbar.js';
 import { wireTopbarOverflow } from './editor/wire-topbar-overflow.js';
 import { wireTopbarMenus } from './editor/wire-topbar-menus.js';
+import { chevronIcon } from './icons.js';
 
 const API_BASE = window.location.origin;
 // ── State ──
@@ -341,9 +342,7 @@ function _buildAiCommandBox() {
     <button type="button" class="ge-ai-command-toggle" id="ge-ai-command-toggle" aria-expanded="false">
       <span class="ge-btn-ai-mark" aria-hidden="true">✦</span>
       <span>Quick Edit</span>
-      <svg class="ge-ai-command-toggle-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <polyline points="6 15 12 9 18 15"></polyline>
-      </svg>
+      ${chevronIcon({ direction: 'up', size: 12, strokeWidth: 2.6, className: 'ge-ai-command-toggle-caret', ariaHidden: true })}
     </button>
     <form class="ge-ai-command-form" id="ge-ai-command-form">
       <input type="text" class="ge-ai-command-input" id="ge-ai-command-input" autocomplete="off" />
@@ -354,9 +353,7 @@ function _buildAiCommandBox() {
         </svg>
       </button>
       <button type="button" class="ge-ai-command-close" id="ge-ai-command-close" title="Collapse AI edit" aria-label="Collapse AI edit">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <polyline points="6 9 12 15 18 9"></polyline>
-        </svg>
+        ${chevronIcon({ size: 14, strokeWidth: 2.6, ariaHidden: true })}
       </button>
     </form>
     <div class="ge-ai-command-suggestions" id="ge-ai-command-suggestions" hidden></div>

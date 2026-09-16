@@ -18,6 +18,7 @@
 //   stop  <outcome>   — press Stop on a reloaded note and report the requests
 const fs = require('fs');
 const path = require('path');
+const { iconsSource } = require('./icons_source');
 
 const SRC = path.join(__dirname, '..', '..', 'static', 'js', 'notes.js');
 const source = fs.readFileSync(SRC, 'utf8');
@@ -162,12 +163,14 @@ if (arg === 'live') {
 }
 if (arg === 'queued') { _agentSolveQueue.push({ key: 'note:note-1' }); }
 
+// `B230`: the menu's stop glyph comes from the shared icon table now, so the
+// slice needs the real table in scope — inlined, never stubbed (`B250`).
 const make = new Function(
   'document', 'window', 'uiModule', 'API_BASE', 'fetch', 'AbortController', 'FormData',
   '_notes', '_agentSolveRuns', '_agentSolveQueue', 'AGENT_SOLVE_MAX_CONCURRENT',
   '_renderNotes', '_patchNote', 'bindMenuDismiss', 'topPortalZ', 'dismissOrRemove',
   '_copyNote', '_agentSolveNote',
-  parts.join('\n\n') +
+  iconsSource() + '\n' + parts.join('\n\n') +
   '\n return { _agentRunCarrier, _agentRunStopKind, _agentSolveState, _recordAgentRun,' +
   ' _markTodoAgentStatus, _runAgentSolveJob, _stopDetachedAgentRun, _openNoteCornerMenu };',
 );

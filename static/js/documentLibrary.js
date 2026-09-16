@@ -14,6 +14,7 @@ import markdownModule from './markdown.js';
 import { makeWindowDraggable } from './windowDrag.js';
 import { langIcon } from './langIcons.js';
 import { registerMenuDismiss, dismissOrRemove } from './escMenuStack.js';
+import { chevronIcon } from './icons.js';
 
 // ── Injected references from documentModule ──
 let API_BASE = '';
@@ -571,7 +572,7 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
     const chevron = document.createElement('span');
     chevron.className = 'doclib-card-chevron';
     chevron.style.marginLeft = 'auto';
-    chevron.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+    chevron.innerHTML = chevronIcon({ size: 12, strokeWidth: 2 });
     titleRow.appendChild(chevron);
     content.appendChild(titleRow);
 
@@ -2100,7 +2101,7 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
         const model = (s.model || '').split('/').pop();
         const cbHtml = _chatsSelectMode ? '<input type="checkbox" class="memory-select-cb"' + (_chatsSelected.has(s.id) ? ' checked' : '') + '>' : '';
         const chatIconSvg = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;opacity:0.4;flex-shrink:0;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
-        const chevronSvg = '<span class="doclib-card-chevron"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>';
+        const chevronSvg = '<span class="doclib-card-chevron">' + chevronIcon({ size: 12, strokeWidth: 2 }) + '</span>';
         // Msg count badge inside the title, dimmer than the name so it
         // reads as metadata at a glance. Hidden when count is 0 so
         // brand-new "New Chat" rows don't show "\u00b7 0 msgs".

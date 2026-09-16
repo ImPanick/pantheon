@@ -16,7 +16,11 @@ from src.llm_core import llm_call
 # ``OFFICE_EXTS`` — and is kept as a re-export because it has been importable
 # from this module since `B05` and taking a name away is not this row's
 # business (`Law 1`).
-from src.markitdown_runtime import MARKITDOWN_EXTS, OFFICE_EXTS  # noqa: F401
+from src.markitdown_runtime import (  # noqa: F401
+    MARKITDOWN_EXTS,
+    NO_EXTRACTABLE_TEXT,
+    OFFICE_EXTS,
+)
 from src.pdf_runtime import PDF_EXTS
 
 logger = logging.getLogger(__name__)
@@ -193,6 +197,61 @@ def _is_wide_encoding(name: str) -> bool:
     return name.lower().replace("-", "_").startswith(("utf_16", "utf_32"))
 
 
+# The multi-byte (CJK) codec families, by the prefixes ``charset_normalizer``
+# spells them with. What they have in common — and what makes them different
+# from every single-byte legacy codec — is that they **regroup** the bytes: two
+# input bytes become one character, and for Big5, Shift-JIS and the GB family a
+# *trail* byte may legally be an ASCII byte, so an ASCII letter sitting after a
+# high byte is swallowed into a CJK ideograph. A wrong single-byte guess gives
+# the right words with the wrong accents; a wrong multi-byte guess gives a
+# different number of characters in a different script.
+_MULTIBYTE_PREFIXES = (
+    "big5", "gb", "euc", "shift", "cp932", "cp936", "cp949", "cp950",
+    "johab", "iso2022", "hz", "utf_7",
+)
+
+
+def _is_multibyte_encoding(name: str) -> bool:
+    """True for a codec that groups several bytes into one character."""
+    return name.lower().replace("-", "_").startswith(_MULTIBYTE_PREFIXES)
+
+
+# How many bytes a multi-byte guess has to be about before it is evidence.
+#
+# `B201` measured `charset_normalizer` answering **Big5** for the 11 bytes of
+# ``"сервер порт"`` in cp1251 — a decode with no replacement characters and no
+# control characters, so it beat UTF-8 on both of `B101`'s comparisons and the
+# file arrived as ``'鼫謼歑 瀁貗'``. The same text at 21 bytes is identified
+# correctly, and the row's own sentence is that the boundary is sample size and
+# not codec.
+#
+# 24 is measured, not chosen. Over eleven real prose samples in cp1251, cp1250,
+# cp1253, cp1254, cp1255, latin-1, Big5, GB2312, Shift-JIS and EUC-KR, truncated
+# at every length from 4 to 48 bytes and compared against the true decode:
+# **a multi-byte answer about fewer than 24 bytes was right 22 times and wrong
+# 59** — worse than a coin flip — while at 24 bytes and above it was right 44
+# times and wrong 20. Below the floor the guess is discarded and the file falls
+# to the UTF-8 floor below, which for a legacy-encoded file means the honest
+# refusal `B162`'s skip-with-a-reason contract already has a slot for.
+#
+# **What this costs, stated rather than implied**: a genuine CJK file shorter
+# than 24 bytes — roughly a dozen ideographs, with no BOM and no registered
+# extension — stops being rescued and gets the banner. That is 22 of the 81
+# short-sample rescues in the sweep. It is deliberate: the other 59 were
+# mojibake, and there is nothing in a sample that small that tells the two
+# apart. A single-byte guess is untouched at any size, because it cannot do
+# this kind of damage — it maps one byte to one character, so the worst it
+# produces is the right words with the wrong accents.
+_MIN_MULTIBYTE_SAMPLE = 24
+
+# Why a prefix has no encoding. Constants rather than sentences at the return
+# statements, because `B162` made "skipped, and here is why" a contract the
+# index reports to the operator and these are the two things it can say about
+# bytes (`src/personal_docs.py` maps them onto its ``SKIP_*`` vocabulary).
+NOT_TEXT = "the bytes do not decode as text"
+ENCODING_UNIDENTIFIED = "the encoding could not be identified from so few bytes"
+
+
 def sniff_text_encoding(head: bytes) -> str | None:
     """The encoding *head* decodes as, or ``None`` when it does not read as text.
 
@@ -238,17 +297,34 @@ def sniff_text_encoding(head: bytes) -> str | None:
     rather than raise, exactly as the ``open()`` failure in ``looks_like_text``
     does.
     """
+    return describe_text_encoding(head)[0]
+
+
+def describe_text_encoding(head: bytes) -> tuple[str | None, str]:
+    """``(encoding, reason)`` — the same decision, with the refusal named.
+
+    ``sniff_text_encoding`` is this function's first element and has always been
+    the whole answer; `B201` needed the second, because "we could not identify
+    the encoding of these bytes" and "these bytes are not text" are different
+    things to say to the person who attached the file, and the index has
+    reported skips with a reason since `B162`. One decision, two shapes — the
+    boolean probe, the reader and the indexer all come through here (`Law 13`).
+
+    *reason* is ``""`` whenever there is an encoding, and one of ``NOT_TEXT`` /
+    ``ENCODING_UNIDENTIFIED`` otherwise.
+    """
     if not head:
-        return "utf-8"  # empty file — nothing binary about it
+        return "utf-8", ""  # empty file — nothing binary about it
     for bom, encoding in _BOMS:
         if head.startswith(bom):
-            return encoding
+            return encoding, ""
     if b"\x00" in head:
-        return None
+        return None, NOT_TEXT
     utf8_ratio = _replacement_ratio(head.decode("utf-8", errors="replace"))
     if utf8_ratio == 0.0:
-        return "utf-8"
+        return "utf-8", ""
     detected = _detect_encoding(head)
+    unsupported_guess = ""
     if detected and _is_wide_encoding(detected):
         # A UTF-16/32 guess about bytes that contain no NUL: every byte pair maps
         # to *some* codepoint, so such a decode scores a perfect zero on the
@@ -256,6 +332,26 @@ def sniff_text_encoding(head: bytes) -> str | None:
         # w\xc3\xb6rld\xff" is detected as utf_16_be and decodes to CJK. Real
         # UTF-16 reaches this function with a BOM or with NULs, and both are
         # answered above, so there is nothing here for a wide codec to win.
+        detected = None
+    elif (
+        detected
+        and _is_multibyte_encoding(detected)
+        and len(head) < _MIN_MULTIBYTE_SAMPLE
+    ):
+        # `B201`, and the same argument one codec family over. A multi-byte
+        # guess regroups the bytes, so getting it wrong does not mis-accent the
+        # text, it replaces it: eleven cp1251 bytes read as Big5 are five CJK
+        # ideographs. The sample is what decides whether that regrouping is
+        # evidence or a coincidence, and under `_MIN_MULTIBYTE_SAMPLE` bytes it
+        # is measurably a coincidence (22 right, 59 wrong). Discarding it here
+        # rather than at the comparison below is deliberate: the comparison asks
+        # whether the decode is *clean*, and the whole problem is that this one
+        # is — no replacement characters, no control characters, and wrong.
+        logger.debug(
+            "ignoring %s guessed from %d bytes: too short to be evidence",
+            detected, len(head),
+        )
+        unsupported_guess = detected
         detected = None
     if detected:
         try:
@@ -267,10 +363,15 @@ def sniff_text_encoding(head: bytes) -> str | None:
             and _replacement_ratio(decoded) < utf8_ratio
             and _control_ratio(decoded) <= _MAX_CONTROL_RATIO
         ):
-            return detected
+            return detected, ""
     if utf8_ratio <= _MAX_REPLACEMENT_RATIO:
-        return "utf-8"
-    return None
+        return "utf-8", ""
+    # Nothing left to say yes with. When the only candidate was a multi-byte
+    # guess the sample could not support, say that rather than "not text" — the
+    # file almost certainly *is* text, in an encoding nobody here can name, and
+    # a caller that reports "unsupported extension" for it would be lying about
+    # a format it supports.
+    return None, (ENCODING_UNIDENTIFIED if unsupported_guess else NOT_TEXT)
 
 
 def decode_text_file(path: str) -> str:
@@ -300,7 +401,22 @@ def decode_text_file(path: str) -> str:
     # asking the detector one more time is the difference between a `.txt` the
     # model can read and one full of NULs. Measured: ``charset_normalizer``
     # resolves BOM-less utf-16-le/utf-16-be/utf-32-le prose correctly.
-    encoding = sniff_text_encoding(head) or _detect_encoding(head) or "utf-8"
+    #
+    # `B201`: that second call used to run for **every** prefix the sniff
+    # refused, which made it an unconditional override of the sniff's own
+    # guards — the control-char guard, the "must decode strictly cleaner than
+    # UTF-8" comparison and the new short-sample rule all got the same answer
+    # handed back to them by the very next expression. The NUL test narrows it
+    # to the case the comment above describes and is the only case it was ever
+    # for: BOM-less UTF-16/32 is exactly the thing that reaches here with NULs
+    # and no other answer. A registered `.txt` whose encoding nobody can name
+    # falls to the UTF-8 floor and arrives with visible U+FFFD, which is what
+    # the floor has always meant and is the honest half of `Law 1` — the
+    # alternative was a confident decode into the wrong script.
+    encoding = sniff_text_encoding(head)
+    if encoding is None and b"\x00" in head:
+        encoding = _detect_encoding(head)
+    encoding = encoding or "utf-8"
     try:
         return (head + rest).decode(encoding, errors="replace")
     except LookupError:
@@ -358,6 +474,32 @@ def looks_like_text(path: str, probe_bytes: int = TEXT_SNIFF_BYTES) -> bool:
         logger.warning("text sniff failed for %s: %s", path, exc)
         return False
     return sniff_text_encoding(head) is not None
+
+
+def text_refusal_reason(path: str, probe_bytes: int = TEXT_SNIFF_BYTES) -> str:
+    """Why ``looks_like_text`` said no, in one phrase, or ``""`` if it said yes.
+
+    `B201`. The banner for a file nothing read has said *"No extractor covers
+    this file type"* since `B76`, and for a binary container that is true. For a
+    short legacy-encoded file it is a lie about a format the product supports
+    perfectly well: the extension is unregistered, the bytes are text, and the
+    only thing missing is a name for the encoding. Callers that show a person
+    why nothing arrived ask this instead of assuming the first answer.
+
+    Kept apart from ``looks_like_text`` on purpose. The probe is what
+    ``build_user_content`` calls to *decide*, and two tests pin that it is
+    literally that function being called; this is what a caller asks **after**
+    the decision has already gone against the file, so it is paid only on the
+    path whose current cost is a banner and zero bytes of content.
+    """
+    try:
+        with open(path, "rb") as fh:
+            head = fh.read(probe_bytes)
+    except Exception as exc:
+        logger.warning("text sniff failed for %s: %s", path, exc)
+        return NOT_TEXT
+    return describe_text_encoding(head)[1]
+
 
 def upload_display_name(info: Dict[str, Any], fallback_path: str | None = None) -> str:
     """The one name a stored upload is known by.
@@ -604,7 +746,6 @@ def _process_office_document(
     from src.markitdown_runtime import (
         is_office_format,
         convert_to_markdown,
-        load_markitdown,
     )
 
     if not is_office_format(path):
@@ -667,19 +808,20 @@ def _process_office_document(
         return f"\n\n[Document content — {title}]:\n{body}{marker}"
 
     # No content: tell the user whether to install the optional dep or whether
-    # the document simply had no extractable text.
-    from src.markitdown_runtime import is_markitdown_format
+    # the document simply had no extractable text. `B240` moved that three-way
+    # answer into ``markitdown_runtime.office_extraction_gap`` — it is a fact
+    # about the extractors, and the mailbox needs the same fact to say why it
+    # refused an attachment. The wording around it stays here because a chat
+    # banner and a JSON error are not the same sentence; the *reason* is one.
+    from src.markitdown_runtime import office_extraction_gap
 
-    if not is_markitdown_format(path):
+    gap = office_extraction_gap(path)
+    if gap == NO_EXTRACTABLE_TEXT:
         # `.odt`/`.doc`: the bundled reader is always present, so "install the
         # optional dependency" would be a lie and the only honest answer is that
         # the document holds no text this reader can see.
         return f"\n\n[Attached document: {display_name} — no extractable text found.]"
-    try:
-        load_markitdown()
-        return f"\n\n[Attached document: {display_name} — no extractable text found.]"
-    except RuntimeError as exc:
-        return f"\n\n[Attached document: {display_name} — {exc}]"
+    return f"\n\n[Attached document: {display_name} — {gap}]"
 
 
 # Marker that _process_pdf prepends to extracted text.
@@ -1047,11 +1189,27 @@ def build_user_content(
             # unreadable attachments produced three identical lines, and neither
             # the reader nor the model could tell that the contents were gone
             # rather than merely uninteresting.
-            banner = (
-                f"[Attached file: {display_name} — contents not read. No extractor "
-                f"covers this file type, so nothing from the file is in this "
-                f"message. The upload itself is intact and can be downloaded.]"
-            )
+            #
+            # `B201`: two reasons reach this line and they are not the same
+            # sentence. "No extractor covers this file type" is true of a
+            # WordPerfect document and false of a nine-character cp1251 `.conf`,
+            # where the extractor exists, the bytes are text, and what is
+            # missing is a name for the encoding. Ask which one it was rather
+            # than printing the first.
+            if text_refusal_reason(path) == ENCODING_UNIDENTIFIED:
+                banner = (
+                    f"[Attached file: {display_name} — contents not read. The "
+                    f"file is text in a legacy encoding, and there are too few "
+                    f"bytes in it to identify which one, so nothing from the "
+                    f"file is in this message. The upload itself is intact and "
+                    f"can be downloaded.]"
+                )
+            else:
+                banner = (
+                    f"[Attached file: {display_name} — contents not read. No extractor "
+                    f"covers this file type, so nothing from the file is in this "
+                    f"message. The upload itself is intact and can be downloaded.]"
+                )
             if content and content[0]["type"] == "text":
                 content[0]["text"] += f"\n\n{banner}"
             else:

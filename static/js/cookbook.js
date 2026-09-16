@@ -2861,7 +2861,7 @@ export function _serverEntryHtml(s, i, defaultServer, forceRemote, isNew) {
   html += `</span>`;
   html += `<div class="cookbook-server-row">`;
   html += `<input type="text" class="hwfit-sf cookbook-srv-name" value="${esc(s.name || (isLocal ? 'Local' : ''))}" placeholder="Name (optional)" style="width:92px;flex-shrink:0;" />`;
-  html += `<span class="cookbook-srv-color-wrap has-color" title="Server color"><select class="hwfit-sf cookbook-srv-color" aria-hidden="true" tabindex="-1">${colorOpts}</select><button type="button" class="hwfit-sf cookbook-srv-color-btn" aria-haspopup="listbox" aria-expanded="false"><span class="cookbook-srv-color-dot" aria-hidden="true"></span><span class="cookbook-srv-color-label">${esc(selectedColorLabel)}</span><svg class="cookbook-srv-color-caret" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg></button><div class="cookbook-srv-color-menu hidden" role="listbox">${colorMenu}</div></span>`;
+  html += `<span class="cookbook-srv-color-wrap has-color" title="Server color"><select class="hwfit-sf cookbook-srv-color" aria-hidden="true" tabindex="-1">${colorOpts}</select><button type="button" class="hwfit-sf cookbook-srv-color-btn" aria-haspopup="listbox" aria-expanded="false"><span class="cookbook-srv-color-dot" aria-hidden="true"></span><span class="cookbook-srv-color-label">${esc(selectedColorLabel)}</span>${chevronIcon({ size: 9, strokeWidth: 2.6, className: 'cookbook-srv-color-caret', ariaHidden: true })}</button><div class="cookbook-srv-color-menu hidden" role="listbox">${colorMenu}</div></span>`;
   html += `<input type="text" class="hwfit-sf cookbook-srv-host" value="${isLocal ? '' : esc(s.host || '')}" placeholder="e.g. user@ip" style="width:184px;flex-shrink:0;box-sizing:border-box;" ${isLocal ? 'readonly' : ''} />`;
   html += `<input type="text" class="hwfit-sf cookbook-srv-port" value="${esc(s.port || '')}" placeholder="Port" title="SSH port (default 22)" style="width:48px;flex-shrink:0;" ${isLocal ? 'readonly' : ''} />`;
   html += `<select class="hwfit-sf cookbook-srv-env">${envOpts}</select>`;
@@ -3035,7 +3035,7 @@ function _renderRecipes() {
   html += '<button type="button" class="cookbook-field-input hwfit-usecase-btn" data-hwfit-usecase-btn aria-haspopup="listbox" aria-expanded="false" title="Model type">';
   html += '<span class="hwfit-usecase-btn-icon" data-hwfit-usecase-icon aria-hidden="true"></span>';
   html += '<span class="hwfit-usecase-btn-label" data-hwfit-usecase-label>Standard</span>';
-  html += '<svg class="hwfit-usecase-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>';
+  html += chevronIcon({ className: 'hwfit-usecase-caret', ariaHidden: true });
   html += '</button>';
   html += '<div class="hwfit-usecase-menu" data-hwfit-usecase-menu role="listbox" hidden></div>';
   html += '</span>';
@@ -3065,7 +3065,7 @@ function _renderRecipes() {
   html += '<button type="button" class="cookbook-field-input hwfit-engine-btn" data-hwfit-engine-btn aria-haspopup="listbox" aria-expanded="false" title="Filter by serving engine">';
   html += '<span class="hwfit-engine-btn-icon" data-hwfit-engine-icon aria-hidden="true"></span>';
   html += '<span class="hwfit-engine-btn-label" data-hwfit-engine-label>Engine</span>';
-  html += '<svg class="hwfit-engine-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>';
+  html += chevronIcon({ className: 'hwfit-engine-caret', ariaHidden: true });
   html += '</button>';
   html += '<div class="hwfit-engine-menu" data-hwfit-engine-menu role="listbox" hidden></div>';
   html += '<span class="hwfit-help-chip hwfit-help-chip-inline hwfit-engine-help" title="Rule of thumb: GGUF on single GPU / CPU+RAM → llama.cpp (or Ollama). Safetensors on multi-GPU NVIDIA → vLLM. SGLang is a vLLM-class alternative, sometimes faster on big-MoE / long-context.">?</span>';
@@ -3223,7 +3223,7 @@ function _renderRecipes() {
 // ── Public API ──
 
 import * as Modals from './modalManager.js?v=20260723compareicon2';
-import { playIcon } from './icons.js';
+import { chevronIcon, playIcon } from './icons.js';
 
 let _rendered = false;
 

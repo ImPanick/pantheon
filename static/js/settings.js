@@ -31,6 +31,7 @@ import { invalidateSettings } from './appConfig.js';
 // H19: the Shortcuts panel reads the one registry instead of keeping a
 // second copy that disagreed with it about `toggle_sidebar`.
 import { KEYBIND_DEFAULTS, KEYBIND_LABELS } from './keyboard-shortcuts.js';
+import { chevronIcon } from './icons.js';
 
 let initialized = false;
 let modalEl = null;
@@ -5720,7 +5721,7 @@ async function initUnifiedIntegrations() {
                 <span>Copy</span>
               </button>
               <button type="button" class="admin-btn-sm" id="uf-codex-toggle-config" aria-expanded="false" style="font-size:11px;font-weight:normal;display:inline-flex;align-items:center;gap:5px;opacity:0.85;">
-                <svg id="uf-codex-toggle-config-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transition:transform 0.15s"><polyline points="6 9 12 15 18 9"/></svg>
+                ${chevronIcon({ id: 'uf-codex-toggle-config-caret', style: 'transition:transform 0.15s' })}
                 <span>Configure</span>
               </button>
             </div>

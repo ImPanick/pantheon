@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { chevronIcon } from '../../icons.js';
+
 /**
  * Build the editor's top bar (undo/redo/history, zoom group, Image
  * menu, Filter menu, Selection-edge menu, Shortcuts, Import, Save).
@@ -117,7 +119,7 @@ export function buildTopbar() {
       <button class="ge-btn ge-btn-sm" id="ge-import-topbar" title="Import image as layer">+ Import</button>
       <div class="ge-save-wrap">
         <button class="ge-btn ge-btn-primary" id="ge-save-menu-btn" title="Save options" style="display:inline-flex;align-items:center;gap:4px;">Save
-          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.7"><polyline points="6 9 12 15 18 9"/></svg>
+          ${chevronIcon({ size: 9, style: 'opacity:0.7' })}
         </button>
         <div class="ge-save-menu dropdown" id="ge-save-menu" hidden>
           <div class="dropdown-section-label">Image</div>

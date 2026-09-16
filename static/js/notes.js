@@ -13,6 +13,7 @@ import { snapModalToZone } from './tileManager.js';
 import { applyEdgeDock, clearDockSide } from './modalSnap.js';
 import { topToolWindowZ, topPortalZ } from './toolWindowZOrder.js';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
+import { chevronIcon, stopIcon } from './icons.js';
 
 const API_BASE = window.location.origin;
 let _open = false;
@@ -4513,7 +4514,7 @@ function _openNoteCornerMenu(btn) {
       <span>${_noteAgentState === 'running' ? 'Agent running…' : (_noteAgentState === 'queued' ? `Queued (#${_agentSolveQueuePosition(_agentSolveKey(id, null))})` : (note.agent_session_id ? 'Re-run agent' : 'Agent: solve this'))}</span>
     </button>
     ${(_noteAgentState || _noteStopKind === 'detached') ? `<button type="button" class="ncm-item" data-act="agent-cancel">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+      ${stopIcon({ size: 14, outline: true })}
       <span>${_noteAgentState === 'queued' ? 'Remove from queue' : 'Stop this run'}</span>
     </button>` : ''}`;
   document.body.appendChild(menu);
@@ -4582,7 +4583,7 @@ function _openTodoAgentMenu(btn) {
       <span>Open</span>
     </button>` : ''}
     ${(state || stopKind === 'detached') ? `<button type="button" class="ncm-item" data-act="cancel">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+      ${stopIcon({ size: 14, outline: true })}
       <span>${state === 'queued' ? `Remove from queue (#${_agentSolveQueuePosition(_agentSolveKey(noteId, idx))})` : 'Stop this run'}</span>
     </button>` : ''}
     <button type="button" class="ncm-item" data-act="run">
@@ -5108,7 +5109,7 @@ function _openMobileFullscreenEdit(id, fromCard) {
   overlay.innerHTML = `
     <div class="note-fullscreen-header">
       <button type="button" class="note-fullscreen-back" title="Back">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        ${chevronIcon({ direction: 'left', size: 22, strokeWidth: 2.2 })}
       </button>
       <div class="note-fullscreen-actions"></div>
     </div>

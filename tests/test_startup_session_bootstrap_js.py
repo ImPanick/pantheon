@@ -21,6 +21,9 @@ _HAS_NODE = shutil.which("node") is not None
 
 _IMPORT_REWRITES = {
     "import Storage from './storage.js';": "import Storage from './storage.mjs';",
+    "import { chevronIcon } from './icons.js';": (
+        "import { chevronIcon } from './icons.mjs';"
+    ),
     "import uiModule, { autoResize, styledPrompt } from './ui.js';": (
         "import uiModule, { autoResize, styledPrompt } from './ui.mjs';"
     ),
@@ -48,7 +51,13 @@ _IMPORT_REWRITES = {
 # Modules with no dependencies of their own, copied into the sandbox whole
 # rather than stubbed: the harness then runs the real arithmetic instead of a
 # fiction of it, and there is one less stub to remember when it changes.
-_VERBATIM = {"toolWindowZOrder.mjs": _REPO / "static" / "js" / "toolWindowZOrder.js"}
+# Copied whole, not stubbed. `B230` put the sidebar's session-menu chevron on
+# the shared icon table, and `B250` is the standing ruling for exactly this:
+# a stub hands the test a glyph nobody ships.
+_VERBATIM = {
+    "toolWindowZOrder.mjs": _REPO / "static" / "js" / "toolWindowZOrder.js",
+    "icons.mjs": _REPO / "static" / "js" / "icons.js",
+}
 
 _STUBS = {
     "storage.mjs": r"""

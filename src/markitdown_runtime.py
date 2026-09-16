@@ -69,6 +69,60 @@ def load_markitdown():
     return MarkItDown
 
 
+def _extract_docx_python_docx(path: str) -> str | None:
+    """The `.docx` reader that used to live inside ``attachment_as_doc``.
+
+    `B240`. ``routes/email_routes.py`` walked ``python-docx`` paragraphs and
+    built its own markdown — headings as ``#``/``##``/``###``, ``List Bullet``
+    as ``- ``, ``List Number`` as ``1. ``, tables as pipe rows — while chat
+    ingest sent the same file through markitdown. One `.docx`, two renderings,
+    and the reason the mailbox had its own was that it landed first, not that
+    anyone decided the two doors should disagree (`Law 14`).
+
+    It is **moved, not deleted** (`Law 1`). ``python-docx`` is not a hard
+    requirement here, so when markitdown is absent this is a strictly better
+    answer than ``_extract_docx_native`` below — it keeps the tables and the
+    heading levels that the bare ``<w:t>`` walk drops — and it now answers for
+    every consumer rather than only for the mailbox. When markitdown *is*
+    installed it never runs, which is what makes one `.docx` render the same
+    whichever door it came through.
+
+    ``python-docx`` reads the zip with the standard library and never opens a
+    socket (`Law 16`), the same as every other extractor in this module.
+    """
+    try:
+        from docx import Document as _Docx  # optional dependency
+    except ImportError:
+        return None
+    d = _Docx(path)
+    # Convert paragraphs to markdown — preserve heading styles as #/##/###,
+    # bullet lists as `- `, numbered lists as `1.`, and keep tables as
+    # simple pipe-delimited rows.
+    lines: list[str] = []
+    for p in d.paragraphs:
+        text = p.text or ""
+        style = (p.style.name if p.style else "") or ""
+        if not text.strip():
+            lines.append("")
+            continue
+        if style.startswith("Heading 1"): lines.append(f"# {text}")
+        elif style.startswith("Heading 2"): lines.append(f"## {text}")
+        elif style.startswith("Heading 3"): lines.append(f"### {text}")
+        elif style.startswith("Heading "): lines.append(f"#### {text}")
+        elif style.startswith("List Bullet"): lines.append(f"- {text}")
+        elif style.startswith("List Number"): lines.append(f"1. {text}")
+        else: lines.append(text)
+    for tbl in d.tables:
+        lines.append("")
+        for ri, row in enumerate(tbl.rows):
+            cells = [(c.text or "").replace("|", "\\|").replace("\n", " ").strip() for c in row.cells]
+            lines.append("| " + " | ".join(cells) + " |")
+            if ri == 0:
+                lines.append("|" + "|".join(["---"] * len(cells)) + "|")
+        lines.append("")
+    return "\n".join(lines).strip() or None
+
+
 def _extract_docx_native(path: str) -> str | None:
     """Pure-Python .docx text extractor — no external deps.
 
@@ -455,11 +509,62 @@ def _run_native(extractor, path: str) -> str | None:
         return None
 
 
+# The bundled readers, in the order they are tried. A tuple rather than a single
+# function because `.docx` has two of them and `B240` is what made that visible:
+# the mailbox had a `python-docx` reader nobody else could reach, and deleting it
+# to unify the doors would have subtracted the tables and heading levels it keeps
+# (`Law 1`). So it becomes the first rung and the dependency-free `<w:t>` walk
+# stays as the second. Every entry answers ``None`` for "I cannot read this",
+# which is what makes the chain a chain.
 _NATIVE_EXTRACTORS = {
-    ".docx": _extract_docx_native,
-    ".odt": _extract_odf_native,
-    ".doc": _extract_doc_native,
+    ".docx": (_extract_docx_python_docx, _extract_docx_native),
+    ".odt": (_extract_odf_native,),
+    ".doc": (_extract_doc_native,),
 }
+
+
+def _run_natives(extractors, path: str) -> str | None:
+    """First bundled reader that produces text, or ``None``."""
+    for extractor in extractors or ():
+        text = _run_native(extractor, path)
+        if text and text.strip():
+            return text
+    return None
+
+
+# What to say when an Office/EPUB file produced no text. One sentence with one
+# source, because three callers ask it — the composer banner
+# (``document_processor._process_office_document``), the mailbox refusal
+# (``routes/email_routes.attachment_as_doc``) and the index skip reason — and
+# `B240` measured them answering differently: the mailbox said *"Unsupported
+# attachment type: .xlsx"* about a format that is in ``INGESTIBLE_EXTS`` and that
+# chat ingest reads, which is not a reason, it is a different product's answer.
+NO_OFFICE_EXTRACTOR = "no extractor covers this file type"
+NO_EXTRACTABLE_TEXT = "no extractable text found"
+
+
+def office_extraction_gap(path: str) -> str:
+    """Why *path* produced no text — the reason, not the wording around it.
+
+    Three answers and they are not interchangeable:
+
+    * ``NO_OFFICE_EXTRACTOR`` — nothing here reads this format at all.
+    * ``MARKITDOWN_MISSING`` — markitdown converts it and markitdown is not
+      installed, so the fix is one ``pip install`` and the caller should say so.
+    * ``NO_EXTRACTABLE_TEXT`` — a reader ran and the document holds no text it
+      can see. For `.odt`/`.doc` this is the *only* honest answer, because their
+      readers are bundled and "install the optional dependency" would be a lie —
+      which is the distinction ``is_office_format`` vs ``is_markitdown_format``
+      exists to carry (`B102`).
+    """
+    if not is_office_format(path):
+        return NO_OFFICE_EXTRACTOR
+    if is_markitdown_format(path):
+        try:
+            load_markitdown()
+        except RuntimeError as exc:
+            return str(exc)
+    return NO_EXTRACTABLE_TEXT
 
 
 def convert_to_markdown(path: str) -> str | None:
@@ -482,7 +587,7 @@ def convert_to_markdown(path: str) -> str | None:
         if native is None:
             logger.warning("no extractor for %s", path)
             return None
-        text = _run_native(native, path)
+        text = _run_natives(native, path)
         if not text:
             logger.warning("native extractor found no text in %s", path)
         return text or None
@@ -490,7 +595,7 @@ def convert_to_markdown(path: str) -> str | None:
         markitdown_cls = load_markitdown()
     except RuntimeError:
         if native is not None:
-            text = _run_native(native, path)
+            text = _run_natives(native, path)
             if text:
                 logger.info(
                     "markitdown not installed — used the native %s extractor for %s",
@@ -511,5 +616,5 @@ def convert_to_markdown(path: str) -> str | None:
             # Installed but unhappy — a corrupt part, a format version it does
             # not know. The bundled reader is a second opinion, not a fallback
             # only for the uninstalled case.
-            return _run_native(native, path) or None
+            return _run_natives(native, path) or None
         return None

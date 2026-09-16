@@ -120,8 +120,21 @@ def test_code_runner_references_no_cdn():
     assert re.search(r"indexURL:\s*['\"]/static/lib/pyodide/['\"]", code)
 
 
-def test_no_cdn_anywhere_in_served_frontend():
-    """The whole surface, not just the file that had the problem."""
+def test_no_cdn_in_the_static_frontend_files():
+    """Every file the app ships, not just the one that had the problem.
+
+    Renamed 2026-09-16 (`B212`). This was called
+    `test_no_cdn_anywhere_in_served_frontend` and the name was a claim it could
+    not keep: it reads `static/**`, which is every byte the app *ships* and no
+    byte it *generates*. FastAPI built `/docs` and `/redoc` at request time and
+    those two documents named three third-party hosts the whole time this test
+    was green. The claim in the old name now lives in
+    `tests/test_no_cdn_anywhere_in_served_frontend.py`, which asks the running
+    app for every page it serves; this half is kept because a file scan sees
+    pages no route reaches — a `.js` module loaded only on a panel nobody
+    opened, for instance — and the two are stronger together than either is
+    alone.
+    """
     offenders = []
     for path in list((ROOT / "static").rglob("*.js")) + list((ROOT / "static").rglob("*.html")):
         if "static/lib" in path.as_posix():

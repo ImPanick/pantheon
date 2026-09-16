@@ -79,7 +79,7 @@
 import { formatElapsed } from './research/jobs.js?v=20260630researchthumb';
 import dragSortModule from './dragSort.js';
 import { runStatusLabel, runStatusDotClass } from './runStatus.js';
-import { playIcon, stopIcon } from './icons.js';
+import { chevronIcon, playIcon, stopIcon } from './icons.js';
 
 /** Injected by chat.js at init. See the contract in `init()`. */
 let _driver = null;
@@ -100,7 +100,7 @@ const _launched = [];
 
 // ── Icons — the same glyphs the surfaces being reused already draw ──────────
 
-const ICON_CHEVRON = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+const ICON_CHEVRON = chevronIcon({ strokeWidth: 3 });
 const ICON_QUEUE = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3.5" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="3.5" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="3.5" cy="18" r="1.5" fill="currentColor" stroke="none"/></svg>';
 const ICON_PLAY = playIcon({ size: 9 });
 const ICON_STOP = stopIcon({ size: 9 });

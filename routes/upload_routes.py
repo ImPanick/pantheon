@@ -36,8 +36,8 @@ from src.upload_handler import (
 # at call time and cannot be a second copy.
 from src import svg_runtime
 from src.svg_runtime import (
-    BLANK_SVG,
     MAX_PREVIEW_SVG_BYTES,
+    SVG_REFUSAL_HEADER,
     SVG_SECURITY_HEADERS,
     is_svg,
     svg_caption_text,
@@ -427,6 +427,17 @@ def setup_upload_routes(upload_handler):
         direct navigation downloads rather than renders. An `<img>`, which is how
         both the chip and the lightbox load it, ignores the disposition and
         draws the picture.
+
+        `B160` changed two things about the refusal arm and neither about the
+        pass arm. **The preview allows an embedded `data:image` raster**, which
+        is the majority of what `B103` was refusing: an Inkscape or Figma export
+        with one bitmap in it carries `<image href="data:image/png;base64,…">`
+        and lost its preview to the element name alone. **And a refusal is now
+        drawn rather than blank** — the 1x1 told the person nothing, so a
+        harmless diagram and a file carrying `<script>` produced the identical
+        empty box. The reason is a slug from a fixed vocabulary; it is put on
+        the response as `X-Preview-Refused` for anything that can read a header
+        and drawn into the placeholder for the `<img>` that cannot.
         """
         from fastapi.responses import FileResponse, Response
 
@@ -440,10 +451,19 @@ def setup_upload_routes(upload_handler):
         except OSError as e:
             logger.warning(f"SVG preview read failed for {path}: {e}")
             content = b""
-        if not svg_runtime.is_safe_svg(content, MAX_PREVIEW_SVG_BYTES):
-            logger.info("SVG preview refused (failed the safety check): %s", path)
-            return Response(BLANK_SVG, media_type="image/svg+xml",
-                            headers={**headers, "Cache-Control": "no-store"})
+        # Through the module, not a name bound at import time, so there is
+        # demonstrably one gate in the process and this route reaches it.
+        reason = svg_runtime.svg_refusal_reason(
+            content, MAX_PREVIEW_SVG_BYTES, allow_data_images=True
+        )
+        if reason is not None:
+            logger.info("SVG preview refused (%s): %s", reason, path)
+            return Response(
+                svg_runtime.refused_preview_svg(reason),
+                media_type="image/svg+xml",
+                headers={**headers, "Cache-Control": "no-store",
+                         SVG_REFUSAL_HEADER: reason},
+            )
         return Response(content, media_type="image/svg+xml", headers=headers)
 
     @router.get("/{file_id}")

@@ -1,5 +1,12 @@
 <!doctype html>
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- A developer sandbox, not a page the app links to. It exists to pick the
+     splash loader's shape side by side, and it is driven entirely by the one
+     inline <script> at the bottom. `B211`: that block carried no nonce and was
+     refused by the app CSP for this page's whole life, so it rendered a styled
+     empty frame; the `/static` mount now derives a 'sha256-…' source for the
+     inline blocks of every HTML document it serves (app.py,
+     `_RevalidatingStatic`), which is what makes it run. -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -36,6 +43,12 @@
       font-size: 18px;
       font-weight: 650;
       letter-spacing: 0;
+    }
+    .what-this-is {
+      color: var(--muted);
+      font-size: 12px;
+      border-left: 2px solid var(--line);
+      padding-left: 10px;
     }
     p {
       margin: 0 0 22px;
@@ -135,6 +148,7 @@
   <main>
     <h1>Pantheon Loader Wave</h1>
     <p>Ship-on-wave variants for the app splash. Pick the one that feels most like Pantheon sailing instead of just a generic loading wave.</p>
+    <p class="what-this-is">Developer sandbox. Nothing in the app links here &mdash; it is opened by hand at <code>/static/wave-variants.html</code> to compare variants before one is wired into the real loader.</p>
     <section class="grid" aria-label="Wave variants">
       <article class="card" data-variant="A">
         <header><span><span class="tag">A</span> dot boat</span><span>minimal</span></header>

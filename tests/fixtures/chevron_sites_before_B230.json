@@ -1,0 +1,901 @@
+{
+ "static/js/admin.js#1": {
+  "attrs": {
+   "class": "admin-user-chevron",
+   "fill": "none",
+   "height": "12",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "style": "opacity:0.3;transition:transform 0.2s,opacity 0.2s;",
+   "viewBox": "0 0 24 24",
+   "width": "12"
+  },
+  "direction": "down",
+  "line": 64,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/admin.js#2": {
+  "attrs": {
+   "class": "admin-user-chevron",
+   "fill": "none",
+   "height": "12",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "style": "opacity:0.3;transition:transform 0.2s,opacity 0.2s;",
+   "viewBox": "0 0 24 24",
+   "width": "12"
+  },
+  "direction": "down",
+  "line": 582,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/admin.js#3": {
+  "attrs": {
+   "class": "admin-tool-cat-chevron",
+   "fill": "none",
+   "height": "12",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "style": "opacity:0.3;transition:transform 0.2s,opacity 0.2s;",
+   "viewBox": "0 0 24 24",
+   "width": "12"
+  },
+  "direction": "down",
+  "line": 2000,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/admin.js#4": {
+  "attrs": {
+   "class": "admin-user-chevron",
+   "fill": "none",
+   "height": "12",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "style": "opacity:0.3;transition:transform 0.2s,opacity 0.2s;",
+   "viewBox": "0 0 24 24",
+   "width": "12"
+  },
+  "direction": "down",
+  "line": 2150,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/compare/index.js#1": {
+  "attrs": {
+   "class": "cmp-eval-caret",
+   "fill": "none",
+   "height": "10",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "viewBox": "0 0 24 24",
+   "width": "10"
+  },
+  "direction": "down",
+  "line": 1241,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/compare/selector.js#1": {
+  "attrs": {
+   "fill": "none",
+   "height": "12",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "style": "vertical-align:-1px;margin-right:3px;",
+   "viewBox": "0 0 24 24",
+   "width": "12"
+  },
+  "direction": "left",
+  "line": 1281,
+  "points": "15 18 9 12 15 6"
+ },
+ "static/js/cookbook.js#1": {
+  "attrs": {
+   "aria-hidden": "true",
+   "class": "cookbook-srv-color-caret",
+   "fill": "none",
+   "height": "9",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.6",
+   "viewBox": "0 0 24 24",
+   "width": "9"
+  },
+  "direction": "down",
+  "line": 2864,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/cookbook.js#2": {
+  "attrs": {
+   "aria-hidden": "true",
+   "class": "hwfit-usecase-caret",
+   "fill": "none",
+   "height": "10",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "viewBox": "0 0 24 24",
+   "width": "10"
+  },
+  "direction": "down",
+  "line": 3038,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/cookbook.js#3": {
+  "attrs": {
+   "aria-hidden": "true",
+   "class": "hwfit-engine-caret",
+   "fill": "none",
+   "height": "10",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "viewBox": "0 0 24 24",
+   "width": "10"
+  },
+  "direction": "down",
+  "line": 3068,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/cookbookRunning.js#1": {
+  "attrs": {
+   "class": "cookbook-section-chevron",
+   "fill": "none",
+   "height": "12",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-width": "2.5",
+   "viewBox": "0 0 24 24",
+   "width": "12"
+  },
+  "direction": "down",
+  "line": 2232,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/cookbookServe.js#1": {
+  "attrs": {
+   "aria-hidden": "true",
+   "fill": "none",
+   "height": "10",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "style": "opacity:0.6;flex-shrink:0;",
+   "viewBox": "0 0 24 24",
+   "width": "10"
+  },
+  "direction": "down",
+  "line": 1516,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/cookbookServe.js#2": {
+  "attrs": {
+   "fill": "none",
+   "height": "10",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "viewBox": "0 0 24 24",
+   "width": "10"
+  },
+  "direction": "down",
+  "line": 1823,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/document.js#1": {
+  "attrs": {
+   "fill": "none",
+   "height": "13",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "viewBox": "0 0 24 24",
+   "width": "13"
+  },
+  "direction": "up",
+  "line": 4945,
+  "points": "6 15 12 9 18 15"
+ },
+ "static/js/document.js#2": {
+  "attrs": {
+   "fill": "none",
+   "height": "8",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "3.5",
+   "viewBox": "0 0 24 24",
+   "width": "8"
+  },
+  "direction": "down",
+  "line": 4996,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/document.js#3": {
+  "attrs": {
+   "fill": "none",
+   "height": "8",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "3.5",
+   "viewBox": "0 0 24 24",
+   "width": "8"
+  },
+  "direction": "down",
+  "line": 4997,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/document.js#4": {
+  "attrs": {
+   "fill": "none",
+   "height": "8",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "3.5",
+   "viewBox": "0 0 24 24",
+   "width": "8"
+  },
+  "direction": "down",
+  "line": 5001,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/document.js#5": {
+  "attrs": {
+   "fill": "none",
+   "height": "16",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "viewBox": "0 0 24 24",
+   "width": "16"
+  },
+  "direction": "left",
+  "line": 5018,
+  "points": "15 18 9 12 15 6"
+ },
+ "static/js/document.js#6": {
+  "attrs": {
+   "fill": "none",
+   "height": "16",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "viewBox": "0 0 24 24",
+   "width": "16"
+  },
+  "direction": "right",
+  "line": 5019,
+  "points": "9 18 15 12 9 6"
+ },
+ "static/js/document.js#7": {
+  "attrs": {
+   "aria-hidden": "true",
+   "fill": "none",
+   "height": "12",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.6",
+   "viewBox": "0 0 24 24",
+   "width": "12"
+  },
+  "direction": "down",
+  "line": 5043,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/document.js#8": {
+  "attrs": {
+   "aria-hidden": "true",
+   "fill": "none",
+   "height": "12",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "viewBox": "0 0 24 24",
+   "width": "12"
+  },
+  "direction": "up",
+  "line": 5063,
+  "points": "6 15 12 9 18 15"
+ },
+ "static/js/document.js#9": {
+  "attrs": {
+   "fill": "none",
+   "height": "10",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "style": "margin-left:4px;opacity:0.6;",
+   "viewBox": "0 0 24 24",
+   "width": "10"
+  },
+  "direction": "down",
+  "line": 5360,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/documentLibrary.js#1": {
+  "attrs": {
+   "fill": "none",
+   "height": "12",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2",
+   "viewBox": "0 0 24 24",
+   "width": "12"
+  },
+  "direction": "down",
+  "line": 574,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/documentLibrary.js#2": {
+  "attrs": {
+   "fill": "none",
+   "height": "12",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2",
+   "viewBox": "0 0 24 24",
+   "width": "12"
+  },
+  "direction": "down",
+  "line": 2103,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/editor/build/topbar.js#1": {
+  "attrs": {
+   "fill": "none",
+   "height": "9",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "style": "opacity:0.7",
+   "viewBox": "0 0 24 24",
+   "width": "9"
+  },
+  "direction": "down",
+  "line": 120,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/emailInbox.js#1": {
+  "attrs": {
+   "aria-hidden": "true",
+   "fill": "none",
+   "height": "9",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "3",
+   "viewBox": "0 0 24 24",
+   "width": "9"
+  },
+  "direction": "down",
+  "line": 88,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/emailLibrary.js#1": {
+  "attrs": {
+   "aria-hidden": "true",
+   "fill": "none",
+   "height": "9",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "3",
+   "viewBox": "0 0 24 24",
+   "width": "9"
+  },
+  "direction": "down",
+  "line": 550,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/emailLibrary.js#10": {
+  "attrs": {
+   "class": "email-summary-chevron",
+   "fill": "none",
+   "height": "10",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "style": "margin-left:auto;transition:transform .15s ease;",
+   "viewBox": "0 0 24 24",
+   "width": "10"
+  },
+  "direction": "down",
+  "line": 7516,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/emailLibrary.js#11": {
+  "attrs": {
+   "class": "email-summary-chevron",
+   "fill": "none",
+   "height": "10",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "style": "margin-left:auto;transition:transform .15s ease;",
+   "viewBox": "0 0 24 24",
+   "width": "10"
+  },
+  "direction": "down",
+  "line": 7606,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/emailLibrary.js#2": {
+  "attrs": {
+   "class": "email-filter-caret",
+   "fill": "none",
+   "height": "10",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "viewBox": "0 0 24 24",
+   "width": "10"
+  },
+  "direction": "down",
+  "line": 2627,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/emailLibrary.js#3": {
+  "attrs": {
+   "fill": "none",
+   "height": "18",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.4",
+   "viewBox": "0 0 24 24",
+   "width": "18"
+  },
+  "direction": "left",
+  "line": 5223,
+  "points": "15 18 9 12 15 6"
+ },
+ "static/js/emailLibrary.js#4": {
+  "attrs": {
+   "fill": "none",
+   "height": "18",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.4",
+   "viewBox": "0 0 24 24",
+   "width": "18"
+  },
+  "direction": "right",
+  "line": 5224,
+  "points": "9 18 15 12 9 6"
+ },
+ "static/js/emailLibrary.js#5": {
+  "attrs": {
+   "fill": "none",
+   "height": "11",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "viewBox": "0 0 24 24",
+   "width": "11"
+  },
+  "direction": "down",
+  "line": 5569,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/emailLibrary.js#6": {
+  "attrs": {
+   "class": "email-summary-chevron",
+   "fill": "none",
+   "height": "10",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "style": "margin-left:auto;transition:transform .15s ease;",
+   "viewBox": "0 0 24 24",
+   "width": "10"
+  },
+  "direction": "down",
+  "line": 6540,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/emailLibrary.js#7": {
+  "attrs": {
+   "class": "email-summary-chevron",
+   "fill": "none",
+   "height": "10",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "style": "margin-left:auto;transition:transform .15s ease;",
+   "viewBox": "0 0 24 24",
+   "width": "10"
+  },
+  "direction": "down",
+  "line": 6886,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/emailLibrary.js#8": {
+  "attrs": {
+   "fill": "none",
+   "height": "11",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "viewBox": "0 0 24 24",
+   "width": "11"
+  },
+  "direction": "down",
+  "line": 7235,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/emailLibrary.js#9": {
+  "attrs": {
+   "fill": "none",
+   "height": "11",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "viewBox": "0 0 24 24",
+   "width": "11"
+  },
+  "direction": "down",
+  "line": 7390,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/emailLibrary/signatureFold.js#1": {
+  "attrs": {
+   "class": "email-summary-chevron",
+   "fill": "none",
+   "height": "10",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "style": "margin-left:auto;transition:transform .15s ease;",
+   "viewBox": "0 0 24 24",
+   "width": "10"
+  },
+  "direction": "down",
+  "line": 127,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/gallery.js#1": {
+  "attrs": {
+   "fill": "none",
+   "height": "24",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "viewBox": "0 0 24 24",
+   "width": "24"
+  },
+  "direction": "left",
+  "line": 1460,
+  "points": "15 18 9 12 15 6"
+ },
+ "static/js/gallery.js#2": {
+  "attrs": {
+   "fill": "none",
+   "height": "24",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "viewBox": "0 0 24 24",
+   "width": "24"
+  },
+  "direction": "right",
+  "line": 1469,
+  "points": "9 18 15 12 9 6"
+ },
+ "static/js/gallery.js#3": {
+  "attrs": {
+   "fill": "none",
+   "height": "14",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2",
+   "viewBox": "0 0 24 24",
+   "width": "14"
+  },
+  "direction": "left",
+  "line": 2639,
+  "points": "15 18 9 12 15 6"
+ },
+ "static/js/galleryEditor.js#1": {
+  "attrs": {
+   "aria-hidden": "true",
+   "class": "ge-ai-command-toggle-caret",
+   "fill": "none",
+   "height": "12",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.6",
+   "viewBox": "0 0 24 24",
+   "width": "12"
+  },
+  "direction": "up",
+  "line": 345,
+  "points": "6 15 12 9 18 15"
+ },
+ "static/js/galleryEditor.js#2": {
+  "attrs": {
+   "aria-hidden": "true",
+   "fill": "none",
+   "height": "14",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.6",
+   "viewBox": "0 0 24 24",
+   "width": "14"
+  },
+  "direction": "down",
+  "line": 358,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/modelPicker.js#1": {
+  "attrs": {
+   "class": "mp-provider-chevron${isCollapsed ? ' collapsed' : ''}",
+   "fill": "none",
+   "height": "10",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "3",
+   "viewBox": "0 0 24 24",
+   "width": "10"
+  },
+  "direction": "down",
+  "line": 612,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/notes.js#1": {
+  "attrs": {
+   "fill": "none",
+   "height": "22",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.2",
+   "viewBox": "0 0 24 24",
+   "width": "22"
+  },
+  "direction": "left",
+  "line": 5111,
+  "points": "15 18 9 12 15 6"
+ },
+ "static/js/planWindow.js#1": {
+  "attrs": {
+   "aria-hidden": "true",
+   "fill": "none",
+   "height": "12",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "viewBox": "0 0 24 24",
+   "width": "12"
+  },
+  "direction": "down",
+  "line": 257,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/queuePanel.js#1": {
+  "attrs": {
+   "fill": "none",
+   "height": "10",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "3",
+   "viewBox": "0 0 24 24",
+   "width": "10"
+  },
+  "direction": "down",
+  "line": 103,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/research/panel.js#1": {
+  "attrs": {
+   "fill": "none",
+   "height": "12",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "viewBox": "0 0 24 24",
+   "width": "12"
+  },
+  "direction": "up",
+  "line": 44,
+  "points": "18 15 12 9 6 15"
+ },
+ "static/js/research/panel.js#2": {
+  "attrs": {
+   "fill": "none",
+   "height": "12",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "viewBox": "0 0 24 24",
+   "width": "12"
+  },
+  "direction": "down",
+  "line": 45,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/research/panel.js#3": {
+  "attrs": {
+   "fill": "none",
+   "height": "18",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "viewBox": "0 0 24 24",
+   "width": "18"
+  },
+  "direction": "down",
+  "line": 201,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/research/panel.js#4": {
+  "attrs": {
+   "fill": "none",
+   "height": "10",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "viewBox": "0 0 24 24",
+   "width": "10"
+  },
+  "direction": "down",
+  "line": 208,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/research/panel.js#5": {
+  "attrs": {
+   "class": "research-section-chevron",
+   "fill": "none",
+   "height": "12",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-width": "2.5",
+   "viewBox": "0 0 24 24",
+   "width": "12"
+  },
+  "direction": "down",
+  "line": 784,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/section-management.js#1": {
+  "attrs": {
+   "class": "section-collapse-chevron",
+   "fill": "none",
+   "height": "10",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "3",
+   "viewBox": "0 0 24 24",
+   "width": "10"
+  },
+  "direction": "down",
+  "line": 11,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/sessions.js#1": {
+  "attrs": {
+   "fill": "none",
+   "height": "18",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2",
+   "viewBox": "0 0 24 24",
+   "width": "18"
+  },
+  "direction": "down",
+  "line": 684,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/settings.js#1": {
+  "attrs": {
+   "fill": "none",
+   "height": "10",
+   "id": "uf-codex-toggle-config-caret",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "style": "transition:transform 0.15s",
+   "viewBox": "0 0 24 24",
+   "width": "10"
+  },
+  "direction": "down",
+  "line": 5723,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/skills.js#1": {
+  "attrs": {
+   "fill": "none",
+   "height": "14",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "viewBox": "0 0 24 24",
+   "width": "14"
+  },
+  "direction": "down",
+  "line": 487,
+  "points": "6 9 12 15 18 9"
+ },
+ "static/js/skills.js#2": {
+  "attrs": {
+   "fill": "none",
+   "height": "14",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "viewBox": "0 0 24 24",
+   "width": "14"
+  },
+  "direction": "up",
+  "line": 711,
+  "points": "18 15 12 9 6 15"
+ },
+ "static/js/skills.js#3": {
+  "attrs": {
+   "class": "skills-section-chevron",
+   "fill": "none",
+   "height": "10",
+   "stroke": "currentColor",
+   "stroke-linecap": "round",
+   "stroke-linejoin": "round",
+   "stroke-width": "2.5",
+   "viewBox": "0 0 24 24",
+   "width": "10"
+  },
+  "direction": "down",
+  "line": 860,
+  "points": "6 9 12 15 18 9"
+ }
+}

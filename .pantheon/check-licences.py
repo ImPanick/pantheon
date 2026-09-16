@@ -206,6 +206,23 @@ INVENTORY = [
                    "vscode-languageserver-types")),
     Entry("Pyodide", ["static/lib/pyodide/*"], "MPL-2.0",
           "Pyodide-MPL-2.0.txt", "static/lib/pyodide", copyleft=True),
+    # B212, 2026-09-16. FastAPI's `/docs` loaded these two from
+    # cdn.jsdelivr.net; they are vendored by `scripts/fetch-swagger-ui.py`,
+    # which pins each file's SHA-256 and checks the npm tarball's own
+    # `dist.integrity` before opening it. The glob covers MANIFEST.json the
+    # same way the Pyodide entry does — rule 1 fails on any undeclared file
+    # under a vendored root and MANIFEST.json is a file.
+    Entry("Swagger UI", ["static/lib/swagger-ui/*"], "Apache-2.0",
+          "SwaggerUI-Apache-2.0.txt", "static/lib/swagger-ui"),
+    Entry("Swagger UI NOTICE", [], "Apache-2.0 (§4(d) notice)",
+          "SwaggerUI-NOTICE.txt", "SwaggerUI-NOTICE.txt"),
+    # Webpack's extracted notice for the MIT-licensed packages inside
+    # `swagger-ui-bundle.js`, the same shape as the html2pdf sidecar. Rule 7
+    # finds no `node_modules/` paths in this bundle — the published dist
+    # carries no source-map comments — so the sidecar is the only record of
+    # what is in there, which is exactly why it ships.
+    Entry("Swagger UI bundle sidecar", [], "MIT (bundled deps)",
+          "swagger-ui-bundle.js.LICENSE.txt", "swagger-ui-bundle.js.LICENSE.txt"),
     Entry("Fira Code", ["static/fonts/FiraCode-*.woff2"], "OFL-1.1",
           "FiraCode-OFL.txt", "Fira Code"),
     Entry("Inter", ["static/fonts/Inter-*.woff2"], "OFL-1.1",

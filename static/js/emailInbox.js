@@ -12,6 +12,7 @@ import { applyEdgeDock } from './modalSnap.js';
 import { buildReplyAllCc, extractEmail } from './emailLibrary/replyRecipients.js';
 import { emailApiUrl, emailAccountQuery } from './emailShared.js';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
+import { chevronIcon } from './icons.js';
 
 const API_BASE = window.location.origin;
 const _acct = () => emailAccountQuery('&');
@@ -85,7 +86,7 @@ function _emailTagGroupHtml(tags, em) {
   if (!visible.length) return '';
   if (visible.length === 1) return `<span class="email-tags">${visible[0]}</span>`;
   const extra = visible.slice(1).map(html => `<span class="email-tag-extra">${html}</span>`).join('');
-  return `<span class="email-tags email-tags-collapsed">${visible[0]}${extra}<button type="button" class="email-tags-more" data-email-tags-more aria-expanded="false" title="Show all tags">+${visible.length - 1}<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg></button></span>`;
+  return `<span class="email-tags email-tags-collapsed">${visible[0]}${extra}<button type="button" class="email-tags-more" data-email-tags-more aria-expanded="false" title="Show all tags">+${visible.length - 1}${chevronIcon({ size: 9, strokeWidth: 3, ariaHidden: true })}</button></span>`;
 }
 
 function _visibleEmailTagsForRender(em) {

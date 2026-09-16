@@ -38,7 +38,9 @@ an option that changed the geometry, and reading the call would not show it.
 """
 from __future__ import annotations
 
+import collections
 import json
+import math
 import re
 import shutil
 import subprocess
@@ -54,26 +56,96 @@ TABLE = CLIENT / "icons.js"
 pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
 
 
-def _h(mode: str):
-    proc = subprocess.run(["node", str(HARNESS), mode],
+def _h(mode: str, stdin: str = ""):
+    proc = subprocess.run(["node", str(HARNESS), mode], input=stdin,
                           capture_output=True, text=True, timeout=60)
     assert proc.returncode == 0, proc.stderr
     return json.loads(proc.stdout)
 
 
 def _blank(src: str) -> str:
-    """Comments blanked, newlines kept so a reported line number is real.
+    r"""Comments blanked, newlines kept so a reported line number is real.
 
-    `Law 20`'s own warning, which this row is the reason for: `icons.js` spells
-    all five old geometries out in its header to say what it replaced, and
+    `Law 20`'s own warning, which these rows are the reason for: `icons.js`
+    spells the old geometries out in its header to say what it replaced, and
     `checklist.js` still explains the one `B12` picked. A plain grep would count
-    those as six surviving triangles.
+    those as surviving literals.
+
+    **This scans rather than substitutes, and `B230` is why.** `B83` wrote this
+    as two regexes, and `re.sub(r"/\*.*?\*/", …, flags=re.S)` cannot tell a
+    comment from a string: `input.accept = 'image/*,video/*'` at
+    `gallery.js:1202` opens a "comment" that the next `*/` anywhere in the file
+    closes. Measured across `static/js/**`: the regex form erases **7,203 lines
+    of live code in 77 modules** — 1,745 of `calendar.js`, 1,735 of `notes.js`,
+    1,137 of `settings.js`, 1,119 of `gallery.js`, 1,021 of `document.js` — and
+    every census built on it was measuring a smaller tree than it claimed.
+    `B83` closed on *"one play triangle in the tree, from one place"* with a
+    play polygon at `document.js:4986` and two stop squares at `notes.js:4517`
+    and `:4586` that it could not see, and counted the chevron at 45 when it was
+    **54**. All nine are moved by `B230`. The same two regexes are copied into
+    about twenty other test files; that is `B290`, not this row.
     """
-    src = re.sub(r"/\*.*?\*/", lambda m: re.sub(r"[^\n]", " ", m.group(0)),
-                 src, flags=re.S)
-    return re.sub(r"^([ \t]*)//.*$",
-                  lambda m: m.group(1) + " " * (len(m.group(0)) - len(m.group(1))),
-                  src, flags=re.M)
+    out = list(src)
+    i, n = 0, len(src)
+    stack = []          # 'tpl', or ('expr', brace depth) inside a `${…}`
+    prev = ""           # last significant char — tells a regex from a divide
+
+    def wipe(a, b):
+        for k in range(a, b):
+            if out[k] != "\n":
+                out[k] = " "
+
+    while i < n:
+        c = src[i]
+        if stack and stack[-1][0] == "tpl":
+            if c == "\\":
+                i += 2
+            elif c == "`":
+                stack.pop(); prev = "`"; i += 1
+            elif c == "$" and src[i + 1:i + 2] == "{":
+                stack.append(("expr", 0)); prev = "{"; i += 2
+            else:
+                i += 1
+            continue
+        if c in "'\"":
+            q = c; i += 1
+            while i < n and src[i] != q and src[i] != "\n":
+                i += 2 if src[i] == "\\" else 1
+            i += 1; prev = q; continue
+        if c == "`":
+            stack.append(("tpl", 0)); i += 1; continue
+        if c == "/" and src[i + 1:i + 2] == "/":
+            j = src.find("\n", i); j = n if j < 0 else j
+            wipe(i, j); i = j; continue
+        if c == "/" and src[i + 1:i + 2] == "*":
+            j = src.find("*/", i + 2); j = n if j < 0 else j + 2
+            wipe(i, j); i = j; continue
+        if c == "/" and (prev == "" or prev in "=(,:[!&|?{};+-*%<>~^"):
+            i += 1; cls = False
+            while i < n:
+                if src[i] == "\\":
+                    i += 2; continue
+                if src[i] == "[":
+                    cls = True
+                elif src[i] == "]":
+                    cls = False
+                elif src[i] == "/" and not cls:
+                    break
+                elif src[i] == "\n":
+                    break
+                i += 1
+            i += 1; prev = "/"; continue
+        if stack and stack[-1][0] == "expr":
+            if c == "{":
+                stack[-1] = ("expr", stack[-1][1] + 1)
+            elif c == "}":
+                if stack[-1][1] == 0:
+                    stack.pop(); prev = "}"; i += 1; continue
+                stack[-1] = ("expr", stack[-1][1] - 1)
+        if not c.isspace():
+            prev = c
+        i += 1
+    return "".join(out)
 
 
 def _modules() -> list[Path]:
@@ -258,63 +330,420 @@ def test_the_checklist_module_re_exports_rather_than_re_declares():
     assert a == b == "5 3 19 12 5 21"
 
 
-def test_no_module_hand_writes_a_play_or_stop_svg_any_more():
+def test_no_module_hand_writes_a_play_stop_or_chevron_svg_any_more():
     """The other half of one-place: a module could import the table and still
-    inline its own `<svg>` around a glyph. Every site now goes through
-    `playIcon`/`stopIcon`/`iconSvg` or takes the bare glyph, so the count of
-    modules importing the table is the count of modules drawing these two."""
+    inline its own `<svg>` around a glyph. Every site goes through
+    `playIcon`/`stopIcon`/`chevronIcon`/`iconSvg` or takes a bare glyph, so the
+    modules importing the table are the modules drawing these three.
+
+    The names are read out of the IMPORT STATEMENT and not out of the file.
+    `B83`'s version scanned the whole module for the word, and three modules
+    have a local variable called `iconSvg` (`documentLibrary.js:210`,
+    `emailLibrary.js:6748`, and the parameter `signatureFold.js:102` takes) —
+    a census that counts those is a census that will be edited until it agrees
+    with itself rather than with the tree."""
     importers = {}
     for path in _modules():
+        if path == TABLE:
+            continue
         src = _blank(path.read_text(encoding="utf-8"))
         # `compare/icons.js` exists too, so the specifier is not interchangeable:
         # inside a subdirectory the shared table is `../icons.js` and
-        # `./icons.js` is the compare panel's own set.
-        spec = "'./icons.js'" if path.parent == CLIENT else "'../icons.js'"
-        if f"from {spec}" in src and path != TABLE:
-            names = re.findall(r"\b(PLAY_GLYPH|STOP_GLYPH|playIcon|stopIcon|iconSvg)\b",
-                               src)
-            importers[path.relative_to(ROOT).as_posix()] = sorted(set(names))
+        # `./icons.js` is the compare panel's own set. `editor/build/` is two
+        # deep, which is why this is computed rather than a two-armed if.
+        up = len(path.relative_to(CLIENT).parts) - 1
+        spec = ("../" * up if up else "./") + "icons.js"
+        m = re.search(r"^import \{([^}]*)\} from '%s';$" % re.escape(spec),
+                      src, re.M)
+        if m:
+            importers[path.relative_to(ROOT).as_posix()] = sorted(
+                n.strip() for n in m.group(1).split(",") if n.strip())
     assert importers == {
+        "static/js/admin.js": ["chevronIcon"],
         "static/js/chat.js": ["playIcon", "stopIcon"],
-        "static/js/checklist.js": [],
         "static/js/compare/icons.js": ["playIcon"],
-        "static/js/compare/index.js": ["stopIcon"],
+        "static/js/compare/index.js": ["chevronIcon", "stopIcon"],
         "static/js/compare/panes.js": ["stopIcon"],
-        "static/js/compare/selector.js": ["playIcon"],
+        "static/js/compare/selector.js": ["chevronIcon", "playIcon"],
         "static/js/cookbook-diagnosis.js": ["STOP_GLYPH"],
-        "static/js/cookbook.js": ["playIcon"],
-        "static/js/cookbookRunning.js": ["PLAY_GLYPH", "STOP_GLYPH", "stopIcon"],
-        "static/js/cookbookServe.js": ["playIcon"],
-        "static/js/document.js": ["playIcon"],
+        "static/js/cookbook.js": ["chevronIcon", "playIcon"],
+        "static/js/cookbookRunning.js": ["PLAY_GLYPH", "STOP_GLYPH",
+                                         "chevronIcon", "stopIcon"],
+        "static/js/cookbookServe.js": ["chevronIcon", "playIcon"],
+        "static/js/document.js": ["chevronIcon", "playIcon"],
+        "static/js/documentLibrary.js": ["chevronIcon"],
+        "static/js/editor/build/topbar.js": ["chevronIcon"],
+        "static/js/emailInbox.js": ["chevronIcon"],
+        "static/js/emailLibrary.js": ["chevronIcon"],
+        "static/js/emailLibrary/signatureFold.js": ["chevronIcon"],
+        "static/js/gallery.js": ["chevronIcon"],
+        "static/js/galleryEditor.js": ["chevronIcon"],
+        "static/js/gallery.js": ["chevronIcon"],
         "static/js/markdown.js": ["playIcon"],
-        "static/js/queuePanel.js": ["playIcon", "stopIcon"],
-        "static/js/research/panel.js": ["playIcon"],
-        "static/js/skills.js": ["PLAY_GLYPH"],
+        "static/js/modelPicker.js": ["chevronIcon"],
+        "static/js/notes.js": ["chevronIcon", "stopIcon"],
+        "static/js/planWindow.js": ["chevronIcon"],
+        "static/js/queuePanel.js": ["chevronIcon", "playIcon", "stopIcon"],
+        "static/js/research/panel.js": ["chevronIcon", "playIcon"],
+        "static/js/section-management.js": ["chevronIcon"],
+        "static/js/sessions.js": ["chevronIcon"],
+        "static/js/settings.js": ["chevronIcon"],
+        "static/js/skills.js": ["PLAY_GLYPH", "chevronIcon"],
         "static/js/tasks.js": ["PLAY_GLYPH", "playIcon", "stopIcon"],
         "static/js/tts-ai.js": ["playIcon", "stopIcon"],
     }, importers
+    # `checklist.js` re-exports rather than imports, which the test below pins.
+    assert "export { PLAY_POINTS } from './icons.js';" in _blank(
+        (CLIENT / "checklist.js").read_text(encoding="utf-8"))
 
 
 # ---------------------------------------------------------------------------
-# the chevron, measured and deliberately not moved
+# the chevron (`B230`) — moved, and measured against what it replaced
 # ---------------------------------------------------------------------------
+#
+# `B83` measured 45 chevrons in four spellings across 22 modules and left them
+# where they were, for three written reasons. Re-measured with a comment blanker
+# that can tell a comment from a string (see `_blank`) and a detector that
+# classifies by shape, it is **57 in five spellings across 23 modules**. `B230`
+# answers each reason and moves all 57 in one commit. The risk the row names is a SILENT one: fourteen stylesheet
+# rules and six JS handlers rotate a chevron, and every one of them was written
+# against a base pointing DOWN. A table that changed a base orientation, or that
+# added a rotation of its own, would shift every fold affordance in the product
+# and no test that only counted literals would notice. So the claim these tests
+# make is not "there is one chevron" but "there is one chevron AND each of the
+# 45 sites emits the `<svg>` its literal emitted, attribute for attribute".
+#
+# The before side is `tests/fixtures/chevron_sites_before_B230.json`, cut from
+# the tree as it stood with the literals still in it. The after side is not read
+# off the source: the OPTIONS come from the call sites, because that is where a
+# size or a class now lives, and the MARKUP comes from the shipped table through
+# `tests/harness/icon_table.js` (`Law 20`). Reading `chevronIcon({ size: 12 })`
+# does not tell you what `size: 12` produces.
 
-def test_the_chevron_is_still_measured_so_the_next_pass_starts_from_a_number():
-    """`B83` named 5 chevrons "on the same footing"; re-measured over the whole
-    client it is 45 in four spellings across 22 modules, 12 of them in
-    `emailLibrary.js` and `notes.js`. This pins the count so `B230` is a row
-    about a number rather than an impression — and it fails if somebody moves
-    part of the family, which is the outcome the row argues against."""
-    spellings = {"6 9 12 15 18 9", "18 15 12 9 6 15", "9 18 15 12 9 6",
-                 "15 18 9 12 15 6"}
-    sites = []
+BASELINE = ROOT / "tests" / "fixtures" / "chevron_sites_before_B230.json"
+
+_CHEVRON_SPELLINGS = {"6 9 12 15 18 9": "down", "18 15 12 9 6 15": "up",
+                      "15 18 9 12 15 6": "left", "9 18 15 12 9 6": "right"}
+
+
+def _chevron_polylines(src: str) -> list[tuple[int, str]]:
+    """Every hand-written chevron in a module. Shape, not spelling.
+
+    A chevron is three points whose two arms are level with each other and
+    whose middle point is a vertex off the line between them — so a spelling
+    nobody has used is still found. That is how `B230` found `6 15 12 9 18 15`
+    at `document.js` twice and `galleryEditor.js` once, three sites a list of
+    the four known spellings could not see; `B83` learned the same lesson on
+    the play triangle and it still cost it a geometry.
+
+    And it must be the ONLY child of its `<svg>`. That is not a convenience:
+    104 polylines in this client are chevron-shaped and are not this icon —
+    the head of a download arrow above its shaft, the two halves of `< >`, the
+    hook of a reply arrow. Each shares its `<svg>` with a sibling, and folding
+    them into an icon table is how an icon table starts meaning nothing (the
+    argument `B83` made for `emojiPicker.js`'s two squares). A census that
+    counted them would be one nobody could leave green.
+    """
+    found = []
+    for m in re.finditer(r'<polyline\b[^>]*\bpoints="([^"]*)"', src):
+        raw = m.group(1).replace(",", " ").split()
+        try:
+            nums = [float(x) for x in raw]
+        except ValueError:
+            continue
+        if len(nums) != 6:
+            continue
+        a, v, b = zip(nums[0::2], nums[1::2])
+        horiz = abs(a[1] - b[1]) < 0.01 and abs(a[0] - b[0]) > 6
+        vert = abs(a[0] - b[0]) < 0.01 and abs(a[1] - b[1]) > 6
+        if not (horiz or vert):
+            continue
+        if (abs(v[1] - a[1]) if horiz else abs(v[0] - a[0])) < 3:
+            continue
+        start = src.rfind("<svg", 0, m.start())
+        end = src.find("</svg>", m.start())
+        if start < 0 or end < 0:
+            continue
+        body = src[src.index(">", start) + 1:end]
+        if len(re.findall(r"<([a-zA-Z]+)", body)) != 1:
+            continue
+        found.append((src[:m.start()].count("\n") + 1, " ".join(raw)))
+    return found
+
+
+def _js_value(text: str, i: int):
+    """One JS literal starting at `text[i]`; returns (value, next index).
+
+    Strings and template literals come back as their raw inner text — a class of
+    ``mp-provider-chevron${isCollapsed ? ' collapsed' : ''}`` is passed to the
+    table as that string, which is exactly what the template literal it replaced
+    interpolated into `class="…"`. That keeps the one dynamic site comparable
+    with its own baseline instead of excluded from the count."""
+    c = text[i]
+    if c in "'\"`":
+        j = i + 1
+        depth = 0
+        while j < len(text):
+            if text[j] == "\\":
+                j += 2
+                continue
+            if c == "`" and text[j] == "$" and text[j + 1:j + 2] == "{":
+                depth += 1
+                j += 2
+                continue
+            if depth and text[j] == "}":
+                depth -= 1
+                j += 1
+                continue
+            if not depth and text[j] == c:
+                break
+            j += 1
+        return text[i + 1:j], j + 1
+    m = re.match(r"(true|false|-?\d+(?:\.\d+)?)", text[i:])
+    assert m, text[i:i + 40]
+    v = m.group(1)
+    val = True if v == "true" else False if v == "false" else (
+        float(v) if "." in v else int(v))
+    return val, i + len(v)
+
+
+def _chevron_calls(src: str) -> list[dict]:
+    """Every `chevronIcon(...)` call in a module, in file order, as options."""
+    calls = []
+    for m in re.finditer(r"(?<!function )\bchevronIcon\(", src):
+        i = m.end()
+        while src[i].isspace():
+            i += 1
+        if src[i] == ")":
+            calls.append({})
+            continue
+        assert src[i] == "{", src[m.start():m.start() + 60]
+        i += 1
+        opts = {}
+        while True:
+            while src[i] in " \t\n,":
+                i += 1
+            if src[i] == "}":
+                break
+            k = re.match(r"[A-Za-z]+", src[i:]).group(0)
+            i += len(k)
+            while src[i] in " \t:":
+                i += 1
+            opts[k], i = _js_value(src, i)
+        calls.append(opts)
+    return calls
+
+
+def _svg_attrs(markup: str) -> dict:
+    tag = markup[:markup.index(">") + 1]
+    return dict(re.findall(r'([a-zA-Z-]+)="([^"]*)"', tag))
+
+
+def _sites_now() -> dict:
+    out = {}
+    for path in _modules():
+        if path == TABLE:
+            continue
+        rel = path.relative_to(ROOT).as_posix()
+        for n, opts in enumerate(_chevron_calls(_blank(
+                path.read_text(encoding="utf-8"))), 1):
+            out[f"{rel}#{n}"] = opts
+    return out
+
+
+def test_the_tree_holds_exactly_one_chevron():
+    """`B230`'s `Verify`, first half. 57 literals in five spellings across 23
+    modules before; none now — the geometry exists once, as `CHEVRON_POINTS`,
+    and the other three directions are that one rotated."""
+    sites = _census(_chevron_polylines)
+    assert sites == [], sites
+    table = _blank(TABLE.read_text(encoding="utf-8"))
+    spellings = [p for _, p in _chevron_polylines(table)]
+    assert spellings == [], "the table draws the chevron from points, not markup"
+    assert table.count("'6 9 12 15 18 9'") == 1, "one chevron literal, once"
+    for other in _CHEVRON_SPELLINGS:
+        if other != "6 9 12 15 18 9":
+            assert other not in table, f"{other} is spelled out, not derived"
+
+
+def test_the_four_directions_are_one_geometry_rotated():
+    """The shape question `B83` raised, answered with arithmetic rather than a
+    preference. Three of the four spellings the product shipped are the base
+    turned 180° and −90° exactly; the fourth is the +90° turn traversed the
+    other way, which is the same stroke because every one of the 45 sites sets
+    `stroke-linecap="round"`. So `direction` is an argument, not four glyphs."""
+    out = _h("chevrons", "[]")
+    base = out["base"]
+    assert base == "6 9 12 15 18 9"
+
+    def turn(points, deg):
+        n = [float(x) for x in points.split()]
+        rad = math.radians(deg)
+        cos, sin = round(math.cos(rad)), round(math.sin(rad))
+        got = []
+        for x, y in zip(n[0::2], n[1::2]):
+            x, y = x - 12, y - 12
+            got.append((12 + x * cos - y * sin, 12 + x * sin + y * cos))
+        return got
+
+    def as_points(pairs):
+        return " ".join(f"{int(x)} {int(y)}" for x, y in pairs)
+
+    assert out["points"]["down"] == base
+    assert out["points"]["up"] == as_points(turn(base, 180)) == "18 15 12 9 6 15"
+    assert out["points"]["right"] == as_points(turn(base, -90)) == "9 18 15 12 9 6"
+    # +90°, read backwards — the one spelling the product wrote in the other
+    # traversal. Same three points, same two segments, same stroke.
+    assert out["points"]["left"] == as_points(turn(base, 90)[::-1]) == "15 18 9 12 15 6"
+    assert {tuple(sorted(turn(base, d)))
+            for d in (0, 90, 180, -90)} != {tuple(sorted(turn(base, 0)))}, \
+        "four directions, not one drawn four times"
+    # And every spelling the product used is accounted for: no fifth direction
+    # is reachable, and asking for one is an error rather than a blank glyph.
+    assert set(out["points"].values()) == {"6 9 12 15 18 9", "18 15 12 9 6 15",
+                                           "15 18 9 12 15 6", "9 18 15 12 9 6"}
+    proc = subprocess.run(
+        ["node", "--input-type=module", "--eval",
+         "import { chevronPoints } from '%s';\n"
+         "try { chevronPoints('sideways'); console.log('NO-THROW'); }\n"
+         "catch (e) { console.log('THREW'); }" % TABLE],
+        capture_output=True, text=True, timeout=30)
+    assert proc.stdout.strip() == "THREW", proc.stdout + proc.stderr
+
+
+def test_every_chevron_site_emits_what_its_literal_emitted():
+    """The measurement `Law 1` asks for, made site by site rather than argued.
+
+    57 before, 57 after, matched by module and by order within the module; for
+    each one the `<svg>` the table now produces is compared with the `<svg>` the
+    literal produced — every attribute, and the stroke. Nothing is normalised
+    away: eleven sizes, seven stroke widths, two mitred vertices, one `id`, and
+    11 `aria-hidden`s against 46 without stay exactly as they were. That spread
+    is a real defect and it is `B291`; a commit that fixed it here would have
+    hidden it inside a move."""
+    before = json.loads(BASELINE.read_text(encoding="utf-8"))
+    now = _sites_now()
+    assert len(before) == 57
+    assert len({k.split("#")[0] for k in before}) == 23
+    assert sorted(now) == sorted(before), sorted(set(now) ^ set(before))
+    keys = sorted(before)
+    rendered = _h("chevrons", json.dumps([now[k] for k in keys]))["rendered"]
+
+    def segments(points):
+        n = [float(x) for x in points.split()]
+        pts = list(zip(n[0::2], n[1::2]))
+        return {frozenset(pair) for pair in zip(pts, pts[1:])}
+
+    diffs, respelled = [], []
+    for key, markup in zip(keys, rendered):
+        want = before[key]
+        got = _svg_attrs(markup)
+        points = re.search(r'<polyline points="([^"]*)"', markup).group(1)
+        if got != want["attrs"] or segments(points) != segments(want["points"]):
+            diffs.append((key, want["attrs"], got, want["points"], points))
+        elif points != want["points"]:
+            respelled.append(key)
+    assert not diffs, diffs
+    # Exactly three sites come out spelled differently, and it is the same
+    # stroke: `6 15 12 9 18 15` and `18 15 12 9 6 15` are one polyline read from
+    # either end, and every site sets `stroke-linecap="round"` so both ends are
+    # drawn the same. Naming them is the honest form of "nothing changed".
+    assert sorted(respelled) == ["static/js/document.js#1",
+                                 "static/js/document.js#8",
+                                 "static/js/galleryEditor.js#1"], respelled
+    for key in respelled:
+        assert before[key]["attrs"]["stroke-linecap"] == "round"
+    # All four directions are live, so `direction` is not a parameter with one
+    # value that happens to be the base.
+    counts = collections.Counter(before[k]["direction"] for k in keys)
+    assert counts == {"down": 43, "left": 6, "up": 5, "right": 3}, counts
+    # The spread this move deliberately preserves — eleven sizes, seven stroke
+    # widths, two mitred vertices, eleven `aria-hidden`s. `B291`.
+    assert len({before[k]["attrs"]["width"] for k in keys}) == 11
+    assert len({before[k]["attrs"]["stroke-width"] for k in keys}) == 7
+    assert sum(1 for k in keys
+               if "stroke-linejoin" not in before[k]["attrs"]) == 2
+    assert sum(1 for k in keys
+               if before[k]["attrs"].get("aria-hidden")) == 11
+
+
+def test_the_table_adds_no_rotation_of_its_own():
+    """`B83`'s second objection, and the `Law 1` hazard the row names. Twenty
+    places already rotate a chevron — fourteen stylesheet rules and six JS
+    handlers — and all twenty were written against a base pointing DOWN. The
+    table emits bare points and no transform, so the sheet stays the only thing
+    that turns a chevron and the glyph never gets rotated twice."""
+    css = (ROOT / "static" / "style.css").read_text(encoding="utf-8")
+    rules = [ln.strip() for ln in css.splitlines()
+             if re.search(r"\.[\w-]*(chevron|caret)\b", ln) and "rotate(" in ln]
+    assert len(rules) == 14, rules
+    handlers = []
     for path in _modules():
         src = _blank(path.read_text(encoding="utf-8"))
-        for m in re.finditer(r'points="([^"]*)"', src):
-            if " ".join(m.group(1).replace(",", " ").split()) in spellings:
-                sites.append(path.relative_to(ROOT).as_posix())
-    assert len(sites) == 45, len(sites)
-    assert len(set(sites)) == 22, sorted(set(sites))
-    other_agents = [s for s in sites
-                    if s.endswith(("emailLibrary.js", "notes.js"))]
-    assert len(other_agents) == 12, other_agents
+        handlers += [path.name for _ in
+                     re.finditer(r"chevron\w*\.style\.transform\s*=", src)]
+    assert sorted(handlers) == ["admin.js"] * 4 + ["cookbookRunning.js"] * 2, handlers
+    out = _h("chevrons", json.dumps([{}, {"direction": "up"},
+                                     {"direction": "left", "className": "x"}]))
+    for markup in out["rendered"]:
+        assert "transform" not in markup, markup
+        assert "rotate" not in markup, markup
+    # The base is the orientation those twenty rotate FROM. If it moved, every
+    # one of them would shift and nothing else here would fail.
+    assert out["base"] == "6 9 12 15 18 9"
+    assert out["glyph"] == '<polyline points="6 9 12 15 18 9"/>'
+
+
+def test_a_second_chevron_literal_fails_this_test():
+    """`B230`'s `Verify`, second half, as a property of the census rather than a
+    promise. The detector is shown a chevron in a geometry nobody has used and
+    must find it; shown one inside a comment it must not (`Law 20`); shown the
+    polylines this client really draws that are NOT this icon it must stay
+    quiet, which is what stops the census being noise nobody can leave green."""
+    def svg(inner):
+        return '<svg viewBox="0 0 24 24">' + inner + "</svg>"
+
+    # A sixth spelling, in a geometry nobody has used. A census that matched the
+    # five known spellings would pass this — and would have missed the three
+    # `6 15 12 9 18 15` sites that this detector found.
+    assert _chevron_polylines(svg('<polyline points="5 8 12 16 19 8"/>'))
+    assert _chevron_polylines(svg('<polyline points="16 5 8 12 16 19"/>'))
+    # And the reverse traversal of the shipped base, which is the miss that
+    # actually happened.
+    assert _chevron_polylines(svg('<polyline points="18 9 12 15 6 9"/>'))
+    # A comment holding one is not a literal — the trap this file would walk
+    # into itself, since `icons.js` spells the base out in its header.
+    assert _chevron_polylines(_blank("// " + svg(
+        '<polyline points="6 9 12 15 18 9"/>'))) == []
+    assert _chevron_polylines(_blank("/* " + svg(
+        '<polyline points="6 9 12 15 18 9"/>') + " */")) == []
+    # Real non-chevrons from this tree. The first three are not the shape: the
+    # trash-can lid, the file-corner fold, the document's three-dot rule. The
+    # last two ARE the shape and are not the icon — a download arrow's head over
+    # its shaft, and one half of `< >` — which is what the sole-child rule is
+    # for, and why 104 shaped polylines are not counted as chevrons.
+    assert _chevron_polylines(svg('<polyline points="3 6 5 6 21 6"/>')) == []
+    assert _chevron_polylines(svg('<polyline points="14 2 14 8 20 8"/>')) == []
+    assert _chevron_polylines(svg('<polyline points="10 9 9 9 8 9"/>')) == []
+    assert _chevron_polylines(svg(
+        '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>'
+        '<polyline points="7 10 12 15 17 10"/>')) == []
+    assert _chevron_polylines(svg('<polyline points="16 18 22 12 16 6"/>'
+                                  '<polyline points="8 6 2 12 8 18"/>')) == []
+    # The detector is not a spelling list: it does not know the five.
+    assert len(_CHEVRON_SPELLINGS) == 4
+
+
+def test_the_chevron_the_table_draws_names_no_colour():
+    """**Themes are protected.** The chevron arrives with seven stroke widths and
+    eleven sizes and not one colour: every paint it can emit is `currentColor`
+    or `none`, which is what all 57 literals already did. `--accent` is defined
+    nowhere new."""
+    out = _h("chevrons", "[]")
+    assert set(out["paints"]) <= {'fill="none"', 'stroke="currentColor"'}, out["paints"]
+    src = _blank(TABLE.read_text(encoding="utf-8"))
+    assert not re.search(r"#[0-9a-fA-F]{3,8}\b", src)
+    assert "var(--" not in src
+    css = (ROOT / "static" / "style.css").read_text(encoding="utf-8")
+    assert not re.search(r":root\s*\{[^}]*--accent\s*:", css), \
+        "`--accent` must never be defined in `:root`"

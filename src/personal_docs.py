@@ -17,11 +17,13 @@ from src.index_walk import prune_index_dirs, is_indexable_file
 from src.markitdown_runtime import MARKITDOWN_EXTS, OFFICE_EXTS  # noqa: F401
 from src.pdf_runtime import PDF_EXTS
 from src.document_processor import (
+    ENCODING_UNIDENTIFIED,
     INGESTIBLE_EXTS,
     TEXT_EXTS,
     TEXT_SNIFF_BYTES,
     decode_text_file,
-    sniff_text_encoding,
+    describe_text_encoding,
+    sniff_text_encoding,  # noqa: F401 - exported since `B162`; `Law 1`
 )
 
 logger = logging.getLogger(__name__)
@@ -107,6 +109,18 @@ INDEXABLE_EXTENSIONS: Tuple[str, ...] = tuple(sorted(INGESTIBLE_EXTS))
 SKIP_UNSUPPORTED = "unsupported extension"
 SKIP_NO_TEXT = "no extractable text"
 SKIP_UNREADABLE = "could not be read"
+# `B201`: a fourth reason, because the third was being used for a file that is
+# none of the above. A file whose suffix no register names and whose bytes are
+# text in an encoding too short a sample cannot identify was reported as
+# "unsupported extension" — a lie about the format, which is fine, pointing the
+# operator at the wrong fix. It is grouped with ``SKIP_UNSUPPORTED`` everywhere
+# a decision is made (see ``NOT_LISTED``); only the sentence differs.
+SKIP_UNKNOWN_ENCODING = "text in an unidentifiable encoding"
+
+# The reasons that mean "this file is not in the index at all", as opposed to
+# "it is listed and holds nothing". One tuple so a new reason cannot be added
+# without deciding which side of that line it falls on.
+NOT_LISTED = (SKIP_UNSUPPORTED, SKIP_UNREADABLE, SKIP_UNKNOWN_ENCODING)
 
 
 @dataclass
@@ -205,9 +219,10 @@ def extract_index_text(path: str, name: str = None) -> Tuple[str, str]:
     wrong at (*whether* to bother).
 
     Reasons, not silence: a caller gets ``SKIP_UNSUPPORTED`` when nothing reads
-    the format and the bytes are not text, ``SKIP_NO_TEXT`` when an extractor ran
-    and produced nothing, and ``SKIP_UNREADABLE`` when it raised or the file
-    could not be opened at all.
+    the format and the bytes are not text, ``SKIP_UNKNOWN_ENCODING`` when the
+    bytes *are* text but too few of them to name the encoding (`B201`),
+    ``SKIP_NO_TEXT`` when an extractor ran and produced nothing, and
+    ``SKIP_UNREADABLE`` when it raised or the file could not be opened at all.
     """
     label = name or path
     fn = extractor_for(label)
@@ -225,8 +240,14 @@ def extract_index_text(path: str, name: str = None) -> Tuple[str, str]:
         except OSError as e:
             logger.warning(f"probe {path}: {e}")
             return "", SKIP_UNREADABLE
-        if sniff_text_encoding(head) is None:
-            return "", SKIP_UNSUPPORTED
+        encoding, why = describe_text_encoding(head)
+        if encoding is None:
+            # `B201`. Two different things to tell the operator: a container
+            # nothing here reads, and a text file whose encoding a short sample
+            # could not name. Both stay out of the index; only one of them is
+            # answered by "install an extractor".
+            return "", (SKIP_UNKNOWN_ENCODING if why == ENCODING_UNIDENTIFIED
+                        else SKIP_UNSUPPORTED)
         fn = read_text_file
     try:
         text = fn(path) or ""
@@ -371,7 +392,7 @@ def load_personal_index(
     """
     files = []
     for path, _ext, text, reason in walk_index_candidates(personal_dir, extensions):
-        if reason == SKIP_UNSUPPORTED or reason == SKIP_UNREADABLE:
+        if reason in NOT_LISTED:
             if skipped is not None:
                 skipped.append({"path": path, "reason": reason})
             continue

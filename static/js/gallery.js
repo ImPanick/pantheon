@@ -1457,7 +1457,7 @@ function _openDetail(img) {
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
         </button>
         <button class="gallery-detail-nav gallery-detail-nav-prev" id="gallery-detail-prev" title="Previous (←)" aria-label="Previous">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          ${chevronIcon({ direction: 'left', size: 24 })}
         </button>
         <div class="gallery-detail-img-frame">
           ${_isVideoUrl(img.url)
@@ -1466,7 +1466,7 @@ function _openDetail(img) {
           <div id="gallery-detail-face-overlay" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none"></div>
         </div>
         <button class="gallery-detail-nav gallery-detail-nav-next" id="gallery-detail-next" title="Next (→)" aria-label="Next">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          ${chevronIcon({ direction: 'right', size: 24 })}
         </button>
       </div>
       <div class="gallery-detail-sidebar">
@@ -1990,6 +1990,7 @@ function _makeGalleryDraggable(content) {
 
 // Re-export the manager for the rail click handler
 import * as Modals from './modalManager.js?v=20260723compareicon2';
+import { chevronIcon } from './icons.js';
 
 export function openGallery() {
   // If already minimized — restore in place, preserve all state
@@ -2636,7 +2637,7 @@ export function openGallery() {
     // and filtering by them were all here; the one missing verb was the one a
     // person reaches for first.
     const _albumIco = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
-    const _backIco = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>';
+    const _backIco = chevronIcon({ direction: 'left', size: 14, strokeWidth: 2 });
     const _newIco = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
 
     const rootItems = () => [

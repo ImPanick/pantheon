@@ -6,7 +6,7 @@ import Storage from '../storage.js';
 import { fetchModels, _persistSelections, getExcludedModels } from './models.js';
 import { showScoreboard } from './scoreboard.js';
 import { EYE_OPEN, EYE_CLOSED, ICON_DICE, ICON_PARALLEL, ICON_SEQUENTIAL, SAVE_ICON, WAVE_FRAMES, CHAT_ICON } from './icons.js';
-import { playIcon } from '../icons.js';
+import { chevronIcon, playIcon } from '../icons.js';
 import { _clearProbeWaves } from './probe.js';
 import uiModule from '../ui.js';
 import spinnerModule from '../spinner.js';
@@ -1278,7 +1278,7 @@ async function showModelSelector() {
           const btnRow = document.createElement('div');
           btnRow.style.cssText = 'display:flex;gap:8px;justify-content:center;margin-top:12px;';
           const goBackBtn = document.createElement('button');
-          goBackBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><polyline points="15 18 9 12 15 6"/></svg>Go Back';
+          goBackBtn.innerHTML = chevronIcon({ direction: 'left', size: 12, style: 'vertical-align:-1px;margin-right:3px;' }) + 'Go Back';
           goBackBtn.className = 'cmp-btn-secondary';
           goBackBtn.style.cssText = 'padding:5px 12px;font-size:12px;display:inline-flex;align-items:center;';
           goBackBtn.addEventListener('click', () => { _clearProbeWaves(); probeOverlay.remove(); startBtn.disabled = false; startBtn.innerHTML = _CMP_START_LABEL; startBtn.style.opacity = '1'; });
