@@ -31,6 +31,18 @@ holding a list of its own — a transcribed list is the next status missing.
      module has bound to `TaskRun` must be one of the six. Comments never reach
      this: it is an AST walk, not a text search (`B87`, `Law 20`).
 
+  4. **Every raw-SQL write to `task_runs.status` is classified.** `B170`:
+     question 3 reads ORM *attribute access*, so a migration issuing
+     `text("UPDATE task_runs SET status = 'skipped' …")` has no `TaskRun` in it,
+     no attribute to bind, and was invisible — a gate with a hole is worth less
+     than its output suggests. The shape that works is
+     `check-config-writes.py`'s: find the sites, decide about each one, and fail
+     on a site nobody has decided about. Matching `task_runs` inside every
+     string in the tree would also match the test SQL, the docs and the roadmap
+     row, so the scan is narrow on purpose — only SQL text reachable from a CALL
+     or an ASSIGNMENT, which is where SQL is actually executed from, and never a
+     docstring or a comment.
+
 Question 3 needs to know which locals are `TaskRun` rows, because three other
 models in this tree have a `status` column with a different vocabulary
 (`ScheduledTask` is active/paused/completed, `CalendarEvent` has "cancelled").
@@ -53,6 +65,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DB = ROOT / "core" / "database.py"
 JS = ROOT / "static" / "js" / "runStatus.js"
+# This file, spelled the way `git ls-files` spells it. Question 4 reads strings
+# out of calls and assignments, and every diagnostic this module prints names
+# the table and the column it is complaining about — so without this it reports
+# itself, four times, and a checker that cries wolf is a checker somebody
+# deletes. Derived from `__file__` so a rename cannot strand the exemption, and
+# narrow to one file rather than to `.pantheon/`: nothing here opens a database,
+# but a repair script under the same directory could.
+SELF = str(Path(__file__).resolve().relative_to(ROOT))
 
 MODEL = "TaskRun"
 # Calls on a query that still hand back rows, so the name they are assigned to
@@ -317,6 +337,121 @@ def _scope_sites(tree: ast.AST) -> list[tuple[int, str, str]]:
     return found
 
 
+# ---------------------------------------------------------------------------
+# question 4 — raw SQL, which question 3 cannot see (`B170`)
+# ---------------------------------------------------------------------------
+
+# SQL text that names the run table AND does something with a `status` column.
+# Both must match: `DELETE FROM task_runs WHERE task_id IN …` (core/database.py)
+# touches the table and not the column, and a status comparison against some
+# other table is not this vocabulary.
+_SQL_TABLE = re.compile(r"\btask_runs\b", re.I)
+_SQL_STATUS = re.compile(r"\bstatus\b\s*(?:=|!=|<>|\bIN\b|\bNOT\s+IN\b)", re.I)
+# The literals such a statement writes or tests against.
+_SQL_STATUS_LITERAL = re.compile(
+    r"""\bstatus\b\s*(?:=|!=|<>)\s*(['"])([^'"]*)\1"""
+    r"""|\bstatus\b\s*(?:NOT\s+)?IN\s*\(([^)]*)\)""",
+    re.I)
+
+LIVE, FIXTURE = "live", "fixture"
+
+# (file, enclosing function) -> (kind, why). Classified rather than merely
+# counted, because "there is one and it is fine" is a statement about today that
+# nothing re-checks; an entry here is a decision somebody has to repeat before a
+# second one lands.
+#
+#   live      SQL that reaches the database. Its status literals are checked
+#             against the vocabulary exactly like an ORM write.
+#   fixture   SQL that never reaches a database — the material the tests below
+#             feed to this checker to prove it fails. Its literals are
+#             deliberately outside the six; checking them would make the test
+#             that proves the gate works the thing the gate fails on.
+#
+# Do not quote a statement inside a `why`: this scan reads the strings in
+# assignments, so a statement spelled out here is a site.
+RAW_SQL_STATUS_SITES: dict[tuple[str, str], tuple[str, str]] = {
+    ("core/database.py", "_migrate_reclassify_admin_refusals"): (
+        LIVE,
+        "`B07`'s one-time re-file of pre-`B07` admin-privilege refusals from "
+        "`error` to `skipped`. Raw SQL rather than the ORM because it runs "
+        "inside `_run_migrations()`, where the work is a single set-based "
+        "UPDATE over rows nothing has loaded"),
+    ("tests/test_run_status_is_one_vocabulary.py",
+     "test_the_raw_sql_scan_reads_statements_and_not_prose"): (
+        FIXTURE,
+        "`B170`. Writes two throwaway modules and runs the detector over them, "
+        "to show a docstring and a comment are not statements and a call is"),
+    ("tests/test_run_status_is_one_vocabulary.py",
+     "test_a_raw_sql_status_write_fails_the_checker_by_name"): (
+        FIXTURE,
+        "`B170`'s `Verify`. The mutations it applies to a COPY of the tree "
+        "(`Law 19`), one of which is a status outside the six"),
+    ("tests/test_run_status_is_one_vocabulary.py", "<module>"): (
+        FIXTURE,
+        "the anchor string the two mutation tests above share, kept at module "
+        "level so both of them cut at the same text"),
+}
+
+
+def raw_sql_status_sites(path: Path) -> list[tuple[int, str, list[str]]]:
+    """`(line, enclosing function, status literals)` for every raw-SQL
+    statement in *path* that writes or tests `task_runs.status`.
+
+    Only strings reachable from a **call** or an **assignment** are read. That
+    is not a shortcut, it is the whole reason this can be narrow: SQL is
+    executed from a call (`conn.execute(text(...))`) or built into a name that
+    is then executed, and restricting to those two shapes means a docstring —
+    including this module's own register entries, and `core/database.py`'s
+    migration docstring, which spells the statement out in prose — can never be
+    mistaken for a statement. `Law 20` in the same direction as question 3.
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    parents: dict[ast.AST, ast.AST] = {}
+    for node in ast.walk(tree):
+        for child in ast.iter_child_nodes(node):
+            parents[child] = node
+
+    def enclosing(node: ast.AST) -> str:
+        cur: ast.AST | None = node
+        while cur is not None:
+            if isinstance(cur, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                return cur.name
+            cur = parents.get(cur)
+        return "<module>"
+
+    def _blob(scope: ast.AST) -> str:
+        return "\n".join(
+            sub.value for sub in ast.walk(scope)
+            if isinstance(sub, ast.Constant) and isinstance(sub.value, str))
+
+    found: list[tuple[int, str, list[str]]] = []
+    # Top-down, and a match is not descended into: `conn.execute(text("UPDATE
+    # task_runs …"))` is two nested Calls carrying one statement, and counting
+    # it twice makes the register look like it is missing an entry.
+    stack: list[ast.AST] = [tree]
+    while stack:
+        node = stack.pop()
+        scope: ast.AST | None = None
+        if isinstance(node, ast.Call):
+            scope = node
+        elif isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None:
+            scope = node.value
+        if scope is not None:
+            blob = _blob(scope)
+            if _SQL_TABLE.search(blob) and _SQL_STATUS.search(blob):
+                literals: set[str] = set()
+                for m in _SQL_STATUS_LITERAL.finditer(blob):
+                    if m.group(2) is not None:
+                        literals.add(m.group(2))
+                    else:
+                        literals.update(
+                            re.findall(r"""['"]([^'"]*)['"]""", m.group(3) or ""))
+                found.append((node.lineno, enclosing(node), sorted(literals)))
+                continue
+        stack.extend(ast.iter_child_nodes(node))
+    return sorted(found)
+
+
 # Directories that are not ours to parse, spelled the way `check-licences.py`
 # spells them.
 _SKIP_DIRS = {".git", "node_modules", "library", "venv", ".venv", "__pycache__"}
@@ -418,14 +553,17 @@ def main() -> int:
                 f"core/database.py: TASK_RUN_NOTIFY has `{status}`, which is not a "
                 "stored status.")
 
-    # 3 — what the code writes
+    # 3 — what the code writes, and 4 — what raw SQL writes (`B170`)
     vocabulary = set(stored)
     sites = 0
     scanned = 0
+    raw_sites = 0
+    classified: set[tuple[str, str]] = set()
     for rel in _python_files():
         path = ROOT / rel
         try:
             found = status_sites(path)
+            raw_found = [] if rel == SELF else raw_sql_status_sites(path)
         except SyntaxError as e:
             problems.append(f"{rel}: will not parse ({e})")
             continue
@@ -440,9 +578,41 @@ def main() -> int:
                     f"not one of {stored}. Add it to TASK_RUN_STATUSES, "
                     "static/js/runStatus.js and TASK_RUN_NOTIFY, or use a value "
                     "that exists.")
+        for line, fn, literals in raw_found:
+            raw_sites += 1
+            key = (rel, fn)
+            classified.add(key)
+            if args.list:
+                kind = (RAW_SQL_STATUS_SITES.get(key) or ("?", ""))[0]
+                print(f"{'|'.join(literals) or '-':<10} {'raw-sql/' + kind:<12} "
+                      f"{rel}:{line}  ({fn})")
+            entry = RAW_SQL_STATUS_SITES.get(key)
+            if entry is None:
+                problems.append(
+                    f"{rel}:{line}: `{fn}` writes or tests task_runs.status in raw "
+                    "SQL, which the ORM walk above cannot see, and nothing has "
+                    "classified it. Add ('" + rel + "', '" + fn + "') to "
+                    "RAW_SQL_STATUS_SITES as `live` or `fixture` with the reason, "
+                    "or use the ORM so question 3 covers it (`B170`).")
+            elif entry[0] == LIVE:
+                for literal in literals:
+                    if literal not in vocabulary:
+                        problems.append(
+                            f"{rel}:{line}: `{literal}` is written to "
+                            f"task_runs.status in raw SQL by `{fn}` and is not one "
+                            f"of {stored}. Add it to TASK_RUN_STATUSES, "
+                            "static/js/runStatus.js and TASK_RUN_NOTIFY, or use a "
+                            "value that exists.")
+
+    for key in sorted(set(RAW_SQL_STATUS_SITES) - classified):
+        problems.append(
+            f"RAW_SQL_STATUS_SITES classifies `{key[1]}` in {key[0]} and there is no "
+            "raw-SQL status statement there any more — remove the entry so the "
+            "register stays a description of the tree.")
 
     print(f"run statuses {len(stored)}  ·  files scanned {scanned}  ·  "
-          f"status literals {sites}  ·  PROBLEMS {len(problems)}")
+          f"status literals {sites}  ·  raw-SQL status sites {raw_sites}  ·  "
+          f"PROBLEMS {len(problems)}")
     for p in problems:
         print(f"  {p}")
     return 1 if problems else 0

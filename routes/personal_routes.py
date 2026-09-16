@@ -434,11 +434,24 @@ def setup_personal_routes(personal_docs_manager, rag_manager, rag_available):
                             f.write(content_bytes)
 
                         ext = os.path.splitext(safe_name)[1].lower()
-                        if ext == ".pdf":
-                            from src.personal_docs import extract_pdf_text
-                            text = extract_pdf_text(file_path)
-                        else:
-                            text = content_bytes.decode("utf-8", errors="replace")
+                        # `B162`/`B180`. This was the seam's fourth answer to
+                        # "can we read this file": `.pdf` through pypdf and
+                        # **everything else** through
+                        # `content_bytes.decode("utf-8", errors="replace")`. It
+                        # asked no register at all, so a `.docx` uploaded here
+                        # was indexed as the replacement characters of its own
+                        # deflated zip — measured on a 40-paragraph document,
+                        # 3 chunks that are 30% U+FFFD and contain **no word of
+                        # the document**, where the extractor finds 10 chunks of
+                        # its prose — while the same file attached to a chat was
+                        # extracted properly. A legacy-encoded `.txt` lost its
+                        # accented characters the same way `read_text_file` lost
+                        # them. `extract_index_text` is the one dispatch: the
+                        # registers pick the extractor, and for a suffix no
+                        # register names the bytes decide, which is why a
+                        # `.toml` or a `.conf` uploaded here is still indexed.
+                        from src.personal_docs import extract_index_text
+                        text, _reason = extract_index_text(file_path, safe_name)
 
                         if not text or not text.strip():
                             return 0, 1, None

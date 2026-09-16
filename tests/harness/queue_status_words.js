@@ -38,6 +38,13 @@ const wordsSrc = fs.existsSync(path.join(JS, 'runStatus.js'))
   ? fs.readFileSync(path.join(JS, 'runStatus.js'), 'utf8')
     .replace(/^\/\/.*$/gm, '').replace(/^export\s+/gm, '')
   : '';
+// `B83`. `queuePanel.js`'s two icon constants are the pair the icon-table row is
+// about — play and stop, on one docked row — and both are built by the shared
+// table now. Evaluated like the word table above, for the same reason: a stub
+// would make the panel agree with this file instead of with the product.
+const iconsSrc = fs.existsSync(path.join(JS, 'icons.js'))
+  ? fs.readFileSync(path.join(JS, 'icons.js'), 'utf8').replace(/^export\s+/gm, '')
+  : '';
 
 function slice(source, startMark, endMark, label) {
   const from = source.indexOf(startMark);
@@ -96,6 +103,7 @@ const panelBody = [
 const panel = new Function('document', 'formatElapsed', 'modelChoices', 'choiceKeyFor',
   '_editingId', `
   ${wordsSrc}
+  ${iconsSrc}
   ${unexport(panelBody)}
   return { statusLabel, statusClass, buildRow };
 `);
@@ -113,6 +121,12 @@ const stopLabel = slice(tasksSrc, 'function _stopLabel(entry) {',
                         "/** Collect every source's rows.", '_stopLabel');
 const renderer = slice(tasksSrc, 'function _renderActivityEntry(entry, opts = {}) {',
                        'function _escHtml(s) {', '_renderActivityEntry');
+// `B171`. The row's open control now takes its word and its sentence from one
+// function shared with the Completed tab, so the renderer needs it. Lifted, not
+// stubbed: a stub would hand this harness a label nobody ships.
+const openControl = slice(tasksSrc, 'function _openInChatControl(entry) {',
+                          "// Open a task run's result in a fresh chat session",
+                          '_openInChatControl');
 
 const deps = {
   _activityEntries: [], _escHtml: escHtml, _esc: escHtml,
@@ -124,7 +138,9 @@ const deps = {
 const names = Object.keys(deps);
 const activity = new Function(...names, `
   ${wordsSrc}
+  ${iconsSrc}
   ${controls}
+  ${openControl}
   ${stopLabel}
   ${renderer}
   return { _renderActivityEntry };
@@ -135,6 +151,7 @@ const bubbleBody = slice(chatSrc, '  function _queuedBubbleHtml(item) {',
                          '  function _paintQueuedBubble(item) {', '_queuedBubbleHtml');
 const bubble = new Function('_escapeQueueText', `
   ${wordsSrc}
+  ${iconsSrc}
   ${bubbleBody}
   return { _queuedBubbleHtml };
 `);

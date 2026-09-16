@@ -4602,7 +4602,13 @@ async function initUnifiedIntegrations() {
       gmail: {
         title: 'Gmail needs an App Password',
         body: 'Your regular Google password won\'t work for IMAP. Generate a 16-character App Password (requires 2-Step Verification enabled) and paste it as the Password.',
-        url: 'https://myaccount.google.com/apppasswords',
+        // `B73`. No `url` here on purpose. Gmail has a provider record and
+        // `app_password_url` on that record is where this URL lives — one
+        // spelling, server-side, already on the wire. `_renderProviderNote`
+        // resolves it through `_oauthFor`, which is how every other part of
+        // this panel gets from a host to a record. Entries below keep a
+        // literal because they have no record to read (`icloud`, `yahoo`) or
+        // because their link is not an app-password link at all (`outlook`).
       },
       icloud: {
         title: 'iCloud needs an App-Specific Password',
@@ -4675,24 +4681,65 @@ async function initUnifiedIntegrations() {
     };
     _wireProviderCopy(noteEl);
     _wireProviderCopy(el('uf-oauth-setup'));
+    // `B73`. Where an app password comes from is a fact about the PROVIDER,
+    // and the provider record is where it is written (`src/providers.py`,
+    // served at `routes/email_routes.py:235`). This table is keyed by preset
+    // and it is the older of the two mechanisms, so the rule is: the record
+    // answers wherever there is a record, and the literal below is the answer
+    // for presets that have none. Nothing new had to be listed to get from a
+    // preset to its record — the preset already carries the IMAP host and
+    // `_oauthFor` already maps a host to a record (`Law 14`).
+    const _presetAppPasswordUrl = (key) => {
+      const host = (PROVIDERS[key] && PROVIDERS[key].imap && PROVIDERS[key].imap.host) || '';
+      const record = _oauthFor(host);
+      // `microsoft` deliberately carries an empty `app_password_url` — basic
+      // auth is bricked up in Exchange Online — so an empty string here is an
+      // answer, not a miss, and the `outlook` entry's own link (which is a
+      // *register an application* link, not an app-password one) survives it.
+      return (record && record.app_password_url) || '';
+    };
+
+    // The preset whose note is on screen, so the note can be re-rendered when
+    // the provider records arrive after it (the fetch below is async and the
+    // panel is usable before it resolves).
+    let _noteKey = '';
     const _renderProviderNote = (key) => {
+      _noteKey = key;
       const n = PROVIDER_NOTES[key];
       if (!n) { noteEl.style.display = 'none'; noteEl.innerHTML = ''; return; }
+      const url = _presetAppPasswordUrl(key) || n.url || '';
       noteEl.style.display = '';
-      noteEl.innerHTML = `
-        <div style="font-weight:600;margin-bottom:3px;">${esc(n.title)}</div>
-        <div style="opacity:0.8;margin-bottom:6px;">${esc(n.body)}</div>
+      // No link row when there is no URL to link to. The title and body still
+      // say what the person has to do; a dead button would say it worse.
+      const linkRow = url ? `
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-          <a href="${esc(n.url)}" target="_blank" rel="noopener noreferrer" class="admin-btn-sm" style="background:var(--red);border-color:var(--red);color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:5px;font-weight:600;">
+          <a href="${esc(url)}" target="_blank" rel="noopener noreferrer" class="admin-btn-sm" style="background:var(--red);border-color:var(--red);color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:5px;font-weight:600;">
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
             ${esc(n.linkLabel || 'Generate App Password')}
           </a>
-          <button type="button" class="admin-btn-sm uf-prov-copy" data-url="${esc(n.url)}" style="opacity:0.7;display:inline-flex;align-items:center;gap:5px;">
+          <button type="button" class="admin-btn-sm uf-prov-copy" data-url="${esc(url)}" style="opacity:0.7;display:inline-flex;align-items:center;gap:5px;">
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
             Copy link
           </button>
-        </div>`;
+        </div>` : '';
+      noteEl.innerHTML = `
+        <div style="font-weight:600;margin-bottom:3px;">${esc(n.title)}</div>
+        <div style="opacity:0.8;margin-bottom:6px;">${esc(n.body)}</div>${linkRow}`;
     };
+
+    // What the note is showing right now, read off the rendered markup rather
+    // than kept in a second variable beside it. `_renderOauthAlternative` asks
+    // this so the same URL is not printed twice a few pixels apart (`Law 15`).
+    //
+    // One condition, deliberately. This was written with a `display === 'none'`
+    // check as well, and a mutation that deleted it survived: hiding the note
+    // also empties it (the no-entry path above sets `innerHTML = ''`), so the
+    // second condition could never have a different answer from the first.
+    // A branch no test can move is a branch nobody can trust, so the invariant
+    // it was guarding is pinned by a test instead
+    // (`test_hiding_the_note_empties_it`).
+    const _noteAppPasswordUrl = () =>
+      noteEl?.querySelector?.('.uf-prov-copy')?.dataset?.url || '';
 
     // Show/hide the OAuth section and password fields based on provider selection.
     // P18-01/04/07. This is the form a person opens — and for one commit it
@@ -4795,7 +4842,15 @@ async function initUnifiedIntegrations() {
         box.innerHTML = '';
         return;
       }
-      const where = provider.app_password_url
+      // `B73`. Two mechanisms told a person where an app password comes from,
+      // and for a Gmail preset both were on screen at once with the same URL
+      // in each. They do different jobs — the note says *this provider needs
+      // an app password*, this block says *you can skip the OAuth ceremony* —
+      // so neither goes away; what goes away is the second printing of the
+      // URL. The note above carries the link and the copy button, so when it
+      // is already showing this URL, say the sentence without repeating it.
+      const alreadySaid = _noteAppPasswordUrl() === provider.app_password_url;
+      const where = provider.app_password_url && !alreadySaid
         ? ` You generate one at <a href="${esc(provider.app_password_url)}" target="_blank"
              rel="noopener noreferrer" style="color:var(--accent, var(--red))">${
                esc(provider.app_password_url)}</a>.`
@@ -4900,7 +4955,14 @@ async function initUnifiedIntegrations() {
     el('uf-imap-host').addEventListener('input', _syncOauthUI);
     fetch('/api/email/oauth/providers', { credentials: 'same-origin' })
       .then(r => r.json())
-      .then(d => { _oauthProviders = (d && d.providers) || []; _syncOauthUI(); })
+      .then(d => {
+        _oauthProviders = (d && d.providers) || [];
+        // `B73`. The note's URL comes off a record, and the records land here.
+        // Without this the Gmail note rendered before this resolved would keep
+        // the no-URL shape for the life of the panel.
+        if (_noteKey) _renderProviderNote(_noteKey);
+        _syncOauthUI();
+      })
       .catch(() => { /* no providers: the section simply never appears */ });
 
     // Custom dropdown wire-up — the native <select> stays in the DOM as the

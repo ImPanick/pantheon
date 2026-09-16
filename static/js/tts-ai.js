@@ -3,6 +3,7 @@
 // AI Text-to-Speech Module — supports server TTS and browser Web Speech API
 
 import { getSettings } from './appConfig.js';
+import { playIcon, stopIcon } from './icons.js';
 
 class AITTSManager {
     constructor() {
@@ -284,7 +285,7 @@ class AITTSManager {
     async _playQueueItem(item) {
         const { text, button, resetFn } = item;
         const ICON_LOADING = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="9" stroke-dasharray="42" stroke-dashoffset="12" stroke-linecap="round"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="0.8s" repeatCount="indefinite"/></circle></svg>';
-        var ICON_STOP = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>';
+        var ICON_STOP = stopIcon({ size: 14 });
 
         button.innerHTML = ICON_LOADING;
         button.classList.add('loading');
@@ -473,8 +474,8 @@ export function addAITTSButton(messageElement, text) {
     const actions = messageElement.querySelector('.msg-actions');
     if (!actions) return;
 
-    var ICON_PLAY = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="6 3 20 12 6 21 6 3"/></svg>';
-    var ICON_STOP = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>';
+    var ICON_PLAY = playIcon({ size: 14 });
+    var ICON_STOP = stopIcon({ size: 14 });
     var ICON_LOADING = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="9" stroke-dasharray="42" stroke-dashoffset="12" stroke-linecap="round"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="0.8s" repeatCount="indefinite"/></circle></svg>';
 
     const playButton = document.createElement('button');

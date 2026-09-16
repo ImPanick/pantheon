@@ -20,6 +20,8 @@ import * as Modals from './modalManager.js?v=20260723compareicon2';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { _matchesCombo } from './keyboard-shortcuts.js';   // H20: Find reads the registry
 import { topPortalZ } from './toolWindowZOrder.js';
+import { documentLanguage } from './attachmentLanguage.js';
+import { playIcon } from './icons.js';
 
   let API_BASE = '';
   let isOpen = false;
@@ -2117,7 +2119,7 @@ import { topPortalZ } from './toolWindowZOrder.js';
 
     const _eyeIco = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
     const _penIco = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>';
-    const _playIco = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+    const _playIco = playIcon({ size: 14 });
     const _codeIco = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>';
 
     // Check active states
@@ -2154,7 +2156,7 @@ import { topPortalZ } from './toolWindowZOrder.js';
           icon = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
           title = 'Preview';
         } else {
-          icon = '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+          icon = playIcon({ size: 13 });
           title = 'Run';
         }
         if (runBtn.dataset.lastIcon !== lang) {
@@ -9152,7 +9154,7 @@ import { topPortalZ } from './toolWindowZOrder.js';
     const _di = (svg) => `<span class="dropdown-icon">${svg}</span>`;
     const _saveIco = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>';
     const _copyIco = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
-    const _runIco = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+    const _runIco = playIcon({ size: 14 });
     const _previewIco = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
     const _deleteIco = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>';
 
@@ -9470,14 +9472,12 @@ import { topPortalZ } from './toolWindowZOrder.js';
   // that handles AcroForm fields. Spreadsheets fall back to the library
   // flow which already knows how to split sheets.
   function _importFromDevice() {
-    const EXT_TO_LANG = {
-      '.py':'python','.js':'javascript','.ts':'typescript','.html':'html','.htm':'html',
-      '.css':'css','.md':'markdown','.json':'json','.yml':'yaml','.yaml':'yaml',
-      '.sh':'bash','.bash':'bash','.sql':'sql','.rs':'rust','.go':'go',
-      '.java':'java','.c':'c','.cpp':'cpp','.h':'c','.hpp':'cpp',
-      '.rb':'ruby','.php':'php','.xml':'xml','.toml':'toml','.ini':'ini',
-      '.txt':'','.log':'','.csv':'csv','.tsv':'csv','.jsx':'javascript','.tsx':'typescript',
-    };
+    // `B161`. This function used to hold its own 36-entry extension→language
+    // map, one of three in the browser, and none of them knew `.toml`,
+    // `.markdown`, `.kt`, `.swift` or `.h`. The answer comes from
+    // `attachmentLanguage.js` now, which is the server's own derivation with
+    // its registers generated from `src/document_processor.py` and a checker
+    // that fails when the two disagree.
     const fi = document.createElement('input');
     fi.type = 'file';
     fi.style.display = 'none';
@@ -9514,7 +9514,7 @@ import { topPortalZ } from './toolWindowZOrder.js';
             reader.onerror = () => rej(reader.error);
             reader.readAsText(file);
           });
-          const lang = EXT_TO_LANG[ext] !== undefined ? EXT_TO_LANG[ext] : null;
+          const lang = documentLanguage(name);
           const sid = (sessionModule && sessionModule.getCurrentSessionId && sessionModule.getCurrentSessionId()) || _lastSessionId || '';
           const body = { title: baseTitle, language: lang, content };
           if (sid) body.session_id = sid;

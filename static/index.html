@@ -15,7 +15,7 @@
        browser-default styling that didn't match the Pantheon theme. -->
   <meta name="format-detection" content="telephone=no, date=no, address=no, email=no">
   <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
-  <script nonce="{{CSP_NONCE}}">
+  <script>
   window._pantheonLoadTime = Date.now();
   (function(){
     try {
@@ -171,7 +171,7 @@
   <!-- Per-route favicon. Bookmarking /calendar shows a calendar icon,
        /notes a notes icon, etc. Each shape is rendered in the current
        theme accent color. Falls back to the boat logo on the root path. -->
-  <script nonce="{{CSP_NONCE}}">
+  <script>
   (function(){
     try {
       var path = (window.location.pathname || '').toLowerCase();
@@ -325,7 +325,7 @@
   <div id="app-loader" style="position:fixed;inset:0;z-index:99999;background:var(--bg,#282c34);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;transition:opacity .3s">
     <div id="loader-wave" style="color:color-mix(in srgb, #9cdef2 62%, var(--brand-color,var(--red,#e06c75)));font-family:monospace;font-size:11px;opacity:.5;position:relative;padding-top:10px;line-height:1;white-space:pre">▁▂▃</div>
   </div>
-  <script nonce="{{CSP_NONCE}}">
+  <script>
   (function(){
     var el=document.getElementById('loader-wave');
     if(!el)return;
@@ -1128,7 +1128,7 @@
       </button>
       <div id="welcome-setup" style="display:none"></div>
     </div>
-    <script nonce="{{CSP_NONCE}}">
+    <script>
     (function(){
       var mobile = window.matchMedia('(max-width: 768px)').matches;
       var desktop = [
@@ -1289,7 +1289,7 @@
             <div class="model-picker-list" id="model-picker-list"></div>
           </div>
         </div>
-        <script nonce="{{CSP_NONCE}}">
+        <script>
         (function(){
           function applyDefault(dc) {
             if (!dc || !dc.model) return false;
@@ -1543,7 +1543,7 @@
 
   </main>
   <button id="scroll-bottom-btn" class="scroll-nav-btn" title="Scroll to bottom">▼</button>
-  <script nonce="{{CSP_NONCE}}">
+  <script>
   (function(){
     const container = document.getElementById('chat-history');
     const chatBar = document.querySelector('.chat-input-bar');
@@ -3304,6 +3304,6 @@
 <script type="module" src="/static/app.js?v=20260815toolapproval4"></script>  <!-- app.js must be LAST -->
   <script type="module" src="/static/js/init.js?v=20260715freshroot3"></script>
 <script type="module" src="/static/js/a11y.js"></script>
-<script nonce="{{CSP_NONCE}}">if('serviceWorker' in navigator){navigator.serviceWorker.register('/static/sw.js').catch(()=>{});}</script>
+<script>if('serviceWorker' in navigator){navigator.serviceWorker.register('/static/sw.js').catch(()=>{});}</script>
 </body>
 </html>

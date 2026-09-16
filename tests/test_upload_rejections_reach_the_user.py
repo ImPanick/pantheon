@@ -50,10 +50,14 @@ def _run(harness: Path, *argv: str) -> dict:
 def test_the_message_names_the_files_that_did_not_upload():
     """The row's `Verify` verbatim: *drop 30 files, see a message naming the 5
     that did not upload.* A count alone does not tell the user which chip to
-    retry."""
+    retry — and the count is not optional either: it is how the reader knows
+    the five names they can see are all of them and not the first five of
+    nine. `B04`'s mutation pass caught this: replacing the number with
+    "Some files" survived every assertion here."""
     out = _run(H_TOAST, "five")
     assert out["namesInText"] == 5, out["text"]
     assert out["returned"] == 5
+    assert out["text"].startswith("5 files were not uploaded: "), out["text"]
 
 
 def test_the_message_carries_the_server_s_reason():

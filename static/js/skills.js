@@ -10,6 +10,7 @@ import uiModule from './ui.js';
 import * as spinnerModule from './spinner.js';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { topPortalZ } from './toolWindowZOrder.js';
+import { PLAY_GLYPH } from './icons.js';
 
 const API = window.location.origin;
 let skills = [];
@@ -382,7 +383,7 @@ const _ICON = {
   edit:  '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>',
   approve: '<polyline points="20 6 9 17 4 12"/>',
   unpublish: '<path d="M5 12l5 5L20 7"/>',
-  test:  '<polygon points="5 3 19 12 5 21 5 3"/>',
+  test:  PLAY_GLYPH,
 };
 function _svg(paths, { fill = 'none', size = 13 } = {}) {
   const stroke = fill === 'currentColor' ? '' : 'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';

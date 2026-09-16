@@ -12,8 +12,10 @@ import { sortModelIds } from './modelSort.js';
 import { ordinalSuffix } from './util/ordinal.js';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { getSettings, invalidateSettings } from './appConfig.js';
+import { PLAY_GLYPH, playIcon, stopIcon } from './icons.js';
 import {
   runStatusLabel, runStaleLabel, runStatusTone, runStatusDotClass, isRunFinished,
+  runLeftNoAnswer,
 } from './runStatus.js';
 
 // `B78`. `runStatusTone` was defined in this file and re-exported here instead,
@@ -904,7 +906,7 @@ function _renderList() {
     const statusBadge = task.status === 'paused'
       ? `<button type="button" class="task-status-badge task-state-badge task-paused-badge" data-task-status-action="resume" title="Paused - click to resume" style="position:relative;top:4px;"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg><span class="task-state-label">paused</span></button>`
       : task.status === 'active'
-        ? `<button type="button" class="task-status-badge task-state-badge task-active-badge" data-task-status-action="pause" title="Active - click to pause" style="position:relative;top:4px;"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="7 4 19 12 7 20 7 4"/></svg><span class="task-state-label">active</span></button>`
+        ? `<button type="button" class="task-status-badge task-state-badge task-active-badge" data-task-status-action="pause" title="Active - click to pause" style="position:relative;top:4px;">${playIcon({ size: 10 })}<span class="task-state-label">active</span></button>`
         : '';
     const builtinBadge = task.is_builtin
       ? `<span class="task-builtin-badge${task.is_modified ? ' modified' : ''}" title="${task.is_modified ? 'Built-in task — edited from its default' : 'Built-in task'}">built-in${task.is_modified ? ' · edited' : ''}</span>`
@@ -928,7 +930,7 @@ function _renderList() {
       if (task.status !== 'completed') items.push({ label: 'Run now', icon: '<polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>', action: () => _doRunNow(task.id) });
       items.push({ label: 'Edit', icon: '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>', action: () => _showForm(task) });
       if (task.status === 'active') items.push({ label: 'Pause', icon: '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>', action: () => _doPause(task.id) });
-      else if (task.status === 'paused') items.push({ label: 'Resume', icon: '<polygon points="5 3 19 12 5 21 5 3"/>', action: () => _doResume(task.id) });
+      else if (task.status === 'paused') items.push({ label: 'Resume', icon: PLAY_GLYPH, action: () => _doResume(task.id) });
       items.push({ label: 'History', icon: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', action: () => _showRunHistory(task.id, task.name) });
       if (task.is_builtin && task.is_modified) {
         items.push({ label: 'Revert to default', icon: '<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>', action: () => _doRevert(task.id) });
@@ -2103,7 +2105,7 @@ function _syncPauseAllButton() {
   const btn = document.getElementById('tasks-pause-all-btn');
   if (!btn) return;
   const pauseIco = '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-1px;margin-right:3px;"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>';
-  const playIco = '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-1px;margin-right:3px;"><polygon points="6 4 20 12 6 20 6 4"/></svg>';
+  const playIco = playIcon({ size: 11, style: 'vertical-align:-1px;margin-right:3px;' });
   const hasActive = _tasks.some(t => t.status === 'active');
   const hasPaused = _tasks.some(t => t.status === 'paused');
   if (hasActive) {
@@ -2792,6 +2794,11 @@ function _renderCompletedPreviewEntry(entry) {
   // the rows that have no word.
   const _dotCls = runStatusDotClass(entry.status);
   const _word = runStatusLabel(entry.status, 'job');
+  // `B171`. The row already says which outcome it is; the button under it said
+  // *"Open chat"* for all three, and did the same thing for all three. Both
+  // come from one place now, shared with the Activity row's copy of the same
+  // control.
+  const _open = _openInChatControl(entry);
   const outcome = `<span class="task-log-status${_dotCls ? ` task-log-status-${_dotCls}` : ''}" title="${_escHtml(_word || entry.status || '')}"></span>`
     + (runStatusTone(entry.status) === 'ok' || !_word
         ? '' : `<span class="task-completed-outcome">${_escHtml(_word)}</span>`);
@@ -2818,9 +2825,9 @@ function _renderCompletedPreviewEntry(entry) {
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
             Copy
           </button>
-          <button class="doclib-chat-open-btn task-completed-open-chat" type="button">
+          <button class="doclib-chat-open-btn task-completed-open-chat" type="button" title="${_escHtml(_open.title)}">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
-            Open chat
+            ${_escHtml(_open.label)}
           </button>
         </div>
       </div>
@@ -2847,12 +2854,57 @@ function _wireCompletedPreviewRows(list) {
       if (!entry) return;
       try {
         uiModule.copyToClipboard((entry.result || '').trim());
-        uiModule.showToast('Output copied');
+        // `B171`. The same sentence for all three outcomes called an exception
+        // message an output. One word, off the same question the button asks.
+        uiModule.showToast(runLeftNoAnswer(entry.status)
+          ? 'Copied what the run reported' : 'Output copied');
       } catch (_) {
         uiModule.showError('Copy failed');
       }
     });
   });
+}
+
+/**
+ * `B171`. What the open-in-chat control says, for both surfaces that draw it.
+ *
+ * The Activity row and the Completed tab each build their own button and both
+ * call `_openResultInChat`, so the sentence describing what pressing it does
+ * has to be decided once or the two will say different things about one action
+ * (`Law 13`). They already did: *"Open in chat"* in one, *"Open chat"* in the
+ * other, and both promised a result to read on a run that produced none.
+ *
+ * A run that left no answer gets a different word AND a different sentence,
+ * because what happens is genuinely different — no assistant turn is restored,
+ * the text the run reported arrives as the person's own quoted note, and that
+ * is worth knowing before the button is pressed rather than after.
+ */
+function _openInChatControl(entry) {
+  const noAnswer = runLeftNoAnswer(entry?.status);
+  return {
+    noAnswer,
+    label: noAnswer ? 'Ask about this' : 'Open in chat',
+    title: noAnswer
+      ? 'Open a new chat about this run. It produced no answer, so what it '
+        + 'reported goes in as your own quoted note.'
+      : 'Open this result in a chat to read full-width and ask follow-ups',
+  };
+}
+
+/**
+ * A run's text as a fenced block, with a fence long enough to survive it.
+ *
+ * `B171`. The text being quoted is an exception message or a traceback, which
+ * is exactly the kind of string that contains backticks; a hard-coded three
+ * would let a quoted fence end the quote early and put the tail of a traceback
+ * back into the prose.
+ */
+function _quoteRunText(text) {
+  const t = String(text == null ? '' : text);
+  let longest = 0;
+  for (const run of t.match(/`+/g) || []) longest = Math.max(longest, run.length);
+  const fence = '`'.repeat(Math.max(3, longest + 1));
+  return `${fence}\n${t}\n${fence}`;
 }
 
 // Open a task run's result in a fresh chat session so it's comfortable
@@ -2914,14 +2966,39 @@ async function _openResultInChat(entry) {
     const sid = sess.id || sess.session_id;
     if (!sid) { uiModule.showToast('Chat created but no session id returned'); return; }
 
-    // Seed the conversation: a framing user line + the result as assistant.
+    // Seed the conversation.
+    //
+    // `B171`. A success gets what it always got: a framing user line and the
+    // run's output as the assistant's turn, because that IS the assistant's
+    // turn — the model wrote it.
+    //
+    // A run that produced no answer has no assistant turn to restore. Its text
+    // is an exception message or the sentence saying why it stopped, and
+    // replaying that as the assistant's own words makes the product tell the
+    // user the model said something it never said — and then hands the same
+    // fiction back to the model as context on the next turn, where it reads as
+    // an answer it has to be consistent with. It lands as the person's own
+    // quoted note instead: one user message, the run named and its outcome
+    // stated in the shared table's word, and the text fenced so a traceback
+    // reads as a traceback.
+    //
+    // Removing the button for those runs was the other option and it is a
+    // subtraction (`Law 1`): pasting a traceback into a chat to ask what it
+    // means is a thing people do, and it is most of why this control is worth
+    // having on a failed run at all.
+    const _noAnswer = runLeftNoAnswer(entry.status);
+    const _text = entry.result || '(no output)';
+    const _messages = _noAnswer
+      ? [{ role: 'user', content:
+            `My scheduled task "${entry.taskName}" produced no answer. `
+            + `Run status: ${runStatusLabel(entry.status, 'job') || entry.status}. `
+            + `This is the text it left behind:\n\n${_quoteRunText(_text)}` }]
+      : [{ role: 'user', content: `Here is the latest run of my scheduled task "${entry.taskName}". Let's review it.` },
+         { role: 'assistant', content: _text }];
     await fetch(`${API_BASE}/api/session/${sid}/inject_messages`, {
       method: 'POST', credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: [
-        { role: 'user', content: `Here is the latest run of my scheduled task "${entry.taskName}". Let's review it.` },
-        { role: 'assistant', content: entry.result || '(no output)' },
-      ] }),
+      body: JSON.stringify({ messages: _messages }),
     });
 
     closeTasks();
@@ -3082,12 +3159,20 @@ function _renderActivityEntry(entry, opts = {}) {
   if (_canOpen && _isChatWorthy) {
     // A row with no result yet is not being opened "to read full-width" — say
     // what the button actually does for it.
-    const _openTitle = (!hasResult && typeof entry.onOpen === 'function')
+    // `B171`. A source row keeps its own sentence — it is not opening a run's
+    // result at all, it is going somewhere the source owns. A task run's
+    // sentence and word come from `_openInChatControl`, shared with the
+    // Completed tab, which draws this same control and used to describe it
+    // differently.
+    const _open = _openInChatControl(entry);
+    const _sourceRow = !hasResult && typeof entry.onOpen === 'function';
+    const _openTitle = _sourceRow
       ? (entry.openTitle || 'Go to the chat this belongs to')
-      : 'Open this result in a chat to read full-width + ask follow-ups';
+      : _open.title;
+    const _openLabel = _sourceRow ? 'Open in chat' : _open.label;
     actionBtn = `<button class="task-log-open-chat" type="button" title="${_escHtml(_openTitle)}">
          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-         Open in chat
+         ${_escHtml(_openLabel)}
        </button>`;
     if (entry.kind === 'research' && entry.researchId) {
       actionBtn += `<button class="task-log-open-report" type="button" title="Open the visual research report">
@@ -3141,8 +3226,8 @@ function _renderActivityEntry(entry, opts = {}) {
     const _forceTitle = typeof entry.onForce === 'function'
       ? (entry.forceTitle || 'Start now')
       : 'Start now in parallel, bypassing the queue';
-    const forceBtn = _controls.force ? `<button class="task-log-force-run" type="button" title="${_escHtml(_forceTitle)}"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg><span>Start now</span></button>` : '';
-    const stopBtn = _controls.stop ? `<button class="task-log-stop" type="button" title="${_escHtml(_stopLabel(entry))}"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg></button>` : '';
+    const forceBtn = _controls.force ? `<button class="task-log-force-run" type="button" title="${_escHtml(_forceTitle)}">${playIcon({ size: 9 })}<span>Start now</span></button>` : '';
+    const stopBtn = _controls.stop ? `<button class="task-log-stop" type="button" title="${_escHtml(_stopLabel(entry))}">${stopIcon({ size: 9 })}</button>` : '';
     rightHtml = `<span class="task-log-running-inline"><span class="task-log-running-label">${label}</span>${elapsedInit}<span data-spin-here="1"></span>${forceBtn}${stopBtn}</span>`;
   } else {
     rightHtml = `<span class="task-log-time" title="${_escHtml(tsAbs)}">${_escHtml(tsLabel)}</span>`;
@@ -3157,7 +3242,7 @@ function _renderActivityEntry(entry, opts = {}) {
     // a source still owns — a queued message whose chat was deleted — needs a
     // way out, or the Activity view accumulates rows nobody can clear.
     const skippedStop = _controls.stop
-      ? `<button class="task-log-stop" type="button" title="${_escHtml(_stopLabel(entry))}"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg></button>`
+      ? `<button class="task-log-stop" type="button" title="${_escHtml(_stopLabel(entry))}">${stopIcon({ size: 9 })}</button>`
       : '';
     // `actionBtn` is computed above and this template used to drop it on the
     // floor, so a skipped row had no Copy log and no Run again — and clicking

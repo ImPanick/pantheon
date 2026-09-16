@@ -32,6 +32,22 @@ export async function loadMarkdown() {
     /import \{ splitTableRow \} from ['"]\.\/markdown\/tableRow\.js['"];/,
     () => `function splitTableRow(row){return (row||'').replace(/^\\s*\\|/,'').replace(/\\|\\s*$/,'').split('|').map((c)=>c.trim());}`,
   );
+  // `B250`. `B83` gave `markdown.js` its run-code play triangle from the shared
+  // icon table, and a relative specifier cannot resolve from a `data:` URL, so
+  // the whole streaming suite failed to import. Inlined rather than stubbed, on
+  // the same terms as the emoji module below: a stub would hand this test a
+  // glyph nobody ships, which is the shape `B83` existed to remove.
+  //
+  // Inlined verbatim, and the `export` keywords are deliberately NOT stripped.
+  // The import being replaced is at module top level, where `export` is legal,
+  // so a strip changes nothing a test can see — measured: removing both strips
+  // survives mutation. The sibling loader in `tests/test_markdown_rendering_js.py`
+  // strips anyway; that it can and this does not is `B250`.
+  const icons = fs.readFileSync(path.join(REPO, 'static/js/icons.js'), 'utf8');
+  src = src.replace(
+    /import \{[^}]*\} from ['"]\.\/icons\.js['"];/,
+    () => icons,
+  );
   const emoji = fs
     .readFileSync(path.join(REPO, 'static/js/emojiShortcodes.js'), 'utf8')
     .replace(/^export default .*$/m, '')

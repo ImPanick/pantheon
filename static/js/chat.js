@@ -43,9 +43,8 @@ import { loadPanel } from './panels.js';
 import planWindow from './planWindow.js';
 import queuePanel from './queuePanel.js';
 import { runStatusLabel } from './runStatus.js';
-// `.plan-inline-execute` is one control with two builders — this one and the
-// docked window's — and each drew its own play triangle (`B12`).
-import { PLAY_POINTS } from './checklist.js';
+import { playIcon, stopIcon } from './icons.js';
+import { documentLanguage } from './attachmentLanguage.js';
 import agentDrafts from './agentDrafts.js';   // H01
 
   const RESEARCH_TIMEOUT_MS = 360000;
@@ -922,7 +921,7 @@ import agentDrafts from './agentDrafts.js';   // H01
       void submitBtn.offsetWidth;
       // Arrow launches up, then stop icon lands in
       submitBtn.classList.add('anim-launch');
-      const _stopSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
+      const _stopSvg = stopIcon({ size: 14 });
       // Wait for the launch keyframe to finish (0.3s) before swapping the
       // arrow out for the stop icon — otherwise the swap happens mid-flight
       // and the user sees nothing fly out.
@@ -1056,7 +1055,7 @@ import agentDrafts from './agentDrafts.js';   // H01
 	    actions.className = 'plan-inline-actions';
 	    actions.innerHTML = `
 	      <button type="button" class="plan-inline-execute">
-	        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><polygon points="${PLAY_POINTS}"></polygon></svg>
+	        ${playIcon({ size: 12 })}
 	        Execute
 	      </button>
 	      <button type="button" class="plan-inline-clear">Clear</button>`;
@@ -1183,7 +1182,7 @@ import agentDrafts from './agentDrafts.js';   // H01
    *  exactly; the attachment count reuses `.queued-pill` so it needs no new CSS. */
   function _queuedBubbleHtml(item) {
     const n = (item.attachments && item.attachments.length) || 0;
-    const play = '<svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>';
+    const play = playIcon({ size: 8 });
     const clip = '<svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M21 12.8L12.2 21.6a5 5 0 0 1-7-7L14 5.7a3.3 3.3 0 0 1 4.7 4.7l-8.8 8.8a1.7 1.7 0 0 1-2.4-2.4l8.2-8.1"/></svg>';
     // `B13`: the pill said "Queued" while the docked panel said "Waiting" about
     // this same message, three inches below it. One word, from `runStatus.js`,
@@ -2648,18 +2647,21 @@ import agentDrafts from './agentDrafts.js';   // H01
         importBtn.addEventListener('click', async () => {
           importBtn.disabled = true;
           importBtn.textContent = 'Importing…';
-          const EXT_LANG = {'.py':'python','.js':'javascript','.ts':'typescript','.html':'html','.css':'css','.md':'markdown','.json':'json','.yml':'yaml','.yaml':'yaml','.sh':'bash','.sql':'sql','.rs':'rust','.go':'go','.java':'java','.c':'c','.cpp':'cpp','.rb':'ruby','.php':'php','.xml':'xml','.jsx':'javascript','.tsx':'typescript'};
+          // `B161`. A 21-entry extension→language map used to be inlined on
+          // this line — the smallest and stalest of the browser's three. It
+          // knew neither `.toml` nor `.markdown`, so the banner that offers to
+          // import the file you just attached stored it with no language while
+          // the composer beside it labelled the same bytes `toml`.
           let imported = 0;
           for (const { info, file } of _importableFiles) {
             try {
               const content = await file.text();
               const dotIdx = info.name.lastIndexOf('.');
               const title = dotIdx > 0 ? info.name.slice(0, dotIdx) : info.name;
-              const ext = dotIdx >= 0 ? info.name.slice(dotIdx).toLowerCase() : '';
               await fetch(`${API_BASE}/api/document`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ title, language: EXT_LANG[ext] || '', content }),
+                body: JSON.stringify({ title, language: documentLanguage(info.name), content }),
               });
               imported++;
             } catch (e) { console.error('Import failed:', info.name, e); }
@@ -5269,8 +5271,8 @@ import agentDrafts from './agentDrafts.js';   // H01
         if (accumulated && window.aiTTSManager && window.aiTTSManager.autoPlay) {
           const ttsBtn = holder.querySelector('.ai-tts-button');
           if (ttsBtn) {
-            var ICON_PLAY_TTS = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="6 3 20 12 6 21 6 3"/></svg>';
-            var ICON_STOP_TTS = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>';
+            var ICON_PLAY_TTS = playIcon({ size: 14 });
+            var ICON_STOP_TTS = stopIcon({ size: 14 });
             const resetFn = () => {
               ttsBtn.innerHTML = ICON_PLAY_TTS;
               ttsBtn.classList.remove('playing', 'loading');
@@ -7645,16 +7647,12 @@ import agentDrafts from './agentDrafts.js';   // H01
   // upload's imported document is reused (cached by upload id) so clicking it
   // again re-opens the same doc instead of making duplicates.
   const _attachDocCache = new Map();  // upload id -> doc id
-  function _attachLang(name) {
-    const m = (name || '').toLowerCase().match(/\.([a-z0-9]+)$/);
-    const ext = m ? m[1] : '';
-    const map = { md:'markdown', markdown:'markdown', js:'javascript', ts:'typescript',
-      jsx:'javascript', tsx:'typescript', py:'python', rb:'ruby', go:'go', rs:'rust',
-      java:'java', c:'c', cpp:'cpp', h:'c', hpp:'cpp', cs:'csharp', php:'php', html:'html',
-      htm:'html', css:'css', scss:'scss', json:'json', yaml:'yaml', yml:'yaml', sh:'bash',
-      bash:'bash', sql:'sql', csv:'csv', xml:'xml' };
-    return map[ext] || '';
-  }
+  // `B161`. A FOURTH extension→language map lived here — 29 entries, in the
+  // path that opens an attachment as a document — and the row that found the
+  // other three did not count it. Measured before it went: it was the only one
+  // that knew `.markdown` and `.cs`, and the only one that did NOT know
+  // `.toml`, `.ini`, `.log` or `.tsv`, so the same file could get four
+  // different languages depending on which button opened it. One call now.
   async function openAttachment(att, isImage) {
     if (!att || !att.id) return;
     const id = att.id, name = att.name || '', mime = att.mime || '';
@@ -7713,7 +7711,7 @@ import agentDrafts from './agentDrafts.js';   // H01
         const text = await (await fetch(url)).text();
         const res = await fetch(`${API_BASE}/api/document`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ session_id: sid || null, title: name.replace(/\.[^.]+$/, '') || 'Document', content: text, language: _attachLang(name) }),
+          body: JSON.stringify({ session_id: sid || null, title: name.replace(/\.[^.]+$/, '') || 'Document', content: text, language: documentLanguage(name) }),
         });
         if (!res.ok) throw new Error('document ' + res.status);
         doc = await res.json();

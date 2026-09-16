@@ -162,6 +162,27 @@ export function runStatusLabel(status, subject = 'job') {
 }
 
 /**
+ * Whether a run's stored text is an answer or the reason there is not one.
+ *
+ * `B171`. Three statuses reach the Completed tab and two of them left no
+ * assistant turn behind: an `error` run's text is an exception message and an
+ * `aborted` run's is *"Stopped by user"*. Both were being replayed into a chat
+ * session as the assistant's own words. This is the one question that decides
+ * that, derived from `runStatusTone` rather than from a fourth list of status
+ * names — `error`/`failed` score `error` and `skipped`/`aborted` score `info`,
+ * and those four are exactly the four that answer nothing.
+ *
+ * An absent or legacy status has no tone, and this says `false` for it on
+ * purpose: the caller's old behaviour is what a row written before the column
+ * existed still gets (`Law 1`). `queued` and `running` are `false` too — they
+ * have not finished, so "left no answer" is not yet a fact about them.
+ */
+export function runLeftNoAnswer(status) {
+  const tone = runStatusTone(status);
+  return tone === 'error' || tone === 'info';
+}
+
+/**
  * What an in-flight row says once it has been running long enough to look
  * stuck. Not a status — `tasks.js` derives it from elapsed time — but it is a
  * word a person reads out of the same slot as the ones above, so it is spelled

@@ -40,6 +40,7 @@ from src.svg_runtime import (
     MAX_PREVIEW_SVG_BYTES,
     SVG_SECURITY_HEADERS,
     is_svg,
+    svg_caption_text,
 )
 
 logger = logging.getLogger(__name__)
@@ -528,6 +529,48 @@ def setup_upload_routes(upload_handler):
         os.makedirs(cache_dir, exist_ok=True)
         return os.path.join(cache_dir, file_id + ".txt")
 
+    # The empty answer, worded for the person who pressed the button. It is
+    # bracketed because that is this product's marker for "not a caption" —
+    # `src/chat_handler.py` already declines to fold a cached line starting with
+    # `[` into the prompt, so a diagram with no words cannot arrive at the model
+    # dressed as a description of itself.
+    SVG_NO_TEXT_CAPTION = (
+        "[This SVG contains no text. Its source is sent to the model with the "
+        "message, so you can ask about the drawing directly.]"
+    )
+
+    def _svg_caption_response(path: str, file_id: str, info: dict | None,
+                              owner: str | None, cache_path: str):
+        """Caption an SVG from the SVG (`B163`), with no model and no network.
+
+        `Law 16` is the first reason and accuracy is the second: `<title>` and
+        `<desc>` are the accessible name and description the SVG format defines
+        for exactly this, and `<text>` runs are the labels on the drawing, so
+        this is the caption the author wrote rather than a guess about pixels
+        that were never rendered.
+
+        A file with no text is not cached: the cache doubles as the store for a
+        hand-edited caption (`PUT /{id}/vision`), and writing a placeholder into
+        it would make the next `GET` serve the placeholder as though a person
+        had typed it.
+        """
+        try:
+            with open(path, "rb") as fh:
+                content = fh.read(MAX_PREVIEW_SVG_BYTES)
+        except OSError as e:
+            logger.warning(f"SVG caption read failed for {file_id}: {e}")
+            content = b""
+        text = svg_caption_text(content)
+        if not text:
+            return {"text": SVG_NO_TEXT_CAPTION, "cached": False, "source": "svg"}
+        try:
+            with open(cache_path, "w", encoding="utf-8") as f:
+                f.write(text)
+        except Exception as e:
+            logger.warning(f"Vision cache write failed for {file_id}: {e}")
+        _sync_gallery_caption_for_upload(info, owner, text)
+        return {"text": text, "cached": False, "source": "svg"}
+
     def _sync_gallery_caption_for_upload(info: dict | None, owner: str | None, text: str) -> None:
         """Copy upload OCR/vision text onto the promoted gallery image row."""
         if not info:
@@ -556,9 +599,30 @@ def setup_upload_routes(upload_handler):
 
     @router.get("/{file_id}/vision")
     async def get_vision_text(request: Request, file_id: str, force: int = 0):
-        """Return the vision-model OCR/description for an uploaded image.
+        """Return the OCR/description for an uploaded image.
+
         Cached under UPLOAD_DIR/.vision/{file_id}.txt — first call computes,
-        subsequent loads are instant. Pass force=1 to recompute."""
+        subsequent loads are instant. Pass force=1 to recompute.
+
+        `B163`: an SVG is answered from its own markup and never reaches the
+        vision model. The gate was `mime.startswith("image/")`, which
+        `image/svg+xml` satisfies, so pressing Caption on a diagram base64'd its
+        XML and posted it to a VL endpoint **labelled `data:image/jpeg`** —
+        `analyze_image_with_vl_result`'s `mime_map` has no `.svg` and falls back
+        to jpeg. An outbound call that cannot succeed (`Law 16`), on the one
+        upload type this product has already decided is markup rather than
+        pixels (`B103`, `src/svg_runtime.py`).
+
+        **Not `upload_handler.is_image_file`, which is what the row proposed.**
+        Measured: that register is `{.png .jpg .jpeg .webp .gif}`, while
+        `static/js/chatRenderer.js` draws — and offers this button for —
+        `.bmp` as well, and the route accepts every `image/*` MIME, so `.bmp`,
+        `.tiff`, `.avif` and `.heic` reach the model today. Swapping the MIME
+        prefix for that register would have taken the Caption button away from
+        four working formats to fix one broken one (`Law 1`). The question that
+        actually separates them is not "is it an image" but "is it markup", and
+        `svg_runtime.is_svg` is the gate this product already asks that with.
+        """
         if not upload_handler.validate_upload_id(file_id):
             raise HTTPException(400, "Invalid file ID")
         info = _load_upload_info(file_id)
@@ -573,8 +637,10 @@ def setup_upload_routes(upload_handler):
                 raise HTTPException(404, "File not found")
         path = _resolve_upload_path(file_id)
         import mimetypes as _mt
+        display_name = (info or {}).get("name") or os.path.basename(path)
         mime = (info or {}).get("mime") or _mt.guess_type(path)[0] or ""
-        if not mime.startswith("image/"):
+        markup = is_svg(display_name, mime)
+        if not markup and not mime.startswith("image/"):
             raise HTTPException(400, "Not an image")
         cache_path = _vision_cache_path(file_id)
         if not force and os.path.exists(cache_path):
@@ -582,9 +648,13 @@ def setup_upload_routes(upload_handler):
                 with open(cache_path, encoding="utf-8") as f:
                     cached_text = f.read()
                 _sync_gallery_caption_for_upload(info, file_owner or current_user, cached_text)
-                return {"text": cached_text, "cached": True}
+                return {"text": cached_text, "cached": True,
+                        "source": "svg" if markup else "vision"}
             except Exception as e:
                 logger.warning(f"Vision cache read failed for {file_id}: {e}")
+        if markup:
+            return _svg_caption_response(path, file_id, info,
+                                         file_owner or current_user, cache_path)
         from src.document_processor import analyze_image_with_vl
         try:
             text = analyze_image_with_vl(path, owner=current_user) or ""
@@ -597,7 +667,7 @@ def setup_upload_routes(upload_handler):
         except Exception as e:
             logger.warning(f"Vision cache write failed for {file_id}: {e}")
         _sync_gallery_caption_for_upload(info, file_owner or current_user, text)
-        return {"text": text, "cached": False}
+        return {"text": text, "cached": False, "source": "vision"}
 
     @router.put("/{file_id}/vision")
     async def put_vision_text(request: Request, file_id: str):

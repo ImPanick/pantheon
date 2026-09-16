@@ -707,6 +707,76 @@ def _session_is_research_spinoff(sess) -> bool:
     return False
 
 
+_warned_use_rag_spelling = False
+
+
+def _warn_old_use_rag_spelling(raw: object) -> None:
+    """Say it out loud, once, when this caller is one the old rule read the
+    other way.
+
+    `B152`, and the same remedy `B96` gave `AUTH_ENABLED` one boundary over.
+    `0`, `no` and `off` used to turn retrieval **on**; they turn it off now.
+    Our own composer sends the literal `'false'` (`static/js/chat.js` appends
+    exactly that and nothing else), so this can only fire for a hand-written
+    API client — which is the caller the row is about.
+    """
+    global _warned_use_rag_spelling
+    if _warned_use_rag_spelling:
+        return
+    _warned_use_rag_spelling = True
+    logger.warning(
+        "use_rag=%r now turns retrieval OFF. Before 2026-09-16 only the literal "
+        "`false` did, so this call ran WITH retrieval despite asking for it to "
+        "be off (`B152`). Send use_rag=true, or omit the field, to keep it on.",
+        raw,
+    )
+
+
+def rag_requested(use_rag: object) -> bool:
+    """Did this request ask for retrieval? Absent means yes.
+
+    `B152`, and `B97`'s last held HTTP field. Until 2026-09-16 this read
+    `(str(use_rag).lower() != "false") if use_rag is not None else True`, so
+    every spelling except the literal `false` turned retrieval **on**:
+    `use_rag=0`, `use_rag=no` and `use_rag=off` all meant *yes*. It is the one
+    HTTP field in the tree that defaults ON, and `B97` held it for that reason —
+    adopting the shared rule is the only conversion in that row that can take
+    behaviour away rather than widen it.
+
+    **The hold conflated two different things, and that is the defect.** A
+    default is about *absence*: it answers when the field did not say. It is not
+    a licence to overrule a field that did say. `request_flag(raw, default=True)`
+    keeps the first and drops the second — an absent, blank or unrecognised
+    `use_rag` still means yes, and the four words `env_flags.REQUEST_OFF_VALUES`
+    holds now mean no. Enumerated, every value and what changes:
+
+        absent / None       on  → on        (the default, untouched)
+        ''  / 'maybe'       on  → on        (did not say; default answers)
+        'true' 1 True       on  → on
+        'false' False       off → off       (the one spelling that already worked)
+        '0' 'no' 'off' 0    ON  → off       **the change, and the whole row**
+        2 / -1              on  → on        (`request_flag` keeps `bool(n)`)
+
+    So the only callers affected are the ones that typed a word meaning no and
+    were given yes. Announced in `CHANGELOG.md` under *Changed — read this
+    before upgrading* and logged once, for the same reason `B96` logged: the
+    value lives in the caller's request, not in a file this process can rewrite.
+    """
+    from src.env_flags import request_flag
+
+    answer = request_flag(use_rag, default=True)
+    # The old rule was `str(use_rag).lower() != "false"`, so the set of values
+    # that already turned retrieval off is exactly the set whose `str().lower()`
+    # is `"false"` — the literal word and a real `False`, and nothing else. The
+    # condition is written from that expression rather than from a re-listed
+    # vocabulary, so it cannot drift from the rule it is describing. Note the
+    # missing `.strip()`: `" false "` was ON before and is off now, which is a
+    # change and does warn.
+    if not answer and str(use_rag).lower() != "false":
+        _warn_old_use_rag_spelling(use_rag)
+    return answer
+
+
 async def build_chat_context(
     sess,
     request,
@@ -805,14 +875,8 @@ async def build_chat_context(
     if is_research_spinoff:
         mem_enabled = False
 
-    # Use RAG?
-    # flag-spelling: `B97` holds this one. It is the only HTTP field in the
-    # tree that defaults ON, so adopting the shared rule would make `use_rag=0`
-    # — which is *on* today — turn retrieval off. Every other conversion in
-    # `B97` only widens, so nothing that answered yes starts answering no;
-    # this one would be the exception, and a caller losing retrieval without
-    # asking is a change that needs announcing rather than tidying (`Law 1`).
-    use_rag_val = (str(use_rag).lower() != "false") if use_rag is not None else True
+    # Use RAG? `B152` — see `rag_requested`.
+    use_rag_val = rag_requested(use_rag)
     if incognito or not allow_tool_preprocessing or is_research_spinoff or casual_low_signal:
         use_rag_val = False
 

@@ -18,9 +18,13 @@ The asymmetry was not arbitrary in one direction — ``index_personal_documents`
 opened everything but ``.pdf`` with a plain UTF-8 ``open()``, so it *could not*
 read the Office formats. The fix is therefore a register keyed by EXTRACTOR
 (``personal_docs.TEXT_EXTENSIONS`` / ``PDF_EXTENSIONS`` / ``OFFICE_EXTENSIONS``,
-the last of which is ``markitdown_runtime.MARKITDOWN_EXTS``, the register that
-already existed), one shared walk (``walk_index_candidates``), and both
-indexers deriving their defaults from it.
+each of which is a register that already existed), one shared walk
+(``walk_index_candidates``), and both indexers deriving their defaults from it.
+
+`B162` finished the derivation: those three names were still *new* registers
+here, holding 16 extensions where chat ingest's held 36, so this file's
+assertions moved from the count to the identity. What each test pins is
+unchanged; the file it is pinned against is now the one chat ingest reads.
 
 These drive the real indexers over a real directory (`Law 20`) — a fixture
 holding one file of every indexable extension plus three nothing here reads.
@@ -104,7 +108,7 @@ def _sources(stored):
 # ── one list ────────────────────────────────────────────────────────────────
 
 def test_the_two_indexers_read_one_list():
-    """Measured before the fix: 11 vs 9, agreeing on 4."""
+    """Measured before `B75`: 11 vs 9, agreeing on 4."""
     vector = set(rag_vector.DEFAULT_FILE_EXTENSIONS)
     keyword = set(personal_docs.config.DEFAULT_EXTENSIONS)
     assert vector == keyword, (
@@ -113,18 +117,30 @@ def test_the_two_indexers_read_one_list():
         f"{sorted(vector ^ keyword)}"
     )
     assert vector == set(INDEXABLE_EXTENSIONS)
-    assert len(vector) == 16
     # And the union is exactly the three extractor registers, nothing hand-added.
     assert set(INDEXABLE_EXTENSIONS) == (
         personal_docs.TEXT_EXTENSIONS | personal_docs.PDF_EXTENSIONS
         | personal_docs.OFFICE_EXTENSIONS
     )
+    # `B162`: and those three are chat ingest's, so the cardinality this test
+    # pinned at 16 is now 36. The number is asserted as an identity rather than
+    # a literal, because a literal is the thing that goes stale.
+    from src.document_processor import INGESTIBLE_EXTS
+    assert set(INDEXABLE_EXTENSIONS) == set(INGESTIBLE_EXTS)
 
 
-def test_the_office_register_is_the_one_markitdown_already_had():
-    """`Law 14` — the Office list is not restated here."""
-    from src.markitdown_runtime import MARKITDOWN_EXTS
-    assert personal_docs.OFFICE_EXTENSIONS == frozenset(MARKITDOWN_EXTS)
+def test_the_office_register_is_the_one_the_extractors_already_had():
+    """`Law 14` — the Office list is not restated here.
+
+    `B75` derived this from ``MARKITDOWN_EXTS``, which was the whole office
+    register at the time. `B102` then wrote bundled `.odt` and `.doc` readers
+    and made ``OFFICE_EXTS`` the union, so deriving from the narrower name had
+    become a way of not seeing two extractors (`B162`).
+    """
+    from src.markitdown_runtime import MARKITDOWN_EXTS, NATIVE_OFFICE_EXTS, OFFICE_EXTS
+    assert personal_docs.OFFICE_EXTENSIONS == frozenset(OFFICE_EXTS)
+    assert personal_docs.OFFICE_EXTENSIONS >= frozenset(MARKITDOWN_EXTS)
+    assert personal_docs.OFFICE_EXTENSIONS >= frozenset(NATIVE_OFFICE_EXTS)
 
 
 # ── the row's Verify clause ─────────────────────────────────────────────────
@@ -141,7 +157,7 @@ def test_every_file_is_in_both_indexes_or_reported_skipped(vault):
     keyword_skipped = {e["path"]: e["reason"] for e in keyword_skips}
 
     on_disk = sorted(str(p) for p in vault.iterdir())
-    assert len(on_disk) == 16 + len(UNREADABLE_EXTS)
+    assert len(on_disk) == len(INDEXABLE_EXTENSIONS) + len(UNREADABLE_EXTS)
     for path in on_disk:
         both = path in in_vector and path in in_keyword
         reported = bool(vector_skipped.get(path)) and bool(keyword_skipped.get(path))

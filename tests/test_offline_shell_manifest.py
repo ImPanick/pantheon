@@ -534,7 +534,16 @@ def test_a_conditional_request_is_actually_cheap_on_this_server(tmp_path):
     # Every class install fetches answers a conditional request with an empty
     # 304 — including the fonts, icons and manifest, which carry no
     # `Cache-Control` at all. That is the whole of `B85`'s saving.
-    for label in ("js", "css", "woff2", "png", "json"):
+    #
+    # `root` is in this list as of `B121` and was the reason the list used to
+    # stop before it: `serve_html_with_nonce` rebuilt the page per request to
+    # substitute the CSP nonce, so `/` carried no ETag and no Last-Modified and
+    # was the one entry of 213 that answered an unchanged `CACHE_NAME` bump
+    # with 290,468 bytes. `B141` took the nonce out of the body — the inline
+    # blocks are authorised by `'sha256-…'` computed from the file — and the
+    # response became describable. This assertion failing again means the shell
+    # went back to varying per request, whatever the reason.
+    for label in ("js", "css", "woff2", "png", "json", "root"):
         row = got[label]
         assert row["status"] == 200, row
         assert row["etag"], f"{label} lost its validator; `no-cache` now costs a full body"
@@ -550,11 +559,12 @@ def test_a_conditional_request_is_actually_cheap_on_this_server(tmp_path):
     assert got["png"]["cache_control"] is None
     assert got["json"]["cache_control"] is None
 
-    # `/` is the exception in both directions and `B121` is about it: the app
-    # route rebuilds the HTML per request to inject the CSP nonce, so it has no
-    # ETag and no Last-Modified and cannot be revalidated under any mode.
-    assert got["root"]["status"] == 200
-    assert got["root"]["etag"] is False
+    # `/` is not served by `_RevalidatingStatic` — it is the app route, not the
+    # static mount — so it has to set the same directive itself, and `B121` is
+    # the row that made it possible to. Without any `Cache-Control` at all this
+    # response had *heuristic* freshness (RFC 9111 §4.2.2): a browser was
+    # entitled to paint a stale shell for days without asking.
+    assert got["root"]["cache_control"] == "no-cache"
     assert got["root"]["full_bytes"] > 100_000
 
 
@@ -849,7 +859,7 @@ def _shell_routes_in_sw() -> set:
 @pytest.fixture(scope="module")
 def served_routes(tmp_path_factory) -> dict:
     """Every GET route `app.py` exposes that takes no path parameter, asked for
-    its body by the real app, with the per-request CSP nonce normalised out.
+    its body by the real app, compared byte for byte.
 
     Driven rather than parsed (`Law 20`). An AST pass over `app.py` would have
     to recognise `return await serve_index(request)` as delegation, and would
@@ -858,6 +868,18 @@ def served_routes(tmp_path_factory) -> dict:
     out-of-process because importing `app` pulls the whole application up —
     same shape as `test_a_conditional_request_is_actually_cheap_on_this_server`
     above.
+
+    **The normalisation is gone, and that is the point.** `B120` compared these
+    bodies through `re.sub(r'nonce="[0-9a-f]*"', 'nonce=""', text)`, because the
+    one part of a response that was not the file was the per-request CSP nonce
+    substituted into 7 places in it. `B141` moved that authorisation to
+    `'sha256-…'` sources in the header, computed from the file, so there is
+    nothing left to normalise — and a regex that now matches nothing is a
+    regex that would go on matching nothing if the shell started varying again.
+    `body_repeats` below re-asks for each body and records whether the second
+    answer is the same bytes as the first, so this fixture states the premise
+    it used to assume; `test_the_app_shell_does_not_vary_per_request` is the
+    assertion on it.
     """
     tmp_path = tmp_path_factory.mktemp("served_routes")
     env = os.environ.copy()
@@ -875,16 +897,11 @@ def served_routes(tmp_path_factory) -> dict:
     probe = textwrap.dedent(
         """
         import json
-        import re
         import app as app_module
         from fastapi.testclient import TestClient
 
-        def norm(text):
-            # The one part of the body that is not the file: `B121`.
-            return re.sub(r'nonce="[0-9a-f]*"', 'nonce=""', text)
-
         client = TestClient(app_module.app)
-        shell = norm(client.get("/").text)
+        shell = client.get("/").text
         paths = []
         for route in app_module.app.routes:
             path = getattr(route, "path", None)
@@ -899,10 +916,14 @@ def served_routes(tmp_path_factory) -> dict:
         out = {}
         for path in sorted(set(paths)):
             res = client.get(path, follow_redirects=False)
+            again = client.get(path, follow_redirects=False)
             out[path] = {
                 "status": res.status_code,
                 "bytes": len(res.content),
-                "is_shell": res.status_code == 200 and norm(res.text) == shell,
+                "is_shell": res.status_code == 200 and res.text == shell,
+                "body_repeats": res.content == again.content,
+                "etag": res.headers.get("etag"),
+                "head": res.text[:200],
             }
         print("RESULT=" + json.dumps(out, sort_keys=True))
         """
@@ -954,6 +975,60 @@ def test_a_route_that_serves_its_own_document_is_not_in_the_shell_set(served_rou
     for path, row in served_routes.items():
         if not row["is_shell"]:
             assert path not in _shell_routes_in_sw(), (path, row)
+
+
+def test_the_app_shell_does_not_vary_per_request(served_routes):
+    """`B141`'s `Verify:`, and the premise every comparison above rests on.
+
+    The nine shell routes are the same document, and `sw.js`'s revalidate
+    branch writes a response fetched from any of them back into the one `/`
+    entry all nine are served from. That was true up to a 32-hex token in seven
+    places: `serve_html_with_nonce` substituted a fresh `secrets.token_hex(16)`
+    per request, and the fixture above had to normalise it out to compare
+    anything. Two consecutive requests for `/` now return the same bytes, so
+    the fixture compares raw text and this is what says so.
+
+    Measured on the tree before the change: `/` differed between two requests
+    (`1016b6d2…` then `3b18b742…`), and so did all eight routes behind it.
+    """
+    varying = sorted(p for p, row in served_routes.items()
+                     if row["status"] == 200 and not row["body_repeats"])
+    assert varying == [], varying
+    assert served_routes["/"]["body_repeats"]
+    # And the consequence the whole of `B121` is: a body that does not vary can
+    # be described, so it carries a validator. `/` is not under the `/static`
+    # mount, so nothing else was going to give it one.
+    assert served_routes["/"]["etag"], served_routes["/"]
+
+
+def test_the_backgrounds_sandbox_route_stops_claiming_the_server_is_broken(served_routes):
+    """`B140`'s `Verify:`. `GET /backgrounds` either returns a page or returns
+    nothing at all, and this drives the real app to say which.
+
+    `static/backgrounds.html` is in no commit of this repository and nothing
+    links to `/backgrounds` — so the route read a template that does not exist,
+    through a helper whose contract is that a missing template is a broken
+    deployment, and answered `500` with a `logger.exception` per request on a
+    route that has no auth by design. Measured before the change: `500`, 34
+    bytes, `{"detail":"Internal server error"}`.
+
+    **The route is not removed** (`Law 1`): a deployment that ships the sandbox
+    page is still served it. What is asserted here is the answer when it is
+    absent — a 404 that names the file, and never a 5xx.
+    """
+    assert "/backgrounds" in served_routes, "the route was removed, not fixed"
+    row = served_routes["/backgrounds"]
+    assert row["status"] == 404, row
+    assert not row["is_shell"], "a missing sandbox page must not be answered with the app"
+    # It says what is missing — a 404 with no name is the same dead end as the
+    # 500, one status code politer.
+    assert "static/backgrounds.html" in row["head"], row
+    # And says it repo-relatively. `app.py` calls this route "no auth
+    # required", which describes the handler and not the path — `AuthMiddleware`
+    # gates `/backgrounds` like any other page when `AUTH_ENABLED=true`, and
+    # with auth off anyone who can reach the app reaches this. Either way the
+    # reply must not hand out the deployment's absolute paths.
+    assert str(_REPO) not in row["head"], row
 
 
 @_needs_node

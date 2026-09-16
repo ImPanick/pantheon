@@ -9,7 +9,20 @@ from dataclasses import dataclass
 
 from src.index_walk import prune_index_dirs, is_indexable_file
 
-from src.markitdown_runtime import MARKITDOWN_EXTS
+# `B162`/`B180`. The registers are imported, never restated. ``MARKITDOWN_EXTS``
+# is kept as a re-export because this module has exported it since `B75` and
+# taking a name away is not this row's business (`Law 1`); nothing here reads it
+# any more — ``OFFICE_EXTS`` is the register that answers "can anything extract
+# this", which is the question an indexer has.
+from src.markitdown_runtime import MARKITDOWN_EXTS, OFFICE_EXTS  # noqa: F401
+from src.pdf_runtime import PDF_EXTS
+from src.document_processor import (
+    INGESTIBLE_EXTS,
+    TEXT_EXTS,
+    TEXT_SNIFF_BYTES,
+    decode_text_file,
+    sniff_text_encoding,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +52,7 @@ def extract_office_text(file_path: str) -> str:
     return convert_to_markdown(file_path) or ""
 
 
-# ── one register per extractor (`B75`) ──────────────────────────────────────
+# ── one register per extractor (`B75`, joined to chat ingest by `B162`) ─────
 #
 # Two indexes were built over the same directory by the same click from two
 # hand-maintained lists. The vector indexer read `rag_vector.DEFAULT_FILE_
@@ -55,27 +68,42 @@ def extract_office_text(file_path: str) -> str:
 # rather than a merged list — each indexer now takes the union of what can
 # actually be read, and reads it through the same function.
 #
-# `MARKITDOWN_EXTS` is the register that already existed for the Office
-# extractor (`src/markitdown_runtime.py`); these two sit beside it rather than
-# restating it (`Law 14`).
-TEXT_EXTENSIONS: frozenset = frozenset({
-    ".txt", ".md", ".json", ".yaml", ".yml", ".csv",
-    ".html", ".css", ".js", ".py",
-})
-PDF_EXTENSIONS: frozenset = frozenset({".pdf"})
-OFFICE_EXTENSIONS: frozenset = frozenset(MARKITDOWN_EXTS)
+# `B75` wrote three new names here — a ten-entry `TEXT_EXTENSIONS`, a one-entry
+# `PDF_EXTENSIONS` and `OFFICE_EXTENSIONS = MARKITDOWN_EXTS` — which collapsed
+# the two indexing lists into one but made the index a **fourth** answer to "can
+# we read this extension", beside `document_processor.TEXT_EXTS` (28),
+# `markitdown_runtime.OFFICE_EXTS` (7) and `pdf_runtime.PDF_EXTS` (1). Measured
+# on the tree before `B162`: chat ingest read **36** extensions and the index
+# **16**, so the 20 in between — `.bash .c .cpp .doc .go .h .htm .java .jsx .log
+# .nix .odt .php .rb .rs .sh .sql .ts .tsx .xml` — were files a chat could read
+# and a search could not find. `.doc` and `.odt` are the sharp ones: `B102`
+# wrote two bundled extractors for them and the index called them unsupported.
+#
+# So the three names stay (`Law 1` — `rag_vector` and the tests import them) and
+# every one of them is now the register that already existed (`Law 14`). There
+# is one register per extractor and the index takes the union, which is the same
+# union chat ingest takes, because it is the same object.
+#
+# A register is still only half the answer, and the same half it was in `B76`:
+# it says WHICH extractor, never WHETHER to read. `extract_index_text` asks the
+# bytes for the files no register claims, so a `.conf` or a `.toml` is indexed
+# for the same reason it reaches the model — it decodes.
+TEXT_EXTENSIONS: frozenset = frozenset(TEXT_EXTS)
+PDF_EXTENSIONS: frozenset = frozenset(PDF_EXTS)
+OFFICE_EXTENSIONS: frozenset = frozenset(OFFICE_EXTS)
 
 #: Every extension some extractor on this box can turn into text, sorted. Both
-#: indexers derive their default from this; neither keeps a list of its own.
-INDEXABLE_EXTENSIONS: Tuple[str, ...] = tuple(sorted(
-    TEXT_EXTENSIONS | PDF_EXTENSIONS | OFFICE_EXTENSIONS
-))
+#: indexers derive their default from this; neither keeps a list of its own, and
+#: since `B162` it is ``document_processor.INGESTIBLE_EXTS`` — the set
+#: `upload_handler.is_document_file` already answers with — rather than a
+#: parallel union that happened to be built from two of the same three parts.
+INDEXABLE_EXTENSIONS: Tuple[str, ...] = tuple(sorted(INGESTIBLE_EXTS))
 
 # Why a file under an indexed directory is not in the index. Three reasons, kept
 # separate because they mean different things to the person who indexed it: a
-# format nothing here reads, a file that read as nothing (an encrypted PDF, a
-# scan with no text layer, an Office file with markitdown not installed), and a
-# file that could not be opened at all.
+# format nothing here reads *and* whose bytes do not decode as text, a file that
+# read as nothing (an encrypted PDF, a scan with no text layer, an Office file
+# with markitdown not installed), and a file that could not be opened at all.
 SKIP_UNSUPPORTED = "unsupported extension"
 SKIP_NO_TEXT = "no extractable text"
 SKIP_UNREADABLE = "could not be read"
@@ -105,10 +133,35 @@ class PersonalDocsConfig:
 config = PersonalDocsConfig()
 
 def read_text_file(path: str) -> str:
-    """Read a text file with error handling."""
+    """Read a text file in the encoding its own bytes declare (`B162`).
+
+    This was ``open(..., encoding="utf-8", errors="ignore")`` — the exact call
+    `B101` removed from the chat path, left in place here because
+    `src/personal_docs.py` was another row's surface that wave. ``errors=
+    "ignore"`` does not mangle a legacy-encoded file, it **empties** it, and it
+    cannot raise, so nothing downstream ever knew. Measured on the tree before
+    this row, over files the index accepted and indexed:
+
+      * a cp1251 Russian ``.txt`` indexed as ``'  '`` — two spaces, **zero
+        tokens**, so it matched no query and reported no error;
+      * a cp1250 Polish ``.txt`` reading ``Zażółć gęślą jaźń`` indexed as
+        ``'Za gl ja'``, so a search for the word the user typed missed a file
+        the index believed it held;
+      * a BOM'd UTF-16 ``.txt`` indexed as ``'a\\x00t\\x00t\\x00...'``, because
+        NUL is valid UTF-8 and ``ignore`` had nothing to drop.
+
+    ``document_processor.decode_text_file`` is this read with the encoding
+    sniffed from the first 8 KiB (BOM, then NUL-means-binary, then clean UTF-8,
+    then ``charset_normalizer`` when it decodes strictly cleaner) — one reader
+    for chat and index, so a file cannot be legible in a message and empty in
+    the search (`Law 13`).
+
+    The "never raises" contract is unchanged: every caller here treats ``""`` as
+    "nothing to index", and ``walk_index_candidates`` reports that as
+    ``SKIP_NO_TEXT``.
+    """
     try:
-        with open(path, "r", encoding="utf-8", errors="ignore") as f:
-            return f.read()
+        return decode_text_file(path)
     except Exception:
         return ""
 
@@ -129,16 +182,72 @@ def extractor_for(name: str):
     return None
 
 
+def extract_index_text(path: str, name: str = None) -> Tuple[str, str]:
+    """``(text, reason)`` for one file, by the same dispatch chat ingest uses.
+
+    `B162`/`B180`. One place answers "can we read this file", and it answers it
+    in two steps, which is the shape `B76` measured and `build_user_content`
+    already runs:
+
+      1. **The registers say which extractor.** `.pdf` -> pypdf, an Office
+         format -> ``markitdown_runtime`` (markitdown, or the bundled
+         `.docx`/`.odt`/`.doc` readers), a registered text suffix -> the encoding
+         sniffer.
+      2. **When no register claims the file, the bytes decide whether to read
+         it.** ``sniff_text_encoding`` is the same verdict
+         ``document_processor.looks_like_text`` returns for an attachment, so a
+         `.conf`, a `.toml` or a `.rst` that a person can paste into a chat is
+         indexed rather than called "unsupported extension" — which is `B162`'s
+         `Verify` clause, and the reason a register alone could not have met it.
+
+    Refusing to guess from the suffix alone is the whole point: the registers
+    keep their real job (*which* extractor) and never regain the one they were
+    wrong at (*whether* to bother).
+
+    Reasons, not silence: a caller gets ``SKIP_UNSUPPORTED`` when nothing reads
+    the format and the bytes are not text, ``SKIP_NO_TEXT`` when an extractor ran
+    and produced nothing, and ``SKIP_UNREADABLE`` when it raised or the file
+    could not be opened at all.
+    """
+    label = name or path
+    fn = extractor_for(label)
+    if fn is None:
+        # `B76`'s rule, now the index's too. This is one bounded ``read(8192)``
+        # and it is paid only by files no register claims — i.e. only by files
+        # whose current cost is "not in the index at all". ``sniff_text_encoding``
+        # is the function ``looks_like_text`` is a two-line wrapper around; it is
+        # called directly here so that a file which cannot be OPENED is reported
+        # as unreadable instead of being filed under "unsupported extension",
+        # which would be a lie about a format that may be perfectly supported.
+        try:
+            with open(path, "rb") as fh:
+                head = fh.read(TEXT_SNIFF_BYTES)
+        except OSError as e:
+            logger.warning(f"probe {path}: {e}")
+            return "", SKIP_UNREADABLE
+        if sniff_text_encoding(head) is None:
+            return "", SKIP_UNSUPPORTED
+        fn = read_text_file
+    try:
+        text = fn(path) or ""
+    except Exception as e:                      # noqa: BLE001 - reported, not swallowed
+        logger.error(f"extract {path}: {e}")
+        return "", SKIP_UNREADABLE
+    if not text.strip():
+        return "", SKIP_NO_TEXT
+    return text, ""
+
+
 def extract_document_text(path: str) -> str:
     """Text for one indexable file, through its registered extractor (`B75`).
 
-    Returns "" for a format nothing here reads — the caller decides whether that
-    is a skip to report or a file to drop.
+    Returns "" for a file nothing here can read — the caller decides whether that
+    is a skip to report or a file to drop. `B162` widened "can read" from the
+    registers alone to the registers plus the decode probe, so this answers for
+    a `.conf` the way chat ingest does; ``extract_index_text`` is the same call
+    with the reason attached.
     """
-    fn = extractor_for(path)
-    if fn is None:
-        return ""
-    return fn(path) or ""
+    return extract_index_text(path)[0]
 
 
 def walk_index_candidates(directory: str, extensions=None):
@@ -152,14 +261,23 @@ def walk_index_candidates(directory: str, extensions=None):
     so two runs over one directory produce the same order.
 
     ``extensions`` narrows the walk for a caller that deliberately wants a
-    subset of the register; the default is everything the register can read.
-    The narrowing is applied only to files some extractor COULD have read — a
-    format nothing here reads is reported whatever the caller asked for, because
-    "you narrowed to .md" is not why a ``.psd`` is missing from the index.
+    subset of the register; the default is everything this box can read. The
+    narrowing is applied only to files that COULD have been read — a file
+    nothing here reads is reported whatever the caller asked for, because "you
+    narrowed to .md" is not why a ``.psd`` is missing from the index.
+
+    `B162`: naming the whole register is not a narrowing. Both indexers pass it
+    explicitly (``config.DEFAULT_EXTENSIONS`` / ``rag_vector.DEFAULT_FILE_
+    EXTENSIONS``) and they mean "everything", so a set that covers the register
+    is treated as no filter at all — otherwise the byte-decoded formats, which
+    by definition have no registered suffix, would be filtered out by the
+    default argument of the only two callers there are.
     """
     allowed = None
     if extensions is not None:
         allowed = {str(e).lower() for e in extensions}
+        if allowed.issuperset(INDEXABLE_EXTENSIONS):
+            allowed = None
     for root, dirs, names in os.walk(directory):
         # Hidden/junk pruning is single-sourced in src.index_walk (#5559); the
         # passed-in root is exempt, as it is for both indexers today.
@@ -169,25 +287,20 @@ def walk_index_candidates(directory: str, extensions=None):
                 continue
             path = os.path.join(root, name)
             ext = os.path.splitext(name)[1].lower()
-            fn = extractor_for(name)
-            if fn is None:
-                yield path, ext, "", SKIP_UNSUPPORTED
-                continue
-            if allowed is not None and ext not in allowed:
+            registered = extractor_for(name) is not None
+            # A registered format the caller narrowed away costs nothing: the
+            # extractor never runs. An unregistered one has to be probed before
+            # this can tell "you asked not to see it" from "nothing reads it",
+            # and the probe is the bounded 8 KiB read, not the extraction.
+            if registered and allowed is not None and ext not in allowed:
                 continue
             if not os.path.isfile(path):
                 yield path, ext, "", SKIP_UNREADABLE
                 continue
-            try:
-                text = fn(path) or ""
-            except Exception as e:                      # noqa: BLE001 - reported, not swallowed
-                logger.error(f"extract {path}: {e}")
-                yield path, ext, "", SKIP_UNREADABLE
+            text, reason = extract_index_text(path, name)
+            if not reason and allowed is not None and ext not in allowed:
                 continue
-            if not text.strip():
-                yield path, ext, "", SKIP_NO_TEXT
-                continue
-            yield path, ext, text, ""
+            yield path, ext, text, reason
 
 
 def split_chunks(text: str, size: int = config.CHUNK_SIZE, overlap: int = config.CHUNK_OVERLAP) -> List[str]:
@@ -212,9 +325,25 @@ def split_chunks(text: str, size: int = config.CHUNK_SIZE, overlap: int = config
     return chunks
 
 def tokenize(s: str) -> Set[str]:
-    """Tokenize string into words, excluding stop words."""
+    """Tokenize string into words, excluding stop words.
+
+    `B200`: the pattern was ``[A-Za-z0-9_\\-]+``, so the keyword index scored
+    every document on its ASCII fragments alone. Measured: ``сервер порт
+    настройка`` tokenises to **nothing at all**, and so does Greek; Polish
+    ``Zażółć gęślą jaźń pchnąć`` tokenises to ``{za, ja, pchn}`` — the pieces
+    between the accents, none of which is a word anyone would search for. A
+    correctly decoded, correctly indexed Russian document therefore matched no
+    query, including a query copied out of the document.
+
+    ``\\w`` is Unicode-aware for ``str`` patterns in Python 3 and is a strict
+    superset of the old class (letters, digits and ``_``), so every token the
+    index held before it still holds. **What this does not fix**: a script that
+    does not put spaces between words — Chinese, Japanese, Thai — still yields
+    one token per run of characters. That needs segmentation, not a character
+    class, and it is not something a regex will ever answer.
+    """
     text = s if isinstance(s, str) else ""
-    tokens = re.findall(r"[A-Za-z0-9_\-]+", text.lower())
+    tokens = re.findall(r"[\w\-]+", text.lower())
     return set(t for t in tokens if t not in config.STOP_WORDS and len(t) > 1)
 
 def load_personal_index(

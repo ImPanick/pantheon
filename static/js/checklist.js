@@ -95,12 +95,13 @@ export function stepChipClass(modifier) {
  *
  * `.plan-inline-execute` is ONE control with two builders — the docked window
  * (`planWindow.js`) and the inline actions on a plan-mode bubble
- * (`chat.js:_attachPlanActions`) — and each drew its own polygon. Re-measured
- * 2026-09-14: the product had **seven** hand-written play triangles in **two**
- * geometries, `7 4 20 12 7 20 7 4` at these two sites and `6 4 20 12 6 20 6 4`
- * at the other five (`queuePanel.js`, `tasks.js` twice, `chat.js`'s queued
- * pill, `cookbookRunning.js`). The majority spelling wins, so the product now
- * draws one play triangle rather than two that differ by a pixel; the remaining
- * five literals are `B81`.
+ * (`chat.js:_attachPlanActions`) — and each drew its own polygon. `B12` shared
+ * them here on the majority of the seven sites it could see.
+ *
+ * `B83` re-measured the whole surface: **eighteen** play triangles in **four**
+ * geometries, and `6 4 20 12 6 20 6 4` is the minority of those. The glyph's
+ * home is `icons.js` now — a triangle five unrelated modules want does not
+ * belong in the checklist module — and this is a re-export, not a second copy,
+ * so the two builders that import it from here keep working (`Law 1`).
  */
-export const PLAY_POINTS = '6 4 20 12 6 20 6 4';
+export { PLAY_POINTS } from './icons.js';

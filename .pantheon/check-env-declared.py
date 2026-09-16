@@ -194,16 +194,174 @@ def declared() -> dict[str, int]:
     return found
 
 
-def literal_reads() -> dict[str, set]:
-    """Name → files that read it with a string literal."""
-    found: dict[str, set] = {}
+@lru_cache(maxsize=None)
+def _parsed(rel: str):
+    """`(source, tree)` for one tracked file, parsed once per process.
+
+    `B220`. Seven passes below walk every tracked `.py`, and before this each
+    one re-read and re-parsed all 360 of them: 2.4s of parsing, seven times, in
+    a checker that CI and eight tests invoke. Keyed on the repository-relative
+    path and read through `ROOT`, so a test that points the module at a fixture
+    repository gets its own module object and its own empty cache (the loader in
+    `tests/test_env_boundaries.py` builds one per fixture). `Law 19` — nothing
+    edits a file during a run — is what makes caching a parse safe at all.
+
+    Returns `None` for a file that cannot be read or parsed, which is the same
+    `continue` every caller wrote by hand.
+    """
+    try:
+        source = (ROOT / rel).read_text(encoding="utf-8")
+        return source, ast.parse(source)
+    except (SyntaxError, OSError):
+        return None
+
+
+def _scan_files():
+    """`(rel, source, tree)` for every tracked `.py` the rules look at."""
     for rel in _tracked("*.py"):
         if rel.startswith(SKIP_PREFIXES):
             continue
-        try:
-            tree = ast.parse((ROOT / rel).read_text(encoding="utf-8"))
-        except (SyntaxError, OSError):
+        parsed = _parsed(rel)
+        if parsed is not None:
+            yield (rel, *parsed)
+
+
+def _is_environ_itself(node) -> bool:
+    """Whether this expression evaluates to the process environment mapping.
+
+    `B151`. **Deliberately narrower than `_environ_aliases`**, and the
+    difference is the row. That pass asks whether `os.environ` appears anywhere
+    in the assigned expression, which is right for the question it answers — it
+    decides which *comparisons* SPELLING and BOUNDARY are allowed to judge, and
+    a false positive there costs one `# env-spelling:` hold. This one feeds the
+    UNDECLARED **count**, where a false positive is a phantom undeclared
+    variable in a number an operator reads off `ci.yml`.
+
+    Measured 2026-09-16, reusing `_environ_aliases` here: **UNDECLARED 71 → 88,
+    and all 17 added names are false.** `mcp_servers/email_server.py` builds
+    `cfg = {... os.environ.get(...) ...}`, which makes `cfg` an "alias", and
+    then `cfg["imap_password"]` reads as an environment variable named
+    `imap_password` — fifteen of them from that one dict. `scripts/hf_download.py`
+    does the same with a `kwargs` dict. That is not a widening, it is noise, and
+    it is why this rule asks whether the value *is* the mapping.
+    """
+    if _is_environ(node):
+        return True
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
+            and node.func.attr == "copy" and _is_environ(node.func.value):
+        return True
+    if isinstance(node, ast.IfExp):
+        return _is_environ_itself(node.body) or _is_environ_itself(node.orelse)
+    if isinstance(node, ast.BoolOp):
+        return any(_is_environ_itself(v) for v in node.values)
+    return False
+
+
+def _environ_names(scope) -> set:
+    """Local names bound to the environment mapping itself, in this scope only.
+
+    Scope-respecting for the reason `_own_body` exists: a module-wide walk would
+    let an `env` in one function name an `env` in another (`B98` reported 104
+    findings against 9 real ones that way once already).
+    """
+    names = set()
+    for node in _own_body(scope):
+        target = None
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 \
+                and isinstance(node.targets[0], ast.Name):
+            target, value = node.targets[0].id, node.value
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) \
+                and node.value is not None:
+            target, value = node.target.id, node.value
+        if target is not None and _is_environ_itself(value):
+            names.add(target)
+    return names
+
+
+def _aliased_reads(rel: str, tree) -> dict[str, set]:
+    """Name → files, for reads through a local bound to `os.environ`.
+
+    `B151`. `src/host_docker_access.py` writes `env = os.environ if environ is
+    None else environ` and then `env.get(HOST_DOCKER_ENV_VAR)`; `B98` found that
+    site through its own dataflow pass and recorded that `literal_reads` still
+    could not see it, deliberately, with the asymmetry written down nowhere.
+    It is written down now and the scan sees the shape.
+
+    **Measured before widening, because the objection to widening was that the
+    ratchet would move without a line of product code changing:** it does not.
+    The tree has exactly three strict-alias sites and this rule adds **zero**
+    names to UNDECLARED (71 before, 71 after). Two are
+    `routes/cookbook_routes.py` writing `env["PYTHONUTF8"] = "1"` into a *copy*
+    it hands a subprocess — a variable we set for a child, not one we read from
+    the operator, which is why only a `Load` subscript counts — and the third is
+    `host_docker_access` naming its variable through a module constant, which
+    `literal_reads` refuses to resolve for the reason `_env_name_of` documents.
+    So this is a rule that catches the next one rather than the current one, and
+    that is stated rather than implied.
+
+    **`Load` only, and `literal_reads`' own `os.environ[...]` branch is not**,
+    which is the one place these two halves disagree. `os.environ["X"] = v` writes into *this*
+    process's environment, so the name is one this program uses either way and
+    counting it is defensible; `env = os.environ.copy()` then `env["X"] = v`
+    writes into a mapping that is about to be handed to a child, and the name is
+    one we are *setting*, not one an operator may configure. Measured: eight
+    `os.environ[...] =` sites, every one of their names already declared or in
+    `NOT_OURS`, so narrowing that branch would change the count by zero and
+    `Law 1` says leave it alone.
+    """
+    found: dict[str, set] = {}
+    scopes = [tree] + [n for n in ast.walk(tree)
+                       if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    for scope in scopes:
+        names = _environ_names(scope)
+        if not names:
             continue
+        for node in _own_body(scope):
+            name = None
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
+                    and node.func.attr in ("get", "pop") \
+                    and isinstance(node.func.value, ast.Name) \
+                    and node.func.value.id in names and node.args \
+                    and isinstance(node.args[0], ast.Constant) \
+                    and isinstance(node.args[0].value, str):
+                name = node.args[0].value
+            elif isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name) \
+                    and node.value.id in names and isinstance(node.ctx, ast.Load) \
+                    and isinstance(node.slice, ast.Constant) \
+                    and isinstance(node.slice.value, str):
+                name = node.slice.value
+            if name:
+                found.setdefault(name, set()).add(rel)
+    return found
+
+
+def literal_reads() -> dict[str, set]:
+    """Name → files that read it with a string literal.
+
+    **What this scan does not see, and why.** It feeds the UNDECLARED ratchet,
+    whose ceiling an operator reads off `.github/workflows/ci.yml`, so every
+    widening of it moves a number without a line of product code changing and
+    has to be measured before it ships. Two asymmetries are deliberate and this
+    is where both are written down (`B151`) — the second scan they disagree with
+    is `B98`'s dataflow pass, which is wider on purpose in both directions:
+
+    1. **A module-level string constant is not resolved.** `os.getenv(NAME_CONST)`
+       is invisible here and visible to `_env_name_of`, which says why at its own
+       docstring. `src/host_docker_access.py:50` is the site that makes the
+       asymmetry concrete: `env.get(HOST_DOCKER_ENV_VAR)`.
+    2. **An `os.environ` alias is resolved, but only a strict one.** See
+       `_is_environ_itself` for the measurement — reusing `_environ_aliases`,
+       which is the pass `B98` built and the obvious thing to reach for, takes
+       UNDECLARED from 71 to 88 and every one of the 17 added names is false.
+    """
+    found: dict[str, set] = {}
+    for rel, source, tree in _scan_files():
+        # An alias can only come from an expression naming `environ`, so a file
+        # without the word cannot have one. Exact, not a heuristic: `_is_environ`
+        # tests an attribute spelled `environ`, which has to be in the source.
+        if "environ" in source:
+            for name, files in _aliased_reads(rel, tree).items():
+                found.setdefault(name, set()).update(files)
         for node in ast.walk(tree):
             name = None
             if isinstance(node, ast.Call):
@@ -351,7 +509,11 @@ def _settings_receiver(node) -> bool:
     return "etting" in receiver
 
 
+@lru_cache(maxsize=None)
 def _module_consts(tree) -> dict:
+    # Memoised (`B220`), pure, keyed on the tree `_parsed` holds alive. Four
+    # rules ask for the same file's constants and one of them used to ask once
+    # per function in it.
     return {n.targets[0].id: _str(n.value) for n in ast.walk(tree)
             if isinstance(n, ast.Assign) and len(n.targets) == 1
             and isinstance(n.targets[0], ast.Name) and _str(n.value)}
@@ -386,13 +548,7 @@ def unreachable(defaults: dict) -> list[str]:
     and is the only correspondence a reader can check without running anything.
     """
     found = []
-    for rel in _tracked("*.py"):
-        if rel.startswith(SKIP_PREFIXES):
-            continue
-        try:
-            tree = ast.parse((ROOT / rel).read_text(encoding="utf-8"))
-        except (SyntaxError, OSError):
-            continue
+    for rel, _source, tree in _scan_files():
         consts = _module_consts(tree)
         scopes = [n for n in ast.walk(tree)
                   if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))] + [tree]
@@ -455,13 +611,7 @@ def unreachable(defaults: dict) -> list[str]:
 def mixed_layers() -> list[str]:
     """One dict, some values env-backed and one read straight off settings."""
     found = []
-    for rel in _tracked("*.py"):
-        if rel.startswith(SKIP_PREFIXES):
-            continue
-        try:
-            tree = ast.parse((ROOT / rel).read_text(encoding="utf-8"))
-        except (SyntaxError, OSError):
-            continue
+    for rel, _source, tree in _scan_files():
         # `routes/email_helpers.py` spells it `_v = lambda k, e, d="": env_backed(...)`
         # and eleven values later that lambda is the only thing distinguishing the
         # ten fields that reach the environment from the one that does not.
@@ -573,8 +723,14 @@ def _truthiness_values(node):
     return values
 
 
+@lru_cache(maxsize=None)
 def _own_body(scope):
     """Nodes belonging to `scope` itself, stopping at a nested scope.
+
+    Memoised (`B220`). Pure, and AST nodes hash by identity while `_parsed`
+    holds the tree alive, so the cache is exact rather than approximate. It is
+    worth having because `_origin_map` walks the same scope three times and
+    every rule below walks it again: 1,900 calls became 240.
 
     `ast.walk` does not stop, and that is the whole reason the first draft of
     this pass reported 104 findings against 9 real ones: walking a module
@@ -770,6 +926,23 @@ def _scopes_with_origins(tree, consts: dict):
             yield node, _origin_map(node, consts, module_map)
 
 
+@lru_cache(maxsize=None)
+def _origins_for(rel: str) -> tuple:
+    """`_scopes_with_origins` for one file, built once per process.
+
+    `B220`. SPELLING, BOUNDARY and VOCABULARY each asked for the same file's
+    origin maps and each rebuilt them: three identical passes over every scope
+    in the tree. The maps are read and never written — `_origins_in` and
+    `_read_lines` only look things up — so sharing one copy between the three
+    rules is the same answer computed once.
+    """
+    parsed = _parsed(rel)
+    if parsed is None:
+        return ()
+    tree = parsed[1]
+    return tuple(_scopes_with_origins(tree, _module_consts(tree)))
+
+
 def _held(lines, lineno: int, pattern, *also: int) -> bool:
     """Whether a `# <kind>-spelling:` reason sits on or above any of these lines.
 
@@ -817,18 +990,13 @@ def spellings() -> list[str]:
     now.
     """
     found = []
-    for rel in _tracked("*.py"):
-        if rel.startswith(SKIP_PREFIXES) or rel == "src/env_flags.py":
-            continue
-        try:
-            source = (ROOT / rel).read_text(encoding="utf-8")
-            tree = ast.parse(source)
-        except (SyntaxError, OSError):
+    for rel, source, tree in _scan_files():
+        if rel == "src/env_flags.py":
             continue
         lines = source.splitlines()
         consts = _module_consts(tree)
         seen = set()
-        for scope, origins in _scopes_with_origins(tree, consts):
+        for scope, origins in _origins_for(rel):
             for node in _own_body(scope):
                 values = _truthiness_values(node)
                 if values is None:
@@ -866,6 +1034,28 @@ BOUNDARY_OWNERS = {
     "model tool argument": "src/env_flags.py:tool_arg_truthy",
     "skill frontmatter": "services/memory/skill_format.py:_parse_scalar",
 }
+# Sites whose yes/no word is somebody else's convention, and whose it is.
+#
+# `B153`. `B97` named four boundaries and gave each exactly one owner, and the
+# count that produced those four turned up a fifth producer with one site and
+# no owner: third-party API JSON. One site is not a vocabulary, and inventing a
+# fifth rule for it would be `Law 14` — what was missing is the written answer
+# to *whose convention is this*, which is what `NOT_OURS` records for `PATH`
+# and what the hold at `core/database.py:112` records for SQLAlchemy.
+#
+# Keyed by `(file, function)` rather than by line, because a line number in a
+# register rots the first time somebody adds an import. Checked rather than
+# written down: `stale_foreign_producers` fails the run when a registered site
+# no longer reads a yes/no word at all, for the same reason `NOT_OURS` fails
+# when it names a variable nothing reads any more — an exemption that outlives
+# its call site hides the next one that needs looking at (`B98`).
+FOREIGN_PRODUCERS = {
+    ("core/database.py", "_sqlite_db_path"):
+        "SQLAlchemy — `?uri=true` is its own spelling in a connection URL",
+    ("services/hwfit/image_models.py", "_variant_score"):
+        "huggingface.co's model-search API — `private` is a JSON boolean, "
+        "decoded to a Python bool by json.loads before this line reads it",
+}
 # The functions allowed to *contain* a yes/no vocabulary. Everything else that
 # does is a fourth rule at a boundary that already has one, which is the thing
 # `B97` exists to stop from happening a fifth time.
@@ -902,18 +1092,13 @@ def boundaries() -> list[str]:
     Hard rule, max 0 unexempted.
     """
     found = []
-    for rel in _tracked("*.py"):
-        if rel.startswith(SKIP_PREFIXES) or rel == "src/env_flags.py":
-            continue
-        try:
-            source = (ROOT / rel).read_text(encoding="utf-8")
-            tree = ast.parse(source)
-        except (SyntaxError, OSError):
+    for rel, source, tree in _scan_files():
+        if rel == "src/env_flags.py":
             continue
         lines = source.splitlines()
         consts = _module_consts(tree)
         seen = set()
-        for scope, origins in _scopes_with_origins(tree, consts):
+        for scope, origins in _origins_for(rel):
             for node in _own_body(scope):
                 values = _truthiness_values(node)
                 if values is None:
@@ -960,13 +1145,7 @@ def inert_reads() -> list[str]:
     every tracked `.py`: **one**, and it is the one above.
     """
     found = []
-    for rel in _tracked("*.py"):
-        if rel.startswith(SKIP_PREFIXES):
-            continue
-        try:
-            tree = ast.parse((ROOT / rel).read_text(encoding="utf-8"))
-        except (SyntaxError, OSError):
-            continue
+    for rel, _source, tree in _scan_files():
         consts = _module_consts(tree)
         environs = _environ_aliases(tree)
         assigned = {}
@@ -1021,22 +1200,22 @@ def rival_vocabularies() -> list[str]:
     its own, and says why at the line.
     """
     found = []
-    for rel in _tracked("*.py"):
-        if rel.startswith(SKIP_PREFIXES):
-            continue
-        try:
-            source = (ROOT / rel).read_text(encoding="utf-8")
-            tree = ast.parse(source)
-        except (SyntaxError, OSError):
-            continue
+    for rel, source, tree in _scan_files():
         lines = source.splitlines()
-        for scope in ast.walk(tree):
-            if not isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
+        # `B220`. These two are functions of the *file*, and they were being
+        # recomputed for every function in it — 27.4s of a 43s run, because a
+        # module with sixty functions built sixty identical module-level origin
+        # maps. Hoisted; the per-scope map below still takes the module map as
+        # its seed, exactly as before, and `_origin_map` copies its seed rather
+        # than mutating it, so the output is unchanged.
+        consts = _module_consts(tree)
+        # `_origins_for` yields the module scope first and then every function,
+        # which is the set this loop used to build for itself — one
+        # `_origin_map(tree, ...)` per function, sixty times in a sixty-function
+        # module. That was 27.4s of a 43.6s run (`B220`).
+        for scope, origins in _origins_for(rel)[1:]:
             if (rel, scope.name) in _OWNER_FUNCTIONS:
                 continue
-            consts = _module_consts(tree)
-            origins = _origin_map(scope, consts, _origin_map(tree, consts, {}))
             for node in _own_body(scope):
                 values = _truthiness_values(node)
                 if values is None:
@@ -1076,6 +1255,35 @@ def rival_vocabularies() -> list[str]:
     return sorted(set(found))
 
 
+def stale_foreign_producers() -> list[str]:
+    """Registered foreign producers whose site no longer reads a yes/no word.
+
+    `B153`. The register is a claim about a line of somebody else's code as it
+    appears in ours, and a claim nothing checks is the shape `B98` found: nine
+    `# env-spelling:` holds against eight sites the rule could reach, so one
+    exemption was decoration and deleting it would have failed no build. This
+    asks the narrow question the register can answer — is the named function
+    still there, and does it still compare against a yes/no word — and says so
+    when the answer is no.
+    """
+    out = []
+    for (rel, func), owner in sorted(FOREIGN_PRODUCERS.items()):
+        parsed = _parsed(rel)
+        if parsed is None:
+            out.append(f"{rel}:{func} — {owner} (the file is gone or unparseable)")
+            continue
+        scopes = [n for n in ast.walk(parsed[1])
+                  if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                  and n.name == func]
+        if not scopes:
+            out.append(f"{rel}:{func} — {owner} (the function is gone)")
+            continue
+        if not any(_truthiness_values(node) is not None
+                   for scope in scopes for node in _own_body(scope)):
+            out.append(f"{rel}:{func} — {owner} (no yes/no comparison left here)")
+    return out
+
+
 def exempt_spellings(pattern=None) -> list[str]:
     """The `# env-spelling:` / `# flag-spelling:` holds, for `--list`.
 
@@ -1087,13 +1295,8 @@ def exempt_spellings(pattern=None) -> list[str]:
     """
     out = []
     pattern = pattern or _SPELLING_EXEMPT
-    for rel in _tracked("*.py"):
-        if rel.startswith(SKIP_PREFIXES):
-            continue
-        try:
-            lines = (ROOT / rel).read_text(encoding="utf-8").splitlines()
-        except OSError:
-            continue
+    for rel, source, _tree in _scan_files():
+        lines = source.splitlines()
         for lineno, line in enumerate(lines, 1):
             match = pattern.search(line)
             if match:
@@ -1124,13 +1327,16 @@ def main() -> int:
     inert = inert_reads()
     held = exempt_spellings()
     flag_held = exempt_spellings(_FLAG_EXEMPT)
+    foreign_stale = stale_foreign_producers()
 
     print(f"env vars  read {len(reads)}  ·  declared {len(known)}  ·  "
           f"not ours {len(NOT_OURS)}  ·  UNDECLARED {len(missing)} (max {args.max})  ·  "
           f"UNREFERENCED {len(dead)} (max 0)  ·  UNREACHABLE {len(stranded)} (max 0)  ·  "
           f"MIXED {len(split)} (max 0)  ·  SPELLING {len(spelled)} (max 0, "
           f"{len(held)} held)  ·  BOUNDARY {len(crossed)} (max 0, {len(flag_held)} held)"
-          f"  ·  VOCABULARY {len(rivals)} (max 0)  ·  INERT {len(inert)} (max 0)")
+          f"  ·  VOCABULARY {len(rivals)} (max 0)  ·  INERT {len(inert)} (max 0)"
+          f"  ·  FOREIGN {len(FOREIGN_PRODUCERS)} registered, "
+          f"{len(foreign_stale)} stale (max 0)")
 
     failed = False
     if inert:
@@ -1140,6 +1346,15 @@ def main() -> int:
               "`PANTHEON_SINGLE_USER=0` did nothing for the life of the file "
               "(`B150`, found by `B96`):")
         for line in inert:
+            print(f"    {line}")
+    if foreign_stale:
+        failed = True
+        print("\n  A registered foreign producer whose site has moved on. The "
+              "register answers *whose convention is this* for a yes/no word "
+              "that is not one of the four boundaries (`B153`); an entry that "
+              "outlives its call site hides the next producer that needs an "
+              "owner:")
+        for line in foreign_stale:
             print(f"    {line}")
     if crossed:
         failed = True
@@ -1211,6 +1426,11 @@ def main() -> int:
         print("\n  The four boundaries and who owns each (`B97`):")
         for boundary, owner in BOUNDARY_OWNERS.items():
             print(f"    {boundary:22} {owner}")
+        print("\n  Yes/no words that are somebody else's convention, and whose "
+              "(`B153`):")
+        for (rel, func), owner in sorted(FOREIGN_PRODUCERS.items()):
+            print(f"    {rel}:{func}()")
+            print(f"      {owner}")
     return 1 if failed else 0
 
 

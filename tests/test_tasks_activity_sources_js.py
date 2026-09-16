@@ -86,6 +86,10 @@ def sandbox(tmp_path_factory):
     # Activity view and the queue panel drift apart again without this file
     # noticing, which is the defect that module exists to close.
     shutil.copy(ROOT / "static" / "js" / "runStatus.js", d / "runStatus.js")
+    # `B83`: the same argument for the icon table. The Activity row's force and
+    # stop buttons take their glyphs from it, and a stub would let this file
+    # pass while the two controls it draws side by side drifted apart again.
+    shutil.copy(ROOT / "static" / "js" / "icons.js", d / "icons.js")
     return d
 
 

@@ -12,14 +12,19 @@ That trap is what most of these tests are about. "No CDN reference" and "Python
 runs" are two claims, and it is entirely possible to pass the first while
 breaking the second.
 """
+import asyncio
 import hashlib
 import json
 import re
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
+
+from core.middleware import SecurityHeadersMiddleware
 
 ROOT = Path(__file__).resolve().parent.parent
 RUNNER = ROOT / "static" / "js" / "codeRunner.js"
@@ -44,22 +49,35 @@ def strip_comments(text: str, *, html: bool = False) -> str:
     return text
 
 
-def app_csp() -> str:
+def app_csp(script_hashes: tuple = ()) -> str:
     """The policy served to the app, not the one served to report pages.
 
     Two blocks exist and they differ on purpose; asserting against 'whichever
-    matched first' is how a change to one gets credited to the other.
+    matched first' is how a change to one gets credited to the other — so this
+    asks for a path in the app branch and returns the header that branch set.
+
+    This used to `index()` into `core/middleware.py`'s source text for the
+    literal `script-src 'self' 'nonce-{nonce}'`. `B141` moved the inline
+    allowance from a per-request nonce to per-file `'sha256-…'` sources and the
+    marker stopped existing, which is `Law 20` collecting: a rule about a
+    policy has to read the policy, not the file it is written in. The
+    middleware is run instead, in the shape `test_document_render_pdf_iframe`
+    already runs it, and `script_hashes` is what `serve_html_with_nonce` stamps
+    on `request.state` for the page being served.
     """
-    text = MIDDLEWARE.read_text(encoding="utf-8")
-    marker = "script-src 'self' 'nonce-{nonce}'"
-    i = text.index(marker)
-    start = text.rindex('response.headers["Content-Security-Policy"]', 0, i)
-    end = text.index(")", text.index("frame-ancestors", i))
-    block = text[start:end]
-    # Comments explaining what the policy USED to allow name the host they no
-    # longer allow. Strip them: the assertion is about the directives.
-    return "\n".join(l for l in block.splitlines()
-                      if not l.strip().startswith("#"))
+    request = SimpleNamespace(
+        url=SimpleNamespace(path="/", scheme="http"),
+        headers={},
+        state=SimpleNamespace(csp_script_hashes=tuple(script_hashes)),
+    )
+    response = SimpleNamespace(headers={})
+
+    async def call_next(_req):
+        return response
+
+    mw = SecurityHeadersMiddleware(MagicMock())
+    asyncio.run(mw.dispatch(request, call_next))
+    return response.headers["Content-Security-Policy"]
 
 
 def test_every_pyodide_file_is_vendored():
@@ -149,8 +167,16 @@ def test_csp_did_not_get_looser_while_being_tightened():
     mistake — it also makes wasm work, and it re-enables eval()."""
     csp = app_csp()
     assert "'unsafe-eval'" not in csp.replace("'wasm-unsafe-eval'", "")
-    assert "script-src 'self' 'nonce-" in csp
+    assert csp.split("script-src ")[1].startswith("'self'")
     assert "'unsafe-inline'" not in csp.split("style-src")[0]
+    # `B141`. The inline allowance is per-block and derived from the served
+    # page — a hash where there was a nonce. Both are unforgeable; neither is
+    # `'unsafe-inline'`, and the point of asserting it with a hash present is
+    # that the widening this test exists to catch would show up exactly here,
+    # as a blanket source sitting beside the specific one.
+    with_page = app_csp(script_hashes=("'sha256-Zm9vYmFy'",))
+    assert "script-src 'self' 'sha256-Zm9vYmFy' 'wasm-unsafe-eval';" in with_page
+    assert "'unsafe-inline'" not in with_page.split("style-src")[0]
 
 
 def test_report_csp_is_untouched_and_still_has_no_wasm():

@@ -67,6 +67,16 @@ def _run_markdown_case(markdown: str, render_expr: str = "mod.mdToHtml(input)", 
         // which a data: URL module can't resolve. Inline the REAL helpers (minus
         // their export keywords) so the renderer's shortcode pass behaves exactly
         // as it does in the browser.
+        // `B83`. `markdown.js` takes its run-code play triangle from the shared
+        // icon table. Inlined rather than stubbed, on the same terms as the
+        // emoji module above: a stub would give this test a glyph nobody ships.
+        const iconsSource = fs.readFileSync('./static/js/icons.js', 'utf8')
+          .replace(/^export const /gm, 'const ')
+          .replace(/^export function /gm, 'function ');
+        source = source.replace(
+          /import \{ playIcon \} from ['"]\.\/icons\.js['"];/,
+          () => iconsSource
+        );
         const emojiSource = fs.readFileSync('./static/js/emojiShortcodes.js', 'utf8')
           .replace(/^export default .*$/m, '')
           .replace(/export const /g, 'const ')

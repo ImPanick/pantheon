@@ -38,7 +38,9 @@ that cannot execute. Both directions above said yes about
   reintroduction of two defects that have each already shipped once.
 """
 
+import contextlib
 import importlib.util
+import io
 import re
 import subprocess
 import sys
@@ -131,7 +133,7 @@ def test_a_dead_knob_fails_the_run_and_not_only_the_report(fixture_repo, monkeyp
     # satisfied and the dead-knob branch is the only thing that can fail the
     # run. Without this the two rules mask each other and the test passes for
     # the wrong reason — which is exactly what it is here to rule out.
-    exemptions = _load(_REPO).NOT_OURS
+    exemptions = _real().NOT_OURS
     reads = "import os\n" + "".join(f'os.getenv({n!r})\n' for n in exemptions)
     mod = fixture_repo(reads, "# GHOST_SETTING=1\n")
     monkeypatch.setattr(sys, "argv", ["check-env-declared.py"])
@@ -166,7 +168,64 @@ def test_a_knob_only_docker_compose_consumes_is_not_reported(fixture_repo):
 # ── against the real tree ─────────────────────────────────────────────────────
 
 
+_REAL: list = []
+_READS: list = []
+
+
+def _real():
+    """One real-tree checker module, shared by every test in this file.
+
+    `B220`. A checker invocation cost 43.6s and this file paid for eleven of
+    them — 348s of a 499s pair of files, and a visible plateau on a suite that
+    went from 11:44 to 16:07 across one wave. The module memoises its parse per
+    file, so the second question asked of one instance is nearly free, but only
+    if it is the same instance. Safe because `Law 19` forbids editing a file
+    during a run, and every test that changes this module does it through
+    `monkeypatch`, which puts it back.
+    """
+    if not _REAL:
+        _REAL.append(_load(_REPO))
+    return _REAL[0]
+
+
+def _real_reads() -> dict:
+    """`literal_reads()` over the real tree, scanned once for this file.
+
+    Ten parametrised cases asked the same question and each one walked every
+    tracked `.py` to answer it.
+    """
+    if not _READS:
+        _READS.append(_real().literal_reads())
+    return _READS[0]
+
+
 def _run(*args) -> subprocess.CompletedProcess:
+    """Run the checker the way CI runs it, in this process.
+
+    `B220`. This spawned `python3 .pantheon/check-env-declared.py` seven times
+    across this file. `main()` is the same entry point CI calls — it reads
+    `sys.argv`, prints the same report and returns the same exit code — so
+    calling it directly asks the same question of the same code, and
+    `test_the_exemption_list_cannot_go_stale` still spawns the script for real,
+    which keeps *the file works as a script* covered.
+    """
+    mod = _real()
+    argv = sys.argv
+    buffer = io.StringIO()
+    try:
+        sys.argv = ["check-env-declared.py", *args]
+        with contextlib.redirect_stdout(buffer):
+            code = mod.main()
+    finally:
+        sys.argv = argv
+    return subprocess.CompletedProcess(
+        args=["check-env-declared.py", *args], returncode=code,
+        stdout=buffer.getvalue(), stderr="")
+
+
+def _spawn(*args) -> subprocess.CompletedProcess:
+    """The script, as a script. Kept for the one test that rewrites the
+    checker's own source and therefore needs a fresh interpreter."""
     return subprocess.run([sys.executable, str(_CHECKER), *args],
                           cwd=str(_REPO), capture_output=True, text=True, timeout=180)
 
@@ -212,12 +271,12 @@ def test_the_exemption_list_cannot_go_stale():
             ),
             encoding="utf-8",
         )
-        proc = _run()
+        proc = _spawn()
         assert proc.returncode == 1
         assert "NOBODY_READS_THIS" in proc.stdout
     finally:
         _CHECKER.write_text(original, encoding="utf-8")
-    assert _run().returncode == 0
+    assert _spawn().returncode == 0
 
 
 # ── the entries this row added ────────────────────────────────────────────────
@@ -275,8 +334,7 @@ def test_the_search_provider_keys_are_findable(name):
 def test_each_documented_switch_is_one_the_code_actually_reads(name):
     # The failure mode on the other side of this row: documenting a variable
     # that does nothing. Every name added above is checked against a real read.
-    mod = _load(_REPO)
-    assert name in mod.literal_reads(), f"{name} is documented and nothing reads it"
+    assert name in _real_reads(), f"{name} is documented and nothing reads it"
 
 
 # ── `B20`: the third direction — can the variable do anything once read? ─────
@@ -495,7 +553,7 @@ def _fixture_that_only_fails_on_the_rule_under_test(fixture_repo, python, env_ex
     """`main()` runs every rule. A fixture that trips a second one passes for the
     wrong reason — so this reads every NOT_OURS name, which is what the
     stale-exemption rule needs, and declares exactly what it reads."""
-    exemptions = _load(_REPO).NOT_OURS
+    exemptions = _real().NOT_OURS
     preamble = "import os\n" + "".join(f"os.getenv({n!r})\n" for n in exemptions)
     mod = fixture_repo(preamble + python, env_example,
                        extra={"src/settings.py": defaults})
@@ -765,7 +823,7 @@ def test_the_spelling_rule_is_clean_against_the_real_tree():
 
 
 def test_every_held_site_in_the_real_tree_states_a_reason():
-    mod = _load(_REPO)
+    mod = _real()
     held = mod.exempt_spellings()
     assert held, "the hold list is not empty and the checker can enumerate it"
     for entry in held:

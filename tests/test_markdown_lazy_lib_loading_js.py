@@ -128,6 +128,16 @@ source = source.replace(
     return (row || '').replace(/^\s*\|/, '').replace(/\|\s*$/, '').split('|').map(c => c.trim());
   }`
 );
+// `B83`. `markdown.js` takes its run-code play triangle from the shared icon
+// table. Inlined rather than stubbed, on the same terms as the emoji module
+// above: a stub would give this test a glyph nobody ships.
+const iconsSource = fs.readFileSync('./static/js/icons.js', 'utf8')
+  .replace(/^export const /gm, 'const ')
+  .replace(/^export function /gm, 'function ');
+source = source.replace(
+  /import \{ playIcon \} from ['"]\.\/icons\.js['"];/,
+  () => iconsSource
+);
 const emojiSource = fs.readFileSync('./static/js/emojiShortcodes.js', 'utf8')
   .replace(/^export default .*$/m, '')
   .replace(/export const /g, 'const ')

@@ -473,6 +473,222 @@ def test_a_seventh_status_fails_the_checker_by_name(tmp_path, where, old, new, e
     assert expect in out, out
 
 
+# ---------------------------------------------------------------------------
+# `B171` — a run that answered nothing does not get an assistant turn
+# ---------------------------------------------------------------------------
+
+def _open(entry: dict) -> dict:
+    """Press *Open in chat* on `entry` and report what reached the session."""
+    return _h(ROW, "open", json.dumps(entry))
+
+
+def test_a_run_that_produced_no_answer_seeds_no_assistant_message():
+    """`B171`'s `Verify`, driven: the real `_openResultInChat` runs against a
+    stubbed session API and the injected payload is read back.
+
+    The statuses are not typed out — they are the ones `runLeftNoAnswer` picks
+    out of the vocabulary Python declares, so a seventh status that answers
+    nothing is covered the day it is added."""
+    from core.database import TASK_RUN_STATUSES
+
+    no_answer = [s for s in TASK_RUN_STATUSES if _h(ROW, "tone")[s] in ("error", "info")]
+    assert set(no_answer) == {"error", "skipped", "aborted"}, no_answer
+    for status in no_answer:
+        out = _open({"status": status, "kind": "llm", "taskName": "Nightly tidy",
+                     "result": "ValueError: boom"})
+        assert out["assistantSaid"] == [], (
+            f"{status}: the run's text is still attributed to the assistant")
+        assert out["roles"] == ["user"], f"{status}: {out['roles']}"
+        body = out["messages"][0]["content"]
+        # The text is still there — the row is about attribution, not about
+        # hiding the error (`Law 1`).
+        assert "ValueError: boom" in body
+        # And the note says which outcome it was, in the shared table's word.
+        word = {"error": "Failed", "skipped": "Skipped", "aborted": "Stopped"}[status]
+        assert f"Run status: {word}" in body, body
+
+
+def test_a_successful_run_still_opens_exactly_as_it_did():
+    """`Law 1`. The success path is the one case where the stored text really is
+    the assistant's turn, and nothing about it moves."""
+    out = _open({"status": "success", "kind": "llm", "taskName": "Nightly tidy",
+                 "result": "All clear."})
+    assert out["roles"] == ["user", "assistant"]
+    assert out["assistantSaid"] == ["All clear."]
+    assert out["messages"][0]["content"] == (
+        'Here is the latest run of my scheduled task "Nightly tidy". '
+        "Let's review it.")
+
+
+def test_a_backticked_traceback_cannot_break_out_of_its_quote():
+    """The text being quoted is the kind that contains backticks. A fixed three
+    would let a fenced block inside a traceback close the quote early and put
+    the tail back into the prose the model reads as instructions."""
+    out = _open({"status": "error", "kind": "llm", "taskName": "T",
+                 "result": "boom\n```\ninner\n```\ntail"})
+    body = out["messages"][0]["content"]
+    fence = body.split("\n\n", 1)[1].split("\n", 1)[0]
+    assert len(fence) >= 4 and set(fence) == {"`"}, body
+    assert body.rstrip().endswith(fence)
+    assert body.count(fence) == 2, "the quote opens and closes exactly once"
+
+
+def test_both_surfaces_describe_the_open_control_the_same_way():
+    """`Law 13`. The Activity row and the Completed tab each build this button,
+    and before this row one said *Open in chat* and the other *Open chat* while
+    both promised a result to read on a run that had none. The two renderers are
+    run and their markup compared — not the expression that built it."""
+    row = _h(ROW, "row", json.dumps(
+        {"status": "error", "kind": "llm", "taskName": "A", "result": "boom"}))
+    tab = _h(ROW, "tab", json.dumps(
+        [{"status": "error", "task_type": "llm", "task_name": "A", "error": "boom"}]))
+    assert tab["rows"], tab
+    assert row["openLabel"] == tab["rows"][0]["openLabel"] == "Ask about this"
+    assert row["openTitle"] == tab["rows"][0]["openTitle"]
+    assert "no answer" in row["openTitle"]
+    ok_row = _h(ROW, "row", json.dumps(
+        {"status": "success", "kind": "llm", "taskName": "A", "result": "done"}))
+    ok_tab = _h(ROW, "tab", json.dumps(
+        [{"status": "success", "task_type": "llm", "task_name": "A", "result": "done"}]))
+    assert ok_row["openLabel"] == ok_tab["rows"][0]["openLabel"] == "Open in chat"
+    assert ok_row["openTitle"] == ok_tab["rows"][0]["openTitle"]
+
+
+def test_a_source_row_keeps_its_own_sentence():
+    """`Law 1`. A queued composer message has no run status and no result; its
+    button goes wherever the source says, and `B171` must not take that over."""
+    out = _h(ROW, "row", json.dumps(
+        {"status": "queued", "kind": "llm", "taskName": "Queued message",
+         "result": "", "onOpen": None, "openTitle": "Go to that chat"}))
+    # `onOpen` cannot survive JSON, so assert the shape that does reach the
+    # renderer: a queued row with no result draws no open control at all, which
+    # is the pre-existing rule this row did not touch.
+    assert out["openLabel"] is None
+
+
+# ---------------------------------------------------------------------------
+# `B170` — and raw SQL, which the ORM walk cannot see
+# ---------------------------------------------------------------------------
+
+_MIGRATION_SQL = "UPDATE task_runs SET status = 'skipped' "
+_MIGRATION_WHERE = "WHERE status = 'error' AND error LIKE :pat"
+
+
+def test_the_raw_sql_status_write_in_the_tree_is_found_and_classified():
+    """The measurement, driven rather than asserted: the detector is imported
+    and run over the real tree, and what it finds is compared with the register.
+
+    `B170` said there were two candidates, `core/database.py` and the test that
+    asserts against it. Re-measured, there is ONE: the test's SQL is
+    ``SELECT COUNT(*) FROM task_runs WHERE error LIKE :pat``, which names the
+    table and never the column, so it is not a status site at all."""
+    checker = _load_checker()
+    sites = {
+        (rel, fn): lits
+        for rel in checker._python_files()
+        if rel != checker.SELF
+        for _line, fn, lits in checker.raw_sql_status_sites(ROOT / rel)
+    }
+    assert set(sites) == set(checker.RAW_SQL_STATUS_SITES), (
+        "the register and the tree disagree about which raw-SQL statements "
+        f"touch task_runs.status: {sorted(sites)}")
+    live = {k: v for k, v in sites.items()
+            if checker.RAW_SQL_STATUS_SITES[k][0] == checker.LIVE}
+    assert live == {("core/database.py", "_migrate_reclassify_admin_refusals"):
+                    ["error", "skipped"]}
+    # Every `fixture` is in this file, which is the only honest reason to
+    # classify a status write as not-a-write: it is the material this checker
+    # is fed to prove it fails.
+    for rel, _fn in set(sites) - set(live):
+        assert rel == "tests/test_run_status_is_one_vocabulary.py", rel
+    for kind, why in checker.RAW_SQL_STATUS_SITES.values():
+        assert kind in (checker.LIVE, checker.FIXTURE), kind
+        assert len(why.split()) >= 10, f"the reason is not a reason: {why!r}"
+
+
+def test_the_raw_sql_scan_reads_statements_and_not_prose():
+    """`Law 20` from the other side. `core/database.py`'s migration spells its
+    own statement out in a docstring, this roadmap's rows quote it, and this
+    checker's diagnostics name the table and the column — so a scan that read
+    every string in a file would report all three. Only strings reachable from
+    a call or an assignment are read; a docstring and a comment are neither."""
+    checker = _load_checker()
+    prose = ROOT / "tests" / "__b170_prose_only.py"
+    prose.write_text(
+        '"""Re-files rows with UPDATE task_runs SET status = \'cancelled\'."""\n'
+        "# UPDATE task_runs SET status = 'cancelled' WHERE status = 'error'\n"
+        "def f():\n"
+        '    """UPDATE task_runs SET status = \'cancelled\'"""\n'
+        "    return 1\n", encoding="utf-8")
+    try:
+        assert checker.raw_sql_status_sites(prose) == []
+    finally:
+        prose.unlink()
+    # And the statement form IS found, in the same file shape, so the test above
+    # is not passing because the detector is broken.
+    live = ROOT / "tests" / "__b170_statement.py"
+    live.write_text(
+        "def g(conn):\n"
+        "    return conn.execute(\"UPDATE task_runs SET status = 'cancelled'\")\n",
+        encoding="utf-8")
+    try:
+        found = checker.raw_sql_status_sites(live)
+        assert [(fn, lits) for _l, fn, lits in found] == [("g", ["cancelled"])]
+    finally:
+        live.unlink()
+
+
+@pytest.mark.parametrize("old,new,expect", [
+    # `B170`'s `Verify`, word for word: the migration's literal moved outside
+    # the six fails `check-run-statuses` by name. Before this row the checker
+    # exited 0 on exactly this tree.
+    (_MIGRATION_SQL, "UPDATE task_runs SET status = 'cancelled' ", "cancelled"),
+    # The chain the row is actually about: a SECOND migration written the same
+    # way. It is `skipped` here, which is IN the vocabulary — so what has to
+    # fail is the absence of a decision about it, not the value.
+    ("def _migrate_reclassify_admin_refusals():",
+     "def _repair_stuck_runs():\n"
+     "    with engine.connect() as conn:\n"
+     "        conn.execute(text(\"UPDATE task_runs SET status = 'skipped' "
+     "WHERE status = 'running'\"))\n\n\n"
+     "def _migrate_reclassify_admin_refusals():",
+     "_repair_stuck_runs"),
+])
+def test_a_raw_sql_status_write_fails_the_checker_by_name(tmp_path, old, new, expect):
+    tree = _worktree(tmp_path)
+    assert _checker(tree)[0] == 0, "the copy must be clean before it is mutated"
+    src = (tree / "core" / "database.py").read_text(encoding="utf-8")
+    assert old in src, "anchor missing in core/database.py"
+    (tree / "core" / "database.py").write_text(src.replace(old, new, 1), encoding="utf-8")
+    code, out = _checker(tree)
+    assert code == 1, f"nothing failed:\n{out}"
+    assert expect in out, out
+
+
+def test_the_raw_sql_register_stays_a_description_of_the_tree(tmp_path):
+    """`check-config-writes.py`'s other half, and the reason a register is not
+    just a comment: an entry that no longer matches anything is a decision about
+    code that is gone, and it is how a register rots into a list nobody trusts."""
+    tree = _worktree(tmp_path)
+    src = (tree / "core" / "database.py").read_text(encoding="utf-8")
+    whole = _MIGRATION_SQL + '"\n                    "' + _MIGRATION_WHERE
+    assert whole in src, "the migration statement is not spelled the way this cuts it"
+    (tree / "core" / "database.py").write_text(
+        src.replace(whole, "SELECT 1 FROM task_runs WHERE error LIKE :pat", 1),
+        encoding="utf-8")
+    code, out = _checker(tree)
+    assert code == 1, f"nothing failed:\n{out}"
+    assert "RAW_SQL_STATUS_SITES classifies" in out, out
+
+
+def _load_checker():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("_check_run_statuses", CHECKER)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def test_every_stored_status_survives_the_whole_client_derivation():
     """`Law 20` — the checker reads the two tables, this drives the four
     functions that read them. The chain `B111` names is `runStatusTone`

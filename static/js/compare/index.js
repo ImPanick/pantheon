@@ -19,6 +19,7 @@ import { EVAL_PROMPTS, WAVE_FRAMES,
   EYE_OPEN, EYE_CLOSED, SAVE_ICON, CHAT_ICON,
   SEND_SVG, VOTES_STORAGE_KEY,
 } from './icons.js';
+import { stopIcon } from '../icons.js';
 import { fetchModels, _persistSelections, _modelDisplayNames, getExcludedModels, setExcludedModels } from './models.js';
 import { showModelSelector, disableToolToggles, restoreToolToggles, _syncToolbarIndicator } from './selector.js?v=20260723compareicon2';
 import { _checkUnprobed, _clearProbeWaves } from './probe.js';
@@ -448,7 +449,7 @@ async function _buildCompareUI() {
         '<span class="pane-timer" id="cmp-timer-' + i + '"></span>' +
         '<span class="pane-finish-badge" id="cmp-badge-' + i + '"></span>' +
         '<div class="pane-actions">' +
-          '<button class="pane-action-btn pane-stop-btn" data-action="stop" data-pane="' + i + '" title="Stop" style="display:none;"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button>' +
+          '<button class="pane-action-btn pane-stop-btn" data-action="stop" data-pane="' + i + '" title="Stop" style="display:none;">' + stopIcon({ size: 12 }) + '</button>' +
           '<button class="pane-action-btn pane-preview-btn" data-action="preview" data-pane="' + i + '" id="cmp-preview-' + i + '" title="Run preview" style="display:none;">' + ICON_PLAY + '</button>' +
           '<button class="pane-action-btn" data-action="reroll" data-pane="' + i + '" title="Re-roll">' + ICON_REROLL + '</button>' +
           '<button class="pane-action-btn" data-action="copy" data-pane="' + i + '" title="Copy">' + ICON_COPY + '</button>' +
@@ -548,7 +549,7 @@ function _setSendBtn(mode) {
   const btn = document.querySelector('.send-btn');
   if (!btn) return;
   if (mode === 'stop') {
-    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
+    btn.innerHTML = stopIcon({ size: 14 });
     btn.title = 'Stop all models';
     btn.dataset.mode = 'streaming';
     btn.classList.remove('mic-mode', 'newchat-mode');

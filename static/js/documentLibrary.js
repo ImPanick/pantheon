@@ -7,6 +7,7 @@
 
 import { topPortalZ } from './toolWindowZOrder.js';
 import uiModule from './ui.js';
+import { documentLanguage } from './attachmentLanguage.js';
 import sessionModule from './sessions.js';
 import spinnerModule from './spinner.js';
 import markdownModule from './markdown.js';
@@ -1468,22 +1469,30 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
   }
 
   /** Import files from disk into the document library */
+  /**
+   * `B161`. The 40-entry extension→language map that used to sit inside
+   * `libraryImportFiles` is gone — `documentLanguage()` is the server's own
+   * derivation, generated registers and all. What is left here is the one thing
+   * that map knew and the server cannot: `readFileContent` CONVERTS some files
+   * before they are stored, so the document's language describes what landed,
+   * not what was picked.
+   *
+   * Only these two need it. `.xlsx`/`.xls`/`.ods` were in the old map as `csv`
+   * and those entries were already dead — the spreadsheet branch below writes
+   * `language: 'csv'` itself and never reads the map.
+   */
+  const CONVERTED_TO = {
+    // mammoth → `htmlToMarkdown`, so what is stored is markdown whatever the
+    // file was.
+    '.docx': 'markdown',
+    // Measured 2026-09-16: `.doc` is NOT converted. `readFileContent` has a
+    // `.docx` branch and nothing else, so a `.doc` goes to the plain-text
+    // reader and stores its raw bytes. The answer it shipped with is kept
+    // rather than corrected here (`Law 1`); the missing branch is `B233`.
+    '.doc': 'markdown',
+  };
+
   async function libraryImportFiles(fileList) {
-    const EXT_TO_LANG = {
-      '.py': 'python', '.js': 'javascript', '.ts': 'typescript',
-      '.html': 'html', '.htm': 'html', '.css': 'css', '.md': 'markdown',
-      '.json': 'json', '.yml': 'yaml', '.yaml': 'yaml', '.sh': 'bash',
-      '.bash': 'bash', '.sql': 'sql', '.rs': 'rust', '.go': 'go',
-      '.java': 'java', '.c': 'c', '.cpp': 'cpp', '.h': 'c', '.hpp': 'cpp',
-      '.rb': 'ruby', '.php': 'php', '.xml': 'xml',
-      '.toml': 'toml', '.ini': 'ini', '.txt': '', '.log': '',
-      '.cfg': 'ini', '.conf': 'ini', '.env': '', '.jsx': 'javascript',
-      '.tsx': 'typescript', '.vue': 'html', '.svelte': 'html',
-      '.scss': 'css', '.sass': 'css', '.less': 'css',
-      '.csv': 'csv', '.tsv': 'csv',
-      '.xlsx': 'csv', '.xls': 'csv', '.ods': 'csv',
-      '.docx': 'markdown', '.doc': 'markdown',
-    };
 
     let imported = 0;
     let failed = 0;
@@ -1497,7 +1506,8 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
         const dotIdx = name.lastIndexOf('.');
         const ext = dotIdx >= 0 ? name.slice(dotIdx).toLowerCase() : '';
         const baseTitle = dotIdx > 0 ? name.slice(0, dotIdx) : name;
-        const language = EXT_TO_LANG[ext] !== undefined ? EXT_TO_LANG[ext] : null;
+        const language = CONVERTED_TO[ext] !== undefined
+          ? CONVERTED_TO[ext] : documentLanguage(name);
 
         const isSpreadsheet = ['.xlsx', '.xls', '.ods'].includes(ext);
         const isPdf = ext === '.pdf';

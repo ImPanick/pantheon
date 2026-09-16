@@ -271,6 +271,17 @@ def _variant_score(candidate: dict[str, Any], base_repo: str, want: str) -> floa
         score -= 200
     if "diffusers" in text:
         score += 50
+    # flag-spelling: not ours. `private` is huggingface.co's field in the JSON
+    # its model-search API returns, and in that JSON it is a **boolean** — by
+    # the time this line sees it, `json.loads` has already decoded `true` to a
+    # Python `True`, so there is no yes/no string here to have a vocabulary
+    # about. `B97` named four boundaries and gave each exactly one owner; this
+    # is the fifth producer `B153` found while counting them, and the answer is
+    # that it has an owner already and the owner is not us — the same answer
+    # `NOT_OURS` gives for `PATH` and `core/database.py:112` gives for
+    # SQLAlchemy's `?uri=true`. Registered in `FOREIGN_PRODUCERS` in
+    # `.pantheon/check-env-declared.py`, which fails the build if this site
+    # stops reading a yes/no word and the note outlives its call site.
     if str(candidate.get("private")).lower() == "true":
         score -= 10000
     return score

@@ -11,6 +11,7 @@ import { registerMenuDismiss } from './escMenuStack.js';
 import { computeProgressSignal } from './cookbookProgressSignal.js';
 import { portOf, nextFreePort } from './cookbookPorts.js';
 import { topPortalZ } from './toolWindowZOrder.js';
+import { PLAY_GLYPH, STOP_GLYPH, stopIcon } from './icons.js';
 
 // Human-friendly badge label for a task's internal status. Avoids surfacing
 // the word "error" in the sidebar — a server the user stopped or one that
@@ -2228,7 +2229,7 @@ export function _renderRunningTab() {
       const _secDot = (key && allTasks.some(_serveTaskFailed)) ? 'fail' : 'ok';
       const _dotTitle = key ? (_secDot === 'fail' ? 'Server not responding' : 'Reachable') : 'Local (this machine)';
       const _srvColor = _serverColorForTaskGroup(key || 'local', allTasks);
-      sec.insertAdjacentHTML('afterbegin', `<div class="cookbook-section-header${_srvColor ? ' has-server-color' : ''}" data-collapse="${bodyId}"${_serverHeaderStyle(_srvColor)}><svg class="cookbook-section-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg><span class="cookbook-srv-status ${_secDot}" title="${_dotTitle}" style="flex-shrink:0;position:relative;top:0px;"></span><span class="cookbook-section-title" style="margin:0;">${esc(sg.name)}</span><button class="cookbook-btn cookbook-stop-all-btn" data-stop-server="${esc(key)}" title="Stop all running servers"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true" style="vertical-align:-1px;margin-right:4px;"><rect x="5" y="5" width="14" height="14" rx="1.5"/></svg>Stop all</button><button class="cookbook-btn cookbook-clear-btn" data-clear-server="${esc(key)}" title="Clear finished tasks"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-1px;margin-right:4px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>Clear finished</button></div><div id="${bodyId}" class="cookbook-section-body"></div>`);
+      sec.insertAdjacentHTML('afterbegin', `<div class="cookbook-section-header${_srvColor ? ' has-server-color' : ''}" data-collapse="${bodyId}"${_serverHeaderStyle(_srvColor)}><svg class="cookbook-section-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg><span class="cookbook-srv-status ${_secDot}" title="${_dotTitle}" style="flex-shrink:0;position:relative;top:0px;"></span><span class="cookbook-section-title" style="margin:0;">${esc(sg.name)}</span><button class="cookbook-btn cookbook-stop-all-btn" data-stop-server="${esc(key)}" title="Stop all running servers">${stopIcon({ size: 11, style: 'vertical-align:-1px;margin-right:4px;' })}Stop all</button><button class="cookbook-btn cookbook-clear-btn" data-clear-server="${esc(key)}" title="Clear finished tasks"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-1px;margin-right:4px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>Clear finished</button></div><div id="${bodyId}" class="cookbook-section-body"></div>`);
     }
   }
 
@@ -2748,10 +2749,10 @@ export function _renderRunningTab() {
         items.push({ group: 'danger', label: 'Cancel', action: 'cancel', mobileOnly: true, custom: () => {} });
 
         const _MENU_ICONS = {
-          'start-now': '<polygon points="6 4 20 12 6 20 6 4"/>',
+          'start-now': PLAY_GLYPH,
           reconnect: '<path d="M1 4v6h6"/><path d="M3.5 15a9 9 0 1 0 2.1-9.4L1 10"/>',
           retry: '<path d="M1 4v6h6"/><path d="M3.5 15a9 9 0 1 0 2.1-9.4L1 10"/>',
-          stop: '<rect x="6" y="6" width="12" height="12" rx="1"/>',
+          stop: STOP_GLYPH,
           edit: '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/>',
           'edit-panel': '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/>',
           'register-endpoint': '<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',

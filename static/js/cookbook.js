@@ -1294,7 +1294,7 @@ async function _fetchDependencies() {
             <button type="button" id="recipe-copy-${esc(backend)}" class="cookbook-dep-recipe-copy" data-dep-recipe-copy="${esc(backend)}" title="Copy" aria-label="Copy" style="position:absolute;top:6px;right:6px;padding:3px 5px;background:none;border:none;color:inherit;opacity:0.7;cursor:pointer;display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
           </div>
           <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:6px;">
-            <button type="button" class="cookbook-dep-tag cookbook-dep-install cookbook-dep-recipe-run" data-dep-recipe-run="${esc(backend)}" style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>Run</button>
+            <button type="button" class="cookbook-dep-tag cookbook-dep-install cookbook-dep-recipe-run" data-dep-recipe-run="${esc(backend)}" style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;">${playIcon({ size: 11 })}Run</button>
           </div>
         </div>`;
     }
@@ -3223,6 +3223,7 @@ function _renderRecipes() {
 // ── Public API ──
 
 import * as Modals from './modalManager.js?v=20260723compareicon2';
+import { playIcon } from './icons.js';
 
 let _rendered = false;
 

@@ -50,6 +50,21 @@ def _load_checker(root: Path | None = None):
     return module
 
 
+_REAL: list = []
+
+
+def _real_checker():
+    """One real-tree checker module for the whole file (`B220`).
+
+    Six tests here each built their own and each paid the full scan. The module
+    memoises its parse per file, so sharing one instance turns five of those
+    six into lookups. Every test that changes it does so through `monkeypatch`.
+    """
+    if not _REAL:
+        _REAL.append(_load_checker())
+    return _REAL[0]
+
+
 @pytest.fixture
 def repo(tmp_path):
     """A one-file git repository the checker can be pointed at."""
@@ -553,7 +568,7 @@ def test_a_variable_another_module_imports_is_not_reported(repo):
 # ══ The real tree ══════════════════════════════════════════════════════════
 
 def test_the_real_tree_has_no_unexempted_spelling_boundary_or_vocabulary():
-    mod = _load_checker()
+    mod = _real_checker()
     assert mod.spellings() == []
     assert mod.boundaries() == []
     assert mod.rival_vocabularies() == []
@@ -565,7 +580,7 @@ def test_every_hold_is_a_hold_on_a_site_the_rules_can_reach():
     `exempt_spellings` counted **nine** environment holds while `spellings`
     could reach **eight** sites — so one exemption was decoration, and deleting
     it would have failed no build. Removing a hold must now break something."""
-    mod = _load_checker()
+    mod = _real_checker()
     holds = mod.exempt_spellings()
     assert holds, "precondition: there are holds to check"
     reachable = _env_sites_reachable(mod)
@@ -605,7 +620,7 @@ def test_the_undeclared_ratchet_is_not_loose():
     """`B98`. The ceiling stood at 74 while the real count was 72 — two names of
     slack is two undocumented variables a change could add with nothing saying
     so. A ratchet left loose is where the next regression hides."""
-    mod = _load_checker()
+    mod = _real_checker()
     missing = set(mod.literal_reads()) - set(mod.declared()) - set(mod.NOT_OURS)
     default = _checker_default_max()
     assert len(missing) == default, (
@@ -616,10 +631,312 @@ def test_the_undeclared_ratchet_is_not_loose():
 
 def _checker_default_max() -> int:
     """The ceiling the checker applies when nobody passes one — read by running
-    it, not by parsing its source."""
+    it, not by parsing its source.
+
+    `B220`. Still *run*, in this process rather than in a new one: `main()` is
+    the entry point CI calls and it prints the same header. The spawn cost 43.6s
+    a call and this file made two of them."""
+    import contextlib
+    import io
     import re
-    out = subprocess.run([sys.executable, str(_CHECKER)],
-                         cwd=_REPO, capture_output=True, text=True)
-    match = re.search(r"UNDECLARED \d+ \(max (\d+)\)", out.stdout)
-    assert match, out.stdout or out.stderr
+    mod = _real_checker()
+    argv = sys.argv
+    buffer = io.StringIO()
+    try:
+        sys.argv = ["check-env-declared.py"]
+        with contextlib.redirect_stdout(buffer):
+            mod.main()
+    finally:
+        sys.argv = argv
+    match = re.search(r"UNDECLARED \d+ \(max (\d+)\)", buffer.getvalue())
+    assert match, buffer.getvalue()
     return int(match.group(1))
+
+
+# ══ B151 — the two scans disagree, and now they say so ═════════════════════
+
+def test_the_undeclared_scan_sees_a_variable_read_through_an_environ_alias(repo):
+    """`B151`. `env = os.environ` followed by `env.get("X")` was invisible to
+    `literal_reads`, which is the scan the UNDECLARED ratchet counts, while
+    `B98`'s dataflow pass resolved the same alias for SPELLING and BOUNDARY.
+    Two scans, one tree, opposite answers, and nothing said so in either
+    docstring."""
+    mod = repo({"app.py": (
+        "import os\n"
+        "def resolve():\n"
+        "    env = os.environ\n"
+        "    return env.get('ALIASED_FLAG', '')\n"
+    )})
+    assert "ALIASED_FLAG" in mod.literal_reads()
+
+
+def test_the_conditional_alias_the_real_site_is_written_with_is_seen(repo):
+    """`src/host_docker_access.py:42` spells it `env = os.environ if environ is
+    None else environ`, which is the shape `B98` found and the reason this rule
+    resolves an `IfExp` rather than only a bare name."""
+    mod = repo({"app.py": (
+        "import os\n"
+        "def resolve(environ=None):\n"
+        "    env = os.environ if environ is None else environ\n"
+        "    return env.get('CONDITIONAL_FLAG', '')\n"
+    )})
+    assert "CONDITIONAL_FLAG" in mod.literal_reads()
+
+
+def test_a_dict_that_merely_contains_an_environment_read_is_not_an_alias(repo):
+    """**The measurement that decided the row.** Reusing `_environ_aliases`
+    here — the pass `B98` already built, and the obvious thing to reach for —
+    takes UNDECLARED from 71 to 88 in the real tree, and all 17 added names are
+    false. This is the shape that produces fifteen of them: a config dict built
+    from an environment read becomes an "alias", and every `cfg["imap_password"]`
+    below it reads as an environment variable named `imap_password`.
+
+    The wide pass is still right for what it answers — which comparisons
+    SPELLING may judge, where a false positive costs one held site — and it
+    stays wide. The narrow one feeds a count an operator reads off `ci.yml`."""
+    mod = repo({"app.py": (
+        "import os\n"
+        "def build():\n"
+        "    cfg = {'imap_host': os.environ.get('REAL_VARIABLE', '')}\n"
+        "    return cfg.get('imap_password', '')\n"
+    )})
+    names = set(mod.literal_reads())
+    assert "REAL_VARIABLE" in names
+    assert "imap_password" not in names, names
+    # The wide pass has not been narrowed to buy this; it still calls `cfg` an
+    # alias, because for its own question that is the safe direction.
+    import ast
+    scope = [n for n in ast.walk(ast.parse((mod.ROOT / "app.py").read_text()))
+             if isinstance(n, ast.FunctionDef)][0]
+    assert "cfg" in mod._environ_aliases(scope)
+    assert "cfg" not in mod._environ_names(scope)
+
+
+def test_a_variable_written_into_a_child_environment_is_not_a_read(repo):
+    """`routes/cookbook_routes.py` copies the environment and writes
+    `env["PYTHONUTF8"] = "1"` into it before handing it to a subprocess. That is
+    a variable we set for a child, not one an operator sets for us, so it does
+    not belong in a file that documents what an operator may configure — which
+    is why only a `Load` subscript counts."""
+    mod = repo({"app.py": (
+        "import os\n"
+        "def spawn():\n"
+        "    env = os.environ.copy()\n"
+        "    env['CHILD_ONLY'] = '1'\n"
+        "    return env.get('READ_BACK', '')\n"
+    )})
+    names = set(mod.literal_reads())
+    assert "CHILD_ONLY" not in names, names
+    assert "READ_BACK" in names
+
+
+def test_the_alias_rule_does_not_leak_one_functions_locals_into_another(repo):
+    """`B98` reported 104 findings against 9 real ones the first time a pass
+    here ignored scope. An `env` that is the environment in one function must
+    not make an `env` in another one the environment too."""
+    mod = repo({"app.py": (
+        "import os\n"
+        "def real():\n"
+        "    env = os.environ\n"
+        "    return env.get('GENUINE', '')\n"
+        "def unrelated(env):\n"
+        "    return env.get('NOT_THE_ENVIRONMENT', '')\n"
+    )})
+    names = set(mod.literal_reads())
+    assert "GENUINE" in names
+    assert "NOT_THE_ENVIRONMENT" not in names, names
+
+
+def test_the_widening_does_not_move_the_ratchet_in_the_real_tree():
+    """The objection to widening was that the ceiling is a number an operator
+    reads off `ci.yml` and a scan that suddenly sees more names would move it
+    without a line of product code changing. Measured rather than argued: the
+    tree has three strict-alias sites and this adds **zero** names."""
+    mod = _real_checker()
+    missing = set(mod.literal_reads()) - set(mod.declared()) - set(mod.NOT_OURS)
+    assert len(missing) == _checker_default_max()
+
+
+def test_the_module_constant_asymmetry_is_still_the_other_one(repo):
+    """`B151` closes one of the two asymmetries and leaves the other standing
+    on purpose. `literal_reads` still does not resolve a module-level constant;
+    `_env_name_of` does, and says why. Pinned so a future widening of *that*
+    half is a deliberate act with its own measurement."""
+    mod = repo({"app.py": (
+        "import os\n"
+        "NAME = 'CONSTANT_NAMED'\n"
+        "def resolve():\n"
+        "    env = os.environ\n"
+        "    return env.get(NAME, '')\n"
+    )})
+    assert "CONSTANT_NAMED" not in mod.literal_reads()
+
+
+# ══ B153 — the fifth producer, and whose convention it is ══════════════════
+
+def test_the_fifth_producer_has_a_written_owner():
+    """`B97` named four boundaries and gave each one owner. Counting them found
+    a fifth producer with one site and no owner: `services/hwfit/image_models.py`
+    reads `str(candidate.get("private")).lower() == "true"` off a third-party
+    API's JSON. One site is not a vocabulary and a fifth rule would be `Law 14`;
+    what was missing is the written answer to *whose convention is this*."""
+    mod = _real_checker()
+    owner = mod.FOREIGN_PRODUCERS.get(
+        ("services/hwfit/image_models.py", "_variant_score"))
+    assert owner, sorted(mod.FOREIGN_PRODUCERS)
+    assert "huggingface" in owner.lower()
+
+
+def test_the_register_is_not_a_fifth_rule():
+    """`Law 14`. The four boundaries stay four — the register records producers
+    that already have an owner and the owner is not us, which is what
+    `NOT_OURS` does for `PATH`."""
+    mod = _real_checker()
+    assert len(mod.BOUNDARY_OWNERS) == 4
+    assert not (set(mod.FOREIGN_PRODUCERS) & mod._OWNER_FUNCTIONS)
+
+
+def test_the_sqlalchemy_hold_is_in_the_register_too():
+    """`B153` names `core/database.py`'s `?uri=true` as the precedent it
+    follows, so that hold is registered rather than left as the one foreign
+    producer nobody wrote down."""
+    mod = _real_checker()
+    owner = mod.FOREIGN_PRODUCERS.get(("core/database.py", "_sqlite_db_path"))
+    assert owner and "SQLAlchemy" in owner
+
+
+def test_the_registered_site_still_reads_the_word_the_note_describes():
+    """The register is a claim about code, and `B98`'s finding was that a hold
+    nothing checks stops being load-bearing without anyone noticing."""
+    mod = _real_checker()
+    assert mod.stale_foreign_producers() == []
+
+
+def test_a_register_entry_that_outlived_its_call_site_fails_the_run(repo, monkeypatch, capsys):
+    """Driven through `main`, so it fails the build and not only the report."""
+    mod = repo({"app.py": "def scorer(c):\n    return 1 if c else 0\n",
+                "gone.py": "def nothing():\n    return 0\n"})
+    monkeypatch.setattr(mod, "FOREIGN_PRODUCERS", {
+        ("app.py", "scorer"): "somebody else's API",
+    })
+    monkeypatch.setattr(sys, "argv", ["check-env-declared.py"])
+    assert mod.main() == 1
+    out = capsys.readouterr().out
+    assert "no yes/no comparison left here" in out
+    assert "FOREIGN 1 registered, 1 stale (max 0)" in out
+
+
+def test_a_register_entry_naming_a_function_that_is_gone_fails_too(repo, monkeypatch):
+    mod = repo({"app.py": "def scorer(c):\n    return str(c).lower() == 'true'\n"})
+    monkeypatch.setattr(mod, "FOREIGN_PRODUCERS", {
+        ("app.py", "renamed_away"): "somebody else's API",
+    })
+    assert any("the function is gone" in line
+               for line in mod.stale_foreign_producers())
+
+
+def test_a_registered_site_that_still_compares_is_quiet(repo, monkeypatch):
+    mod = repo({"app.py": "def scorer(c):\n    return str(c).lower() == 'true'\n"})
+    monkeypatch.setattr(mod, "FOREIGN_PRODUCERS", {
+        ("app.py", "scorer"): "somebody else's API",
+    })
+    assert mod.stale_foreign_producers() == []
+
+
+def test_the_producer_really_does_send_a_json_boolean():
+    """The register's claim, driven rather than asserted. `private` arrives
+    already decoded — `json.loads` turns the API's `true` into a Python `True`
+    before this line sees it — so there is no yes/no *string* here to have a
+    vocabulary about, and that is the whole reason the site is exempt rather
+    than converted."""
+    from services.hwfit.image_models import _variant_score
+    private = json.loads('{"id": "a/b-gguf", "private": true}')
+    public = json.loads('{"id": "a/b-gguf", "private": false}')
+    assert isinstance(private["private"], bool)
+    assert _variant_score(private, "a/b", "gguf") \
+        == _variant_score(public, "a/b", "gguf") - 10000
+    # Absent is public, which is what the API means by omitting it.
+    assert _variant_score({"id": "a/b-gguf"}, "a/b", "gguf") \
+        == _variant_score(public, "a/b", "gguf")
+
+
+# ══ B220 — the checker was the plateau ═════════════════════════════════════
+
+def test_every_rule_reads_each_file_through_one_cached_parse():
+    """`B220`. Seven passes each re-read and re-parsed all 360 tracked `.py`
+    files: measured 43.6s per invocation, against a suite that shells out to it
+    eight times. The fix is a cache and a hoist, never a narrowing — this pins
+    that every pass goes through the one reader, so a new rule that opens the
+    file itself is a deliberate act."""
+    mod = _load_checker()   # a cold instance: this test measures the cache
+    mod.spellings()
+    first = mod._parsed.cache_info()
+    assert first.currsize > 200, first
+    mod.boundaries()
+    mod.rival_vocabularies()
+    mod.inert_reads()
+    after = mod._parsed.cache_info()
+    assert after.currsize == first.currsize, (first, after)
+    assert after.hits > first.hits, (first, after)
+
+
+def test_the_shared_origin_maps_are_the_same_answer_computed_once():
+    """SPELLING, BOUNDARY and VOCABULARY each rebuilt the same file's origin
+    maps. Sharing them is only safe because nothing writes to them, so this
+    drives all three and asserts the maps come back unchanged."""
+    mod = _real_checker()
+    rel = "routes/chat_routes.py"
+    before = mod._origins_for(rel)
+    snapshot = [
+        {k: (frozenset(v) if isinstance(v, (set, frozenset)) else dict(v))
+         for k, v in origins.items()}
+        for _scope, origins in before
+    ]
+    mod.spellings()
+    mod.boundaries()
+    mod.rival_vocabularies()
+    after = mod._origins_for(rel)
+    assert after is before, "three rules must share one pass, not rebuild it"
+    for expected, (_scope, origins) in zip(snapshot, after):
+        assert set(expected) == set(origins)
+        for key, value in expected.items():
+            got = origins[key]
+            assert (frozenset(got) if isinstance(got, (set, frozenset)) else dict(got)) \
+                == value, key
+
+
+def test_the_rules_still_answer_exactly_what_they_answered_before():
+    """The only property that matters about a speed-up: the verdict is
+    unchanged. `Law 1` — a checker made faster by seeing less is a defect, not
+    a fix."""
+    mod = _real_checker()
+    assert mod.spellings() == []
+    assert mod.boundaries() == []
+    assert mod.rival_vocabularies() == []
+    assert mod.inert_reads() == []
+    assert mod.mixed_layers() == []
+    assert mod.unreachable(mod.shipped_defaults()) == []
+    assert mod.unreferenced(mod.declared()) == []
+    assert sorted(set(mod.NOT_OURS) - set(mod.literal_reads())) == []
+
+
+def test_a_rule_does_not_rebuild_an_origin_map_another_rule_already_built():
+    """`B220`, and the 27.4s. `rival_vocabularies` called
+    `_origin_map(tree, consts, {})` **once per function in the file** — sixty
+    identical module-level maps for a sixty-function module — and SPELLING and
+    BOUNDARY each built the same file's maps again on top of that.
+
+    Counted rather than timed, because a timing assertion is a flaky test: once
+    the shared pass has run for a file, a rule that asks about that file again
+    must build nothing. Before the fix this number was in the thousands."""
+    mod = _real_checker()
+    mod.spellings()          # warms `_origins_for` for every tracked file
+    calls = []
+    real = mod._origin_map
+    try:
+        mod._origin_map = lambda *a, **k: (calls.append(1), real(*a, **k))[1]
+        mod.rival_vocabularies()
+        mod.boundaries()
+    finally:
+        mod._origin_map = real
+    assert calls == [], f"{len(calls)} origin maps rebuilt for work already done"

@@ -54,7 +54,7 @@ function _diagFixIcon(label) {
     return _svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>');
   }
   if (l.startsWith('kill') || l.startsWith('stop')) {
-    return _svg('<rect x="6" y="6" width="12" height="12" rx="1"/>');
+    return _svg(STOP_GLYPH);
   }
   if (l.startsWith('switch') || l.includes('use ')) {
     return _svg('<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>');
@@ -63,6 +63,7 @@ function _diagFixIcon(label) {
   return _svg('<path d="M9 21h6"/><path d="M12 17v4"/><path d="M12 3a6 6 0 0 0-4 10.5c1 1 1.5 2 1.5 3.5h5c0-1.5.5-2.5 1.5-3.5A6 6 0 0 0 12 3Z"/>');
 }
 import spinnerModule from './spinner.js';
+import { STOP_GLYPH } from './icons.js';
 
 // ── Error diagnosis ──
 

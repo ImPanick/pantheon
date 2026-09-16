@@ -79,6 +79,7 @@
 import { formatElapsed } from './research/jobs.js?v=20260630researchthumb';
 import dragSortModule from './dragSort.js';
 import { runStatusLabel, runStatusDotClass } from './runStatus.js';
+import { playIcon, stopIcon } from './icons.js';
 
 /** Injected by chat.js at init. See the contract in `init()`. */
 let _driver = null;
@@ -101,8 +102,8 @@ const _launched = [];
 
 const ICON_CHEVRON = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
 const ICON_QUEUE = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3.5" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="3.5" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="3.5" cy="18" r="1.5" fill="currentColor" stroke="none"/></svg>';
-const ICON_PLAY = '<svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>';
-const ICON_STOP = '<svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>';
+const ICON_PLAY = playIcon({ size: 9 });
+const ICON_STOP = stopIcon({ size: 9 });
 const ICON_GRIP = '<svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor" aria-hidden="true"><circle cx="2.5" cy="2" r="1.1"/><circle cx="7.5" cy="2" r="1.1"/><circle cx="2.5" cy="6" r="1.1"/><circle cx="7.5" cy="6" r="1.1"/><circle cx="2.5" cy="10" r="1.1"/><circle cx="7.5" cy="10" r="1.1"/></svg>';
 const ICON_X = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>';
 

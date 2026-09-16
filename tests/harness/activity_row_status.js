@@ -44,6 +44,11 @@ const source = fs.readFileSync(SRC, 'utf8');
 // is what makes that cheap.
 const RUN_STATUS_SRC = path.join(__dirname, '..', '..', 'static', 'js', 'runStatus.js');
 const runStatusModule = fs.readFileSync(RUN_STATUS_SRC, 'utf8').replace(/^export\s+/gm, '');
+// `B83`. The shared icon table, on the same terms and for the same reason: the
+// Activity row's force and stop buttons take their glyphs from it now, and a
+// stub would report the harness's triangle rather than the one that ships.
+const ICONS_SRC = path.join(__dirname, '..', '..', 'static', 'js', 'icons.js');
+const iconsModule = fs.readFileSync(ICONS_SRC, 'utf8').replace(/^export\s+/gm, '');
 
 function slice(startMark, endMark, label) {
   const from = source.indexOf(startMark);
@@ -120,6 +125,17 @@ const completedRow = slice('function _renderCompletedPreviewEntry(entry) {',
 // literal that used to sit above it. A stubbed one would report the harness's
 // palette, which is exactly the question.
 const dot = slice('function _statusDot(status) {', 'const _TASK_ICONS = {', '_statusDot');
+// `B171`. The open-in-chat control's word and sentence, and the function that
+// actually seeds the chat session. Both surfaces that draw the button call the
+// first and the second decides who is credited with the run's text, so they are
+// lifted whole and run — the defect was a `role` in an object literal three
+// statements into an async function that fetches twice before reaching it, and
+// no amount of reading the template shows what a person ends up looking at.
+const openControl = slice('function _openInChatControl(entry) {',
+                          "// Open a task run's result in a fresh chat session",
+                          '_openInChatControl');
+const openInChat = slice('async function _openResultInChat(entry) {',
+                         'function _classifyResult(text) {', '_openResultInChat');
 
 const escHtml = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -158,7 +174,9 @@ const deps = {
 const names = Object.keys(deps);
 const make = new Function(...names, 'document', 'detail', 'task', `
   ${runStatusModule}
+  ${iconsModule}
   ${controls}
+  ${openControl}
   ${stopLabel}
   ${entryStatus}
   ${renderer}
@@ -183,15 +201,18 @@ function makeExtra(extra) {
     let _completedLimit = 40;
     let _completedHasMore = false;
     ${runStatusModule}
+    ${iconsModule}
     ${dot}
+    ${openControl}
     ${finished}
     ${completedRow}
     ${completedView}
     ${history}
     ${notify}
+    ${openInChat}
     return { _showRunHistory, _pollTaskNotifications, _isFinishedRun,
              _isChatResultRun, _renderCompletedView, _renderCompletedPreviewEntry,
-             _runToActivityEntry };
+             _runToActivityEntry, _openResultInChat, _openInChatControl };
   `)(...ks.map((k) => local[k]));
 }
 
@@ -368,7 +389,59 @@ if (mode === 'tone') {
         titled: (chunk.match(/class="task-log-status[^"]*" title="([^"]*)"/) || [])[1] ?? null,
         word: (chunk.match(/class="task-completed-outcome">([^<]*)</) || [])[1] ?? null,
         name: (chunk.match(/class="task-log-name">([^<]*)</) || [])[1] ?? null,
+        // `B171`. The row's own open control, same two questions as the
+        // Activity row's, so the test can put the two side by side.
+        openLabel: ((chunk.match(
+          /class="doclib-chat-open-btn task-completed-open-chat"[^>]*>[\s\S]*?<\/svg>\s*([^<]*)</) || [])[1] || '')
+          .trim() || null,
+        openTitle: (chunk.match(
+          /class="doclib-chat-open-btn task-completed-open-chat" type="button" title="([^"]*)"/) || [])[1] ?? null,
       })),
+    }));
+  });
+} else if (mode === 'open') {
+  // `B171`. What pressing *Open in chat* actually puts in the session, and what
+  // the button said it would do. The whole point is that these two are decided
+  // in different functions 400 lines apart, so they are reported from one run:
+  // the control's word and sentence, and the messages the session is seeded
+  // with, each with the role it is attributed to.
+  const entry = JSON.parse(process.argv[3] || '{}');
+  const injected = [];
+  let sessionName = '';
+  const api = makeExtra({
+    document: { getElementById: () => null, querySelector: () => null },
+    window: {
+      modelsModule: { getCachedItems: () => [] },
+      sessionModule: { loadSessions: async () => {}, selectSession: () => {} },
+    },
+    closeTasks: () => {},
+    fetch: async (url, opts) => {
+      const u = String(url);
+      if (u.includes('/inject_messages')) {
+        injected.push(...JSON.parse(opts.body).messages);
+        return { ok: true, json: async () => ({}) };
+      }
+      if (u.includes('/api/session')) {
+        try { sessionName = opts.body.get('name'); } catch (_) {}
+        return { ok: true, json: async () => ({ id: 's1' }) };
+      }
+      // `/api/default-chat`
+      return { ok: true, json: async () => ({ endpoint_url: 'http://x', model: 'm' }) };
+    },
+  });
+  api._openResultInChat(entry).then(() => {
+    const control = api._openInChatControl(entry);
+    console.log(JSON.stringify({
+      status: entry.status,
+      label: control.label,
+      title: control.title,
+      sessionName,
+      // The claim `B171` makes: nothing the run reported is attributed to the
+      // assistant unless the assistant actually produced it.
+      roles: injected.map((m) => m.role),
+      messages: injected,
+      assistantSaid: injected.filter((m) => m.role === 'assistant')
+                             .map((m) => m.content),
     }));
   });
 } else if (mode === 'wire') {
@@ -415,6 +488,13 @@ if (mode === 'tone') {
     chip: api._entryStatus(entry),
     // The dot/stripe name.
     dot: (html.match(/task-log-status task-log-status-(\w+)/) || [])[1] || null,
+    // `B171`. The word on the open control and the sentence it carries, read
+    // off the emitted markup rather than off the expression that built them.
+    openLabel: ((html.match(
+      /class="task-log-open-chat"[^>]*>[\s\S]*?<\/svg>\s*([^<]*)</) || [])[1] || '')
+      .trim() || null,
+    openTitle: (html.match(
+      /class="task-log-open-chat" type="button" title="([^"]*)"/) || [])[1] ?? null,
     // What the row would be entitled to from the shared control rule.
     entitled: api.activityEntryControls(entry),
     html,

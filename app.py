@@ -963,8 +963,32 @@ async def serve_library(request: Request):
 
 @app.get("/backgrounds")
 async def serve_backgrounds(request: Request):
-    """Sandbox page for prototyping background effects. No auth required."""
-    return serve_html_with_nonce(request, abs_join(BASE_DIR, "static/backgrounds.html"))
+    """Sandbox page for prototyping background effects.
+
+    `B140`. The page is **optional and this build does not ship it** —
+    `static/backgrounds.html` is in no commit of this repository, no page or
+    module links to `/backgrounds`, and `H21` re-measured that three times.
+    The route still served it through `serve_html_with_nonce`, whose contract
+    is that a missing template is a broken deployment: every request to an
+    unauthenticated route wrote a `logger.exception` with a stack trace into
+    5xx alerting and answered `{"detail":"Internal server error"}`.
+
+    The route is **not removed** (`Law 1`): a deployment that drops the
+    sandbox page in is served it, exactly as before. What changes is the
+    answer when it is absent — a 404 naming the file it wants, which is what
+    that state actually is, instead of a 500 claiming the server is broken.
+    The name is repo-relative on purpose. This docstring read "No auth
+    required" until 2026-09-16, which described the *handler* and not the path:
+    `/backgrounds` is in neither `AUTH_EXEMPT_EXACT` nor the `/static` prefix,
+    so with `AUTH_ENABLED=true` `AuthMiddleware` gates it like any other page —
+    and with auth off anyone who can reach the app can reach this. Either way a
+    reply from here must not hand out the deployment's absolute paths.
+    Restoring the page itself is a product decision and is filed as `B210`.
+    """
+    page = abs_join(BASE_DIR, "static/backgrounds.html")
+    if not os.path.isfile(page):
+        raise HTTPException(404, "static/backgrounds.html is not shipped in this build")
+    return serve_html_with_nonce(request, page)
 
 @app.get("/login")
 async def serve_login(request: Request):

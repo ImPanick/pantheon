@@ -6,6 +6,7 @@ import Storage from '../storage.js';
 import { fetchModels, _persistSelections, getExcludedModels } from './models.js';
 import { showScoreboard } from './scoreboard.js';
 import { EYE_OPEN, EYE_CLOSED, ICON_DICE, ICON_PARALLEL, ICON_SEQUENTIAL, SAVE_ICON, WAVE_FRAMES, CHAT_ICON } from './icons.js';
+import { playIcon } from '../icons.js';
 import { _clearProbeWaves } from './probe.js';
 import uiModule from '../ui.js';
 import spinnerModule from '../spinner.js';
@@ -15,7 +16,7 @@ const escapeHtml = uiModule.esc;
 
 // Match the Deep Research "Start" button (play icon + "Start", styled by
 // .research-start-btn) so the two primary actions look identical.
-const _CMP_PLAY_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>';
+const _CMP_PLAY_ICON = playIcon({ size: 14 });
 const _CMP_START_LABEL = _CMP_PLAY_ICON + ' Start';
 
 /** Slot label: letters (A, B) in parallel, numbers (1, 2) in sequential */

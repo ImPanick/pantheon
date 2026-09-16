@@ -31,6 +31,7 @@ smaller, testable answer; ``is_safe_svg`` is conservative and refuses more than
 a tree-rewriting sanitiser would (see `B160`).
 """
 
+import html
 import re
 
 SVG_EXTS = frozenset({".svg"})
@@ -106,3 +107,65 @@ def is_safe_svg(content: bytes, max_bytes: int = MAX_SVG_BYTES) -> bool:
     if BLOCKED_SVG_RE.search(content) or EXTERNAL_REF_RE.search(content):
         return False
     return True
+
+
+# ── what a caption means for a drawing that is made of words (`B163`) ───────
+#
+# `/api/upload/{id}/vision` gated on ``mime.startswith("image/")``, which
+# ``image/svg+xml`` satisfies, so the Caption button base64'd an SVG's XML and
+# posted it to a vision model — labelled ``data:image/jpeg`` at that, because
+# ``analyze_image_with_vl_result``'s ``mime_map`` has no ``.svg`` and falls back
+# to jpeg. An outbound call that cannot succeed (`Law 16`), and the module
+# docstring above already says why: SVG is markup to the model.
+#
+# The button is still the right button. What a vision model does for a raster is
+# recover the words in the picture; an SVG *carries* its words, in `<title>`,
+# `<desc>` and its `<text>` runs, where `<title>` and `<desc>` are precisely the
+# accessible name and description the format defines for this purpose. So the
+# caption is read out of the file, with no model and no network, and it is more
+# accurate than a description of the same drawing would have been.
+SVG_CAPTION_MAX_CHARS = 2000
+
+# Regex, not an XML parser, and for the same reason the safety gate above is:
+# these bytes are untrusted, and ``xml.etree`` on untrusted input is a parser
+# that expands entities. Nothing here is trying to understand the drawing — it
+# collects the character data of three element names and stops.
+_SVG_NAMED_RE = re.compile(br"<\s*(title|desc)\b[^>]*>(.*?)<\s*/\s*\1\s*>",
+                           re.IGNORECASE | re.DOTALL)
+_SVG_TEXT_RE = re.compile(br"<\s*text\b[^>]*>(.*?)<\s*/\s*text\s*>",
+                          re.IGNORECASE | re.DOTALL)
+_SVG_INNER_TAG_RE = re.compile(br"<[^>]*>")
+_WHITESPACE_RE = re.compile(r"\s+")
+
+
+def _svg_chardata(fragment: bytes) -> str:
+    """The words inside one element, with child markup (``<tspan>``) removed."""
+    stripped = _SVG_INNER_TAG_RE.sub(b" ", fragment)
+    text = html.unescape(stripped.decode("utf-8", errors="replace"))
+    return _WHITESPACE_RE.sub(" ", text).strip()
+
+
+def svg_caption_text(content: bytes, max_chars: int = SVG_CAPTION_MAX_CHARS) -> str:
+    """The caption an SVG already contains, or ``""`` when it contains none.
+
+    ``<title>`` and ``<desc>`` first, in document order, then every ``<text>``
+    run — a labelled diagram captions itself. Bounded twice: the scan stops at
+    ``MAX_PREVIEW_SVG_BYTES`` and the answer at *max_chars*, because this runs on
+    a file someone else supplied.
+
+    An empty answer is a real answer ("this drawing has no words in it") and the
+    caller says so rather than falling back to the model — a shape-only SVG is
+    the case the vision model could have helped with and is exactly the case it
+    cannot be handed, since the type is what it rejects.
+    """
+    if not isinstance(content, bytes) or not content:
+        return ""
+    head = content[:MAX_PREVIEW_SVG_BYTES]
+    named = [_svg_chardata(m.group(2)) for m in _SVG_NAMED_RE.finditer(head)]
+    runs = [_svg_chardata(m.group(1)) for m in _SVG_TEXT_RE.finditer(head)]
+    lines = [part for part in named if part]
+    joined_runs = " ".join(part for part in runs if part).strip()
+    if joined_runs:
+        lines.append(joined_runs)
+    caption = "\n".join(lines).strip()
+    return caption[:max_chars]

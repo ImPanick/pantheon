@@ -197,21 +197,29 @@ def test_the_new_block_takes_the_app_password_url_from_the_record():
     Written first as *this URL appears nowhere in `settings.js`*, which failed
     on `PROVIDER_NOTES.gmail.url` — a **pre-existing, preset-keyed** table that
     also covers iCloud and Yahoo, neither of which has a provider record to
-    read from. So the two are not one rule spelled twice yet; they are two
-    mechanisms that overlap on exactly one entry. Widening this assertion to
+    read from. So the two were not one rule spelled twice; they were two
+    mechanisms that overlapped on exactly one entry. Widening this assertion to
     pass by ignoring that would have been the test bending to the code, so the
-    overlap is filed as `B73` and this asserts what it can honestly assert:
+    overlap was filed as `B73` and this asserted what it could honestly assert:
     **the block added here reads the record.**
 
     It is not decoration either — the *Google Workspace* preset has no
     `PROVIDER_NOTES` entry at all, so for that mailbox this block is the only
     place a person is told where an app password comes from.
+
+    **`B73` closed it, and the count moved 1 → 0.** The note table no longer
+    carries Gmail's URL: `_presetAppPasswordUrl` resolves the preset's IMAP
+    host through `_oauthFor` — the same host→record map the rest of the panel
+    uses — so the record is the only spelling in the tree. The literals that
+    remain in that table belong to presets with no record (`icloud`, `yahoo`)
+    and to a link that is not an app-password link (`outlook`). The behaviour
+    is `tests/test_one_answer_about_where_an_app_password_comes_from.py`;
+    this stays as the ratchet.
     """
     js = SETTINGS_JS.read_text(encoding="utf-8")
     block = js[js.index("function _renderOauthAlternative"):]
     block = block[: block.index("function _syncOauthUI")]
     assert "provider.app_password_url" in block
     assert "myaccount.google.com" not in block
-    # And the one pre-existing copy is where it is said to be, so this test
-    # fails loudly if a second one appears somewhere new.
-    assert js.count("myaccount.google.com") == 1
+    # Zero copies in the browser: the record is the only place it is written.
+    assert js.count("myaccount.google.com") == 0

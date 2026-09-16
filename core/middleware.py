@@ -191,6 +191,33 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             )
         else:
             response.headers["X-Frame-Options"] = "DENY"
+            # `B141`. What authorises this response's inline scripts, if it has
+            # any. `serve_html_with_nonce` (src/app_helpers.py) stamps the
+            # `'sha256-…'` sources of the page it just served onto
+            # `request.state`, so the policy is derived from the document the
+            # response *is* — not from a table here mapping routes to
+            # templates, which would be a second list to keep in step with
+            # `app.py` (`Law 13`, `Law 14`).
+            #
+            # A response that served no such page — an API reply, a static
+            # asset, FastAPI's own `/docs` — gets neither a hash nor a nonce,
+            # which is strictly tighter than the per-request nonce that used to
+            # go out on every response in the app. Nothing loses a script by
+            # it: an inline block with no nonce attribute was already refused,
+            # because a `script-src` naming ANY nonce or hash source refuses
+            # every inline block it does not name.
+            inline_script_sources = list(
+                getattr(request.state, "csp_script_hashes", ()) or ()
+            )
+            # `Law 1`: the nonce path is kept, not replaced. A template that
+            # still carries `{{CSP_NONCE}}` is still substituted per request
+            # and still gets its `'nonce-…'` source — it just no longer costs
+            # every other response one.
+            if getattr(request.state, "csp_nonce_used", False):
+                inline_script_sources.append(f"'nonce-{nonce}'")
+            script_src = " ".join(
+                ["'self'", *inline_script_sources, "'wasm-unsafe-eval'"]
+            )
             # NOTE: `style-src 'unsafe-inline'` is intentionally retained.
             # `static/index.html` and `static/login.html` ship inline <style>
             # blocks, and several JS modules build runtime `style=""` attrs.
@@ -213,7 +240,16 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 # Python still does not run. It permits compiling wasm
                 # bytes and nothing else — not `eval`, not inline script,
                 # and not a byte from another origin.
-                f"script-src 'self' 'nonce-{nonce}' 'wasm-unsafe-eval'; "
+                #
+                # `'nonce-…'` was here until 2026-09-16 (`B141`). It is now
+                # `'sha256-…'` per inline block, computed from the served file,
+                # because a nonce has to be in the body and a body that varies
+                # per request cannot carry a validator — which made `/` the one
+                # precached URL of 213 that could not answer a conditional
+                # request with a `304`. A hash is not a loosening: a nonce
+                # authorises whatever bytes sit inside a tag carrying it, a
+                # hash authorises those bytes and nothing else.
+                f"script-src {script_src}; "
                 "style-src 'self' 'unsafe-inline'; "
                 "font-src 'self'; "
                 # `https:` was here until 2026-09-01 (`P16-08`). It let an

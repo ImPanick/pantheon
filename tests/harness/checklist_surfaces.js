@@ -27,6 +27,15 @@ const rendererSrc = fs.readFileSync(path.join(JS, 'chatRenderer.js'), 'utf8');
 const checklistPath = path.join(JS, 'checklist.js');
 const checklistSrc = fs.existsSync(checklistPath)
   ? fs.readFileSync(checklistPath, 'utf8') : '';
+// `B83`. `checklist.js` no longer declares `PLAY_POINTS`; it re-exports it from
+// the shared icon table, because a glyph five unrelated modules want does not
+// belong in the checklist module. So the table is inlined here and the
+// re-export line is dropped — the value both renderers see is still the shipped
+// one, which is the whole reason this harness evaluates modules rather than
+// retyping them.
+const iconsPath = path.join(JS, 'icons.js');
+const iconsSrc = fs.existsSync(iconsPath)
+  ? fs.readFileSync(iconsPath, 'utf8').replace(/^export\s+/gm, '') : '';
 const indexHtml = fs.readFileSync(
   path.join(__dirname, '..', '..', 'static', 'index.html'), 'utf8');
 
@@ -49,7 +58,10 @@ const unexport = (s) => s.replace(/^export\s+/gm, '');
 // evaluated as written rather than re-stated here: a harness that retypes the
 // table is testing the harness.
 const shared = checklistSrc
-  ? unexport(checklistSrc.replace(/^\/\/.*$/gm, ''))
+  ? iconsSrc + '\n' + unexport(
+      checklistSrc.replace(/^\/\/.*$/gm, '')
+        // A re-export has no body to keep: the value is already above.
+        .replace(/^export\s*\{[^}]*\}\s*from\s*'[^']*';\s*$/gm, ''))
   : '';
 
 // ── A DOM small enough to read and faithful enough to serialise ─────────────

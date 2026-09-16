@@ -382,7 +382,12 @@ export default {
 }
 
 
-_RELATIVE_IMPORT = re.compile(r"""^\s*import\s[^'"]*['"]\.\/([^'"?]+)""", re.M)
+# `import … from './x.js'` AND `export { … } from './x.js'`. The re-export form
+# was invisible here until `B83` used one: `checklist.js` re-exports the play
+# triangle from the shared icon table, and a sandbox that copied the first file
+# and not the second failed at module resolution rather than at an assertion.
+_RELATIVE_IMPORT = re.compile(
+    r"""^\s*(?:import|export)\s[^'"]*['"]\.\/([^'"?]+)""", re.M)
 
 
 def _copy_unstubbed_imports(directory: Path, source: Path, stubs: dict) -> None:

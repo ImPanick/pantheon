@@ -16,9 +16,13 @@ from typing import List, Dict, Any, Optional, Set
 
 from src.constants import CHROMA_DIR
 # One register per extractor, and one directory walk, shared with the keyword
-# indexer (`B75`). src.personal_docs imports only index_walk and
-# markitdown_runtime, so this direction carries no cycle and no heavyweight
-# import; the hidden/junk pruning from src.index_walk still applies, inside
+# indexer (`B75`) and — since `B162` — with chat ingest, because
+# src.personal_docs now derives its register from document_processor rather than
+# keeping a parallel one. That import edge is one-way and carries no cycle
+# (document_processor imports llm_core, markitdown_runtime and pdf_runtime, none
+# of which import personal_docs), and it is not new weight in this process:
+# src.upload_handler has imported document_processor since `B05` and the app
+# loads both. The hidden/junk pruning from src.index_walk still applies, inside
 # walk_index_candidates.
 from src.personal_docs import INDEXABLE_EXTENSIONS, walk_index_candidates
 from pathlib import Path
@@ -41,7 +45,13 @@ logger = logging.getLogger(__name__)
 # `POST /personal/add_directory`. They agreed on four, so 12 of the 16
 # extensions named between them were indexed by exactly one of the two indexes.
 # Derived now from the extractor register, so the vector index and the keyword
-# index cover the same files by construction rather than by review.
+# index cover the same files by construction rather than by review — and since
+# `B162` that register is chat ingest's own, so it is 36 extensions rather than
+# 16 and a `.odt` or a `.go` is no longer readable in a message and unsupported
+# in the search. Passing this set to the walk means "everything", not "only
+# these": see `walk_index_candidates`, which reads it as no filter at all so the
+# formats decided by their bytes rather than their suffix are not filtered out
+# by a default argument.
 DEFAULT_FILE_EXTENSIONS: Set[str] = set(INDEXABLE_EXTENSIONS)
 
 # Tool-internal directories that match DEFAULT_FILE_EXTENSIONS but are never

@@ -262,6 +262,19 @@ jobs:
       # TaskRun row that nobody declared.
       - name: check-run-statuses
         run: python3 .pantheon/check-run-statuses.py
+      # B161. `B100` replaced the server's two hand-written extension lists with
+      # one derivation in src/document_processor.py. The browser kept four
+      # copies of the old shape — chat.js twice, document.js, documentLibrary.js
+      # — and none of them knew .toml, .markdown, .kt, .swift or .h, so a file
+      # the composer labelled `toml` was offered as plain text by the document
+      # editor it opened in. The client cannot import a Python register, so the
+      # two registers in static/js/attachmentLanguage.js are GENERATED from it
+      # and this is what keeps them honest: the block byte for byte, and the
+      # rule itself compared answer by answer over every alias key and every
+      # ingestible extension. A hand-copied list is not wrong today, it is wrong
+      # about the next language added.
+      - name: check-attachment-language
+        run: python3 .pantheon/check-attachment-language.py
       # P3-17. The row's own acceptance test — zero bare `except:` — passed on
       # the unfixed tree, so it would have been ticked without a fix. The real
       # population is `except ...: pass`, and grep cannot count it: `grep -A1`

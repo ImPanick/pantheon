@@ -13,6 +13,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { openCookbookDependencies } from './cookbook-diagnosis.js';
 import { _hwfitCache } from './cookbook-hwfit.js';
 import { topPortalZ } from './toolWindowZOrder.js';
+import { playIcon } from './icons.js';
 
 // Shared state/functions injected by init()
 let _envState;
@@ -1235,7 +1236,7 @@ function _rerenderCachedModels() {
       // and the Escape arbiter (reassigned to the registry-aware close below).
       let closeDropdown = () => { dropdown.remove(); btn.classList.remove('cookbook-menu-active'); };
       const _di = (svg) => `<span class="dropdown-icon">${svg}</span>`;
-      const _serveIco = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+      const _serveIco = playIcon({ size: 14, outline: true });
       const _retryIco = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>';
       const _deleteIco = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>';
       const _selectIco = '<span style="font-size:16px;line-height:1;position:relative;top:-2px;">●</span>';

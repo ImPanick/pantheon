@@ -231,34 +231,38 @@ def test_the_step_chip_class_has_one_implementation():
 
 
 def test_the_product_draws_one_play_triangle():
-    """Re-measured: `B12` says the polygon is hand-written twice. It was
-    hand-written **seven** times in **two** geometries. The two the row names —
-    both builders of the one `.plan-inline-execute` control — now share a
-    constant, and the minority spelling is gone from the tree entirely."""
+    """Re-measured twice. `B12` said the polygon was hand-written twice; it was
+    seven times in two geometries, and `B83` re-counted the whole client at
+    NINETEEN in five. This test pinned the five that survived as the evidence
+    for that row, with the note that the count moves when the row is done rather
+    than silently. `B83` is done: every one of them is gone.
+
+    The census itself lives in `tests/test_one_icon_table.py`, which classifies a
+    polygon by its shape rather than against a list of spellings — that is how
+    the fifth geometry, `tasks.js`'s `active` badge, was found. What stays here
+    is the claim this file is about: the two builders of the one
+    `.plan-inline-execute` control still draw the same glyph."""
     js_dir = ROOT / "static" / "js"
-    minority = []
-    majority = []
+    literals = []
     for path in js_dir.rglob("*.js"):
         if "/lib/" in str(path):
             continue
         text = _code(path.read_text(encoding="utf-8", errors="ignore"))
-        if "7 4 20 12 7 20 7 4" in text:
-            minority.append(path.name)
-        majority.extend([path.name] * text.count("6 4 20 12 6 20 6 4"))
-    assert minority == [], (
-        f"a second play-triangle geometry is back in {minority} — "
+        for spelling in ("7 4 20 12 7 20 7 4", "6 4 20 12 6 20 6 4",
+                         "5 3 19 12 5 21 5 3", "6 3 20 12 6 21 6 3",
+                         "7 4 19 12 7 20 7 4"):
+            literals.extend([f"{path.name}:{spelling}"] * text.count(spelling))
+    assert literals == [], (
+        f"a hand-written play triangle is back in {sorted(literals)} — "
         "one control, one glyph"
     )
-    # Five literals survive, in files that have nothing to do with a plan; they
-    # are `B81`. This count is the evidence that row is measured, so it moves
-    # when that row is done, not silently.
-    assert len(majority) == 6, (
-        f"expected the one shared constant plus 5 unconverted literals, found "
-        f"{len(majority)}: {sorted(majority)}"
-    )
-    assert "PLAY_POINTS" in _js("checklist.js")
-    for name in ("planWindow.js", "chat.js"):
-        assert "PLAY_POINTS" in _js(name)
+    # The glyph's home moved to the shared icon table; `checklist.js` re-exports
+    # it so the docked window keeps importing it from where `B12` put it.
+    assert "export { PLAY_POINTS } from './icons.js';" in _js("checklist.js")
+    assert "PLAY_POINTS" in _js("planWindow.js")
+    # `chat.js` builds its markup as a string, so it takes the wrapped icon
+    # rather than the points — the same table, one call further in.
+    assert "playIcon(" in _js("chat.js")
 
 
 def test_the_two_card_heads_are_styled_as_one_pair_where_they_agree():

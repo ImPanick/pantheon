@@ -69,6 +69,25 @@ Both are the direction an operator reading `.env.example` already expected, and
 neither is a sweep: the other seven switches `B91` held stay held, because
 widening them would loosen a control rather than honour an intent.
 
+`B152`. **`use_rag=0` meant *yes*, on the chat API. If you send `use_rag` with a
+value meaning no, this upgrade changes what you get back.**
+
+- **`use_rag`**, the form field on `POST /api/chat_stream`, is the one field in
+  this API that defaults **on**, and until now only the literal `false` turned
+  retrieval off. `use_rag=0`, `use_rag=no` and `use_rag=off` all turned
+  retrieval **on** — a caller asked for retrieval to be skipped and got it
+  anyway, with nothing logged and nothing in the API saying so. All four
+  spellings turn it off now, which is the same eight-word vocabulary
+  `compare_mode`, `incognito`, `plan_mode` and `no_memory` on the same request
+  already read.
+- **The default has not changed and is not going to.** Omitting `use_rag`, or
+  sending it blank, or sending a word nobody recognises, still means *yes*:
+  a default answers when the field did not say, and it was never a licence to
+  overrule a caller who did say. That distinction is the whole change.
+- **Pantheon's own web UI is unaffected.** It sends the literal `'false'` and
+  nothing else, so this can only reach a hand-written API client. The first
+  affected call logs a warning naming the value.
+
 #### Added
 - `B95`. The three settings that could previously only be changed by
   hand-writing `data/settings.json` — `allow_model_download` (the `Law 16` gate
