@@ -178,9 +178,19 @@ def test_nothing_declared_in_the_real_file_is_dead():
 
 
 def test_the_ceiling_matches_what_ci_holds():
+    """`B98` took this from 74 to 71. It stood at 74 while the real count was
+    72, and documenting `PANTHEON_SINGLE_USER` in the switches block took it to
+    71 — three names of slack is three undocumented variables a change could add
+    with nothing saying so. The number is read out of the checker rather than
+    written twice here, so the ratchet cannot be lowered in one file only."""
+    import re
     ci = (_REPO / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    assert "check-env-declared.py --max 74" in ci
-    assert _run("--max", "74").returncode == 0
+    match = re.search(r"check-env-declared\.py --max (\d+)", ci)
+    assert match, "CI must pin the ceiling explicitly"
+    ceiling = int(match.group(1))
+    assert _run("--max", str(ceiling)).returncode == 0
+    assert f"UNDECLARED {ceiling} (max {ceiling})" in _run().stdout, (
+        "the ceiling must equal the real count, not sit above it")
 
 
 def test_the_ratchet_bites():

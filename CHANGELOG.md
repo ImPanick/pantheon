@@ -42,6 +42,41 @@ Forked from `pewdiepie-archdaemon/odysseus` @ `b4d1293` (branch `dev`) on 2026-0
      link is `P0-17`; it is built and left dark against a repository URL that
      ships empty, and it goes back in this file when it renders. -->
 
+#### Changed — read this before upgrading
+
+`B96`. **Two environment switches meant the opposite of what an operator typed,
+and both are corrected. If you set either to a disabling value, this upgrade
+changes what your host does.**
+
+- **`AUTH_ENABLED`** — until now, only the literal `false` disabled
+  authentication. `AUTH_ENABLED=0`, `=no` and `=off` left authentication
+  **enabled**, with nothing logged and nothing in `.env.example` saying so. All
+  four spellings disable it now. **If you are running with `AUTH_ENABLED=0`
+  believing auth is off, it has been on, and after this upgrade it will be off —
+  your instance will answer without a login.** Set `AUTH_ENABLED=true`, or unset
+  it, to keep authentication. The value is also logged as a warning at the first
+  check, naming the change.
+- **`PANTHEON_SINGLE_USER`** — until now, only the literal `0` turned
+  single-user mode off, and *it did not work either*: the value was computed at
+  import into a module constant nothing read (`B150`). Unauthenticated calendar
+  requests were written under `PANTHEON_FALLBACK_OWNER` regardless of what this
+  was set to. It is consulted now, and `0`, `false`, `no` and `off` all turn it
+  off, which makes an unauthenticated calendar request a `401` instead of a
+  write under the fallback owner. **If you set this to any of those values and
+  rely on the fallback owner, unset it.**
+
+Both are the direction an operator reading `.env.example` already expected, and
+neither is a sweep: the other seven switches `B91` held stay held, because
+widening them would loosen a control rather than honour an intent.
+
+#### Added
+- `B95`. The three settings that could previously only be changed by
+  hand-writing `data/settings.json` — `allow_model_download` (the `Law 16` gate
+  on fetching a model from HuggingFace), `searxng_widen_engines` and
+  `metrics_enabled` — now have controls in **Settings → System**. Each is
+  three-state: *yes*, *no*, or *use the environment variable or the default*,
+  and the panel says which of those three layers is answering on this host.
+
 #### Fixed
 _(populated as P1 onward lands; `B24`, `P1-12` and `P1-14` are in and
 belong here the next time this section is written out.)_

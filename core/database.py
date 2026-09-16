@@ -109,6 +109,11 @@ def _sqlite_db_path(url) -> Optional[str]:
         str(key).lower(): str(value).strip().lower()
         for key, value in dict(getattr(url, "query", {}) or {}).items()
     }
+    # flag-spelling: not ours. `?uri=true` is SQLAlchemy's own spelling in a
+    # connection URL, and these four words are the ones *it* accepts there —
+    # the same standing `NOT_OURS` records for `PATH` and `HF_TOKEN` above.
+    # Routing it through `env_flags` would make this line agree with Pantheon
+    # about a string SQLAlchemy is going to parse either way (`B97`).
     uri_enabled = query.get("uri") in {"1", "true", "yes", "on"}
     is_file_uri = db_path.lower().startswith("file:")
 
@@ -931,6 +936,72 @@ TASK_RUN_TERMINAL_STATUSES = tuple(
     s for s in TASK_RUN_STATUSES if s not in TASK_RUN_ACTIVE_STATUSES
 )
 
+# `B112`. Which outcomes are worth telling the owner about, and why — one
+# statement, one entry per status.
+#
+# It was previously readable only as an absence. `_execute_task_locked`'s
+# `except TaskNoop` and `except asyncio.CancelledError` branches both `return`
+# before the notify block, so no `skipped` and no `aborted` notification had
+# ever been emitted by any path, and nothing said whether that was a decision.
+# It was: `B07` had to leave the admin-privilege refusal silent because the
+# client called every non-`success` status *"Task failed"*, and a `skipped`
+# notification would have put that lie on screen somewhere else. `B78` made the
+# client honest — `skipped` and `aborted` produce a plain toast naming what they
+# were, and only `error` raises the failure dot — so the constraint is gone and
+# the decision can be written down instead of inferred from three `return`s.
+#
+# Every status carries an entry, not just the ones that notify, so a seventh
+# value added above raises KeyError where `TASK_RUN_NOTIFY_STATUSES` is derived
+# rather than defaulting to a silent no. `.pantheon/check-run-statuses.py`
+# checks the two sets against each other in the other direction.
+TASK_RUN_NOTIFY: "dict[str, tuple[bool, str]]" = {
+    "queued": (
+        False,
+        "nothing has happened yet — the run is waiting for a free slot, and the "
+        "Activity row already shows it waiting.",
+    ),
+    "running": (
+        False,
+        "nothing has happened yet — the Activity row carries the elapsed time "
+        "and the stop control.",
+    ),
+    "success": (
+        True,
+        "the output the owner scheduled is ready. For output_target='notification' "
+        "the notification IS the delivery, which is why it carries the body.",
+    ),
+    "error": (
+        True,
+        "the run failed and will fail again on the same schedule until somebody "
+        "looks. This is the one outcome that overrides the per-task quiet gates.",
+    ),
+    "skipped": (
+        True,
+        "the run deliberately did not happen, which the owner did not ask for. "
+        "Emitted when the skip leaves the task STOPPED — paused by the "
+        "admin-privilege refusal (src/task_action_policy.record_admin_refusal), "
+        "already paused or deleted while the run sat queued, or a one-shot that "
+        "will not come round again — because silence there is how a scheduled "
+        "task stops running with nothing on screen. A skip that leaves the task "
+        "on its schedule is a housekeeping action reporting 'nothing to do' and "
+        "recurs on every tick, so the call site suppresses it.",
+    ),
+    "aborted": (
+        False,
+        "an infrastructure event, not a decision about the task. The restart "
+        "sweep in TaskScheduler.start marks every in-flight run aborted on every "
+        "boot, and a foreground takeover re-queues this run 15 minutes later — "
+        "one toast per task per restart, about something already rescheduled, is "
+        "noise. The Activity row carries it, and _mark_run_aborted's message says "
+        "which event it was.",
+    ),
+}
+
+# Derived, so the set and the reasons cannot disagree.
+TASK_RUN_NOTIFY_STATUSES = tuple(
+    s for s in TASK_RUN_STATUSES if TASK_RUN_NOTIFY[s][0]
+)
+
 
 class TaskRun(Base):
     """Record of a single execution of a ScheduledTask."""
@@ -1474,6 +1545,13 @@ def _migrate_add_notes_sort_order():
             conn.execute("ALTER TABLE notes ADD COLUMN ai_content_hash TEXT")
         if columns and "agent_session_id" not in columns:
             conn.execute("ALTER TABLE notes ADD COLUMN agent_session_id TEXT")
+        # `B80` — the rest of a note-level agent run's bookkeeping.
+        if columns and "agent_status" not in columns:
+            conn.execute("ALTER TABLE notes ADD COLUMN agent_status TEXT")
+        if columns and "agent_session_title" not in columns:
+            conn.execute("ALTER TABLE notes ADD COLUMN agent_session_title TEXT")
+        if columns and "agent_stream_completed_at" not in columns:
+            conn.execute("ALTER TABLE notes ADD COLUMN agent_stream_completed_at TEXT")
         conn.commit()
     except Exception as e:
         logging.getLogger(__name__).warning(f"notes migration failed: {e}")
@@ -2080,6 +2158,15 @@ class Note(TimestampMixin, Base):
     # Chat session spawned by the note's "Agent" button (solve-this-todo).
     # The note shows a clickable tag that opens this session for review.
     agent_session_id  = Column(String, nullable=True)
+    # `B80`. A note-level solve used to record the session id and nothing else,
+    # so a run that outlived the page that started it could not be found,
+    # resumed or stopped — the ⋯ menu had no way to tell a run still in flight
+    # from one that finished last week. These three are the rest of the
+    # bookkeeping a checklist item already carries inside the `items` JSON;
+    # a note-level run is not an item, so they are columns.
+    agent_status              = Column(String, nullable=True)
+    agent_session_title       = Column(String, nullable=True)
+    agent_stream_completed_at = Column(String, nullable=True)
 
 
 class CalendarCal(TimestampMixin, Base):

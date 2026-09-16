@@ -30,6 +30,7 @@ whatever POSTed the webhook rather than to the owner. One rule, two recordings
 (`Law 13`) — both go through `record_admin_refusal` now.
 """
 
+import asyncio
 import json
 import subprocess
 import sys
@@ -189,18 +190,8 @@ async def test_scheduler_files_the_refusal_as_skipped(task_db, configured_auth):
     assert task.last_run is not None
 
 
-@pytest.mark.asyncio
-async def test_scheduler_refusal_notifies_nobody(task_db, configured_auth):
-    """The refusal returns before the notification block, so nothing is queued.
-
-    Pinned rather than fixed, and the reason is the client. `_pollTaskNotifications`
-    in `static/js/tasks.js` (`:3433`, `:3458`) knows two statuses: `success` is "Task finished" and
-    **everything else is "Task failed: <name>"** in a red error toast. Firing a
-    `skipped` notification here would put the exact lie this row removes back on
-    screen in a different surface. Filed as `B75`; this test is the marker that
-    the gap is deliberate, so nobody closes it by adding a notification that says
-    "failed".
-    """
+def _refuse(task_db, configured_auth):
+    """Run the scheduler's refusal path and hand back what it queued."""
     due = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=1)
     _seed(task_db, next_run=due)
     db = task_db()
@@ -213,10 +204,80 @@ async def test_scheduler_refusal_notifies_nobody(task_db, configured_auth):
     scheduler = TaskScheduler.__new__(TaskScheduler)
     scheduler._task_handles = {}
     scheduler._pending_notifications = []
+    return scheduler
+
+
+@pytest.mark.asyncio
+async def test_scheduler_refusal_notifies_what_the_vocabulary_says_it_should(
+        task_db, configured_auth):
+    """`B07` pinned this as *notifies nobody*, and `B112` rewrote the pin.
+
+    The original reason was the client, not the server. `_pollTaskNotifications`
+    in `static/js/tasks.js` knew two statuses — `success` was "Task finished" and
+    **everything else was "Task failed: <name>"** in a red error toast — so a
+    `skipped` notification here would have put the exact lie this row removes
+    back on screen in a different surface. `B78` fixed the client: `skipped` and
+    `aborted` now produce a plain toast naming what they were and only `error`
+    raises the failure dot. The constraint is gone, so the silence is no longer
+    the answer, and pinning an ABSENCE would mean the next agent has to guess
+    whether it is a decision or an oversight.
+
+    So this asserts the statement instead: `core.database.TASK_RUN_NOTIFY` says
+    which outcomes are worth telling the owner about, with a reason per status,
+    and the refusal emits exactly what it says. The thing that must not come
+    back is the WORD *failed*, and that is asserted separately below.
+    """
+    from core.database import TASK_RUN_NOTIFY, TASK_RUN_NOTIFY_STATUSES
+
+    scheduler = _refuse(task_db, configured_auth)
+    await scheduler._execute_task_locked(
+        "alice-task", "run-1", gate_foreground=False, release_executing=False)
+
+    assert TASK_RUN_NOTIFY["skipped"][0] is True, (
+        "the policy is the thing under test; if it says no, so must the scheduler")
+    assert "skipped" in TASK_RUN_NOTIFY_STATUSES
+    (note,) = scheduler._pending_notifications
+    assert note["status"] == "skipped"
+    assert note["task_name"] == "alice-task"
+    assert note["owner"] == "alice"
+    assert note["body"] == REFUSAL, "the owner is told WHY the task stopped"
+
+
+@pytest.mark.asyncio
+async def test_the_refusal_notification_is_not_a_failure(task_db, configured_auth):
+    """The half `B07` was actually protecting. `skipped` is not `error`, here or
+    anywhere: the client scores the tone off the status, and a refusal filed as
+    a failure corrupts the same error-rate numbers `core/database.py` names."""
+    scheduler = _refuse(task_db, configured_auth)
+    await scheduler._execute_task_locked(
+        "alice-task", "run-1", gate_foreground=False, release_executing=False)
+
+    (note,) = scheduler._pending_notifications
+    assert note["status"] != "error"
+    assert "fail" not in str(note.get("body", "")).lower()
+
+
+@pytest.mark.asyncio
+async def test_a_task_with_notifications_off_is_still_not_told(task_db, configured_auth):
+    """`notifications_enabled` is the owner's per-task quiet switch and `B112`
+    honours it. Without this, closing the gap would have made the switch a lie
+    for exactly the tasks whose owners had asked for quiet."""
+    scheduler = _refuse(task_db, configured_auth)
+    db = task_db()
+    try:
+        t = db.query(ScheduledTask).filter(ScheduledTask.id == "alice-task").first()
+        t.notifications_enabled = False
+        db.commit()
+    finally:
+        db.close()
+
     await scheduler._execute_task_locked(
         "alice-task", "run-1", gate_foreground=False, release_executing=False)
 
     assert scheduler._pending_notifications == []
+    # …and the refusal is still recorded, which is the part that is not optional.
+    (run,) = _runs(task_db)
+    assert run.status == "skipped"
 
 
 # ---------------------------------------------------------------------------
@@ -499,3 +560,248 @@ def test_run_status_tone_scores_the_whole_vocabulary():
     # Unknown falls through to the caller's text-scan fallback rather than
     # being silently scored.
     assert tone["undefined"] is None and tone[""] is None
+
+
+# ---------------------------------------------------------------------------
+# `B112` — which terminal outcomes reach the owner, and which deliberately
+#          do not
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_a_failing_quiet_action_task_still_reaches_its_owner(
+        task_db, configured_auth, monkeypatch):
+    """The rule that shipped before `B112` and had to survive it.
+
+    Housekeeping actions do not toast, and the owner can turn a task's
+    notifications off — two quiet gates, and `error` overrides both, because a
+    task failing on a schedule that nobody is told about keeps failing. `B112`
+    moved every terminal branch through one policy reader, and the reader
+    honours both gates; the override lives at the call site and is the only
+    thing between "one statement of the policy" and a regression nobody would
+    notice until a cron task had been broken for a week.
+    """
+    db = task_db()
+    try:
+        db.add(ScheduledTask(
+            id="quiet-task", owner="alice", name="quiet-task", prompt="{}",
+            task_type="action", action="tidy_sessions", trigger_type="webhook",
+            status="active", output_target="session", notifications_enabled=False,
+        ))
+        db.add(TaskRun(id="run-q", task_id="quiet-task", status="queued"))
+        db.commit()
+    finally:
+        db.close()
+
+    scheduler = TaskScheduler.__new__(TaskScheduler)
+    scheduler._task_handles = {}
+    scheduler._task_defer_counts = {}
+    scheduler._pending_notifications = []
+
+    async def _fail(task, run_id=None):
+        return "the tidy action exited 1", False
+
+    monkeypatch.setattr(scheduler, "_execute_action", _fail, raising=False)
+    await scheduler._execute_task_locked(
+        "quiet-task", "run-q", gate_foreground=False, release_executing=False)
+
+    (run,) = _runs(task_db, "quiet-task")
+    assert run.status == "error"
+    (note,) = scheduler._pending_notifications
+    assert note["status"] == "error"
+    assert note["task_name"] == "quiet-task"
+    assert note["body"] == "the tidy action exited 1", (
+        "the error branch carries the reason; the quiet branch would carry None")
+
+
+@pytest.mark.asyncio
+async def test_a_succeeding_quiet_action_task_stays_quiet(
+        task_db, configured_auth, monkeypatch):
+    """The other side of the same line, so the override cannot be widened into
+    "notify on everything" without something failing."""
+    db = task_db()
+    try:
+        db.add(ScheduledTask(
+            id="quiet-ok", owner="alice", name="quiet-ok", prompt="{}",
+            task_type="action", action="tidy_sessions", trigger_type="webhook",
+            status="active", output_target="session", notifications_enabled=False,
+        ))
+        db.add(TaskRun(id="run-ok", task_id="quiet-ok", status="queued"))
+        db.commit()
+    finally:
+        db.close()
+
+    scheduler = TaskScheduler.__new__(TaskScheduler)
+    scheduler._task_handles = {}
+    scheduler._task_defer_counts = {}
+    scheduler._pending_notifications = []
+
+    async def _ok(task, run_id=None):
+        return "tidied 3 sessions", True
+
+    monkeypatch.setattr(scheduler, "_execute_action", _ok, raising=False)
+    monkeypatch.setattr(scheduler, "_log_to_assistant", lambda *a, **k: None,
+                        raising=False)
+    await scheduler._execute_task_locked(
+        "quiet-ok", "run-ok", gate_foreground=False, release_executing=False)
+
+    (run,) = _runs(task_db, "quiet-ok")
+    assert run.status == "success"
+    assert scheduler._pending_notifications == []
+
+
+def _noop_task(task_db, task_id, schedule):
+    db = task_db()
+    try:
+        db.add(ScheduledTask(
+            id=task_id, owner="alice", name=task_id, prompt="{}",
+            task_type="action", action="tidy_sessions", trigger_type="schedule",
+            schedule=schedule, scheduled_time="09:00",
+            status="active", output_target="session",
+        ))
+        db.add(TaskRun(id=f"run-{task_id}", task_id=task_id, status="queued"))
+        db.commit()
+    finally:
+        db.close()
+    scheduler = TaskScheduler.__new__(TaskScheduler)
+    scheduler._task_handles = {}
+    scheduler._task_defer_counts = {}
+    scheduler._pending_notifications = []
+    return scheduler
+
+
+async def _run_noop(scheduler, monkeypatch, task_id):
+    from src.builtin_actions import TaskNoop
+
+    async def _noop(task, run_id=None):
+        raise TaskNoop("no new emails since watermark")
+
+    monkeypatch.setattr(scheduler, "_execute_action", _noop, raising=False)
+    await scheduler._execute_task_locked(
+        task_id, f"run-{task_id}", gate_foreground=False, release_executing=False)
+
+
+@pytest.mark.asyncio
+async def test_a_no_op_on_a_task_that_keeps_running_says_nothing(
+        task_db, configured_auth, monkeypatch):
+    """`B112`'s decision, the quiet half. `skipped` is declared notifiable, but
+    a housekeeping action reporting *"nothing to do"* recurs on every tick — a
+    daily tidy with no new emails would toast every day forever. The rule is the
+    task's own state, not a list of causes: this one is still scheduled, so
+    nothing stopped and there is nothing to act on."""
+    scheduler = _noop_task(task_db, "daily-tidy", "daily")
+    await _run_noop(scheduler, monkeypatch, "daily-tidy")
+
+    (run,) = _runs(task_db, "daily-tidy")
+    assert run.status == "skipped"
+    assert run.result == "no new emails since watermark"
+    assert scheduler._pending_notifications == [], (
+        "a task that will run again on its schedule is not a task that stopped")
+    assert _task(task_db, "daily-tidy").next_run is not None
+
+
+@pytest.mark.asyncio
+async def test_a_no_op_on_a_task_that_will_not_run_again_is_told(
+        task_db, configured_auth, monkeypatch):
+    """The loud half, same rule. A one-shot that no-ops has produced nothing and
+    will never come round again; the owner scheduled it for a reason and the
+    Activity tab is the only place that would otherwise say so."""
+    scheduler = _noop_task(task_db, "one-shot", "once")
+    await _run_noop(scheduler, monkeypatch, "one-shot")
+
+    (run,) = _runs(task_db, "one-shot")
+    assert run.status == "skipped"
+    assert _task(task_db, "one-shot").next_run is None
+    (note,) = scheduler._pending_notifications
+    assert note["status"] == "skipped"
+    assert note["body"] == "no new emails since watermark"
+
+
+@pytest.mark.asyncio
+async def test_a_run_skipped_because_the_task_was_paused_mid_queue_is_reported(
+        task_db, configured_auth):
+    """The third `skipped` site, and the plainest case of the row's complaint:
+    the run sat in the queue, somebody paused or deleted the task, and the run
+    was filed `skipped` with the reason in `error` — where nothing looked at it
+    unless the owner opened Activity. The task is not active, so by the same
+    rule as the no-op above it will not run again and the owner is told."""
+    db = task_db()
+    try:
+        db.add(ScheduledTask(
+            id="paused-task", owner="alice", name="paused-task", prompt="{}",
+            task_type="llm", trigger_type="schedule", schedule="daily",
+            scheduled_time="09:00", status="paused", output_target="session",
+        ))
+        db.add(TaskRun(id="run-p", task_id="paused-task", status="queued"))
+        db.commit()
+    finally:
+        db.close()
+
+    scheduler = TaskScheduler.__new__(TaskScheduler)
+    scheduler._task_handles = {}
+    scheduler._task_defer_counts = {}
+    scheduler._pending_notifications = []
+    await scheduler._execute_task_locked(
+        "paused-task", "run-p", gate_foreground=False, release_executing=False)
+
+    (run,) = _runs(task_db, "paused-task")
+    assert run.status == "skipped"
+    (note,) = scheduler._pending_notifications
+    assert note["status"] == "skipped"
+    assert note["body"] == "Task no longer active (status=paused)"
+
+
+@pytest.mark.asyncio
+async def test_an_aborted_run_is_silent_because_the_policy_says_so(
+        task_db, configured_auth, monkeypatch):
+    """`B112`'s decision in the other direction, and the shape it had to take.
+
+    `aborted` stays quiet — the restart sweep aborts every in-flight run on
+    every boot and a foreground takeover re-queues this one 15 minutes later —
+    but the branch ASKS and is told no, rather than returning before the notify
+    block the way it did. The difference is invisible until the answer changes,
+    so the second half of this test changes it: with `aborted` declared
+    notifiable, the same branch emits. A branch that simply returned would stay
+    silent both times.
+    """
+    from core.database import TASK_RUN_NOTIFY
+
+    async def _drive(task_id):
+        db = task_db()
+        try:
+            db.add(ScheduledTask(
+                id=task_id, owner="alice", name=task_id, prompt="{}",
+                task_type="action", action="tidy_sessions", trigger_type="schedule",
+                schedule="daily", scheduled_time="09:00", status="active",
+                output_target="session",
+            ))
+            db.add(TaskRun(id=f"run-{task_id}", task_id=task_id, status="queued"))
+            db.commit()
+        finally:
+            db.close()
+
+        scheduler = TaskScheduler.__new__(TaskScheduler)
+        scheduler._task_handles = {}
+        scheduler._task_defer_counts = {}
+        scheduler._pending_notifications = []
+
+        async def _stopped(task, run_id=None):
+            raise asyncio.CancelledError()
+
+        scheduler._execute_action = _stopped
+        await scheduler._execute_task_locked(
+            task_id, f"run-{task_id}", gate_foreground=False, release_executing=False)
+        return scheduler
+
+    scheduler = await _drive("abort-quiet")
+    (run,) = _runs(task_db, "abort-quiet")
+    assert run.status == "aborted"
+    assert scheduler._pending_notifications == [], (
+        "an abort fires on every restart; toasting it is the noise the row refused")
+
+    # Same branch, one entry in the table flipped.
+    monkeypatch.setitem(TASK_RUN_NOTIFY, "aborted", (True, "flipped for this test"))
+    scheduler = await _drive("abort-loud")
+    (note,) = scheduler._pending_notifications
+    assert note["status"] == "aborted", (
+        "the aborted branch does not consult the policy — the silence is an "
+        "omission again, not a decision")

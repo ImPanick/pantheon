@@ -31,6 +31,16 @@ from src.upload_handler import (
     count_recent_uploads,
     extract_upload_ids,
 )
+# `B103`: the SVG gate lives in one module so this route and the emoji route ask
+# it the same question. Imported as the module as well, so the gate is resolved
+# at call time and cannot be a second copy.
+from src import svg_runtime
+from src.svg_runtime import (
+    BLANK_SVG,
+    MAX_PREVIEW_SVG_BYTES,
+    SVG_SECURITY_HEADERS,
+    is_svg,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -401,6 +411,40 @@ def setup_upload_routes(upload_handler):
             logger.error(f"Failed to get upload stats: {e}")
             raise HTTPException(500, "Failed to get upload statistics")
 
+    def _svg_response(path: str, thumb: bool):
+        """Serve an uploaded SVG: sanitised for a preview, intact for a download.
+
+        `B103`, and the split is the whole point. A **preview** is the product
+        choosing to render someone's markup, so it only ever carries bytes the
+        shared gate passed and otherwise sends an empty image — the chip
+        collapses instead of spinning, and the refused file is still on disk. A
+        **download** is the person asking for their own file back, which
+        `build_user_content`'s banner promises them in writing, so it is served
+        whole. Both carry `src/svg_runtime.SVG_SECURITY_HEADERS` and an
+        attachment disposition, which is what makes the intact one inert: a
+        sandbox CSP allows no script in any context, and `attachment` means a
+        direct navigation downloads rather than renders. An `<img>`, which is how
+        both the chip and the lightbox load it, ignores the disposition and
+        draws the picture.
+        """
+        from fastapi.responses import FileResponse, Response
+
+        headers = {**UPLOAD_RESPONSE_HEADERS, **SVG_SECURITY_HEADERS,
+                   "Content-Disposition": "attachment"}
+        if not thumb:
+            return FileResponse(path, media_type="image/svg+xml", headers=headers)
+        try:
+            with open(path, "rb") as fh:
+                content = fh.read(MAX_PREVIEW_SVG_BYTES + 1)
+        except OSError as e:
+            logger.warning(f"SVG preview read failed for {path}: {e}")
+            content = b""
+        if not svg_runtime.is_safe_svg(content, MAX_PREVIEW_SVG_BYTES):
+            logger.info("SVG preview refused (failed the safety check): %s", path)
+            return Response(BLANK_SVG, media_type="image/svg+xml",
+                            headers={**headers, "Cache-Control": "no-store"})
+        return Response(content, media_type="image/svg+xml", headers=headers)
+
     @router.get("/{file_id}")
     async def download_file(request: Request, file_id: str, thumb: int = 0):
         """Serve an uploaded file by its ID. `?thumb=1` returns a small cached
@@ -430,6 +474,17 @@ def setup_upload_routes(upload_handler):
         path = _resolve_upload_path(file_id)
         mime = (info or {}).get("mime") or _mt.guess_type(path)[0] or "application/octet-stream"
         from fastapi.responses import FileResponse
+        # `B103`. SVG before PIL, because PIL cannot parse SVG: `image/svg+xml`
+        # satisfies the `startswith("image/")` test below, `Image.open` raises
+        # `UnidentifiedImageError`, and the except-branch then fell through and
+        # served the original file. So the preview a person sees today is the raw
+        # SVG, arrived at by an exception handler rather than by a decision, and
+        # carrying none of the headers this product already applies to every
+        # other SVG it serves (`routes/emoji_routes.py`). Same bytes either way
+        # for a file that passes the check — the difference is that refusing is
+        # now possible.
+        if is_svg(original_name, mime):
+            return _svg_response(path, bool(thumb))
         # Downscaled thumbnail for image previews — generated once and cached.
         if thumb and mime.startswith("image/"):
             try:

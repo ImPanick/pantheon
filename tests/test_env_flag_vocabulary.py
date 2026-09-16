@@ -206,19 +206,19 @@ def test_the_held_sites_are_still_held_and_still_mean_what_they_meant(monkeypatc
     direction rather than the exemption comment — a test that greps for
     `env-spelling` would be testing the comment (`Law 20`).
 
-    `AUTH_ENABLED=0` must still leave authentication ENABLED. The value is wrong
-    and correcting it is a release-note change; what must not happen is a host
-    booting unauthenticated because of a sweep."""
-    # No reload: `auth_disabled()` reads the environment at call time, so the
-    # module object never needed replacing (`B18` — a reload is not undoable,
-    # and this one was reaching for a value the function already re-reads).
-    import src.owner_identity
-    monkeypatch.setenv("AUTH_ENABLED", "0")
-    assert src.owner_identity.auth_disabled() is False
-    monkeypatch.setenv("AUTH_ENABLED", "no")
-    assert src.owner_identity.auth_disabled() is False
-    monkeypatch.setenv("AUTH_ENABLED", "false")
-    assert src.owner_identity.auth_disabled() is True, "the one spelling that works"
+    **Two of the nine are no longer held, and `B96` is why**: `AUTH_ENABLED` and
+    `PANTHEON_SINGLE_USER` were not narrow, they were *wrong* — an operator
+    typed the disabling value and the switch stayed on. Those two are corrected
+    with a release note, and the behaviour they have now is asserted in
+    `tests/test_env_boundaries.py` rather than here. The remaining seven are
+    held, and the direction of each is what this pins."""
+    import src.caldav_sync
+    monkeypatch.setenv("PANTHEON_ALLOW_PRIVATE_CALDAV", "on")
+    assert os.environ.get("PANTHEON_ALLOW_PRIVATE_CALDAV", "0").lower() \
+        not in {"1", "true", "yes"}, "`on` must not disable the SSRF guard"
+    monkeypatch.setenv("PANTHEON_ALLOW_PRIVATE_CALDAV", "1")
+    assert os.environ.get("PANTHEON_ALLOW_PRIVATE_CALDAV", "0").lower() \
+        in {"1", "true", "yes"}
 
 
 def test_localhost_bypass_is_still_deaf_to_everything_but_true(monkeypatch):
@@ -628,6 +628,11 @@ def test_every_adopted_call_site_passes_the_default_this_file_asserts():
         "IMAGE_BLOCK_PRIVATE_IPS": False, "INTEGRATION_API_BLOCK_PRIVATE_IPS": False,
         "REMINDER_WEBHOOK_BLOCK_PRIVATE_IPS": False,
         "SEARXNG_WIDEN_ENGINES": False, "PANTHEON_ALLOW_MODEL_DOWNLOAD": False,
+        # `B96`. Two switches that `B91` held because correcting them changes
+        # what a running host does. Both default ON — authentication stays on
+        # and single-user mode stays on when nobody says otherwise — and both
+        # now read the four off-words instead of one literal each.
+        "AUTH_ENABLED": True, "PANTHEON_SINGLE_USER": True,
     }
     root = pathlib.Path(__file__).resolve().parent.parent
     tracked = subprocess.run(["git", "ls-files", "*.py"], cwd=root, check=True,

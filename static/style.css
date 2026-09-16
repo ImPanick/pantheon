@@ -25349,6 +25349,17 @@ body:not(.welcome-ready) #welcome-screen {
 .task-completed-preview-row .task-log-time {
   margin-left: 8px;
 }
+/* `B113`. The row's outcome, beside the same `.task-log-status` dot the
+   Activity row uses. The list holds every finished run that left text behind —
+   an output, an error message, or the sentence saying why it stopped — and
+   before this the three were drawn identically, as an assistant chat bubble
+   under a caption promising outputs. No colour of its own: the dot carries the
+   status and this is the word next to it. */
+.task-completed-outcome {
+  font-size: 10px;
+  opacity: 0.6;
+  white-space: nowrap;
+}
 
 /* Tasks tabs reuse the .memory-tab look. The Brain window's tab bar is
    full-bleed (its underline spans the whole modal width). The Tasks bar is a
@@ -26175,6 +26186,44 @@ select.task-form-input { text-overflow: ellipsis; }
   line-height: 1.4;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* ── Task card last-run badge (`B07`, moved out of JS by `B110`) ───────────
+   Three outcomes, not two: a green tick, a red cross, and a neutral dot for
+   everything that is neither a success nor a failure. `static/js/tasks.js`
+   built the stripe, the tint and the glyph colour from one string it held
+   itself, which made that file the second place a run status has a palette —
+   the same `Law 14` shape as the run-history dot above. The tokens and their
+   fallbacks are carried over unchanged (`--red, #e06c75` / `--green, #50fa7b`
+   / a `--fg` mix), so this is a move and not a restyle. Theme tokens only
+   (D-2026-08-26-03): nothing here defines --accent. */
+.task-lastrun {
+  font-size: 11px;
+  margin-bottom: 6px;
+  padding: 4px 8px;
+  border-left: 2px solid;
+  border-radius: 2px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+.task-lastrun-mark { font-weight: 600; }
+.task-lastrun-text { opacity: 0.9; }
+.task-lastrun-ok {
+  border-left-color: var(--green, #50fa7b);
+  background: color-mix(in srgb, var(--green, #50fa7b) 8%, transparent);
+}
+.task-lastrun-ok .task-lastrun-mark { color: var(--green, #50fa7b); }
+.task-lastrun-error {
+  border-left-color: var(--red, #e06c75);
+  background: color-mix(in srgb, var(--red, #e06c75) 8%, transparent);
+}
+.task-lastrun-error .task-lastrun-mark { color: var(--red, #e06c75); }
+.task-lastrun-info {
+  border-left-color: color-mix(in srgb, var(--fg) 45%, transparent);
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+}
+.task-lastrun-info .task-lastrun-mark {
+  color: color-mix(in srgb, var(--fg) 45%, transparent);
 }
 
 /* ── Settings Form Utilities ── */

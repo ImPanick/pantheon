@@ -3,14 +3,20 @@
 """Document processing: PDF/OCR extraction, text file handling, image VL analysis, user content building."""
 
 import os
+import re
 import logging
 import mimetypes
 import base64
+import codecs
 import tempfile
 from typing import List, Dict, Any
 
 from src.llm_core import llm_call
-from src.markitdown_runtime import MARKITDOWN_EXTS
+# ``MARKITDOWN_EXTS`` is no longer read here — `B102` moved this union onto
+# ``OFFICE_EXTS`` — and is kept as a re-export because it has been importable
+# from this module since `B05` and taking a name away is not this row's
+# business (`Law 1`).
+from src.markitdown_runtime import MARKITDOWN_EXTS, OFFICE_EXTS  # noqa: F401
 from src.pdf_runtime import PDF_EXTS
 
 logger = logging.getLogger(__name__)
@@ -32,21 +38,274 @@ TEXT_EXTS = frozenset({
 # than keeping a list of its own.
 #
 # `B05` claimed the rule was ``document_extensions ⊆ _is_text_file`` and asked
-# for a test. Measured, that rule is one we must never satisfy: the 34 accepted
-# extensions minus the 28 text ones are ``.docx .epub .pdf .pptx .xls .xlsx``,
-# and putting ``.pdf`` in the text arm would feed the model a binary stream.
-# The rule that is actually true is this three-way union — 28 + 5 + 1 = 34, with
+# for a test. Measured, that rule is one we must never satisfy: the accepted
+# extensions minus the 28 text ones are ``.doc .docx .epub .odt .pdf .pptx .xls
+# .xlsx``, and putting ``.pdf`` in the text arm would feed the model a binary
+# stream. The rule that is actually true is this union — 28 + 7 + 1 = 36, with
 # zero slack — and stating it as a union makes it an identity that cannot drift,
 # rather than a subset relation a checker has to police (`Law 13`).
+#
+# ``OFFICE_EXTS``, not ``MARKITDOWN_EXTS``: `B102` added bundled `.odt` and
+# `.doc` readers, which are extractors markitdown does not have, so the office
+# side is now two registers and this union asks for their sum. Anything with an
+# extractor belongs here; anything here without one produces a banner instead of
+# a document, which is the defect this identity exists to prevent.
 #
 # This is a superset of, not a substitute for, the ``mime.startswith("text/")``
 # arm at the dispatch below: a libmagic sniff can still rescue an extension no
 # register names. A set alone can never model that, which is the other reason
 # `B05`'s "three-line test" would not have been a proof.
-INGESTIBLE_EXTS = TEXT_EXTS | MARKITDOWN_EXTS | PDF_EXTS
+INGESTIBLE_EXTS = TEXT_EXTS | OFFICE_EXTS | PDF_EXTS
+
+# Extensions whose language name is not simply the extension. Everything else
+# derives: `.toml` is toml, `.swift` is swift, `.lua` is lua. `B100` measured a
+# 27-entry `language_map` and a 24-entry `code_extensions` living side by side
+# inside ``_process_text_file`` — two lists answering one question, which had to
+# agree with each other and with ``TEXT_EXTS``, and whose agreement was asserted
+# only by a sentence in a docstring. They did not agree: a `.toml` reached the
+# model as ``[Type: text]`` with no fence while a byte-identical `.yaml` got
+# ``[Type: yaml]`` inside a ```yaml fence, and `.h` — in ``TEXT_EXTS``, in
+# neither list — was labelled `text` as well.
+#
+# Deriving from the suffix rather than listing it is what stops the list
+# arriving again: `B76` opened chat ingest to every file whose *bytes* decode,
+# so the set of extensions that reaches this function is open-ended by design
+# and a closed list can only be wrong about the next one. What stays listed is
+# the residue a suffix cannot answer — `.py` is not "py".
+#
+# ``mimetypes`` was measured as the alternative single source and is not one: on
+# this interpreter it has no answer at all for `.toml .ini .conf .go .kt .swift
+# .lua .vue .scss .less .gradle .ps1 .env .ipynb .cfg .properties .nix .jsx
+# .tsx`, and it is wrong for `.rs` (``application/rls-services+xml``) and `.ts`
+# (``text/vnd.trolltech.linguist``).
+LANGUAGE_ALIASES = {
+    ".py": "python", ".js": "javascript", ".mjs": "javascript",
+    ".cjs": "javascript", ".jsx": "javascript",
+    ".ts": "typescript", ".tsx": "typescript",
+    ".htm": "html", ".md": "markdown", ".markdown": "markdown", ".mdx": "markdown",
+    ".rb": "ruby", ".rs": "rust", ".kt": "kotlin", ".kts": "kotlin",
+    ".pl": "perl", ".ps1": "powershell", ".sh": "bash", ".zsh": "bash",
+    ".yml": "yaml", ".h": "c", ".hh": "cpp", ".hpp": "cpp", ".hxx": "cpp",
+    ".cc": "cpp", ".cxx": "cpp", ".cs": "csharp", ".patch": "diff",
+    ".ipynb": "json", ".txt": "text", ".text": "text",
+}
+
+# Languages whose content is prose, and which are therefore printed as-is rather
+# than inside a code fence. This is the *only* input to the fence decision —
+# there is no second list of "code extensions" left to fall out of step with the
+# labels.
+PROSE_LANGUAGES = frozenset({"text", "log"})
+
+# A suffix is used as its own language name only when it reads like one. An
+# unrecognised-but-plausible token (```toml, ```rst, ```gradle) degrades to a
+# plain code block in every renderer, which is what the unfenced dump already
+# was, plus a boundary; a suffix that is not a word at all falls back to `text`.
+_LANGUAGE_TOKEN = re.compile(r"^[a-z][a-z0-9+#]{0,11}$")
+
+
+def attachment_language(name: str) -> str:
+    """The one word this product uses for what *name* is.
+
+    `B100`: the ``[Type: ...]`` label and the code fence are the same question
+    asked twice, so they are answered once, here. ``_process_text_file`` reads
+    this and derives the fence from the answer (``PROSE_LANGUAGES``); nothing
+    else may spell a second map (`Law 14`).
+
+    Suffix-derived, alias-corrected. A file with no extension, or one whose
+    suffix is not a word, is ``text`` — the same answer the old map's
+    ``.get(ext, "text")`` gave it.
+    """
+    lowered = (name or "").lower()
+    _, ext = os.path.splitext(lowered)
+    if not ext and lowered.startswith("."):
+        # A bare dotfile: ``.md`` has no splitext extension but is still
+        # markdown, and ``_is_text_file`` has always accepted it by suffix. The
+        # two answers agree now.
+        ext = os.path.basename(lowered)
+    if not ext:
+        return "text"
+    alias = LANGUAGE_ALIASES.get(ext)
+    if alias:
+        return alias
+    token = ext[1:]
+    return token if _LANGUAGE_TOKEN.match(token) else "text"
+
 
 # How much of a file the decode probe below reads before answering.
 TEXT_SNIFF_BYTES = 8192
+
+# Byte-order marks, longest first: the UTF-32 marks begin with the UTF-16 ones,
+# so testing UTF-16 first would read a UTF-32 file as UTF-16 and get noise. A
+# BOM is a file stating its own encoding — `B101`'s "free first half".
+# The codec names are the BOM-consuming ones on purpose: ``utf-16`` reads the
+# mark, takes the endianness from it and drops it, where ``utf-16-le`` would
+# leave a U+FEFF sitting in front of the first word of the document.
+_BOMS = (
+    (codecs.BOM_UTF32_LE, "utf-32"),
+    (codecs.BOM_UTF32_BE, "utf-32"),
+    (codecs.BOM_UTF8, "utf-8-sig"),
+    (codecs.BOM_UTF16_LE, "utf-16"),
+    (codecs.BOM_UTF16_BE, "utf-16"),
+)
+
+# Share of U+FFFD a UTF-8 decode may carry and still count as text. `B02`
+# measured 0.43 for NUL-free random bytes, so 0.30 clears binary.
+_MAX_REPLACEMENT_RATIO = 0.30
+
+# Share of control characters a *detected* legacy encoding may carry. Every
+# single-byte codec maps almost every byte to something, so "it decoded" is not
+# evidence on its own; C0/C1 controls are what real prose does not contain.
+_MAX_CONTROL_RATIO = 0.02
+
+
+def _replacement_ratio(decoded: str) -> float:
+    return decoded.count("\ufffd") / len(decoded) if decoded else 1.0
+
+
+def _control_ratio(decoded: str) -> float:
+    if not decoded:
+        return 1.0
+    bad = sum(
+        1 for ch in decoded
+        if (ord(ch) < 0x20 and ch not in "\t\n\r\f\v") or 0x7F <= ord(ch) <= 0x9F
+    )
+    return bad / len(decoded)
+
+
+def _detect_encoding(head: bytes) -> str | None:
+    """``charset_normalizer``'s answer for *head*, or ``None``.
+
+    The one call site for the dependency, so the probe and the reader ask it
+    the same way. Import-guarded: ``charset-normalizer`` is a hard requirement
+    (``requirements.txt``), but a sniff that cannot run must answer "no idea"
+    rather than raise.
+    """
+    try:
+        from charset_normalizer import detect
+        return (detect(head) or {}).get("encoding") or None
+    except Exception as exc:  # pragma: no cover - dependency missing or broken
+        logger.warning("encoding sniff unavailable: %s", exc)
+        return None
+
+
+def _is_wide_encoding(name: str) -> bool:
+    """True for the UTF-16/32 family, whatever spelling the detector used."""
+    return name.lower().replace("-", "_").startswith(("utf_16", "utf_32"))
+
+
+def sniff_text_encoding(head: bytes) -> str | None:
+    """The encoding *head* decodes as, or ``None`` when it does not read as text.
+
+    One decision, two callers: ``looks_like_text`` asks whether there is an
+    answer, ``decode_text_file`` uses the answer. Before `B101` those were
+    different questions answered by different code — the probe refused a file on
+    the strength of a NUL byte while the reader three frames away had a
+    ``charset_normalizer`` fallback that resolves exactly those files. They
+    cannot disagree now (`Law 13`).
+
+    Order matters and each step earns its place:
+
+    * **BOM** — a file declaring its own encoding. This is the half of `B101`
+      that costs nothing: a UTF-16LE ``.txt`` opens ``FF FE`` and everything
+      after it is unambiguous.
+    * **NUL, no BOM** — binary. png/jpeg/zip/gzip prefixes all carry one, and a
+      zip of pure ASCII scores 0.02 on the ratio below, so the ratio alone would
+      pass it. UTF-16 *without* a BOM is what this rule costs, and it keeps the
+      banner it has always had: nothing separates it from a container without
+      guessing.
+    * **Clean UTF-8** — no replacement characters at all. This is almost every
+      file the product sees, and it is answered without running a detector.
+    * **charset_normalizer** — reached by anything with even one bad byte, and
+      taken only when it decodes *strictly cleaner* than UTF-8 did. This is the
+      rescue `B101` names, and the comparison is what makes it safe to run
+      before the ratio rather than after it: legacy prose scores anywhere in the
+      range (cp1251 Russian 0.811 here, cp1250 Polish 0.170, latin-1 German
+      0.098 — `B02` measured 0.815/0.396/0.148 on its own samples), so a rule
+      that only rescued the *worst*-scoring files would leave the ones in the
+      middle decoded as UTF-8 and handed to the model as mojibake. Which is what
+      happened: a 0.17 file passed the ratio and lost every accented character.
+    * **UTF-8 under ``_MAX_REPLACEMENT_RATIO``** — the `B02`/`B76` verdict, kept
+      as the floor, so every file that reached the model before still does even
+      when the detector has no opinion.
+
+    Measured against the png, jpeg, gzip, PE, dense-binary and NUL-free
+    high-byte fixtures in ``tests/test_attachment_extension_registers.py``, the
+    detector answers ``None`` for every one; the control-char guard is the belt
+    for whatever a future version guesses wrong.
+
+    Import-guarded: ``charset-normalizer`` is a hard requirement
+    (``requirements.txt``), but a probe that cannot run must answer "not text"
+    rather than raise, exactly as the ``open()`` failure in ``looks_like_text``
+    does.
+    """
+    if not head:
+        return "utf-8"  # empty file — nothing binary about it
+    for bom, encoding in _BOMS:
+        if head.startswith(bom):
+            return encoding
+    if b"\x00" in head:
+        return None
+    utf8_ratio = _replacement_ratio(head.decode("utf-8", errors="replace"))
+    if utf8_ratio == 0.0:
+        return "utf-8"
+    detected = _detect_encoding(head)
+    if detected and _is_wide_encoding(detected):
+        # A UTF-16/32 guess about bytes that contain no NUL: every byte pair maps
+        # to *some* codepoint, so such a decode scores a perfect zero on the
+        # ratio and wins on merit while being nonsense. Measured: b"h\xc3\xa9llo
+        # w\xc3\xb6rld\xff" is detected as utf_16_be and decodes to CJK. Real
+        # UTF-16 reaches this function with a BOM or with NULs, and both are
+        # answered above, so there is nothing here for a wide codec to win.
+        detected = None
+    if detected:
+        try:
+            decoded = head.decode(detected, errors="replace")
+        except (LookupError, UnicodeError):
+            decoded = None
+        if (
+            decoded is not None
+            and _replacement_ratio(decoded) < utf8_ratio
+            and _control_ratio(decoded) <= _MAX_CONTROL_RATIO
+        ):
+            return detected
+    if utf8_ratio <= _MAX_REPLACEMENT_RATIO:
+        return "utf-8"
+    return None
+
+
+def decode_text_file(path: str) -> str:
+    """Read *path* as text, in the encoding the probe identified.
+
+    `B101`: ``_process_text_file`` read through ``personal_docs.read_text_file``,
+    which is ``open(..., encoding="utf-8", errors="ignore")`` and **cannot
+    raise** — it returns ``""`` on any failure. So the ``charset_normalizer``
+    fallback written directly underneath its call site was unreachable, and a
+    cp1251 file did not arrive mangled: it arrived *stripped*, every non-ASCII
+    byte dropped by ``errors="ignore"``. A UTF-16LE file fared worse — its NUL
+    padding is valid UTF-8, so the model was handed ``S\x00E\x00N\x00...``.
+
+    The prefix picks the codec (``sniff_text_encoding``), the whole file is
+    decoded with it, and ``errors="replace"`` is the floor: a file whose tail is
+    not what its first 8 KiB promised loses a character, not the document.
+    """
+    with open(path, "rb") as fh:
+        head = fh.read(TEXT_SNIFF_BYTES)
+        rest = fh.read()
+    # The probe and the reader run the same sniff, but they are not asking the
+    # same thing and so they do not stop in the same place. ``sniff_text_encoding``
+    # decides *whether* to read and must stay strict — its NUL rule is what keeps
+    # png/zip/docx out. By the time this function runs the decision is already
+    # made (a register named the extension, or the probe said yes), so a NUL-laden
+    # prefix here is far more likely to be BOM-less UTF-16 than a container, and
+    # asking the detector one more time is the difference between a `.txt` the
+    # model can read and one full of NULs. Measured: ``charset_normalizer``
+    # resolves BOM-less utf-16-le/utf-16-be/utf-32-le prose correctly.
+    encoding = sniff_text_encoding(head) or _detect_encoding(head) or "utf-8"
+    try:
+        return (head + rest).decode(encoding, errors="replace")
+    except LookupError:
+        return (head + rest).decode("utf-8", errors="replace")
+
 
 
 def looks_like_text(path: str, probe_bytes: int = TEXT_SNIFF_BYTES) -> bool:
@@ -81,9 +340,16 @@ def looks_like_text(path: str, probe_bytes: int = TEXT_SNIFF_BYTES) -> bool:
     every upload that works today is zero. For the rest it is one
     ``read(8192)`` — 8 KiB, once, no decode of the tail, no libmagic.
 
-    Deliberately stdlib-only: ``detect_content_type`` is a libmagic call and
+    Deliberately no python-magic: ``detect_content_type`` is a libmagic call and
     python-magic ships only in the Docker image, so routing this through it
     would accept different files on a Docker install than on a pip/venv one.
+    ``charset-normalizer`` is a hard requirement and has no such split.
+
+    `B101` moved the verdict into ``sniff_text_encoding`` so the probe and the
+    reader are one piece of code. What changed here: a BOM'd UTF-16/32 file and
+    a legacy single-byte file are text now. What did not: every file that
+    reached the model before still does, and every binary fixture still gets the
+    banner.
     """
     try:
         with open(path, "rb") as fh:
@@ -91,31 +357,7 @@ def looks_like_text(path: str, probe_bytes: int = TEXT_SNIFF_BYTES) -> bool:
     except Exception as exc:
         logger.warning("text sniff failed for %s: %s", path, exc)
         return False
-    if not head:
-        return True  # empty file — nothing binary about it
-    if b"\x00" in head:
-        # NUL byte: the classic binary tell, and the check doing the real work
-        # here — png/jpeg/zip/gzip prefixes all carry one. (A zip of ASCII
-        # scores only 0.02 on the ratio below, so the ratio alone would let it
-        # through.) Cost: UTF-16/32 text reads as binary and keeps the banner
-        # it already gets today.
-        return False
-    decoded = head.decode("utf-8", errors="replace")
-    if not decoded:
-        return False
-    # Backstop for binary carrying no NUL in its first KiBs: such a prefix is
-    # mostly U+FFFD. `B02` measured 0.43 for NUL-free random bytes, so 0.30
-    # clears binary. It does NOT clear all text: legacy single-byte prose
-    # scores far higher than one number suggests — `B02` measured German 0.148,
-    # Spanish 0.125, French 0.193, Icelandic 0.229, Polish cp1250 0.396 and
-    # cp1251 Russian 0.815, and `B76` re-measured the last two at 0.412 and
-    # 0.793 on different samples. The number moves with the text and the
-    # verdict does not: everything past latin-1, and UTF-16/32 with it, keeps
-    # the banner. That is the pre-existing behaviour and therefore safe, but it
-    # makes this a UTF-8-and-Western-latin probe rather than a general one, and
-    # widening it means sniffing the encoding — not raising this number (`B101`).
-    return decoded.count("\ufffd") / len(decoded) <= 0.30
-
+    return sniff_text_encoding(head) is not None
 
 def upload_display_name(info: Dict[str, Any], fallback_path: str | None = None) -> str:
     """The one name a stored upload is known by.
@@ -155,11 +397,14 @@ def _is_text_file(path: str) -> bool:
     to ``None`` and ``.yaml .yml .rs .sql .rb .xml`` to non-``text/*`` types.
     Those eleven were silently discarded.
 
-    Keep ``TEXT_EXTS`` a superset of the ``language_map`` / ``code_extensions``
-    fence sets in ``_process_text_file`` below: an extension that has a fence
-    label but never reaches the fencer is a contradiction. ``.h`` is there for
-    determinism only — ``mimetypes.guess_type`` already resolves it to
-    ``text/x-chdr``.
+    This used to end with an invariant in prose — "keep ``TEXT_EXTS`` a
+    superset of the ``language_map`` / ``code_extensions`` fence sets in
+    ``_process_text_file``" — which `B100` measured as already false and has
+    now made unnecessary: there are no fence sets left to be a superset of.
+    The label and the fence are derived by ``attachment_language`` for
+    whatever file arrives, including the ones no register names. ``.h`` is in
+    ``TEXT_EXTS`` for determinism only — ``mimetypes.guess_type`` already
+    resolves it to ``text/x-chdr``.
 
     Suffix matching, not ``os.path.splitext``: a bare dotfile named ``.md`` has
     no splitext extension but is still markdown, and it was accepted before the
@@ -179,42 +424,27 @@ def _process_text_file(path: str, display_name: str | None = None) -> str:
     path). That is the same defect `B77` names for the dedup case, except it
     fired on *every* upload, not only on a hash collision.
     """
-    language_map = {
-        ".py": "python", ".js": "javascript", ".html": "html", ".htm": "html", ".css": "css",
-        ".json": "json", ".md": "markdown", ".txt": "text", ".csv": "csv",
-        ".log": "log", ".sh": "bash", ".bash": "bash", ".nix": "nix",
-        ".yml": "yaml", ".yaml": "yaml",
-        ".xml": "xml", ".sql": "sql", ".cpp": "cpp", ".c": "c",
-        ".java": "java", ".go": "go", ".rs": "rust", ".php": "php",
-        ".rb": "ruby", ".ts": "typescript", ".jsx": "javascript", ".tsx": "typescript",
-    }
-
     # Name and language both come from what the user called the file, falling
     # back to the stored path. They must come from the same string or the
     # `[Type: …]` label contradicts the filename printed one line above it.
     filename = os.path.basename(display_name or path)
     _, ext = os.path.splitext(filename.lower())
-    if not ext:
+    if ext:
+        language = attachment_language(filename)
+    else:
         _, ext = os.path.splitext(path.lower())
-    language = language_map.get(ext, "text")
+        language = attachment_language(path)
     max_len = 30000 if ext != ".log" else 10000
 
+    # `B101`: one decoder, and it is reachable. The previous first call was
+    # ``personal_docs.read_text_file`` — utf-8 with ``errors="ignore"``, which
+    # cannot raise — so the ``charset_normalizer`` fallback written under it
+    # never ran, and a cp1251 file arrived with every non-ASCII byte dropped.
     try:
-        from src.personal_docs import read_text_file
-        content = read_text_file(path)
-    except Exception:
-        try:
-            with open(path, "rb") as f:
-                raw_data = f.read()
-            try:
-                content = raw_data.decode("utf-8")
-            except UnicodeDecodeError:
-                from charset_normalizer import detect
-                encoding = (detect(raw_data) or {}).get("encoding") or "utf-8"
-                content = raw_data.decode(encoding, errors="replace")
-        except Exception as e:
-            logger.error(f"Failed to read file {path}: {e}")
-            return "\n\n[Failed to read attached file]"
+        content = decode_text_file(path)
+    except Exception as e:
+        logger.error(f"Failed to read file {path}: {e}")
+        return "\n\n[Failed to read attached file]"
 
     try:
         file_size = os.path.getsize(path)
@@ -249,12 +479,11 @@ def _process_text_file(path: str, display_name: str | None = None) -> str:
     header = f"\n=== File: {filename} ===\n"
     header += f"[Type: {language}, Lines: {line_count}, Size: {size_str} bytes]"
 
-    code_extensions = {
-        ".py", ".js", ".html", ".htm", ".css", ".json", ".md", ".sh", ".bash", ".nix",
-        ".yml", ".yaml", ".xml", ".sql", ".cpp", ".c", ".java", ".go", ".rs", ".php", ".rb",
-        ".ts", ".jsx", ".tsx",
-    }
-    if ext in code_extensions:
+    # `B100`: the fence follows the label rather than a second list. Anything
+    # with a language name is fenced with that name; ``PROSE_LANGUAGES`` is the
+    # only exception, and it holds the same two answers (`text`, `log`) that
+    # were printed unfenced before.
+    if language not in PROSE_LANGUAGES:
         code_block = f"```{language}\n{content}"
         if truncated:
             code_block += "\n[Truncated]"
@@ -373,12 +602,12 @@ def _process_office_document(
     `manage_documents action=read offset=…` after the inline copy is capped.
     """
     from src.markitdown_runtime import (
-        is_markitdown_format,
+        is_office_format,
         convert_to_markdown,
         load_markitdown,
     )
 
-    if not is_markitdown_format(path):
+    if not is_office_format(path):
         # Sibling of the "no extractor" banner in build_user_content, reached by
         # the other route into this state: `is_document_file` said yes on the
         # *mime* half (a libmagic sniff or the mimetypes table), so no register
@@ -439,6 +668,13 @@ def _process_office_document(
 
     # No content: tell the user whether to install the optional dep or whether
     # the document simply had no extractable text.
+    from src.markitdown_runtime import is_markitdown_format
+
+    if not is_markitdown_format(path):
+        # `.odt`/`.doc`: the bundled reader is always present, so "install the
+        # optional dependency" would be a lie and the only honest answer is that
+        # the document holds no text this reader can see.
+        return f"\n\n[Attached document: {display_name} — no extractable text found.]"
     try:
         load_markitdown()
         return f"\n\n[Attached document: {display_name} — no extractable text found.]"

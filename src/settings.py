@@ -647,6 +647,43 @@ def env_backed_flag(settings: dict, key: str, env_name: str,
     the three call sites is that two lines at each of three call sites is how
     this row was written in the first place (`Law 13`).
     """
+    return _resolve_env_backed_flag(settings, key, env_name, default)[0]
+
+
+def env_backed_flag_source(settings: dict, key: str, env_name: str,
+                           default: bool = False) -> str:
+    """Which layer answered `env_backed_flag`: `"settings"`, `"environment"`
+    or `"default"`.
+
+    `B95`. The panel cannot honestly offer a three-state control without this.
+    All three of these keys ship `None` (`B90`), so the control has to express
+    *use the environment or the default*, *yes* and *no* — and the first of
+    those three is a different sentence depending on whether a variable is
+    actually set on this host. `PANTHEON_ALLOW_MODEL_DOWNLOAD=1` in a compose
+    file means "unset" reads as **yes**, and a panel that says "unset" without
+    saying so is telling an operator their `Law 16` gate is shut when it is open.
+
+    Same answer shape as `routes/contacts/contacts_routes._carddav_sources`,
+    which reports `"settings"` / `"environment"` / `""` per field for exactly
+    this reason, and the half of `public_origin.source_of` that `B90`
+    deliberately took only the logging of. `"default"` rather than `""` because
+    a boolean always has an answer — there is no "unconfigured" state where the
+    flag is neither on nor off.
+
+    Derived from the same resolution as the value, not transcribed beside it: a
+    second copy of the layering rule is how `B90` happened (`Law 13`).
+    """
+    return _resolve_env_backed_flag(settings, key, env_name, default)[1]
+
+
+def _resolve_env_backed_flag(settings: dict, key: str, env_name: str,
+                             default: bool) -> tuple[bool, str]:
+    """The one resolution. Returns `(effective, source)`.
+
+    Private because callers want one or the other and asking for both by name
+    reads better at the call site; it is one function so the value and the
+    story about the value can never disagree (`B95`).
+    """
     from src.env_flags import env_flag, env_truthy
     stored = settings.get(key)
     if isinstance(stored, bool):
@@ -655,16 +692,66 @@ def env_backed_flag(settings: dict, key: str, env_name: str,
         # documents, and the one `env_backed` already implements for strings.
         if not stored:
             _warn_stored_no_beats_env(key, env_name)
-        return stored
+        return stored, "settings"
     if stored is not None and not isinstance(stored, str):
-        return bool(stored)
+        return bool(stored), "settings"
     # A string in a boolean slot is somebody hand-editing the file. Judge it by
     # the same vocabulary the environment is judged by rather than by
     # truthiness, or `"false"` reads as yes.
     answer = env_truthy(stored) if isinstance(stored, str) else None
     if answer is not None:
-        return answer
-    return env_flag(env_name, default)
+        return answer, "settings"
+    import os
+    if env_truthy(os.environ.get(env_name)) is not None:
+        return env_flag(env_name, default), "environment"
+    return env_flag(env_name, default), "default"
+
+
+# The keys whose value is `stored choice → environment → default`, with the
+# variable that answers for each and the shipped answer when nothing does.
+#
+# `B95`. A registry rather than three pairs of strings repeated at three call
+# sites and then a fourth time in the panel: the panel has to enumerate them —
+# it cannot ask "which settings are env-backed flags?" of a flat dict — and an
+# enumeration that lives in JavaScript is the layering rule in a second place
+# (`Law 13`). The three resolvers keep spelling their own key and variable at
+# the call site, because a resolver that looked its own name up in a table
+# would be harder to read than the pair it replaced; this table is checked
+# against them by a test rather than by being their only source.
+ENV_BACKED_FLAGS = {
+    "allow_model_download": ("PANTHEON_ALLOW_MODEL_DOWNLOAD", False),
+    "searxng_widen_engines": ("SEARXNG_WIDEN_ENGINES", False),
+    "metrics_enabled": ("PANTHEON_METRICS_ENABLED", False),
+}
+
+
+def env_backed_flag_report(settings: dict | None = None) -> dict:
+    """Every tri-state flag, with the layer that answered and what it answered.
+
+    `B95`. One call for the whole panel, because three round trips to learn
+    three answers to the same question is three chances to render half of them.
+    `env_set` is reported separately from `source`: a host can define the
+    variable and still be answered by `settings`, and an operator deciding
+    whether to clear their stored choice needs to know what is underneath it.
+    """
+    import os
+    if settings is None:
+        settings = load_settings()
+    out = {}
+    for key, (env_name, default) in ENV_BACKED_FLAGS.items():
+        effective, source = _resolve_env_backed_flag(settings, key, env_name, default)
+        from src.env_flags import env_truthy
+        raw = os.environ.get(env_name)
+        out[key] = {
+            "effective": effective,
+            "source": source,
+            "env_name": env_name,
+            "env_set": env_truthy(raw) is not None,
+            "env_says": env_truthy(raw),
+            "default": default,
+            "stored": settings.get(key),
+        }
+    return out
 
 
 def is_setting_overridden(key: str) -> bool:

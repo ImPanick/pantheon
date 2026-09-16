@@ -102,11 +102,24 @@ const notify = slice('async function _pollTaskNotifications() {',
 // `_isChatResultRun` decides the Completed tab's contents and `_isFinishedRun`
 // is its only consumer, so the pair is lifted together — the whole point of
 // `B78`'s third claim is what the CALLER does with the answer.
-const finished = slice('function _isFinishedRun(entry) {',
+const finished = slice('function _runToActivityEntry(r) {',
                        'async function _renderCompletedView() {', '_isFinishedRun');
-// The real dot, not a stub: its colour map is half of what `B78` says is short
-// of the six, and a stubbed one would report the harness's palette.
-const dot = slice('const _RUN_DOT_COLORS = {', 'const _TASK_ICONS = {', '_statusDot');
+// `B113`. The tab itself. The row is a claim about whether the CAPTION and the
+// FILTER say the same thing, and those are 90 lines apart in two functions — so
+// the harness renders the whole view against a stubbed fetch and reports the
+// sentence a person reads together with the statuses that got past the filter.
+// Reading either one alone is what let them disagree for two rows.
+const completedView = slice('async function _renderCompletedView() {',
+                            '// ---- Activity sources (P6-07) ----', '_renderCompletedView');
+const completedRow = slice('function _renderCompletedPreviewEntry(entry) {',
+                           'function _wireCompletedPreviewRows(list) {',
+                           '_renderCompletedPreviewEntry');
+// The real dot, not a stub. `B78` measured its private colour map as short of
+// the six; `B110` deleted the map and made it emit the sheet's own
+// `.task-log-status-*` class, so the anchor is the function rather than the
+// literal that used to sit above it. A stubbed one would report the harness's
+// palette, which is exactly the question.
+const dot = slice('function _statusDot(status) {', 'const _TASK_ICONS = {', '_statusDot');
 
 const escHtml = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -167,12 +180,18 @@ function makeExtra(extra) {
   return new Function(...ks, `
     let _viewingRuns = null;
     let _open = false;
+    let _completedLimit = 40;
+    let _completedHasMore = false;
     ${runStatusModule}
     ${dot}
     ${finished}
+    ${completedRow}
+    ${completedView}
     ${history}
     ${notify}
-    return { _showRunHistory, _pollTaskNotifications, _isFinishedRun, _isChatResultRun };
+    return { _showRunHistory, _pollTaskNotifications, _isFinishedRun,
+             _isChatResultRun, _renderCompletedView, _renderCompletedPreviewEntry,
+             _runToActivityEntry };
   `)(...ks.map((k) => local[k]));
 }
 
@@ -197,21 +216,31 @@ if (mode === 'tone') {
   const task = JSON.parse(process.argv[3] || '{}');
   const appended = [];
   const stubDoc = {
-    createElement: () => ({ style: { cssText: '' }, innerHTML: '', title: '',
-                            addEventListener() {} }),
+    // `B110` moved the badge's three colour variants out of an inline style and
+    // onto `.task-lastrun-*` rules, so the stub element has to carry a class the
+    // way a real one does or the harness reports "no colour at all".
+    createElement: () => ({ style: { cssText: '' }, className: '', innerHTML: '',
+                            title: '', addEventListener() {} }),
   };
   const api = make(...names.map((n) => deps[n]), stubDoc,
                    { appendChild: (el) => appended.push(el) }, task);
   api._renderBadge();
   const el = appended[appended.length - 1];
+  const cls = el ? String(el.className || '') : '';
   console.log(JSON.stringify({
     status: task.last_run_status,
     // Green tick, red cross, or the neutral dot? This is the whole question:
     // the pre-B07 form had no third answer.
     mark: el ? el.innerHTML.replace(/<[^>]*>/g, '').trim().split(/\s+/)[0] : null,
-    // Which colour var the stripe + glyph use.
-    red: el ? el.style.cssText.includes('--red') : null,
-    green: el ? el.style.cssText.includes('--green') : null,
+    // Which colour the stripe + glyph take. Either spelling counts: `B07` wrote
+    // the token into an inline style, `B110` moved the same token into a
+    // `.task-lastrun-*` rule, and "the badge is in its red variant" is the
+    // claim both rows are making.
+    red: el ? (cls.includes('task-lastrun-error')
+               || el.style.cssText.includes('--red')) : null,
+    green: el ? (cls.includes('task-lastrun-ok')
+                 || el.style.cssText.includes('--green')) : null,
+    cls,
     html: el ? el.innerHTML : null,
   }));
 } else if (mode === 'history') {
@@ -246,8 +275,10 @@ if (mode === 'tone') {
       word: (chunk.match(/<span title="[^"]*">([^<]*)<\/span>/) || [])[1] ?? null,
       // The stored value, which must still be reachable somewhere.
       title: (chunk.match(/<span title="([^"]*)">/) || [])[1] ?? null,
-      // The inline dot colour, so two different outcomes cannot share one.
-      dot: (chunk.match(/background:(#[0-9a-f]{3,6})/) || [])[1] || null,
+      // `B110`. The dot's `.task-log-status-*` suffix — the Activity row's own
+      // rule — where this used to be a hex literal `tasks.js` held itself.
+      // `''` means the bare base class, which is the neutral.
+      dot: (chunk.match(/class="task-log-status ?(?:task-log-status-)?([a-z]*)"/) || [])[1] ?? null,
     }))));
   });
 } else if (mode === 'notify') {
@@ -283,6 +314,63 @@ if (mode === 'tone') {
     finished: api._isFinishedRun(e),
     inCompletedTab: api._isChatResultRun(e),
   }))));
+} else if (mode === 'tab') {
+  // `B113`. The Completed tab, rendered whole from a stubbed `/runs/recent`:
+  // the caption a person reads, the statuses that got past the filter, and the
+  // word each surviving row shows for its own outcome. One render, because the
+  // row's claim is that those three agree.
+  const runs = JSON.parse(process.argv[3] || '[]');
+  let written = '';
+  const listEl = {
+    set innerHTML(v) { written = String(v); },
+    get innerHTML() { return written; },
+    appendChild() {}, insertAdjacentHTML() {},
+    querySelector: () => null, querySelectorAll: () => [],
+  };
+  let shellHtml = '';
+  const bodyEl = {
+    set innerHTML(v) { shellHtml = String(v); },
+    get innerHTML() { return shellHtml; },
+    querySelector: () => null,
+  };
+  const doc = {
+    getElementById: (id) => (id === 'tasks-modal'
+      ? { querySelector: () => bodyEl }
+      : id === 'tasks-completed-list' ? listEl
+      : { addEventListener() {} }),
+  };
+  const api = makeExtra({
+    document: doc,
+    fetch: async () => ({ ok: true, json: async () => ({ runs, has_more: false }) }),
+    _setTaskCompletionPending: () => {},
+    _syncCompletedTabCount: () => {},
+    _wireCompletedPreviewRows: () => {},
+    _taskIcon: () => '<svg data-icon="1"></svg>',
+    _taskAiMark: () => '',
+    _relativeTime: () => '2m ago',
+    markdownModule: { mdToHtml: (t) => `<p>${t}</p>`, squashOutsideCode: (t) => t,
+                      processWithThinking: (t) => `<p>${t}</p>` },
+    spinnerModule: { createLoadingRow: () => ({}),
+                     createWhirlpool: () => ({ element: { style: {} } }) },
+  });
+  api._renderCompletedView().then(() => {
+    // The caption, as text, off the shell the view actually wrote.
+    const caption = (shellHtml.match(/<p class="memory-desc">([\s\S]*?)<\/p>/) || [])[1] || '';
+    const rows = written.split('<div class="memory-item doclib-chat-row task-completed-preview-row').slice(1);
+    console.log(JSON.stringify({
+      caption: caption.replace(/<[^>]*>/g, '').trim(),
+      empty: /task-completed-empty/.test(written)
+        ? written.replace(/<[^>]*>/g, '').trim() : null,
+      rows: rows.map((chunk) => ({
+        // The dot's shared class, and the word beside it — `null` when the row
+        // shows no word, which is the success case.
+        dot: (chunk.match(/class="task-log-status ?(?:task-log-status-)?([a-z]*)"/) || [])[1] ?? null,
+        titled: (chunk.match(/class="task-log-status[^"]*" title="([^"]*)"/) || [])[1] ?? null,
+        word: (chunk.match(/class="task-completed-outcome">([^<]*)</) || [])[1] ?? null,
+        name: (chunk.match(/class="task-log-name">([^<]*)</) || [])[1] ?? null,
+      })),
+    }));
+  });
 } else if (mode === 'wire') {
   const entry = JSON.parse(process.argv[3] || '{}');
   const api = make(...names.map((n) => deps[n]), null, null, null);

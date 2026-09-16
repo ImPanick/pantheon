@@ -21,6 +21,53 @@ UPLOADS_DIR = PERSONAL_UPLOADS_DIR
 
 logger = logging.getLogger(__name__)
 
+# A sample, not the whole list: a directory of 50,000 unreadable files must not
+# turn one add_directory response into a 50,000-entry payload (`B75`). The
+# counts in `skipped_count` / `skipped_reasons` stay whole either way.
+_SKIP_REPORT_LIMIT = 50
+
+
+def _skips_under(entries, directory: str) -> List[Dict[str, str]]:
+    """The skip records from `entries` that sit under `directory` (`B75`).
+
+    The docs manager re-walks every tracked directory on refresh, so its report
+    covers more than the directory just added. Matching is on a path boundary,
+    not a string prefix — adding `/docs` must not pull in `/docs2` — the same
+    rule `PersonalDocsManager.add_directory` and `VectorRAG.remove_directory`
+    already use.
+    """
+    root = os.path.abspath(directory)
+    out: List[Dict[str, str]] = []
+    for entry in entries or []:
+        if not isinstance(entry, dict):
+            continue
+        path = os.path.abspath(str(entry.get("path") or ""))
+        if path == root or path.startswith(root + os.sep):
+            out.append({"path": entry.get("path"), "reason": entry.get("reason")})
+    return out
+
+
+def _merge_skips(*reports) -> List[Dict[str, str]]:
+    """Union of several skip reports, deduped by path, order preserved.
+
+    Two indexes, one answer. With the shared extractor register the two reports
+    are identical by construction; merging rather than picking one means that if
+    they ever diverge again the user is told about the file, not about whichever
+    indexer happened to be read.
+    """
+    seen = set()
+    out: List[Dict[str, str]] = []
+    for report in reports:
+        for entry in report or []:
+            if not isinstance(entry, dict):
+                continue
+            path = entry.get("path")
+            if path in seen:
+                continue
+            seen.add(path)
+            out.append({"path": path, "reason": entry.get("reason")})
+    return out
+
 def _personal_upload_dir_for_owner(owner: str | None, *, create: bool = True) -> str:
     """Return the per-owner upload directory used for direct RAG uploads."""
     owner_segment = secure_filename((owner or "local").strip())[:80] or "local"
@@ -237,6 +284,20 @@ def setup_personal_routes(personal_docs_manager, rag_manager, rag_available):
                         # refresh_index(), which re-extracts text across tracked
                         # directories.
                         personal_docs_manager.add_directory(directory, index=False)
+                        # `B75`. One click builds two indexes over this
+                        # directory. They used to read two hand-maintained
+                        # extension lists that agreed on four of sixteen, so a
+                        # file could be in one index and not the other with
+                        # nothing saying so. Both now derive from the extractor
+                        # register and share one walk, so a file is either in
+                        # both or reported here with a reason. The two reports
+                        # are merged rather than one being trusted: if they ever
+                        # diverge again, the union is what the user sees.
+                        result["skipped"] = _merge_skips(
+                            result.get("skipped"),
+                            _skips_under(getattr(personal_docs_manager, "skipped", None), directory),
+                        )
+                        result["skipped_count"] = len(result["skipped"])
                     return result
 
                 # Indexing walks, embeds, and stores the whole tree — minutes
@@ -249,11 +310,28 @@ def setup_personal_routes(personal_docs_manager, rag_manager, rag_available):
                     result = await run_in_threadpool(_index_directory)
 
                 if result["success"]:
+                    skipped = result.get("skipped") or []
+                    reasons: dict[str, int] = {}
+                    for entry in skipped:
+                        reasons[entry["reason"]] = reasons.get(entry["reason"], 0) + 1
+                    message = f"Successfully indexed {result['indexed_count']} chunks from {directory}"
+                    if skipped:
+                        # Say it in the message too. A count in a field nothing
+                        # renders is the same silence this row is about.
+                        message += "; skipped " + ", ".join(
+                            f"{n} {reason}" for reason, n in sorted(reasons.items())
+                        )
                     return {
                         "success": True,
-                        "message": f"Successfully indexed {result['indexed_count']} chunks from {directory}",
+                        "message": message,
                         "indexed_count": result["indexed_count"],
                         "failed_count": result.get("failed_count", 0),
+                        # Capped: a directory of 50,000 unreadable files must not
+                        # become a 50,000-entry JSON response. The counts are
+                        # whole; the list is a sample.
+                        "skipped": skipped[:_SKIP_REPORT_LIMIT],
+                        "skipped_count": len(skipped),
+                        "skipped_reasons": reasons,
                         "directory": directory
                     }
                 else:

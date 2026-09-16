@@ -339,11 +339,60 @@ import agentDrafts from './agentDrafts.js';   // H01
   }
   try { window.refreshChatContextHeader = refreshChatContextHeader; } catch (_) {}
 
-  function _setForegroundChatBusy(active) {
+  /** `B81`. The composer's own answer to "can a steer reach the run this turn
+   *  is about to start", computed where the terms actually live.
+   *
+   *  `routes/chat_routes.py` `_stream_is_steerable` decides it from four terms:
+   *  `chat_mode`, `do_research`, `is_image_session` and `compare_mode`. Two of
+   *  them are readable here, at the moment of sending, and this reads exactly
+   *  those two and no more — it is not a second copy of the predicate, it is
+   *  the terms the client can honestly evaluate, and the run's own
+   *  `stream_steerable` (`B14`) still overrules it in both directions.
+   *
+   *  `chatStream.js` used to guess from the mode toggle alone, which is why a
+   *  research turn drew a bar: research is sent in agent mode, so the mode term
+   *  says nothing about it. The research toggle is still checked at this point
+   *  in the send path — it is cleared further down, just before the POST, which
+   *  is precisely why the guess had to be made HERE and not read back later.
+   *
+   *  The two it cannot answer, stated rather than faked:
+   *    · `is_image_session` is a model/endpoint-registry question the client
+   *      has no equivalent of, and inventing one would be a second predicate
+   *      (`Law 14`);
+   *    · `compare_mode` never reaches this edge at all — `compare/stream.js`
+   *      POSTs `/api/chat_stream` itself and never calls this function, so no
+   *      bar is drawn from a compare pane in the first place.
+   *  Both are left to the run's answer, which is the only thing that can know.
+   *
+   *  Returns true when nothing the composer can see argues against it: an old
+   *  server that never sends `stream_steerable` then behaves exactly as it does
+   *  today, which is the half of this that must not regress.
+   */
+  function _composerTurnSteerable() {
+    try {
+      const el = uiModule.el;
+      const research = el && el('research-toggle');
+      if (research && research.checked) return false;
+      const mode = window.__pantheonGetChatMode && window.__pantheonGetChatMode();
+      if (mode === 'chat') return false;
+      return true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /** `steerable` is this turn's provisional verdict (`B81`), or undefined from
+   *  the call sites that are re-announcing a busy state rather than starting a
+   *  turn — notably `setStreamingState('streaming')`, which fires AFTER the
+   *  research toggle has been cleared and would compute the wrong answer if it
+   *  tried. Listeners keep the last verdict they were given until the run ends. */
+  function _setForegroundChatBusy(active, steerable) {
     try {
       window.__pantheonChatBusy = !!active;
       window.__pantheonChatBusyUntil = active ? Date.now() + 120000 : Date.now() + 1200;
-      window.dispatchEvent(new CustomEvent('pantheon:chat-busy-change', { detail: { active: !!active } }));
+      const detail = { active: !!active };
+      if (typeof steerable === 'boolean') detail.steerable = steerable;
+      window.dispatchEvent(new CustomEvent('pantheon:chat-busy-change', { detail }));
     } catch (_) {}
   }
   let _pendingContinue = null; // Stores the stopped AI element to merge with new response
@@ -2092,7 +2141,11 @@ import agentDrafts from './agentDrafts.js';   // H01
     const _sendPerf = _createChatSendPerf();
     _sendInFlight = true;
     const approvalForSend = _pendingToolApproval;
-    _setForegroundChatBusy(true);
+    // `B81`. The verdict travels with the edge that raises the bar, so the bar
+    // is never painted for a turn the composer already knows cannot take a
+    // steer — instead of being painted here and withdrawn ~880 lines and one
+    // round trip later when `stream_steerable` contradicts it.
+    _setForegroundChatBusy(true, _composerTurnSteerable());
     // Instant visual feedback so the user sees their click was accepted
     // even before the streaming button state kicks in below.
     const _earlyMessageInput = uiModule.el('message');

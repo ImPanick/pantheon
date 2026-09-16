@@ -446,31 +446,38 @@ function _absoluteTime(iso) {
 // and re-exported. It was defined here until `B78` measured a fifth ladder
 // outside this file; see `runStatus.js` for why it moved and what it decides.
 
-// `B78`. Two vocabularies met in this one map and only one of them had keys.
-// `active`/`paused`/`completed` are TASK statuses; `error`/`failed` are RUN
-// statuses; and the single caller (`_showRunHistory`) passes `'active'` for a
-// successful run and the raw run status otherwise. Measured on the pre-fix
-// tree, that left `queued`, `running`, `skipped` and `aborted` with no key at
-// all, so four of the six runs a person can see drew the SAME grey dot — an
-// aborted run and a queued one were indistinguishable in the list whose job is
-// to say what happened. The three task-status keys are unreachable from the one
-// caller and are kept rather than deleted: they are the map's documented other
-// half and removing them is a subtraction.
+// The run-history dot. One caller — `_showRunHistory`.
 //
-// The four colours are the ones `.task-log-status-*` already paints in
-// `style.css`, copied rather than invented, so the same run does not get an
-// amber dot in the Activity list and a grey one in its own history. `skipped`
-// and `aborted` stay on the neutral: the sheet separates those two with a
-// dashed border, which an 8px inline span has no room for, and a colour the
-// sheet does not use would be a second palette (`Law 14`).
-const _RUN_DOT_COLORS = {
-  queued: '#fbbf24', running: '#60a5fa', skipped: '#888', aborted: '#888',
-};
-
+// `B78` found two vocabularies in one map and only one of them had keys.
+// `active`/`paused`/`completed` are TASK statuses; `error`/`failed` are RUN
+// statuses; and the single caller passed `'active'` for a successful run and
+// the raw run status otherwise. Measured on that tree, `queued`, `running`,
+// `skipped` and `aborted` had no key at all, so four of the six runs a person
+// can see drew the SAME grey dot — an aborted run and a queued one were the
+// same mark in the list whose only job is to say what happened. `B78` added the
+// four keys and copied the four colours out of `.task-log-status-*`.
+//
+// `B110` removes the copy. Copying them meant `#fbbf24` was the queued dot in
+// two files — once as a CSS rule and once as a hex literal in a template
+// string — so a theme edit moved one of them and not the other (`Law 14`). The
+// history row now takes the class the Activity row takes, off the same
+// `runStatusDotClass` derivation, and the sheet is the only palette. Two things
+// come with that: `skipped` and `aborted` stop sharing one grey (the sheet
+// splits them with a dashed border, which the old 8px inline span had no room
+// for), and the neutral becomes `color-mix(in srgb, var(--fg) 30%, transparent)`
+// — theme-aware, where `#888` was not.
+//
+// What went with the literals, and why it is not a subtraction (`Law 1`): the
+// three TASK-status keys were unreachable. The one caller passes either a run
+// status or the string `'active'`, which it substituted for `success` — so
+// `paused` and `completed` could not be produced by any input a person has, and
+// `active` only ever meant "this run succeeded". The caller passes the run's own
+// status now and the substitution goes with the palette. A value outside the
+// six still gets a dot: `runStatusDotClass` answers `''` and the bare
+// `.task-log-status` base paints the neutral, which is what `#888` was.
 function _statusDot(status) {
-  const colors = { active: '#4caf50', paused: '#ff9800', completed: '#888', error: '#f44336', failed: '#f44336' };
-  const c = colors[status] || _RUN_DOT_COLORS[status] || '#888';
-  return `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c};box-shadow:0 0 6px ${c}, 0 0 3px ${c};flex-shrink:0;position:relative;top:4px;"></span>`;
+  const cls = runStatusDotClass(status);
+  return `<span class="task-log-status${cls ? ` task-log-status-${cls}` : ''}"></span>`;
 }
 
 const _TASK_ICONS = {
@@ -1004,9 +1011,14 @@ function _renderList() {
       // dot and says what it was.
       const tone = runStatusTone(task.last_run_status);
       const isErr = tone === 'error';
-      const color = isErr ? 'var(--red,#e06c75)'
-        : tone === 'ok' ? 'var(--green,#50fa7b)'
-        : 'color-mix(in srgb, var(--fg) 45%, transparent)';
+      // `B110`. The stripe, its tint and the glyph were painted from a colour
+      // string built here — `var(--red,#e06c75)` / `var(--green,#50fa7b)` /
+      // a `color-mix` on `--fg` — which made this file the second place a run
+      // status has a palette. The three variants are `.task-lastrun-*` rules in
+      // the sheet now, holding the SAME tokens and the same fallbacks, so the
+      // rendering does not move and a theme edit reaches the badge with
+      // everything else (`Law 14`).
+      const variant = isErr ? 'error' : tone === 'ok' ? 'ok' : 'info';
       const mark = isErr ? '✗' : tone === 'ok' ? '✓' : '·';
       // `B84`. Three registers in six lines: two human sentences and, for
       // `skipped`/`aborted`/`running`, the raw stored value — *skipped (no
@@ -1019,8 +1031,8 @@ function _renderList() {
       const result = (task.last_run_result || '').trim();
       const prev = result.length > 200 ? result.slice(0, 200) + '…' : result;
       const lr = document.createElement('div');
-      lr.style.cssText = `font-size:11px;margin-bottom:6px;padding:4px 8px;border-left:2px solid ${color};background:color-mix(in srgb, ${color} 8%, transparent);border-radius:2px;line-height:1.4;cursor:pointer;`;
-      lr.innerHTML = `<span style="font-weight:600;color:${color};">${mark}</span> <span style="opacity:0.9;">${_esc(prev) || empty}</span>`;
+      lr.className = `task-lastrun task-lastrun-${variant}`;
+      lr.innerHTML = `<span class="task-lastrun-mark">${mark}</span> <span class="task-lastrun-text">${_esc(prev) || empty}</span>`;
       lr.title = 'Open full history';
       lr.addEventListener('click', (e) => { e.stopPropagation(); _showRunHistory(task.id, task.name); });
       detail.appendChild(lr);
@@ -1931,7 +1943,7 @@ async function _showRunHistory(taskId, taskName) {
         : 'task-run-running';
       html += `<div class="task-run-item ${statusClass}">
         <div class="task-run-item-header">
-          ${_statusDot(_tone === 'ok' ? 'active' : run.status)}
+          ${_statusDot(run.status)}
           <span title="${_esc(run.status || '')}">${_esc(runStatusLabel(run.status, 'job'))}</span>
           ${run.model ? `<span class="task-run-model" style="font-size:10px;opacity:0.5;">${_esc(run.model.split('/').pop())}</span>` : ''}
           <span class="task-run-time" title="${run.started_at ? _esc(_relativeTime(run.started_at)) : ''}">${run.started_at ? _absoluteTime(run.started_at) : ''}</span>
@@ -2167,10 +2179,25 @@ function _isFinishedRun(entry) {
   return isRunFinished(entry.status);
 }
 
+// `B113`. What this list is, stated once, because the caption above it used to
+// promise something else. It is every assistant/research run that RAN and then
+// finished, with whatever it left behind — an output, an exception message, or
+// the sentence saying why it stopped. Three statuses reach it and they are not
+// interchangeable, so the row carries the word for its own (see
+// `_renderCompletedPreviewEntry`); the caption no longer claims all three are
+// outputs.
+//
+// `skipped` is the one terminal status kept out, and the reason is the
+// vocabulary's own: `core/database.py` defines `skipped` as "deliberately did
+// not run" and `aborted` as "an infrastructure event ended the run". A skipped
+// run never started, so there is nothing it left behind — its only text is the
+// reason it did not run, e.g. *"Task no longer active (status=paused)"*, which
+// `_runToActivityEntry` promotes into `result`. That belongs in Activity, which
+// shows every run unfiltered, and it is where the caption now sends people.
+// `B78` left this exclusion looking arbitrary next to `aborted`; it is not, but
+// nothing said so.
 function _isChatResultRun(entry) {
   return _isFinishedRun(entry)
-    // A skipped run's only text is the reason it did not run, which is not an
-    // output and cannot be opened in a chat.
     && entry.status !== 'skipped'
     && (entry.kind === 'llm' || entry.kind === 'research')
     && !!(entry.result || '').trim();
@@ -2187,7 +2214,7 @@ async function _renderCompletedView() {
         <h2 style="margin:0;padding:0;line-height:1;">Completed</h2>
         <button class="memory-toolbar-btn" id="tasks-completed-refresh" title="Refresh" style="margin-left:auto;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg></button>
       </div>
-      <p class="memory-desc">Completed assistant/research outputs you can open in chat.</p>
+      <p class="memory-desc">Assistant and research runs that finished: the output, the error, or why the run stopped. Runs that never started stay in Activity.</p>
       <div id="tasks-completed-list" class="memory-list tasks-activity-list tasks-completed-list" style="flex:1;overflow:auto;font-size:13px;min-height:0;"></div>
     </div>
   `;
@@ -2204,7 +2231,7 @@ async function _renderCompletedView() {
     _syncCompletedTabCount(finished.length);
     if (!list) return;
     if (finished.length === 0) {
-      list.innerHTML = '<div class="doclib-empty task-completed-empty">No completed task outputs yet.</div>';
+      list.innerHTML = '<div class="doclib-empty task-completed-empty">No finished assistant or research runs yet.</div>';
       return;
     }
     list.innerHTML = finished.map(_renderCompletedPreviewEntry).join('');
@@ -2755,9 +2782,23 @@ function _renderCompletedPreviewEntry(entry) {
   }
   const title = _escHtml(entry.taskName || 'Task');
   const time = `<span class="task-log-time" title="${_escHtml(tsAbs)}">${_escHtml(tsLabel)}</span>`;
+  // `B113`. Three outcomes reach this list and all three were drawn as an
+  // assistant chat bubble with nothing beside it, so an exception message and a
+  // run that was stopped before it produced anything read exactly like an
+  // answer. The dot is the Activity row's own `.task-log-status` — same rules,
+  // same sheet — and the word is the shared table's. The word is shown only when
+  // the run did not succeed: a success is what the tab is for, and labelling
+  // every row *Success* would be noise; the dot still carries it, titled, for
+  // the rows that have no word.
+  const _dotCls = runStatusDotClass(entry.status);
+  const _word = runStatusLabel(entry.status, 'job');
+  const outcome = `<span class="task-log-status${_dotCls ? ` task-log-status-${_dotCls}` : ''}" title="${_escHtml(_word || entry.status || '')}"></span>`
+    + (runStatusTone(entry.status) === 'ok' || !_word
+        ? '' : `<span class="task-completed-outcome">${_escHtml(_word)}</span>`);
   return `
     <div class="memory-item doclib-chat-row task-completed-preview-row" data-entry-idx="${entryIdx}">
       <div class="doclib-chat-header task-completed-preview-head">
+        ${outcome}
         <span class="task-log-task-icon">${_taskIcon({ action: entry.action, task_type: entry.kind })}</span>
         <span class="task-log-name">${title}</span>${_taskAiMark(entry)}
         <span style="flex:1"></span>
@@ -3523,10 +3564,18 @@ async function _pollTaskNotifications() {
       // in a plain toast without touching the failure dot. An UNRECOGNISED
       // status still takes the loud branch — quietening something we cannot
       // name is the wrong direction to be wrong in (`Law 1`).
+      //
+      // `B112`. The reason travels with the notification now. The server sends
+      // the skip's own sentence in `body` — *"Action 'run_local' requires admin
+      // privileges"*, *"Task no longer active (status=paused)"* — and the
+      // branch above only shows a body for `success`, so a person was told
+      // *Task skipped: Nightly tidy* and nothing about why. That is the row's
+      // complaint one surface later. Truncated at 140 like the success toast.
       const _tone = runStatusTone(n.status);
       const _quiet = _tone === 'info';
+      const _why = _quiet && n.body ? ` — ${String(n.body).slice(0, 140)}` : '';
       const msg = _quiet
-        ? `Task ${runStatusLabel(n.status, 'job').toLowerCase()}: ${n.task_name}`
+        ? `Task ${runStatusLabel(n.status, 'job').toLowerCase()}: ${n.task_name}${_why}`
         : `Task ${ok ? 'finished' : 'failed'}: ${n.task_name}`;
       if (!uiModule) continue;
       if (ok || _quiet) uiModule.showToast(msg, { duration: 5000 });

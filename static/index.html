@@ -3008,6 +3008,33 @@
 
         <div data-settings-panel="system" class="hidden">
 
+          <!-- B95. Three settings an operator could only change by hand-writing
+               `data/settings.json`: measured 2026-09-15 by grepping every `.js`
+               and `.html` in the tree for all three names, zero hits. One of
+               them, `allow_model_download`, is the `Law 16` gate on fetching a
+               model from HuggingFace, and `src/self_checks.py` already tells a
+               person to "turn on allow_model_download" in a diagnostic they
+               could read and not act on.
+
+               Three states, not two, and that is the whole reason this is a
+               <select> and not a switch: all three ship `null` (`B90`), so a
+               checkbox writing `false` on first paint would manufacture for
+               every operator who opens this panel exactly the stored *no*
+               nobody chose that `B90` was filed to remove. "Use the environment
+               or the default" is a real, selectable value here. -->
+          <div class="admin-card">
+            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>Switches a deploy can also set</h2>
+            <div class="admin-toggle-sub" style="margin-bottom:10px">
+              Each of these can be answered here, or left to an environment
+              variable your deployment sets, or left to the shipped default.
+              Choosing Yes or No here wins over the variable; choosing
+              &ldquo;Use the environment or the default&rdquo; hands the answer
+              back. The line under each one says which layer is answering now.
+            </div>
+            <div class="settings-col" id="settings-envflags-rows"></div>
+            <div class="admin-toggle-sub" id="set-envflagsMsg" style="margin-top:8px;font-size:11px;opacity:0.75;min-height:14px"></div>
+          </div>
+
           <div class="admin-card" id="settings-system-logs-card">
             <h2>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="settings-system-logs-svg">

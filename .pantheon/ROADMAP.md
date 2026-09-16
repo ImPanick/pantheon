@@ -80,8 +80,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P17 | The network the agent is hosted on | 14 | 3 | 0 | **11** |
 | P18 | One button, and it links | 9 | 0 | 0 | **9** |
 | P19 | The proof ledger | 8 | 0 | 0 | **8** |
-| Backlog | Bugs and hardening found in flight | 126 | 30 | 0 | **96** |
-| **Total** | | **508** | **213** | **9** | **286** |
+| Backlog | Bugs and hardening found in flight | 140 | 24 | 0 | **116** |
+| **Total** | | **522** | **207** | **9** | **306** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -243,6 +243,57 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### Five agents, nineteen rows, and two switches that meant the opposite of what an operator typed
+`c4af3a4..HEAD`. **522 tracked, 306 done. 0 new phase rows, 1 regression caught at the merge.
+`B75`, `B80`, `B81`, `B82`, `B95`–`B98`, `B100`–`B103`, `B110`–`B113`, `B120`, `B122`, `B150` and
+`B190` closed; fourteen rows filed.** Five worktrees, five surfaces, **no file touched by two agents
+without both edits surviving and no row number collided** — the second clean merge running, and both
+are the row-range spacing rather than luck. 218 tests added; 159 mutations run, 159 caught, 0
+survived.
+**The integration run earned its eleven minutes and that is `B190`.** Every agent left its own
+surface green; the merged tree failed four tests, and two of them were a real regression that
+`B97`'s own converted files were *structurally* unable to see — the unification carried in
+`if not isinstance(raw, str): return bool(raw)`, and the two callers living on the tri-state's third
+answer each needed a value those files never pass. `_parse_supports_tools({})` went from `None` to
+`False`, which is the "quietly take native tools away from an endpoint that had them" its own
+`P3-22` docstring exists to prevent; `read_email_by_uid` read a truthy `Query(False)` as yes and
+fetched whole message bodies where it had fetched truncated ones. The third failure was a test
+asserting the defect `B96` had just fixed, and the fourth was markup — whose fix was to delete an
+unread `id` rather than grow the list that records unread ids, because growing it records a defect
+instead of fixing one.
+**`B96` is the security row of the wave and it is an operator's own words being ignored.**
+`AUTH_ENABLED=0` left auth **enabled** and `PANTHEON_SINGLE_USER=false` left single-user **on** — a
+host that had written down "off" got "on", silently, and the two `# env-spelling:` exemptions in the
+checker are what let it stay that way. Both read `env_flags.env_flag` now, both default `True` so an
+unset variable keeps the safe answer, and both log once when they see a spelling the old rule read
+backwards. This is a behaviour change on any host that set either, so it ships with a release note in
+`.env.example` and a *Changed — read this before upgrading* block in `CHANGELOG.md` rather than
+quietly. `B150`, found underneath it, is worse in shape if not in reach: `_SINGLE_USER_MODE` was
+computed at import into a constant **referenced nowhere in the tree**, so no spelling turned
+single-user off, including the documented one — invisible to all four of `check-env-declared.py`'s
+rules, which is why the fifth rule (`INERT`) now exists.
+**`B120` is the row a redeploy would have found eventually and a user would have found first.**
+`static/sw.js` answered a navigation only for `/`, so eight routes that serve the byte-identical
+cached shell reached the network instead — and `static/index.html` builds a per-route manifest with
+`start_url: path`, so *Add to Home Screen* from `/tasks` installed an app whose launch URL failed
+offline. The route set is **checked, not copied**: a test boots the real app, asks every
+parameter-free GET route for its body, normalises the per-request nonce out, and requires the set
+answering byte-identically to `/` to be exactly `SHELL_ROUTES` — so the next route added to `app.py`
+fails the test rather than joining the eight (`Law 13`). `B121` beside it is **left open on purpose**:
+the row said check first whether a nonce can be served with an `ETag` at all, and it cannot —
+`SecurityHeadersMiddleware` mints a fresh nonce per request, so a `304` would update the stored
+headers and leave cached HTML holding nonce A under a policy naming nonce B, blocking all seven
+inline scripts. The measurement is written into the row and `B141` is the bigger fix it waits on.
+**Two rows were closed by discovering the filed premise was wrong, which is the point of measuring
+first.** `B122` assumed `AuthMiddleware` made an offline login pointless; the reachable path is Log
+out, which clears local state inside a `try {} catch {}` and then navigates to a `/login` that was
+`NOT HANDLED`. `B103` assumed `.svg` had no preview and that PIL could rasterise one; neither was
+true, and the real defect was hostile markup served by an exception handler with none of the
+hardening the emoji route already applied to the product's own SVGs. `B101` went the same way one
+level deeper: the `charset_normalizer` fallback was not merely unreached but **unreachable**, because
+the reader it was meant to rescue opens with `errors="ignore"` and cannot raise — so a Polish cp1250
+file passed every gate with each accented character silently deleted.
 
 ### The deploy that found the outage: two MCP servers had not started since `B74`
 `dad47cb..HEAD`. **508 tracked, 286 done. 0 new phase rows, 1 regression closed. `B131` closed;
@@ -6651,7 +6702,7 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   claim `providers-are-records`, provenance `diffed`. The repro was run end to end on cybertooth
   and returns those figures; its last step (`pytest`) is the one thing that does not run there,
   because that box has no pytest installed — an environment gap, stated rather than hidden.
-- [ ] **B75** **Two indexes over the same directory, built by the same click, from different
+- [x] **B75** **Two indexes over the same directory, built by the same click, from different
   extension lists.** Found 2026-09-14 while correcting `B05`, and measured by importing both
   registers and driving `load_personal_index` over a directory holding one file of each extension.
   One `POST /personal/add_directory` (`routes/personal_routes.py:236-249`) calls
@@ -6672,6 +6723,44 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   `markitdown_runtime` the way `load_personal_index` already does. `Verify:` index one directory, and
   every file either appears in both indexes or is reported as skipped with a reason. `Depends:`
   nothing. — found while correcting `B05` — agent:`B05`
+  **DONE 2026-09-15.** Re-measured on this tree before the change: vector **11**, keyword **9**,
+  four shared, **12 of 16 indexed by exactly one** — `.css .csv .docx .epub .html .js .pptx .py
+  .xls .xlsx .yaml .yml`. The fix is a register keyed by EXTRACTOR, not a merged list, because the
+  asymmetry was real: `src/personal_docs.py` now declares `TEXT_EXTENSIONS` (10) and
+  `PDF_EXTENSIONS` (1) beside the extractors that read them, reuses
+  `markitdown_runtime.MARKITDOWN_EXTS` as `OFFICE_EXTENSIONS` (5) rather than restating it
+  (`Law 14`), and exposes their union as `INDEXABLE_EXTENSIONS` (**16**). `config.DEFAULT_EXTENSIONS`
+  and `rag_vector.DEFAULT_FILE_EXTENSIONS` are both derived from it — names and types unchanged, so
+  every existing caller keeps working; what changed is that they can no longer disagree.
+  **One walk, not two lists that happen to match.** `walk_index_candidates(directory, extensions)`
+  does the `index_walk` prune, the extractor routing and the extraction once, and yields
+  `(path, ext, text, reason)`. `load_personal_index` and `VectorRAG.index_personal_documents` both
+  consume it, so the vector indexer no longer opens everything but `.pdf` with a plain UTF-8
+  `open()` — that loop is gone, which is what lets it take `.docx`, `.pptx`, `.xlsx`, `.xls` and
+  `.epub` through `markitdown_runtime` the way the keyword indexer already did.
+  **The other half of `Verify` is the reason.** Three: `unsupported extension` (nothing here reads
+  that format), `no extractable text` (an encrypted PDF, a scan with no text layer, an Office file
+  with markitdown not installed) and `could not be read` (the extractor raised). A narrowing
+  `file_extensions` argument still narrows, but only among formats an extractor COULD read — "you
+  narrowed to `.md`" is not why a `.png` is missing. `load_personal_index` takes an optional
+  `skipped` list, `PersonalDocsManager.refresh_index` fills `self.skipped`,
+  `index_personal_documents` returns `skipped`/`skipped_count`, and
+  `POST /personal/add_directory` returns the **union of both reports** — deduped by path, confined
+  to the added directory on a path boundary (`/docs` must not pull in `/docs2`), capped at 50
+  entries with whole counts — and names the reasons in `message`, because a count in a field
+  nothing renders is the same silence.
+  **What this does NOT deliver**: the upload-ingest extension registers under `src/file_extract*`
+  are another row's surface this wave and were not touched; the join is filed as **`B180`**.
+  A `.docx` still needs markitdown (or the bundled native `.docx` reader) installed to produce
+  text — without it the file is now *reported* as `no extractable text` rather than silently
+  half-indexed, which is the honest answer, not a new capability.
+  **Evidence**: `tests/test_one_directory_one_extension_register.py` — **24 tests** driving the real
+  indexers over a real directory holding one file of each of the 16 extensions plus three nothing
+  reads, and the real route through `httpx.ASGITransport`. **22 of the 24 fail on the tree as it
+  stood** (`Law 9`); the two that pass are the `Law 1` guards — junk-directory pruning (#5559) and
+  walk determinism — which had to keep passing. **12 mutations, 12 caught**, including each indexer
+  re-growing its own list, the Office extractor being routed to the UTF-8 reader, an empty
+  extraction going unreported, and a sibling directory's skips leaking into the response.
 
 - [x] **B76** **An upload is accepted, read by nobody, and the reason is an extension list rather
   than the bytes.** Found 2026-09-14 while closing `B05`, measured by uploading through the real
@@ -6780,7 +6869,7 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   `name` and carried no `original_name` key at all, so one file uploaded twice came back as
   `my_report_final.txt` and then `my report (final).txt`. **17 new test functions
   (21 cases), 12 mutations, all caught.**
-- [ ] **B80** **A note-level agent run records nothing, so one that outlives its page cannot be
+- [x] **B80** **A note-level agent run records nothing, so one that outlives its page cannot be
   found, resumed or stopped.** Measured 2026-09-14 while closing `B08`. The two agent-solve paths
   in `static/js/notes.js` share a queue, a job runner and a stop path, and diverge on exactly one
   thing: bookkeeping. The **item** path writes `agent_session_id`, `agent_session_title`,
@@ -6799,8 +6888,40 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   agent solve, reload, and the note's ⋯ menu offers the same working Stop the checklist item does.
   `Depends:` nothing — `B08` shipped the recovery path this reuses. — found while closing `B08` —
   agent:`B08`
+  **DONE 2026-09-15.** The two paths differed only in WHERE the run was written down, so that is
+  the only thing the fix decides. `_agentRunCarrier(note, idx)` (`static/js/notes.js`) returns the
+  checklist item for an item solve and the note itself for a note solve, and `_recordAgentRun`
+  writes the SAME four fields onto whichever it gets and persists them — `{ items, agent_session_id }`
+  for an item, the four fields themselves for a note. `_runAgentSolveJob` now calls it at both ends
+  of the job instead of carrying two inline write blocks, and the three `if (isItem)` guards on the
+  terminal statuses (`aborted`, `error`, and the HTTP-failure `error`) are gone, which is what left
+  `running` standing on a note nobody could then clear. `_markTodoAgentStatus` is a one-line wrapper
+  over the same writer, so the `B08` stop path reaches the note carrier unchanged. One writer, one
+  field set, two carriers (`Law 13`, `Law 14`).
+  `_openNoteCornerMenu` now asks `_agentRunStopKind(id, null, note)` — the same question
+  `_openTodoAgentMenu` asks about an item — and builds **Stop this run** on `detached`, wired to
+  `_stopDetachedAgentRun`, i.e. `B08`'s `/api/chat/resume` → `X-Pantheon-Run-Id` → `/api/chat/stop`
+  verbatim. An orphan (stored `running`, no session id) still offers nothing, because there is still
+  nothing to ask.
+  **The note had nowhere to keep it**: `notes` carried `agent_session_id` and no other agent column,
+  so an item's bookkeeping rode along inside the `items` JSON and a note's had no home at all.
+  `core/database.py` gains `agent_status`, `agent_session_title`, `agent_stream_completed_at` with
+  the migration beside the existing `agent_session_id` one, and `routes/note/note_routes.py` accepts
+  and returns all three — a field the API drops is a field that is not there after the reload this
+  row is about, which is why the listing is pinned too.
+  **Evidence**: `tests/test_note_agent_run_is_recorded.py` — **17 tests**, driving the real job
+  runner, the real corner menu and the real stop path out of the module through
+  `tests/harness/note_agent_run_bookkeeping.js` (`Law 20`), two over the live route with
+  `httpx.ASGITransport`, and one over the real migration against a table built with the old shape,
+  because a fix that only works on a fresh database is not shipped. All 17 fail on the tree as it
+  stood (`Law 9`): measured there, a completed note-level solve left the note carrying
+  `agent_session_id` alone with `agent_status` undefined, and the reloaded note's menu built
+  `copy` + `agent` and nothing else. **11 mutations, 11 caught** — including the carrier refusing
+  the note, the note patch dropping its status, the menu re-gating Stop on the memory-only queue
+  state, an orphan claiming a Stop, an unreachable server being recorded as a finished run, and the
+  migration skipping the column.
 
-- [ ] **B81** **The steer bar is drawn one round trip before the run can contradict it.** Measured
+- [x] **B81** **The steer bar is drawn one round trip before the run can contradict it.** Measured
   2026-09-14 while closing `B14`. `B14` made the run announce its own steerability as the first
   SSE event, which is correct and is the only place that can answer the question — but it arrives
   after the response does. `chat.js` fires `_setForegroundChatBusy(true)` at send-path entry
@@ -6819,8 +6940,52 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   `Verify:` start a research turn from an idle composer and no steer bar is painted at any point,
   with steering still working on an agent turn against a server that sends no `stream_steerable`.
   `Depends:` `B14`. — found while closing `B14` — agent:`B14`
+  **DONE 2026-09-15. Neither of the two, and the reasoning is the row.** The header was declined
+  twice over: it is a second path for one fact (`Law 14`), and it arrives *after* the POST, so it
+  fixes only the network half and leaves the bar painted for the ~880 lines of composer setup that
+  are the larger half. Drawing nothing until the run answers was declined because it fails the
+  second clause of this row's own `Verify`. What landed is the third thing: the client-side guess
+  that already existed was **corrected rather than replaced**.
+  `routes/chat_routes.py` `_stream_is_steerable` decides from four terms — `chat_mode`,
+  `do_research`, `is_image_session`, `compare_mode`. `chatStream.js` read **one** of them
+  (`_steerChatModeOnly`), which is exactly why a research turn drew a bar: research is sent in
+  AGENT mode, so the term it read says nothing about it. `chat.js` now has `_composerTurnSteerable()`
+  reading the two terms a client can honestly evaluate, at the one moment both are readable — the
+  research toggle is still checked at send-path entry and is cleared further down, just before the
+  POST — and `_setForegroundChatBusy(active, steerable)` carries the verdict on the
+  `pantheon:chat-busy-change` event it already dispatched. No new header, no new event, no new
+  transport, and `B14`'s `stream_steerable` still overrules it **in both directions**.
+  **The two terms it does not answer are stated, not faked**: `is_image_session` is a
+  model/endpoint-registry question with no client equivalent, and writing one would be a second
+  predicate; `compare_mode` never reaches this edge at all, because `static/js/compare/stream.js`
+  POSTs `/api/chat_stream` itself and never calls `_setForegroundChatBusy`, so no bar is drawn from
+  a compare pane in the first place. Both stay with the run's own answer.
+  **The trap found on the way**: `_setForegroundChatBusy(true)` is raised three times over one turn
+  — the send path, `setStreamingState('streaming')` and `_syncForegroundStreamGlobals()` — and the
+  last two fire *after* the research toggle has been cleared. A verdict is now what marks the first
+  from the other two: an edge that carries one starts a turn and resets both answers; one that does
+  not changes nothing. That also repaired something `B14` could not see — every `active` edge used
+  to reset `_steerRunAnswer`, so a re-announcement threw away the run's own authoritative answer and
+  the composer's stale guess took over. **`B14`'s rule is kept verbatim where it still applies**:
+  until one verdict has actually been seen on the page, a verdictless `active` edge is still treated
+  as a new run, so a build whose `chat.js` announces nothing behaves exactly as it does today
+  (pinned by `test_chat_steer_js.py::test_the_verdict_does_not_carry_from_one_run_to_the_next`,
+  which is why that rule was found rather than broken).
+  **What this does NOT deliver**: an image-generation session and a `research_pending` continuation
+  still paint a bar that the run then removes — the client cannot see either, and the window is now
+  bounded by the first SSE event rather than by a round trip plus 880 lines. A steer sent with
+  Cmd/Enter on a turn the composer wrote off is still posted and still honestly refused by the
+  server; the verdict suppresses the affordance, it does not steal the key.
+  **Evidence**: `tests/test_steer_bar_not_painted_before_the_run_answers.py` — **15 tests** running
+  the real code from BOTH files together through `tests/harness/steer_bar_first_paint.js` (`Law 20`),
+  including the real send-path-entry line itself rather than a reproduction of it. "Painted" means a
+  `.steer-bar` node was really inserted by the real `_ensureSteerBar`. Measured on the tree as it
+  stood: a research turn's paint timeline was `["paint"]` against a server with no event and
+  `["paint","remove"]` against one with it; **10 of the 15 fail there**, and the 5 that pass are the
+  `Law 1` guards that had to keep passing. **11 mutations, 11 caught.** The existing 83 steer tests
+  still pass.
 
-- [ ] **B82** **The offline manifest names the modules the page asks for by tag, and not one of
+- [x] **B82** **The offline manifest names the modules the page asks for by tag, and not one of
   the 61 they import.** Measured 2026-09-14 while closing `B11`, by walking the import graph rather
   than reading either file: **182** modules are reachable from `static/index.html`'s
   `<script type="module">` tags, and **61 of them appear nowhere in `static/sw.js`** — including
@@ -6839,7 +7004,43 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   is exactly when a user who installed the PWA and went offline would notice. `Verify:` walk the
   static+dynamic import closure from the shell's script tags and every `/static/js/**` module in it
   is a precache entry at the URL its importer spells, with a test that fails on the 62nd.
-  `Depends:` nothing. — found while closing `B11` — agent:`B11`
+  `Depends:` nothing.
+
+  **Closed 2026-09-15, and the mechanism was already fixed — what was missing is the test.**
+  Re-measured on this tree by walking the closure from `index.html`'s 34 `<script src>` tags
+  with `.pantheon/check-specifiers.py`'s own resolver: **173** `/static/js/**` modules are
+  reachable and **all 173 are in the cache the shipped install builds**, 67 of them under a URL
+  that appears nowhere in `sw.js`. `B57` landed the install-time walk between this row being
+  filed and being worked, and a derived closure is what it derives — adding the 61 to a list
+  now would be the second copy that comment forbids. So the honest close is the `Verify:`
+  clause's second half: the walk from outside, and the test that fails on the 62nd.
+
+  **Why the test that was already here could not be that test.**
+  `test_install_caches_every_module_the_shell_imports` is induction over the worker's *own*
+  reading — every root cached, and every import the worker found in a cached module cached — so
+  it is closed under `importsOf`'s notion of an import and cannot see `importsOf` shrink.
+  Measured, not argued: mutating `isWalkable` to stop following one directory
+  (`&& !url.includes('/compare/')`) drops **9 modules** out of the install — the whole
+  `compare/` graph below its seed — and **every test in the file passed**. The same mutation is
+  caught by `test_every_module_the_shell_can_reach_is_installed`, which walks the graph from
+  `index.html` with a resolver that is not the worker's and compares the result to what install
+  stored. (The other mutation tried, narrowing `MODULE_SPECIFIER` so `import('…')` stops
+  matching, was already caught — `B57` left a synthetic-source test pinning that grammar. One of
+  the two blind spots was covered and one was not, which is the argument for the outside walk
+  rather than for a second grammar pin.)
+
+  The walker is `check-specifiers.py`'s — its comment stripper (`B87`), its specifier regexes and
+  its resolver (`Law 14`). Only the transitive step is new here, because that checker asks a
+  different question: it wants every specifier in the tree, this wants the ones the shell reaches.
+
+  **The consequence, stated as narrowly as it actually is.** The JS branch is network-first with
+  runtime caching, so a module fetched once online serves offline and "offline is broken" would
+  be too strong. What the install walk is for is the two cases the runtime cache is empty in: a
+  cold install that never reached the page, and the first offline use after a `CACHE_NAME` bump,
+  because `activate` deletes every cache but the current one. `test_every_module_the_shell_can_
+  reach_is_served_offline` drives exactly that — install, no network, then ask the shipped
+  handler for all 173.
+  — found while closing `B11` — agent:`B11` — closed by agent:`offline`
   **Renumbered on merge**: filed as `B80` by an agent working in parallel with three others, which claimed the same number for a different defect. `B48` is why no id may name two rows.
 
 - [ ] **B83** **Five hand-written play triangles remain, and the product had two geometries
@@ -6967,101 +7168,173 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   `src.tool_parsing`, which is a bigger change than a live outage should wait for. Filed as the
   remaining half. 9 tests, 3 mutations, all caught. — found on the deployment — agent:`deploy`
 
-- [ ] **B95** **Three settings an operator can only change by hand-writing JSON, and one of them
-  is the `Law 16` gate.** Measured 2026-09-15 while closing `B90`, by grepping every `.js` and
+- [x] **B95** **Three settings an operator can only change by hand-writing JSON, and one of them
+  was the `Law 16` gate.** Measured 2026-09-15 while closing `B90`, by grepping every `.js` and
   `.html` in the tree for all three names: **zero hits.** `metrics_enabled`,
-  `searxng_widen_engines` and `allow_model_download` have no field in the settings UI, no toggle,
-  no label. The only way to write one is `POST /api/auth/settings`, which accepts any key in
+  `searxng_widen_engines` and `allow_model_download` had no field in the settings UI, no toggle,
+  no label. The only way to write one was `POST /api/auth/settings`, which accepts any key in
   `DEFAULT_SETTINGS` and is reachable from a terminal, not from the product. **This is the second
   half of why `B90` was never reported**: the switch could not be beaten by an environment
   variable, and also could not be reached by a person. `B90` fixed the first half only.
-  **It is not cosmetic and it is not "add three checkboxes".** All three now ship `None` — a
-  tri-state (`D-2026-09-15-01`) — so a UI field has to express **three** states, not two: *use the
+  **It was not cosmetic and the fix is not "add three checkboxes".** All three ship `None` — a
+  tri-state (`D-2026-09-15-01`) — so a UI field has to express **three** states: *use the
   environment or the default*, *yes*, and *no*. A two-state checkbox writing `false` on first paint
   would materialise a choice nobody made for every operator who opens the panel, which is exactly
-  the defect `B90` closed, arriving from the front end. The existing per-field pattern to copy is
-  `routes/contacts/contacts_routes._carddav_sources`, which reports `"settings"` /
-  `"environment"` / `""` per key so the panel can say which layer answered — `P18-04` does the same
-  for `public_origin` through `source_of`, and `B90` deliberately took only the logging half of it.
-  **`allow_model_download` is the one to design against**, because it is the `Law 16` gate and
-  because `src/self_checks.py:186` already tells a person to "turn on allow_model_download" in a
-  diagnostic they can read but cannot act on. `Verify:` a person can set each of the three to yes,
-  to no, and back to unset without editing a file, and the panel says which layer is answering when
-  the environment is set. `Depends:` nothing. — found while closing `B90` — agent:`impl:env-flags`
+  the defect `B90` closed, arriving from the front end.
+  **The fix, in four parts.** (1) `settings.env_backed_flag_source` and `env_backed_flag_report`,
+  derived from the *same* resolution as the value rather than transcribed beside it — a second copy
+  of the layering rule is how `B90` happened (`Law 13`). They answer `"settings"` / `"environment"`
+  / `"default"`, which is `routes/contacts/contacts_routes._carddav_sources`' shape with the third
+  state a boolean needs, and they report `env_set` separately from `source` because a host can
+  define the variable *and* be answered by settings, and an operator deciding whether to hand the
+  answer back needs to see what is underneath. (2) `settings.ENV_BACKED_FLAGS`, a registry of the
+  three key/variable/default triples, because the panel has to enumerate them and an enumeration
+  living in JavaScript is the layering rule in a second place. (3) `GET
+  /api/auth/settings/flag-sources`, admin-only, and `POST /api/auth/settings` now **refuses** a
+  non-boolean for these three keys — a string stores cleanly, reads back as *unset*, and leaves the
+  panel showing a choice nothing is honouring, which is `P17-09`'s shape on the one group of keys
+  where a member is a `Law 16` gate. (4) A card in **Settings → System** with a three-option
+  `<select>` per key and a sentence naming the layer that is answering, plus the words an operator
+  would actually type (`download`, `huggingface`, `metrics`, `searxng`) in the panel's search
+  keywords, the way `H15` made the privacy control findable.
+  `Verify:` **yes.** `test_a_person_can_set_each_of_the_three_to_yes_no_and_unset` drives the real
+  route functions: `true`, `false` and `null` in, the stored value on disk checked each time, and
+  the reported source flipping between `settings` and `environment`/`default`. The panel half is
+  **run, not read** (`Law 20`) — `tests/harness/env_backed_flag_panel.js` evaluates
+  `_envflagSelected` / `_envflagStoredValue` / `_envflagSourceLine` out of `static/js/settings.js`
+  and round-trips every value the API can send. 20 tests, 7 mutations, all caught; the two that
+  first survived — a control collapsed to two states, and the source line dropping the variable's
+  name — are the two that would have reintroduced `B90` from the browser. `Depends:` nothing.
+  — found while closing `B90`, closed by — agent:`env`
 
-- [ ] **B96** **Two environment switches mean the opposite of what an operator typed, and `B91`
-  deliberately left them that way.** Measured 2026-09-15 by driving the real resolvers:
-  **`AUTH_ENABLED=0` leaves authentication ENABLED** (`src/owner_identity.py:20` accepts only the
-  literal `false`), and **`PANTHEON_SINGLE_USER=false` leaves single-user mode ON**
-  (`routes/calendar_routes.py:67` rejects only the literal `"0"`, so unauthenticated calendar
-  writes keep landing on `PANTHEON_FALLBACK_OWNER`). Neither errors, neither logs, and
-  `.env.example` documents `AUTH_ENABLED=true` without saying that `0` is not its opposite.
-  **`B91` held nine sites and these two are the ones that are wrong rather than merely narrow.**
-  The other seven are held because widening them would *loosen* something —
+- [x] **B96** **Two environment switches meant the opposite of what an operator typed, and one of
+  them was not narrow — it was inert.** Measured 2026-09-15 by driving the real resolvers:
+  **`AUTH_ENABLED=0` left authentication ENABLED** (`src/owner_identity.py:20` accepted only the
+  literal `false`), and **`PANTHEON_SINGLE_USER=false` left single-user mode ON**
+  (`routes/calendar_routes.py:67` rejected only the literal `"0"`). Neither errored, neither
+  logged, and `.env.example` documented `AUTH_ENABLED=true` without saying that `0` is not its
+  opposite. **`B91` held nine sites and these two were the ones that were wrong rather than merely
+  narrow.** The other seven are still held, because widening them would *loosen* something —
   `LOCALHOST_BYPASS=1` would start bypassing auth, `PANTHEON_NETAGENT_ALLOW_EXEC=on` would permit
-  remote execution — and staying narrow is the safe direction there. These two are the reverse: an
-  operator typed the disabling value, believes the switch is off, and it is on. The severity is
-  opposite in each case, which is why they are one row and not seven: `AUTH_ENABLED=0` fails
-  **safe** (auth stays on when you asked for it off) and `PANTHEON_SINGLE_USER=false` fails
-  **open** (unauthenticated writes keep being accepted on a host the operator meant to lock down).
-  Only the second is a security defect; both are lies.
-  **The fix is a release note, not a sweep**, which is precisely why `B91` could not do it — a
-  batch that flips a host from authenticated to unauthenticated as a side effect of tidying is the
-  thing `Law 1` exists to stop. Each needs the change announced, a startup log when the old
-  spelling is seen, and the `# env-spelling:` exemption removed so
-  `.pantheon/check-env-declared.py` holds the new rule. `Verify:` `AUTH_ENABLED=0` and
-  `PANTHEON_SINGLE_USER=false` do what an operator reading `.env.example` expects, and the upgrade
-  says so before it does it. `Depends:` `B91`. — found while closing `B91` — agent:`impl:env-flags`
+  remote execution — and staying narrow is the safe direction there.
+  **The second switch was worse than this row knew.** `_SINGLE_USER_MODE` was computed at import
+  into a module constant **referenced nowhere in the tree**, so no spelling turned single-user off,
+  including the documented `0` that the comment three lines above instructs a multi-user install to
+  set. Unauthenticated calendar writes landed on `PANTHEON_FALLBACK_OWNER` regardless of
+  configuration, for the life of the file. Filed as `B150` and closed with it: a variable that is
+  documented, declared, referenced and then dropped is invisible to every rule
+  `.pantheon/check-env-declared.py` had.
+  **The fix is a release note and a wiring, not a sweep.** Both switches read
+  `env_flags.env_flag` now with their own default (`True` in both cases, so unset keeps
+  authentication and keeps single-user mode). `_single_user_mode()` is a **function**, consulted
+  inside `_require_user` at the one place the fallback owner is handed out — the constant shape is
+  what let it rot, and it made the switch untestable without reloading a module 41 others import
+  from (`B18`, `B130`). Each switch logs, once, when it sees a spelling the old rule read the other
+  way: `AUTH_ENABLED` in `{0, no, off}` and `PANTHEON_SINGLE_USER` in `{false, no, off}`, derived
+  from `OFF_VALUES` minus the one spelling that already worked rather than spelled out again. The
+  change is written at the top of `.env.example` and under a **"Changed — read this before
+  upgrading"** heading in `CHANGELOG.md`, both naming what an affected host will do differently.
+  The two `# env-spelling:` exemptions are gone, so the checker now holds the new rule — and the
+  held count fell from nine to eight, then back to nine when `B98` found a tenth site nothing had
+  ever checked.
+  `Verify:` **yes.** `AUTH_ENABLED=0/no/off/false` all disable auth and everything else — unset,
+  blank, `maybe` — keeps it; `PANTHEON_SINGLE_USER=0/false/no/off` all produce a `401` from
+  `_require_user` for an unauthenticated caller, and an authenticated one is untouched. The warning
+  fires for the three changed spellings and is silent for `false`, so it only speaks on hosts this
+  affects. 24 tests, 7 mutations, all caught. **Integrator: this is a behaviour change on any host
+  setting either variable to a disabling value; the release note is written but the upgrade is real.**
+  `Depends:` `B91`. — found while closing `B91`, closed by — agent:`env`
 
-- [ ] **B97** **`B91` counted 50 truthiness sites and unified the 34 that read the environment.
+- [x] **B97** **`B91` counted 50 truthiness sites and unified the 34 that read the environment.
   The other 16 read a browser, a model and a file, with no shared rule between them.** Counted
   2026-09-15 by AST: of the 33 `.lower() == "true"` occurrences, **17 read `os.environ` and 16 do
   not.** The 16 split into three vocabularies nobody wrote down. **HTTP request fields**, 13 sites
   — `routes/chat_routes.py:1115,1116,1117,1439,1460`, `routes/session_routes.py:371,463,488,956`,
   `routes/email_routes.py:3419,3420`, `routes/compare/compare_routes.py:175`,
-  `routes/mcp/mcp_routes.py:366` — where `plan_mode=1` from a form post is *off* and
-  `plan_mode=true` is on. **Model-emitted tool arguments**, where `src/ai_interaction.py:651`
-  accepts `("on","true","1","yes","enable","enabled")`, `:809` accepts four of those, and
-  `src/builtin_actions.py:2782` accepts `("1","true","yes","y")` — three different answers to
-  "what did the model mean by yes". **On-disk skill frontmatter**, `services/memory/skill_format.py:97`,
+  `routes/mcp/mcp_routes.py:366` — where `plan_mode=1` from a form post was *off* and
+  `plan_mode=true` was on. **Model-emitted tool arguments**, where `src/ai_interaction.py:651`
+  accepted `("on","true","1","yes","enable","enabled")`, `:809` four of those, and
+  `src/builtin_actions.py:2782` `("1","true","yes","y")` — three different answers to "what did the
+  model mean by yes". **On-disk skill frontmatter**, `services/memory/skill_format.py:97`,
   accepting `("true","yes")` and nothing else.
-  **Two private half-helpers already exist and neither is reachable from the other's callers**:
-  `routes/model_routes._truthy` (`:453`, 3 call sites, all HTTP body fields) and
-  `src/tool_policy.tool_toggle_enabled` (`:29`, the agent web-search toggle). `B91` mistook the
-  first for an environment helper and counted it against the wrong row.
-  **These are not one vocabulary and must not become one** (`Law 14`). An environment variable is
-  typed by the operator, an HTTP field is sent by our own front end, a tool argument is written by
-  a model that will cheerfully invent `"enabled"`, and frontmatter is a file somebody edited. The
-  trust boundaries differ and so should the strictness — a model's `"yes"` deserves a different
-  answer from an operator's. What they share is that **each boundary should have exactly one rule
-  and today none of them does.** Start with the HTTP one: it is the largest, its producer is our
-  own JavaScript, and `plan_mode` is a safety mode. `Verify:` one documented rule per boundary,
-  each with a named owner, and a checker that fails on a fourth. `Depends:` `B91`.
-  — found while closing `B91` — agent:`impl:env-flags`
+  **Two private half-helpers existed and neither was reachable from the other's callers**:
+  `routes/model_routes._truthy` (3 call sites, all HTTP body fields) and
+  `src/tool_policy.tool_toggle_enabled` (the agent web-search toggle).
+  **These are not one vocabulary and have not become one** (`Law 14`). Four boundaries, four named
+  owners, written down in `src/env_flags.py` and printed by the checker's `--list`: the environment
+  (`env_flag`/`env_truthy`), the HTTP request field (`request_flag`/`request_truthy`), the model
+  tool argument (`tool_arg_truthy`), and skill frontmatter
+  (`services/memory/skill_format._parse_scalar`, which **stays where it is** — it is a YAML-1.1
+  scalar parser and lifting one branch of it into a flag module would be the second form of a thing
+  that already exists). The strictness differs where the trust does: `enabled` and `y` are yes from
+  a model and *not* from an operator, because a model invents words and `B91` settled the
+  operator's set deliberately.
+  **Derived, not invented, and widening only.** Every HTTP token is one `routes/model_routes`
+  already accepted; every model token is one of the three sites already accepted. All 16 sites read
+  `== "true"` or an `in (...)` list, so nothing that answered yes now answers no. **Two sites are
+  held and say why at the line** — `allow_bash` in `routes/chat_routes.py` and
+  `tool_policy.tool_toggle_enabled` **grant tools**, and widening a gate is not the same act as
+  honouring an intent; `routes/chat_helpers.py` `use_rag` is held as a third, because it is the one
+  HTTP field that defaults ON and adopting the rule would make `use_rag=0` *turn retrieval off*,
+  the only conversion in this row that would remove behaviour (filed as `B152`). `core/database.py`
+  is held as somebody else's convention — `?uri=true` is SQLAlchemy's spelling in a connection URL.
+  `Verify:` **yes, with one honest boundary on the checker's reach.** Two new hard rules in
+  `.pantheon/check-env-declared.py`: `BOUNDARY` fails when a request field — a FastAPI
+  `Form(...)`/`Query(...)` parameter or a `.get` off the parsed form or body, detected by `B98`'s
+  dataflow pass rather than by a fifth rule of its own — is judged inline; `VOCABULARY` fails on a
+  function that is itself a yes/no rule and is not one of the four owners, which is the *fails on a
+  fourth* the row asked for and the only rule that reaches the two boundaries whose producer cannot
+  be seen in an AST at all. A model's tool argument and a line of frontmatter arrive as plain dict
+  values; what can be caught is the **helper**, and all five vocabularies this row counted were
+  written as one. A vocabulary is a *list* — a single-word comparison is one spelling, not a rule,
+  and treating every `== "1"` as one would report `auto_submitted != "no"` (RFC 3834),
+  `x-ratelimit-remaining == "0"` (a count) and `level == "off"` (a SafeSearch level), 14 of them.
+  30 tests, 6 mutations, all caught. `Depends:` `B91`. — found while closing `B91`, closed by —
+  agent:`env`
 
-- [ ] **B98** **All four rules in `check-env-declared.py` are blind to a resolver split across two
-  functions, and that is now four blind spots with one shape.** `B20` stated this for `UNREACHABLE`
-  and `MIXED` — "they see one scope, or one dict, at a time" — and `B91`'s `SPELLING` inherits it
-  in a narrower form still: it sees **one comparison**, so `raw = os.environ.get(X)` in one
-  function and `raw.lower() == "true"` in another is invisible. Measured 2026-09-15 while building
-  it: a within-module variable walk found **12 more truthiness comparisons** than a
-  comparison-local one, of which 5 were genuine environment booleans and 7 were false positives
-  (a duration, a hostname, `TERM`, `PATH`) — which is why the shipped rule is the narrow one, and
-  why the gap is a row rather than a widening.
-  **The blind spot is the same shape every time and has been named three times without being
-  measured**: nothing knows how large it is. `services/search/providers._get_provider_key` is the
-  worked example `B20` gives, where a layer pair lives in two dict literals rather than in a name;
-  two of its pairs were found by hand and are correct, and nothing would catch a third.
-  **The fix is one dataflow pass, not four more rules** (`Law 13`) — a per-scope map from local
-  name to the environment read that produced it, shared by all four rules, with the false-positive
-  filter the `SPELLING` rule already needs (`_TRUTH_TOKENS`). The measurement to take first is
-  **how many findings the existing four rules are missing**, because if the answer is zero the
-  right outcome is to write that down and close this rather than build the pass. `Verify:` a
-  resolver that reads an environment variable in one function and judges it in another is visible
-  to the checker, or the gap is measured and documented as empty. `Depends:` `B91`.
-  — found while closing `B91` — agent:`impl:env-flags`
+- [x] **B98** **All four rules in `check-env-declared.py` were blind to a resolver split across two
+  functions. Measured: the gap is one site, and that site's exemption was holding nothing.**
+  `B20` stated this for `UNREACHABLE` and `MIXED` — "they see one scope, or one dict, at a time" —
+  and `B91`'s `SPELLING` inherited it in a narrower form still: it saw **one comparison**, so
+  `raw = os.environ.get(X)` in one statement and `raw.lower() == "true"` in the next was invisible.
+  The row asked for the measurement first, and the measurement is the finding.
+  **Taken 2026-09-15 with a per-scope dataflow pass, rule by rule.** `SPELLING` gains **one**
+  genuine site: `routes/auth_routes.py` `SECURE_COOKIES`, which reads into `configured` and then
+  tests `configured in ("true","false")`. **It already carried an `# env-spelling:` exemption and
+  the exemption was decoration** — `exempt_spellings` counted **nine** holds while the rule could
+  reach **eight** sites, so deleting the ninth would have failed no build. Counting both sides is
+  what showed it, and a test now asserts holds ≤ reachable sites so an exemption cannot go inert
+  again. `UNREACHABLE` across function boundaries: **zero** — a settings key read in one function
+  and its variable in another does not occur here. `services/search/providers._get_provider_key`,
+  `B20`'s worked example where the pairing lives in two dict literals: **four pairs found, zero
+  findings**, because all four ship a falsy default and the environment leg beneath them really is
+  reachable — the hand-checked answer `B20` recorded was right, and something checks it now.
+  `MIXED` through a named helper rather than a lambda alias: **zero**.
+  **A fourth shape of the same blindness turned up while building it**, and it is the one that
+  mattered: `src/host_docker_access.py` binds `env = os.environ` and reads
+  `env.get(HOST_DOCKER_ENV_VAR)`, so neither this scan nor `literal_reads` had ever seen the site —
+  a `FORBIDDEN.md` Part 2 control ("Host-Docker flag off") whose spelling nothing was checking. The
+  pass resolves `os.environ` aliases and the site is held with its reason.
+  **One dataflow pass, not four more rules** (`Law 13`): a per-scope map from local name to the
+  boundary its value came through, shared by `SPELLING` and by `B97`'s new `BOUNDARY` rule, with
+  the origin's *line* carried alongside so a hold written beside the read — which is where all nine
+  of `B91`'s are — holds the judgement. The `_TRUTH_TOKENS` filter needed one narrowing to come
+  with it: `""` has to be in the set because three real off-lists spell `not in
+  ("0","false","no","off","")`, but `x == ""` on its own is a **blank check**, a question
+  `env_truthy` answers with `None`, and 44 places in this tree ask it.
+  **A first draft reported 104 findings against 9 real ones** because `ast.walk` does not stop at a
+  nested function: one namespace held every local in the file and `unit in ("hour","hr")` inherited
+  `PANTHEON_FALLBACK_OWNER` from twelve hundred lines away. The shipped pass respects scope, and a
+  test pins that.
+  **And the ratchet came down.** `UNDECLARED` stood at 74 against a real count of 72; documenting
+  `PANTHEON_SINGLE_USER` in the switches block took it to 71, and the ceiling is 71 in both the
+  checker and `ci.yml`, asserted equal by a test rather than written twice.
+  `Verify:` **yes** — a resolver that reads a variable in one function and judges it in another is
+  visible, and the measurement of what the old rules were missing is recorded above rather than
+  guessed at. 18 tests, 8 mutations, all caught. `Depends:` `B91`. — found while closing `B91`,
+  closed by — agent:`env`
 
-- [ ] **B100** **The fence register is the extension register again, one layer down: a file the
+- [x] **B100** **The fence register is the extension register again, one layer down: a file the
   decode gate rescues reaches the model with no language and no fence.** Measured 2026-09-15 while
   closing `B76` by driving `build_user_content` over real files. `_process_text_file`
   (`src/document_processor.py`) picks its `[Type: …]` label from a hand-written `language_map` of
@@ -7076,9 +7349,35 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   and it arrives here next. `Verify:` the label and the fence for an attachment are derived from
   one source that already knows what a file is, and a format the product treats as markdown
   elsewhere is not labelled `text` in the composer. `Depends:` `B76` (landed). — found while
-  closing `B76` — agent:`B76`
+  closing `B76` — agent:`B76` **done 2026-09-15.** Premise true and both counts confirmed by
+  driving `build_user_content` over real files. **The two lists are gone, replaced by one function
+  and one derivation**: `attachment_language(name)` (`src/document_processor.py`) answers what a
+  file is in one word, and the fence is `language not in PROSE_LANGUAGES` — `{text, log}`, which is
+  exactly the two answers that were printed unfenced before. A suffix **is** its language unless it
+  is not a word (`.toml` -> toml, `.swift` -> swift, `.gradle` -> gradle); `LANGUAGE_ALIASES` holds
+  only the 32 residues where that is false (`.py` is not "py", `.h` is c, `.kt` is kotlin, `.ipynb`
+  is json). **Deriving is the point, not shortening the list**: `B76` opened ingest to every file
+  whose *bytes* decode, so the set of extensions reaching the fencer is open-ended by design and any
+  closed list is wrong about the next one — appending `.toml` and `.markdown`, which this row named
+  as the trap, would have left `.rst .cfg .properties .vue .scss .less .kt .swift .lua .ps1` wrong
+  and the 25th format wrong after them. **`mimetypes` was measured as the single source this row
+  asks for and is not one**: on 3.11 it has no answer at all for `.toml .ini .conf .go .kt .swift
+  .lua .vue .scss .less .gradle .ps1 .env .ipynb .cfg .properties .nix .jsx .tsx`, and it is wrong
+  for `.rs` (`application/rls-services+xml`) and `.ts` (`text/vnd.trolltech.linguist`) — a register
+  of aliases over the suffix beats it on every one. **What changed on screen**: `config.toml` is
+  `[Type: toml]` in a ```toml fence beside its byte-identical `config.yaml`; `.markdown` is markdown,
+  which is what `routes/email_routes.py:3936` and `static/js/emailLibrary.js` have always called it;
+  `.h` was `[Type: text]` with no fence and is now c; `.csv` kept its label and gained the fence it
+  never had. `.txt`, `.log` and an extensionless file are untouched (`Law 1`) — they were the two
+  prose answers and the `.get(ext, "text")` default, and they still are. The docstring sentence in
+  `_is_text_file` that was the only statement of the old invariant is gone with the invariant: there
+  are no fence sets left for `TEXT_EXTS` to be a superset of. **The client still holds three copies
+  of this map** (`static/js/chat.js:2598`, `document.js:9474`, `documentLibrary.js:1473`) and cannot
+  import a Python register — filed as `B161`, not fixed here, because it is a different surface and
+  a different answer. 16 tests (10 of them one parametrised sweep over the label/fence pair), of
+  which 9 fail on the pre-change tree; 5 mutations on the derivation, all caught.
 
-- [ ] **B101** **A UTF-16 text file still delivers zero bytes, and the extractor that could read it
+- [x] **B101** **A UTF-16 text file still delivers zero bytes, and the extractor that could read it
   is already there.** Measured 2026-09-15 while closing `B76`. `looks_like_text`
   (`src/document_processor.py`) rejects any prefix containing a NUL, which is the check doing the
   real work against png/jpeg/zip/gzip — and it is also what every UTF-16 and UTF-32 file looks
@@ -7093,9 +7392,41 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   reach a decoder the same function already calls. Widening the ratio is the wrong lever and the
   comment says so — it means sniffing the encoding, and a BOM is a free first half. `Verify:` a
   UTF-16LE `.txt` with a BOM, and a cp1251 `.conf`, reach the model as text. `Depends:` `B76`
-  (landed). — found while closing `B76` — agent:`B76`
+  (landed). — found while closing `B76` — agent:`B76` **done 2026-09-15.** Premise true, and the
+  defect is larger than the row states in two directions. **First: the extractor two frames away
+  was not merely unreached, it was unreachable.** `_process_text_file` read through
+  `personal_docs.read_text_file`, which is `open(..., encoding="utf-8", errors="ignore")` and
+  **cannot raise** — it returns `""` on any failure — so the `except Exception:` branch holding the
+  `charset_normalizer` fallback had never executed once. The consequence is not the mangling anyone
+  would expect: `errors="ignore"` *drops* undecodable bytes, so a cp1251 file that got past the
+  probe arrived with every Cyrillic character deleted and nothing anywhere saying so, and a UTF-16
+  file arrived as `S\x00E\x00N\x00...` because NUL is valid UTF-8. **Second: the 0.30 bound is not
+  the boundary this row assumes.** Re-measured here, Polish cp1250 scores **0.170** — it passed the
+  old gate, was read, and was silently stripped of every accent. So "delivers zero bytes" was the
+  visible half; the invisible half was files that were read and quietly emptied. **The fix is one
+  decision with two callers** (`Law 13`): `sniff_text_encoding(head)` answers *which encoding*, and
+  `looks_like_text` is now `sniff_text_encoding(head) is not None` while `decode_text_file` uses the
+  same answer to read the file. Order: **BOM** (all five marks, UTF-32 tested before UTF-16 because
+  its mark starts with UTF-16's) -> **NUL without a BOM is binary** (unchanged; this is what keeps
+  png/zip/docx out) -> **clean UTF-8**, which is almost every file and costs no detector call ->
+  **`charset_normalizer`, taken only when it decodes strictly cleaner than UTF-8 did** -> the old
+  0.30 ratio as the floor, so nothing that reached the model before stops. **A detector answer is a
+  guess and is treated as one**: it is compared rather than trusted, a decode full of C0/C1 controls
+  is rejected however clean its replacement count (`_MAX_CONTROL_RATIO`), and a UTF-16/32 guess about
+  NUL-free bytes is refused outright — measured, `b"h\xc3\xa9llo w\xc3\xb6rld\xff"` is detected as
+  `utf_16_be` and decodes to CJK with a *perfect* zero on the ratio, which is how a text file with
+  one bad byte becomes noise. **The reader is deliberately more liberal than the probe**: the probe
+  decides *whether* to read and must stay strict, while by the time `decode_text_file` runs the
+  decision is already made, so it asks the detector once more — which is what makes a BOM-less
+  UTF-16 `.txt` (a registered extension, always read, previously NUL-separated) come out right.
+  **The remaining limit is stated rather than hidden**: BOM-less UTF-16 with an extension no register
+  names still gets the banner, and the test that pinned the old limit now pins that one. `Verify`
+  met: a BOM'd UTF-16LE `.txt` and a cp1251 `.conf` both reach the model, asserted through
+  `build_user_content`. 11 tests, 9 failing on the pre-change tree; 9 mutations on the sniff, all
+  caught. **`personal_docs.read_text_file` itself is untouched** — the RAG index still reads through
+  it and still empties these files (`B162`); that file is `B75`'s surface this wave.
 
-- [ ] **B102** **Two formats are left with no extractor, and one of them is the one people mean
+- [x] **B102** **Two formats are left with no extractor, and one of them is the one people mean
   when they say "a Word document".** Measured 2026-09-15 while closing `B76`, which narrowed the
   no-extractor banner from eleven extensions to two: `.doc` and `.odt`. Both are binary containers
   — OLE2 and a zip — so the decode gate correctly refuses them and the banner is honest. But
@@ -7109,9 +7440,44 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   `.docx` reader already walks. The asymmetry is not a decision anyone made; it is where `P2-06`
   stopped. `Verify:` a `.doc` and an `.odt` attachment put their prose in the message, and no
   format is listed in a register whose extractor refuses it. `Depends:` `B76` (landed). — found
-  while closing `B76` — agent:`B76`
+  while closing `B76` — agent:`B76` **done 2026-09-15.** Premise true and the markitdown measurement
+  reproduced on 0.1.6: **both** `.odt` and `.doc` raise `UnsupportedFormatException` — *"no converter
+  attempted a conversion"* — so neither belongs in `MARKITDOWN_EXTS` and the row's warning about
+  converting a truthful banner into a misleading one holds for `.doc` too. **Two bundled extractors,
+  and therefore a second office register**: `NATIVE_OFFICE_EXTS = {.odt, .doc}` sits beside
+  `MARKITDOWN_EXTS`, `OFFICE_EXTS` is their union, and `INGESTIBLE_EXTS` is 28 + 5 + 2 + 1 = **36**
+  with zero slack. `is_office_format` (can anything here read it) is now a different question from
+  `is_markitdown_format` (does markitdown convert it) — conflating those two is how `.doc` ended up
+  with no extractor while `.docx` had two, and the second name is what lets the empty-result banner
+  say *"no extractable text found"* for a bundled format instead of *"install markitdown"*. **`.odt`
+  is the shape the row predicted**: a zip whose `content.xml` holds `<text:p>` and `<text:h>`, walked
+  the way `_extract_docx_native` walks `<w:t>`, one visit per block so a footnote body is not emitted
+  twice, with `<text:tab>`/`<text:line-break>`/`<text:s>` turned back into the characters they stand
+  for. **`.doc` is not**: Word 97 keeps the body in the `WordDocument` stream of an OLE2 container
+  and does not keep it in one run — the piece table (`CLX`) in the table stream says which byte range
+  holds which character range and whether that piece is CP1252-compressed or UTF-16, which is why
+  "run strings(1) over it" stops working at the first edit-and-save. So this landed a minimal CFB
+  reader (FAT, DIFAT, mini-FAT for streams under the 4 KiB cutoff, directory), a FIB walk that uses
+  the file's own `csw`/`cslw` length fields rather than hard-coded offsets so a Word 2000/2002 FIB
+  still resolves, the piece table, and the in-text control codes: `\x13 instruction \x14 result
+  \x15` keeps the result and drops the URL, `\x07` ends a cell and twice ends a row, `ccpText`
+  bounds the body so footnote text does not arrive in the middle of it, and an encrypted document is
+  refused rather than decoded into noise. Everything is a bounded read of structures the file itself
+  describes. **The fixtures are real files, deliberately**: two LibreOffice-produced `.doc`s stored
+  gzipped+base64 in the test, because a hand-built container would agree with whatever the reader
+  assumes rather than with Word. LibreOffice writes every piece as UTF-16 (measured on three of its
+  outputs), so the CP1252-compressed half — what Word writes for a document inside that codepage, and
+  most `.doc` files in the world — is covered by re-encoding one real file's piece in place and
+  flipping the flag in its `fc`. **One `.docx` behaviour changed on purpose**: an *installed*
+  markitdown that throws now falls through to the bundled reader instead of returning nothing; it was
+  only a fallback for the not-installed case. `Verify` met on both clauses — a `.doc` and an `.odt`
+  put their prose in the message, and every accepted extension reaches an extractor that accepts it.
+  9 tests, 7 failing on the pre-change tree; 8 mutations on the readers and the registers, all
+  caught. **What this does NOT deliver**: the RAG indexers still ask `MARKITDOWN_EXTS`
+  (`src/personal_docs.py:125`), so an `.odt` is extractable in chat and still skipped by the index —
+  filed as `B162` and left alone because that file is `B75`'s surface this wave.
 
-- [ ] **B103** **`.svg` is now read but still cannot be seen: it is text to the model and neither
+- [x] **B103** **`.svg` is now read but still cannot be seen: it is text to the model and neither
   image nor document to every other surface.** Measured 2026-09-15 while closing `B76`. `B76` made
   an SVG's source reach the model, which is the better half of the answer — most vision models do
   not accept `image/svg+xml`, and a model that sees the XML can edit it. What did not change is
@@ -7124,42 +7490,266 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   server-side. A PIL-regenerated raster thumbnail serves no SVG to anyone. `Verify:` an attached
   `.svg` shows a preview, and no route serves its bytes with a renderable content type and no
   attachment disposition. `Depends:` `B76` (landed). — found while closing `B76` — agent:`B76`
+  **done 2026-09-15.** **Two of this row's three premises are wrong, and measuring them is what
+  changed the fix.** (1) *"a person who attaches a diagram sees a generic chip"* — no. Driving the
+  real route: `static/js/chatRenderer.js:147` calls anything matching `/\.(png|jpg|jpeg|gif|webp|
+  svg|bmp)$/i` an image, requests `?thumb=1`, and the server **served the SVG**. `image/svg+xml`
+  satisfies the `mime.startswith("image/")` gate, PIL then raises `UnidentifiedImageError`, and the
+  except-branch fell through to `FileResponse(path, media_type="image/svg+xml")`. The preview was
+  already on screen; what was missing was any decision behind it. (2) *"a PIL-regenerated raster
+  thumbnail"* — PIL cannot parse SVG at all, which is the exception above. There is no rasteriser in
+  `requirements.txt`, none in `requirements-optional.txt` but PyMuPDF (optional, AGPL, and a C
+  parser fed untrusted markup), and none installed here. So the row's fix was not available, and the
+  honest question was never *raster or vector* but **who decides whether these bytes get drawn**.
+  (3) What is true, and is the actual defect: a `.svg` carrying `<script>` was served exactly like a
+  clean one, by an exception handler, with `nosniff` and an attachment disposition and nothing else
+  — while `routes/emoji_routes.py` had, twelve lines of code away, a sanitiser and a header set this
+  product already applies to every SVG it serves on purpose, unreachable from here because it lived
+  inside a route module. **Decision, written down so the next row does not re-derive it: SVG is
+  markup to the model and a picture to the viewer.** `B76`'s text arm stays — `.svg` is deliberately
+  *not* added to `is_image_file`, which would base64 it into an `image_url` most vision models reject
+  and take the source away — and the preview is the file's own bytes, sanitised. `src/svg_runtime.py`
+  now holds the gate, the two regexes, the size bounds, the blank placeholder and
+  `SVG_SECURITY_HEADERS`; `emoji_routes` imports them and keeps its 256 KiB bound and its behaviour
+  (`Law 13`, `Law 14` — this is `B76`'s own move on `looks_like_text`, one layer over). The upload
+  route answers `?thumb=1` for an SVG **before** PIL: bytes that pass `is_safe_svg` are served as
+  `image/svg+xml` with `Content-Security-Policy: sandbox`, `X-Content-Type-Options: nosniff`,
+  `Cross-Origin-Resource-Policy: same-origin` and `Content-Disposition: attachment`; bytes that fail
+  get a 1x1 empty SVG and `no-store`, so the chip collapses rather than rendering hostile markup or
+  spinning. **The full download still serves the file intact** — the "no extractor" banner promises
+  in writing that the upload can be downloaded, and a refused preview must not become a refused file
+  (`Law 1`) — with the same headers, which is what makes it inert: `attachment` means a direct
+  navigation downloads instead of rendering, `sandbox` means no script in an `<iframe>` or
+  `<object>` either, and an `<img>` (how both the chip and the lightbox load it) ignores the
+  disposition and draws the picture. `Verify` met on both clauses. **`Law 16` is the other half of
+  the sanitiser and is why the external-reference check matters as much as the script check**: an
+  SVG with `<image href="https://...">` or `<use xlink:href="https://...">` is a beacon that tells a
+  third party this person opened this file, from this address, at this moment — the browser refuses
+  it inside `<img>`, but "the browser would have stopped it" is not a control we own. **Not
+  promoted to the gallery, on purpose**: promotion runs the VL model for a caption, and that is the
+  same argument as the image arm. **Cost, filed rather than hidden**: the shared gate *refuses*
+  rather than rewrites, so a legitimate diagram carrying an embedded raster (`<image
+  href="data:image/png;...">`), an external font or a hyperlink gets the placeholder instead of a
+  preview — a tree-rewriting sanitiser is a bigger job than this row and is `B160`. And
+  `/api/upload/{id}/vision` still gates on `mime.startswith("image/")`, so the Caption button on an
+  SVG chip still sends XML to a vision model — `B163`. **`FORBIDDEN.md` Part 2 checked line by
+  line and every control holds**: `Content-Disposition: attachment` is on both responses and
+  `inline` appears nowhere, `UPLOAD_RESPONSE_HEADERS` is still merged in (and three headers wider),
+  the gallery's `IMAGE_EXTS` still excludes `svg` and the chat-to-gallery coercion is untouched
+  because promotion is not what this row changed, and the emoji guards are the same guards — moved,
+  not loosened, with that route's own 256 KiB bound preserved. 11 tests, 8 of them failing on the
+  pre-change tree; 6 mutations on the gate, the headers and the branch, all caught.
 
-- [ ] **B110** **`_statusDot` is an inline-style twin of the stylesheet, and it holds two
+- [ ] **B160** **The SVG preview refuses files instead of sanitising them, and the refusals are
+  ordinary diagrams.** Measured 2026-09-15 while closing `B103`. The gate the preview reuses
+  (`src/svg_runtime.is_safe_svg`, lifted from the emoji route) is a two-regex reject: any
+  `<script|foreignObject|iframe|object|embed|image>` element, any `on*=` attribute, any
+  `href`/`xlink:href` starting `https?:`, `//`, `data:` or `javascript:`, anything over the caller's
+  size bound. That is exactly right for a vendored monochrome glyph, which is what it was written
+  for, and it is blunt for an upload: **an Inkscape or Figma export with one embedded bitmap carries
+  `<image href="data:image/png;base64,...">` and is refused**, as is a diagram whose boxes are
+  hyperlinks, as is anything over 2 MiB. The person gets a blank chip and no explanation, which is a
+  worse answer than the raw render they had before `B103` for the (majority) case where the file is
+  harmless. **The real fix is a rewriting sanitiser, not a wider regex**: parse the XML, drop script
+  elements, event-handler attributes and external references, keep `data:image/*` and local `#`
+  fragments, re-serialise, and preview *that* — which also removes the size bound, because a parsed
+  tree can be walked in one pass. A regex that tries to tell `data:image/png` from
+  `data:text/html;base64,PHNjcmlwdD4=` by pattern is the same mistake in the other direction.
+  `Verify:` an SVG with an embedded PNG and a hyperlink previews, with its script and its external
+  references gone from the bytes that reach the browser, and the emoji route keeps refusing (it
+  serves known-good glyphs and has no reason to accept a rewrite). `Depends:` `B103` (landed).
+  — found while closing `B103` — agent:`B103`
+
+- [ ] **B161** **The client answers `B100`'s question three more times, in three files, and one of
+  them disagrees with the server about the same file.** Measured 2026-09-15 while closing `B100`.
+  The server now derives an attachment's language once (`document_processor.attachment_language`),
+  and the browser keeps its own extension-to-language maps at `static/js/chat.js:2598` (21 entries),
+  `static/js/document.js:9474` and `static/js/documentLibrary.js:1473` — plus `_attachIcon`
+  (`chatRenderer.js`), which answers a fourth version of "what is this file" in icons. They are
+  `Law 13` in the shape the law names: none of them knows `.toml`, `.markdown`, `.kt`, `.swift` or
+  `.h`, so a file the composer labels `toml` is offered as plain text by the document editor it
+  opens in. **The client genuinely cannot import the Python register**, which is why this is a row
+  and not a line: the honest options are to serve the map as JSON from one endpoint, to derive it in
+  JS with the same alias-plus-suffix rule (a second implementation of a *rule*, which is cheaper to
+  keep true than a second copy of a *list*), or to have the server send the language alongside each
+  attachment so the client never decides. Pick one deliberately. `Verify:` a `.toml` and a
+  `.markdown` attachment get the same language name from the composer, the chip and the document
+  editor, driven rather than grepped (`Law 20`). `Depends:` `B100` (landed). — found while closing
+  `B100` — agent:`B100`
+
+- [ ] **B162** **The RAG indexers still ask the old registers, so a document chat can read is a
+  document search cannot find — and a legacy-encoded file indexes as empty.** Measured 2026-09-15
+  while closing `B101` and `B102`. `src/personal_docs.py:125` routes on `MARKITDOWN_EXTS`, so the
+  `.odt` and `.doc` extractors `B102` added are invisible to the personal-docs index: the same file
+  puts its prose in a chat message and contributes nothing to search. The register those indexers
+  should be reading is `markitdown_runtime.OFFICE_EXTS` (all non-PDF document formats with an
+  extractor) or `document_processor.INGESTIBLE_EXTS` (everything with one) — both exist now and both
+  are derived from the extractors rather than hand-written. Worse, `personal_docs.read_text_file` is
+  `open(..., encoding="utf-8", errors="ignore")`, which is the exact call `B101` removed from the
+  chat path: a cp1251 or UTF-16 file is not rejected by the index, it is **indexed with its text
+  silently deleted**, so it matches nothing and reports no error. `document_processor.decode_text_file`
+  is the same read with the encoding sniffed. **Deliberately not fixed here**: `routes/personal_routes.py`,
+  `src/rag_vector.py` and `src/personal_docs.py` are `B75`'s surface this wave and a double edit
+  breaks the merge. `Verify:` an `.odt` uploaded to the personal index is searchable by a phrase from
+  its body, and a cp1251 `.conf` indexes its words rather than the empty string. `Depends:` `B75`,
+  `B101` (landed), `B102` (landed). — found while closing `B101`/`B102` — agent:`B102`
+
+- [ ] **B163** **The Caption button on an SVG sends XML to a vision model.** Measured 2026-09-15
+  while closing `B103`. `routes/upload_routes.py`'s `/{file_id}/vision` gates on
+  `mime.startswith("image/")`, which `image/svg+xml` satisfies, so the OCR/vision endpoint
+  base64-encodes the markup and posts it to the VL model — the same thing `B76` declined to do on
+  the chat path, for the same reason: most vision models reject the type outright, and the ones that
+  accept it describe nothing. The button is reachable because `chatRenderer.js` renders the corner
+  OCR control for anything it draws as an image, and `.svg` is in its regex. This is small and it is
+  a `Law 16` question as well as a correctness one — it is an outbound call that cannot succeed.
+  **The fix is the same split `B103` made**: "can the vision model read this" is not "is this an
+  image", and the endpoint should ask `upload_handler.is_image_file` (which says no for SVG) rather
+  than the MIME prefix. What to do instead for an SVG is a product choice — the source is already in
+  the message, so the honest answer may be no button at all. `Verify:` requesting vision text for an
+  `.svg` upload does not reach the model, and the chip does not offer a control that cannot work.
+  `Depends:` `B103` (landed). — found while closing `B103` — agent:`B103`
+
+- [ ] **B180** **Three extension registers survive `B75`, and the one the indexers now share is
+  not the one chat ingest reads.** Filed 2026-09-15 while closing `B75`. `B75` collapsed the two
+  indexing lists into one register keyed by extractor — `src/personal_docs.py`'s
+- [x] **B190** **The merge ran the suite that no agent could run, and four tests failed —
+  two of them a real regression `B97`'s own converted files were structurally unable to see.**
+  Found 2026-09-15 by running the full suite on the five-worktree merge. Each agent ran its own
+  surface green; **9,827 tests together found what 195 targeted tests apart did not**, which is
+  the whole argument for the integration run and is worth writing down rather than treating as
+  routine. The four:
+  **Two are one defect.** `B97` unified sixteen hand-written truthiness sites onto
+  `env_flags.request_flag` / `request_truthy`, which was right, and carried in one line —
+  `if not isinstance(raw, str): return bool(raw)` — that turns **any** object into a definite
+  yes or no. Two callers were already living on the third answer and both needed a value the
+  converted files never pass, so nothing in those files could catch it.
+  `routes.model_routes._parse_supports_tools({})` returned `None` for eight months and began
+  returning `False` — and `None` is the tri-state's *work it out* while `False` is *this
+  endpoint has no native tool calling*, which is the "quietly taking tools away from an endpoint
+  that had them" the function's own `P3-22` docstring exists to prevent. `read_email_by_uid`
+  called directly rather than through FastAPI sees `full=Query(False)`, a **truthy object**: the
+  old two-line re-parse asked `is True` first and got `False`, `bool(Query(False))` is `True`,
+  and a truncated fetch became `(BODY.PEEK[])` — the whole message body, every read. Fixed by
+  making the tri-state refuse to invent: a request field answers definitely from a `bool`, from
+  the integers `1` and `0`, or from a word in the vocabulary, and **anything else did not say**,
+  the same answer an unrecognised word already got. `request_flag` keeps `bool(raw)` for a
+  number outside `{0, 1}` — `Law 1`, and the line its own docstring promises — and falls back to
+  its `default` for an object, because an object's truthiness is not an operator's intent.
+  **One was a test asserting the defect.** `tests/test_owner_identity.py`'s parametrize table
+  held `("0", False)`: `AUTH_ENABLED=0` leaves auth **enabled**, written down as correct. `B96`
+  fixed the switch and its agent, running only the files it had touched, never met the table.
+  The table now carries the five spellings that changed, the reason at the rows, and a second
+  test pinning the half that must **not** widen — an unrecognised word still leaves auth on,
+  because a typo that disabled authentication would be `B96` pointing the other way.
+  **One was markup.** `B95`'s new settings card carried an `id` nothing reads, and
+  `test_orphan_ids_in_markup` caught it. The itemisation it failed against is a record of a
+  defect population, so **growing that list to make the test pass would have recorded a defect
+  rather than fixed one**; the unread `id` is gone and the two inside the card that are read
+  stay. `Verify:` a request field outside the vocabulary is `None` from `request_truthy` and the
+  caller's `default` from `request_flag`, driven over both live callers.
+  Closed 2026-09-15: `tests/test_a_request_field_that_did_not_say.py`, 23 tests, **11 fail on
+  the merged tree before the fix**; mutations 4 run, 4 caught, 0 survived.
+  — found while merging `B75`/`B80`–`B82`/`B95`–`B103`/`B110`–`B122`/`B150` — agent:`integrator`
+
+  `TEXT_EXTENSIONS` / `PDF_EXTENSIONS` / `OFFICE_EXTENSIONS` (the last being
+  `markitdown_runtime.MARKITDOWN_EXTS`) and their union `INDEXABLE_EXTENSIONS`, **16** entries —
+  and both `rag_vector.DEFAULT_FILE_EXTENSIONS` and `personal_docs.config.DEFAULT_EXTENSIONS`
+  derive from it. That closes the RAG surface and only the RAG surface. Upload ingest keeps its own
+  registers (`B100`–`B103`'s area, `src/file_extract*`), which is why `B75` did not touch them:
+  two agents editing one register in one wave is how a merge loses a format. The consequence is the
+  same defect one seam over — a file the composer can read and the indexer cannot, or the reverse,
+  with nothing saying which. **This row is the join, and it is deliberately not a third list**: the
+  extractor-keyed register is the shape both surfaces want, so the work is to move whichever one
+  survives the `B100`–`B103` wave into a single module both import, and to have each consumer take
+  the union of what it can actually read — the rule `B75` already applies. Note the two are not
+  identical by right: ingest reads bytes a person just handed over, indexing walks a tree it was
+  pointed at, so a format one accepts and the other declines is allowed — it just has to be stated
+  in one place and reported, not discovered. `Verify:` one register names every extension any
+  extractor on this box can read; each consumer's set is derived from it; and a format accepted by
+  one surface and declined by the other is listed as such with the reason, not absent.
+  `Depends:` `B75` (landed), and whichever of `B100`–`B103` lands the ingest register.
+  — found while closing `B75` — agent:`B75`
+
+- [x] **B110** **`_statusDot` was an inline-style twin of the stylesheet, and it held two
   vocabularies in one map.** Measured 2026-09-15 while closing `B78`. `static/js/tasks.js:458`
-  builds a coloured dot from a literal `{ active, paused, completed, error, failed }` — three
-  **task** statuses and two **run** statuses in one object — and it has exactly **one** caller,
-  `_showRunHistory`, which passes `'active'` for a successful run and the raw run status otherwise.
-  So `paused`, `completed` and `failed` are unreachable from the only place that calls it, and the
-  four run statuses that reach it had no key at all until `B78` added them. `B78` fixed the hole and
-  deliberately left the shape: the keys it added are the same colours `.task-log-status-queued` and
-  `.task-log-status-running` already declare in `style.css:25595-25596`, so the product now states
+  built a coloured dot from a literal `{ active, paused, completed, error, failed }` — three
+  **task** statuses and two **run** statuses in one object — and it had exactly **one** caller,
+  `_showRunHistory`, which passed `'active'` for a successful run and the raw run status otherwise.
+  So `paused`, `completed` and `failed` were unreachable from the only place that called it, and the
+  four run statuses that reached it had no key at all until `B78` added them. `B78` fixed the hole and
+  deliberately left the shape: the keys it added were the same colours `.task-log-status-queued` and
+  `.task-log-status-running` already declare in `style.css:25595-25596`, so the product stated
   two of its status colours twice — once as CSS and once as a hex literal in a template string —
-  and a theme edit moves one of them. **This is `Law 14` and not urgent**: the sheet is the real
-  home, and the honest fix is for the history row to use `.task-log-status-*` like every other row
-  in the product rather than for the JS to keep a parallel palette. That is a markup change to a
-  list `P6-11` may be about to restyle, which is why it is a row and not a patch. `Verify:` the
-  run-history dot is drawn by the same rules as the Activity dot, and `tasks.js` names no colour.
-  `Depends:` nothing. — found while closing `B78` — agent:`B78`
+  and a theme edit moved one of them.
+  **Closed 2026-09-15.** Three changes, no new colour and no theme touched:
+  (1) `_statusDot` returns `<span class="task-log-status task-log-status-${runStatusDotClass(s)}">`
+  — the Activity row's own markup, off the derivation `queuePanel.js` and the Activity view already
+  share — and `_showRunHistory` passes `run.status` instead of substituting `'active'` for a
+  success. (2) The task card's last-run badge built its stripe, tint and glyph colour from a
+  string it held itself (`var(--red,#e06c75)` / `var(--green,#50fa7b)` / a `--fg` mix); those are
+  `.task-lastrun-ok` / `-error` / `-info` in the sheet now, carrying the **same tokens and the
+  same fallbacks**, so it is a move and not a restyle. (3) `_RUN_DOT_COLORS` and the
+  task-status keys are gone. **That last is not a `Law 1` subtraction and was checked before it
+  was done**: the one caller can pass only a run status or the literal `'active'`, so `paused` and
+  `completed` were unreachable on the shipped tree and `active` only ever meant "this run
+  succeeded"; a value outside the six still draws the bare `.task-log-status` neutral, which is
+  what `#888` was. Two things a person can see did change, both toward the Activity row: `skipped`
+  and `aborted` stop sharing one grey (the sheet splits them with a dashed border the 8px inline
+  span had no room for, so the six now draw six distinct marks against three before `B78`), and
+  the neutral becomes `color-mix(in srgb, var(--fg) 30%, transparent)` — theme-aware, where the
+  hex was not. **Evidence** (`Law 9`): seven tests in
+  `tests/test_run_status_is_one_vocabulary.py`, all failing on the pre-change tree, run against a
+  `git archive HEAD` copy. `test_the_history_dot_and_the_activity_dot_are_drawn_by_the_same_rule`
+  renders both surfaces and asserts the two maps are equal AND that every class they ask for is a
+  rule `style.css` declares (both sides derived — the sheet is parsed, not transcribed);
+  `test_tasks_js_no_longer_holds_a_colour_of_its_own` finds zero hex literals in `tasks.js` with
+  comments blanked (`B87` — this row's own prose spells the old values out). Mutation: six
+  mutations on this row, six caught, including reinstating the inline colour, reinstating the
+  `'active'` substitution, pointing the badge at a rule the sheet has not got, and deleting the
+  `.task-lastrun-ok` rules. `Verify:` **yes** — the run-history dot is drawn by the same rules as
+  the Activity dot, and `tasks.js` names no colour. `Depends:` nothing. — found while closing
+  `B78` — agent:`B78`, closed agent:`B110`
 
-- [ ] **B111** **Nothing fails when a seventh run status is written, and `B78`'s `Verify` asked for
-  a checker that would.** Measured 2026-09-15 while closing `B78`. The six values now exist as
+- [x] **B111** **Nothing failed when a seventh run status was written, and `B78`'s `Verify` asked for
+  a checker that would.** Measured 2026-09-15 while closing `B78`. The six values exist as
   `TASK_RUN_STATUSES` in `core/database.py` and `RUN_STATUSES` in `static/js/runStatus.js`, and a
   test asserts the two lists are equal — so a seventh *value* declared in either language is
-  caught. **Nothing catches a seventh value that is never declared**, which is how all six got here:
-  `src/task_scheduler.py` writes them at 15 sites as bare string literals and carries **25** status
-  literals in code, and a sixteenth site writing `"cancelled"` would pass every gate in this repo
-  and reach the UI, where `runStatusTone` would answer `null`, the Activity view would text-scan the
-  result for the word *error*, and the notification client would call it a failure — which is the
-  chain `B78` just spent a row unpicking, re-armed. The shape to copy is `.pantheon/check-tracker.py`
-  or `check-specifiers.py`: a checker that reads code with comments blanked (`B87`), collects every
-  string literal assigned to `TaskRun.status` or compared against it, and fails on one outside the
-  six. **Not folded into `B78`** because a repo-wide checker is a gate, and gates get their own
-  refutation. `Verify:` adding `run.status = "cancelled"` to `src/task_scheduler.py` fails a check
-  by name. `Depends:` `B78` (done). — found while closing `B78` — agent:`B78`
+  caught. **Nothing caught a seventh value that is never declared**, which is how all six got here:
+  `src/task_scheduler.py` writes them at 15 sites as bare string literals, and a sixteenth site
+  writing `"cancelled"` passed every gate in this repo and reached the UI, where `runStatusTone`
+  answered `null`, the Activity view text-scanned the result for the word *error*, and the
+  notification client called it a failure — the chain `B78` had just spent a row unpicking,
+  re-armed.
+  **Closed 2026-09-15** with `.pantheon/check-run-statuses.py`, wired into
+  `.github/workflows/ci.yml` (which is where `release-gate.py` reads its checker list from). It
+  asks three questions and **derives both sides of each**, because a transcribed list is the next
+  status missing: (1) `TASK_RUN_STATUSES`/`TASK_RUN_ACTIVE_STATUSES` read out of `core/database.py`
+  by AST against `RUN_STATUSES`/`RUN_ACTIVE_STATUSES` read out of `runStatus.js` with comments
+  blanked (`B87`); (2) the `WORDS` table and `TASK_RUN_NOTIFY` are exactly as wide as the
+  vocabulary — a status with no word does not fail anything at runtime, `runStatusLabel` just
+  prints the stored value at the user, which is the defect `B84` closed; (3) an AST walk for every
+  string literal assigned to, compared against, or passed as `status=` for a row the **function**
+  has bound to `TaskRun` — 31 such literals across the tree today, all six of them in the
+  vocabulary. **Per function and not per file**, which was measured and not assumed:
+  `routes/task/task_routes.py` is one 800-line closure where `task` is a `ScheduledTask` in eleven
+  handlers, and a file-wide name set reported eight `active`/`paused` writes as bad run statuses. A
+  checker that cries wolf is a checker somebody deletes. **Known gap, filed rather than papered
+  over**: it reads ORM attribute access, so the one raw-SQL status write in the tree
+  (`core/database.py:2502`) is invisible to it — `B170`. **Evidence** (`Law 9`): four tests in
+  `tests/test_run_status_is_one_vocabulary.py`. `test_a_seventh_status_fails_the_checker_by_name`
+  copies the tracked tree to a tmpdir (`Law 19` — never edit the tree a suite is reading), asserts
+  the copy is clean, then applies `run.status = "cancelled"` to `src/task_scheduler.py` and asserts
+  the checker exits 1 naming `cancelled`; the same test also covers a status declared in JS only
+  and a status whose word row was deleted. `test_every_stored_status_survives_the_whole_client_derivation`
+  drives the real `runStatus.js` in node over the statuses **Python declares** and asserts every one
+  gets a tone, a dot class and a word per subject — the `null` link in the chain above (`Law 20`).
+  Mutation: three on this row, three caught (a seventh status in Python only; the checker's literal
+  test neutered; the checker's word-table test neutered). `Verify:` **yes** — adding
+  `run.status = "cancelled"` to `src/task_scheduler.py` fails `check-run-statuses` by name.
+  `Depends:` `B78` (done). — found while closing `B78` — agent:`B78`, closed agent:`B111`
 
-- [ ] **B112** **A run that deliberately did not happen tells the owner nothing, and the reason it
-  was silenced is gone.** Measured 2026-09-15 while closing `B78`. `B07` re-filed the
+- [x] **B112** **A run that deliberately did not happen told the owner nothing, and the reason it
+  was silenced was gone.** Measured 2026-09-15 while closing `B78`. `B07` re-filed the
   admin-privilege refusal as `skipped` and fired **no** notification for it, pinned by a test, with
   the reason stated in its own closure: *"the client calls every non-`success` status Task failed,
   so notifying here would put the lie back on screen somewhere else"*. `B78` made the client honest
@@ -7167,34 +7757,92 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   `error` raises the failure dot — so the constraint that forced the silence no longer exists.
   Traced while closing it: `_execute_task_locked`'s `except TaskNoop` and `except
   asyncio.CancelledError` branches both `return` before the notify block at `src/task_scheduler.py:1255`,
-  so **no `skipped` or `aborted` notification has ever been emitted**, by any path. The consequence
+  so **no `skipped` or `aborted` notification had ever been emitted**, by any path. The consequence
   is one a person meets: a scheduled task that quietly stops running because its owner lost a
-  privilege, or that is killed every night by a foreground takeover, produces nothing the owner will
-  see unless they open the Activity tab and look. **This is a decision, not a defect** — an abort
-  fires on every server restart and would be noise if it toasted — so the row is to decide which of
-  the four terminal statuses deserve a notification, not to add three. `B07`'s test pinning the
-  silence must be rewritten, not deleted, or the next agent re-closes the gap by accident.
-  `Verify:` the set of statuses that notify is stated in one place with a reason per status, and
-  `B07`'s pin asserts that statement rather than the absence. `Depends:` `B78` (done). — found
-  while closing `B78` — agent:`B78`
+  privilege, or that is killed every night by a foreground takeover, produced nothing the owner
+  would see unless they opened the Activity tab and looked.
+  **Decided and closed 2026-09-15.** The decision is `core/database.py`'s `TASK_RUN_NOTIFY`: an
+  entry for **every** status, `(notify, why)`, with `TASK_RUN_NOTIFY_STATUSES` derived from it, so
+  a seventh value raises `KeyError` at import rather than defaulting to a silent no.
+  **`success` and `error` notify** — unchanged, and now stated. **`skipped` notifies**: the run
+  deliberately did not happen and the owner did not ask for that. **`aborted` stays silent**: the
+  restart sweep marks every in-flight run aborted on every boot and a foreground takeover re-queues
+  the run 15 minutes later, so it is one toast per task per restart about something already
+  rescheduled; the Activity row carries it. The noise question inside `skipped` is answered by the
+  task's own state rather than by a list of causes — **a skip notifies when it leaves the task
+  stopped**. The privilege refusal PAUSES the task, a run skipped while queued means the task was
+  already paused or deleted, and a spent one-shot will not come round again; a `TaskNoop` on a task
+  still on its schedule is a housekeeping action saying *"nothing to do"* on every tick and stays
+  quiet. **One reader, not two** (`Law 13`): every terminal branch — including the `aborted` one
+  that is told no — goes through `TaskScheduler._notify_run_outcome`, and the `success`/`error`
+  block that used to spell its own gate now calls it too, so flipping an entry in the table changes
+  what a person sees rather than a comment. The two quiet gates are unchanged and honoured there:
+  the per-task `notifications_enabled` switch, and "housekeeping actions do not toast"; `error`
+  overrides both at the call site, which is the rule that already shipped. **One surface further
+  on**: `_pollTaskNotifications` only showed a notification's `body` for `success`, so the fix
+  would have read *"Task skipped: Nightly tidy"* with no reason. The skip's own sentence travels
+  with it now — *"Task skipped: Nightly tidy — Action 'run_local' requires admin privileges"*.
+  **`B07`'s pin is rewritten, not deleted**: `test_scheduler_refusal_notifies_nobody` is now
+  `test_scheduler_refusal_notifies_what_the_vocabulary_says_it_should`, which asserts the statement
+  and the emission against each other, and `test_the_refusal_notification_is_not_a_failure` keeps
+  the half `B07` was actually protecting — the word *failed* must not come back.
+  **Evidence** (`Law 9`): fifteen tests across
+  `tests/test_admin_refusal_is_not_a_failure.py` and `tests/test_run_status_is_one_vocabulary.py`,
+  all failing on a `git archive HEAD` copy. They drive the real `_execute_task_locked` for all four
+  terminal outcomes: the refusal, a run skipped while queued, a routine no-op (silent, task still
+  scheduled), a spent one-shot no-op (told), an abort (silent), a failing action task with
+  notifications off (told anyway), and the same task succeeding (silent).
+  `test_an_aborted_run_is_silent_because_the_policy_says_so` runs the abort branch twice with one
+  table entry flipped between them, because a branch that merely returned would be silent both
+  times. Mutation: eleven on this row, eleven caught. `Verify:` **yes** — the set of statuses that
+  notify is stated in one place with a reason per status, and `B07`'s pin asserts that statement
+  rather than the absence. `Depends:` `B78` (done). — found while closing `B78` — agent:`B78`,
+  closed agent:`B112`
 
-- [ ] **B113** **The Completed tab shows runs that completed nothing, under a caption that promises
+- [x] **B113** **The Completed tab showed runs that completed nothing, under a caption that promised
   outputs.** Measured 2026-09-15 while closing `B78`, by running `_isChatResultRun` over the six.
-  The tab says *"Completed assistant/research outputs you can open in chat"* and admits `success`,
+  The tab said *"Completed assistant/research outputs you can open in chat"* and admits `success`,
   `error` **and** `aborted` while excluding `skipped`. An `aborted` run's only text is
   `"Stopped by user"` or `"Paused because Pantheon became active"` — `_runToActivityEntry` promotes
-  `error` into `result` when `result` is empty — so the list offers to open in chat a run that
-  produced nothing, and an `error` run offers an exception message under the same promise. The two
-  non-failure terminal statuses are treated oppositely for no stated reason. **Left exactly as it
+  `error` into `result` when `result` is empty — so the list offered to open in chat a run that
+  produced nothing, and an `error` run offered an exception message under the same promise. The two
+  non-failure terminal statuses were treated oppositely for no stated reason. **Left exactly as it
   was by `B78`, on purpose**: admitting `skipped` puts *"Task no longer active (status=paused)"* in
-  the list, and excluding `aborted` and `error` takes rows off a screen a person uses today — both
-  directions change what is visible, which is not a rename's business (`Law 1`). `B78` fixed only
-  the name that lied about it: `_isFinishedRun` now means terminal, and the `skipped` rule sits in
-  `_isChatResultRun` where it is a claim about chat-openability rather than about finishing. This
-  row is the claim itself. `Verify:` the tab's caption and its filter say the same thing, whichever
-  way it is settled. `Depends:` nothing. — found while closing `B78` — agent:`B78`
+  the list, and excluding `aborted` and `error` takes rows off a screen a person uses today.
+  **Settled 2026-09-15: the caption changes and the contents do not.** Taking `error` and `aborted`
+  rows off a screen somebody uses is a subtraction (`Law 1`) and the rows are genuinely worth
+  seeing — a task that failed last night is exactly what a person opens this tab to find. What was
+  false was the sentence over them. It now reads *"Assistant and research runs that finished: the
+  output, the error, or why the run stopped. Runs that never started stay in Activity."*, which is
+  the filter in words, and the empty state stops promising outputs too (*"No finished assistant or
+  research runs yet."*). **The exclusion of `skipped` gets the reason it never had**, and it is the
+  vocabulary's own: `core/database.py` defines `skipped` as *"deliberately did not run"* against
+  `aborted` as *"an infrastructure event ended the run"* — a skipped run never started, so there is
+  nothing it left behind; its only text is the reason it did not run, and Activity shows every run
+  unfiltered, which is where the caption now sends people. **One addition, because a caption naming
+  three cases is only checkable if a row says which it is**: the preview row carried a task name, a
+  time and the result rendered as an assistant chat bubble, identically for all three, so an
+  exception message read like an answer. It now leads with the Activity row's own
+  `.task-log-status` dot (`B110`'s shared class, no new colour) and the shared table's word —
+  *Failed*, *Stopped* — shown only when the run did not succeed, since labelling every row
+  *Success* would be noise and the dot carries it titled. **Evidence** (`Law 9`): six tests in
+  `tests/test_run_status_is_one_vocabulary.py`, all failing on a `git archive HEAD` copy. A new
+  `tab` mode in `tests/harness/activity_row_status.js` renders the **whole** `_renderCompletedView`
+  against a stubbed `/runs/recent` and reports the caption, the rows and each row's word from one
+  run — the two halves of the row's claim are 90 lines apart in two functions, and reading either
+  alone is what let them disagree for two rows (`Law 20`).
+  `test_the_caption_accounts_for_every_status_the_filter_admits` derives the admitted set from the
+  render and requires the caption to have named each one.
+  `test_the_statuses_the_tab_shows_are_unchanged` pins the contents against the pre-change tree.
+  Mutation: five on this row, five caught, including restoring the old caption, dropping the word
+  from the row, and silently admitting `skipped`. `Verify:` **yes** — the tab's caption and its
+  filter say the same thing, and the reason for the one exclusion is written where the filter is.
+  **Follow-on filed**: the *Open chat* button on a `Failed` or `Stopped` row still inserts an
+  exception message or *"Stopped by user"* into a conversation as assistant text — the row now says
+  what it is, the button still does not (`B171`). `Depends:` nothing. — found while closing `B78` —
+  agent:`B78`, closed agent:`B113`
 
-- [ ] **B120** **Nine routes serve the same cached shell and eight of them are unreachable
+- [x] **B120** **Nine routes serve the same cached shell and eight of them are unreachable
   offline — including the one an installed PWA opens on.** `static/sw.js:513` answers a
   navigation only when `url.pathname === '/'`. Every other branch below it is keyed on
   `/static/`, so a navigation to `/notes`, `/calendar`, `/cookbook`, `/email`, `/memory`,
@@ -7216,7 +7864,35 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   `app.py` points at `serve_index` and asserts each is answered from the cached shell, while a
   `/static/*.html` navigation still is not — and the route list is derived from `app.py` rather
   than transcribed into `sw.js`, or the next route added is the next one missing (`Law 13`).
-  — found while closing `B85`/`B86` — agent:`B85`
+
+  **Closed 2026-09-15.** The handler now asks `navigationKey(url.pathname)` which cache entry
+  answers this navigation, and claims it only when there is one. `SHELL_ROUTES` is the nine;
+  `/static/*.html`, `/backgrounds` and a path that does not exist match nothing and still reach
+  the network, so the reason the narrowing was there survives intact — the comment is kept and
+  now says which set replaced the single path.
+
+  **The list is checked against the server, not copied from it.** A service worker cannot ask
+  `app.py` anything at the moment it decides: `respondWith` is synchronous and a cache read is
+  not, so the routes have to be written down in `sw.js`. What stops them going stale is
+  `test_the_shell_route_set_is_what_the_server_actually_serves`, which boots the real app, asks
+  every GET route with no path parameter for its body, normalises the per-request nonce out,
+  and requires the set that answers **byte-identically to `/`** to be exactly `SHELL_ROUTES`.
+  Driven, not parsed (`Law 20`): an AST pass would have to recognise
+  `return await serve_index(request)` as delegation and would miss the next handler that
+  reaches the same document another way. A tenth route fails that test on the commit that adds
+  it. That same byte-identity is what lets the revalidate branch write a response fetched from
+  any of the nine back into the one `/` entry all nine are served from.
+
+  **Evidence** (`Law 9`). `tests/harness/sw_install_graph.js` gained a `navigate` op — install
+  for real, take the network away, put a real `FetchEvent` through the shipped handler — and it
+  was run against the tree as it stood: `/` answered from cache; `/notes`, `/calendar`,
+  `/cookbook`, `/email`, `/memory`, `/gallery`, `/tasks`, `/library` and `/login` all
+  `NOT HANDLED`; `/static/whirlpool-variants.html` answered by nothing, which is correct and is
+  unchanged after. Eight tests in `tests/test_offline_shell_manifest.py` fail on `HEAD` and pass
+  after. Two mutations, both caught: dropping one route from `SHELL_ROUTES`, and relaxing
+  `navigationKey` back to a predicate (`!pathname.startsWith('/static/')`) — caught because
+  `/backgrounds` is a real route with its own document and would have been handed the app shell.
+  — found while closing `B85`/`B86` — agent:`B85` — closed by agent:`offline`
 
 - [ ] **B121** **The app shell is the one precached URL that cannot be revalidated, and after
   `B85` it is 100% of what an install still costs.** `serve_html_with_nonce`
@@ -7236,9 +7912,36 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   **Check first whether a nonce can be served with an ETag at all**: if the nonce must vary per
   response then the body varies and the honest answer may be that `/` is uncacheable and the
   nonce should move to where it does not have to be, which is a different and bigger row.
-  — found while closing `B85` — agent:`B85`
 
-- [ ] **B122** **The offline manifest has a test watching what `login.html` loads and no entry
+  **Checked 2026-09-15, and the answer is no — this row stays open and the bigger row is filed
+  as `B141`.** Measured against the real app, two requests for `/`:
+
+  * 290,468 bytes, `Cache-Control`, `ETag` and `Last-Modified` all absent — the row's
+    measurement reproduces exactly.
+  * the template is 290,335 bytes and carries **7** `{{CSP_NONCE}}` placeholders; all 7 are
+    substituted with the same per-request token, and the token differs between the two requests
+    (`1016b6d2…` then `3b18b742…`).
+  * `SecurityHeadersMiddleware` (`core/middleware.py:86`) mints the nonce per request and writes
+    it into the `Content-Security-Policy` header of **every** response, so header and body agree
+    request by request and only request by request.
+
+  A validator derived from the template's bytes would therefore be one ETag for every body the
+  server can produce, and the failure is not theoretical. A client revalidates, the server
+  answers `304`, and RFC 9111 §4.3.4 says to update the stored response's headers from the
+  `304` — which carries a **fresh** `Content-Security-Policy` with a nonce the stored body has
+  never contained. The result is the stored HTML with nonce A under a policy naming nonce B, and
+  all 7 inline scripts blocked: a cold-cached app that paints and does nothing. Making it work
+  would mean not sending CSP on a `304`, i.e. pinning one nonce to one cached copy for as long
+  as that copy lives — which is a static nonce wearing a per-request name, and not a thing to do
+  quietly inside a caching row.
+
+  So `/` is uncacheable *while the nonce is in the body*, and the fix is to take it out — hashes
+  or externalised inline scripts, a change to the CSP boundary and to seven blocks of
+  `index.html`. That is `B141`. This row stays open behind it; forcing an ETag here would trade
+  283 KB of install for a page that does not run.
+  — found while closing `B85` — agent:`B85` — measured and left open by agent:`offline`
+
+- [x] **B122** **The offline manifest has a test watching what `login.html` loads and no entry
   for `login.html` itself.** `tests/test_offline_shell_manifest.py:157`
   (`test_the_login_page_shell_is_covered_too`) exists to catch the day the login page grows a
   module tag, and `theme.js` is a `PRECACHE` seed specifically because `login.html` imports it
@@ -7253,7 +7956,201 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   a coverage nobody chose, and the answer is a written exemption rather than a precache entry.
   `Verify:` either `/login` is answered from cache offline, or `test_the_login_page_shell_is_
   covered_too` says in its own body why it is not and asserts the exclusion, so the two stop
-  disagreeing. — found while closing `B86` — agent:`B86`
+  disagreeing.
+
+  **Closed 2026-09-15: `/login` is precached.** The call was made on the reachable failure, not
+  on the one this row imagined. The server-issued redirect is not it — `AuthMiddleware` runs on
+  the server, so a server that can send a 302 to `/login` can also serve `/login`. The path that
+  needs no server at all is the **Log out button**: `static/js/settings.js:2415` awaits
+  `fetch('/api/auth/logout')` inside a `try {} catch (_) {}`, wipes every `localStorage` key but
+  `pantheon-last-user`, clears `sessionStorage`, and then sets `location.href = '/login'`
+  whatever happened. Offline the fetch rejects, the catch swallows it, the wipe still happens
+  and the navigation still happens — so an offline user who logs out lost their local state and
+  landed on a page that did not exist for them. Measured before the change with the shipped
+  `fetch` handler and the network down: `/login` was `NOT HANDLED`.
+
+  The counter-argument in this row is right and does not change the answer: an offline login
+  still cannot check a credential. It does not have to. The submit handler catches the rejection
+  and writes it into the error line, so the page degrades to a visible message with the form
+  still there, instead of a browser error page with no way back, and the same form works the
+  moment the network returns. `theme.js` was already a seed *because this page imports it*
+  through a computed specifier; guaranteeing the dependency and not the document was the
+  incoherence, and the cheaper half of it was already being paid.
+
+  Three things had to move with it. `docKind` decided `html` on `path === '/'`, so a second
+  route was not read as a document at all; it now decides on "no extension on the last segment",
+  which is what a route looks like and what a font or an icon never does — that is what reaches
+  the four references `login.html` makes, all of them **relative** (`static/manifest.json`,
+  `static/icons/icon-192.png`, two Fira Code faces) and all of them resolving correctly against
+  `/login` only because the walk resolves against the importer. `precacheOne` now refuses a
+  `res.redirected` response: `/login` is the first entry that can redirect — `app.py:972` sends
+  it to `/` with a 302 when `AUTH_ENABLED` is false and `fetch` follows that — so without the
+  guard every auth-disabled deployment would have stored a second 283 KB copy of the app shell
+  under `/login` and answered a navigation there with it. And `CACHED_PAGES` is derived from
+  `PRECACHE` (a seed that is not under `/static/` is a page this app serves at that path) rather
+  than written out a second time next to `SHELL_ROUTES`.
+
+  **`/static/backgrounds.html` is exempt, and not for the reason this row assumed.** The file is
+  not in the tree — `git ls-files static/*.html` is index, login and the three `*-variants.html`
+  prototypes — so `GET /backgrounds` is a **500**, measured against the real app. Nothing can
+  precache a page that does not exist, and the honest answer is a row about the route rather
+  than a manifest entry: `B140`.
+
+  **Evidence** (`Law 9`): `test_the_login_page_shell_is_covered_too` now asserts `/login` is in
+  `PRECACHE` and fails on `HEAD`; `test_the_login_page_is_answered_from_cache_offline` drives
+  the real handler with no network and asserts the answer is **login.html and not the shell**;
+  `test_the_login_page_is_read_for_what_it_references` pins the four relative references;
+  `test_a_precache_entry_that_redirects_is_not_stored_under_the_url_asked_for` pins the guard.
+  All four fail on `HEAD`. Three mutations, all caught: `/login` out of `PRECACHE`, the redirect
+  guard neutered, and `docKind` back to `path === '/'`.
+  — found while closing `B86` — agent:`B86` — closed by agent:`offline`
+
+- [ ] **B140** **`GET /backgrounds` has been a 500 for as long as the page has been missing, and
+  nothing asks for it.** Measured 2026-09-15 against the real app while deciding `B122`:
+  `/backgrounds` answers **500**, 34 bytes, `{"detail":"Internal server error"}`. `app.py:964`
+  serves `abs_join(BASE_DIR, "static/backgrounds.html")` through `serve_html_with_nonce`, and
+  `static/backgrounds.html` **is not in the tree** — `git ls-files static/*.html` is
+  `index.html`, `login.html` and the three `*-variants.html` prototypes. `serve_html_with_nonce`
+  is behaving exactly as designed: it maps a read failure on a server-owned template to a logged
+  500 rather than a 404, on the argument (`src/app_helpers.py:34`) that a missing core template
+  is a broken deployment. That argument is right and it is why this is silent — every request to
+  this route writes a `logger.exception` into 5xx alerting for a page nobody ships.
+  **Three things are wrong and they are not the same size.** The route is dead. The route has
+  **no auth** (`app.py:966` says so deliberately: *"Sandbox page for prototyping background
+  effects. No auth required"*), so it is an unauthenticated path into a template read. And
+  `app_helpers`' own docstring names `backgrounds` as one of the three templates it serves, so
+  the file claims a page the repo does not have. **The decision this needs is not a bug fix**:
+  either the page is restored (it is a prototyping sandbox — `tests/test_background_animators_
+  degrade.py` covers the seven animators it would have hosted, so the code it demonstrated is
+  alive), or the route goes with its mention in `app_helpers.py` and `B122`'s written exemption
+  becomes permanent. `Law 1` says a working behaviour may not be removed to make a fix simpler —
+  there is no working behaviour here to remove, which is the whole of the finding. `Verify:`
+  `GET /backgrounds` either returns a page or returns nothing at all, and a test drives the real
+  app to say which; whichever way it goes, no route in `app.py` reads a template that
+  `git ls-files` does not list. `Depends:` nothing. — found while closing `B122` — agent:`offline`
+
+- [ ] **B141** **The CSP nonce is 7 tokens inside a 283 KB body, which is why the app shell is the
+  one URL in the product that cannot be cached.** `B121` asked whether a nonce can be served with
+  an ETag at all; measured 2026-09-15 against the real app, it cannot, and this is the row that
+  moves. `SecurityHeadersMiddleware` (`core/middleware.py:86`) mints
+  `secrets.token_hex(16)` per request and writes it into the `Content-Security-Policy` header of
+  every response; `serve_html_with_nonce` (`src/app_helpers.py:31`) substitutes it into the 7
+  `{{CSP_NONCE}}` placeholders in `static/index.html` and returns `HTMLResponse(html)`. Body and
+  header agree per request and only per request: two consecutive `GET /` differ by one 32-hex
+  token in seven places, so **there is no validator that can describe the response**. Attaching
+  an ETag derived from the template's bytes would be one validator for every body the server can
+  produce, and RFC 9111 §4.3.4 makes the failure concrete — a `304` updates the stored response's
+  headers, so the client ends up holding the stored HTML with nonce A under a policy naming
+  nonce B and **all 7 inline scripts are blocked**. The app shell paints and does not run.
+  **The cost of leaving it.** `B85` made 212 of 213 precache entries answer an unchanged bump
+  with an empty `304`; `/` answers with 290,468 bytes on every one of the 417 `CACHE_NAME`
+  generations, and the stale-while-revalidate branch spends the same 283 KB per open, per
+  client — now for nine routes rather than one (`B120`). `login.html` has the same shape at
+  31 KB. **What actually has to move**: the 7 inline blocks in `index.html` (and 3 in
+  `login.html`) stop being nonce-authorised — either externalised into `/static/js/**`, where
+  they are already cacheable and already revalidated, or authorised by `'sha256-…'` hashes
+  computed from the file, which are a property of the bytes and survive caching. `FORBIDDEN.md`
+  Part 2 governs this policy, and `style-src 'unsafe-inline'` is separately retained for reasons
+  written at `core/middleware.py:194` — this row must not quietly widen either. `Verify:` `/`
+  and `/login` are byte-identical across two requests, carry an `ETag`, and answer a conditional
+  request for an unchanged template with a `304` — measured by driving the real app — and the
+  page still runs with `script-src` naming no `'unsafe-inline'`. `Depends:` `B121` closes on
+  this. — found while closing `B121` — agent:`offline`
+
+- [ ] **B170** **The run-status checker reads ORM attribute access, and one status write in the
+  tree is raw SQL it cannot see.** Found 2026-09-15 while closing `B111`, by reading its own
+  output. `.pantheon/check-run-statuses.py` walks the AST for string literals assigned to,
+  compared against, or constructed as `status=` on a name the enclosing function has bound to
+  `TaskRun` — 31 sites today, all six values in the vocabulary. `core/database.py:2502` is the
+  thirty-second and it is invisible: `_migrate_reclassify_admin_refusals` issues
+  `text("UPDATE task_runs SET status = 'skipped' …")`, which has no `TaskRun` in it and no
+  attribute to bind. That one is correct today — `skipped` is in the six — so this is a hole in
+  the gate, not a bug on screen: a second migration written the same way, or a repair script
+  setting `status = 'cancelled'`, passes the checker and lands in the UI, which is the exact chain
+  `B111` exists to break. **The narrow fix is not the right one.** Matching `task_runs` inside
+  every string literal in the tree would also match the test SQL, the docs and this row; the shape
+  that works is the one `check-config-writes.py` uses — find the raw-SQL sites, classify each one,
+  and fail on a write to `task_runs.status` nobody has classified. There are two candidates in the
+  tree (`core/database.py` and the test that asserts against it), so the register is small enough
+  to be honest. `Verify:` changing `_migrate_reclassify_admin_refusals`'s literal to a value
+  outside the six fails `check-run-statuses` by name. `Depends:` `B111` (landed). — found while
+  closing `B111` — agent:`B111`
+
+- [ ] **B171** **The Completed tab's *Open chat* puts an exception message into a conversation as
+  if the assistant had said it.** Found 2026-09-15 while closing `B113`, by running the tab over
+  all six statuses. The list admits `success`, `error` and `aborted`; `_runToActivityEntry`
+  promotes a run's `error` into `result` when `result` is empty, and `_renderCompletedPreviewEntry`
+  renders `result` through `markdownModule.mdToHtml` into a `.doclib-chat-bubble` with the
+  assistant role. `B113` made the row say which outcome it was — the shared dot and the words
+  *Failed* and *Stopped* — and changed the caption to name all three, so a person can now tell them
+  apart at a glance. **The two controls on the row were left alone on purpose**: *Copy* and *Open
+  chat* still treat all three the same, so *Open chat* on a `Failed` row inserts
+  `ValueError: …` into a session as assistant text and on a `Stopped` row inserts *"Stopped by
+  user"*. Removing the buttons is a subtraction (`Law 1`) and copying a traceback is a thing people
+  genuinely do, so the row is what the button should SAY and where the text should land — an error
+  opened as a quoted attachment or a user-role note rather than as the assistant's own words. Not
+  folded into `B113` because that row is a caption and a filter, and changing what a button does to
+  a chat session is a different blast radius. `Verify:` opening a non-`success` run in chat does
+  not produce a message attributed to the assistant. `Depends:` `B113` (landed). — found while
+  closing `B113` — agent:`B113`
+
+- [ ] **B151** **The scan behind the `UNDECLARED` ratchet cannot see an `os.environ` bound to a
+  name.** Measured 2026-09-15 while closing `B98`: `literal_reads` counts
+  `os.getenv("X")`, `os.environ["X"]`, `env_flag("X", d)` and `env_backed*(s, k, "X")`, and misses
+  `env = os.environ` followed by `env.get(NAME)`. One variable is read that way in this tree —
+  `PANTHEON_ENABLE_HOST_DOCKER`, at `src/host_docker_access.py:42` — so the undeclared count is
+  understated by **zero today**, because that one happens to be declared in `.env.example`.
+  **Not widened, deliberately, and this is the same call `_env_name_of` already documents**: the
+  `UNDECLARED` ceiling is a number an operator reads off `ci.yml`, and a scan that suddenly sees
+  more names would move it without a line of product code changing. `B98`'s dataflow pass *does*
+  resolve these aliases, for the rules where a wider view is free — so the two scans now disagree
+  on purpose and nothing says so in either docstring. `Verify:` either `literal_reads` sees the
+  alias and the ratchet is re-based in the same commit, or the asymmetry is written down where both
+  scans can be read together. `Depends:` `B98`. — found while closing `B98` — agent:`env`
+
+- [ ] **B152** **`use_rag=0` means yes, and it is the only HTTP field in the tree that defaults
+  ON.** Measured 2026-09-15 while closing `B97`: `routes/chat_helpers.py:809` reads
+  `(str(use_rag).lower() != "false") if use_rag is not None else True`, so every spelling except
+  the literal `false` — `0`, `no`, `off` — turns retrieval **on**. It is held on its own rule with
+  the reason at the line, because every other conversion in `B97` only widened and this one would
+  be the single case where something that answered yes starts answering no: a caller sending
+  `use_rag=0` loses retrieval without asking. **Same shape as `B96` and the same remedy**, one
+  boundary over — the switch means the opposite of what the caller typed, and correcting it is a
+  release note rather than a sweep. Smaller than `B96` because the producer is our own composer,
+  which sends `'true'`/`'false'`, so only a hand-written API client is affected. `Verify:`
+  `use_rag=0` does what a caller reading the API expects, and the change is announced before it
+  happens. `Depends:` `B97`. — found while closing `B97` — agent:`env`
+
+- [ ] **B153** **A fifth producer of yes/no strings, with one site and no owner.** `B97` named four
+  boundaries — the environment, our own front end, a model, and a file somebody edited — and gave
+  each exactly one rule. Found 2026-09-15 while counting them: `services/hwfit/image_models.py:274`
+  reads `str(candidate.get("private")).lower() == "true"` off a **third-party API's JSON**, which
+  is none of the four. It is a single-token comparison so `VOCABULARY` does not reach it, and its
+  producer is a `requests` response so no dataflow pass can either. One site is not a vocabulary
+  and inventing a fifth owner for it would be `Law 14`; what is missing is a written answer to
+  *whose convention is this*, the way `NOT_OURS` records that `PATH` belongs to the OS and
+  `core/database.py`'s hold records that `?uri=true` belongs to SQLAlchemy. `Verify:` the fifth
+  producer has a written owner or a written exemption naming whose convention it follows.
+  `Depends:` `B97`. — found while closing `B97` — agent:`env`
+
+- [x] **B150** **A variable that is documented, declared, referenced — and dropped.** Found
+  2026-09-15 while closing `B96`. `routes/calendar_routes.py:72` computed
+  `_SINGLE_USER_MODE = os.environ.get("PANTHEON_SINGLE_USER", "1") != "0"` at import and
+  **referenced it nowhere in the tree**, so the `PANTHEON_SINGLE_USER=0` the comment three lines
+  above instructs a multi-user install to set did nothing at all: every unauthenticated calendar
+  request was written under `PANTHEON_FALLBACK_OWNER` for the life of the file. `B96` believed the
+  switch was *narrow*; it was inert, which is why that row's "fails open" reading was too kind.
+  **This is the one shape none of the six existing rules can have an opinion about**, and that is
+  the row rather than the one line. `UNDECLARED` asks whether the variable is documented — it was.
+  `UNREFERENCED` asks whether anything mentions it — the assignment does. `UNREACHABLE` asks
+  whether the line beneath can execute — it executes. `SPELLING` asks what the comparison means —
+  it meant what it said. Every rule answers a question about the *read*; none asked whether the
+  answer is used. Measured across every tracked `.py`: **one**, and this was it.
+  Fixed in `B96` (the switch is a function consulted inside `_require_user`) and ratcheted here: a
+  seventh rule, `INERT`, max 0, module scope only — a local computed and dropped inside a function
+  is a dead store any linter finds, while a module constant is the shape that looks configured from
+  the outside. Cross-module use is checked, so a constant another file imports is not reported.
+  3 tests, 3 mutations, all caught. — found while closing `B96` — agent:`env`
 
 - [x] **B87** **The specifier checker was reading text, not code, and a sentence about an import
   counted as an import.** Found 2026-09-14 by the checker itself, on the merge of four parallel

@@ -28,6 +28,15 @@ from pathlib import Path
 from fastapi import APIRouter
 from fastapi.responses import Response
 
+from src import svg_runtime
+from src.svg_runtime import (
+    BLANK_SVG,
+    BLOCKED_SVG_RE,
+    EXTERNAL_REF_RE,
+    MAX_SVG_BYTES,
+    SVG_SECURITY_HEADERS,
+)
+
 from src.constants import EMOJI_CACHE_DIR
 
 logger = logging.getLogger(__name__)
@@ -73,21 +82,15 @@ _CACHE_DIR = Path(EMOJI_CACHE_DIR)
 # used to live here is gone with the fetch that used it (`P16-06`).
 # codepoints like "1f600" or "1f468-200d-1f469-200d-1f467" (lowercase hex, '-' joined)
 _CODE_RE = re.compile(r"^[0-9a-f]{2,6}(?:-[0-9a-f]{2,6})*$")
-_MAX_SVG_BYTES = 256 * 1024
-_BLOCKED_SVG_RE = re.compile(
-    br"<\s*(?:script|foreignObject|iframe|object|embed|image)\b|"
-    br"\bon[a-z0-9_-]+\s*=",
-    re.IGNORECASE,
-)
-_EXTERNAL_REF_RE = re.compile(
-    br"\b(?:href|xlink:href)\s*=\s*['\"](?:https?:|//|data:|javascript:)",
-    re.IGNORECASE,
-)
-_SVG_SECURITY_HEADERS = {
-    "X-Content-Type-Options": "nosniff",
-    "Content-Security-Policy": "sandbox",
-    "Cross-Origin-Resource-Policy": "same-origin",
-}
+# `B103` lifted these to `src/svg_runtime.py` so the upload preview could ask the
+# same question about the same bytes (`Law 13`). The names stay here because
+# this module is where they were called from; the values are no longer defined
+# here, so there is one SVG safety gate in the product rather than two that
+# agree today.
+_MAX_SVG_BYTES = MAX_SVG_BYTES
+_BLOCKED_SVG_RE = BLOCKED_SVG_RE
+_EXTERNAL_REF_RE = EXTERNAL_REF_RE
+_SVG_SECURITY_HEADERS = SVG_SECURITY_HEADERS
 _SVG_HEADERS = {
     "Cache-Control": "public, max-age=31536000, immutable",
     **_SVG_SECURITY_HEADERS,
@@ -95,20 +98,18 @@ _SVG_HEADERS = {
 # Returned when a codepoint is unknown/unreachable: an empty (transparent) SVG,
 # so the CSS mask renders nothing instead of a solid box. Not cached, so a later
 # request can still pick up the real glyph once the CDN is reachable.
-_BLANK_SVG = b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"></svg>'
+_BLANK_SVG = BLANK_SVG
 _BLANK_HEADERS = {"Cache-Control": "no-store", **_SVG_SECURITY_HEADERS}
 
 
 def _is_safe_svg(content: bytes) -> bool:
-    if not isinstance(content, bytes) or not content:
-        return False
-    if len(content) > _MAX_SVG_BYTES:
-        return False
-    if b"<svg" not in content[:256].lower():
-        return False
-    if _BLOCKED_SVG_RE.search(content) or _EXTERNAL_REF_RE.search(content):
-        return False
-    return True
+    """The shared gate, at this route's own size bound (a glyph is under 4 KiB).
+
+    Called through the module rather than through a name imported at import
+    time, so there is exactly one function in the process that can answer this
+    and both callers demonstrably reach it.
+    """
+    return svg_runtime.is_safe_svg(content, _MAX_SVG_BYTES)
 
 
 def setup_emoji_routes() -> APIRouter:

@@ -1747,6 +1747,153 @@ async function initEmailConfirm() {
   msg.textContent = describe(input.checked);
 }
 
+/* ── Switches a deploy can also set (B95) ──
+   `metrics_enabled`, `searxng_widen_engines` and `allow_model_download` had no
+   field, no toggle and no label anywhere in `static/` — measured 2026-09-15 by
+   grepping every `.js` and `.html` for all three names, zero hits. The only way
+   to write one was `POST /api/auth/settings` from a terminal. `B90` fixed the
+   half where an environment variable could beat a stored `false`; this is the
+   half where nobody could store one.
+
+   Three states, and the third is not decoration. All three ship `null`, so
+   "nothing stored" is distinguishable from "stored no" (`B90`,
+   `D-2026-09-15-01`) — and a two-state checkbox that wrote `false` on first
+   paint would put a choice nobody made on disk for every operator who opens
+   this panel, which is `B90` arriving from the front end. `null` is a value the
+   control can select, and selecting it is how you take your answer back. */
+const _ENVFLAG_LABELS = {
+  allow_model_download: {
+    title: 'Download models from the internet',
+    sub: 'Lets Pantheon fetch the local embedding model from HuggingFace on first use. Off ships off — with no local embedding server and no permission, memory stays unavailable rather than reaching out.',
+  },
+  searxng_widen_engines: {
+    title: 'Let a failed search retry with this instance’s default engines',
+    sub: 'Pinning engines is a choice about who sees your query. With this on, a failed search may retry without the pin and hand the query to whatever the instance defaults to.',
+  },
+  metrics_enabled: {
+    title: 'Serve /metrics for a Prometheus scrape',
+    sub: 'Off ships off. A monitoring endpoint nobody configured is attack surface nobody asked for; the scrape has no destination to permit.',
+  },
+};
+
+/* Which of the three options is the stored value? `null` is a real, selectable
+   answer here and not "missing, use the default" — that is the whole difference
+   between this control and a checkbox, and the reason the two-branch
+   `stored === true ? 'on' : 'off'` a checkbox would need is wrong: it turns
+   *unset* into a stored *no* the moment anybody opens the panel (`B90`). */
+function _envflagSelected(stored) {
+  if (stored === true) return 'on';
+  if (stored === false) return 'off';
+  return 'unset';
+}
+
+function _envflagStoredValue(choice) {
+  if (choice === 'on') return true;
+  if (choice === 'off') return false;
+  return null;
+}
+
+function _envflagSourceLine(info) {
+  const yes = info.effective ? 'on' : 'off';
+  if (info.source === 'settings') {
+    let line = 'Answered here: ' + yes + '.';
+    if (info.env_set) {
+      line += ' ' + info.env_name + ' is also set in the environment (' +
+        (info.env_says ? 'on' : 'off') + ') and your choice wins.';
+    }
+    return line;
+  }
+  if (info.source === 'environment') {
+    return 'Answered by the environment: ' + info.env_name + ' says ' + yes + '.';
+  }
+  return 'Answered by the shipped default: ' + yes + '. ' + info.env_name +
+    ' is not set on this host.';
+}
+
+async function initEnvBackedFlags() {
+  const rows = el('settings-envflags-rows');
+  const msg = el('set-envflagsMsg');
+  if (!rows || !msg) return;
+
+  async function render() {
+    let flags;
+    try {
+      const res = await fetch('/api/auth/settings/flag-sources', { credentials: 'same-origin' });
+      if (!res.ok) throw new Error(String(res.status));
+      flags = (await res.json()).flags || {};
+    } catch (e) {
+      // Non-admins get a 403 here. Say nothing rather than showing an empty
+      // card that reads as a bug.
+      rows.innerHTML = '';
+      return;
+    }
+    rows.innerHTML = '';
+    Object.keys(flags).forEach(function(key) {
+      const info = flags[key];
+      const meta = _ENVFLAG_LABELS[key] || { title: key, sub: '' };
+      const wrap = document.createElement('div');
+      wrap.style.margin = '0 0 14px';
+      const row = document.createElement('div');
+      row.className = 'settings-row';
+      const label = document.createElement('label');
+      label.className = 'settings-label';
+      label.setAttribute('for', 'set-envflag-' + key);
+      label.textContent = meta.title;
+      const sel = document.createElement('select');
+      sel.className = 'settings-select';
+      sel.id = 'set-envflag-' + key;
+      [['unset', 'Use ' + info.env_name + ' or the default'],
+       ['on', 'Yes'],
+       ['off', 'No']].forEach(function(pair) {
+        const opt = document.createElement('option');
+        opt.value = pair[0];
+        opt.textContent = pair[1];
+        sel.appendChild(opt);
+      });
+      // `!== undefined` is not enough: `null` IS the stored value that means
+      // unset, and `false` is a real answer. Three values, three branches.
+      sel.value = _envflagSelected(info.stored);
+      row.appendChild(label);
+      row.appendChild(sel);
+      const sub = document.createElement('div');
+      sub.className = 'admin-toggle-sub';
+      sub.style.cssText = 'margin:-2px 0 2px;font-size:11px;opacity:0.6;line-height:1.4';
+      sub.textContent = meta.sub;
+      const src = document.createElement('div');
+      src.className = 'admin-toggle-sub';
+      src.style.cssText = 'margin:2px 0 0;font-size:11px;opacity:0.85;line-height:1.4';
+      src.textContent = _envflagSourceLine(info);
+      wrap.appendChild(row);
+      wrap.appendChild(sub);
+      wrap.appendChild(src);
+      rows.appendChild(wrap);
+
+      sel.addEventListener('change', async function() {
+        const previous = _envflagSelected(info.stored);
+        const value = _envflagStoredValue(sel.value);
+        const body = {};
+        body[key] = value;
+        try {
+          const res = await _postSettings(body);
+          if (!res || !res.ok) throw new Error(res ? String(res.status) : 'no response');
+          msg.textContent = 'Saved.';
+          msg.style.color = 'var(--fg)';
+          await render();
+        } catch (e) {
+          // Put it back. A control that looks changed and did not save is
+          // worse than one that visibly refused — and this group contains a
+          // permission to reach a third party.
+          sel.value = previous;
+          msg.textContent = 'Failed to save — left unchanged.';
+          msg.style.color = 'var(--red)';
+        }
+      });
+    });
+  }
+
+  await render();
+}
+
 /* ── Nightly skill audit (H16) ──
    Three knobs read by a `while True` loop in `app.py` and absent from
    `DEFAULT_SETTINGS`, which is the allowlist `POST /api/auth/settings`
@@ -2485,6 +2632,7 @@ function initAll() {
   initAgentSettings();
   initSkillAudit();   // H16
   initEmailConfirm();   // H18 / B42
+  initEnvBackedFlags();   // B95
   initAgentBudget();   // H18
   initTaskModel();     // H18
   initDocStyle();      // H18

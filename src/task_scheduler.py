@@ -605,6 +605,46 @@ class TaskScheduler:
         if len(self._pending_notifications) > 50:
             self._pending_notifications = self._pending_notifications[-50:]
 
+    def _notify_run_outcome(self, task, status: str, *, body: str = None,
+                            task_id: str = None,
+                            quiet_for_actions: bool = False) -> bool:
+        """Queue a notification for a terminal run — if the vocabulary says so.
+
+        `B112`. Which outcomes are worth telling the owner about is stated once,
+        in `core.database.TASK_RUN_NOTIFY`, with a reason per status. Before
+        this, the answer was three `return`s: `except TaskNoop` and `except
+        asyncio.CancelledError` both left `_execute_task_locked` before the
+        notify block, so no `skipped` and no `aborted` notification had ever
+        been emitted and nothing on the tree said whether that was deliberate.
+
+        Every terminal branch calls this now, including the aborted one that
+        stays quiet. The silence is the policy's answer rather than an
+        omission's, which is what makes flipping an entry in that table change
+        what a person sees.
+
+        The two gates after the policy are about NOISE, not about the outcome.
+        `notifications_enabled` is the owner's per-task opt-out.
+        `quiet_for_actions` is the rule that already shipped for `success`:
+        housekeeping actions do not toast. Neither is honoured for `error` —
+        that branch predates this and shouts regardless, and taking that away
+        would be a subtraction (`Law 1`).
+        """
+        from core.database import TASK_RUN_NOTIFY
+
+        allowed, _why = TASK_RUN_NOTIFY.get(status, (False, ""))
+        if not allowed or task is None:
+            return False
+        if not getattr(task, "notifications_enabled", True):
+            return False
+        if quiet_for_actions and \
+                (getattr(task, "task_type", None) or "llm") not in {"llm", "research"}:
+            return False
+        self.add_notification(
+            task.name, status, task_id or getattr(task, "id", None),
+            owner=task.owner, body=body,
+        )
+        return True
+
     def pop_notifications(self, owner: str = None) -> list:
         """Return and clear pending notifications.
 
@@ -1049,6 +1089,11 @@ class TaskScheduler:
                     stale.finished_at = _utcnow()
                     stale.error = f"Task no longer active (status={task.status if task else 'deleted'})"
                     db.commit()
+                    # `B112`. The task is paused or gone, so this run is the last
+                    # thing that will happen on it and nothing else will say so.
+                    # A deleted task has no name and no owner to notify.
+                    self._notify_run_outcome(task, "skipped", body=stale.error,
+                                             task_id=task_id)
                 return
 
             if (
@@ -1060,12 +1105,19 @@ class TaskScheduler:
                 # through the shared helper because the webhook path in
                 # routes/task/task_routes.py enforces the same rule and used to
                 # record nothing at all.
-                record_admin_refusal(db, task, run_id=run_id)
+                _refusal = record_admin_refusal(db, task, run_id=run_id)
                 logger.warning(
                     "Paused admin-only task %s for non-admin owner %r",
                     task_id,
                     task.owner,
                 )
+                # `B112`. `record_admin_refusal` PAUSES the task: it will not run
+                # again until somebody re-enables it. `B07` had to leave this
+                # silent because the client called every non-`success` status a
+                # failure; `B78` fixed the client, so the owner gets told what
+                # actually happened instead of finding a stopped task later.
+                self._notify_run_outcome(task, "skipped", body=_refusal,
+                                         task_id=task_id)
                 return
 
             if gate_foreground:
@@ -1192,6 +1244,13 @@ class TaskScheduler:
                 else:
                     task.next_run = None
                 db.commit()
+                # `B112`. Declared silent in `TASK_RUN_NOTIFY`, with the reason:
+                # the restart sweep aborts every in-flight run on every boot and
+                # a foreground takeover re-queues this one in 15 minutes. The
+                # call is here anyway so the silence is the policy's answer and
+                # not this branch forgetting the notify block, which is how it
+                # read before.
+                self._notify_run_outcome(task, "aborted", body=msg, task_id=task_id)
                 return
             except TaskNoop as noop:
                 # Action reported "nothing to do". Mark the run as `skipped`
@@ -1215,6 +1274,19 @@ class TaskScheduler:
                 else:
                     task.next_run = None
                 db.commit()
+                # `B112`. A no-op that leaves the task on its schedule is a
+                # housekeeping action saying "nothing to do" — it recurs on every
+                # tick and toasting it would be the noise this row exists to
+                # avoid. A no-op on a task that will not come round again is the
+                # last thing that will happen on it, so it is told.
+                _will_run_again = (
+                    task.status == "active"
+                    and ((task.trigger_type or "schedule") != "schedule"
+                         or task.next_run is not None)
+                )
+                if not _will_run_again:
+                    self._notify_run_outcome(task, "skipped", body=str(noop),
+                                             task_id=task_id)
                 return
             finally:
                 if foreground_monitor and not foreground_monitor.done():
@@ -1252,19 +1324,21 @@ class TaskScheduler:
             # defaults to True at column level), but skip when the user has
             # explicitly turned them off for this task — quiets chatty
             # housekeeping cron tasks without disabling them entirely.
-            should_notify = (
-                (task.task_type or "llm") in {"llm", "research"}
-                and getattr(task, "notifications_enabled", True)
+            # `B112`. One reader of the policy, not two. This used to spell its
+            # own gate — `task_type in {llm, research} and notifications_enabled`
+            # — beside three other terminal branches that emitted nothing at all
+            # and said nothing about why. Every branch goes through
+            # `_notify_run_outcome` now, so `core.database.TASK_RUN_NOTIFY` is
+            # the only place that decides which outcomes are worth a
+            # notification, and the two quiet gates stay exactly what they were.
+            notified = self._notify_run_outcome(
+                task,
+                run.status,
+                body=run.result if output == "notification" else None,
+                task_id=task_id,
+                quiet_for_actions=True,
             )
-            if should_notify:
-                self.add_notification(
-                    task.name,
-                    run.status,
-                    task_id,
-                    owner=task.owner,
-                    body=run.result if output == "notification" else None,
-                )
-            elif run.status == "error":
+            if not notified and run.status == "error":
                 self.add_notification(
                     task.name,
                     "error",

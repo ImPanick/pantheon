@@ -4496,6 +4496,11 @@ function _openNoteCornerMenu(btn) {
   const note = _notes.find(n => n.id === id);
   if (!note) return;
   const _noteAgentState = _agentSolveState(id, null);   // '' | 'queued' | 'running'
+  // `B80`. `_agentSolveState` is memory-only, so on a reloaded page it is ''
+  // for a note-level run that is still going on the server. The note now
+  // carries the same `agent_status`/`agent_session_id` a checklist item does,
+  // so ask the same question the item menu asks.
+  const _noteStopKind = _agentRunStopKind(id, null, note);   // '' | 'live' | 'detached' | 'orphan'
   const menu = document.createElement('div');
   menu.className = 'note-corner-menu-dropdown';
   menu.innerHTML = `
@@ -4507,7 +4512,7 @@ function _openNoteCornerMenu(btn) {
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M2 14h2M20 14h2M15 13v2M9 13v2"/></svg>
       <span>${_noteAgentState === 'running' ? 'Agent running…' : (_noteAgentState === 'queued' ? `Queued (#${_agentSolveQueuePosition(_agentSolveKey(id, null))})` : (note.agent_session_id ? 'Re-run agent' : 'Agent: solve this'))}</span>
     </button>
-    ${_noteAgentState ? `<button type="button" class="ncm-item" data-act="agent-cancel">
+    ${(_noteAgentState || _noteStopKind === 'detached') ? `<button type="button" class="ncm-item" data-act="agent-cancel">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
       <span>${_noteAgentState === 'queued' ? 'Remove from queue' : 'Stop this run'}</span>
     </button>` : ''}`;
@@ -4528,7 +4533,14 @@ function _openNoteCornerMenu(btn) {
   menu.querySelector('[data-act="agent"]').addEventListener('click', () => { close(); _agentSolveNote(id); });
   const _agentCancelBtn = menu.querySelector('[data-act="agent-cancel"]');
   if (_agentCancelBtn) {
-    _agentCancelBtn.addEventListener('click', () => { close(); _cancelAgentSolve(id, null); });
+    _agentCancelBtn.addEventListener('click', () => {
+      close();
+      // Live runs are this page's to cancel directly; a detached one has to be
+      // found on the server first — the same two branches, and the same
+      // `_stopDetachedAgentRun`, the checklist item's menu uses (`B80`).
+      if (_noteAgentState) { _cancelAgentSolve(id, null); return; }
+      _stopDetachedAgentRun(id, null, note.agent_session_id || '');
+    });
   }
 }
 
@@ -4624,6 +4636,26 @@ function _agentSolveKey(noteId, idx) {
   return (idx === null || idx === undefined) ? `note:${noteId}` : `item:${noteId}#${idx}`;
 }
 
+/** The record that carries one agent run's bookkeeping: the checklist item for
+ *  an item-level solve, the note itself for a note-level one.
+ *
+ *  `B80`. The two solve paths shared a queue, a job runner and a stop path and
+ *  diverged on exactly one thing — where the run was written down. The item
+ *  path recorded four fields on `n.items[idx]`; the note path recorded a
+ *  session id on `n` and nothing else, so after a reload the note's menu could
+ *  not tell a run still in flight from one that ended last week, and offered no
+ *  Stop for either. WHERE the bookkeeping lives is therefore the only thing
+ *  that should differ, so it is the only thing this function decides: one
+ *  writer, one field set, two carriers (`Law 13`, `Law 14`).
+ *
+ *  null when the note is gone, or when an item index no longer resolves. */
+function _agentRunCarrier(note, idx) {
+  if (!note) return null;
+  if (idx === null || idx === undefined) return note;
+  if (!Array.isArray(note.items)) return null;
+  return note.items[idx] || null;
+}
+
 /** '' | 'queued' | 'running' — live, in-memory only. Never patched to the
  *  server, so a reload cannot leave a note stuck showing a queue that is gone. */
 function _agentSolveState(noteId, idx) {
@@ -4638,7 +4670,8 @@ function _agentSolveQueuePosition(key) {
   return i < 0 ? 0 : i + 1;
 }
 
-/** Who, if anyone, can stop the agent run this checklist item claims to be in.
+/** Who, if anyone, can stop the agent run this carrier claims to be in — a
+ *  checklist item, or the note itself for a note-level solve (`B80`).
  *
  * `B08`. `agent_status` is persisted — `_runAgentSolveJob` patches `running` at
  * the moment the run starts — and `_agentSolveRuns` is not. A reload, or the
@@ -4664,10 +4697,10 @@ function _agentSolveQueuePosition(key) {
  *                nothing to stop, so the tooltip stops promising a menu entry.
  *   ''         — no run to stop.
  */
-function _agentRunStopKind(noteId, idx, item) {
+function _agentRunStopKind(noteId, idx, carrier) {
   if (_agentSolveState(noteId, idx)) return 'live';
-  if (String((item && item.agent_status) || '').toLowerCase() !== 'running') return '';
-  return (item && item.agent_session_id) ? 'detached' : 'orphan';
+  if (String((carrier && carrier.agent_status) || '').toLowerCase() !== 'running') return '';
+  return (carrier && carrier.agent_session_id) ? 'detached' : 'orphan';
 }
 
 function _agentSolvePending() {
@@ -4840,26 +4873,18 @@ async function _runAgentSolveJob(job) {
     run.sid = sid;
     const sessionTitle = 'Agent: ' + label;
 
-    // 2. Link the session to the note right away so the tag appears.
-    const n = _notes.find(x => x.id === noteId);
-    if (n) {
-      n.agent_session_id = sid;
-      if (isItem && Array.isArray(n.items) && n.items[idx]) {
-        n.items[idx].agent_session_id = sid;
-        n.items[idx].agent_session_title = sessionTitle;
-        n.items[idx].agent_status = 'running';
-        n.items[idx].agent_stream_completed_at = '';
-      }
-    }
+    // 2. Link the session to the note right away so the tag appears, and record
+    //    the run against its carrier. One call for both paths (`B80`): the note
+    //    path used to write a session id and nothing else, so a run that
+    //    outlived its page left a detached server run with no control anywhere
+    //    in the UI.
+    _recordAgentRun(noteId, isItem ? idx : null, {
+      agent_session_id: sid,
+      agent_session_title: sessionTitle,
+      agent_status: 'running',
+      agent_stream_completed_at: '',
+    });
     _renderNotes();
-    if (isItem) {
-      _patchNote(noteId, {
-        items: n && Array.isArray(n.items) ? n.items : (_notes.find(x => x.id === noteId) || {}).items,
-        agent_session_id: sid,
-      }).catch(() => {});
-    } else {
-      _patchNote(noteId, { agent_session_id: sid }).catch(() => {});
-    }
 
     // 3. Kick off the agent run. POST to chat_stream in agent mode and drain
     //    the SSE so the server runs the loop to completion + saves — without
@@ -4877,7 +4902,7 @@ async function _runAgentSolveJob(job) {
     // so this is the first moment the detached run can actually be stopped.
     if (abort.signal.aborted) { _postAgentSolveStop(run); return; }
     if (!res.ok || !res.body) {
-      if (isItem) _markTodoAgentStatus(noteId, idx, 'error');
+      _markTodoAgentStatus(noteId, isItem ? idx : null, 'error');
       uiModule.showError('Agent run failed to start (HTTP ' + res.status + ')');
       return;
     }
@@ -4887,26 +4912,23 @@ async function _runAgentSolveJob(job) {
     if (window.sessionModule && window.sessionModule.markStreamComplete) {
       try { window.sessionModule.markStreamComplete(sid); } catch {}
     }
-    const doneNote = _notes.find(x => x.id === noteId);
-    if (doneNote) {
-      doneNote.agent_session_id = sid;
-      if (isItem && Array.isArray(doneNote.items) && doneNote.items[idx]) {
-        doneNote.items[idx].agent_session_id = sid;
-        doneNote.items[idx].agent_session_title = sessionTitle;
-        doneNote.items[idx].agent_status = 'stream_complete';
-        doneNote.items[idx].agent_stream_completed_at = new Date().toISOString();
-        _patchNote(noteId, { items: doneNote.items, agent_session_id: sid }).catch(() => {});
-      }
-    }
+    _recordAgentRun(noteId, isItem ? idx : null, {
+      agent_session_id: sid,
+      agent_session_title: sessionTitle,
+      agent_status: 'stream_complete',
+      agent_stream_completed_at: new Date().toISOString(),
+    });
   } catch (e) {
     if (abort.signal.aborted || (e && e.name === 'AbortError')) {
       // `aborted` keeps an operator-initiated stop out of the error counts.
-      if (isItem) _markTodoAgentStatus(noteId, idx, 'aborted');
+      // Recorded for a note-level run too (`B80`): the `isItem` guard here is
+      // what left `running` standing on a note nobody could then stop.
+      _markTodoAgentStatus(noteId, isItem ? idx : null, 'aborted');
       // Stopped between the POST and its headers: recover the run id so the
       // detached server run is actually cancelled, not merely unsubscribed.
       if (run.sid && !run.runId) _recoverAgentRunIdAndStop(run.sid);
     } else {
-      if (isItem) _markTodoAgentStatus(noteId, idx, 'error');
+      _markTodoAgentStatus(noteId, isItem ? idx : null, 'error');
       uiModule.showError('Agent failed: ' + (e.message || e));
     }
   } finally {
@@ -4916,13 +4938,34 @@ async function _runAgentSolveJob(job) {
   }
 }
 
-/** Terminal status for one checklist item, persisted alongside the run's own
- *  bookkeeping so a stopped or failed run does not look like it is still going. */
+/** Terminal status for one checklist item — or for the note itself, when `idx`
+ *  is null (`B80`) — persisted alongside the run's own bookkeeping so a stopped
+ *  or failed run does not look like it is still going. */
 function _markTodoAgentStatus(noteId, idx, status) {
+  _recordAgentRun(noteId, idx, { agent_status: status });
+}
+
+/** Write one agent run's bookkeeping onto its carrier and persist it.
+ *
+ *  `B80`. The four fields below are the item path's, unchanged; what this adds
+ *  is that a note-level run writes the same four to the note. An item's fields
+ *  ride along inside the note's `items` JSON, a note's are columns of their own
+ *  (`routes/note/note_routes.py`), which is the entire difference between the
+ *  two patches. The parent note keeps carrying the latest session id either
+ *  way — that is what the corner menu and the Agent tag read, and it is
+ *  latest-wins on purpose. */
+function _recordAgentRun(noteId, idx, fields) {
   const n = _notes.find(x => x.id === noteId);
-  if (!n || !Array.isArray(n.items) || !n.items[idx]) return;
-  n.items[idx].agent_status = status;
-  _patchNote(noteId, { items: n.items }).catch(() => {});
+  const carrier = _agentRunCarrier(n, idx);
+  if (!carrier) return null;
+  Object.assign(carrier, fields);
+  const patch = (carrier === n) ? { ...fields } : { items: n.items };
+  if (fields.agent_session_id) {
+    n.agent_session_id = fields.agent_session_id;
+    patch.agent_session_id = fields.agent_session_id;
+  }
+  _patchNote(noteId, patch).catch(() => {});
+  return n;
 }
 
 function _agentSolveNote(id) { _enqueueAgentSolve(id, null); }

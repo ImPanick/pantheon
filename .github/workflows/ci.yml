@@ -248,6 +248,20 @@ jobs:
       # demand. The ceiling is zero and it starts there.
       - name: check-clipboard
         run: python3 .pantheon/check-clipboard.py --max 0
+      # B111. The six run statuses are declared twice on purpose — once as
+      # `TASK_RUN_STATUSES` in core/database.py and once as `RUN_STATUSES` in
+      # static/js/runStatus.js — and a test already asserts the two lists match.
+      # What nothing checked is the way all six actually got into the tree: bare
+      # string literals at fifteen sites in src/task_scheduler.py. A sixteenth
+      # writing `run.status = "cancelled"` passed every gate here and reached the
+      # UI, where `runStatusTone` answered null, the Activity view fell back to
+      # scanning the result text for the word "error", and the notification
+      # client called it a failure. This reads both vocabularies out of the
+      # files, checks the word table and the notification policy are exactly as
+      # wide as them, and walks the AST for a status literal written to a
+      # TaskRun row that nobody declared.
+      - name: check-run-statuses
+        run: python3 .pantheon/check-run-statuses.py
       # P3-17. The row's own acceptance test — zero bare `except:` — passed on
       # the unfixed tree, so it would have been ticked without a fix. The real
       # population is `except ...: pass`, and grep cannot count it: `grep -A1`
@@ -267,7 +281,7 @@ jobs:
       # by nothing is worse than an undocumented one, because an operator who
       # sets it believes something changed.
       - name: check-env-declared
-        run: python3 .pantheon/check-env-declared.py --max 74
+        run: python3 .pantheon/check-env-declared.py --max 71
       # P4-11. The round has been on the wire since the first agent loop and it
       # was on most events; the gaps were invisible because nothing rendered it.
       # The streamed result card had none while its persisted twin did, the

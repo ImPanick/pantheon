@@ -15,7 +15,12 @@ import numpy as np
 from typing import List, Dict, Any, Optional, Set
 
 from src.constants import CHROMA_DIR
-from src.index_walk import prune_index_dirs, is_indexable_file
+# One register per extractor, and one directory walk, shared with the keyword
+# indexer (`B75`). src.personal_docs imports only index_walk and
+# markitdown_runtime, so this direction carries no cycle and no heavyweight
+# import; the hidden/junk pruning from src.index_walk still applies, inside
+# walk_index_candidates.
+from src.personal_docs import INDEXABLE_EXTENSIONS, walk_index_candidates
 from pathlib import Path
 
 from src.embedding_lanes import (
@@ -31,14 +36,18 @@ from src.embedding_lanes import (
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_FILE_EXTENSIONS: Set[str] = {
-    '.txt', '.md', '.py', '.json', '.yaml', '.yml',
-    '.csv', '.html', '.css', '.js', '.pdf'
-}
+# `B75`. This used to be an eleven-entry literal maintained by hand beside a
+# nine-entry one in `src/personal_docs.py`, both reached by the same click on
+# `POST /personal/add_directory`. They agreed on four, so 12 of the 16
+# extensions named between them were indexed by exactly one of the two indexes.
+# Derived now from the extractor register, so the vector index and the keyword
+# index cover the same files by construction rather than by review.
+DEFAULT_FILE_EXTENSIONS: Set[str] = set(INDEXABLE_EXTENSIONS)
 
 # Tool-internal directories that match DEFAULT_FILE_EXTENSIONS but are never
 # Directory-walk pruning is single-sourced in src.index_walk so the vector and
-# keyword indexers apply the same hidden/junk policy and cannot drift (#5559).
+# keyword indexers apply the same hidden/junk policy and cannot drift (#5559);
+# since `B75` they apply it by running the same walk, not by each calling it.
 
 VECTOR_WEIGHT = 0.7
 KEYWORD_WEIGHT = 0.3
@@ -504,60 +513,52 @@ class VectorRAG:
 
         indexed = 0
         failed = 0
+        skipped: List[Dict[str, str]] = []
 
         try:
-            for root, dirs, files in os.walk(directory):
-                # Prune in place so os.walk never descends into hidden or junk
-                # directories (#5559), via the shared index_walk policy. The
-                # passed-in root is exempt: a user who deliberately targets a
-                # hidden directory gets it.
-                prune_index_dirs(dirs)
-                for fname in files:
-                    if not is_indexable_file(fname):
-                        continue
-                    fpath = os.path.join(root, fname)
-                    ext = Path(fname).suffix.lower()
-                    if ext not in file_extensions:
-                        continue
+            # `B75`. The walk, the extension set and the extractor routing are
+            # the keyword indexer's, so the two indexes over one directory see
+            # the same files. This loop used to open everything but `.pdf` with
+            # a plain UTF-8 `open()`, which is why it could not take the Office
+            # formats and why the two lists diverged in the first place.
+            for fpath, ext, content, reason in walk_index_candidates(directory, file_extensions):
+                if reason:
+                    skipped.append({'path': fpath, 'reason': reason})
+                    continue
+                try:
+                    meta = {
+                        'source': fpath,
+                        'filename': os.path.basename(fpath),
+                        'directory': os.path.dirname(fpath),
+                        'type': ext,
+                    }
+                    if owner:
+                        meta['owner'] = owner
 
-                    try:
-                        if ext == '.pdf':
-                            from src.personal_docs import extract_pdf_text
-                            content = extract_pdf_text(fpath)
+                    for i, chunk in enumerate(self._split_into_chunks(content)):
+                        if self.add_document(chunk, {**meta, 'chunk_id': i}):
+                            indexed += 1
                         else:
-                            with open(fpath, 'r', encoding='utf-8') as f:
-                                content = f.read()
-
-                        if not content or not content.strip():
-                            continue
-
-                        meta = {
-                            'source': fpath,
-                            'filename': fname,
-                            'directory': root,
-                            'type': ext,
-                        }
-                        if owner:
-                            meta['owner'] = owner
-
-                        for i, chunk in enumerate(self._split_into_chunks(content)):
-                            if self.add_document(chunk, {**meta, 'chunk_id': i}):
-                                indexed += 1
-                            else:
-                                failed += 1
-                    except Exception as e:
-                        logger.error(f"index {fpath}: {e}")
-                        failed += 1
+                            failed += 1
+                except Exception as e:
+                    logger.error(f"index {fpath}: {e}")
+                    failed += 1
 
             return {
                 'success': True,
                 'indexed_count': indexed,
                 'failed_count': failed,
+                # Every file under the directory that is NOT in the index, and
+                # why. Silence here is what let a `.docx` be keyword-findable
+                # and semantically invisible with nothing on screen saying so.
+                'skipped': skipped,
+                'skipped_count': len(skipped),
                 'message': f'Indexed {indexed} chunks from {directory}',
             }
         except Exception as e:
             logger.error(f"index_personal_documents {directory}: {e}")
-            return {'success': False, 'indexed_count': indexed, 'failed_count': failed, 'message': str(e)}
+            return {'success': False, 'indexed_count': indexed, 'failed_count': failed,
+                    'skipped': skipped, 'skipped_count': len(skipped), 'message': str(e)}
 
     def remove_directory(self, directory: str) -> Dict[str, Any]:
         """Remove all chunks under ``directory`` (recursively), and nothing else.

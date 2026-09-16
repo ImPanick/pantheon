@@ -17,6 +17,7 @@ from core.platform_compat import IS_WINDOWS, find_bash
 from core.constants import internal_api_base
 from src.constants import DATA_DIR, DEEP_RESEARCH_DIR, TIDY_CALENDAR_STATE_FILE, EMAIL_URGENCY_CACHE_DIR, COOKBOOK_STATE_FILE
 from src.interactive_gate import wait_for_interactive_quiet
+from src.env_flags import tool_arg_truthy
 
 logger = logging.getLogger(__name__)
 
@@ -2773,13 +2774,12 @@ async def action_check_email_urgency(owner: str, **kwargs) -> Tuple[str, bool]:
                             tag = "marketing"
                         if tag in CATEGORY_TAGS and tag not in tags:
                             tags.append(tag)
-                    _spam_raw = obj.get("spam")
-                    if isinstance(_spam_raw, bool):
-                        spam = _spam_raw
-                    elif isinstance(_spam_raw, (int, float)):
-                        spam = bool(_spam_raw)
-                    else:
-                        spam = str(_spam_raw or "").strip().lower() in {"1", "true", "yes", "y"}
+                    # `B97`. The bool and number branches are what
+                    # `tool_arg_truthy` does, so the three-way split collapses
+                    # into the call that owns the boundary — and `y`, which
+                    # only this site accepted, is in the shared set because of
+                    # it.
+                    spam = tool_arg_truthy(obj.get("spam"))
                     _blob = f"{item.get('headers','')}\n{item.get('subject','')}\n{item.get('body','')}".lower()
                     if _re.search(r"\b(i'?m|i am|im|we'?re|we are)\s+outside\b", _blob) or _re.search(
                         r"\b(waiting outside|at the door|locked out|can'?t get in|cannot get in)\b", _blob

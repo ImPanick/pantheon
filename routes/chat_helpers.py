@@ -806,6 +806,12 @@ async def build_chat_context(
         mem_enabled = False
 
     # Use RAG?
+    # flag-spelling: `B97` holds this one. It is the only HTTP field in the
+    # tree that defaults ON, so adopting the shared rule would make `use_rag=0`
+    # — which is *on* today — turn retrieval off. Every other conversion in
+    # `B97` only widens, so nothing that answered yes starts answering no;
+    # this one would be the exception, and a caller losing retrieval without
+    # asking is a change that needs announcing rather than tidying (`Law 1`).
     use_rag_val = (str(use_rag).lower() != "false") if use_rag is not None else True
     if incognito or not allow_tool_preprocessing or is_research_spinoff or casual_low_signal:
         use_rag_val = False

@@ -14,6 +14,7 @@ import re
 import logging
 from typing import Optional, Dict
 
+from src.env_flags import tool_arg_truthy
 from src.tool_capabilities import TrustRung
 
 from src.tool_utils import get_mcp_manager, _parse_tool_args
@@ -702,7 +703,13 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
         }
         def _coerce(value, default):
             if isinstance(default, bool):
-                return value if isinstance(value, bool) else str(value).strip().lower() in ("true", "on", "yes", "1", "enable", "enabled")
+                # `B97`. This was one of three vocabularies the tree used for
+                # "what did the model mean by yes", and the widest — it is the
+                # one `tool_arg_truthy`'s ON set was mostly derived from. The
+                # model writes this value, so `"enabled"` has to be a yes here
+                # even though an operator typing it into `.env` is told it is
+                # not a spelling we take.
+                return tool_arg_truthy(value)
             if isinstance(default, int):
                 return int(value)
             return value

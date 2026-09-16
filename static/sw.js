@@ -8,7 +8,7 @@
 //   - Other static assets (images/fonts/libs): cache-first with bg refresh.
 //   - API / non-GET: never cached.
 // Bump CACHE_NAME whenever the precache list or SW logic changes.
-const CACHE_NAME = 'pantheon-v417-b86-asset-closure';
+const CACHE_NAME = 'pantheon-v418-b120-shell-routes';
 
 // KaTeX resolves these from its own stylesheet, so caching the CSS without them
 // gives offline math fallback glyphs instead of proper typesetting.
@@ -58,6 +58,29 @@ const KATEX_FONTS = [
 // exact URL the browser requests, query string included.
 const PRECACHE = [
   '/',
+  // `B122`. The second document this app serves, and the only other one that
+  // exists: `app.py:973` reads `static/login.html` through the same nonce
+  // helper `/` goes through. It was in neither list while `theme.js` was a
+  // seed *because* this page imports it, so the page's dependency was
+  // guaranteed offline and the page was not.
+  //
+  // The call this row asks for is made, and it is made on a path that needs no
+  // server at all: the Log out button in settings does
+  // `await fetch('/api/auth/logout')` inside a `try {} catch (_) {}`, wipes
+  // localStorage and sessionStorage, and then sets `location.href = '/login'`
+  // unconditionally. Offline the fetch rejects, the catch swallows it, the
+  // wipe still happens and the navigation still happens — so an offline user
+  // who logs out lands on a page that does not exist for them, having just
+  // lost their local state. That is reachable with the network down; the
+  // server-issued 302 the row imagined is not, because a server that can
+  // redirect can also serve the page.
+  //
+  // An offline login still cannot check a credential, and that is not what
+  // this buys. The submit handler catches the rejection and shows it in the
+  // error line, so the page degrades to a visible message instead of a
+  // browser error page with no way back, and the same form works the moment
+  // the network returns.
+  '/login',
   '/static/style.css?v=20260808startupshell1',
   '/static/app.js?v=20260815toolapproval4',
   '/static/js/storage.js',
@@ -237,7 +260,9 @@ const PANEL_PRECACHE = [
 // The seeds stay hand-written because they are exactly what a walk cannot
 // derive: the HTML shell, and the libs nothing imports — plus any module
 // reached through a computed specifier, of which login.html's
-// `import(f('/static/js/theme.js'))` is the one in this tree.
+// `import(f('/static/js/theme.js'))` is the one in this tree. `B122` added the
+// second document for the same reason: nothing on the shell links the login
+// page, so no walk from `/` can reach it.
 //
 // `B86` shrank that list of exceptions. "The stylesheet and the fonts nothing
 // imports" used to be in it; the stylesheet is on a `<link>` in the shell and
@@ -355,8 +380,13 @@ function docKind(url) {
   const path = url.split('?')[0];
   if (/\.js$/.test(path)) return isWalkable(url) ? 'js' : '';
   if (/\.css$/.test(path)) return 'css';
-  if (path === '/' || /\.html$/.test(path)) return 'html';
   if (/\.(?:json|webmanifest)$/.test(path)) return 'manifest';
+  // A route, not a file. `/` used to be spelled out on its own here; `B122`
+  // added a second one and the rule that covers both is "no extension on the
+  // last segment", which is what a server route looks like and what a font or
+  // an icon never looks like. The three extension tests above run first, so
+  // nothing with a known type can reach this line.
+  if (/\.html$/.test(path) || !/\.[A-Za-z0-9]+$/.test(path)) return 'html';
   return '';
 }
 
@@ -440,6 +470,15 @@ async function precacheOne(cache, url) {
     return [];
   }
   if (!res || !res.ok) return [];
+  // `B122`. A response that arrived from somewhere else is not this URL's
+  // body, and storing it here would answer this URL with the wrong document
+  // for the life of the cache. `/login` is the first entry that can redirect:
+  // `app.py:972` sends it to `/` with a 302 when `AUTH_ENABLED` is false, and
+  // without this guard an auth-disabled deployment would store a second
+  // 283 KB copy of the app shell under `/login` and serve it to a navigation
+  // there. Nothing else in either list redirects today, so this costs nothing
+  // and covers the next one.
+  if (res.redirected) return [];
   // Read the copy, store the original: cache.put consumes the body. Only a
   // document that CAN name something is read — a woff2 or a png is stored
   // without ever being turned into a string.
@@ -483,6 +522,58 @@ async function precacheShellGraph(cache, seeds) {
   return seen;
 }
 
+// `B120`. Nine server routes answer with the same app shell — `app.py:916-962`
+// routes eight of them straight to `serve_index`, the identical document, and
+// the SPA picks the view off `window.location.pathname`. The handler below
+// answered a navigation only when the path was exactly `/`, so the other eight
+// matched no branch at all, got no `respondWith`, and went to the network:
+// offline they failed while a complete, correct copy of what they render sat
+// in the cache. The sharp edge is the installed PWA — index.html builds a
+// per-route manifest with `start_url: path`, so "Add to Home Screen" from
+// `/tasks` installs an app whose launch URL was the one that could not open.
+//
+// The narrowing was deliberate and it stays. Matching *every* navigation
+// served the app index in place of a deep-linked page, so this is a route set
+// and not a relaxed predicate: `/backgrounds` and the `/static/*.html`
+// prototype pages are their own documents and must still reach the network,
+// and an unknown path must still get the server's 404 rather than a shell.
+//
+// **This list is derived, not transcribed** (`Law 13`). The source of truth is
+// `app.py`, and `test_the_shell_route_set_is_what_the_server_actually_serves`
+// drives the real app, asks every GET route with no path parameters for its
+// body, and fails if the set that answers byte-identically to `/` is not
+// exactly this. A tenth route added to `app.py` fails that test on the commit
+// that adds it, which is the only thing that stops this list from being the
+// next one to go stale.
+const SHELL_ROUTES = new Set([
+  '/',
+  '/calendar',
+  '/cookbook',
+  '/email',
+  '/gallery',
+  '/library',
+  '/memory',
+  '/notes',
+  '/tasks',
+]);
+
+// `B122`. Documents this worker holds that are NOT the shell — they answer a
+// navigation with themselves, not with `/`. Derived from `PRECACHE` rather
+// than written out again: a seed that is not under `/static/` is a page this
+// app serves at that path, which is what makes it navigable, and a second list
+// would be a second thing to keep in step.
+const CACHED_PAGES = new Set(
+  PRECACHE.filter(url => url !== '/' && !url.startsWith('/static/'))
+);
+
+// Which cache entry answers a navigation, or '' for "not ours — let it go to
+// the network and the branches below".
+function navigationKey(pathname) {
+  if (SHELL_ROUTES.has(pathname)) return '/';
+  if (CACHED_PAGES.has(pathname)) return pathname;
+  return '';
+}
+
 self.addEventListener('install', (e) => {
   e.waitUntil(
     caches.open(CACHE_NAME).then(cache =>
@@ -506,22 +597,34 @@ self.addEventListener('fetch', (e) => {
   // Never touch API calls or non-GET.
   if (url.pathname.startsWith('/api/') || e.request.method !== 'GET') return;
 
-  // HTML navigation: stale-while-revalidate the app shell — but ONLY for the
-  // SPA root. Other navigations (e.g. a deep-linked /static/*.html page) must
-  // go to the network/static handlers below; otherwise every navigation was
-  // served the app index, replacing the page the user actually asked for.
-  if (e.request.mode === 'navigate' && url.pathname === '/') {
-    e.respondWith(
-      caches.open(CACHE_NAME).then(async cache => {
-        const cached = await cache.match('/');
-        const network = fetch(e.request).then(res => {
-          if (res && res.ok) cache.put('/', res.clone());
-          return res;
-        }).catch(() => cached);
-        return cached || network;
-      })
-    );
-    return;
+  // HTML navigation: stale-while-revalidate the document this route serves —
+  // and ONLY for a route this worker has a document for. Other navigations
+  // (e.g. a deep-linked /static/*.html page, or a path that does not exist)
+  // must go to the network/static handlers below; otherwise every navigation
+  // was served the app index, replacing the page the user actually asked for.
+  //
+  // `navigationKey` is what makes that distinction a route set instead of the
+  // single path this used to test (`B120`, `B122`).
+  if (e.request.mode === 'navigate') {
+    const key = navigationKey(url.pathname);
+    if (key) {
+      e.respondWith(
+        caches.open(CACHE_NAME).then(async cache => {
+          const cached = await cache.match(key);
+          const network = fetch(e.request).then(res => {
+            // The nine shell routes return the same bytes, so a fresh copy
+            // from any of them refreshes the one entry all nine are served
+            // from — the premise the route set is derived on, checked against
+            // the real server by the test named above. `redirected` is the
+            // same guard `precacheOne` carries, for the same reason.
+            if (res && res.ok && !res.redirected) cache.put(key, res.clone());
+            return res;
+          }).catch(() => cached);
+          return cached || network;
+        })
+      );
+      return;
+    }
   }
 
   // JS/CSS: network-first — always try the network so code/style edits show up

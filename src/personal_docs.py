@@ -39,14 +39,57 @@ def extract_office_text(file_path: str) -> str:
     return convert_to_markdown(file_path) or ""
 
 
+# ── one register per extractor (`B75`) ──────────────────────────────────────
+#
+# Two indexes were built over the same directory by the same click from two
+# hand-maintained lists. The vector indexer read `rag_vector.DEFAULT_FILE_
+# EXTENSIONS` (11 entries), the keyword indexer read `config.DEFAULT_EXTENSIONS`
+# (9); they agreed on four, so 12 of the 16 extensions named between them were
+# indexed by exactly one of the two — a `.docx` was findable by keyword and
+# invisible to semantic search, a `.py` was the reverse, and nothing on screen
+# said which kind of search the user was getting.
+#
+# The asymmetry was not arbitrary in one direction: `index_personal_documents`
+# opened everything but `.pdf` with a plain UTF-8 `open()`, so it *could not*
+# read the Office formats. That is why the fix is a register keyed by EXTRACTOR
+# rather than a merged list — each indexer now takes the union of what can
+# actually be read, and reads it through the same function.
+#
+# `MARKITDOWN_EXTS` is the register that already existed for the Office
+# extractor (`src/markitdown_runtime.py`); these two sit beside it rather than
+# restating it (`Law 14`).
+TEXT_EXTENSIONS: frozenset = frozenset({
+    ".txt", ".md", ".json", ".yaml", ".yml", ".csv",
+    ".html", ".css", ".js", ".py",
+})
+PDF_EXTENSIONS: frozenset = frozenset({".pdf"})
+OFFICE_EXTENSIONS: frozenset = frozenset(MARKITDOWN_EXTS)
+
+#: Every extension some extractor on this box can turn into text, sorted. Both
+#: indexers derive their default from this; neither keeps a list of its own.
+INDEXABLE_EXTENSIONS: Tuple[str, ...] = tuple(sorted(
+    TEXT_EXTENSIONS | PDF_EXTENSIONS | OFFICE_EXTENSIONS
+))
+
+# Why a file under an indexed directory is not in the index. Three reasons, kept
+# separate because they mean different things to the person who indexed it: a
+# format nothing here reads, a file that read as nothing (an encrypted PDF, a
+# scan with no text layer, an Office file with markitdown not installed), and a
+# file that could not be opened at all.
+SKIP_UNSUPPORTED = "unsupported extension"
+SKIP_NO_TEXT = "no extractable text"
+SKIP_UNREADABLE = "could not be read"
+
+
 @dataclass
 class PersonalDocsConfig:
     """Configuration for personal documents management."""
     CHUNK_SIZE: int = 1000
     CHUNK_OVERLAP: int = 200
-    DEFAULT_EXTENSIONS: Tuple[str, ...] = (
-        ".txt", ".md", ".json", ".pdf", ".docx", ".pptx", ".xlsx", ".xls", ".epub",
-    )
+    # `B75`. Derived, not restated. The name and the tuple type are unchanged —
+    # callers and tests that read `config.DEFAULT_EXTENSIONS` keep working; what
+    # changed is that it can no longer disagree with the vector indexer's list.
+    DEFAULT_EXTENSIONS: Tuple[str, ...] = INDEXABLE_EXTENSIONS
     DEFAULT_K: int = 5
     STOP_WORDS: Set[str] = None
     
@@ -68,6 +111,84 @@ def read_text_file(path: str) -> str:
             return f.read()
     except Exception:
         return ""
+
+def extractor_for(name: str):
+    """The function that turns this filename into text, or None (`B75`).
+
+    Keyed by extractor so a caller cannot ask for a format and then read it the
+    wrong way — which is exactly how the vector indexer came to claim `.docx`
+    was unsupported while opening `.py` as UTF-8.
+    """
+    ext = os.path.splitext(str(name or ""))[1].lower()
+    if ext in PDF_EXTENSIONS:
+        return extract_pdf_text
+    if ext in OFFICE_EXTENSIONS:
+        return extract_office_text
+    if ext in TEXT_EXTENSIONS:
+        return read_text_file
+    return None
+
+
+def extract_document_text(path: str) -> str:
+    """Text for one indexable file, through its registered extractor (`B75`).
+
+    Returns "" for a format nothing here reads — the caller decides whether that
+    is a skip to report or a file to drop.
+    """
+    fn = extractor_for(path)
+    if fn is None:
+        return ""
+    return fn(path) or ""
+
+
+def walk_index_candidates(directory: str, extensions=None):
+    """Yield ``(path, ext, text, reason)`` for every file the shared walk policy
+    admits under ``directory`` (`B75`).
+
+    ``reason`` is "" when the file was read and has text, and one of the
+    ``SKIP_*`` constants otherwise. Both indexers consume this, so they cannot
+    disagree about which files they saw, how those files were read, or why one
+    was left out — which is the whole defect this row is about. Names are sorted
+    so two runs over one directory produce the same order.
+
+    ``extensions`` narrows the walk for a caller that deliberately wants a
+    subset of the register; the default is everything the register can read.
+    The narrowing is applied only to files some extractor COULD have read — a
+    format nothing here reads is reported whatever the caller asked for, because
+    "you narrowed to .md" is not why a ``.psd`` is missing from the index.
+    """
+    allowed = None
+    if extensions is not None:
+        allowed = {str(e).lower() for e in extensions}
+    for root, dirs, names in os.walk(directory):
+        # Hidden/junk pruning is single-sourced in src.index_walk (#5559); the
+        # passed-in root is exempt, as it is for both indexers today.
+        prune_index_dirs(dirs)
+        for name in sorted(names):
+            if not is_indexable_file(name):
+                continue
+            path = os.path.join(root, name)
+            ext = os.path.splitext(name)[1].lower()
+            fn = extractor_for(name)
+            if fn is None:
+                yield path, ext, "", SKIP_UNSUPPORTED
+                continue
+            if allowed is not None and ext not in allowed:
+                continue
+            if not os.path.isfile(path):
+                yield path, ext, "", SKIP_UNREADABLE
+                continue
+            try:
+                text = fn(path) or ""
+            except Exception as e:                      # noqa: BLE001 - reported, not swallowed
+                logger.error(f"extract {path}: {e}")
+                yield path, ext, "", SKIP_UNREADABLE
+                continue
+            if not text.strip():
+                yield path, ext, "", SKIP_NO_TEXT
+                continue
+            yield path, ext, text, ""
+
 
 def split_chunks(text: str, size: int = config.CHUNK_SIZE, overlap: int = config.CHUNK_OVERLAP) -> List[str]:
     """Split text into overlapping chunks."""
@@ -98,7 +219,8 @@ def tokenize(s: str) -> Set[str]:
 
 def load_personal_index(
     personal_dir: str,
-    extensions: Tuple[str, ...] = config.DEFAULT_EXTENSIONS
+    extensions: Tuple[str, ...] = config.DEFAULT_EXTENSIONS,
+    skipped: List[Dict[str, str]] = None,
 ) -> List[Dict[str, Any]]:
     """Load and index personal documents.
 
@@ -106,29 +228,33 @@ def load_personal_index(
     ``index_walk`` policy, so the keyword index matches the vector index and a
     real vault/repo does not sweep in ``.obsidian/`` / ``.git/`` /
     ``node_modules/`` content (#5559).
+
+    `B75`: the walk, the extension set and the extractor routing now come from
+    ``walk_index_candidates`` — the same generator the vector indexer consumes —
+    so the two indexes over one directory cover the same files. Pass a list as
+    ``skipped`` to be told about every file that was NOT indexed and why; the
+    parameter is optional so existing callers are unaffected.
+
+    A file whose extractor produced nothing is still listed (with no chunks), as
+    it always has been — the docs listing shows the user the file it found — and
+    is additionally reported in ``skipped`` with a reason, because "listed but
+    unsearchable" is the state this row exists to stop being silent.
     """
     files = []
-    for root, dirs, names in os.walk(personal_dir):
-        prune_index_dirs(dirs)
-        for name in sorted(names):
-            if not is_indexable_file(name):
-                continue
-            p = os.path.join(root, name)
-            if not os.path.isfile(p):
-                continue
-            if not any(name.lower().endswith(ext) for ext in extensions):
-                continue
-            size = os.path.getsize(p)
-            ext = os.path.splitext(name)[1].lower()
-            if ext == ".pdf":
-                text = extract_pdf_text(p)
-            elif ext in MARKITDOWN_EXTS:
-                text = extract_office_text(p)
-            else:
-                text = read_text_file(p)
-            chunks = split_chunks(text)
-            display = os.path.relpath(p, personal_dir)
-            files.append({"name": display, "path": p, "size": size, "chunks": chunks})
+    for path, _ext, text, reason in walk_index_candidates(personal_dir, extensions):
+        if reason == SKIP_UNSUPPORTED or reason == SKIP_UNREADABLE:
+            if skipped is not None:
+                skipped.append({"path": path, "reason": reason})
+            continue
+        if reason and skipped is not None:
+            skipped.append({"path": path, "reason": reason})
+        try:
+            size = os.path.getsize(path)
+        except OSError:
+            size = 0
+        chunks = split_chunks(text)
+        display = os.path.relpath(path, personal_dir)
+        files.append({"name": display, "path": path, "size": size, "chunks": chunks})
     return files
 
 def retrieve_personal_keyword(personal_index: List[Dict], query: str, k: int = 5) -> List[str]:
@@ -213,6 +339,10 @@ class PersonalDocsManager:
         self.personal_dir = personal_dir
         self.rag_manager = rag_manager
         self.index = []
+        # Files walked past and not indexed, with a reason each (`B75`).
+        # Populated by refresh_index; declared here so it exists before the
+        # first refresh and a reader never meets a missing attribute.
+        self.skipped: List[Dict[str, str]] = []
         self.indexed_directories = []  # Track additional directories
         self.excluded_files: Set[str] = set()  # Files removed from RAG listing
         self.directories_file = os.path.join(personal_dir, "indexed_directories.json")
@@ -383,11 +513,17 @@ class PersonalDocsManager:
         return self.indexed_directories.copy()
 
     def refresh_index(self):
-        """Refresh the document index including all tracked directories."""
+        """Refresh the document index including all tracked directories.
+
+        `B75`: records every file it walked past and why on ``self.skipped``, so
+        a caller can say which files are in neither index instead of leaving the
+        user to discover it by searching and finding nothing.
+        """
         self.index = []
+        self.skipped: List[Dict[str, str]] = []
 
         # Index the base personal directory
-        base_files = load_personal_index(self.personal_dir)
+        base_files = load_personal_index(self.personal_dir, skipped=self.skipped)
         for f in base_files:
             if os.path.abspath(f.get("path", "")) in self.excluded_files:
                 continue
@@ -405,7 +541,7 @@ class PersonalDocsManager:
                 continue
 
             # Load files from this directory
-            dir_files = load_personal_index(directory)
+            dir_files = load_personal_index(directory, skipped=self.skipped)
             for f in dir_files:
                 if os.path.abspath(f.get("path", "")) in self.excluded_files:
                     continue

@@ -16,6 +16,7 @@ from core.database import McpServer, SessionLocal
 from core.middleware import require_admin
 from src.constants import DATA_DIR, MCP_OAUTH_DIR
 from src.mcp_manager import McpManager
+from src.env_flags import request_flag
 
 logger = logging.getLogger(__name__)
 
@@ -363,7 +364,7 @@ def setup_mcp_routes(mcp_manager: McpManager):
             if not srv:
                 raise HTTPException(404, "Server not found")
 
-            enabled = str(is_enabled).lower() == "true"
+            enabled = request_flag(is_enabled)  # `B97`
             srv.is_enabled = enabled
             db.commit()
 

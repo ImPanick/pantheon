@@ -36,6 +36,7 @@ closed under import. A list can be checked by reading it; a walk cannot, so
 these execute it (`Law 20`).
 """
 
+import importlib.util
 import json
 import os
 import re
@@ -50,6 +51,31 @@ import pytest
 _REPO = Path(__file__).resolve().parent.parent
 _SW = _REPO / "static" / "sw.js"
 _HARNESS = _REPO / "tests" / "harness" / "sw_install_graph.js"
+
+# `B82`. The import walker this repo already has. `.pantheon/check-specifiers.py`
+# resolves every specifier grammar in the tree against its importer and knows
+# which ones are out of scope, and `B87` taught it to blank comments first.
+# Writing a second one here to compare against `sw.js` would be a third opinion
+# about what an import is (`Law 14`), and the one that rots is always the copy.
+_CHECKER = _REPO / ".pantheon" / "check-specifiers.py"
+_spec = importlib.util.spec_from_file_location("check_specifiers", _CHECKER)
+check_specifiers = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(check_specifiers)
+
+
+def _sw_code() -> str:
+    """`static/sw.js` with its comments blanked.
+
+    Every assertion in this file that looks at the worker's *source* goes
+    through here. `B58` put the string `ignoreSearch` in a comment explaining
+    why there is no `ignoreSearch` and failed a grep for it; `B87` hit the same
+    law in the checker a day later. A rule about code has to read code
+    (`Law 20`), and the two "this URL appears nowhere in sw.js" assertions
+    below are exactly the shape that trips on a sentence.
+    """
+    return check_specifiers.strip_comments(
+        _SW.read_text(encoding="utf-8"), html=False
+    )
 
 _MODULE_SCRIPT = re.compile(r'<script[^>]*type="module"[^>]*src="([^"]+)"')
 _STYLESHEET = re.compile(r'<link[^>]*rel="stylesheet"[^>]*href="([^"]+)"')
@@ -68,7 +94,7 @@ def _precached() -> set:
     `'/static/lib/'` in the walk's own guard — a literal that is not a precache
     entry, and a whole-file grep cannot tell the two apart (`Law 20`).
     """
-    text = _SW.read_text(encoding="utf-8")
+    text = _sw_code()
     entries = set()
     for block in ("PRECACHE", "PANEL_PRECACHE"):
         start = re.search(rf"\nconst {block} = \[", text)
@@ -148,9 +174,7 @@ def test_the_service_worker_still_matches_requests_including_their_query():
     no `ignoreSearch`* — a test that greps a file cannot tell a setting from a
     sentence about the setting. It now looks at the code.
     """
-    src = _SW.read_text(encoding="utf-8")
-    code = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
-    code = re.sub(r"(?m)^\s*//.*$", "", code)
+    code = _sw_code()
     assert "ignoreSearch" not in code, (
         "sw.js now ignores query strings when matching; the precache list no "
         "longer has to be exact, so revisit B54 and these tests together"
@@ -159,9 +183,17 @@ def test_the_service_worker_still_matches_requests_including_their_query():
 
 def test_the_login_page_shell_is_covered_too():
     # login.html is the one screen index.html's modules never reach. It carries
-    # its own inline styles today, so it requests no external shell resources —
-    # asserted rather than assumed, because the day it grows a <script
+    # its own inline styles today, so it loads no script or stylesheet of its
+    # own — asserted rather than assumed, because the day it grows a <script
     # type="module"> tag is the day it needs to be in the manifest.
+    #
+    # `B122` corrects what this used to claim. "No external shell resources" was
+    # too strong: the page names `static/manifest.json`, `static/icons/
+    # icon-192.png` and two Fira Code faces, all *relative*, which this scan
+    # drops because it only keeps `/static/` — and dropping them was safe only
+    # by accident, since index.html happens to reference the same four. They
+    # are covered by derivation now, from the page itself; see
+    # `test_the_login_page_is_read_for_what_it_references`.
     assert _shell_requests(_REPO / "static" / "login.html") == []
 
     # `B57`: it does not request one through a `src` attribute, which is not the
@@ -178,6 +210,18 @@ def test_the_login_page_shell_is_covered_too():
                            for m in re.findall(r"""['"](/static/[^'"]+\.js)['"]""", block)})
     assert inline_roots == ["/static/js/theme.js"], inline_roots
     assert "/static/js/theme.js" in _precached()
+
+    # `B122`. The gap this test's name promised and the manifest did not keep:
+    # `theme.js` was a seed *because this page imports it*, and the page itself
+    # was in neither list, so the dependency was guaranteed offline and the
+    # document was not. `/login` is a seed now — the assertion, not the prose,
+    # is what stops the two disagreeing again.
+    listed = re.search(r"\nconst PRECACHE = \[(.*?)\n\];", _sw_code(), re.S)
+    assert listed, "PRECACHE is no longer a list"
+    assert "'/login'" in listed.group(1), (
+        "login.html's dependency is precached and login.html is not; that is "
+        "the disagreement B122 closed — see the row before reopening it"
+    )
 
 
 # ── `B57`: the manifest is not the shell, so run the install and look ─────────
@@ -276,7 +320,7 @@ def test_the_modules_no_list_names_are_there_by_derivation(installed):
     }
     cached = set(installed["cached"])
     assert derived <= cached, sorted(derived - cached)
-    source = _SW.read_text(encoding="utf-8")
+    source = _sw_code()
     assert [u for u in derived if u.split("?")[0] in source] == []
 
 
@@ -576,6 +620,10 @@ def test_install_caches_everything_the_documents_it_stores_reference(installed):
     # `cookbookSchedule.js` hid: pin the documents that must be read.
     assert set(assets) == {
         "/",
+        # `B122`. The second document, and the reason `docKind` now decides on
+        # "no extension" rather than on the single path `/`: a route is not a
+        # file and `/login` has no `.html` to recognise it by.
+        "/login",
         "/static/style.css?v=20260808startupshell1",
         "/static/lib/katex/katex.min.css",
         "/static/manifest.json",
@@ -603,7 +651,7 @@ def test_the_katex_font_list_is_exactly_what_its_stylesheet_says(installed):
     40 requests per install that 404; following none of the fonts would be
     `B86` reopened for KaTeX.
     """
-    source = _SW.read_text(encoding="utf-8")
+    source = _sw_code()
     names = re.search(r"const KATEX_FONTS = \[(.*?)\]\.map", source, re.S)
     assert names, "KATEX_FONTS is no longer a list of names"
     listed = {f"/static/lib/katex/fonts/KaTeX_{n}.woff2"
@@ -642,7 +690,7 @@ def test_the_manifest_and_its_icons_are_there_by_derivation(installed):
         "/static/fonts/OpenDyslexic-Bold.woff2",
     }
     assert derived <= cached, sorted(derived - cached)
-    source = _SW.read_text(encoding="utf-8")
+    source = _sw_code()
     listed_anyway = [u for u in sorted(derived) if f"'{u}'" in source]
     assert listed_anyway == [], (
         f"{listed_anyway} was added to a precache list; the walk already has it "
@@ -776,3 +824,348 @@ def test_a_manifest_that_is_not_json_does_not_take_the_install_with_it():
     assert out["cached"] == [
         "/", "/static/fonts/A.woff2", "/static/manifest.json",
     ]
+
+
+# ── `B120`/`B122`: what a navigation is answered with, and for which routes ───
+
+
+def _shell_routes_in_sw() -> set:
+    """The `SHELL_ROUTES` literal, read out of the array in the worker's code.
+
+    This set is the *only* thing in `sw.js` that names a server route, and it
+    exists because a service worker cannot ask `app.py` anything at the moment
+    it has to decide whether to claim a navigation — the decision is
+    synchronous and a cache read is not. So the list is written down and then
+    checked against the server, by the test below. A list nobody checks is the
+    defect `B120` is; a list checked on every run is a build step this repo has
+    no build for.
+    """
+    code = _sw_code()
+    block = re.search(r"const SHELL_ROUTES = new Set\(\[(.*?)\]\)", code, re.S)
+    assert block, "SHELL_ROUTES is no longer a literal set in sw.js"
+    return set(re.findall(r"'([^']+)'", block.group(1)))
+
+
+@pytest.fixture(scope="module")
+def served_routes(tmp_path_factory) -> dict:
+    """Every GET route `app.py` exposes that takes no path parameter, asked for
+    its body by the real app, with the per-request CSP nonce normalised out.
+
+    Driven rather than parsed (`Law 20`). An AST pass over `app.py` would have
+    to recognise `return await serve_index(request)` as delegation, and would
+    miss the next handler that reaches the same document another way; asking
+    the app what it serves recognises all of them and nothing else. Run
+    out-of-process because importing `app` pulls the whole application up —
+    same shape as `test_a_conditional_request_is_actually_cheap_on_this_server`
+    above.
+    """
+    tmp_path = tmp_path_factory.mktemp("served_routes")
+    env = os.environ.copy()
+    env.update({
+        "AUTH_ENABLED": "false",
+        "CHROMADB_CONNECT_TIMEOUT": "0.01",
+        "CHROMADB_HOST": "127.0.0.1",
+        "CHROMADB_PORT": "9",
+        "DATABASE_URL": f"sqlite:///{tmp_path / 'app.db'}",
+        "PANTHEON_DATA_DIR": str(tmp_path),
+        "PANTHEON_DISABLE_MCP": "1",
+        "PYTHONPATH": str(_REPO),
+        "PYTHON_DOTENV_DISABLED": "1",
+    })
+    probe = textwrap.dedent(
+        """
+        import json
+        import re
+        import app as app_module
+        from fastapi.testclient import TestClient
+
+        def norm(text):
+            # The one part of the body that is not the file: `B121`.
+            return re.sub(r'nonce="[0-9a-f]*"', 'nonce=""', text)
+
+        client = TestClient(app_module.app)
+        shell = norm(client.get("/").text)
+        paths = []
+        for route in app_module.app.routes:
+            path = getattr(route, "path", None)
+            methods = getattr(route, "methods", set()) or set()
+            # `/api/` is out of scope because the worker never touches it, and
+            # a path parameter means the route is not a navigable page.
+            if not path or "GET" not in methods:
+                continue
+            if "{" in path or path.startswith("/api/"):
+                continue
+            paths.append(path)
+        out = {}
+        for path in sorted(set(paths)):
+            res = client.get(path, follow_redirects=False)
+            out[path] = {
+                "status": res.status_code,
+                "bytes": len(res.content),
+                "is_shell": res.status_code == 200 and norm(res.text) == shell,
+            }
+        print("RESULT=" + json.dumps(out, sort_keys=True))
+        """
+    )
+    result = subprocess.run([sys.executable, "-c", probe], cwd=str(_REPO), env=env,
+                            capture_output=True, text=True, timeout=300, check=False)
+    assert result.returncode == 0, result.stderr
+    line = next((l for l in result.stdout.splitlines() if l.startswith("RESULT=")), None)
+    assert line is not None, result.stdout
+    return json.loads(line.removeprefix("RESULT="))
+
+
+def test_the_shell_route_set_is_what_the_server_actually_serves(served_routes):
+    """`B120`'s `Law 13` half, and the whole reason this row is not "add eight
+    strings to sw.js".
+
+    Nine routes answer with the identical app shell — `/` plus the eight
+    `app.py` sends to `serve_index` — and the worker claimed a navigation for
+    exactly one of them. Adding the other eight by hand fixes today and leaves
+    the tenth route to be found by a user with no network, so the list is
+    checked against the server on every run instead. This fails on the commit
+    that adds a route, not on the install that misses it.
+    """
+    is_shell = sorted(p for p, row in served_routes.items() if row["is_shell"])
+    # If the derivation ever matched nothing, every assertion here would be
+    # vacuous and green — the failure mode `B57` and `B86` each had to pin.
+    assert len(is_shell) >= 9, (is_shell, served_routes)
+    assert _shell_routes_in_sw() == set(is_shell), {
+        "served but not claimed by sw.js": sorted(set(is_shell) - _shell_routes_in_sw()),
+        "claimed by sw.js but not served": sorted(_shell_routes_in_sw() - set(is_shell)),
+    }
+
+
+def test_a_route_that_serves_its_own_document_is_not_in_the_shell_set(served_routes):
+    """The trap the narrowing existed for, from the server's side.
+
+    `sw.js:509` narrowed to `/` because matching every navigation served the
+    app index in place of the page the user asked for, and that reason has to
+    survive the widening. `/login` is the live proof on this tree: a real route,
+    a real document, and **not** the shell — so a predicate like "a navigation
+    outside `/static/`" would hand a user asking to log in the app they are not
+    logged into. It is cached (`B122`) and it is cached as itself.
+    """
+    assert "/login" in served_routes
+    assert "/login" not in _shell_routes_in_sw()
+    # Every route the server does not answer with the shell stays out, whatever
+    # its status — `/backgrounds` is a 500 on this tree (`B140`) and the docs
+    # routes are FastAPI's own pages.
+    for path, row in served_routes.items():
+        if not row["is_shell"]:
+            assert path not in _shell_routes_in_sw(), (path, row)
+
+
+@_needs_node
+def test_every_shell_route_is_answered_from_the_cached_shell_offline(served_routes):
+    """`B120`'s `Verify:`, driven end to end: the real install fills the cache,
+    the network is taken away, and a real `FetchEvent` for each route goes
+    through the shipped `fetch` handler.
+
+    Measured on the tree before this row: `/` was answered and the other eight
+    were `NOT HANDLED` — no `respondWith`, straight to a network that is not
+    there — while a complete, correct copy of what they render sat in the
+    cache. The installed PWA is where it bit, because `index.html` builds a
+    per-route manifest with `start_url: path`: "Add to Home Screen" from
+    `/tasks` installed an app whose launch URL was one of the eight.
+    """
+    routes = sorted(p for p, row in served_routes.items() if row["is_shell"])
+    out = _run({"op": "navigate", "urls": routes})
+    shell_digest = out["hashes"]["/"]
+    for path in routes:
+        answer = out["answered"][path]
+        assert answer.get("handled"), (
+            f"a navigation to {path} is claimed by no branch of the fetch "
+            "handler, so with no network it fails while the document it "
+            "renders is in the cache"
+        )
+        assert answer.get("sha") == shell_digest, (path, answer)
+
+
+@_needs_node
+def test_a_navigation_the_worker_has_no_document_for_is_left_alone():
+    """The other half, and the one `Law 1` is about: widening the branch must
+    not take a page away from anyone.
+
+    A deep-linked `/static/*.html` prototype page and a path that does not
+    exist are both answered by the network in a browser that has one, and by
+    nothing here — never by the app shell, which is what the narrowing at
+    `sw.js:509` was put there to stop. `/backgrounds` is in this list because
+    it is a route `app.py` serves its own document at: it is not the shell and
+    must never be answered with it.
+    """
+    urls = ["/backgrounds", "/static/whirlpool-variants.html", "/nope"]
+    out = _run({"op": "navigate", "urls": urls})
+    shell_digest = out["hashes"]["/"]
+    for url in urls:
+        answer = out["answered"][url]
+        assert answer.get("sha") != shell_digest, (
+            f"{url} was answered with the app shell — the regression the "
+            "pathname check at sw.js:509 exists to prevent"
+        )
+
+
+@_needs_node
+def test_the_login_page_is_answered_from_cache_offline(served_routes):
+    """`B122`'s `Verify:`, the direction the row was closed in.
+
+    The reachable failure is not the server-issued redirect the row imagined —
+    a server that can redirect can serve the page. It is
+    `static/js/settings.js`'s Log out button: it awaits `/api/auth/logout`
+    inside a `try {} catch (_) {}`, wipes localStorage and sessionStorage, and
+    then sets `location.href = '/login'` whatever happened. Offline the fetch
+    rejects, the catch swallows it, the wipe happens anyway and the navigation
+    happens anyway — measured before this row, that navigation was
+    `NOT HANDLED`.
+
+    It is answered with **login.html**, not with the shell. Those are different
+    documents and serving one for the other is the `B120` trap.
+    """
+    out = _run({"op": "navigate", "urls": ["/login"]})
+    answer = out["answered"]["/login"]
+    assert answer.get("handled"), "a navigation to /login is claimed by no branch"
+    assert answer.get("sha") == out["hashes"]["/login"]
+    assert answer.get("sha") != out["hashes"]["/"]
+
+
+@_needs_node
+def test_the_login_page_is_read_for_what_it_references(installed):
+    """`B86`'s grammar, applied to the document `B122` added.
+
+    `login.html` names four things and names them all *relatively* —
+    `static/manifest.json`, `static/icons/icon-192.png` and two Fira Code
+    faces. Resolved against `/login` they are `/static/...`, and resolving them
+    against anything else would put four URLs in the cache that nothing ever
+    asks for. They are already there via `index.html`, so this asserts the
+    *reading*, not just the result: the walk has to recognise an extensionless
+    route as a document at all, which is what `docKind` now does.
+    """
+    referenced = installed["assets"]["/login"]
+    assert referenced == [
+        "/static/manifest.json",
+        "/static/icons/icon-192.png",
+        "/static/fonts/FiraCode-Regular.woff2",
+        "/static/fonts/FiraCode-SemiBold.woff2",
+    ], referenced
+    assert set(referenced) <= set(installed["cached"])
+
+
+@_needs_node
+def test_a_precache_entry_that_redirects_is_not_stored_under_the_url_asked_for():
+    """`B122`'s cost guard. `/login` is the first entry that can redirect:
+    `app.py:972` sends it to `/` with a 302 when `AUTH_ENABLED` is false, and
+    `fetch` follows that by default. Storing the result under `/login` would
+    put a second 283 KB copy of the app shell in every auth-disabled
+    deployment's cache and answer a navigation to `/login` with it.
+    """
+    out = _run({"op": "walk", "seeds": ["/", "/login"], "files": {
+        "/": "the app shell",
+        "/login": "the app shell",
+    }, "redirects": ["/login"]})
+    assert out["cached"] == ["/"], out["cached"]
+    # It was still asked for — the guard is about what is stored, not about
+    # skipping the request.
+    assert "/login" in out["fetched"]
+
+
+# ── `B82`: the shell's import closure, walked from outside the worker ─────────
+
+
+def _shell_module_closure() -> dict:
+    """Every `/static/js/**` module reachable from `static/index.html`'s script
+    tags, keyed by URL and valued by the importer that spells it that way.
+
+    The walk is `.pantheon/check-specifiers.py`'s — its comment stripper, its
+    specifier grammar and its resolver (`Law 14`). What is new here is only the
+    transitive step, because that checker asks a different question: it wants
+    every specifier in the tree, and this wants the ones the shell can reach.
+
+    Cache identity is the resolved URL, query included, so a module is recorded
+    at the URL its *importer* spells and not at its bare path — the defect
+    class `P3-11`, `B54` and `B58` each found a fresh batch of.
+    """
+    index = (_REPO / "static" / "index.html").read_text(encoding="utf-8")
+    roots = [u for u in _ANY_SCRIPT.findall(
+        check_specifiers.strip_comments(index, html=True))
+        if u.startswith("/static/") and not u.startswith("/static/lib/")]
+    assert len(roots) > 25, f"only found {len(roots)} script roots — parser drift?"
+
+    found = {u: "static/index.html" for u in roots}
+    frontier = list(found)
+    for _round in range(32):
+        if not frontier:
+            break
+        nxt = []
+        for url in frontier:
+            rel = url.split("?")[0].lstrip("/")
+            source = _REPO / rel
+            if not source.is_file():
+                continue
+            text = check_specifiers.strip_comments(
+                source.read_text(encoding="utf-8", errors="replace"), html=False)
+            for match in check_specifiers.IMPORT_RE.finditer(text):
+                spec = match.group(1)
+                path = check_specifiers.resolve(rel, spec)
+                if path is None or not path.startswith("static/"):
+                    continue
+                _, _, query = spec.partition("?")
+                target = "/" + path + (f"?{query}" if query else "")
+                if target not in found:
+                    found[target] = rel
+                    nxt.append(target)
+        frontier = nxt
+    else:  # pragma: no cover - the graph settles in four rounds
+        raise AssertionError("the import closure did not settle in 32 rounds")
+    return {u: importer for u, importer in found.items()
+            if u.startswith("/static/js/")}
+
+
+@_needs_node
+def test_every_module_the_shell_can_reach_is_installed(installed):
+    """`B82`'s `Verify:`, and the one thing
+    `test_install_caches_every_module_the_shell_imports` cannot say.
+
+    That test is induction over the worker's *own* reading: every root is
+    cached, and every import the worker found in a cached module is cached. It
+    is the right ratchet and it is closed under the worker's notion of an
+    import — so a `MODULE_SPECIFIER` that quietly stopped recognising
+    `import('…')` would shrink both sides of it and stay green while 61 modules
+    fell out of the install. That is how this row was found: by walking the
+    graph from outside, which is what this does.
+
+    Measured 2026-09-14, when the row was filed: 182 modules reachable from the
+    shell's script tags and 61 named nowhere in `sw.js`. Measured again
+    2026-09-15 on this tree: 173 reachable and all 173 installed — `B57`'s walk
+    closed the gap, and this is the test that says so out loud and fails on the
+    62nd.
+    """
+    closure = _shell_module_closure()
+    assert len(closure) > 150, f"the closure is suspiciously small: {len(closure)}"
+    cached = set(installed["cached"])
+    missing = sorted((url, closure[url]) for url in closure if url not in cached)
+    assert missing == [], (
+        "reachable from index.html's script tags and not fetched at install, so "
+        "the guarantee written above PRECACHE does not hold for them on a cold "
+        f"install or the first offline use after a CACHE_NAME bump: {missing}"
+    )
+
+
+@_needs_node
+def test_every_module_the_shell_can_reach_is_served_offline():
+    """The consequence, stated the honest way `B82` asks for.
+
+    The JS branch of the fetch handler is network-first **with runtime
+    caching**, so a module fetched once while online serves offline and
+    "offline is broken" would be too strong. What fails without the install
+    walk is narrower and real: a cold install that never reached the page, and
+    the first offline use after a `CACHE_NAME` bump, because `activate` deletes
+    every cache but the current one. Both are the install cache alone, which is
+    what this drives — install, then no network, then ask for every module in
+    the closure through the shipped handler.
+    """
+    closure = sorted(_shell_module_closure())
+    out = _run({"op": "navigate", "urls": closure, "mode": "cors"})
+    unanswered = sorted(u for u in closure
+                        if not out["answered"][u].get("handled")
+                        or out["answered"][u].get("sha") != out["hashes"].get(u))
+    assert unanswered == [], unanswered

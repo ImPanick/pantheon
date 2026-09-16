@@ -154,7 +154,15 @@ export const SETTINGS_PANELS = Object.freeze([
     group: 'administration',
     controller: 'admin',
     adminOnly: true,
-    keywords: ['system', 'admin', 'server'],
+    // `B95`. The three switches an operator could previously only reach by
+    // hand-writing `data/settings.json` live in this panel now, so the words
+    // someone types when they want them are here too. `download` and
+    // `huggingface` matter most: the `Law 16` gate is the one a person goes
+    // looking for after a diagnostic tells them to turn it on.
+    keywords: ['system', 'admin', 'server',
+               'metrics', 'prometheus', 'scrape',
+               'download', 'huggingface', 'model download', 'offline',
+               'searxng', 'engines', 'widen'],
   }),
 ]);
 

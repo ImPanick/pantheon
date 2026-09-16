@@ -23,6 +23,7 @@ from src.settings import (
     load_features as _load_features,
     save_features as _save_features,
     DEFAULT_SETTINGS,
+    ENV_BACKED_FLAGS,
     RETIRED_SETTING_KEYS,
     without_retired_settings,
 )
@@ -846,6 +847,29 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             raise HTTPException(400, f"{mac!r} is not a MAC address")
         return {"ok": True}
 
+    @router.get("/settings/flag-sources")
+    async def settings_flag_sources(request: Request):
+        """Admin only: which layer answers each tri-state env-backed flag.
+
+        `B95`. `metrics_enabled`, `searxng_widen_engines` and
+        `allow_model_download` ship `None` so a stored `False` can mean *no*
+        rather than *unset* (`B90`, `D-2026-09-15-01`). A two-state checkbox
+        cannot express that, and one that wrote `false` on first paint would
+        manufacture for every operator who opens the panel exactly the choice
+        `B90` was filed to stop. The panel needs three states and it needs to
+        know what *unset* currently resolves to on this host — a compose file
+        forwarding `${PANTHEON_ALLOW_MODEL_DOWNLOAD:-0}` makes "unset" a
+        different sentence from "unset with nothing underneath".
+
+        Admin-only for the same reason the full settings read is: it reports
+        what the process environment says, which is deployment configuration.
+        """
+        user = _get_current_user(request)
+        if not user or not auth_manager.is_admin(user):
+            raise HTTPException(403, "Admin only")
+        from src.settings import env_backed_flag_report
+        return {"flags": env_backed_flag_report()}
+
     @router.post("/settings")
     async def set_settings(request: Request):
         """Admin only: update app settings."""
@@ -948,6 +972,20 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
                 problems = validate_networks(val)
                 if problems:
                     raise HTTPException(400, "networks: " + " ".join(problems))
+            if key in ENV_BACKED_FLAGS:
+                # `B95`. The tri-state, refused at the door rather than stored
+                # and silently misread. `null` is *unset* — let the environment
+                # or the default answer — and `true`/`false` are the operator's
+                # own yes and no. A string in this slot is judged by
+                # `env_flags.env_truthy` downstream, so `"maybe"` would store
+                # cleanly, read as unset, and leave the panel showing a choice
+                # that is not being honoured: the `P17-09` shape, on the one
+                # group of keys where one of them is a `Law 16` gate.
+                if not (val is None or isinstance(val, bool)):
+                    raise HTTPException(
+                        400,
+                        f"{key} must be true, false, or null (null means "
+                        f"'let {ENV_BACKED_FLAGS[key][0]} or the default decide')")
             if key in _STRING_MAPS:
                 if not isinstance(val, dict) or not all(
                         isinstance(k, str) and isinstance(v, (str, int, float, bool))

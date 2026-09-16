@@ -14,6 +14,7 @@ from core.database import Comparison, SessionLocal
 from core.session_manager import SessionManager
 from src.auth_helpers import get_current_user
 from routes.session_routes import _reject_raw_endpoint_url_for_non_admin
+from src.env_flags import request_flag
 
 logger = logging.getLogger(__name__)
 
@@ -172,7 +173,7 @@ def setup_compare_routes(session_manager: SessionManager):
         sid_b = str(uuid.uuid4())
 
         # Blind mapping: randomly assign left/right
-        blind = str(is_blind).lower() == "true"
+        blind = request_flag(is_blind)  # `B97`
         if blind:
             mapping = {"left": "a", "right": "b"}
             if random.random() > 0.5:

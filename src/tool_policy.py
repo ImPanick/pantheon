@@ -24,7 +24,19 @@ WEB_TOOL_NAMES = frozenset({"web_search", "web_fetch"})
 
 
 def tool_toggle_enabled(value: object) -> bool:
-    """Return true only for explicit true-like tool toggle values."""
+    """Return true only for explicit true-like tool toggle values.
+
+    flag-spelling: `B97` holds this one. It is an HTTP request field, so the
+    shared rule at that boundary is `env_flags.request_flag` — but this toggle
+    *grants tools*, and widening it would turn `allow_web_search=1` from denied
+    into granted for any caller already sending it. The same hold, for the same
+    reason, as `allow_bash` in `routes/chat_routes.py`: honouring an intent and
+    loosening a gate are not the same act, and our own composer sends the
+    literal `'true'`/`'false'` so nothing the product itself does is affected
+    either way. Named here rather than left as an unexplained `== "true"` —
+    `B97` found this and `routes/model_routes._truthy` as two private
+    half-helpers of one boundary, neither reachable from the other's callers.
+    """
 
     return str(value).lower() == "true"
 

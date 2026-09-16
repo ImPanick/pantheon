@@ -55,6 +55,11 @@ class NoteUpdate(BaseModel):
     repeat: Optional[str] = None
     sort_order: Optional[int] = None
     agent_session_id: Optional[str] = None
+    # `B80`. A note-level agent run records the same four fields a checklist
+    # item does, so a run that outlives its page can still be found and stopped.
+    agent_status: Optional[str] = None
+    agent_session_title: Optional[str] = None
+    agent_stream_completed_at: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -95,6 +100,9 @@ def _note_to_dict(note: Note) -> Dict[str, Any]:
         "ai_classification": ai_cls,
         "ai_content_hash": getattr(note, "ai_content_hash", None),
         "agent_session_id": getattr(note, "agent_session_id", None),
+        "agent_status": getattr(note, "agent_status", None),
+        "agent_session_title": getattr(note, "agent_session_title", None),
+        "agent_stream_completed_at": getattr(note, "agent_stream_completed_at", None),
         "created_at": note.created_at.isoformat() if note.created_at else None,
         "updated_at": note.updated_at.isoformat() if note.updated_at else None,
     }
@@ -749,6 +757,12 @@ def setup_note_routes(task_scheduler=None, upload_handler=None):
                 note.sort_order = body.sort_order
             if body.agent_session_id is not None:
                 note.agent_session_id = body.agent_session_id
+            if body.agent_status is not None:
+                note.agent_status = body.agent_status
+            if body.agent_session_title is not None:
+                note.agent_session_title = body.agent_session_title
+            if body.agent_stream_completed_at is not None:
+                note.agent_stream_completed_at = body.agent_stream_completed_at
 
             db.commit()
             db.refresh(note)

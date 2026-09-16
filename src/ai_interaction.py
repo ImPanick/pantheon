@@ -23,7 +23,7 @@ import time
 from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
 
 from src.constants import GENERATED_IMAGES_DIR
-from src.env_flags import env_flag
+from src.env_flags import env_flag, tool_arg_truthy
 from src.memory import MemoryStoreUnreadable
 from src.theme_advanced_keys import advanced_keys_prose, is_advanced_key
 
@@ -649,7 +649,10 @@ async def do_ui_control(content: str, session_id: Optional[str] = None, owner: O
         if len(parts) < 3:
             return {"error": "toggle needs: toggle <name> <on|off>"}
         toggle_name = parts[1].lower()
-        state = parts[2].lower() in ("on", "true", "1", "yes", "enable", "enabled")
+        # `B97`. One of three vocabularies this file and `builtin_actions`
+        # used for "what did the model mean by yes"; the shared rule is the
+        # union of all three, so no spelling any of them took is lost.
+        state = tool_arg_truthy(parts[2])
         # Friendly aliases — users say "shell" / "search" naturally.
         _toggle_aliases = {
             "shell": "bash",
@@ -807,7 +810,7 @@ async def do_ui_control(content: str, session_id: Optional[str] = None, owner: O
                 except ValueError:
                     return {"error": f"Invalid number for {ak}: '{av}'"}
             elif ak == "frosted":
-                bg["frosted"] = av.lower() in ("true", "1", "yes", "on")
+                bg["frosted"] = tool_arg_truthy(av)  # `B97`
             else:
                 # `B21`. There was no `else` here: a key nothing recognised was
                 # dropped with no error and no message, so `brandMixTo=#abcdef`

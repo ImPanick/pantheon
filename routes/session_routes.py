@@ -23,6 +23,7 @@ from src.session_image_cleanup import _generated_image_path_for_cleanup, session
 from src.session_actions import is_session_recently_active
 from src.upload_handler import reserve_message_upload_references
 from src.tool_approval_scopes import sanitize_client_message_metadata
+from src.env_flags import request_flag
 
 
 def _sanitize_export_filename(name: str) -> str:
@@ -368,7 +369,7 @@ def setup_session_routes(
         api_key: str = Form(""),
         endpoint_id: str = Form(""),
     ):
-        skip_val = str(skip_validation).lower() == "true"
+        skip_val = request_flag(skip_validation)  # `B97`
         user = effective_user(request)
         endpoint_api_key = ""
         endpoint_base_url = ""
@@ -460,7 +461,7 @@ def setup_session_routes(
             name=name or "",
             endpoint_url=endpoint_url or "",
             model=model_to_use,
-            rag=str(rag).lower() == "true" if rag else False,
+            rag=request_flag(rag),  # `B97`
             owner=user,
         )
         # Set auth headers for custom API-key endpoints
@@ -485,7 +486,7 @@ def setup_session_routes(
             id=sid,
             name=session.name,
             model=model_to_use,
-            rag=str(rag).lower() == "true" if rag else False,
+            rag=request_flag(rag),  # `B97`
             archived=False
         )    
     @router.patch("/session/{sid}")
@@ -953,7 +954,7 @@ def setup_session_routes(
             name="",
             endpoint_url="https://api.openai.com/v1/chat/completions",
             model=model,
-            rag=str(rag).lower() == "true",
+            rag=request_flag(rag),  # `B97`
             owner=user,
         )
         session.headers = {"Authorization": f"Bearer {OPENAI_API_KEY}"}

@@ -66,12 +66,63 @@ explained in the docs, and read by a line that cannot execute:
                site, because a list of exempt names inside a checker is a list
                nobody reads next to the code it is about.
 
-The three new rules are blind in the same way and it is worth stating: they see
-one scope, one dict, or one comparison at a time. A resolver that reads the setting in one
-function and the environment in another is invisible to them — so is
-`services/search/providers._get_provider_key`, where the pairing lives in two
-dict literals rather than in a name. What they catch is the shape that has
-actually shipped twice.
+  BOUNDARY     an HTTP request field judged by an inline `== "true"` instead of
+               by `src/env_flags.request_flag`. `B97` counted 16 non-environment
+               truthiness sites and three vocabularies between them:
+               `plan_mode=1` from a form post meant *no* while `plan_mode=true`
+               meant yes, on a safety mode. Hard rule, max 0 unexempted, held
+               with `# flag-spelling: <reason>` the way SPELLING is held.
+
+  VOCABULARY   a function that is itself a yes/no rule and is not one of the
+               four named owners. The other rules find a *site* by knowing where
+               its value came from; a model's tool argument and a line of skill
+               frontmatter arrive as plain dict values and no dataflow pass can
+               tell them from any other string. What can be found is the
+               **helper** — every one of the five vocabularies `B97` counted was
+               a small function whose whole job was to answer *is this yes*, and
+               `routes/model_routes._truthy` and
+               `src/tool_policy.tool_toggle_enabled` were exactly that. A
+               vocabulary is a *list*: a single-word comparison is one spelling,
+               not a rule, and treating every `== "1"` in the tree as one is how
+               a checker becomes noise nobody reads (`auto_submitted != "no"` is
+               RFC 3834, `x-ratelimit-remaining == "0"` is a count, `level ==
+               "off"` is a SafeSearch level — 14 of them). Hard rule, max 0.
+
+`B98` is what made the last three of those honest, and the gap it closed was
+measured before it was built rather than after. Every rule above saw **one
+scope, one dict, or one comparison at a time**, so a resolver that read the
+variable in one statement and judged it in the next was invisible to all of
+them. The measurement, taken 2026-09-15 with a per-scope dataflow pass:
+
+  * SPELLING gained **one** genuine site — `routes/auth_routes.py` `SECURE_COOKIES`,
+    which reads `configured = os.getenv(...)` and then `configured in
+    ("true","false")`. **It already carried an `# env-spelling:` exemption, and
+    the exemption was holding nothing**: `exempt_spellings` counted nine holds
+    while the rule could reach eight sites, and deleting the ninth would have
+    failed no build. That one-site gap is the whole finding, and it is the kind
+    that only shows when you count both sides.
+  * A fourth shape of the same blindness turned up while building it:
+    `src/host_docker_access.py` binds `env = os.environ` and reads
+    `env.get(HOST_DOCKER_ENV_VAR)`, so neither this scan nor `literal_reads`
+    ever saw it — a `FORBIDDEN.md` Part 2 control whose spelling nothing was
+    checking. The pass resolves `os.environ` aliases now and the site is held.
+  * UNREACHABLE across function boundaries: **zero**. A settings key read in one
+    function and its matching variable in another does not occur in this tree.
+  * `services/search/providers._get_provider_key`, `B20`'s worked example where
+    the pairing lives in two dict literals rather than in a name: **four pairs
+    found, zero findings** — all four ship a falsy default, so the environment
+    leg beneath them is genuinely reachable. The hand-checked answer `B20`
+    recorded was right, and now something checks it.
+  * MIXED through a named helper rather than a lambda alias: **zero**.
+
+A first draft of the pass walked the module with `ast.walk` and reported **104**
+findings against 9 real ones, because `ast.walk` does not stop at a nested
+function: one namespace held every local in the file and `unit in ("hour","hr")`
+inherited `PANTHEON_FALLBACK_OWNER` from twelve hundred lines away. The pass
+respects scope. It is also where `_blank_only` comes from — `""` is a member of
+three real off-lists, so it has to be in `_TRUTH_TOKENS`, but `x == ""` on its
+own is asking *did anyone set this*, which is a different question and 44 places
+in this tree ask it.
 
 `NOT_OURS` holds the names Pantheon reads but does not define: the operating
 system's, the shell's, and third-party libraries' own conventions. Declaring
@@ -475,6 +526,269 @@ _TRUTH_TOKENS = {"1", "0", "true", "false", "yes", "no", "on", "off", "y", "n",
                  # rule silently skip the whole comparison; a test caught it.
                  ""}
 _SPELLING_EXEMPT = re.compile(r"env-spelling:\s*(.+)")
+_FLAG_EXEMPT = re.compile(r"flag-spelling:\s*(.+)")
+
+# The eight words that are only ever a yes or a no. `_TRUTH_TOKENS` is wider —
+# it holds `enable`, `disabled`, `y`, `t` and the empty string, because real
+# off-lists in this tree contain them — and that width is right for deciding
+# whether a comparison *drawn entirely from the vocabulary* is a truthiness
+# rule. It is wrong for deciding whether a comparison is one at all: `action ==
+# "enable"` and `provider == "disabled"` are enum tests, and there are 14 of
+# them. A comparison has to touch one of these eight to be a yes/no question.
+_CORE_TRUTH_TOKENS = {"1", "0", "true", "false", "yes", "no", "on", "off"}
+
+
+def _blank_only(values) -> bool:
+    """A comparison against nothing but the empty string is a blank check.
+
+    `B98`. `""` is in `_TRUTH_TOKENS` because three real off-lists spell
+    `not in ("0","false","no","off","")`, and leaving it out made the SPELLING
+    rule skip those comparisons whole. But `x == ""` on its own is asking *did
+    anyone set this*, which is the question `env_truthy` answers with `None` —
+    a different question from *does this mean yes*. There are 44 of them in the
+    tree and `companion/pairing.py:118` is one the dataflow pass reaches, so
+    without this the pass would have arrived with its own false positive.
+    """
+    return {v.strip() for v in values} == {""}
+
+
+def _truthiness_values(node):
+    """The literal strings a `Compare` tests against, if it is a yes/no test."""
+    if not (isinstance(node, ast.Compare) and len(node.ops) == 1):
+        return None
+    op, right = node.ops[0], node.comparators[0]
+    if isinstance(op, (ast.Eq, ast.NotEq)):
+        values = [_str(right)] if _str(right) is not None else []
+    elif isinstance(op, (ast.In, ast.NotIn)) and isinstance(
+            right, (ast.Tuple, ast.Set, ast.List)):
+        values = [_str(e) for e in right.elts]
+    else:
+        return None
+    if not values or any(v is None for v in values):
+        return None
+    if not all(v.strip().lower() in _TRUTH_TOKENS for v in values):
+        return None
+    if _blank_only(values):
+        return None
+    return values
+
+
+def _own_body(scope):
+    """Nodes belonging to `scope` itself, stopping at a nested scope.
+
+    `ast.walk` does not stop, and that is the whole reason the first draft of
+    this pass reported 104 findings against 9 real ones: walking a module
+    reaches every local in every function in the file, so one namespace held
+    every name and `unit in ("hour","hr")` inherited `PANTHEON_FALLBACK_OWNER`
+    from twelve hundred lines away. A dataflow pass that does not respect scope
+    is not a dataflow pass.
+    """
+    out = []
+    nested = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
+
+    def walk(node, top=False):
+        for child in ast.iter_child_nodes(node):
+            if not top and isinstance(child, nested):
+                continue
+            out.append(child)
+            if not isinstance(child, nested):
+                walk(child)
+    walk(scope, top=True)
+    return out
+
+
+_REQUEST_PARAM_CALLS = {"Form", "Query", "Body", "Header", "Path", "File", "Cookie"}
+# The receivers whose `.get("x")` is a request field rather than any other dict.
+# Spelled out rather than pattern-matched on the word "body": `body` and
+# `form_data` are what this tree's routes call them, and a rule that guessed
+# would start reading a mail body or a response body as a request.
+_REQUEST_RECEIVERS = {"form_data", "body", "(body or {})", "form",
+                      "request.query_params", "await request.json()"}
+
+
+def _request_origin(node) -> bool:
+    """Whether this expression reads a field off the incoming HTTP request."""
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
+            and node.func.attr == "get" and node.args and _str(node.args[0]):
+        try:
+            return ast.unparse(node.func.value) in _REQUEST_RECEIVERS
+        except Exception:
+            return False
+    return False
+
+
+def _request_params(scope) -> set:
+    """Parameter names a route declares as `Form(...)` / `Query(...)` / ….
+
+    This is the other half of the HTTP boundary and the larger one: nine of the
+    sixteen sites `B97` converted read a FastAPI parameter, not a dict.
+    """
+    if not isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        return set()
+    args = scope.args
+    ordered = list(args.posonlyargs) + list(args.args)
+    defaults = list(args.defaults)
+    named = set()
+    for arg, default in zip(ordered[len(ordered) - len(defaults):], defaults):
+        if isinstance(default, ast.Call) and isinstance(default.func, ast.Name) \
+                and default.func.id in _REQUEST_PARAM_CALLS:
+            named.add(arg.arg)
+    for arg, default in zip(args.kwonlyargs, args.kw_defaults):
+        if isinstance(default, ast.Call) and isinstance(default.func, ast.Name) \
+                and default.func.id in _REQUEST_PARAM_CALLS:
+            named.add(arg.arg)
+    return named
+
+
+def _is_environ(node) -> bool:
+    """Whether this expression *is* the process environment mapping."""
+    return isinstance(node, ast.Attribute) and node.attr == "environ"
+
+
+def _environ_aliases(scope) -> set:
+    """Local names bound to `os.environ` itself rather than to a value from it.
+
+    `B98`, and the fourth shape of the same blind spot. `src/host_docker_access.py`
+    writes `env = os.environ if environ is None else environ` and then
+    `env.get(HOST_DOCKER_ENV_VAR, "").strip().lower() != "true"` — an
+    environment boolean with its own narrow rule, invisible to every scan here,
+    because the read is a `.get` on a *name* and the name is not `os.environ`.
+    `literal_reads` misses it too, for the same reason and with the same
+    consequence: it is a `FORBIDDEN.md` Part 2 control ("Host-Docker flag off")
+    whose spelling nothing was checking.
+    """
+    names = set()
+    for node in _own_body(scope):
+        target = None
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 \
+                and isinstance(node.targets[0], ast.Name):
+            target, value = node.targets[0].id, node.value
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) \
+                and node.value is not None:
+            target, value = node.target.id, node.value
+        if target is None:
+            continue
+        if any(_is_environ(child) for child in ast.walk(value)):
+            names.add(target)
+    return names
+
+
+def _origins_in(expr, consts: dict, varmap: dict, environs: set = frozenset()) -> set:
+    """Every boundary this expression's value came through.
+
+    Returns a set of `("env", NAME)` and `("request", "")` pairs. One function
+    for both, because the alternative is two walks that must agree about what
+    counts as *derived from* — the shape `B20` named and `B91` inherited.
+    """
+    found = set()
+    for child in ast.walk(expr):
+        if isinstance(child, ast.Call):
+            name = _env_name_of(child, consts)
+            if name is None and isinstance(child.func, ast.Attribute) \
+                    and child.func.attr in ("get", "pop") \
+                    and isinstance(child.func.value, ast.Name) \
+                    and child.func.value.id in environs and child.args:
+                arg = child.args[0]
+                name = _str(arg) or (consts.get(arg.id) if isinstance(arg, ast.Name) else None)
+            if name:
+                found.add(("env", name))
+            elif _request_origin(child):
+                found.add(("request", ""))
+        elif isinstance(child, ast.Subscript) and isinstance(child.value, ast.Attribute) \
+                and child.value.attr == "environ":
+            name = _str(child.slice) or (consts.get(child.slice.id)
+                                         if isinstance(child.slice, ast.Name) else None)
+            if name:
+                found.add(("env", name))
+        elif isinstance(child, ast.Name) and child.id in varmap \
+                and child.id not in ("__lines__", "__environs__"):
+            found |= varmap[child.id]
+    return found
+
+
+def _read_lines(expr, origins: dict) -> tuple:
+    """The lines the names in `expr` were read on, for the hold lookup."""
+    lines = origins.get("__lines__", {})
+    return tuple(lines[child.id] for child in ast.walk(expr)
+                 if isinstance(child, ast.Name) and child.id in lines)
+
+
+def _origin_map(scope, consts: dict, seed: dict) -> dict:
+    """Local name → the boundaries its value came through, for one scope.
+
+    `B98`. The one pass all the rules below share, and the answer to the blind
+    spot `B20` stated for UNREACHABLE and MIXED and `B91` inherited for
+    SPELLING: those rules see one scope, one dict or one comparison at a time,
+    so `raw = os.environ.get(X)` in one statement and `raw.lower() == "true"` in
+    the next was invisible to every one of them.
+
+    Three passes rather than one because an assignment may name a value defined
+    below it in source order inside a loop body; three is past the depth of
+    anything in this tree and terminates regardless.
+    """
+    known = dict(seed)
+    lines = dict(seed.get("__lines__", {}))
+    environs = set(seed.get("__environs__", ())) | _environ_aliases(scope)
+    known["__environs__"] = environs
+    for name in _request_params(scope):
+        known[name] = {("request", "")}
+        lines[name] = scope.lineno
+    for _ in range(3):
+        for node in _own_body(scope):
+            target = None
+            if isinstance(node, ast.Assign) and len(node.targets) == 1 \
+                    and isinstance(node.targets[0], ast.Name):
+                target, value = node.targets[0].id, node.value
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) \
+                    and node.value is not None:
+                target, value = node.target.id, node.value
+            elif isinstance(node, ast.NamedExpr) and isinstance(node.target, ast.Name):
+                target, value = node.target.id, node.value
+            if target is None:
+                continue
+            origins = _origins_in(value, consts, known, environs)
+            if origins:
+                known[target] = known.get(target, set()) | origins
+                lines.setdefault(target, node.lineno)
+    known["__lines__"] = lines
+    return known
+
+
+def _scopes_with_origins(tree, consts: dict):
+    """`(scope, origin map)` for the module and every function in it.
+
+    The map carries a `"__lines__"` entry: name → the line the value was read
+    on. `B98` needs it because the *reason* a site keeps its own rule is written
+    beside the read, not beside the comparison — all nine `B91` holds are — and
+    a rule that only looked above the comparison would report a site whose hold
+    is two lines up and call the exemption missing.
+    """
+    module_map = _origin_map(tree, consts, {})
+    yield tree, module_map
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            yield node, _origin_map(node, consts, module_map)
+
+
+def _held(lines, lineno: int, pattern, *also: int) -> bool:
+    """Whether a `# <kind>-spelling:` reason sits on or above any of these lines.
+
+    Walks up through the contiguous comment block rather than a fixed window:
+    the reasons these sites are held run to five and six lines, and a window
+    sized to today's longest one is a trap for tomorrow's. `also` carries the
+    line the compared value was *read* on, which is where `B91` put every one of
+    its nine reasons.
+    """
+    for start in (lineno,) + also:
+        if start is None:
+            continue
+        index = start - 1
+        while index >= 0 and (lines[index].lstrip().startswith("#") or index == start - 1):
+            if pattern.search(lines[index]):
+                return True
+            index -= 1
+    return False
+
 
 
 def spellings() -> list[str]:
@@ -487,18 +801,20 @@ def spellings() -> list[str]:
     called `.strip()`. Nothing errored and `.env.example` documented none of it.
 
     A site may keep its own rule by saying so — `# env-spelling: <reason>` on the
-    line or in the three above it. Nine do, and every one of them is a case
-    where adopting the shared vocabulary would loosen a control or flip a live
-    deployment. The exemption carries the reason **at the site** rather than in a
-    list here, for the same reason `NOT_OURS` makes each entry say whose it is:
-    a list of names in a checker is a list nobody reads next to the code it is
-    about. Hard rule, max 0 unexempted.
+    line or in the three above it. The exemption carries the reason **at the
+    site** rather than in a list here, for the same reason `NOT_OURS` makes each
+    entry say whose it is: a list of names in a checker is a list nobody reads
+    next to the code it is about. Hard rule, max 0 unexempted.
 
-    Blind the same way `unreachable` and `mixed_layers` are, and worth saying:
-    it sees a comparison, so a site that assigns `os.environ.get(X)` to a name
-    in one function and judges it in another is invisible here. What it catches
-    is the shape that produced all ten rules — the comparison written inline
-    beside the read.
+    **`B98` gave it the dataflow pass it was blind without**, and the blindness
+    was measurable: this rule saw 8 sites while `exempt_spellings` counted **9**
+    holds, and the ninth — `routes/auth_routes.py:110`, `SECURE_COOKIES` — was
+    an exemption on a site the rule could not see. It reads
+    `configured = os.getenv("SECURE_COOKIES", ...)` in one statement and
+    `configured in ("true","false")` in the next, and a rule that sees one
+    comparison at a time sees neither the variable nor the read. The exemption
+    was decoration: deleting it would have failed nothing. It is load-bearing
+    now.
     """
     found = []
     for rel in _tracked("*.py"):
@@ -511,47 +827,266 @@ def spellings() -> list[str]:
             continue
         lines = source.splitlines()
         consts = _module_consts(tree)
-        for node in ast.walk(tree):
-            if not (isinstance(node, ast.Compare) and len(node.ops) == 1):
-                continue
-            op, right = node.ops[0], node.comparators[0]
-            if isinstance(op, (ast.Eq, ast.NotEq)):
-                values = [_str(right)] if _str(right) is not None else []
-            elif isinstance(op, (ast.In, ast.NotIn)) and isinstance(
-                    right, (ast.Tuple, ast.Set, ast.List)):
-                values = [_str(e) for e in right.elts]
-            else:
-                continue
-            if not values or any(v is None for v in values):
-                continue
-            if not all(v.strip().lower() in _TRUTH_TOKENS for v in values):
-                continue
-            names = _env_derived(node.left, consts)
-            if not names:
-                continue
-            # Walk up through the contiguous comment block rather than a fixed
-            # window: the reasons these sites are held run to five and six lines
-            # and a window sized to today's longest one is a trap for tomorrow's.
-            index = node.lineno - 1
-            while index >= 0 and (lines[index].lstrip().startswith("#")
-                                  or index == node.lineno - 1):
-                if _SPELLING_EXEMPT.search(lines[index]):
-                    break
-                index -= 1
-            else:
-                index = -1
-            if index >= 0:
-                continue
-            found.append(
-                f"{rel}:{node.lineno} {'/'.join(sorted(set(names)))} is judged by an "
-                f"inline {sorted(values)} — call env_flags.env_flag, or say why not "
-                f"with `# env-spelling: <reason>`")
+        seen = set()
+        for scope, origins in _scopes_with_origins(tree, consts):
+            for node in _own_body(scope):
+                values = _truthiness_values(node)
+                if values is None:
+                    continue
+                names = sorted({n for kind, n in _origins_in(
+                    node.left, consts, origins, origins.get("__environs__", set()))
+                    if kind == "env"})
+                if not names:
+                    continue
+                if (node.lineno, tuple(values)) in seen:
+                    continue
+                seen.add((node.lineno, tuple(values)))
+                read_at = _read_lines(node.left, origins)
+                # Walk up through the contiguous comment block rather than a
+                # fixed window: the reasons these sites are held run to five and
+                # six lines and a window sized to today's longest one is a trap
+                # for tomorrow's.
+                if _held(lines, node.lineno, _SPELLING_EXEMPT, *read_at):
+                    continue
+                found.append(
+                    f"{rel}:{node.lineno} {'/'.join(names)} is judged by an "
+                    f"inline {sorted(values)} — call env_flags.env_flag, or say why not "
+                    f"with `# env-spelling: <reason>`")
     return sorted(set(found))
 
 
-def exempt_spellings() -> list[str]:
-    """The `# env-spelling:` holds, so `--list` can print the whole set."""
+# The one function per boundary that owns *what did this string mean by yes*.
+# `B97`. Each is the rule for exactly one producer, and they are deliberately
+# not the same rule: an operator types an environment variable, our own
+# JavaScript sends an HTTP field, a model writes a tool argument, and a person
+# edits skill frontmatter. The trust differs and so does the strictness.
+BOUNDARY_OWNERS = {
+    "environment": "src/env_flags.py:env_flag / env_truthy",
+    "HTTP request field": "src/env_flags.py:request_flag / request_truthy",
+    "model tool argument": "src/env_flags.py:tool_arg_truthy",
+    "skill frontmatter": "services/memory/skill_format.py:_parse_scalar",
+}
+# The functions allowed to *contain* a yes/no vocabulary. Everything else that
+# does is a fourth rule at a boundary that already has one, which is the thing
+# `B97` exists to stop from happening a fifth time.
+_OWNER_FUNCTIONS = {
+    ("src/env_flags.py", "env_truthy"),
+    ("src/env_flags.py", "env_flag"),
+    ("src/env_flags.py", "request_truthy"),
+    ("src/env_flags.py", "request_flag"),
+    ("src/env_flags.py", "tool_arg_truthy"),
+    ("services/memory/skill_format.py", "_parse_scalar"),
+}
+
+
+def boundaries() -> list[str]:
+    """An HTTP request field judged inline instead of by `request_flag`.
+
+    `B97`. Thirteen sites spelled this `str(x).lower() == "true"`, three more
+    went through `routes/model_routes._truthy` with a wider set, and one more
+    through `tool_policy.tool_toggle_enabled` with a narrower one — three
+    answers to one question, at one boundary, with neither private helper
+    reachable from the other's callers. `plan_mode=1` from a form post meant
+    *no* while `plan_mode=true` meant yes, on a safety mode.
+
+    Built on `B98`'s dataflow pass rather than on a fifth rule of its own
+    (`Law 13`), because the question it asks — *where did this string come
+    from* — is the question SPELLING asks, with a different answer. A request
+    field is a FastAPI `Form(...)` / `Query(...)` parameter or a `.get` off the
+    parsed form or body; nothing else is guessed at, because a rule that read
+    any `body` as a request would start flagging mail bodies.
+
+    Held the same way SPELLING is, with `# flag-spelling: <reason>`, and two
+    sites are held: `allow_bash` and `tool_policy.tool_toggle_enabled` grant
+    tools, and widening a gate is not the same act as honouring an intent.
+    Hard rule, max 0 unexempted.
+    """
+    found = []
+    for rel in _tracked("*.py"):
+        if rel.startswith(SKIP_PREFIXES) or rel == "src/env_flags.py":
+            continue
+        try:
+            source = (ROOT / rel).read_text(encoding="utf-8")
+            tree = ast.parse(source)
+        except (SyntaxError, OSError):
+            continue
+        lines = source.splitlines()
+        consts = _module_consts(tree)
+        seen = set()
+        for scope, origins in _scopes_with_origins(tree, consts):
+            for node in _own_body(scope):
+                values = _truthiness_values(node)
+                if values is None:
+                    continue
+                kinds = {k for k, _ in _origins_in(
+                    node.left, consts, origins, origins.get("__environs__", set()))}
+                if "request" not in kinds or "env" in kinds:
+                    continue
+                if (node.lineno, tuple(values)) in seen:
+                    continue
+                seen.add((node.lineno, tuple(values)))
+                if _held(lines, node.lineno, _FLAG_EXEMPT,
+                         *_read_lines(node.left, origins)):
+                    continue
+                found.append(
+                    f"{rel}:{node.lineno} an HTTP request field is judged by an "
+                    f"inline {sorted(values)} — call env_flags.request_flag, or say "
+                    f"why not with `# flag-spelling: <reason>`")
+    return sorted(set(found))
+
+
+def inert_reads() -> list[str]:
+    """A variable read into a module-level name that nothing ever reads back.
+
+    `B150`, found while closing `B96`. `routes/calendar_routes.py` computed
+    `_SINGLE_USER_MODE = os.environ.get("PANTHEON_SINGLE_USER", "1") != "0"` at
+    import and referenced it **nowhere in the tree**, so the documented
+    `PANTHEON_SINGLE_USER=0` did nothing at all: every unauthenticated calendar
+    request was written under `PANTHEON_FALLBACK_OWNER` whatever the operator
+    set, and the comment three lines above told them to set it. The row it was
+    found under thought the switch was *narrow*. It was inert.
+
+    **This is the one shape none of the other rules can have an opinion about**,
+    and it is worth saying why. UNDECLARED asks whether the variable is
+    documented — it was. UNREFERENCED asks whether anything mentions it — the
+    assignment does. UNREACHABLE asks whether the line beneath it can execute —
+    it executes. SPELLING asks what the comparison means — it meant what it
+    said. Every rule here answers a question about the read, and none of them
+    asks whether the *answer* is used.
+
+    Module scope only, and deliberately: a local computed and dropped inside a
+    function is a dead store any linter finds, while a module constant is the
+    shape that looks configured from the outside. Measured 2026-09-15 across
+    every tracked `.py`: **one**, and it is the one above.
+    """
+    found = []
+    for rel in _tracked("*.py"):
+        if rel.startswith(SKIP_PREFIXES):
+            continue
+        try:
+            tree = ast.parse((ROOT / rel).read_text(encoding="utf-8"))
+        except (SyntaxError, OSError):
+            continue
+        consts = _module_consts(tree)
+        environs = _environ_aliases(tree)
+        assigned = {}
+        for node in _own_body(tree):
+            if not (isinstance(node, ast.Assign) and len(node.targets) == 1
+                    and isinstance(node.targets[0], ast.Name)):
+                continue
+            names = sorted({n for kind, n in _origins_in(node.value, consts, {}, environs)
+                            if kind == "env"})
+            if names:
+                assigned.setdefault(node.targets[0].id, (node.lineno, names))
+        if not assigned:
+            continue
+        used = {n.id for n in ast.walk(tree)
+                if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)}
+        used |= {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
+        for name, (line, names) in assigned.items():
+            if name in used or _referenced_elsewhere(rel, name):
+                continue
+            found.append(
+                f"{rel}:{line} {name} is built from {'/'.join(names)} and nothing "
+                f"ever reads it — the variable is documented, declared and inert")
+    return sorted(set(found))
+
+
+@lru_cache(maxsize=None)
+def _referenced_elsewhere(rel: str, name: str) -> bool:
+    """Whether any OTHER tracked file mentions this name."""
+    out = subprocess.run(["git", "grep", "-l", "-w", name], cwd=ROOT,
+                         capture_output=True, text=True)
+    return any(line and line != rel for line in out.stdout.splitlines())
+
+
+def rival_vocabularies() -> list[str]:
+    """A function that is itself a yes/no rule and is not one of the owners.
+
+    `B97`'s *fails on a fourth*, and the only one of these rules that holds at
+    the boundaries whose producer cannot be seen from the source. A model tool
+    argument and a line of skill frontmatter arrive as plain dict values — there
+    is nothing in the AST that distinguishes them from any other string, so no
+    dataflow pass can find the site. What it can find is the **helper**: every
+    one of the five vocabularies `B97` counted was written as a small function
+    or a lambda whose whole job was to answer *is this yes*, and the next one
+    will be too. `routes/model_routes._truthy` and
+    `src/tool_policy.tool_toggle_enabled` were exactly that shape.
+
+    A function qualifies when it compares against words drawn from the yes/no
+    vocabulary and at least one of the eight that are only ever yes or no —
+    `action in ("enable","disable")` and `provider == "disabled"` are enum
+    tests, there are 14 of them, and they are none of this rule's business.
+    Hard rule, max 0 unexempted; `# flag-spelling:` holds a site that must keep
+    its own, and says why at the line.
+    """
+    found = []
+    for rel in _tracked("*.py"):
+        if rel.startswith(SKIP_PREFIXES):
+            continue
+        try:
+            source = (ROOT / rel).read_text(encoding="utf-8")
+            tree = ast.parse(source)
+        except (SyntaxError, OSError):
+            continue
+        lines = source.splitlines()
+        for scope in ast.walk(tree):
+            if not isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if (rel, scope.name) in _OWNER_FUNCTIONS:
+                continue
+            consts = _module_consts(tree)
+            origins = _origin_map(scope, consts, _origin_map(tree, consts, {}))
+            for node in _own_body(scope):
+                values = _truthiness_values(node)
+                if values is None:
+                    continue
+                if not {v.strip().lower() for v in values} & _CORE_TRUTH_TOKENS:
+                    continue
+                # **A vocabulary is a list.** One word is a spelling, not a
+                # rule, and reading every `== "1"` in the tree as one is how a
+                # checker becomes noise nobody reads: `auto_submitted != "no"`
+                # is RFC 3834, `x-ratelimit-remaining == "0"` is a count, and
+                # `level == "off"` is a SafeSearch setting. All three compare
+                # against a word from the vocabulary and none of them is asking
+                # what it means by yes. The rules that catch single spellings
+                # are SPELLING and BOUNDARY, which know where the value came
+                # from; this one catches the thing they cannot see — somebody
+                # writing out a *set* of words, which is what all five of the
+                # vocabularies `B97` counted looked like.
+                if len({v.strip().lower() for v in values}) < 2:
+                    continue
+                # Already owned by a rule that knows the producer.
+                if {k for k, _ in _origins_in(
+                        node.left, consts, origins,
+                        origins.get("__environs__", set()))}:
+                    continue
+                if _held(lines, node.lineno, _FLAG_EXEMPT) \
+                        or _held(lines, node.lineno, _SPELLING_EXEMPT):
+                    continue
+                # A whole function held on its own rule — reported once, at the
+                # hold, rather than again for every comparison inside it.
+                if _held(lines, scope.lineno, _FLAG_EXEMPT):
+                    continue
+                found.append(
+                    f"{rel}:{node.lineno} {scope.name}() is a yes/no rule of its own "
+                    f"({sorted(values)}). Four boundaries have four owners "
+                    f"({', '.join(sorted(BOUNDARY_OWNERS.values()))}) — call one, or "
+                    f"say why not with `# flag-spelling: <reason>`")
+    return sorted(set(found))
+
+
+def exempt_spellings(pattern=None) -> list[str]:
+    """The `# env-spelling:` / `# flag-spelling:` holds, for `--list`.
+
+    `B98`. This counted **9** while `spellings()` could only see **8**, and the
+    gap was the finding: `routes/auth_routes.py:110` exempted a site the rule
+    was blind to, so the exemption held nothing. Both numbers are printed for
+    that reason — a held count larger than the rule's reach is the shape of an
+    exemption that has stopped being load-bearing.
+    """
     out = []
+    pattern = pattern or _SPELLING_EXEMPT
     for rel in _tracked("*.py"):
         if rel.startswith(SKIP_PREFIXES):
             continue
@@ -560,7 +1095,7 @@ def exempt_spellings() -> list[str]:
         except OSError:
             continue
         for lineno, line in enumerate(lines, 1):
-            match = _SPELLING_EXEMPT.search(line)
+            match = pattern.search(line)
             if match:
                 out.append(f"{rel}:{lineno} {match.group(1).strip()}")
     return sorted(out)
@@ -568,7 +1103,11 @@ def exempt_spellings() -> list[str]:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--max", type=int, default=74,
+    # `B98`. 74 while the real count was 72, and documenting PANTHEON_SINGLE_USER
+    # in the switches block took it to 71: three names of slack, which is three
+    # undocumented variables a future change could have added without anything saying
+    # so. A ratchet left loose is where the next regression hides.
+    ap.add_argument("--max", type=int, default=71,
                     help="ceiling for undeclared variables (may fall, never rise)")
     ap.add_argument("--list", action="store_true")
     args = ap.parse_args()
@@ -580,15 +1119,42 @@ def main() -> int:
     stranded = unreachable(shipped_defaults())
     split = mixed_layers()
     spelled = spellings()
+    crossed = boundaries()
+    rivals = rival_vocabularies()
+    inert = inert_reads()
     held = exempt_spellings()
+    flag_held = exempt_spellings(_FLAG_EXEMPT)
 
     print(f"env vars  read {len(reads)}  ·  declared {len(known)}  ·  "
           f"not ours {len(NOT_OURS)}  ·  UNDECLARED {len(missing)} (max {args.max})  ·  "
           f"UNREFERENCED {len(dead)} (max 0)  ·  UNREACHABLE {len(stranded)} (max 0)  ·  "
           f"MIXED {len(split)} (max 0)  ·  SPELLING {len(spelled)} (max 0, "
-          f"{len(held)} held)")
+          f"{len(held)} held)  ·  BOUNDARY {len(crossed)} (max 0, {len(flag_held)} held)"
+          f"  ·  VOCABULARY {len(rivals)} (max 0)  ·  INERT {len(inert)} (max 0)")
 
     failed = False
+    if inert:
+        failed = True
+        print("\n  Read, and then dropped. A variable computed into a module name "
+              "nothing reads back is documented, declared, referenced and inert — "
+              "`PANTHEON_SINGLE_USER=0` did nothing for the life of the file "
+              "(`B150`, found by `B96`):")
+        for line in inert:
+            print(f"    {line}")
+    if crossed:
+        failed = True
+        print("\n  An HTTP request field judged by an inline rule. `plan_mode=1` meant "
+              "*no* while `plan_mode=true` meant yes, at thirteen sites with no shared "
+              "rule between them (`B97`):")
+        for line in crossed:
+            print(f"    {line}")
+    if rivals:
+        failed = True
+        print("\n  A fourth vocabulary. Four boundaries have four owners and each is "
+              "written down; a new private `_truthy` is how the last five started "
+              "(`B97`):")
+        for line in rivals:
+            print(f"    {line}")
     if spelled:
         failed = True
         print("\n  Environment truthiness spelled inline. Ten incompatible rules is "
@@ -636,9 +1202,15 @@ def main() -> int:
         print()
         for name in missing:
             print(f"  {name:44} {sorted(reads[name])[0]}")
-        print("\n  Sites keeping their own truthiness rule, and why (`B91`):")
+        print("\n  Sites keeping their own environment truthiness rule, and why (`B91`):")
         for line in held:
             print(f"    {line}")
+        print("\n  Sites keeping their own request/tool truthiness rule, and why (`B97`):")
+        for line in flag_held:
+            print(f"    {line}")
+        print("\n  The four boundaries and who owns each (`B97`):")
+        for boundary, owner in BOUNDARY_OWNERS.items():
+            print(f"    {boundary:22} {owner}")
     return 1 if failed else 0
 
 

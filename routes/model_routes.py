@@ -31,6 +31,7 @@ from src.endpoint_resolver import (
     build_headers,
 )
 from src.auth_helpers import _auth_disabled, effective_user, owner_filter
+from src.env_flags import request_flag, request_truthy
 
 logger = logging.getLogger(__name__)
 
@@ -451,7 +452,16 @@ def _curate_models(model_ids, provider):
 
 
 def _truthy(value: str | None) -> bool:
-    return (value or "").strip().lower() in ("true", "1", "yes", "on")
+    """The HTTP request-field rule, which now lives in one place (`B97`).
+
+    This function is where the eight words came from: it read
+    `("true", "1", "yes", "on")` at three body fields while thirteen other HTTP
+    sites read `== "true"`, and neither was reachable from the other's callers.
+    Kept as a name rather than deleted — three call sites read better saying
+    `_truthy(container_local)` — but it is no longer a *rule*, it is a spelling
+    of one.
+    """
+    return request_flag(value)
 
 
 _ENDPOINT_KINDS = {"auto", "local", "api", "proxy"}
@@ -1436,12 +1446,11 @@ def _parse_supports_tools(value: Any) -> Optional[bool]:
         return value
     if isinstance(value, int):
         return True if value == 1 else (False if value == 0 else None)
-    text = str(value).strip().lower()
-    if text in ("true", "1", "yes", "on"):
-        return True
-    if text in ("false", "0", "no", "off"):
-        return False
-    return None
+    # `B97`. These eight words are the HTTP boundary's rule and this function
+    # is where they were first written down; `env_flags.request_truthy` is now
+    # where they live, and its three-valued answer is exactly the one `P3-22`
+    # needed here — unrecognised stays `None`, i.e. *work it out*.
+    return request_truthy(value)
 
 
 def setup_model_routes(model_discovery):
@@ -2223,7 +2232,7 @@ def setup_model_routes(model_discovery):
             # to all users), preserving the pre-fix "everyone sees everything"
             # behaviour for endpoints the admin explicitly intends to share.
             from src.auth_helpers import get_current_user as _gcu
-            _shared_flag = (shared or "").strip().lower() in ("true", "1", "yes")
+            _shared_flag = request_flag(shared)  # `B97`
             _owner_val = None if _shared_flag else (_gcu(request) or None)
             ep = ModelEndpoint(
                 id=ep_id,
@@ -2586,7 +2595,7 @@ def setup_model_routes(model_discovery):
                     ep.supports_tools = _parse_supports_tools(body["supports_tools"])
                 if "is_enabled" in body:
                     v_ie = body['is_enabled']
-                    ep.is_enabled = v_ie.lower() in ('true', '1', 'yes') if isinstance(v_ie, str) else bool(v_ie)
+                    ep.is_enabled = request_flag(v_ie)  # `B97`
                 if "name" in body and isinstance(body["name"], str):
                     ep.name = body["name"].strip() or ep.name
                 if "model_type" in body and isinstance(body["model_type"], str):

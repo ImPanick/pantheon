@@ -58,6 +58,7 @@ from core.database import Document as DBDocument, ModelEndpoint
 from core.log_safety import redact_url
 from routes.research_routes import _resolve_research_endpoint
 from routes.model_routes import _visible_models
+from src.env_flags import request_flag
 def _mark_turn_start() -> None:
     """Start the turn clock (`P14-02`). Guarded: instrumentation must never be
     the reason a chat request fails to start."""
@@ -1112,9 +1113,17 @@ def setup_chat_routes(
         allow_web_search = form_data.get("allow_web_search") or (body or {}).get("allow_web_search")
         use_rag = form_data.get("use_rag")
         search_context = form_data.get("search_context")  # pre-fetched web search results (compare mode)
-        compare_mode = str(form_data.get("compare_mode", "")).lower() == "true"
-        incognito = str(form_data.get("incognito", "")).lower() == "true"
-        plan_mode = str(form_data.get("plan_mode") or (body or {}).get("plan_mode") or "").lower() == "true"
+        # `B97`. Five fields, one rule. These read `.lower() == "true"` until
+        # 2026-09-15 — the same spelling thirteen HTTP sites used and the same
+        # one `routes/model_routes._truthy` had already stopped using, with
+        # neither reachable from the other's callers. `request_truthy` widens
+        # each of them to the eight words `.env.example` documents and narrows
+        # none: our own composer sends the literal `'true'`/`'false'`, so what
+        # changes is only the answer given to a hand-written `plan_mode=1`,
+        # which used to mean *no* on a safety mode.
+        compare_mode = request_flag(form_data.get("compare_mode"))
+        incognito = request_flag(form_data.get("incognito"))
+        plan_mode = request_flag(form_data.get("plan_mode") or (body or {}).get("plan_mode"))
         chat_mode = str(form_data.get("mode", "")).lower()  # 'chat' or 'agent'
         tool_approval_id = (
             form_data.get("tool_approval_id")
@@ -1436,7 +1445,7 @@ def setup_chat_routes(
         # consume the one-use grant on the unrelated research path.
         do_research = (
             not tool_approval_continuation
-            and str(use_research).lower() == "true"
+            and request_flag(use_research)  # `B97`
         )
         if not do_research and not tool_approval_continuation:
             if get_session_mode(session) == 'research_pending':
@@ -1457,7 +1466,7 @@ def setup_chat_routes(
                 logger.warning("Failed to parse attachments JSON, ignoring attachments", exc_info=e)
 
         image_generation_session = _is_image_generation_session(sess, owner=effective_user(request))
-        no_memory = str(form_data.get("no_memory", "")).lower() == "true"
+        no_memory = request_flag(form_data.get("no_memory"))  # `B97`
         if image_generation_session:
             no_memory = True
             use_rag = "false"
@@ -1608,6 +1617,14 @@ def setup_chat_routes(
         # Web search is per-turn opt-in: either the chat pre-search setting
         # (`use_web=true`) or agent web toggle (`allow_web_search=true`) must
         # explicitly enable it.
+        # flag-spelling: `B97` holds this one. Every other HTTP field in this
+        # route moved to `request_truthy`, which reads `1`/`yes`/`on` as yes;
+        # here that would turn `allow_bash=1` from *shell denied* into *shell
+        # granted* for any caller already sending it. Widening a gate is not the
+        # same act as honouring an intent, and this gate governs the container
+        # shell and the host shell together (`P17-11`). Same hold, and the same
+        # reason, as the nine environment switches `B91` could not move: each
+        # of those carries its reason at its own line too.
         if allow_bash is not None and str(allow_bash).lower() != "true":
             # `P17-11`. One switch, two places. The chat's "enable shell" toggle
             # governs the container shell and the host shell together, because a

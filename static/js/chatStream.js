@@ -85,6 +85,22 @@ let _steerConfirmSeen = false;
 // server never sends the event and the composer's guess stands — so nothing
 // that works now stops working.
 let _steerRunAnswer = null;
+// `B81`. null until the composer says, then true | false. The PROVISIONAL half
+// of the same question `_steerRunAnswer` answers authoritatively — not a second
+// fact and not a second transport, just the existing client-side guess moved to
+// where its terms are readable and delivered on the event that already
+// announces the turn (`pantheon:chat-busy-change`). Held until the run ends, so
+// a later re-announcement of the same busy state (`setStreamingState`) cannot
+// erase it; reset to null there, because the next run is a new question.
+let _steerComposerAnswer = null;
+// Whether this page's `chat.js` announces verdicts at all. `B14` established
+// that a second `active` edge with no `inactive` between them is a new run and
+// must reset the run's own answer, because on a build with no verdicts those
+// edges are all there is. `B81` gives the send path a marker the
+// re-announcements do not carry, so the two can finally be told apart — but
+// only once one verdict has actually been seen. Until then, `B14`'s rule stands
+// unchanged.
+let _steerVerdictsSeen = false;
 
 const STEER_PENDING_TEXT = ' — lands at the next step';
 
@@ -135,6 +151,31 @@ function _steerChatModeOnly() {
   } catch (_) {
     return false;
   }
+}
+
+/**
+ * Does anything the CLIENT can see say this turn cannot take a steer? (`B81`)
+ *
+ * `P6-18` asked one term — is the composer in chat mode — and drew the bar
+ * whenever the answer was no. That left a research turn drawing a bar for the
+ * ~880 lines of composer setup plus a network round trip it takes
+ * `stream_steerable` to contradict it, because research is sent in AGENT mode:
+ * the one term it read says nothing about the case. `chat.js` now evaluates the
+ * terms it can actually see — the mode AND the research toggle, which is still
+ * checked at send-path entry and cleared just before the POST — and ships the
+ * verdict on the busy edge that raises the bar.
+ *
+ * `_steerChatModeOnly` stays as the fallback rather than being deleted
+ * (`Law 1`): the busy event has other dispatchers' worth of history and any
+ * edge that arrives without a verdict must behave exactly as it does today.
+ *
+ * Whatever this says, the run overrules it — `handleStreamSteerable` runs in
+ * both directions, so a turn the composer wrote off still gets its bar if the
+ * server says it is steerable.
+ */
+function _steerComposerSaysNo() {
+  if (_steerComposerAnswer !== null) return _steerComposerAnswer === false;
+  return _steerChatModeOnly();
 }
 
 function _steerComposer() {
@@ -434,11 +475,31 @@ export function initSteerControl() {
       }
       _removeSteerBar();
       _steerRunAnswer = null;
+      _steerComposerAnswer = null;
       return;
     }
     // A new run: what the last one said about itself does not carry over. This
     // is the whole reason the answer is per-run rather than per-page (`B14`).
-    _steerRunAnswer = null;
+    //
+    // `B81`. A busy edge that CARRIES a verdict is a turn starting — that is
+    // the send path, and only the send path, announcing itself. One without is
+    // a re-announcement of the run already going (`setStreamingState`,
+    // `_syncForegroundStreamGlobals`), and it must change nothing: resetting
+    // the run's own answer there threw away the only authoritative fact in
+    // hand, and recomputing the composer's would answer "steerable" for the
+    // exact turn this row is about, because the research toggle has been
+    // cleared by then. Per-run freshness is kept by the `active === false`
+    // branch above, which clears both — including on a build whose `chat.js`
+    // sends no verdict at all, where this stays exactly today's behaviour.
+    if (typeof (e && e.detail && e.detail.steerable) === 'boolean') {
+      _steerVerdictsSeen = true;
+      _steerRunAnswer = null;
+      _steerComposerAnswer = e.detail.steerable;
+    } else if (!_steerVerdictsSeen) {
+      // No verdict has ever been seen here, so this edge cannot be told apart
+      // from a turn starting. `B14`'s rule, kept verbatim for that build.
+      _steerRunAnswer = null;
+    }
     if (_steerSupported === null) await probeSteerSupport();
     if (_steerSupported !== true) return;
     // The stream can beat the probe on the first run of a page, so its verdict
@@ -458,7 +519,14 @@ export function initSteerControl() {
     // steer. It is kept because it costs nothing and is right most of the time
     // in the window before the run answers, and because a server that does not
     // send `stream_steerable` must keep behaving exactly as it does today.
-    if (_steerRunAnswer === null && _steerChatModeOnly()) { _removeSteerBar(); return; }
+    //
+    // `B81` widened it from one term to the two the client can evaluate, so a
+    // research turn started from the toggle is now caught here rather than a
+    // round trip later. What remains wrong is what the client genuinely cannot
+    // see: an image-generation session, and a `research_pending` continuation
+    // whose toggle is already clear. Both are still corrected by the run's own
+    // answer, which is the only thing that knows.
+    if (_steerRunAnswer === null && _steerComposerSaysNo()) { _removeSteerBar(); return; }
     // A run that belongs to a different chat than the one on screen gets a
     // fresh bar rather than another session's accepted-steer list.
     if (_steerBar && _steerBoundSessionId && _steerBoundSessionId !== _steerSessionId()) {

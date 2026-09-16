@@ -39,6 +39,14 @@ def host_docker_access_enabled(
     environ: Mapping[str, str] | None = None,
 ) -> bool:
     env = os.environ if environ is None else environ
+    # env-spelling: `.pantheon/FORBIDDEN.md` Part 2 names this control —
+    # "Host-Docker flag off", against host root-equivalence. Widening it to the
+    # shared vocabulary would grant host Docker to every machine already
+    # carrying `PANTHEON_ENABLE_HOST_DOCKER=1`, which is the one direction this
+    # switch must never move on its own. `B98` found it: the environment is
+    # bound to a local name here rather than read as `os.environ.get(...)`, so
+    # `B91`'s scan never saw the site and this hold is the first thing checking
+    # its spelling.
     if env.get(HOST_DOCKER_ENV_VAR, "").strip().lower() != "true":
         return False
     try:

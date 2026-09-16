@@ -67,6 +67,7 @@ from routes.email_helpers import (
     attachment_extract_dir, _email_cache_owner_clause, email_translation_body_hash,
 )
 from routes.email_pollers import _start_poller
+from src.env_flags import request_flag
 
 logger = logging.getLogger(__name__)
 
@@ -3416,8 +3417,13 @@ def setup_email_routes():
         owner: str = Depends(require_owner),
     ):
         """Read email body. Cached for 30m, sync IMAP work runs in a thread."""
-        mark_seen = True if mark_seen is True or str(mark_seen).lower() == "true" else False
-        full = True if full is True or str(full).lower() == "true" else False
+        # `B97`. FastAPI has usually already coerced `?full=1` to a real bool
+        # by the time this runs, which is why the hand-written re-parse had to
+        # test `is True` first; `request_truthy` judges a non-string by its own
+        # truthiness and a string by the shared vocabulary, so the two cases
+        # stop being two lines that must agree.
+        mark_seen = request_flag(mark_seen)
+        full = request_flag(full)
         fixture_result = _fixture_email_read(uid, folder, owner)
         if fixture_result is not None:
             return fixture_result

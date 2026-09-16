@@ -13,6 +13,7 @@ These tests drive `build_user_content` and `UploadHandler.is_document_file`
 rather than reading either file, because the thing that matters is whether the
 bytes reach the model, not what the sets look like.
 """
+import base64
 import io
 import os
 import zipfile
@@ -21,11 +22,21 @@ import pytest
 
 from src.document_processor import (
     INGESTIBLE_EXTS,
+    PROSE_LANGUAGES,
     TEXT_EXTS,
     _is_text_file,
+    attachment_language,
     build_user_content,
+    decode_text_file,
+    looks_like_text,
 )
-from src.markitdown_runtime import MARKITDOWN_EXTS
+from src.markitdown_runtime import (
+    MARKITDOWN_EXTS,
+    NATIVE_OFFICE_EXTS,
+    OFFICE_EXTS,
+    is_markitdown_format,
+    is_office_format,
+)
 from src.pdf_runtime import PDF_EXTS
 from src.upload_handler import UploadHandler
 
@@ -43,9 +54,12 @@ EXPECTED_TEXT = frozenset({
     ".bash", ".c", ".cpp", ".css", ".go", ".h", ".java", ".jsx", ".php", ".rb",
     ".rs", ".sh", ".sql", ".ts", ".tsx", ".xml", ".yaml", ".yml",
 })
-# Accepted, and never readable as text: the six the row wanted moved into the
-# text arm. `_process_text_file` would hand the model a binary stream.
-EXPECTED_BINARY_DOC = frozenset({".docx", ".epub", ".pdf", ".pptx", ".xls", ".xlsx"})
+# Accepted, and never readable as text: the six `B05` wanted moved into the text
+# arm, plus the two `B102` gave extractors to. `_process_text_file` would hand
+# the model a binary stream for every one of them.
+EXPECTED_BINARY_DOC = frozenset({
+    ".doc", ".docx", ".epub", ".odt", ".pdf", ".pptx", ".xls", ".xlsx",
+})
 EXPECTED_ACCEPTED = EXPECTED_TEXT | EXPECTED_BINARY_DOC
 
 # The banner emitted when nothing can read the file. No accepted extension may
@@ -68,15 +82,17 @@ DECODES_AS_TEXT = (
     ".vue", ".scss", ".less", ".gradle", ".ps1", ".r", ".svg", ".rtf",
 )
 
-# The honest other half: rich formats with genuinely binary containers and no
-# extractor. These keep the banner, and the banner is true.
-BINARY_NO_EXTRACTOR = (".doc", ".odt")
+# The honest other half: binary containers with no extractor. These keep the
+# banner, and the banner is true. `B76` left `.doc` and `.odt` here and `B102`
+# took them out by writing the two extractors, so what remains is the formats
+# nobody has claimed — WordPerfect (a binary record stream) and Pages (a zip).
+BINARY_NO_EXTRACTOR = (".wpd", ".pages")
 
 UNREGISTERED = DECODES_AS_TEXT + BINARY_NO_EXTRACTOR
 
 
 def _ole2_doc(text: str) -> bytes:
-    """A .doc header as Word actually writes it: OLE2 magic, then NUL padding.
+    """An OLE2 header as Word writes it: the magic, then NUL padding.
 
     Driving the real gate means handing it real bytes (`Law 20`). The previous
     fixture wrote the ASCII sentinel into a file named `.doc` and asserted a
@@ -96,10 +112,10 @@ def _odt(text: str) -> bytes:
 
 
 def _unreadable_body(ext: str, text: str) -> bytes:
-    if ext == ".doc":
-        return _ole2_doc(text)
-    if ext == ".odt":
-        return _odt(text)
+    if ext == ".wpd":
+        return _ole2_doc(text)      # WordPerfect 6+ ships as an OLE2 container
+    if ext == ".pages":
+        return _odt(text)           # Pages is a zip, like every modern office zip
     return text.encode()
 
 
@@ -167,7 +183,7 @@ def _minimal_docx(text: str) -> bytes:
 # The union is an identity, not a subset relation
 # --------------------------------------------------------------------------
 
-def test_accepted_extensions_are_exactly_the_three_registers(tmp_path):
+def test_accepted_extensions_are_exactly_the_registers(tmp_path):
     handler = _handler(tmp_path)
     probes = sorted(
         EXPECTED_ACCEPTED | set(INGESTIBLE_EXTS) | set(UNREGISTERED)
@@ -179,8 +195,13 @@ def test_accepted_extensions_are_exactly_the_three_registers(tmp_path):
     assert accepted == EXPECTED_ACCEPTED
     assert set(INGESTIBLE_EXTS) == EXPECTED_ACCEPTED
     assert set(TEXT_EXTS) == EXPECTED_TEXT
-    assert set(MARKITDOWN_EXTS | PDF_EXTS) == EXPECTED_BINARY_DOC
-    assert len(INGESTIBLE_EXTS) == len(TEXT_EXTS) + len(MARKITDOWN_EXTS) + len(PDF_EXTS)
+    assert set(OFFICE_EXTS | PDF_EXTS) == EXPECTED_BINARY_DOC
+    # Four registers, one per extractor, no overlap and no slack: markitdown,
+    # the bundled office readers `B102` added, pypdf, and the text arm.
+    assert set(MARKITDOWN_EXTS) & set(NATIVE_OFFICE_EXTS) == set()
+    assert len(INGESTIBLE_EXTS) == (
+        len(TEXT_EXTS) + len(MARKITDOWN_EXTS) + len(NATIVE_OFFICE_EXTS) + len(PDF_EXTS)
+    )
 
 
 def test_upload_classifier_reads_the_register_rather_than_a_copy(tmp_path, monkeypatch):
@@ -465,16 +486,19 @@ def test_the_probe_is_bounded_and_is_not_paid_by_files_that_already_work(tmp_pat
         dp.looks_like_text = real
 
 
-def test_an_unreadable_encoding_keeps_the_banner_it_has_today(tmp_path):
-    """`Law 1` again, stated as a limit rather than a gap.
+def test_the_remaining_encoding_limit_is_utf16_without_a_bom(tmp_path):
+    """`Law 1` as a limit, moved by `B101` rather than removed.
 
-    UTF-16 is text and this probe rejects it, because its NUL padding is
-    indistinguishable from a binary container without sniffing the encoding.
-    That is the behaviour these files already have, so nothing is taken away —
-    but the limit is real and belongs in a test rather than only in a comment.
+    This was `test_an_unreadable_encoding_keeps_the_banner_it_has_today`, and it
+    asserted that a UTF-16 attachment keeps the banner. `B101` made a BOM'd one
+    readable (see below), so what is left is the file that declares nothing: NUL
+    padding with no byte-order mark is not distinguishable from a container
+    prefix without guessing, and the probe does not guess. The register arm is
+    unaffected — a `.txt` in this encoding is read, because something already
+    decided to read it.
     """
     handler = _handler(tmp_path)
-    rendered = _render(tmp_path, handler, "wide.unknown", SENTINEL.encode("utf-16"))
+    rendered = _render(tmp_path, handler, "wide.unknown", SENTINEL.encode("utf-16-le"))
     assert NO_EXTRACTOR in rendered
 
 
@@ -590,3 +614,622 @@ def test_the_mailbox_asks_the_same_question_chat_ingest_does(tmp_path, monkeypat
     assert flipped.get("error") == "Unsupported attachment type: .toml", (
         "the mailbox is not calling the shared probe"
     )
+
+
+# --------------------------------------------------------------------------
+# `B100` — the label and the fence are one answer
+# --------------------------------------------------------------------------
+
+# What the composer must say about each of these. Spelled out rather than
+# derived from `LANGUAGE_ALIASES`, for the same reason `EXPECTED_TEXT` is: a
+# test that reads its expectations out of the map it is testing proves only that
+# the code agrees with itself. The last four are the measured defect — before
+# `B100` every one of them was `[Type: text]` with no fence at all.
+LABELLED = [
+    ("config.yaml", "yaml", True),
+    ("config.toml", "toml", True),
+    ("script.py", "python", True),
+    ("notes.md", "markdown", True),
+    ("readme.txt", "text", False),
+    ("server.log", "log", False),
+    ("notes.markdown", "markdown", True),
+    ("header.h", "c", True),
+    ("build.gradle", "gradle", True),
+    ("Setup.ps1", "powershell", True),
+]
+
+
+@pytest.mark.parametrize("name,language,fenced", LABELLED)
+def test_the_label_and_the_fence_agree_on_every_file(tmp_path, name, language, fenced):
+    """The row's `Verify`, driven through the real composer.
+
+    `.markdown` is the one it names: `routes/email_routes.py` loads it as a
+    markdown Document and `static/js/emailLibrary.js` offers the document editor
+    for it, while the composer called it `text`.
+    """
+    handler = _handler(tmp_path)
+    rendered = _render(tmp_path, handler, name, SENTINEL.encode())
+    assert f"[Type: {language}," in rendered, rendered[:200]
+    assert (f"```{language}\n" in rendered) is fenced, rendered[:200]
+    assert SENTINEL in rendered
+
+
+def test_two_byte_identical_files_are_labelled_by_what_they_are(tmp_path):
+    """The measurement `B100` was filed on: same bytes, two names, two answers.
+
+    `config.yaml` arrived as ```yaml and `config.toml` arrived bare, which is a
+    statement about the register rather than about the file.
+    """
+    handler = _handler(tmp_path)
+    body = b"host = 'localhost'\nport = 8080\n"
+    yaml_out = _render(tmp_path, handler, "config.yaml", body)
+    toml_out = _render(tmp_path, handler, "config.toml", body)
+    assert "```yaml" in yaml_out and "[Type: yaml," in yaml_out
+    assert "```toml" in toml_out and "[Type: toml," in toml_out
+
+
+def test_the_fence_is_derived_from_the_label_and_not_from_a_second_list(tmp_path, monkeypatch):
+    """`Law 14`, proved by moving the one map and watching both outputs move.
+
+    A re-introduced `code_extensions` set passes every other test in this
+    section — the labels and the fences would still agree on today's
+    extensions — and cannot pass this one, because there is nothing to add
+    `.zzz` to but the map the label comes from.
+    """
+    import src.document_processor as dp
+
+    handler = _handler(tmp_path)
+    monkeypatch.setattr(
+        dp, "LANGUAGE_ALIASES", {**dp.LANGUAGE_ALIASES, ".zzz": "python"}
+    )
+    rendered = _render(tmp_path, handler, "mystery.zzz", SENTINEL.encode())
+    assert "[Type: python," in rendered
+    assert "```python\n" in rendered
+
+
+def test_prose_is_the_only_thing_printed_without_a_fence(tmp_path):
+    """One invariant over every extension the text arm claims.
+
+    Before `B100` this could not hold: `.csv` and `.h` carried a label from one
+    list and their fence from another, so `.h` was `[Type: text]` and `.csv`
+    was `[Type: csv]` with no fence — a label that says it is data and a body
+    that runs into the prose around it.
+    """
+    handler = _handler(tmp_path)
+    for ext in sorted(TEXT_EXTS):
+        rendered = _render(tmp_path, handler, "sample" + ext, SENTINEL.encode())
+        language = attachment_language("sample" + ext)
+        assert f"[Type: {language}," in rendered, ext
+        assert ("```" + language) in rendered or language in PROSE_LANGUAGES, ext
+        if language in PROSE_LANGUAGES:
+            assert "```" not in rendered, ext
+
+
+def test_a_file_with_no_extension_is_still_prose(tmp_path):
+    """`Law 1`: the old map answered `text` for an empty extension. So does this."""
+    handler = _handler(tmp_path)
+    rendered = _render(tmp_path, handler, "Dockerfile", SENTINEL.encode())
+    assert "[Type: text," in rendered
+    assert "```" not in rendered
+    assert SENTINEL in rendered
+
+
+def test_the_language_answer_is_one_function(tmp_path):
+    assert attachment_language("a.markdown") == "markdown"
+    assert attachment_language("a.MD") == "markdown"
+    assert attachment_language(".md") == "markdown"      # bare dotfile
+    assert attachment_language("a.toml") == "toml"
+    assert attachment_language("a.kt") == "kotlin"
+    assert attachment_language("Dockerfile") == "text"
+    assert attachment_language("archive.tar.gz") == "gz"
+    # Not a word, so not a language: the fence would be noise and the label a lie.
+    assert attachment_language("weird.123") == "text"
+    assert attachment_language("weird.") == "text"
+
+
+# --------------------------------------------------------------------------
+# `B101` — the encoding is sniffed, not assumed
+# --------------------------------------------------------------------------
+
+RUSSIAN = "Привет, мир! Конфигурация сервера для отдела продаж.\n"
+POLISH = "Zażółć gęślą jaźń — plik konfiguracyjny serwera.\n"
+
+
+def test_a_utf16_text_file_with_a_bom_reaches_the_model(tmp_path):
+    """The row's first `Verify` clause.
+
+    Measured before `B101`: zero bytes. The NUL padding that makes UTF-16 look
+    like a container is preceded by two bytes that say exactly what it is.
+    """
+    handler = _handler(tmp_path)
+    body = (SENTINEL + "\n" + RUSSIAN).encode("utf-16")
+    rendered = _render(tmp_path, handler, "wide.unknown", body)
+    assert NO_EXTRACTOR not in rendered
+    assert SENTINEL in rendered
+    assert RUSSIAN.strip() in rendered
+    assert "\x00" not in rendered
+
+
+@pytest.mark.parametrize("encoding", ["utf-16", "utf-32", "utf-8-sig"])
+def test_every_bom_is_read_and_not_printed(tmp_path, encoding):
+    handler = _handler(tmp_path)
+    rendered = _render(tmp_path, handler, "wide.unknown", SENTINEL.encode(encoding))
+    assert SENTINEL in rendered, encoding
+    assert "﻿" not in rendered, encoding
+
+
+def test_a_cp1251_conf_reaches_the_model(tmp_path):
+    """The row's second `Verify` clause, and the reason the ratio was the wrong lever.
+
+    This file has no NUL and no BOM. It fails the replacement-char ratio at
+    0.793 — measured — which is what kept it out; widening the ratio to admit it
+    would have admitted binary with it.
+    """
+    handler = _handler(tmp_path)
+    rendered = _render(tmp_path, handler, "server.conf", (RUSSIAN * 20).encode("cp1251"))
+    assert NO_EXTRACTOR not in rendered
+    assert RUSSIAN.strip() in rendered
+
+
+def test_legacy_prose_is_not_silently_thrown_away_by_the_reader(tmp_path):
+    """The half of `B101` that a register could never have fixed.
+
+    `.txt` is in `TEXT_EXTS`, so this file always reached `_process_text_file` —
+    which read it through `personal_docs.read_text_file`, i.e. utf-8 with
+    `errors="ignore"`. Every Cyrillic byte was dropped on the floor and the
+    model was told the file was nearly empty, with nothing anywhere saying so.
+    The `charset_normalizer` fallback written directly below that call never ran
+    because `read_text_file` returns `""` instead of raising.
+    """
+    handler = _handler(tmp_path)
+    rendered = _render(tmp_path, handler, "notes.txt", (RUSSIAN * 8).encode("cp1251"))
+    assert RUSSIAN.strip() in rendered
+
+
+def test_a_file_the_old_gate_already_accepted_is_no_longer_mangled(tmp_path):
+    """The case between the two halves, and the one nothing was watching.
+
+    Polish cp1250 scores 0.170 on the replacement ratio — under the 0.30 bound,
+    so this file was called text and read. It was then decoded as UTF-8 and every
+    accented character was dropped on the floor: the model received
+    "Za g jazn plik konfiguracyjny serwera" and no marker saying anything had
+    gone missing. A rule that only rescued files scoring *above* the bound would
+    leave this exactly as it was.
+    """
+    handler = _handler(tmp_path)
+    rendered = _render(tmp_path, handler, "server.conf", (POLISH * 20).encode("cp1250"))
+    assert NO_EXTRACTOR not in rendered
+    assert POLISH.strip() in rendered
+
+
+def test_a_registered_extension_is_decoded_even_when_the_probe_says_binary(tmp_path):
+    """The deliberate asymmetry: the probe decides *whether*, the reader decides *how*.
+
+    BOM-less UTF-16 keeps the banner when nothing claims it (see the limit test
+    above), but a `.txt` was claimed by the register, so refusing to decode it
+    would only mean handing the model NUL-separated letters — which is what it
+    got before.
+    """
+    handler = _handler(tmp_path)
+    body = (SENTINEL + "\n").encode("utf-16-le")
+    assert not looks_like_text(str(_write(tmp_path, "probe.bin", body)))
+    rendered = _render(tmp_path, handler, "notes.txt", body)
+    assert SENTINEL in rendered
+    assert "\x00" not in rendered
+
+
+def test_the_probe_and_the_reader_are_one_decision(tmp_path, monkeypatch):
+    """`Law 13`: break the sniff, and both sides of it change together."""
+    import src.document_processor as dp
+
+    path = str(_write(tmp_path, "notes.conf", (POLISH * 20).encode("cp1250")))
+    assert looks_like_text(path)
+    assert POLISH.strip() in decode_text_file(path)
+
+    monkeypatch.setattr(dp, "sniff_text_encoding", lambda head: None)
+    assert not dp.looks_like_text(path)
+
+
+def test_a_detector_guess_is_taken_only_when_it_decodes_better(monkeypatch):
+    """The comparison is the safety rail, and the detector is stubbed to prove it.
+
+    ``charset_normalizer`` answers with its best guess, not with a promise. Three
+    measured examples of a guess that must lose: `ascii` for UTF-8 text with one
+    stray byte (0.357 replacements against UTF-8's 0.083), and — with the real
+    detector — `utf_16_be` for ``b"h\xc3\xa9llo w\xc3\xb6rld\xff"``, which
+    decodes to CJK with a *perfect* score because every byte pair maps to
+    something. A wide codec cannot win here at all: real UTF-16 arrives with a
+    BOM or with NULs and is answered before this point.
+    """
+    import src.document_processor as dp
+
+    body = "héllo wörld".encode("utf-8") + b"\xff"
+    monkeypatch.setattr(dp, "_detect_encoding", lambda head: "ascii")
+    assert dp.sniff_text_encoding(body) == "utf-8"
+
+    monkeypatch.setattr(dp, "_detect_encoding", lambda head: "utf_16_be")
+    assert dp.sniff_text_encoding(body) == "utf-8"
+
+
+def test_a_spotless_decode_of_control_characters_is_not_text(monkeypatch):
+    """The other guard: "it decoded" is not evidence.
+
+    Every single-byte codec maps almost every byte to *something*, so a binary
+    prefix can decode with zero replacement characters and still be binary. What
+    real prose does not contain is C0/C1 controls — here 0.948 of the file.
+    """
+    import src.document_processor as dp
+
+    body = b"report\n" + bytes(range(0x80, 0xA0)) * 4
+    monkeypatch.setattr(dp, "_detect_encoding", lambda head: "latin-1")
+    assert dp.sniff_text_encoding(body) is None
+
+
+def test_binary_is_still_binary_after_the_encoding_sniff(tmp_path):
+    """`Law 1`'s other direction, re-run against the widened gate.
+
+    `charset_normalizer` answers `None` for all of these, and the control-char
+    guard is the belt if a future version stops doing so.
+    """
+    handler = _handler(tmp_path)
+    for name, body in [
+        ("a.unknown", b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"),
+        ("b.unknown", b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01"),
+        ("c.unknown", b"\x1f\x8b\x08\x00\x00\x00\x00\x00"),
+        ("d.unknown", b"MZ\x90\x00\x03\x00\x00\x00"),
+        ("e.unknown", bytes(range(0x80, 0x100)) * 32),
+        ("f.unknown", bytes(range(256)) * 4),
+    ]:
+        assert NO_EXTRACTOR in _render(tmp_path, handler, name, body), name
+
+
+def _write(tmp_path, name, body: bytes):
+    path = tmp_path / "raw" / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(body)
+    return path
+
+
+# --------------------------------------------------------------------------
+# `B102` — the two formats that had no extractor
+# --------------------------------------------------------------------------
+
+# A real Word 97-2003 file, produced by LibreOffice ("doc:MS Word 97"), gzipped
+# and base64'd so the patch stays text. It is a real one on purpose: a `.doc` is
+# an OLE2 container holding a piece table, and a fixture written by the same
+# person who wrote the reader would agree with the reader's assumptions rather
+# than with Word's. It contains a heading, a Cyrillic paragraph, a hyperlink
+# field, a two-row table and the sentinel.
+#
+# LibreOffice writes every piece as UTF-16 (measured on three of its outputs), so
+# the CP1252-compressed piece — what Word writes for a document that fits in that
+# codepage, and half of the piece-table format — is covered by
+# `_word97_doc_compressed` below, which re-encodes this same real file's piece
+# rather than inventing a container.
+DOC_FIXTURE_GZ_B64 = (
+    "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"
+)
+
+# An ODF text document, built here rather than vendored: `.odt` is a zip of XML,
+# so the fixture is readable in the diff and says exactly what the extractor is
+# expected to walk. The namespace declarations and element shapes are copied
+# from what LibreOffice actually writes, and the extractor was driven against
+# LibreOffice output as well while it was written.
+ODT_CONTENT_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content
+    xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+    xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+    xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0"
+    xmlns:xlink="http://www.w3.org/1999/xlink" office:version="1.3">
+  <office:body><office:text>
+    <text:h text:outline-level="1">Quarterly Report</text:h>
+    <text:p>%s</text:p>
+    <text:p>Cyrillic: \u041f\u0440\u0438\u0432\u0435\u0442, \u043c\u0438\u0440!</text:p>
+    <text:p>See <text:a xlink:href="https://example.com/x">the link</text:a> for details.</text:p>
+    <text:p>Column<text:tab/>Total</text:p>
+    <table:table><table:table-row>
+      <table:table-cell><text:p>North</text:p></table:table-cell>
+      <table:table-cell><text:p>42</text:p></table:table-cell>
+    </table:table-row></table:table>
+  </office:text></office:body>
+</office:document-content>
+"""
+
+
+# A second real Word 97 file, this one carrying a footnote. Word keeps footnote
+# text in the same stream, *after* the body, and `ccpText` in the FIB is where
+# the body stops — 104 characters of the 152 stored here.
+FOOT_DOC_GZ_B64 = (
+    "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"
+)
+
+# Where the fixture above keeps its one piece. Both are read out of the file
+# itself by the assertions in `_word97_doc_compressed`, so a regenerated fixture
+# fails loudly rather than being silently re-encoded at the wrong offset.
+_PIECE_STREAM_OFFSET = 2048     # `fc` in the piece-table entry
+_PIECE_FILE_OFFSET = 7168       # where that stream offset lands in the file
+_PIECE_CHARS = 177              # `ccpText`
+
+
+def _word97_doc() -> bytes:
+    import gzip as _gzip
+    return _gzip.decompress(base64.b64decode(DOC_FIXTURE_GZ_B64))
+
+
+def _word97_footnote_doc() -> bytes:
+    import gzip as _gzip
+    return _gzip.decompress(base64.b64decode(FOOT_DOC_GZ_B64))
+
+
+def _word97_doc_compressed() -> bytes:
+    """The same real file with its single piece stored the way Word stores one.
+
+    A piece is either UTF-16 or "compressed" — one CP1252 byte per character,
+    with the byte offset doubled and flagged in the top bits of `fc`. LibreOffice
+    only ever writes the first kind, so this rewrites the second into a real
+    container rather than hand-building a CFB that would agree with whatever the
+    reader assumes. Two edits, both of them structures the file itself
+    describes: the piece's UTF-16 bytes become CP1252 bytes in place, and its
+    `fc` gains the flag and the doubled offset. Nothing moves, because a piece is
+    addressed by `fc` and not by its size.
+
+    The Cyrillic paragraph cannot survive CP1252 — which is precisely why Word
+    has two piece kinds — so it is asserted on the UTF-16 original instead.
+    """
+    import struct
+
+    data = bytearray(_word97_doc())
+    pcd = struct.pack("<HIH", 0x0050, _PIECE_STREAM_OFFSET, 0)
+    assert data.count(pcd) == 1, "fixture changed: the piece table entry moved"
+    span = slice(_PIECE_FILE_OFFSET, _PIECE_FILE_OFFSET + 2 * _PIECE_CHARS)
+    text = bytes(data[span]).decode("utf-16-le")
+    assert text.startswith("Quarterly Report"), "fixture changed: the text moved"
+    data[span] = text.encode("cp1252", "replace") + b"\x00" * _PIECE_CHARS
+    at = data.index(pcd)
+    data[at:at + 8] = struct.pack(
+        "<HIH", 0x0050, (_PIECE_STREAM_OFFSET << 1) | 0x40000000, 0
+    )
+    return bytes(data)
+
+
+def _odt_document(text: str = SENTINEL, content_xml: str | None = None) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("mimetype", "application/vnd.oasis.opendocument.text")
+        z.writestr("content.xml", (content_xml or ODT_CONTENT_XML) % text)
+    return buf.getvalue()
+
+
+def test_a_real_word_97_document_puts_its_prose_in_the_message(tmp_path):
+    """The row's `Verify`, first clause, on a file Word itself would open.
+
+    Measured before `B102`: the banner, zero bytes. markitdown 0.1.6 raises
+    `UnsupportedFormatException` on this same file — *"no converter attempted a
+    conversion"* — so adding `.doc` to `MARKITDOWN_EXTS` would have replaced a
+    true banner with a misleading one.
+    """
+    handler = _handler(tmp_path)
+    rendered = _render(tmp_path, handler, "quarterly.doc", _word97_doc())
+    assert NO_EXTRACTOR not in rendered
+    assert SENTINEL in rendered
+    assert "Quarterly Report" in rendered
+    # The Cyrillic paragraph is a UTF-16 piece in a file whose other pieces are
+    # CP1252-compressed: reading it proves the piece table is being walked
+    # rather than the stream being scanned for printable runs.
+    assert "\u041f\u0440\u0438\u043c\u0435\u0440" in rendered
+    # A field arrives as "\x13 HYPERLINK "https://…" \x14 the link \x15": the
+    # reader keeps the result and drops the instruction.
+    assert "the link" in rendered
+    assert "HYPERLINK" not in rendered
+    assert "https://example.com" not in rendered
+    # Table cells are cell-separated, not run together.
+    assert "North" in rendered and "42" in rendered
+
+
+def test_a_doc_whose_pieces_are_cp1252_compressed_reads_the_same(tmp_path):
+    """The other half of the piece table, which no LibreOffice output produces.
+
+    Word writes this form for any document that fits in CP1252, which is most
+    `.doc` files in the world. A reader that assumes UTF-16 returns the same
+    bytes read two per character: unicode noise, with nothing on the outside to
+    say it went wrong.
+    """
+    handler = _handler(tmp_path)
+    rendered = _render(tmp_path, handler, "compressed.doc", _word97_doc_compressed())
+    assert NO_EXTRACTOR not in rendered
+    assert SENTINEL in rendered
+    assert "Quarterly Report" in rendered
+    assert "the link" in rendered
+    assert "North" in rendered and "42" in rendered
+
+
+def test_the_body_stops_where_the_document_says_it_does(tmp_path):
+    """`ccpText`, on a real file that has something behind it.
+
+    Footnote text sits in the same stream after the body. Without the bound it is
+    concatenated onto the last paragraph with no anchor and no marker, so the
+    model reads a sentence that is not in the document.
+    """
+    handler = _handler(tmp_path)
+    rendered = _render(tmp_path, handler, "withnote.doc", _word97_footnote_doc())
+    assert SENTINEL in rendered
+    assert "FOOTNOTEONLYTEXT" not in rendered
+
+
+def test_an_odt_puts_its_prose_in_the_message(tmp_path):
+    """The row's `Verify`, second clause."""
+    handler = _handler(tmp_path)
+    rendered = _render(tmp_path, handler, "report.odt", _odt_document())
+    assert NO_EXTRACTOR not in rendered
+    assert SENTINEL in rendered
+    assert "Quarterly Report" in rendered
+    assert "the link" in rendered
+    assert "North" in rendered and "42" in rendered
+    assert "\u041f\u0440\u0438\u0432\u0435\u0442" in rendered
+
+
+def test_neither_format_is_listed_in_a_register_whose_extractor_refuses_it(tmp_path):
+    """The other half of the row's `Verify`, and why this is a second register.
+
+    `.odt` and `.doc` are accepted uploads and reach an extractor, but that
+    extractor is not markitdown — which refuses both — so they are not in
+    `MARKITDOWN_EXTS`. A single office register would have to be either wrong
+    about markitdown or wrong about these files.
+    """
+    handler = _handler(tmp_path)
+    for ext in (".doc", ".odt"):
+        assert handler.is_document_file("probe" + ext), ext
+        assert is_office_format("probe" + ext), ext
+        assert not is_markitdown_format("probe" + ext), ext
+        assert ext in NATIVE_OFFICE_EXTS and ext not in MARKITDOWN_EXTS, ext
+
+
+def test_the_bundled_readers_do_not_need_markitdown(tmp_path, monkeypatch):
+    """The dependency claim, driven with the optional dependency taken away.
+
+    `.docx` already had a bundled reader for this case; `.odt` and `.doc` now
+    share the property, which is what makes them extractors rather than an entry
+    in someone else's list.
+    """
+    import src.markitdown_runtime as mr
+
+    def _absent():
+        raise RuntimeError(mr.MARKITDOWN_MISSING)
+
+    monkeypatch.setattr(mr, "load_markitdown", _absent)
+    handler = _handler(tmp_path)
+    assert SENTINEL in _render(tmp_path, handler, "a.doc", _word97_doc())
+    assert SENTINEL in _render(tmp_path, handler, "b.odt", _odt_document())
+    assert SENTINEL in _render(tmp_path, handler, "c.docx", _minimal_docx(SENTINEL))
+
+
+def test_a_document_part_that_declares_entities_is_refused(tmp_path):
+    """An attachment is untrusted input, and ElementTree expands internal entities.
+
+    Ten nested definitions are the textbook way to turn 200 bytes into gigabytes.
+    A document part has no reason to declare any, so one that does is not parsed
+    — and the file still gets a banner naming it rather than a traceback.
+    """
+    bomb = (
+        '<?xml version="1.0"?><!DOCTYPE d [<!ENTITY a "AAAAAAAAAA">'
+        '<!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">]>'
+        '<office:document-content '
+        'xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" '
+        'xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">'
+        '<office:body><office:text><text:p>&b;%s</text:p>'
+        '</office:text></office:body></office:document-content>'
+    )
+    handler = _handler(tmp_path)
+    rendered = _render(tmp_path, handler, "bomb.odt", _odt_document(content_xml=bomb))
+    assert SENTINEL not in rendered
+    assert "bomb.odt" in rendered
+
+
+def test_a_reader_that_falls_over_still_produces_a_message(tmp_path):
+    """An extractor walks attacker-supplied structure, so it can fail unexpectedly.
+
+    Four thousand nested `<text:span>` elements exhaust Python's recursion limit
+    inside the paragraph walk. Every deliberate path through these readers
+    answers "cannot read this" with `None`, and an unplanned exception means the
+    same thing — so it becomes the same banner rather than a traceback out of
+    `build_user_content`, which would take the whole message down with it.
+    """
+    ns = ('xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" '
+          'xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"')
+    deep = "<text:span>" * 4000 + SENTINEL + "</text:span>" * 4000
+    xml = (f'<?xml version="1.0"?><office:document-content {ns}><office:body>'
+           f"<office:text><text:p>{deep}</text:p></office:text>"
+           f"</office:body></office:document-content>")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("content.xml", xml)
+
+    handler = _handler(tmp_path)
+    rendered = _render(tmp_path, handler, "deep.odt", buf.getvalue())
+    assert "deep.odt" in rendered
+    assert "no extractable text found" in rendered
+    assert SENTINEL not in rendered
+
+
+def test_a_doc_that_is_not_a_doc_is_not_pretended_to_be_one(tmp_path):
+    """`Law 1`: the banner must stay true for the files it is true about."""
+    handler = _handler(tmp_path)
+    for name, body in [
+        ("fake.doc", b"just some text saved with the wrong suffix"),
+        ("fake.odt", b"PK\x03\x04 but not an ODF package"),
+        ("empty.doc", b""),
+    ]:
+        rendered = _render(tmp_path, handler, name, body)
+        assert name in rendered, name
+        assert "no extractable text found" in rendered, (name, rendered)
+        assert "requires markitdown" not in rendered, name

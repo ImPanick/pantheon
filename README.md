@@ -62,7 +62,7 @@ the `upstream` remote.
 **What this fork has added, and what proves it, is in the [proof ledger](LEDGER.md)** — 26 claims,
 each with where its number came from and a command you can run to check it. The short version:
 the Brain rebuilt around a local embedding model that needs no service, an agent that can reach
-the host it runs on behind a denylist it cannot edit, eighteen checkers in CI that upstream does
+the host it runs on behind a denylist it cannot edit, nineteen checkers in CI that upstream does
 not have, every outbound call paced, mailbox and service sign-in reduced to one record type, and
 full AGPL attribution for code that shipped without it.
 
@@ -134,7 +134,7 @@ runs in CI and the count only goes down.
 
 ## Status
 
-**508 tracked tasks, 286 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
+**522 tracked tasks, 306 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
 it is the only place work is tracked — one list, one progress area, validated by a script that
 recounts every phase row against its own ticks. It exists because the summary line was once wrong
 by nineteen and carried forward unread from entry to entry, because each author copied the line
