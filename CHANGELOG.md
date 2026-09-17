@@ -11,7 +11,74 @@ switches — `AUTH_ENABLED`, `PANTHEON_SINGLE_USER` and the `use_rag` field on
 
 ---
 
+## Versions
+
+**Which version am I running?** Ask the instance: `GET /api/version` returns
+`{"version": "…"}`, `GET /api/readiness` carries the same string, and the
+Prometheus surface exposes it as `pantheon_build_info{version="…"}`. All three
+read one constant, `APP_VERSION` in `src/constants.py`, and nothing else in this
+tree declares a version — `tests/test_one_version_string.py` fails if a second
+one appears (`Law 14`).
+
+**Until 2026-09-17 that answer was wrong rather than missing.** `APP_VERSION`
+read `1.0.3`, which is *Odysseus's* version: set by an upstream maintainer in
+`3f2ad23` ("chore(release): align dev version with 1.0.3", cherry-picked from
+upstream `e71f8ce`), carried across the fork, and never changed. Two different
+programs reported the same number. `B450` corrected it, and this section is the
+scheme that stops it drifting again.
+
+**The scheme.**
+
+- **`MAJOR.MINOR.PATCH`, and the line starts at `0.1.0`.** `0.x` is a statement
+  about support, not modesty: [`SECURITY.md`](SECURITY.md) supports `main` and
+  nothing else, and this repository is not public yet — the rows that gate the
+  flip are listed in [`.pantheon/SHIP-LINE.md`](.pantheon/SHIP-LINE.md).
+  **`1.0.0` is the first release that is public, tagged and supported.** Until
+  then, an operator-visible break bumps the **minor** and gets a *Changed — read
+  this before upgrading* block; everything else bumps the **patch**.
+- **Three things carry the version and they are equal or the build is wrong**:
+  the `APP_VERSION` constant, the `## [x.y.z] — date` heading below, and the
+  annotated git tag `vx.y.z`. `tests/test_version_and_changelog_agree.py` pins
+  the first two to each other; the tag is checked by the person cutting it,
+  against the same string.
+- **`## [Unreleased]` is where work lands between releases.** Cutting a release
+  renames that heading to `## [x.y.z] — YYYY-MM-DD`, opens a fresh empty
+  `[Unreleased]` above it, and moves `APP_VERSION` to match. Nothing is edited
+  under a heading that already carries a date — a released section is a record of
+  what was claimed at the time, and quietly correcting one is the kind of
+  dishonesty `B44` is about.
+- **To see what changed between two versions**, read every `## [x.y.z]` section
+  between them, newest first. Each carries the same four sub-headings in the same
+  order — *Diverged from Odysseus*, *Added*, *Changed — read this before
+  upgrading*, *Fixed* — so the block that can alter what your host does without
+  you editing anything is always in the same place.
+
+**Cutting a release** (the tag is the one step no test can do for you):
+
+    # on the commit being released, with APP_VERSION and the heading already equal
+    git tag -a v0.1.0 -m "Pantheon 0.1.0"
+    git push origin v0.1.0
+
+`0.1.0` is not tagged in this tree yet, deliberately: a release tag has to point
+at the commit that is actually released, and the commit this section was written
+on is a worktree tip awaiting a merge. The tag is cut on the merge.
+
+---
+
 ## [Unreleased]
+
+_Nothing yet. Entries land here and move down when a version is cut._
+
+---
+
+## [0.1.0] — 2026-09-17
+
+**The first version of Pantheon that is Pantheon's.** Everything below was
+already in the tree; what `0.1.0` adds is a number that belongs to this project
+and a heading a later release can be read against. Nothing here is a behaviour
+change made on 2026-09-17 except the version string itself — the *Changed — read
+this before upgrading* block below is the accumulated set since the fork, and an
+operator upgrading from a commit rather than from a tag should read all of it.
 
 ### Diverged from Odysseus
 

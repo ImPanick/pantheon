@@ -36,6 +36,66 @@ only when you intentionally want LAN/reverse-proxy access.
 > Cookbook serves local models on CPU only. For GPU-accelerated model serving,
 > run natively instead — see [Apple Silicon](#apple-silicon) below.
 
+### Deploying an update
+
+```bash
+git pull
+./scripts/pantheon-deploy run          # or: pantheon deploy run
+```
+
+This is the whole deploy. It builds, brings the service up, **waits for the
+container to report healthy**, verifies it, prints a report and exits non-zero
+if anything failed.
+
+**Why waiting matters.** `docker compose up -d` prints `Container
+pantheon-1 Started` and returns as soon as the container starts, but Pantheon
+binds port 7000 only after it has finished importing itself — 35–60 seconds on
+a typical host, because it loads embeddings, the vector store and the MCP
+layer first. Anything that probes the app before then gets `Connection
+refused` on every route and looks exactly like a failed deploy. The `pantheon`
+service carries a healthcheck that asks `127.0.0.1:7000/api/health` for a real
+answer, so `docker ps` distinguishes *running* from *serving*, and this script
+waits for it instead of sleeping a guessed number of seconds.
+
+Note that Docker does **not** restart a container it marks unhealthy —
+`restart: unless-stopped` acts on process exit. The healthcheck makes a wedged
+container visible; clearing it is still `docker compose restart pantheon`.
+
+What `run` verifies, after the container is healthy:
+
+| Check | What it catches |
+|---|---|
+| every route in the probe's table answers what it answered when measured | a route that 404s or sits behind the login wall after a change |
+| every `mcp_servers/*_server.py` imports in a **fresh interpreter** | the import cycle that silently killed the Email and RAG MCP servers for a week |
+| no traceback in this container's boot log | anything the app caught, logged and carried on from |
+| the bytes in the image match the committed blobs | an image built from a working tree that has drifted from the repository |
+
+Useful variants:
+
+```bash
+./scripts/pantheon-deploy run --no-build      # restart and verify, no rebuild
+./scripts/pantheon-deploy verify              # verify what is running now
+./scripts/pantheon-deploy run --timeout 600   # a slow or cold host
+./scripts/pantheon-deploy run --json          # machine-readable report
+```
+
+**Rolling back.** `run` tags the image it is about to replace as
+`pantheon-deploy:previous` before it builds, and prints the rollback command if
+the deploy fails. It does **not** roll back on its own:
+
+```bash
+./scripts/pantheon-deploy rollback
+```
+
+That is deliberate. Rolling the *image* back is reliable; rolling the *data*
+back is not. Pantheon runs schema migrations on every startup and they are
+forward-only — most are additive and an older image reads straight through
+them, but at least one rewrites existing rows into a form the older image
+cannot read. An automatic rollback would sometimes turn a failed deploy into a
+worse one, silently, so the decision stays with you. If `docker image prune`
+has removed the previous image, `docker images` will show what else is on the
+host.
+
 ### Native Linux / macOS
 ```bash
 git clone https://github.com/ImPanick/pantheon.git

@@ -1,12 +1,19 @@
 name: CodeQL
 
 # Advanced setup so CodeQL also runs on pull requests (including from forks),
-# surfacing findings before merge instead of only after a change lands on dev.
+# surfacing findings before merge instead of only after a change lands.
+#
+# `B433`. That sentence was false from the day it was written. The pull-request
+# trigger read `branches: [dev]`, which filters on the branch a PR is *merging
+# into*, and there has never been a `dev` branch in this repository — so
+# **CodeQL has never run on a single pull request**, only on pushes to main and
+# the weekly schedule. The filter is gone rather than repointed at `main`: a
+# pull request is worth analysing whatever it targets, and a branch filter that
+# has to be maintained is the thing that broke.
 on:
   push:
-    branches: [dev, main]
+    branches: [main]
   pull_request:
-    branches: [dev]
   schedule:
     - cron: "17 3 * * 1"
 

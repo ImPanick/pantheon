@@ -1,0 +1,700 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""pantheon-deploy — build, restart and verify the local container.
+
+`B440`/`B442`. Deployment was a sequence of six commands living in a chat
+transcript, hand-run five times on 2026-09-17. Step 4 of that sequence was
+"wait", and waiting is where it went wrong twice: `docker compose up -d`
+returns when the container has *started*, and this app binds port 7000
+35-60 s later, so a probe fired at 25 s answers `Connection refused` on every
+route and reads exactly like a failed deploy.
+
+This replaces steps 2-6 with one command that waits for *healthy* instead of
+sleeping, and then verifies:
+
+    scripts/pantheon-deploy run          build, up, wait, verify
+    scripts/pantheon-deploy verify       verify whatever is running now
+    scripts/pantheon-deploy rollback     put the previous image back
+    scripts/pantheon-deploy probe        (inside the container; not for humans)
+
+`pantheon deploy ...` works too — `scripts/pantheon` discovers this file the
+way git discovers `git-foo`.
+
+**The verification is the point.** Four things, each of which was a real
+outage:
+
+  * every route in `ROUTES` answers what it answered when it was measured.
+  * every `mcp_servers/*_server.py` imports in a *fresh interpreter*, which is
+    the only condition that shows `B131` — two MCP servers were dead for a week
+    because every test imports them into a process where `src.agent_tools` is
+    already loaded, and `builtin_mcp.py` logs "failed to connect" and carries
+    on.
+  * no traceback in the boot log.
+  * **the bytes in the image are the bytes in git** (`B360`, `B362`). The
+    deployment host built the image from CRLF-translated copies of twelve
+    vendored bundles for days and every tool reported the tree clean.
+    `tests/test_the_working_tree_is_the_bytes_git_has.py` asks that of the
+    working tree; this asks it of what actually shipped.
+
+**`Law 16`.** Nothing here reaches an external service. `docker compose build`
+pulls base images and wheels, which is the build; the probe talks only to
+127.0.0.1 inside the container, and every other call is to the local Docker
+socket and the local git repository.
+
+**Rollback is deliberate, not automatic.** See `cmd_rollback`.
+
+**Unrun.** Every Docker call in this file is reasoned, not executed: there is
+no Docker daemon in the environment this was written in. What *is* driven by
+tests is all of the logic around them — see
+`tests/test_the_deploy_script_fails_when_the_deploy_failed.py`.
+"""
+from __future__ import annotations
+
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "_lib"))
+from cli import emit, fail, common_parser, run, REPO_ROOT  # noqa: E402
+
+import hashlib  # noqa: E402
+import json  # noqa: E402
+import re  # noqa: E402
+import subprocess  # noqa: E402
+import time  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+SERVICE = "pantheon"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# What the probe asks for, and what the app answered when it was asked.
+#
+# Measured 2026-09-17 by booting the real app out of process with the compose
+# defaults — `AUTH_ENABLED=true`, `LOCALHOST_BYPASS=false` — and asking for each
+# path with redirects off. `tests/test_the_deploy_probe_asks_for_what_the_app_
+# answers.py` re-measures it, so a route that changes contract fails in the
+# suite rather than at 2am on a deployment.
+#
+# Sets, not single numbers, because two of these legitimately differ by
+# configuration: with `AUTH_ENABLED=false` (or `LOCALHOST_BYPASS=true`, which
+# the probe's requests do come from) the redirects become 200s.
+ROUTES = (
+    ("/api/health", (200,), "the healthcheck's own route; auth-exempt"),
+    ("/api/version", (200,), "auth-exempt"),
+    ("/api/auth/status", (200,), "the first call the login page makes"),
+    ("/login", (200,), "where an unauthenticated visitor lands"),
+    ("/", (200, 302), "302 -> /login when auth is on"),
+    ("/docs", (200, 302), "`B212`'s vendored Swagger UI"),
+    ("/static/js/theme.js", (200,), "the /static mount answers files"),
+    # `B441`. 401 is what this answers today with the compose defaults, and its
+    # own docstring calls it "suitable for an orchestrator readiness probe".
+    # Accepted here rather than asserted at 200 because this script is not the
+    # place to fix it; the row is.
+    ("/api/ready", (200, 401, 503), "`B441` — auth-gated today"),
+)
+
+# Tracked roots whose bytes end up in the image. `.dockerignore` drops `docs/`,
+# `tests/`, `api/`, `/data/`, `/logs/` and the top-level `*.md` files, none of
+# which are below. Markdown, logs and databases are excluded at any depth as
+# well: Docker's `*.md` does not cross a `/`, so `library/**/SKILL.md` does in
+# fact ship, but a manifest that is wrong in the *failing* direction teaches its
+# operator to ignore it. What this covers is every byte of `static/` and every
+# Python module — which is `B360`/`B362`'s class exactly.
+MANIFEST_ROOTS = (
+    "static", "core", "src", "routes", "services", "mcp_servers",
+    "integrations", "netagent", "companion", "library", "config",
+    "scripts", "docker", "app.py", "setup.py", "launcher.py", "Dockerfile",
+    "requirements.txt", "requirements-optional.txt", "requirements-image.txt",
+    "pyproject.toml", "Pantheon.spec", "package.json", "start-macos.sh",
+    "build-macos-app.sh", "install-service.sh",
+    # The three files `B361` measured as legitimately differing from their
+    # blobs. They ship, and they are the only exercise the `eol=crlf`
+    # allowance in `compare_bytes` gets.
+    "build-windows-portable.ps1", "launch-windows.ps1", "update_windows.bat",
+)
+MANIFEST_SKIP = re.compile(r"\.(md|log|db|sqlite3?)$|(^|/)node_modules/|search_analytics\.json$")
+
+# The tag this script parks the outgoing image under before it builds. Docker's
+# own tag store is the state: it survives the script, an operator can see it
+# with `docker images pantheon-deploy`, and it needs no file anywhere.
+PREVIOUS_TAG = "pantheon-deploy:previous"
+
+TRACEBACK_MARKER = "Traceback (most recent call last):"
+
+
+class DeployError(Exception):
+    """A step failed. The message is what the operator reads."""
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Docker. Every call the host makes goes through this one class so the tests
+# can substitute a fake and drive every failure path without a daemon.
+
+class Docker:
+    def __init__(self, cwd: str | os.PathLike = REPO_ROOT, echo: bool = True):
+        self.cwd = str(cwd)
+        self.echo = echo
+
+    def run(self, args: list[str], capture: bool = True, timeout: int | None = 3600,
+            stdin: str | None = None):
+        """Run `docker ...`. Returns a CompletedProcess; never raises on exit code."""
+        argv = ["docker", *args]
+        if self.echo and not capture:
+            sys.stderr.write("  $ " + " ".join(argv) + "\n")
+        return subprocess.run(argv, cwd=self.cwd, timeout=timeout, input=stdin,
+                              capture_output=capture, text=True)
+
+    def compose(self, args: list[str], **kw):
+        return self.run(["compose", *args], **kw)
+
+
+def _out(proc) -> str:
+    return (getattr(proc, "stdout", "") or "").strip()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Health. The whole reason this script exists.
+
+def health_status(inspect_stdout: str) -> str:
+    """`docker inspect --format '{{.State.Health.Status}}'` → one word.
+
+    Docker prints `<no value>` when the container has no healthcheck at all,
+    and that is not a benign "unknown": without one there is nothing to wait
+    for, and the caller has to say so rather than poll forever.
+    """
+    text = (inspect_stdout or "").strip()
+    if not text or text in ("<no value>", "<nil>", "null"):
+        return "none"
+    return text.splitlines()[0].strip()
+
+
+def container_id(docker: Docker, service: str = SERVICE) -> str:
+    cid = _out(docker.compose(["ps", "-q", service]))
+    return cid.splitlines()[0].strip() if cid else ""
+
+
+def wait_for_healthy(docker: Docker, service: str = SERVICE, timeout: float = 300.0,
+                     poll: float = 3.0, sleeper=time.sleep, clock=time.monotonic,
+                     on_tick=None) -> float:
+    """Block until the container reports healthy. Returns seconds waited.
+
+    This is the fix for the defect in the hand-run sequence. A fixed sleep is
+    wrong in both directions — 25 s was too short twice, and a sleep long
+    enough to always be right is a minute added to every deploy that did not
+    need it.
+
+    Raises `DeployError` on `unhealthy`, on a container that is not running,
+    on a service with no healthcheck, and on timeout.
+    """
+    started = clock()
+    cid = container_id(docker, service)
+    if not cid:
+        raise DeployError(f"no container for service {service!r} — `docker compose up -d` did not create one")
+    fmt_health = "--format={{.State.Health.Status}}"
+    fmt_state = "--format={{.State.Status}}"
+    last = ""
+    while True:
+        status = health_status(_out(docker.run(["inspect", fmt_health, cid])))
+        waited = clock() - started
+        if status == "none":
+            raise DeployError(
+                f"service {service!r} has no healthcheck, so there is nothing to wait for. "
+                "docker-compose.yml defines one on `pantheon`; this container predates it "
+                "or is running from a different compose file — recreate it with "
+                "`docker compose up -d --force-recreate`.")
+        if status == "healthy":
+            return waited
+        if status == "unhealthy":
+            raise DeployError(
+                f"{service} went unhealthy after {waited:.0f}s. The healthcheck asks "
+                "127.0.0.1:7000/api/health for a JSON body saying healthy; see "
+                "`docker inspect --format '{{json .State.Health}}'` for the last outputs.")
+        state = _out(docker.run(["inspect", fmt_state, cid])).strip()
+        if state and state not in ("running", "created", "restarting"):
+            raise DeployError(f"{service} is {state!r}, not running — it exited during startup")
+        if waited >= timeout:
+            raise DeployError(
+                f"{service} was still {status!r} after {waited:.0f}s (--timeout {timeout:.0f}). "
+                "The compose healthcheck allows a 120s start_period; a boot slower than "
+                "that is either a much colder host than the one this was measured on, or "
+                "a real failure. `docker compose logs pantheon` has the reason.")
+        if status != last and on_tick:
+            on_tick(status, waited)
+        last = status
+        sleeper(poll)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The shipped-bytes manifest. Host side: what git has.
+
+def _git(args: list[str], root=REPO_ROOT) -> str:
+    proc = subprocess.run(["git", *args], cwd=str(root), capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise DeployError(f"git {' '.join(args)} failed: {proc.stderr.strip()[:400]}")
+    return proc.stdout
+
+
+def manifest_paths(listing: str) -> list[str]:
+    """Filter `git ls-files -s` output down to the paths the image carries."""
+    paths = []
+    for line in listing.splitlines():
+        meta, _, path = line.partition("\t")
+        parts = meta.split()
+        if len(parts) < 2 or parts[0] == "160000":   # submodule: no blob of ours
+            continue
+        if MANIFEST_SKIP.search(path):
+            continue
+        paths.append((path, parts[1]))
+    return paths
+
+
+def declared_eol(paths: list[str], root=REPO_ROOT) -> dict:
+    """`path -> 'crlf' | 'lf' | 'unspecified'`, straight from `git check-attr`.
+
+    Same question `tests/test_the_working_tree_is_the_bytes_git_has.py` asks,
+    for the same reason: `*.ps1` and `*.bat` are declared `eol=crlf`, so their
+    bytes are *supposed* to differ from the blob and flagging them would be a
+    false alarm on every Windows deploy.
+    """
+    if not paths:
+        return {}
+    proc = subprocess.run(["git", "check-attr", "--stdin", "-z", "eol"], cwd=str(root),
+                          input="\0".join(paths), capture_output=True, text=True)
+    if proc.returncode != 0:
+        return {}
+    fields = proc.stdout.split("\0")
+    return {fields[i]: fields[i + 2] for i in range(0, len(fields) - 2, 3)}
+
+
+def build_manifest(root=REPO_ROOT) -> dict:
+    """`{path: {"blob": oid, "eol": "crlf"|...}}` for every file the image ships."""
+    listing = _git(["ls-files", "-s", "--", *MANIFEST_ROOTS], root=root)
+    entries = manifest_paths(listing)
+    if not entries:
+        raise DeployError("git ls-files matched nothing — is this a repository?")
+    eol = declared_eol([p for p, _ in entries], root=root)
+    return {p: {"blob": oid, "eol": eol.get(p, "unset")} for p, oid in entries}
+
+
+def blob_id(data: bytes) -> str:
+    """git's object name for these bytes — the same hash `git ls-files -s` prints."""
+    return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
+
+
+def compare_bytes(manifest: dict, actual: dict) -> dict:
+    """Split the probe's answer into match / mismatch / missing.
+
+    `actual` is `{path: blob_oid_or_None}` as hashed inside the container. A
+    declared `eol=crlf` path is allowed to match after its carriage returns are
+    stripped — the probe reports that second hash as `blob_lf`.
+    """
+    matched, mismatched, missing = [], [], []
+    for path, want in sorted(manifest.items()):
+        got = actual.get(path)
+        if got is None:
+            missing.append(path)
+            continue
+        if got.get("blob") == want["blob"]:
+            matched.append(path)
+        elif want.get("eol") == "crlf" and got.get("blob_lf") == want["blob"]:
+            matched.append(path)
+        else:
+            mismatched.append((path, got.get("bytes"), got.get("blob")))
+    return {"matched": matched, "mismatched": mismatched, "missing": missing}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The boot log.
+
+def tracebacks_in(log_text: str) -> list[str]:
+    """One entry per `Traceback (most recent call last):`, with its last line.
+
+    Deliberately not `grep -ci traceback`, which is what was being run by hand:
+    that counts prose, comments and this script's own name, and a check that
+    cries wolf gets switched off.
+    """
+    lines = (log_text or "").splitlines()
+    found = []
+    for i, line in enumerate(lines):
+        if TRACEBACK_MARKER not in line:
+            continue
+        tail = ""
+        for nxt in lines[i + 1:i + 40]:
+            stripped = nxt.strip()
+            if stripped and not stripped.startswith(("File \"", "  ", "~", "^")):
+                tail = stripped
+                break
+        found.append(tail or line.strip())
+    return found
+
+
+def boot_log(docker: Docker, service: str = SERVICE, since: str = "") -> str:
+    args = ["logs", "--no-color", "--no-log-prefix"]
+    if since:
+        args += ["--since", since]
+    args.append(service)
+    proc = docker.compose(args)
+    return (_out(proc) or "") + (getattr(proc, "stderr", "") or "")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The probe. This half runs INSIDE the container.
+
+PROBE_TIMEOUT = 15
+
+
+def _probe_routes(routes) -> list:
+    import urllib.error
+    import urllib.request
+
+    class _NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *a, **kw):
+            return None
+
+    opener = urllib.request.build_opener(_NoRedirect)
+    out = []
+    for path, expected, why in routes:
+        url = "http://127.0.0.1:7000" + path
+        row = {"path": path, "expected": list(expected), "why": why}
+        try:
+            with opener.open(url, timeout=PROBE_TIMEOUT) as res:
+                row["status"] = res.status
+        except urllib.error.HTTPError as e:
+            row["status"] = e.code
+        except Exception as e:                       # refused, reset, timeout
+            row["status"] = 0
+            row["error"] = f"{type(e).__name__}: {e}"
+        row["ok"] = row["status"] in expected
+        out.append(row)
+    return out
+
+
+def _probe_mcp(app_root: Path) -> list:
+    """Import every shipped MCP server in an interpreter that has loaded nothing.
+
+    Enumerated from what is on disk rather than from a list kept here, so a
+    fifth server is covered the day it ships. This is the condition `B131` was
+    invisible under everywhere else: `tests/conftest.py` pre-imports
+    `src.agent_tools`, and that pre-import is what hides the cycle.
+    """
+    servers = sorted(p.stem for p in (app_root / "mcp_servers").glob("*_server.py"))
+    out = []
+    for name in servers:
+        proc = subprocess.run(
+            [sys.executable, "-c", f"import sys; sys.path.insert(0, {str(app_root)!r}); "
+                                   f"import mcp_servers.{name}"],
+            cwd=str(app_root), capture_output=True, text=True, timeout=180)
+        out.append({"module": name, "ok": proc.returncode == 0,
+                    "error": "" if proc.returncode == 0 else proc.stderr.strip()[-1200:]})
+    return out
+
+
+def _probe_bytes(app_root: Path, manifest: dict) -> dict:
+    out = {}
+    for path, want in manifest.items():
+        full = app_root / path
+        try:
+            raw = full.read_bytes()
+        except OSError:
+            continue
+        row = {"bytes": len(raw), "blob": blob_id(raw)}
+        if want.get("eol") == "crlf":
+            row["blob_lf"] = blob_id(raw.replace(b"\r\n", b"\n"))
+        out[path] = row
+    return out
+
+
+def cmd_probe(args) -> None:
+    """Runs inside the container. Reads a manifest on stdin, prints a report.
+
+    Stdlib only, and no import of anything under `src/` — this has to keep
+    working in exactly the case it is there to detect.
+    """
+    app_root = Path(args.app_root).resolve()
+    raw = sys.stdin.read().strip()
+    manifest = json.loads(raw).get("manifest", {}) if raw else {}
+    report = {
+        "routes": _probe_routes(ROUTES),
+        "mcp": _probe_mcp(app_root),
+        "bytes": _probe_bytes(app_root, manifest),
+    }
+    sys.stdout.write("PANTHEON_PROBE=" + json.dumps(report, sort_keys=True) + "\n")
+
+
+def parse_probe_output(stdout: str) -> dict:
+    line = next((l for l in (stdout or "").splitlines()
+                 if l.startswith("PANTHEON_PROBE=")), None)
+    if line is None:
+        raise DeployError(
+            "the in-container probe printed no result. `docker compose exec` reached "
+            f"the container but the probe did not finish:\n{(stdout or '')[-1500:]}")
+    return json.loads(line[len("PANTHEON_PROBE="):])
+
+
+def run_probe(docker: Docker, manifest: dict, service: str = SERVICE) -> dict:
+    proc = docker.compose(
+        ["exec", "-T", service, "python", "/app/scripts/pantheon-deploy", "probe"],
+        capture=True, timeout=900,
+        stdin=json.dumps({"manifest": manifest}))
+    if getattr(proc, "returncode", 1) != 0 and "PANTHEON_PROBE=" not in (proc.stdout or ""):
+        raise DeployError(
+            "could not run the probe inside the container: "
+            f"{(proc.stderr or proc.stdout or '').strip()[-1500:]}")
+    return parse_probe_output(proc.stdout)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Verdict and report.
+
+def verdict(report: dict, allow_tracebacks: int = 0) -> dict:
+    """Turn the raw probe answer into pass/fail rows. Pure; the tests drive it."""
+    rows = []
+
+    routes = report.get("routes", [])
+    bad = [r for r in routes if not r.get("ok")]
+    rows.append({
+        "name": "routes", "ok": not bad and bool(routes),
+        "detail": f"{len(routes) - len(bad)}/{len(routes)} answered as measured",
+        "lines": [f"{r['path']} answered {r['status'] or 'connection refused'}, "
+                  f"expected {'/'.join(str(e) for e in r['expected'])}" for r in bad],
+    })
+
+    mcp = report.get("mcp", [])
+    broken = [m for m in mcp if not m.get("ok")]
+    rows.append({
+        "name": "mcp servers", "ok": not broken and len(mcp) >= 4,
+        "detail": f"{len(mcp) - len(broken)}/{len(mcp)} import in a fresh interpreter"
+                  + ("" if len(mcp) >= 4 else "  — fewer than the four that ship"),
+        "lines": [f"mcp_servers/{m['module']}.py: {m['error'].splitlines()[-1] if m['error'] else 'failed'}"
+                  for m in broken],
+    })
+
+    tb = report.get("tracebacks", [])
+    rows.append({
+        "name": "startup log", "ok": len(tb) <= allow_tracebacks,
+        "detail": f"{len(tb)} traceback(s) in {report.get('log_lines', 0)} log lines"
+                  + (f", {allow_tracebacks} allowed" if allow_tracebacks else ""),
+        "lines": tb[:5],
+    })
+
+    b = report.get("bytes_compared") or {}
+    total = len(b.get("matched", [])) + len(b.get("mismatched", [])) + len(b.get("missing", []))
+    rows.append({
+        "name": "shipped bytes", "ok": not b.get("mismatched") and not b.get("missing") and total > 0,
+        "detail": f"{len(b.get('matched', []))}/{total} match the committed blob",
+        "lines": [f"{p}: {n} bytes in the image, blob {g[:12] if g else '?'} != git"
+                  for p, n, g in b.get("mismatched", [])[:8]]
+             + [f"{p}: not in the image" for p in b.get("missing", [])[:8]],
+    })
+
+    return {"rows": rows, "ok": all(r["ok"] for r in rows)}
+
+
+def render(rows: list, timings: dict, ok: bool) -> str:
+    out = []
+    for label, seconds in timings.items():
+        out.append(f"  {label:<16} ok     {seconds:>8.1f}s")
+    for row in rows:
+        mark = "ok  " if row["ok"] else "FAIL"
+        out.append(f"  {row['name']:<16} {mark}   {row['detail']}")
+        for line in row.get("lines", []):
+            out.append(f"      · {line}")
+    out.append("")
+    out.append("deploy ok" if ok else "deploy FAILED")
+    if not ok:
+        out.append("")
+        out.append("  The previous image is still tagged " + PREVIOUS_TAG + ".")
+        out.append("  To put it back:  scripts/pantheon-deploy rollback")
+    return "\n".join(out)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Commands.
+
+def _verify(docker: Docker, args, since: str = "") -> dict:
+    manifest = build_manifest()
+    report = run_probe(docker, manifest, args.service)
+    log = boot_log(docker, args.service, since=since)
+    report["tracebacks"] = tracebacks_in(log)
+    report["log_lines"] = len(log.splitlines())
+    report["bytes_compared"] = compare_bytes(manifest, report.get("bytes", {}))
+    report.pop("bytes", None)
+    return report
+
+
+def _finish(args, report: dict, timings: dict) -> None:
+    result = verdict(report, allow_tracebacks=args.allow_tracebacks)
+    if getattr(args, "json", False):
+        emit({"ok": result["ok"], "timings": timings, "rows": result["rows"]}, args)
+    else:
+        sys.stdout.write(render(result["rows"], timings, result["ok"]) + "\n")
+    if not result["ok"]:
+        sys.exit(1)
+
+
+def _started_at(docker: Docker, service: str) -> str:
+    cid = container_id(docker, service)
+    if not cid:
+        return ""
+    return _out(docker.run(["inspect", "--format={{.State.StartedAt}}", cid]))
+
+
+def _tag_previous(docker: Docker, service: str) -> str:
+    """Park the image the running container uses under `PREVIOUS_TAG`.
+
+    Returns the image reference compose will rebuild onto, or "" when there is
+    nothing running to roll back to (a first deploy, or a stack that is down).
+    """
+    cid = container_id(docker, service)
+    if not cid:
+        return ""
+    image_id = _out(docker.run(["inspect", "--format={{.Image}}", cid]))
+    image_ref = _out(docker.run(["inspect", "--format={{.Config.Image}}", cid]))
+    if not image_id:
+        return ""
+    docker.run(["tag", image_id, PREVIOUS_TAG])
+    return image_ref
+
+
+def cmd_run(args) -> None:
+    docker = Docker()
+    timings = {}
+    previous_ref = _tag_previous(docker, args.service)
+
+    if not args.no_build:
+        t0 = time.monotonic()
+        proc = docker.compose(["build", args.service], capture=False, timeout=7200)
+        if proc.returncode != 0:
+            raise DeployError(f"`docker compose build {args.service}` exited {proc.returncode}")
+        timings["build"] = time.monotonic() - t0
+
+    t0 = time.monotonic()
+    proc = docker.compose(["up", "-d", args.service], capture=False, timeout=1800)
+    if proc.returncode != 0:
+        raise DeployError(f"`docker compose up -d {args.service}` exited {proc.returncode}")
+    timings["up"] = time.monotonic() - t0
+
+    started = _started_at(docker, args.service)
+    timings["healthy"] = wait_for_healthy(
+        docker, args.service, timeout=args.timeout,
+        on_tick=lambda s, w: sys.stderr.write(f"  waiting: {s} ({w:.0f}s)\n"))
+
+    report = _verify(docker, args, since=started)
+    report["previous_image"] = previous_ref
+    _finish(args, report, timings)
+
+
+def cmd_verify(args) -> None:
+    docker = Docker()
+    started = _started_at(docker, args.service)
+    _finish(args, _verify(docker, args, since=started), {})
+
+
+def cmd_rollback(args) -> None:
+    """Put the previous image back. Explicit, and it is not run automatically.
+
+    **Why this is not wired into a failed `run`.** Rolling the image back is
+    reliable; rolling the *data* back is not, and `core/database.py` runs
+    forward-only migrations on every startup — `_migrate_add_events_name_column`
+    and eleven more are additive and survive a downgrade, but
+    `_migrate_encrypt_email_passwords` rewrites stored rows into a form the
+    older image does not read. An automatic rollback would turn some failed
+    deploys into a worse state than the one it was recovering from, silently.
+    So the script stops, says what failed, and leaves this one command to run.
+    """
+    docker = Docker()
+    proc = docker.run(["image", "inspect", "--format={{.Id}}", PREVIOUS_TAG])
+    if getattr(proc, "returncode", 1) != 0 or not _out(proc):
+        raise DeployError(
+            f"no image tagged {PREVIOUS_TAG}. It is written by `pantheon-deploy run` "
+            "immediately before it builds, so there is one only after a deploy this "
+            "script performed — and `docker image prune` removes it. "
+            "`docker images` will show what else is on this host.")
+    target = args.image or _running_image_ref(docker, args.service)
+    if not target:
+        raise DeployError(
+            "cannot work out which image reference compose uses for "
+            f"{args.service!r}. Pass it: `pantheon-deploy rollback --image <project>-{args.service}`. "
+            "`docker compose images` prints it.")
+    if docker.run(["tag", PREVIOUS_TAG, target]).returncode != 0:
+        raise DeployError(f"could not retag {PREVIOUS_TAG} onto {target}")
+    if docker.compose(["up", "-d", "--no-build", args.service],
+                      capture=False, timeout=1800).returncode != 0:
+        raise DeployError("compose could not start the previous image")
+    started = _started_at(docker, args.service)
+    waited = wait_for_healthy(docker, args.service, timeout=args.timeout)
+    sys.stderr.write(f"  rolled back to {target} (healthy after {waited:.0f}s)\n")
+    sys.stderr.write("  NOTE: this rolled back the image, not the database. "
+                     "Startup migrations are forward-only.\n")
+    _finish(args, _verify(docker, args, since=started), {"rollback": waited})
+
+
+def _running_image_ref(docker: Docker, service: str) -> str:
+    cid = container_id(docker, service)
+    if cid:
+        ref = _out(docker.run(["inspect", "--format={{.Config.Image}}", cid]))
+        if ref:
+            return ref
+    raw = _out(docker.compose(["config", "--format", "json"]))
+    if raw:
+        try:
+            cfg = json.loads(raw)
+        except ValueError:
+            return ""
+        svc = (cfg.get("services") or {}).get(service) or {}
+        if svc.get("image"):
+            return svc["image"]
+        if cfg.get("name"):
+            return f"{cfg['name']}-{service}"
+    return ""
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+
+def build_parser():
+    p = common_parser("pantheon-deploy",
+                      "Build, restart and verify the local Pantheon container.")
+    common = p._common_parents[0]
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    def _shared(sp):
+        sp.add_argument("--service", default=SERVICE, help="compose service name")
+        sp.add_argument("--timeout", type=float, default=300.0,
+                        help="seconds to wait for healthy (default 300)")
+        sp.add_argument("--allow-tracebacks", type=int, default=0, metavar="N",
+                        help="tolerate N tracebacks in the boot log (default 0)")
+        sp.add_argument("--json", action="store_true", help="machine-readable report")
+        return sp
+
+    r = _shared(sub.add_parser("run", parents=[common],
+                               help="build, up, wait for healthy, verify"))
+    r.add_argument("--no-build", action="store_true",
+                   help="restart and verify without rebuilding the image")
+    r.set_defaults(func=cmd_run)
+
+    v = _shared(sub.add_parser("verify", parents=[common],
+                               help="verify whatever is running now"))
+    v.set_defaults(func=cmd_verify)
+
+    b = _shared(sub.add_parser("rollback", parents=[common],
+                               help=f"retag {PREVIOUS_TAG} back and restart"))
+    b.add_argument("--image", default="",
+                   help="the image reference compose uses (usually auto-detected)")
+    b.set_defaults(func=cmd_rollback)
+
+    pr = sub.add_parser("probe", parents=[common],
+                        help="(inside the container) emit the raw verification report")
+    pr.add_argument("--app-root", default="/app")
+    pr.set_defaults(func=cmd_probe)
+    return p
+
+
+def main(argv=None) -> int:
+    # `scripts/_lib/cli.py`'s `run` already turns any exception into
+    # `error: <message>` on stderr and exit 1, which is the contract every
+    # other `pantheon-*` CLI has. A `DeployError` carries the sentence the
+    # operator needs, so it needs no second handler here.
+    return run(build_parser(), argv)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

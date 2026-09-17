@@ -113,6 +113,37 @@ services:
         condition: service_healthy
       chromadb:
         condition: service_started
+    # `B440`. `up -d` returns when the container has *started*, and this app
+    # binds 7000 only after it has finished importing itself — measured at
+    # 7.4 s in a warm container here, 35-60 s on the deployment host, where the
+    # entrypoint's ownership repair and `setup.py` run first and the page cache
+    # is cold after a rebuild. With no healthcheck **Docker cannot tell
+    # *running* from *serving***: `docker ps` says Up, every route answers
+    # `Connection refused`, and a container that came up wedged looks exactly
+    # like one that is fine.
+    #
+    # The probe is an HTTP request this app answered, not a process check.
+    # `/api/health` is in `app.py`'s `AUTH_EXEMPT_EXACT`, so it answers 200
+    # with the default `AUTH_ENABLED=true`; parsing the body is what makes a
+    # login redirect or an error page *fail* the check rather than pass it.
+    # `127.0.0.1`, not `localhost`: uvicorn binds `0.0.0.0`, which is IPv4
+    # only, and `localhost` can resolve to `::1` first.
+    #
+    # `start_period` is twice the worst measured bind. Inside it a failing
+    # probe does not count against `retries` and a passing one marks the
+    # container healthy immediately, so the margin costs nothing on a healthy
+    # start; what it costs is how long a container that never comes up stays
+    # `starting` — 120 + 3x15 = 165 s before it reads `unhealthy`.
+    # **Docker does not restart an unhealthy container**; `restart:
+    # unless-stopped` acts on exit. This makes a wedge visible - to
+    # `docker ps`, to `scripts/pantheon-deploy`, to any
+    # `depends_on: condition: service_healthy` - it does not clear one.
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import json,sys,urllib.request as u; sys.exit(0 if json.load(u.urlopen('http://127.0.0.1:7000/api/health', timeout=5)).get('status') == 'healthy' else 1)\""]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
     restart: unless-stopped
     # NVIDIA overlay (from docker/gpu.nvidia.yml).
     deploy:

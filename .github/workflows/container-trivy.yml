@@ -1,9 +1,14 @@
 # Container image vulnerability scan (advisory)
 #
 # Trivy builds the application image and scans it for known-vulnerable OS and
-# Python packages. Advisory only -- it reports findings to the repo's Security
+# Python packages. Its FINDINGS are advisory -- they land in the repo's Security
 # tab without blocking a merge, because the image inevitably contains
 # already-known CVEs in upstream packages that are not this project's bug.
+#
+# `B435`: whether it LOOKED is not advisory. `continue-on-error` sat on both
+# jobs until 2026-09-17, so a failed image build or a failed SARIF upload
+# reported a green tick over a Security tab nothing had reached. The flag is on
+# the scan step now, and its name says so.
 #
 # Split from the Dockerfile lint (container-scan.yml) for two reasons:
 #
@@ -46,8 +51,13 @@ jobs:
     name: Trivy (image scan, advisory)
     if: github.event_name != 'push'
     runs-on: ubuntu-latest
-    # Advisory: a CVE in an upstream package must not block a PR.
-    continue-on-error: true
+    # `B435`. `continue-on-error` used to sit HERE, on the job, which made the
+    # whole job advisory — including the checkout and the image build. A
+    # Dockerfile that would not build reported a green tick, and the tick meant
+    # "I did not look" rather than "I looked and found nothing that blocks
+    # you". The flag belongs on the one step whose FINDINGS are advisory, and
+    # that is where it is now: **advisory about what it finds, never about
+    # whether it looked.**
     permissions:
       contents: read
     steps:
@@ -69,7 +79,8 @@ jobs:
           load: true
           tags: pantheon:ci
 
-      - name: Scan image with Trivy
+      - name: Scan image with Trivy (advisory — findings do not block)
+        continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           image-ref: pantheon:ci
@@ -95,7 +106,11 @@ jobs:
     name: Trivy (image scan + SARIF upload)
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
-    continue-on-error: true
+    # `B435`, and this job was the worse of the two: the flag on the job meant
+    # a failed SARIF upload reported success, and the upload is the entire
+    # point — `docs/security-ci.md` sends the reader to the Security tab for
+    # Trivy's findings, so a green tick over a tab nothing reached is the
+    # documentation being wrong with a tick beside it.
     permissions:
       contents: read
       security-events: write  # upload SARIF to the Security tab
@@ -116,7 +131,8 @@ jobs:
           load: true
           tags: pantheon:ci
 
-      - name: Scan image with Trivy
+      - name: Scan image with Trivy (advisory — findings do not block)
+        continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           image-ref: pantheon:ci

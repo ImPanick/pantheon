@@ -6,7 +6,26 @@ import os
 from src.env_flags import env_flag
 from src.runtime_paths import get_app_root, get_default_data_dir
 
-APP_VERSION = "1.0.3"
+# `B450`. The one version string this project has. `/api/version`,
+# `/api/readiness`, the `pantheon_build_info` metric, the diagnostic bundle,
+# OTLP's `service.version` and `docker-publish.yml`'s image tag all read this
+# and nothing else — do not add a second one anywhere (`Law 14`);
+# `tests/test_one_version_string.py` fails if you do.
+#
+# It read `"1.0.3"` until 2026-09-17, which was **Odysseus's** version, not
+# Pantheon's: last moved by an upstream maintainer in `3f2ad23`
+# ("chore(release): align dev version with 1.0.3", cherry-picked from upstream
+# `e71f8ce`), carried across the fork, and never touched since. Two different
+# programs reported the same number, and a Pantheon 619 rows of divergence past
+# the fork point answered `/api/version` with the number of an Odysseus release
+# it has nothing to do with.
+#
+# `0.x` is a claim and not modesty: `SECURITY.md` supports `main` and nothing
+# else, and the public flip is gated (`.pantheon/SHIP-LINE.md`). `1.0.0` is the
+# first release that is public, tagged and supported. The scheme, and how this
+# string, the git tag and `CHANGELOG.md`'s newest heading are kept equal, are in
+# `CHANGELOG.md` § Versions.
+APP_VERSION = "0.1.0"
 
 # Base paths
 BASE_DIR = os.path.join(get_app_root(), "")

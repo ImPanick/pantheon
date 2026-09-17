@@ -16,6 +16,25 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/ImPanick/pantheon/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://github.com/ImPanick/pantheon/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="https://github.com/ImPanick/pantheon/actions/workflows/secret-scan.yml?query=branch%3Amain"><img src="https://github.com/ImPanick/pantheon/actions/workflows/secret-scan.yml/badge.svg?branch=main" alt="Secret scan"></a>
+  <a href="https://github.com/ImPanick/pantheon/actions/workflows/workflow-security.yml?query=branch%3Amain"><img src="https://github.com/ImPanick/pantheon/actions/workflows/workflow-security.yml/badge.svg?branch=main" alt="Workflow security"></a>
+  <a href="https://github.com/ImPanick/pantheon/actions/workflows/dependency-review.yml?query=branch%3Amain"><img src="https://github.com/ImPanick/pantheon/actions/workflows/dependency-review.yml/badge.svg?branch=main" alt="Dependency review"></a>
+  <a href="https://github.com/ImPanick/pantheon/actions/workflows/container-scan.yml?query=branch%3Amain"><img src="https://github.com/ImPanick/pantheon/actions/workflows/container-scan.yml/badge.svg?branch=main" alt="Container scan"></a>
+</p>
+
+<p align="center">
+  <sub>
+    Live status of the five merge-blocking pipelines on <code>main</code>. These are the real thing —
+    click one and you get the run. <strong>A badge that says nothing is not a badge that says yes:</strong>
+    while this repository is private the images render blank or broken to anyone not signed in with
+    access, and a workflow that has never run reads <em>no status</em> rather than failing. What the
+    badges can and cannot tell you, in each state, is written down in
+    <a href="docs/security-ci.md#how-to-tell-whether-ci-is-actually-passing">the security CI guide</a>.
+  </sub>
+</p>
+
+<p align="center">
   <a href="#quick-start">Quick start</a> ·
   <a href="#whats-inside">What's inside</a> ·
   <a href="#where-this-came-from">Where this came from</a> ·
@@ -162,11 +181,23 @@ proved it dead.
 
 ## Status
 
-**619 tracked tasks, 390 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
+**644 tracked tasks, 402 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
 it is the only place work is tracked — one list, one progress area, validated by a script that
 recounts every phase row against its own ticks. It exists because the summary line was once wrong
 by nineteen and carried forward unread from entry to entry, because each author copied the line
 above.
+
+**Read that number with the trend beside it, because one line of it is misleading on its own.**
+Over the last ten waves, *done* went **49.7% → 63.0%** and *open* went **192 → 229**: 237 rows
+filed against 200 closed, a file-to-close ratio of **1.185**. Both movements are real and neither
+is a counting error — the fraction converges because closure outruns filing as a share of the
+total, and the open count grows because it does not outrun filing in absolute terms. **The open
+count falls only when we stop looking**, since most of those 237 rows are defects found by sweeps
+over code that was already here, not new work invented. What makes that survivable rather than
+hopeless is a different number: of the last 40 backlog rows filed, **four** would block making
+this repository public. The series, the classification and what counts as blocking are in
+[`.pantheon/SHIP-LINE.md`](.pantheon/SHIP-LINE.md), and every figure in it is recomputed by
+`.pantheon/ship-line.py --trend` rather than copied from the line above.
 
 Test suite: **9,580 passing**, nothing red. The fourteen standing failures this fork
 inherited and carried were cleared on 2026-09-12 — eight were a container missing dependencies

@@ -80,8 +80,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P17 | The network the agent is hosted on | 14 | 3 | 0 | **11** |
 | P18 | One button, and it links | 9 | 0 | 0 | **9** |
 | P19 | The proof ledger | 8 | 0 | 0 | **8** |
-| Backlog | Bugs and hardening found in flight | 237 | 37 | 0 | **200** |
-| **Total** | | **619** | **220** | **9** | **390** |
+| Backlog | Bugs and hardening found in flight | 262 | 50 | 0 | **212** |
+| **Total** | | **644** | **233** | **9** | **402** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -243,6 +243,62 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### CI had never passed, the version was upstream's, and the suite was evidence about an order CI does not use
+`77624b9..HEAD`. **644 tracked, 402 done. 0 new phase rows, 0 regressions. `B430`–`B436`, `B440`,
+`B442`, `B443`, `B450` and `B460` closed; fourteen rows filed.** Three worktrees, on the question the owner
+asked: *"the tracked items keeps growing and our progress isnt really making a dent."* They were
+right, and the answer turned out to be worse than the question.
+**CI has never passed. Not once.** Queried against the repository: across the last forty runs,
+**twenty-two failures and eight successes, and every one of the eight is a Dependabot update or a
+Trivy job that skipped its work.** No `CI`, `CodeQL`, `Secret scan`, `Workflow security` or
+`Dependency review` run has ever succeeded. Every failing job on every push: `runner_name` empty,
+`steps` `[]`, three to six seconds, no check-run output — **the jobs never got a runner**, which on
+a private repository under a personal account is the signature of exhausted Actions minutes. No
+edit to a workflow makes a runner appear; going public makes Actions free and unlimited, and that
+is the owner's switch, filed as `B439`.
+**The part that is ours is that nothing noticed.** Five waves shipped that day, each reporting
+"gate green on twenty-two checkers", and every one of those was a **local** `release-gate.py
+--fast` run while the pipeline was red. A repository whose whole argument is *our claims are
+checkable* had a checkable claim nobody checked. `B430` is the fix: a contract checker, live status
+badges pinned to `main` — unpinned reports the newest run on **any** ref, which is exactly how
+eight Dependabot successes would have painted a red `main` green — and a written account of the
+three states a badge cannot distinguish.
+**`B431` is the one that reaches back through every suite run this project has recorded.** The
+gate and CI diverge four ways, and the worst is the suite: the gate runs `pytest -q -p
+no:randomly`, **CI runs `pytest -q`**. So every "suite passed" in this tracker is evidence about a
+**fixed collection order CI does not use** — which is precisely the defect `B202` found and fixed
+one instance of. All four divergences are read out of the workflow now.
+**Two jobs reported green for not looking.** `python-tests`' docs-only shortcut ended in
+`[ -z "$non_docs" ]`, which is **true for an empty list** — so a zero-sha push, a force-push with a
+vanished base, or any failed `git diff` **skipped pytest and reported success on zero tests**
+(`B434`). And both Trivy jobs carried `continue-on-error` at **job** level, so a failed image build
+or a failed SARIF upload reported green over the Security tab the documentation sends you to —
+`B435`, in the job that was supposed to be the one that caught `basicsr`. A green check meaning "I
+did not look" is worse than a red one, and rule 4 now requires such a job to say `advisory` in its
+own name.
+**`CodeQL` has never analysed a pull request.** `codeql.yml` had `pull_request: branches: [dev]`,
+which filters on the branch a PR merges *into*, and **`dev` has never existed here** — the same
+ghost branch `B352` found in the PR and issue templates. The file's first line says it was set up
+in advanced mode so that it would.
+**And the product has been reporting Odysseus's version number.** `src/constants.py` carried
+`APP_VERSION = "1.0.3"`, moved there by a commit cherry-picked from upstream on 2026-08-25 and
+never touched since, and read by six surfaces — `/api/version`, `/api/readiness`, the Prometheus
+build info, the diagnostic bundle, the OTLP `service.version` and the published image tag. Not a
+missing answer, a **wrong** one. `Law 14` changed the fix: there were already **two** version
+strings and they disagreed — `scripts/_lib/cli.py` carries `0.1.0` and twenty `pantheon-*`
+executables print it — so `APP_VERSION` was aligned to the number that already shipped rather than
+to a new one.
+**On the dent.** Measured from this file: ten entries, **237 rows filed against 200 closed**, a
+file-to-close ratio of **1.185**. Done went 49.7% → 63.0% and open went 192 → 229; both are true
+and the second is the one a person sees. `B451` is a proposal, not a decision: of 229 open rows,
+**fifteen block making this repository public** — eleven of them security, licence or false-claim
+rows — and the rest stay tracked without being a gate. It disagrees with the tracker in three
+places, which is the useful part, and it earned its place immediately by flagging two rows its own
+author had just filed, one of which turned out to be a gate. **On the merge it caught two more**,
+filed by the CI and deployment agents in worktrees it could not see and therefore adjudicated by
+nobody (`B460`) — which is the failure mode a hand-maintained line has, caught by the guard built
+for it, on its first run.
 
 ### Twenty rows closed and four left open on purpose, including the one the owner has to answer
 `b0ec056..HEAD`. **619 tracked, 390 done. 0 new phase rows, 0 regressions. `B22`, `B23`, `B210`,
@@ -13116,3 +13172,529 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   notice for a package that is not there — a false **credit** rather than erased code, and `B426`
   is the row for it. `Verify:` a new hand-written comment blanker fails, and an exemption that
   stops being true fails too. — found while merging `B339` — agent:`integrator`
+
+- [x] **B430** **CI has never passed, and nothing in this repository could have told you.** Measured
+  2026-09-17 with `gh` against `ImPanick/pantheon`: across the last forty workflow runs, **22
+  failure, 8 success, 9 skipped, 1 cancelled** — and every one of the eight successes is a
+  Dependabot update run or a `Container scan (Trivy)` job that skipped its work. **No `CI`,
+  `CodeQL`, `Secret scan`, `Workflow security` or `Dependency review` run has ever succeeded.**
+  Every failing job on every push that day carries an empty `runner_name`, an empty `steps` array,
+  a three-to-six second duration and a check-run with no `output.title`: they did not fail a step,
+  **they never got a runner**. That half is `B439` and is the owner's to answer.
+  **The half that is ours is that nobody noticed.** Five waves shipped on 2026-09-17, each
+  reporting "gate green on 22 checkers", and every one of those was a local
+  `.pantheon/release-gate.py --fast` run. The pipeline was red for all five and no test, no
+  checker and no document in this tree observed it — in a repository whose entire argument is that
+  its claims are checkable. The claim "CI is green" was checkable and nobody checked it.
+  **Three things now check it.** `README.md` carries live status badges for the five
+  merge-blocking workflows, each pinned `?branch=main` — unpinned is the trap, because
+  `badge.svg` with no branch reports the newest run on *any* ref, so a green Dependabot branch
+  paints it green while `main` is red, which is the exact shape of the eight successes above.
+  `docs/security-ci.md` gains **How to tell whether CI is actually passing**, with a table of what
+  a badge shows in each state — blank to a logged-out reader while the repo is private, real once
+  public, and **`no status` rather than red when no run has ever happened**, which is today's
+  situation and the one most easily misread as fine. And `.pantheon/check-ci-contract.py` is the
+  checker, run from `ci.yml` and therefore from the gate, with seven rules: a required check names
+  a job that exists; every merge-blocking workflow has a branch-pinned badge pointing at this
+  repository; no trigger names a branch that does not exist (`B433`); a `continue-on-error` job or
+  step says so in its name (`B435`); the gate reads its interpreter, node version and suite argv
+  out of the workflow (`B431`); neither syntax job keeps a second list of which files are ours
+  (`B436`); and a skip that claims "this is only documentation" can prove it (`B434`). Rule 1 is
+  the quiet one: `docs/security-ci.md` tells the owner to type eight check names into branch
+  protection, and a name that matches no job is a required check that never reports — a one-word
+  job rename breaks the merge button and nothing said so. All eight match today and now stay
+  matched.
+  **A badge is necessary and not sufficient**, and the guide says so rather than implying
+  otherwise: it is invisible while private, `no status` reads as absence, and a badge is green
+  whenever the *workflow* concluded green — which a job that fails open does, which is `B435`.
+  **Not fixed here, deliberately:** the `tests-9,580 passing` shields.io badge beside the new ones
+  is a hand-typed number nothing recomputes, in the integrator's half of `README.md`. The live
+  badges make the contrast obvious, which is the right place to leave it.
+  `Verify:` deleting a badge, unpinning one, pointing one at another repository, or renaming a job
+  a required check names each fails `check-ci-contract.py`; and a stranger reading the repository
+  can reach the real run list in one click. **33 mutations across `B430`–`B436`, 33 caught, 0 survived** — two survived first time round, both of them the same shape: hardcoding CI's python and node versions in the gate passed every test, because the hardcoded answers are the right ones *today*. The test that kills them points the gate at a different workflow and checks the answer follows it, which is the only property worth asserting. — found while
+  auditing why five green gates sat over a red pipeline — agent:`cicd`
+
+- [x] **B431** **`release-gate.py` read CI's checker list and copied everything else about how they
+  run.** `Law 13` was done right for *which* checks exist — the list is parsed out of
+  `.github/workflows/ci.yml` — and nothing proved the two agreed about anything else. Four
+  divergences measured on 2026-09-17:
+  **The suite.** The gate ran `pytest -q -p no:randomly`; CI runs `pytest -q`. `pytest-randomly`
+  is installed, so CI shuffles collection order and the gate pinned it — which means every "the
+  suite passed" this project has recorded was evidence about **a test order CI does not use**, and
+  an order-dependent failure could only ever be found by a push.
+  **The advisory step.** The gate ran `.pantheon/retrieval_eval.py`; CI runs it `--verbose`. Two
+  commands wearing one name, in the file whose own docstring says a number nobody looks at is a
+  number that drifts.
+  **The interpreter.** `ci.yml` pins `python-version: "3.11"`; the gate used `sys.executable`,
+  whatever that was, and said nothing.
+  **Node.** `ci.yml` pins `node-version: "20"`; measured here on **22.22.2**, silently. `B10` was
+  a defect that only exists on a particular node's module-syntax detection, which is exactly the
+  class a version difference hides.
+  All four are now read out of the workflow — `ci_python_version()`, `ci_node_version()`,
+  `ci_suite_args()`, `ci_advisory_argv()` — and the suite invocation is taken from the *whole
+  suite* run rather than from `law16-egress`'s two named files, which would have made the gate's
+  "suite" two tests wide and still call itself the suite. `check-ci-contract.py` rule 5 imports
+  the gate and compares each derived value against its own independent parse of the workflow, so
+  the two cannot drift again without one of them failing.
+  **Toolchain divergence is reported, never enforced.** A gate that refuses to run because
+  somebody has node 22 is a gate people stop running, which was `P10-10`'s whole complaint. It is
+  a line in the not-covered block and only that.
+  `Verify:` hardcoding the suite argv, the advisory argv, or either version in the gate fails
+  `check-ci-contract.py`; and `environment_divergence()` names a node mismatch and is quiet when
+  there is none. — found while auditing `B430` — agent:`cicd`
+
+- [x] **B432** **"gate passed" meant "the suite did not run" five times in one day and the output
+  barely said so.** Every `release-gate.py` run on 2026-09-17 was `--fast`, and the only
+  difference in its output between *22 checkers passed* and *22 checkers and the whole suite
+  passed* was the words `Safe to push` at the end of one line. The suite was run separately by
+  hand, which is exactly the "a gate you have to remember" this script exists to replace.
+  Three things were invisible at once and all three now print:
+  **`--fast`.** The header says `SUITE NOT RUN (--fast)` and the exit line says `GATE PASSED — N
+  steps.  THE SUITE DID NOT RUN.`
+  **The four other blocking gates.** This script mirrors `ci.yml` and nothing else, while a push
+  also sets off the secret scan, the workflow-security audit, the dependency review and the
+  container scan — all four called merge-blocking by `docs/security-ci.md`. It had never run one
+  and never admitted not running them. The list is read from the workflows directory rather than
+  written down, so one added tomorrow is named the day it lands.
+  **A skipped step printed `ok`.** `_node_check` returns success when node is not on PATH — the
+  right behaviour, and it printed the same `ok` as a run that parsed 219 modules. It prints `skip`
+  and adds a `NOT RUN` line.
+  Plus the `DIVERGES` lines from `B431` and the manual pass `P10-10` already admitted. A green
+  gate is now evidence about the checkers it ran, on the machine it ran on, and says so in the
+  same breath.
+  `Verify:` `--fast` prints a `NOT RUN` line naming the suite; a full run does not; the
+  not-covered block names `secret-scan.yml`, `workflow-security.yml`, `dependency-review.yml` and
+  `container-scan.yml` and excludes the schedule-only `vendored-freshness.yml`. — found while
+  auditing `B430` — agent:`cicd`
+
+- [x] **B433** **Three workflows triggered on a branch that has never existed, and one of them
+  meant CodeQL had never analysed a pull request.** `ci.yml` said `push: branches: [main, dev]`,
+  `docker-publish.yml` said `[dev, main]`, and `codeql.yml` said both that and — the one that
+  matters — `pull_request: branches: [dev]`. There is no `dev` branch in this repository and there
+  never has been; `docs/security-ci.md` recorded that fact on 2026-08-30 for the branch-protection
+  instructions and `B352` corrected the PR and issue templates that sent contributors to it. The
+  workflows were missed both times.
+  **`pull_request: branches:` filters on the branch a PR merges INTO.** With `dev` there and no
+  `dev` in existence, **CodeQL has never run on a single pull request** — only on pushes to main
+  and the weekly schedule — while the first line of the file says it was set up in advanced mode
+  *"so CodeQL also runs on pull requests (including from forks), surfacing findings before merge"*.
+  A comment describing a capability the code next to it disables is the same defect class as
+  `B210`, one layer down.
+  The filter is gone rather than repointed at `main`: a pull request is worth analysing whatever
+  it targets, and the thing that broke was having a branch list to maintain. `ci.yml` and
+  `docker-publish.yml` drop `dev` from their triggers; docker-publish's `:dev` tag rules are left
+  exactly as they are, because they are the record of the scheme and cost nothing while
+  unreachable — restoring `dev` is then one trigger line plus one register entry, in that order.
+  **The register is one line and it is checked against something.** `BRANCHES` in
+  `check-ci-contract.py` must equal the branch `docs/security-ci.md` tells the owner to protect —
+  the only other statement in this tree about which branches are real, and the two had already
+  disagreed once, which is what produced this row.
+  **A test asserted the defect.** `tests/test_ci_authoritative_validation.py::test_ci_runs_on_integrated_dev_pushes`
+  pinned `branches: [main, dev]` with a regex, so correcting the trigger turned a test red. That
+  is the third time this session a test has held today's answer instead of the property (`B310`,
+  `B414`); it now asserts the two things worth holding — CI runs on the default branch, and on
+  **every** push to it, with no `paths-ignore` to hang a required check.
+  `Verify:` no workflow trigger in the tree names `dev`; `codeql.yml` has a `pull_request` trigger
+  with no branch filter; and re-adding `dev` to any trigger fails `check-ci-contract.py` rule 3.
+  — found while auditing `B430` — agent:`cicd`
+
+- [x] **B434** **`Python tests (pytest)` reported success on no tests whenever the changed-file
+  list came back empty.** The job skips pytest when every changed file is documentation, which is
+  a sensible saving. It was implemented as `non_docs=$(echo "$changed" | grep -Ev '^(docs/|.*\.md$|…)')`
+  followed by `if [ -z "$non_docs" ]`, and **the empty case answers yes**: an empty `changed` feeds
+  `grep` one blank line, `$( )` strips it, `non_docs` is empty, `docs_only=true`, pytest is
+  skipped, and the check goes green. Reproduced 2026-09-17 in a shell with `changed=""`.
+  `changed` is empty on a push whose `github.event.before` is the zero sha (a new branch), on a
+  force-push whose base object is gone, and on any `git diff` that fails for any reason at all —
+  and the fallback `|| git diff --name-only HEAD~1 HEAD` cannot help when the first command
+  *succeeds* with no output. So the job in `ci.yml` whose name is the strongest claim in the Checks
+  tab is the one with the hole in it, on the workflow this project asks contributors to trust.
+  **Two questions had been collapsed into one.** "Is every changed file documentation?" and "could
+  the change set be computed at all?" have different safe answers, and the shell gave the second
+  one the first one's answer. The decision now lives in `.github/scripts/docs_only.py`, where the
+  suite calls it with a list: `is_docs_only([])` is `False`. Fail-closed is `False` and not a
+  crash — a run that cannot work out what changed must still **do the work**, because the point of
+  the gate is that it ran, and refusing outright would trade a false green for a red that tells a
+  contributor nothing. The saving survives intact (`Law 1`): a genuine docs-only change still
+  skips the suite.
+  The helper reads no environment variable of its own — it prints `docs_only=` on stdout and the
+  step redirects that into `$GITHUB_OUTPUT`, keeping a GitHub-owned name out of the register
+  `check-env-declared.py` holds this project to, and keeping the helper a pure function of its
+  argument. `${{ }}` event values now reach the step through `env:` rather than being pasted into
+  the script body, which is the template-injection shape zizmor exists to find.
+  `Verify:` `is_docs_only([])`, `[""]` and `["", "  "]` are all `False`; a docs-only list is still
+  `True`; and the `python-tests` step contains no `grep -Ev` decision of its own. — found while
+  auditing `B430` — agent:`cicd`
+
+- [x] **B435** **`Container scan (Trivy)` reported green when the image failed to build or the
+  findings never reached the Security tab.** Both jobs carried `continue-on-error: true` **at job
+  level**, which makes every step advisory — the checkout, the buildx setup, the image build and,
+  on the push path, the `upload-sarif` step. So a Dockerfile that would not build, or an upload
+  that never arrived, produced a green tick; and `docs/security-ci.md` sends the reader to the
+  Security tab for exactly those findings, so the documentation was wrong with a tick beside it.
+  This is the job that was supposed to be the one that caught `basicsr` (`B323`).
+  **Advisory about what it finds; never about whether it looked.** `continue-on-error` moves to
+  the one step whose findings are advisory — a fixless CVE in an upstream OS package must not
+  block a merge, and that has not changed — and the step's name says so, because the name is all a
+  reader of the Checks tab gets. The build and the SARIF upload now block.
+  The rule generalises and is rule 4 of `check-ci-contract.py`: **a `continue-on-error` job or step
+  must carry `advisory` or `report-only` in its name.** `ci.yml`'s `focused-test-guidance` already
+  did this right and passes untouched; it is the shape to copy, not an exception. Three fail-open
+  sites exist in the tree and all three declare themselves.
+  `Verify:` putting `continue-on-error` back on either Trivy job, or dropping `advisory` from the
+  scan step's name, fails the checker; and no job in `container-trivy.yml` is advisory as a whole.
+  — found while auditing `B430` — agent:`cicd`
+
+- [x] **B436** **CI byte-compiled 1,378 of 1,429 tracked Python files, and the 51 it missed include
+  every checker it then runs.** `python-syntax` ran `python -m compileall -q app.py core routes src
+  services scripts tests` — a second hand-typed list of which Python is ours, and `B10` is this
+  exact defect on the JavaScript side, where CI's own loop named 173 files, never `static/sw.js`,
+  and checked nothing at all on the largest module in the app while `docs/security-ci.md`
+  advertised it as a required merge-blocking check.
+  Measured 2026-09-17: the 51 outside that list are all 22 `.pantheon/check-*.py`,
+  `.pantheon/release-gate.py`, `.pantheon/audit-dependencies.py`, `.pantheon/ledger/*`,
+  `launcher.py`, `.github/scripts/*.py`, and every module under `companion/`, `mcp_servers/`,
+  `netagent/` and `integrations/`. A syntax error in a checker therefore surfaced as a traceback
+  from the step that runs it, on a job nobody expects to be about syntax, rather than as a compile
+  error on the job whose name is `Python syntax`.
+  There is one list now — `_python_files()` in the gate — and `ci.yml` calls it, the same
+  direction the node step already takes. Rule 6 of `check-ci-contract.py` fails either syntax job
+  that builds a glob of its own, and fails a tracked `.py` that the one list does not cover.
+  `Verify:` `set(gate._python_files()) == set(git ls-files '*.py')`, and restoring a hand list in
+  either syntax job fails the checker. — found while auditing `B430` — agent:`cicd`
+
+- [ ] **B437** **`vendored-freshness.yml` prints "Advisories against what we ship" and exits 0.**
+  The weekly job asks npm and OSV about every vendored library and its bundled contents, sorts the
+  answers into five sections — behind upstream with no row that owns it, advisories against what we
+  ship, behind but filed, advisory hits explained in the record, could not be asked — and then
+  finishes. The inline script has no non-zero exit anywhere in it, and no `set -euo pipefail`
+  either. Two of those five sections are by construction *nobody has accounted for this*, and both
+  can be non-empty on a green run.
+  This is the argument `B322` already settled for `pip-audit` and did not carry back here: **an
+  advisory check that never fails is a check nobody reads.** The escape hatch already exists and is
+  the same shape — `behind_ok` names the row that owns a version being behind, `osv_known` names
+  why an advisory does not reach us — so the fix is to fail when either unaccounted section is
+  non-empty, which makes the hatch load-bearing rather than decorative.
+  Not fixed in this wave for one reason worth writing down: the logic is a heredoc inside YAML, so
+  a test that drives it has to extract it first, and the honest fix is to move it to
+  `.pantheon/` as a script the suite can import — which is a bigger change than a trailing
+  `sys.exit`, and one that should land with its own tests rather than beside seven other rows.
+  `Verify:` a recorded version that is behind upstream with no row naming it fails the weekly job,
+  and a test drives that decision without parsing YAML. — found while auditing `B430` —
+  agent:`cicd`
+
+- [ ] **B438** **CI pins three different Python versions and the suite runs on none of the one the
+  image ships.** `ci.yml` pins `3.11` for the checkers, the egress test and the whole suite;
+  `workflow-security.yml` pins `3.12` for zizmor; `dependency-review.yml` pins `3.14` and says why
+  in a comment that is the whole row — *"3.14 because that is what the image ships. The Python
+  version is not cosmetic here: `requirements-optional.txt` gates kokoro and soundfile behind
+  `python_version < "3.13"`, so auditing on an older interpreter audits a dependency set the image
+  does not install."*
+  That reasoning applies to the suite at least as strongly as to the audit. The dependency audit
+  is run against 3.14 because the shipped dependency set depends on the interpreter; the tests are
+  run against 3.11, so **the suite is evidence about a dependency set the product does not
+  install** — and `B325` already measures the other half of that gap, that 6 of 31 core
+  dependencies are absent and 13 more are off their pin in the environment the suite passes in.
+  Not a one-line bump: moving the suite to 3.14 will surface real failures, and doing it in the
+  same change as seven CI rows would make both unreadable. Filed with the measurement so the next
+  person does not rediscover it.
+  `Verify:` the suite runs on the interpreter the image ships, or the roadmap records why it does
+  not and `check-ci-contract.py` holds that answer. — found while auditing `B430` — agent:`cicd`
+
+- [ ] **B439** **No workflow in this repository can get a runner, and no change to a workflow file
+  fixes it.** Measured 2026-09-17 with `gh`: every failing job on every push that day reports
+  `runner_name` empty, `steps` `[]`, a three-to-six second duration, labels `['ubuntu-latest']`,
+  and a check-run with no `output.title` and no `output.summary`. A job that failed a step does not
+  look like that. **These jobs never started.** Actions itself is enabled —
+  `{"enabled":true,"allowed_actions":"all"}` — and the repository is private with an owner of type
+  `User`, which is the signature of exhausted Actions minutes or a spending limit. It could not be
+  confirmed directly: the billing endpoint needs a `user` OAuth scope the session did not have.
+  Two ways out and both belong to the owner. **Making the repository public makes Actions free and
+  unlimited for it**, which is the real fix and is already on the table for other reasons — every
+  item in `docs/security-ci.md`'s one-time-settings section is written for a repo that is about to
+  be public. Otherwise: raise the spending limit, or wait for the monthly reset and accept that the
+  minutes run out again.
+  Everything in `B430`–`B436` is about the second failure — that this was true for at least a day
+  and nothing here noticed — and none of it makes a runner appear. The badges will go from `no
+  status` to a real colour the moment one does, which is itself the check that this row is closed.
+  `Verify:` one `CI` workflow run on `main` completes with a conclusion of `success`, and the
+  README badge renders green to a logged-out reader. — found while auditing `B430` —
+  agent:`cicd`
+
+- [x] **B450** **This product answered "which version are you" two ways, and the one a stranger reaches first was Odysseus's.** Found 2026-09-17 while opening `P10-12`. `src/constants.py:9` read `APP_VERSION = "1.0.3"` — **not this project's number.** `3f2ad23` ("chore(release): align dev version with 1.0.3 (#6168)", cherry-picked from upstream `e71f8ce`) moved it from `1.0.2` on 2026-08-25, authored upstream, carried across the fork and never touched here since. Six surfaces report it: `GET /api/version` (`app.py:1325`), `GET /api/readiness` (`src/readiness.py:59`), `pantheon_build_info{version=…}` (`src/metrics_export.py:370`), the diagnostic bundle (`src/diagnostic_bundle.py:157`), OTLP's `service.version` (`src/otlp_export.py:177`) and the image tag `docker-publish.yml:95` greps out of the same line. So a Pantheon 619 tracked rows past the fork answered with the number of an Odysseus release it has nothing to do with — **a wrong answer, not a missing one**, which is worse: nobody asks twice. **`Law 14` first, and it changed the fix.** Before writing a version anywhere I looked for one, and there were already **two**: `scripts/_lib/cli.py:82` carries `VERSION = "0.1.0"  # bumped centrally; every pantheon-* CLI reports this`, printed by **twenty `scripts/pantheon-*` executables** through `common_parser`'s `--version`. `pantheon-memory --version` said `0.1.0` and `GET /api/version` said `1.0.3`, on the same install, and the one nobody had noticed was the right one. So `APP_VERSION` was aligned **to the CLI's existing number** rather than to one I picked, and no third declaration was created — `pyproject.toml` carries a comment saying why it has no `[project].version` and `package.json` has none either. **What landed.** `APP_VERSION = "0.1.0"`; `CHANGELOG.md` gains a `## Versions` section (the scheme: `0.x` while `SECURITY.md` supports only `main` and the flip is gated, `1.0.0` is the first public tagged supported release, an operator-visible break bumps the minor and gets a *Changed — read this before upgrading* block) and a dated `## [0.1.0] — 2026-09-17` heading under a fresh empty `## [Unreleased]`, so the two existing *Changed — read this before upgrading* blocks (`B96`, `B152`) finally attach to a release an operator can name. **`0.x` is a claim, not modesty**: `SECURITY.md` supports `main` and nothing else, and `.pantheon/SHIP-LINE.md` names what gates the public flip. **Evidence (`Law 9`).** 17 tests across `tests/test_one_version_string.py` and `tests/test_version_and_changelog_agree.py`, and they fail on the tree as it stood: five mutations run, five caught — `APP_VERSION` back to `1.0.3` (caught), drifted to `0.2.0` away from the CLI (caught), the dated heading removed (caught), the upgrade anchor broken (caught), `[Unreleased]` removed (caught). The reporters are **driven, not read**: `_collect_build` really emits the metric, `collect_environment` really builds the bundle's environment block, and `docker-publish.yml`'s extraction pipeline is really run by `bash` and compared to the imported constant. **`Law 20`** — the declaration census strips comments first, so the note *about* `1.0.3` in `src/constants.py` is not read as a second declaration of it. **Two things this does not do, both filed rather than half-done: `B453`** (the version says which release line, not which commit — no build ref exists and stamping one needs the `Dockerfile` and the workflows) and **`B454`** (the published image tag moves 1.0.3 → 0.1.0, which is backwards, and the workflow is not this row's file). **The tag is not cut here and that is deliberate**: a release tag has to point at the commit that is actually released, and this is a worktree tip awaiting a merge. `CHANGELOG.md` § Versions carries the two-line procedure. — found while opening `P10-12` — agent:`release`
+- [ ] **B451** **Every open row reads as blocking, so the tracker cannot say how far away "done" is.** Filed 2026-09-17, on the owner's observation: *"the tracked items keeps growing and our progress isnt really making a dent."* **The measurement first, and it is not a bug.** Over the last ten `§ Progress` entries that moved the totals — computed by `.pantheon/ship-line.py --trend`, which reads the headline `check-tracker.py` already validates — tracked went **382 → 619** and done **190 → 390**: **237 filed, 200 closed, 37 net new open**, a file-to-close ratio of **1.185**. Done went **49.7% → 63.0%** while open went **192 → 229**. Both are true and neither is a counting error: the percentage converges because closure outruns filing as a share of the total, and the open count diverges because it does not outrun filing in absolute terms. **An open count that only falls when we stop looking is a thermometer, not a target.** What is actually wrong is that this tracker has one mark for *not done* and no mark for *not a gate*, so a sweep that files sixteen tidiness rows moves the number a person reads by sixteen. **What landed: the analysis and a proposal, not a decision.** All 229 open rows were read and `.pantheon/SHIP-LINE.md` proposes that **fifteen** of them block making this repository public and usable by a stranger — four security (`B370`, `P11-01`, `P2-21`, `P11-02d`), four false-claim (`B71`, `B411`, `P6-08`, `B452`), three licence (`P0-16`, `P0-17`, `B349`), two pre-flip actions (`P10-11`, `B357`), one first-ten-minutes (`B400`) and one release artefact (`P10-12`) — and that the other 219 stay tracked and stop being gates. **`B452` was found by the mechanism itself**, on its first run, an hour after it was written. Nothing was re-categorised, no row was re-ticked, no mark moved. **Three findings that disagree with the tracker**, each argued in § 5: `P0-13` is **not** a gate although the status preamble says it is (a missing mark is not a false claim; shipping upstream's mark is, and that is `B71`); `B421` reads as a shipped CRITICAL advisory and is not (`B336` measured all twenty-seven unreachable, wrote each down per advisory id and machine-checks the bundle); and `P15-07` meets **none** of the four tests and probably still should not ship unresolved — if the owner wants it gated the line needs a fifth test rather than one of these four stretched. **The mechanism is the part that has to outlive me.** `--check` fails when a registered row is not in the tracker, when a row named blocking has been ticked, and — the one that matters — when an open row the rule calls a candidate appears in neither list, naming it by id. The rule is recall-oriented **triage, not a verdict**: it reads a row's whole body including the indented corrections and flags 42 of 229, catching 13 of the 14 gates; the miss is `P10-12`, an absence of an artefact, which no prose signal can find. **Evidence (`Law 9`).** 25 tests in `tests/test_ship_line.py`; 16 mutations run, 16 caught, after two survivors in an earlier round were closed by adding a per-signal example table that fails if any signal in the rule has no example that **only** it matches — measured, because the first draft of the file was held up by two patterns out of fifty-five. **Why this is open.** The line is the owner's to draw and they have not drawn it. The script is deliberately **not** named `check-*.py`, so `release-gate.py` does not run it and a red answer blocks nobody. `Verify:` the owner rules on § 3, and adoption is `git mv .pantheon/ship-line.py .pantheon/check-ship-line.py` plus a line in `ci.yml` — the gate reads its checker list out of that file, so the two stay in step by construction. **Needs the owner.** — found while opening `P10-12` — agent:`release`
+- [ ] **B452** **`SECURITY.md` tells self-hosters the git sha is "the only version identifier this project has", and there were two.** Filed 2026-09-17 while closing `B450`. `SECURITY.md:57` reads *"pin to a commit rather than to a tag if you need a fixed target — the bug report form already asks for `git show -s --abbrev=12 --format='%h (%cs)' HEAD`, **which is the only version identifier this project has**"*. It was not, when it was written: `src/constants.py`'s `APP_VERSION` was reported by `GET /api/version`, `GET /api/readiness`, `pantheon_build_info`, the diagnostic bundle and OTLP, and `scripts/_lib/cli.py`'s `VERSION` was printed by twenty `pantheon-*` executables. The sentence is a **false claim in the document a security reporter reads first**, and it is now false in a second way: `B450` gives the project a version line and `CHANGELOG.md` § Versions gives it a scheme, so the honest sentence is *"there are no tags yet; the version the instance reports is `0.1.0` and the commit is the finer-grained identifier"*. The *Supported Versions* table (`main` only, `Tagged releases: None exist yet`) stays true until a tag is cut and then does not. **Not fixed here: `SECURITY.md` is not this worktree's file.** `Verify:` `SECURITY.md` names what `GET /api/version` returns, says whether it is tagged, and does not claim the sha is the only identifier. `Depends:` `B450` (landed). — found while closing `B450` — agent:`release`
+- [ ] **B453** **The version answers *which release line*, not *which commit*, and between tags those are different questions.** Filed 2026-09-17 while closing `B450`. `B450` makes `APP_VERSION` this project's own number, which answers *what is this software*. It does not answer *what is running on this box*, because `SECURITY.md` supports `main` and everybody tracking `main` sits on a commit between tags — and **nothing in the tree carries a commit ref a running instance can report.** `.git` is not in the image (the app answers from `COPY . .`), so the sha has to be stamped at build time and read at runtime; today `GET /api/version` returns `{"version": "0.1.0"}` and a hundred different commits return exactly that. The honest shape is one optional field beside the version, resolved from an environment variable a build sets — **and building it needs `Dockerfile`, `docker-compose*.yml`, `.env.example` and `docker-publish.yml`, none of which belong to the row that found this.** `Law 14`: extend `APP_VERSION`'s reporters, do not add a second version. `Law 16`: it is a label, it reaches nothing. `Verify:` an instance built from a known commit reports that commit, an instance built without the stamp says so rather than guessing, and no second version string appears (`tests/test_one_version_string.py` fails if one does). `Depends:` `B450` (landed). — found while closing `B450` — agent:`release`
+- [ ] **B454** **The published image tag moves backwards — 1.0.3 to 0.1.0 — and the workflow that prints it is not the file that changed.** Filed 2026-09-17 while closing `B450`. `.github/workflows/docker-publish.yml:92-97` greps `APP_VERSION` out of `src/constants.py` and tags every `main` build with it beside `latest`, so after `B450` the registry would gain a `0.1.0` tag that is **newer than and numerically below** a `1.0.3` tag, if one was ever pushed. No release has been cut and the repository is private, so this is very probably academic — **but nobody has looked**, and "probably no images exist" is not a measurement. Three answers and they are not equal: confirm the registry is empty and do nothing; publish `0.1.0` and document in `CHANGELOG.md` § Versions that tags below `1.0.3` supersede it; or leave `1.0.3` as a tombstone tag pointing at the fork-era image. `latest` is unaffected either way. **Not fixed here: `.github/workflows/**` is not this worktree's file.** `Verify:` either `ghcr.io`'s tag list for this image is shown to be empty, or `CHANGELOG.md` § Versions carries one sentence saying what a reader should make of a `1.0.3` tag older than `0.1.0`. `Depends:` `B450` (landed). — found while closing `B450` — agent:`release`
+- [ ] **B455** **Twelve of the 229 open rows are not available work, and the number a person reads cannot say so.** Measured 2026-09-17 by `.pantheon/ship-line.py` while writing `B451`. **Three can never be closed on their own terms**: `B16` opens *"FOLDED INTO `B15` … do not work this row alone"*, `P13-10` says it *"collapses to a one-field extension of [`P13-01`] and is not independently actionable"*, and `B392` reads, in full, *"Unused. Reserved and not used, so the number is never reissued."* — a row that will be open forever by design. **Nine more are `[~]` blocked**, several on conditions that do not exist: `P11-09` waits on a second user account and the row's own re-check records *"`data/auth.json` does not exist and the install has zero accounts"*. The tracker's § Status already says a `FOLDED INTO` row *"keeps its mark but cannot be picked up alone"* — **so the convention exists and the count does not honour it**, which is `B79` one level down: a figure that is internally consistent and answers a narrower question than its heading asks. Every one of the twelve is individually correct and the total is misleading, and the total is the only part anyone quotes. **Not fixed here, and deliberately: the remedy is a mark or a column, and adding either is re-categorising the tracker**, which is the same ruling `B451` is waiting on. `Verify:` the headline distinguishes rows that can be picked up from rows that cannot, `check-tracker.py` recounts both, and a folded row stops being counted the moment its host is ticked. `Depends:` `B451`. — found while writing `B451` — agent:`release`
+
+- [x] **B440** **`docker compose up -d` returns `Started` and the app binds port 7000 up to a
+  minute later, and with no healthcheck on `pantheon` Docker cannot tell *running* from
+  *serving*.** Found 2026-09-17 while automating deployment, after the sequence had been hand-run
+  five times that day. Twice a probe was fired at 25 s and answered `Connection refused` on every
+  route; twice the deploy was believed to have failed when it had not.
+  **Measured.** `docker-compose.yml` defined healthchecks on one service of four. `searxng` has
+  one and `pantheon` waits on it (`depends_on: condition: service_healthy`), and the comments
+  around it record the two incidents that put it there — a broken upstream `searxng:latest`
+  (issue #1414) and the capability set the entrypoint needs (issue #721). So the shape was
+  established in this very file and `pantheon` simply never got one. The consequence is not only
+  the 35-60 s window: with `restart: unless-stopped` and no healthcheck, **a container that comes
+  up wedged is indistinguishable from one that is fine** — `docker ps` says Up for both.
+  **What binds the port, measured rather than assumed.** uvicorn runs the lifespan startup before
+  it creates the listening socket, so nothing answers until the app has imported itself. Timed in
+  this container: **7.40 s of module import, 0.01 s of lifespan** — the `_startup_event` work is
+  almost entirely `asyncio.create_task`, MCP connection included, and the import is what costs.
+  The deployment host's 35-60 s is that same work plus the entrypoint's ownership repair over
+  `/app`, `setup.py`, and a page cache that is cold after a rebuild. It scales with the host,
+  which is the argument for a probe rather than a constant.
+  **The fix** is a healthcheck on `pantheon` in all three compose files —
+  `docker-compose.yml:127`, `docker-compose.gpu-nvidia.yml:141`,
+  `docker-compose.gpu-amd.yml:139`. `Law 13`: the two standalone GPU files are whole compose
+  files that stack UIs run directly, so a healthcheck in one of three is the defect class
+  `test_gpu_compose_standalone.py` exists to catch, and it does.
+  The probe is an HTTP request this app answered and not a process check: `GET
+  http://127.0.0.1:7000/api/health`, body parsed, `status == "healthy"` required. Three
+  deliberate choices. `/api/health` because it is in `app.py:291`'s `AUTH_EXEMPT_EXACT` and
+  therefore answers 200 with the shipped `AUTH_ENABLED=true` — a probe behind the login wall
+  reports the login page forever. `127.0.0.1` and not `localhost` because uvicorn binds
+  `0.0.0.0`, which is IPv4 only, and `localhost` can resolve to `::1` first. `sys.exit` and not
+  `assert` because `python -O` strips assertions and a healthcheck that always passes is worse
+  than none.
+  **`start_period: 120s`, and the arithmetic is the point.** Inside `start_period` a failing
+  probe does not count against `retries` and a passing one marks the container healthy
+  *immediately*, so a margin above the real bind costs nothing on a healthy start; what it costs
+  is how long a container that never comes up sits at `starting`. Twice the worst measured bind,
+  and `120 + 3x15 = 165 s` before it reads `unhealthy`. Too short is the worse error here: at
+  30 s a normal 60 s boot would be reported unhealthy on every deploy.
+  **What this does NOT do, stated because the opposite is the natural assumption:** Docker does
+  not restart a container it marks unhealthy. `restart: unless-stopped` acts on process *exit*.
+  This makes a wedge visible — to `docker ps`, to `scripts/pantheon-deploy`, to any
+  `depends_on: condition: service_healthy` — it does not clear one. `B446` is that row.
+  **Evidence** (`Law 9`). `tests/test_a_container_that_is_running_is_not_serving.py`, 11 tests.
+  **10 of the 11 fail on the tree as it stood** — measured by reverting the three compose files to
+  `HEAD` and running the file: `10 failed, 1 passed`, every failure reading *"defines no
+  healthcheck on `pantheon`"*. The probe is **driven, not read**: the shipped `CMD-SHELL` string
+  is executed against a stub server that answers, in turn, the real health JSON, a 302 to
+  `/login`, the login page, `{"status":"degraded"}`, a 500, and a closed port — exit 0 for the
+  first and non-zero for all five others. Only the netloc is rewritten, because binding 7000
+  during a suite run would collide; the shipped `127.0.0.1:7000` is asserted separately.
+  5 mutations on the compose files, 5 caught: `start_period` below the measured bind, the probe
+  asking `/` instead of `/api/health`, `localhost` for `127.0.0.1`, the GPU file drifting from
+  the base, and the probe no longer reading the body.
+  **Unrun and said plainly**: there is no Docker daemon in this environment (`/var/run/docker.sock`
+  is absent), so no container was started and no healthcheck was executed by Docker. What is
+  tested is the compose file's shape and the probe command's behaviour; what is reasoned is
+  Docker's own handling of `start_period`, `retries` and `CMD-SHELL`.
+  — agent:`deploy`
+
+- [ ] **B441** **`/api/ready` was written to be an orchestrator's readiness probe and answers 401
+  to one.** Found 2026-09-17 while choosing what the `B440` healthcheck should ask for. Measured
+  by booting the real app out of process with the shipped compose defaults (`AUTH_ENABLED=true`,
+  `LOCALHOST_BYPASS=false`) and asking for each candidate path with redirects off:
+
+      /api/health 200   /api/version 200   /api/auth/status 200   /login 200
+      /static/js/theme.js 200   / 302->/login   /docs 302->/login   /api/ready 401
+
+  `src/readiness.py:7` says the endpoint is *"suitable for an orchestrator readiness probe (200
+  only when every critical check passes)"*, and `app.py:1360` returns 200 or **503** exactly so a
+  probe can gate on it. `app.py:291`'s `AUTH_EXEMPT_EXACT` lists `/api/health` and `/api/version`
+  and not `/api/ready`, so the 503 it is built to return is unreachable: every unauthenticated
+  caller gets 401 whether the database is fine or gone.
+  **Consequence.** The `B440` healthcheck probes `/api/health` — liveness — because that is the
+  only thing that answers. It proves the ASGI app is serving, which is the 35-60 s problem, but
+  it does not prove the database is reachable or the data directory writable, which is what
+  `check_readiness()` exists to say. A container with a broken data mount is `healthy` today.
+  **The fix is one line and a decision, and the decision is not free**: adding `/api/ready` to the
+  exemption set makes DB reachability, the data path and `local_first` readable by anyone who can
+  reach the port. That is a fingerprinting surface, not a secret, but it is a widening and
+  `.pantheon/FORBIDDEN.md` Part 2 is the thing to read before moving an auth boundary. The
+  alternative is a reduced body for unauthenticated callers — `{"ready": bool}` and nothing else —
+  which keeps the status code useful and says nothing about the host. `Verify:` an
+  unauthenticated `GET /api/ready` returns 200 when the instance is whole and 503 when it is not,
+  and the compose healthcheck moves from `/api/health` to `/api/ready`.
+  `app.py` and `src/readiness.py` were not this agent's to edit, which is why this is filed and
+  not fixed. The measurement is pinned:
+  `tests/test_the_deploy_probe_asks_for_what_the_app_answers.py::test_the_readiness_endpoint_is_behind_auth`
+  asserts the 401 **so that the day it is fixed the test fails and this row gets closed rather
+  than forgotten**. — found while closing `B440` — agent:`deploy`
+
+- [x] **B442** **Deployment was six commands in a chat transcript, and step 4 was the word
+  "wait".** The sequence, as actually run five times on 2026-09-17: `git push origin main`;
+  `docker compose build pantheon` (minutes, 37 pinned dependencies); `docker compose up -d
+  pantheon`; wait; hand-run a Python probe inside the container for route statuses, MCP imports
+  and a few shipped-bytes assertions; `docker compose logs pantheon | grep -ci traceback`.
+  Nothing of it was in the repository, so the verification was reassembled from memory each time
+  and the wait was guessed each time — wrongly, twice.
+  **The fix is `scripts/pantheon-deploy`**, which is where this repository's other operational
+  tools live and is discovered by `scripts/pantheon` (the git-style dispatcher) and by
+  `scripts/_completion/pantheon.bash` without either being edited — `pantheon deploy run` works
+  because both enumerate `scripts/pantheon-*` rather than holding a list (`Law 14`).
+  `run` builds, brings the service up, **waits for `B440`'s healthcheck to report healthy instead
+  of sleeping**, verifies, prints a report a person can read, and exits non-zero when the deploy
+  did not work. `verify` runs the verification alone against whatever is up; `probe` is the half
+  that runs *inside* the container and is not for humans.
+  **The verification is the valuable part and it is now an artifact.** Four checks, each of which
+  is a real outage in this tracker:
+    · every route in the script's table answers what it answered when it was measured (`B441`).
+    · every `mcp_servers/*_server.py` imports **in a fresh interpreter**, enumerated from what
+      shipped rather than from a list. This is the only condition that shows `B131`, where two MCP
+      servers were dead for a week because `tests/conftest.py` pre-imports `src.agent_tools` and
+      the cycle only bites a process that has not.
+    · no traceback in **this container's** boot log, read with `--since` the container's
+      `StartedAt` so a week-old container's Tuesday traceback is not counted against today.
+      Counted by the marker `Traceback (most recent call last):` and not by `grep -ci traceback`,
+      which was the hand-run step and which counts the word in prose.
+    · **the bytes in the image are the bytes git has** (`B360`, `B362`). The host computes each
+      tracked file's blob id from the index; the container hashes its own copy of the same path
+      the way git does and the two are compared, with the `eol=crlf` allowance
+      `tests/test_the_working_tree_is_the_bytes_git_has.py` established so the three declared
+      Windows scripts do not cry wolf. **655 files** today, covering every byte of `static/` and
+      every Python module. `B447` is the row for what it leaves out.
+  **`Law 16`**: the script reaches the local Docker socket, the local git repository and
+  `127.0.0.1` inside the container, and nothing else. Asserted, on the source with comments and
+  docstrings stripped: the only URL in the file is `http://127.0.0.1:7000`.
+  **Rollback is deliberate and is not automatic, and that is the honest answer rather than the
+  strong one.** `run` tags the outgoing image `pantheon-deploy:previous` before it builds — the
+  Docker tag store is the state, so it survives the script and an operator can see it — and
+  `rollback` retags it onto the reference compose runs and brings it back with `--no-build`. It is
+  not wired into a failed `run` because **rolling the image back is reliable and rolling the data
+  back is not**: `core/database.py` runs forward-only migrations on every startup, twelve of them
+  additive `ALTER TABLE ... ADD COLUMN` that an older image reads straight through, but
+  `_migrate_encrypt_email_passwords` rewrites stored rows into a form the older image cannot read.
+  An automatic rollback would sometimes turn a failed deploy into a worse state than the failure,
+  silently. So the script stops, prints what failed, and prints the one command. Documented in
+  `docs/setup.md` under *Deploying an update*.
+  **Evidence** (`Law 9`). `tests/test_the_deploy_script_fails_when_the_deploy_failed.py`,
+  46 tests, with one fake standing in for the Docker CLI and recording every call. They drive the
+  wait's whole state machine (polls until healthy and returns what it actually waited; errors on
+  `unhealthy`, on an exited container, on no container, on a service with **no healthcheck** —
+  which is the tree as it stood — and on timeout), the verdict (a refused route, a login
+  redirect, an MCP import failure, a traceback, a byte mismatch, a missing file, and three ways
+  of passing by finding nothing), the byte comparison including the declared-CRLF allowance, the
+  traceback counting against the `grep -ci` trap, the in-container probe run against a stand-in
+  `/app`, and `run`/`verify`/`rollback` end to end for exit codes. The whole file fails on the
+  tree as it stood for the simplest reason: `scripts/pantheon-deploy` did not exist.
+  12 mutations on the script, 12 caught.
+  **Unrun and said plainly**: no Docker daemon exists in this environment, so not one `docker`
+  command in this script has ever been executed. What is reasoned rather than tested is that
+  `docker inspect --format '{{.State.Health.Status}}'` prints `<no value>` when there is no
+  healthcheck, that `docker compose exec -T` forwards stdin, that `docker tag` accepts an image
+  id, and that `docker compose ps -q` prints the container id. Each of those is named at its call
+  site. — agent:`deploy`
+
+- [x] **B443** **The rename sweep's own closing advice pointed at the unverified way to start the
+  app.** `scripts/pantheon-init.sh` rewrites ~2,900 occurrences across the tree and then prints a
+  "Next, by hand" list ending in `docker compose up -d --build`. After a sweep that size the
+  question that matters is whether anything still imports, and `up -d --build` answers it by
+  returning before the app has finished importing. Now points at
+  `./scripts/pantheon-deploy run`, which waits for healthy and then imports all four MCP servers
+  in fresh interpreters — the exact check `B131` says a rename-shaped change needs.
+  Two lines, and it is `Law 13` rather than cosmetics: a documented path that skips the
+  verification is a second way to do the thing. — agent:`deploy`
+
+- [ ] **B444** **Five things start this app and one of them is verified.** Found 2026-09-17 while
+  closing `B440`, by asking what else brings Pantheon up. The census: `docker compose up -d`
+  (now healthchecked and covered by `scripts/pantheon-deploy`); `pantheon-ui.service` +
+  `install-service.sh` (systemd, no Docker at all); `launcher.py` and `launch-windows.ps1` (the
+  Windows portable build); `start-macos.sh`; and `docs/setup.md`'s native instructions, which
+  tell the operator to run `python -m uvicorn app:app` directly.
+  **The systemd unit has `B440`'s defect exactly.** `pantheon-ui.service:8` is `Type=simple`,
+  which means systemd calls the unit started the instant the process is forked, and
+  `pantheon-ui.service:13` is `Restart=always`, which acts on exit. So `systemctl start
+  pantheon-ui` returns and `systemctl status` reads `active (running)` for the same 35-60 s
+  during which port 7000 refuses every connection — and a process that comes up wedged reads
+  `active (running)` forever. `install-service.sh:20` runs `systemctl status` immediately after
+  `start` and prints exactly that misleading line to whoever just installed it.
+  **The fix, which is systemd-native and needs no change to the app**: `ExecStartPost=` polling
+  `http://127.0.0.1:7000/api/health` until it answers, with `TimeoutStartSec=180`. With
+  `Type=simple` the unit stays `activating` until `ExecStartPost` returns, so `systemctl start`
+  blocks until the app is serving and fails cleanly if it never does — the same meaning the
+  compose healthcheck now has, in the other supervisor. (`Type=notify` would be better still and
+  costs an `sd_notify` call in `app.py`; that is a bigger decision than this row.)
+  `Verify:` on a host running the unit, `systemctl start pantheon-ui` returns only once
+  `curl http://127.0.0.1:7000/api/health` answers, and a build that cannot import fails the start
+  instead of reporting `active`.
+  `pantheon-ui.service` and `install-service.sh` are at the repository root and were not this
+  agent's to edit. `Depends:` `B440` (landed). — found while closing `B440` — agent:`deploy`
+
+- [ ] **B445** **The row that pinned `searxng` explains why `:latest` is dangerous, and two of the
+  three third-party images are still on it.** Found 2026-09-17 while adding the `pantheon`
+  healthcheck. `docker-compose.yml:151` is pinned to `searxng:2026.5.31-7159b8aed` with a comment
+  saying a broken upstream `latest` (2026.6.2, `KeyError: 'default_doi_resolver'`, issue #1414)
+  failed the healthcheck and blocked the whole app from starting. Immediately above it,
+  `docker-compose.yml:136` is `docker.io/chromadb/chroma:latest`; below it,
+  `docker-compose.yml:201` is `docker.io/binwiederhier/ntfy` with **no tag at all**, which is
+  `:latest` written shorter. Both are repeated in the two standalone GPU compose files.
+  `tests/test_searxng_image_pinned.py` guards the one that was fixed and knows nothing about the
+  other two, which is `Law 13` in one file: the fix was applied at one call site of three.
+  **The consequence differs by service and both halves are worth stating.** `pantheon` depends on
+  `chromadb` with `condition: service_started`, not `service_healthy`, so a broken chroma does not
+  block startup — it degrades retrieval, and `src/embedding_lanes.py` already falls back to the
+  in-process index, so the failure is quiet rather than loud. `ntfy` nothing depends on. So this
+  is not an outage waiting to happen in the way searxng was; it is **a rebuild that silently
+  changes two components, with no record of which version was working**, which is the thing the
+  searxng comment was written to prevent.
+  **Do not guess a tag.** Pinning to a version nobody has booted is the same defect pointing the
+  other way. `Verify:` both images carry an explicit version tag, each was started once and
+  observed to work before being pinned, and the test that guards searxng's pin guards all three.
+  — found while closing `B440` — agent:`deploy`
+
+- [ ] **B446** **Docker does not restart an unhealthy container, so `B440` made a wedge visible
+  without making it recoverable.** Filed 2026-09-17 on closing `B440`. `restart: unless-stopped`
+  acts on process *exit*; an `unhealthy` health status is a label, and nothing in a plain
+  `docker compose` stack acts on it. A Pantheon container that is running, has the port open and
+  answers nothing now reads `unhealthy` in `docker ps` and fails `scripts/pantheon-deploy verify`
+  — and then stays exactly as it is until a person looks.
+  **This is a decision with a real cost on each side, which is why it is a row and not a patch.**
+  A sidecar that restarts unhealthy containers (the `autoheal` pattern: one more container, and it
+  needs the Docker socket, which `docker/host-docker.yml` is deliberately opt-in about and
+  `THREAT_MODEL.md` treats as host-level trust) turns a wedge into a restart loop when the cause
+  is a bad config rather than a transient — and a restart loop on a self-hosted box with no alerting
+  is a worse failure than a stopped app, because it hides. The alternative is to document that the
+  healthcheck reports and the operator acts, which is what `docs/setup.md` now says.
+  `Verify:` whichever is chosen, `docker ps` and the documentation agree about what happens next
+  when the container reads `unhealthy`. `Depends:` `B440` (landed).
+  — found while closing `B440` — agent:`deploy`
+
+- [ ] **B447** **The shipped-bytes check covers 655 of 2,197 tracked files, and the gap is the
+  skill library.** Filed 2026-09-17. `scripts/pantheon-deploy`'s manifest is built from
+  `MANIFEST_ROOTS` and skips `.md`, `.log`, `.db` and `node_modules` at any depth. That covers
+  every byte of `static/` and every Python module — `B360`/`B362`'s class exactly — and leaves out
+  `library/ecc/skills/**/SKILL.md` and the other ~1,500 markdown files.
+  **The reason is honest and it is not a good one.** `.dockerignore:34` is `*.md`, and Docker
+  matches it with `filepath.Match` semantics where `*` does not cross a `/` — so `README.md` is
+  excluded from the build context and `library/ecc/skills/x/SKILL.md` **is not**, and those files
+  do ship and are read at runtime. The manifest excludes them anyway because that behaviour was
+  reasoned from Docker's documentation and not observed (no Docker daemon in the environment this
+  was written in), and a byte check that fails on files that were never meant to be there gets
+  switched off by the second deploy.
+  **Measure before widening**: on a host with Docker, `docker run --rm --entrypoint sh <image> -c
+  'ls /app/library/ecc/skills | wc -l'` settles it in one command. If those files are in the image,
+  `MANIFEST_SKIP` should drop its `.md` arm and the manifest becomes ~2,100 files; if they are not,
+  the `.dockerignore` line is silently dropping the skill library out of the image and that is a
+  much larger row than this one. `Verify:` the number of files the manifest checks equals the
+  number of tracked files the image actually carries, measured rather than derived.
+  `Depends:` `B442` (landed). — found while closing `B442` — agent:`deploy`
+
+- [x] **B460** **The ship-line rule caught two rows on its first integration run, both filed by
+  other agents in the same wave.** Found 2026-09-17 by the suite on the merge of `B451`.
+  `.pantheon/ship-line.py --check` reported `B437` and `B441` **unclassified** — filed hours
+  earlier by the CI and deployment agents, in worktrees the ship-line agent could not see, and
+  therefore adjudicated by nobody. That is the mechanism working exactly as designed: `B451`'s
+  whole argument is that a hand-maintained line rots, and the guard is that **an open row the rule
+  calls a candidate with no verdict fails, by id**. It had already flagged two of its own author's
+  rows before the merge; these are the first two it caught from outside.
+  Both are registered `tracked`, with the reasoning rather than a shrug. **`B437`** —
+  `vendored-freshness.yml` prints "Advisories against what we ship" and always exits zero — is a
+  fail-open reporter, which is the shape `B435` treated as serious; it stays below the line
+  because it is written down and because **no workflow in this repository can run at all until
+  Actions can** (`B439`), so it reports nothing either way today. **`B441`** — `/api/ready`
+  answers `401` against its own docstring naming it "suitable for an orchestrator readiness
+  probe" — is a false claim, and false claims are the class that does gate. It stays below the
+  line because its reader is an orchestrator rather than a stranger in the first ten minutes, and
+  because `B440`'s healthcheck now answers the question `/api/ready` was failing to. **If the
+  owner adopts the line, `B441` is the one to argue about**, and the argument is written here
+  rather than settled quietly.
+  `Verify:` a row filed in one worktree and merged from another cannot reach `main` without a
+  verdict. — found while merging `B451` — agent:`integrator`

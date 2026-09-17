@@ -18,8 +18,8 @@ automatically; you do not start them.
 | **Dependency review** | A pull request that adds a software library with a known security hole | Yes |
 | **pip-audit** | Known security holes in the Python libraries already used | Yes |
 | **Container scan: hadolint** | Mistakes and insecure patterns in the `Dockerfile` | Yes |
-| **Container scan: Trivy** | Known security holes in the Docker image | No (advisory) |
-| **CodeQL** | Real bugs in the app's own code: injection, auth mistakes, path traversal | No (advisory) |
+| **Container scan: Trivy** | Known security holes in the Docker image | Findings no; a failed build or a failed upload yes (`B435`) |
+| **CodeQL** | Real bugs in the app's own code: injection, auth mistakes, path traversal | No (advisory) — and it now runs on pull requests at all (`B433`) |
 
 "Blocks a merge" means a red X appears on the pull request and, once you enable
 the setting below, the **Merge** button is disabled until it is fixed.
@@ -42,10 +42,98 @@ with no entry fails. Adding an entry is a reviewable diff with a `DECISIONS.md`
 entry behind it, and `.pantheon/check-pins.py` refuses one that does not explain
 itself or whose review date has passed.
 
-Trivy stays advisory: it scans the whole image, including operating-system
-packages this project does not choose, and a fixless CVE in one of those must
-not stop a merge. It runs with `ignore-unfixed`, and what that flag was silently
-dropping is now written down in `D-2026-09-16-01`.
+Trivy's **findings** stay advisory: it scans the whole image, including
+operating-system packages this project does not choose, and a fixless CVE in one
+of those must not stop a merge. It runs with `ignore-unfixed`, and what that flag
+was silently dropping is now written down in `D-2026-09-16-01`.
+
+**Whether it looked is not advisory** (`B435`, 2026-09-17). `continue-on-error`
+used to sit on the whole Trivy job, both of them — so a Dockerfile that would
+not build, or a SARIF upload that never reached the Security tab this page sends
+you to, reported a green tick. A green tick that means *I did not look* is worse
+than a red one, and it was worse still here: Trivy is the job that was meant to
+be the one that caught `basicsr`. The flag now sits on the one step whose
+findings are advisory, and its name says so. The rule generalises, and
+`.pantheon/check-ci-contract.py` enforces it: **a `continue-on-error` job or
+step must say `advisory` or `report-only` in its name**, because the name is all
+a reader of the Checks tab gets.
+
+## How to tell whether CI is actually passing
+
+**On 2026-09-17 nobody could, and nobody had.** Of the last forty workflow runs
+on this repository, 22 failed, 8 succeeded, 9 were skipped and 1 was cancelled —
+and every one of the eight successes is a Dependabot update run or a
+`Container scan (Trivy)` job that skipped its work. No `CI`, `CodeQL`,
+`Secret scan`, `Workflow security` or `Dependency review` run has ever
+succeeded. Every failing job reports an empty `runner_name`, an empty `steps`
+array and a three-to-six second duration: **they never got a runner.** That is
+the signature of exhausted Actions minutes or a spending limit on a private
+repository owned by a user account, and no change to a workflow file makes a
+runner appear. Actions itself is enabled
+(`{"enabled":true,"allowed_actions":"all"}`). Making the repository public makes
+Actions free and unlimited for it, which is the fix and is the owner's call.
+
+The part that was ours is that **five waves of work shipped that day, each
+reporting "gate green on 22 checkers", and every one of those was a local
+`.pantheon/release-gate.py --fast` run.** The pipeline was red for all five and
+nothing in this repository observed it. So:
+
+### The badges in README.md
+
+The five badges under the title are live. Each is
+`github.com/ImPanick/pantheon/actions/workflows/<file>/badge.svg?branch=main`
+and each links to that workflow's runs. `.pantheon/check-ci-contract.py` rule 2
+fails if a merge-blocking workflow has no badge, if a badge names a workflow or
+branch that does not exist, or if it points at another repository.
+
+**`?branch=main` is not decoration.** A badge with no branch reports the newest
+run on *any* ref — so a green Dependabot branch paints it green while `main` is
+red, which is precisely the shape of the eight successes above.
+
+What the badges do and do not tell you:
+
+| State | What a logged-out reader sees | What it means |
+|---|---|---|
+| Private repo (today) | A blank or broken image | **Nothing.** `badge.svg` needs read access; a stranger learns nothing, and neither does a stranger's scraper |
+| Private repo, signed in with access | The real status | The latest run on `main` for that workflow |
+| Public repo | The real status | The same, to everybody |
+| Any state, workflow never ran | `no status` | **Not "passing".** No run has happened — which is exactly today's situation and the one most easily misread |
+
+So the badge is necessary and **not sufficient**, for three reasons: it is
+invisible while the repo is private, "no status" reads as absence rather than
+failure, and a badge is green whenever the *workflow* concluded green — which a
+job that fails open does. The first two are facts to know; the third is what the
+checker below is for.
+
+### The checker
+
+`.pantheon/check-ci-contract.py` runs in `ci.yml` and therefore in
+`release-gate.py`, which reads its checker list out of that file. Seven rules:
+
+1. every check name this page tells you to require matches a job that exists;
+2. every merge-blocking workflow has a branch-pinned badge in `README.md`;
+3. no workflow trigger names a branch this repository does not have (`B433`:
+   `ci.yml`, `codeql.yml` and `docker-publish.yml` all said `dev`, which has
+   never existed — and in `codeql.yml` the filter was on pull requests, so
+   **CodeQL had never analysed a single pull request**);
+4. a `continue-on-error` job or step says so in its name (`B435`);
+5. the local gate reads its interpreter, node version, suite argv and advisory
+   argv out of `ci.yml` rather than copying them (`B431`);
+6. neither syntax job keeps a second list of which files are ours (`B436`);
+7. a skip that claims "this change is only documentation" can prove it
+   (`B434`).
+
+### What the local gate is and is not
+
+`.pantheon/release-gate.py` mirrors `ci.yml` and **nothing else**. A push also
+sets off the secret scan, the workflow-security audit, the dependency review and
+the container scan — four gates this page calls merge-blocking — and the gate
+runs none of them. `--fast` additionally skips the suite. Every run now ends
+with a block naming exactly what it did not cover, including the suite, the
+workflows it does not run, and any place the developer's interpreter or node
+differs from the pinned ones. A green gate is evidence about the checkers it
+ran, on the machine it ran on. It is not a green pipeline, and only the badges
+and the Actions tab are.
 
 ## Where results appear
 

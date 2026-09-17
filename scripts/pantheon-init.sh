@@ -200,7 +200,11 @@ if [[ "$MODE" == "apply" ]]; then
   say "    · P0-05  vector collections — drop and re-index"
   say "    · P0-13  the mark"
   say "    · P0-14 … P0-27  notices, credits, the source link"
-  say "    · docker compose up -d --build"
+  # `B443`. This used to say `docker compose up -d --build`, which is the
+  # unverified path: it returns while the app is still importing itself and
+  # tells you nothing about whether the rename left something that cannot be
+  # imported. After a sweep of ~2,900 occurrences that is exactly the question.
+  say "    · ./scripts/pantheon-deploy run   (build, wait for healthy, verify)"
 else
   say "  Dry run only. Nothing changed."
   say "  Re-run with --apply when the list above looks right."

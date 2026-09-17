@@ -2,7 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [main, dev]
+    # `B433`. This said `[main, dev]` from the fork baseline until 2026-09-17
+    # and there has never been a `dev` branch, so half of this trigger has
+    # never fired. `B352` corrected the PR and issue templates that sent
+    # contributors to the same branch and the workflows were missed.
+    # `.pantheon/check-ci-contract.py` rule 3 is what fails now if a trigger
+    # names a branch this repository does not have.
+    branches: [main]
   pull_request:
 
 # Least privilege: none of the jobs write to the repo.
@@ -80,7 +86,29 @@ jobs:
         with:
           python-version: "3.11"
       # Byte-compile sources — catches syntax errors without installing deps.
-      - run: python -m compileall -q app.py core routes src services scripts tests
+      #
+      # `B436`. This used to be `compileall app.py core routes src services
+      # scripts tests`, a second hand-typed list of which Python is ours, and
+      # it had drifted exactly the way `B10`'s JavaScript list did: on
+      # 2026-09-17 it missed **51 of the 1,429 tracked `.py` files, including
+      # all 22 checkers this workflow then runs**, `launcher.py`,
+      # `.github/scripts/`, and every module under `companion/`,
+      # `mcp_servers/` and `netagent/`. A checker with a syntax error in it
+      # fails at the step that runs it, with a traceback instead of a
+      # compile error, on a job nobody expects to be about syntax.
+      #
+      # There is one list now and it is `_python_files()` in the gate, the same
+      # direction the node step already takes.
+      - name: py_compile
+        run: |
+          python3 -c "
+          import importlib.util, subprocess, sys
+          spec = importlib.util.spec_from_file_location('gate', '.pantheon/release-gate.py')
+          gate = importlib.util.module_from_spec(spec); spec.loader.exec_module(gate)
+          files = gate._python_files()
+          print(f'{len(files)} python files')
+          sys.exit(subprocess.run([sys.executable, '-m', 'py_compile', *files]).returncode)
+          "
 
   wiring-ratchet:
     name: Wiring ratchet (check-wiring.py --max 120)
@@ -113,6 +141,23 @@ jobs:
       # roadmap that lies about itself has been pushable this whole time.
       - name: check-tracker
         run: python3 .pantheon/check-tracker.py
+
+      # `B430`. The tracker above checks that the roadmap does not lie about
+      # itself. This one checks that CI does not. It was written because on
+      # 2026-09-17 nothing in this repository could answer "is the pipeline
+      # green" — twenty-two of the last forty runs had failed, every one of
+      # the eight successes was a Dependabot run or a Trivy job that skipped
+      # its work, and five waves shipped that day each reporting "gate green"
+      # from a local `release-gate.py --fast`. Seven rules: a required check
+      # names a job that exists; the README carries a branch-pinned badge for
+      # each; no trigger names a branch this repo does not have (`B433`); a
+      # `continue-on-error` job says so in its name (`B435`); the local gate
+      # reads its interpreter, node version and suite argv out of this file
+      # rather than copying them (`B431`); neither syntax job keeps a second
+      # list of which files are ours (`B436`); and a skip that says "this is
+      # only documentation" can prove it (`B434`).
+      - name: check-ci-contract
+        run: python3 .pantheon/check-ci-contract.py
 
       # `P17-06`. A tool name has to be registered in up to eight places and a
       # name missing from any one of them fails silently and differently. That
@@ -423,27 +468,45 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # Detect whether this PR only touches documentation files.
+      # Detect whether this change only touches documentation files.
       # If so, skip the expensive pytest run while still reporting a passing check.
+      #
+      # `B434`. The decision used to be a shell pipeline ending in
+      # `if [ -z "$non_docs" ]`, and **its empty case answered yes**: a push
+      # whose `before` is the zero sha, a force-push whose base is gone, or any
+      # `git diff` that failed at all produced an empty `changed`, which fed
+      # `grep` one blank line, which left `non_docs` empty, which meant
+      # docs-only — so `Python tests (pytest)` reported SUCCESS having run no
+      # tests. Two different questions had one answer: "is every changed file
+      # documentation" and "could the change set be computed".
+      #
+      # The decision now lives in `.github/scripts/docs_only.py`, where the
+      # suite can call it with a list and where an empty list answers `false`
+      # (run them). The shell here only collects paths; it decides nothing.
+      # `${{ }}` values go through `env:` rather than into the script body —
+      # a workflow that pastes event data into a shell is the template
+      # injection zizmor exists to find.
       - name: Check for docs-only changes
         id: docs-check
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE="${{ github.event.pull_request.base.sha }}"
-            HEAD="${{ github.event.pull_request.head.sha }}"
+          set -uo pipefail
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            BASE="$PR_BASE"; HEAD="$PR_HEAD"
           else
-            BASE="${{ github.event.before }}"
-            HEAD="${{ github.sha }}"
+            BASE="$PUSH_BEFORE"; HEAD="$PUSH_AFTER"
           fi
-          # List all changed files; if every file matches docs/markdown patterns, skip pytest.
-          changed=$(git diff --name-only "$BASE" "$HEAD" 2>/dev/null || git diff --name-only HEAD~1 HEAD)
-          non_docs=$(echo "$changed" | grep -Ev '^(docs/|.*\.md$|\.github/[^/]+\.md$)' || true)
-          if [ -z "$non_docs" ]; then
-            echo "docs_only=true" >> "$GITHUB_OUTPUT"
-            echo "Docs-only change detected — skipping pytest."
-          else
-            echo "docs_only=false" >> "$GITHUB_OUTPUT"
-          fi
+          changed="$RUNNER_TEMP/changed-files.txt"
+          git diff --name-only "$BASE" "$HEAD" > "$changed" 2>/dev/null \
+            || git diff --name-only HEAD~1 HEAD > "$changed" 2>/dev/null \
+            || : > "$changed"
+          python3 .github/scripts/docs_only.py --changed-from "$changed" \
+            >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
         if: steps.docs-check.outputs.docs_only != 'true'

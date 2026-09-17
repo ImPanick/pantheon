@@ -8,9 +8,15 @@ name: ci / docker publish
 # manifest list and applies the tags (faster + cleaner than QEMU emulation).
 # Registry: ghcr.io/<owner>/<repo>.
 
+# `B433`: the trigger said `[dev, main]` and there has never been a `dev`
+# branch, so the `:dev` half of the scheme above has never run once. The tag
+# rules below are left exactly as they are — they are the record of what the
+# scheme is, they cost nothing while unreachable, and restoring `dev` is then
+# this one line plus an entry in `.pantheon/check-ci-contract.py`'s branch
+# register, in that order.
 on:
   push:
-    branches: [dev, main]
+    branches: [main]
     paths-ignore:
       - '**.md'
       - 'docs/**'

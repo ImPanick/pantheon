@@ -14,10 +14,37 @@ is **read out of the workflow file** for exactly that reason: CI is the source
 of truth for which checks exist and at what ceiling, and this script is the way
 to run CI's gate before pushing rather than after.
 
-**What it adds over CI**: `py_compile` across the tree and `node --check` across
-every module, which the workflow does per-job on changed files; and the
-retrieval eval, which is a report rather than a gate (`P13-13`) and is printed
-here because a number nobody looks at is a number that drifts.
+**What it adds over CI**: nothing that CI does not also do. `py_compile` and
+`node --check` run over the one list of which files are ours, and `ci.yml`'s
+syntax jobs call these same two functions rather than keeping their own (`B10`,
+`B436`); the retrieval eval is a report rather than a gate (`P13-13`) and is
+printed here because a number nobody looks at is a number that drifts.
+
+**What it does NOT do, and now says so.** `B432`: five waves shipped on
+2026-09-17, each reporting "gate green on 22 checkers", and every one of those
+was a `--fast` run — so "gate passed" meant "the suite did not run" five times
+in a row while CI was red and nobody noticed. Three separate things were
+invisible at once:
+
+  - `--fast` skips the suite, and the only trace of it was the word "everything"
+    missing from a line that otherwise reads "gate passed";
+  - this gate mirrors `ci.yml` and nothing else, while a push also runs the
+    secret scan, the workflow-security audit, the dependency review and the
+    container scan — four blocking gates it has never claimed to run and never
+    admitted not running;
+  - it runs on whatever interpreter and node happen to be on the developer's
+    PATH, against a workflow that pins both. Measured here on 2026-09-17: node
+    22 locally against a workflow pinning 20.
+
+None of those are failures. All three are things a reader of a green run was
+entitled to know, so every run now ends with what it did not cover.
+
+**Divergence is read, not remembered** (`B431`). The interpreter, the node
+version, the suite's own argv and the advisory step's argv all come out of the
+workflow the same way the checker list does. The suite used to run
+`-p no:randomly` here and `-q` in CI, so a local pass was evidence about a
+**fixed test order CI does not use**; `.pantheon/check-ci-contract.py` is what
+now fails when the two drift apart again.
 
     .pantheon/release-gate.py             everything
     .pantheon/release-gate.py --fast      everything except the suite
@@ -63,6 +90,123 @@ def _checkers_from_ci() -> list[tuple[str, list[str]]]:
         argv = m.group(1).split()
         found.append((Path(argv[0]).stem.replace("check-", ""), argv))
     return found
+
+
+def _ci_text() -> str:
+    return WORKFLOW.read_text(encoding="utf-8") if WORKFLOW.exists() else ""
+
+
+def ci_python_version() -> str | None:
+    """The interpreter `ci.yml` pins, read from the workflow.
+
+    `B431`. Not to enforce — a contributor on 3.12 must still be able to run
+    this — but because "the gate passed" is a claim about a run, and a run on a
+    different interpreter is a different run. It goes in the not-covered block.
+    """
+    found = re.findall(r"^\s*python-version:\s*[\"']?([\w.]+)[\"']?\s*$",
+                       _ci_text(), re.M)
+    return found[0] if found else None
+
+
+def ci_node_version() -> str | None:
+    found = re.findall(r"^\s*node-version:\s*[\"']?([\w.]+)[\"']?\s*$",
+                       _ci_text(), re.M)
+    return found[0] if found else None
+
+
+def ci_suite_args() -> list[str]:
+    """The arguments CI gives the whole-suite pytest run.
+
+    Read rather than written down. This is where the two had actually drifted:
+    the gate passed `-p no:randomly` and CI does not, so every local suite run
+    was evidence about a fixed order and CI's was not. An invocation that names
+    a path under `tests/` is a *targeted* run (`law16-egress`) and is not the
+    suite.
+    """
+    for m in re.finditer(r"run:\s*python3?\s+-m\s+pytest([^\n#]*)", _ci_text()):
+        args = m.group(1).split()
+        if not any(a.startswith("tests/") for a in args):
+            return args
+    return ["-q"]
+
+
+def ci_advisory_argv() -> list[str]:
+    """`P13-13`'s report, with the flags CI gives it. It ran `--verbose` in the
+    workflow and bare here, which is two commands wearing one name."""
+    m = re.search(r"run:\s*python3?\s+(\.pantheon/retrieval_eval\.py[^\n#]*)",
+                  _ci_text())
+    return m.group(1).split() if m else [".pantheon/retrieval_eval.py"]
+
+
+def _node_version() -> str | None:
+    if not shutil.which("node"):
+        return None
+    out = subprocess.run(["node", "--version"], capture_output=True, text=True)
+    return out.stdout.strip().lstrip("v") or None
+
+
+def environment_divergence() -> list[str]:
+    """Every way this machine is not the machine CI uses.
+
+    Reported, never enforced. The moment a gate refuses to run because somebody
+    has the wrong node is the moment people stop running it — and a gate nobody
+    runs was `P10-10`'s whole complaint.
+    """
+    out: list[str] = []
+    want_python = ci_python_version()
+    have_python = f"{sys.version_info.major}.{sys.version_info.minor}"
+    # Compared on major.minor: `3.11.15` and `3.11.9` are the same claim, and a
+    # workflow that pinned `3.11.15` would be pinning a patch nobody chose.
+    if want_python and want_python.split(".")[:2] != have_python.split(".")[:2]:
+        out.append(f"python {have_python} here, CI pins {want_python}")
+    want_node = ci_node_version()
+    have_node = _node_version()
+    if want_node and have_node and have_node.split(".")[0] != want_node.split(".")[0]:
+        out.append(f"node {have_node} here, CI pins {want_node}")
+    return out
+
+
+def workflows_not_run_here() -> list[str]:
+    """The other workflows a push sets off, which this gate does not run.
+
+    `B432`. Four of them block a merge (`docs/security-ci.md`), and this script
+    has never run one or said that it does not. The filenames are read from the
+    directory rather than listed, so a workflow added tomorrow is named here the
+    day it lands. What is inside them is
+    `.pantheon/check-ci-contract.py`'s subject, not this file's.
+    """
+    out = []
+    for path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+        if path.name == WORKFLOW.name:
+            continue
+        head = path.read_text(encoding="utf-8").split("jobs:", 1)[0]
+        if re.search(r"^\s{0,4}(pull_request|push):\s*$", head, re.M):
+            out.append(path.name)
+    return out
+
+
+def not_covered(fast: bool, node_skipped: bool) -> list[str]:
+    """Everything a green exit from this script is not evidence about."""
+    lines = []
+    if fast:
+        lines.append(
+            "NOT RUN   the suite — `--fast` skips it. This run says nothing "
+            "about whether the tests pass.")
+    if node_skipped:
+        lines.append(
+            "NOT RUN   node --check — node is not on PATH, so no JavaScript "
+            "was parsed.")
+    others = workflows_not_run_here()
+    if others:
+        lines.append(
+            f"NOT RUN   {len(others)} workflows a push also sets off, four of "
+            f"them merge-blocking: {', '.join(others)}")
+    for line in environment_divergence():
+        lines.append(f"DIVERGES  {line} — this run is not evidence about CI's.")
+    lines.append(
+        "NOT COVERED  the manual pass over every surface (`P10-10`). This "
+        "script cannot do it and does not pretend the gate covers it.")
+    return lines
 
 
 def _extra_checkers(known: set[str]) -> list[tuple[str, list[str]]]:
@@ -162,17 +306,26 @@ def main() -> int:
             print(f"\n{len(extra)} checker(s) on disk that CI does NOT run:")
             for name, _ in extra:
                 print(f"  {name}")
-        print("\nthen: py_compile, node --check, retrieval eval (advisory)"
-              + ("" if args.fast else ", pytest -q"))
+        print("\nthen: py_compile, node --check, "
+              f"{' '.join(ci_advisory_argv())} (advisory)"
+              + ("" if args.fast else f", pytest {' '.join(ci_suite_args())}"))
+        print()
+        for line in not_covered(args.fast, not shutil.which("node")):
+            print(f"  {line}")
         return 0
 
     if not from_ci:
         print(f"! {WORKFLOW.relative_to(ROOT)} has no checker steps — nothing to mirror.")
         return 1
 
+    # `B432`. The header says it before the run and the footer says it after,
+    # because the thing that went wrong five times in one day was a person
+    # reading the last line of a long output and taking "gate passed" for
+    # "everything passed".
     print(f"release gate · {len(from_ci)} checkers from CI"
           + (f" · {len(extra)} not in CI" if extra else "")
-          + (" · suite skipped" if args.fast else ""))
+          + ("  ·  SUITE NOT RUN (--fast)" if args.fast
+             else f"  ·  suite: pytest {' '.join(ci_suite_args())}"))
     print()
 
     steps: list[tuple[str, list[str]]] = [
@@ -181,9 +334,9 @@ def main() -> int:
     for name, argv in extra:
         steps.append((f"{name} (not in CI)", [sys.executable, *argv]))
     steps.append(("py_compile", [sys.executable, "-m", "py_compile", *_python_files()]))
-    steps.append(("retrieval eval", [sys.executable, ".pantheon/retrieval_eval.py"]))
+    steps.append(("retrieval eval", [sys.executable, *ci_advisory_argv()]))
     if not args.fast:
-        steps.append(("pytest", [sys.executable, "-m", "pytest", "-q", "-p", "no:randomly"]))
+        steps.append(("pytest", [sys.executable, "-m", "pytest", *ci_suite_args()]))
 
     failed: list[str] = []
     for label, argv in steps:
@@ -193,20 +346,28 @@ def main() -> int:
         if not ok and label not in ADVISORY:
             failed.append(label)
 
+    # `B432`. A step that did not run is `skip`, never `ok`. Node missing is a
+    # legitimate reason not to parse any JavaScript and it is not a reason to
+    # print the same word as a run that parsed 187 modules.
+    node_skipped = not shutil.which("node")
     ok, detail = _node_check(_js_files())
-    print(f"  {'ok  ' if ok else 'FAIL'}  {'node --check':<24} {'':>6}   {detail[:96]}")
+    mark = "skip" if node_skipped else ("ok  " if ok else "FAIL")
+    print(f"  {mark}  {'node --check':<24} {'':>6}   {detail[:96]}")
     if not ok:
         failed.append("node --check")
 
     print()
     if failed:
         print(f"GATE FAILED — {len(failed)}: {', '.join(failed)}")
-        return 1
-    print("gate passed." + ("" if args.fast else " Safe to push."))
-    # `P10-10`'s other half is a person: a manual pass over every surface. This
-    # script cannot do it and does not pretend the gate covers it.
-    print("Not covered here: the manual pass over every surface (`P10-10`).")
-    return 0
+    elif args.fast:
+        print(f"GATE PASSED — {len(steps)} steps.  THE SUITE DID NOT RUN.")
+    else:
+        print(f"GATE PASSED — {len(steps)} steps, suite included. Safe to push, "
+              "as far as this gate goes.")
+    print()
+    for line in not_covered(args.fast, node_skipped):
+        print(f"  {line}")
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

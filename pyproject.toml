@@ -1,3 +1,17 @@
+# `B450`. **There is no `[project]` table here and no `version` key, on purpose.**
+#
+# This file is habitually the first place a packaging tool or a contributor
+# reaches for a version, and adding one here would make it the third — the
+# application already declares its version twice, in `src/constants.py`
+# (`APP_VERSION`, which `/api/version`, `/api/readiness`, `pantheon_build_info`,
+# the diagnostic bundle, OTLP and `docker-publish.yml`'s image tag all read) and
+# in `scripts/_lib/cli.py` (`VERSION`, which twenty `pantheon-*` executables
+# print for `--version`). Those two are pinned to each other by
+# `tests/test_one_version_string.py`, which also fails on a third. `Law 14`.
+#
+# The scheme — what the number means, and how it, the git tag and the newest
+# `CHANGELOG.md` heading are kept equal — is in `CHANGELOG.md` § Versions.
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
