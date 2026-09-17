@@ -32,6 +32,7 @@ import textwrap
 from pathlib import Path
 
 import pytest
+from tests.helpers.source_text import blank, blank_text  # B290
 
 pytestmark = pytest.mark.skipif(not shutil.which("node"),
                                 reason="node binary not on PATH")
@@ -503,10 +504,7 @@ def _chat_js_code() -> str:
     has caught this project four times now (`B32`, `B33`, and twice in
     `P16-12`).
     """
-    src = (ROOT / "static" / "js" / "chat.js").read_text(encoding="utf-8")
-    src = re.sub(r"/\*.*?\*/", " ", src, flags=re.S)
-    return "\n".join(ln for ln in src.splitlines()
-                      if not ln.lstrip().startswith("//"))
+    return blank(ROOT / "static" / "js" / "chat.js")
 
 
 def test_something_actually_starts_the_panel():
@@ -538,9 +536,7 @@ def test_no_innerHTML_anywhere_on_these_cards():
     arrived from outside. The shim above has no `innerHTML` at all, so an
     assignment would throw under node — this asserts it at the source too, so a
     reviewer does not have to trust that the shim stayed incomplete."""
-    js = MODULE.read_text(encoding="utf-8")
-    code = re.sub(r"/\*.*?\*/", "", js, flags=re.S)
-    code = "\n".join(ln for ln in code.splitlines() if not ln.strip().startswith("//"))
+    code = blank(MODULE)
     assert "innerHTML" not in code
     assert "insertAdjacentHTML" not in code
 

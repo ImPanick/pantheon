@@ -611,17 +611,56 @@ def test_the_four_directions_are_one_geometry_rotated():
     assert proc.stdout.strip() == "THREW", proc.stdout + proc.stderr
 
 
-def test_every_chevron_site_emits_what_its_literal_emitted():
+# `B291`'s diff, named site by site, applied to `B230`'s before-fixture.
+#
+# The fixture stays the record of what the tree emitted with the literals still
+# in it — that is evidence about a commit that has landed and it does not get
+# rewritten. What each site emits NOW is that record plus this delta and
+# nothing else, which is the form that makes "we changed exactly these" an
+# assertion instead of a claim.
+#
+# Two axes moved. Two did not, and they are `B394`.
+_B291_LINEJOIN = ("static/js/cookbookRunning.js#1", "static/js/research/panel.js#5")
+
+
+def _expected_now(before: dict) -> dict:
+    """`B230`'s baseline with `B291` applied. Both changes, both explicit."""
+    out = {}
+    for key, rec in before.items():
+        attrs = dict(rec["attrs"])
+        # (1) aria-hidden, at every site that did not already state it. The
+        #     builder's default carries all 46; the 11 that passed
+        #     `ariaHidden: true` are unchanged because the value is the same.
+        attrs["aria-hidden"] = "true"
+        # (2) the two mitred vertices join their round siblings.
+        if key in _B291_LINEJOIN:
+            assert "stroke-linejoin" not in rec["attrs"], key
+            attrs["stroke-linejoin"] = "round"
+        out[key] = {**rec, "attrs": attrs}
+    return out
+
+
+def test_every_chevron_site_emits_what_its_literal_emitted_plus_B291s_two_changes():
     """The measurement `Law 1` asks for, made site by site rather than argued.
 
     57 before, 57 after, matched by module and by order within the module; for
     each one the `<svg>` the table now produces is compared with the `<svg>` the
-    literal produced — every attribute, and the stroke. Nothing is normalised
-    away: eleven sizes, seven stroke widths, two mitred vertices, one `id`, and
-    11 `aria-hidden`s against 46 without stay exactly as they were. That spread
-    is a real defect and it is `B291`; a commit that fixed it here would have
-    hidden it inside a move."""
+    literal produced, every attribute and the stroke — plus exactly the two
+    changes `B291` decided, applied by `_expected_now` where a reader can see
+    them.
+
+    Everything else is still normalised away by nothing at all: eleven sizes,
+    seven stroke widths, one `id` and every inline style stay exactly as they
+    were. Sizes and stroke widths are the half of `B291` that needs the owner,
+    because the variation there is not uniformly drift — an 8px caret inside a
+    toolbar button and a 24px gallery arrow are different controls — and they
+    are `B394`.
+
+    **This fails on the tree as it stood before `B291`** (`Law 9`): that tree
+    emitted no `aria-hidden` at 46 of the 57 and left `stroke-linejoin` off at
+    two, so `_expected_now` disagrees with it at 47 sites."""
     before = json.loads(BASELINE.read_text(encoding="utf-8"))
+    want_all = _expected_now(before)
     now = _sites_now()
     assert len(before) == 57
     assert len({k.split("#")[0] for k in before}) == 23
@@ -636,7 +675,7 @@ def test_every_chevron_site_emits_what_its_literal_emitted():
 
     diffs, respelled = [], []
     for key, markup in zip(keys, rendered):
-        want = before[key]
+        want = want_all[key]
         got = _svg_attrs(markup)
         points = re.search(r'<polyline points="([^"]*)"', markup).group(1)
         if got != want["attrs"] or segments(points) != segments(want["points"]):
@@ -644,6 +683,12 @@ def test_every_chevron_site_emits_what_its_literal_emitted():
         elif points != want["points"]:
             respelled.append(key)
     assert not diffs, diffs
+    # The 46 that gained the attribute are named by construction: they are the
+    # sites the baseline recorded WITHOUT it. Pinning the split stops the
+    # decision drifting back one call site at a time.
+    gained = {k for k in keys if not before[k]["attrs"].get("aria-hidden")}
+    assert len(gained) == 46, sorted(gained)
+    assert len(keys) - len(gained) == 11
     # Exactly three sites come out spelled differently, and it is the same
     # stroke: `6 15 12 9 18 15` and `18 15 12 9 6 15` are one polyline read from
     # either end, and every site sets `stroke-linecap="round"` so both ends are
@@ -657,14 +702,24 @@ def test_every_chevron_site_emits_what_its_literal_emitted():
     # value that happens to be the base.
     counts = collections.Counter(before[k]["direction"] for k in keys)
     assert counts == {"down": 43, "left": 6, "up": 5, "right": 3}, counts
-    # The spread this move deliberately preserves — eleven sizes, seven stroke
-    # widths, two mitred vertices, eleven `aria-hidden`s. `B291`.
+    # What `B230` preserved and what `B291` settled, in one place.
+    #   sizes / stroke widths — still eleven and seven, still open, still
+    #     `B394`. A ratchet, not an endorsement: a TWELFTH size or an EIGHTH
+    #     stroke width fails here rather than joining the spread quietly.
     assert len({before[k]["attrs"]["width"] for k in keys}) == 11
     assert len({before[k]["attrs"]["stroke-width"] for k in keys}) == 7
+    assert len({_svg_attrs(m)["width"] for m in rendered}) == 11
+    assert len({_svg_attrs(m)["stroke-width"] for m in rendered}) == 7
+    #   vertices — was two mitred against 55 round; now every chevron in the
+    #     product has the same vertex, which is `Law 15` satisfied rather than
+    #     asserted.
     assert sum(1 for k in keys
                if "stroke-linejoin" not in before[k]["attrs"]) == 2
+    assert all(_svg_attrs(m).get("stroke-linejoin") == "round" for m in rendered)
+    #   aria-hidden — was 11 of 57; now 57 of 57.
     assert sum(1 for k in keys
                if before[k]["attrs"].get("aria-hidden")) == 11
+    assert all(_svg_attrs(m).get("aria-hidden") == "true" for m in rendered)
 
 
 def test_the_table_adds_no_rotation_of_its_own():
@@ -747,3 +802,94 @@ def test_the_chevron_the_table_draws_names_no_colour():
     css = (ROOT / "static" / "style.css").read_text(encoding="utf-8")
     assert not re.search(r":root\s*\{[^}]*--accent\s*:", css), \
         "`--accent` must never be defined in `:root`"
+
+
+# ── `B292` — the shell, which cannot import a table ─────────────────────────
+#
+# `static/index.html` is markup. A `<script type="module">` cannot rewrite what
+# the parser has already read without a flash, and the shell is the one surface
+# where a flash is the whole cost `B141` paid to remove — so the seven (nine,
+# see below) chevrons there could not move into `icons.js` with the other 57.
+#
+# `B292` wrote out two honest options: render the shell through a server-side
+# template filter that calls one Python glyph table, or leave the markup where
+# it is and pin it to the table with a test. The second is taken, and the row
+# says it is probably right; the first is the only one that makes the count
+# zero, and it needs `routes/` and `app.py`, which this row does not own.
+#
+# **The row's count was seven and the tree holds nine.** The two it missed are
+# `#model-picker-btn`'s caret and `#overflow-plus-btn`'s glyph, both spelled
+# `6 15 12 9 18 15` — the UP chevron traversed backwards, which is the fifth
+# spelling `B230` found inside `document.js` showing up again in the shell. A
+# census that matches the spellings somebody already knows cannot see them;
+# `_chevron_polylines` classifies by SHAPE and does, which is the third time
+# that technique has corrected a count on this family (`B83`'s fifth play
+# triangle, `B230`'s fifth chevron spelling, and this).
+#
+# Both were respelled to the table's own `18 15 12 9 6 15`. That paints the
+# identical stroke — a polyline's traversal is not part of its stroke and every
+# one of them sets `stroke-linecap="round"` — so the check below is exact string
+# equality rather than a segment-set comparison, and a future edit that reaches
+# for a sixth spelling fails instead of joining the spread.
+
+SHELL = ROOT / "static" / "index.html"
+
+
+def _shell_chevrons() -> list[tuple[int, str, dict]]:
+    """Every chevron in the shell: line, points, and the `<svg>`'s attributes.
+
+    Found by `_chevron_polylines`, the same shape detector the module census
+    uses, so the shell is measured by the rule rather than by a list of the
+    spellings that happened to be there on the day.
+    """
+    src = SHELL.read_text(encoding="utf-8")
+    out = []
+    for line, points in _chevron_polylines(src):
+        offset = sum(len(l) + 1 for l in src.split("\n")[:line - 1])
+        start = src.rfind("<svg", 0, src.index(points, offset))
+        out.append((line, points, _svg_attrs(src[start:])))
+    return out
+
+
+def test_the_shell_cannot_spell_a_chevron_the_table_does_not():
+    """`B292`'s `Verify`, second option: the markup and `CHEVRON_POINTS` cannot
+    drift, because a chevron in the shell that stops matching fails here.
+
+    **This fails on the tree as it stood before this row** (`Law 9`): two of the
+    nine spelled `6 15 12 9 18 15`, which is not any value `chevronPoints()`
+    returns, and seven of the nine carried no `aria-hidden`.
+    """
+    table = _h("chevrons", "[]")["points"]
+    found = _shell_chevrons()
+    assert len(found) == 9, [(l, p) for l, p, _ in found]
+    by_direction = collections.Counter()
+    for line, points, attrs in found:
+        matches = [d for d, p in table.items() if p == points]
+        assert matches, (
+            f"static/index.html:{line} spells a chevron `{points}` that "
+            f"`icons.js` does not export. The table says {table}."
+        )
+        by_direction[matches[0]] += 1
+        # Same decision as `B291`, and the shell is no more exempt from it than
+        # a module is: a decorative glyph beside a label, or inside a control
+        # that carries its own `title`/`aria-label`, is not announced.
+        assert attrs.get("aria-hidden") == "true", (
+            f"static/index.html:{line} announces a decorative chevron"
+        )
+    assert by_direction == {"down": 4, "up": 3, "left": 1, "right": 1}, by_direction
+
+
+def test_the_shell_is_the_only_place_left_that_spells_one():
+    """The scope line in `icons.js`'s header, kept true by measurement.
+
+    `B230` moved 57 sites and left the shell, and said so. If a module grows a
+    literal again this fails in `test_the_tree_holds_exactly_one_chevron`; if
+    the shell's count moves, it fails here — so "nine, in one file, and that
+    file is markup" stays a fact rather than a note somebody wrote once.
+    """
+    assert _census(_chevron_polylines) == []
+    assert len(_shell_chevrons()) == 9
+    login = ROOT / "static" / "login.html"
+    assert _chevron_polylines(login.read_text(encoding="utf-8")) == [], (
+        "the login page has grown a chevron; it is a third place to keep in step"
+    )

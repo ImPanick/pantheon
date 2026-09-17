@@ -25,6 +25,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from core.middleware import SecurityHeadersMiddleware
+from tests.helpers.source_text import blank, blank_text  # B290
 
 ROOT = Path(__file__).resolve().parent.parent
 RUNNER = ROOT / "static" / "js" / "codeRunner.js"
@@ -42,11 +43,7 @@ def strip_comments(text: str, *, html: bool = False) -> str:
     too little, and removing too little makes the tests that use it stricter
     rather than weaker.
     """
-    if html:
-        text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
-    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
-    text = re.sub(r"^\s*//.*$", "", text, flags=re.M)
-    return text
+    return blank_text(text, "html" if html else "js")
 
 
 def app_csp(script_hashes: tuple = ()) -> str:

@@ -57,7 +57,29 @@ SVG_MIME_TYPES = frozenset({"image/svg+xml"})
 # one — while an uploaded diagram is allowed 2 MiB before it stops being a thing
 # worth previewing.
 MAX_SVG_BYTES = 256 * 1024
-MAX_PREVIEW_SVG_BYTES = 2 * 1024 * 1024
+# `B300` raised this from 2 MiB. The old number was a byte bound standing in
+# for a work bound, and it refused a 3 MiB Illustrator export with *"It is too
+# large to check."* — a sentence about our scanner, told to someone about their
+# drawing. What actually costs time is not the file's size but the number of
+# things in it to check, and that is now bounded directly, twice, below. On a
+# realistic 8 MiB export (long `<path d>` runs, a handful of references) the
+# whole gate measures 0.26s; the pathological shape — an `<a>` every 95 bytes —
+# is what ``MAX_SVG_REFERENCES`` and ``MAX_SVG_ELEMENTS`` exist for.
+MAX_PREVIEW_SVG_BYTES = 8 * 1024 * 1024
+
+# Work bounds that are about work rather than about bytes.
+#
+# ``MAX_SVG_REFERENCES`` is a **refusal**: past it the gate cannot claim to have
+# checked the file, and the honest answer is the one it already has a sentence
+# for. 20,000 is two orders of magnitude above any real export measured here and
+# holds the reference scan under a second at the byte cap above.
+#
+# ``MAX_SVG_ELEMENTS`` is **not** a refusal — it bounds the `B300` tokenizer,
+# whose only output is an exemption, so running out of budget means no
+# exemption and every reference judged by `B160`'s allowlist exactly as before.
+# Stopping early can only ever make this stricter.
+MAX_SVG_REFERENCES = 20000
+MAX_SVG_ELEMENTS = 200000
 
 # The elements that make an SVG a program rather than a picture, listed once so
 # the two regexes below cannot drift apart (`Law 13`). `<image>` is on its own
@@ -144,10 +166,214 @@ _DATA_IMAGE_RE = re.compile(
     r"(?:;[a-z0-9_.+-]+=[a-z0-9_.+-]*)*;base64,[a-z0-9+/=]+\Z",
     re.IGNORECASE,
 )
+# The one reference shape a HYPERLINK may carry (`B300`). Both slashes are
+# required: `https:x` is an absolute URL to a browser and is not a web address
+# anyone writes, and accepting it would mean accepting a scheme on the strength
+# of a prefix, which is the blacklist thinking `B160` replaced.
+_HTTP_URL_RE = re.compile(r"https?://[^\s]", re.IGNORECASE)
+
 # Whitespace inside an attribute value is not part of the URL — a base64 payload
 # is routinely line-wrapped — and a C0 control inside one is an attempt to break
 # a scanner rather than a character a browser will honour.
 _REF_NOISE_RE = re.compile(r"[\s\x00-\x20\x7f]+")
+
+# ── `B300`: which ELEMENT a reference hangs on ──────────────────────────────
+#
+# `B160` refused to build an XML parser and was right to: ``xml.etree`` on
+# untrusted input expands entities, ``defusedxml`` is not a dependency of this
+# project, and a tree-rewriting sanitiser that misses one node fails **open**
+# where a gate that refuses fails closed. Nothing below changes that ruling.
+# There is still no XML parser here, nothing is re-serialised, and no entity is
+# ever expanded.
+#
+# What `B300` needs is smaller and is the whole row: an `<a href="https://…">`
+# is not fetched by anything until a person clicks it — and inside an `<img>`,
+# which is how this product draws every preview, it cannot even be clicked —
+# while an `<image href="https://…">` is fetched the moment the picture is
+# drawn. That is `Law 16`'s distinction exactly, and the byte scan could not
+# make it because it sees attribute values and not the elements they hang on. So
+# a diagram whose boxes are hyperlinks — the single most common shape in an
+# exported architecture diagram — was refused whole.
+#
+# The scanner below is a **tokenizer, not a parser**. It walks the bytes once,
+# left to right, recognising comments, CDATA sections, processing instructions,
+# the DOCTYPE and start/end tags with quoted or unquoted attribute values. It
+# builds no tree, resolves no namespace, and touches no entity. Its entire
+# output is a set of byte spans: *these attribute values sit on an `<a>` start
+# tag*.
+#
+# **It fails closed, and that is the property that makes it safe to add.** Any
+# construct it cannot account for — an unterminated comment, a `>` inside an
+# unquoted attribute value, a stray `<`, a tag that never closes — makes it
+# return ``None``, and ``None`` means no exemption is granted and every
+# reference is judged by `B160`'s allowlist exactly as before. It can only ever
+# *add* an exemption to a file it has understood end to end; it can never
+# remove a check. A malformed file therefore gets the old answer, not a
+# permissive one.
+_SVG_NAME = br"[A-Za-z_][-A-Za-z0-9_.:]*"
+_TOKEN_NAME_RE = re.compile(_SVG_NAME)
+
+# One regex step per attribute, rather than a Python loop per byte. Measured on
+# a 5 MiB export the byte-at-a-time version cost 0.99s and this costs 0.05s,
+# which is the difference between a bound worth raising and one that only moved.
+_ATTR_STEP_RE = re.compile(
+    br"""\s*(?:
+          (?P<end>/?>)
+        | (?P<slash>/)
+        | (?P<name>[A-Za-z_][-A-Za-z0-9_.:]*)
+          (?:\s*=\s*(?:"(?P<dq>[^"]*)"|'(?P<sq>[^']*)'|(?P<uq>[^\s>]*)))?
+    )""",
+    re.VERBOSE,
+)
+
+# Only a file that HAS an `<a>` can gain anything from the tokenizer, and most
+# exports do not. A C-speed search for the element name is the early-out that
+# keeps the widening free for everything it cannot help.
+_ANCHOR_PRESENT_RE = re.compile(br"<\s*a\b", re.IGNORECASE)
+
+# The attributes that are a hyperlink when they sit on an `<a>`. `src` is
+# deliberately **not** here: it is not an SVG attribute on an anchor, nothing
+# fetches it, and widening for it would buy nothing and cost the argument.
+_HYPERLINK_ATTRS = frozenset({b"href", b"xlink:href"})
+
+# Only the unprefixed `a`. A prefixed `<svg:a>` bound to the SVG namespace is
+# also an anchor and is also inert, but resolving a prefix means resolving
+# namespaces, which is the parser this module does not have. Every real export
+# writes `<a>`, so the strict reading costs nothing measurable and keeps the
+# tokenizer from having to be right about something it cannot see.
+_ANCHOR_ELEMENT = b"a"
+
+# A DOCTYPE lives in the prolog or it is not a DOCTYPE. Bounding the search
+# means the scan for it is free whatever the file's size, and `<!ENTITY` — the
+# only thing that makes an internal subset long — is refused before this runs.
+_PROLOG_BYTES = 8192
+
+
+def _skip_until(content: bytes, start: int, closer: bytes) -> int:
+    """Index just past *closer*, or ``-1`` when it never arrives."""
+    end = content.find(closer, start)
+    return -1 if end < 0 else end + len(closer)
+
+
+def _scan_attributes(content: bytes, i: int, spans: set, *, anchor: bool) -> int:
+    """Walk one start tag's attributes; index just past its ``>``, or ``-1``."""
+    length = len(content)
+    while i < length:
+        match = _ATTR_STEP_RE.match(content, i)
+        if not match or match.end() == i:
+            return -1
+        i = match.end()
+        if match.group("end") is not None:
+            return i
+        if match.group("slash") is not None:
+            continue
+        if match.group("uq") is not None:
+            # An unquoted attribute value is not well-formed XML at all, and
+            # where it ends depends on which scanner you ask — ``https://x/y``
+            # contains both a `/` and a `:`. A tokenizer that guesses here is
+            # the class of bug this whole design is built to avoid, so it does
+            # not guess: the file is one it has not understood, the caller gets
+            # no exemption, and `B160`'s allowlist judges every reference in it
+            # exactly as before (which is how the `unquoted-href` fixture is
+            # still refused).
+            return -1
+        group = "dq" if match.group("dq") is not None else \
+                ("sq" if match.group("sq") is not None else None)
+        if group is None:
+            continue  # a valueless attribute; not well-formed, and inert
+        if anchor and match.group("name").lower() in _HYPERLINK_ATTRS:
+            spans.add(match.span(group))
+    return -1
+
+
+def _hyperlink_spans(content: bytes) -> set:
+    """Byte spans of `href` values that sit on an `<a>` start tag.
+
+    An empty set means *no exemption* — either the file has no anchor, or this
+    tokenizer could not account for every construct in it. Both answers are the
+    same answer to the caller, which is the fail-closed property: a file it did
+    not understand is judged by `B160`'s allowlist exactly as before this row.
+    """
+    if not _ANCHOR_PRESENT_RE.search(content):
+        return set()
+    spans: set[tuple[int, int]] = set()
+    i = 0
+    seen = 0
+    length = len(content)
+    while i < length:
+        seen += 1
+        if seen > MAX_SVG_ELEMENTS:
+            return set()
+        lt = content.find(b"<", i)
+        if lt < 0:
+            return spans
+        i = lt + 1
+        if content.startswith(b"!--", i):
+            i = _skip_until(content, i + 3, b"-->")
+        elif content.startswith(b"![CDATA[", i):
+            i = _skip_until(content, i + 8, b"]]>")
+        elif content.startswith(b"?", i):
+            i = _skip_until(content, i + 1, b"?>")
+        elif content.startswith(b"!", i):
+            i = _markup_declaration_end(content, i)
+        elif content.startswith(b"/", i):
+            i = _skip_until(content, i + 1, b">")
+        else:
+            match = _TOKEN_NAME_RE.match(content, i)
+            if not match:
+                # `a < b` in character data, an unescaped `<`, or markup this
+                # tokenizer has no rule for. Either way it cannot claim to have
+                # read the file.
+                return set()
+            i = _scan_attributes(content, match.end(), spans,
+                                 anchor=match.group(0).lower() == _ANCHOR_ELEMENT)
+        if i < 0:
+            return set()
+    return spans
+
+
+def _markup_declaration_end(content: bytes, i: int) -> int:
+    """Index just past a ``<!…>`` declaration, or ``-1``.
+
+    *i* points at the ``!``. Quoted literals and an internal subset are walked
+    so a ``>`` inside either does not end the declaration early.
+    """
+    length = len(content)
+    j = i + 1
+    depth = 0
+    while j < length:
+        ch = content[j:j + 1]
+        if ch == b"[":
+            depth += 1
+        elif ch == b"]":
+            depth -= 1
+        elif ch == b">" and depth <= 0:
+            return j + 1
+        elif ch in (b'"', b"'"):
+            nxt = _skip_until(content, j + 1, ch)
+            if nxt < 0:
+                return -1
+            j = nxt - 1
+        j += 1
+    return -1
+
+
+def _doctype_span(content: bytes):
+    """``(start, end)`` of the file's DOCTYPE declaration, or ``None``.
+
+    `B302`. Bounded to the prolog, because that is the only place a DOCTYPE is
+    allowed to be and the only place any real file puts one — so this costs the
+    same whether the drawing is 3 KiB or 8 MiB.
+    """
+    window = content[:_PROLOG_BYTES]
+    at = window.upper().find(b"<!DOCTYPE")
+    if at < 0:
+        return None
+    end = _markup_declaration_end(content, at + 1)
+    if end < 0:
+        return None
+    return at, end
+
 
 # ── the refusal vocabulary (`B160`) ─────────────────────────────────────────
 #
@@ -189,6 +415,22 @@ SVG_SECURITY_HEADERS = {
 # anything that `fetch`es the preview, and every test here, reads the verdict
 # without re-deriving it.
 SVG_REFUSAL_HEADER = "X-Preview-Refused"
+# `B301`. The *sentence*, beside the slug, so the browser can say why without
+# keeping a copy of ``SVG_REFUSAL_TEXT`` (`Law 14`) and without downloading the
+# placeholder to read its `<title>`. Safe as a header for the reason the
+# vocabulary exists: every value is one of seven fixed ASCII sentences and none
+# of them ever quotes the file.
+SVG_REFUSAL_TEXT_HEADER = "X-Preview-Refused-Text"
+
+
+def svg_refusal_sentence(reason: str) -> str:
+    """The one sentence this product says about *reason*.
+
+    One lookup, three readers: the drawn placeholder, the response header and
+    the tests. ``SVG_REFUSAL_TEXT`` is still the table; this is the fallback
+    rule applied once instead of at each call site.
+    """
+    return SVG_REFUSAL_TEXT.get(reason, _SVG_REFUSAL_FALLBACK)
 
 # Shown instead of an SVG that fails the check: a valid, empty, 1x1 image. The
 # preview slot collapses to nothing rather than sitting on a spinner, and the
@@ -226,14 +468,25 @@ def _normalise_ref(text: str) -> str:
     return _REF_NOISE_RE.sub("", text)
 
 
-def _reference_verdict(ref: str, allow_data_images: bool) -> str:
-    """``"local"``, ``"data-image"`` or a refusal slug, for one reference.
+def _reference_verdict(ref: str, allow_data_images: bool,
+                       *, hyperlink: bool = False) -> str:
+    """``"local"``, ``"data-image"``, ``"link"`` or a refusal slug, for one reference.
 
     An allowlist, which is the whole point. The rule it replaces asked whether a
     value *started with* one of four bad schemes, so every scheme nobody thought
     of — and every value that reached its scheme by a route other than the
     literal first characters — was accepted by default. Here a reference is
-    refused unless it is one of exactly two things.
+    refused unless it is one of exactly three things, and the third is only
+    reachable when the caller has *proved* which element the value sits on.
+
+    *hyperlink* is that proof, and it is narrow on purpose. It is set only for
+    the value of an `href`/`xlink:href` on an unprefixed `<a>` start tag, in a
+    file ``_scan_markup`` read end to end, in a caller that asked for the
+    widening. What it then allows is `http://` and `https://` and **nothing
+    else** — not `data:`, not `javascript:`, not a protocol-relative `//host`,
+    not `https:x` without the slashes — because the argument for allowing it is
+    that a browser does not fetch it until a click, and that argument is about
+    an ordinary web address and about nothing else.
     """
     ref = _normalise_ref(ref)
     if not ref:
@@ -246,10 +499,13 @@ def _reference_verdict(ref: str, allow_data_images: bool) -> str:
         # the strict mode's reason true, which is the only thing a refusal slug
         # is for.
         return "data-image" if allow_data_images else SVG_REFUSAL_EMBEDDED_IMAGE
+    if hyperlink and _HTTP_URL_RE.match(ref):
+        return "link"
     return SVG_REFUSAL_EXTERNAL_REF
 
 
-def _scan_references(content: bytes, allow_data_images: bool):
+def _scan_references(content: bytes, allow_data_images: bool,
+                     hyperlink_spans: set | None = None):
     r"""``(scrubbed, refusal_or_None)`` — every reference in the file, checked.
 
     *scrubbed* is *content* with the payload of each accepted ``data:image``
@@ -271,14 +527,34 @@ def _scan_references(content: bytes, allow_data_images: bool):
     element scan would refuse files over text that is only ever text.
     """
     scrubbed = bytearray(content)
+    hyperlink_spans = hyperlink_spans or set()
     skip_until = 0
+    seen = 0
     for match in _URL_ATTR_RE.finditer(content):
         if match.start() < skip_until:
             continue
+        seen += 1
+        if seen > MAX_SVG_REFERENCES:
+            # `B300`'s work bound. Refusing here rather than stopping is the
+            # only sound answer: a scan that stops has not checked the rest.
+            return bytes(scrubbed), SVG_REFUSAL_TOO_LARGE
         group = next(i for i in (1, 2, 3) if match.group(i) is not None)
         raw = match.group(group).decode("utf-8", errors="replace")
-        verdict = _reference_verdict(html.unescape(raw), allow_data_images)
-        if verdict == "local":
+        # `B300`. The one place the element matters. ``hyperlink_spans`` holds
+        # the byte spans the tokenizer proved sit on an `<a>`; a value whose
+        # span is not in that set is judged exactly as it was before this row,
+        # which is what makes `<image href="https://…">` next to
+        # `<a href="https://…">` in the same file still refuse.
+        verdict = _reference_verdict(
+            html.unescape(raw), allow_data_images,
+            hyperlink=match.span(group) in hyperlink_spans,
+        )
+        if verdict in ("local", "link"):
+            # A hyperlink's bytes are deliberately NOT blanked. Blanking is for
+            # an opaque base64 payload the element scan must not read as
+            # markup; a URL is short, and leaving it in place means a value
+            # spelling `<script` inside it still trips the active-content scan
+            # below. Conservative in the direction that costs a refusal.
             continue
         if verdict == "data-image":
             start, end = match.span(group)
@@ -301,7 +577,8 @@ def _scan_references(content: bytes, allow_data_images: bool):
 
 
 def svg_refusal_reason(content: bytes, max_bytes: int = MAX_SVG_BYTES,
-                       *, allow_data_images: bool = False) -> str | None:
+                       *, allow_data_images: bool = False,
+                       allow_hyperlinks: bool = False) -> str | None:
     """Why these bytes may not be rendered, or ``None`` when they may.
 
     `B160`. The gate used to answer yes/no, so the preview route had nothing to
@@ -334,6 +611,19 @@ def svg_refusal_reason(content: bytes, max_bytes: int = MAX_SVG_BYTES,
     if _ENTITY_DECL_RE.search(content):
         return SVG_REFUSAL_ENTITY
     scrubbed, ref_refusal = _scan_references(content, allow_data_images)
+    if ref_refusal == SVG_REFUSAL_EXTERNAL_REF and allow_hyperlinks:
+        # `B300`, and the retry is the whole reason this is affordable. The
+        # tokenizer is the only thing in this module that walks the file a
+        # second time, so it runs **only** for a file the unwidened scan has
+        # already refused for an external reference — never for one that
+        # previews today. Measured on a realistic 5 MiB export: 0.125s for a
+        # file that passes (unchanged, the tokenizer never runs) against 0.545s
+        # for one that has to be re-judged. A file that previews today takes
+        # byte-for-byte the same path it took before this row.
+        spans = _hyperlink_spans(content)
+        if spans:
+            scrubbed, ref_refusal = _scan_references(
+                content, allow_data_images, spans)
     if ACTIVE_CONTENT_RE.search(scrubbed):
         return SVG_REFUSAL_ACTIVE_CONTENT
     if ref_refusal is not None:
@@ -344,7 +634,8 @@ def svg_refusal_reason(content: bytes, max_bytes: int = MAX_SVG_BYTES,
 
 
 def is_safe_svg(content: bytes, max_bytes: int = MAX_SVG_BYTES,
-                *, allow_data_images: bool = False) -> bool:
+                *, allow_data_images: bool = False,
+                allow_hyperlinks: bool = False) -> bool:
     """True when these bytes can be rendered without running anything.
 
     Kept as the name every caller already spells, and now a one-line reading of
@@ -355,7 +646,61 @@ def is_safe_svg(content: bytes, max_bytes: int = MAX_SVG_BYTES,
     what is left of it is written down as `B300` rather than left as a surprise.
     """
     return svg_refusal_reason(content, max_bytes,
-                              allow_data_images=allow_data_images) is None
+                              allow_data_images=allow_data_images,
+                              allow_hyperlinks=allow_hyperlinks) is None
+
+
+# `B302`. The external identifier in
+# ``<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/…/svg11.dtd">``
+# is a reference to another host that this gate did not check, sitting in a file
+# whose every other reference it checks to the letter. Inkscape emitted one for
+# a decade, so refusing the DOCTYPE would refuse a large share of the real
+# corpus — and *"no browser fetches an external DTD for an SVG inside an
+# `<img>`"* is exactly the argument `B103` rejected for `xlink:href` beacons:
+# **"the browser would have stopped it" is not a control we own.**
+#
+# So neither. The declaration stays, its external identifier does not: the
+# preview is a derived artefact already (a refusal is a drawn placeholder, not
+# the file), and `B300`'s tokenizer is what makes finding the declaration's
+# exact bounds a fact rather than a guess. `<!DOCTYPE svg>` with no external
+# subset is valid, renders identically in every browser — none of them fetched
+# the DTD, which is the whole reason this was survivable — and carries no
+# address at all. The **download** arm is untouched and still serves the file
+# whole, which is where `Law 1` lives: nobody's bytes were changed, one
+# derived rendering of them lost a URL nothing was allowed to fetch.
+_DOCTYPE_EXTERNAL_ID_RE = re.compile(
+    br"""\s+(?:PUBLIC\s+(?:"[^"]*"|'[^']*')\s+(?:"[^"]*"|'[^']*')"""
+    br"""|SYSTEM\s+(?:"[^"]*"|'[^']*'))""",
+    re.IGNORECASE,
+)
+
+
+def preview_bytes(content: bytes) -> bytes:
+    """*content* with nothing in it that names another host (`B302`).
+
+    Called on bytes the gate has already passed, so this is not a sanitiser and
+    is not load-bearing for safety: every reference in the file has been through
+    `B160`'s allowlist by the time it runs. It removes the one address the
+    allowlist never saw, because a DOCTYPE is not an attribute and no scan here
+    was ever looking at it.
+
+    Byte-identical output for the overwhelming majority of files — a drawing
+    with no DOCTYPE, or one with a bare ``<!DOCTYPE svg>``, comes back
+    unchanged — and for the rest the only thing removed is the ``PUBLIC``/
+    ``SYSTEM`` literal. An internal subset, if any, is kept exactly where it
+    was; a declaration containing ``<!ENTITY`` never reaches here at all.
+    """
+    if not isinstance(content, bytes) or b"<!" not in content[:_PROLOG_BYTES]:
+        return content
+    span = _doctype_span(content)
+    if span is None:
+        return content
+    start, end = span
+    declaration = content[start:end]
+    stripped = _DOCTYPE_EXTERNAL_ID_RE.sub(b"", declaration, count=1)
+    if stripped == declaration:
+        return content
+    return content[:start] + stripped + content[end:]
 
 
 def refused_preview_svg(reason: str) -> bytes:
@@ -375,7 +720,7 @@ def refused_preview_svg(reason: str) -> bytes:
     could not pass the gate it explains would be the joke this module cannot
     afford.
     """
-    message = html.escape(SVG_REFUSAL_TEXT.get(reason, _SVG_REFUSAL_FALLBACK))
+    message = html.escape(svg_refusal_sentence(reason))
     return (
         '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" '
         'viewBox="0 0 320 180" role="img">'

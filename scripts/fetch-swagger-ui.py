@@ -56,17 +56,19 @@ DEST = ROOT / "static" / "lib" / "swagger-ui"
 LICENSES = ROOT / "licenses"
 REGISTRY = "https://registry.npmjs.org/swagger-ui-dist"
 
-VERSION = "5.32.15"
+VERSION = "5.33.0"
 
-# SHA-256 of each vendored file, recorded when it was first vendored
-# (2026-09-16). `swagger-ui-bundle.js.LICENSE.txt` is webpack's extracted
-# notice for the MIT-licensed packages inside the bundle; it lands in
-# `licenses/`, next to the same sidecar html2pdf ships (`P0-21b`).
+# SHA-256 of each vendored file. First recorded 2026-09-16 at 5.32.15;
+# re-pinned 2026-09-17 at 5.33.0 (`B335`). `swagger-ui-bundle.js.LICENSE.txt`
+# is webpack's extracted notice for the MIT-licensed packages inside the
+# bundle; it lands in `licenses/`, next to the same sidecar html2pdf ships
+# (`P0-21b`). It is byte-identical at 5.32.15 and 5.33.0, which is how the
+# bump was shown to add no undeclared package.
 PINNED = {
     "swagger-ui.css":
-        "d7f39f764aa18c7b47dd05b9af5613e373e4ac0f3557c2693d52d0abc2464d76",
+        "1ac324f7dcd27e4b9386b4bd6421271ec147e922a22c05ba24b11515e9aa6321",
     "swagger-ui-bundle.js":
-        "a7e344f2770b2f07527ce828e0951626983b8f2dcdb7a826689c0232023f995b",
+        "62df541529080464a7660adc793eab7128c6193ce3be24ddc1e0e0a4a63edc2f",
 }
 
 # Paperwork that travels with the bytes, written to licenses/ rather than into

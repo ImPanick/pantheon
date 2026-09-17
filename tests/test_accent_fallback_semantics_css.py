@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
+from tests.helpers.source_text import blank, blank_text  # B290
 """P1-01 — the accent token, and the sites whose fallback was never an accent.
 
 `P1-01` defines `--accent` per theme, beside `--red`, at three sites
@@ -8,10 +9,12 @@ sixteen palettes are protected territory (`DECISIONS.md` D-2026-08-26-03) and a
 `:root` rule would out-rank every `var(--accent, …)` fallback at once and flip
 the whole stylesheet to one global colour.
 
-`static/style.css` named `--accent` 828 times before this file, and 817 after.
+`static/style.css` named `--accent` 828 times before this file, 817 after, and
+813 since `B23` moved SIX links off it — four spelled `var(--accent, var(--red))`
+and the two `details a` rules, which were bare.
 Three populations, and they are not the same kind of thing:
 
-  * **565 sites reach the theme's red through their fallback.** 556 of them
+  * **561 sites reach the theme's red through their fallback.** 552 of them
     spell it `var(--accent, var(--red))`; nine take a longer road —
     `var(--red, #e53935)` and two more literals, plus two routed through the
     undefined `--accent-primary` first. They resolved to the theme's red before
@@ -61,7 +64,7 @@ What is pinned below, and why each is a defect if it breaks:
 
   * **`--accent` is defined nowhere in this stylesheet.** The single failure
     mode the row is built to avoid, asserted directly rather than inferred;
-  * **the no-change population stays 556 spelled and 565 resolved**, so a
+  * **the no-change population stays 552 spelled and 561 resolved**, so a
     fallback rewritten in place is visible in the diff of a test rather than
     only in a screenshot;
   * **every token named inside an `--accent` fallback exists**, with the one
@@ -123,13 +126,7 @@ def _css() -> str:
     times the comments happen to mention the token — which, in a sheet that
     documents its own corrections in place, is not a small number.
     """
-    raw = STYLE.read_text(encoding="utf-8")
-    out = list(raw)
-    for match in re.finditer(r"/\*.*?\*/", raw, re.S):
-        for i in range(match.start(), match.end()):
-            if out[i] != "\n":
-                out[i] = " "
-    return "".join(out)
+    return blank(STYLE)
 
 
 @functools.lru_cache(maxsize=1)
@@ -232,7 +229,7 @@ def _decl(selector: str, prop: str) -> str:
     """What `prop` resolves to for `selector`, after the cascade and `!important`."""
     value = None
     for body in _rules(selector):
-        stripped = re.sub(r"/\*.*?\*/", " ", body, flags=re.S)
+        stripped = blank_text(body, "css")
         for chunk in _split_decls(stripped):
             match = re.match(r"\s*([a-z-]+)\s*:\s*(\S.*?)\s*$", chunk, re.S)
             if match and match.group(1) == prop:
@@ -256,12 +253,27 @@ def _split_decls(body: str) -> list:
 
 @functools.lru_cache(maxsize=1)
 def _root_tokens() -> dict:
-    """The literal hex tokens `:root` defines. `--accent` is not among them,
-    and `test_accent_is_defined_nowhere_in_the_stylesheet` is why."""
+    """The tokens `:root` defines, as expressions. `--accent` is not among them,
+    and `test_accent_is_defined_nowhere_in_the_stylesheet` is why.
+
+    Hex literals AND `light-dark()` pairs, since `B22`. Reading only the hex
+    ones was not a narrower measurement, it was a wrong one: a token this
+    function cannot see is absent from the theme dict, so `_resolve` silently
+    takes the `var(--x, <fallback>)` branch and the test ends up measuring the
+    fallback on all sixteen palettes instead of the token. That is how
+    `test_the_supervisor_ladder_still_separates_recovering_from_stop` reported
+    a collision on `claude` and `copper`, whose values had not moved at all.
+    """
     css = _css()
     block = css[css.index(":root {"):]
     block = block[:block.index("}")]
-    return dict(re.findall(r"--([a-z-]+)\s*:\s*(#[0-9a-fA-F]{3,8})", block))
+    return dict(
+        re.findall(
+            r"--([a-z-]+)\s*:\s*"
+            r"(#[0-9a-fA-F]{3,8}|light-dark\([^;]*?\)|var\([^;]*?\))",
+            block,
+        )
+    )
 
 
 # ── Reading the palettes ────────────────────────────────────────────────────
@@ -298,6 +310,11 @@ def _themes() -> dict:
         # one keeps `:root`'s.
         resolved.update(fields)
         resolved["accent"] = fields.get("accent") or resolved["red"]
+        # `B22` — `light-dark()` needs to know which arm this palette resolves.
+        # Same rule and threshold as `theme.js`'s `_isLightBackground` (`P3-09`).
+        resolved["color-scheme"] = (
+            "light" if _luminance(_rgb(resolved["bg"])) > 0.5 else "dark"
+        )
         out[match.group(1)] = resolved
     assert len(out) == 16, f"expected the sixteen shipped palettes, found {sorted(out)}"
     return out
@@ -350,6 +367,17 @@ def _resolve(expr: str, theme: dict, ground=None) -> tuple:
     tinted to 60% is not a colour until you know what is behind it.
     """
     expr = expr.strip()
+    pair = re.fullmatch(r"light-dark\(\s*(.+?)\s*,\s*(.+?)\s*\)", expr)
+    if pair:
+        # `B22`. Which arm applies is `color-scheme`, which all three palette
+        # writers set from the background's luminance (`P3-09`); the palette
+        # carries the answer, this does not re-derive it.
+        scheme = theme.get("color-scheme")
+        assert scheme in ("light", "dark"), (
+            f"{expr!r} needs the palette's `color-scheme`; this one says {scheme!r}"
+        )
+        return _resolve(pair.group(1) if scheme == "light" else pair.group(2),
+                        theme, ground)
     mix = re.fullmatch(r"color-mix\(in srgb,\s*(.+?)\s+([\d.]+)%\s*,\s*(.+?)\s*\)", expr)
     if mix:
         first = _resolve(mix.group(1), theme, ground)
@@ -365,7 +393,7 @@ def _resolve(expr: str, theme: dict, ground=None) -> tuple:
     if token:
         name, fallback = token.group(1), token.group(2)
         if name in theme:
-            return _rgb(theme[name])
+            return _resolve(theme[name], theme, ground)
         if not fallback:
             raise _PaintsNothing(
                 f"--{name} resolves to nothing and has no fallback; a bare "
@@ -376,6 +404,15 @@ def _resolve(expr: str, theme: dict, ground=None) -> tuple:
         f"the colour check cannot resolve {expr!r} — teach `_resolve` its form"
     )
     return _rgb(expr)
+
+
+def _luminance(colour: tuple) -> float:
+    def channel(value):
+        value /= 255.0
+        return value / 12.92 if value <= 0.03928 else ((value + 0.055) / 1.055) ** 2.4
+
+    r, g, b = (channel(c) for c in colour)
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
 
 
 def _contrast(fore: tuple, back: tuple) -> float:
@@ -405,7 +442,7 @@ def _distance(a: tuple, b: tuple) -> float:
 
 
 def test_accent_is_defined_nowhere_in_the_stylesheet():
-    """A `:root { --accent: … }` would out-rank all 817 fallbacks at once.
+    """A `:root { --accent: … }` would out-rank all 813 fallbacks at once.
 
     `--accent` is set per theme, beside `--red`, at the three places that set
     `--red`. Defining it here as well — in `:root`, in `:root.light`, in a
@@ -435,14 +472,25 @@ def test_the_no_change_population_holds_at_both_of_its_counts():
 
     Two counts, because the two that get quoted about this row are counts of
     different things and disagreeing about it has already cost one review pass:
-    556 sites spell the fallback `var(--red)` exactly, and a further nine reach
+    552 sites spell the fallback `var(--red)` exactly, and a further nine reach
     the same colour through a chain — `var(--red, #e53935)` and friends, plus
     two that route through the undefined `--accent-primary` first.
+
+It was 556 until `B23`, and the four that left are named rather than
+    absorbed: `.doclib-research-sources a`, the Gmail chip link inside
+    `.email-reader-body`, `.note-form-content-reader a` and
+    `.note-fullscreen-overlay .note-cl-text-reader a`. All four are LINKS in
+    running text, all four measured 2.24:1 on `paper`, and all four now name
+    `--link-fg` — the one link idiom that clears AA against `--panel` on all
+    sixteen palettes. `B23` moved two more that this count does not see,
+    because `details a` and its second rule spelled the accent BARE: they are
+    in the total below, which fell 815 → 813. None of the six stopped being an
+    accent site by accident.
     """
     exact = [expr for _, expr in _var_uses("accent")
              if _fallback(expr) == "var(--red)"]
-    assert len(exact) == 556, (
-        f"expected 556 sites spelling the fallback `var(--red)` exactly, found "
+    assert len(exact) == 552, (
+        f"expected 552 sites spelling the fallback `var(--red)` exactly, found "
         f"{len(exact)}. If a site was legitimately added or removed, move this "
         "number and say which site in the commit — do not widen the assertion."
     )
@@ -460,12 +508,12 @@ def test_the_no_change_population_holds_at_both_of_its_counts():
             continue  # a gaining site, counted by the population above
         if painted == red:
             resolving.append(expr)
-    assert len(resolving) == 565, (
-        f"expected 565 sites whose fallback resolves to the theme's red, found "
+    assert len(resolving) == 561, (
+        f"expected 561 sites whose fallback resolves to the theme's red, found "
         f"{len(resolving)}"
     )
-    assert len(_var_uses("accent")) == 819, (
-        f"expected 819 uses of --accent in total, found {len(_var_uses('accent'))}"
+    assert len(_var_uses("accent")) == 813, (
+        f"expected 813 uses of --accent in total, found {len(_var_uses('accent'))}"
     )
 
 
@@ -548,14 +596,14 @@ def test_full_strength_accent_text_clears_the_floor_on_nine_palettes():
 
 
 def test_the_population_under_the_contrast_exception_cannot_grow():
-    """187 declarations paint text in the undiluted accent. Every one of them
+    """181 declarations paint text in the undiluted accent. Every one of them
     is illegible on the seven palettes above, and none of them can be fixed
     here — but a *new* one is a new instance of a known defect, and a semantic
     site converted into one is the regression this file exists to catch.
     """
     decls = _full_strength_accent_colour_decls()
-    assert len(decls) == 187, (
-        f"expected 187 full-strength accent `color:` declarations, found "
+    assert len(decls) == 181, (
+        f"expected 181 full-strength accent `color:` declarations, found "
         f"{len(decls)}. Adding one adds a site that fails the contrast floor on "
         "seven of the sixteen palettes."
     )
@@ -661,20 +709,37 @@ def test_editing_a_checklist_item_does_not_look_like_deleting_it():
 
 def test_links_in_rendered_body_text_are_not_the_accent():
     """Two of them: a task log's markdown body and a composed email's body.
-    Both are running text a reader scans for the blue-link convention, and
-    `--color-accent` is the hue this sheet already pairs with
-    `--color-link-hover` on `.search-result-title`.
+    Both are running text a reader scans for the blue-link convention.
+
+    `P1-01` moved these two off the accent and onto `--color-accent`, on the
+    strength of this sheet's own comment calling that token "the sheet's link
+    hue". `B23` measured it and the comment was false: `--color-accent` had 14
+    `var()` uses in the whole file and missed 4.5:1 on all four light palettes
+    (2.38 on `light`). The hue this product actually uses for a link is
+    `--hl-function` — `.msg a` and every link in every email body, the only
+    idiom clearing AA on all sixteen palettes. It is now named once, as
+    `--link-fg`, and this test holds the stronger claim: not the accent, AND
+    the one named token.
     """
     for selector in (".task-log-row-body a", ".doc-email-richbody a"):
         value = _decl(selector, "color")
         assert "--accent" not in value, (
             f"{selector} must not paint a link in the accent; got {value!r}"
         )
-        assert "--color-accent" in value, (
-            f"{selector} should name the sheet's link hue; got {value!r}"
+        assert "--link-fg" in value, (
+            f"{selector} should name the sheet's one link token; got {value!r}"
         )
-        for theme in _themes().values():
-            assert _distance(_resolve(value, theme), _resolve("var(--red)", theme)) > 60
+    # How far the link hue sits from each palette's red is NOT measured here,
+    # and that is deliberate rather than dropped. `--link-fg` resolves to
+    # `--hl-function`, which `applyColors()` DERIVES per palette
+    # (`deriveSyntaxColors`, hue 210 at a fixed lightness); this file's
+    # `_themes()` overlays only `bg/fg/panel/border/red`, so it would read
+    # `:root`'s `#61afef` — the `dark` palette's value — on all sixteen and
+    # call that a measurement. `tests/test_theme_contrast_floor_css.py` drives
+    # the real `applyColors()` in node and makes the claim properly, over all
+    # sixteen palettes: closest approach to the palette's own accent is 46.2
+    # sRGB units on `ocean` and 57.5 on `gpt`, both blue-accented themes, and
+    # that has been true of `.msg a` since long before `B23` named the token.
 
 
 def test_a_success_tick_is_not_flashed_in_the_failure_colour():

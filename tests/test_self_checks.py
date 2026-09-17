@@ -20,6 +20,7 @@ import time
 import pytest
 
 from src import self_checks as sc
+from tests.helpers.source_text import blank, blank_text  # B290
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
@@ -235,10 +236,7 @@ def _function_body(js: str, signature: str) -> str:
             if depth == 0:
                 break
         i += 1
-    body = js[open_brace:i + 1]
-    body = re.sub(r"/\*.*?\*/", "", body, flags=re.S)
-    body = re.sub(r"^\s*//.*$", "", body, flags=re.M)
-    return body
+    return blank_text(js[open_brace:i + 1])
 
 
 def test_the_panel_does_not_build_markup_from_strings():

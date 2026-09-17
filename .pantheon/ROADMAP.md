@@ -80,8 +80,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P17 | The network the agent is hosted on | 14 | 3 | 0 | **11** |
 | P18 | One button, and it links | 9 | 0 | 0 | **9** |
 | P19 | The proof ledger | 8 | 0 | 0 | **8** |
-| Backlog | Bugs and hardening found in flight | 206 | 33 | 0 | **173** |
-| **Total** | | **588** | **216** | **9** | **363** |
+| Backlog | Bugs and hardening found in flight | 237 | 37 | 0 | **200** |
+| **Total** | | **619** | **220** | **9** | **390** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -243,6 +243,84 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### Twenty rows closed and four left open on purpose, including the one the owner has to answer
+`b0ec056..HEAD`. **619 tracked, 390 done. 0 new phase rows, 0 regressions. `B22`, `B23`, `B210`,
+`B232`, `B233`, `B260`–`B262`, `B270`, `B271`, `B290`, `B292`, `B300`–`B302`, `B325`, `B348`,
+`B335`, `B336`, `B338`, `B339`, `B356`, `B358`, `B361`, `B414`, `B415` and `B420` closed; twenty-nine rows filed, and `B15`/`B16`, `B280`, `B324`, `B291`
+and `B349` left open with their measurements rather than ticked on half a fix.** Four worktrees,
+one file touched by more than one agent plus three shared test files, all reconciled with both
+contributions intact. 396 tests added; 97 mutations run, 96 caught, 1 survived and fixed.
+**`B262` was the last live security gap and the fix is not the one it looked like.** With auth on,
+`GET /` correctly `302`s to `/login` while **`GET /static/index.html` returned 200 with all
+292,260 bytes**. An auth rule on the `/static` mount was the trap: the login page needs its own
+CSS, JS and fonts *while unauthenticated*, so gating the mount locks everyone out. The two
+documents are **templates a route already serves**, so the mount now redirects three
+route-owned filenames to their routes and touches nothing else — `302` because the file is on
+disk and a `404` would be a lie, and one table read by both the mount and the three handlers so a
+page cannot get a route without the mount learning it (`Law 13`). `B120`'s reason survives
+exactly: the two `*-variants.html` sandboxes still reach the network. Two corrections came from
+measurement rather than reasoning — Starlette rewrites `root_path` inside a `Mount`, so the first
+version sent `/static/index.html` to `/static/`; and the match is casefolded, because a
+case-insensitive filesystem serves `INDEX.HTML` out of `index.html` and that is two of the three
+platforms this project ships installers for.
+**`B210`'s claim was being *served*, which is why correcting the file was not enough.** FastAPI
+publishes a route docstring as its `description` in `/openapi.json`, so `serve_backgrounds`'s
+"Sandbox page for prototyping background effects" was rendered in `/docs` **and read by the
+agent's own endpoint-discovery tool**. A false claim about a page that has never existed was
+reaching the model as fact.
+**`B290` is the row that did not move a single number, and that is the finding.** The naive
+comment blanker was re-measured at **7,277 lines of live code in 15 modules** — the row's "77
+modules" does not reproduce under any definition counting live code — and it runs the other way
+too: **274 lines of `static/index.html` comment are left standing and read as code**. Twenty-two
+test files now share `check-specifiers.py`'s stripper, which grew regex literals, CSS (`//` is not
+a comment), and HTML where quotes bind only inside a tag. **No asserted count moved: 527 before,
+527 after.** So none of the twenty had a defect hiding in those 6,642 lines today — and none of
+them could have known that, which is the whole argument for the conversion. A new naive copy now
+fails a test that walks every tracked file with `ast` rather than grep, because several of them
+describe the defect in prose.
+**The theme rows were unparked and the answer is a split, deliberately.** On the **twelve dark
+palettes nothing changed colour at all**, asserted token by token; every change lands on the four
+light palettes where a value tuned for a dark panel was being painted on a white one. `B22` is
+closed by scoping fifteen of nineteen semantic tokens with `light-dark()`, the dark arm being the
+original literal. `B23`'s census found **seven** link idioms, not two. But **`B15` stays open and
+is not ticked**: `cute` measures **3.44** and `retrowave` **4.15** against their own panels, both
+under AA on both surfaces, and *every* fix substitutes a hex a person chose. The measurement is
+executable and ratcheted now; the repaint is filed as `B390` with exact values for the owner.
+`B16`'s headline was confirmed **false** and pinned as false. Two unnamed defects turned up in the
+same pass, both the same shape — a hover that made something *less* visible on a light palette.
+**Four rows were left open with a measurement instead of a tick, and one needs the owner.**
+`B280`: the declared-charset lever landed and an 891-row sweep across 17 encodings gave **22
+corrections and 0 regressions**, but 34 bytes of Big5 is still `johab` and the three rules that
+would fix it each cost ~98 correct answers to buy ~16. `B324`: the stated blocker turned out to be
+wrong — `uv pip compile --universal` does resolve markers symbolically — but the lock cannot be
+*installed* on 3.14 on either architecture here, so it is unverifiable, and an unverifiable lock
+is worse than none. **The vendored pass found React shipping with no licence notice anywhere in the repository.**
+`check-licences.py`'s rule 7 derives a bundle's contents from `node_modules/` paths and returned
+**zero packages from 1.5 MB of Swagger UI** — which carries React, `immutable`, `classnames`,
+`fast-json-patch`, `buffer` and more, plus `lodash-es` and `cytoscape` inside Mermaid. **Sixteen
+packages, twelve licence texts that did not exist.** For an AGPL project about to be made public
+that is the compliance defect, not a tidiness one, and it is `P0-21b` recurring in the bundle
+nobody read. Rule 8 now makes every vendored script **declare how its contents are known** —
+`derived`, `esbuild`, `sidecar`, `single` or `build`, with no default — so a bundle whose contents
+cannot be derived fails rather than reporting nothing. `B336` decided **not** to rebuild the
+html2pdf bundle: 27 advisories remain in bytes we serve, **none reachable** (measured per
+advisory), and rebuilding trades the one property that makes these hashes checkable by a stranger
+— byte-identity with a published artifact — for advisories that cannot fire. The excuses are
+recorded as literal witnesses read out of the shipped bytes, so a replacement bundle fails the
+gate until somebody re-measures all 27.
+**`B290`'s guard caught a new naive blanker written the same day by a different agent** — two
+agents in parallel, one eliminating the defect class across twenty-two files, the other
+reintroducing it in a twenty-third, and only the integration run noticed (`B415`). The site it
+caught turned out to be the one **legitimate** use: `check-licences.py` reads `/*! … */` blocks
+*as the answer*, not to reach the code around them, so blanking would delete the input. The check
+asks whether a hand-written comment regex exists and is right that one does; what it cannot see
+from a regex literal is which direction it runs. Exempted with the reason and the residual risk
+written down, and the exemption is held to the same rule as the conversion list — it names a real
+site or the test fails.
+`B349` needs a human: `2026-08-20` is the fork commit's date upstream and
+`2026-08-24` is the clone date, and which one the AGPL §5(a) notice should carry is not ours to
+decide.
 
 ### Going public: the dependencies nobody was watching, and a README that printed 2 where the checker printed 120
 `394e619..HEAD`. **588 tracked, 363 done. 0 new phase rows, 0 regressions. `B320`–`B323`,
@@ -5361,8 +5439,8 @@ fact; then losing their data; then hiding capability they own.*
 - [x] **B12** **Four smaller duplications survive between the plan window and the todo card.** The row system is shared, the chrome is not: `.plan-window-head` / `.todo-card-head` (2 of 6 declarations shared), the `"N of M done"` string built two ways (`planWindow.js:392`, `chatRenderer.js:1377`), the step chip built as DOM in one and as a string in the other, and the play triangle `points="7 4 20 12 7 20 7 4"` hand-written twice (`chat.js:978`, `planWindow.js:412`). None is a bug today; all four are the shape that becomes one, the way the accessibility contract already did — the two row builders disagreed on it until this run and each batch's refuter only saw its own half. `Verify:` one implementation each. — found during P6 wave 2 — agent:`integrator` **FOLDED INTO `B11` and closed with it, 2026-09-14 — and every citation in this row had rotted.** All four line references are wrong: the `N of M done` strings are at `planWindow.js:430` and `chatRenderer.js:1516`, not `:392`/`:1377`; the play triangle is at `planWindow.js:449` and `chat.js:1006`, not `:412`/`:978`. **One of the four was already closed** — `.plan-window-icon`/`.todo-card-icon` and `.plan-window-title`/`.todo-card-title` are single joined rules in `style.css` today, done by a later pass, and that unification is what erased the distinction `B11` exists to restore. **The head chrome is not duplication.** Re-measured: `.plan-window-head` has 4 declarations and `.todo-card-head` 6, and the two they share are `display:flex` and `align-items:center` — the generic flex-row idiom. One is a fold button row in a docked panel, the other a static caption inside a transcript card; the gap, the padding, the font size and the colour differ on purpose and stay. **The play triangle is not “twice”**: the product carried **seven** hand-written play polygons in **two** geometries — `7 4 20 12 7 20 7 4` at the two builders of the one `.plan-inline-execute` control, and `6 4 20 12 6 20 6 4` at five other sites. Both builders now take `PLAY_POINTS` on the majority spelling, so the product draws **one** play triangle instead of two that differ by a pixel; the five remaining literals are `B81`. **A fifth duplication the row never counted, and it is the bigger one**: `.plan-window-steps` (8 declarations) and `.todo-card-list` (6) share **five** — `list-style`, `margin`, `display`, `flex-direction`, `gap` — against the head's two. Measured and deliberately left: the interesting part of those two rules is where they differ (`max-height`, `overflow-y`, `padding`), and splitting one correct rule into three buys no reader anything. `Verify:` met for the two facts that were genuinely spelled twice — the progress sentence and the step chip's class are one implementation each, and both renderers keep their own technique, DOM in one and string in the other, because forcing either to change would be a rewrite rather than an elevation.
 - [x] **B13** **One queued message, two vocabularies, both on screen at once.** The docked queue panel (`queuePanel.js` `statusLabel`) renders the shipped six-value status set as *Waiting · Sending · Sent · Failed · Skipped · Stopped*; the Tasks activity view (`static/js/tasks.js:2958`), which renders **the same row objects** from the same `getQueueActivityEntries` source, says *Queued · Running*. Open the queue panel with the sidebar Activity view showing and one message is "Waiting" in one place and "Queued" in the other. Neither word is wrong; having both is. The status *values* are already one vocabulary — this is only the labels — so the fix is to pick one wording and give it a single home, not to touch anything persisted. Prefer the panel's wording: *Waiting/Sending* describes a message, *Queued/Running* describes a job, and the composer's queue holds messages. `Verify:` one queued item, both surfaces visible, one word. — found during P6 reuse wave — agent:`integrator` **done 2026-09-14 — premise upheld, the count was low, and the file references hold.** `static/js/tasks.js:2958` is inside `_renderActivityEntry` as the row says; the label itself is decided at `:3045`. **There were three vocabularies on screen, not two.** Measured by running all three renderers over the row the real `getQueueActivityEntries` emits (`tests/harness/queue_status_words.js`): the docked panel said *Waiting · Sending · Sent · Failed · Skipped · Stopped*; the Activity row said *Queued · Running* and **nothing at all** for the four terminal values, because it swaps the label for a relative time; and **the transcript bubble, which the row never names, said *Queued*** — sitting in the transcript directly above the docked panel that said *Waiting* about the same item, with a tooltip that said *Queued* too, so the disagreement survived a hover. **This is not `B78` and does not fold into it.** `B78` is about the six *values*: one enum, ~128 literals, three consumers that know fewer than six, and a notification path that announces a `skipped` run as a failure. This is about the *words*, and its worst surface (`queuePanel.js`) appears nowhere in `B78`'s inventory. Neither fix produces the other — unify the values and there are still three spellings of *queued*; unify the words and `_pollTaskNotifications` still calls a non-failure a failure. **The discriminator is not the status.** *Waiting/Sending* describes a message and *Queued/Running* describes a job, and `_renderActivityEntry` renders both, so one word per status would have to be wrong for one of them. A row now declares its own subject (`subject: 'message'`, set at the single place the queue builds its rows) rather than the renderer inferring it from a source id — which would put the rule in the file that must not have to learn what a queue is, and would need editing for every new source. One table, two columns, in `static/js/runStatus.js`. **The `job` column holds two entries and not six, on purpose**: the Activity view has no word for a terminal run, and a column filled past its consumers is the drift `Law 13` names — a test pins those four holes so `B82` filling them is visible rather than silent. **A leaf module rather than beside `runStatusTone` in `tasks.js`, and the reason is mechanical**: `tasks.js` is only ever reached through `import('./tasks.js?v=…')`, so a static import of it from `queuePanel.js` would both pull the whole Tasks view onto every page with a composer and register a **second module instance** under the query-less URL — two `_activitySources` maps, one of them invisible. **Nothing persisted moved**: the six values are untouched, and a test asserts they are still exactly those six. **What this does NOT deliver**: the run-history list still prints the raw enum to the user (`tasks.js:1911`, `<span>${run.status}</span>` — *success*, *aborted*) and the last-run badge still says `${task.last_run_status} (no detail)` at `:1001`. Those are the `job` column's four missing words, filed as `B84`. 9 tests, 9 mutations, all caught.
 - [x] **B14** **The steer bar is still offered on a research turn, which cannot take a steer.** `P6-18` closed the chat-mode case by asking the composer's own mode getter, but research is a *fourth* non-steerable exit (`routes/chat_routes.py` returns from inside the `effective_do_research` block before the three-way stream choice), and the client cannot see it — a research turn is `mode: 'agent'` as far as the composer is concerned. Nothing is lost: the server refuses, the words fall back to the queue, and the sentence the user reads is accurate for both causes. But a control that can only decline is still on screen, which is the `Law 15` half of the defect `P6-18` fixed everywhere else. The honest fix is a per-run signal rather than a per-build one — the capability probe fires once per page load and cannot answer a per-run question, so either the stream announces its own steerability in an early event, or the composer learns that research is in play. `Verify:` start a research turn and no steer bar appears. — found during P6-18 — agent:`impl:steer-route` **done 2026-09-14. Premise true, and research is the third of four, not the fourth of four.** The client's gate is `_steerChatModeOnly()` and it knows about exactly one non-steerable turn, so the bar was also drawn on an **image-generation session** (`_is_image_generation_session`) and on a **compare pane** — the latter because a pane is returned raw and never reaches `agent_runs.start` at all, so `is_steerable` refuses it for want of a registered run. Neither is named in the row. **Outcome traced, not assumed**: the steer is not dropped and does not error — `chat_steer` answers 409 `no_active_run`, `submitSteer` maps it onto `chat.js`'s queue and toasts *queued for after this response instead*, so the words survive. The row is right that nothing is lost and right that a control that can only decline is the `Law 15` defect. **The guess is also wrong in the other direction, which the row does not mention**: an auto-escalated turn (`chat_mode = 'agent'` at `chat_routes.py:1340/1377/1384/1392`) IS steerable while the composer still reads `chat`, so `P6-18` was **withholding a bar from a run that would have taken the steer** — and `_steerKeydown` never consulted the mode at all, so Cmd/Ctrl+Enter was being taken and refused there regardless. **Hiding the bar client-side could not have worked**: research is decided server-side from `research_pending` (`chat_routes.py:1424`) on a message whose research toggle `chat.js` clears at send (`:2947`), and is turned OFF server-side by `can_use_research` and by a tool policy that blocks `trigger_research` — the composer is wrong both ways. So the fix is not a fourth client-side rule but the end of client-side rules: `_stream_is_steerable` is computed **once**, beside `_effective_mode`, and read twice — `agent_runs.start(steerable=…)` gates the refusal, and a new `stream_steerable` SSE event, first on every stream, tells the composer (`Law 13`). `compare_mode` moved INTO the predicate because the announcement is the one reader that runs on a compare pane. The verdict resets per run, outranks the guess in both directions, and hands the key binding back when it says no. **What this does NOT deliver**: the bar still appears for one round trip and then goes. The composer draws it at send-path entry (`chat.js:2077`) and the POST leaves ~880 lines later, so on a research, image or compare turn there is a visible flash before the correction lands. Drawing nothing until the run answers would have retired steering on every server that has the route but not the event (`Law 1`), so the guess stays as the provisional answer — the flash is `B81`. 9 route tests + 24 node tests, 10 mutations, all caught.
-- [ ] **B15** **Two themes put every string in the app under WCAG AA against their own panel.** Measured 2026-08-29 across all sixteen palettes in `static/js/theme.js`: `cute` renders `--fg` on `--panel` at **3.44:1** and `retrowave` at **4.15:1**, against a 4.5:1 floor for body text. Every other theme clears it with room — the next lowest is `light` at 7.13. This is not about any one component; it is the palette, so it applies to every label, every menu item and every message in the product on those two themes. **Themes are protected territory and this row does not authorise a repaint** — it authorises the measurement being on the record and a decision being made: lift `--fg`, darken `--panel`, or accept the two as decorative and say so somewhere a person will find it. `Verify:` the sixteen palettes are measured in a test, and either every one clears 4.5:1 or the exceptions are named on purpose. — found during P7-06 — agent:`refute:surfaces` **RULED DECORATIVE 2026-09-14 — `D-2026-09-14-03`, the owner's call: *"We don't have to touch themes unless its absolutely critical. They're all customizable."*** Re-measured the same day and every figure still holds to two decimal places — `cute` 3.44, `retrowave` 4.15, next-lowest `light` 7.13 — and a third palette is under AA on `--fg-muted`/`--bg` (`light`, 4.16) which the row never counted. The remedy is not one menu either: darkening `--panel` clears `retrowave` at a ΔL of −3.5 and would need −84.5 on `cute`, at which point it stops being `cute`. **Not repainted, because a theme here is data a person edits** — sixteen presets, fourteen advanced keys each, an editor, an export/import round trip and a `create_theme` tool. The default is `dark` at 12.72:1 and both under-floor palettes are opt-in by name. Reopens if a palette a person cannot see ships as the default, or an accessibility commitment is made outside this repo.
-- [ ] **B16** **FOLDED INTO `B15` (2026-08-31) — settle both in one decision; do not work this row alone.** Same subject, same evidence, same remedy: two palette-contrast measurements against the same sixteen themes, both landing on *lift it, or write down that it is decorative*. Splitting them invites the two halves to be settled differently on the same screen. `B15` is the host because it covers body text, which is the harder floor. **The accent-coloured rule and mark fall below the 3:1 graphic floor on three light themes.** `--red` over `--panel` measures **2.24 on `paper`**, **2.56 on `cute`** and **3.03 on `light`**; WCAG asks 3:1 of a graphic that carries meaning. `P7-06`'s band ladder does not depend on it — after that row the distinction is carried by type size, weight, rule *width* and mark shape, all of which survive greyscale, and the colour is redundant reinforcement by design. So this is not a `Law 15` failure and it is not urgent. It is a real number that should either clear the floor or be documented as decorative, and the attempt to lift it by mixing `--fg` into the accent was abandoned because it could not clear 3:1 on `cute` at any ratio without destroying the hue. `Verify:` (on `B15`) every accent-on-panel graphic that carries meaning clears 3:1, or is documented as redundant. — found during P7-06 — agent:`refute:surfaces` **RULED DECORATIVE 2026-09-14 with `B15` — `D-2026-09-14-03` — and this row's headline is false.** It says the accent falls below the 3:1 graphic floor on **three** light themes and then quotes `light` at **3.03**, which is above 3.0. Against `--panel` exactly two fail (`paper` 2.24, `cute` 2.56); the third is true only against `--bg`. The row conflated two surfaces.
+- [ ] **B15** **Two themes put every string in the app under WCAG AA against their own panel.** Measured 2026-08-29 across all sixteen palettes in `static/js/theme.js`: `cute` renders `--fg` on `--panel` at **3.44:1** and `retrowave` at **4.15:1**, against a 4.5:1 floor for body text. Every other theme clears it with room — the next lowest is `light` at 7.13. This is not about any one component; it is the palette, so it applies to every label, every menu item and every message in the product on those two themes. **Themes are protected territory and this row does not authorise a repaint** — it authorises the measurement being on the record and a decision being made: lift `--fg`, darken `--panel`, or accept the two as decorative and say so somewhere a person will find it. `Verify:` the sixteen palettes are measured in a test, and either every one clears 4.5:1 or the exceptions are named on purpose. — found during P7-06 — agent:`refute:surfaces` **RULED DECORATIVE 2026-09-14 — `D-2026-09-14-03`, the owner's call: *"We don't have to touch themes unless its absolutely critical. They're all customizable."*** Re-measured the same day and every figure still holds to two decimal places — `cute` 3.44, `retrowave` 4.15, next-lowest `light` 7.13 — and a third palette is under AA on `--fg-muted`/`--bg` (`light`, 4.16) which the row never counted. The remedy is not one menu either: darkening `--panel` clears `retrowave` at a ΔL of −3.5 and would need −84.5 on `cute`, at which point it stops being `cute`. **Not repainted, because a theme here is data a person edits** — sixteen presets, fourteen advanced keys each, an editor, an export/import round trip and a `create_theme` tool. The default is `dark` at 12.72:1 and both under-floor palettes are opt-in by name. Reopens if a palette a person cannot see ships as the default, or an accessibility commitment is made outside this repo. **UNPARKED 2026-09-16 on the owner's *"Patch 'em"*, re-measured for the third time, and NOT REPAINTED — the row stays open and the reason is the point.** Every figure holds: `cute` **3.44** and `retrowave` **4.15** on `--fg`/`--panel`, `light` next at **7.13**, `dark` **12.72**. Against `--bg` they are 3.26 and 4.46, so both palettes are under on both of their own surfaces. The third palette the row never counted is confirmed too — `light` at **4.16** on `--fg-muted`/`--bg`. **The measurement is now executable**: `tests/test_theme_contrast_floor_css.py` drives the real `applyColors()` in node for all sixteen palettes and resolves the shipped `style.css` against what it sets, so a seventeenth palette under AA fails and either of these two getting worse fails. It is a ratchet, not a fix, and it passes on the tree before this commit — said plainly because `Law 9` is about not confusing the two. **Why it is not fixed: every available fix changes a theme's appearance.** `cute` is `#d4608a` on `#fff8fa`; no value clears 4.5:1 without moving one of those two hexes, and moving one is not fixing how a theme's choices are applied, it is substituting different choices. Candidate repaints with exact hexes and resulting ratios are filed as **`B390`** for the owner to pick. `Verify:` unchanged, and half-met — the sixteen ARE measured in a test and the two exceptions ARE named on purpose; the row stays open because the defect is real and unfixed. — re-measured while closing `B22`/`B23` — agent:`theme`
+- [ ] **B16** **FOLDED INTO `B15` (2026-08-31) — settle both in one decision; do not work this row alone.** Same subject, same evidence, same remedy: two palette-contrast measurements against the same sixteen themes, both landing on *lift it, or write down that it is decorative*. Splitting them invites the two halves to be settled differently on the same screen. `B15` is the host because it covers body text, which is the harder floor. **The accent-coloured rule and mark fall below the 3:1 graphic floor on three light themes.** `--red` over `--panel` measures **2.24 on `paper`**, **2.56 on `cute`** and **3.03 on `light`**; WCAG asks 3:1 of a graphic that carries meaning. `P7-06`'s band ladder does not depend on it — after that row the distinction is carried by type size, weight, rule *width* and mark shape, all of which survive greyscale, and the colour is redundant reinforcement by design. So this is not a `Law 15` failure and it is not urgent. It is a real number that should either clear the floor or be documented as decorative, and the attempt to lift it by mixing `--fg` into the accent was abandoned because it could not clear 3:1 on `cute` at any ratio without destroying the hue. `Verify:` (on `B15`) every accent-on-panel graphic that carries meaning clears 3:1, or is documented as redundant. — found during P7-06 — agent:`refute:surfaces` **RULED DECORATIVE 2026-09-14 with `B15` — `D-2026-09-14-03` — and this row's headline is false.** It says the accent falls below the 3:1 graphic floor on **three** light themes and then quotes `light` at **3.03**, which is above 3.0. Against `--panel` exactly two fail (`paper` 2.24, `cute` 2.56); the third is true only against `--bg`. The row conflated two surfaces. **RE-MEASURED 2026-09-16 with `B15` and the false headline is now pinned as false.** `tests/test_theme_contrast_floor_css.py::test_the_accent_graphic_floor_fails_on_two_palettes_not_the_three_B16_named` splits the two surfaces the row conflated and asserts both: against `--panel` exactly **two** fail 3:1 (`paper` **2.24**, `cute` **2.56**) and `light` measures **3.03**, which passes; against `--bg` three fail and `light` is **2.75**. Stays open with `B15`, and settles with it. — re-measured while closing `B22`/`B23` — agent:`theme`
 - [x] **B17** **A 1,984-character tool argument kills the whole agent run, at every rung, including the default.** `_action_from_content` (`src/tool_capabilities.py:429`) wraps `json.loads` in `except (TypeError, ValueError)`. **`RecursionError` is neither**, so a deeply nested payload — `"["*992 + "]"*992` is enough — escapes into the SSE generator and the stream dies. Reproduced at all three rungs. `_effect_fields`'s `except Exception` is *not* the escape route and catches it correctly; the run then dies at the first unguarded `capabilities_for_action` caller instead — `decision_for` on the strict rungs, `observe_tool_result` → `tool_result_should_arm_gate` on the default. **Pre-existing**: the narrow `except` is at `HEAD` before `P7-03`, so this is `P7-06`-era or older, not the ladder's. The threshold is stack-depth dependent, not a constant — 1,940 characters survived and 1,960 died in a bare harness, and behind uvicorn the ambient stack is deeper, so the real threshold is lower. The model writes this content, so a model that emits one malformed argument takes the conversation down with it. `Verify:` that payload as a tool argument produces a refused tool call, not a dead stream. — found during P7-03 — agent:`refute:gate` **done 2026-09-14.** Premise true, line reference stale (`:441`, not 429), and **the mechanism is not a length limit, a regex or a sqlite cap** — it is CPython's recursion guard inside the C JSON scanner. `json.loads` raises `RecursionError`, which is a `RuntimeError` and is named by neither `TypeError` nor `ValueError`, so it walked straight out of the `except`. **1,984 is not a Pantheon constant**: bisected, the first failing nesting depth is `sys.getrecursionlimit() - frames_at_call - 4`, so 1,984 is exactly `2 x (1000 - 4 - 4)` at the stock limit from a bare call, and it moves with the ambient stack. A threshold that is a property of the interpreter is not one to leave load-bearing. **Six unguarded call sites**, not the two the row names — `decision_for`, `observe_tool_result`, `capabilities_for_action` in `agent_loop`, `_append_tool_results` twice, and `tool_approvals._matches_unlocked` — and the escape stops at `src/agent_runs.py`'s outer handler, which ends the run with a generic *Agent run failed before completion.* **The consequence the row does not state is silent data loss**: `save_assistant_response` sits INSIDE the `async for` body in `routes/chat_routes.py`, so the turn's partial reply is discarded — the user's message is persisted and the answer is not. Fixed at the single choke point rather than by wrapping six callers (`Law 13`): a depth bound checked **before** parsing, so nothing recurses, with a single-pass scanner that honours string literals and escapes and **does not itself recurse** — a recursive depth check would be the same defect in a new function, and a test proves it by shrinking the interpreter's limit to 60 and scanning 500 levels. **The bound is on depth, not length** (`Law 1`): a 50 KB flat argument is legitimate and still works. On breach it answers `_UNKNOWN_CAPABILITIES`, which already exists and which `decision_for` already renders as *unknown/high-impact* — so the approval card is truthful by construction and no second vocabulary is invented (`Law 14`). `RecursionError` joins the `except` as belt-and-braces. **The default rung on a clean run still early-exits before classifying, and that is deliberate** — `test_trust_rung_gate.py` pins its every verdict against a transcription of the pre-`P7-03` gate. 12 tests, 5 mutations, all caught.
 - [x] **B18** **Running `tests/test_agent_loop.py` first breaks about 51 tests in six other files.** Confirmed with every uncommitted edit reverted, so it is neither this run's nor last's: `test_external_context_tool_gate.py` (32), `test_prompt_injection_audit.py` (9), `test_tool_path_confinement.py` (3), `test_tool_output_prompt_injection.py` (3), `test_tool_approval_task_scope.py` (2), `test_tool_approvals.py` (2). The natural full-suite order happens not to trigger it, which is why CI is green and why this will surface as a mystery the first time someone runs a subset or a shard. The mechanism is the one already documented on `tests/test_trust_rung_gate.py`'s harness: files in this suite stub entries in `sys.modules`, so a later `import` can hand back a different module object than the running code closed over — and `__module__` does not help, because it is a *name*. `Verify:` `pytest tests/test_agent_loop.py tests/test_external_context_tool_gate.py` is green. — found during P7-03 — agent:`impl:gate-tests` **done 2026-09-14 — and the premise was wrong about the cause.** `tests/test_agent_loop.py` breaks nothing: it already pops every stub it injects (`:18-51`) and asserts it, and measured today, prepending it to the six named victims changes the failure set by **zero tests**. The row blamed the file it ran first. **The real poisoners are six files that replace `sys.modules["src.agent_tools"]` with a bare `MagicMock` at module scope**, guarded on `if mod not in sys.modules`, and never put it back. A mock there is not one broken import: `src/agent_loop.py:64-76`, `src/tool_parsing.py:16` and `src/tool_schemas.py:17` bind `TOOL_TAGS`, `ToolBlock` and `parse_tool_blocks` **by value** at import, so the mock is baked into three more modules for the life of the process. **The full suite is green for one accidental reason**: collection imports every test module before the first test runs, and `tests/test_a_refused_call_leaves_a_trace.py` sorts first in root collection order and imports the real module — which makes all six `if mod not in sys.modules` guards dead code. Any subset re-arms them: a shard, a `-k`, a `--lf`, a hand-written file list. **And the count was low, not high.** What is actually there is 6 failures and **12 runaway processes** — with `parse_tool_blocks` a mock the agent loop's exit condition is never satisfied, and `src/agent_loop.py:4134` lifts a caller's explicit `max_rounds=2` to 100,000 for a local endpoint, so twelve tests in `test_external_context_tool_gate.py` ran to that cap and the process was **OOM-killed at 6 GB**. That is why a subset run dies instead of reporting. **The fix is one line**: `src.agent_tools` joins the pre-import block in `tests/conftest.py` that exists for exactly this pattern and carried every other name in the stub lists but this one. The six-file subset goes from *1 failure + OOM kill* to **207 passed in 7s**. A `pytest_collection_finish` guard is added beside it so the seventh copy-paste fails loudly naming the module, rather than as a `MagicMock` `TypeError` several files away — it checks for a missing `__file__`, which is an observation about the loaded object and not a search of anybody's source (`Law 20`). The victims were not patched: their assertions are correct and were failing for a correct reason. 10 tests, 4 mutations, all caught.
 - [x] **B19** **The strict rungs gate on the wrong effect set, and it is the reason people will turn them off.** `ask_every_time` and `allow_listed` both reuse `POST_EXTERNAL_BLOCKED_EFFECTS`, which contains `READ_PRIVATE` because an *already-tainted* run must not exfiltrate. A **clean** run on a strict rung is a different threat model, and reusing one frozenset for both conflates them: 72 of 81 known tools are gated, **21 of them solely by `read_private`** — `read_email`, `search_emails`, `list_sessions`, `search_chats`, `manage_calendar`, `manage_documents`, `list_models`, `vault_search` among them. The agent needs a confirmation to read back a note it wrote in an earlier chat. `P7-04` fixed the *copy* so it no longer promises four write verbs it does not honour, and bound that copy to the set with a test in both directions — so this row is the honest follow-up, not a surprise. Give the rungs their own writes/executes/sends/deletes set. **Two corrections to the evidence, both verified:** `manage_notes` and `manage_memory` also carry `write_private` and would stay gated anyway, and `read_file`/`glob`/`grep`/`ls` are already ungated — workspace reads are fine today, private ones are what hurt. `Verify:` on *Ask every time* a clean run reads its own memory without a prompt and still stops before writing a file. — found during P7-04 — agent:`impl:trust-ladder-ui` **done 2026-09-14 — and the row's own "correction" was false and is withdrawn.** It claimed `manage_notes` and `manage_memory` *"also carry `write_private` and would stay gated anyway"*. They do not: `capabilities_for_action` **replaces** a tool's base capabilities for a read action rather than unioning them, so at the gate those actions carry `read_private` and nothing else. Measured — a test asserting the row's version would have blocked the fix on a premise nobody checked. The counts had drifted too: **83** registry tools, **74** gated on a clean run, **17** of them solely by `read_private` (the row said 81/72/21), plus **30 multiplexed read actions** across nine `manage_*` tools that the row never counted. **Severity is over-blocking only** — I checked the other direction explicitly and the four ungated effects are each accounted for: `read_public` has no tools, `read_workspace` is confined by `_resolve_tool_path`, `brokered_network_read` draws its line at model-chosen destination (`web_fetch` also carries `network_egress` and IS gated), and `user_interaction` is `ask_user`/`update_plan`. The fix is a **derived** `RUNG_BLOCKED_EFFECTS = POST_EXTERNAL_BLOCKED_EFFECTS - {read_private}` — a second eight-item literal is the defect class (`Law 13`) — selected by taint at the one gate site. **`FORBIDDEN.md` Part 2 is untouched**: `POST_EXTERNAL_BLOCKED_EFFECTS` is unchanged and applies in full the moment a run is tainted, which happens on the **first** private read, because every private-read tool and action is `EXTERNAL_UNTRUSTED` and arms the gate — verified by enumerating the registry, zero exceptions. So the read→exfiltrate path is exactly as closed as it was. **The test that guarded the UI copy would have gone on passing while the copy became false**: `test_trust_ladder_js.py` computed `READ_PRIVATE in POST_EXTERNAL_BLOCKED_EFFECTS`, which is still true and must remain true, so it was bound to the wrong constant. Re-pointed at `RUNG_BLOCKED_EFFECTS` — and its `else` branch was wrong too: it demanded the copy go *silent* about reads, on the assumption that naming them means gating them. Silence under-informs in the direction the 2026-08-29 correction was trying to fix, so the copy now says both halves and the test demands both. `trustLadder.js`'s CORRECTED block is corrected again, and the sentence it withdraws is its own *"that may well be the right set"*. **What the fix cannot deliver, stated so nobody expects more**: only the FIRST private read stops asking. The second is after taint, and that is `POST_EXTERNAL_BLOCKED_EFFECTS`, which does not move. 42 tests, 4 mutations, all caught.
@@ -5376,8 +5454,8 @@ fact; then losing their data; then hiding capability they own.*
   **No nineteenth checker.** The rule went **inside** `.pantheon/check-env-declared.py`, which already walks environment reads with an AST — a new file would have been a second copy of that walker (`Law 14`), and the two existing directions plus this one are the same operator question (*can this variable do anything?*) asked from three sides: undeclared, unreferenced, **unreachable**. `ci.yml`, `release-gate.py`, `README.md`'s *eighteen checkers* and `.pantheon/ledger/claims.py` are all untouched and all still true. Two hard rules at max 0: `UNREACHABLE` (an env read beneath a truthy shipped default, unguarded by `setting_is_explicit` or `env_backed`) and `MIXED` (one dict, some values env-backed and one left on `settings.get`). Both at 0 after the fix; `MIXED` was at 1 before it. **The `UNREACHABLE` rule resolves module constants, which `literal_reads` deliberately does not** — `PANTHEON_TASK_CONCURRENCY_CAP` is read as `os.getenv(TASK_CONCURRENCY_CAP_ENV)`, so a rule built on the existing scan would not have caught the one defect it exists for. It is a second walk rather than a widening precisely so the `--max 74` ratchet an operator reads off `ci.yml` does not move: measured before and after at `UNDECLARED 73`, `UNREFERENCED 0`. **Proved against the real defect**: reinstating the pre-`H06` body of `resolve_task_concurrency_cap` fails the checker.
   **What this row does NOT deliver, stated rather than implied.** (1) The checker sees one scope, or one dict, at a time — a resolver that reads the setting in one function and the environment in another is invisible to it, and so is `services/search/providers._get_provider_key`, where the pairing lives in two dict literals rather than in a name; those two pairs were found by hand and are correct, but nothing would catch a third. (2) **An explicitly-chosen `False` still cannot beat a truthy environment value** on `metrics_enabled`, `searxng_widen_engines` and `allow_model_download` — measured: all three stored `False`, all three effective `True`. That is the limit `setting_is_explicit` documents rather than a bug in it, it cannot be fixed with that tool, and it is filed as **`B90`**. (3) Seven incompatible spellings of environment truthiness across 50 sites mean `PANTHEON_X=1` is on in 13 of them and off in 33 — **`B91`**. (4) `trust_rung` still has no env layer and this row is still where that decision is recorded. **24 new tests, 33 mutations, 33 caught** — **seven survived the first pass and every one of them moved a test, which is the only reason the count is 33**: a redundant `isinstance(bool)` branch resting on `str(True)` happening to lowercase to `"true"` (restructured so both branches are load-bearing); a premise test that *described* `POST /api/auth/settings` instead of calling it, and a second that never exercised the merge onto an existing file; two `failed = True` lines that print a finding and exit green; and `H07`'s own legacy-mail test, which **blanked eight keys and asserted four**, so putting `imap_password` back on the raw idiom — the exact credential loss that row is about — survived the whole file. It blanks ten and asserts ten now. — audited and closed 2026-09-14 — agent:`impl:env-layer-audit`
 - [x] **B21** **The three theme writers disagree about what a theme is.** A theme's advanced keys are mirrored in three places and the three have drifted: `ADV_KEYS` in `static/js/theme.js` has **14** entries, `login.html`'s `ADV` has **13** (missing `brandMixTo`), and `index.html`'s first-paint `advMap` has **17**. `P1-09`'s `CI:` line already warns that `ADV_KEYS` and `computeAdvancedDefaults()` must move in lockstep or all sixteen themes break — this is the same hazard one level up, across files, and nothing checks it. Four of `advMap`'s extras (`accentPrimary`, `accentError`, `sectionAccent`, `toggleBg`) are written at first paint and then never updated or cleared by `applyColors()`, which is `P1-02`'s defect generalised. **Related, and one line:** `applyColors` calls `_updateFavicon(colors.red || '#e06c75')` under a comment reading *"match theme accent color"* — true until `P1-01` made accent separately settable, so the first theme to carry an `accent:` key gets a red favicon and an accent UI. `Verify:` a test asserts the three key sets agree, and adding a key to one of them fails until it is added to all. — found during P1-01 — agent:`impl:accent-writer` **PARTLY CLOSED 2026-08-30, and it was three sets undercounted — there are six.** `index.html` also carries `id="adv-…"` inputs (14) and `data-reset-adv` buttons (14), both reached by `getElementById('adv-' + key)` from the `ADV_KEYS` loop, and `theme.js`'s `_THEME_ZONE_MAP` carried `adv-` entries for four keys with no picker row. All six front-end sets are now **14 = 14 = 14 = 14 = 14 = 14** and a test fails when any one of them moves alone. The favicon line is settled too: `_updateFavicon` follows the accent rather than the red, a no-op on all sixteen shipped themes and correct for the first one to carry an `accent:` key. **What is left is `src/`, which is a seventh and eighth set.** `src/ai_interaction.py:767` and `src/tool_schemas.py:1574` each carry a 16-key `adv_keys`, plus the JSON schema at `tool_schemas.py:495-506` — all three still accept the four keys `P1-02` retired and none knows `brandMixTo` or `hamburgerColor`. So `create_theme` accepts a **dead parameter**: stored, and written by nobody. Remove the four from both literals, the schema block and the error string at `ai_interaction.py:754`; add the two real ones to all four places. The test bounds the gap in both directions so this can be closed later without it objecting. **done 2026-09-14 — every premise held, and the parse loop had a second silent drop nobody counted.** Re-measured: the seven front-end sets are **14 = 14 = 14 = 14 = 14 = 14** with `_THEME_ZONE_MAP` a documented 12-key subset, and all four `src/` sets carried **16** — `accentPrimary`, `accentError`, `sectionAccent`, `toggleBg` accepted, `brandMixTo` and `hamburgerColor` missing, wrong at both ends. One call showed the whole row: `create_theme … accentPrimary=#123456 brandMixTo=#abcdef` stored `{'accentPrimary': '#123456'}`, reported *"with 1 advanced overrides"* — one override being precisely what did not happen — and dropped `brandMixTo` in silence. Every line reference had rotted (`ai_interaction.py:769` not 767, `:760` not 754, `tool_schemas.py:1644` not 1574, `:555-570` not 495-506) and the schema block is **21** properties, not 16: five base colours plus the sixteen. **The fourth `src/` site was not a fourth list, it was a filter** — `function_call_to_tool_block` appended only colours on its own copy, so a model's function call lost `brandMixTo` *before* `do_ui_control` existed to complain, and no `else` added to the parse loop could ever have reached it. It forwards every non-positional colour now and `do_ui_control` is the one validator (`Law 13`). **Derived, not retyped**: `src/theme_advanced_keys.py` parses `ADV_KEYS` out of `static/js/theme.js`, which looks like a fragile coupling and is the opposite — `create_theme` has no effect of its own, it emits a ui_event that `theme.js` applies, so the server now accepts exactly what the browser can paint, by construction. **There is deliberately no fallback list**: if `theme.js` cannot be read the front end that would apply the event is gone too, and a fallback would keep the tool claiming overrides nothing can paint — this row's own defect, surviving in the one case it fires. The parse also carries `label` and `group`, so the JSON schema now describes each key by the editor's own row name instead of hand-written prose that had drifted with the keys (`sectionAccent` was still documented as *"Section header accent color"* for a row that no longer exists). **An unrecognised key errors** — the model can act on it, the valid names are in the message — while a bare word with no `=` is **reported in the result** instead, because it is as likely to be a trailing comment as a mistyped option and failing a complete call over one would lose a theme to punctuation; that bare-word `continue` was a second silent drop the row does not mention. The count is honest as a *consequence*, not as a second rule: every key that validates is a key `applyColors()` paints. **A constraint found the hard way**: `FUNCTION_TOOL_SCHEMAS` is read with `ast.literal_eval` by `tests/test_tool_index_schema_parity.py`, so a `**advanced_schema_properties()` inside the literal breaks an unrelated test with `ValueError: malformed node or string: None`; the derived half is spliced in immediately after the list instead, with the reason on it. `tests/test_advanced_key_mirrors_js.py`'s `_src_keys()` read two of the four — it matched `adv_keys\s*=\s*[\{\[]` and the error string and JSON schema have no such literal — and is now an equality against node-evaluated `ADV_KEYS`, measuring each `src/` surface by **running** it (`Law 20`). 18 mutations, all caught.
-- [ ] **B22** **The semantic colour tokens are not theme-scoped, so they are dark-tuned everywhere.** `--green`, `--warn` and the seven `--color-*` tokens are static `:root` literals in `static/style.css`; `theme.js` sets only `--bg --fg --panel --border --red --accent`, the ten `--hl-*` and `ADV_KEYS`. So a *success* green is the same hex on `terminal` as on `paper`, and on the four light palettes it is weak — `--green` on `paper` measures **1.37:1**. This became load-bearing on 2026-08-30: `P1-01` moved twelve mislabelled accent sites onto `--color-success` / `--color-warning` / `--color-accent` / `--green`, which is right on the twelve dark themes and inherits this weakness on the four light ones. Those twelve are not the problem — they join **100+ existing sites** with the same shortfall. **Paired with `P1-06` on 2026-08-31, and this row is what unblocked it.** `P1-06` owns loose colour and was blocked for want of a scope; the numbers here *are* that scope, so the two are one job — the measurement half (this row) and the token-move half (`P1-06`). Work them together and close them together; neither is meaningful alone. `Verify:` a semantic token clears its floor on all sixteen palettes, or the exceptions are named. — found during P1-01 — agent:`impl:accent-css` **RULED LOW PRIORITY 2026-09-14 — `D-2026-09-14-03`.** Measured, and every number in the row undercounts: it is **19** static `:root` semantic tokens, not seven, across **381** `var()` uses of which 187 are `color:`. **And one third of it is backwards** — `--color-danger`, `--color-recording-hover` and `--color-muted-alt` are *light*-tuned and fail on the dark palettes, `--color-danger` on 12 of 16. A fix exists and is one file: `light-dark()` keyed off the `color-scheme` all three palette writers already set, touching only `static/style.css` and adding no fourth mirror. It does not run because a person can repaint any of this, and because **`B22`'s floor is unreachable on `cute`/`retrowave` until `B15` decides** — which it now has, decoratively.
-- [ ] **B23** **Two link idioms now disagree, and `P1-01` is why.** A link in rendered body text (`.task-log-row-body a`, `.doc-email-richbody a`) is `--color-accent`, because those were semantic sites reclassified away from the accent. A link inside `details` is bare `var(--accent)` and now resolves to the theme's red for the first time. Both are correct on their own row and they look different on the same screen. Neither is wrong enough to have blocked `P1-01` — but a product should not have two link colours, and the cheapest moment to settle it is before more rows lean on either. `Verify:` one link colour, named once. — found during P1-01 — agent:`impl:accent-css` **FOLDED INTO `B22` 2026-09-14 — `D-2026-09-14-03` — and it is five idioms, not two.** `var(--hl-function)`, bare `var(--accent)`, `var(--accent, var(--red))`, `var(--color-accent)` and a dead `var(--accent-primary, var(--red))` that never paints because a later `!important` wins. **The row names the wrong one as intended**: `--hl-function` is the only per-theme derivation, the only idiom clearing AA on all sixteen palettes, and already the hue on the two highest-traffic link surfaces — while `style.css`'s own comment asserting *"`--color-accent` is the sheet's link hue"* is false, that token having 14 `var()` uses in total. One unnamed defect found while measuring: on `light`, `paper`, `lavender` and `cute`, hovering a `details a` link **drops** its contrast (3.03 → 1.74 on `light`), so hover makes the link less visible. `--color-accent` and `--color-link-hover` are two of `B22`'s nineteen tokens, so settling this first would mean picking a link hue and re-picking it when `B22` re-tunes — the same argument that folded `B16` into `B15`.
+- [x] **B22** **The semantic colour tokens are not theme-scoped, so they are dark-tuned everywhere.** `--green`, `--warn` and the seven `--color-*` tokens are static `:root` literals in `static/style.css`; `theme.js` sets only `--bg --fg --panel --border --red --accent`, the ten `--hl-*` and `ADV_KEYS`. So a *success* green is the same hex on `terminal` as on `paper`, and on the four light palettes it is weak — `--green` on `paper` measures **1.37:1**. This became load-bearing on 2026-08-30: `P1-01` moved twelve mislabelled accent sites onto `--color-success` / `--color-warning` / `--color-accent` / `--green`, which is right on the twelve dark themes and inherits this weakness on the four light ones. Those twelve are not the problem — they join **100+ existing sites** with the same shortfall. **Paired with `P1-06` on 2026-08-31, and this row is what unblocked it.** `P1-06` owns loose colour and was blocked for want of a scope; the numbers here *are* that scope, so the two are one job — the measurement half (this row) and the token-move half (`P1-06`). Work them together and close them together; neither is meaningful alone. `Verify:` a semantic token clears its floor on all sixteen palettes, or the exceptions are named. — found during P1-01 — agent:`impl:accent-css` **RULED LOW PRIORITY 2026-09-14 — `D-2026-09-14-03`.** Measured, and every number in the row undercounts: it is **19** static `:root` semantic tokens, not seven, across **381** `var()` uses of which 187 are `color:`. **And one third of it is backwards** — `--color-danger`, `--color-recording-hover` and `--color-muted-alt` are *light*-tuned and fail on the dark palettes, `--color-danger` on 12 of 16. A fix exists and is one file: `light-dark()` keyed off the `color-scheme` all three palette writers already set, touching only `static/style.css` and adding no fourth mirror. It does not run because a person can repaint any of this, and because **`B22`'s floor is unreachable on `cute`/`retrowave` until `B15` decides** — which it now has, decoratively. **CLOSED 2026-09-16 — scoped, not recoloured, in one file.** Fifteen of the nineteen semantic tokens now name a value per surface class through `light-dark()`, keyed off the `color-scheme` all three palette writers already set from the background's luminance (`P3-09`). **The arm for the surface each literal was tuned for IS that literal**, so twelve of the sixteen palettes resolve every one of them to exactly the hex they resolved to before — asserted token by token, palette by palette, in `test_scoping_a_token_did_not_move_it_on_the_surface_it_was_tuned_for`. Two ran backwards and could keep neither arm, which is this row's own finding: `--color-muted-alt` missed AA on 13 of 16 and `--color-subheader` on 7, and their arms moved 13.9/65.3 and 46.6/33.3 sRGB units, stated rather than implied. **Four are named exceptions and each is a measurement, not a shrug.** `--color-muted` is `--fg-muted`'s pivot: scoping it puts `--fg-muted` within **35.9** units of `--fg` on `forest` and **25.4** on `light`, under the 40-unit floor `P1-03` proved, so the three tab strips that row repaired would stop showing which tab is active — filed as `B391`. `--color-danger` and `--color-recording-hover` are one token doing two jobs, and the arithmetic has no solution: clearing 4.5:1 as text on `claude`'s panel needs luminance ≥ 0.31, clearing it under `#fff` needs ≤ 0.18 — filed as `B393`. `--color-error` and `--color-recording` keep their dark arms because `#fff`/`white` sits on them at five rules, so lightening them would make `P1-08` worse. `Verify:` met — `test_every_semantic_token_clears_its_floor_or_is_a_named_exception` measures all nineteen against every palette's own `--panel` and `--bg`, and every failure is named with the row that owns it. **This is NOT `P1-06`'s remedy and deliberately so**: that row says move the tokens into `theme.js`'s per-theme block, which is a fourth mirror of the palette and exactly what `B21` is about. One file, no new writer. `P1-06`'s loose-hex half is untouched and stays open. **One unnamed defect found while scoping, and fixed by the same invariant `B23` used:** `.close-split-btn`/`.pane-close-btn` paint `--color-error` and hover to `--color-error-light`, which was `#ff4444` → `#ff6666` on every palette — LIGHTER, so on the four light ones the hover *lowered* the control's contrast (`light` **3.17 → 2.66** against `--panel`, 2.87 → 2.41 against `--bg`; `paper` 3.41 → 2.86, `lavender` 3.22 → 2.70, `cute` 3.26 → 2.73). Same shape as `details a:hover`, on a control instead of a link. The light arm is now `#a30000` against `--color-error`'s `#d60000` — darker, which is what "more emphasis" means on a white page — and `test_the_two_error_tokens_stay_two_colours_on_every_palette` asserts the pair stays 40 sRGB units apart and the hover never weaker, on all sixteen. **`Law 9`:** the tests fail on the tree before this commit on fourteen tokens across four palettes and on the error pair on four; 4 of 4 mutations on the arms were caught. — closed by — agent:`theme`
+- [x] **B23** **Two link idioms now disagree, and `P1-01` is why.** A link in rendered body text (`.task-log-row-body a`, `.doc-email-richbody a`) is `--color-accent`, because those were semantic sites reclassified away from the accent. A link inside `details` is bare `var(--accent)` and now resolves to the theme's red for the first time. Both are correct on their own row and they look different on the same screen. Neither is wrong enough to have blocked `P1-01` — but a product should not have two link colours, and the cheapest moment to settle it is before more rows lean on either. `Verify:` one link colour, named once. — found during P1-01 — agent:`impl:accent-css` **FOLDED INTO `B22` 2026-09-14 — `D-2026-09-14-03` — and it is five idioms, not two.** `var(--hl-function)`, bare `var(--accent)`, `var(--accent, var(--red))`, `var(--color-accent)` and a dead `var(--accent-primary, var(--red))` that never paints because a later `!important` wins. **The row names the wrong one as intended**: `--hl-function` is the only per-theme derivation, the only idiom clearing AA on all sixteen palettes, and already the hue on the two highest-traffic link surfaces — while `style.css`'s own comment asserting *"`--color-accent` is the sheet's link hue"* is false, that token having 14 `var()` uses in total. One unnamed defect found while measuring: on `light`, `paper`, `lavender` and `cute`, hovering a `details a` link **drops** its contrast (3.03 → 1.74 on `light`), so hover makes the link less visible. `--color-accent` and `--color-link-hover` are two of `B22`'s nineteen tokens, so settling this first would mean picking a link hue and re-picking it when `B22` re-tunes — the same argument that folded `B16` into `B15`. **CLOSED 2026-09-16 with `B22`, and the census says SEVEN idioms, not two or five.** Every rule in `style.css` that sets a colour on an `a`: `var(--hl-function)` (`.msg a`, and `.email-reader-body a` et al with `!important`), bare `var(--accent)` (`details a` ×2), `var(--accent, var(--red))` (`.doclib-research-sources a`, the Gmail chip, two note readers), `var(--color-accent, …)` (`.task-log-row-body a`, `.doc-email-richbody a`), the dead `var(--accent-primary, var(--red))`, `var(--color-link-hover)` (the two hovers), and two deliberate `var(--fg)`/`inherit` cases that stay. **Named once, as `--link-fg: var(--hl-function)`, and the choice is measured rather than picked**: it is the only idiom clearing 4.5:1 against `--panel` on all sixteen palettes (worst `cute` **4.61**, on a palette whose own body text is 3.44), the only one derived per theme, already the hue on every chat message and every email body, and the one that was already `!important`-ed over the accent at `:31393`. Every alternative fails on four to eight palettes — `details a` was **2.24** on `paper`. Against `--bg` the new token lands 4.19/4.36/4.38 on `light`/`lavender`/`cute`, just under AA where the alternatives are 2.1–2.8; that residual is named in the test and filed as **`B395`**. **The unnamed defect the row found is fixed as an invariant, not as four palette names**: `test_a_link_hover_never_loses_contrast` asserts a hover is never lower-contrast than the base on any palette and any surface, which is what `details a:hover` violated (3.03 → **1.74** on `light`). **The dead rule is not deleted** (`Law 1`) — both it and the `!important` that out-ranks it now name `--link-fg`, so removing the `!important` cannot change a colour. `Verify:` met. `Law 9`: fails on the tree before this commit with six idioms; 3 of 3 link mutations caught. — closed by — agent:`theme`
 - [x] **B24** **The frosted-glass toggle did not survive an export/import round trip.** Found 2026-08-30, from the owner handing over a real exported theme mid-run with the note that the theme editor *"is genuinely awesome… it is also the location where you enable the glass panels too"*. A theme stores **seven** options — `saveCustomTheme` and `save` both persist `font`, `density`, `bgPattern`, `bgEffectColor`, `bgEffectIntensity`, `bgEffectSize` and `frosted`. **The exporter wrote four.** So turning the glass on, exporting, and importing on another machine silently gave you a theme with the glass off, and a tuned background pattern came back at its defaults. The importer had the identical gap, so even a hand-edited file could not have carried them. **Nothing failed loudly** — the file it produced imported cleanly and simply produced a different theme, which is why it survived every previous pass over this module. — **done:** all four lists carry all seven, import reads the three additions with `!== undefined` so an older export still works and a deliberate `frosted: false` is obeyed rather than ignored, and the applied state is set before `applyBgPattern` because the canvas animators read intensity and size when they start. `tests/test_theme_export_round_trip_js.py` holds the four lists equal **using the owner's own exported theme as its fixture**, so the format under test is the one the product emits. The editor is now named in `FORBIDDEN.md` Part 1 with the owner's words. *(One of my own edits called `applyFrosted`, which does not exist — the function is `applyFrostedGlass`. `node --check` passed it, because it parses and does not resolve names. A test now checks that every function the importer calls is one this module defines.)* — found during P1 wave 2 — agent:`orchestrator`
 - [x] **B25** **`CHANGELOG.md` says the AGPL §13 source link shipped. It did not.** `CHANGELOG.md:37` lists under **#### Added**: *"Source link in the UI footer, per AGPL-3.0 §13."* There is no such link — `static/index.html` contains no footer source link, no repo href, nothing. `P0-17`, the row that owns it, is still `[ ]` and describes itself as *"the one licence obligation that is genuinely required and genuinely missing."* So the tracker and the changelog disagree, and **the changelog is the one a stranger reads**. This is worse than an ordinary stale entry for two reasons: a changelog is a public statement of compliance, and the specific claim is about the licence term that compels source availability. Anyone auditing this fork's AGPL conformance would read line 37 and stop looking. `Verify:` either the link exists on the logged-in shell and the login page (which closes `P0-17`), or line 37 is removed until it does — and nothing else in that file claims a capability no code provides. — found during the tracker reconciliation — agent:`orchestrator`
 - [x] **B26** **The sidebar anti-flash guard was renamed on one side only, so it does nothing.** The pre-paint inline script in `static/index.html:140` and `static/js/sidebar-layout.js:41` set `pan-sidebar-mini`, `pan-sidebar-off` and `pan-mobile-startup-sidebar-hidden` on `<html>`. `static/style.css` still selects **`html.ody-sidebar-mini`** (`:776,779`), **`html.ody-sidebar-off`** (`:780,789,5275`) and **`html.ody-mobile-startup-sidebar-hidden`** (`:5276`) — **10 occurrences across 3 class names, none of which anything sets any more.** The whole point of that inline script is to apply the collapsed state *before first paint*; with the rules orphaned, every cold load renders the full sidebar and then snaps it away — which is precisely the flash the guard was written to prevent, on the two layouts that opt out of the sidebar. This is `P0-04`'s rename finishing in the JS and stopping at the stylesheet, and it is invisible to `check-wiring.py`, which counts element lookups and not selector agreement. **Two things in `style.css` are *not* this bug and must not be swept with it:** `ody-pulse` and `ody-breathe` are `@keyframes` **defined and consumed inside the same file** (`:7082,7086,7099,7108`) — misnamed, self-consistent, live. Renaming those is `P0-31` cosmetics; renaming these three is a fix. `Verify:` a cold load in mini and in off mode paints the collapsed sidebar on the first frame, and no `html.ody-` selector remains that nothing sets. — found during the tracker reconciliation — agent:`orchestrator` — **done 2026-09-07: sixteen selectors, not ten.** The row counted `static/style.css` and stopped there; `static/index.html`'s own inline `<style>` (`:263-274`) carries six more readers of the same three classes, inside the same file whose inline *script* the row correctly identified as a writer. So the file that was cited as evidence for the writer half was also holding a third of the reader half. All sixteen renamed `ody-` → `pan-`; the diff is the three class names and nothing else, verified with `--word-diff`. **A rename was the right shape and a migration was not:** the class is recomputed from `localStorage['pantheon-sidebar-mode']` on every load and is never itself stored, so no saved value carries the old spelling. `ody-pulse` and `ody-breathe` left alone exactly as the row instructs. Guarded by `tests/test_root_class_wiring.py`, which joins the two sides in **both** directions — a root class CSS reads that nothing writes, and one code writes that no rule reads — because a one-directional check would have passed on this tree had the sweep gone the other way. Five mutations, five caught.
@@ -8503,8 +8581,15 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   *page* is in neither list and `/login` is in neither list. Measured 2026-09-15 by driving the
   shipped `fetch` handler with the network down: a navigation to `/login` is `NOT HANDLED`.
   So a client whose session has expired while offline is redirected by `AuthMiddleware` to a
-  page that does not exist for it — the one screen a user in that state can act on. The same
-  gap covers `/static/backgrounds.html`, which `app.py` also serves as its own shell.
+  page that does not exist for it — the one screen a user in that state can act on.
+
+  *(Corrected 2026-09-16 by `B210`. This paragraph continued: "The same gap covers
+  `/static/backgrounds.html`, which `app.py` also serves as its own shell." Both halves are
+  wrong. There is no `/static/backgrounds.html` URL — `app.py` reads the file
+  `static/backgrounds.html` from a route at `/backgrounds` — and the file is in no commit of this
+  repository, so there has never been a shell there to cover. It is one of the three claims
+  `B210` was filed to correct, and this is that correction; the rest of the row is unchanged and
+  still true.)*
   **Decide before adding a line**: an offline login is arguably unhelpful, since the credentials
   cannot be checked without the server — in which case the row is that the test's name promises
   a coverage nobody chose, and the answer is a written exemption rather than a precache entry.
@@ -8752,7 +8837,7 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   inline'` put in beside them.
   — closed by agent:`shell`
 
-- [ ] **B210** **The background sandbox page has never existed, and three files claim it does.**
+- [x] **B210** **The background sandbox page has never existed, and three files claim it does.**
   Left open by `B140` on purpose: that row made `GET /backgrounds` honest — a 404 naming
   `static/backgrounds.html` instead of a 500 with a `logger.exception` per request — and
   deliberately did **not** answer the product question, which is whether the page should be
@@ -8774,6 +8859,45 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   or the three claims above are rewritten to say the page is not shipped, and the 404 becomes the
   documented answer rather than a fallback. `Depends:` nothing. — found while closing `B140` —
   agent:`shell`
+
+  **Closed 2026-09-16: the page is not written, the claims are corrected, and the count in this
+  row was one too many.** `src/app_helpers.py`'s docstring is the one that was already fixed —
+  the baseline (`fff72ec:src/app_helpers.py:33`) read *"server-owned template paths
+  (index/login/backgrounds)"* and `B140`/`B141` rewrote that paragraph while rewriting the helper;
+  it now names `/backgrounds` correctly, as the live example of a route where 404 is the right
+  answer. So two claims were live, not three, and one of them was worse than this row knew.
+
+  **One of them was served.** FastAPI publishes a route's docstring as its `description` in
+  `/openapi.json`, so `serve_backgrounds`'s opening line — *"Sandbox page for prototyping
+  background effects."* — was not an internal note. It was rendered in the API browser at `/docs`
+  and read by `src/tools/system.py`'s endpoint discovery, telling every reader and the agent's own
+  tool layer that this route serves a page that has never existed in this repository. `Law 1`
+  protects a behaviour that exists; a claim that something exists when it never has is a false
+  statement, and the fix for a false statement is to correct it. The published description is now
+  four lines and true, and the reasoning is kept in the source behind a `\f` — FastAPI truncates
+  a docstring there, which is what keeps an argument out of a schema without hiding it from a
+  reader of `app.py`.
+
+  **Why the page is not written, having looked at what it would be.** The row asks for the two
+  surviving prototypes to be checked first, and they answer it: `static/wave-variants.html` and
+  `static/whirlpool-variants.html` each open with *"A developer sandbox, not a page the app links
+  to"*, and each is one self-contained inline block with its own copy of the styling. A third one
+  for `theme.js`'s seven canvas animators would either copy them — which `D-2026-08-26-03` makes
+  worse than no sandbox, a copy that drifts from the protected originals — or import the real
+  module, which is a new served document on a route, an eleventh entry in a precache list `B57`
+  derives, and a page to keep in step forever, for a tool with no user outside development. And
+  `B262`, closed in the same commit, is the measurement that makes the *other* option less
+  attractive than it looked: an HTML document under `/static` is served to an unauthenticated
+  port, so the cheap way to ship this sandbox is also the way that publishes it.
+
+  Nothing is removed (`Law 1`): the route stays and serves `static/backgrounds.html` the moment a
+  deployment drops one in. **Evidence** (`Law 9`):
+  `tests/test_routes_that_answer_404_say_what_is_missing.py` reads the served schema and fails on
+  the tree as it stood, where the description opened with the sandbox sentence; the mutation that
+  restores that sentence is caught. The two remaining prose claims — `B122`'s written exemption in
+  this file, and a comment in `test_offline_shell_manifest.py` that still said `/backgrounds` is a
+  500 — are corrected in the same commit and are not under test, because a test over this file
+  would be testing this file.
 
 - [x] **B211** **Two prototype pages are entirely driven by an inline script the app CSP has
   blocked since the nonce landed.** `static/wave-variants.html` and
@@ -8979,7 +9103,7 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   `new Function` only inside webpack's try/caught `globalThis` probe.
   — closed by agent:`outbound`
 
-- [ ] **B260** **Two enumerators of the served surface, and they will drift.**
+- [x] **B260** **Two enumerators of the served surface, and they will drift.**
   `tests/test_offline_shell_manifest.py`'s `served_routes` fixture (`B120`) and
   `tests/helpers/served_pages.py` (`B212`) both boot the real app out of process, walk
   `app.routes`, and ask every parameter-free GET path for its body. They differ in what they keep
@@ -8996,7 +9120,29 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   route that appears to one appears to the other. `Depends:` `B231` landing. — found while
   closing `B212` — agent:`outbound`
 
-- [ ] **B261** **ReDoc worked before `P16-07` and does not work after it, and the CSP is why it
+  **Closed 2026-09-16. `served_routes` is a projection; the walk happens once.** `B231` landed,
+  so the file was free. The fixture no longer runs its own `subprocess` with its own route walk —
+  it calls `probe_served_surface`, drops the `/api/` rows the offline row does not ask about, and
+  derives `is_shell` from the same body it already has. The one field the projection needed and
+  the probe was not recording is `body_repeats` (a second request, compared byte for byte), so
+  that moved into the probe; it is taken for every URL except `/api/`, where re-asking is a second
+  side effect for nothing. The probe's answer is held as JSON for the length of a pytest session,
+  so the two test modules that ask cost **one** application boot: measured, the two files together
+  run in 31.9s against 34.0 + 17.4 apart.
+
+  **The drift the row predicted was already there.** The `/static` mount is a single `Mount` entry
+  in `app.routes` with no per-file path, so the old fixture could not see a single document under
+  it — and two of them were the app shell and the login page at a second URL each (`B262`).
+  `test_the_static_mount_is_in_this_view_of_the_served_surface` is the assertion on that and it
+  **fails on the tree as it stood**: the fixture returned 20 URLs and none of them began
+  `/static/`. That is this row's `Law 9` evidence. The rest of that file's 40 tests pass unchanged
+  through the swap, which is what says the projection preserves what the old fixture measured.
+
+  One stale sentence went with it: `test_a_route_that_serves_its_own_document_is_not_in_the_shell_
+  set` still said `/backgrounds` is a 500 on this tree. `B140` made it a 404 and this row's
+  neighbour `B210` is why it stays one.
+
+- [x] **B261** **ReDoc worked before `P16-07` and does not work after it, and the CSP is why it
   cannot simply come back.** `/redoc`'s page has no inline block — its only script is external —
   so under the fork baseline's `script-src 'self' 'nonce-…' https://cdn.jsdelivr.net` it
   rendered, minus the Google Fonts `style-src` never allowed. `P16-07` removed jsDelivr from
@@ -9014,7 +9160,42 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   answer rather than a placeholder. **Do not close it by widening `script-src`.** `Depends:`
   `B212` (landed). — found while closing `B212` — agent:`outbound`
 
-- [ ] **B262** **`GET /` redirects to `/login`; `GET /static/index.html` hands over the whole app
+  **Closed 2026-09-16: one API browser is enough, and the 404 is the answer.** Both roads back
+  were weighed and both were declined, for reasons that are now in `serve_redoc`'s own docstring
+  rather than in a commit message.
+
+  *Widen the policy.* Not proposed. `'unsafe-eval'` is in `.pantheon/FORBIDDEN.md` Part 2.
+  `worker-src 'self' blob:` on that one response is the smaller of the two and is still a real
+  loosening: a `blob:` worker is the standard way a script that has reached a page runs code the
+  policy never hashed, and this app's `script-src` is `'self' 'wasm-unsafe-eval'` plus a
+  `'sha256-…'` per inline block precisely so that nothing unhashed runs. Spending that on a second
+  renderer of a schema `/docs` already renders is a bad trade at any price.
+
+  *Vendor it and measure.* This row asks whether the worker and the Ajv path are reachable when
+  ReDoc renders a spec, and answers its own question: **that cannot be established without a
+  browser, and there is none here.** "Ship 1.1 MB of third-party JavaScript and find out in
+  production which half the policy refuses" is not a measurement. A half-working API browser is
+  worse than an honest 404 because its failure is silent — which is exactly the state `/docs` was
+  in for this repository's whole life before `B212`.
+
+  What is lost is named rather than waved away: ReDoc is a read-only three-pane renderer of the
+  same `/openapi.json` that `/docs` renders interactively, `/docs` is vendored and served from
+  this origin, and a reader who wants ReDoc's layout can point their own copy at the schema. The
+  route is **kept** (`Law 1`) — a build that vendors ReDoc serves it from here.
+
+  **The 404 body was a placeholder and now is not.** It read *"…need CSP allowances this app does
+  not grant (B212)"*: a bare row identifier, meaningless outside this repository, in a reply a
+  stranger reads. It now says which browser this build ships, where the schema is, and why ReDoc
+  is not here.
+
+  **Evidence** (`Law 9`). `tests/test_routes_that_answer_404_say_what_is_missing.py`. Run against
+  the tree as it stood, `test_the_one_api_browser_is_named_by_the_route_that_is_not_one` fails on
+  the row id in the body; `test_the_policy_did_not_widen_to_get_redoc_back` passes before and
+  after, which is the point of it — it is the assertion that has to keep passing, over every
+  served response's own policy: no `'unsafe-eval'`, no `worker-src`, no `child-src`, no `blob:`
+  outside `img-src`/`media-src`. One mutation, caught: the 404 body back to the placeholder.
+
+- [x] **B262** **`GET /` redirects to `/login`; `GET /static/index.html` hands over the whole app
   shell.** Found 2026-09-16 while measuring `B211`, by asking the running app for every document
   the `/static` mount serves. With `AUTH_ENABLED=true`: `/` is `302 → /login`, `/docs` is
   `302 → /login`, and `/static/index.html` is **200 with all 292,260 bytes**; `/static/login.html`
@@ -9035,6 +9216,60 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   exemption is written down where `AUTH_EXEMPT_EXACT` is, saying what an unauthenticated caller
   is being handed and why that is acceptable. `Depends:` nothing. — found while closing `B211` —
   agent:`outbound`
+
+  **Closed 2026-09-16. The mount stops serving documents a route owns, and it is a redirect.**
+  Premise reproduced first, against the real app with `AUTH_ENABLED=true` and
+  `LOCALHOST_BYPASS=false`: `/` `302 → /login`, `/docs` `302 → /login`, `/backgrounds`
+  `302 → /login`, and `/static/index.html` **200 with 292,260 bytes**, `/static/login.html` 200
+  with 31,257 — to a client carrying no cookie.
+
+  **The constraint is what shaped the fix.** `/static` is one mount and the login page loads its
+  manifest, its icon, two webfonts and `theme.js` from it *while logged out*, so any rule that
+  gates the mount — or gates `*.html` under it, which was the obvious first idea — locks every
+  user out of the only screen they can act on. The two documents are not an auth problem that
+  happens to be under `/static`; they are **templates a route already serves**, and a raw second
+  copy of a route-owned document is the defect. The auth bypass is its first consequence and
+  `B120` is its second: `sw.js` narrowed its navigation handler precisely so a `/static/*.html`
+  navigation is never answered with the app shell, and the shell was sitting at a `/static/*.html`
+  URL — so "Add to Home Screen" from there installed a PWA whose launch URL the worker holds no
+  document for.
+
+  So `_RevalidatingStatic.get_response` (`app.py`) redirects three filenames to the route that
+  owns them and touches nothing else under the mount. **A 302 and not a 404** (`Law 1`): the file
+  is on disk and a 404 would be a lie about that. Nothing is taken away — the bytes are still
+  reachable from that URL, they arrive from the route that owns them, and therefore through the
+  gate that route is behind. Not a 301, because a permanent redirect is cached until the browser
+  is cleared and would outlive the decision. `B120`'s reason survives intact: the two
+  `*-variants.html` prototypes and every other byte under `/static` are served exactly as before.
+
+  **One table, four readers** (`Law 13`). `ROUTE_OWNED_STATIC_PAGES` maps `index.html → /`,
+  `login.html → /login`, `backgrounds.html → /backgrounds`; `serve_index`, `serve_login` and
+  `serve_backgrounds` read their template path out of it and the mount reads the same dict, so a
+  page cannot be given a route without the mount learning it has one. `backgrounds.html` is in
+  the table although this build does not ship it (`B140`, `B210`) — if a deployment drops it in,
+  one URL serves it and it is the route.
+
+  **Two things the measurement changed.** (1) The first version read `scope["root_path"]` for the
+  redirect target and sent `/static/index.html` to **`/static/`** — Starlette's `Mount` rewrites
+  `root_path` to `root_path + "/static"` for its child and carries the deployment prefix forward
+  as `app_root_path`, so `with_asgi_root_path` now reads `app_root_path` **by presence and not by
+  truthiness** (an empty one is still the answer). Under `uvicorn --root-path /pantheon` the
+  redirect lands on `/pantheon/` and `/pantheon/login`; that is asserted, not reasoned.
+  (2) The match is casefolded, because a case-insensitive filesystem serves `INDEX.HTML` out of
+  `index.html` and a rule guarding an auth boundary may not be the only case-sensitive thing on
+  the path — macOS and Windows are two of the three platforms this project ships installers for.
+  `StaticFiles.get_path` is `os.path.normpath`, so `/static/./index.html`, `/static//index.html`
+  and `/static/index.html/` fold in on their own. Non-GET/HEAD still reaches the mount's own 405.
+
+  **Evidence** (`Law 9`). `tests/test_static_mount_is_not_a_second_front_door.py`, 7 tests, run
+  against the tree as it stood: **5 fail, 2 pass.** The two that pass before and after are the
+  ones that matter for the constraint — the probe's premise, and *every asset the login page
+  names still answers 200 without a session*, read out of the served login document rather than
+  written down. The five that fail: the shell is handed over unauthenticated, the spelling
+  variants, the `root_path` target, "no document has two URLs" (`/static/index.html` was
+  byte-identical to `/`), and the table not existing. Four mutations, all caught: dropping
+  `index.html` from the table, dropping the case fold, disabling the redirect, and reverting
+  `app_root_path` to the truthiness read that produced the `/static/` bug.
 
 - [x] **B170** **The run-status checker reads ORM attribute access, and one status write in the
   tree is raw SQL it cannot see.** Found 2026-09-15 while closing `B111`, by reading its own
@@ -9315,7 +9550,7 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   `test_nothing_is_installed_that_the_shell_cannot_reach` (the converse containment, which is what
   found this). 6 mutations, 6 caught, 0 survived. — closed by agent:`infra`
 
-- [ ] **B232** **The composer decides which files may be imported with an extension regex, so half
+- [x] **B232** **The composer decides which files may be imported with an extension regex, so half
   the languages `B161` taught it are unreachable.** Measured 2026-09-16 while closing `B161`.
   `static/js/chat.js:2486` gates the "Import to document library" banner on
   `/\.(txt|py|js|ts|html|htm|css|md|json|csv|yml|yaml|sh|sql|rs|go|java|c|cpp|h|rb|php|xml|jsx|tsx|log|toml|ini|conf|env|vue|svelte|scss|sass|less)$/i`
@@ -9333,14 +9568,9 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   `Verify:` a `.kt` attachment is offered for import and opens in the editor as kotlin, and no
   extension list in `chat.js` decides it. `Depends:` `B161` (landed). — found while closing `B161`
   — agent:`client`
-  **NOT CLOSED 2026-09-16. Measured in full, and then blocked on file ownership — read this before
-  picking it up.** Both call sites are in `static/js/chat.js` (`IMPORTABLE_EXT` at `:2485`,
-  `TEXT_EXT` at `:7672`), the derived register is `src/document_processor.INGESTIBLE_EXTS`, and the
-  generated client constant that would carry it to the browser is `static/js/attachmentLanguage.js`
-  with its generator in `document_processor.py`. **Every one of those four files belonged to another
-  agent in the 2026-09-16 wave**, and a fifth (`documentLibrary.js`, which holds the third import
-  path) as well. The honest half is the measurement, so the next agent does not repeat it.
-  **The gate is wrong in BOTH directions, which the row only says about one of them.** Driven by
+  **Measured in full on 2026-09-16 and left open on file ownership. Closed 2026-09-17.** The
+  measurement that row carried is kept below because it is what the fix is argued from.
+  **The gate was wrong in BOTH directions, which the row only said about one of them.** Driven by
   running the two regexes against the real registers:
   * **Ingestible and not offered — 10**: `.bash .doc .docx .epub .nix .odt .pdf .pptx .xls .xlsx`.
     The row's `.kt`/`.swift`/`.markdown` list is the *language* gap; this is the *extractor* gap,
@@ -9352,15 +9582,44 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
     answer, and is the evidence that the question was never "is the extension on a list".
   **And the naive fix is a trap the row does not name.** `INGESTIBLE_EXTS` is `TEXT_EXTS | OFFICE_EXTS
   | PDF_EXTS`, so swapping the regex for it verbatim would offer `.pdf`, `.docx`, `.xlsx`, `.pptx`
-  and `.epub` to a code path that pre-reads the raw `File` **as text** before upload — the
-  "offer to import a `.zip`" failure in a different costume. The register that answers *this*
-  question is `TEXT_EXTS` plus "the bytes decoded", and the only thing that knows the second half is
-  the server, after the upload. `getLastUploadOutcome()` (`static/js/fileHandler.js`, `B03`) already
-  carries `{file, meta}` per submitted file, so the shape of the fix is: the upload response says
-  whether the stored bytes read as text (`looks_like_text`, the same call the mailbox uses —
-  `B02`), and the composer reads that instead of testing a name. `Verify:` unchanged.
+  and `.epub` to a code path that pre-reads the raw `File` **as text** — the
+  "offer to import a `.zip`" failure in a different costume.
+  **done 2026-09-17 — the question is not one question, and that is the fix.** The regexes were
+  asked "may this be imported", which has no single answer, so `document_processor.ingest_kind`
+  gives **three**: `text` (the bytes read as text, so a client may read them itself — the open-ended
+  arm, `looks_like_text`, which is why `.kt` and `.toml` need no register), `document` (a container
+  this product has an extractor for, so the client must POST it and let the server convert) and
+  `binary` (neither, and the honest answer is a banner). Extension first, bytes second: a `.docx` is
+  a zip and `looks_like_text` says no to it, correctly, so asking the extractor first is what stops
+  "we can read this" being answered by a probe that only sees 8 KiB of a compressed archive.
+  **One decision, three doors** (`Law 13`, and `D-2026-08-26-06` — the backend is the single
+  decision point). `POST /api/upload` carries `kind` per accepted file; `GET /api/upload/{id}`
+  carries `X-Upload-Kind`, which is `SVG_REFUSAL_HEADER`'s precedent — a verdict the server has
+  already reached, published rather than re-derived. `chat.js` reads the first in the composer
+  (after the upload, from `getLastUploadOutcome()`, which already carries `{name, accepted, id,
+  meta, file}` per submitted file — `B03` — so nothing had to be pre-read) and the second in
+  `openAttachment`, as a `HEAD`: one round trip, no body. Both regexes are gone.
+  **What the browser still needs a register for is generated, not copied.** `attachmentLanguage.js`
+  gains `TEXT_EXTS`, `OFFICE_EXTS`, `PDF_EXTS` and `INGESTIBLE_EXTS` in its generated block, and
+  `check-attachment-language.py` now reads `markitdown_runtime.py` and `pdf_runtime.py` as well and
+  resolves the `|` unions those modules state their registers as — so `INGESTIBLE_EXTS`, which was
+  invisible to the old literal-only reader, is derived on both sides from the same three operands.
+  `ingestKindFromName` mirrors the extension arm exactly and answers **`null`** where only the
+  bytes can decide, which is the honest half: a register cannot know `.kt` is text and the server
+  can.
+  `Verify:` **yes** — `test_the_composer_offers_what_the_server_says_it_can_read` drives the real
+  gate over a real batch and `Main.kt` is offered; `openAttachment` opens it through
+  `documentLanguage()`, unchanged. No extension list in `chat.js` decides either one.
+  **Found while closing this and fixed with it**: the banner read the *pending* files, so a file
+  the server **rejected** — never stored, no id, still in the composer — was offered for import
+  anyway. Driven on the tree as it stood the harness recorded `refused.txt` in the offered list.
+  That is `B03` in a fifth place and reading the upload outcome is what makes it impossible.
+  29 tests added across the two rows (`tests/test_the_import_gate_asks_the_backend.py`), **25 of
+  which fail on the tree as it stood** — driven by swapping the nine changed sources for their
+  pre-change versions and re-running. 13 mutations, 13 caught, 0 survived. — closed by
+  agent:`ingest2`
 
-- [ ] **B233** **A `.doc` is stored as markdown and never converted, so the library holds its raw
+- [x] **B233** **A `.doc` is stored as markdown and never converted, so the library holds its raw
   bytes under a label that says otherwise.** Measured 2026-09-16 while closing `B161`.
   `documentLibrary.js` `readFileContent` branches on `.xlsx/.xls/.ods` (sheets → CSV) and on
   `.docx` (mammoth → `htmlToMarkdown`); **`.doc` matches neither**, so it falls through to
@@ -9374,27 +9633,43 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   (`Law 14`). `Verify:` importing a `.doc` produces its prose, or is refused with a reason; it does
   not produce a markdown document full of control characters. `Depends:` `B102` (landed), `B161`
   (landed). — found while closing `B161` — agent:`client`
-  **NOT closed 2026-09-16 while closing `B240`, and the reason is written here rather than left
-  to be rediscovered.** Premise re-checked and still true: `documentLibrary.js:1437`
-  `readFileContent` branches on `.xlsx/.xls/.ods` and on `.docx` and nothing else, so a `.doc`
-  reaches `FileReader.readAsText` and its OLE2 bytes are stored under `language: 'markdown'`.
-  **`B240` has made the asymmetry sharper and easier to state.** The same `.doc`, driven: emailed
-  to you and opened from the mailbox it now produces its prose, because `attachment_as_doc` asks
-  `markitdown_runtime` (`B102`'s OLE2 reader); dragged into the document library it still stores
-  its raw bytes. One file, one product, two answers — which is `Law 13` and is exactly what this
-  row is.
-  **The server half this row needs does not exist and could not be built here.** The PDF branch
-  the row points at posts to `POST /api/documents/import-pdf`
-  (`routes/document/document_routes.py:228`); there is no office equivalent, and `POST
-  /api/documents` takes `content` the client has already read. So the fix is two files: a route
-  beside `import-pdf` that runs `save_upload` and `markitdown_runtime.convert_to_markdown` over
-  every extension in `OFFICE_EXTS` — the extractor and the register both exist and both are
-  driven by `B240`'s tests, so the route is a wiring job and not an extractor job — and the
-  branch in `readFileContent` that posts to it. **Neither file was this agent's to touch**
-  (`static/js/**` and `routes/document/` were held elsewhere this wave), and writing half of it
-  would have left a route nothing calls. `CONVERTED_TO['.doc'] = 'markdown'` stays as `B161` left
-  it, because it will be true once the branch lands and correcting it in the meantime would make
-  the label lie in the other direction (`Law 1`).
+  **`B240` made the asymmetry sharper**: the same `.doc`, driven — emailed to you and opened from
+  the mailbox it produces its prose, because `attachment_as_doc` asks `markitdown_runtime`
+  (`B102`'s OLE2 reader); dragged into the document library it stored its raw bytes. One file, one
+  product, two answers, which is `Law 13`.
+  **done 2026-09-17 — the route and the branch, which is what the row said it needed.**
+  `POST /api/documents/import-office` sits beside `import-pdf` in
+  `routes/document/document_routes.py` and is a **wiring job, not an extractor job**: `save_upload`
+  then `markitdown_runtime.convert_to_markdown`, the same call `attachment_as_doc` already makes,
+  over every extension in `OFFICE_EXTS`. Two things about it are deliberate. The extension is
+  checked **before** `save_upload`, so a `.zip` posted here is refused at the door rather than
+  stored and then rejected — `save_upload` charges the rate limiter and commits bytes. And a
+  container the extractor finds no text in is a **422 naming the reason**
+  (`office_extraction_gap`, `B162`'s vocabulary — "nothing reads this format",
+  "markitdown converts it and is not installed" and "a reader ran and there is no text in here" are
+  different things to tell someone) rather than an empty document, which looks like a bug in the
+  file.
+  **The client half is a subtraction, derived rather than listed.** `SERVER_EXTRACTED_EXTS` is
+  `OFFICE_EXTS` minus the three this module genuinely converts in the browser — `.docx` through
+  mammoth, `.xls`/`.xlsx` through SheetJS — because `Law 1` says a working conversion is not
+  replaced to make a branch tidier. What is left is `.doc`, `.odt`, `.pptx` and `.epub`: four
+  containers that reached `FileReader.readAsText`. `.ods` is not in `OFFICE_EXTS` at all (the
+  server has no reader for it) and stays on the spreadsheet branch, which is the only thing that
+  reads it anywhere in this product. `CONVERTED_TO['.doc'] = 'markdown'` is unchanged and is now
+  **true**, which is why `B161` kept it.
+  `Verify:` **yes** — a real Word 97 file (the `B102` fixture) posted to the route comes back as a
+  Document whose content is its prose and whose language is `markdown`, with no control characters
+  in it; `.odt`, `.pptx` and `.epub` take the same route. **On the tree as it stood**, driven
+  through `tests/harness/library_office_import.js`, the same `.doc` POSTed
+  `{"content": "\u00d0\u00cf\u0011\u00e0\u00a1\u00b1\u001a\u00e1…", "language": "markdown"}`
+  to `/api/document` — the OLE2 header, stored as the document's text.
+  **One register moved and two harnesses had to be told.** The new constants sit **above**
+  `readFileContent` rather than beside `CONVERTED_TO`, because `tests/harness/mammoth_docx_import.js`
+  evaluates the span between those two functions and a constant in there reading an imported
+  register would have to be handed to that harness as well;
+  `tests/harness/attachment_language.js` lifts the register block alongside `CONVERTED_TO` (it
+  already inlines the whole of `attachmentLanguage.js`, so `OFFICE_EXTS` needed nothing extra).
+  Tests and mutations are counted under `B232`. — closed by agent:`ingest2`
 
 - [x] **B151** **The scan behind the `UNDECLARED` ratchet cannot see an `os.environ` bound to a
   name.** Measured 2026-09-15 while closing `B98`: `literal_reads` counts
@@ -10277,7 +10552,7 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   survived. **Filed while here:** `B271` — `tests/conftest.py`'s `B18` guard is a hand-written list
   checked once at collection, and cannot see either shape this row found. — closed by agent:`infra`
 
-- [ ] **B270** **The same write-then-restore three more times, and twice it is `src/settings.py`
+- [x] **B270** **The same write-then-restore three more times, and twice it is `src/settings.py`
   rather than a checker.** Measured 2026-09-16 while closing `B221`.
   `tests/test_a_failed_read_never_becomes_a_write.py` proves `check-config-writes.py` bites by
   editing the tree it is checking and putting it back in a `finally:` — at `:407` it appends a
@@ -10300,7 +10575,35 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   that disables the guard. `Verify:` `SIGKILL` a run of that file at any point and `git status` is
   clean. `Depends:` `B221` (landed). — found while closing `B221` — agent:`infra`
 
-- [ ] **B271** **The `B18` guard is a hand-written list, checked once, and neither shape `B202`
+  **Closed 2026-09-16, and the window was measured with a real `SIGKILL` before it was shut.**
+  Reproduced in a throwaway clone at `HEAD`, by starting the file and killing the process group the
+  instant `git status` went dirty: the window at `:453` opens at **t+1.44 s** and the one at `:407`
+  at **t+2.43 s**, and after `SIGKILL -9` the tree holds
+  `-atomic_write_json(SETTINGS_FILE, settings, indent=2, preserve_unreadable=True)` /
+  `+atomic_write_json(SETTINGS_FILE, settings, indent=2)` — the settings-clobbering defect `P3-16`
+  closed, sitting in the working tree with nothing to say it is there. Not a hypothesis about
+  `finally:`; the diff is above.
+  **Fixed with `B221`'s shape, lifted rather than re-invented (`Law 14`).** The autouse fixture
+  wraps `Path.write_text`, `Path.write_bytes` and `Path.open` and refuses the write on the line that
+  makes it, then compares digests afterwards to catch the routes an intercept written against three
+  methods cannot know about. **One deliberate difference from `B221`**: it refuses writes to
+  **tracked** files rather than to everything under the repository root, because three other tests
+  in this same file legitimately write runtime artefacts into `data/`, which is ignored and is not
+  evidence about anything. What a kill must not be able to leave behind is a file `git status`
+  would report.
+  The three tests now drive **the loaded module** and a **mirror**. `test_a_classification_with_no
+  _write_behind_it` needs no source at all — `STORES` is data on the module, so it is patched there.
+  The other two need source, because the checker parses Python with `ast`, so they get a git repo
+  in `tmp_path` holding the 361 tracked `.py` files, built once per module and copied per test.
+  Two tests added: a control asserting the mirror produces the same write-site count as the tree
+  (`the mirror plus one defect` is only evidence if the mirror alone is clean), and one asserting
+  the shipped `src/settings.py` still carries `preserve_unreadable=True` — the assertion the old
+  tests were making by accident, now made on purpose.
+  `Law 9`: `SIGKILL` at **t+1.5 s, 3 s, 6 s and 12 s** against the fixed file leaves the tree clean
+  every time and the tracked set never goes dirty during the run; the same probe against `HEAD`
+  leaves `src/settings.py` modified. 24 tests pass (22 before). 3 mutations, 3 caught.
+
+- [x] **B271** **The `B18` guard is a hand-written list, checked once, and neither shape `B202`
   found is visible to it.** Measured 2026-09-16 while closing `B202`.
   `tests/conftest.py:pytest_collection_finish` fails the session if any of six named modules is a
   stub after collection, and the test for "is it a stub" is `getattr(mod, "__file__", None) is
@@ -10321,6 +10624,54 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   `--strict-isolation` mode the integrator runs, and it needs the full-suite measurement first.
   `Verify:` a module left holding a `MagicMock` by a test is named by the suite, at the file that
   left it. `Depends:` `B202` (landed). — found while closing `B202` — agent:`infra`
+
+  **Closed 2026-09-16. The measurement was taken without the 11-minute run, and it is three files.**
+  The previous agent was right that the cheap version is a trap and right to ask for the measurement
+  first. Both halves of what it asked for are here.
+  **Cost.** One sweep over `sys.modules` is **1.3 ms** across 271 loaded production modules and
+  10,014 attributes, measured directly. It runs once per test **file**, not once per test, because
+  attribution needs a boundary where nothing of the next file has run yet and
+  `pytest_runtest_logstart` for a file's first test is exactly that — so the whole suite pays about
+  **1.2 s**, and per-test would be 8,600 sweeps to learn nothing a file name does not already say.
+  **Scale.** Run over the test files that touch `sys.modules` — the population where this defect
+  can live — the sweep names **three files leaving four mocks bound into production modules**:
+  `tests/test_api_token_routes.py` (`routes.api_token_routes.ApiToken`),
+  `tests/test_editor_draft_payload.py` (`routes.editor_draft_routes.EditorDraft` and
+  `.SessionLocal`) and `tests/test_gallery_exif_orientation.py`
+  (`routes.gallery.gallery_helpers.GalleryImage`). Three, not three hundred, which is what makes a
+  strict mode affordable. `B413` is the row that clears them.
+  **A stated limit, because it is measurable and it matters**: which of the three a given run names
+  depends on the run's composition. 100 files (1,507 tests, 149 s) names all three; 125 files
+  (1,635 tests, 115 s) names two, because pytest imports **every** test module during collection,
+  before the first boundary sweep — so another file's module-scope code can pop or re-import a
+  module and take a binding out of view before anything looks. Each is reproducible on its own:
+  `pytest -p no:randomly tests/test_gallery_exif_orientation.py
+  tests/test_the_root_roadmap_explains_itself.py` names the gallery one. The report is therefore a
+  lower bound on a given run, never an upper one, which is the right direction for a thing that
+  reports rather than fails.
+  **It reports and does not fail**, which is the whole reason it can ship today: the objection to
+  the cheap version was that it turns the suite red for one file's behaviour while that file's owner
+  is elsewhere. A report costs nothing and is readable off any run; `--strict-isolation` makes it a
+  failure for whoever wants one, which is the integrator on a full run, and
+  `--no-isolation-report` turns the sweep off entirely.
+  **The predicate is about the objects, not about `__file__`.** Production code never binds a
+  `Mock`, so anything reachable from a production module's namespace that is a
+  `unittest.mock.NonCallableMock` — `MagicMock`, `AsyncMock`, a plain `Mock` — was put there by a
+  test. That sees both of `B202`'s shapes: the run-time one, because the sweep runs at run time,
+  and the attribute-level one, because it looks at attributes.
+  **The `B18` list stops being hand-written too (`Law 13`).** `pytest_collection_finish` now sweeps
+  **every** loaded module under `src.`, `core.`, `routes.`, `integrations.` and `netagent.` for a
+  missing `__file__`. The six keep their hard abort, because a stub in one of them makes the rest of
+  the run meaningless and one of them has cost a 6 GB OOM kill; a seventh is **reported**, because
+  aborting a colleague's 11-minute run at collection, for a module nobody has been burned by, before
+  a single test has told them anything, is how a guard gets deleted. The stubs `conftest.py`
+  installs on purpose when a dependency is genuinely absent are recorded in `_DELIBERATE_STUBS` as
+  they are installed, rather than remembered — otherwise the sweep fails a contributor's machine for
+  doing exactly what `conftest.py` told it to do.
+  `Law 9`: an end-to-end test that writes a deliberately leaking test file, runs
+  a real pytest session over it in a subprocess, and asserts the leak is named **at that file** and
+  that the run's exit status is zero without `--strict-isolation` and non-zero with it. 14 tests
+  in all. 5 mutations, 5 caught.
 
 - [x] **B240** **Six file types the composer reads are refused by the mailbox, and `B02` just put a
   button on them.** Measured 2026-09-16 by driving `POST /api/email/attachment-as-doc` over real
@@ -10421,6 +10772,50 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   `decode_text_file` over a corpus of at least the eight scripts
   `tests/test_short_sample_encoding_guess.py` already sweeps. `Depends:` `B201` (landed). — found
   while closing `B201` — agent:`ingest`
+  **HALF DONE 2026-09-17 and NOT TICKED, because the second `Verify` clause is not met.** Case (1)
+  is fixed and shipped; case (2) is measured to be out of reach of everything available here and is
+  carried as `B402`. The work below is in the tree and tested; the row stays open because a tick on
+  it would be a claim about Big5 that is false.
+  **Two levers landed, both in `describe_text_encoding`.**
+  **(a) A file that names its own encoding is not a guess.** `_BOMS` is already that rule in bytes;
+  an XML declaration, an HTML `meta charset` and a Python/Emacs coding cookie are the same
+  declaration in text, in grammars that predate every detector, and nothing here read them — the
+  detector is a classifier over the byte histogram and cannot read a sentence. Taken only when the
+  codec exists and decodes strictly cleaner than UTF-8 did, and never when it names a UTF-16/32
+  codec: `B101`'s wide-codec rule applies to a declaration for exactly the reason it applies to a
+  guess, and measured, `<?xml encoding="utf-16"?>` on NUL-free cp1250 bytes was believed before
+  that guard went in. This is the only lever that reaches the cp1254 Turkish case
+  (`Pijamalı` → `Pijamalý`), where both readings are letters and (b) has nothing to say.
+  **(b) A wrong single-byte guess is visible in the shape of its own output.** The cp1252 reading
+  of cp1250 Polish is `Za¿ó³æ gêœl¹` — an inverted question mark and a superscript three, **inside
+  words**. `_word_interior_symbols` counts exactly that: a non-ASCII non-letter with an
+  alphanumeric on both sides. The choice is made over `charset_normalizer.from_bytes`'s **ranked**
+  candidates rather than `detect`'s single answer, because `detect` **is** `from_bytes(...).best()`
+  and the right codec was sitting second on the list being thrown away. It is a **reordering of
+  the detector's own list** — nothing it did not propose can be chosen, an answer the ranking does
+  not contain is left alone (which is what keeps `B201`'s stubbed tests testing `B201`'s rule), and
+  the alternative goes through the same two structural filters the detector's own answer does:
+  never a wide codec, never a multi-byte codec below `_MIN_MULTIBYTE_SAMPLE`.
+  **"Inside words" is the rule and the first attempt got it wrong.** A scoring of *how many of the
+  non-ASCII characters are letters*, with a 0.25 margin, was built and measured: it fixes Polish
+  and 22 other rows with no regressions — and it re-reads `Preis: 45,00 £ · 50,00 ¥ · ¤ · ½ kg`
+  as **Thai**, because `cp874` maps those bytes to letters and therefore scores a perfect 1.0 by
+  destroying the file. A legitimately symbol-heavy file — DOS box-drawing, a price list, a table of
+  `°C ± µ` — spells its symbols between **spaces**. Requiring the position leaves all three control
+  files exactly where they were and keeps every correction.
+  **Measured over 891 rows** — 29 real prose samples in 17 encodings across Latin, Cyrillic, Greek,
+  Hebrew, Arabic, Han, Kana and Hangul, truncated at every length from `B201`'s floor to the full
+  sample — this is **22 corrections and 0 regressions**: 709 right → **731**, 179 wrong → **157**,
+  refusals unchanged at 3.
+  `Verify:` **clause 1 yes** — a 58-byte cp1250 pangram keeps every Polish letter, through
+  `decode_text_file`. **Clause 3 yes** — 891 rows, zero regressions, swept over twelve scripts
+  rather than the eight the clause asks for. **Clause 2 NO** — 64 bytes of Big5 is `Big5` as it
+  always was, and the 34-byte case the row measures is still `johab`. Both readings of those bytes
+  are 100% letters with nothing inside a word, so (b) is blind to it, and three rules that tried to
+  reach it were measured and rejected — `B402` carries the numbers. 45 tests added
+  (`tests/test_encoding_guess_reads_its_own_output.py`), **23 of which fail on the tree as it
+  stood**; one of them pins that the Big5 case is **still wrong**, so the next agent inherits a
+  measurement instead of a surprise. 10 mutations, 10 caught, 0 survived. — agent:`ingest2`
 
 - [x] **B241** **A Progress entry named two rows as closed and their checkboxes stayed empty for
   two days.** `1a70478` implemented `B02` and `B03` in full — code, tests, mutations — and its
@@ -10488,7 +10883,7 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   closed"* — were added because of it. `Verify:` **yes** — a row named as closed in a Progress
   entry is ticked, or the gate names the entry and the row.
 
-- [ ] **B300** **The SVG preview still refuses a hyperlink, a relative reference and anything over
+- [x] **B300** **The SVG preview still refuses a hyperlink, a relative reference and anything over
   2 MiB, and it cannot tell a link from a beacon without a parser.** Measured 2026-09-16 while
   closing `B160`. `src/svg_runtime._reference_verdict` allows exactly two shapes — a same-document
   `#fragment` and a `data:image/<raster>;base64,…` — so a diagram whose boxes are `https://`
@@ -10499,35 +10894,96 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   the real cost.** `<a href="https://…">` is not a beacon — nothing is fetched until a click, and
   an `<img>` cannot deliver one — while `<image href="https://…">` is fetched on render, and the
   gate is **element-blind**: it sees attribute values, not the elements they hang on, so it cannot
-  separate the two. Separating them needs to know the element, which needs the parser `B160`
-  declined to build, and building it needs `defusedxml` or an equivalent that is not a dependency
-  today (`xml.etree` expands entities; `requirements.txt` has neither). The same parser removes
-  `MAX_PREVIEW_SVG_BYTES` — a 3 MiB Illustrator export currently gets *"It is too large to check."*
-  — because a tree can be walked in one pass where a set of regexes over raw bytes cannot.
-  `Verify:` a diagram whose boxes link to `https://` previews, with the links intact and no request
-  leaving the browser on render, and a 5 MiB export previews; **and** the hostile fixtures in
-  `tests/test_svg_preview_explains_refusals.py` all still refuse, unchanged. `Depends:` `B103`,
-  `B160` (landed); needs a safe-XML dependency decision first. — found while closing `B160` —
-  agent:`client`
+  separate the two. `Verify:` a diagram whose boxes link to `https://` previews, with the links
+  intact and no request leaving the browser on render, and a 5 MiB export previews; **and** the
+  hostile fixtures in `tests/test_svg_preview_explains_refusals.py` all still refuse, unchanged.
+  `Depends:` `B103`, `B160` (landed). — found while closing `B160` — agent:`client`
+  **done 2026-09-17 — a tokenizer, and `B160`'s refusal to build a parser still stands.** There is
+  no XML parser here, nothing is re-serialised, and no entity is ever expanded. `_hyperlink_spans`
+  walks the bytes once, left to right, recognising comments, CDATA, processing instructions, the
+  DOCTYPE and start/end tags with quoted attribute values, and its entire output is a set of byte
+  spans: *these attribute values sit on an `<a>` start tag*. No dependency was added; `defusedxml`
+  is still not in `requirements.txt`.
+  **It fails closed, and that is the property that made it safe to add.** Any construct it cannot
+  account for — an unterminated comment, an unquoted attribute value, a stray `<`, a tag that never
+  closes — returns the empty set, and the empty set means no exemption and `B160`'s allowlist
+  judging every reference exactly as before. It can **add** an exemption to a file it has read end
+  to end; it can never remove a check. Three fixtures pin that a fault anywhere in the file costs
+  the exemption even when the anchor itself is perfect, which is the difference between "the
+  tokenizer read the file" and "the tokenizer read as far as the anchor".
+  **The exemption is narrow twice over.** Only `href`/`xlink:href` (not `src`, which is not an SVG
+  attribute on an anchor and which nothing fetches), only on an unprefixed `<a>` (a prefixed
+  `<svg:a>` needs namespace resolution, which is the parser this module does not have), and only
+  for `http://` and `https://` with both slashes — not `data:`, not `javascript:`, not a
+  protocol-relative `//host`, not `https:x`. The argument for allowing a hyperlink is that the
+  browser does not fetch it until a click; that argument is about a web address and nothing else.
+  Relative references stay refused, as the row's own paragraph argues they should.
+  **And it is opt-in and pay-on-refusal.** `allow_hyperlinks` is passed by the upload preview and
+  by nothing else — the emoji route serves 4,147 vendored glyphs and has nothing to gain, which is
+  `B160`'s rule for `allow_data_images` one row on. The tokenizer runs **only** for a file the
+  unwidened scan has already refused for an external reference, so a file that previews today takes
+  byte-for-byte the same path it took before this row (measured on a realistic 5 MiB export: 0.125s
+  for a file that passes, against 0.545s for one that has to be re-judged; that is asserted, not
+  described).
+  **`MAX_PREVIEW_SVG_BYTES` 2 MiB → 8 MiB, and the work bound moved to where the work is.** The old
+  number was a byte bound standing in for a work bound and it told a person *"It is too large to
+  check"* about their own drawing. What costs time is the number of things in the file, so that is
+  bounded directly: `MAX_SVG_REFERENCES` (20,000) is a **refusal**, because a scan that merely
+  stopped would be a hole with a number on it, and `MAX_SVG_ELEMENTS` (200,000) is **not**, because
+  it bounds the tokenizer, whose only output is an exemption — running out of budget there can only
+  make the gate stricter. Measured: a realistic 8 MiB export costs 0.26s for the whole gate; the
+  pathological shape, an `<a>` every 95 bytes, is what the reference bound exists for.
+  `Verify:` **yes, all three clauses.** A diagram whose boxes link out previews through the real
+  route with `href="https://example.com/services/auth"` intact in the served bytes; a 5 MiB export
+  previews; **all 22 hostile fixtures are re-driven in the widened mode and all 22 still refuse**,
+  and the same 22 are re-driven through the route with the bytes inspected for `tracker.example`,
+  `<script`, `javascript:` and `@import`. `tests/test_svg_preview_explains_refusals.py` is unchanged
+  and still passes, which is the other half of the same evidence. The same URL on an `<image>` next
+  to the `<a>` in one file still refuses — that one assertion is the whole row. 74 tests added
+  (`tests/test_svg_preview_knows_which_element.py`), **9 of which fail on the tree as it stood**;
+  the other 65 are the hostile half and the `Law 1` guards, which had to keep passing on both
+  trees — that is the point of them. 16 mutations across `B300`/`B301`/`B302`, 16 caught,
+  0 survived. — closed by agent:`ingest2`
 
-- [ ] **B301** **The refused SVG preview is drawn but not announced: a screen reader is told the
+- [x] **B301** **The refused SVG preview is drawn but not announced: a screen reader is told the
   filename and nothing else.** Measured 2026-09-16 while closing `B160`. The refusal is now a
   picture that says *"Preview blocked"* and why, and the slug is on the response as
   `X-Preview-Refused` — but `static/js/chatRenderer.js:208` renders the chip as
   `<img src="/api/upload/{id}?thumb=1" alt="{filename}">`, and **an `<img>` can read neither the
   header nor the `<title>` inside the SVG it draws**. So a sighted person gets the explanation and
   a person using a screen reader is told *"diagram.svg"*, exactly as before this row (`Law 15` —
-  the affordance exists and one class of user cannot reach it). The fix is on the client and is
-  small: `fetch` the preview, read `X-Preview-Refused`, and set `alt` (or a `title`) from it — the
-  vocabulary is already a fixed set and `src/svg_runtime.SVG_REFUSAL_TEXT` already holds a sentence
-  for each. **Deliberately not done in `B160`**: `chatRenderer.js` belonged to another agent that
-  wave, and the header exists precisely so the client half is a read rather than a re-derivation.
-  The same read also fixes the `Caption` button, which still offers itself on a chip whose preview
-  was refused. `Verify:` a refused SVG chip's accessible name says the preview was blocked and why,
-  driven through the renderer rather than grepped (`Law 20`). `Depends:` `B160` (landed). — found
-  while closing `B160` — agent:`client`
+  the affordance exists and one class of user cannot reach it). `Verify:` a refused SVG chip's
+  accessible name says the preview was blocked and why, driven through the renderer rather than
+  grepped (`Law 20`). `Depends:` `B160` (landed). — found while closing `B160` — agent:`client`
+  **done 2026-09-17.** `_announceRefusedPreview` issues one `HEAD` — and only for an SVG, because
+  every other attachment type has nothing to say here and a request per photo in a long
+  conversation is a cost for nothing — reads `X-Preview-Refused`, and sets `alt` and `title` to
+  *"{filename}: preview blocked. {reason} The file itself is unchanged."* Three things, each for a
+  reason: the filename, because that is what the person is looking for in a strip of chips; the
+  reason, because that is what they could not reach; and the reassurance the drawn placeholder
+  already makes, because the commonest cause of a refusal is a file that is perfectly fine and
+  still downloads. Best-effort throughout — a failed request, a missing header or a browser that
+  hides it leaves the name exactly as it was.
+  **The sentence comes from the server** (`Law 14`). `SVG_REFUSAL_TEXT_HEADER`
+  (`X-Preview-Refused-Text`) carries `svg_refusal_sentence(reason)` beside the slug, so the browser
+  needs no copy of the vocabulary and no second request to read the placeholder's `<title>`. It is
+  header-safe by construction: seven fixed ASCII sentences, none of which ever quotes the file —
+  which is the property `B160` built the vocabulary for.
+  **The `Caption` button is deliberately NOT hidden, and the row's last sentence is where this
+  disagrees with it.** Measured: `B163` reads an SVG's caption out of its own `<title>`, `<desc>`
+  and `<text>` runs with no model and no render, so it works perfectly well on a file whose
+  *preview* was refused — and on a chip with no picture it is the only control that can say what
+  the drawing contains. Hiding it would remove a working affordance to tidy a different one
+  (`Law 1`). That is driven rather than argued:
+  `test_the_caption_button_still_works_on_a_refused_svg` captions an SVG the gate refuses for
+  carrying a `<script>`.
+  `Verify:` **yes** — driven through the renderer under node, both the helper and its **call site**
+  (a helper nothing calls is the shape of this defect, not its fix). On the tree as it stood the
+  same harness records the accessible name as `diagram.svg`, no request made, and the chip block
+  making no call. 9 tests added (`tests/test_svg_refusal_reaches_a_screen_reader.py`), **8 of which
+  fail on the tree as it stood**. Mutations counted under `B300`. — closed by agent:`ingest2`
 
-- [ ] **B302** **A DOCTYPE's external system identifier is passed through unexamined, which is the
+- [x] **B302** **A DOCTYPE's external system identifier is passed through unexamined, which is the
   one `Law 16` sentence `B103` would not accept about anything else.** Measured 2026-09-16 while
   closing `B160`. The gate refuses `<!ENTITY` — that is either smuggling or a bomb and never a
   drawing — but leaves a bare
@@ -10536,14 +10992,35 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   the real corpus this product is trying to preview. That URL is an external reference the gate does
   not check, and *"no browser fetches an external DTD for an SVG inside an `<img>`"* is exactly the
   form of argument `B103` rejected for `xlink:href` beacons: **"the browser would have stopped it"
-  is not a control we own.** The cheap fix is not obviously right either — stripping the system
-  identifier means rewriting bytes, which is `B300`'s parser again; refusing the DOCTYPE outright
-  is a measurement nobody here has (how many real uploads carry one), and `B160`'s widening was
-  argued from a corpus, not a guess. **Do not close this by adding a regex that refuses every
+  is not a control we own.** **Do not close this by adding a regex that refuses every
   DOCTYPE**; get the measurement or take it with `B300`. `Verify:` either an SVG with a public
   DOCTYPE previews with no external identifier in the bytes that reach the browser, or the refusal
   is a decision with a corpus behind it. `Depends:` `B160` (landed). — found while closing `B160` —
   agent:`client`
+  **done 2026-09-17 — taken with `B300`, which is what the row said to do.** Neither of the two
+  answers the row warned about: the declaration stays and its external identifier does not.
+  `preview_bytes` finds the declaration's exact bounds with `B300`'s tokenizer — bounded to the
+  prolog, which is the only place a DOCTYPE is allowed to be and the only place any real file puts
+  one, so the scan costs the same whether the drawing is 3 KiB or 8 MiB — and removes the
+  `PUBLIC "…" "…"` / `SYSTEM "…"` literal, leaving `<!DOCTYPE svg>`. That is valid, renders
+  identically in every browser (none of them fetched the DTD, which is the whole reason this was
+  survivable) and carries no address at all.
+  **Where `Law 1` lives here**: the preview is a derived artefact already — `B160` made a refusal a
+  drawn placeholder rather than the file — and the **download** arm is untouched and still serves
+  the bytes whole, which is what `build_user_content`'s banner promises in writing. Nobody's file
+  changed; one derived rendering of it lost a URL nothing was allowed to fetch. A file with no
+  DOCTYPE, or with a bare `<!DOCTYPE svg>`, comes back **byte-identical** — asserted as identity,
+  not as equality after a round trip.
+  This is not a sanitiser and is not load-bearing for safety: it runs on bytes the gate has already
+  passed, and every reference in them has been through `B160`'s allowlist by then. It removes the
+  one address the allowlist never saw, because a DOCTYPE is not an attribute and no scan here was
+  ever looking at it. `<!ENTITY` is still refused before any of this runs, which is also what keeps
+  an internal subset short enough for the prolog bound to be safe.
+  `Verify:` **first branch, yes** — an SVG with the W3C public DOCTYPE previews, the served bytes
+  contain `<!DOCTYPE svg>` and neither `PUBLIC` nor `w3.org/Graphics/SVG`, the `<rect>` is still
+  there, and the file on disk is unchanged. Four DOCTYPE shapes are swept (public, remote system,
+  relative system, bare) and each keeps its declaration, loses its address and still passes the
+  gate. Tests and mutations are counted under `B300`. — closed by agent:`ingest2`
 
 - [x] **B250** **Two Node loaders build the same module, and only one of them is where anybody
   looks.** Found 2026-09-16 by the integration suite on the `B83`/`B161` merge:
@@ -10573,7 +11050,7 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   a test that fails if a second loader appears. — found while merging `B83`/`B161` —
   agent:`integrator`
 
-- [ ] **B290** **The comment blanker every source census in this tree shares erases 7,203 lines of
+- [x] **B290** **The comment blanker every source census in this tree shares erases 7,203 lines of
   live code.** Measured 2026-09-16 while closing `B230`. About twenty test files carry the same two
   regexes — `re.sub(r"/\*.*?\*/", …, flags=re.S)` followed by a `//` line sub — and the first of
   them cannot tell a comment from a string. `input.accept = 'image/*,video/*'` at
@@ -10597,6 +11074,58 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   containing a quote and requires the code after them to survive. `Depends:` nothing. — found while
   closing `B230` — agent:`icons`
 
+  **Closed 2026-09-16. Twenty-two copies converted, one blanker, and the measurement moved.**
+  **Re-measured first**, because the row's figure was three days old. Comparing
+  `re.sub(r"/\*.*?\*/", …, flags=re.S)` against a real scanner line for line, with whitespace
+  preserved on both sides so the comparison is about content and not offsets: over `static/js/**`
+  the substitution blanks **7,277 lines that hold live code, in 15 modules** (17 lose at least one
+  live character). For the five modules the censuses actually read it is **6,642 lines** —
+  `calendar.js` 1,739, `notes.js` 1,718, `settings.js` 1,112, `gallery.js` 1,102, `document.js`
+  971. The row's *77 modules* does not reproduce under any definition that counts live code; 77 is
+  close to the number of modules containing **any** multi-line comment, which is not the same
+  question. **And the defect runs both ways**: `static/index.html` holds **274 lines of comment the
+  naive forms leave standing**, because `test_advanced_key_mirrors_js.py` stripped `.css` block
+  comments and `.js` line comments and never touched `.html` at all — so that census read 274 lines
+  of prose as code.
+  **`Law 14`: `strip_comments` in `.pantheon/check-specifiers.py` is the one blanker**, and it was
+  taught three things its callers' copies did not know. **Regex literals** — `/["']/` is a pattern,
+  and reading the `"` as opening a string stops the blanking from there to the next `"` in the
+  file, which is the same defect with the sign flipped. **CSS** — `//` is not a comment in CSS and
+  blanking from one eats the rest of `url(http://…)`; `test_rail_settings_opens_settings_js.py`
+  used the bare `//.*$` form and it erases **1,112 live lines** of `settings.js`. **HTML** — quotes
+  only bind inside a tag (`<p>don't</p>` was opening a string), and `<script>`/`<style>` bodies are
+  now blanked as JavaScript and CSS, with `embedded=False` for
+  `tests/test_app_shell_csp_hashes.py`, which hashes those bytes for the CSP and must see them
+  unchanged. `check-specifiers.py`'s own output is unmoved by all of it: `modules 177 · specifiers
+  177 · FORKED 0` before and after.
+  **Twenty-two test files converted** through a four-line loader, `tests/helpers/source_text.py`,
+  so the suite reaches the checker's function rather than copying it:
+  `test_a_plan_survives_its_second_turn`, `test_accent_fallback_semantics_css`,
+  `test_accent_token_js`, `test_advanced_key_mirrors_js`, `test_agent_drafts_js`,
+  `test_app_shell_csp_hashes`, `test_assistant_door`, `test_attachment_language_is_one_answer`,
+  `test_breakpoints_agree_on_mobile`, `test_color_scheme_follows_the_palette`,
+  `test_composer_and_attach_strip_rules`, `test_fg_muted_and_backdrop_cascade_css`,
+  `test_hidden_one_liners`, `test_keyframes_are_unique_and_resolved`,
+  `test_one_queued_message_one_word`, `test_rail_settings_opens_settings_js`,
+  `test_reduced_motion_guard`, `test_root_class_wiring`, `test_run_status_is_one_vocabulary`,
+  `test_self_checks`, `test_tool_capabilities_effects`, `test_tool_effect_surfaces_js`,
+  `test_trust_ladder_js`, `test_two_checklists_that_look_alike`, `test_usage_over_time`,
+  `test_vendored_pyodide`. **No asserted count moved** — 527 tests over those files before, 527
+  after — which is itself the finding worth recording: none of the twenty had a defect hiding in
+  the 6,642 lines *today*, and not one of them had any way to know that.
+  **What stops the twenty-first copy** is `tests/test_one_comment_blanker.py`: it walks every
+  tracked `.py` under `tests/` and `.pantheon/` with `ast`, not with a grep — several of those
+  files *describe* the defect in prose and a text search counts the description as the thing
+  described (`Law 20`, the same trap that produced this row) — and fails on any `re.sub`/`re.compile`
+  whose pattern is a comment pattern. Its allow-list holds the three checkers this worktree does
+  not own (`B410`) and **can only shrink**: a second test fails if an allow-listed file stops
+  carrying one.
+  `Law 9`: the new unit assertions were run against `HEAD`'s `strip_comments` and **four of six
+  fail** there. The stronger evidence is a parser rather than a heuristic —
+  `node --check` accepts the shared blanker's output for all five modules and **refuses the naive
+  form's output for all five**, which is what 1,700 lines removed from the middle of a file does.
+  25 tests added; 8 mutations, 8 caught.
+
 - [ ] **B291** **One chevron, eleven sizes, seven stroke widths and two different vertices.**
   Measured 2026-09-16 while closing `B230`, over the 57 sites that moved onto the shared table.
   Sizes 8, 9, 10, 11, 12, 13, 14, 16, 18, 22 and 24; stroke widths 2, 2.2, 2.4, 2.5, 2.6, 3 and
@@ -10617,8 +11146,36 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   has, the two mitred vertices agree with their siblings, and the fixture is updated to the new
   answer with the diff named site by site. `Depends:` `B230` (landed). — found while closing `B230`
   — agent:`icons`
+  **TWO OF THE FOUR AXES SETTLED 2026-09-16; the row stays open for the other two, which are the
+  owner's.** What landed, and it is one edit each because `B230` made it one edit:
+  **`aria-hidden` is now the builder's default**, so all 46 sites that stated nothing are hidden and
+  the 11 that stated `true` are byte-identical. Safe at all 46 and checked site by site rather than
+  assumed — the hazard is hiding a glyph that is a control's ONLY content, and every one of the 46
+  is either decoration beside a word or inside a control already carrying its own `title`/
+  `aria-label` (`sessions.js:686` sets `menuBtn.title`, `gallery.js`'s prev/next carry both,
+  `emailLibrary.js:5224`, `section-management.js:13`, `document.js:5018`, and the two queue-panel
+  carets sit inside `<span aria-hidden="true">` in the shell already). **The two mitred vertices are
+  gone**: `linejoin: false` removed at `cookbookRunning.js:2232` and `research/panel.js:784`, so
+  `.cookbook-section-chevron` and `.research-section-chevron` now agree with
+  `.section-collapse-chevron` and `.skills-section-chevron`, which are the same affordance — the
+  `Law 15` case this row calls the sharpest.
+  **What is NOT settled, and why it is not being settled by stealth:** eleven sizes and seven stroke
+  widths. The variation is not uniformly drift. Measured: the three 8px sites carry
+  `stroke-width: 3.5` because at 8px a 2.5 stroke paints **0.83 device pixels**, and a 24px gallery
+  arrow and an 8px caret inside a toolbar button are different controls (`Law 1`). But **nine sites
+  disagree with a same-size sibling that already paints 2.5** — proof from the tree itself that 2.5
+  works at that size — and those are drift. They span nine modules other agents own this wave, and
+  the row's own `Verify` asks for *a written decision*, which is the owner's and not an agent's. The
+  census and a proposed ladder are filed as **`B394`**.
+  `tests/fixtures/chevron_sites_before_B230.json` is **not** rewritten: it is the record of what the
+  tree emitted with the literals still in it, which is evidence about a commit that has landed.
+  `test_one_icon_table.py::_expected_now` applies `B291`'s delta to it explicitly, so the diff is
+  named in code — 46 keys gain `aria-hidden`, two named keys gain `stroke-linejoin`, nothing else
+  moves — and the size/stroke counts are ratcheted at eleven and seven so a twelfth or an eighth
+  fails rather than joining the spread. `Law 9`: the updated test fails on the tree before this
+  commit at 47 of the 57 sites; 3 of 3 chevron mutations caught. — half-closed by — agent:`theme`
 
-- [ ] **B292** **`static/index.html` spells the chevron seven more times and markup cannot import a
+- [x] **B292** **`static/index.html` spells the chevron seven more times and markup cannot import a
   table.** Measured 2026-09-16 while closing `B230`: four down, one up, one left and one right, at
   `:400` (`.memory-sort-caret`), `:1115` (the export dropdown), `:1665`/`:1668` (a prev/next pair),
   `:1997` and `:2629` (`.adm-provider-caret`) and `:2299`. `B230` left them because
@@ -10634,6 +11191,26 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   DOWN for the reason written into `icons.js`. `Verify:` either no chevron geometry is spelled in
   `static/index.html`, or a test fails when a chevron there stops matching `CHEVRON_POINTS`.
   `Depends:` `B230` (landed). — found while closing `B230` — agent:`icons`
+  **CLOSED 2026-09-16 on the second option, and the count is NINE, not seven.** The two the row
+  missed are `#model-picker-btn`'s caret (`:1276`) and `#overflow-plus-btn`'s glyph (`:1323`), both
+  spelled `6 15 12 9 18 15` — the UP chevron traversed backwards, which is the fifth spelling
+  `B230` found inside `document.js` turning up again in the shell. A census that matches the
+  spellings somebody already knows cannot see them; `_chevron_polylines` classifies by SHAPE and
+  does, which is the third time that technique has corrected a count on this family.
+  Both were respelled to the table's own `18 15 12 9 6 15`. **That paints the identical stroke** —
+  a polyline's traversal is not part of its stroke and every one of them sets
+  `stroke-linecap="round"`, which is `icons.js`'s own argument — so the check is exact string
+  equality against `chevronPoints(direction)` rather than a segment comparison, and a sixth spelling
+  fails instead of joining the spread. Seven of the nine also gained `aria-hidden="true"`, the same
+  decision `B291` made for the modules; the shell is no more exempt than a module is.
+  **The first option is not taken and is filed rather than dropped** (`B398`): it needs a template
+  filter in `routes/` and a Python-side glyph table, neither of which this row owns, and it is the
+  only one that makes the count zero. `Verify:` met on the second branch — two tests in
+  `test_one_icon_table.py` fail the moment the markup and `CHEVRON_POINTS` disagree, and a third
+  pins that the shell is the only place left that spells one (`login.html` is checked too, so a
+  third site cannot appear quietly). `Law 9`: both fail on the tree before this commit — two of the
+  nine did not match any exported spelling and seven announced themselves to a screen reader; 2 of 2
+  shell mutations caught. — closed by — agent:`theme`
 
 - [x] **B310** **Two tests that fail on correct work, and one of them is `B87` for the third
   time.** Found 2026-09-16 by the integration suite on the `B230`/`B231`/`B241` merge — the same
@@ -10802,7 +11379,33 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   architectures, and changing `requirements.in` without regenerating the lock fails the gate.
   `Depends:` `B320` (landed). — found while pinning dependencies — agent:`pins`
 
-- [ ] **B325** **The environment the suite passes in does not satisfy `requirements.txt`, so the
+  **Still open 2026-09-16 — but the stated blocker is not the blocker, and that is worth recording
+  rather than repeating a third time.** The refusal above rests on *"environment markers are
+  evaluated by the generating interpreter"*, which is true of `pip-compile` and **not** true of
+  `uv pip compile --universal`: universal mode resolves markers symbolically and emits them into the
+  lock. Measured here today: `uv pip compile --universal --generate-hashes --python-version 3.14
+  requirements.txt` succeeds on this CPython 3.11 / x86_64 box and produces a **105-package,
+  204 KB lock carrying 2,260 hashes**, with markers left unevaluated
+  (`wassima==2.1.4 ; sys_platform != 'emscripten'`, `win32-setctime==1.2.0 ; sys_platform ==
+  'win32'`). The second half of the objection does not hold either: for `numpy==2.4.6` the lock
+  carries **all 72 distributions PyPI publishes, 33 of them `aarch64`**, so it is not one
+  architecture's hashes. PyPI is reachable from this container (200 on `/simple/fastapi/`).
+  **What is actually missing is the `Verify` line, and it is missing completely.** It reads
+  *"`pip install --require-hashes -r requirements.lock` succeeds in the image on both
+  architectures"*. `docker` is on `PATH` here and **there is no daemon**
+  (`dial unix /var/run/docker.sock: no such file or directory`), so the lock cannot be installed on
+  3.14, on either arch, even once. A lock that resolves is not a lock that installs: a package with
+  no `cp314` `aarch64` wheel falls back to its sdist and builds, and whether that build succeeds in
+  `python:3.14-slim` is exactly the question. **So it is still not landed**, and deliberately: an
+  unverified 204 KB lock in the tree is a file people would start trusting.
+  **What the next agent needs**, precisely: a host that can run `docker buildx build --platform
+  linux/amd64,linux/arm64`, or two runners. Then `uv pip compile --universal --generate-hashes
+  --python-version 3.14` (the command above, kept), `pip install --require-hashes` inside the image
+  on both platforms, `requirements.txt`'s 27 comment lines carried into `requirements.in` (`Law 1`),
+  and `.pantheon/check-pins.py` taught that a lock must be newer than its `.in`. — re-measured
+  2026-09-16 — agent:`infra2`
+
+- [x] **B325** **The environment the suite passes in does not satisfy `requirements.txt`, so the
   suite is evidence about a dependency set the image never installs.** Measured 2026-09-16 in the
   agent environment that runs this project's tests: **six of the 31 core dependencies are not
   installed at all** — `chromadb-client`, `youtube-transcript-api`, `caldav`, `qrcode`, `httpx2`,
@@ -10821,6 +11424,25 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   the whole reason those imports are guarded. `Verify:` a suite run in an environment missing a
   declared dependency says so in its output, and the count is not zero here today.
   `Depends:` `B320` (landed). — found while pinning dependencies — agent:`pins`
+
+  **Closed 2026-09-16, and the number is worse than the row recorded.** Re-measured with
+  `importlib.metadata.version` against every line of `requirements.txt`: **6 of the 31 core
+  dependencies are absent** (`chromadb-client`, `youtube-transcript-api`, `caldav`, `qrcode`,
+  `httpx2`, `psycopg2-binary`, as the row said) and **13 more are at a version other than the pin**,
+  not the two the row found — because `B320` has since replaced the floors with exact `==` pins, so
+  *below the floor* became *not the pinned version*. **19 of 31.** Two of the thirteen are a major
+  version apart (`pypdf` 3.17.4 against a pinned 6.19.0, `cryptography` 46.0.7 against 50.0.1);
+  `B412` is the row for those, because a major version is an API, not drift.
+  **Fixed by making the absence loud**, in `tests/conftest.py`'s `pytest_terminal_summary` rather
+  than a header, because the suite is run with `-q` and `-q` eats headers. It prints once per run,
+  names each package and what is installed against what is declared, and ends with the sentence
+  that is the point of the row: *a green run is evidence about a smaller product*. **It never
+  fails** — a contributor without Postgres must still be able to run the suite, which is the whole
+  reason those imports are guarded — and it reads `requirements.txt` rather than a second list, so
+  it cannot go stale against the file it is about.
+  `Verify:` satisfied on both halves: the count is printed, and it is **19**, not zero. 5 tests,
+  including one that runs a green session in a subprocess and reads the sentence out of its `-q`
+  output. 2 mutations, 2 caught.
 
 - [x] **B330** **A vendored library's version lived in `CREDITS.md` prose and nowhere a machine
   looked, so the versions drifted and nobody could tell.** Measured 2026-09-16. `CREDITS.md`
@@ -10970,7 +11592,7 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   exporter was about to rasterise. Mutation: rewriting the call site to `.from(container.innerHTML)`
   and renaming any of three option keys are all **CAUGHT**. — agent:`vendored`
 
-- [ ] **B335** **Six vendored libraries are behind upstream and this wave bumped none of them.**
+- [x] **B335** **Six vendored libraries are behind upstream and this wave bumped none of them.**
   Measured 2026-09-16 by `.github/workflows/vendored-freshness.yml` on its first run, which is the
   point of it: nobody had this list before, because nothing asked. `docx` **8.5.0 → 9.7.1**, KaTeX
   (and its fonts) **0.16.22 → 0.18.7**, Mermaid **11.16.1 → 12.0.0**, Swagger UI **5.32.15 →
@@ -10986,9 +11608,63 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   what keeps the freshness workflow green while they are known — and the workflow fails the moment a
   seventh library falls behind without a row. `Verify:` each of the six either bumped, with a
   feature test for the path it serves and its version and hash recorded, or carrying a written
-  reason to stay. `Depends:` `B330` (landed). — found by the freshness workflow — agent:`vendored`
+  reason to stay. `Depends:` `B330` (landed).
+  **Closed 2026-09-17. Three bumped, three filed, and the judgement is written per library rather
+  than as a policy.** `Law 1` is the constraint the whole row turns on — none of the six has an
+  advisory at any version involved, so every one of these is currency against breakage, and a bump
+  that breaks a working feature is worse than being behind.
+  **KaTeX 0.16.22 → 0.18.7, taken.** Two semver-breaking 0.x minors. 0.17.0's break is the internal
+  `__defineFunction` extension API, which Pantheon never touches — `markdown.js:804` calls
+  `renderToString`. 0.18.0's break is a CSS class prefix (`base` → `katex-base`, `strut` →
+  `katex-strut`) and upstream says outright that anyone targeting the internal classes must update
+  their selectors; `static/style.css:10208-10209` targets `.katex-display` and `.katex`, which are
+  the two an application is supposed to use and which did not move. **All twenty font faces are
+  byte-identical between the two versions**, checked face by face, so the fonts record moved its
+  version and not one byte — and `static/sw.js:23`'s twenty-entry font list needs no change, which
+  was the thing that could have made this a cross-file bump.
+  **Mermaid 11.16.1 → 11.17.2, taken. 12.0.0 filed as `B423`.** 11.17.2 is same-major and brings a
+  fix for a `RangeError: Invalid array length` crash on certain edges and the restoration of the
+  `edgePaths` class the flowchart, block and journey stylesheets hang off. 12.0.0 was fetched and
+  measured, and the measurement is why it is filed: after `mermaid.initialize()` with Pantheon's own
+  config, `mermaidAPI.getConfig().layout` comes back `dagre` on 11.17.2 and **`elk` on 12.0.0** —
+  ELK replaces dagre as the default layout for seven diagram types, which upstream describes as
+  *"this changes how existing diagrams look"*. It also raises the browser floor to Safari 17.4 /
+  ES2024 and grows `mermaid.min.js` from 3.57 MB to 5.58 MB. The evidence available here reaches
+  `initialize()` and `parse()`; `run()`/`render()` need a real SVG tree, so a 12.0.0 layout
+  regression would ship unmeasured. That is the definition of forcing.
+  **Swagger UI 5.32.15 → 5.33.0, taken.** Through `scripts/fetch-swagger-ui.py`, which verified the
+  registry's own `dist.integrity` before opening the tarball and re-pinned both hashes.
+  `licenses/swagger-ui-bundle.js.LICENSE.txt` is **byte-identical** at both versions, which is how
+  the bump was shown to add no undeclared package.
+  **docx 8.5.0 → 9.7.1, filed as `B424`.** Not for behaviour: 9.7.1 was fetched and run through the
+  real `exportAsDocx`, its API surface is unchanged and the body XML it emits for Pantheon's
+  paragraph and run shapes is byte-identical. It is filed because **9.7.1's Vite UMD build leaves
+  `//#region node_modules/<pkg>/` markers for forty-four bundled packages that 8.5.0's rollup build
+  did not**, so taking it ships forty-four newly visible third-party packages that need notices —
+  a separate and substantial piece of attribution work, not a version bump.
+  **Pyodide left at 0.27.5, the comparison fixed, and 0.27.8 filed as `B425`.** This was the entry
+  the row said "needs a human before it means anything", and the human answer is that npm's
+  `dist-tags.latest` of 314.0.7 is a **different version line** — Pyodide moved to a CPython-aligned
+  scheme — while the 0.27 line is still maintained under its own tag, `stable-0.27`. Comparing
+  0.27.5 against 314.0.7 reports a supported runtime as permanently behind, for ever, which is the
+  light-always-on failure this file is designed against. The record now carries
+  `dist_tag="stable-0.27"` and the freshness workflow asks for that tag. The bump itself is filed
+  rather than taken because 0.27.8's own change is `python` CLI compatibility with Node 26 — a path
+  `codeRunner.js` never runs — and reaching it crosses 0.27.7's documented breaking change
+  (`enableRunUntilComplete` defaults on, turning a no-op into a crash where stack switching is off),
+  which needs a browser matrix, for 13 MB of new binaries.
+  `Verify:` **yes** — `tests/test_vendored_bumps_still_render.py`, 12 tests over three new node
+  harnesses that drive the shipped bundles with the options lifted out of `static/js/markdown.js`
+  rather than restated (`Law 13`). **Four of them fail on the tree as it stood**, measured by
+  checking the old bundles back out and re-running the same harnesses: `\bigl{(} x \bigr{)}` and
+  `\text{\sout{x}}` come back as red `.katex-error` on 0.16.22 and render on 0.18.7, and mermaid
+  11.16.1 rejects `A@{ shape: person }`, `folder` and `browser` with *"No such shape"*. The Swagger
+  UI tests pass on both versions and are regression guards rather than differentials, which is said
+  in the file rather than implied. Mutation: 22 run, **22 caught, 0 survived** — including
+  rewriting `throwOnError: false` and mermaid's `theme`/`securityLevel` at their real call sites.
+  — found by the freshness workflow — agent:`vendored`
 
-- [ ] **B336** **The published html2pdf.js 0.14.0 bundle carries jsPDF 4.0.0 and DOMPurify 3.3.1,
+- [x] **B336** **The published html2pdf.js 0.14.0 bundle carries jsPDF 4.0.0 and DOMPurify 3.3.1,
   and neither is its project's current release.** Measured 2026-09-16 against OSV, in the shipped
   bytes: `M.version="4.0.0"` and the sidecar's `/*! @license DOMPurify 3.3.1 */`. **jsPDF 4.0.0 has
   nine open advisories** — one CRITICAL (`GHSA-wfv2-pwc8-crg5`), six HIGH, two MODERATE — down from
@@ -11013,8 +11689,47 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   which keeps every file upstream's bytes and makes each version independently bumpable. (c) is
   probably right and is the largest. `Verify:` `api.osv.dev` returns zero advisories for every
   package inside `static/lib/html2pdf.bundle.min.js`, **or** this row carries a written decision
-  naming which of the three was taken and why. `Depends:` `B334` (landed). — found while closing
-  `B334` — agent:`vendored`
+  naming which of the three was taken and why. `Depends:` `B334` (landed).
+  **Decided 2026-09-17: (a). Stay on the published artifact, and make the waiting machine-checked.**
+  The two rejected options first, because the reasons are the argument. **(b) rebuild the bundle**
+  trades the one property that makes this repository's supply chain checkable by a stranger — every
+  vendored file is byte-identical to a published upstream artifact, so a recorded sha256 can be
+  verified against a registry — for a 946 KB webpack output that is not reproducible across terser
+  and loader patch releases. The hash we recorded would then be verifiable by nobody, in exchange
+  for advisories that are not reachable. `B337` set the rule this follows: we build a vendored file
+  ourselves **only** where upstream publishes none. Here upstream publishes one.
+  **(c) split into three published files** — `html2pdf.js`, `jspdf`, `html2canvas`, each upstream's
+  own bytes and each independently bumpable — **is still the right answer and is not doable from
+  this worktree**: it needs `static/js/document.js:9426` to fetch three scripts in order, and that
+  file belongs to another agent this wave. Filed as `B421` rather than half-done.
+  **What (a) cost and what now holds it honest.** Twenty-seven open advisories remain in bytes we
+  serve, and this row says so rather than implying the bundle is clean. **None is reachable**, and
+  that is measured rather than asserted: `exportAsPdf` passes a DOM element, pinned by a test that
+  drives the real call site (`B334`), so DOMPurify — invoked by html2pdf in exactly one place, the
+  string branch of `from()` — is never invoked at all on this path, and canvg, the bundle's other
+  consumer, is not reached either. jsPDF's nine each need an API this application does not call
+  (`addJS`, `createAnnotation`, `addMetadata`, the AcroForm classes, `output` with a new-window
+  option), and its two Node-only ones are structurally unreachable in a browser. **This is audit
+  noise and supply-chain hygiene, not a live vulnerability**, and it was neither inflated to justify
+  a rebuild nor waved away to avoid one.
+  **The mechanism is the deliverable.** `.pantheon/check-vendored-versions.py` gained `contains=`:
+  each package inside the bundle, the version its bytes carry, and a literal witness — `M.version=
+  "4.0.0"` in the blob, `@license DOMPurify 3.3.1` in the extracted sidecar. **Rule 6 reads those
+  out of the shipped file on every gate run, offline**, so a replacement bundle carrying a different
+  jsPDF fails until somebody re-measures — which matters because the record does not merely say
+  `4.0.0`, it carries nine advisory excuses written *for* 4.0.0, and an excuse written for one
+  version is not an excuse for another (`B333`'s pattern, one level in). All twenty-seven are
+  written down per advisory id, each naming the API `static/js/document.js` does not call. And
+  `.github/workflows/vendored-freshness.yml` now asks OSV about the **inner** packages every week,
+  so the day html2pdf.js publishes a release built against jsPDF 4.2.1 the workflow says so instead
+  of a person remembering to look. Before this, a vendored bundle was one npm coordinate to that
+  workflow and a dozen to an attacker: html2pdf.js 0.14.0 has zero advisories of its own.
+  `Verify:` **yes** — a written decision naming which of the three was taken and why, plus
+  `tests/test_vendored_versions.py`'s five new rule-6 tests. **They fail on the tree as it stood**:
+  no rule compared a bundle's inner versions to anything, so the mutation that rewrites
+  `M.version="4.0.0"` to `"4.2.1"` in the shipped bytes produced no failure before this change and
+  produces `INNER  html2pdf.js: jspdf is recorded as 4.0.0` after it. Mutation: 22 run, **22
+  caught, 0 survived**. — found while closing `B334` — agent:`vendored`
 
 - [x] **B337** **`qrcode.min.js` matched no published artifact at any version, and that is why it
   had no version.** Measured 2026-09-16. It was the only row in `CREDITS.md`'s vendored table with
@@ -11039,7 +11754,7 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   shipped bytes. Re-vendoring is zero-risk here for the reason `B338` records: nothing loads this
   file. — agent:`vendored`
 
-- [ ] **B338** **`static/lib/qrcode.min.js` is loaded by nothing, and `CREDITS.md` said it was the
+- [x] **B338** **`static/lib/qrcode.min.js` is loaded by nothing, and `CREDITS.md` said it was the
   2FA QR code.** Measured 2026-09-16 while closing `B337`. No `<script>` in `static/index.html`
   names it, no module imports it, and `static/sw.js` does not precache it — the only two references
   to the file in the whole repository were the `CREDITS.md` row and the `check-licences.py`
@@ -11053,10 +11768,35 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   wire it up — a client-side renderer would let the 2FA setup page draw the code without the server
   rasterising a PNG, which is the reason somebody vendored it in the first place. `Verify:` either
   the file is gone along with its inventory entry and licence texts, or something in
-  `static/` loads it and `CREDITS.md` says what for. `Depends:` `B337` (landed). — found while
-  closing `B337` — agent:`vendored`
+  `static/` loads it and `CREDITS.md` says what for. `Depends:` `B337` (landed).
+  **Closed 2026-09-17: the file is gone, the paperwork is not, and the two are different questions.**
+  Of the two options the row offered, wiring it up is a change to `static/js/settings.js` and
+  `static/index.html` — a feature somebody should decide to build, not a use invented to justify
+  bytes already in the tree, and both files belong to other agents this wave. So: deleted.
+  **`Law 1` is about behaviour.** Removing a working behaviour to make a fix simpler is a defect.
+  There was no behaviour here — no `<script>`, no import, no precache, no reference anywhere outside
+  `CREDITS.md` and the licence inventory. What there was, in a repository about to go public, was
+  24 KB of unreferenced third-party JavaScript in the served surface, an attribution row describing
+  a use that had never existed, and a second package bundled inside it that nothing declared until
+  `B337` rebuilt the file to find out.
+  **What went and what stayed, and why they differ.** The bytes went, and so did the `node-qrcode`
+  record in `.pantheon/check-vendored-versions.py` — that file fingerprints what we serve, and a
+  sha256 for a file that is not there is a hash over nothing; the checker said so itself, `NO BYTES`
+  and `GHOST`, and both were right. The **notices stayed**: the `node-qrcode` and `dijkstrajs`
+  `INVENTORY` entries with their patterns emptied, their licence texts in `licenses/`, and their
+  `CREDITS.md` rows now reading *through 2026-09-17; no longer shipped*. That is `B334`'s own
+  precedent three entries up in the same inventory — those bytes ship in every tag of this
+  repository up to today, and deleting the notice for bytes somebody can still check out is how
+  attribution rots backwards.
+  `Verify:` **yes** — the file is gone along with its version record, and
+  `tests/test_vendored_versions.py` has two new tests. `test_the_unreferenced_qrcode_bundle_is_no_
+  longer_shipped` **fails on the tree as it stood** (the file was tracked and a `node-qrcode`
+  fingerprint record existed) and also greps `static/`, `app.py`, `routes/` and `src/` to assert
+  nothing went looking for it. `test_the_qrcode_attribution_survives_the_file` is the other half and
+  fails if somebody "tidies up" the notices. Mutation: restoring the entry's file pattern is
+  **CAUGHT**. — found while closing `B337` — agent:`vendored`
 
-- [ ] **B339** **`check-licences.py` rule 7 can see inside a webpack bundle and is blind to an
+- [x] **B339** **`check-licences.py` rule 7 can see inside a webpack bundle and is blind to an
   esbuild one, so a package shipped with no notice for as long as the file has existed.** Measured
   2026-09-16 while closing `B337`. Rule 7 derives a bundle's contents from `node_modules/<package>/`
   paths left in the shipped bytes — 1,460 of them in `html2pdf.bundle.min.js`, and pnpm's store
@@ -11075,7 +11815,52 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   the artifact — or refuse to vendor a self-built bundle that cannot state its own contents.
   `Verify:` a vendored file built by a minifier that strips module paths either declares the
   packages inside it from a record produced by its own build, or fails `check-licences.py`.
-  `Depends:` `B337` (landed), `B330` (landed). — found while closing `B337` — agent:`vendored`
+  `Depends:` `B337` (landed), `B330` (landed).
+  **Fixed 2026-09-17, and the population was not one file.** The row's diagnosis was right and
+  understated it: rule 7 had exactly one way of looking inside a bundle and **no opinion at all
+  about a file it could not look inside**, so a bundler that leaves no module paths turned a bundle
+  into an ordinary one-library file and nothing said a word.
+  **New rule 8: every vendored script says HOW its contents are known, there is no default, and
+  each answer is checked against the bytes.** `derived` (module paths) — and derivation finding
+  *nothing* is now the alarm rather than the silence, which is the defect in one line. `esbuild` —
+  esbuild strips `node_modules/` paths and then appends its own `/*! Bundled license information:`
+  block naming every module it took a legal comment from, which is a record the build produced and
+  rule 7 could not read. `sidecar` — webpack writes the notices to a file and leaves *"For license
+  information please see X"* **in the bytes**, so which sidecar belongs to which bundle is derived,
+  not listed, and every notice in it must then be claimed by an entry. `single` — upstream's own
+  artifact for one package, where derivation must find nothing **and** every legal comment in the
+  file must be claimed, because "this is just one library" is false the moment the file carries
+  somebody else's copyright. `build` — a record under `.pantheon/vendored-builds/` naming the file,
+  the command and the packages; absent, empty or naming an undeclared package all fail. That last
+  one is the answer `qrcode.min.js` would have had to give, and `check-vendored-versions.py` rule 7
+  now refuses a `build=` command with no input record and an input record no `VENDORED` entry
+  builds — the command and the inputs are each useless alone, so neither may exist without the other.
+  **Reading a bundle's own records for the first time found sixteen undeclared packages in three
+  files.** `swagger-ui-bundle.js` carries **no module paths at all** — rule 7 derived zero packages
+  from 1.5 MB — and pointed at an extracted sidecar that nothing had ever read against the
+  inventory: **React** (`react`, `react-dom`, `scheduler`, `use-sync-external-store`), `immutable`,
+  `classnames`, `deep-extend`, `fast-json-patch`, `repeat-string`, `safe-buffer`, `buffer` and
+  `ieee754`, none with a notice anywhere in this repository. esbuild's block in `mermaid.min.js`
+  named `lodash-es` and `cytoscape`. The legal comments in `docx.umd.min.js` named `buffer`,
+  `ieee754` and `string.fromcodepoint`. **This is `P0-21b` again — a sidecar present and unread —
+  in the one bundle nobody had thought to look at, and React shipping unattributed in a repository
+  about to go public is the part that matters.** All sixteen now have a licence text, a `CREDITS.md`
+  row and an `INVENTORY` entry.
+  **What this does NOT close, said rather than implied.** A `single` claim is still not falsifiable
+  against a bundler that strips module paths *and* keeps no legal comment — which is exactly what
+  `qrcode.min.js` was. The only defence there is the `build` answer, which somebody has to choose;
+  `B426` is that residual hole. `tests/test_licence_alignment.py`'s fixture had to stop replacing
+  `*.min.js` with empty stand-ins, because rule 8 reads bytes and a stand-in is a file whose
+  contents became unreadable — which is the thing the rule fails on.
+  `Verify:` **yes** — nine new mutation tests in `tests/test_bundled_package_notices.py` break each
+  answer in a throwaway copy of the tree (a script that answers nothing, a bundle that lost its
+  module paths, an esbuild bundle that lost its notice block, a sidecar notice no entry claims, a
+  `single` file carrying module paths, a `single` file carrying a foreign notice, a build record
+  naming an undeclared package), plus twelve parametrised tests asserting each newly found package
+  has a text and a credits row — **all twelve fail on the tree as it stood**, because none of those
+  files existed. Mutation: 22 run across both checkers, **22 caught, 0 survived**; the ones that
+  matter are the four that survived the first pass and drove real tests to be written.
+  — found while closing `B337` — agent:`vendored`
 
 - [x] **B340** **`CYBERTOOTH_CHANGES.md` opens by calling this a "private customization" and names
   five environment variables that no longer exist — in a repository being made public.** Measured
@@ -11238,7 +12023,7 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   `Verify:` every dependency mechanism the README names can be found in the tree by the path given.
   — found while bringing the public-facing markdown current — agent:`readme`
 
-- [ ] **B348** **The proof ledger carries `B341`'s defect one level down: its `wiring` claim says 2
+- [x] **B348** **The proof ledger carries `B341`'s defect one level down: its `wiring` claim says 2
   and the checker says 120.** Measured 2026-09-16. `.pantheon/ledger/claims.py`'s `wiring` claim is
   `before 78 → after 2`, headline *"Unreachable UI 78 -> 2"*, repro `check-wiring.py --max 124`;
   `check-wiring.py` prints `UNRESOLVED 120` and CI runs `--max 120`. **The repro command in the
@@ -11255,6 +12040,37 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   disagrees with that checker's live output. **Out of scope for `agent:readme`** — `claims.py`,
   `LEDGER.md` and every checker are outside its ownership. — found while fixing `B341` —
   agent:`readme`
+
+  **Closed 2026-09-16. The rule is the fix; the three corrections came out of it.**
+  `check-ledger.py` now runs the checker a claim's `repro` names and compares two things.
+  **The headline** — most checkers end their summary with their own verdict (`… · UNRESOLVED 120`,
+  `… · FORKED 0`, `… · PROBLEMS 0`), and when a checker prints one and the claim's `after` starts
+  with a number, they must be the same number. **The ceiling** — a `--max N` in a repro is an
+  instruction about which gate to run, and if it is not the gate `ci.yml` runs then the reader
+  measures something CI does not guard. Run against `HEAD`'s `claims.py` the rule prints exactly
+  the two defects this row names, in the row's own words: *says `after 2` … prints UNRESOLVED 120 —
+  the command the claim names disproves the claim*, and *runs --max 124 and ci.yml runs --max 120*.
+  **One subtlety, and it is `Law 20` turning on this rule itself**: a checker that enumerated
+  nothing prints every count as zero — a checkout with no `.git`, which is how this was found —
+  and reading that as *the claim is wrong* is the tautology the ledger exists to refuse. Every-count-
+  zero becomes a NOTE, not a failure.
+  **The corrections.** `wiring` is `after 120` with `repro --max 120`, and the headline says
+  `Unreachable UI 78 -> 120 and ratcheted` — because `78 -> 2` was never a regression story to tell
+  backwards: the `78` was counted before `B58` widened the checker from four of the six places a
+  lookup is written to all six, so the count went **up because the measurement got better**, and a
+  ledger has to be able to say that about itself. `LEDGER.md:89`'s *"a ratio of 537 to 4"* is fixed
+  in the generator (`claims.py`), never by hand.
+  **Four more claims state a number their own repro never prints** — `tracker` 370 against
+  *376 phase tasks*, `spdx` *1,541 files* against 1,653, `credits` *13 licence texts* against 43,
+  `fan-out` *40* against an unpaced-call-site count. They are printed as NOTEs and filed as `B411`
+  rather than corrected here: some are stale and at least one (`fan-out`) is a different metric, and
+  deciding which is which needs the person who measured it. A checker that guesses is the defect
+  this one exists to find.
+  **The integrator must run `python3 .pantheon/check-ledger.py --write` once.** `claims.py` changed,
+  so `LEDGER.md` is stale in this patch on purpose (`--write` is not run here, per the brief);
+  `test_the_ledger_in_the_tree_is_what_the_claims_produce` and
+  `test_running_the_checker_bare_writes_nothing` are red until it is, and green immediately after —
+  verified by running `--write` in a throwaway clone. 6 tests added. 5 mutations, 5 caught.
 
 - [ ] **B349** **The fork date is 2026-08-20 in two places and 2026-08-24 in four, and only a human
   knows which is which.** Measured 2026-09-16. `2026-08-24`: `CHANGELOG.md:18`, `NOTICE:27` (*"Date
@@ -11273,6 +12089,33 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   `NOTICE`'s *Date of fork*. **Needs the owner**, and touches `NOTICE`, `CREDITS.md` and
   `claims.py`, all outside `agent:readme`'s ownership. — found while bringing the public-facing
   markdown current — agent:`readme`
+
+  **Still open 2026-09-16 — it needs the owner, as the row says. What is added is the evidence,
+  so the owner is answering a question rather than making a choice.**
+  **The two dates are two different facts and both are probably right.** `2026-08-20` is the date
+  of commit `b4d1293` **upstream**: in `claims.py` it sits inside a block whose comment reads *"The
+  fork point, measured 2026-09-11 on the deployment box, which is where the `upstream` remote
+  lives"*, directly beside `FORK_POINT_SUBJECT` — these are attributes read off that commit.
+  `.pantheon/VERIFY-2026-08-27.md:200` records the same reading independently, while the checkout
+  still existed: *"`/work/base` HEAD is the fork point (2026-08-20); today is 2026-08-27"*.
+  `2026-08-24` is the date this repository was **taken** from it — `NOTICE:27` calls it *Date of
+  fork*, `CHANGELOG.md:18` *"Forked from … on 2026-08-24"*, `CREDITS.md:34` *"Forked at"*.
+  **Consistent with this repository's own history**, which begins **2026-08-27**
+  (`fff72ec baseline: cybertooth c3b2120`) — three days after the clone, seven after the commit.
+  **Still not confirmable here**, and that is asserted rather than remembered:
+  `git cat-file -t b4d1293` → *Not a valid object name*, and a test fails if that ever stops being
+  true, with instructions to read the committer date and close this row with evidence.
+  **What landed** is the half that does not need the owner: `claims.py` now defines
+  `FORK_POINT_DATE` (the commit) and `FORK_CLONE_DATE` (the clone) as separate constants with the
+  evidence for each written beside them, the `fork-size` claim's `stock` says *committed
+  2026-08-20* instead of a bare date, and `check-ledger.py` compares `FORK_CLONE_DATE` with
+  `NOTICE`'s *Date of fork* — so the ledger and the AGPL §5(a) surface cannot part company again —
+  and fails if somebody collapses the two constants into one.
+  **What still needs the owner:** whether `NOTICE`, `CREDITS.md` and `CHANGELOG.md` should say
+  *cloned* rather than *forked*, which is a §5(a) wording question, and whether the commit date
+  belongs on that surface at all. Those three files are outside this worktree's ownership and were
+  not touched. 5 tests, and one of them fails the day `b4d1293` becomes reachable, with
+  instructions. 2 mutations, 2 caught. — evidence added 2026-09-16 — agent:`infra2`
 
 - [x] **B350** **The security policy asked reporters to publish the bug.** Found 2026-09-16 while
   reading the community surface ahead of the repository going public. `SECURITY.md`'s `## Reporting`
@@ -11420,7 +12263,7 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   the tree at the path the URL spells. — found while auditing the community surface for the public
   release — agent:`community`
 
-- [ ] **B356** **Root `ROADMAP.md` explains its own existence with a fact that stopped being true.**
+- [x] **B356** **Root `ROADMAP.md` explains its own existence with a fact that stopped being true.**
   Found 2026-09-16 while closing `B355`. The file ends: *"The path is kept rather than deleted
   because `.github/ISSUE_TEMPLATE/feature_request.yml` links it by absolute URL, and a link that
   404s is not an improvement on a link that lies."* That was true when it was written; the template
@@ -11436,6 +12279,26 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   that do not go stale when a link is repointed, and something names it so the next person to
   consider deleting it finds the reason. `Depends:` coordination with whoever owns root
   `ROADMAP.md`. — found while closing `B355` — agent:`community`
+
+  **Closed 2026-09-16, and the page had already gone stale again in the other direction.** The
+  sentence in the tree when this was picked up read *"Re-checked 2026-09-16: it does not, and no
+  longer does anywhere in the tree"* — and `.github/ISSUE_TEMPLATE/feature_request.yml:11` links
+  `blob/main/ROADMAP.md`, the root file, because `B355` repointed it back. So the page's own
+  re-check had become false within the day. That is the argument for this row made twice in one
+  file: **a page whose reason to exist is a link somebody else controls has no reason to exist.**
+  **The reason is now a property of the tracker**: `.pantheon/ROADMAP.md` is 1.4 MB, GitHub declines
+  to render Markdown that size, and no `#anchor` into it survives an edit — so a repository whose
+  tracker is its main artefact needs an address that renders, and this is it. The template's
+  two moves are still narrated, because that history is why the rule exists, but nothing hangs on
+  them.
+  **Something names it**, which is the second half of the `Verify`:
+  `tests/test_the_root_roadmap_explains_itself.py` asserts the page exists, names the tracker, says
+  why it is kept — and **re-measures the 1.4 MB** rather than trusting the sentence, so if the
+  tracker ever drops below GitHub's 1 MB threshold the argument fails out loud and somebody writes
+  a different one. A fourth test walks every `.github/` path mentioned on the page and fails if one
+  appears in a sentence that keeps the file.
+  `Law 9`: two of the four fail against `HEAD`'s `ROADMAP.md`, naming the exact sentence. 4 tests.
+  2 mutations, 2 caught.
 
 - [ ] **B357** **Three documents now route reporters to a GitHub feature nobody has confirmed is
   switched on.** Filed 2026-09-16. `SECURITY.md` (`B350`), `CODE_OF_CONDUCT.md` (`B353`) and
@@ -11454,7 +12317,37 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   logged-out visitor, and `docs/security-ci.md` lists enabling it. — found while closing `B350` —
   agent:`community`
 
-- [ ] **B358** **The one dependency with a known unfixable advisory is in the default image and in
+  **Worked on 2026-09-16 and deliberately left open.** The first half of `Verify:` asks whether a
+  logged-out visitor gets the report form. **Nobody has checked and this agent could not**:
+  `api.github.com` is 403 at the egress proxy and the repository is not public, so any tick here
+  would be a claim about a setting nobody has looked at. `Law 9` — an honest open row beats a
+  false tick. What is done:
+
+  * **The chooser degrades now.** The count in this row is short: the URL is in **five** places
+    across **four** files, not three — `.github/ISSUE_TEMPLATE/bug_report.yml` carries it twice
+    and is not named above. `SECURITY.md` and `CODE_OF_CONDUCT.md` already spelled out what to do
+    if the page 404s, and `bug_report.yml` links `SECURITY.md` beside both of its copies, so a
+    reporter there lands on the fallback. `.github/ISSUE_TEMPLATE/config.yml` had neither, and it
+    is the one that matters most: GitHub renders `contact_links[].about` as **plain text**, no
+    link comes out of it, and the chooser is what a person sees *before* they reach "New issue" —
+    the exact moment this link exists to intercept. Its `about` now carries the fallback in its
+    own words, including the one sentence a reporter may safely put in a public issue.
+  * **The setting is on the pre-publication checklist.** `docs/security-ci.md`'s "One-time
+    settings to turn on" has a third item, *"Turn on private vulnerability reporting"*, saying to
+    do it before the repository goes public, naming all three documents that depend on it, and
+    saying plainly that it is unverified.
+
+  **Evidence** (`Law 9`). `tests/test_security_documents_are_true.py`: the chooser test and the
+  checklist test both fail on the tree as it stood. The repository-wide test — *every* tracked
+  file carrying that URL either says what to do on a 404 or points at a document that does —
+  passes before and after, and is a `Law 13` guard for the next document to carry the link rather
+  than evidence for this change. Three mutations, all caught: stripping the chooser's fallback,
+  renaming the checklist heading away, and leaving the section claiming two settings.
+
+  **What remains, and it is one click.** Settings → Code security → *Private vulnerability
+  reporting* → Enable. Then this row ticks.
+
+- [x] **B358** **The one dependency with a known unfixable advisory is in the default image and in
   no requirements file, so the audit that would name it cannot see it.** Found 2026-09-16 while
   writing `SECURITY.md`'s dependency section. `docker/build-realesrgan-wheels.sh` pins
   `basicsr==1.4.2 gfpgan==1.3.8 facexlib==0.3.0`, and `Dockerfile` installs the built wheels with
@@ -11481,6 +12374,44 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   wave — the fix may be as small as adding the image-only pins to a requirements file the audit
   already reads, but that file is not this agent's to edit. — found while closing `B350` —
   agent:`community`
+
+  **Closed 2026-09-16, and the fix had already landed — the row's own document had not.** Measured
+  against the workflows as they stand: `.github/workflows/dependency-review.yml`'s job is named
+  **`pip-audit (blocking)`**, it runs `.pantheon/audit-dependencies.py`, and that script audits
+  `sorted(ROOT.glob("requirements*.txt"))` — all three files — **plus** `realesrgan_pins()`, which
+  reads `SPECS="basicsr==1.4.2 gfpgan==1.3.8 facexlib==0.3.0"` out of
+  `docker/build-realesrgan-wheels.sh` and writes it to a temporary requirements file rather than
+  copying the pins into a second list. `B320`/`B322` did that while this row was open. So the
+  coverage gap this row is about is closed, and `basicsr`'s advisory is reported on every run of
+  a **blocking** job, with its accepted-risk reasoning printed beside it from
+  `.pantheon/dependency-advisories.toml`.
+
+  **What was left was the sentence, and it was wrong three ways.** `SECURITY.md` said `pip-audit`
+  scans `requirements.txt` and `requirements-optional.txt` (it scans three files and the wheel
+  pins), that it is *"Advisory only — it reports, it does not block"* (it blocks), and that
+  `basicsr` *"is not in requirements.txt or requirements-optional.txt, so `pip-audit` does not
+  see it; Trivy does"* (pip-audit sees it). A security policy that understates its own coverage is
+  not a harmless stale sentence: it is the document a reader uses to decide what they still have
+  to check themselves, and this one was telling them the blocking audit was advisory. All three
+  are corrected, and the paragraph now also says the acceptance **expires** — the register entry
+  carries `review_by = 2027-03-16` and `check-pins.py` fails once that is past.
+
+  **The second half of `Verify:` is satisfied by the offline gate, not by a person.**
+  `check-pins.py` refuses a suppression whose `declared_in` file does not pin that package at that
+  version, so bumping `basicsr` in the wheel script turns the gate red until somebody re-reads the
+  advisory. Driven, not read: the mutation `basicsr==1.4.2` → `1.4.3` is **caught**.
+
+  **Evidence** (`Law 9`). `tests/test_security_documents_are_true.py` checks the prose against the
+  artefacts it describes — `realesrgan_pins()` called for real, the workflow parsed as YAML for
+  the job name, the register parsed as TOML for the package, version, aliases and `declared_in`.
+  Two of its tests fail on the tree as it stood (the file list and the "advisory only" claim).
+  Two mutations, both caught: `SECURITY.md` back to understating the audit, and the version bump.
+
+  **What is still open and is not this row.** The Cookbook's "install realesrgan" button
+  (`routes/shell_routes.py:1394`) runs a plain `pip install realesrgan` into a live deployment,
+  which no scanner in CI sees. That was named in this row as "a second, worse case"; it is a
+  runtime-install question rather than a CI-coverage one and it is **not** closed here — filed as
+  `B373`.
 
 - [x] **B360** **The new vendored-hash checker found three corrupt files on its first integration
   run, and `git status` could not see any of them.** Found 2026-09-16 on the merge of `B330`.
@@ -11510,7 +12441,7 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   checker fingerprints. Whether the same drift exists elsewhere in the tree is unmeasured, and
   `B361` is the row for measuring it. — found while merging `B330` — agent:`integrator`
 
-- [ ] **B361** **Nothing outside `static/lib/` is fingerprinted, so the `B360` drift class is
+- [x] **B361** **Nothing outside `static/lib/` is fingerprinted, so the `B360` drift class is
   invisible everywhere else.** Filed 2026-09-16. `B360` found three working-tree files
   disagreeing with their git blobs while `git status` reported clean, and it was caught only
   because `B330`'s checker hashes shipped bytes. That checker's root is `static/lib/` — chosen
@@ -11523,6 +12454,32 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   and makes the fix a merge-procedure change rather than a checker. `Verify:` the count is
   measured and written down, and whatever guard follows fails on a re-introduced drift.
   `Depends:` `B330` (landed), `B360` (landed). — found while merging `B330` — agent:`integrator`
+
+  **Closed 2026-09-16. Measured first, as the row asked, and the answer is three — all three
+  declared.** Every tracked blob hashed against its index entry: **2,165 blobs, 3 disagreements** —
+  `build-windows-portable.ps1` (+80 bytes, 80 CRLF), `launch-windows.ps1` (+174, 174) and
+  `update_windows.bat` (+59, 59). All three are `.gitattributes` working as written — `*.ps1 text
+  eol=crlf`, `*.bat text eol=crlf`, because those are run by PowerShell and cmd — and stripping the
+  carriage returns reproduces each blob hash **exactly**. **Outside `static/lib/` there is no
+  undeclared drift at all**, which the row said was worth writing down: it narrows `B360`'s cause to
+  `git apply --3way` on minified single-line files plus the missing `-text`, and makes the residual
+  risk a merge-procedure question rather than a second fingerprint manifest (`Law 14`).
+  **The guard is a test, not a new checker** — `tests/test_the_working_tree_is_the_bytes_git_has.py`
+  — because a new `.pantheon/check-*.py` would be discovered by `release-gate.py` and would move the
+  `checkers` count `check-ledger.py` pins against `ci.yml`. It compares **raw bytes** to the index
+  and applies only the end-of-line conversion `git check-attr` says is declared for that path, so a
+  declared CRLF file passes and an undeclared drift fails whatever `git status` says. Files git
+  already reports as modified are excluded: an agent's uncommitted work is not drift, it is work.
+  What it looks for is the file git calls clean and is not. It costs **0.57 s** over 2,165 files.
+  Two more assertions come with it: the set of paths `.gitattributes` converts is held as a
+  description (a new extension starting to convert fails, and somebody decides on purpose — the
+  decision `static/lib/**` never got), and `static/lib/**` must resolve `text: unset`, asked of
+  `git check-attr` rather than of `.gitattributes`'s text, because `check-attr` is what git itself
+  resolves and what a reordered or negated rule changes.
+  `Law 9`: in a throwaway clone at `7769c0a` (before `B362`'s `-text`) with `core.autocrlf=true`,
+  `git status --porcelain` prints **nothing** and two of the four tests fail —
+  *"static/lib/docx.umd.min.js resolves `text: auto`"* and the byte-drift list. `B362`'s Windows
+  finding, reproduced on Linux. 4 tests. 3 mutations, 3 caught.
 
 - [x] **B362** **The deployment host was building the image from bytes the repository does not
   contain, on twelve files, and every tool reported the tree clean.** Found 2026-09-16 on the
@@ -11551,3 +12508,611 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   Linux for one commit. **`B360`'s three container files were a different mechanism — `git apply`
   on a minified single-line bundle — and the same class**: bytes drifting from the index where
   nothing looks. — found while merging `B360` — agent:`integrator`
+
+- [ ] **B370** **Two developer sandboxes are served, in full, to an unauthenticated port.**
+  Found 2026-09-16 while closing `B262`, by asking the real app with `AUTH_ENABLED=true` and
+  `LOCALHOST_BYPASS=false` for every HTML document under the `/static` mount.
+  `/static/wave-variants.html` (8,238 bytes) and `/static/whirlpool-variants.html` (9,731) answer
+  **200 to a client with no cookie**, while `/`, `/docs`, `/redoc` and `/backgrounds` all
+  `302 → /login`. `B262` closed the shell and the login page by sending them to the routes that
+  own them; these two have no route and are not templates, so the same fix does not reach them.
+  **The exposure is small and should be stated at its real size**: each page is one self-contained
+  inline block with its own copy of the styling, they hold no user data, name no API path, and
+  their own first comment says they are developer sandboxes the app does not link to. What they
+  do publish is that this project has loader and whirlpool prototypes, and — once the repository
+  is public — they are two documents anyone can fingerprint a deployment with.
+  **This is a decision and not a patch, and two closed rows constrain it.** `B120` narrowed
+  `sw.js`'s navigation handler *precisely* so a deep-linked `/static/*.html` page reaches the
+  network rather than being answered with the app shell, and `B122` names them again; a rule that
+  removes them breaks the reason those rows exist, and `Law 1` says a working behaviour is not
+  removed because it looks untidy. Options, none of them free: leave them and write the exemption
+  down next to `AUTH_EXEMPT_PREFIXES` saying what is being published and why that is acceptable
+  (the `B262` shape for the case where the answer is "acceptable"); gate `*.html` under the mount
+  behind `AuthMiddleware`, which costs nothing for assets — the login page loads no `.html` — but
+  makes an auth boundary depend on a file extension, which is the shape that goes wrong; or move
+  them out of the served tree entirely into something like `dev/`, which is `Law 1` subtraction
+  unless the route survives. `Verify:` either both pages are unreachable without a session and a
+  test drives the real app with `AUTH_ENABLED=true` to say so, **and** `B120`'s assertion that a
+  `/static/*.html` navigation is never answered from the cached shell still passes — or the
+  exemption is written down where the prefix list is. `Depends:` `B262` (landed). — found while
+  closing `B262` — agent:`sec`
+
+- [ ] **B371** **`with_asgi_root_path` is right for `--root-path` and wrong for an app mounted
+  inside another app.** Found 2026-09-16 while closing `B262`. The helper now reads
+  `scope["app_root_path"]` before `scope["root_path"]`, because Starlette's `Mount` rewrites
+  `root_path` to `root_path + matched_path` for the scope it hands its child — inside the
+  `/static` mount `root_path` is `/pantheon/static` and only `app_root_path` is `/pantheon`.
+  Measured and correct under `uvicorn --root-path /pantheon`, which is the deployment shape this
+  project documents. **The shape it is wrong for is a Pantheon app mounted inside another
+  Starlette app.** `Mount.matches` sets `"app_root_path": scope.get("app_root_path", root_path)`,
+  so the *outer* mount records `""` and the inner `/static` mount inherits that `""`, and a
+  redirect built from it drops the `/pantheon` prefix. **Starlette's own `Request.url_for` reads
+  the same field and is wrong in the same shape**, which is the argument for leaving it alone as
+  much as for fixing it: being exactly as right as the framework is a defensible place to stand,
+  and a second, cleverer derivation of "what prefix is this deployment behind" is `Law 14`'s
+  defect class. Nothing in this repository documents or tests the nested-mount shape today.
+  `Verify:` either a test stands the app up under an outer `Mount` and asserts the redirect and
+  `url_for` agree with the client-facing URL, or the limitation is written down at the helper and
+  in the deployment docs, saying that `--root-path` is the supported prefix mechanism.
+  `Depends:` `B262` (landed). — found while closing `B262` — agent:`sec`
+
+- [ ] **B372** **A third boot of the whole application, for a measurement the one enumerator
+  already takes.** Found 2026-09-16 while closing `B260`.
+  `test_a_conditional_request_is_actually_cheap_on_this_server`
+  (`tests/test_offline_shell_manifest.py`) runs its own `subprocess`, boots the real app, and
+  asks a handful of URLs for their conditional answers — and `probe_served_surface` now records
+  `conditional` (`status`, `bytes`, `csp`) for **every** page it enumerates, because `B211` needed
+  the `304`'s policy. So the suite boots the application twice in one file and three times across
+  two, for one question asked three ways. This is the same shape `B260` just closed one instance
+  of and it is `Law 13`: two readings of "what does a conditional request cost here" will
+  eventually disagree, and the one that rots is the copy. **Not urgent and not free** — that test
+  measures byte counts the probe records and a projection has to keep meaning the same thing, and
+  a probe that grows fields for every caller is its own kind of drift. `Verify:` either the test
+  is a projection of `probe_served_surface` and one subprocess boots the app for the file, or the
+  reason it needs its own boot is written in it. `Depends:` `B260` (landed). — found while
+  closing `B260` — agent:`sec`
+
+- [ ] **B373** **The Cookbook installs a dependency into a live deployment that no scanner in CI
+  ever sees.** Split out of `B358` on 2026-09-16 rather than closed with it, because it is a
+  different question. `routes/shell_routes.py:1394` runs a plain `pip install realesrgan` when the
+  user presses the Cookbook's install button. CI's coverage of `basicsr` is now real — the
+  blocking `pip-audit` job reads the pins out of `docker/build-realesrgan-wheels.sh` — but that
+  audits the **pinned** wheel build, and this is an unpinned resolve at runtime on the user's
+  machine, after CI has finished, of a package whose dependency tree CI never sees. It is also
+  the one path by which a version *other* than the audited 1.4.2 can land in a deployment, which
+  makes the accepted-risk register describe something the running system may not be.
+  `Verify:` either the runtime install resolves to the same pins the image builds and audits, or
+  what it installs is recorded where a person would look for it, or the button is gone. Whatever
+  the answer, `Law 16` applies: this reaches the network on a user action, which is the kind of
+  outbound call that is allowed, and it is the *unpinned* part that is the defect.
+  `Depends:` `B358` (landed). — found while closing `B358` — agent:`sec`
+
+- [ ] **B400** **"Import from device" is the THIRD import path and it converts nothing, so a
+  `.docx` picked there stores its zip bytes.** Found 2026-09-17 while closing `B233`.
+  `static/js/document.js:9474` `_importFromDevice` has two branches — spreadsheets (deferred to the
+  library) and `.pdf` (posted to `import-pdf`) — and **everything else goes to
+  `FileReader.readAsText`**. So `.doc`, `.odt`, `.pptx` and `.epub` land as raw bytes, which is
+  `B233` in a third place; and `.docx` is *worse here than in the library*, because
+  `documentLibrary.js` `readFileContent` at least runs mammoth over it and this function has no
+  such branch at all. Driven, the same `.docx` gives markdown from the library import button and a
+  zip header from the Documents panel's own menu item, three clicks apart. **`Law 13`, and the
+  comment above the function says it out loud** — *"Mirrors the library's extension logic for
+  text/code"* — a second copy naming the first, which is the shape `B250` found in the tests and
+  `B161` found in four language maps. The fix is one line of routing, not a fourth converter:
+  `POST /api/documents/import-office` exists (`B233`) and `SERVER_EXTRACTED_EXTS` is already
+  derived in `documentLibrary.js` from the generated `OFFICE_EXTS`, so this is the same two
+  branches that module now has. Whether the register should move to `attachmentLanguage.js` so
+  both modules read one copy is part of the row. **Not fixed here because `static/js/document.js`
+  was not this agent's file** — every other half of `B232`/`B233` was, and writing into a fifth
+  module held elsewhere in the wave is how a merge gets corrupted. `Verify:` a `.doc` and a `.docx`
+  imported from the Documents panel produce the same document as the same files dropped on the
+  library, and no third extension branch decides it. `Depends:` `B233` (landed). — found while
+  closing `B233` — agent:`ingest2`
+
+- [ ] **B401** **A binary the library has no branch for is still stored as its own bytes, because
+  the browser has no `looks_like_text`.** Found 2026-09-17 while closing `B233`.
+  `B233` routed the four containers the server extracts (`.doc .odt .pptx .epub`) to
+  `import-office` and left `readFileContent`'s tail exactly where it was: a `FileReader.readAsText`
+  that any file reaching it is assumed to survive. Drop a `.wpd`, a `.pages`, a renamed `.zip` or a
+  photo on the library and the document is created with the decoded binary as its content — no
+  refusal, no reason, a document full of U+FFFD that looks like a corrupt file rather than a file
+  nobody offered to read. **`B232` fixed exactly this question on the composer path and could,
+  because there is an upload there**: `ingest_kind` runs on the stored bytes and the answer travels
+  back as `kind`. A library import has no upload and therefore no verdict, which is why the same
+  defect survives on this one path. Two shapes are worth measuring before choosing: post the file
+  to a route that answers *"text, document or binary"* and act on that (one round trip, the same
+  register, no browser copy of `looks_like_text` — `Law 14`), or let the person import it and say
+  what happened. **What must not happen is a client-side re-implementation of the probe**, which is
+  the fourth copy this area keeps producing. `Verify:` a `.wpd` dropped on the library is refused
+  with a reason, or imported with the banner `build_user_content` would have given it; it does not
+  become a document of replacement characters. `Depends:` `B233` (landed). — found while closing
+  `B233` — agent:`ingest2`
+
+- [ ] **B402** **Big5 in 34 bytes is answered `johab`, and no rule available here separates the two.**
+  Measured 2026-09-17 while closing the first half of `B280`, which fixed the single-byte case and
+  could not reach this one. `伺服器連接埠設定資料庫網路組態檔案` in Big5 — 34 bytes, above
+  `B201`'s floor — is answered `johab` and arrives as `뷪뾔쭻씁쏫썷쓯뼝젉쉕숑쥢젒쒯죄첄쉥`. The
+  same text at 64 bytes is `Big5` and always was, so this is not a floor and not a codec.
+  **What `B280` bought does not reach it.** Both readings are 100% letters with nothing inside a
+  word, so `_word_interior_symbols` is blind to it; neither carries a declaration, so the
+  declared-charset lever has nothing to read. `charset_normalizer` itself ranks `big5` **second**,
+  which is what made the ranked results look like the lever.
+  **Three rules were built and measured against the same 891-row sweep and all three are recorded
+  here so nobody builds them again.** (1) *Refuse when a differently-scripted multi-byte rival is
+  within ε chaos of the winner* — **costs 98 correct answers to buy 16**, because the margin
+  between the wrong winner and the right runner-up (0.062–0.071 for Big5/johab) sits inside the
+  margin range of the cases where the winner is right (`euc_kr`→`cp949` 0.060–0.082,
+  `gb2312`→`gb18030` 0.085–0.093, `shift_jis`→`cp932` 0.000–0.100). There is no threshold there.
+  (2) *The same rule restricted to a winner whose chaos is exactly 0* — 98 regressions for 16
+  fixes, the same numbers in a different order. (3) *Prefer the reading whose characters are in the
+  script's primary legacy repertoire* — the johab soup encodes cleanly in `euc_kr`, because johab
+  and KS X 1001 cover the same 2,350 syllables, so the test cannot fire.
+  **The honest reading is that this is a language question, not an encoding question.** A person
+  looking at the two decodes sees that 伺服器 is *server*, 連接埠 is *port* and 資料庫 is
+  *database*, and that the Hangul is not words; `charset_normalizer` has letter-frequency data for
+  alphabetic languages and **none for CJK** (both candidates score coherence 0.0000, including the
+  right one). So the levers that remain are a CJK frequency table — a language model, which is a
+  dependency decision and not a line — or `B280`'s honest alternative: **admit the detector cannot
+  answer here and say so**, which `describe_text_encoding` already has the vocabulary for
+  (`ENCODING_UNIDENTIFIED`, `B162`/`B201`). Refusing would cost every genuinely short CJK file its
+  rescue, which is the trade `B201` already made once at 24 bytes and would be making again at a
+  different boundary, so it needs the same kind of corpus argument.
+  `Verify:` 34 bytes of Big5 decodes as Big5, or is refused with the reason that names the
+  encoding as unidentifiable — and the eight-script sweep in
+  `tests/test_encoding_guess_reads_its_own_output.py` keeps every answer it has today.
+  `Depends:` `B201`, `B280` (both landed). — found while closing `B280` — agent:`ingest2`
+
+- [ ] **B403** **The SVG preview has no thumbnail cache, and `B300` raised the file size it re-scans
+  on every request from 2 MiB to 8 MiB.** Found 2026-09-17 while closing `B300`.
+  `download_file`'s raster arm writes a JPEG into `.thumbs/` and serves it until the source is
+  newer; the SVG arm reads the file, runs the whole gate and serves the bytes, **every time**.
+  That was affordable at a 2 MiB cap. Measured now: a realistic 5 MiB export costs 0.125s for the
+  gate when it passes and 0.545s when the `B300` tokenizer has to re-judge it, and an 8 MiB one
+  0.26s — per request, per viewer, and the chip is re-requested on every message render that is
+  not served from the browser cache. A refusal is worse by construction: it carries
+  `Cache-Control: no-store`, so a refused 8 MiB file is re-scanned on **every** paint. The gate's
+  verdict is a pure function of the bytes, so it is exactly the thing a cache keyed on
+  `(file_id, mtime)` is for — `.thumbs/` is the precedent and the directory already exists. Worth
+  measuring first: whether the cheap half is caching the *verdict* (a slug or nothing, a few bytes)
+  rather than the bytes, since the pass arm still has to send the file either way and the expensive
+  part is the scan, not the read. `Verify:` a 5 MiB SVG previewed twice runs the gate once, and a
+  refused SVG previewed twice runs it once, with the refusal still `no-store` to the browser.
+  `Depends:` `B103`, `B160`, `B300` (landed). — found while closing `B300` — agent:`ingest2`
+
+- [ ] **B404** **`ingest_kind` is recomputed on every download instead of being recorded when the
+  file was saved.** Found 2026-09-17 while closing `B232`. `X-Upload-Kind` is derived per request:
+  `GET /api/upload/{id}` opens the file and reads 8 KiB to answer a question whose inputs — the
+  name and the bytes — were both in hand at `save_upload` and are both immutable afterwards. One
+  `read(8192)` is not a problem and is not what this row is about; **the verdict not being in
+  `uploads.json` is**, because that is the record every other derived fact about an upload lives in
+  (`mime`, `size`, `width`, `height`, `checksum_sha256`), and a fact that is stored for some
+  consumers and recomputed for others is the shape `Law 13` names. The consequence is already
+  visible: `chat.js` `openAttachment` spends a `HEAD` per click to ask a question the message
+  metadata could have carried, and a historical attachment cannot be answered at all without one.
+  Stamping `kind` in `save_upload`'s metadata makes it travel with the upload record, the chat
+  attachment info and the gallery row for free. **Not done with `B232` on purpose**: it changes the
+  shape of a persisted record, which needs a decision about files already on disk (recompute on
+  read when the key is absent, or backfill), and that is a row rather than a line. `Verify:` the
+  verdict for one upload is computed once, and an attachment in a message rendered from history
+  opens as a document without a second request. `Depends:` `B232` (landed). — found while closing
+  `B232` — agent:`ingest2`
+
+- [ ] **B390** **`cute` and `retrowave` are two hexes away from AA, and both hexes are somebody's
+  taste.** `B15`'s defect, with the arithmetic done so the owner can rule in one line rather than
+  re-derive it. Measured 2026-09-16 against the real `applyColors()` output. **`cute`** —
+  `--fg #d4608a` on `--panel #fff8fa` is **3.44:1** and on `--bg #fff0f5` **3.26:1**.
+  *(A)* darken `--fg` to **`#c9366b`**, the same hue (338°) and the same saturation (57%) at
+  lightness 60.4 → 50.0, and it clears at **4.75 / 4.51**. *(B)* darken both surfaces, which needs
+  **ΔL −84.3** — `--bg #410016`, `--panel #490015` — and turns a pink theme into a maroon one.
+  **`retrowave`** — `--fg #e94560` on `--panel #16213e` is **4.15:1**, on `--bg #1a1a2e` **4.46:1**.
+  *(A)* lighten `--fg` to **`#eb536c`**, same hue (350°), same saturation (79%), lightness 59.2 →
+  62.2: **4.51 / 4.84**. *(B)* darken both surfaces by **ΔL −3.4** — `--bg #141423`,
+  `--panel #111a31` — which clears at **4.50 / 4.76** and is close to invisible on screen.
+  So `retrowave` is cheap either way and `cute` is not: option (A) is a perceptible shift of the
+  theme's own pink and option (B) is a different theme. **Nothing here ships without the owner
+  saying which**, because a theme is a set of choices somebody made and all four options substitute
+  a choice rather than fix how one is applied. Note `retrowave` sets `fg` and `red` to the same hex,
+  so moving `--fg` under option (A) parts them unless `red` moves with it. `Verify:` a written
+  choice per palette, applied in `THEMES` and in nothing else, and
+  `tests/test_theme_contrast_floor_css.py`'s `_B15_UNDER_AA` shrinks by that palette rather than
+  being widened. `Depends:` an owner ruling. — found while re-measuring `B15` — agent:`theme`
+
+- [ ] **B391** **`--color-muted`'s seventeen direct `color:` uses are under AA on six palettes, and
+  the token cannot be scoped without re-opening `P1-03`.** `B22` scoped fifteen of the nineteen
+  semantic tokens and deliberately left this one. Measured 2026-09-16: `#888` against the palette's
+  own `--panel` is **3.29** on `light`, 3.34 `lavender`, 3.39 `cute`, 3.54 `paper`, 3.73 `claude`,
+  4.48 `retrowave`. Scoping it would fix those and break something better established: it is the
+  pivot in `--fg-muted: color-mix(in srgb, var(--fg) 45%, var(--color-muted))`, and a scoped pivot
+  puts `--fg-muted` within **35.9** sRGB units of `--fg` on `forest` and **25.4** on `light`, under
+  the 40-unit floor `P1-03` proved, so the three tab strips that row repaired stop showing which tab
+  is active — and on `retrowave` it lands 38.7 from `--color-danger`. The fix is not a value, it is
+  a split: the seventeen `color:` sites want the theme-aware muted foreground, which is
+  `--fg-muted`, and the token underneath them is a grey pivot that no rule should paint text in
+  directly. That is loose colour and it is `P1-06`'s shape. `Verify:` no rule sets `color:` to
+  `var(--color-muted)` directly, and `tests/test_theme_contrast_floor_css.py` drops `color-muted`
+  from `_SEMANTIC_EXCEPTIONS` rather than widening a floor. — found while closing `B22` —
+  agent:`theme`
+
+- [ ] **B392** **Unused.** Reserved and not used, so the number is never reissued.
+
+- [ ] **B393** **Two tokens do two jobs each, and no single value satisfies both.** Found while
+  closing `B22`, which had to name them as exceptions rather than scope them.
+  `.confirm-btn-danger` paints `#fff` on an undiluted `var(--color-danger)` background while nine
+  other rules use the same token as text. The arithmetic has no solution: clearing 4.5:1 as text on
+  `claude`'s `--panel` needs relative luminance **≥ 0.31**, and clearing 4.5:1 under `#fff` needs
+  **≤ 0.18**. Today it measures **2.43:1** as text on `claude` and fails on **12 of 16** palettes,
+  and `#c0392b` under white is 5.9 — so the button is right and every label using the token is
+  wrong. `--color-recording-hover` is the same shape one size down: two rules, both backgrounds,
+  each inheriting a `white`/`color: white` label from the rule it hovers, and it measures **2.72**
+  against `claude`'s panel. The fix is a split — a `--color-danger` for text and a
+  `--color-danger-surface` for the block behind white — and it wants doing with `P1-08`, which is
+  the row that owns *what foreground is legible on this background*. `Verify:` no token in
+  `style.css` is both an undiluted `background` under a light literal AND a `color:`, and both come
+  out of `_SEMANTIC_EXCEPTIONS`. `Depends:` `P1-08`'s button decision (`D-2026-09-08-01`). — found
+  while closing `B22` — agent:`theme`
+
+- [ ] **B394** **How many chevron sizes and stroke widths does this product have?** `B291`'s open
+  half, with the census done so the answer is a ruling rather than a survey. Over the 57 sites:
+  **eleven sizes** — 8 (×3), 9 (×4), 10 (×18), 11 (×3), 12 (×15), 13 (×1), 14 (×4), 16 (×2),
+  18 (×4), 22 (×1), 24 (×2) — and **seven stroke widths** — 2 (×4), 2.2 (×1), 2.4 (×2), 2.5 (×38),
+  2.6 (×4), 3 (×5), 3.5 (×3). **Stroke width does not track size**, which is what makes most of it
+  drift: size 8 carries 3.5 and size 24 carries 2.5, and size 18 carries 2, 2.4 and 2.5 at three
+  different sites. **The measurable test for drift is a same-size sibling**: where a site's stroke
+  is not 2.5 and another site at the SAME size already paints 2.5, the tree itself has proved 2.5
+  works there. Nine sites fail that test — 9px at 2.6 (`cookbook.js`) and at 3 (`emailInbox.js`,
+  `emailLibrary.js`), 10px at 3 (`modelPicker.js`, `queuePanel.js`, `section-management.js`), 12px
+  at 2 (`documentLibrary.js` ×2) and at 2.6 (`document.js`), 14px at 2 (`gallery.js`) and 2.6
+  (`galleryEditor.js`), 18px at 2 (`sessions.js`) and 2.4 (`emailLibrary.js` ×2). **Four are not
+  drift and should stay** (`Law 1`): the three 8px sites at 3.5, because at 8px a 2.5 stroke paints
+  **0.83 device pixels**, and `notes.js`'s 22px at 2.2, the only stroke at its size. **Proposed
+  ladder: one stroke width, 2.5, everywhere except sizes where no 2.5 sibling exists.** Sizes are a
+  separate question and a harder one — a fold caret beside 10px text and a 24px gallery arrow are
+  not the same control — and the honest starting point is that 10 and 12 account for 33 of the 57.
+  Not done here because it touches eleven modules other agents own this wave, and because the row it
+  comes from asks for *a written decision*. `Verify:` a decision in `DECISIONS.md` naming the sizes
+  and the stroke widths, the call sites matching it, and `test_one_icon_table.py`'s eleven/seven
+  ratchets moved to the new numbers with the diff named site by site. `Depends:` `B291`, an owner
+  ruling. — found while half-closing `B291` — agent:`theme`
+
+- [ ] **B395** **The link hue clears AA against `--panel` on all sixteen palettes and misses it
+  against `--bg` on three.** `B23` named `--link-fg: var(--hl-function)` because it was the only
+  idiom clearing 4.5:1 against `--panel` everywhere — worst `cute` **4.61**, on a palette whose own
+  body text is 3.44. Against `--bg` it measures **4.19** on `light`, **4.36** on `lavender` and
+  **4.38** on `cute`. Under, by 0.12 to 0.31. Every alternative measures 2.1–2.8 on the same
+  surfaces, so this is the residual of a fix rather than a reason not to have made it, and it is
+  named in `test_theme_contrast_floor_css.py` rather than rounded away. The cause is upstream of
+  the link: `deriveSyntaxColors()` computes `--hl-function` at a fixed lightness (45 on a light
+  background, 70 on a dark one) from the palette's `fg` saturation, and 45 is one or two points too
+  light for the three lightest `--bg` values. Moving it moves every `hljs-title` and
+  `hljs-function` in the product with it, so it is a syntax-palette change and not a link change.
+  `Verify:` `--link-fg` clears 4.5:1 against BOTH `--panel` and `--bg` on all sixteen, with the
+  `--hl-*` derivation and the code-block surfaces re-measured in the same pass. — found while
+  closing `B23` — agent:`theme`
+
+- [ ] **B396** **Two colour resolvers in the test suite, and `B22` had to teach both the same
+  thing.** `tests/test_fg_muted_and_backdrop_cascade_css.py` and
+  `tests/test_accent_fallback_semantics_css.py` each carry their own `_rgb`, `_resolve`,
+  `_contrast`, `_distance` and `_themes`, and the second is the narrower of the two — it reads only
+  hex literals out of `:root`, splits `color-mix()` with one regex instead of on balanced parens,
+  and does not recurse into a token's expression. **The narrowness is not a smaller measurement, it
+  is a wrong one.** A token the reader cannot see is absent from the theme dict, so `_resolve`
+  silently takes the `var(--x, <fallback>)` branch and the test measures the fallback on all sixteen
+  palettes: that is how `test_the_supervisor_ladder_still_separates_recovering_from_stop` reported a
+  collision on `claude` and `copper`, two palettes whose values had not moved at all. Both were
+  taught `light-dark()` for `B22` and the second was widened to read `var()` expressions too; a
+  third row will teach them a third time. `Law 14` says find the existing one and extend it — there
+  are two, and the honest fix is one resolver in `tests/helpers/`, imported by both, with the
+  narrower file's assertions re-run against it. `Verify:` one `_resolve` in the suite, and
+  `test_accent_fallback_semantics_css.py`'s eleven tests give the same answers through it. — found
+  while closing `B22` — agent:`theme`
+
+- [ ] **B397** **`research/panel.js:201` builds an icon nothing draws.** `const _closeIcon =
+  chevronIcon({ size: 18 })` has exactly one occurrence in the file: its own declaration. It is one
+  of the 57 sites `B230` moved and one of the 46 `B291` just hid from screen readers, so it has been
+  carried through two rows as if it painted something. Small, and worth a row rather than a silent
+  deletion because the interesting question is which of the panel's four chevron constants it was
+  meant to be — `_vizCollapseIcon` and `_vizExpandIcon` are 12px and `_chevronIcon` is the default
+  10px, and an 18px one suggests a close affordance that was built and never wired, which is the
+  `Re-surface what was built and never wired` shape. `Verify:` either it is wired to the control it
+  was written for, or it is removed and the fixture's 57 becomes 56 with the diff named.
+  — found while closing `B291` — agent:`theme`
+
+- [ ] **B398** **The option `B292` did not take: a server-side glyph table, and a chevron count of
+  zero.** `B292` closed on its second option — the nine chevrons stay in `static/index.html` and a
+  test fails when they stop matching `CHEVRON_POINTS`. That pins the drift; it does not remove the
+  nine literals, and the row's own words are that the first option *"is the only one that makes the
+  count zero"*. It means rendering the shell through a template filter that calls one Python-side
+  glyph table, which needs `routes/` and `app.py` — neither owned by the row — and it has to keep
+  the base orientation DOWN, because fourteen stylesheet rules and six JS handlers rotate a chevron
+  whose base points down and all twenty would compose wrongly otherwise. It also has to not
+  reintroduce a flash, which is the whole cost `B141` paid to remove. Worth doing only if the shell
+  grows more shared glyphs than the chevron; today it is one family and a test. `Verify:` no chevron
+  geometry is spelled in `static/index.html`, the glyph table has one definition shared by Python
+  and `icons.js`, and `B141`'s no-flash test still passes. `Depends:` `B292` (landed). — found while
+  closing `B292` — agent:`theme`
+
+- [ ] **B410** **Three checkers still carry the blanker `B290` removed from twenty test files, and
+  one of them cannot see a comment at all.** Filed 2026-09-16 while closing `B290`. After that row,
+  `re.sub(r"/\*.*?\*/", …, flags=re.S)` survives in exactly three places, all of them
+  `.pantheon/check-*.py` and none of them this worktree's to edit:
+  `check-attachment-language.py:213-214`, `check-fork-names.py:138/:148/:152` and
+  `check-run-statuses.py:126-127`. Each is a census of the same tree the twenty test files census,
+  so each is measuring **6,642 fewer lines than it claims** across `calendar.js`, `notes.js`,
+  `settings.js`, `gallery.js` and `document.js` — and `check-fork-names.py` is the worst of the
+  three, because it also carries `re.sub(r"(?m)//.*$", …)` unanchored, which eats the tail of every
+  line holding a `//` in a string: on `settings.js` alone that form blanks **1,112 live lines**.
+  A checker that reports zero because it read half the file is the failure mode this whole cluster
+  is about. The fix is one line each: `from` the loader that already exists, or — since these are
+  checkers and not tests — import `strip_comments` from `.pantheon/check-specifiers.py` directly,
+  which is where it lives. `tests/test_one_comment_blanker.py`'s `STILL_COPIED` names all three
+  with this row number and **can only shrink**: a second test fails if an entry stops being true,
+  so the allow-list cannot outlive the reason for it. `Verify:` `STILL_COPIED` is empty and the
+  AST scan covers `.pantheon/` with no exceptions; and each of the three checkers' counts is
+  re-measured after conversion, because a count that moves is a defect it could not previously see.
+  `Depends:` `B290` (landed). — found while closing `B290` — agent:`infra2`
+
+- [ ] **B411** **Four ledger claims state a number their own repro command never prints.** Filed
+  2026-09-16 by the rule `B348` built. `check-ledger.py` now runs the checker a claim's `repro`
+  names; where the checker ends its summary with its own verdict the comparison is exact and hard,
+  and where it does not the rule falls back to *"the number the claim states appears somewhere in
+  the output"*. Four claims fail that weaker test and are printed as NOTEs rather than failures:
+  **`tracker`** says *370 rows* and `check-tracker.py` says *376 phase tasks*; **`spdx`** says
+  *1,541 files* and `check-spdx.py` says *1,653*; **`credits`** says *13 licence texts* and
+  `check-licences.py` says *43*; **`fan-out`** says *40, budgeted and shared* against a checker
+  that counts unpaced call sites. They are not all the same defect — `tracker` and `spdx` look like
+  plain staleness, `fan-out` looks like a different metric that happens to share a repro, and
+  `credits` could be either — and that is exactly why they are not corrected here. **A checker that
+  guesses what a number meant is the defect `B348` exists to find**, and writing four numbers in
+  from a checker's output without knowing what each claim was measuring would put the ledger's most
+  quotable figures on a guess. Each needs the person who measured it, or a repro rewritten to
+  name the command that does produce the claim's number. Note the trap for whoever takes this:
+  `tracker`'s figure moves every wave, so pinning it live makes `claims.py` a file every agent must
+  edit — the answer there is probably a repro that prints the row count rather than a claim that
+  restates it. `Verify:` `check-ledger.py` prints no NOTEs, or each remaining one is a claim whose
+  `how` says in words why its number is not its checker's number. `Depends:` `B348` (landed).
+  — found while closing `B348` — agent:`infra2`
+
+- [ ] **B412** **The suite runs `pypdf` 3 and `cryptography` 46 against pins of 6 and 50 — two major
+  versions, not drift.** Filed 2026-09-16 while closing `B325`. That row is about *how many*
+  declared dependencies the test environment is missing and now says so out loud at the end of every
+  run. This is about the two entries in that list where the gap is an **API**, not a patch level:
+  `pypdf` **3.17.4 installed against `pypdf==6.19.0` declared**, and `cryptography` **46.0.7 against
+  `cryptography==50.0.1`**. pypdf renamed its reader and writer API between 3 and 5 and dropped the
+  `PdfFileReader` compatibility layer; cryptography deprecates and removes across majors on a
+  published schedule. So every test touching PDF extraction or key handling is green against a
+  library the image does not ship, and would be green in exactly the same way if the shipped
+  version had removed the call it exercises. This is `Law 9` pointed at the suite: the evidence is
+  about a different library. It is **not** a request to bump the pins — the pins are what the image
+  installs and `B320` resolved them there — it is a request to make the suite's own claim honest,
+  which is either an environment that installs the pinned set or a test-level skip that names the
+  version it needs. `Verify:` `pypdf` and `cryptography` in the environment the suite runs in match
+  `requirements.txt`, or the tests that use them declare the version they were verified against and
+  the run says which one it got. `Depends:` `B325` (landed), `B320` (landed). — found while closing
+  `B325` — agent:`infra2`
+
+- [ ] **B413** **Three test files leave four `MagicMock`s bound inside `routes.*` for the rest of the
+  session.** Filed 2026-09-16 by the reporter `B271` built, which is its first real output. Over the
+  100 test files that touch `sys.modules` — 1,507 tests, 149 s — the per-file sweep names:
+  `tests/test_api_token_routes.py` leaves `routes.api_token_routes.ApiToken`;
+  `tests/test_editor_draft_payload.py` leaves `routes.editor_draft_routes.EditorDraft` and
+  `routes.editor_draft_routes.SessionLocal`; `tests/test_gallery_exif_orientation.py` leaves
+  `routes.gallery.gallery_helpers.GalleryImage`. Every later test in the same process that reaches
+  one of those names measures a stand-in — and a `MagicMock` answers truthily, which is the
+  direction that turns a gate into a pass. That is `B202`'s second shape exactly: the module is
+  real, its `__file__` is real, and four of its attributes are not, so neither the `B18` collection
+  guard nor anything else in the suite had an opinion. **None of the three is failing today**, which
+  is the point — this is a silent coupling waiting for a test that asks one of those names a
+  question. The fix is `monkeypatch.setattr`, which undoes itself, in place of a bare assignment.
+  Each reproduces on its own — `pytest -p no:randomly tests/test_gallery_exif_orientation.py
+  tests/test_the_root_roadmap_explains_itself.py` names the gallery one — and a 125-file run names
+  only two of the three, because pytest imports every test module at collection and another file's
+  module-scope code can take a binding out of view before the next boundary sweep looks. The report
+  is a lower bound.
+  `Verify:` a full-suite run with `--strict-isolation` exits zero. `Depends:` `B271` (landed).
+  — found by the `B271` sweep — agent:`infra2`
+
+- [x] **B420** **React, `immutable` and nine more ship inside `swagger-ui-bundle.js` with no notice
+  anywhere in this repository.** Found and fixed 2026-09-17 by `B339`'s new rule 8, the first time
+  anything read a bundle's own notice record instead of only its module paths. `check-licences.py`
+  rule 7 derived **zero** packages from 1.5 MB of `static/lib/swagger-ui/swagger-ui-bundle.js` —
+  the published dist carries no source-map comments — so the file was not a bundle as far as any
+  check here was concerned, and `INVENTORY`'s "Swagger UI bundle sidecar" entry existed only so
+  rule 4 would not call the sidecar an orphan text. Nothing had ever read it. Inside:
+  `react`, `react-dom`, `scheduler` and `use-sync-external-store` (one MIT text, Meta), `immutable`,
+  `classnames`, `deep-extend`, `fast-json-patch`, `repeat-string`, `safe-buffer`, `buffer` and
+  `ieee754`. MIT requires the notice to travel with redistributed copies and `/docs` redistributes
+  all of them to every user who opens it. **This is `P0-21b` exactly** — that row was fifteen
+  packages inside `html2pdf.bundle.min.js` with four notices — in the one bundle nobody had thought
+  to look at, and it survived `P0-21b`, `B46` and `B330` because each of those looked at bundles
+  something could already read. Two more files fell out of the same pass: `mermaid.min.js` ships
+  `lodash-es` and `cytoscape`, named by esbuild's own `Bundled license information:` block, and
+  `docx.umd.min.js` ships `buffer`, `ieee754` and `string.fromcodepoint`, named by their own legal
+  comments. **Sixteen packages, nine new licence texts, sixteen `CREDITS.md` rows and sixteen
+  `INVENTORY` entries.** `Verify:` **yes** — twelve parametrised tests in
+  `tests/test_bundled_package_notices.py` assert each has a text on disk, a `CREDITS.md` row linking
+  it and a row naming the package; all twelve fail on the tree as it stood, because none of those
+  files existed before today. `Depends:` `B339` (landed, same commit). — found while closing `B339`
+  — agent:`vendored`
+
+- [ ] **B421** **The html2pdf bundle should be three published files, and the change is one line in
+  a file this worktree does not own.** Filed 2026-09-17 while closing `B336`, which costed three
+  options and took (a). This is option (c), and `B336` says plainly that it is the right answer:
+  vendor `html2pdf.js`, `jspdf` and `html2canvas` as three separate published artifacts loaded in
+  order, which keeps every file byte-identical to something a stranger can fetch from a registry
+  **and** makes each version independently bumpable — so jsPDF moves to 4.2.1 (zero advisories,
+  against 4.0.0's nine including one CRITICAL) and DOMPurify to 3.4.15 (zero, against eighteen)
+  without waiting on html2pdf.js to publish a bundle built against them. The blocker is ownership,
+  not difficulty: `static/js/document.js:9426` is `s.src = '/static/lib/html2pdf.bundle.min.js'`, a
+  single-script loader that has to become three in order, and `static/js/**` belonged to another
+  agent in the wave that closed `B336`. **Measure before doing it**: html2pdf.js's non-bundle
+  `dist/html2pdf.min.js` is a webpack build with externals, so which globals it expects (`window.
+  jspdf.jsPDF`? a CommonJS `require`?) is a fact to establish rather than assume, and whether it
+  still needs DOMPurify as a fourth file depends on whether `src/utils.js`'s `DOMPurify.sanitize`
+  call is externalised too. `Verify:` `static/lib/` carries three published files whose hashes
+  resolve against npm, `check-licences.py` rule 8 answers `derived` or `single` for each, and
+  `tests/test_vendored_libraries_still_work.py`'s `exportAsPdf` chain passes unchanged.
+  `Depends:` `B336` (landed). — found while closing `B336` — agent:`vendored`
+
+- [ ] **B422** **A control character in a document makes `exportAsDocx` produce a `.docx` whose XML
+  is not well-formed, at every version of `docx`.** Measured 2026-09-17 while evaluating the docx
+  bump. `static/js/document.js:9698` takes the editor's raw text and hands each line to
+  `new TextRun(...)`; `docx` writes it into `word/document.xml` with only `&`, `<` and `>` escaped.
+  XML 1.0 forbids most C0 control characters outright — they cannot be escaped, only removed — so a
+  vertical tab (`U+000B`), a form feed (`U+000C`) or a `U+0001` anywhere in the document produces a
+  file whose `word/document.xml` **fails to parse**: Python's `minidom` rejects it with *"not
+  well-formed (invalid token)"* and Word reports the document as corrupt. Measured on both docx
+  **8.5.0 and 9.7.1**, so it is not a version question and the bump would not have fixed it. How a
+  control character gets in: a paste from a PDF or a terminal, which is an ordinary thing to do in
+  a document editor. Tab (`U+0009`) and `U+00A0` are fine; the emoji and lone-surrogate cases came
+  back well-formed too, so this is specifically C0 minus tab/LF/CR. **The fix is at the call site,
+  not in the library** — strip or replace the forbidden range before building the runs — which is
+  `static/js/document.js`, not a vendored file. `Verify:` a document containing `U+000B` exports to
+  a `.docx` whose `word/document.xml` parses, and a test drives `exportAsDocx` with one.
+  — found while evaluating `B335`'s docx bump — agent:`vendored`
+
+- [ ] **B423** **Mermaid 12.0.0 changes how every existing diagram looks, and nothing here can
+  measure that.** Filed 2026-09-17 by `B335`, which took 11.17.2 instead. 12.0.0 was published
+  2026-09-10 and fetched and run. **The layout default moves**: after
+  `mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose' })` — Pantheon's
+  own call, `static/js/markdown.js:93` — `mermaidAPI.getConfig().layout` comes back `dagre` on
+  11.17.2 and **`elk` on 12.0.0**, because ELK is now bundled and is the default for flowchart,
+  state, class, entity-relationship, requirement, use-case and agentflow diagrams. Upstream's own
+  words: *"This changes how existing diagrams look."* Restoring the old appearance means
+  `layout: 'dagre'` in that `initialize()` call, and the default `look` moves to `neo` for ten
+  diagram types unless `look: 'classic'` is set beside it — both in `static/js/markdown.js`, which
+  `B335`'s worktree did not own. Two further costs: the browser floor rises to **Safari 17.4 /
+  ES2024**, which for a self-hosted app is a decision about whose phone stops working, and
+  `mermaid.min.js` grows **3.57 MB → 5.58 MB** because the single-file build inlines ELK.
+  **Why it cannot be verified here**: `mermaid.run()` and `render()` rasterise through d3 and need
+  `getBBox` and a live SVG tree, so `tests/test_vendored_bumps_still_render.py` reaches
+  `initialize()` and `parse()` and stops. A layout regression in a seven-day-old major would ship
+  unmeasured, and `Law 1` says that is worse than being behind. The bundled `vscode-*` set is
+  unchanged at 12.0.0 (same three packages, same versions), so `B46`'s derivation survives the bump
+  — that is not the blocker. `Verify:` a browser-driven check that a flowchart, a sequence diagram
+  and a class diagram still render, plus a decision recorded on whether to pin `layout: 'dagre'`
+  and `look: 'classic'` or to accept the new appearance. `Depends:` `B335` (landed).
+  — found while closing `B335` — agent:`vendored`
+
+- [ ] **B424** **Bumping `docx` to 9.7.1 ships forty-four newly visible third-party packages.**
+  Filed 2026-09-17 by `B335`. The bump itself is safe and was measured: 9.7.1 was fetched, verified
+  against the registry's `dist.integrity`, and run through the real `exportAsDocx` — `Document`,
+  `Packer`, `Paragraph`, `TextRun` and `HeadingLevel` are unchanged, and the `word/document.xml`
+  body it emits for Pantheon's paragraph and run shapes is byte-identical to 8.5.0's. It also fixes
+  three OOXML package defects: 8.5.0 omits `mc:Ignorable` from `w:document`, ships no
+  `word/endnotes.xml` while declaring footnotes, and leaves `word/fontTable.xml` as an **orphan
+  part** — content-typed and present in the zip, the target of no relationship from
+  `document.xml.rels`.
+  **What stops it is attribution, not behaviour.** 8.5.0's rollup UMD build leaves no module paths
+  at all; 9.7.1's Vite build leaves `//#region node_modules/<pkg>/` markers for **44** packages —
+  `jszip`, `xml-js`, `sax`, `nanoid`, `hash.js`, `readable-stream`, `stream-browserify`, the
+  `es-*`/`is-*` shim family and the rest. They are in 8.5.0 too; that build simply did not say so,
+  which is `B339`'s defect class one more time. So taking 9.7.1 means forty-four licence texts,
+  forty-four `CREDITS.md` rows and forty-four `INVENTORY` entries before `check-licences.py` rule 7
+  is green again — real work, and not a version bump. `B339`'s rule 8 is what makes this visible
+  rather than silent: the `docx` entry answers `single` today, and
+  `test_rule_8_fails_when_a_single_package_file_turns_out_to_be_a_bundle` pins that a Vite-built
+  replacement fails until the declaration catches up. `Verify:` `static/lib/docx.umd.min.js` is
+  9.7.1 or later, rule 7 finds every package in it declared, and
+  `tests/test_vendored_libraries_still_work.py` still round-trips an export.
+  `Depends:` `B335` (landed), `B339` (landed). — found while closing `B335` — agent:`vendored`
+
+- [ ] **B425** **Pyodide is seventeen months behind on its own line, and the way forward crosses a
+  documented breaking change.** Filed 2026-09-17 by `B335`. `static/lib/pyodide/` is **0.27.5**,
+  published 2025-04-05. The `0.27` line is still maintained — npm's `stable-0.27` tag is **0.27.8**,
+  published 2026-09-16 — and `B335` fixed the comparison so the freshness workflow asks for that tag
+  instead of `dist-tags.latest`, which is 314.0.7 on a CPython-aligned line 0.27.x does not belong
+  to. Zero advisories at every version involved; this is currency.
+  **Why it was not taken.** 0.27.8's own change is *"Fix compatibility of python cli with Node 26"*
+  — the `python` CLI entrypoint, which Pantheon never runs; `static/js/codeRunner.js:140` loads the
+  browser runtime. Getting there crosses **0.27.7's documented breaking change**: the
+  `enableRunUntilComplete` option to `loadPyodide()` defaults to on, which *"makes
+  `run_until_complete` block using stack switching, or crash if stack switching is disabled"*.
+  `codeRunner.js` calls `loadPyodide({ indexURL })` with no options, so a user whose browser lacks
+  JSPI gets a crash where 0.27.5 gave a no-op — in the Run button, which is the feature. Verifying
+  that needs a browser matrix, and the bump is 13 MB of new binaries (`pyodide.asm.wasm` alone is
+  10 MB) in the patch. 0.27.6 and 0.27.7 do carry two real browser fixes — an `asyncio.sleep(0)`
+  memory leak in a WebWorker, and a fatal error when stack switching is on and an async error is
+  raised — so the reason to do this eventually is those, not 0.27.8.
+  `Verify:` `scripts/fetch-pyodide.py --version 0.27.8` run, `MANIFEST.json` re-pinned, and Python
+  in a code block still runs in a browser **with and without** JSPI, or a recorded decision to pass
+  `enableRunUntilComplete: false` at the call site. `Depends:` `B335` (landed).
+  — found while closing `B335` — agent:`vendored`
+
+- [ ] **B426** **`check-licences.py`'s `single` answer is still unfalsifiable against a minifier
+  that strips both module paths and legal comments.** Filed 2026-09-17 while closing `B339`, and it
+  is the residue that row deliberately did not claim to have closed. Rule 8 checks a `single` claim
+  two ways: derivation must find no module paths, and every legal comment in the file must be
+  claimed by an entry. Both are properties a bundler can simply not produce. **`qrcode.min.js` was
+  exactly that file** — esbuild with `--minify`, no `node_modules/` strings, no `/*!` block, and
+  `dijkstrajs` inside it — so a future vendored artifact of the same shape could answer `single`
+  and rule 8 would agree. The `build` answer closes it, and only where somebody chooses to give it:
+  the honest statement is that rule 8 makes a self-built artifact *declarable* and does not make it
+  *detectable*. Two ways forward, neither free. **Refuse the shape**: a vendored script that
+  answers `single` and produces no evidence of its own identity — no version banner, no legal
+  comment, nothing derivable — could be required to answer `build` instead, which would force the
+  question at vendoring time; the cost is that a genuinely plain single-file library with no banner
+  (`mammoth.browser.min.js` and `katex.min.js` are both in the tree today) would have to carry a
+  build record it does not need. **Or compare against upstream**: the `source` in
+  `check-vendored-versions.py` names a registry tarball, so a network job could assert the shipped
+  bytes are byte-identical to a named file inside it, which makes `single` mean "this is upstream's
+  artifact" as a fact rather than a claim — that belongs in
+  `.github/workflows/vendored-freshness.yml` under `Law 16`, not in the offline gate.
+  `Verify:` a vendored script that is secretly a bundle, carrying no module paths and no legal
+  comments, fails `check-licences.py` or the freshness workflow. `Depends:` `B339` (landed).
+  — found while closing `B339` — agent:`vendored`
+
+- [x] **B414** **The `B361` guard was unportable and a test pinned a fact the owner then changed —
+  both found by the same suite run.** Found 2026-09-17 on the merge of `B290`/`B361`. Two failures,
+  and neither was a regression: both were the tree becoming *more* correct.
+  **The drift guard could not pass on the host that builds.** `tests/test_the_working_tree_is_the_
+  bytes_git_has.py` failed on eleven files under `.github/`, `config/` and `licenses/` — pure CRLF,
+  untouched by the merge, each reproducing its blob exactly once carriage returns are stripped. The
+  guard exempted `*.ps1`/`*.bat` as "declared end-of-line conversion" and stopped there, but
+  `.gitattributes:5` is **`* text=auto`**, which means on any native-CRLF checkout **every text
+  file in the repository legitimately differs from its blob**. So the guard as written fails by
+  construction on Windows — which is the machine the Docker image is built on, and therefore the
+  one place it most needed to run. The principled line is the attribute itself: **fail where the
+  attribute says the bytes must not change** (`static/lib/** -text`, from `B362`) and permit a pure
+  end-of-line difference where `text=auto` says conversion is expected. That keeps `B362` caught,
+  keeps any non-EOL difference caught anywhere, and makes the guard mean the same thing on both
+  platforms. The container's own tree was renormalised from the index in the same pass — 20 files,
+  no blob changed.
+  **And `B241`'s test pinned a fact for the third time.** It asserted that `B15`, `B16`, `B22` and
+  `B23` appear in no closed-claim anywhere, with the reasoning that *"no entry has ever said they
+  closed"*. True when written — then the owner said **"patch 'em"**, which unparked all four, and
+  `B22` and `B23` were closed the same day. The test failed on work being right. This is the same
+  shape as `B310` (two counts and a `heads[0]` lookup) and as `B96`'s parametrize table, which had
+  the defect written down as correct: **a test that names today's answer will fail the day the
+  answer changes, and the fix is always to assert the property instead.** The durable claim is not
+  which ids are unclaimed — the owner can unpark any of them tomorrow — it is that **the entry
+  which *ruled* on them did not *claim* them**, which is a fact about one entry's words and cannot
+  go stale. `B15` and `B16` keep the original assertion because they are still open.
+  `Verify:` the drift guard gives the same answer on Linux and on a `core.autocrlf=true` checkout
+  for one commit, and no assertion in the roadmap-claim tests changes value when a parked row is
+  unparked. — found while merging `B290`/`B361` — agent:`integrator`
+
+- [x] **B415** **`B290`'s guard caught a new naive blanker written the same day, by a different
+  agent, in a file the conversion had not reached — and the one it caught was the one legitimate
+  use.** Found 2026-09-17 by the integration suite. `B339`'s new rule 8 in
+  `.pantheon/check-licences.py:139` added `re.compile(r"/\*.*?\*/", re.S)`, and
+  `test_no_new_naive_comment_blanker_appears` — landed hours earlier by `B290` — failed on it.
+  **Both halves of that are worth keeping.** The guard works: two agents ran in parallel, one
+  eliminated a defect class across twenty-two files, the other reintroduced it in a twenty-third,
+  and the only thing that noticed was the integration run. This is the fifth time this session
+  that the merge saw what no worktree could.
+  **And the guard was wrong about this site, which is the more interesting half.** That regex does
+  not blank comments to reach code — it **extracts legal comments as the answer**: `/*! … */` and
+  blocks carrying `@license` or `@preserve`, which is what Terser's `comments: "some"` keeps and
+  therefore the only record of what a minified bundle contains. `B290`'s failure mode is a string
+  literal opening a comment the next `*/` closes, erasing live code; here there is no code being
+  read, and blanking with the shared stripper would **delete the input**. The check asks *"is
+  there a hand-written comment regex here"* and the answer is yes; what it cannot see from a regex
+  literal alone is **which direction the regex runs**.
+  Recorded rather than silenced. `READS_COMMENTS_AS_DATA` sits beside `STILL_COPIED` and is held
+  to the same rule — it names a real site or the test fails, because an exemption nobody can point
+  at is how a suppression outlives the thing it excused, which is the defect class this tracker
+  keeps finding (`D-2026-09-16-01` is the same shape done right). The residual risk is named, not
+  waved: a string literal containing `/*! @license Foo */` inside a bundle would be read as a
+  notice for a package that is not there — a false **credit** rather than erased code, and `B426`
+  is the row for it. `Verify:` a new hand-written comment blanker fails, and an exemption that
+  stops being true fails too. — found while merging `B339` — agent:`integrator`

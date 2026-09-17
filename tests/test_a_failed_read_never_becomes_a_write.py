@@ -22,8 +22,12 @@ not which helper was called, so the guard can be reimplemented without
 rewriting the evidence that it works.
 """
 
+import contextlib
+import importlib.util
+import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -31,6 +35,7 @@ from pathlib import Path
 import pytest
 
 _REPO = Path(__file__).resolve().parent.parent
+_CONFIG_WRITES = _REPO / ".pantheon" / "check-config-writes.py"
 
 CORRUPT = '{"real": "data", "and then'
 
@@ -397,78 +402,205 @@ def test_every_config_write_in_the_tree_is_classified():
     assert "PROBLEMS 0" in proc.stdout
 
 
-def _check() -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, str(_REPO / ".pantheon" / "check-config-writes.py")],
-        cwd=str(_REPO), capture_output=True, text=True, timeout=120,
-    )
+# ── driving the checker without editing the tree it is checking ───────────────
+#
+# `B270`, and `B221` before it. The three tests below prove `check-config-
+# writes.py` bites by showing it a defect. They used to do that by writing the
+# defect into `src/settings.py` and `.pantheon/check-config-writes.py` and
+# putting the originals back in a `finally:` — and a `finally:` does not run
+# when the process is killed. Two of those three windows were open over a
+# SHIPPED module, and the third removed `preserve_unreadable=True` from the real
+# `atomic_write_json(SETTINGS_FILE, …)` call: a kill inside that window leaves
+# the settings-clobbering defect `P3-16` closed sitting in the working tree,
+# with nothing to say it is there. This container has killed this suite twice
+# for memory (exit 137, one silent death at 38%), so the window is not
+# theoretical, and `Law 19` says a suite run is evidence about the tree it
+# started with.
+#
+# The remedy is `B221`'s and is lifted rather than re-invented (`Law 14`):
+# patch the LOADED MODULE, never the file on disk. Where the defect has to be
+# in source — the checker parses Python with `ast`, so a string will not do —
+# the source it parses is a MIRROR of the tree in `tmp_path`, built once and
+# copied per test. `tmp_path` is outside the repository, so a kill there costs
+# nothing.
 
 
-def test_a_new_config_file_nobody_has_thought_about_fails_the_check():
+@pytest.fixture(autouse=True)
+def _the_tree_under_test_is_never_written_to(monkeypatch):
+    """No test in this file may write into the repository it is measuring.
+
+    Two halves, because they catch different failures: the intercept stops the
+    window existing at all, and the digest comparison afterwards catches any
+    route the intercept does not know about — a `subprocess`, an `os.replace`.
+    That is the honest limit of an intercept written against three methods.
+    """
+    watched = {p: p.read_bytes() for p in
+               (_REPO / "src" / "settings.py", _CONFIG_WRITES)}
+    real_write_text = Path.write_text
+    real_write_bytes = Path.write_bytes
+    real_open = Path.open
+
+    # TRACKED files, not everything under the repository root. Several tests in
+    # this file legitimately write runtime artefacts into `data/`, which is
+    # ignored and is not evidence about anything. What a kill must not be able
+    # to leave behind is a modified file that `git status` would report.
+    tracked = {
+        (_REPO / rel).resolve()
+        for rel in subprocess.run(["git", "ls-files"], cwd=str(_REPO),
+                                  capture_output=True, text=True,
+                                  check=True).stdout.split()
+    }
+
+    def _inside_repo(path) -> bool:
+        try:
+            return Path(path).resolve() in tracked
+        except OSError:  # pragma: no cover - unresolvable path
+            return False
+
+    def _refuse(path):
+        raise AssertionError(
+            f"B270: a test tried to write {path} — a TRACKED file in the tree "
+            "this suite is evidence about. A kill does not run a `finally:`, so "
+            "a write-then-restore leaves the repository mutated. Drive the "
+            "mirror in `tmp_path`, or patch the loaded module through "
+            "`monkeypatch`.")
+
+    def _guarded_write_text(self, *args, **kwargs):
+        if _inside_repo(self):
+            _refuse(self)
+        return real_write_text(self, *args, **kwargs)
+
+    def _guarded_write_bytes(self, *args, **kwargs):
+        if _inside_repo(self):
+            _refuse(self)
+        return real_write_bytes(self, *args, **kwargs)
+
+    def _guarded_open(self, mode="r", *args, **kwargs):
+        if any(c in mode for c in "wxa+") and _inside_repo(self):
+            _refuse(self)
+        return real_open(self, mode, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", _guarded_write_text)
+    monkeypatch.setattr(Path, "write_bytes", _guarded_write_bytes)
+    monkeypatch.setattr(Path, "open", _guarded_open)
+    yield
+    monkeypatch.undo()
+    for path, before in watched.items():
+        assert path.read_bytes() == before, (
+            f"B270: {path.relative_to(_REPO)} is not what this test started "
+            f"with. A test rewrote it and the restore did not hold.")
+
+
+def _load_checker(root: Path):
+    """The real checker, pointed at `root`. No subprocess, no second copy."""
+    spec = importlib.util.spec_from_file_location("config_writes_checker",
+                                                  _CONFIG_WRITES)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.ROOT = root
+    return module
+
+
+def _run(module) -> tuple:
+    """`(exit code, stdout)` from `main()`, in process."""
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = module.main()
+    return code, buffer.getvalue()
+
+
+@pytest.fixture(scope="module")
+def _mirror_source(tmp_path_factory):
+    """A git repo in `tmp_path` holding every Python file the checker reads.
+
+    Built once: `git ls-files` plus 361 small files is cheap, but not 361 files
+    three times.
+    """
+    base = tmp_path_factory.mktemp("config_writes_mirror") / "tree"
+    listed = subprocess.run(["git", "ls-files", "*.py"], cwd=str(_REPO),
+                            capture_output=True, text=True, check=True).stdout.split()
+    for rel in listed:
+        src = _REPO / rel
+        if not src.exists():
+            continue
+        dst = base / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, dst)
+    subprocess.run(["git", "init", "-q"], cwd=str(base), check=True,
+                   capture_output=True)
+    subprocess.run(["git", "add", "-A"], cwd=str(base), check=True,
+                   capture_output=True)
+    return base
+
+
+@pytest.fixture()
+def mirror(_mirror_source, tmp_path):
+    """A private copy of the mirror, so one test's defect is not another's."""
+    tree = tmp_path / "tree"
+    shutil.copytree(_mirror_source, tree)
+    return tree
+
+
+def test_the_mirror_is_the_tree_and_the_checker_passes_on_it(mirror):
+    """The control. Every assertion below is `the mirror plus one defect`, and
+    that is only evidence if the mirror without the defect is clean."""
+    code, out = _run(_load_checker(mirror))
+    assert code == 0, out
+    assert "PROBLEMS 0" in out
+    real = subprocess.run(
+        [sys.executable, str(_CONFIG_WRITES)], cwd=str(_REPO),
+        capture_output=True, text=True, timeout=120)
+    assert real.stdout.split("·")[0] == out.split("·")[0], (
+        "the mirror holds a different set of write sites from the tree")
+
+
+def test_a_new_config_file_nobody_has_thought_about_fails_the_check(mirror):
     # The rule that makes this a checker rather than a list. Adding a store and
     # forgetting the question is exactly how the ten guarded files below got
     # into the state this row found them in.
-    target = _REPO / "src" / "settings.py"
-    original = target.read_text(encoding="utf-8")
-    try:
-        target.write_text(
-            original
-            + "\n\ndef _p3_16_probe(data):\n"
-              "    from core.atomic_io import atomic_write_json\n"
-              "    atomic_write_json(A_FILE_NOBODY_CLASSIFIED, data)\n",
-            encoding="utf-8",
-        )
-        proc = _check()
-        assert proc.returncode == 1
-        assert "nothing has classified" in proc.stdout
-    finally:
-        target.write_text(original, encoding="utf-8")
-    assert _check().returncode == 0, "the tree was left modified"
+    target = mirror / "src" / "settings.py"
+    target.write_text(
+        target.read_text(encoding="utf-8")
+        + "\n\ndef _p3_16_probe(data):\n"
+          "    from core.atomic_io import atomic_write_json\n"
+          "    atomic_write_json(A_FILE_NOBODY_CLASSIFIED, data)\n",
+        encoding="utf-8",
+    )
+    code, out = _run(_load_checker(mirror))
+    assert code == 1
+    assert "nothing has classified" in out
 
 
-def test_a_classification_with_no_write_behind_it_fails_the_check():
+def test_a_classification_with_no_write_behind_it_fails_the_check(mirror):
     # A map that outlives the code it describes reads as coverage and is not.
-    checker = _REPO / ".pantheon" / "check-config-writes.py"
-    original = checker.read_text(encoding="utf-8")
-    marker = "STORES: dict[tuple[str, str], tuple[str, str]] = {"
-    assert marker in original
-    try:
-        checker.write_text(
-            original.replace(
-                marker,
-                marker + '\n    ("src/settings.py", "A_FILE_THAT_WENT_AWAY"): (\n'
-                         '        GUARDED, "left behind"),',
-                1,
-            ),
-            encoding="utf-8",
-        )
-        proc = _check()
-        assert proc.returncode == 1
-        assert "no write there any more" in proc.stdout
-    finally:
-        checker.write_text(original, encoding="utf-8")
-    assert _check().returncode == 0, "the tree was left modified"
+    # `STORES` is data on the loaded module, so this one needs no source at all.
+    module = _load_checker(mirror)
+    module.STORES[("src/settings.py", "A_FILE_THAT_WENT_AWAY")] = (
+        module.GUARDED, "left behind")
+    code, out = _run(module)
+    assert code == 1
+    assert "no write there any more" in out
 
 
-def test_the_checker_fails_on_a_guarded_store_that_drops_its_guard(tmp_path):
+def test_the_checker_fails_on_a_guarded_store_that_drops_its_guard(mirror):
     # A checker nobody has watched fail is a checker that might not check.
-    checker = (_REPO / ".pantheon" / "check-config-writes.py").read_text(encoding="utf-8")
-    target = _REPO / "src" / "settings.py"
+    target = mirror / "src" / "settings.py"
     original = target.read_text(encoding="utf-8")
     hobbled = original.replace(
         "atomic_write_json(SETTINGS_FILE, settings, indent=2, preserve_unreadable=True)",
         "atomic_write_json(SETTINGS_FILE, settings, indent=2)",
         1,
     )
-    assert hobbled != original
-    try:
-        target.write_text(hobbled, encoding="utf-8")
-        proc = subprocess.run(
-            [sys.executable, str(_REPO / ".pantheon" / "check-config-writes.py")],
-            cwd=str(_REPO), capture_output=True, text=True, timeout=120,
-        )
-        assert proc.returncode == 1
-        assert "does not pass preserve_unreadable=True" in proc.stdout
-    finally:
-        target.write_text(original, encoding="utf-8")
-    assert "PROBLEMS" in checker
+    assert hobbled != original, "the real write no longer looks like this"
+    target.write_text(hobbled, encoding="utf-8")
+    code, out = _run(_load_checker(mirror))
+    assert code == 1
+    assert "does not pass preserve_unreadable=True" in out
+
+
+def test_the_repository_copy_of_settings_still_carries_the_guard():
+    """The assertion the three tests above used to make by accident, now made
+    on purpose: whatever they do to a mirror, the shipped file is guarded."""
+    source = (_REPO / "src" / "settings.py").read_text(encoding="utf-8")
+    assert ("atomic_write_json(SETTINGS_FILE, settings, indent=2, "
+            "preserve_unreadable=True)") in source

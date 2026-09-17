@@ -24,6 +24,7 @@ import pathlib
 import re
 
 import pytest
+from tests.helpers.source_text import blank, blank_text  # B290
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
@@ -44,15 +45,11 @@ UNREAD_BY_DESIGN: dict[str, str] = {}
 
 
 def _strip_css_comments(text):
-    return re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
+    return blank_text(text, "css")
 
 
 def _strip_js_comments(text):
-    # Block comments, then line comments. Good enough for the call sites this
-    # walks; it errs towards deleting, which can only cost a finding, never
-    # invent one.
-    text = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
-    return re.sub(r"(?m)^\s*//.*$", " ", text)
+    return blank_text(text)
 
 
 def _blocks(html, tag):

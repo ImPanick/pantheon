@@ -529,6 +529,37 @@ else:
 os.makedirs(STATIC_DIR, exist_ok=True)
 
 
+# `B262`. Every document under `static/` that a **route** serves, and the route
+# that serves it. Three handlers below read their template path out of this
+# table and `_RevalidatingStatic` reads the same table, so "which pages does a
+# route own?" is answered in one place instead of four (`Law 13`). A page added
+# to a route without an entry here is a page the route cannot find, which is
+# the direction the drift has to fail in.
+#
+# **Why the mount has to know.** `AUTH_EXEMPT_PREFIXES` contains `/static` and
+# has to: the login page's stylesheet, its modules and its fonts all load from
+# there before anyone is logged in. `static/index.html` simply lived inside that
+# exemption, so with `AUTH_ENABLED=true` measured 2026-09-16 against the real
+# app: `GET /` was `302 → /login` and `GET /static/index.html` was **200 with
+# all 292,260 bytes** of the app shell; `/static/login.html` was 200 as well.
+# Not a data bypass — every call the shell makes is a separate request
+# `AuthMiddleware` still gates — but the whole frontend, every panel and every
+# endpoint path its modules fetch, handed to an unauthenticated port.
+ROUTE_OWNED_STATIC_PAGES = {
+    "index.html": "/",
+    "login.html": "/login",
+    # Not shipped in this build and never has been (`B140`, `B210`). The entry
+    # is here so that if a deployment drops the sandbox page in, the one URL
+    # that serves it is still the route — not the mount, and not both.
+    "backgrounds.html": "/backgrounds",
+}
+
+
+def route_owned_page(filename: str) -> str:
+    """Absolute path of a `static/` document a route serves (`B262`)."""
+    return abs_join(STATIC_DIR, filename)
+
+
 class _RevalidatingStatic(StaticFiles):
     """Serve static assets normally, but force the browser to REVALIDATE
     source files (.js/.css/.html) on every load instead of serving a stale
@@ -563,6 +594,48 @@ class _RevalidatingStatic(StaticFiles):
     """
 
     async def get_response(self, path, scope):
+        """Send a client asking for a route-owned document to that route.
+
+        **`B262`.** `index.html` and `login.html` are templates the app renders
+        through `serve_html_with_nonce`; a raw second copy of them reachable at
+        `/static/…` is the defect, and the auth bypass is only its first
+        consequence. The second is `B120`: `sw.js` narrowed its navigation
+        handler precisely so a `/static/*.html` navigation is never answered
+        with the app shell, and the shell was sitting at a `/static/*.html`
+        URL — so "Add to Home Screen" from there installed a PWA whose launch
+        URL the worker holds no document for.
+
+        **A redirect and not a 404** (`Law 1`). The file is on disk and a 404
+        would be a lie about that; nothing is taken away, the bytes are still
+        reachable from this URL, they just arrive from the route that owns
+        them and therefore through the gate that route is behind. That is also
+        what keeps the fix from touching the rest of the mount: three
+        filenames are redirected and every other byte under `/static` — the
+        stylesheet, the modules, the fonts, the icons, the two `*-variants`
+        prototypes `B120` and `B122` both require to keep reaching the
+        network — is served exactly as before, unauthenticated, because the
+        login page needs all of it *while logged out*.
+
+        **302 and not 301**: a permanent redirect is cached by browsers until
+        they are cleared, so it would outlive the decision. This one is
+        reversible by redeploying.
+
+        `path` is what `StaticFiles.get_path` produced — `os.path.normpath` of
+        the URL's remainder — so `/static/./index.html`, `/static//index.html`
+        and `/static/index.html/` all arrive here as `index.html`. Matched
+        casefolded because a case-insensitive filesystem (macOS, Windows)
+        serves `INDEX.HTML` out of `index.html`, and a rule that guards an
+        auth boundary may not be the one thing on the path that is
+        case-sensitive.
+        """
+        owner = ROUTE_OWNED_STATIC_PAGES.get(path.replace(os.sep, "/").casefold())
+        # Only what a mount answers at all. `StaticFiles.get_response` refuses
+        # anything but GET and HEAD with a 405, and redirecting a POST instead
+        # would be this rule quietly widening the methods the mount accepts.
+        if owner is not None and scope.get("method") in ("GET", "HEAD"):
+            return RedirectResponse(
+                url=with_asgi_root_path(scope, owner), status_code=302,
+            )
         resp = await super().get_response(path, scope)
         if path.endswith((".js", ".css", ".html")):
             resp.headers["Cache-Control"] = "no-cache"
@@ -989,7 +1062,9 @@ app.include_router(setup_companion_routes())
 
 @app.get("/")
 async def serve_index(request: Request):
-    static_path = abs_join(BASE_DIR, "static/index.html")
+    # `B262`: the path comes from `ROUTE_OWNED_STATIC_PAGES`, the same table
+    # the `/static` mount reads to know this document has a route.
+    static_path = route_owned_page("index.html")
     if os.path.exists(static_path):
         return serve_html_with_nonce(request, static_path)
     # No static bundle — fall back to a root-level index.html if one is shipped.
@@ -1037,7 +1112,36 @@ async def serve_library(request: Request):
 
 @app.get("/backgrounds")
 async def serve_backgrounds(request: Request):
-    """Sandbox page for prototyping background effects.
+    """The background sandbox page is not shipped in this build.
+
+    A deployment that drops `static/backgrounds.html` in is served it here.
+    Nothing in this repository ships that file, so this route answers 404 and
+    names what is missing.
+    \f
+    **`B210`.** This docstring opened with *"Sandbox page for prototyping
+    background effects"* until 2026-09-16, and FastAPI publishes a route's
+    docstring as its `description` in `/openapi.json` — so the sentence was
+    not an internal note, it was a served claim, rendered in the API browser
+    at `/docs` and read by `src/tools/system.py`'s endpoint discovery. It
+    described a page that `git log --all -- static/backgrounds.html` finds in
+    **none** of this repository's 167 commits and no deletion commit names.
+    `Law 1` protects a behaviour that exists; a claim that something exists
+    when it never has is not a behaviour, it is a false statement, and the
+    fix for a false statement is to correct it.
+
+    Writing the page was the other option and was declined. The two surviving
+    prototypes of this family — `static/wave-variants.html` and
+    `static/whirlpool-variants.html` — say in their own first comment that
+    they are developer sandboxes the app does not link to, each a single
+    self-contained inline block with its own copy of the styling. A third one
+    for the seven canvas animators in `static/js/theme.js` would either copy
+    them, which `D-2026-08-26-03` makes worse than having no sandbox at all
+    (a copy that drifts from the protected originals), or import the real
+    module, which is a new served document on a route, an eleventh entry in a
+    precache list `B57` derives, and a page to keep in step forever — for a
+    tool with no user outside development. If someone wants it later, this
+    route serves the page the moment the file exists — nothing has to change
+    here for that.
 
     `B140`. The page is **optional and this build does not ship it** —
     `static/backgrounds.html` is in no commit of this repository, no page or
@@ -1057,9 +1161,11 @@ async def serve_backgrounds(request: Request):
     so with `AUTH_ENABLED=true` `AuthMiddleware` gates it like any other page —
     and with auth off anyone who can reach the app can reach this. Either way a
     reply from here must not hand out the deployment's absolute paths.
-    Restoring the page itself is a product decision and is filed as `B210`.
+    Whether to write the page at all was the product decision `B140` left
+    open; `B210` closed it above, as "not shipped, and the documents that said
+    otherwise now say so".
     """
-    page = abs_join(BASE_DIR, "static/backgrounds.html")
+    page = route_owned_page("backgrounds.html")
     if not os.path.isfile(page):
         raise HTTPException(404, "static/backgrounds.html is not shipped in this build")
     return serve_html_with_nonce(request, page)
@@ -1068,7 +1174,7 @@ async def serve_backgrounds(request: Request):
 async def serve_login(request: Request):
     if not AUTH_ENABLED:
         return RedirectResponse(url="/", status_code=302)
-    return serve_html_with_nonce(request, abs_join(BASE_DIR, "static/login.html"))
+    return serve_html_with_nonce(request, route_owned_page("login.html"))
 
 
 # ========= API BROWSER (`B212`) =========
@@ -1103,7 +1209,9 @@ async def serve_login(request: Request):
 #     `'unsafe-eval'`. Both would mean widening the policy, and the policy does
 #     not widen. So `/redoc` keeps its route and answers honestly — the
 #     `B140` shape — instead of shipping 1.1 MB under a policy that refuses
-#     part of it. Vendoring it properly is filed as `B261`.
+#     part of it. `B261` weighed vendoring it anyway and decided against:
+#     one API browser is enough, the 404 is the answer and not a placeholder,
+#     and the reasoning is in `serve_redoc`'s own docstring below.
 
 
 def _swagger_docs_html(request: Request) -> str:
@@ -1164,19 +1272,51 @@ async def serve_swagger_ui_oauth2_redirect(request: Request):
 
 @app.get("/redoc", include_in_schema=False)
 async def serve_redoc(request: Request):
-    """ReDoc is not vendored in this build, and this says so instead of
-    serving a blank page that names three hosts.
+    """This app ships one API browser, and it is at `/docs`.
 
-    The route is **not removed** (`Law 1`): a build that vendors ReDoc serves
-    it from here, and until then the reply names what to use instead. Same
-    shape as `GET /backgrounds` (`B140`) — the route stays, the answer becomes
-    honest. `/docs` is the same schema, rendered by a bundle this app ships.
+    `/redoc` is kept as a route so a build that vendors ReDoc serves it from
+    here, and answers 404 naming `/docs` until one does.
+    \f
+    **`B261` decided it, 2026-09-16: one API browser is enough.** ReDoc did
+    work at the fork baseline — its only script is external and `script-src`
+    named `cdn.jsdelivr.net` then — and `P16-07` removed that host for
+    Pyodide's sake and took ReDoc with it without noticing. `B212` measured
+    why it cannot simply be restored, in the published bundle:
+    `redoc.standalone.js` builds its search index in
+    `new Worker(URL.createObjectURL(new Blob(…)))`, which `default-src 'self'`
+    refuses through the `worker-src` → `child-src` fallback, and it carries an
+    Ajv `new Function(…)` path that needs `'unsafe-eval'`.
+
+    **The two ways back were both weighed and both declined.**
+
+    *Widen the policy.* Not negotiable and not proposed. `'unsafe-eval'` is in
+    `.pantheon/FORBIDDEN.md` Part 2. `worker-src 'self' blob:` scoped to this
+    one response is the smaller of the two and is still a real loosening: a
+    `blob:` worker is the standard way a script that has got onto a page runs
+    code the policy did not hash, and this app's `script-src` is
+    `'self' 'wasm-unsafe-eval'` plus per-document `'sha256-…'` sources
+    precisely so that nothing unhashed runs. Spending that on a second
+    renderer of a schema `/docs` already renders is a bad trade at any price.
+
+    *Vendor it and measure whether the worker is reachable.* Whether ReDoc
+    needs the worker to render a spec — it may be search-only — and whether
+    the Ajv path is dead in the standalone build cannot be answered by reading
+    the bundle; it needs a browser, and no agent in this project has one.
+    "Ship 1.1 MB of third-party JavaScript, then find out in production which
+    half of it the policy refuses" is not a measurement, and a half-working
+    API browser is worse than an honest 404 because its failure is silent.
+
+    **What is lost is small and is named.** ReDoc is a three-pane read-only
+    renderer of the same `/openapi.json` that `/docs` renders interactively,
+    and `/docs` is vendored, served from this origin, and hashed. A reader who
+    wants ReDoc's layout can point their own copy at `/openapi.json`.
     """
     raise HTTPException(
         404,
-        "ReDoc is not vendored in this build — its search worker and its Ajv "
-        "code path need CSP allowances this app does not grant (B212). The "
-        "API browser is at /docs and the schema is at /openapi.json.",
+        "This build ships one API browser and it is at /docs. ReDoc is not "
+        "vendored: it renders its search index in a blob: worker and carries "
+        "a new Function() code path, and this app's Content-Security-Policy "
+        "grants neither. The same schema is at /openapi.json.",
     )
 
 

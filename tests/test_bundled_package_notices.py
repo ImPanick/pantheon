@@ -302,3 +302,318 @@ def test_the_bundle_list_is_derived_and_not_written_down():
         "static/lib/html2pdf.bundle.min.js",
         "static/lib/mermaid.min.js",
     }, sorted(found)
+
+
+# ── B339: how this repository knows what is inside a bundle ────────────────
+#
+# Rule 7 had exactly one way of looking inside a file — `node_modules/` paths —
+# and no opinion at all about a file it could not look inside. So a bundler that
+# does not leave module paths made a bundle indistinguishable from an ordinary
+# one-library file, and `dijkstrajs` shipped inside `qrcode.min.js` undeclared
+# from before the fork until `B337` rebuilt the file to find out.
+#
+# Rule 8 is the fix: every vendored script says HOW its contents are known, and
+# the answer is checked against the bytes. The tests below are what keep it able
+# to fail. They run against the real tree, because the claims are about this
+# tree — the mutation half lives in `tests/test_licence_alignment.py`, whose
+# fixture now keeps the real script bytes for exactly this reason.
+
+def _licences():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "_check_licences_r8", ROOT / ".pantheon" / "check-licences.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_every_vendored_script_says_how_its_contents_are_known():
+    """No default. A vendored script whose entry answers nothing fails, which
+    is what stops the next esbuild, rollup or Vite artifact arriving the way
+    `qrcode.min.js` did."""
+    mod = _licences()
+    scripts = [f for f in mod.tracked()
+               if pathlib.Path(f).suffix.lower() in mod._SCRIPT_SUFFIXES]
+    assert scripts, "no vendored scripts found — the derivation broke"
+    for rel in scripts:
+        owners = [e for e in mod.INVENTORY if e.matches(rel)]
+        assert owners, f"{rel} is declared by no entry (rule 1 owns this)"
+        assert owners[0].contents in mod.CONTENTS_ANSWERS, (
+            f"{rel} ships under {owners[0].name!r}, which does not say how its "
+            f"contents are known"
+        )
+
+
+def test_the_esbuild_notice_block_is_read_and_names_real_packages():
+    """`B339`'s direct answer to "esbuild strips module paths".
+
+    It strips them and then appends its own `Bundled license information:`
+    block naming every module it lifted a legal comment from. That block is a
+    record the build produced, and rule 7 could not read it — which is how
+    `cytoscape` and `lodash-es` sat inside `mermaid.min.js` with no notice
+    anywhere in this repository until 2026-09-17.
+    """
+    mod = _licences()
+    blob = MERMAID.read_bytes().decode("utf-8", "replace")
+    found = mod.esbuild_packages(blob)
+    assert found >= {"lodash-es", "cytoscape", "dompurify"}, sorted(found)
+    declared = {pkg for e in mod.INVENTORY for pkg in e.bundled}
+    assert found <= declared, sorted(found - declared)
+
+
+def test_the_swagger_sidecar_is_read_and_every_notice_is_claimed():
+    """`P0-21b` again, in the one bundle nobody had looked at.
+
+    `swagger-ui-bundle.js` carries no module paths at all — rule 7 derived zero
+    packages from 1.5 MB — so it was not a bundle as far as anything here was
+    concerned. It points at its own extracted sidecar from inside its bytes,
+    and following that pointer found React, `immutable`, `classnames`,
+    `deep-extend`, `fast-json-patch`, `repeat-string`, `safe-buffer`, `buffer`
+    and `ieee754` shipping with no notice anywhere.
+    """
+    mod = _licences()
+    bundle = ROOT / "static" / "lib" / "swagger-ui" / "swagger-ui-bundle.js"
+    blob = bundle.read_bytes().decode("utf-8", "replace")
+    assert not mod.bundled_packages(bundle), (
+        "swagger-ui-bundle.js now carries module paths — rule 7 can read it, "
+        "and this entry should say `derived`"
+    )
+    name = mod.sidecar_name(blob)
+    assert name == "swagger-ui-bundle.js.LICENSE.txt", name
+    blocks = mod.notice_blocks(
+        (ROOT / "licenses" / name).read_text(encoding="utf-8", errors="replace"))
+    assert len(blocks) >= 12, len(blocks)
+    for notice in blocks:
+        assert mod._claimed_by(notice, mod.INVENTORY), notice[:160]
+
+
+@pytest.mark.parametrize("pkg,text", [
+    ("React", "react-MIT-LICENSE.txt"),
+    ("Immutable.js", "immutable-MIT-LICENSE.txt"),
+    ("classnames", "classnames-MIT-LICENSE.txt"),
+    ("deep-extend", "deep-extend-MIT-LICENSE.txt"),
+    ("fast-json-patch", "fast-json-patch-MIT-LICENSE.txt"),
+    ("repeat-string", "repeat-string-MIT-LICENSE.txt"),
+    ("safe-buffer", "safe-buffer-MIT-LICENSE.txt"),
+    ("buffer", "buffer-MIT-LICENSE.txt"),
+    ("ieee754", "ieee754-BSD-3-Clause.txt"),
+    ("Lodash", "lodash-MIT-LICENSE.txt"),
+    ("Cytoscape", "cytoscape-MIT-LICENSE.txt"),
+    ("string.fromcodepoint", "string.fromcodepoint-MIT-LICENSE.txt"),
+])
+def test_the_packages_rule_8_found_have_a_text_and_a_credits_row(pkg, text):
+    """**Fails on the tree as it stood** (`Law 9`): none of these twelve had a
+    licence text or a `CREDITS.md` row before 2026-09-17, and React — four
+    packages of it — ships inside `/docs` in a repository about to go public."""
+    body = ROOT / "licenses" / text
+    assert body.is_file(), f"licenses/{text} is missing"
+    assert f"licenses/{text}" in CREDITS, (
+        f"no CREDITS.md row links licenses/{text}")
+    lines = _credit_lines(text)
+    assert lines, text
+    assert any(pkg.split()[0] in ln for ln in lines), (pkg, lines)
+
+
+def test_a_single_package_claim_is_checked_against_the_files_own_notices():
+    """The half that makes `single` mean something.
+
+    `docx.umd.min.js` is upstream's rollup UMD build and leaves no module
+    paths, so a `single` claim would otherwise be unfalsifiable. It carries
+    three legal comments that are not docx's — `ieee754`, `buffer` and
+    `string.fromcodepoint` — and rule 8 requires each to be claimed by an
+    entry. That is what turns "this is just one library" from an assertion into
+    something the file can contradict.
+    """
+    mod = _licences()
+    docx = ROOT / "static" / "lib" / "docx.umd.min.js"
+    blocks = mod.notice_blocks(docx.read_bytes().decode("utf-8", "replace"))
+    assert len(blocks) >= 3, blocks
+    for notice in blocks:
+        claimers = mod._claimed_by(notice, mod.INVENTORY)
+        assert claimers, notice[:160]
+
+
+# Rule 8's five answers, each broken in a throwaway copy of the tree. A rule
+# that cannot fail is the same as no rule — the lesson
+# `tests/test_licence_alignment.py` was written for, applied to the rule next
+# door. The fixture keeps the real script bytes, because every claim rule 8
+# makes is about bytes.
+
+@pytest.fixture
+def repo(tmp_path):
+    import shutil
+    import subprocess
+
+    dst = tmp_path / "repo"
+    dst.mkdir()
+    for rel in ("CREDITS.md", "NOTICE", "README.md"):
+        if (ROOT / rel).is_file():
+            shutil.copy2(ROOT / rel, dst / rel)
+    for rel in ("licenses", ".pantheon", "static/lib", "static/fonts",
+                "static/icons"):
+        src = ROOT / rel
+        if not src.is_dir():
+            continue
+        (dst / rel).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(src, dst / rel,
+                        ignore=shutil.ignore_patterns("*.woff2", "*.wasm",
+                                                      "*.zip"))
+        for f in src.rglob("*"):
+            if f.is_file() and f.suffix in (".woff2", ".wasm", ".zip"):
+                out = dst / f.relative_to(ROOT)
+                out.parent.mkdir(parents=True, exist_ok=True)
+                out.write_bytes(b"")
+    (dst / "library").mkdir(exist_ok=True)
+    (dst / "library" / "README.md").write_text("stand-in\n", encoding="utf-8")
+    subprocess.run(["git", "init", "-q"], cwd=dst, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=dst, check=True)
+    return dst
+
+
+def check(repo):
+    import subprocess
+    import sys
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    return subprocess.run(
+        [sys.executable, str(repo / ".pantheon" / "check-licences.py"),
+         "--quiet"], cwd=repo, capture_output=True, text=True)
+
+
+def test_the_rule_8_fixture_starts_clean(repo):
+    """Every mutation below is measured against this passing."""
+    r = check(repo)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_rule_8_fails_when_a_bundles_contents_stop_being_readable(repo):
+    """The alarm, driven. This is `B339` in one test: a bundle whose module
+    paths went away is a bundle nothing can see inside, and before rule 8 that
+    was silence rather than a failure.
+
+    The mutation replaces the html2pdf bundle — declared `derived` — with bytes
+    carrying no module paths, which is exactly what happened when `qrcode.min.js`
+    was built with esbuild.
+    """
+    target = repo / "static" / "lib" / "html2pdf.bundle.min.js"
+    target.write_text(
+        "/*! For license information please see nothing.txt */\n"
+        "window.html2pdf=function(){};\n", encoding="utf-8")
+    r = check(repo)
+    assert r.returncode == 1, r.stdout
+    assert "NOT DERIVED" in r.stdout, r.stdout
+    assert "html2pdf.bundle.min.js" in r.stdout, r.stdout
+
+
+def test_rule_8_fails_when_a_vendored_script_answers_nothing(repo):
+    """No default. A new vendored script arrives the way every one of them has
+    arrived — a copy dropped into `static/lib/` to remove a network call — and
+    rule 1 makes somebody write its licence down. Rule 8 makes them write down
+    how anybody is to know what is *inside* it."""
+    (repo / "static" / "lib" / "newthing.min.js").write_text(
+        "// a library somebody vendored\n", encoding="utf-8")
+    path = repo / ".pantheon" / "check-licences.py"
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace(
+        "INVENTORY = [",
+        'INVENTORY = [\n    Entry("newthing", ["static/lib/newthing.min.js"], '
+        '"MIT",\n          None, None),', 1), encoding="utf-8")
+    r = check(repo)
+    assert r.returncode == 1, r.stdout
+    assert "NO CONTENTS" in r.stdout, r.stdout
+    assert "newthing.min.js" in r.stdout, r.stdout
+
+
+def test_rule_8_fails_when_an_esbuild_bundle_loses_its_notice_block(repo):
+    """`mermaid.min.js` answers `esbuild`, and that answer is only worth
+    anything while the block is there. A mermaid built with the block stripped
+    is a 3.5 MB bundle nothing can enumerate — `qrcode.min.js` exactly."""
+    target = repo / "static" / "lib" / "mermaid.min.js"
+    blob = target.read_text(encoding="utf-8", errors="replace")
+    target.write_text(blob.replace("Bundled license information:",
+                                   "Bundled licence info:"), encoding="utf-8")
+    r = check(repo)
+    assert r.returncode == 1, r.stdout
+    assert "NO ESBUILD" in r.stdout, r.stdout
+    assert "mermaid.min.js" in r.stdout, r.stdout
+
+
+def test_rule_8_fails_on_a_sidecar_notice_no_entry_claims(repo):
+    """`P0-21b`'s shape, now caught by machine. A bundle bump that pulls in a
+    new dependency ships a new notice in the sidecar, and before this nothing
+    read the sidecar at all — which is how React got here."""
+    sidecar = repo / "licenses" / "swagger-ui-bundle.js.LICENSE.txt"
+    sidecar.write_text(
+        sidecar.read_text(encoding="utf-8", errors="replace")
+        + "\n/*!\n * left-pad <https://example.invalid/left-pad>\n"
+          " * Copyright (c) 2016 Nobody At All\n * Licensed under the MIT "
+          "License.\n */\n", encoding="utf-8")
+    r = check(repo)
+    assert r.returncode == 1, r.stdout
+    assert "UNATTRIBUTED" in r.stdout, r.stdout
+    assert "left-pad" in r.stdout, r.stdout
+
+
+def test_rule_8_fails_on_a_build_record_naming_an_undeclared_package(repo):
+    """The `build` answer, and the reason it exists. `B337` found `dijkstrajs`
+    inside `qrcode.min.js` by rebuilding the file; had that file carried a build
+    record, rule 7 would have folded its packages in and demanded a notice for
+    every one. This is that path, driven."""
+    import json
+    (repo / ".pantheon" / "vendored-builds").mkdir(parents=True, exist_ok=True)
+    (repo / ".pantheon" / "vendored-builds" / "qrcode.json").write_text(
+        json.dumps({
+            "file": "static/lib/highlight.min.js",
+            "entry": "highlight.js",
+            "bundler": "esbuild",
+            "command": "esbuild whatever --bundle",
+            "packages": ["highlight.js", "dijkstrajs", "not-declared-anywhere"],
+        }), encoding="utf-8")
+    r = check(repo)
+    assert r.returncode == 1, r.stdout
+    assert "UNBUNDLED" in r.stdout, r.stdout
+    assert "not-declared-anywhere" in r.stdout, r.stdout
+
+
+def test_rule_8_fails_when_a_single_package_file_turns_out_to_be_a_bundle(repo):
+    """The `single` answer's other half.
+
+    `docx.umd.min.js` is upstream's rollup UMD build and leaves no module paths,
+    which is what makes `single` the right answer for it today. Upstream's 9.x
+    Vite build leaves `//#region node_modules/<pkg>/` markers for forty-four
+    packages (`B424`), so a refresh that took that build would turn this file
+    into a declared-as-single bundle overnight. That is the case this fails on,
+    and it is not hypothetical — it is the reason the docx bump was filed rather
+    than taken.
+    """
+    target = repo / "static" / "lib" / "docx.umd.min.js"
+    blob = target.read_text(encoding="utf-8", errors="replace")
+    target.write_text(
+        blob + "\n//#region node_modules/jszip/dist/jszip.min.js\n"
+               "//#region node_modules/xml-js/lib/index.js\n"
+               "//#region node_modules/sax/lib/sax.js\n", encoding="utf-8")
+    r = check(repo)
+    assert r.returncode == 1, r.stdout
+    assert "NOT SINGLE" in r.stdout, r.stdout
+    assert "docx.umd.min.js" in r.stdout, r.stdout
+
+
+def test_rule_8_fails_when_a_single_package_file_carries_a_foreign_notice(repo):
+    """The half that makes `single` falsifiable at all.
+
+    Derivation finding nothing is not evidence a file is one library — esbuild
+    output finds nothing either, which is the whole of `B339`. What a bundled
+    package cannot hide is its **legal comment**: every minifier keeps `/*!` and
+    `@license` blocks, which is how `ieee754`, `buffer` and
+    `string.fromcodepoint` turned out to be inside `docx.umd.min.js`. So a file
+    declared `single` that carries a notice no entry claims fails.
+    """
+    target = repo / "static" / "lib" / "highlight.min.js"
+    blob = target.read_text(encoding="utf-8", errors="replace")
+    target.write_text(
+        "/*!\n * left-pad <https://example.invalid/left-pad>\n"
+        " * Copyright (c) 2016 Nobody At All\n * Licensed under the MIT "
+        "License.\n */\n" + blob, encoding="utf-8")
+    r = check(repo)
+    assert r.returncode == 1, r.stdout
+    assert "UNATTRIBUTED" in r.stdout, r.stdout
+    assert "highlight.min.js" in r.stdout, r.stdout

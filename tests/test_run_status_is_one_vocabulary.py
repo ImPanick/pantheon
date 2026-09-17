@@ -57,6 +57,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from tests.helpers.source_text import blank, blank_text  # B290
 
 ROOT = Path(__file__).resolve().parent.parent
 ROW = ROOT / "tests" / "harness" / "activity_row_status.js"
@@ -80,9 +81,7 @@ def _code(name: str) -> str:
     read code, and every file below documents the ladder it used to own — a
     file-wide substring search would find the words in the prose that explains
     why they are not there any more (`B87`, same trap, one day earlier)."""
-    src = (ROOT / "static" / "js" / name).read_text(encoding="utf-8")
-    src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
-    return re.sub(r"^\s*//.*$", "", src, flags=re.M)
+    return blank(ROOT / "static" / "js" / name)
 
 
 # ---------------------------------------------------------------------------
@@ -355,7 +354,7 @@ def _sheet_rules(prefix: str) -> set[str]:
     """The suffixes `style.css` declares for a `.<prefix>-*` family, read out of
     the sheet. Derived so a rule added or renamed there moves the test with it
     rather than leaving a hand-copied list behind."""
-    css = re.sub(r"/\*.*?\*/", "", SHEET.read_text(encoding="utf-8"), flags=re.S)
+    css = blank(SHEET)
     return set(re.findall(rf"\.{re.escape(prefix)}-([a-z]+)\s*[,{{ ]", css))
 
 

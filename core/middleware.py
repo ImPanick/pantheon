@@ -34,8 +34,31 @@ def get_application_route_path(scope: Mapping[str, object]) -> str:
 
 
 def with_asgi_root_path(scope: Mapping[str, object], path: str) -> str:
-    """Prefix an application path for a client-facing redirect target."""
-    root_path = scope.get("root_path", "")
+    """Prefix an application path for a client-facing redirect target.
+
+    ``app_root_path`` is consulted first, and that is not cosmetic. Starlette's
+    ``Mount`` rewrites ``root_path`` for the scope it hands its child —
+    ``root_path + matched_path`` — while carrying the *deployment's* prefix
+    forward unchanged as ``app_root_path``. So inside the ``/static`` mount
+    ``root_path`` is ``/pantheon/static`` and only ``app_root_path`` is
+    ``/pantheon``: a redirect built from ``root_path`` there would send a
+    client asking for ``/pantheon/static/index.html`` to
+    ``/pantheon/static/`` rather than to ``/pantheon/`` (`B262`). Outside a
+    mount ``app_root_path`` is absent — Starlette sets it only when a mount
+    matches — so every existing caller, `AuthMiddleware` included, reads the
+    same ``root_path`` it always has.
+
+    **Presence and not truthiness**, and the difference is the whole bug. On a
+    deployment with no prefix at all, ``Mount`` still sets
+    ``app_root_path = ""`` while rewriting ``root_path`` to ``/static``; a
+    check that treated the empty string as "not set" would fall through to
+    ``root_path`` and redirect ``/static/index.html`` to ``/static/``, which
+    is what this did when it was first written and what the measurement
+    caught. An ``app_root_path`` in the scope is the answer, empty or not.
+    """
+    root_path = scope.get("app_root_path")
+    if not isinstance(root_path, str):
+        root_path = scope.get("root_path", "")
     if not isinstance(root_path, str) or not root_path:
         return path
     return f"{root_path.rstrip('/')}{path}"

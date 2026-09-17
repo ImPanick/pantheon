@@ -47,6 +47,7 @@ from src.tool_capabilities import (
     effect_band,
     effect_severity,
 )
+from tests.helpers.source_text import blank, blank_text  # B290
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -308,9 +309,7 @@ def _executable_js(path: Path) -> str:
     this check more permissive, never less, and the alternative is a JavaScript
     parser in a test about where a lookup table lives.
     """
-    text = path.read_text(encoding="utf-8")
-    text = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
-    return "\n".join(line.split("//")[0] for line in text.splitlines())
+    return blank(path)
 
 
 def test_no_javascript_carries_a_second_copy_of_the_phrases():

@@ -20,14 +20,20 @@ here looking for Odysseus's plans, that is where they are, and they are worth re
 
 Replaced 2026-08-27 (`P0-28`, D-2026-08-26-06).
 
-The reason recorded here for keeping the path was that
-`.github/ISSUE_TEMPLATE/feature_request.yml` linked it by absolute URL. **Re-checked
-2026-09-16: it does not, and no longer does anywhere in the tree** — that template links
-`.pantheon/ROADMAP.md` directly, which is the right target and is where it should have pointed
-all along. The original reason is left standing above rather than quietly swapped, because it
-is why the file was kept and it stopped being true without anyone noticing.
+**Why this path is kept.** `.pantheon/ROADMAP.md` is 1.4 MB. GitHub declines to render a
+Markdown file that size, `grep` on a clone is the only sensible way to read it, and no `#anchor`
+into it survives an edit — so a repository whose tracker is its main artefact needs an address
+that renders. That is this page: the entry point to a tracker too large for the web view to
+serve, plus the record of what stood here before. Neither reason depends on who links here.
 
-The path is still kept, for a reason that does not depend on one template. `ROADMAP.md` at a
-repository root is an address people and tools try by convention, and this one served
-upstream's roadmap under our name for three days. A 404 would leave that with no explanation
-at the address where it happened.
+It is also an address people and tools try by convention, and this one served upstream's roadmap
+under our name for three days. A 404 would leave that with no explanation at the address where
+it happened.
+
+Two links have pointed at the tracker over this file's life —
+`.github/ISSUE_TEMPLATE/feature_request.yml` was repointed at `.pantheon/ROADMAP.md` and back
+again — and for a while this page justified its own existence by naming one of them. That
+sentence was true when written, stopped being true when the template moved, and became true
+again by coincidence. **A page whose reason to exist is a link somebody else controls has no
+reason to exist.** The reason above is a property of the tracker, which is why it is stated
+that way. `tests/test_the_root_roadmap_explains_itself.py` holds it there.

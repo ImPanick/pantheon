@@ -98,6 +98,37 @@ def _load_licences():
     return mod
 
 
+class Inside:
+    """A package the bundle carries, at the version the shipped bytes say.
+
+    `B336`. `check-licences.py` rule 7 answers *which* packages are inside a
+    bundle; nothing answered *which release* each one is, so the fact that
+    html2pdf.js 0.14.0 ships jsPDF 4.0.0 and DOMPurify 3.3.1 — neither of them
+    its own project's current release — lived in a roadmap row and in nothing a
+    machine read.
+
+    `witness` is a literal string that has to be present in `where` (the
+    bundle, or its extracted sidecar). That is the whole point: the version is
+    not asserted, it is *read out of the artifact*, so replacing the bundle
+    with one carrying a different jsPDF fails here until somebody re-measures.
+
+    `osv_known` works exactly as it does on `Vendored`, and matters more: these
+    are the advisories the freshness workflow counts every week against the
+    versions actually inside the file, and each excuse is written beside the
+    version it excuses, so a bump orphans them and somebody has to look again.
+    """
+
+    def __init__(self, package, version, witness, where=None, osv_known=None,
+                 behind_ok=None, note=None):
+        self.package = package
+        self.version = version
+        self.witness = witness
+        self.where = where
+        self.osv_known = dict(osv_known or {})
+        self.behind_ok = behind_ok
+        self.note = note
+
+
 class Vendored:
     """What release a vendored library is, and the bytes that prove it.
 
@@ -129,7 +160,7 @@ class Vendored:
 
     def __init__(self, entry, package, version, checked, source, credits,
                  files=None, manifest=None, registry="npm", build=None, note=None,
-                 behind_ok=None, osv_known=None):
+                 behind_ok=None, osv_known=None, contains=(), dist_tag="latest"):
         self.entry = entry
         self.package = package
         self.version = version
@@ -143,6 +174,14 @@ class Vendored:
         self.note = note
         self.behind_ok = behind_ok
         self.osv_known = dict(osv_known or {})
+        # `B336`. What this bundle carries, at the version its bytes say.
+        self.contains = tuple(contains)
+        # `B335`. Which npm dist-tag is the right comparison. Pyodide is why
+        # this is a field: `dist-tags.latest` is 314.x, a CPython-aligned line
+        # that 0.27.x does not belong to, so asking for `latest` reports a
+        # library on a maintained line as permanently behind — a light that is
+        # always on. The 0.27 line's own tag is `stable-0.27`.
+        self.dist_tag = dist_tag
 
 
 # ---------------------------------------------------------------------------
@@ -191,10 +230,16 @@ VENDORED = [
         "v8.5.0",
         files={"static/lib/docx.umd.min.js":
                "02d568d203c0180af37609bcf5ff6c0919d220f933a88ca896eba0556a08faad"},
-        note="Zero advisories at 8.5.0 (OSV, 2026-09-16). 9.x is current and the "
-             "bump is not free — see B335.",
-        behind_ok="B335 — 9.7.1 is current. A major across `exportAsDocx`, which is a "
-             "user-visible path this wave did not touch.",
+        note="Zero advisories at 8.5.0 AND at 9.7.1 (OSV, 2026-09-17), so "
+             "this is currency, not exposure. 9.7.1 was fetched, run against "
+             "the real `exportAsDocx` and measured on 2026-09-17 (B335): the "
+             "API surface is unchanged and the body XML it emits for "
+             "Pantheon's paragraph and run shapes is byte-identical. It is "
+             "not the bytes that stopped the bump — see B424.",
+        behind_ok="B424 — 9.7.1's Vite UMD build leaves `//#region "
+             "node_modules/<pkg>/` markers for 44 bundled packages that "
+             "8.5.0's rollup build did not, so the bump ships 44 newly visible "
+             "third-party packages needing notices. Measured 2026-09-17.",
     ),
     Vendored(
         "mammoth.js", "mammoth", "1.12.3", "2026-09-16",
@@ -214,43 +259,137 @@ VENDORED = [
                "9563c45f032179c73454293a649929e60fc24c05a326e8ab2811cfa8f25c3607"},
         note="Bumped from 0.10.2 on 2026-09-16 (B334), crossing jsPDF 2 -> 4. "
              "The published bundle carries jsPDF 4.0.0 and DOMPurify 3.3.1, "
-             "neither of which is the current release of its own project; B336 "
-             "holds that measurement and what it would cost to close.",
+             "neither of which is the current release of its own project. "
+             "B336's decision, 2026-09-17: STAY on the published artifact. "
+             "`contains=` below is what that decision cost us and what now "
+             "holds it honest — the inner versions are read out of the shipped "
+             "bytes on every gate run, and the freshness workflow asks OSV "
+             "about them by name every week.",
+        contains=(
+            Inside(
+                "jspdf", "4.0.0", 'M.version="4.0.0"',
+                behind_ok="B336 — jsPDF 4.2.1 returns zero advisories and this "
+                          "bundle is what html2pdf.js 0.14.0 published. Ours "
+                          "moves when html2pdf publishes a release built "
+                          "against it, or when B421 splits the bundle.",
+                note="Nine open advisories at 4.0.0 (OSV, 2026-09-17), one "
+                     "CRITICAL and six HIGH; 4.2.1 returns zero. None is "
+                     "reachable on Pantheon's path — see the per-id reasons "
+                     "below, each of which names an API `static/js/document.js` "
+                     "does not call. This is audit noise and supply-chain "
+                     "hygiene, not a live vulnerability, and it is written down "
+                     "rather than argued away.",
+                osv_known={
+                    "GHSA-wfv2-pwc8-crg5":
+                        "CRITICAL, HTML injection in the new-window output "
+                        "paths. Reached only by `output()` with a "
+                        "window/dataurlnewwindow option. exportAsPdf calls "
+                        "`.save()`; the bundle's Worker never calls `output` "
+                        "with a window target.",
+                    "GHSA-9vjf-qc39-jprp":
+                        "PDF object injection via unsanitised input in "
+                        "`addJS`. Pantheon never calls `addJS`, and html2pdf's "
+                        "Worker does not either.",
+                    "GHSA-cjw8-79x6-5cj4":
+                        "Shared-state race in the addJS plugin. Same API, same "
+                        "answer, and the race is between Node processes.",
+                    "GHSA-7x6v-j9x4-qf24":
+                        "Object injection via FreeText annotation colour. "
+                        "Needs `createAnnotation`; nothing here annotates.",
+                    "GHSA-p5xg-68wr-hm3m":
+                        "Injection in the AcroForm module. Needs the AcroForm "
+                        "classes; Pantheon generates no form fields.",
+                    "GHSA-pqxr-3g65-p328":
+                        "Injection in AcroFormChoiceField. Same module, same "
+                        "answer.",
+                    "GHSA-vm32-vv63-w422":
+                        "Stored XMP metadata injection. Needs "
+                        "`addMetadata`/XMP; exportAsPdf sets none.",
+                    "GHSA-95fx-jjr5-f39c":
+                        "DoS via unvalidated BMP dimensions. The image path is "
+                        "html2canvas's own PNG canvas, not a user-supplied "
+                        "BMP.",
+                    "GHSA-67pg-wm7f-q7fj":
+                        "DoS via a malicious font/file load. The Node-only "
+                        "`loadFile` LFI half is structurally unreachable in a "
+                        "browser; no font is loaded from user input here.",
+                },
+            ),
+            Inside(
+                "dompurify", "3.3.1", "@license DOMPurify 3.3.1",
+                where="licenses/html2pdf.bundle.min.js.LICENSE.txt",
+                behind_ok="B336 — DOMPurify 3.4.15 returns zero advisories. "
+                          "Same answer as jsPDF: it moves when html2pdf "
+                          "publishes, or when B421 splits the bundle.",
+                note="Eighteen open advisories at 3.3.1 (OSV, 2026-09-17); "
+                     "3.4.15 returns zero. **DOMPurify is not invoked at all on "
+                     "Pantheon's path.** html2pdf calls `DOMPurify.sanitize` in "
+                     "exactly one place — `createElement`, the string branch of "
+                     "`Worker.from()` — and `exportAsPdf` passes a DOM element, "
+                     "which `tests/test_vendored_libraries_still_work.py` pins "
+                     "by measurement rather than by reading the call site. The "
+                     "bundle's other consumer is canvg, which that path does "
+                     "not reach either.",
+                osv_known={gid: (
+                    "Not reachable: DOMPurify is never invoked on Pantheon's "
+                    "PDF path. html2pdf sanitises only in `createElement`, the "
+                    "string branch of `from()`, and exportAsPdf passes an "
+                    "element (pinned by test, B334). B336.")
+                    for gid in (
+                        "GHSA-39q2-94rc-95cp", "GHSA-55q2-fjhq-7xh7",
+                        "GHSA-76mc-f452-cxcm", "GHSA-c2j3-45gr-mqc4",
+                        "GHSA-cj63-jhhr-wcxv", "GHSA-cjmm-f4jc-qw8r",
+                        "GHSA-cmwh-pvxp-8882", "GHSA-crv5-9vww-q3g8",
+                        "GHSA-gvmj-g25r-r7wr", "GHSA-h7mw-gpvr-xq4m",
+                        "GHSA-h8r8-wccr-v5f2", "GHSA-hpcv-96wg-7vj8",
+                        "GHSA-r47g-fvhr-h676", "GHSA-rp9w-3fw7-7cwq",
+                        "GHSA-v2wj-7wpq-c8vv", "GHSA-v9jr-rg53-9pgp",
+                        "GHSA-vxr8-fq34-vvx9", "GHSA-x4vx-rjvf-j5p4",
+                    )},
+            ),
+            Inside(
+                "html2canvas", "1.4.1", "html2canvas 1.4.1",
+                where="licenses/html2pdf.bundle.min.js.LICENSE.txt",
+                note="1.4.1 is html2canvas's current release and returns zero "
+                     "advisories, so this one is here to be checked rather "
+                     "than excused.",
+            ),
+        ),
     ),
+    # B338, 2026-09-17. The `node-qrcode` record is GONE, because the bytes
+    # are: `static/lib/qrcode.min.js` was loaded by nothing and is no longer
+    # shipped. This file fingerprints what we serve, so a record for a file
+    # that is not there would be a hash over nothing — rule 1 says NO BYTES and
+    # rule 3 says GHOST, and both are right. The *attribution* stays, with
+    # empty patterns, in check-licences.py's INVENTORY; that is a different
+    # question with a different answer (`Law 1`), and CREDITS.md says which
+    # release was the last to carry the file.
     Vendored(
-        "node-qrcode", "qrcode", "1.5.4", "2026-09-16",
-        "https://registry.npmjs.org/qrcode/-/qrcode-1.5.4.tgz",
-        "v1.5.4",
-        files={"static/lib/qrcode.min.js":
-               "d59af15f40bc321f78871fe9d892d1dbbf05e35e20ad22aa51203c68185b58b6"},
-        build="esbuild node_modules/qrcode/lib/browser.js --bundle --minify "
-              "--format=iife --global-name=QRCode   (esbuild 0.25.0)",
-        note="node-qrcode has shipped no browser build to npm since 1.5.1, so "
-             "this file is built rather than fetched and the command above is "
-             "the whole provenance. The bytes that were here before 2026-09-16 "
-             "carried no version string and matched no published artifact; they "
-             "were identified by reproduction as 1.5.1/1.5.3 (identical lib/, "
-             "identical output) — see B337. Nothing in the served frontend loads "
-             "this file; B338 is that finding.",
-    ),
-    Vendored(
-        "KaTeX", "katex", "0.16.22", "2026-09-16",
-        "https://registry.npmjs.org/katex/-/katex-0.16.22.tgz",
-        "v0.16.22",
+        "KaTeX", "katex", "0.18.7", "2026-09-17",
+        "https://registry.npmjs.org/katex/-/katex-0.18.7.tgz",
+        "v0.18.7",
         files={
             "static/lib/katex/katex.min.js":
-                "e8d885505949f3a5f4abdd5dd0d53696bd1371ad26ffbf4f310dcd77c8cdae89",
+                "10a91b479cd927446ceb60409fb0d72b5d0d05eaf446c9e52fafd64058c84540",
             "static/lib/katex/katex.min.css":
-                "19095127357ed6d29fe0a63a6b000c913a89f7f1963b765dd3715e97c9852e75",
+                "50d9c78e03da144a021001b7de679133355179bcb06fd11e9e309223056a03dd",
         },
-        note="Zero advisories at 0.16.22 (OSV, 2026-09-16); 0.16.x is the "
-             "current line.",
-        behind_ok="B335 — 0.18.7 is current. A major across the math renderer.",
+        note="Bumped from 0.16.22 on 2026-09-17 (B335), across two 0.x minors "
+             "that are both semver-breaking. Zero advisories either side. "
+             "0.17.0's break is the internal `__defineFunction` extension API "
+             "and 0.18.0's is the CSS class prefix (`base` -> `katex-base`, "
+             "`strut` -> `katex-strut`); Pantheon calls `renderToString` and "
+             "its own stylesheet names only `.katex` and `.katex-display`, "
+             "both unchanged. All twenty font faces are byte-identical between "
+             "0.16.22 and 0.18.7, so the fonts moved version and not bytes. "
+             "0.18.2 also carries an unnumbered prototype-pollution fix in "
+             "settings, recorded because no scanner will ever flag it (B332's "
+             "shape).",
     ),
     Vendored(
-        "KaTeX fonts", "katex", "0.16.22", "2026-09-16",
-        "https://registry.npmjs.org/katex/-/katex-0.16.22.tgz",
-        "v0.16.22",
+        "KaTeX fonts", "katex", "0.18.7", "2026-09-17",
+        "https://registry.npmjs.org/katex/-/katex-0.18.7.tgz",
+        "v0.18.7",
         files={
             "static/lib/katex/fonts/KaTeX_AMS-Regular.woff2":
                 "0cdd387c9590a1a9f9794560022dbb59654a7d86f187aa0c81495ad42d3a7308",
@@ -297,42 +436,73 @@ VENDORED = [
              "same npm tarball. The row CREDITS.md links the OFL text from is "
              "in the font table rather than the library table, and it carries "
              "the version now; before 2026-09-16 it carried none, so a font "
-             "swap and a KaTeX bump looked the same from the credits file.",
-        behind_ok="B335 — versioned with KaTeX; it moves when KaTeX moves.",
+             "swap and a KaTeX bump looked the same from the credits file. "
+             "Every one of the twenty is byte-identical at 0.16.22 and 0.18.7 "
+             "— checked face by face on 2026-09-17 — so the 0.18.7 bump moved "
+             "this record's version and not one byte under it, and the hashes "
+             "below are unchanged on purpose.",
     ),
     Vendored(
-        "Mermaid", "mermaid", "11.16.1", "2026-09-16",
-        "https://registry.npmjs.org/mermaid/-/mermaid-11.16.1.tgz",
-        "v11.16.1",
+        "Mermaid", "mermaid", "11.17.2", "2026-09-17",
+        "https://registry.npmjs.org/mermaid/-/mermaid-11.17.2.tgz",
+        "v11.17.2",
         files={"static/lib/mermaid.min.js":
-               "18327bef70d96fb505fe7287d9f6a7362ebf07ff6576ddfaffb1a06f3e1a2954"},
-        note="Zero advisories at 11.16.1 (OSV, 2026-09-16). The three "
-             "Microsoft vscode-* packages inside it are declared by B46's "
-             "INVENTORY entry; their versions come out of the pnpm module "
-             "paths in the shipped bytes.",
-        behind_ok="B335 — 12.0.0 is current. A major, and mermaid.min.js is 3.5 MB of "
-             "parser; the vscode-* bundled set has to be re-derived with it.",
+               "581ed7d74bd9048d0e3a91363927d72ef22942d7722546b27f7cc29e35390eb8"},
+        note="Bumped from 11.16.1 on 2026-09-17 (B335) — same major, three "
+             "releases, zero advisories either side. Carries 11.17.0's fix for "
+             "a `RangeError: Invalid array length` crash on certain edges and "
+             "11.17.2's restoration of the `edgePaths` class the flowchart, "
+             "block and journey stylesheets hang off. The three Microsoft "
+             "vscode-* packages inside it are declared by B46's INVENTORY "
+             "entry, unchanged at the same versions; `lodash-es` and "
+             "`cytoscape` were found in here on 2026-09-17 by B339's new "
+             "reading of esbuild's own notice block, and had no notice "
+             "anywhere before that.",
+        behind_ok="B423 — 12.0.0 is current and changes how existing diagrams "
+             "look: ELK replaces dagre as the default layout for seven diagram "
+             "types (measured — `getConfig().layout` comes back `elk` after "
+             "Pantheon's own `initialize()` call), the browser floor rises to "
+             "Safari 17.4 / ES2024, and mermaid.min.js grows 3.57 MB -> 5.58 "
+             "MB. Needs a browser to verify, which this wave could not do.",
     ),
     Vendored(
         "Pyodide", "pyodide", "0.27.5", "2026-09-16",
         "https://registry.npmjs.org/pyodide/-/pyodide-0.27.5.tgz",
         "0.27.5",
         manifest="static/lib/pyodide/MANIFEST.json",
+        dist_tag="stable-0.27",
         note="Hashes are not repeated here — scripts/fetch-pyodide.py owns "
-             "them and writes MANIFEST.json.",
-        behind_ok="B335 — npm `pyodide` dist-tags.latest is 314.x, which is not the "
-             "runtime version line 0.27.5 belongs to; the comparison needs a "
-             "human before it means anything.",
+             "them and writes MANIFEST.json. **npm `dist-tags.latest` is "
+             "314.0.7 and that is not this line.** Pyodide moved to a "
+             "CPython-aligned version scheme; the 0.27 line is still "
+             "maintained and its own tag is `stable-0.27` (0.27.8, "
+             "2026-09-16). That is the comparison this record asks for, which "
+             "is the human judgement B335 wanted: comparing 0.27.5 against "
+             "314.0.7 reports a supported runtime as permanently behind, and a "
+             "light that is always on is a light nobody reads.",
+        behind_ok="B425 — 0.27.8's own change is `python` CLI compatibility with "
+             "Node 26, a path Pantheon never runs (codeRunner.js loads the "
+             "browser runtime). Reaching it crosses 0.27.7's documented "
+             "breaking change — `enableRunUntilComplete` defaults on, which "
+             "turns a no-op into a crash where stack switching is off — and "
+             "that needs a browser matrix this wave could not run, for 13 MB "
+             "of new binaries.",
     ),
     Vendored(
-        "Swagger UI", "swagger-ui-dist", "5.32.15", "2026-09-16",
-        "https://registry.npmjs.org/swagger-ui-dist/-/swagger-ui-dist-5.32.15.tgz",
-        "v5.32.15",
+        "Swagger UI", "swagger-ui-dist", "5.33.0", "2026-09-17",
+        "https://registry.npmjs.org/swagger-ui-dist/-/swagger-ui-dist-5.33.0.tgz",
+        "v5.33.0",
         manifest="static/lib/swagger-ui/MANIFEST.json",
-        note="Hashes are not repeated here — scripts/fetch-swagger-ui.py owns "
+        note="Bumped from 5.32.15 on 2026-09-17 (B335) through "
+             "scripts/fetch-swagger-ui.py, which verified the registry's own "
+             "dist.integrity before opening the tarball and re-pinned both "
+             "hashes. Zero advisories either side. The extracted sidecar "
+             "licenses/swagger-ui-bundle.js.LICENSE.txt is BYTE-IDENTICAL at "
+             "5.32.15 and 5.33.0, which is how the bump was shown to add no "
+             "undeclared package — and reading that sidecar at all is B339, "
+             "which found React and ten others shipping in here with no notice "
+             "anywhere. Hashes are not repeated here; the fetch script owns "
              "them and writes MANIFEST.json.",
-        behind_ok="B335 — 5.33.0 is current. scripts/fetch-swagger-ui.py --version is "
-             "how this one moves, and it re-pins hashes.",
     ),
 ]
 
@@ -511,6 +681,93 @@ def check(max_age_days=None, today=None):
                 f"version that drifts."
             )
 
+    # 6 — `B336`. A bundle's inner versions are read out of the shipped bytes.
+    # `CREDITS.md` and the freshness workflow both say html2pdf.js 0.14.0
+    # carries jsPDF 4.0.0 and DOMPurify 3.3.1; until this rule existed, nothing
+    # checked that against the file, so a replacement bundle carrying a
+    # different jsPDF would have gone in under a record that still said 4.0.0
+    # and under twenty-seven advisory excuses that no longer applied to it.
+    for name in sorted(records):
+        rec = records[name]
+        if not rec.contains:
+            continue
+        entry = by_name.get(name)
+        owned = sorted(p for p in files if entry and entry.matches(p))
+        for inner in rec.contains:
+            where = inner.where or (owned[0] if len(owned) == 1 else None)
+            if where is None:
+                problems.append(
+                    f"NO WITNESS  {name}/{inner.package}: this record covers "
+                    f"{len(owned)} files, so `where=` has to say which one "
+                    f"carries the version string"
+                )
+                continue
+            path = ROOT / where
+            if not path.is_file():
+                problems.append(
+                    f"NO WITNESS  {name}/{inner.package}: {where} is named as "
+                    f"the witness file and is not on disk"
+                )
+                continue
+            blob = path.read_bytes().decode("utf-8", "replace")
+            if inner.witness not in blob:
+                problems.append(
+                    f"INNER       {name}: {inner.package} is recorded as "
+                    f"{inner.version}\n"
+                    f"            and {where} does not contain "
+                    f"{inner.witness!r}.\n"
+                    f"            The bundle was replaced with one carrying a "
+                    f"different release. Re-measure the\n"
+                    f"            inner versions and re-check every "
+                    f"`osv_known` reason against the new ones — an\n"
+                    f"            excuse written for one version is not an "
+                    f"excuse for another (B336)."
+                )
+
+    # 7 — `B339`. A self-built artifact's provenance lives in two files: the
+    # command is here, the inputs are in `.pantheon/vendored-builds/`. Neither
+    # is any use alone, so neither is allowed to exist without the other.
+    builds = lic.build_records()
+    for name in sorted(records):
+        rec = records[name]
+        if not rec.build:
+            continue
+        entry = by_name.get(name)
+        owned = sorted(p for p in files if entry and entry.matches(p))
+        for path in owned:
+            record = builds.get(path)
+            if record is None:
+                problems.append(
+                    f"NO INPUTS   {path}\n"
+                    f"            {name} records a build command and no record "
+                    f"under .pantheon/vendored-builds/\n"
+                    f"            names this file. `check-licences.py` rule 8 "
+                    f"cannot state its contents, which is\n"
+                    f"            how `dijkstrajs` hid inside `qrcode.min.js` "
+                    f"(B337, B339)."
+                )
+            elif record.get("command") != rec.build:
+                problems.append(
+                    f"BUILD SPLIT {path}\n"
+                    f"            this record's command and "
+                    f".pantheon/vendored-builds/{record.get('_record')} "
+                    f"disagree.\n"
+                    f"            One of the two was edited alone."
+                )
+    for path, record in sorted(builds.items()):
+        owner = None
+        for name, rec in records.items():
+            entry = by_name.get(name)
+            if entry and entry.matches(path):
+                owner = rec
+                break
+        if owner is None or not owner.build:
+            problems.append(
+                f"ORPHAN BUILD .pantheon/vendored-builds/"
+                f"{record.get('_record')} records {path}, and no VENDORED "
+                f"record says we build it"
+            )
+
     # 5 — the bookkeeping is a date.
     for name in sorted(records):
         rec = records[name]
@@ -554,6 +811,10 @@ def report() -> None:
             print(f"    {sha256(ROOT / p)}  {p}")
         if rec.build:
             print(f"    built: {rec.build}")
+        for inner in rec.contains:
+            where = inner.where or (owned[0] if len(owned) == 1 else "?")
+            print(f"    contains {inner.package}@{inner.version}"
+                  f"  ({inner.witness!r} in {where})")
     print("-" * 110)
     print(f"{len(VENDORED)} libraries · {len(files)} files · {total:,} bytes")
 
@@ -563,7 +824,17 @@ def as_json() -> None:
         {"entry": r.entry, "package": r.package, "registry": r.registry,
          "version": r.version, "checked": r.checked, "source": r.source,
          "built": bool(r.build), "behind_ok": r.behind_ok,
-         "osv_known": r.osv_known}
+         "dist_tag": r.dist_tag,
+         "osv_known": r.osv_known,
+         # `B336`. The packages inside the bundle, at the versions its bytes
+         # carry. The freshness workflow asks OSV about these by name, which is
+         # the difference between "a roadmap row says twenty-seven advisories"
+         # and a machine counting them every week.
+         "contains": [
+             {"package": i.package, "version": i.version,
+              "behind_ok": i.behind_ok, "osv_known": i.osv_known}
+             for i in r.contains
+         ]}
         for r in VENDORED
     ], indent=2))
 

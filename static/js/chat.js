@@ -44,7 +44,13 @@ import planWindow from './planWindow.js';
 import queuePanel from './queuePanel.js';
 import { runStatusLabel } from './runStatus.js';
 import { playIcon, stopIcon } from './icons.js';
-import { documentLanguage } from './attachmentLanguage.js';
+import {
+  documentLanguage,
+  ingestKindFromName,
+  isExtractedExtension,
+  INGEST_KIND_TEXT,
+  INGEST_KIND_DOCUMENT,
+} from './attachmentLanguage.js';
 import agentDrafts from './agentDrafts.js';   // H01
 
   const RESEARCH_TIMEOUT_MS = 360000;
@@ -2481,18 +2487,47 @@ import agentDrafts from './agentDrafts.js';   // H01
           ? _pendingSendAttachInfo
           : null);
       if (!approvalForSend) _pendingSendAttachInfo = null;
-      // Pre-read importable file contents before upload clears pending files
-      const IMPORTABLE_EXT = /\.(txt|py|js|ts|html|htm|css|md|json|csv|yml|yaml|sh|sql|rs|go|java|c|cpp|h|rb|php|xml|jsx|tsx|log|toml|ini|conf|env|vue|svelte|scss|sass|less)$/i;
+      // `B232`. A 38-extension regex used to sit here and decide which files
+      // the "Import to document library" banner offers, in front of a backend
+      // that derives the answer. Measured against the real registers it was
+      // wrong in BOTH directions: 10 ingestible extensions were never offered
+      // (`.bash .doc .docx .epub .nix .odt .pdf .pptx .xls .xlsx`, five of them
+      // formats the server has a bundled extractor for) and 9 offered
+      // extensions no register names (`.conf .env .ini .less .sass .scss
+      // .svelte .toml .vue`) — the second nine being the RIGHT answer, since
+      // `looks_like_text` rescues them on the server (`B76`), and therefore the
+      // evidence that the question was never "is the extension on a list".
+      //
+      // **Swapping the regex for `INGESTIBLE_EXTS` would have been the trap.**
+      // That set is `TEXT_EXTS | OFFICE_EXTS | PDF_EXTS`, so using it verbatim
+      // offers `.pdf`, `.docx`, `.xlsx`, `.pptx` and `.epub` to the loop below,
+      // which reads the raw `File` **as text**. Those are containers: they have
+      // to be POSTed and extracted server-side, which is what `kind ===
+      // 'document'` routes them to (`B233`'s `import-office`, and the
+      // `import-pdf` route that already existed).
+      //
+      // So this now reads the server's own verdict — `kind` on each file of the
+      // upload response, from `document_processor.ingest_kind` — which is why
+      // it has to run AFTER the upload rather than before it. The raw `File` is
+      // still reachable: `getLastUploadOutcome()` carries `{name, accepted, id,
+      // meta, file}` per submitted file (`B03`), so nothing had to be pre-read.
       const _importableFiles = [];
-      if (_pendingAttachInfo && documentModule) {
-        const rawFiles = fileHandlerModule.getPendingRaw ? fileHandlerModule.getPendingRaw() : [];
+      const _collectImportable = () => {
+        if (!_pendingAttachInfo || !documentModule) return;
+        const outcome = fileHandlerModule.getLastUploadOutcome?.() || [];
+        if (outcome.length !== _pendingAttachInfo.length) return;
         for (let i = 0; i < _pendingAttachInfo.length; i++) {
-          const att = _pendingAttachInfo[i];
-          if (IMPORTABLE_EXT.test(att.name) && rawFiles[i]) {
-            _importableFiles.push({ info: att, file: rawFiles[i] });
-          }
+          const info = _pendingAttachInfo[i];
+          const o = outcome[i];
+          if (!o || !o.accepted || !o.file) continue;
+          // Same per-row name check the bubble pairing does: a mismatch means
+          // these two lists are not describing the same batch.
+          if (o.name !== (info.uploadName || info.name)) continue;
+          const kind = o.meta && o.meta.kind;
+          if (kind !== INGEST_KIND_TEXT && kind !== INGEST_KIND_DOCUMENT) continue;
+          _importableFiles.push({ info, file: o.file, kind });
         }
-      }
+      };
       let _userMsgEl = null;
       if (!skipBubble) {
         _userMsgEl = addMessage('user', userDisplay, null, _pendingAttachInfo ? { attachments: _pendingAttachInfo } : null);
@@ -2561,6 +2596,9 @@ import agentDrafts from './agentDrafts.js';   // H01
         ids = ids.concat(_pendingRegenAttachments);
       }
       if (!approvalForSend) _pendingRegenAttachments = null;
+
+      // The upload has resolved, so the server's per-file verdict is readable.
+      _collectImportable();
 
       // The optimistic user bubble was rendered before the upload assigned ids,
       // so image previews couldn't show (the renderer needs att.id). Now that
@@ -2653,16 +2691,27 @@ import agentDrafts from './agentDrafts.js';   // H01
           // import the file you just attached stored it with no language while
           // the composer beside it labelled the same bytes `toml`.
           let imported = 0;
-          for (const { info, file } of _importableFiles) {
+          for (const { info, file, kind } of _importableFiles) {
             try {
-              const content = await file.text();
-              const dotIdx = info.name.lastIndexOf('.');
-              const title = dotIdx > 0 ? info.name.slice(0, dotIdx) : info.name;
-              await fetch(`${API_BASE}/api/document`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ title, language: documentLanguage(info.name), content }),
-              });
+              // `B232`/`B233`. Two doors, because there are two kinds of file
+              // and only one of them can be read in the browser. A container
+              // (`.pdf`, `.doc`, `.docx`, `.odt`, `.pptx`, `.xls`, `.xlsx`,
+              // `.epub`) is posted and the server extracts it with the readers
+              // `B102` bundled; everything the server said reads as text is
+              // read here, exactly as before.
+              if (kind === INGEST_KIND_DOCUMENT) {
+                await _importFileAsDocument(file, info.name);
+              } else {
+                const content = await file.text();
+                const dotIdx = info.name.lastIndexOf('.');
+                const title = dotIdx > 0 ? info.name.slice(0, dotIdx) : info.name;
+                const r = await fetch(`${API_BASE}/api/document`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ title, language: documentLanguage(info.name), content }),
+                });
+                if (!r.ok) throw new Error('document ' + r.status);
+              }
               imported++;
             } catch (e) { console.error('Import failed:', info.name, e); }
           }
@@ -7647,6 +7696,66 @@ import agentDrafts from './agentDrafts.js';   // H01
   // upload's imported document is reused (cached by upload id) so clicking it
   // again re-opens the same doc instead of making duplicates.
   const _attachDocCache = new Map();  // upload id -> doc id
+
+  /**
+   * `B232`/`B233`. POST one container file and get back the Document the
+   * server extracted from it.
+   *
+   * One helper, two callers — the composer's import banner and
+   * `openAttachment` below — because they were about to grow two copies of the
+   * same three lines, and a container that imports one way from the banner and
+   * another way from the chip is the `Law 13` this row is (`B233` measured
+   * exactly that: a `.doc` emailed to you produced prose and the same `.doc`
+   * dragged into the library produced its OLE2 bytes).
+   *
+   * Two routes because there are two extractors, not because there are two
+   * policies: `.pdf` goes to `import-pdf`, which also does AcroForm detection
+   * and picks the form-backed or the page-image document kind, and everything
+   * in `OFFICE_EXTS` goes to `import-office`, which runs
+   * `markitdown_runtime.convert_to_markdown`. The server refuses with a reason
+   * (415 for a format nothing reads, 422 for a container with no text in it),
+   * and the reason is what reaches the caller's error.
+   */
+  async function _importFileAsDocument(file, name, sessionId) {
+    const isPdf = /\.pdf$/i.test(name || '');
+    const route = isPdf ? 'import-pdf' : 'import-office';
+    const fd = new FormData();
+    fd.append('file', file, name || (isPdf ? 'document.pdf' : 'document'));
+    if (sessionId) fd.append('session_id', sessionId);
+    const res = await fetch(`${API_BASE}/api/documents/${route}`, {
+      method: 'POST', body: fd, credentials: 'same-origin',
+    });
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`;
+      try { const j = await res.json(); detail = j.detail || j.error || detail; } catch (_) {}
+      throw new Error(detail);
+    }
+    return res.json();
+  }
+
+  /**
+   * `B232`. What the server says this upload is, asked rather than guessed.
+   *
+   * A `HEAD` — the route registers GET and Starlette adds HEAD to it, and
+   * `FileResponse` sends the headers without the body — so asking costs one
+   * round trip and zero bytes, where the two regexes this replaces cost a
+   * wrong answer for `.kt`, `.toml`, `.markdown`, `.rst`, `.swift` and every
+   * other text file no register happens to name.
+   *
+   * Falls back to `ingestKindFromName`, which is the same derivation minus the
+   * half only the bytes can answer, whenever the header is missing — a cached
+   * response, an older server, a network that refused the HEAD. That fallback
+   * is strictly wider than the regex it replaces and never narrower, so the
+   * degraded path is still an improvement on the tree this row found.
+   */
+  async function _uploadKind(url, name, mime) {
+    try {
+      const res = await fetch(url, { method: 'HEAD', credentials: 'same-origin' });
+      const kind = res.ok && res.headers.get('X-Upload-Kind');
+      if (kind) return kind;
+    } catch (_) { /* fall through to the name-only derivation */ }
+    return ingestKindFromName(name, mime);
+  }
   // `B161`. A FOURTH extension→language map lived here — 29 entries, in the
   // path that opens an attachment as a document — and the row that found the
   // other three did not count it. Measured before it went: it was the only one
@@ -7668,10 +7777,21 @@ import agentDrafts from './agentDrafts.js';   // H01
       return;
     }
 
+    // `B232`. A 36-entry extension regex used to decide this — a second copy
+    // of the composer's 38-entry one, disagreeing with it about `.markdown`,
+    // `.cs`, `.tsv` and `.bash` — and both of them sat in front of a server
+    // that derives the answer from the bytes. The server publishes its verdict
+    // on the file itself now; this asks for it.
+    //
+    // `document` is the widening: `.doc`, `.docx`, `.odt`, `.pptx`, `.xls`,
+    // `.xlsx` and `.epub` opened as a RAW DOWNLOAD before this row, because
+    // neither regex named them, while the server has had a bundled extractor
+    // for every one of them since `B102`.
+    const kind = await _uploadKind(url, name, mime);
     const isPdf = mime === 'application/pdf' || /\.pdf$/i.test(name);
-    const TEXT_EXT = /\.(txt|md|markdown|js|ts|jsx|tsx|py|rb|go|rs|java|c|cpp|h|hpp|cs|php|html?|css|scss|sass|less|json|ya?ml|toml|ini|conf|env|sh|bash|sql|csv|tsv|xml|log|vue|svelte)$/i;
-    const isTextDoc = TEXT_EXT.test(name) || /^text\//.test(mime);
-    if (!isPdf && !isTextDoc) { window.open(url, '_blank'); return; }  // binary/unknown → raw
+    const isContainer = kind === INGEST_KIND_DOCUMENT || isExtractedExtension(name);
+    const isTextDoc = kind === INGEST_KIND_TEXT;
+    if (!isPdf && !isContainer && !isTextDoc) { window.open(url, '_blank'); return; }  // binary/unknown → raw
 
     // Reuse the doc we already imported for this upload, if it still loads.
     const cached = _attachDocCache.get(id);
@@ -7698,15 +7818,12 @@ import agentDrafts from './agentDrafts.js';   // H01
 
     try {
       let doc;
-      if (isPdf) {
-        // import-pdf wants a fresh file upload — re-fetch the stored blob and post it.
+      if (isPdf || isContainer) {
+        // The import routes want a fresh file upload — re-fetch the stored blob
+        // and post it. `B233`: the office half is new and is the same call the
+        // mailbox already makes, not a second extractor in the browser.
         const blob = await (await fetch(url)).blob();
-        const fd = new FormData();
-        fd.append('file', blob, name || 'document.pdf');
-        if (sid) fd.append('session_id', sid);
-        const res = await fetch(`${API_BASE}/api/documents/import-pdf`, { method: 'POST', body: fd, credentials: 'same-origin' });
-        if (!res.ok) throw new Error('import-pdf ' + res.status);
-        doc = await res.json();
+        doc = await _importFileAsDocument(blob, name || 'document', sid);
       } else {
         const text = await (await fetch(url)).text();
         const res = await fetch(`${API_BASE}/api/document`, {

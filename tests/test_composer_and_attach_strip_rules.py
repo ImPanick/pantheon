@@ -28,10 +28,11 @@ import pathlib
 import re
 
 import pytest
+from tests.helpers.source_text import blank, blank_text  # B290
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 CSS = (ROOT / "static" / "style.css").read_text(encoding="utf-8")
-NO_COMMENTS = re.sub(r"/\*.*?\*/", " ", CSS, flags=re.S)
+NO_COMMENTS = blank_text(CSS, "css")
 INDEX = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
 
 # Every selector in the dead `/* Unified chat input area */` section except the

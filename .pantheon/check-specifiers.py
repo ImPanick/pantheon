@@ -101,61 +101,221 @@ def resolve(importer: str, spec: str):
     return resolved
 
 
-def strip_comments(text: str, html: bool) -> str:
-    """Blank out comments so a *sentence about* an import is not an import.
+# `B290`. A regex literal may begin only where a *value* may not, and this is
+# the standard approximation of that rule: the character before it, or the
+# keyword before it. Being wrong here costs one mis-scanned line; the naive
+# alternative was being wrong by half a file.
+_REGEX_MAY_FOLLOW = frozenset("=(,:[!&|?{};+-*%<>~^") | {""}
+_KEYWORD_BEFORE_REGEX = frozenset((
+    "return", "typeof", "instanceof", "in", "of", "new", "delete", "void",
+    "case", "do", "else", "yield", "await",
+))
+_EMBED_OPEN = re.compile(r"<(script|style)\b[^>]*>", re.I)
 
-    `B84`. This file read raw source, and a docstring in `static/js/runStatus.js`
-    explaining why a module is loaded as `import('./tasks.js?v=…')` was counted
-    as a second specifier for `tasks.js` — a literal ellipsis reported as a
-    forked module. That is `Law 20` in the checker itself: it was testing the
-    file rather than the code, and the same law bit
-    `test_offline_shell_manifest.py` two days earlier when a comment explaining
-    why there is no `ignoreSearch` failed a grep for `ignoreSearch`.
+
+def mode_for(path) -> str:
+    """The blanker mode for a file name: `js`, `css` or `html`.
+
+    `.mjs`, `.cjs` and `.ts` read as JavaScript. Anything unrecognised reads as
+    `js`, which is the strictest of the three — it blanks the most — so an
+    unknown extension over-reports rather than silently under-scanning.
+    """
+    name = str(path).lower()
+    if name.endswith((".html", ".htm", ".svg", ".xml")):
+        return "html"
+    if name.endswith(".css"):
+        return "css"
+    return "js"
+
+
+def strip_comments(text: str, html: bool = False, *, mode: str = "",
+                   embedded: bool = True) -> str:
+    """Blank out comments so a *sentence about* a thing is not the thing.
+
+    This is **the** comment blanker for this repository. Every census that has
+    to ignore commented-out source calls it — the checkers here and, through
+    `tests/helpers/source_text.py`, the test suite. Do not write a second one
+    (`Law 14`); the reason is the whole of `B290`.
+
+    `mode` is `js`, `css` or `html`; `mode_for(path)` picks it from a file name.
+    `html=True` is the old spelling of `mode="html"` and still works.
+
+      * `js`   — `//` and `/* … */`, with string, template and regex literals
+                 tracked so none of them can open a comment.
+      * `css`  — `/* … */` only. `//` is **not** a comment in CSS, and blanking
+                 from one eats the rest of `url(http://…)`.
+      * `html` — `<!-- … -->`, with `<script>` and `<style>` bodies blanked as
+                 JavaScript and CSS. Pass `embedded=False` to leave those bodies
+                 byte-identical — `tests/test_app_shell_csp_hashes.py` hashes
+                 them for the CSP and a blanked comment would change the hash.
 
     Characters are replaced with spaces rather than deleted so every offset and
-    line number downstream is unchanged. String and template literals are
-    tracked, because `'https://x'` contains `//` and blanking from there would
-    silently delete the rest of the line — a checker that quietly stops looking
-    is worse than one that over-reports.
+    line number downstream is unchanged: a line number a census reports is the
+    line number in the file.
+
+    `B84` built the first version of this because a docstring in
+    `static/js/runStatus.js` explaining why a module is loaded as
+    `import('./tasks.js?v=…')` was counted as a second specifier for `tasks.js`
+    — `Law 20` in the checker itself.
+
+    `B290` made it the only one and taught it two things its callers' copies
+    did not know. **Strings**: `re.sub(r"/\\*.*?\\*/", "", flags=re.S)` cannot
+    tell a comment from a string, so `input.accept = 'image/*,video/*'` at
+    `static/js/gallery.js:1202` opens a "comment" that the next `*/` anywhere
+    in the file closes — measured over `static/js/**`, that substitution blanks
+    **7,277 lines that hold live code across 15 modules**, and every census
+    built on it was measuring a smaller tree than it claimed. **Regex
+    literals**: `/["']/` is a pattern, not a quote, and a blanker that reads
+    the `"` as opening a string stops blanking comments from there to the next
+    `"` in the file — the same defect with the sign flipped, a census that
+    counts commented-out code as live.
     """
+    mode = mode or ("html" if html else "js")
+    if mode not in ("js", "css", "html"):
+        raise ValueError(f"mode must be js, css or html, not {mode!r}")
     out = list(text)
     i, n = 0, len(text)
-    quote = ""
+    stack = []          # "tpl", or ["expr", brace-depth] inside a `${…}`
+    in_tag = False      # html: between `<name` and the `>` that closes it
+    prev = ""           # last significant character; "w" stands for a word
+    word = ""           # that word, for `return /…/` and friends
+
+    def wipe(a: int, b: int) -> None:
+        for k in range(a, b):
+            if out[k] != "\n":
+                out[k] = " "
+
     while i < n:
         ch = text[i]
-        if quote:
-            if ch == "\\" and quote != "`":
+
+        # Inside a template literal body: only a backtick or a `${` gets out.
+        if stack and stack[-1][0] == "tpl":
+            if ch == "\\":
                 i += 2
-                continue
-            if ch == quote:
-                quote = ""
-            i += 1
-            continue
-        if ch in "\"'`":
-            quote = ch
-            i += 1
-            continue
-        if not html and text.startswith("//", i):
-            while i < n and text[i] != "\n":
-                out[i] = " "
+            elif ch == "`":
+                stack.pop()
+                prev, word = "`", ""
+                i += 1
+            elif ch == "$" and text[i + 1:i + 2] == "{":
+                stack.append(["expr", 0])
+                prev, word = "{", ""
+                i += 2
+            else:
                 i += 1
             continue
-        if not html and text.startswith("/*", i):
-            end = text.find("*/", i + 2)
-            end = n if end < 0 else end + 2
-            for k in range(i, end):
-                if out[k] != "\n":
-                    out[k] = " "
-            i = end
+
+        # A quoted string ends at its quote or at the newline it did not
+        # escape, so an apostrophe in prose costs one line, not a file.
+        # In HTML only an attribute value is quoted, so `don't` in a paragraph
+        # is text — the old blanker read it as opening a string and stopped
+        # blanking comments from there on.
+        if ch in "\"'" and (mode != "html" or in_tag):
+            quote = ch
+            i += 1
+            while i < n and text[i] != quote and text[i] != "\n":
+                i += 2 if text[i] == "\\" else 1
+            i += 1
+            prev, word = quote, ""
             continue
-        if html and text.startswith("<!--", i):
-            end = text.find("-->", i + 4)
-            end = n if end < 0 else end + 3
-            for k in range(i, end):
-                if out[k] != "\n":
-                    out[k] = " "
-            i = end
+
+        if mode != "css" and ch == "`":
+            stack.append(["tpl", 0])
+            i += 1
             continue
+
+        if mode == "html":
+            if text.startswith("<!--", i):
+                end = text.find("-->", i + 4)
+                end = n if end < 0 else end + 3
+                wipe(i, end)
+                i = end
+                continue
+            if in_tag:
+                if ch == ">":
+                    in_tag = False
+                i += 1
+                continue
+            embed = _EMBED_OPEN.match(text, i)
+            if embed and not embedded:
+                # Leave the body exactly as it is, and do not read an html
+                # comment out of it either.
+                close = re.compile(r"</\s*" + embed.group(1), re.I).search(
+                    text, embed.end())
+                i = close.start() if close else n
+                continue
+            if embed:
+                # A `<script>` body is JavaScript and a `<style>` body is CSS.
+                # Blank them as such: an import inside `/* … */` in an inline
+                # script is commented out, and a census must not count it.
+                body_start = embed.end()
+                close = re.compile(r"</\s*" + embed.group(1), re.I).search(text, body_start)
+                body_end = close.start() if close else n
+                inner = strip_comments(text[body_start:body_end],
+                                       mode="css" if embed.group(1).lower() == "style" else "js")
+                out[body_start:body_end] = list(inner)
+                i = body_end
+                continue
+            if (ch == "<" and text[i + 1:i + 2].isalpha()) or text.startswith("</", i):
+                in_tag = True
+            i += 1
+            continue
+        else:
+            if mode == "js" and text.startswith("//", i):
+                end = text.find("\n", i)
+                end = n if end < 0 else end
+                wipe(i, end)
+                i = end
+                continue
+            if text.startswith("/*", i):
+                end = text.find("*/", i + 2)
+                end = n if end < 0 else end + 2
+                wipe(i, end)
+                i = end
+                continue
+            if (mode == "js" and ch == "/"
+                    and (prev in _REGEX_MAY_FOLLOW
+                         or (prev == "w" and word in _KEYWORD_BEFORE_REGEX))):
+                j, in_class = i + 1, False
+                while j < n:
+                    c = text[j]
+                    if c == "\\":
+                        j += 2
+                        continue
+                    if c == "[":
+                        in_class = True
+                    elif c == "]":
+                        in_class = False
+                    elif c == "/" and not in_class:
+                        j += 1
+                        break
+                    elif c == "\n":
+                        break
+                    j += 1
+                i = j
+                prev, word = "/", ""
+                continue
+
+        if stack and stack[-1][0] == "expr":
+            if ch == "{":
+                stack[-1][1] += 1
+            elif ch == "}":
+                if stack[-1][1] == 0:
+                    stack.pop()         # back into the template body
+                    prev, word = "}", ""
+                    i += 1
+                    continue
+                stack[-1][1] -= 1
+
+        if ch.isalpha() or ch in "_$":
+            j = i
+            while j < n and (text[j].isalnum() or text[j] in "_$"):
+                j += 1
+            prev, word = "w", text[i:j]
+            i = j
+            continue
+
+        if not ch.isspace():
+            prev, word = ch, ""
         i += 1
     return "".join(out)
 

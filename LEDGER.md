@@ -53,7 +53,7 @@ are the numbers most likely to be quoted and least able to carry the weight.
 | Four event types carried an approval flag no line of the frontend ever read. | `4 events lying` | **`0`** | `cited` |
 | 1,541 files of program text now declare their licence. None did. | `0 files` | **`1,541 files`** | `measured` |
 | CREDITS.md 105 -> 483 lines, and thirteen licence texts that were never shipped. | `105 lines` | **`483 lines · 13 licence texts`** | `counted` |
-| Unreachable UI 78 -> 2, and 1,524 lines deleted against 340 added. | `78` | **`2`** | `measured` |
+| Unreachable UI 78 -> 120 and ratcheted, with 1,524 lines deleted against 340 added. | `78` | **`120`** | `measured` |
 | A 3,126-line module was parsed three times per page load. | `11 forked` | **`0`** | `measured` |
 | 440 silent exception handlers, 12 of them explained. The mutating ones are now zero. | `26 mutating-and-silent` | **`0`** | `measured` |
 | White-on-accent fails WCAG AA on 15 of 16 themes. The fix was not a new token. | `15 of 16 themes failing` | **`0 by construction`** | `measured` |
@@ -68,7 +68,7 @@ are the numbers most likely to be quoted and least able to carry the weight.
 
 **`0 commits` → `156 commits, 1,964 files changed, 175,966 insertions, 6,625 deletions`**  ·  provenance **`diffed`**
 
-**Odysseus:** Odysseus at `b4d1293`, 2026-08-20.
+**Odysseus:** Odysseus at `b4d1293`, committed 2026-08-20.
 
 **Pantheon:** This tree.
 
@@ -86,7 +86,7 @@ git diff --shortstat b4d1293..HEAD && git rev-list --count b4d1293..HEAD
 
 **Pantheon:** Everything upstream shipped is still here, minus five files, each deleted with a recorded argument: `ACKNOWLEDGMENTS.md` (superseded by `CREDITS.md`, 105 -> 483 lines), `scripts/_completion/odysseus.zsh` (a rename), `docs/pantheon-wordmark.png` (upstream's mark, **renamed and never repainted** — the filename said Pantheon and the pixels said Odysseus; `P0-13` says in as many words not to reuse it), `static/fonts/custom/GohuFont.ttf` (verified first: 1,468 bytes, 13 sfnt tables, **3 glyphs**, metadata reading *Untitled1 / Copyright (c) 2025, Unknown*), and `static/js/calendar/reminders.js` (a dead poller).
 
-**How we got there.** This is the fork's first law as a measurement — *an elevation, not a rip and re-write; we add, never subtract*. A ratio of 537 to 4 is only evidence if the four are named, so they are. The font is the one worth reading: it was checked before deletion rather than taken on trust, and it turned out to be three glyphs under a copyright notice crediting nobody. **The fifth was found by a failing test nobody had looked at**: the orphan-image guard had been red for the whole fork, saying a doc image was referenced by nothing — and the reason nothing referenced it was that it was upstream's logo wearing our filename.
+**How we got there.** This is the fork's first law as a measurement — *an elevation, not a rip and re-write; we add, never subtract*. A ratio of 537 to 5 is only evidence if all five are named, so they are. The font is the one worth reading: it was checked before deletion rather than taken on trust, and it turned out to be three glyphs under a copyright notice crediting nobody. **The fifth was found by a failing test nobody had looked at**: the orphan-image guard had been red for the whole fork, saying a doc image was referenced by nothing — and the reason nothing referenced it was that it was upstream's logo wearing our filename.
 
 ```
 git diff --name-status b4d1293..HEAD | grep '^D'
@@ -466,18 +466,18 @@ Argued in: `P0-19`, `P0-20`, `P0-21`, `P0-21b`, `P0-30`, `D-2026-09-07-01`.
 
 *Code that shipped, ran, and reached nothing.*
 
-### Unreachable UI 78 -> 2, and 1,524 lines deleted against 340 added.
+### Unreachable UI 78 -> 120 and ratcheted, with 1,524 lines deleted against 340 added.
 
-**`78` → `2`**  ·  provenance **`measured`**
+**`78` → `120`**  ·  provenance **`measured`**
 
 **Odysseus:** 78 wiring defects: markup, handlers and ids that nothing could reach.
 
 **Pantheon:** A ratchet in CI that cannot go up.
 
-**How we got there.** The fix was **overwhelmingly deletion** — 1,524 lines removed against 340 added — which is what a wiring defect usually is: code that was written, shipped, and never reached. The companion route checker had a worse version of the same disease: it recursed, found nothing, and reported **23 routes when the real number was 443**, looking entirely correct while doing so.
+**How we got there.** The fix was **overwhelmingly deletion** — 1,524 lines removed against 340 added — which is what a wiring defect usually is: code that was written, shipped, and never reached. The companion route checker had a worse version of the same disease: it recursed, found nothing, and reported **23 routes when the real number was 443**, looking entirely correct while doing so. The figure above is the ceiling CI holds, not a floor anybody reached: `check-wiring.py` reports **120** unresolved lookups today and `ci.yml` refuses 121. It said `2` here until `B348`, against its own repro command printing `120` — the ledger failing on the ledger.
 
 ```
-python3 .pantheon/check-wiring.py --max 124
+python3 .pantheon/check-wiring.py --max 120
 ```
 
 Argued in: `P3-13`, `P3-14`, `P3-15`.

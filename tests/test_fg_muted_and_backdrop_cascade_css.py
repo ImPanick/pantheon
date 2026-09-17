@@ -84,6 +84,7 @@ import bisect
 import functools
 import re
 from pathlib import Path
+from tests.helpers.source_text import blank, blank_text  # B290
 
 ROOT = Path(__file__).resolve().parents[1]
 STYLE = ROOT / "static" / "style.css"
@@ -118,13 +119,7 @@ def _css() -> str:
     to document itself — which, in a sheet that keeps its corrections in place,
     is not a small number.
     """
-    raw = STYLE.read_text(encoding="utf-8")
-    out = list(raw)
-    for match in re.finditer(r"/\*.*?\*/", raw, re.S):
-        for i in range(match.start(), match.end()):
-            if out[i] != "\n":
-                out[i] = " "
-    return "".join(out)
+    return blank(STYLE)
 
 
 @functools.lru_cache(maxsize=1)
@@ -303,6 +298,12 @@ def _themes() -> dict:
         # `applyColors()` resolves the accent as `colors.accent || colors.red`,
         # and no shipped palette names an accent — see P1-01.
         resolved["accent"] = fields.get("accent") or resolved["red"]
+        # `B22` — `light-dark()` needs to know which arm this palette resolves.
+        # Same rule and same threshold as `theme.js`'s `_isLightBackground`
+        # (`P3-09`): WCAG relative luminance of `--bg`, threshold 0.5.
+        resolved["color-scheme"] = (
+            "light" if _relative_luminance(_rgb(resolved["bg"])) > 0.5 else "dark"
+        )
         out[match.group(1)] = resolved
     assert len(out) == 16, f"expected the sixteen shipped palettes, found {sorted(out)}"
     return out
@@ -341,6 +342,19 @@ def _resolve(expr: str, theme: dict, ground=None) -> tuple:
     `ground` is what `color-mix(…, transparent)` composites onto.
     """
     expr = expr.strip()
+    if expr.startswith("light-dark("):
+        # `B22`. The sheet's per-surface semantic tokens. Which arm applies is
+        # decided by `color-scheme`, which all three palette writers set from
+        # the background's WCAG luminance (`P3-09`) — so the palette carries the
+        # answer and this does not re-derive it. A theme dict that does not say
+        # fails here rather than silently picking one.
+        arms = [a.strip() for a in _split_top_level(expr[len("light-dark("):-1], ",")]
+        assert len(arms) == 2, f"expected two arms in {expr!r}"
+        scheme = theme.get("color-scheme")
+        assert scheme in ("light", "dark"), (
+            f"{expr!r} needs the palette's `color-scheme`; this one says {scheme!r}"
+        )
+        return _resolve(arms[0] if scheme == "light" else arms[1], theme, ground)
     if expr.startswith("color-mix("):
         inner = expr[len("color-mix("):-1]
         parts = [p.strip() for p in _split_top_level(inner, ",")]
@@ -376,16 +390,19 @@ def _resolve(expr: str, theme: dict, ground=None) -> tuple:
     return _rgb(expr)
 
 
-def _contrast(fore: tuple, back: tuple) -> float:
+def _relative_luminance(colour: tuple) -> float:
     def channel(value):
         value /= 255.0
         return value / 12.92 if value <= 0.03928 else ((value + 0.055) / 1.055) ** 2.4
 
-    def relative(colour):
-        r, g, b = (channel(c) for c in colour)
-        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+    r, g, b = (channel(c) for c in colour)
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
 
-    high, low = sorted((relative(fore), relative(back)), reverse=True)
+
+def _contrast(fore: tuple, back: tuple) -> float:
+    high, low = sorted(
+        (_relative_luminance(fore), _relative_luminance(back)), reverse=True
+    )
     return (high + 0.05) / (low + 0.05)
 
 

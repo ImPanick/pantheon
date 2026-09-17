@@ -49,6 +49,16 @@ function slice(startMark, endMark, label) {
 const converted = slice('  const CONVERTED_TO = {',
                         '  async function libraryImportFiles(fileList) {',
                         'CONVERTED_TO');
+// `B233` added a second module-level register `libraryImportFiles` reads: the
+// office formats the SERVER extracts and this browser has no converter for.
+// Lifted the same way and derived from the same generated `OFFICE_EXTS` the
+// module imports, so this harness never spells the set itself.
+const registers = slice('  const CLIENT_CONVERTED_EXTS = new Set(',
+                        '  /** Read file contents',
+                        'SERVER_EXTRACTED_EXTS');
+// `OFFICE_EXTS` itself needs nothing extra here: `shared` above already inlines
+// the whole of `attachmentLanguage.js`, generated registers and all, which is
+// exactly where `documentLibrary.js` imports it from.
 const importer = slice('  async function libraryImportFiles(fileList) {',
                        '  export function openLibrary(opts) {',
                        'libraryImportFiles');
@@ -103,6 +113,7 @@ if (mode === 'answer') {
   const ks = Object.keys(deps);
   const run = new Function(...ks, `
     ${shared}
+    ${registers}
     ${converted}
     ${importer.replace(/^  export function /gm, '  function ')}
     return libraryImportFiles;

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
+from tests.helpers.source_text import blank, blank_text  # B290
 """P1-02 / B21 — one advanced-key set, mirrored six times, and nothing that checked.
 
 A theme's *advanced* colours are one object — `theme.colors.advanced` in one
@@ -573,16 +574,7 @@ def _token_uses(token: str):
     for path in sorted(STATIC.rglob("*")):
         if not path.is_file() or path.suffix not in {".css", ".js", ".html"}:
             continue
-        text = path.read_text(encoding="utf-8", errors="ignore")
-        if path.suffix == ".css":
-            text = re.sub(
-                r"/\*.*?\*/",
-                lambda m: "".join(" " if c != "\n" else "\n" for c in m.group(0)),
-                text,
-                flags=re.S,
-            )
-        if path.suffix == ".js":
-            text = re.sub(r"^\s*//.*$", lambda m: " " * len(m.group(0)), text, flags=re.M)
+        text = blank(path)
         i = 0
         while (j := text.find(token, i)) >= 0:
             i = j + len(token)

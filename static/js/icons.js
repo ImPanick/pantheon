@@ -226,15 +226,39 @@ export function stopIcon(opts = {}) {
 //     starting." Correct, and the fix is to own those files rather than to skip
 //     them. All 57 move in one commit.
 //
-// What deliberately does NOT change: not one site's size, stroke width, class,
-// inline style, `id`, `aria-hidden` or mitre. The chevron ships at ELEVEN sizes
-// (8, 9, 10, 11, 12, 13, 14, 16, 18, 22, 24), SEVEN stroke widths (2, 2.2, 2.4,
-// 2.5, 2.6, 3, 3.5), with `stroke-linejoin` omitted at two sites so their vertex
-// is mitred rather than rounded, and `aria-hidden` set at only 11 of 57. That
-// spread is a `Law 15` defect in its own right and it is filed as `B291`, not
-// fixed here by stealth. Every call site states its own, and the test compares
-// what each of the 57 now emits against what the literal emitted before,
-// attribute by attribute. This is a move, not a restyle.
+// What `B230` deliberately did NOT change: not one site's size, stroke width,
+// class, inline style, `id`, `aria-hidden` or mitre. The chevron shipped at
+// ELEVEN sizes (8, 9, 10, 11, 12, 13, 14, 16, 18, 22, 24), SEVEN stroke widths
+// (2, 2.2, 2.4, 2.5, 2.6, 3, 3.5), with `stroke-linejoin` omitted at two sites
+// so their vertex is mitred rather than rounded, and `aria-hidden` set at only
+// 11 of 57. That spread is a `Law 15` defect in its own right and it was filed
+// as `B291`, not fixed there by stealth. Every call site states its own, and the
+// test compares what each of the 57 now emits against what the literal emitted
+// before, attribute by attribute. That was a move, not a restyle.
+//
+// `B291` then settled two of the four axes, and left two open on purpose:
+//
+//   aria-hidden   DECIDED. The default below is now `true`, so all 46 sites
+//                 that stated nothing are hidden from a screen reader and the
+//                 11 that stated `true` are unchanged. One edit; the safety
+//                 check is written where the default is.
+//
+//   vertex        DECIDED. The two `linejoin: false` sites are gone.
+//                 `.cookbook-section-chevron` and `.research-section-chevron`
+//                 are the same affordance as `.section-collapse-chevron` and
+//                 `.skills-section-chevron` — a section fold caret — and those
+//                 two are round. `Law 15`: two controls drawn a pixel apart is
+//                 a real defect. `linejoin` stays a parameter because the row
+//                 that added it is the row that proves it was in use.
+//
+//   size, stroke  OPEN, and they need the owner, not this file. The variation
+//                 is not uniformly drift: a 24px gallery arrow and an 8px
+//                 caret inside a toolbar button are different controls, and
+//                 the 8px sites carry `stroke-width: 3.5` because at 8px a 2.5
+//                 stroke paints 0.83 device pixels. But nine sites disagree
+//                 with a same-size sibling that already paints 2.5 — proof by
+//                 the tree itself that 2.5 works at that size — and those are
+//                 drift. The census and the proposed ladder are on `B394`.
 //
 // Not moved, and measured so the next pass starts from a number: `static/index.html`
 // spells the chevron SEVEN more times, and markup cannot import a table — that
@@ -298,24 +322,33 @@ export function chevronGlyph(direction = 'down') {
 /**
  * The chevron in its own `<svg>`.
  *
- * `aria-hidden` defaults to FALSE here where `iconSvg` defaults it to true, and
- * the difference is measured rather than stylistic: a play or stop glyph always
- * sits inside a control that carries its own label, but a chevron is sometimes
- * the entire content of a button (`section-management.js`'s collapse button,
- * `emailLibrary.js`'s previous/next arrows) and sometimes a bare decoration
- * beside a word. The tree set `aria-hidden` at 8 of the 45 sites and not at the
- * other 37. Picking one for all 45 would be a change to what a screen reader
- * says on 37 surfaces, made silently, inside a commit whose whole claim is that
- * it changes nothing visible. Each site keeps what it had; the inconsistency is
- * `B290`.
+ * `aria-hidden` defaults to TRUE, the same as `iconSvg` (`B291`). `B230` shipped
+ * it defaulting to FALSE, deliberately, because the tree set the attribute at
+ * only 11 of the 57 sites and a move that changed what a screen reader says on
+ * 46 surfaces would not have been a move. The move has landed; this is the
+ * change it made possible, and it is one edit rather than 46.
  *
- * The defaults are the chevron's own majorities — `size: 10` (17 of 45) and
- * `strokeWidth: 2.5` (31 of 45) — so a new caller that states neither gets the
+ * It is safe at all 46, and that was checked site by site rather than assumed.
+ * The hazard is real and specific: hiding a glyph that is a control's ONLY
+ * content leaves the control with no accessible name. Every one of the 46 is
+ * either decoration beside a word — a fold caret next to a section title, a
+ * dropdown caret after its label — or the only content of a control that
+ * already carries its own `title` or `aria-label`: `sessions.js:686` sets
+ * `menuBtn.title = 'Session actions'`, `gallery.js`'s prev/next carry
+ * `title` AND `aria-label`, `emailLibrary.js:5224` carries `title="Previous
+ * email"`, `section-management.js:13` carries `title="Collapse section"`,
+ * `document.js:5018` carries `title="Scroll left"`, and the two queue-panel
+ * carets sit inside `<span aria-hidden="true">` in the shell already. A caller
+ * that genuinely needs the glyph announced passes `ariaHidden: false` and says
+ * why; nothing in the tree does.
+ *
+ * The defaults are the chevron's own majorities — `size: 10` (18 of 57) and
+ * `strokeWidth: 2.5` (38 of 57) — so a new caller that states neither gets the
  * common chevron rather than a play triangle's.
  */
 export function chevronIcon(opts = {}) {
   const {
-    direction = 'down', size = 10, strokeWidth = 2.5, ariaHidden = false, ...rest
+    direction = 'down', size = 10, strokeWidth = 2.5, ariaHidden = true, ...rest
   } = opts;
   return iconSvg(chevronGlyph(direction),
     { ...rest, size, strokeWidth, ariaHidden, outline: true });

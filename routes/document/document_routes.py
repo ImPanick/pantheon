@@ -326,6 +326,140 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
         finally:
             db.close()
 
+    # ---- POST /api/documents/import-office ----
+    @router.post("/api/documents/import-office")
+    async def import_office(
+        request: Request,
+        file: UploadFile = File(...),
+        session_id: Optional[str] = Form(None),
+    ) -> Dict[str, Any]:
+        """Upload an Office/EPUB document and create the Document it extracts to.
+
+        `B233`. `documentLibrary.js` `readFileContent` branched on
+        `.xlsx/.xls/.ods` (sheets → CSV) and on `.docx` (mammoth →
+        `htmlToMarkdown`) and **on nothing else**, so a `.doc` fell through to
+        `FileReader.readAsText` and the library stored the OLE2 bytes of a
+        legacy Word file under `language: 'markdown'`. `.odt`, `.pptx` and
+        `.epub` landed the same way.
+
+        **This is not a second extractor** (`Law 14`). `B102` put a bundled
+        `.doc` OLE2/CFB reader and a bundled `.odt` reader on the server and
+        `B240` made the mailbox read all seven Office formats through them, so
+        the same `.doc` emailed to you already produces its prose while the same
+        `.doc` dragged into the library produced binary — one file, one product,
+        two answers, which is `Law 13`. This route is the wiring, not the
+        reader: `save_upload` then `markitdown_runtime.convert_to_markdown`,
+        which is the call `attachment_as_doc` already makes.
+
+        Modelled on `import-pdf` directly above, down to the optional
+        `session_id` (a library import is not tied to a chat) and the owner
+        stamp. What is deliberately different is the refusal: a container the
+        extractor finds no text in is a **422 naming the reason**
+        (`office_extraction_gap`, `B162`'s skip-with-a-reason vocabulary) rather
+        than an empty document, because an empty document looks like a bug in
+        the file and a reason does not.
+        """
+        import os as _os
+
+        from src import markitdown_runtime
+        from src.auth_helpers import require_privilege
+
+        user = require_privilege(request, "can_use_documents")
+
+        if session_id:
+            db = SessionLocal()
+            try:
+                _get_session_or_404(db, session_id, user)
+            finally:
+                db.close()
+
+        if upload_handler is None:
+            raise HTTPException(500, "Upload handler not configured")
+
+        # The extension is checked BEFORE a byte is written. `save_upload`
+        # charges the rate limiter and commits the file, so a `.zip` posted here
+        # must be refused at the door rather than stored and then rejected.
+        incoming = file.filename or ""
+        ext = _os.path.splitext(incoming.lower())[1]
+        if ext not in markitdown_runtime.OFFICE_EXTS:
+            raise HTTPException(
+                415,
+                f"{markitdown_runtime.NO_OFFICE_EXTRACTOR}: {ext or incoming}",
+            )
+
+        client_ip = request.client.host if request.client else "unknown"
+        try:
+            meta = upload_handler.save_upload(file, client_ip, owner=user)
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Office import save_upload failed: {e}")
+            raise HTTPException(500, f"Upload failed: {e}")
+
+        upload_id = meta["id"]
+        doc_path = _locate_current_user_upload(request, upload_id, user)
+        if not doc_path:
+            raise HTTPException(500, "Saved document could not be located")
+
+        title = _os.path.splitext(
+            meta.get("original_name") or meta.get("name") or upload_id)[0]
+        try:
+            body_text = markitdown_runtime.convert_to_markdown(doc_path)
+        except Exception as e:
+            logger.warning(f"Office extraction failed for {doc_path}: {e}")
+            body_text = None
+        if not (body_text or "").strip():
+            # `office_extraction_gap` separates "nothing reads this format",
+            # "markitdown converts it and is not installed" and "a reader ran
+            # and there is no text in here". They are not interchangeable and
+            # the person acting on the message needs to know which one it is.
+            raise HTTPException(
+                422, markitdown_runtime.office_extraction_gap(doc_path))
+
+        db = SessionLocal()
+        try:
+            doc_id = str(uuid.uuid4())
+            ver_id = str(uuid.uuid4())
+            # `markdown`, and it is now TRUE. `B161` moved `'.doc': 'markdown'`
+            # into `CONVERTED_TO` with this row named beside it precisely
+            # because the label described what SHOULD land, and this route is
+            # what makes it land.
+            doc = Document(
+                id=doc_id,
+                session_id=session_id,
+                title=title,
+                language="markdown",
+                current_content=body_text,
+                version_count=1,
+                is_active=True,
+                owner=user,
+            )
+            db.add(doc)
+            db.add(DocumentVersion(
+                id=ver_id,
+                document_id=doc_id,
+                version_number=1,
+                content=body_text,
+                summary=f"Imported from {meta.get('original_name') or incoming}",
+                source="user",
+            ))
+            db.commit()
+            db.refresh(doc)
+            try:
+                from src.event_bus import fire_event
+                fire_event("document_created", doc.owner)
+            except Exception:
+                logger.debug("document_created event dispatch failed", exc_info=True)
+            return _doc_to_dict(doc)
+        except HTTPException:
+            raise
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Failed to create document for office import: {e}")
+            raise HTTPException(500, f"Failed to create document: {e}")
+        finally:
+            db.close()
+
     # ---- GET /api/documents/library ----
     @router.get("/api/documents/library")
     async def documents_library(

@@ -35,6 +35,7 @@ import subprocess
 
 import pathlib
 import pytest
+from tests.helpers.source_text import blank, blank_text  # B290
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 CSS = (ROOT / "static" / "style.css").read_text(encoding="utf-8")
@@ -53,8 +54,7 @@ GUARD_SHAPE = re.compile(r":is\((?:#\\9)+, \*\)")
 
 def _before_guard(css):
     """Everything above the global block, comments stripped."""
-    head = css.split(MARKER)[0]
-    return re.sub(r"/\*.*?\*/", " ", head, flags=re.S)
+    return blank_text(css.split(MARKER)[0], "css")
 
 
 def _guard_rules(css):

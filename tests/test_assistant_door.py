@@ -30,6 +30,7 @@ import textwrap
 from pathlib import Path
 
 import pytest
+from tests.helpers.source_text import blank, blank_text  # B290
 
 ROOT = Path(__file__).resolve().parent.parent
 ASSISTANT = ROOT / "static" / "js" / "assistant.js"
@@ -42,9 +43,7 @@ pytestmark = pytest.mark.skipif(not shutil.which("node"),
 
 
 def _code(path: Path) -> str:
-    src = path.read_text(encoding="utf-8")
-    src = re.sub(r"/\*.*?\*/", " ", src, flags=re.S)
-    return "\n".join(ln for ln in src.splitlines() if not ln.lstrip().startswith("//"))
+    return blank(path)
 
 
 # ── 1. a person can open the assistant ──────────────────────────────────────

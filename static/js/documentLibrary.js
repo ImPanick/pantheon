@@ -7,7 +7,7 @@
 
 import { topPortalZ } from './toolWindowZOrder.js';
 import uiModule from './ui.js';
-import { documentLanguage } from './attachmentLanguage.js';
+import { documentLanguage, OFFICE_EXTS } from './attachmentLanguage.js';
 import sessionModule from './sessions.js';
 import spinnerModule from './spinner.js';
 import markdownModule from './markdown.js';
@@ -1434,6 +1434,31 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
     return md.replace(/\n{3,}/g, '\n\n').trim();
   }
 
+  // Above `readFileContent` rather than beside `CONVERTED_TO` on purpose:
+  // `tests/harness/mammoth_docx_import.js` evaluates the span from
+  // `readFileContent` to `libraryImportFiles`, and a constant in there that
+  // reads an imported register would have to be handed to that harness too.
+  /**
+   * `B233`. The formats the SERVER extracts and this browser has no converter
+   * for, derived rather than listed.
+   *
+   * `OFFICE_EXTS` is the server's own register (generated from
+   * `src/markitdown_runtime.py`, gate-checked by
+   * `.pantheon/check-attachment-language.py`). Subtracted from it are the three
+   * this module genuinely does convert in the browser today — `.docx` through
+   * mammoth and `.xls`/`.xlsx` through SheetJS — because `Law 1` says a working
+   * conversion does not get replaced to make a branch tidier. What is left is
+   * `.doc`, `.odt`, `.pptx` and `.epub`: four containers that reached
+   * `FileReader.readAsText` and were stored as their own raw bytes.
+   *
+   * `.ods` is not in `OFFICE_EXTS` at all — the server has no reader for it —
+   * and is handled by the spreadsheet branch below, which is the only thing
+   * that reads it anywhere in this product.
+   */
+  const CLIENT_CONVERTED_EXTS = new Set(['.docx', '.xls', '.xlsx']);
+  const SERVER_EXTRACTED_EXTS = new Set(
+    [...OFFICE_EXTS].filter(ext => !CLIENT_CONVERTED_EXTS.has(ext)));
+
   /** Read file contents — handles text, spreadsheet, and DOCX formats */
   async function readFileContent(file) {
     const name = file.name.toLowerCase();
@@ -1486,10 +1511,13 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
     // mammoth → `htmlToMarkdown`, so what is stored is markdown whatever the
     // file was.
     '.docx': 'markdown',
-    // Measured 2026-09-16: `.doc` is NOT converted. `readFileContent` has a
-    // `.docx` branch and nothing else, so a `.doc` goes to the plain-text
-    // reader and stores its raw bytes. The answer it shipped with is kept
-    // rather than corrected here (`Law 1`); the missing branch is `B233`.
+    // `B233` closed this. It used to read: *"Measured 2026-09-16: `.doc` is
+    // NOT converted"* — `readFileContent` had a `.docx` branch and nothing
+    // else, so a `.doc` fell through to `FileReader.readAsText` and the
+    // library stored the OLE2 bytes of a legacy Word file under a label that
+    // said markdown. `B161` kept the label rather than correcting it (`Law 1`)
+    // because it described what SHOULD land; `SERVER_EXTRACTED` below is what
+    // makes it land. The label is unchanged and is now true.
     '.doc': 'markdown',
   };
 
@@ -1527,6 +1555,33 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
             let _e = `HTTP ${res.status}`;
             try { const _j = await res.json(); _e = _j.detail || _j.error || _e; } catch {}
             throw new Error('PDF import failed: ' + _e);
+          }
+          imported++;
+          continue;
+        }
+
+        if (SERVER_EXTRACTED_EXTS.has(ext)) {
+          // `B233`. The same shape as the PDF branch directly above, and for
+          // the same reason: the extractor is on the server and posting the
+          // file is how the browser reaches it. `B102` bundled the `.doc`
+          // OLE2/CFB and `.odt` readers and `B240` drove all seven Office
+          // formats through them from the mailbox, so the same `.doc` emailed
+          // to you already produced its prose while the same `.doc` dropped
+          // here produced binary — one file, one product, two answers.
+          //
+          // A refusal is surfaced, not swallowed: 415 means nothing reads this
+          // format and 422 means a reader ran and found no text, and the two
+          // are different things to tell someone (`B162`).
+          const fd = new FormData();
+          fd.append('file', file);
+          const res = await fetch(`${API_BASE}/api/documents/import-office`, {
+            method: 'POST',
+            body: fd,
+          });
+          if (!res.ok) {
+            let _e = `HTTP ${res.status}`;
+            try { const _j = await res.json(); _e = _j.detail || _j.error || _e; } catch {}
+            throw new Error(`${ext} import failed: ` + _e);
           }
           imported++;
           continue;

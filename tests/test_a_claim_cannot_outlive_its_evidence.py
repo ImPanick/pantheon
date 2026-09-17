@@ -43,12 +43,18 @@ def _load():
     return module
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def checker():
+    """Module-scoped, because `B348`'s rule RUNS the checkers a claim's repro
+    names — about twenty seconds between them — and `_checker_output` caches
+    per process. Reloading the module per test threw that cache away and turned
+    this file into a thirteen-minute run. Every test here patches through
+    `monkeypatch`, which undoes itself, so one instance is enough; the two that
+    need a pristine module call `_load()` directly."""
     return _load()
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def claims():
     if str(ROOT / ".pantheon") not in sys.path:
         sys.path.insert(0, str(ROOT / ".pantheon"))
@@ -493,3 +499,127 @@ def test_the_gap_is_measured_with_git_cherry_not_rev_list(checker, monkeypatch):
         f"cherry-picked fix and would report a gap that is already closed"
     )
     assert "rev-list" not in seen["argv"]
+
+
+# --------------------------------------------------------------------------
+# `B348` — the claim, against the command the claim tells you to run
+# --------------------------------------------------------------------------
+#
+# The ledger's whole thesis is that every claim carries a command a stranger can
+# run. For `wiring` the command **disproved the claim**: `after 2` against
+# `check-wiring.py` printing `UNRESOLVED 120`, with a repro of `--max 124`
+# against CI's `--max 120` — so the reader ran a different gate from the one
+# guarding the tree. `check-ledger.py` had a rule for the checker COUNT and two
+# for the README, and none comparing a claim to the checker its own repro names.
+
+
+def test_the_wiring_claim_now_matches_the_checker_and_the_ci_ceiling(checker, claims):
+    """The specific correction, stated as the thing it has to keep being."""
+    wiring = next(c for c in claims.CLAIMS if c.id == "wiring")
+    output = checker._checker_output(".pantheon/check-wiring.py")
+    name, live = checker._repro_headline(output)
+    assert name == "UNRESOLVED"
+    assert wiring.after.strip() == str(live), (
+        f"the wiring claim says {wiring.after!r} and check-wiring.py says {live}")
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    ceiling = re.search(r"check-wiring\.py\s+--max\s+(\d+)", ci).group(1)
+    assert f"--max {ceiling}" in wiring.repro
+
+
+def test_a_claim_whose_repro_prints_a_different_number_is_caught(checker, claims,
+                                                                 monkeypatch):
+    """The general rule, not the one correction. This is `B348` re-armed."""
+    wiring = next(c for c in claims.CLAIMS if c.id == "wiring")
+    bad = wiring._replace(id="probe", after="2")
+    monkeypatch.setattr(claims, "CLAIMS", claims.CLAIMS + (bad,))
+    problems = checker.verify()
+    assert any("probe" in p and "disproves the claim" in p for p in problems), problems
+
+
+def test_a_repro_ceiling_that_is_not_the_ci_ceiling_is_caught(checker, claims,
+                                                              monkeypatch):
+    """A reader following the ledger must run the gate that guards the tree."""
+    wiring = next(c for c in claims.CLAIMS if c.id == "wiring")
+    bad = wiring._replace(
+        id="probe", repro="python3 .pantheon/check-wiring.py --max 124")
+    monkeypatch.setattr(claims, "CLAIMS", claims.CLAIMS + (bad,))
+    problems = checker.verify()
+    assert any("probe" in p and "different gate" in p for p in problems), problems
+
+
+def test_a_repro_naming_a_checker_that_is_gone_is_caught(checker, claims,
+                                                         monkeypatch):
+    bad = claims.CLAIMS[0]._replace(
+        id="probe", repro="python3 .pantheon/check-nothing-here.py")
+    monkeypatch.setattr(claims, "CLAIMS", claims.CLAIMS + (bad,))
+    assert any("probe" in p and "does not exist" in p for p in checker.verify())
+
+
+def test_a_checker_that_measured_nothing_does_not_disprove_anything(checker):
+    """`Law 20` turned on this rule itself.
+
+    A checker that enumerated no files prints every count as zero — a checkout
+    with no `.git`, for one — and reading that as *the claim is wrong* is the
+    tautology this file exists to refuse. It becomes a NOTE instead.
+    """
+    assert checker._measured_anything("lookups 3  ·  UNRESOLVED 0")
+    assert not checker._measured_anything("lookups 0  ·  UNRESOLVED 0")
+
+
+def test_the_repro_rule_reports_rather_than_fails_a_different_metric(checker):
+    """Four claims state a number their checker never prints — `fan-out`'s
+    *40 destinations* against an unpaced-call-site count, for instance. Those
+    are named as NOTEs and left to `B411`, because deciding what each number
+    means needs the person who measured it and a checker that guesses is the
+    defect this one exists to find."""
+    _, notes = checker._repro_problems()
+    assert notes, "the four B411 mismatches are gone — update this test and the row"
+    assert all("B411" in note for note in notes)
+
+
+# --------------------------------------------------------------------------
+# `B349` — two dates, two meanings
+# --------------------------------------------------------------------------
+
+
+def test_the_clone_date_and_the_commit_date_are_stated_separately(claims):
+    """`2026-08-20` is when `b4d1293` was committed upstream; `2026-08-24` is
+    when this repository was taken from it. The repository stated both for one
+    event, sixty lines apart in the README. Neither is confirmable from a
+    worktree — `b4d1293` is not reachable — so they are labelled, not merged."""
+    assert claims.FORK_POINT_DATE != claims.FORK_CLONE_DATE
+    assert claims.FORK_CLONE_DATE == "2026-08-24"
+    assert claims.FORK_POINT_DATE == "2026-08-20"
+
+
+def test_the_clone_date_matches_the_agpl_notice(checker):
+    """`NOTICE`'s *Date of fork* is the §5(a) attribution surface."""
+    assert checker._fork_date_problems() == []
+    notice = (ROOT / "NOTICE").read_text(encoding="utf-8")
+    assert re.search(r"Date of fork\s*:\s*2026-08-24", notice)
+
+
+def test_a_notice_that_drifts_from_the_clone_date_is_caught(checker, claims,
+                                                            monkeypatch):
+    monkeypatch.setattr(claims, "FORK_CLONE_DATE", "2026-01-01")
+    problems = checker._fork_date_problems()
+    assert any("FORK_CLONE_DATE" in p for p in problems), problems
+
+
+def test_collapsing_the_two_dates_into_one_is_caught(checker, claims, monkeypatch):
+    """If they ever really coincide, that has to be said where they are defined
+    rather than arrived at by somebody deleting one of them."""
+    monkeypatch.setattr(claims, "FORK_CLONE_DATE", claims.FORK_POINT_DATE)
+    problems = checker._fork_date_problems()
+    assert any("two different events" in p for p in problems), problems
+
+
+def test_the_fork_point_is_still_unreachable_from_here(claims):
+    """The reason this row cannot be settled in a worktree, asserted rather
+    than remembered. If this ever starts passing, `git show` the commit and
+    give the owner a date instead of a choice."""
+    proc = subprocess.run(["git", "cat-file", "-t", claims.FORK_POINT],
+                          cwd=str(ROOT), capture_output=True, text=True)
+    assert proc.returncode != 0, (
+        f"{claims.FORK_POINT} is reachable now — read its committer date and "
+        f"close B349 with evidence instead of a label")

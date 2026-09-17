@@ -68,7 +68,9 @@ dropping is now written down in `D-2026-09-16-01`.
 
 ## One-time settings to turn on
 
-These two settings unlock the full value. You only do them once.
+These three settings unlock the full value. You only do them once. Do the third
+one **before** the repository is public, not after — it is the only one where
+being late has a cost you cannot take back.
 
 ### 1. Require the blocking checks before merging
 
@@ -129,6 +131,30 @@ let the workflows run on one pull request first, then add them here.
 4. Under **Code scanning**, keep **Default setup** disabled. CodeQL is
    configured by `.github/workflows/codeql.yml`; enabling default setup at the
    same time causes GitHub to reject uploads from the checked-in workflow.
+
+### 3. Turn on private vulnerability reporting
+
+Do this before the repository goes public.
+
+1. **Settings -> Code security** (or **Code security and analysis**).
+2. Turn on **Private vulnerability reporting**.
+
+Three documents send security reporters to
+`https://github.com/ImPanick/pantheon/security/advisories/new`: `SECURITY.md`,
+`CODE_OF_CONDUCT.md` (which uses it for conduct reports, because it is the only
+private channel this repository has), and `.github/ISSUE_TEMPLATE/config.yml`,
+which puts it in the chooser a person sees *before* they reach "New issue".
+With the setting off, that URL 404s and every one of those routes ends with a
+reporter standing in front of a dead end holding a vulnerability — and the next
+thing a reporter does when the private channel fails is file a public issue,
+which for most bugs in this project's surface publishes the exploit. All three
+documents say what to do if the page 404s, so the failure is handled rather
+than silent, but a fallback is not the fix; this setting is.
+
+`B357` could not verify it from the worktree: `api.github.com` is unreachable
+from there and the repository was not public yet, so nobody has confirmed the
+switch is on. It is checked off when the advisory URL shows the report form to
+a logged-out visitor.
 
 ## Keeping it current
 

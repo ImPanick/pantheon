@@ -297,11 +297,11 @@ export function applyColors(colors) {
   if (colors.red) s.setProperty('--red', colors.red);
   // P1-01. Never in `:root`. The fallback in `var(--accent, var(--red))` fires
   // only while `--accent` is undefined, so a `:root` definition retires it at
-  // all 556 of those sites in `style.css` at once and hands all sixteen themes
+  // all 552 of those sites in `style.css` at once and hands all sixteen themes
   // the same accent. Per theme instead, beside `--red` and guarded the same
   // way: `THEMES` carries no `accent` key and `generateHarmonyColors()` returns
-  // none, so every accent is its own theme's red today. Those 556 keep the
-  // colour they already had; the 202 bare `var(--accent)` sites, voided at
+  // none, so every accent is its own theme's red today. Those 552 keep the
+  // colour they already had; the 200 bare `var(--accent)` sites, voided at
   // computed-value time for as long as nothing defined the token, resolve for
   // the first time. An `accent:` key parts a theme from its red.
   //

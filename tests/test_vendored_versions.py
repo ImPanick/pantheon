@@ -149,8 +149,8 @@ def test_a_vendored_file_with_no_version_record_fails(clean):
 def test_a_record_naming_no_inventory_entry_fails(clean):
     """The other half of the join. Renaming an entry in `check-licences.py`
     without renaming it here leaves two lists that each look complete."""
-    patch_checker(clean, '        "Mermaid", "mermaid", "11.16.1"',
-                  '        "Mermaidd", "mermaid", "11.16.1"')
+    patch_checker(clean, '        "Mermaid", "mermaid", "11.17.2"',
+                  '        "Mermaidd", "mermaid", "11.17.2"')
     r = run(clean)
     assert r.returncode == 1, r.stdout
     assert "NO ENTRY" in r.stdout and "Mermaidd" in r.stdout, r.stdout
@@ -209,7 +209,7 @@ def test_a_manifest_that_disagrees_about_the_version_fails(clean):
     manifest's own `version` has to match."""
     man = clean / "static" / "lib" / "swagger-ui" / "MANIFEST.json"
     data = json.loads(man.read_text(encoding="utf-8"))
-    data["version"] = "5.33.0"
+    data["version"] = "5.99.0"
     man.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     r = run(clean)
     assert r.returncode == 1, r.stdout
@@ -376,3 +376,203 @@ def test_the_offline_checker_never_reaches_the_network():
          "src/", "routes/", "services/", "static/", "app.py"],
         cwd=ROOT, capture_output=True, text=True).stdout.split()
     assert not hits, hits
+
+
+# ── rule 6: what a bundle carries INSIDE it (B336) ─────────────────────────
+#
+# A vendored bundle is one npm coordinate to a scanner and a dozen to an
+# attacker. `html2pdf.js` 0.14.0 has zero advisories of its own and ships jsPDF
+# 4.0.0 with nine — one CRITICAL — and DOMPurify 3.3.1 with eighteen. Until
+# 2026-09-17 that lived in a roadmap row and in `CREDITS.md` prose, and nothing
+# compared either to the file. `B336`'s decision is to stay on the published
+# artifact, which is only defensible if the waiting is checked rather than
+# remembered.
+
+def test_the_recorded_inner_versions_are_in_the_shipped_bytes():
+    """The real tree. `M.version="4.0.0"` is jsPDF's own version literal in the
+    blob and `@license DOMPurify 3.3.1` is in the extracted sidecar, so both
+    numbers are read out of the artifact rather than asserted about it."""
+    mod = load()
+    recorded = {r.entry: r for r in mod.VENDORED}
+    html2pdf = recorded["html2pdf.js"]
+    inner = {i.package: i for i in html2pdf.contains}
+    assert set(inner) == {"jspdf", "dompurify", "html2canvas"}, sorted(inner)
+    assert inner["jspdf"].version == "4.0.0"
+    assert inner["dompurify"].version == "3.3.1"
+    bundle = (ROOT / "static" / "lib" / "html2pdf.bundle.min.js").read_bytes()
+    assert inner["jspdf"].witness.encode() in bundle, inner["jspdf"].witness
+    sidecar = (ROOT / "licenses"
+               / "html2pdf.bundle.min.js.LICENSE.txt").read_bytes()
+    assert inner["dompurify"].witness.encode() in sidecar
+
+
+def test_every_inner_advisory_has_a_reason_written_beside_its_version():
+    """The excuses are per advisory id and live beside the version they excuse,
+    so a bump orphans them and somebody has to look again — `B333`'s pattern,
+    applied to the twenty-seven advisories inside this bundle."""
+    mod = load()
+    inner = {i.package: i
+             for r in mod.VENDORED for i in r.contains}
+    assert len(inner["jspdf"].osv_known) == 9, sorted(inner["jspdf"].osv_known)
+    assert len(inner["dompurify"].osv_known) == 18, len(inner["dompurify"].osv_known)
+    # The CRITICAL one is named, not lumped in.
+    assert "GHSA-wfv2-pwc8-crg5" in inner["jspdf"].osv_known
+    for why in inner["jspdf"].osv_known.values():
+        assert len(why) > 40, why
+    assert not inner["html2canvas"].osv_known, (
+        "html2canvas is current and has nothing to excuse")
+
+
+def test_a_bundle_carrying_a_different_inner_version_fails(clean):
+    """The claim in one line. Swap the bundle for one carrying a different jsPDF
+    and this goes red — which matters because the record does not merely say
+    `4.0.0`, it carries nine advisory excuses written *for* 4.0.0, and an excuse
+    written for one version is not an excuse for another."""
+    target = clean / "static" / "lib" / "html2pdf.bundle.min.js"
+    blob = target.read_bytes()
+    target.write_bytes(blob.replace(b'M.version="4.0.0"', b'M.version="4.2.1"'))
+    r = run(clean)
+    assert r.returncode == 1, r.stdout
+    # The hash moves too; the point is that the inner version is named.
+    assert "INNER" in r.stdout, r.stdout
+    assert "jspdf" in r.stdout and "4.0.0" in r.stdout, r.stdout
+
+
+def test_an_inner_witness_whose_file_is_gone_fails(clean):
+    """A witness that names a file nobody ships would check nothing. An empty
+    expectation going green is the trap `EMPTY MANIFEST` exists for, one level
+    in."""
+    patch_checker(
+        clean,
+        '"dompurify", "3.3.1", "@license DOMPurify 3.3.1",\n'
+        '                where="licenses/html2pdf.bundle.min.js.LICENSE.txt",',
+        '"dompurify", "3.3.1", "@license DOMPurify 3.3.1",\n'
+        '                where="licenses/not-a-file.txt",')
+    r = run(clean)
+    assert r.returncode == 1, r.stdout
+    assert "NO WITNESS" in r.stdout, r.stdout
+
+
+def test_the_freshness_workflow_is_handed_the_inner_packages():
+    """`Law 16` splits the question: this checker reads the tree, the workflow
+    asks upstream. The workflow can only ask about what `--json` hands it, so a
+    `contains` that stopped being exported would silently stop twenty-seven
+    advisories being counted every week."""
+    r = subprocess.run(
+        [sys.executable, str(CHECKER), "--json"],
+        cwd=ROOT, capture_output=True, text=True, check=True)
+    records = {rec["entry"]: rec for rec in json.loads(r.stdout)}
+    inner = {i["package"]: i for i in records["html2pdf.js"]["contains"]}
+    assert set(inner) == {"jspdf", "dompurify", "html2canvas"}, sorted(inner)
+    assert inner["jspdf"]["version"] == "4.0.0"
+    assert inner["jspdf"]["behind_ok"], "being behind here needs a row that owns it"
+    assert len(inner["dompurify"]["osv_known"]) == 18
+
+    workflow = (ROOT / ".github" / "workflows"
+                / "vendored-freshness.yml").read_text(encoding="utf-8")
+    assert 'rec.get("contains"' in workflow, (
+        "the workflow no longer asks OSV about the packages inside a bundle")
+
+
+def test_a_version_line_names_which_dist_tag_to_compare_against():
+    """`B335`'s Pyodide judgement, made machine-readable.
+
+    npm's `pyodide` `dist-tags.latest` is 314.0.7 — a CPython-aligned line that
+    0.27.x does not belong to — so comparing against `latest` reports a
+    maintained runtime as permanently behind, for ever. A light that is always
+    on is a light nobody reads, which is the whole design principle of the
+    `behind_ok` field next door.
+    """
+    mod = load()
+    records = {r.entry: r for r in mod.VENDORED}
+    assert records["Pyodide"].dist_tag == "stable-0.27", records["Pyodide"].dist_tag
+    assert records["Mermaid"].dist_tag == "latest"
+    workflow = (ROOT / ".github" / "workflows"
+                / "vendored-freshness.yml").read_text(encoding="utf-8")
+    assert 'rec.get("dist_tag")' in workflow, (
+        "the workflow still asks npm for `latest` whatever the record says")
+
+
+# ── rule 7: a self-built artifact states its own inputs (B339) ─────────────
+
+def test_a_build_command_with_no_input_record_fails(clean):
+    """`B337` recorded *how* `qrcode.min.js` was built and `B339` is that the
+    command alone is not provenance: `dijkstrajs` came in through that build and
+    nothing in the repository said so. The two halves are now required
+    together."""
+    patch_checker(
+        clean, '        "v11.17.2",',
+        '        "v11.17.2",\n        build="esbuild mermaid --bundle",')
+    r = run(clean)
+    assert r.returncode == 1, r.stdout
+    assert "NO INPUTS" in r.stdout, r.stdout
+    assert "mermaid.min.js" in r.stdout, r.stdout
+
+
+def test_a_build_record_for_a_file_nobody_builds_fails(clean):
+    """The other direction. A record left behind after a file went back to
+    being fetched would otherwise declare packages for bytes that no longer
+    contain them."""
+    d = clean / ".pantheon" / "vendored-builds"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "mermaid.json").write_text(json.dumps({
+        "file": "static/lib/mermaid.min.js",
+        "command": "esbuild mermaid --bundle",
+        "packages": ["mermaid"],
+    }), encoding="utf-8")
+    r = run(clean)
+    assert r.returncode == 1, r.stdout
+    assert "ORPHAN BUILD" in r.stdout, r.stdout
+
+
+# ── B338: qrcode.min.js is gone, and its paperwork is not ──────────────────
+
+def test_the_unreferenced_qrcode_bundle_is_no_longer_shipped():
+    """`B338`. Nothing in `static/` ever loaded this file: no `<script>` in
+    `static/index.html`, no module import, not precached by `static/sw.js`. The
+    2FA QR code a user sees is rasterised server-side by the Python
+    `qrcode[pil]` package, so the `CREDITS.md` purpose column had never been
+    true of these bytes.
+
+    **Fails on the tree as it stood**: the file was tracked, and
+    `.pantheon/check-vendored-versions.py` carried a `node-qrcode` record for
+    it.
+    """
+    tracked = subprocess.run(
+        ["git", "ls-files", "static/lib/"], cwd=ROOT,
+        capture_output=True, text=True, check=True).stdout.split()
+    assert "static/lib/qrcode.min.js" not in tracked, tracked
+    assert not (ROOT / "static" / "lib" / "qrcode.min.js").exists()
+    mod = load()
+    assert "node-qrcode" not in {r.entry for r in mod.VENDORED}, (
+        "a fingerprint record for bytes this repository no longer serves")
+    # And nothing in the served frontend went looking for it.
+    hits = subprocess.run(
+        ["git", "grep", "-l", "qrcode.min.js", "--", "static/", "app.py",
+         "routes/", "src/"],
+        cwd=ROOT, capture_output=True, text=True).stdout.split()
+    assert not hits, hits
+
+
+def test_the_qrcode_attribution_survives_the_file():
+    """`Law 1`, and `B334`'s precedent three entries up in the inventory: those
+    bytes ship in every tag of this repository up to 2026-09-17, and deleting
+    the notice for bytes somebody can still check out is how attribution rots
+    backwards. The *fingerprint* goes because it hashes nothing; the *notice*
+    stays because it is about what was distributed."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "_cl_qr", ROOT / ".pantheon" / "check-licences.py")
+    lic = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(lic)
+    by_name = {e.name: e for e in lic.INVENTORY}
+    for name in ("node-qrcode", "dijkstrajs"):
+        assert name in by_name, f"{name}'s attribution was deleted with the file"
+        assert by_name[name].patterns == [], (
+            f"{name} still claims a file pattern for bytes that are gone")
+        assert (ROOT / "licenses" / by_name[name].text).is_file()
+    credits = (ROOT / "CREDITS.md").read_text(encoding="utf-8")
+    assert "licenses/node-qrcode-MIT-LICENSE.txt" in credits
+    assert "licenses/dijkstrajs-MIT-LICENSE.txt" in credits
+    assert "through 2026-09-17" in credits, (
+        "CREDITS.md does not say which release was the last to carry the file")

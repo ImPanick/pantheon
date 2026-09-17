@@ -304,13 +304,25 @@ embedded licence banner.
 | [rgbcolor](https://github.com/canvg/rgbcolor) | bundled inside `html2pdf.bundle.min.js` | CSS colour parsing inside canvg | MIT ([`licenses/rgbcolor-MIT-LICENSE.txt`](licenses/rgbcolor-MIT-LICENSE.txt)) |
 | [stackblur-canvas](https://github.com/flozz/StackBlur) | bundled inside `html2pdf.bundle.min.js` | Canvas blur filter inside canvg | MIT ([`licenses/stackblur-canvas-MIT-LICENSE.txt`](licenses/stackblur-canvas-MIT-LICENSE.txt)) |
 | [svg-pathdata](https://github.com/nfroidure/svg-pathdata) | bundled inside `html2pdf.bundle.min.js` | SVG path parsing inside canvg | MIT ([`licenses/svg-pathdata-MIT-LICENSE.txt`](licenses/svg-pathdata-MIT-LICENSE.txt)) |
-| [node-qrcode](https://github.com/soldair/node-qrcode) v1.5.4 | `qrcode.min.js` | Browser QR-code rendering. **Loaded by nothing** — see below | MIT ([`licenses/node-qrcode-MIT-LICENSE.txt`](licenses/node-qrcode-MIT-LICENSE.txt)) |
-| [dijkstrajs](https://github.com/tcort/dijkstrajs) | bundled inside `qrcode.min.js` | Shortest-path search, behind node-qrcode's segment optimiser | MIT ([`licenses/dijkstrajs-MIT-LICENSE.txt`](licenses/dijkstrajs-MIT-LICENSE.txt)) |
-| [KaTeX](https://github.com/KaTeX/KaTeX) v0.16.22 | `katex/katex.min.{js,css}` + `katex/fonts/*.woff2` | Math typesetting | MIT ([`licenses/KaTeX-MIT-LICENSE.txt`](licenses/KaTeX-MIT-LICENSE.txt)) |
-| [Mermaid](https://github.com/mermaid-js/mermaid) v11.16.1 | `mermaid.min.js` | Diagrams from text | MIT ([`licenses/Mermaid-MIT-LICENSE.txt`](licenses/Mermaid-MIT-LICENSE.txt)) |
+| [node-qrcode](https://github.com/soldair/node-qrcode) v1.5.4 | `qrcode.min.js` **through 2026-09-17**; no longer shipped | Nothing. It was loaded by nothing, ever — see below | MIT ([`licenses/node-qrcode-MIT-LICENSE.txt`](licenses/node-qrcode-MIT-LICENSE.txt)) |
+| [dijkstrajs](https://github.com/tcort/dijkstrajs) | bundled inside `qrcode.min.js` **through 2026-09-17**; no longer shipped | Shortest-path search, behind node-qrcode's segment optimiser | MIT ([`licenses/dijkstrajs-MIT-LICENSE.txt`](licenses/dijkstrajs-MIT-LICENSE.txt)) |
+| [ieee754](https://github.com/feross/ieee754) | bundled inside `docx.umd.min.js` and `swagger-ui-bundle.js` | IEEE-754 float read/write behind `Buffer` | BSD-3-Clause ([`licenses/ieee754-BSD-3-Clause.txt`](licenses/ieee754-BSD-3-Clause.txt)) |
+| [buffer](https://github.com/feross/buffer) | bundled inside `docx.umd.min.js` and `swagger-ui-bundle.js` | Node's `Buffer` for the browser | MIT ([`licenses/buffer-MIT-LICENSE.txt`](licenses/buffer-MIT-LICENSE.txt)) |
+| [string.fromcodepoint](https://github.com/mathiasbynens/String.fromCodePoint) | bundled inside `docx.umd.min.js` | `String.fromCodePoint` polyfill behind the XML writer | MIT ([`licenses/string.fromcodepoint-MIT-LICENSE.txt`](licenses/string.fromcodepoint-MIT-LICENSE.txt)) |
+| [KaTeX](https://github.com/KaTeX/KaTeX) v0.18.7 | `katex/katex.min.{js,css}` + `katex/fonts/*.woff2` | Math typesetting | MIT ([`licenses/KaTeX-MIT-LICENSE.txt`](licenses/KaTeX-MIT-LICENSE.txt)) |
+| [Mermaid](https://github.com/mermaid-js/mermaid) v11.17.2 | `mermaid.min.js` | Diagrams from text | MIT ([`licenses/Mermaid-MIT-LICENSE.txt`](licenses/Mermaid-MIT-LICENSE.txt)) |
 | [vscode-languageserver](https://github.com/microsoft/vscode-languageserver-node) — `vscode-jsonrpc` v8.2.0, `vscode-languageserver-protocol` v3.17.5, `vscode-languageserver-types` v3.17.5 | bundled inside `mermaid.min.js` | Language-server plumbing behind Mermaid's parsers | MIT ([`licenses/vscode-languageserver-MIT-LICENSE.txt`](licenses/vscode-languageserver-MIT-LICENSE.txt)) |
+| [Lodash](https://github.com/lodash/lodash) (`lodash-es`) | bundled inside `mermaid.min.js` | Utility library behind Mermaid's config merge | MIT ([`licenses/lodash-MIT-LICENSE.txt`](licenses/lodash-MIT-LICENSE.txt)) |
+| [Cytoscape](https://github.com/cytoscape/cytoscape.js) | bundled inside `mermaid.min.js` | Graph layout behind Mermaid's mindmap/architecture diagrams | MIT ([`licenses/cytoscape-MIT-LICENSE.txt`](licenses/cytoscape-MIT-LICENSE.txt)) |
 | [Pyodide](https://github.com/pyodide/pyodide) 0.27.5 | `pyodide/{pyodide.js,pyodide.asm.js,pyodide.asm.wasm,python_stdlib.zip,pyodide-lock.json}` | In-browser Python runtime for `” ```python ”` code blocks | MPL-2.0 ([`licenses/Pyodide-MPL-2.0.txt`](licenses/Pyodide-MPL-2.0.txt)) |
-| [Swagger UI](https://github.com/swagger-api/swagger-ui) v5.32.15 | `swagger-ui/{swagger-ui.css,swagger-ui-bundle.js}` | The API browser at `/docs` | Apache-2.0 ([`licenses/SwaggerUI-Apache-2.0.txt`](licenses/SwaggerUI-Apache-2.0.txt), [`licenses/SwaggerUI-NOTICE.txt`](licenses/SwaggerUI-NOTICE.txt)); bundle sidecar: [`licenses/swagger-ui-bundle.js.LICENSE.txt`](licenses/swagger-ui-bundle.js.LICENSE.txt) |
+| [Swagger UI](https://github.com/swagger-api/swagger-ui) v5.33.0 | `swagger-ui/{swagger-ui.css,swagger-ui-bundle.js}` | The API browser at `/docs` | Apache-2.0 ([`licenses/SwaggerUI-Apache-2.0.txt`](licenses/SwaggerUI-Apache-2.0.txt), [`licenses/SwaggerUI-NOTICE.txt`](licenses/SwaggerUI-NOTICE.txt)); bundle sidecar: [`licenses/swagger-ui-bundle.js.LICENSE.txt`](licenses/swagger-ui-bundle.js.LICENSE.txt) |
+| [React](https://github.com/facebook/react) — `react`, `react-dom`, `scheduler`, `use-sync-external-store` | bundled inside `swagger-ui-bundle.js` | Swagger UI is a React application | MIT ([`licenses/react-MIT-LICENSE.txt`](licenses/react-MIT-LICENSE.txt)) |
+| [Immutable.js](https://github.com/immutable-js/immutable-js) | bundled inside `swagger-ui-bundle.js` | Persistent data structures behind Swagger UI's store | MIT ([`licenses/immutable-MIT-LICENSE.txt`](licenses/immutable-MIT-LICENSE.txt)) |
+| [classnames](https://github.com/JedWatson/classnames) | bundled inside `swagger-ui-bundle.js` | Conditional CSS class joining | MIT ([`licenses/classnames-MIT-LICENSE.txt`](licenses/classnames-MIT-LICENSE.txt)) |
+| [deep-extend](https://github.com/unclechu/node-deep-extend) | bundled inside `swagger-ui-bundle.js` | Recursive object merge | MIT ([`licenses/deep-extend-MIT-LICENSE.txt`](licenses/deep-extend-MIT-LICENSE.txt)) |
+| [fast-json-patch](https://github.com/Starcounter-Jack/JSON-Patch) | bundled inside `swagger-ui-bundle.js` | RFC 6902 JSON Patch | MIT ([`licenses/fast-json-patch-MIT-LICENSE.txt`](licenses/fast-json-patch-MIT-LICENSE.txt)) |
+| [repeat-string](https://github.com/jonschlinkert/repeat-string) | bundled inside `swagger-ui-bundle.js` | String repetition | MIT ([`licenses/repeat-string-MIT-LICENSE.txt`](licenses/repeat-string-MIT-LICENSE.txt)) |
+| [safe-buffer](https://github.com/feross/safe-buffer) | bundled inside `swagger-ui-bundle.js` | Safer `Buffer` constructor | MIT ([`licenses/safe-buffer-MIT-LICENSE.txt`](licenses/safe-buffer-MIT-LICENSE.txt)) |
 
 **Swagger UI is here because of `/docs`, and it is two files out of a package
 of fifty.** FastAPI generates that page itself and its HTML named
@@ -327,8 +339,9 @@ upstream's own `NOTICE` travels with it.
 
 *Versions read out of the shipped bundles, not carried from a document:
 `highlight.min.js` v11.12.0 from its own banner, `katex.min.js`
-`version:"0.16.22"`, `mermaid.min.js` `11.16.1`. (Measured 2026-08-27; re-read
-2026-09-16 after the bumps in `B331`, `B332`, `B334` and `B337`.)*
+`version:"0.18.7"`, `mermaid.min.js` `11.17.2`. (Measured 2026-08-27; re-read
+2026-09-16 after the bumps in `B331`, `B332`, `B334` and `B337`, and again
+2026-09-17 after `B335`.)*
 
 **Every version in the table above is now checked against the shipped bytes.**
 See [How these stay current](#how-these-stay-current) — the versions here are no
@@ -344,8 +357,8 @@ sidecar file is now in
 [`licenses/html2pdf.bundle.min.js.LICENSE.txt`](licenses/html2pdf.bundle.min.js.LICENSE.txt)
 — fetched verbatim from html2pdf.js 0.14.0, not reconstructed. **The other
 seven files carry no banner at all**: docx, mammoth.js, KaTeX (`.js` and
-`.css`), Mermaid, node-qrcode, and — inside the html2pdf bundle — jsPDF and
-html2canvas. *(Measured 2026-09-01: zero `/*!` markers and zero occurrences of
+`.css`), Mermaid, node-qrcode (removed 2026-09-17, `B338`), and — inside the
+html2pdf bundle — jsPDF and html2canvas. *(Measured 2026-09-01: zero `/*!` markers and zero occurrences of
 "license" or "copyright" in the first 4 KB of each. An earlier version of this
 paragraph named only five, which implied KaTeX and Mermaid had banners; they do
 not.)* Their texts landed in [`licenses/`](licenses/) on 2026-08-27, each
@@ -469,9 +482,9 @@ entry for exactly that reason: the freshness workflow asks
 `https://cdn.sheetjs.com/` what the current release is and never asks npm. The
 same record is what the next person will find when a scanner shouts at them.
 
-### `qrcode.min.js` was unidentifiable, and is not loaded by anything
+### `qrcode.min.js` was unidentifiable, was loaded by nothing, and is gone
 
-Two separate findings, both 2026-09-16, both worth a stranger's time.
+Three findings, 2026-09-16 and 2026-09-17, all worth a stranger's time.
 
 **It had no version, and that was not an oversight.** node-qrcode has published
 no browser build to npm since 1.5.1 — `build/qrcode.js` is absent from the
@@ -491,13 +504,121 @@ output, so those two are ruled out. The file now shipping is the same build at
 is recorded in `.pantheon/check-vendored-versions.py` beside the hash. That is
 the difference between a file and a provenance.
 
-**Nothing loads it.** `static/index.html` has no `<script>` for it, no module
-imports it, and `static/sw.js` does not precache it. The 2FA QR code a user
+**Nothing loaded it.** `static/index.html` had no `<script>` for it, no module
+imported it, and `static/sw.js` did not precache it. The 2FA QR code a user
 actually sees is produced **server-side** by the Python `qrcode[pil]` package
 (`routes/auth_routes.py:268`) and delivered as a data URL. The table above said
 "QR-code rendering (2FA setup)" until 2026-09-16 and that had never been true of
-this file. It is kept rather than deleted — `B338` is the open row for that
-decision — and its row now says what is true.
+this file.
+
+**So it is gone** (`B338`, 2026-09-17). `Law 1` is *we add, never subtract*, and
+it is about **behaviour**: removing a working feature to make a fix simpler is a
+defect. There was no behaviour here. What there was, in a repository about to go
+public, was 24 KB of unreferenced third-party JavaScript in the served surface,
+a `CREDITS.md` row describing a use that had never existed, and a second package
+(`dijkstrajs`) bundled inside it that nothing in this repository had declared
+until `B337` rebuilt the file to find out. The alternative — wiring it up so the
+2FA page draws the code client-side — is a change to `static/js/settings.js` and
+`static/index.html`, i.e. a feature somebody should decide to build rather than
+a use invented to justify bytes already in the tree.
+
+**The paperwork stays.** The `node-qrcode` and `dijkstrajs` rows above, their
+licence texts in [`licenses/`](licenses/), and their `INVENTORY` entries are all
+still here, with the file column saying *through 2026-09-17*. Those bytes ship
+in every tag of this repository up to that date, and deleting the notice for
+bytes somebody can still check out is how attribution rots backwards — the same
+reasoning `B334` applied to the four packages that left the html2pdf bundle.
+What did go is the *fingerprint*: `.pantheon/check-vendored-versions.py` records
+the sha256 of what we serve, and a hash for a file that is not there is a hash
+over nothing. Removing the record and leaving the notice is not an
+inconsistency; they answer different questions.
+
+### The html2pdf bundle carries an old jsPDF, and we are keeping it
+
+`B336`, decided 2026-09-17. **The decision is (a): stay on the published
+artifact, and make the waiting machine-checked.**
+
+The measurement first, because it is unflattering. `html2pdf.js` 0.14.0 is the
+current release and has no advisory of its own. The bundle it publishes carries
+**jsPDF 4.0.0** — nine open advisories, one CRITICAL — and **DOMPurify 3.3.1** —
+eighteen. jsPDF 4.2.1 and DOMPurify 3.4.15 both return zero. So the file we
+serve contains twenty-seven open advisories that a scanner will find, and saying
+otherwise would be a lie by omission.
+
+**None of them is reachable here, and that is a measurement rather than a
+hope.** `static/js/document.js` calls `html2pdf().from(element)` — the *element*
+branch — which is pinned by a test that drives the real call site rather than
+reading it. DOMPurify is invoked in exactly one place inside html2pdf, the
+string branch of `from()`, so on our path it is never invoked at all; the
+bundle's other consumer is canvg, which our path does not reach. jsPDF's
+injection advisories each require an API this application does not call —
+`addJS`, `createAnnotation`, `addMetadata`, the AcroForm classes, `output()`
+with a new-window option — and the two Node-only ones (`loadFile` LFI, the
+`addJS` race) are structurally unreachable in a browser. Each of the
+twenty-seven is written down, one per advisory id, in the record in
+[`.pantheon/check-vendored-versions.py`](.pantheon/check-vendored-versions.py),
+beside the version it excuses.
+
+**Why not rebuild the bundle against current dependencies.** Because every file
+in `static/lib/` except the one we just deleted is byte-identical to a published
+upstream artifact, and that property is what lets a stranger verify our recorded
+hashes against a registry instead of trusting us. A webpack rebuild of a 946 KB
+bundle is not reproducible across terser and loader patch releases, so the hash
+we recorded would be verifiable by nobody — and we would have traded a checkable
+supply chain for zero reachable vulnerabilities. `B337` set the rule this
+follows: we build a vendored file ourselves *only* when upstream publishes none.
+Here upstream publishes one.
+
+**Why not split the bundle into three published files** — `html2pdf.js`, `jspdf`
+and `html2canvas`, each independently bumpable and each upstream's own bytes.
+Because that is the right answer and it is not a `CREDITS.md` change: it needs
+the loader in `static/js/document.js` to fetch three scripts in order. It is
+filed as `B421`.
+
+**What stops this being a note nobody reads.** The record now carries
+`contains=`: each inner package, the version the bytes actually say, and a
+literal witness string — `M.version="4.0.0"` in the bundle, `@license DOMPurify
+3.3.1` in the sidecar. `check-vendored-versions.py` rule 6 reads those out of
+the shipped file on every gate run, offline, so a replacement bundle carrying a
+different jsPDF fails until somebody re-measures and re-checks every excuse
+against the new version. And `.github/workflows/vendored-freshness.yml` now asks
+OSV about the *inner* packages every week, so the day html2pdf.js publishes a
+release built against jsPDF 4.2.1, the workflow says so.
+
+### What is inside a bundle, and how this repository knows
+
+`B339`, 2026-09-17. `check-licences.py` rule 7 derives a bundle's contents from
+`node_modules/<package>/` paths left in the shipped bytes. That worked, and it
+is how `B46` found three Microsoft `vscode-*` packages nobody knew were inside
+`mermaid.min.js`. It has one input, and a bundler that does not leave module
+paths makes a bundle indistinguishable from an ordinary one-library file — which
+is how `dijkstrajs` shipped inside `qrcode.min.js`, undeclared, from before the
+fork until somebody rebuilt the file to find out.
+
+Rule 8 is the fix, and it is not a longer list. **Every vendored script now has
+to say how its contents are known, there is no default, and each answer is
+checked against the bytes:**
+
+| answer | what it means | what is checked |
+|---|---|---|
+| `derived` | webpack/pnpm left module paths | derivation must still find packages — finding none is the alarm |
+| `esbuild` | esbuild's own `Bundled license information:` block names them | the block must be there and name modules |
+| `sidecar` | the bundler wrote the notices to a file and points at it from inside the bytes | the pointer, the file, and **every notice in it claimed by an entry** |
+| `single` | upstream's own artifact for one package | derivation finds nothing **and** every legal comment in the file is claimed |
+| `build` | we built it | a record under `.pantheon/vendored-builds/` naming the file, the command and the packages |
+
+**Reading a bundle's own notices for the first time found eleven packages
+shipping here with no notice anywhere.** `swagger-ui-bundle.js` carries no module
+paths at all — rule 7 derived zero packages from 1.5 MB — and points at an
+extracted sidecar that nothing had ever read against the inventory. Inside it:
+**React** (`react`, `react-dom`, `scheduler`, `use-sync-external-store`),
+`immutable`, `classnames`, `deep-extend`, `fast-json-patch`, `repeat-string`,
+`safe-buffer`, `buffer` and `ieee754`. Reading esbuild's block in
+`mermaid.min.js` found `lodash-es` and `cytoscape`. Reading the legal comments in
+`docx.umd.min.js` found `buffer`, `ieee754` and `string.fromcodepoint`. Every one
+of them now has a row in the table above, a licence text in
+[`licenses/`](licenses/) and an `INVENTORY` entry. This is `P0-21b` again — a
+sidecar present and unread — in the one bundle nobody had thought to look at.
 
 ### How these stay current
 
@@ -595,7 +716,7 @@ Modified Version and OFL §3's Reserved Font Name restriction then applies.
 | [Fira Code](https://github.com/tonsky/FiraCode) | `static/fonts/FiraCode-{Light,Regular,SemiBold}.woff2` | SIL Open Font License 1.1 ([`licenses/FiraCode-OFL.txt`](licenses/FiraCode-OFL.txt)) | Nikita Prokopov & contributors | none declared |
 | [Inter](https://github.com/rsms/inter) | `static/fonts/Inter-{Regular,Medium,SemiBold}.woff2` | SIL Open Font License 1.1 ([`licenses/Inter-OFL.txt`](licenses/Inter-OFL.txt)) | Rasmus Andersson | none declared |
 | [OpenDyslexic](https://opendyslexic.org/) | `static/fonts/OpenDyslexic-{Regular,Bold}.woff2` | SIL Open Font License 1.1 ([`licenses/OpenDyslexic-OFL.txt`](licenses/OpenDyslexic-OFL.txt)) | Abbie Gonzalez | **yes — `OpenDyslexic`** |
-| KaTeX (20 faces) v0.16.22 | `static/lib/katex/fonts/*.woff2` | SIL Open Font License 1.1 ([`licenses/KaTeX-fonts-OFL.txt`](licenses/KaTeX-fonts-OFL.txt)) | Design Science, Inc. and Khan Academy | **yes — every face** |
+| KaTeX (20 faces) v0.18.7 | `static/lib/katex/fonts/*.woff2` | SIL Open Font License 1.1 ([`licenses/KaTeX-fonts-OFL.txt`](licenses/KaTeX-fonts-OFL.txt)) | Design Science, Inc. and Khan Academy | **yes — every face** |
 
 The 20 KaTeX faces are `KaTeX_AMS`, `KaTeX_Caligraphic`, `KaTeX_Fraktur`,
 `KaTeX_Main`, `KaTeX_Math`, `KaTeX_SansSerif`, `KaTeX_Script`, `KaTeX_Size1–4`

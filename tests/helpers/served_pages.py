@@ -3,12 +3,20 @@
 
 `B212`. There is one enumerator of the served surface in this suite and this is
 it. `tests/test_offline_shell_manifest.py`'s `served_routes` fixture (`B120`)
-is the same shape — boot the real app out of process, walk `app.routes`, ask
-for every GET path that takes no parameter — and it records status and
+was the same shape — boot the real app out of process, walk `app.routes`, ask
+for every GET path that takes no parameter — and it recorded status and
 byte-identity because that is what the offline row needed. This records the
 **bodies**, because a CDN scan and a CSP check have to read what was served.
-Switching that fixture onto this helper is filed as `B260`; it was held by
-another row when this landed and editing it would have broken that merge.
+
+**`B260` closed the gap between them, 2026-09-16: `served_routes` is now a
+projection of this probe.** They had already started to disagree about what
+this app serves, which is the whole reason `Law 13` exists. `served_routes`
+skipped the `/static` mount entirely, so three documents — `index.html`,
+`login.html` and the two `*-variants.html` prototypes — were invisible to the
+offline row while `B211` was finding that two of them had been serving refused
+inline script for their whole lives. One enumerator now answers both
+questions, and `body_repeats` below is the one field the offline projection
+needed that this probe was not recording.
 
 Two things route enumeration alone does not see, and both are the point:
 
@@ -84,7 +92,16 @@ def record(url):
         "bytes": len(res.content),
         "body": res.text if textual else "",
         "is_html": "text/html" in ctype,
+        "location": res.headers.get("location"),
     }
+    # `B260`. Does this URL answer the same bytes twice? The offline row needs
+    # it — `B141` moved the app shell's per-request nonce into a header hash,
+    # and `test_the_app_shell_does_not_vary_per_request` is what states that
+    # rather than assuming it. Asked only of the pages that row looks at: an
+    # `/api/` route is out of its scope and re-asking one is a second side
+    # effect for nothing.
+    if not url.startswith("/api/"):
+        row["body_repeats"] = client.get(url, follow_redirects=False).content == res.content
     # The conditional answer, which is a different code path and carries its
     # own policy. RFC 9111 §4.3.4 has the client update its stored headers
     # from a `304`, so a `304` whose CSP names no hash leaves that client
@@ -121,14 +138,28 @@ print("RESULT=" + json.dumps({"pages": pages, "refs": refs}, sort_keys=True))
 '''
 
 
+# The probe's own output, kept for the length of one pytest session. `B260`
+# asks for one subprocess to boot the app for both callers, and two test
+# modules each taking a module-scoped fixture is two boots of a 40-second
+# application otherwise. Held as the JSON text rather than the parsed object so
+# every caller gets its own dict to do what it likes with. Safe because
+# `Law 19` already forbids editing files during a suite run, which is the only
+# thing that could make the second answer differ from the first.
+_SURFACE_JSON: str = ""
+
+
 def probe_served_surface(tmp_path) -> dict:
     """Boot the real app and return `{"pages": {...}, "refs": {...}}`.
 
-    `pages` is url → `{status, content_type, csp, etag, bytes, body, is_html}`
-    for every parameter-free GET route plus every HTML document under the
-    `/static` mount. `refs` is the same for every same-origin `src`/`href`
-    those documents name, minus the body, plus `referenced_by`.
+    `pages` is url → `{status, content_type, csp, etag, bytes, body, is_html,
+    location, body_repeats}` for every parameter-free GET route plus every HTML
+    document under the `/static` mount. `refs` is the same for every
+    same-origin `src`/`href` those documents name, minus the body, plus
+    `referenced_by`. `body_repeats` is absent on `/api/` URLs and only there.
     """
+    global _SURFACE_JSON
+    if _SURFACE_JSON:
+        return json.loads(_SURFACE_JSON)
     env = os.environ.copy()
     env.update({
         "AUTH_ENABLED": "false",
@@ -146,7 +177,8 @@ def probe_served_surface(tmp_path) -> dict:
     assert result.returncode == 0, result.stderr[-4000:]
     line = next((l for l in result.stdout.splitlines() if l.startswith("RESULT=")), None)
     assert line is not None, result.stdout[-4000:]
-    return json.loads(line.removeprefix("RESULT="))
+    _SURFACE_JSON = line.removeprefix("RESULT=")
+    return json.loads(_SURFACE_JSON)
 
 
 def same_origin_refs(html: str) -> list:

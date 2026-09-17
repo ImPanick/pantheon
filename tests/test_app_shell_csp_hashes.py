@@ -40,10 +40,10 @@ import textwrap
 from pathlib import Path
 
 import pytest
+from tests.helpers.source_text import blank, blank_text  # B290
 
 _REPO = Path(__file__).resolve().parent.parent
 
-_COMMENT = re.compile(r"<!--.*?-->", re.S)
 _SCRIPT_OPEN = re.compile(r"<script\b([^>]*)>", re.I)
 _TYPE = re.compile(r"""type\s*=\s*['"]?([^'">\s]*)""", re.I)
 _EXECUTABLE = {"", "module", "text/javascript", "application/javascript",
@@ -53,7 +53,9 @@ _EXECUTABLE = {"", "module", "text/javascript", "application/javascript",
 
 def _inline_blocks(html: str) -> list:
     """Every inline `<script>` a browser would execute, read a second way."""
-    text = _COMMENT.sub("", html)
+    # `embedded=False`: the comment blanker must not touch a `<script>` body,
+    # because the body is what gets hashed for the CSP.
+    text = blank_text(html, "html", embedded=False)
     out = []
     for m in _SCRIPT_OPEN.finditer(text):
         attrs = m.group(1)

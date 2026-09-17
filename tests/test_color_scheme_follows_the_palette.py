@@ -31,11 +31,11 @@ import shutil
 import subprocess
 
 import pytest
+from tests.helpers.source_text import blank, blank_text  # B290
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 THEME = (ROOT / "static" / "js" / "theme.js").read_text(encoding="utf-8")
-CSS = re.sub(r"/\*.*?\*/", " ",
-             (ROOT / "static" / "style.css").read_text(encoding="utf-8"), flags=re.S)
+CSS = blank(ROOT / "static" / "style.css")
 INDEX = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
 LOGIN = (ROOT / "static" / "login.html").read_text(encoding="utf-8")
 _HAS_NODE = shutil.which("node") is not None
@@ -107,15 +107,38 @@ def _rules_setting_color_scheme():
 
 def test_no_reachable_rule_pins_a_scheme_the_palette_disagrees_with():
     """`color-scheme: dark` on an element blocks the inheritance this fix
-    depends on. The four rules that did are the whole bug."""
+    depends on. The four rules that did are the whole bug.
+
+    Bare `:root` is the one selector exempt, and the exemption is mechanical
+    rather than a carve-out. All three palette writers set `color-scheme` with
+    `setProperty` on `documentElement` — an INLINE declaration on that exact
+    element — and an inline declaration out-ranks any rule in this sheet. So a
+    `:root` rule can only ever be read before `theme.js` runs, or when it never
+    runs; it can never contradict the palette. It is a default, and `B22` gave
+    it a second job that makes it load-bearing: `light-dark()` resolves to its
+    LIGHT arm when `color-scheme` is `normal`, so without this line every
+    semantic token would paint its light-palette value for the instant before
+    the first-paint script fires, on a page whose `:root` literals are the
+    `dark` palette. The value must therefore match those literals, which it
+    does. A descendant is a different thing entirely and stays banned: there
+    the rule wins over nothing and blocks the inheritance.
+    """
     rules = _rules_setting_color_scheme()
     assert rules, "the rule parser found no color-scheme at all"
     offenders = [
         (sel, val) for sel, val in rules
-        if val in ("dark", "light") and ":root.light" not in sel
+        if val in ("dark", "light")
+        and ":root.light" not in sel
+        and sel != ":root"
     ]
     assert not offenders, (
         "these pin a scheme regardless of the palette: " + repr(offenders)
+    )
+    root_default = [val for sel, val in rules if sel == ":root"]
+    assert root_default == ["dark"], (
+        "`:root` must carry exactly one `color-scheme`, and it must be `dark` "
+        "— the scheme of the palette whose literals `:root` also declares. "
+        f"Found {root_default!r}."
     )
     assert any(val == "inherit" for _, val in rules), (
         "nothing defers to the root — the rules were deleted rather than "

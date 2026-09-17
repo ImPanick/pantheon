@@ -35,9 +35,13 @@ from src.upload_handler import (
 # it the same question. Imported as the module as well, so the gate is resolved
 # at call time and cannot be a second copy.
 from src import svg_runtime
+# `B232`: what the product can make of an uploaded file is one question with
+# one answer, and this route is one of the three doors that has to carry it.
+from src.document_processor import INGEST_KIND_BINARY, ingest_kind
 from src.svg_runtime import (
     MAX_PREVIEW_SVG_BYTES,
     SVG_REFUSAL_HEADER,
+    SVG_REFUSAL_TEXT_HEADER,
     SVG_SECURITY_HEADERS,
     is_svg,
     svg_caption_text,
@@ -46,6 +50,26 @@ from src.svg_runtime import (
 logger = logging.getLogger(__name__)
 
 UPLOAD_RESPONSE_HEADERS = {"X-Content-Type-Options": "nosniff"}
+
+# `B232`. Names the one verdict on the response so a client that already has an
+# upload id can read it instead of testing the filename. `SVG_REFUSAL_HEADER` is
+# the precedent: a decision the server has already made, published rather than
+# re-derived in the browser.
+UPLOAD_KIND_HEADER = "X-Upload-Kind"
+
+
+def _upload_kind(path: str, name: str) -> str:
+    """``ingest_kind`` with the I/O failure folded in.
+
+    A probe that cannot open the file answers ``binary`` — the same thing
+    ``looks_like_text`` does with an unreadable path — rather than raising into
+    a route whose job is to serve bytes.
+    """
+    try:
+        return ingest_kind(path, name)
+    except Exception as exc:
+        logger.warning("ingest kind probe failed for %s: %s", path, exc)
+        return INGEST_KIND_BINARY
 
 def _upload_ids_from_persisted_text(value: object) -> set[str]:
     """Return canonical upload IDs embedded in persisted text.
@@ -334,7 +358,13 @@ def setup_upload_routes(upload_handler):
                     "created_at": meta.get("created_at") or meta["uploaded_at"],
                     "width": meta.get("width"),
                     "height": meta.get("height"),
-                    "is_duplicate": meta.get("is_duplicate", False)
+                    "is_duplicate": meta.get("is_duplicate", False),
+                    # `B232`. The composer used to answer this with a
+                    # 38-extension regex of its own, in front of a backend that
+                    # derives it. One field, three values, and the browser reads
+                    # it instead of testing a name.
+                    "kind": _upload_kind(meta.get("path") or "",
+                                         meta.get("name") or ""),
                 }
                 if gallery_id:
                     item["gallery_id"] = gallery_id
@@ -454,7 +484,14 @@ def setup_upload_routes(upload_handler):
         # Through the module, not a name bound at import time, so there is
         # demonstrably one gate in the process and this route reaches it.
         reason = svg_runtime.svg_refusal_reason(
-            content, MAX_PREVIEW_SVG_BYTES, allow_data_images=True
+            content, MAX_PREVIEW_SVG_BYTES, allow_data_images=True,
+            # `B300`. A hyperlink is not a beacon — nothing is fetched until a
+            # click, and inside an `<img>` there is no click — so a diagram
+            # whose boxes link to `https://` previews now. The widening is
+            # opt-in and only this caller takes it: the emoji route serves
+            # known-good line art and has nothing to gain (`B160`'s rule for
+            # `allow_data_images`, one row on).
+            allow_hyperlinks=True,
         )
         if reason is not None:
             logger.info("SVG preview refused (%s): %s", reason, path)
@@ -462,9 +499,21 @@ def setup_upload_routes(upload_handler):
                 svg_runtime.refused_preview_svg(reason),
                 media_type="image/svg+xml",
                 headers={**headers, "Cache-Control": "no-store",
-                         SVG_REFUSAL_HEADER: reason},
+                         SVG_REFUSAL_HEADER: reason,
+                         # `B301`. An `<img>` can read neither a header nor the
+                         # `<title>` of the SVG it draws, so the chip's
+                         # accessible name was the filename and nothing else.
+                         # The sentence travels here so the renderer can set it
+                         # without a second request and without a second copy
+                         # of the vocabulary.
+                         SVG_REFUSAL_TEXT_HEADER:
+                             svg_runtime.svg_refusal_sentence(reason)},
             )
-        return Response(content, media_type="image/svg+xml", headers=headers)
+        # `B302`. The last address in the file the allowlist never saw — a
+        # DOCTYPE's `PUBLIC`/`SYSTEM` identifier — leaves here. The download
+        # arm above still serves the file whole.
+        return Response(svg_runtime.preview_bytes(content),
+                        media_type="image/svg+xml", headers=headers)
 
     @router.get("/{file_id}")
     async def download_file(request: Request, file_id: str, thumb: int = 0):
@@ -530,11 +579,19 @@ def setup_upload_routes(upload_handler):
             except Exception as e:
                 logger.warning(f"Thumbnail generation failed for {file_id}: {e}")
                 # Fall through to the full image.
+        # `B232`. The verdict the composer and the attachment opener used to
+        # answer with an extension regex, published on the response that already
+        # carries the bytes they were going to read anyway — so opening an
+        # attachment as a document costs one request, not two, and the browser
+        # never re-derives a decision this module has already made. Only on the
+        # full download: a thumbnail is an image by construction and the probe
+        # would be a read for nothing.
         return FileResponse(
             path,
             media_type=mime,
             filename=original_name,
-            headers=UPLOAD_RESPONSE_HEADERS,
+            headers={**UPLOAD_RESPONSE_HEADERS,
+                     UPLOAD_KIND_HEADER: _upload_kind(path, original_name)},
         )
 
     def _load_upload_info(file_id: str):

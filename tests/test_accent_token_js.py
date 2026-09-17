@@ -67,6 +67,7 @@ import pytest
 
 # One harness — the DOM shim and sandbox builder the JS suites share.
 from test_tool_effect_surfaces_js import _DOM, _make_sandbox  # noqa: E402
+from tests.helpers.source_text import blank, blank_text  # B290
 
 ROOT = Path(__file__).resolve().parents[1]
 THEME = ROOT / "static" / "js" / "theme.js"
@@ -477,7 +478,7 @@ def test_the_accent_is_never_defined_in_root():
     """
     offenders = []
     for path in _themed_files():
-        text = re.sub(r"/\*.*?\*/", "", path.read_text(encoding="utf-8"), flags=re.S)
+        text = blank(path)
         for block in re.finditer(r":root\b[^{}]*\{([^{}]*)\}", text):
             if re.search(r"(^|[;\s])--accent\s*:", block.group(1)):
                 offenders.append(f"{path.relative_to(ROOT).as_posix()}:{text[:block.start()].count(chr(10)) + 1}")
@@ -488,7 +489,7 @@ def test_the_counts_the_accent_comments_quote_are_still_the_counts():
     """`Law 6`. Three documents in this repo have carried a stale accent count;
     the two comments that quote one are re-derived here rather than trusted.
     """
-    css = re.sub(r"/\*.*?\*/", "", STYLE.read_text(encoding="utf-8"), flags=re.S)
+    css = blank(STYLE)
     bare = len(re.findall(r"var\(\s*--accent(?![-\w])\s*\)", css))
     through_red = len(re.findall(r"var\(\s*--accent(?![-\w])\s*,\s*var\(\s*--red\s*\)\s*\)", css))
 

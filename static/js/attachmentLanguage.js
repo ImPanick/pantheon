@@ -75,6 +75,10 @@ export const LANGUAGE_ALIASES = {
 };
 export const PROSE_LANGUAGES = new Set(["log", "text"]);
 const LANGUAGE_TOKEN = /^[a-z][a-z0-9+#]{0,11}$/;
+export const TEXT_EXTS = new Set([".bash", ".c", ".cpp", ".css", ".csv", ".go", ".h", ".htm", ".html", ".java", ".js", ".json", ".jsx", ".log", ".md", ".nix", ".php", ".py", ".rb", ".rs", ".sh", ".sql", ".ts", ".tsx", ".txt", ".xml", ".yaml", ".yml"]);
+export const OFFICE_EXTS = new Set([".doc", ".docx", ".epub", ".odt", ".pptx", ".xls", ".xlsx"]);
+export const PDF_EXTS = new Set([".pdf"]);
+export const INGESTIBLE_EXTS = new Set([".bash", ".c", ".cpp", ".css", ".csv", ".doc", ".docx", ".epub", ".go", ".h", ".htm", ".html", ".java", ".js", ".json", ".jsx", ".log", ".md", ".nix", ".odt", ".pdf", ".php", ".pptx", ".py", ".rb", ".rs", ".sh", ".sql", ".ts", ".tsx", ".txt", ".xls", ".xlsx", ".xml", ".yaml", ".yml"]);
 // ---- end generated ----
 
 /**
@@ -167,4 +171,59 @@ export function documentLanguage(name) {
   const language = attachmentLanguage(name);
   if (isProseLanguage(language)) return '';
   return EDITOR_LANGUAGE[language] || language;
+}
+
+// ── `B232`: which door a file goes through, not whether it is on a list ─────
+//
+// `chat.js` answered this twice with two hand-written regexes — 38 extensions
+// on the composer's import banner and 36 on *open this attachment as a
+// document* — in front of a backend that derives it. Measured against the
+// registers above, the gate was wrong in **both** directions: 10 ingestible
+// extensions were not offered (`.bash .doc .docx .epub .nix .odt .pdf .pptx
+// .xls .xlsx`) and 9 offered extensions no register names (`.conf .env .ini
+// .less .sass .scss .svelte .toml .vue`).
+//
+// The nine are the interesting half, because they were the *right* answer:
+// `looks_like_text` rescues them on the server (`B76`), so the composer was
+// already offering files no register names — which is the evidence that the
+// question was never "is the extension on a list". The server publishes its
+// verdict now (`X-Upload-Kind`, and `kind` on each file in the upload
+// response), and the functions below exist only for the one caller that cannot
+// ask it: a local `File` the browser is about to import, which has no upload id
+// yet.
+export const INGEST_KIND_TEXT = 'text';
+export const INGEST_KIND_DOCUMENT = 'document';
+export const INGEST_KIND_BINARY = 'binary';
+
+/** The extensions the server has an EXTRACTOR for — the ones a client must
+ *  post rather than read. `document_processor.EXTRACTED_EXTS`, derived from
+ *  the same two generated registers the server derives it from. */
+export function isExtractedExtension(name) {
+  const lowered = String(name == null ? '' : name).toLowerCase();
+  const ext = splitExt(lowered);
+  return !!ext && (OFFICE_EXTS.has(ext) || PDF_EXTS.has(ext));
+}
+
+/**
+ * What the browser can say about *name* on its own, or `null` when only the
+ * server can answer.
+ *
+ * Mirrors `document_processor.ingest_kind`'s **extension** arm exactly —
+ * extractor first, then the text register — and stops where that function's
+ * second arm begins, because the second arm is `looks_like_text` reading the
+ * bytes and there is no browser copy of that (`Law 14`). `null` is the honest
+ * answer for `.kt`, `.toml`, `.env` and a file with no suffix at all: they are
+ * text, the server says so from the bytes, and a register cannot.
+ *
+ * A `text/*` MIME is taken as text because the server takes it too — the
+ * `mime.startswith("text/")` arm at `build_user_content`'s dispatch is a
+ * superset of the extension register there for the same reason it is here.
+ */
+export function ingestKindFromName(name, mime) {
+  const lowered = String(name == null ? '' : name).toLowerCase();
+  const ext = splitExt(lowered);
+  if (ext && (OFFICE_EXTS.has(ext) || PDF_EXTS.has(ext))) return INGEST_KIND_DOCUMENT;
+  if (ext && TEXT_EXTS.has(ext)) return INGEST_KIND_TEXT;
+  if (/^text\//.test(String(mime || ''))) return INGEST_KIND_TEXT;
+  return null;
 }

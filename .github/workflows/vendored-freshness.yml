@@ -10,8 +10,15 @@
 # we ship" — which cannot be answered without asking somebody. It asks two
 # places, both read-only and unauthenticated:
 #
-#   registry.npmjs.org   what `dist-tags.latest` is for each package
-#   api.osv.dev          which advisories affect package@version
+#   registry.npmjs.org   what the record's `dist_tag` resolves to for each
+#                        package -- `latest` for most, `stable-0.27` for
+#                        Pyodide, whose npm `latest` is a different version
+#                        line altogether (`B335`)
+#   api.osv.dev          which advisories affect package@version -- for the
+#                        vendored package AND for every package the record
+#                        says is inside it (`B336`: html2pdf.js 0.14.0 has no
+#                        advisory of its own and carries jsPDF 4.0.0 with nine
+#                        and DOMPurify 3.3.1 with eighteen)
 #
 # It runs weekly and on demand, never on push: a PR should not go red because
 # somebody else cut a release while it was open, and a developer should not have
@@ -77,15 +84,28 @@ jobs:
               pkg, ver, reg = rec["package"], rec["version"], rec["registry"]
 
               # 1 — is there something newer?
+              # `dist_tag` is which tag to compare against, and it is a field
+              # because of Pyodide (`B335`): npm's `latest` is 314.x, a
+              # CPython-aligned line that 0.27.x does not belong to, so asking
+              # for `latest` reports a maintained runtime as permanently
+              # behind. The record names `stable-0.27` and this asks for that.
               if reg == "npm":
+                  tag = rec.get("dist_tag") or "latest"
                   try:
-                      latest = get(
+                      tags = get(
                           "https://registry.npmjs.org/"
                           + urllib.request.quote(pkg, safe="@")
-                      )["dist-tags"]["latest"]
+                      )["dist-tags"]
                   except (urllib.error.URLError, KeyError, ValueError) as exc:
                       unknown.append(f"{pkg}: registry said {exc}")
-                      latest = None
+                      tags = {}
+                  latest = tags.get(tag)
+                  if tags and latest is None:
+                      unknown.append(
+                          f"{rec['entry']}: the record asks for dist-tag "
+                          f"{tag!r} and npm publishes "
+                          f"{sorted(tags)} — the line may have been retired"
+                      )
                   if latest and latest != ver:
                       line = f"{rec['entry']}: shipping {ver}, npm latest is {latest}"
                       # Being behind is allowed only when a roadmap row owns the
@@ -124,6 +144,50 @@ jobs:
                       excused.append(f"{line}\n      {why}")
                   else:
                       vulnerable.append(line)
+
+              # 3 — `B336`. The packages INSIDE a bundle, at the versions its
+              # bytes carry. A vendored bundle is one npm coordinate to this
+              # workflow and a dozen to an attacker: html2pdf.js 0.14.0 has
+              # zero advisories of its own and ships jsPDF 4.0.0 with nine and
+              # DOMPurify 3.3.1 with eighteen. Asking about the outer package
+              # only was how twenty-seven advisories sat in a roadmap row that
+              # nothing re-counted. `check-vendored-versions.py` rule 6 checks
+              # each of these versions against the shipped bytes offline, so
+              # what is asked here is what is actually in the file.
+              for inner in rec.get("contains", []):
+                  ipkg, iver = inner["package"], inner["version"]
+                  where = f"{rec['entry']} ⊃ {ipkg}@{iver}"
+                  try:
+                      ilatest = get(
+                          "https://registry.npmjs.org/"
+                          + urllib.request.quote(ipkg, safe="@")
+                      )["dist-tags"]["latest"]
+                  except (urllib.error.URLError, KeyError, ValueError) as exc:
+                      unknown.append(f"{ipkg}: registry said {exc}")
+                      ilatest = None
+                  if ilatest and ilatest != iver:
+                      line = (f"{where}: the bundle carries {iver}, npm latest "
+                              f"is {ilatest}")
+                      (filed if inner["behind_ok"] else behind).append(
+                          line + (f"  [{inner['behind_ok']}]"
+                                  if inner["behind_ok"] else "")
+                      )
+                  try:
+                      ivulns = get("https://api.osv.dev/v1/query", json.dumps({
+                          "package": {"name": ipkg, "ecosystem": "npm"},
+                          "version": iver,
+                      }).encode()).get("vulns", [])
+                  except (urllib.error.URLError, ValueError) as exc:
+                      unknown.append(f"{ipkg}@{iver}: OSV said {exc}")
+                      ivulns = []
+                  for v in ivulns:
+                      sev = (v.get("database_specific") or {}).get("severity", "")
+                      line = f"{where}: {v['id']} {sev}"
+                      why = inner["osv_known"].get(v["id"])
+                      if why:
+                          excused.append(f"{line}\n      {why}")
+                      else:
+                          vulnerable.append(line)
 
           def section(title, lines):
               print(f"\n## {title}")

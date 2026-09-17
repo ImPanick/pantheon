@@ -781,7 +781,7 @@ function _renderJobs() {
       + '<span class="research-section-right">'
       +   clearAllHtml
       +   '<span class="research-section-dot' + (dotPulse ? ' pulsing' : '') + '" style="background:' + dotColor + ';"></span>'
-      +   chevronIcon({ size: 12, linejoin: false, className: 'research-section-chevron' })
+      +   chevronIcon({ size: 12, className: 'research-section-chevron' })
       + '</span>';
     if (key === 'past') {
       const hint = document.createElement('span');

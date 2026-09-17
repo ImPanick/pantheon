@@ -45,10 +45,10 @@ mobile ends, and that is what this pins.
 """
 import pathlib
 import re
+from tests.helpers.source_text import blank, blank_text  # B290
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-CSS = re.sub(r"/\*.*?\*/", " ",
-             (ROOT / "static" / "style.css").read_text(encoding="utf-8"), flags=re.S)
+CSS = blank(ROOT / "static" / "style.css")
 INDEX = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
 
 MOBILE_MAX = 768

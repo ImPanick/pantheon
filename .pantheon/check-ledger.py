@@ -50,6 +50,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import functools
 import re
 import subprocess
 import sys
@@ -175,6 +176,163 @@ def _checker_count_problems() -> list:
     return []
 
 
+# `B348`. Every claim carries a command you can run — that is this file's whole
+# thesis — and for one of them the command **disproved the claim**: `wiring` said
+# `after 2` while `check-wiring.py` printed `UNRESOLVED 120`, and its repro said
+# `--max 124` against CI's `--max 120`. Nothing compared either.
+#
+# So: when a claim's repro is a `.pantheon/check-*.py` invocation, run it.
+#
+#   * **the headline.** Most checkers end their summary line with their own
+#     verdict — `… · UNRESOLVED 120`, `… · FORKED 0`, `… · PROBLEMS 0`. When a
+#     checker prints one AND the claim's `after` starts with a number, the two
+#     must be the same number. That is exact, and it is the comparison that
+#     catches a claim whose repro contradicts it.
+#   * **the ceiling.** A `--max N` in a repro is an instruction to the reader
+#     about which gate to run. If it is not the gate `ci.yml` runs, the reader
+#     measures something CI does not guard.
+#
+# What is deliberately NOT a failure: a claim whose `after` is simply a
+# different metric from the checker's headline — `fan-out`'s *40 destinations*
+# against an unpaced-call-site count, for instance. Those are printed as NOTEs
+# by `main()` and named in `B411`, because deciding what each of those numbers
+# means needs the person who measured it, and a checker that guesses is the
+# defect this one exists to find.
+_REPRO_CHECKER = re.compile(r"python3?\s+(\.pantheon/check-[\w-]+\.py)")
+_REPRO_CEILING = re.compile(r"--(max[\w-]*)\s+(\d+)")
+_HEADLINE = re.compile(r"^([A-Z][A-Z -]*?)\s+(\d[\d,]*)$")
+_LEADING_NUMBER = re.compile(r"(\d[\d,]*)")
+
+
+@functools.lru_cache(maxsize=None)
+def _checker_output(script: str) -> str:
+    """The checker's own stdout, run with no arguments — so the number is the
+    checker's verdict and not something a `--max` flag decided.
+
+    Cached for the life of the process: six checkers take about twenty seconds
+    between them, `verify()` is called once by the gate and forty times by
+    `tests/test_a_claim_cannot_outlive_its_evidence.py`, and a checker's answer
+    cannot change while nothing is editing the tree (`Law 19`).
+    """
+    proc = subprocess.run([sys.executable, str(ROOT / script)], cwd=str(ROOT),
+                          capture_output=True, text=True, timeout=300)
+    return proc.stdout
+
+
+def _repro_headline(output: str):
+    """`(name, value)` from a summary line's last `·` field, or None."""
+    for line in output.splitlines():
+        if not line.strip():
+            continue
+        fields = [f.strip() for f in line.split("·")]
+        match = _HEADLINE.match(fields[-1])
+        return (match.group(1), int(match.group(2).replace(",", ""))) if match else None
+    return None
+
+
+def _measured_anything(output: str) -> bool:
+    """True when the checker printed a number other than zero."""
+    return any(int(n.replace(",", "")) for n in re.findall(r"\d[\d,]*", output))
+
+
+def _repro_problems() -> tuple:
+    """`(problems, notes)` — see the comment above for which is which."""
+    problems, notes = [], []
+    try:
+        ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    except OSError:
+        ci = ""
+    for claim in C.CLAIMS:
+        match = _REPRO_CHECKER.search(claim.repro)
+        if not match:
+            continue
+        script = match.group(1)
+        if not (ROOT / script).exists():
+            problems.append(f"{claim.id}: repro names {script}, which does not exist")
+            continue
+        try:
+            output = _checker_output(script)
+        except (OSError, subprocess.SubprocessError) as exc:
+            problems.append(
+                f"{claim.id}: repro names {script} and it could not be run ({exc}). "
+                f"A claim whose command does not run is not reproducible.")
+            continue
+
+        stated = _LEADING_NUMBER.match(claim.after.strip())
+        headline = _repro_headline(output)
+        if headline and not _measured_anything(output):
+            # Every number the checker printed is zero, which is what a checker
+            # that enumerated nothing looks like — a checkout with no `.git`,
+            # for one. A rule that reads that as "the claim is wrong" is the
+            # tautology this whole file exists to refuse.
+            notes.append(
+                f"{claim.id}: {script} measured nothing here (every count zero), "
+                f"so its output cannot confirm or deny `after {claim.after.strip()}`")
+            headline = None
+        if stated and headline:
+            said = int(stated.group(1).replace(",", ""))
+            if said != headline[1]:
+                problems.append(
+                    f"{claim.id}: says `after {claim.after.strip()}` and its own repro "
+                    f"`{claim.repro}` prints {headline[0]} {headline[1]} — the command "
+                    f"the claim names disproves the claim")
+        elif stated:
+            token = stated.group(1).replace(",", "")
+            if not re.search(rf"(?<![\d,]){token}(?![\d,])", output):
+                notes.append(
+                    f"{claim.id}: `after {claim.after.strip()}` and {script} prints no "
+                    f"such number (B411)")
+
+        ceiling = _REPRO_CEILING.search(claim.repro)
+        if ceiling and ci:
+            in_ci = re.search(
+                rf"{re.escape(script)}\s+--{ceiling.group(1)}\s+(\d+)", ci)
+            if in_ci and in_ci.group(1) != ceiling.group(2):
+                problems.append(
+                    f"{claim.id}: repro runs {script} --{ceiling.group(1)} "
+                    f"{ceiling.group(2)} and ci.yml runs --{ceiling.group(1)} "
+                    f"{in_ci.group(1)} — a reader following the ledger runs a "
+                    f"different gate from the one guarding the tree")
+            elif not in_ci:
+                notes.append(
+                    f"{claim.id}: repro runs {script} --{ceiling.group(1)} "
+                    f"{ceiling.group(2)} and ci.yml does not run it with that flag")
+    return problems, notes
+
+
+def _fork_date_problems() -> list:
+    """`B349`. The §5(a) surface and the ledger must agree on the clone date.
+
+    Two dates, two meanings: `FORK_POINT_DATE` is when `b4d1293` was committed
+    upstream, `FORK_CLONE_DATE` is when this repository was taken from it. Only
+    the second is the *Date of fork* in `NOTICE`, which is the attribution the
+    licence requires — so that is the one pinned here. The first cannot be
+    checked from a worktree at all: `b4d1293` is not reachable.
+    """
+    notice = ROOT / "NOTICE"
+    if not notice.exists():
+        return ["NOTICE is missing — the AGPL §5(a) modification notice is the file"]
+    text = notice.read_text(encoding="utf-8")
+    stated = re.search(r"Date of fork\s*:\s*(\d{4}-\d{2}-\d{2})", text)
+    if stated is None:
+        return ["NOTICE no longer carries a `Date of fork:` line"]
+    clone = getattr(C, "FORK_CLONE_DATE", None)
+    if clone is None:
+        return ["claims.py no longer defines FORK_CLONE_DATE — see B349"]
+    problems = []
+    if clone == getattr(C, "FORK_POINT_DATE", object()):
+        problems.append(
+            "FORK_CLONE_DATE and FORK_POINT_DATE are the same date. They are two "
+            "different events — the upstream commit, and the clone — and if they "
+            "really coincide, say so where they are defined (B349).")
+    if stated.group(1) != clone:
+        problems.append(
+            f"NOTICE says the fork is dated {stated.group(1)} and claims.py's "
+            f"FORK_CLONE_DATE is {clone}. These are the same fact in two files and "
+            f"one of them has moved (B349).")
+    return problems
+
+
 def _readme_problems() -> list:
     """The two figures the README restates, checked against their sources.
 
@@ -276,6 +434,8 @@ def verify() -> list:
     problems.extend(_readme_problems())
     problems.extend(_upstream_gap_problems())
     problems.extend(_checker_count_problems())
+    problems.extend(_repro_problems()[0])
+    problems.extend(_fork_date_problems())
 
     if not any(c.provenance == "diffed" for c in C.CLAIMS):
         problems.append(
@@ -416,6 +576,11 @@ def main() -> int:
 
     problems = verify()
     rendered = render()
+    # `B348`. Printed whether the run passes or fails: a claim whose stated
+    # number its own repro never prints is not provably wrong — it may be a
+    # different metric — but it is not checkable either, and silence about that
+    # is how `wiring` sat at `2` against a checker printing `120`.
+    notes = _repro_problems()[1]
 
     if not args.write:
         if not OUTPUT.exists():
@@ -435,6 +600,8 @@ def main() -> int:
             f"ledger OK — {len(C.CLAIMS)} claims across {len(C.AREAS)} areas, "
             f"{fixture} labelled fixture, every cited path present"
         )
+        for note in notes:
+            print(f"  NOTE  {note}")
         return 0
 
     if problems:
@@ -442,6 +609,8 @@ def main() -> int:
         for p in problems:
             print(f"  {p}")
         return 1
+    for note in notes:
+        print(f"  NOTE  {note}")
     OUTPUT.write_text(rendered, encoding="utf-8")
     print(f"wrote {OUTPUT.relative_to(ROOT)} — {len(C.CLAIMS)} claims")
     return 0

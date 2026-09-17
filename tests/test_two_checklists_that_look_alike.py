@@ -46,6 +46,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from tests.helpers.source_text import blank, blank_text  # B290
 
 ROOT = Path(__file__).resolve().parent.parent
 HARNESS = ROOT / "tests" / "harness" / "checklist_surfaces.js"
@@ -179,10 +180,6 @@ def _js(name: str) -> str:
     return (ROOT / "static" / "js" / name).read_text(encoding="utf-8")
 
 
-_BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.S)
-_LINE_COMMENT = re.compile(r"^\s*//.*$", re.M)
-
-
 def _code(text: str) -> str:
     """The file with its prose blanked.
 
@@ -191,7 +188,7 @@ def _code(text: str) -> str:
     polygon found it in the sentence explaining why it is gone. A comment is
     not a declaration and must not be counted as one.
     """
-    return _LINE_COMMENT.sub("", _BLOCK_COMMENT.sub("", text))
+    return blank_text(text)
 
 
 def test_the_progress_sentence_has_one_implementation():

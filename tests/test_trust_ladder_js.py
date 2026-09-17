@@ -69,6 +69,7 @@ from test_tool_effect_surfaces_js import (  # noqa: E402
     _run,
     _themes,
 )
+from tests.helpers.source_text import blank, blank_text  # B290
 
 ROOT = Path(__file__).resolve().parents[1]
 TRUST_LADDER = ROOT / "static" / "js" / "trustLadder.js"
@@ -1897,7 +1898,7 @@ def _decls(selector: str, where: str = "desktop") -> dict:
         _regions()[where],
         re.M,
     ):
-        body = re.sub(r"/\*.*?\*/", " ", match.group(1), flags=re.S)
+        body = blank_text(match.group(1), "css")
         for chunk in body.split(";"):
             declaration = re.match(r"\s*([a-z-]+)\s*:\s*(\S.*?)\s*$", chunk, re.S)
             if not declaration:

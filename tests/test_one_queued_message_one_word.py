@@ -53,6 +53,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from tests.helpers.source_text import blank, blank_text  # B290
 
 ROOT = Path(__file__).resolve().parent.parent
 HARNESS = ROOT / "tests" / "harness" / "queue_status_words.js"
@@ -231,12 +232,8 @@ def test_no_surface_spells_the_words_for_itself_any_more():
     """Scoped to code, not prose: `runStatus.js` and the three renderers all
     *document* the words they used to own, and a file-wide substring would find
     them there (`Law 20`)."""
-    import re
-    block = re.compile(r"/\*.*?\*/", re.S)
-    line = re.compile(r"^\s*//.*$", re.M)
     for name in ("queuePanel.js", "tasks.js", "chat.js"):
-        src = (ROOT / "static" / "js" / name).read_text(encoding="utf-8")
-        code = line.sub("", block.sub("", src))
+        code = blank(ROOT / "static" / "js" / name)
         for word in ("'Waiting'", '"Waiting"', "'Sending'", "'Sent'"):
             assert word not in code, f"{name} still owns the word {word}"
         assert "runStatusLabel" in code, f"{name} does not use the shared words"

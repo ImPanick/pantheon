@@ -40,6 +40,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from tests.helpers.source_text import blank, blank_text  # B290
 
 ROOT = Path(__file__).resolve().parent.parent
 HARNESS = ROOT / "tests" / "harness" / "attachment_language.js"
@@ -59,11 +60,7 @@ def _h(mode: str, *args):
 
 def _blank(src: str) -> str:
     """Comments out, newlines kept so line numbers still mean something."""
-    src = re.sub(r"/\*.*?\*/", lambda m: re.sub(r"[^\n]", " ", m.group(0)),
-                 src, flags=re.S)
-    return re.sub(r"^([ \t]*)//.*$",
-                  lambda m: m.group(1) + " " * (len(m.group(0)) - len(m.group(1))),
-                  src, flags=re.M)
+    return blank_text(src)
 
 
 def _client_modules() -> list[Path]:

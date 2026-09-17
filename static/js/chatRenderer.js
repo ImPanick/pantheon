@@ -192,6 +192,13 @@ export function buildAttachCards(attachments) {
         // full-resolution photo. Click still opens the full image.
         img.alt = att.name || 'Image';
         img.loading = 'lazy';
+        // `B301`. A refused SVG preview is a drawn picture that says *"Preview
+        // blocked"* and why — and an `<img>` can read neither the response
+        // header carrying the reason nor the `<title>` inside the SVG it draws,
+        // so a screen reader was told the filename and nothing else. The
+        // explanation existed and one class of user could not reach it
+        // (`Law 15`). This asks for it.
+        _announceRefusedPreview(img, att);
         img.style.cssText = 'max-width:300px;max-height:200px;border-radius:6px;display:' + (att.previewUrl ? 'block' : 'none') + ';';
         let _revealed = false;
         let _revealTimer = null;
@@ -290,6 +297,53 @@ export function updateMessageAttachments(msgWrap, attachments) {
   const fresh = buildAttachCards(attachments);
   if (existing) existing.replaceWith(fresh);
   else body.appendChild(fresh);
+}
+
+/**
+ * `B301`. Name a refused SVG preview, out loud.
+ *
+ * `B160` made a refusal a *drawing* that says which rule fired, and put the
+ * slug on the response as `X-Preview-Refused` so anything that can read a
+ * header does not have to re-derive it. The chip is an `<img>`, which can read
+ * neither — so the picture explained itself to a sighted person and the
+ * accessible name stayed `diagram.svg`.
+ *
+ * One `HEAD`, and only for an SVG: every other attachment type has nothing to
+ * say here, and a request per photo would be a cost for nothing. The sentence
+ * comes off `X-Preview-Refused-Text` rather than out of a table in this file,
+ * because `src/svg_runtime.SVG_REFUSAL_TEXT` is the vocabulary and a second
+ * copy of it in the browser is the defect this product keeps finding
+ * (`Law 14`).
+ *
+ * The `Caption` button is deliberately left alone. Measured: `B163` reads an
+ * SVG's caption out of its own `<title>`, `<desc>` and `<text>` runs with no
+ * model and no render, so it still works on a file whose *preview* was refused
+ * — and on a refused chip it is the only thing that can say what the drawing
+ * contains. Hiding it would have removed a working affordance to tidy up a
+ * different one (`Law 1`).
+ *
+ * Best-effort throughout: a failed request, a missing header or a browser that
+ * hides it leaves the alt exactly as it was.
+ */
+async function _announceRefusedPreview(img, att) {
+  if (!att || !att.id) return;
+  const name = att.name || '';
+  const mime = att.mime || '';
+  if (!/\.svg$/i.test(name) && mime.split(';')[0].trim().toLowerCase() !== 'image/svg+xml') return;
+  try {
+    const res = await fetch(`/api/upload/${att.id}?thumb=1`, {
+      method: 'HEAD', credentials: 'same-origin',
+    });
+    if (!res.ok) return;
+    const slug = res.headers.get('X-Preview-Refused');
+    if (!slug) return;
+    const why = res.headers.get('X-Preview-Refused-Text') || 'It did not pass the safety check.';
+    // Filename first: it is what the person is looking for in a list of chips,
+    // and the reason is what they need next. The file itself still downloads,
+    // which is what the drawn placeholder also says.
+    img.alt = `${name || 'Image'}: preview blocked. ${why} The file itself is unchanged.`;
+    img.title = img.alt;
+  } catch (_) { /* best effort — the drawn placeholder still says it */ }
 }
 
 // Quick full-size preview when the user taps a chat photo thumbnail. Just an

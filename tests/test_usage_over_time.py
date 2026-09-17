@@ -25,6 +25,7 @@ from sqlalchemy.orm import sessionmaker
 import core.database as core_db
 from core.database import Base, Event, utcnow_naive
 from src import events as ev
+from tests.helpers.source_text import blank, blank_text  # B290
 
 ROOT = Path(__file__).resolve().parent.parent
 _maker = None
@@ -258,7 +259,6 @@ def test_the_panel_defines_no_accent():
     # Strip comments first: the block opens by SAYING it defines no --accent,
     # and the first version of this test read its own explanation as a
     # violation. Same shape as the docstring-read-as-code trap in P16-12.
-    import re
-    code = re.sub(r"/\*.*?\*/", "", block, flags=re.S)
+    code = blank_text(block, "css")
     assert "usage-panel" in code, "comment stripping ate the rules"
     assert "--accent" not in code

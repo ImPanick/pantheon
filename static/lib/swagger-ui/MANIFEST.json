@@ -1,13 +1,13 @@
 {
   "files": {
-    "swagger-ui-bundle.js": "a7e344f2770b2f07527ce828e0951626983b8f2dcdb7a826689c0232023f995b",
-    "swagger-ui.css": "d7f39f764aa18c7b47dd05b9af5613e373e4ac0f3557c2693d52d0abc2464d76"
+    "swagger-ui-bundle.js": "62df541529080464a7660adc793eab7128c6193ce3be24ddc1e0e0a4a63edc2f",
+    "swagger-ui.css": "1ac324f7dcd27e4b9386b4bd6421271ec147e922a22c05ba24b11515e9aa6321"
   },
   "licence": "Apache-2.0",
   "note": "The two files FastAPI's /docs HTML loads, and nothing else. The published package unpacks to 11.7 MB; the ES bundles, the standalone preset and the source maps are not served by this app and are not shipped.",
   "package": "swagger-ui-dist",
   "source": "https://registry.npmjs.org/swagger-ui-dist",
-  "tarball": "https://registry.npmjs.org/swagger-ui-dist/-/swagger-ui-dist-5.32.15.tgz",
-  "tarball_integrity": "sha512-TSFER+rFQlf1nzk6WvKkMaHTxAPQ3eAAxigFThnxQedSREanfZgSbJFayZVs/ULnSbNdrJOb99vLD6xpb3R3eg==",
-  "version": "5.32.15"
+  "tarball": "https://registry.npmjs.org/swagger-ui-dist/-/swagger-ui-dist-5.33.0.tgz",
+  "tarball_integrity": "sha512-wpdK+m6BU5yj6pmUdMskZVTSWYG4DLglAx3sIhylloY37i8O37IrH+YEpqdXNfpaTGxILRBFzUqLF2jKqbfI7A==",
+  "version": "5.33.0"
 }

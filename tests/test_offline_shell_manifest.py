@@ -52,6 +52,12 @@ _REPO = Path(__file__).resolve().parent.parent
 _SW = _REPO / "static" / "sw.js"
 _HARNESS = _REPO / "tests" / "harness" / "sw_install_graph.js"
 
+# `B260`. The one enumerator of what this app serves. `served_routes` below is
+# a projection of it; it used to be a second walk of `app.routes` that could
+# not see the `/static` mount.
+sys.path.insert(0, str(_REPO / "tests"))
+from tests.helpers.served_pages import probe_served_surface  # noqa: E402
+
 # `B82`. The import walker this repo already has. `.pantheon/check-specifiers.py`
 # resolves every specifier grammar in the tree against its importer and knows
 # which ones are out of scope, and `B87` taught it to blank comments first.
@@ -858,16 +864,24 @@ def _shell_routes_in_sw() -> set:
 
 @pytest.fixture(scope="module")
 def served_routes(tmp_path_factory) -> dict:
-    """Every GET route `app.py` exposes that takes no path parameter, asked for
-    its body by the real app, compared byte for byte.
+    """Every navigable page the real app serves, asked for its body by the real
+    app, compared byte for byte.
 
     Driven rather than parsed (`Law 20`). An AST pass over `app.py` would have
     to recognise `return await serve_index(request)` as delegation, and would
     miss the next handler that reaches the same document another way; asking
-    the app what it serves recognises all of them and nothing else. Run
-    out-of-process because importing `app` pulls the whole application up —
-    same shape as `test_a_conditional_request_is_actually_cheap_on_this_server`
-    above.
+    the app what it serves recognises all of them and nothing else.
+
+    **`B260`: this is a projection of `probe_served_surface` and no longer a
+    second enumerator.** It used to run its own out-of-process probe with its
+    own route walk, and the two had already drifted in the way `Law 13`
+    predicts: this one skipped the `/static` mount, which is a `Mount` and so
+    appears in `app.routes` as one entry with no per-file path, so the app
+    shell and the login page each had a second URL that this fixture could not
+    see and `B211` found by other means. The enumeration now happens once, in
+    `tests/helpers/served_pages.py`, and one subprocess boots the app for both
+    callers. What is projected away here is what the offline row does not ask
+    about: `/api/` routes, which the service worker never touches.
 
     **The normalisation is gone, and that is the point.** `B120` compared these
     bodies through `re.sub(r'nonce="[0-9a-f]*"', 'nonce=""', text)`, because the
@@ -876,64 +890,27 @@ def served_routes(tmp_path_factory) -> dict:
     `'sha256-…'` sources in the header, computed from the file, so there is
     nothing left to normalise — and a regex that now matches nothing is a
     regex that would go on matching nothing if the shell started varying again.
-    `body_repeats` below re-asks for each body and records whether the second
-    answer is the same bytes as the first, so this fixture states the premise
-    it used to assume; `test_the_app_shell_does_not_vary_per_request` is the
-    assertion on it.
+    `body_repeats` re-asks for each body and records whether the second answer
+    is the same bytes as the first, so this fixture states the premise it used
+    to assume; `test_the_app_shell_does_not_vary_per_request` is the assertion
+    on it.
     """
-    tmp_path = tmp_path_factory.mktemp("served_routes")
-    env = os.environ.copy()
-    env.update({
-        "AUTH_ENABLED": "false",
-        "CHROMADB_CONNECT_TIMEOUT": "0.01",
-        "CHROMADB_HOST": "127.0.0.1",
-        "CHROMADB_PORT": "9",
-        "DATABASE_URL": f"sqlite:///{tmp_path / 'app.db'}",
-        "PANTHEON_DATA_DIR": str(tmp_path),
-        "PANTHEON_DISABLE_MCP": "1",
-        "PYTHONPATH": str(_REPO),
-        "PYTHON_DOTENV_DISABLED": "1",
-    })
-    probe = textwrap.dedent(
-        """
-        import json
-        import app as app_module
-        from fastapi.testclient import TestClient
-
-        client = TestClient(app_module.app)
-        shell = client.get("/").text
-        paths = []
-        for route in app_module.app.routes:
-            path = getattr(route, "path", None)
-            methods = getattr(route, "methods", set()) or set()
-            # `/api/` is out of scope because the worker never touches it, and
-            # a path parameter means the route is not a navigable page.
-            if not path or "GET" not in methods:
-                continue
-            if "{" in path or path.startswith("/api/"):
-                continue
-            paths.append(path)
-        out = {}
-        for path in sorted(set(paths)):
-            res = client.get(path, follow_redirects=False)
-            again = client.get(path, follow_redirects=False)
-            out[path] = {
-                "status": res.status_code,
-                "bytes": len(res.content),
-                "is_shell": res.status_code == 200 and res.text == shell,
-                "body_repeats": res.content == again.content,
-                "etag": res.headers.get("etag"),
-                "head": res.text[:200],
-            }
-        print("RESULT=" + json.dumps(out, sort_keys=True))
-        """
-    )
-    result = subprocess.run([sys.executable, "-c", probe], cwd=str(_REPO), env=env,
-                            capture_output=True, text=True, timeout=300, check=False)
-    assert result.returncode == 0, result.stderr
-    line = next((l for l in result.stdout.splitlines() if l.startswith("RESULT=")), None)
-    assert line is not None, result.stdout
-    return json.loads(line.removeprefix("RESULT="))
+    surface = probe_served_surface(tmp_path_factory.mktemp("served_routes"))
+    pages = surface["pages"]
+    shell = pages["/"]["body"]
+    assert shell, "the probe returned no body for `/` — every check below is vacuous"
+    return {
+        url: {
+            "status": row["status"],
+            "bytes": row["bytes"],
+            "is_shell": row["status"] == 200 and row["body"] == shell,
+            "body_repeats": row["body_repeats"],
+            "etag": row["etag"],
+            "head": row["body"][:200],
+        }
+        for url, row in pages.items()
+        if not url.startswith("/api/")
+    }
 
 
 def test_the_shell_route_set_is_what_the_server_actually_serves(served_routes):
@@ -970,11 +947,40 @@ def test_a_route_that_serves_its_own_document_is_not_in_the_shell_set(served_rou
     assert "/login" in served_routes
     assert "/login" not in _shell_routes_in_sw()
     # Every route the server does not answer with the shell stays out, whatever
-    # its status — `/backgrounds` is a 500 on this tree (`B140`) and the docs
-    # routes are FastAPI's own pages.
+    # its status — `/backgrounds` is a 404 naming a page this build does not
+    # ship (`B140`, `B210`), `/redoc` is a 404 naming `/docs` (`B261`), and the
+    # docs routes are FastAPI's own pages.
     for path, row in served_routes.items():
         if not row["is_shell"]:
             assert path not in _shell_routes_in_sw(), (path, row)
+
+
+def test_the_static_mount_is_in_this_view_of_the_served_surface(served_routes):
+    """`B260`. The drift this fixture used to have, stated as an assertion.
+
+    `served_routes` walked `app.routes` and nothing else. The `/static` mount
+    is one `Route`-less `Mount` entry there, so every document under it was
+    invisible: the app shell had a second URL (`/static/index.html`), the login
+    page had a second URL, and the two prototype pages `sw.js` names in the
+    comment above its navigation handler could not be checked against the
+    server at all. It is now a projection of `probe_served_surface`, which
+    enumerates the mount's documents from the directory the mount is pointed
+    at, so the two tests that ask what this app serves are asking one probe.
+
+    Fails on `HEAD`: the fixture returned 20 URLs, none of them under
+    `/static`.
+    """
+    mounted = sorted(p for p in served_routes if p.startswith("/static/"))
+    assert "/static/wave-variants.html" in mounted, mounted
+    assert "/static/whirlpool-variants.html" in mounted, mounted
+    # And the two the mount no longer hands over (`B262`) are seen here as the
+    # redirects they became, rather than not being seen at all.
+    for shell_url, owner in (("/static/index.html", "/"),
+                             ("/static/login.html", "/login")):
+        assert shell_url in mounted, mounted
+        assert served_routes[shell_url]["status"] == 302, served_routes[shell_url]
+        assert not served_routes[shell_url]["is_shell"], served_routes[shell_url]
+        assert owner in served_routes, owner
 
 
 def test_the_app_shell_does_not_vary_per_request(served_routes):

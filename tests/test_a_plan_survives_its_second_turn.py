@@ -37,6 +37,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from tests.helpers.source_text import blank, blank_text  # B290
 
 ROOT = Path(__file__).resolve().parent.parent
 HARNESS = ROOT / "tests" / "harness" / "approved_plan_per_turn.js"
@@ -86,11 +87,7 @@ def test_there_is_one_plan_store_and_chat_js_does_not_hold_a_copy():
     """`Law 13`. The module-level copy was the only one that did not survive a
     reload. Read as code rather than text — comments naming the old variable
     are the record of why it went, not a second copy of it."""
-    import re
-
-    source = (ROOT / "static" / "js" / "chat.js").read_text(encoding="utf-8")
-    code = re.sub(r"(?m)^\s*//.*$", "", source)
-    code = re.sub(r"/\*.*?\*/", "", code, flags=re.S)
+    code = blank(ROOT / "static" / "js" / "chat.js")
     assert "_pendingApprovedPlan" not in code
 
 

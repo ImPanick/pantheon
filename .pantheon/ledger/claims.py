@@ -49,7 +49,31 @@ from typing import NamedTuple, Tuple
 UPSTREAM_REMOTE = "pewdiepie-archdaemon/odysseus"
 UPSTREAM_REF = "upstream/dev"
 FORK_POINT = "b4d1293"
-FORK_POINT_DATE = "2026-08-20"
+
+# `B349`. TWO DATES, TWO MEANINGS, and the repository stated both for one event.
+#
+# `FORK_POINT_DATE` is **`b4d1293`'s own date upstream** — it was read off the
+# commit, which is why it sits beside that commit's subject line and why it
+# carries `MEASURED_ON`. `.pantheon/VERIFY-2026-08-27.md:200` recorded the same
+# reading independently while the checkout still existed: *"`/work/base` HEAD is
+# the fork point (2026-08-20)"*.
+#
+# `FORK_CLONE_DATE` is **the day this repository was taken from it**, which is
+# what `NOTICE`'s *Date of fork*, `CHANGELOG.md:18*, `CREDITS.md` and the
+# README's *Licence* section all state, and what the AGPL §5(a) notice needs.
+# It is consistent with this repository's own history, which begins
+# **2026-08-27** (`fff72ec baseline: cybertooth c3b2120`) — three days after the
+# clone and seven after the commit.
+#
+# **Neither can be confirmed from a worktree**: `b4d1293` is not reachable here
+# (`git cat-file -t b4d1293` -> *Not a valid object name*), so this records what
+# each date is evidence *of* rather than choosing between them. The row stays
+# open for the owner; what is fixed is that the two no longer look like one
+# number that disagrees with itself. `check-ledger.py` compares `FORK_CLONE_DATE`
+# with `NOTICE`'s *Date of fork* so the §5(a) surface and the ledger cannot part
+# company again.
+FORK_POINT_DATE = "2026-08-20"      # the date `b4d1293` was committed upstream
+FORK_CLONE_DATE = "2026-08-24"      # the date Pantheon was cloned from it
 FORK_POINT_SUBJECT = (
     "fix(agent): drop the empty assistant turn from an approved-action replay (#6124)"
 )
@@ -129,7 +153,7 @@ CLAIMS: Tuple[Claim, ...] = (
         id="fork-size",
         area="Scale of the fork",
         headline="156 commits and 175,966 inserted lines past the fork point.",
-        stock="Odysseus at `b4d1293`, 2026-08-20.",
+        stock=f"Odysseus at `{FORK_POINT}`, committed {FORK_POINT_DATE}.",
         pantheon="This tree.",
         before="0 commits",
         after="156 commits, 1,964 files changed, 175,966 insertions, 6,625 deletions",
@@ -169,8 +193,8 @@ CLAIMS: Tuple[Claim, ...] = (
         rows=("P0-19", "P0-23", "P3-10", "P0-13", "B71", "D-2026-08-27-01"),
         how=(
             "This is the fork's first law as a measurement — *an elevation, not a rip "
-            "and re-write; we add, never subtract*. A ratio of 537 to 4 is only "
-            "evidence if the four are named, so they are. The font is the one worth "
+            "and re-write; we add, never subtract*. A ratio of 537 to 5 is only "
+            "evidence if all five are named, so they are. The font is the one worth "
             "reading: it was checked before deletion rather than taken on trust, and "
             "it turned out to be three glyphs under a copyright notice crediting nobody. "
             "**The fifth was found by a failing test nobody had looked at**: the "
@@ -761,13 +785,25 @@ CLAIMS: Tuple[Claim, ...] = (
     Claim(
         id="wiring",
         area="Dead code and wiring",
-        headline="Unreachable UI 78 -> 2, and 1,524 lines deleted against 340 added.",
+        headline="Unreachable UI 78 -> 120 and ratcheted, with 1,524 lines deleted against 340 added.",
         stock="78 wiring defects: markup, handlers and ids that nothing could reach.",
         pantheon="A ratchet in CI that cannot go up.",
         before="78",
-        after="2",
+        # `B348`. This said **2** while `check-wiring.py` printed **120**, and the
+        # repro carried `--max 124` against CI's `--max 120` — so a reader
+        # following the ledger's own instruction ran a different gate from the
+        # one guarding the tree, and the command disproved the claim it was
+        # printed under. Both halves are now compared by `check-ledger.py`
+        # against the checker and against `ci.yml`, so neither can drift again.
+        #
+        # `78 -> 120` is not a regression: the `78` was counted before `B58`
+        # widened the checker from four of the six places a lookup is written to
+        # all six. The honest statement of the win is the ratchet, not the
+        # count — the count went UP because the measurement got better, which is
+        # the sort of thing a ledger has to be able to say about itself.
+        after="120",
         provenance="measured",
-        repro="python3 .pantheon/check-wiring.py --max 124",
+        repro="python3 .pantheon/check-wiring.py --max 120",
         evidence=(".pantheon/check-wiring.py",),
         rows=("P3-13", "P3-14", "P3-15"),
         how=(
@@ -776,7 +812,10 @@ CLAIMS: Tuple[Claim, ...] = (
             "shipped, and never reached. The companion route checker had a worse "
             "version of the same disease: it recursed, found nothing, and reported "
             "**23 routes when the real number was 443**, looking entirely correct while "
-            "doing so."
+            "doing so. The figure above is the ceiling CI holds, not a floor anybody "
+            "reached: `check-wiring.py` reports **120** unresolved lookups today and "
+            "`ci.yml` refuses 121. It said `2` here until `B348`, against its own "
+            "repro command printing `120` — the ledger failing on the ledger."
         ),
     ),
 

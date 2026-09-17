@@ -9,6 +9,7 @@ import mimetypes
 import base64
 import codecs
 import tempfile
+import unicodedata
 from typing import List, Dict, Any
 
 from src.llm_core import llm_call
@@ -60,6 +61,78 @@ TEXT_EXTS = frozenset({
 # register names. A set alone can never model that, which is the other reason
 # `B05`'s "three-line test" would not have been a proof.
 INGESTIBLE_EXTS = TEXT_EXTS | OFFICE_EXTS | PDF_EXTS
+
+# ── `B232`: what this product can make of a file, answered once ─────────────
+#
+# The browser asked this question twice, with two hand-written extension
+# regexes — 38 entries on the composer's "Import to document library" banner
+# (`static/js/chat.js`) and 36 on *open this attachment as a document* — and
+# both were wrong in both directions. Measured against these registers:
+# **10 ingestible extensions were not offered** (`.bash .doc .docx .epub .nix
+# .odt .pdf .pptx .xls .xlsx`, five of which the server has a bundled extractor
+# for) and **9 offered extensions no register names** (`.conf .env .ini .less
+# .sass .scss .svelte .toml .vue`, which reach the model only because
+# ``looks_like_text`` rescues them — `B76`).
+#
+# **The naive fix is a trap and it is worth naming.** ``INGESTIBLE_EXTS`` is the
+# union of three extractors, so handing it to the composer verbatim offers
+# `.pdf`, `.docx`, `.xlsx`, `.pptx` and `.epub` to a code path that pre-reads
+# the raw ``File`` **as text** — "offer to import a `.zip`" in another costume.
+# The question is not one question. It is two, and they have different answers:
+#
+# * ``text`` — the bytes read as text, so a client may read them itself. This is
+#   ``looks_like_text``, which is open-ended by design: `.kt`, `.toml` and
+#   `.env` are text and no register names them.
+# * ``document`` — the bytes are a container this product has an **extractor**
+#   for, so the client must post the file and let the server convert it.
+#   `.docx` is not text and is not binary either.
+# * ``binary`` — neither, and the honest answer is a banner.
+#
+# One function, three answers, and every door reads it: the upload response
+# carries it per file (``routes/upload_routes.api_upload``), the download route
+# carries it as ``X-Upload-Kind`` for an attachment the browser already has an
+# id for, and the composer and the attachment opener both read it instead of
+# testing a name (`Law 13`, and `D-2026-08-26-06` — the backend is the single
+# decision point).
+INGEST_KIND_TEXT = "text"
+INGEST_KIND_DOCUMENT = "document"
+INGEST_KIND_BINARY = "binary"
+
+# The extractor half of ``INGESTIBLE_EXTS``, named so a caller can ask for it
+# without re-deriving the subtraction. Stated as the union it is rather than as
+# a list, for the same reason ``INGESTIBLE_EXTS`` is.
+EXTRACTED_EXTS = OFFICE_EXTS | PDF_EXTS
+
+
+def ingest_kind(path: str, display_name: str | None = None) -> str:
+    """``"text"``, ``"document"`` or ``"binary"`` for one stored file.
+
+    *display_name* is the name the user attached it under; the stored path is
+    ``<uuid32><ext>`` and keeps the suffix, so either works and the caller's own
+    name wins when it has one (the same rule ``_process_text_file`` follows).
+
+    Extractor first, bytes second. A `.docx` is a zip and a `.doc` is an OLE2
+    container — ``looks_like_text`` says no to both, correctly — but the product
+    reads them, so asking the extension first is what stops "we can read this"
+    from being answered by a probe that can only see the first 8 KiB of a
+    compressed archive.
+
+    Bytes second is what keeps the answer open-ended. `B76`'s finding was that
+    a file is readable when its BYTES decode, so a `.kt`, a `.toml` or a file
+    with no extension at all is ``text`` here without anything being appended to
+    a register — which is the property the two regexes in the browser could not
+    have.
+    """
+    name = display_name or path or ""
+    _, ext = os.path.splitext(name.lower())
+    if not ext:
+        _, ext = os.path.splitext((path or "").lower())
+    if ext in EXTRACTED_EXTS:
+        return INGEST_KIND_DOCUMENT
+    if path and looks_like_text(path):
+        return INGEST_KIND_TEXT
+    return INGEST_KIND_BINARY
+
 
 # Extensions whose language name is not simply the extension. Everything else
 # derives: `.toml` is toml, `.swift` is swift, `.lua` is lua. `B100` measured a
@@ -244,6 +317,252 @@ def _is_multibyte_encoding(name: str) -> bool:
 # produces is the right words with the wrong accents.
 _MIN_MULTIBYTE_SAMPLE = 24
 
+# ── `B280`: the guess is wrong above the floor too, and the floor cannot reach it ──
+#
+# `B201` bought what a sample floor can buy. What it left is content-dependent,
+# so no threshold on sample size touches it. Measured on the tree as it stood:
+# the 58-byte cp1250 Polish pangram ``Zażółć gęślą jaźń pchnąć w tę łódź jeża
+# lub ośm skrzyń fig`` is answered ``Windows-1252`` and arrives as
+# ``Za¿ó³æ gêœl¹ jaŸñ pchn¹æ w tê ³ódŸ je¿a lub oœm skrzyñ fig`` — every
+# Polish-specific letter replaced — while 34 bytes of Big5 are answered
+# ``johab`` and arrive as Hangul. Both decode with no replacement characters and
+# no control characters, so `B101`'s two comparisons have nothing to say.
+#
+# **Two levers, both measured, and only one of them works.**
+#
+# 1. **A file that declares its own encoding is not a guess** (``_DECLARED_*``
+#    below). This is the ``_BOMS`` rule one step out: an XML declaration, an
+#    HTML ``meta charset`` and a Python/Emacs coding cookie are the file saying
+#    what it is, in the first bytes, in a grammar that predates every detector.
+#    Taken only when the named codec exists AND decodes the prefix at least as
+#    cleanly as UTF-8 did, so a stale or hostile declaration cannot make the
+#    reader worse than it already was.
+#
+# 2. **A wrong single-byte guess is visible in the shape of its own output.**
+#    Every single-byte codec maps every byte to *something*, which is why "it
+#    decoded" is not evidence — but what it maps them to is evidence. The cp1252
+#    reading of cp1250 Polish is ``Za¿ó³æ gêœl¹``: an inverted question mark and
+#    a superscript three, **inside words**. That last part is the whole rule and
+#    the first attempt at this row got it wrong by leaving it out.
+#
+#    ``_word_interior_symbols`` counts non-ASCII characters that are not letters
+#    and sit between two alphanumerics. Real prose never does that in any
+#    script. A *legitimately* symbol-heavy file does — a DOS box-drawing
+#    diagram, a price list of ``£ ¥ ¤ ½``, a table of ``°C ± µ`` — but it does it
+#    between **spaces**, which is why counting symbols alone was not a rule:
+#    measured, a scoring of "how many of the non-ASCII characters are letters"
+#    re-read ``Preis: 45,00 £ · 50,00 ¥`` as Thai, because a codec that maps
+#    those bytes to letters scores perfectly by destroying them. Requiring the
+#    symbol to be *inside a word* leaves every one of those files alone.
+#
+#    The choice is made over ``charset_normalizer.from_bytes``'s **ranked**
+#    candidates rather than ``detect``'s single answer, because the right codec
+#    was sitting second on the list and being thrown away.
+#
+# Measured over 891 rows — 29 real prose samples in 17 encodings across Latin,
+# Cyrillic, Greek, Hebrew, Arabic, Han, Kana and Hangul, truncated at every
+# length from the floor to the full sample — this is **22 corrections and 0
+# regressions** (709 right → 731, 179 wrong → 157, refusals unchanged at 3), and
+# the three symbol-heavy control files above keep the answer they had.
+#
+# **What it does not fix, measured rather than hoped.** The Big5→johab case is a
+# *multi-byte* confusion: both readings are 100% letters with nothing inside a
+# word, so this is blind to it. Three rules were built and measured against the
+# same sweep and all three were rejected — see `B402`. A rule that refuses when
+# a differently-scripted multi-byte rival is within ε chaos costs **98 correct
+# answers to buy 16**, because the margin between the wrong top answer and the
+# right runner-up (0.062–0.071 for Big5/johab) sits *inside* the margin range of
+# the cases where the top answer is right (0.000–0.100). There is no threshold
+# there, and saying so is the finding.
+# Unicode general categories that a letter of some script has. Combining marks
+# are letters for this purpose — a Vietnamese or Devanagari decode is letters
+# plus marks and must not be scored down for it.
+_LETTER_CATEGORIES = frozenset({"Ll", "Lu", "Lt", "Lm", "Lo", "Mn", "Mc", "Me"})
+
+# A file stating its own encoding, in the three grammars that actually appear in
+# the corpus this product ingests. Bounded to the first ``_DECLARATION_BYTES``
+# because every one of them is required to be in the first line or two, and
+# because a scan of 8 KiB for these would be reading the body for a header.
+_DECLARATION_BYTES = 1024
+_DECLARED_ENCODING_RES = (
+    # <?xml version="1.0" encoding="windows-1250"?>
+    re.compile(br"""<\?xml[^>]*?\bencoding\s*=\s*['"]([A-Za-z0-9_.:+-]+)['"]""",
+               re.IGNORECASE),
+    # <meta charset="big5">  /  <meta http-equiv=... content="text/html; charset=big5">
+    re.compile(br"""<meta[^>]*?\bcharset\s*=\s*['"]?([A-Za-z0-9_.:+-]+)""",
+               re.IGNORECASE),
+    # # -*- coding: cp1251 -*-   /   # vim: set fileencoding=cp1251 :
+    re.compile(br"""\b(?:coding[:=]\s*|fileencoding\s*=\s*)([A-Za-z0-9_.:+-]+)""",
+               re.IGNORECASE),
+)
+
+
+def _is_letterish(ch: str) -> bool:
+    return unicodedata.category(ch) in _LETTER_CATEGORIES
+
+
+def _word_interior_symbols(decoded: str) -> int:
+    """How many non-ASCII non-letters sit **inside** a word.
+
+    The measurement behind `B280`'s second lever, and the one thing in this
+    module that reads a decode rather than the bytes. A character counts when it
+    is non-ASCII, is not a letter or a combining mark, and has an alphanumeric
+    on *both* sides — ``Za¿ó³æ`` scores 2 and ``45,00 £ · 50,00 ¥`` scores 0.
+
+    That distinction is the rule, not decoration. A price list, a DOS
+    box-drawing diagram and a table of ``°C ± µ`` are full of symbols and are
+    perfectly good text; what they never do is put one between two letters.
+    Counting symbols without it was measured and re-read a German price list as
+    Thai, because a codec that maps ``£¥¤½`` to letters looks *more* letter-like
+    precisely by destroying them.
+
+    ASCII is skipped because every candidate agrees about it, which would drown
+    the signal in the 90% of a config file that is ``key = value``.
+    """
+    count = 0
+    for i, ch in enumerate(decoded):
+        if ord(ch) <= 0x7F or _is_letterish(ch):
+            continue
+        before = decoded[i - 1] if i else ""
+        after = decoded[i + 1] if i + 1 < len(decoded) else ""
+        if before and after and before.isalnum() and after.isalnum():
+            count += 1
+    return count
+
+
+def _prose_plausibility(decoded: str) -> float:
+    """Share of *decoded*'s non-ASCII characters that are letters.
+
+    The tie-break behind ``_word_interior_symbols``, never the test on its own:
+    an alternative has to both clear the interior-symbol count **and** be more
+    letter-like overall before it is preferred, so a reading that merely swaps
+    one alphabet for another cannot win on this alone.
+
+    A decode with no non-ASCII characters at all scores 1.0: there is nothing to
+    be implausible about, and it is the same answer every candidate gives.
+    """
+    high = [ch for ch in decoded if ord(ch) > 0x7F]
+    if not high:
+        return 1.0
+    return sum(1 for ch in high if _is_letterish(ch)) / len(high)
+
+
+def _canonical_codec(name: str) -> str | None:
+    """The one spelling of *name*, or ``None`` when Python has no such codec.
+
+    ``Windows-1252`` and ``cp1252`` are the same codec under two names —
+    ``charset_normalizer.detect`` returns chardet's spelling and
+    ``from_bytes`` returns Python's — so any comparison between the two has to
+    go through here or it compares strings instead of codecs.
+    """
+    try:
+        return codecs.lookup(name).name
+    except (LookupError, TypeError, ValueError):
+        return None
+
+
+def _declared_encoding(head: bytes) -> str | None:
+    """The encoding the file says it is, if it says so and the codec exists.
+
+    `B280`, and this is the ``_BOMS`` rule rather than a new kind of guess: a
+    BOM is a file declaring its encoding in bytes, and an XML declaration, an
+    HTML ``meta charset`` and a coding cookie are the same declaration in text.
+    The detector never reads them — it is a statistical classifier over the byte
+    histogram — so this is information that exists in the file and is currently
+    thrown away.
+
+    Deliberately *not* trusted blindly: the caller checks that the declared
+    codec decodes at least as cleanly as UTF-8 did before taking it, so a
+    declaration left behind by a converter, or one written to make the reader
+    misread the body, degrades to the answer we would have given anyway.
+    """
+    window = head[:_DECLARATION_BYTES]
+    for pattern in _DECLARED_ENCODING_RES:
+        match = pattern.search(window)
+        if not match:
+            continue
+        name = match.group(1).decode("ascii", errors="replace")
+        canonical = _canonical_codec(name)
+        if canonical:
+            return canonical
+    return None
+
+
+def _rank_encodings(head: bytes) -> list[str]:
+    """Every encoding ``charset_normalizer`` thinks *head* could be, best first.
+
+    ``_detect_encoding`` is ``from_bytes(...).best()`` with a rename — the
+    ranking behind it is computed either way and then discarded, so this costs
+    one extra call and no extra work per call. Import-guarded for the same
+    reason ``_detect_encoding`` is: a ranking that cannot run answers "no
+    alternatives" rather than raising.
+    """
+    try:
+        from charset_normalizer import from_bytes
+        return [match.encoding for match in from_bytes(head)]
+    except Exception as exc:  # pragma: no cover - dependency missing or broken
+        logger.warning("encoding ranking unavailable: %s", exc)
+        return []
+
+
+def _more_plausible_alternative(head: bytes, detected: str) -> str | None:
+    """A candidate the detector ranked lower whose decode reads like prose.
+
+    Only ever a **reordering of the detector's own list** — nothing is invented
+    here, and a codec `charset_normalizer` did not put forward cannot be chosen.
+    Three conditions, each of which is a way this could otherwise do harm:
+
+    * *detected* must itself appear in the ranking. When it does not — which is
+      what a test that stubs ``_detect_encoding`` produces, and what a future
+      rename would produce — there is nothing to compare against and the answer
+      is left alone.
+    * the alternative must survive the same structural filters the caller
+      applies to the detector's own answer: never a UTF-16/32 codec, and never
+      a multi-byte codec about fewer than ``_MIN_MULTIBYTE_SAMPLE`` bytes
+      (`B201`). Reordering must not be a door around either guard.
+    * the detected reading must **put a symbol inside a word**, and the
+      alternative must put none there while being more letter-like overall. A
+      file that is legitimately symbol-heavy — DOS box-drawing, a price list of
+      ``£¥¤½``, a table of ``°C ± µ`` — spells its symbols between spaces, so it
+      scores zero here and this function never looks at it. That is the guard
+      that keeps the rule away from files whose encoding nobody can name, and it
+      is measured: without it, ``Preis: 45,00 £ · 50,00 ¥`` is re-read as Thai.
+    """
+    ranking = _rank_encodings(head)
+    if len(ranking) < 2:
+        return None
+    canonical_detected = _canonical_codec(detected)
+    canonical = [(_canonical_codec(name), name) for name in ranking]
+    if canonical_detected is None or canonical_detected not in [c for c, _ in canonical]:
+        return None
+    try:
+        baseline_text = head.decode(canonical_detected, errors="replace")
+    except (LookupError, UnicodeError):
+        return None
+    if _word_interior_symbols(baseline_text) == 0:
+        # Nothing about this reading says mojibake. Whatever else is true of it,
+        # this rule has no evidence and does not get an opinion.
+        return None
+    baseline = _prose_plausibility(baseline_text)
+    for name, _original in canonical:
+        if name is None or name == canonical_detected:
+            continue
+        if _is_wide_encoding(name):
+            continue
+        if _is_multibyte_encoding(name) and len(head) < _MIN_MULTIBYTE_SAMPLE:
+            continue
+        try:
+            decoded = head.decode(name, errors="replace")
+        except (LookupError, UnicodeError):
+            continue
+        if _word_interior_symbols(decoded) == 0 \
+                and _prose_plausibility(decoded) > baseline:
+            logger.debug("preferring %s over %s: no symbol inside a word",
+                         name, detected)
+            return name
+    return None
+
+
 # Why a prefix has no encoding. Constants rather than sentences at the return
 # statements, because `B162` made "skipped, and here is why" a contract the
 # index reports to the operator and these are the two things it can say about
@@ -323,6 +642,32 @@ def describe_text_encoding(head: bytes) -> tuple[str | None, str]:
     utf8_ratio = _replacement_ratio(head.decode("utf-8", errors="replace"))
     if utf8_ratio == 0.0:
         return "utf-8", ""
+    # `B280`, first lever. A file that names its own encoding is not a guess,
+    # and it is checked before the detector for the same reason a BOM is: the
+    # detector is a classifier over the byte histogram and cannot read a
+    # sentence. It still has to clear the same bar the detector's answer does —
+    # strictly cleaner than the UTF-8 reading — so a stale declaration cannot
+    # make this worse than it already was.
+    declared = _declared_encoding(head)
+    if declared and _is_wide_encoding(declared):
+        # `B101`'s rule, and it applies to a declaration for the same reason it
+        # applies to a guess: bytes with no NUL in them decode under a UTF-16/32
+        # codec to *some* codepoint for every pair, so the check below scores it
+        # a perfect zero and it wins on merit while being nonsense. A real
+        # UTF-16 file reaches this function with a BOM or with NULs and is
+        # answered above, so a declaration is never the only evidence for one.
+        declared = None
+    if declared:
+        try:
+            decoded = head.decode(declared, errors="replace")
+        except (LookupError, UnicodeError):
+            decoded = None
+        if (
+            decoded is not None
+            and _replacement_ratio(decoded) < utf8_ratio
+            and _control_ratio(decoded) <= _MAX_CONTROL_RATIO
+        ):
+            return declared, ""
     detected = _detect_encoding(head)
     unsupported_guess = ""
     if detected and _is_wide_encoding(detected):
@@ -354,6 +699,15 @@ def describe_text_encoding(head: bytes) -> tuple[str | None, str]:
         unsupported_guess = detected
         detected = None
     if detected:
+        # `B280`, second lever. ``detect`` is ``from_bytes(...).best()``: the
+        # runners-up were computed and thrown away. A single-byte codec maps
+        # every byte to *something*, so the winner can be a reading that puts
+        # ``¿`` and ``³`` inside words while the file's real codec is sitting
+        # second on the list. Reordering the detector's own candidates by how
+        # much their output looks like prose is the only thing here that reads
+        # the decode rather than the bytes — and it is a reordering, so nothing
+        # the detector did not propose can be chosen.
+        detected = _more_plausible_alternative(head, detected) or detected
         try:
             decoded = head.decode(detected, errors="replace")
         except (LookupError, UnicodeError):

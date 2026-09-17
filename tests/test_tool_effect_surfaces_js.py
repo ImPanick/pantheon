@@ -58,6 +58,7 @@ import textwrap
 from pathlib import Path
 
 import pytest
+from tests.helpers.source_text import blank, blank_text  # B290
 
 ROOT = Path(__file__).resolve().parents[1]
 CHAT_RENDERER = ROOT / "static" / "js" / "chatRenderer.js"
@@ -1075,7 +1076,7 @@ def _decls(selector: str, where: str = "desktop", required: bool = True) -> dict
         # width: 2px; }`, which is the house style for short overrides at a
         # breakpoint — reported only its first declaration and a mutation
         # hiding behind the second was invisible.
-        body = re.sub(r"/\*.*?\*/", " ", match.group(1), flags=re.S)
+        body = blank_text(match.group(1), "css")
         for chunk in body.split(";"):
             declaration = re.match(r"\s*([a-z-]+)\s*:\s*(\S.*?)\s*$", chunk, re.S)
             if not declaration:

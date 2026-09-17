@@ -83,6 +83,7 @@ import pytest
 # and `tests/test_trust_ladder_js.py` reuses; `_run` writes the case and drives
 # node. Imported, never copied.
 from test_tool_effect_surfaces_js import _DOM, _run  # noqa: E402
+from tests.helpers.source_text import blank, blank_text  # B290
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "static" / "app.js"
@@ -115,7 +116,7 @@ def _strip_comments(js: str) -> str:
     """Executable half of a block, so prose about the old code cannot satisfy a
     test about the new code. Line comments only — the block has no block
     comments and no string literal containing `//`."""
-    return "\n".join(re.sub(r"//.*$", "", line) for line in js.splitlines())
+    return blank_text(js)
 
 
 # ── Sandbox ─────────────────────────────────────────────────────────────────

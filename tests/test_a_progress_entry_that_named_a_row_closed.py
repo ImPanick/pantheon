@@ -171,10 +171,28 @@ def test_closed_is_told_from_filed_ruled_and_left_open():
     closed_somewhere = {r for claims in by_entry.values() for r in claims}
     for row_id in ("B75", "B76", "B77", "B78", "B121", "B73", "B74"):
         assert row_id in closed_somewhere, row_id
-    # The four the owner RULED on are a different case and stay out entirely:
-    # no entry has ever said they closed, so a checker that read `ruled` as a
-    # closure would be inventing a claim nobody made.
+    # The rows the owner RULED on are the case this grammar exists to get right:
+    # an entry that says `ruled` has not said `closed`, and a checker that read
+    # one as the other would invent a claim nobody made.
+    #
+    # `B414`. This named four and it was true when written — then the owner said
+    # "patch 'em", which unparked all four, and `B22` and `B23` were closed the
+    # same day. So two of the four moved from *never claimed* to *claimed, and
+    # correctly*, and this assertion failed on work being right. That is the
+    # third time a test here pinned a fact that later changed (`B310` pinned two
+    # counts and a `heads[0]` lookup; `B96`'s parametrize table pinned the defect
+    # it was about). The durable claim is not *which* ids are unclaimed — the
+    # owner can unpark any of them tomorrow — it is that the entry **which ruled
+    # on them** did not claim them. That is a property of one entry's words and
+    # cannot go stale.
+    ruled_entry = ("An argument that ended the run, a gate that asked the wrong "
+                   "question, and a plan that lasted one turn")
+    assert ruled_entry in by_entry, sorted(by_entry)[:3]
     for row_id in ("B15", "B16", "B22", "B23"):
+        assert row_id not in by_entry[ruled_entry], row_id
+    # B15 and B16 are still open and still unclaimed anywhere, which is the half
+    # of the original assertion that is still a fact about the tree.
+    for row_id in ("B15", "B16"):
         assert row_id not in closed_somewhere, row_id
     # The range, and the bracketed same-turn form, both from real entries.
     # `B310`. Named, not `heads[0]`. This asked the *newest* entry for rows that

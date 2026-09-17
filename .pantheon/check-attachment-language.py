@@ -56,6 +56,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PY = ROOT / "src" / "document_processor.py"
+# `B232`. The extractor registers live with their extractors — one register per
+# extractor is the rule ``INGESTIBLE_EXTS`` is stated as a union to keep — so
+# the generator reads all three modules rather than a copy of them.
+OFFICE_PY = ROOT / "src" / "markitdown_runtime.py"
+PDF_PY = ROOT / "src" / "pdf_runtime.py"
 JS = ROOT / "static" / "js" / "attachmentLanguage.js"
 
 BEGIN = "// ---- generated from src/document_processor.py ----"
@@ -79,6 +84,49 @@ def _literal(node: ast.AST):
     return ast.literal_eval(node)
 
 
+def _module_sets(path: Path, wanted: set[str]) -> dict:
+    """Named literal sets and simple set unions of them, from one module's AST.
+
+    ``OFFICE_EXTS = MARKITDOWN_EXTS | NATIVE_OFFICE_EXTS`` and
+    ``INGESTIBLE_EXTS = TEXT_EXTS | OFFICE_EXTS | PDF_EXTS`` are the shape this
+    project states its registers in on purpose — a union is an identity that
+    cannot drift where a listed copy can — so a reader that only understands
+    literals sees neither of them. Resolving `|` over names already read is the
+    whole extension, and it is deliberately not an evaluator: anything else
+    (a call, a comprehension, a name from another module) is skipped and the
+    caller finds the key missing.
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    out: dict[str, object] = {}
+
+    def resolve(node):
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+            left, right = resolve(node.left), resolve(node.right)
+            if left is None or right is None:
+                return None
+            return set(left) | set(right)
+        if isinstance(node, ast.Name):
+            value = out.get(node.id)
+            return set(value) if isinstance(value, (set, frozenset, list)) else None
+        try:
+            return _literal(node)
+        except (ValueError, SyntaxError, TypeError):
+            return None
+
+    for node in tree.body:
+        if not (isinstance(node, ast.Assign) and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)):
+            continue
+        name = node.targets[0].id
+        value = resolve(node.value)
+        if value is None:
+            continue
+        # Everything readable is kept while the walk runs, because a union names
+        # its operands; only the wanted keys survive the filter below.
+        out[name] = value
+    return {k: v for k, v in out.items() if k in wanted}
+
+
 def python_side() -> dict:
     tree = ast.parse(PY.read_text(encoding="utf-8"), filename=str(PY))
     out: dict[str, object] = {}
@@ -94,6 +142,17 @@ def python_side() -> dict:
             out[name] = _literal(node.value)
         except (ValueError, SyntaxError, TypeError):
             pass
+    # `B232`: the two extractor registers, from the modules that own them, and
+    # the union chat ingest actually asks. ``INGESTIBLE_EXTS`` is a BinOp in
+    # `document_processor.py` so the literal read above never saw it; it is
+    # derived here from the same three operands the module derives it from,
+    # which is what makes a drift between the browser's answer and the server's
+    # impossible rather than unlikely.
+    out.update(_module_sets(OFFICE_PY, {"OFFICE_EXTS"}))
+    out.update(_module_sets(PDF_PY, {"PDF_EXTS"}))
+    if out.get("TEXT_EXTS") and out.get("OFFICE_EXTS") and out.get("PDF_EXTS"):
+        out["INGESTIBLE_EXTS"] = (set(out["TEXT_EXTS"]) | set(out["OFFICE_EXTS"])
+                                  | set(out["PDF_EXTS"]))
     src = PY.read_text(encoding="utf-8")
     m = re.search(r"_LANGUAGE_TOKEN\s*=\s*re\.compile\(r\"([^\"]*)\"\)", src)
     out["token"] = m.group(1) if m else None
@@ -143,6 +202,15 @@ def render_block(side: dict) -> str:
     lines.append("};")
     lines.append(f"export const PROSE_LANGUAGES = new Set({_js_literal(prose)});")
     lines.append(f"const LANGUAGE_TOKEN = /{side['token']}/;")
+    # `B232`. The extractor registers, so the browser can ask WHICH door a file
+    # goes through without keeping a list of its own. Sorted, because a set has
+    # no order and a generated block that reshuffles is a diff nobody can read.
+    for name in ("TEXT_EXTS", "OFFICE_EXTS", "PDF_EXTS", "INGESTIBLE_EXTS"):
+        value = side.get(name)
+        if value is None:
+            continue
+        lines.append(
+            f"export const {name} = new Set({_js_literal(sorted(value))});")
     lines.append(END)
     return "\n".join(lines)
 

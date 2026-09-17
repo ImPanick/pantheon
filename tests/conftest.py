@@ -69,11 +69,19 @@ for mod_name in [
     if mod_name not in sys.modules and not _has_module(mod_name):
         sys.modules[mod_name] = MagicMock()
 
+# Stubs THIS FILE installs on purpose, recorded rather than remembered. The
+# `B271` sweep below asks "is any production module a stub?" and the honest
+# answer has to exclude the ones the suite itself put there when a dependency
+# is genuinely absent — otherwise the sweep fails a contributor's machine for
+# doing exactly what conftest told it to do.
+_DELIBERATE_STUBS: set = set()
+
 if "src.database" not in sys.modules:
     _db = types.ModuleType("src.database")
     _db.SessionLocal = MagicMock()
     _db.ModelEndpoint = MagicMock()
     sys.modules["src.database"] = _db
+    _DELIBERATE_STUBS.add("src.database")
 
 # Pre-import core.models before test_agent_loop.py's module-level stubs
 # run (it replaces sys.modules['core.models'] with a MagicMock during
@@ -236,8 +244,44 @@ _MUST_BE_REAL_AFTER_COLLECTION = (
     "src.database",
 )
 
+# `B271`. The six names above are the ones a stub has actually been found in;
+# the sweep below is the rule they are instances of. A hand-written list is the
+# defect class the guard exists to name (`Law 13`) — its own comment says "add
+# it to the pre-import block", which is a list being extended by hand each time
+# somebody loses an afternoon. Every loaded module under these package roots is
+# production code, and production code is never a stub.
+_PRODUCTION_ROOTS = ("src.", "core.", "routes.", "integrations.", "netagent.")
+
+
+def _module_stubs() -> list:
+    """Loaded production modules that are not backed by a file.
+
+    A real module has a `__file__`; a `MagicMock` and a bare `types.ModuleType`
+    do not. That is an observation about the loaded object, not a search of
+    anybody's source (`Law 20`).
+    """
+    return sorted(
+        name for name, mod in list(sys.modules.items())
+        if name.startswith(_PRODUCTION_ROOTS)
+        and mod is not None
+        and name not in _DELIBERATE_STUBS
+        and getattr(mod, "__file__", None) is None
+    )
+
 
 def pytest_collection_finish(session):
+    """`B18`'s six abort the session. Everything else the sweep finds is
+    reported.
+
+    The distinction is deliberate and it is the reason `B271` could ship at all.
+    Those six have each cost a diagnosis — one of them a 6 GB OOM kill — and a
+    stub in any of them makes the rest of the run meaningless, so the session
+    stops with a sentence naming the module. A seventh module nobody has been
+    burned by yet is a different bet: aborting a colleague's 11-minute run for
+    it, at collection, before a single test has told them anything, is how a
+    guard gets deleted. It is named in the report instead, and
+    `--strict-isolation` turns it into a failure for whoever wants one.
+    """
     import pytest
 
     stubbed = [
@@ -254,3 +298,200 @@ def pytest_collection_finish(session):
             "sys.modules at module scope and nothing put the real one back — "
             "add it to the pre-import block at the top of tests/conftest.py."
         )
+    others = [n for n in _module_stubs() if n not in stubbed]
+    if others:
+        _isolation["leaks"].setdefault("collection (module-scope stubs)", []).extend(
+            f"{name} (no __file__)" for name in others)
+        _isolation["seen"].update(others)
+
+
+# ---------------------------------------------------------------------------
+# `B271` — the two shapes the collection guard above cannot see
+# ---------------------------------------------------------------------------
+# `B202` found both of them and neither is a module-scope stub.
+#
+#   * one is a RUN-TIME event: `routes.chat_helpers` is poisoned by a test, long
+#     after `pytest_collection_finish` has passed;
+#   * one is about ATTRIBUTES, not modules: the poisoned module is the real one,
+#     with a real `__file__`, holding four `MagicMock`s bound by value —
+#     `maybe_compact`, `trim_for_context`, `load_prefs_for_user` and
+#     `effective_user`. So every later test measured the chat privilege gate
+#     against a stand-in that answers truthily.
+#
+# A predicate about `__file__` cannot have an opinion about either. This one is
+# about the objects: production code never binds a `Mock`, so a `Mock` reachable
+# from a production module's namespace at the end of a test FILE was left there
+# by that file.
+#
+# **It reports and does not fail**, and that is the whole reason it can exist.
+# The previous attempt at this row was declined because a check that fails the
+# session for one file's behaviour turns the suite red for everybody while the
+# owner of that file is elsewhere. A report costs nothing and can be read off
+# any run; `--strict-isolation` turns it into a failure for whoever wants it,
+# which is the integrator on a full run.
+#
+# Granularity is the test FILE, not the test: attribution needs a boundary
+# where nothing of the next file has run yet, and `pytest_runtest_logstart` for
+# the first test of a file is exactly that boundary. Per-test scanning would be
+# ~8,600 sweeps instead of ~900 and buys nothing a file name does not already
+# tell you.
+
+_isolation = {"file": None, "seen": set(), "leaks": {}, "on": True, "scans": 0}
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--strict-isolation", action="store_true", default=False,
+        help="B271: fail the session if a test file leaves a Mock bound into a "
+             "production module (reported either way).",
+    )
+    parser.addoption(
+        "--no-isolation-report", action="store_true", default=False,
+        help="B271: skip the per-file sweep entirely.",
+    )
+
+
+def _mock_bindings() -> dict:
+    """`qualified name -> what it is` for every Mock reachable from production."""
+    from unittest.mock import NonCallableMock
+
+    found = {}
+    for name, mod in list(sys.modules.items()):
+        if not name.startswith(_PRODUCTION_ROOTS) or mod is None:
+            continue
+        if isinstance(mod, NonCallableMock):
+            found[name] = "the module itself"
+            continue
+        namespace = getattr(mod, "__dict__", None)
+        if not isinstance(namespace, dict):
+            continue
+        for attr, value in list(namespace.items()):
+            if isinstance(value, NonCallableMock):
+                found[f"{name}.{attr}"] = type(value).__name__
+    return found
+
+
+def _isolation_sweep(finished_file):
+    if not _isolation["on"] or finished_file is None:
+        return
+    _isolation["scans"] += 1
+    for where, kind in _mock_bindings().items():
+        if where in _isolation["seen"]:
+            continue
+        _isolation["seen"].add(where)
+        _isolation["leaks"].setdefault(finished_file, []).append(f"{where} ({kind})")
+
+
+def pytest_runtest_logstart(nodeid, location):
+    path = location[0]
+    if _isolation["file"] == path:
+        return
+    _isolation_sweep(_isolation["file"])
+    _isolation["file"] = path
+
+
+def pytest_sessionstart(session):
+    _isolation["on"] = not session.config.getoption("--no-isolation-report")
+
+
+def pytest_sessionfinish(session, exitstatus):
+    _isolation_sweep(_isolation["file"])
+    _isolation["file"] = None
+    if _isolation["leaks"] and session.config.getoption("--strict-isolation"):
+        session.exitstatus = 1
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config):
+    leaks = _isolation["leaks"]
+    if leaks:
+        strict = config.getoption("--strict-isolation")
+        terminalreporter.write_sep(
+            "=", "B271: mocks left bound in production modules", red=strict,
+            yellow=not strict)
+        for where, names in sorted(leaks.items()):
+            terminalreporter.write_line(f"{where} left:")
+            for name in names:
+                terminalreporter.write_line(f"    {name}")
+        terminalreporter.write_line(
+            "Every later test in this session measured those names against a "
+            "stand-in. Use `monkeypatch.setattr`, which undoes itself."
+            + ("" if strict else "  (--strict-isolation makes this a failure)"))
+    missing = _declared_dependency_gaps()
+    if missing:
+        terminalreporter.write_sep(
+            "=", "B325: this environment does not satisfy requirements.txt",
+            yellow=True)
+        for line in missing:
+            terminalreporter.write_line(f"    {line}")
+        terminalreporter.write_line(
+            f"{len(missing)} of {_DECLARED_COUNT[0]} declared core dependencies. "
+            "Every test that would exercise one of these is skipping, stubbed, "
+            "or passing through the import guard written for 'dependency "
+            "absent' — a green run is evidence about a smaller product.")
+
+
+# ---------------------------------------------------------------------------
+# `B325` — what a green run did not cover
+# ---------------------------------------------------------------------------
+# The environment this suite passes in does not satisfy `requirements.txt`, and
+# nothing said so. Measured 2026-09-16 in the agent container: six of the 31
+# core dependencies are not installed at all and thirteen more are at a version
+# other than the pin. So every test that would exercise CalDAV sync, the Chroma
+# HTTP client, TOTP QR rendering, YouTube transcripts or a Postgres
+# `DATABASE_URL` is skipping, stubbed, or passing because the import guard it
+# hits is the one written for "dependency absent".
+#
+# **Reported, never failed.** A contributor without Postgres must still be able
+# to run the suite — that is the whole reason those imports are guarded. What
+# was missing is not a gate, it is a sentence at the end of the run telling a
+# reader of a green result what it did not cover.
+
+_DECLARED_COUNT = [0]
+
+
+def _declared_dependency_gaps() -> list:
+    import re as _re
+
+    requirements = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "requirements.txt")
+    try:
+        with open(requirements, encoding="utf-8") as handle:
+            lines = handle.read().splitlines()
+    except OSError:
+        return []
+
+    try:
+        from importlib.metadata import PackageNotFoundError, version as _version
+    except ImportError:  # pragma: no cover - 3.7
+        return []
+
+    def _parts(text):
+        return tuple(int(p) if p.isdigit() else p
+                     for p in _re.split(r"[.\-+]", text) if p != "")
+
+    gaps = []
+    declared = 0
+    for raw in lines:
+        spec = raw.split("#")[0].strip()
+        if not spec:
+            continue
+        declared += 1
+        name = _re.split(r"[<>=!~\[;]", spec, 1)[0].strip()
+        try:
+            have = _version(name)
+        except PackageNotFoundError:
+            gaps.append(f"{name}: declared {spec.split(name, 1)[-1] or '(any)'}, NOT INSTALLED")
+            continue
+        except Exception:  # pragma: no cover - metadata oddities
+            continue
+        want = _re.search(r"(?:==|>=)\s*([0-9][^,;\s]*)", spec)
+        if not want:
+            continue
+        try:
+            if _parts(have) < _parts(want.group(1)):
+                gaps.append(f"{name}: {have} installed, {spec} declared")
+        except TypeError:  # pragma: no cover - unorderable version parts
+            continue
+    _DECLARED_COUNT[0] = declared
+    return gaps

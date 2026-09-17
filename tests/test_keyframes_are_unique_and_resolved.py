@@ -36,11 +36,12 @@ import pathlib
 import re
 
 import pytest
+from tests.helpers.source_text import blank, blank_text  # B290
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 CSS_PATH = ROOT / "static" / "style.css"
 CSS = CSS_PATH.read_text(encoding="utf-8")
-NO_COMMENTS = re.sub(r"/\*.*?\*/", " ", CSS, flags=re.S)
+NO_COMMENTS = blank_text(CSS, "css")
 
 # Keywords a `animation:` shorthand can hold that are not the name.
 _NOT_A_NAME = {

@@ -43,13 +43,22 @@ def repo(tmp_path):
         src = ROOT / rel
         if not src.is_dir():
             continue
-        # library/ecc/skills is 286 directories of prose; the checker only ever
-        # stats paths, so empty stand-ins keep the fixture fast and honest.
+        # library/ecc/skills is 286 directories of prose and the fonts are 1 MB
+        # of glyphs; the checker only ever *stats* those, so empty stand-ins
+        # keep the fixture fast and honest.
+        #
+        # `B339`, 2026-09-17: the SCRIPTS are no longer among them. Rule 8 reads
+        # a bundle's bytes — module paths, esbuild's own notice block, the
+        # sidecar pointer — so a `*.min.js` stand-in is a file whose contents
+        # became unreadable, which is exactly what that rule is built to fail
+        # on. Stubbing them would have made the baseline red and taught
+        # whoever hit it to weaken the rule. `.woff2`, `.wasm` and `.zip` stay
+        # stand-ins: nothing reads those as text at any rule.
         (dst / rel).parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(src, dst / rel,
-                        ignore=shutil.ignore_patterns("*.woff2", "*.json", "*.min.js"))
+                        ignore=shutil.ignore_patterns("*.woff2", "*.wasm", "*.zip"))
         for f in src.rglob("*"):
-            if f.is_file() and f.suffix in (".woff2", ".json") or f.name.endswith(".min.js"):
+            if f.is_file() and f.suffix in (".woff2", ".wasm", ".zip"):
                 out = dst / f.relative_to(ROOT)
                 out.parent.mkdir(parents=True, exist_ok=True)
                 if not out.exists():

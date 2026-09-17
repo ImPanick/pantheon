@@ -22,6 +22,7 @@ import textwrap
 from pathlib import Path
 
 import pytest
+from tests.helpers.source_text import blank, blank_text  # B290
 
 ROOT = Path(__file__).resolve().parent.parent
 SERVE_JS = ROOT / "static" / "js" / "cookbookServe.js"
@@ -38,9 +39,7 @@ pytestmark = pytest.mark.skipif(not shutil.which("node"),
 def _code(path: Path) -> str:
     """Source with comments removed, so a sentence explaining a defect is not
     read as the defect being fixed — or as still present."""
-    src = path.read_text(encoding="utf-8")
-    src = re.sub(r"/\*.*?\*/", " ", src, flags=re.S)
-    return "\n".join(ln for ln in src.splitlines() if not ln.lstrip().startswith("//"))
+    return blank(path)
 
 
 # ── H14: the tooltip named a gesture that does not open the killer ──────────

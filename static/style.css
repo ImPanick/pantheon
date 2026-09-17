@@ -31,6 +31,14 @@
  */
 
 :root {
+  /* Which way the browser paints its own controls, and which arm `light-dark()`
+     resolves to, BEFORE `theme.js` boots and when scripting is off entirely.
+     All three palette writers set this property on `documentElement` from the
+     background's WCAG luminance (`P3-09`) and an inline style wins over this
+     rule, so this only ever supplies the default — and the default has to be
+     `dark`, because the literals below this line are the `dark` palette. */
+  color-scheme: dark;
+
   /* Core palette */
   --bg: #282c34;
   --fg: #9cdef2;
@@ -40,9 +48,15 @@
   /* Were `var(--green)` / `var(--warn)` — self-referential, so they
      resolved to invalid and every site fell back to its own literal
      (or, for sites with no fallback, painted as transparent/inherit).
-     Anchor them to real hex so the token layer actually works. */
-  --green: #50fa7b;
-  --warn: #f0ad4e;
+     Anchor them to real hex so the token layer actually works.
+
+     `B22` scoped both to the surface they are painted on. The dark arm is the
+     hex above, unchanged, so the twelve dark palettes see exactly what they
+     saw; on the four light ones `--green` measured **1.37:1** against `paper`'s
+     panel and `--warn` 1.95, which is the number that row is named after. See
+     the semantic block below for the whole argument. */
+  --green: light-dark(#047b22, #50fa7b);
+  --warn: light-dark(#965d0d, #f0ad4e);
 
   /* Secondary text. 93 sites named this token and none defined it, so each of
      them dropped its declaration and inherited body text at full strength.
@@ -90,23 +104,122 @@
   --hl-variable: #abb2bf;
   --hl-params: #a8c0d4;
 
-  /* Semantic colors */
-  --color-error: #ff4444;
-  --color-error-light: #ff6666;
-  --color-success: #4caf50;
-  --color-warning: #f0ad4e;
+  /* Semantic colours, scoped to the surface they are painted on (`B22`).
+     ─────────────────────────────────────────────────────────────────────────
+     These were static `:root` literals, and `theme.js` never touched them: it
+     writes `--bg --fg --panel --border --red --accent`, the ten `--hl-*` and
+     the fourteen `ADV_KEYS`, and nothing else. So a *success* green was the
+     same hex on `terminal` as on `paper`, and a set of values picked against a
+     dark panel was being painted onto a white one. Measured 2026-09-16 over
+     all sixteen palettes, resolving each token against that palette's own
+     `--panel` and `--bg`: `--green` on `paper` is **1.37:1**, `--color-warning`
+     1.81, `--color-accent` 2.38, `--color-link-hover` 1.74. And a third of it
+     ran the other way — `--color-muted-alt` was light-tuned and failed on 13
+     of the 16, `--color-danger` on 12.
+
+     The fix is scoping, not recolouring. Each token now names a value per
+     surface class through `light-dark()`, and the arm for the surface the
+     literal was already tuned for is **the literal, unchanged** — so twelve of
+     the sixteen palettes resolve every one of these to exactly the hex they
+     resolved to before, and the four light ones stop being handed a dark
+     theme's colour. No theme's own five values are touched by any of this.
+
+     `light-dark()` keys off `color-scheme`, which all three palette writers
+     already set from the background's WCAG luminance (`P3-09`) — so a custom
+     palette and a `create_theme` palette get the right arm without being
+     listed anywhere, and no fourth mirror of the palette is created (`B21`).
+     `:root` declares `color-scheme: dark` below so the arm is right before
+     `theme.js` boots and with scripting off entirely.
+
+     Each light arm is the same hue and saturation as the dark one with the
+     lightness walked until the token clears its floor on all four light
+     palettes; nothing here introduces a hue the token did not already have.
+     Floors: 4.5:1 for a token the sheet paints text in, 3:1 for one it only
+     draws a border or a dot with. Worst case per token is pinned in
+     `tests/test_theme_contrast_floor_css.py`, which measures rather than
+     trusts this comment.
+
+     Four tokens are deliberately NOT scoped, and each is a measurement:
+
+       * `--color-muted` is `--fg-muted`'s pivot (`P1-03`). Scoping it moves
+         `--fg-muted` on every palette and re-opens what that row proved:
+         measured, a scoped `--color-muted` puts `--fg-muted` within 35.9 sRGB
+         units of `--fg` on `forest` and 25.4 on `light` — under the 40-unit
+         floor `tests/test_fg_muted_and_backdrop_cascade_css.py` holds — so the
+         three tab strips P1-03 repaired would stop showing which tab is
+         active, and on `retrowave` it collides with `--color-danger` at 38.7.
+         Its own 17 direct `color:` uses stay under AA on the light palettes;
+         that is loose colour and belongs to `P1-06`.
+
+       * `--color-danger` and `--color-recording-hover` are each ONE token
+         doing TWO jobs: `.confirm-btn-danger` paints `#fff` on an undiluted
+         `--color-danger` background while nine other rules use it as text.
+         The two jobs pull opposite ways and the arithmetic is not close —
+         clearing 4.5:1 as text on `claude`'s panel needs luminance ≥ 0.31,
+         clearing it under white needs ≤ 0.18. No single value exists. Splitting
+         the token is the fix and it is `B393`, not a value chosen here.
+
+       * `--color-error` and `--color-recording` keep their DARK arms for the
+         same reason in a milder form — both are painted under `#fff`/`white`
+         at five rules between them, so lightening the dark arm to clear
+         `claude` (3.88 and 3.73) would make white-on-red worse, which is
+         `P1-08`. Their light arms move; their dark arms are held and named.
+
+       * `--color-brand-blue` has zero `var()` uses in this sheet and clears
+         3:1 on all sixteen. Nothing to scope (`Law 1`). */
+  --color-error: light-dark(#d60000, #ff4444);
+  --color-error-light: light-dark(#a30000, #ff6666);
+  --color-success: light-dark(#347837, #4caf50);
+  --color-warning: light-dark(#965d0d, #f0ad4e);
   --color-danger: #c0392b;
-  --color-recording: #ff3b30;
+  --color-recording: light-dark(#d50b00, #ff3b30);
   --color-recording-hover: #d63031;
   --color-muted: #888;
-  --color-muted-alt: #6b7280;
-  --color-accent: #00aaff;
-  --color-agent-active: #00ff00;
+  --color-muted-alt: light-dark(#646a77, #9298a4);
+  --color-accent: light-dark(#0070a8, #00aaff);
+  --color-agent-active: light-dark(#009c00, #00ff00);
   --color-brand-blue: #3b82f6;
-  --color-blind-orange: #ff9800;
+  --color-blind-orange: light-dark(#9a5c00, #ff9800);
   --color-save-green: var(--color-success);
-  --color-link-hover: #66c7ff;
-  --color-subheader: #6b8a94;
+  --color-link-hover: light-dark(#006fae, #66c7ff);
+  --color-subheader: light-dark(#556e76, #829ca4);
+
+  /* The link hue, named once (`B23`).
+     ─────────────────────────────────────────────────────────────────────────
+     A link in this product was painted SEVEN ways. Measured 2026-09-16 over
+     every rule in this sheet that sets a colour on an `a`:
+
+       `var(--hl-function)`            `.msg a`, and `.email-reader-body a`
+                                       et al with `!important` at :31393
+       `var(--accent)`                 `details a` ×2
+       `var(--accent, var(--red))`     `.doclib-research-sources a`, the Gmail
+                                       chip, two note readers
+       `var(--color-accent, …)`        `.task-log-row-body a`,
+                                       `.doc-email-richbody a`
+       `var(--accent-primary, var(--red))`  `.email-reader-body a` at :30875 —
+                                       DEAD, the `!important` at :31393 wins
+       `var(--color-link-hover)`       `details a:hover` ×2
+       `var(--fg)` / `inherit`         two deliberate cases, left alone
+
+     `--hl-function` is the one that wins, and it is not a taste call. It is
+     the only idiom that clears 4.5:1 against `--panel` on all sixteen palettes
+     (worst: `cute` 4.61); every other one fails on four to eight of them —
+     `details a` was 2.24 on `paper`, 2.56 on `cute`, 3.03 on `light`. Against
+     `--bg` it lands 4.19/4.36/4.38 on `light`/`lavender`/`cute`, just under,
+     where the alternatives are 2.1–2.8; that residual is `B395`. It is the
+     only one
+     derived per theme rather than fixed. It is already the hue on the two
+     highest-traffic link surfaces in the product, every chat message and every
+     email body. And at :31393 it was already `!important`-ed over the accent,
+     which is the tree saying which hue it actually wanted.
+
+     The hover was worse than a divergence: `details a:hover` DROPPED contrast
+     on the four light palettes — 3.03 → 1.74 on `light` — so hovering a link
+     made it harder to see. `--color-link-hover` is now scoped (above), and the
+     test asserts the hover is never lower-contrast than the base on any
+     palette, which is the invariant that was actually violated. */
+  --link-fg: var(--hl-function);
+  --link-hover-fg: var(--color-link-hover);
   --select-bg: var(--bg);
   --select-fg: var(--fg);
   --select-option-bg: color-mix(in srgb, var(--panel) 74%, var(--bg));
@@ -114,7 +227,7 @@
   --select-option-active-bg: color-mix(in srgb, var(--accent, var(--red)) 24%, var(--panel));
   /* Warm accent — used by the Goals/Today UI in Notes. Lives as a token so
      themes can override without touching the goal CSS. */
-  --accent-warm: #d19a66;
+  --accent-warm: light-dark(#935e2c, #d19a66);
 
   /* P1-14 — the signature curve. Overshoot easing, used 34 times and never
      named, so the one decision that most defines how this product *feels* was
@@ -9423,13 +9536,13 @@ button.hamburger {
 
 /* Links */
 .msg a {
-  color: var(--hl-function, #5b8def);
+  color: var(--link-fg, var(--hl-function, #5b8def));  /* B23 */
   text-decoration: none;
   border-bottom: 1px solid rgba(91, 141, 239, 0.3);
   transition: border-color 0.15s;
 }
 .msg a:hover {
-  border-bottom-color: var(--hl-function, #5b8def);
+  border-bottom-color: var(--link-fg, var(--hl-function, #5b8def));  /* B23 */
 }
 .msg a.is-loading {
   opacity: 0.65;
@@ -11426,13 +11539,13 @@ details strong {
 }
 
 details a {
-  color: var(--accent);
+  color: var(--link-fg);          /* B23 — was `var(--accent)`: 2.24:1 on `paper` */
   text-decoration: none;
   transition: color 0.2s ease;
 }
 
 details a:hover {
-  color: var(--color-link-hover);
+  color: var(--link-hover-fg);    /* B23 — this hover used to LOSE contrast */
   text-decoration: underline;
 }
 
@@ -11463,7 +11576,7 @@ details .source-link:hover {
 
 /* Research report links - clean and subtle */
 details a {
-  color: var(--accent);
+  color: var(--link-fg);          /* B23 */
   text-decoration: none;
   font-weight: normal;  /* Remove bold */
   font-size: 0.85em;
@@ -11473,7 +11586,7 @@ details a {
 }
 
 details a:hover {
-  color: var(--color-link-hover);
+  color: var(--link-hover-fg);    /* B23 */
   text-decoration: underline;
   opacity: 1;
 }
@@ -13166,7 +13279,7 @@ textarea.memory-add-input {
   line-height: 1.5;
 }
 .doclib-research-sources a {
-  color: var(--accent, var(--red));
+  color: var(--link-fg);          /* B23 */
   text-decoration: none;
 }
 .doclib-research-sources a:hover { text-decoration: underline; }
@@ -25676,7 +25789,7 @@ body:not(.welcome-ready) #welcome-screen {
    `--color-link-hover` on `.search-result-title` and the `details a` hover.
    Under a red accent these links read as broken text in the same hue
    `.task-failure-pending` uses. */
-.task-log-row-body a { color: var(--color-accent, #60a5fa); text-decoration: none; }
+.task-log-row-body a { color: var(--link-fg); text-decoration: none; }  /* B23 */
 .task-log-row-body a:hover { text-decoration: underline; }
 .task-log-row-body strong { font-weight: 650; color: var(--fg); }
 /* Email-summary tables — render compactly instead of default browser ugliness. */
@@ -32700,7 +32813,9 @@ button .spinner-whirlpool {
 }
 .email-reader-body .gmail_chip a,
 .email-reader-body .gmail_drive_chip a {
-  color: var(--accent, var(--red)) !important;
+  /* B23 — the chip's accent TINT is its own (above, unchanged); its link text
+     is a link. Was 2.24:1 on `paper`. */
+  color: var(--link-fg) !important;
   display: inline-flex !important;
   align-items: center;
   gap: 6px;
@@ -32748,7 +32863,11 @@ button .spinner-whirlpool {
 .email-reader-body a,
 .email-bubble-body a,
 .email-thread-turn-body a {
-  color: var(--accent-primary, var(--red));
+  /* B23 — was `var(--accent-primary, var(--red))`, which painted nothing: the
+     rule at the `!important` below out-ranks it and has since `P1-01`. Both
+     now name the same token, so removing that `!important` cannot change a
+     colour. `--accent-primary` is set by no writer in this tree. */
+  color: var(--link-fg);
   text-decoration: underline;
   overflow-wrap: anywhere;
   word-break: normal;
@@ -33303,7 +33422,7 @@ button .spinner-whirlpool {
 .email-reader-body a,
 .email-bubble-body a,
 .email-thread-turn-body a {
-  color: var(--hl-function) !important;
+  color: var(--link-fg) !important;   /* B23 — `--link-fg` IS `--hl-function` */
 }
 .email-reader-body a[href^="tel:"],
 .email-reader-body a[href^="sms:"],
@@ -34057,7 +34176,7 @@ body.doc-find-active mark.doc-find-mark.current {
 }
 /* Was `var(--accent, #4af)` — same correction as `.task-log-row-body a`: a
    link in composed email body text, not an accent surface. */
-.doc-email-richbody a { color: var(--color-accent, #4af); }
+.doc-email-richbody a { color: var(--link-fg); }  /* B23 */
 .doc-email-richbody blockquote {
   margin: 6px 0; padding-left: 10px;
   border-left: 3px solid var(--border); opacity: 0.8;
@@ -35430,7 +35549,7 @@ body.notes-drag-mode .note-card-pin svg {
   min-height: 40px;
 }
 .note-form-content-reader a {
-  color: var(--accent, var(--red));
+  color: var(--link-fg);          /* B23 */
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -35451,7 +35570,7 @@ body.notes-drag-mode .note-card-pin svg {
   cursor: text;
 }
 .note-fullscreen-overlay .note-cl-text-reader a {
-  color: var(--accent, var(--red));
+  color: var(--link-fg);          /* B23 */
   text-decoration: underline;
   text-underline-offset: 2px;
 }
