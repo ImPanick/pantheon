@@ -2,7 +2,24 @@
 # corrupt shell-script shebangs. A CRLF `#!/bin/sh\r` makes the kernel look for
 # an interpreter literally named "/bin/sh\r", producing the Docker startup error
 # "exec /usr/local/bin/entrypoint.sh: no such file or directory" (issues #150, #77).
-* text=auto
+#
+# `B461`. `eol=lf`, not bare `text=auto`, and the difference is the whole point.
+# `text=auto` normalises to LF *in the blob* and converts to the platform's
+# native ending *on checkout* — so on the Windows host that builds this project's
+# images, every text file in the working tree carries CRLF. Measured 2026-09-17:
+# **60 of 60 sampled `.py` files differed from their own git blobs**, purely by
+# carriage returns, and because `docker build` copies the working tree rather
+# than the index, **every image ever built on that host has contained CRLF
+# Python source**. Nothing broke, because Python and the shell-that-is-not-sh
+# tolerate it — which is exactly why it survived, and why the two incidents that
+# did surface (#150 and #77) were shell scripts, where a `#!/bin/sh\r` shebang
+# is fatal. `*.sh text eol=lf` below was the fix for those two files; this is the
+# same fix for the other two thousand. The artefact this repository ships is a
+# Linux container, so LF is the right answer in the working tree as well as the
+# blob, and the `*.ps1`/`*.cmd`/`*.bat` overrides below keep the Windows-native
+# scripts CRLF where they must be. Blobs are already LF and do not move; this
+# changes checkout only.
+* text=auto eol=lf
 
 # Shell scripts must stay LF on every platform (run by sh/bash, incl. in Docker).
 *.sh   text eol=lf

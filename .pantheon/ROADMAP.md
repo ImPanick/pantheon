@@ -80,8 +80,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P17 | The network the agent is hosted on | 14 | 3 | 0 | **11** |
 | P18 | One button, and it links | 9 | 0 | 0 | **9** |
 | P19 | The proof ledger | 8 | 0 | 0 | **8** |
-| Backlog | Bugs and hardening found in flight | 262 | 50 | 0 | **212** |
-| **Total** | | **644** | **233** | **9** | **402** |
+| Backlog | Bugs and hardening found in flight | 263 | 50 | 0 | **213** |
+| **Total** | | **645** | **233** | **9** | **403** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -245,8 +245,8 @@ they are for.*
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
 
 ### CI had never passed, the version was upstream's, and the suite was evidence about an order CI does not use
-`77624b9..HEAD`. **644 tracked, 402 done. 0 new phase rows, 0 regressions. `B430`–`B436`, `B440`,
-`B442`, `B443`, `B450` and `B460` closed; fourteen rows filed.** Three worktrees, on the question the owner
+`77624b9..HEAD`. **645 tracked, 403 done. 0 new phase rows, 0 regressions. `B430`–`B436`, `B440`,
+`B442`, `B443`, `B450`, `B460` and `B461` closed; fourteen rows filed.** Three worktrees, on the question the owner
 asked: *"the tracked items keeps growing and our progress isnt really making a dent."* They were
 right, and the answer turned out to be worse than the question.
 **CI has never passed. Not once.** Queried against the repository: across the last forty runs,
@@ -299,6 +299,15 @@ author had just filed, one of which turned out to be a gate. **On the merge it c
 filed by the CI and deployment agents in worktrees it could not see and therefore adjudicated by
 nobody (`B460`) — which is the failure mode a hand-maintained line has, caught by the guard built
 for it, on its first run.
+**And `B442`'s deploy script refused a deploy on its first real run, correctly.** `shipped bytes
+FAIL 96/656 match the committed blob`: `.gitattributes` said `* text=auto`, which converts to the
+platform's native ending on checkout, and `docker build` copies the **working tree** rather than
+the index — so **every image ever built on the Windows host has contained CRLF Python source**
+(`B461`). Sixty of sixty sampled `.py` files differ from their blobs by carriage returns alone.
+Nothing broke, because Python tolerates it; the two incidents this repository did catch, `#150`
+and `#77`, were shell scripts, where the same bytes are fatal. `B360`, `B362` and `B414` each
+fixed the instance they could see and none asked what `text=auto` meant for the other two thousand
+files — because on Linux, where all three were measured, it means nothing.
 
 ### Twenty rows closed and four left open on purpose, including the one the owner has to answer
 `b0ec056..HEAD`. **619 tracked, 390 done. 0 new phase rows, 0 regressions. `B22`, `B23`, `B210`,
@@ -13698,3 +13707,33 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   rather than settled quietly.
   `Verify:` a row filed in one worktree and merged from another cannot reach `main` without a
   verdict. — found while merging `B451` — agent:`integrator`
+
+- [x] **B461** **Every image ever built on the deployment host has contained CRLF Python source,
+  and the deploy script found it on its first real run.** Found 2026-09-17 by
+  `scripts/pantheon-deploy run` — the automation `B442` landed hours earlier — which refused the
+  deploy at `shipped bytes FAIL 96/656 match the committed blob`. It was right, and the right
+  thing to do was let it fail.
+  **`.gitattributes:5` was `* text=auto`.** That normalises to LF **in the blob** and converts to
+  the platform's native ending **on checkout**, so on a Windows host every text file in the
+  working tree carries CRLF — and `docker build` copies the **working tree**, not the index.
+  Measured: **60 of 60 sampled `.py` files on that host differ from their own blobs**, purely by
+  carriage returns; `app.py`, `core/api_tokens.py` and the `Dockerfile` inside the running image
+  all reproduce their blob hash exactly once `\r` is stripped.
+  **Nothing broke, and that is the pattern.** Python tolerates CRLF; so does the Dockerfile
+  parser. The two incidents this repository *did* catch — `#150` and `#77`, recorded in
+  `.gitattributes`'s own opening comment — were **shell scripts**, where `#!/bin/sh\r` makes the
+  kernel look for an interpreter named `/bin/sh\r` and the container fails to start. `*.sh text
+  eol=lf` was the fix for those two files. This is the same fix for the other two thousand.
+  `eol=lf` is the right answer here rather than a general preference: **the artefact this project
+  ships is a Linux container**, so LF belongs in the working tree as well as the blob, and the
+  `*.ps1`/`*.cmd`/`*.bat` overrides already present keep the Windows-native scripts CRLF where
+  they must be. Blobs are already LF and do not move — this changes checkout behaviour only.
+  **Three rows converge here and the third is the lesson.** `B360` found three container files
+  drifting; `B362` found twelve on the host and fixed `static/lib/**` with `-text`; `B414` found
+  the drift guard could not pass on a `text=auto` repo and taught it to key off the attribute.
+  Each fixed the instance it could see. **None of them asked what `text=auto` meant for the other
+  two thousand files**, because on Linux — where every one of those measurements was taken — it
+  means nothing at all. The deploy script asked the question from inside the image, which is the
+  only place the answer was visible. `Verify:` a checkout on a `core.autocrlf=true` host matches
+  its blobs for every file the attributes do not exempt, and `pantheon-deploy run` reaches
+  `shipped bytes ok`. — found while deploying `B442` — agent:`integrator`
