@@ -252,6 +252,28 @@ task.
 
 ---
 
+## On AI in this project
+
+Large language models help build this. They orchestrate CI/CD, organise the DevOps work, and
+write some of the code. It is stated here rather than left to be inferred, because a self-hosted
+AI workspace should be plain about its own provenance.
+
+**An engineer is in the loop at every stage of the development lifecycle.** The decisions are
+made by a person, and the work is theirs to accept.
+
+The rest of this repository is the argument for taking that seriously. Every change is a tracked
+row with a `Verify:` line, and a row cannot be ticked on a claim nobody checked. Twenty-three
+checkers run in CI, each one added after a specific defect got through — not designed in advance.
+A test earns its place by failing on the tree as it stood *before* the fix, and mutation testing
+is what proves it would. [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) records the mistakes with
+the same detail as the fixes, including a number of occasions where a claim made *in this
+repository* turned out to be false and had to be corrected in public.
+
+**Some bugs will still get through.** They get sought out and squashed. If you find one, open an
+issue — that is the fastest way to put it in front of someone.
+
+---
+
 ## Security
 
 - Keep `AUTH_ENABLED=true` for any network-accessible deployment.

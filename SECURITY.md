@@ -2,6 +2,18 @@
 
 Pantheon is a self-hosted AI workspace with privileged local capabilities. Please do not run it as a public, unauthenticated service.
 
+## AI assistance
+
+Large language models help build this project, including some of the code that implements the
+controls described above. An engineer is in the loop at every stage of the development lifecycle.
+This is stated in the [README](README.md) and repeated here because a security policy is the
+wrong place to leave it implicit.
+
+No control on this page is trusted because of who or what wrote it. Each one is enforced by a
+checker that runs in CI or by a test that fails when the control is removed — that is what
+`.pantheon/FORBIDDEN.md` Part 2 exists to pin, and mutation testing is how those tests are shown
+to hold. Bugs will still get through; the reporting route below is how they reach us.
+
 ## Reporting a Vulnerability
 
 **Report privately. Do not open an issue.**

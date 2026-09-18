@@ -22,6 +22,23 @@ three places a newcomer meets the project first: cloning, contributing, and hard
 - Avoid broad rewrites, formatting-only changes, or moving many files unless the issue is specifically about structure.
 - If you want to work on a large feature, open an issue first and describe the approach.
 
+## AI assistance, and what that means for your pull request
+
+Large language models help build this project — CI/CD orchestration, DevOps, and some of the
+code. An engineer is in the loop at every stage of the development lifecycle. The README says
+this too; it is repeated here because it has a practical consequence for contributors.
+
+**You are welcome to use AI assistance on a pull request, and it changes none of the bar below.**
+A row still needs a `Verify:` line somebody can run, a test still has to fail on the tree as it
+stood before the fix, and the gate still has to be green. Those requirements exist precisely so
+that *how* a change was written stops mattering — what is checkable is checked, by machine, the
+same way for everyone.
+
+What does not pass review, from any author: a claim nobody verified, a test that asserts a
+function was called rather than that behaviour changed, and a number transcribed from somewhere
+else rather than derived. `Law 9` and `Law 20` in [`.pantheon/AGENTS.md`](.pantheon/AGENTS.md)
+are the long version, and both were written after something got through.
+
 ## How work is tracked, and what "done" means here
 
 This project does not work the way most repositories of its size do, and a first-time contributor
