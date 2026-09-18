@@ -3387,6 +3387,39 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                                             _usage_data["gen_tps"] = round(_tm["predicted_per_second"], 2)
                                         if _tm.get("prompt_per_second"):
                                             _usage_data["prefill_tps"] = round(_tm["prompt_per_second"], 2)
+                                        # `P4-14`. The two rates above are
+                                        # quotients; these are the figures they
+                                        # are quotients OF, and until now they
+                                        # were read off the same dict and
+                                        # dropped. Keeping only the quotient
+                                        # means nothing downstream can separate
+                                        # prefill from decode *in time* — a
+                                        # 40ms prefill and a 4s one produce the
+                                        # same card at the same 78 t/s — and
+                                        # nothing can divide a reported rate
+                                        # back out to check it.
+                                        #
+                                        # Present exactly when the backend
+                                        # measured them, absent otherwise. A
+                                        # zero here would read as an
+                                        # instantaneous prefill rather than as
+                                        # a backend that does not report one,
+                                        # which is the contract `P4-22` set for
+                                        # the prompt-cache counters.
+                                        for _src, _dst in (
+                                            ("prompt_ms", "prefill_ms"),
+                                            ("predicted_ms", "decode_ms"),
+                                        ):
+                                            _v = _tm.get(_src)
+                                            if isinstance(_v, (int, float)) and not isinstance(_v, bool) and _v > 0:
+                                                _usage_data[_dst] = round(float(_v), 2)
+                                        for _src, _dst in (
+                                            ("prompt_n", "prefill_tokens"),
+                                            ("predicted_n", "decode_tokens"),
+                                        ):
+                                            _v = _tm.get(_src)
+                                            if isinstance(_v, int) and not isinstance(_v, bool) and _v > 0:
+                                                _usage_data[_dst] = _v
                                     if _actual_model:
                                         _usage_data["model"] = _actual_model
                                         if not _same_model_identity(_actual_model, model):

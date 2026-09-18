@@ -973,6 +973,170 @@ export function emptyStateIcon(kind) {
   return SVG_OPEN + inner + SVG_CLOSE;
 }
 
+/**
+ * P9-07 / P9-08 — one empty state, and the three things it has to tell apart.
+ *
+ * **The row's premise was that no empty state exists. It was corrected to "wrong
+ * by about fifty-four", and that correction is closer but still not the defect.**
+ * Re-measured 2026-09-18: **25 distinct class names containing `empty`, at 70
+ * textual occurrences across 17 files** (scope: `class="…"` attributes and
+ * `classList.add()` in `static/**\/*.js` outside `static/lib/**`, plus
+ * `static/*.html`). Empty states are not missing. What is missing is the
+ * distinction between the states they cover, and that is a `Law 15` defect
+ * rather than a coverage one: a person reads one sentence and cannot tell which
+ * of three situations they are in, so they cannot tell what to do next.
+ *
+ *   * **nothing yet** — make one. The way to make one belongs on the screen.
+ *   * **nothing matched** — you have things; a search box or a chip is hiding
+ *     them. The way out is to clear it, and that also belongs on the screen.
+ *   * **it broke** — the server said something. Saying it, and offering the
+ *     retry, is the whole of `P9-08`.
+ *
+ * The Library modal is where this is visible without being told, because its
+ * four tabs sit side by side and answered the same question four ways.
+ * Documents said *"No documents match your search."* in one branch and *"No
+ * documents yet"* with an Import link in the other — the only tab that had the
+ * distinction. Chats said *"No chats"* whether you had none or had typed a
+ * query that matched none. Archive said *"No archived items"* **when all three
+ * of its fetches had failed**, because each one carried its own
+ * `.catch(() => ({}))` and the outer `.catch` could therefore never run.
+ * Research drew both its empty state and its error in `.hwfit-loading`, the
+ * *loading* class, so a failure read as "still working".
+ *
+ * WHY THIS LIVES IN `ui.js` AND NOT IN A MODULE OF ITS OWN (`Law 14`). `ui.js`
+ * already owns the only shared piece of this vocabulary — `emptyStateIcon()`,
+ * below — and is imported by 82 sites, none of which carry a `?v=` specifier.
+ * A new module would be a second place to look for the same answer, and the
+ * three faces it already defines are exactly the three bands this needs.
+ *
+ * NO `innerHTML`. Every node is built and every string is assigned through
+ * `textContent`, so a server's error text cannot become markup. That is also
+ * what makes the tests able to read the result back as a person reads it.
+ *
+ * NO NEW `var(--accent…)` SITE. `tests/test_accent_fallback_semantics_css.py`
+ * pins `static/style.css` at 814 uses precisely so that a new one is a
+ * decision; the action here is a bordered button using `currentColor`, which is
+ * the house alternative the last three waves used.
+ */
+export const EMPTY_STATE_KINDS = Object.freeze(['empty', 'filtered', 'error']);
+
+/** Which of `emptyStateIcon`'s three faces each state wears. */
+const _EMPTY_STATE_ICON = Object.freeze({
+  empty: 'smiley',
+  filtered: 'neutral',
+  error: 'sad',
+});
+
+/**
+ * The sentence that is used when a caller does not write its own. Deliberately
+ * present for all three: a caller that forgets the copy still ships a screen
+ * that says which state it is in, rather than a blank one.
+ */
+const _EMPTY_STATE_FALLBACK_TITLE = Object.freeze({
+  empty: 'Nothing here yet',
+  filtered: 'Nothing matches your search',
+  error: 'Could not load this',
+});
+
+function _coerceEmptyStateKind(value) {
+  const kind = String(value == null ? '' : value).trim().toLowerCase();
+  // Fail to the honest end of the range. An unrecognised kind is a caller bug,
+  // and drawing "nothing here yet" over a failure is the lie this exists to
+  // stop — so an unknown kind reads as an error, never as an empty shelf.
+  return EMPTY_STATE_KINDS.includes(kind) ? kind : 'error';
+}
+
+/**
+ * Draw the one empty state into `host`, replacing whatever is there.
+ *
+ * @param {Element} host      the container being emptied.
+ * @param {object}  spec
+ * @param {string}  spec.kind      'empty' | 'filtered' | 'error'. Required in
+ *                                 practice; an unknown value becomes 'error'.
+ * @param {string}  spec.title     the headline.
+ * @param {string}  spec.message   one sentence saying what to do next.
+ * @param {string}  spec.reason    the server's own words. `error` only, and it
+ *                                 is rendered verbatim as text.
+ * @param {string}  spec.className the caller's existing empty class, kept so
+ *                                 the CSS already written for it still applies
+ *                                 and no class name has to move.
+ * @param {object}  spec.action    `{ label, onClick }` — the way out of an
+ *                                 `empty` or `filtered` state.
+ * @param {Function} spec.onRetry  `error` only. Draws "Try again".
+ * @param {string}  spec.icon      override for the default face; `null` for none.
+ * @returns {Element} the element that was drawn, for callers and for tests.
+ */
+export function renderEmptyState(host, spec = {}) {
+  const kind = _coerceEmptyStateKind(spec.kind);
+  const box = document.createElement('div');
+  box.className = ['empty-state', `empty-state-${kind}`, spec.className || '']
+    .filter(Boolean).join(' ');
+  box.dataset.emptyState = kind;
+  // An error is news; a person who is not looking at this corner still needs
+  // it. The other two are the state of a list they are already reading.
+  box.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+
+  const iconKind = spec.icon === undefined ? _EMPTY_STATE_ICON[kind] : spec.icon;
+  if (iconKind) {
+    const icon = document.createElement('span');
+    icon.className = 'empty-state-icon';
+    // `emptyStateIcon` returns a fixed SVG string built in this file from a
+    // closed set of three — no caller text reaches it.
+    icon.innerHTML = emptyStateIcon(iconKind);
+    box.appendChild(icon);
+  }
+
+  const title = document.createElement('div');
+  title.className = 'empty-state-title';
+  title.textContent = spec.title || _EMPTY_STATE_FALLBACK_TITLE[kind];
+  box.appendChild(title);
+
+  if (spec.message) {
+    const message = document.createElement('div');
+    message.className = 'empty-state-message';
+    message.textContent = spec.message;
+    box.appendChild(message);
+  }
+
+  // The server's own words. Never summarised, never swallowed, never trusted
+  // as markup — `P9-08` exists because "Failed to load" told a person nothing
+  // they could act on or report.
+  if (kind === 'error' && spec.reason) {
+    const reason = document.createElement('div');
+    reason.className = 'empty-state-reason';
+    reason.textContent = String(spec.reason);
+    box.appendChild(reason);
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'empty-state-actions';
+  const addButton = (label, onClick) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'empty-state-action';
+    button.textContent = label;
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      try { onClick(event); } catch (e) { console.error('Empty-state action failed', e); }
+    });
+    actions.appendChild(button);
+    return button;
+  };
+  if (kind === 'error' && typeof spec.onRetry === 'function') {
+    addButton(spec.retryLabel || 'Try again', spec.onRetry);
+  }
+  if (spec.action && spec.action.label && typeof spec.action.onClick === 'function') {
+    addButton(spec.action.label, spec.action.onClick);
+  }
+  if (actions.childNodes.length) box.appendChild(actions);
+
+  if (host) {
+    host.innerHTML = '';
+    host.appendChild(box);
+  }
+  return box;
+}
+
 const uiModule = {
   copyToClipboard,
   copyText,
@@ -991,6 +1155,7 @@ const uiModule = {
   esc,
   isTouchInsideModal,
   emptyStateIcon,
+  renderEmptyState,
   registerMenuDismiss
 };
 

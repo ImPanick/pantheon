@@ -581,3 +581,143 @@ async def test_build_chat_context_keeps_cookie_user_owner_scope(monkeypatch):
         "preface_owner": "bob",
         "compact_owner": "bob",
     }
+
+
+# ── `P4-13` — trim AND compaction figures ───────────────────────────────────
+#
+# Measured 2026-09-18. The trim half of this row already shipped: the
+# `context_trimmed` SSE event carries `tokens_before` / `tokens_after` /
+# `messages_before` / `messages_after` and `routes/chat_routes.py` copies the
+# same four onto the saved metrics. The compaction half carries **no figures at
+# all** — `maybe_compact` returns a bare `was_compacted` bool, the `compacted`
+# event carries only `context_length`, and the browser's toast reads
+# "Context compacted — older messages summarized" with nothing to say how much
+# was summarized or what it cost.
+#
+# And the two halves were being measured across different boundaries.
+# `build_chat_context` compacts and *then* trims, so its `..._before_trim`
+# figures are the POST-compaction ones — correct for a trim, and useless as a
+# report on compaction, which is the step that actually destroyed history.
+#
+# So the compaction figures are measured here, around the call that does it,
+# beside the trim figures that were already measured around the call that does
+# that. One function measures both pairs, so "before" cannot come to mean two
+# things again.
+
+
+async def _shaping_probe(monkeypatch, *, compact_to=None, trim_to=None):
+    """Drive the real `build_chat_context` with a scripted compact and trim.
+
+    Reuses `_build_context_owner_probe`'s doubles rather than standing up a
+    second context harness; the only things overridden are the two calls whose
+    before/after this row is about.
+    """
+    history = [{"role": "user", "content": f"turn {i}"} for i in range(8)]
+
+    async def fake_preprocess(chat_handler, message, att_ids, sess, **kwargs):
+        return PreprocessedMessage(
+            enhanced_message=message,
+            user_content=message,
+            text_for_context=message,
+            youtube_transcripts=[],
+            attachment_meta=[],
+        )
+
+    def fake_extract_preset(chat_handler, preset_id):
+        return PresetInfo(temperature=0.7, max_tokens=1024, system_prompt=None,
+                          character_name=None)
+
+    def fake_add_user_message(sess, chat_handler, preprocessed, incognito=False):
+        sess.messages.append({"role": "user", "content": preprocessed.user_content})
+
+    async def fake_maybe_compact(sess, endpoint_url, model, messages, headers, owner=None,
+                                 **kwargs):
+        if compact_to is None:
+            return messages, 8192, False
+        return list(messages)[:compact_to], 8192, True
+
+    monkeypatch.setattr(chat_helpers, "preprocess", fake_preprocess)
+    monkeypatch.setattr(chat_helpers, "extract_preset", fake_extract_preset)
+    monkeypatch.setattr(chat_helpers, "add_user_message", fake_add_user_message)
+    monkeypatch.setattr(chat_helpers, "load_prefs_for_user",
+                        lambda owner: {"memory_enabled": True, "skills_enabled": True})
+    monkeypatch.setattr(chat_helpers, "_normalize_model_id_from_cache", lambda sess: None)
+    monkeypatch.setattr(chat_helpers, "normalize_model_id",
+                        lambda endpoint_url, model, **kwargs: None)
+    monkeypatch.setattr(chat_helpers, "maybe_compact", fake_maybe_compact)
+    monkeypatch.setattr(
+        chat_helpers, "trim_for_context",
+        lambda messages, context_length: (
+            list(messages) if trim_to is None else list(messages)[:trim_to]
+        ),
+    )
+    # One token per message, so the token pair moves with the message pair and a
+    # test can tell which of the two a figure came from.
+    monkeypatch.setattr(chat_helpers, "estimate_tokens", lambda messages: len(messages))
+
+    import src.user_time as user_time
+    monkeypatch.setattr(
+        user_time, "current_datetime_context_message",
+        lambda now_utc=None: {"role": "user", "content": "[Context - current date/time]"},
+        raising=False,
+    )
+
+    sess = SimpleNamespace(
+        endpoint_url="http://model.local/v1/chat/completions",
+        model="test-model",
+        headers={},
+        history=list(history),
+        messages=list(history),
+    )
+    sess.get_context_messages = lambda: list(sess.messages)
+
+    return await build_chat_context(
+        sess=sess,
+        request=SimpleNamespace(state=SimpleNamespace()),
+        chat_handler=SimpleNamespace(),
+        chat_processor=SimpleNamespace(build_context_preface=lambda **kw: ([], [], [])),
+        message="hello",
+        session_id="session-1",
+        incognito=False,
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_compacted_turn_reports_what_compaction_cost(monkeypatch):
+    ctx = await _shaping_probe(monkeypatch, compact_to=4)
+
+    assert ctx.was_compacted is True
+    assert ctx.context_messages_before_compact == 10
+    assert ctx.context_messages_after_compact == 4
+    assert ctx.context_tokens_before_compact == 10
+    assert ctx.context_tokens_after_compact == 4
+
+
+@pytest.mark.asyncio
+async def test_an_uncompacted_turn_claims_no_compaction_figures(monkeypatch):
+    ctx = await _shaping_probe(monkeypatch)
+
+    assert ctx.was_compacted is False
+    # Zeros, not the message count: a "before 10 / after 10" pair on a turn that
+    # never compacted is a report of a step that did not happen.
+    assert ctx.context_messages_before_compact == 0
+    assert ctx.context_messages_after_compact == 0
+    assert ctx.context_tokens_before_compact == 0
+    assert ctx.context_tokens_after_compact == 0
+
+
+@pytest.mark.asyncio
+async def test_the_trim_pair_still_measures_the_trim_and_not_the_compaction(monkeypatch):
+    """The two pairs describe two different steps and must not blur.
+
+    Compaction runs first, so the trim's "before" is compaction's "after". That
+    was already true and is easy to break by measuring both against the
+    pre-compaction list — which is exactly what the other shaping path did.
+    """
+    ctx = await _shaping_probe(monkeypatch, compact_to=6, trim_to=3)
+
+    assert (ctx.context_messages_before_compact, ctx.context_messages_after_compact) == (10, 6)
+    assert (ctx.context_messages_before_trim, ctx.context_messages_after_trim) == (6, 3)
+    assert (ctx.context_tokens_before_compact, ctx.context_tokens_after_compact) == (10, 6)
+    assert (ctx.context_tokens_before_trim, ctx.context_tokens_after_trim) == (6, 3)
+    assert ctx.context_trimmed is True

@@ -152,6 +152,16 @@ class ChatContext:
     context_messages_after_trim: int = 0
     context_tokens_before_trim: int = 0
     context_tokens_after_trim: int = 0
+    # `P4-13`. What compaction cost, measured around the call that does it.
+    # The four fields above describe the *trim*, and because compaction runs
+    # first their "before" is compaction's "after" — so they could never report
+    # the step that actually summarised history away. Zero on a turn that did
+    # not compact: a "before 40 / after 40" pair would be a report of a step
+    # that did not happen.
+    context_messages_before_compact: int = 0
+    context_messages_after_compact: int = 0
+    context_tokens_before_compact: int = 0
+    context_tokens_after_compact: int = 0
     # Documents auto-created server-side during preprocess (e.g. when an
     # attached fillable PDF gets rendered into a markdown editor doc).
     # The chat route emits a doc_update SSE event for each before streaming
@@ -167,6 +177,31 @@ class ChatContext:
 
 
 # ── Helpers ────────────────────────────────────────────────────────────── #
+
+def shaping_stats(before: list, after: list) -> dict:
+    """`P4-13`. What one context-shaping step cost, in messages and tokens.
+
+    Both context-shaping steps — compaction and trimming — and both shaping
+    paths — the ordinary one here and the per-candidate one in
+    `routes/chat_routes.py` — report through this, because they did not, and
+    the same key meant two things depending on which path answered. The route's
+    per-candidate factory measured `messages_before` against the list it was
+    handed (before compaction), while `build_chat_context` measured it after,
+    and both landed on the metrics key `context_messages_before_trim`. A number
+    whose boundary depends on the caller is `Law 10` on the wire.
+
+    Taking the two lists rather than four numbers is the whole point: a caller
+    cannot pass the pre-compaction list as one step's "before" and the
+    post-trim list as another step's "after" without it being visible at the
+    call site.
+    """
+    return {
+        "messages_before": len(before),
+        "messages_after": len(after),
+        "tokens_before": estimate_tokens(before),
+        "tokens_after": estimate_tokens(after),
+    }
+
 
 def _allowed_models_from_privileges(privs: dict) -> Optional[frozenset[str]]:
     if privs.get("block_all_models"):
@@ -1013,6 +1048,7 @@ async def build_chat_context(
     # for every candidate. Running selected-model compaction here would mutate
     # session history before we know which route can answer and would make a
     # later larger-context candidate unable to recover discarded history.
+    _before_compact = list(messages)
     if defer_context_shaping:
         context_length = get_context_length(sess.endpoint_url, sess.model)
         was_compacted = False
@@ -1020,6 +1056,10 @@ async def build_chat_context(
         messages, context_length, was_compacted = await maybe_compact(
             sess, sess.endpoint_url, sess.model, messages, sess.headers, owner=user,
         )
+    # `P4-13`. Both pairs through one function, called with the two lists that
+    # bracket the step each pair describes. Measuring them apart is how the
+    # other shaping path came to use one key name for two boundaries.
+    _compact_stats = shaping_stats(_before_compact, messages) if was_compacted else {}
     _before_trim_messages = len(messages)
     _before_trim_tokens = estimate_tokens(messages)
     if not defer_context_shaping:
@@ -1046,6 +1086,10 @@ async def build_chat_context(
         context_messages_after_trim=_after_trim_messages,
         context_tokens_before_trim=_before_trim_tokens,
         context_tokens_after_trim=_after_trim_tokens,
+        context_messages_before_compact=_compact_stats.get("messages_before", 0),
+        context_messages_after_compact=_compact_stats.get("messages_after", 0),
+        context_tokens_before_compact=_compact_stats.get("tokens_before", 0),
+        context_tokens_after_compact=_compact_stats.get("tokens_after", 0),
         auto_opened_docs=auto_opened_docs,
         uploaded_files=uploaded_files,
         route_messages=route_messages,

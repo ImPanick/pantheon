@@ -333,7 +333,7 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
 
     try {
       const res = await fetch(`${API_BASE}/api/documents/library?${params}`);
-      if (!res.ok) throw new Error(res.statusText);
+      if (!res.ok) throw new Error(await _readError(res));
       const data = await res.json();
 
       if (append) {
@@ -351,7 +351,26 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
       libraryRenderGrid();
       libraryRenderLoadMore();
     } catch (e) {
+      // `P9-08`. This used to be `console.error` and nothing else — the fourth
+      // shape of the same defect and the quietest: the Documents tab simply
+      // never finished, leaving whatever had been drawn before the request, or
+      // the loading row, with no error, no reason and no way to retry. A
+      // "Load more" that fails must not blank the rows already on screen, so
+      // that case reports beside them instead of over them.
       console.error('Library fetch error:', e);
+      const grid = document.getElementById('doclib-grid');
+      if (append) {
+        uiModule.showError(`Could not load more documents — ${(e && e.message) || 'the server did not answer'}`);
+      } else if (grid) {
+        uiModule.renderEmptyState(grid, {
+          kind: 'error',
+          className: 'doclib-empty',
+          title: 'Could not load your documents',
+          message: 'Your documents are still on the server — this screen could not reach them.',
+          reason: e && e.message,
+          onRetry: () => libraryFetch(false),
+        });
+      }
     }
   }
 
@@ -427,6 +446,56 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
     libraryUpdateBulkCount();
   }
 
+  /**
+   * `P9-08`. The sentence an error state shows, taken from the server rather
+   * than written here.
+   *
+   * Four of this module's load paths reported a failure as *"Failed to load"* —
+   * two words, no status, no reason, no retry — and the fifth reported
+   * `e.message` from a `res.json()` that had been handed an HTML error page, so
+   * it said *"Unexpected token '<'"*. Neither is something a person can act on
+   * or paste into a bug report. This reads the status line and whatever the API
+   * put in `detail`/`error`/`message`, falls back to the status text, and caps
+   * the length so a stack trace cannot take over the panel.
+   */
+  async function _readError(res) {
+    const status = `${res.status}${res.statusText ? ' ' + res.statusText : ''}`.trim();
+    let detail = '';
+    try {
+      const text = await res.text();
+      if (text) {
+        try {
+          const parsed = JSON.parse(text);
+          detail = parsed && (parsed.detail || parsed.error || parsed.message) || '';
+          if (detail && typeof detail !== 'string') detail = JSON.stringify(detail);
+        } catch { detail = text; }
+      }
+    } catch { /* body already consumed or unreadable — the status still stands */ }
+    detail = String(detail || '').trim().slice(0, 400);
+    return detail ? `${status} — ${detail}` : (status || 'the server did not answer');
+  }
+
+  /**
+   * `P9-07`. The way out of a "nothing matches" state, per tab.
+   *
+   * A filtered empty state that does not offer to clear the filter is half a
+   * fix: it tells a person why the list is empty and then leaves them to find
+   * the box themselves. Each of these resets the state the tab filters on, puts
+   * the visible control back to match, and re-renders — so the button does
+   * exactly what its label says and the screen agrees with itself afterwards.
+   */
+  function _clearInput(id) {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  }
+
+  function _libraryClearFilters() {
+    _librarySearch = '';
+    _libraryActiveLanguage = null;
+    _clearInput('doclib-search');
+    libraryFetch(false);
+  }
+
   function libraryRenderGrid() {
     const grid = document.getElementById('doclib-grid');
     if (!grid) return;
@@ -439,21 +508,27 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
     if (grid.parentElement) grid.parentElement.querySelectorAll(':scope > .doclib-inline-load-more').forEach(b => b.remove());
 
     if (_libraryDocs.length === 0) {
+      // `P9-07`. This tab was the only one of the four that already told the
+      // two states apart, and it is the model the other three are brought onto
+      // rather than the exception. The class stays; the shape is now shared.
       if (_librarySearch || _libraryActiveLanguage) {
-        grid.innerHTML = '<div class="doclib-empty">No documents match your search.</div>';
+        uiModule.renderEmptyState(grid, {
+          kind: 'filtered',
+          className: 'doclib-empty',
+          title: 'No documents match',
+          message: 'You have documents — this search or language filter is hiding them.',
+          action: { label: 'Clear filters', onClick: _libraryClearFilters },
+        });
       } else {
-        const _impIco = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin:0 4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>';
-        grid.innerHTML =
-          '<div class="doclib-empty" style="display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;">' +
-            '<span>No documents yet</span>' +
-            '<span style="opacity:0.7;font-size:11px;">' +
-              '<a href="#" data-doclib-import style="color:var(--accent,var(--red));text-decoration:underline;">Import' + _impIco + '</a>' +
-              ' &middot; or create one in a session' +
-            '</span>' +
-          '</div>';
-        grid.querySelector('[data-doclib-import]')?.addEventListener('click', (e) => {
-          e.preventDefault();
-          document.getElementById('doclib-import-file-btn')?.click();
+        uiModule.renderEmptyState(grid, {
+          kind: 'empty',
+          className: 'doclib-empty',
+          title: 'No documents yet',
+          message: 'Import a file, or ask for one in a chat and it lands here.',
+          action: {
+            label: 'Import a file',
+            onClick: () => document.getElementById('doclib-import-file-btn')?.click(),
+          },
         });
       }
       return;
@@ -1959,12 +2034,27 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
       if (!grid) return;
       grid.innerHTML = '';
       grid.appendChild(spinnerModule.createLoadingRow('Loading…'));
-      fetch(API_BASE + '/api/sessions', { credentials: 'same-origin' }).then(r => r.json()).then(data => {
+      fetch(API_BASE + '/api/sessions', { credentials: 'same-origin' }).then(async r => {
+        // `P9-08`. `r.json()` on a 500 rejects with a parser message about
+        // character 0, which tells a person nothing. Read the status first and
+        // carry the server's own words instead.
+        if (!r.ok) throw new Error(await _readError(r));
+        return r.json();
+      }).then(data => {
         const raw = Array.isArray(data) ? data : (data.sessions || []);
         _chatsSessions = raw.filter(s => !s.archived);
         _renderChatsGrid();
         _renderChatsChips();
-      }).catch(() => { grid.innerHTML = '<div class="doclib-empty">Failed to load</div>'; });
+      }).catch((e) => {
+        uiModule.renderEmptyState(grid, {
+          kind: 'error',
+          className: 'doclib-empty',
+          title: 'Could not load your chats',
+          message: 'Your chats are still on the server — this screen could not reach them.',
+          reason: e && e.message,
+          onRetry: _renderLibChats,
+        });
+      });
     }
 
     // Tap a chat row to expand inline: fetches the recent messages and
@@ -2118,6 +2208,14 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
       }
     }
 
+    function _chatsClearFilters() {
+      _chatsSearch = '';
+      _chatsModelFilter = '';
+      _clearInput('doclib-chats-search');
+      _renderChatsGrid();
+      _renderChatsChips();
+    }
+
     function _renderChatsGrid() {
       const grid = document.getElementById('doclib-chats-grid');
       if (!grid) return;
@@ -2138,9 +2236,33 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
       if (stats) stats.textContent = filtered.length + ' chat' + (filtered.length !== 1 ? 's' : '');
 
       if (!filtered.length) {
-        // Sad-mouth smiley (downturn curve) for "nothing here yet".
-        const _sadIco = '<span style="vertical-align:-3px;margin-left:6px;">' + uiModule.emptyStateIcon('sad') + '</span>';
-        grid.innerHTML = '<div class="doclib-empty">No chats' + _sadIco + '</div>';
+        // `P9-07`. This said "No chats" whether you had none or had typed a
+        // query that matched none of the ones you have — the same sentence for
+        // two situations with opposite answers.
+        const _narrowed = !!(_chatsSearch || _chatsModelFilter);
+        if (_narrowed) {
+          uiModule.renderEmptyState(grid, {
+            kind: 'filtered',
+            className: 'doclib-empty',
+            title: 'No chats match',
+            message: `You have ${_chatsSessions.length} chat${_chatsSessions.length === 1 ? '' : 's'} — this search or folder filter is hiding them.`,
+            action: { label: 'Clear filters', onClick: _chatsClearFilters },
+          });
+        } else {
+          uiModule.renderEmptyState(grid, {
+            kind: 'empty',
+            className: 'doclib-empty',
+            title: 'No chats yet',
+            message: 'Start a conversation and it will be listed here.',
+            action: {
+              label: 'New chat',
+              onClick: () => {
+                closeLibrary();
+                document.getElementById('sidebar-new-chat-btn')?.click();
+              },
+            },
+          });
+        }
         _appendInlineLoadMore(grid, 0, _chatsVisibleLimit, () => {});
         return;
       }
@@ -2378,6 +2500,10 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
     const _arcSelected = new Set();
     let _arcModelFilter = '';
     let _arcTypeFilter = '';   // '', 'chats', 'documents', 'research'
+    // `P9-08`. Which of the archive's three sources did not answer on the
+    // last load. Empty is the normal case; a non-empty list is said out
+    // loud rather than rendered as an absence.
+    let _arcLoadFailures = [];
 
     function _renderLibArchive() {
       const grid = document.getElementById('doclib-arc-grid');
@@ -2386,19 +2512,57 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
       grid.appendChild(spinnerModule.createLoadingRow('Loading…'));
       // Archive tab is the home for ALL archived items — chats, documents, and
       // research — each rendered with its own icon. Load the three in parallel.
+      //
+      // `P9-08`, and this is the sharpest instance of the defect the row is
+      // named after. Each of the three used to carry its own
+      // `.catch(() => ({}))`, so none of them could ever reject — which made
+      // the outer `.catch` below **unreachable** and meant that when all three
+      // sources failed, `_renderArcGrid` drew *"No archived items"*. A person
+      // whose server was down was told their archive was empty. The per-source
+      // catch is kept, because one source failing must not blank the other two;
+      // what it now records is which source failed and why, and that is
+      // reported beside whatever did load.
+      const _arcFail = [];
+      const _arcSource = (label, url) => fetch(url, { credentials: 'same-origin' })
+        .then(async r => {
+          if (!r.ok) throw new Error(await _readError(r));
+          return r.json();
+        })
+        .catch((e) => { _arcFail.push(`${label}: ${(e && e.message) || 'unreachable'}`); return {}; });
       Promise.all([
-        fetch(API_BASE + '/api/sessions/archived?limit=100&sort=recent', { credentials: 'same-origin' }).then(r => r.json()).catch(() => ({})),
-        fetch(API_BASE + '/api/documents/library?archived=true&limit=50', { credentials: 'same-origin' }).then(r => r.json()).catch(() => ({})),
-        fetch('/api/research/library?archived=true', { credentials: 'same-origin' }).then(r => r.json()).catch(() => ({})),
+        _arcSource('Chats', API_BASE + '/api/sessions/archived?limit=100&sort=recent'),
+        _arcSource('Documents', API_BASE + '/api/documents/library?archived=true&limit=50'),
+        _arcSource('Research', '/api/research/library?archived=true'),
       ]).then(([s, d, r]) => {
         // These are all archived by definition — flag them so the expanded
         // chat preview hides its (redundant) "Archive" button.
         _arcSessions = (s.sessions || []).map(x => ({ ...x, archived: true }));
         _arcDocs = d.documents || [];
         _arcResearch = (r.research || []).map(x => ({ ...x, archived: true }));
+        _arcLoadFailures = _arcFail.slice();
+        if (_arcFail.length === 3) {
+          uiModule.renderEmptyState(grid, {
+            kind: 'error',
+            className: 'doclib-empty',
+            title: 'Could not load your archive',
+            message: 'Nothing archived has been lost — none of the three sources answered.',
+            reason: _arcFail.join('\n'),
+            onRetry: _renderLibArchive,
+          });
+          return;
+        }
         _renderArcGrid();
         _renderArcChips();
-      }).catch(() => { grid.innerHTML = '<div class="doclib-empty">Failed to load</div>'; });
+      }).catch((e) => {
+        uiModule.renderEmptyState(grid, {
+          kind: 'error',
+          className: 'doclib-empty',
+          title: 'Could not load your archive',
+          message: 'Nothing archived has been lost — this screen could not draw it.',
+          reason: e && e.message,
+          onRetry: _renderLibArchive,
+        });
+      });
     }
 
     // Inline expand/collapse for an archived DOCUMENT card (chat-style). Loads
@@ -2468,6 +2632,15 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
       }
     }
 
+    function _arcClearFilters() {
+      _arcSearch = '';
+      _arcModelFilter = '';
+      _arcTypeFilter = '';
+      _clearInput('doclib-arc-search');
+      _renderArcGrid();
+      _renderArcChips();
+    }
+
     function _renderArcGrid() {
       const grid = document.getElementById('doclib-arc-grid');
       if (!grid) return;
@@ -2501,9 +2674,36 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
       if (stats) stats.textContent = (filtered.length + filtDocs.length + filtResearch.length) + ' archived';
 
       if (!filtered.length && !filtDocs.length && !filtResearch.length) {
-        // Neutral / no-smile face for "nothing archived here".
-        const _neutralIco = '<span style="vertical-align:-3px;margin-left:6px;">' + uiModule.emptyStateIcon('neutral') + '</span>';
-        grid.innerHTML = '<div class="doclib-empty">No archived items' + _neutralIco + '</div>';
+        // `P9-07` / `P9-08`. Three states reached this one sentence: nothing is
+        // archived, the search or type chip hid everything, and one of the
+        // three sources failed so there is nothing to show *from it*. The last
+        // is the one that used to be a lie.
+        const _narrowed = !!(_arcSearch || _arcModelFilter || _arcTypeFilter);
+        if (_arcLoadFailures.length) {
+          uiModule.renderEmptyState(grid, {
+            kind: 'error',
+            className: 'doclib-empty',
+            title: 'Part of your archive did not load',
+            message: 'What is missing here is missing because a source did not answer, not because it is not archived.',
+            reason: _arcLoadFailures.join('\n'),
+            onRetry: _renderLibArchive,
+          });
+        } else if (_narrowed) {
+          uiModule.renderEmptyState(grid, {
+            kind: 'filtered',
+            className: 'doclib-empty',
+            title: 'No archived items match',
+            message: 'Your archive is not empty — this search or type filter is hiding it.',
+            action: { label: 'Clear filters', onClick: _arcClearFilters },
+          });
+        } else {
+          uiModule.renderEmptyState(grid, {
+            kind: 'empty',
+            className: 'doclib-empty',
+            title: 'Nothing archived yet',
+            message: 'Archive a chat, a document or a research report and it moves here instead of being deleted.',
+          });
+        }
         _appendInlineLoadMore(grid, 0, _arcVisibleLimit, () => {});
         return;
       }
@@ -2754,7 +2954,18 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
         const data = await res.json();
         _researchItems = data.research || data || [];
       } catch (e) {
-        grid.innerHTML = `<div class="hwfit-loading">Failed to load: ${_esc(e.message)}</div>`;
+        // `P9-08`. This already carried the server's words — it was the only
+        // one of the four that did — but it drew them in `.hwfit-loading`, the
+        // *loading* class, so a failure read as "still working". It also had no
+        // retry, so the only way out was to switch tabs and come back.
+        uiModule.renderEmptyState(grid, {
+          kind: 'error',
+          className: 'doclib-empty',
+          title: 'Could not load your research',
+          message: 'Your reports are still on the server — this screen could not reach them.',
+          reason: e && e.message,
+          onRetry: _renderLibResearch,
+        });
         return;
       }
       _renderResearchGrid();
@@ -2909,6 +3120,12 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
       });
     }
 
+    function _researchClearFilters() {
+      _researchSearch = '';
+      _clearInput('doclib-research-search');
+      _renderResearchGrid();
+    }
+
     function _renderResearchGrid() {
       const grid = document.getElementById('doclib-research-grid');
       const stats = document.getElementById('doclib-research-stats');
@@ -2928,17 +3145,28 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
       else if (_rSort === 'alpha') items.sort((a, b) => (a.query || '').localeCompare(b.query || ''));
       if (stats) stats.textContent = items.length + ' research' + (items.length !== 1 ? 'es' : '');
       if (!items.length) {
-        grid.innerHTML =
-          '<div class="hwfit-loading" style="display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;">' +
-            '<span>No research yet</span>' +
-            '<span style="opacity:0.7;font-size:11px;">' +
-              'create one in the <a href="#" data-doclib-open-research style="color:var(--accent,var(--red));text-decoration:underline;">Deep Research</a> tab' +
-            '</span>' +
-          '</div>';
-        grid.querySelector('[data-doclib-open-research]')?.addEventListener('click', (e) => {
-          e.preventDefault();
-          document.getElementById('rail-research')?.click();
-        });
+        // `P9-07`. "No research yet" was drawn over a search that matched
+        // nothing as well, and in `.hwfit-loading` — the loading class again.
+        if (_researchSearch) {
+          uiModule.renderEmptyState(grid, {
+            kind: 'filtered',
+            className: 'doclib-empty',
+            title: 'No research matches',
+            message: `You have ${_researchItems.length} report${_researchItems.length === 1 ? '' : 's'} — this search is hiding them.`,
+            action: { label: 'Clear search', onClick: _researchClearFilters },
+          });
+        } else {
+          uiModule.renderEmptyState(grid, {
+            kind: 'empty',
+            className: 'doclib-empty',
+            title: 'No research yet',
+            message: 'Ask a question in Deep Research and the finished report is filed here.',
+            action: {
+              label: 'Open Deep Research',
+              onClick: () => document.getElementById('rail-research')?.click(),
+            },
+          });
+        }
         _appendInlineLoadMore(grid, 0, _researchVisibleLimit, () => {});
         return;
       }

@@ -30,6 +30,7 @@ from src.tool_capabilities import (
     CARRIED_TAINT_SOURCE,
     TAINT_KIND_CARRIED,
     TOOL_CLASSIFICATION_RECOGNISED,
+    TOOL_CLASSIFICATION_UNAVAILABLE,
     ToolCapabilities,
     ToolGateDecision,
     capabilities_for_action,
@@ -334,6 +335,39 @@ class PendingToolApproval:
     tool_classification: str = TOOL_CLASSIFICATION_RECOGNISED
     taint_trail: tuple[dict[str, Any], ...] = ()
 
+    def default_reason(self) -> str:
+        """`P4-04`. The card's own sentence when its producer wrote none.
+
+        This was one fixed string asserting that untrusted context had
+        influenced the run. Two of the three ways a card gets minted are not
+        that: `P7-03`'s strict rungs mint cards in runs nothing ever tainted,
+        and `B70`'s credential refusal is not about effects at all and no
+        approval lifts it. On both, the fixed sentence sat directly above a
+        `gate` block reading `tainted: false` — two contradicting statements on
+        one surface, which is the ambiguity `Law 10` is about, on the one
+        surface in this product where a person is being asked to consent.
+
+        Derived from the payload's own state rather than passed in, so the
+        sentence and the block beneath it cannot disagree. A producer that has
+        a better sentence still passes one; every producer in the tree does,
+        which is why this went unnoticed — an unreachable default is still a
+        default, and the next producer gets whatever this says.
+        """
+        if self.tool_classification == TOOL_CLASSIFICATION_UNAVAILABLE:
+            return (
+                f"'{self.tool_name}' is not available to this session. "
+                "Approving cannot make it available."
+            )
+        if self.external_untrusted_context_seen:
+            return (
+                "Untrusted context influenced this run, so continuing with "
+                "otherwise-gated actions needs your explicit approval."
+            )
+        return (
+            "This conversation is set to confirm every action that has an "
+            "effect before it runs."
+        )
+
     def public_payload(self, *, reason: str | None = None) -> dict[str, Any]:
         return {
             "kind": "tool_approval",
@@ -343,10 +377,14 @@ class PendingToolApproval:
             # this exact chat and prevents inheritance by a forked session.
             "session_id": self.session_id,
             "question": "Allow this task to continue?",
-            "description": reason or (
-                "Untrusted context influenced this run, so continuing with "
-                "otherwise-gated actions needs your explicit approval."
-            ),
+            # `P4-04`. The server's own written explanation of why this card
+            # exists. It has been on the wire since exact approvals shipped and
+            # `static/js/chatRenderer.js` has never read it — see the row. The
+            # structured half of the same answer is `gate.tripped_effects`
+            # below; these are two renderings of one decision and not two
+            # decisions, which is why the fallback is derived rather than
+            # written a second time.
+            "description": reason or self.default_reason(),
             "options": [
                 {
                     "label": "Allow for this task",

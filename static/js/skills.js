@@ -1823,8 +1823,11 @@ function _updateBulkBar() {
     const count = _selectedNonPassingSkills().length;
     delNonPassingBtn.disabled = count === 0;
     delNonPassingBtn.title = count
-      ? `Delete ${count} selected non-passing ${count === 1 ? 'skill' : 'skills'}`
-      : 'No selected non-passing skills';
+      // `P9-12` / `Law 15`. The tooltip is where a person finds out what the
+      // button will take before they press it, and the disabled state has to
+      // say why it is disabled rather than repeat the label.
+      ? `Delete ${count} selected ${count === 1 ? 'skill' : 'skills'}: duplicates, generic or irrelevant ones, and failed audits. Skills that have not been audited yet are left alone.`
+      : 'None of the selected skills has failed an audit. Skills that have not been audited yet are never counted here.';
   }
   // Approve is only meaningful when at least one selected skill is still a draft.
   const anyDraft = [..._selectedNames].some(n => {
@@ -1884,41 +1887,208 @@ async function _loadSkillApprovalThreshold() {
   } catch {}
 }
 
+/**
+ * `P9-12`. The verdicts that mean the audit ran and the skill did not pass.
+ *
+ * `routes/skills_routes.py` writes six values through `set_audit`: `pass`,
+ * `needs_work`, `fail`, `inconclusive`, `skipped` and `unknown`. Only two of
+ * them are a judgement against the skill. The audit prompt says so in its own
+ * words at `routes/skills_routes.py:193-196` — *"if the run could NOT proceed
+ * because it lacked an input or target the test never provided … that is NOT
+ * the skill's fault. Return verdict 'inconclusive' — do NOT mark it fail or
+ * needs_work"* — so deleting on `inconclusive` deletes a skill for the test
+ * harness's failure, and `skipped` is written when there was no source to read.
+ */
+const _FAILING_AUDIT_VERDICTS = new Set(['fail', 'needs_work']);
+
+/**
+ * `P9-12` — what "non-passing" means, and the three things it used to mean that
+ * cost people files.
+ *
+ * This is a **data-loss** row: the button it feeds calls
+ * `DELETE /api/skills/{name}`, which removes the whole skill directory
+ * including its version history (`services/memory/skills.py:938-963`). There is
+ * no trash and no server-side restore, which is why the caller below now holds
+ * every SKILL.md it is about to remove.
+ *
+ * **1. NEVER AUDITED IS NOT FAILING, and it was the default state.** The old
+ * test was `(sk.audit_verdict || '') !== 'pass'`, and `audit_verdict` is `null`
+ * until an audit has actually run — `load_all` reads it out of the usage
+ * sidecar and it is absent until `set_audit` writes one. The backend reads the
+ * same absence the opposite way, in three places, and every one of them means
+ * *this one still needs auditing*: `routes/skills_routes.py:1769`, `:1785` and
+ * `src/builtin_actions.py:2211` build the **audit queue** from
+ * `not s.get("audit_verdict")`. So a skill written by hand thirty seconds ago
+ * was on the audit queue and in the delete set at the same time.
+ *
+ * **2. THE BUNDLED LIBRARY WAS THE WHOLE SET.** `/api/skills` folds in the
+ * read-only bundled entries, and `load_all` does not even *read* a verdict for
+ * them (`services/memory/skills.py:659-671` sets `uses` and `last_used` and
+ * stops), so all of them matched `!== 'pass'` permanently and could never stop
+ * matching. `DELETE` refuses them — `_verify_owner` 404s on `owner: null` and
+ * `delete_skill` never walks the library directory — so nothing was destroyed,
+ * but "Select all" then "Delete non passing" counted them, put the number in
+ * the confirmation, and reported a smaller number afterwards.
+ *
+ * **3. THE RECOMMENDED KEEPER WAS DELETED WITH ITS DUPLICATES.**
+ * `_duplicateMeta` groups client-side at a similarity of 0.38 — the server's
+ * own dedup-at-creation uses 0.82 — and marks exactly one member `_duplicateKeep`,
+ * which the card renders as *"recommended"*. `_necessityKind` returned
+ * `'duplicate'` for **every** member including that one, so the delete took the
+ * keeper too and the entire group vanished. The recommendation is now honoured:
+ * a group loses its duplicates and keeps the one the UI told you to keep.
+ *
+ * **4. MISSING CONFIDENCE IS NOT ZERO.** `Number(sk.confidence || 0)` read an
+ * absent value as 0, which is below every threshold. `services/memory/skills.py:1100-1119`
+ * states the opposite rule for the same field and says why: *"Missing confidence =
+ * treat as 1.0 (legacy skills shouldn't silently vanish)."* And the threshold
+ * comparison could not have been meaningful before an audit anyway: `add_skill`
+ * writes `confidence: 0.8` by default, `skill_autosave_min_confidence` defaults
+ * to `0.85` (`src/settings.py:557`), and a pass writes `0.95`
+ * (`routes/skills_routes.py:933`) — so every skill is below the bar from the
+ * moment it is created until an audit lifts it. The bar therefore applies to
+ * skills that have been scored, which is the only time it means anything.
+ */
 function _selectedNonPassingSkills() {
   const selected = new Set(_selectedNames);
   return skills.filter(sk => {
     const name = sk.name || sk.id;
     if (!selected.has(name)) return false;
-    const conf = Number(sk.confidence || 0);
+    // Read-only library entries: never audited, never deletable.
+    if (sk.bundled || sk.editable === false) return false;
+
     const necessity = _necessityKind(sk);
+    // The keeper of a duplicate group is the one the card recommends keeping.
+    if (necessity === 'duplicate' && sk._duplicateGroup && sk._duplicateKeep) return false;
     if (necessity === 'duplicate' || necessity === 'trivial' || necessity === 'irrelevant') return true;
-    if ((sk.audit_verdict || '') !== 'pass') return true;
-    return conf < _skillApprovalThreshold;
+
+    const verdict = String(sk.audit_verdict || '').toLowerCase();
+    if (!verdict) return false;                       // never audited
+    if (_FAILING_AUDIT_VERDICTS.has(verdict)) return true;
+    if (verdict !== 'pass') return false;             // inconclusive / skipped / unknown
+    // Scored and passed — the threshold is the last question.
+    const conf = sk.confidence == null ? 1 : Number(sk.confidence);
+    return (Number.isFinite(conf) ? conf : 1) < _skillApprovalThreshold;
   });
+}
+
+/**
+ * `P9-12`, the undo half.
+ *
+ * `DELETE /api/skills/{name}` removes the skill's whole directory, versions
+ * included, and there is no trash on the server — so the only place a restore
+ * can come from is the browser that asked for the delete. Every SKILL.md is
+ * therefore read **before** anything is removed, and a skill whose source
+ * cannot be read is not deleted at all: the alternative is a delete that is
+ * knowingly unrecoverable, which is the thing this row exists to stop.
+ *
+ * Restoring is two calls because there is no create-from-markdown route.
+ * `POST /api/skills/add` makes the directory under the same name — free after
+ * the delete — with `source: 'user'`, which is what exempts it from
+ * `add_skill`'s dedup-at-creation; `POST /{name}/markdown` then writes the
+ * exact bytes back, and it pins the stored name rather than the one in the
+ * frontmatter (`routes/skills_routes.py:1846-1848`), so the round trip is
+ * byte-stable.
+ */
+async function _restoreDeletedSkills(saved) {
+  let restored = 0;
+  const failed = [];
+  for (const entry of saved) {
+    try {
+      const add = await fetch(`${API}/api/skills/add`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          name: entry.name,
+          description: entry.description || '',
+          status: entry.status || 'draft',
+          confidence: entry.confidence == null ? 0.8 : Number(entry.confidence),
+          source: 'user',
+        }),
+      });
+      if (!add.ok) throw new Error(`HTTP ${add.status}`);
+      const created = await add.json();
+      const name = (created && created.skill && created.skill.name) || entry.name;
+      const put = await fetch(`${API}/api/skills/${encodeURIComponent(name)}/markdown`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ markdown: entry.markdown }),
+      });
+      if (!put.ok) throw new Error(`HTTP ${put.status}`);
+      _mdCache.set(name, entry.markdown);
+      restored++;
+    } catch {
+      failed.push(entry.name);
+    }
+  }
+  await loadSkills();
+  if (failed.length) {
+    uiModule.showError(`Restored ${restored}; could not restore ${failed.join(', ')}`);
+  } else {
+    uiModule.showToast(`Restored ${restored} ${restored === 1 ? 'skill' : 'skills'}`);
+  }
 }
 
 async function _bulkDeleteNonPassing() {
   const targets = _selectedNonPassingSkills();
   if (!targets.length) {
-    uiModule.showToast('No selected non-passing skills');
+    uiModule.showToast('No selected skills have failed an audit');
     return;
   }
   const thresholdPct = Math.round(_skillApprovalThreshold * 100);
   const names = targets.map(sk => sk.name || sk.id).filter(Boolean);
+  // What is about to happen, in the words of what the person selected. The old
+  // sentence promised four categories and delivered "everything not yet
+  // audited", which is the gap `Law 15` asks you to close on the surface rather
+  // than in a comment.
   const ok = await uiModule.styledConfirm(
-    `Delete ${names.length} selected non-passing ${names.length === 1 ? 'skill' : 'skills'}? This removes duplicates, generic/irrelevant skills, failed audits, and anything below ${thresholdPct}%.`,
+    `Delete ${names.length} selected ${names.length === 1 ? 'skill' : 'skills'}? `
+    + `These are the ones marked duplicate, generic or irrelevant, the ones whose audit `
+    + `failed, and the ones that passed below ${thresholdPct}%. Skills that have not been `
+    + `audited yet are not included. You can undo this from the message that follows.`,
     { confirmText: 'Delete non passing', danger: true }
   );
   if (!ok) return;
+
+  // Read every source before removing anything.
+  const saved = [];
+  const unreadable = [];
+  for (const sk of targets) {
+    const name = sk.name || sk.id;
+    try {
+      const markdown = await _fetchSkillMarkdown(name);
+      if (!markdown) throw new Error('empty');
+      saved.push({
+        name,
+        markdown,
+        description: sk.description || '',
+        status: sk.status || 'draft',
+        confidence: sk.confidence,
+      });
+    } catch {
+      unreadable.push(name);
+    }
+  }
+  if (unreadable.length) {
+    uiModule.showError(
+      `Nothing deleted. Could not read ${unreadable.join(', ')}, so the delete could not be undone.`,
+    );
+    return;
+  }
+
   let deleted = 0;
   const deletedNames = [];
-  for (const name of names) {
+  const restorable = [];
+  for (const entry of saved) {
     try {
-      const res = await fetch(`${API}/api/skills/${encodeURIComponent(name)}`, { method: 'DELETE' });
+      const res = await fetch(`${API}/api/skills/${encodeURIComponent(entry.name)}`, { method: 'DELETE' });
       if (res.ok) {
         deleted++;
-        deletedNames.push(name);
-        _mdCache.delete(name);
+        deletedNames.push(entry.name);
+        restorable.push(entry);
+        _mdCache.delete(entry.name);
       }
     } catch {}
   }
@@ -1929,7 +2099,15 @@ async function _bulkDeleteNonPassing() {
   if (deletedNames.length) await new Promise(resolve => setTimeout(resolve, 320));
   _exitSelectMode();
   await loadSkills();
-  uiModule.showToast(`Deleted ${deleted} non-passing`);
+  if (!restorable.length) {
+    uiModule.showToast('Nothing was deleted');
+    return;
+  }
+  uiModule.showToast(`Deleted ${deleted} ${deleted === 1 ? 'skill' : 'skills'}`, {
+    duration: 12000,
+    action: 'Undo',
+    onAction: () => _restoreDeletedSkills(restorable),
+  });
 }
 
 async function _bulkApprove() {

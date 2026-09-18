@@ -308,13 +308,23 @@ def test_a_role_may_only_name_keys_a_registry_already_declares(tmp_path):
 
 
 def test_the_two_namespaces_are_the_two_live_registries():
-    """No third list of keys (`Law 14`)."""
-    from src.settings import DEFAULT_SETTINGS, LIMIT_RANGES
+    """No third list of keys (`Law 14`).
+
+    The limit half was `LIMIT_RANGES` until `P12-02`, which found that table
+    answering a narrower question than the role layer needs — *which settings
+    keys are **nullable** integer limits* — and four limits consulting the role
+    leg on every call that were not in it. `role_limit_ranges()` is that table
+    plus those four, each bound imported from the module that owns the limit.
+    The assertion is unchanged in intent and stronger in fact: it now also
+    proves the derivation contains the table rather than replacing it.
+    """
+    from src.settings import DEFAULT_SETTINGS, LIMIT_RANGES, role_limit_ranges
 
     assert roles_mod.privilege_keys() == frozenset(_registry())
-    assert roles_mod.limit_keys() == frozenset(LIMIT_RANGES)
+    assert roles_mod.limit_keys() == frozenset(role_limit_ranges())
+    assert set(LIMIT_RANGES) < set(role_limit_ranges())
     # And the limit keys really are settings keys, not a parallel vocabulary.
-    assert set(LIMIT_RANGES) <= set(DEFAULT_SETTINGS)
+    assert set(role_limit_ranges()) <= set(DEFAULT_SETTINGS)
 
 
 def test_a_role_cannot_talk_a_limit_down_to_off(tmp_path):

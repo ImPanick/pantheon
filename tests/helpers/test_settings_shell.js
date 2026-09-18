@@ -269,6 +269,11 @@ function buildFixture(document) {
     'tools',
     'users',
     'embeddings',
+    // `P9-02`, 2026-09-18. `P17-09` shipped this panel with a tab and a DOM
+    // node and no registry entry, so Settings search could not find the
+    // operator's network allowlist by any word. The fixture mirrors the
+    // production set, so it gains it here too.
+    'networks',
     'system',
   ];
 
@@ -389,6 +394,7 @@ function moduleSource(relativePath) {
       'tools',
       'users',
       'embeddings',
+      'networks',   // `P9-02` — see the fixture list above
       'system',
     ].join(','),
   );
@@ -408,13 +414,17 @@ function moduleSource(relativePath) {
     'Settings registry keeps services, models, integrations and admin panels on the existing admin controller',
     ['services', 'added-models', 'integrations', 'tools', 'users', 'system']
       .every(id => context.isAdminManagedSettingsTab(id))
-      && ['ai', 'search', 'email', 'reminders', 'appearance', 'shortcuts', 'account']
+      // `networks` is admin-ONLY but not admin-CONTROLLED, which is the
+      // distinction the next check is named for and the reason it is listed
+      // here rather than beside its neighbours: `settings.js` activates it
+      // itself, and `admin.js` has no case for the tab.
+      && ['ai', 'search', 'email', 'reminders', 'appearance', 'shortcuts', 'account', 'networks']
         .every(id => !context.isAdminManagedSettingsTab(id)),
   );
 
   check(
     'Settings registry distinguishes admin-only visibility from admin-controlled routing',
-    ['tools', 'users', 'embeddings', 'system'].every(id => context.isAdminOnlySettingsTab(id))
+    ['tools', 'users', 'embeddings', 'networks', 'system'].every(id => context.isAdminOnlySettingsTab(id))
       && ['services', 'added-models', 'integrations']
         .every(id => !context.isAdminOnlySettingsTab(id)),
   );

@@ -97,6 +97,7 @@ def _chat_stream_endpoint(
     capture_completion=False,
     capture_context=False,
     endpoint_url="https://selected.example/v1",
+    context_overrides=None,
 ):
     def add_message(message):
         captured.setdefault("added_messages", []).append(message)
@@ -140,6 +141,12 @@ def _chat_stream_endpoint(
         context_tokens_after_trim=10,
         preset=SimpleNamespace(temperature=0.2, max_tokens=128, character_name=None),
     )
+    # `P4-13`. The shaping figures a test wants to vary live on this double, and
+    # the route reads them through `getattr` defaults so older doubles keep
+    # working. Setting them here rather than adding six more parameters keeps
+    # the helper's signature about routing.
+    for _key, _value in (context_overrides or {}).items():
+        setattr(context, _key, _value)
 
     async def fake_build_context(*args, **kwargs):
         if capture_context:
@@ -3651,3 +3658,212 @@ def test_skill_activation_reaches_later_fallback_request_and_pinned_round(monkey
         for message in round_three_requests[0]["messages"]
     )
     assert any('"delta": "pinned backup answer"' in chunk for chunk in chunks)
+
+
+# ── `P4-13` — the compaction half of the shaping report ─────────────────────
+#
+# Measured 2026-09-18. The trim half shipped: `context_trimmed` carries four
+# figures and the saved metrics carry the same four. Compaction — the step that
+# actually summarises history away and cannot be undone — carried none: the
+# `compacted` event was `{"type": "compacted", "context_length": N}` and the
+# browser's toast said "older messages summarized" with no way to ask how many.
+#
+# Two defects came out with it.
+#
+#   * The trim event was suppressed on any turn that compacted
+#     (`if ctx.context_trimmed and not ctx.was_compacted`), while the saved
+#     metrics carried the trim figures unconditionally. Same live-vs-reload
+#     split as `B686`, pointing the other way: the reload knew something the
+#     live stream refused to say.
+#   * `_chat_candidate_request_factory` measured `trim_stats.messages_before`
+#     against the list it was handed — before compaction — while
+#     `build_chat_context` measured it after, and both land on the same metrics
+#     key. One key, two boundaries, decided by which route answered.
+
+
+def _shaping_frames(chunks):
+    frames = {}
+    for chunk in chunks:
+        if not chunk.startswith("data: ") or chunk.startswith("data: [DONE]"):
+            continue
+        try:
+            data = json.loads(chunk[6:])
+        except json.JSONDecodeError:
+            continue
+        if data.get("type") in ("compacted", "context_trimmed", "metrics"):
+            frames[data["type"]] = data
+    return frames
+
+
+_COMPACTED_CONTEXT = {
+    "was_compacted": True,
+    "context_messages_before_compact": 40,
+    "context_messages_after_compact": 12,
+    "context_tokens_before_compact": 31000,
+    "context_tokens_after_compact": 6400,
+}
+
+
+@pytest.mark.asyncio
+async def test_a_compacted_turn_says_on_the_wire_what_compaction_cost(monkeypatch):
+    captured = {}
+    endpoint = _chat_stream_endpoint(
+        monkeypatch, "chat", captured, context_overrides=dict(_COMPACTED_CONTEXT)
+    )
+
+    response = await endpoint(_RouteRequest("chat"))
+    chunks = [chunk async for chunk in response.body_iterator]
+    compacted = _shaping_frames(chunks)["compacted"]
+
+    assert compacted["data"]["messages_before"] == 40
+    assert compacted["data"]["messages_after"] == 12
+    assert compacted["data"]["tokens_before"] == 31000
+    assert compacted["data"]["tokens_after"] == 6400
+
+
+@pytest.mark.asyncio
+async def test_a_turn_that_compacted_and_then_trimmed_reports_both_steps(monkeypatch):
+    captured = {}
+    endpoint = _chat_stream_endpoint(
+        monkeypatch, "chat", captured,
+        context_overrides={
+            **_COMPACTED_CONTEXT,
+            "context_trimmed": True,
+            "context_messages_before_trim": 12,
+            "context_messages_after_trim": 9,
+            "context_tokens_before_trim": 6400,
+            "context_tokens_after_trim": 4100,
+        },
+    )
+
+    response = await endpoint(_RouteRequest("chat"))
+    chunks = [chunk async for chunk in response.body_iterator]
+    frames = _shaping_frames(chunks)
+
+    assert "compacted" in frames
+    assert "context_trimmed" in frames, (
+        "a turn that compacted and then trimmed announced only the compaction, "
+        "while the saved record carried both"
+    )
+    # The two steps chain: the trim's `before` is the compaction's `after`.
+    assert frames["compacted"]["data"]["messages_after"] == 12
+    assert frames["context_trimmed"]["data"]["messages_before"] == 12
+
+
+@pytest.mark.asyncio
+async def test_the_saved_metrics_say_what_the_compaction_event_said(monkeypatch):
+    captured = {}
+    endpoint = _chat_stream_endpoint(
+        monkeypatch, "chat", captured, context_overrides=dict(_COMPACTED_CONTEXT)
+    )
+
+    response = await endpoint(_RouteRequest("chat"))
+    chunks = [chunk async for chunk in response.body_iterator]
+    frames = _shaping_frames(chunks)
+    metrics = frames["metrics"]["data"]
+    live = frames["compacted"]["data"]
+
+    assert metrics["context_compacted"] is True
+    assert metrics["context_messages_before_compact"] == live["messages_before"]
+    assert metrics["context_messages_after_compact"] == live["messages_after"]
+    assert metrics["context_tokens_before_compact"] == live["tokens_before"]
+    assert metrics["context_tokens_after_compact"] == live["tokens_after"]
+
+
+@pytest.mark.asyncio
+async def test_an_uncompacted_turn_puts_no_compaction_claim_on_the_record(monkeypatch):
+    captured = {}
+    endpoint = _chat_stream_endpoint(monkeypatch, "chat", captured)
+
+    response = await endpoint(_RouteRequest("chat"))
+    chunks = [chunk async for chunk in response.body_iterator]
+    frames = _shaping_frames(chunks)
+
+    assert "compacted" not in frames
+    metrics = frames["metrics"]["data"]
+    for key in (
+        "context_compacted",
+        "context_messages_before_compact",
+        "context_tokens_before_compact",
+    ):
+        assert key not in metrics, f"{key} on a turn that never compacted"
+
+
+@pytest.mark.asyncio
+async def test_each_candidate_measures_a_shaping_step_against_its_own_boundary(monkeypatch):
+    """The per-candidate factory's two pairs must bracket two different steps.
+
+    Driven against the real `_chat_candidate_request_factory` rather than the
+    route, because the boundary bug is inside it: it reported the *pre*
+    compaction count under a key `build_chat_context` fills with the *post*
+    compaction one.
+    """
+    history = [{"role": "user", "content": f"turn {i}"} for i in range(10)]
+
+    async def fake_compact(session, url, model, messages, headers=None, owner=None, **kwargs):
+        return list(messages)[:6], 4096, True
+
+    monkeypatch.setattr(chat_routes, "maybe_compact", fake_compact)
+    monkeypatch.setattr(chat_routes, "trim_for_context", lambda messages, budget: list(messages)[:4])
+    # `shaping_stats` lives in `routes/chat_helpers.py` and counts tokens with
+    # that module's `estimate_tokens`; both modules bind the same
+    # `src.model_context` function, so patching the measuring module is the
+    # honest seam here.
+    monkeypatch.setattr(chat_helpers, "estimate_tokens", lambda messages: len(messages) * 100)
+
+    factory, state = chat_routes._chat_candidate_request_factory(
+        history, 4096, session=SimpleNamespace(), owner="alice",
+    )
+    await factory(0, "https://selected.example/v1", "selected-model", {})
+
+    assert state["compaction_stats"][0] == {
+        "messages_before": 10, "messages_after": 6,
+        "tokens_before": 1000, "tokens_after": 600,
+    }
+    assert state["trim_stats"][0] == {
+        "messages_before": 6, "messages_after": 4,
+        "tokens_before": 600, "tokens_after": 400,
+    }
+
+
+@pytest.mark.asyncio
+async def test_the_nonstream_reply_records_both_shaping_steps(monkeypatch):
+    """`P4-13`. `/api/chat` saved one bool and called it `context_trimmed`.
+
+    Because the candidate factory's `trim_stats` started before compaction, a
+    turn that was only compacted saved `context_trimmed: True` — the one word
+    that surface had for what happened was the wrong one.
+    """
+    monkeypatch.setattr(foreground_model_routing, "_load_policy_preferences", lambda owner: {
+        "foreground_fallback_enabled": True,
+        "foreground_model_fallbacks": [{"endpoint_id": "backup", "model": "backup-model"}],
+    })
+    monkeypatch.setattr(
+        foreground_model_routing, "resolve_fallback_entries",
+        lambda *args, **kwargs: [("https://backup.example/v1", "backup-model", {})],
+    )
+
+    async def fake_compact(session, url, model, messages, headers=None, owner=None, **kwargs):
+        return list(messages)[:2], 4096, True
+
+    monkeypatch.setattr(chat_routes, "maybe_compact", fake_compact)
+    monkeypatch.setattr(chat_routes, "trim_for_context", lambda messages, budget: list(messages))
+    monkeypatch.setattr(chat_helpers, "estimate_tokens", lambda messages: len(messages) * 100)
+
+    async def fake_call(url, model, messages, **kwargs):
+        return "an answer"
+
+    monkeypatch.setattr(llm_core, "llm_call_async", fake_call)
+    endpoint, saved = _chat_endpoint(monkeypatch)
+
+    await endpoint(_RouteRequest("chat"), ChatRequest(message="hello", session="session-1"))
+
+    metadata = saved[0].metadata
+    assert metadata["context_compacted"] is True
+    assert metadata["context_messages_before_compact"] == 3
+    assert metadata["context_messages_after_compact"] == 2
+    assert metadata["context_tokens_before_compact"] == 300
+    assert metadata["context_tokens_after_compact"] == 200
+    # Nothing was trimmed, and the word for that is no longer borrowed by the
+    # step that did happen.
+    assert metadata["context_trimmed"] is False

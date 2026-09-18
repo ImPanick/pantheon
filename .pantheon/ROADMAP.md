@@ -64,15 +64,15 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P1 | Token layer — the free wins | 15 | 7 | 0 | **8** |
 | P2 | Un-nerf | 26 | 9 | 0 | **17** |
 | P3 | Mechanical hygiene | 27 | 0 | **2** | **25** |
-| P4 | The wire — the real glass box | 28 | 10 | 0 | **18** |
+| P4 | The wire — the real glass box | 28 | 5 | 0 | **23** |
 | P5 | Trace & composer restyle | 17 | 9 | 0 | **8** |
 | P6 | Queue & Plan | 18 | 0 | 0 | **18** |
 | P7 | Trust ladder & control plane | 14 | 6 | **1** | **7** |
 | P8 | The Workshop | 49 | 23 | **2** | **24** |
-| P9 | Feature surfaces | 18 | 16 | 0 | **2** |
-| P10 | Accessibility & release | 12 | 6 | 0 | **6** |
+| P9 | Feature surfaces | 18 | 12 | 0 | **6** |
+| P10 | Accessibility & release | 12 | 5 | 0 | **7** |
 | P11 | Identity & access | 14 | 6 | **1** | **7** |
-| P12 | Limits & the control plane | 11 | 6 | 0 | **5** |
+| P12 | Limits & the control plane | 11 | 3 | 0 | **8** |
 | P13 | The Brain | 23 | 12 | 0 | **11** |
 | P14 | Measurement | 8 | 0 | 0 | **8** |
 | P15 | Outbound politeness | 12 | 0 | **1** | **11** |
@@ -80,8 +80,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P17 | The network the agent is hosted on | 14 | 0 | 0 | **14** |
 | P18 | One button, and it links | 9 | 0 | 0 | **9** |
 | P19 | The proof ledger | 8 | 0 | 0 | **8** |
-| Backlog | Bugs and hardening found in flight | 381 | 146 | 0 | **235** |
-| **Total** | | **763** | **259** | **9** | **495** |
+| Backlog | Bugs and hardening found in flight | 398 | 160 | 0 | **238** |
+| **Total** | | **780** | **260** | **9** | **511** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -245,7 +245,7 @@ they are for.*
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
 
 ### Five phases finished, and the day stopped counting the wrong population
-`c2d8669..HEAD`. **763 tracked, 495 done. 0 new phase rows, 0 regressions. `P0-17`, `P3-20`,
+`c2d8669..HEAD`. **780 tracked, 511 done. 0 new phase rows, 0 regressions. `P0-17`, `P3-20`,
 `P3-21`, `P6-08`, `P14-06`–`P14-08`, `P15-08`, `P15-11` and all three `P17` rows closed;
 `P16-20` parked under a standing ruling; `B510` disclosed AI use across three surfaces at the
 owner's request; twenty-two backlog rows filed, and `B413` closed by one of them.**
@@ -4676,17 +4676,227 @@ serialised, sent to the browser and never read.** None of this needs backend wor
 - [x] **P4-03** **Audit, then delete or wire — the skill-saved handler.** The frontend listens for an event the server never emits. `Law 1`'s only exception is a deletion *proven dead by audit*, and this row had none: no file:line, no scope, no `Verify:`. Establish first whether the *handler* is dead or the *emit* is missing — a save that never notifies the UI is a `Law 13` gap, not dead code, and deleting the listener would close it the wrong way. Decide on the row and record which it was. — **done 2026-09-08. It was the emit, and the evidence was one grep away.** `chat.js` has **three** listeners in this family and `src/teacher_escalation.py` emits two of them: `skill_save_failed` from **three** sites (*teacher said NO_SKILL*, *teacher did not emit valid skill JSON*, *requires an interactive exact approval*) and `escalation_failed` from two. `skill_saved`: **zero**. So every way of failing to save a skill reported, and succeeding was the one outcome the user was never told about — and a listener with two working siblings is not dead code. Deleting it, which the row was filed to propose, would have made the silence permanent and looked like tidying up. **`Law 1`'s deletion exception did not apply and the row was right to demand the audit first.** The fix is on the server. `manage_skills` `add` reports what it saved in a `skill_saved` key beside its existing `results` string — additive, and the deduped branch returns before it because nothing was saved there — and the agent loop turns that into the event on **both** completion paths, because a teacher-written skill goes through an approval card and an agent-written one does not. Flat, not nested: the handler reads `json.name`, so `{"data": {...}}` would have rendered an empty name and looked like a different bug. `isinstance(..., dict)` rather than truthiness, because every other tool's result passes through that branch. A mutation that deletes the listener is caught, as is one that nests the payload and one that stops escaping the skill name. 11 tests, 10 mutations, all caught. **And a note on how the test was got wrong first, because it cost half an hour of bisecting a phantom regression.** `do_manage_skills` imports `SkillsManager` *inside* the function, so patching an accessor on `src.tools.system` — which never holds the name — silently left the **real** manager in place. It wrote `data/skills/general/tidy-logs` into the working tree, that skill changed tool selection, and `test_fenced_example_not_executed_for_native_models.py` began failing **two files away** for reasons that had nothing to do with it. The failure survived a `git stash`, because the damage was to a gitignored directory rather than to the code — which is exactly what made it look like a regression in the commit under test. An autouse fixture now fails the test if the skill library gains a file, and a mutation restoring the original mistake is caught by it.
 
 ### Free — already on the wire, zero backend work
-- [ ] **P4-04** **The approval card's own reason.** The server sends a written explanation naming the exact effects that tripped the gate; the renderer never reads the field. *(Style-only — see `DEFERRED.md` for the markup constraint.)*
+- [x] **P4-04** **The approval card's own reason.** The server sends a written explanation naming
+  the exact effects that tripped the gate; the renderer never reads the field. *(Style-only — see
+  `DEFERRED.md` for the markup constraint.)*
+  — **premise re-measured 2026-09-18 by `p4wire` and it held exactly as written, which is worth
+  saying because the three rows either side of it did not.**
+  `PendingToolApproval.public_payload()` (`src/tool_approvals.py:371`) has put the gate's own
+  sentence on `description` since exact approvals shipped; both producers in the tree pass one —
+  `src/agent_loop.py` passes `security_decision.reason`, `src/teacher_escalation.py` passes its
+  own — every path that re-serves a pending card copies the whole dict, and the persisted twin is
+  the same object, so a reloaded card already carried it. **Nothing read it.**
+  **What was wrong on the wire is the default**, and it was `Law 10` on the one surface in this
+  product where a person is being asked to consent: `description` fell back to a fixed string
+  asserting *"Untrusted context influenced this run"*, and two of the three ways a card gets
+  minted are not that — `P7-03`'s strict rungs mint cards in runs nothing ever tainted, and
+  `B70`'s credential refusal is about a tool nobody may call rather than about effects. On both,
+  that sentence sat directly above a `gate` block reading `tainted: false`. It is
+  `default_reason()` now, derived from the payload's own state, so the sentence and the block
+  beneath it cannot disagree. **`Law 14`, explicitly: no second field.** `P7-07`'s
+  `gate.tripped_effects` and `gate.tripped_effect_labels` are the structured half of *this*
+  answer, and a test asserts every effect the block names also appears in the sentence — two
+  renderings of one decision, which is the whole design. `decision_for`'s `reason` string is
+  untouched; `tests/test_trust_rung_gate.py` compares it byte for byte against a transcription of
+  the pre-`P7-03` gate over **2,016** combinations, and that oracle is the thing standing between
+  this phase and a silent behaviour change.
+  — **surface half done 2026-09-18.** `renderAskUserCard` (`static/js/chatRenderer.js`) draws
+  `aq.description` **between the question node and `buildApprovalEffects(aq)`**, which is the
+  order the argument needs: the sentence says *why you are being asked*, the box under it says
+  *what the action can do*, and both sit above the verbatim dump of the sealed action. A reason
+  printed below the technical block is a reason nobody reads before they press a button, and the
+  test asserts the ordering rather than the presence.
+  **`textContent`, never `innerHTML`**, for the reason `buildApprovalEffects` already states at
+  length — this is the one card in the app whose whole job is to describe an action truthfully,
+  and markup injected into the description of the thing being approved would be forging it. The
+  assertion reads the node's raw `_html` rather than its `textContent`, because refutation
+  previously shipped exactly that swap past a full green run on the effect rows.
+  **Drawn on presence, not on `isToolApproval`.** Scope stated (`Law 5`), and it is not the
+  number the backend row carried: `.description` occurs **40** times in `static/js/**/*.js`
+  outside `static/js/lib/` with comments blanked, across 9 modules, **4 of them in
+  `chatRenderer.js`** — two occurrences on the new line and two on the pre-existing
+  `opt.description`, the sentence under each *button*. A plain `ask_user` payload is
+  `{question, options, multi}` (`src/agent_tools/interaction_tools.py`) and carries no
+  `description` at all, so the only card this can fire on is the one the field was written for.
+  **`D-01`'s cache-buster contract obeyed, and it was wider than the five modules the contract
+  names.** `20260918tracefolds1` → `20260918surfacehalves1` across every site naming `chat.js`,
+  `chatRenderer.js`, `chatStream.js`, `compare/index.js` and `compare/stream.js` — **33
+  occurrences in 13 files**, including the relative `'./stream.js?v='` inside
+  `compare/index.js`, which the lockstep test's module list does not match but its explicit
+  assertion does. Beside them, three assets this patch also changed and which the contract does
+  not cover: **`style.css`** (2 sites), **`fileHandler.js`** (6 sites — it was bare, see `B762`)
+  and **`app.js` itself** (3 sites). `app.js` is the one worth saying out loud: its import lines
+  have been bumped by several waves while its own `?v=` sat at `20260815toolapproval4`, so a
+  browser holding a cached `app.js` would have kept importing the previous wave's URLs — which
+  still resolve, because the server ignores the query. It is at the wave string now.
+  `CACHE_NAME` moved with all of it: `pantheon-v426-empty-states` →
+  `pantheon-v427-surface-halves`, because the precache list changed. `check-specifiers.py` is
+  flat at `FORKED 0`, which is what proves no asset ended up reachable under two URLs.
+  **No new accent site.** `.ask-user-reason` carries a 2px left rule at the same
+  `color-mix(in srgb, var(--fg) 34%, transparent)` weight `.approval-effects` starts at, so the
+  two blocks read as one column; `tests/test_accent_fallback_semantics_css.py` is flat at 814.
+  **6 tests in `tests/test_approval_card_reason_js.py`, 3 mutations, all caught** — the sentence
+  never reaching the card, the sentence going in as markup, and the sentence moving below the
+  effects box. Driven under node against the real module in the sandbox
+  `tests/test_tool_effect_surfaces_js.py` owns, which is the same sandbox the effects box is
+  tested in on purpose (`Law 14`): the two are halves of one answer and a test that built its own
+  card would not notice them drifting apart.
+  `Verify:` ask Pantheon to do something effectful right after it has read a web page, and the
+  card tells you in a sentence why it is asking — not just what the tool can do; and the same card
+  rebuilt after a reload says the same sentence. — agents:`p4wire` (wire) / `surface` (card)
 - [x] **P4-05** **The full fallback chain** — every model candidate tried with its HTTP status. Render `gpt-4o ✗502 → claude ✗429 → llama ✓` instead of a six-second "retrying" toast. The chain was already on the wire — model, index and status per candidate — and **exactly one field of it reached a reader**: `reason`, inside the toast. It is a footer pill now, live and after a reload, and the toast stays because it is the signal in the moment and the pill is the record after it. Two gaps behind it. The chain was attached **only when a later candidate answered**, so *everything failed* — the case where knowing what was tried matters most — reported one status and nothing else. And nothing saved it, so a reloaded reply sat under "llama (fallback)" with no way to say what happened to the model that was actually selected. Both stream branches capture it now (chat and agent each have their own handler, and a chain captured in one is a reply that explains itself in one mode and not the other). — **done 2026-09-08** — agent:`P4-05`
-- [ ] **P4-06** **`failed` and `failure{status,message}` on terminal metrics.** **Premise corrected 2026-08-27.** Not *identically* — the reply text does carry `[Agent stopped: …]`, so a reader is not left with nothing. What renders identically is **the metrics footer and the stats popup**, which report a failed turn with the same shape and styling as a successful one. Still a correctness bug and still the highest priority in `P4`; the scope is narrower than the line claimed and an implementer diffing whole messages will not find it.
-- [ ] **P4-07** Per-round token buckets — round, model, endpoint, input/output tokens, cost-tracked flag. Currently summed into one cost number and discarded.
+- [x] **P4-06** **`failed` and `failure{status,message}` on terminal metrics.** **Premise
+  corrected 2026-08-27.** Not *identically* — the reply text does carry `[Agent stopped: …]`, so a
+  reader is not left with nothing. What renders identically is **the metrics footer and the stats
+  popup**, which report a failed turn with the same shape and styling as a successful one.
+  — **backend re-measured 2026-09-18 by `p4wire` and the row was renderer-only.** `failed: True`
+  and `failure: {status, message}` are written at **three** sites — the direct path's terminal and
+  the agent path's in `src/agent_loop.py`, and `chat_terminal` in `routes/chat_routes.py` — with a
+  fourth that re-normalises the agent's status through `_normalize_http_status` rather than
+  minting a new claim, and all of them go into `save_assistant_response`, so the flag is on the
+  record a reload rebuilds from as well as on the wire. **Zero of `static/**` read either key.**
+  One thing checked and *not* a defect: a first round that fails with no partial content at all
+  emits no terminal metadata, because there is no assistant message to attach it to.
+  — **surface half done 2026-09-18.** `displayMetrics` (`static/js/chatRenderer.js`) reads
+  `metrics.failed` and the footer gains a state: the label becomes **`Stopped · 12 tok/s`** and
+  the hover text becomes *"This answer stopped early: … — click for details"*. **The word carries
+  it, not the colour** — `.response-metrics-failed` adds `var(--red)` and a dotted bottom rule as
+  redundant reinforcement, in the ordering `P7-06`'s effect ladder set one card above, because a
+  hue survives neither greyscale nor a colour-blind reader nor a screen reader.
+  **The bail-out moved.** `displayMetrics` returned early when every figure was missing, so a turn
+  that died before anything was measured — exactly the turn whose reader has least to go on — drew
+  no footer at all and therefore no way to say it had stopped. A failed turn now always draws.
+  **Message Stats gained a failure block at the top**, because it is the only thing in that popup
+  that is news: `Stopped — HTTP 429` and the provider's own sentence beneath it. The status is the
+  half a person can act on — a 429 is *wait*, a 502 is *the endpoint*, a 400 is *the request* —
+  and it existed on no surface. It is built with `textContent` and inserted before the row
+  template, which is why the popup's heading is now a real node (`.ctx-popup-title`) instead of
+  the template's first line: index arithmetic against a template whose row count varies with the
+  payload is how a block lands above the title on one turn and below the cache row on the next.
+  **5 mutations, all caught** — the flag never read, the footer saying nothing about stopping, the
+  no-figures failure drawing nothing, the provider's sentence going in as markup, and the failure
+  block sliding to the bottom of the popup.
+  `Verify:` kill the model mid-answer, and the footer under the half-reply looks different from
+  the footer under a reply that finished, says the word *Stopped*, and opening it names the HTTP
+  status and the provider's reason. — agents:`p4wire` (wire) / `surface` (footer and popup)
+- [x] **P4-07** Per-round token buckets — round, model, endpoint, input/output tokens,
+  cost-tracked flag. Currently summed into one cost number and discarded.
+  — **premise corrected 2026-09-18 by `p4wire`, and it is wrong in the first half and right in
+  the second.** All five listed fields already exist on `_usage_bucket` (`src/agent_loop.py`),
+  they ride the metrics envelope as `usage_buckets`, and the envelope is copied into the stored
+  metadata — so they are neither missing nor discarded. **"Summed into one cost number" is exactly
+  right and is a statement about the renderer**: `_metricsBillableCost`
+  (`static/js/chatRenderer.js`) was the only consumer in the tree, it walks the buckets to price
+  each round on the route that answered it, and then returns a single float. Every bucket's
+  attribution was read and thrown away in the same loop. **What was genuinely missing is the
+  speed**: `backend_gen_tps` was one variable that every round overwrote, so a five-round agent
+  turn reported the **fifth** round's decode speed as the turn's and dropped the other four.
+  `gen_tps`, `prefill_tps`, `prefill_ms` and `decode_ms` are on the bucket now, under the same
+  absence contract as `P4-22`'s cache counters directly above them.
+  — **surface half done 2026-09-18.** Message Stats gains a **Rounds** block built from
+  `metrics.usage_buckets` — the array `_metricsBillableCost` walks four lines above — one line per
+  round: the round number, the model that answered it, what it spent, the speed **that round**
+  reported, and what **that round** cost, priced through the same `_billableCost` the total is
+  summed from rather than a second pricing path (`Law 14`). The endpoint's own name is the row's
+  hover text, because two rounds on the same model served by two different endpoints are two
+  different bills.
+  **A local route reads *not billed*, never `$0.000`** — a price of zero and no price at all are
+  different claims, which is the same `Law 10` distinction the `measured: false` segments in
+  `P12-09` are about. A round whose provider reported no speed reads `—`.
+  **Built as DOM with `textContent`**, because `model` and `endpoint_label` are strings whoever
+  configured the endpoint chose and this popup is assembled with `innerHTML`.
+  **Drawn only when there is more than one round.** A single bucket says nothing the Model and
+  token rows above it do not already say, and a block that repeats its own summary is noise a
+  reader learns to skip — including past the case where it matters.
+  **5 mutations, all caught** — the block never built, every round drawing the turn's speed, no
+  round ever priced, a configured model name going in as markup, and every round attributed to the
+  turn's headline model.
+  `Verify:` run an agent turn that takes four rounds on two different models, open Message Stats,
+  and see which round cost what — without knowing that a bucket exists.
+  — agents:`p4wire` (buckets) / `surface` (Message Stats)
 - [ ] **P4-08** Live prep breakdown — request setup, tool selection, prompt build, context trim, each timed. Replaces a static spinner label.
 - [x] **P4-09** `full_command` on every tool start — expand-to-full-arguments on the running card. The truncated version is what you see now. `Depends:` P4-01. Two kinds of action send a `command` that is not the action: a **document tool** sends its first line capped at 80 characters, and the **approval replay** sends the first 240 of the sealed content. `full_command` existed for both — on `tool_start`, and nowhere else — so the whole of it was reachable exactly once: live, before the result landed, and only with the fold already open. The `tool_output` that rewrites the card never carried it and neither did the persisted event, so **after a reload the rest of a document write was not on the page at all**. Now on all six sites through one helper that reuses the cap the tool *output* already carries, rather than a second size policy invented for this (`Law 14`) — and gated on `approval_matches` exactly as `command` is, because an expansion holding the whole of a **refused** action would show more of it than of an approved one. The expansion is a `<details>` and binds no listener: the fold handler is one delegated listener on `.agent-thread-header` and a second one here is the shape of `B56`. Unblocks `P5-07`. — **done 2026-09-08** — agent:`P4-09`
 - [ ] **P4-10** Loop-breaker detail and the unkept-promise phrase — `"Stopped: called bash with identical arguments 15 times"` instead of a generic message.
 - [x] **P4-11** Round numbers on every step and tool event. `Depends:` P4-01. The number was on the wire from the first agent loop and never reached a card — every `json.round` read in `chat.js` belonged to Deep Research progress instead, so a thread of nine tool cards gave no way to see it was three passes of three. `roundBadgeHtml` in the one builder (`P4-01`) draws it, so it is one change rather than six. Underneath it, four sites were wrong and nobody could see it: the streamed `tool_output` carried no round while its persisted twin did (**the same action answered the question after a reload and refused to answer it live**), the approved-action replay hardcoded `0` at four sites, the one-shot image path sent nothing, and the skill-test log kept the round on `agent_step` and dropped it from the tool cards inside the step. The approved action's round is now the round it was **requested** in — carried on the pending record, deliberately outside the binding digest, with a test saying that was a decision — so the card the user clicked approve on and the card reporting the result name one round. `check-event-rounds.py` is the fourteenth checker and the reason this is a rule and not four fixes. — **done 2026-09-08** — agent:`P4-11`
 - [x] **P4-12** `approved: true` badge on tool events — the action you personally authorised is currently indistinguishable from a routine call. `Depends:` P4-01. The flag had been on four events since exact approvals shipped and **no line of the frontend ever read it**. Rendering it as it stood would have shipped a second and worse defect: two gates can refuse an approved action *after* the card is on screen — this replay's `approval_matches` pre-check and the dispatcher's `claim()`, which additionally refuses an unarmed run, an approval granted before untrusted content arrived, a document action with no sealed target and a workspace that is no longer safe — and **all four used to emit a result card still saying `approved: true`**. A badge asserting *authority* over an action that was blocked is worse than no badge, so `approved` on the result card and its persisted twin now means *this ran under your approval*; `tool_start` keeps saying what was believed then, which is honest and is what the user needs while they watch. The badge is not carried across the rewrite the way `P4-11`'s round is, and that asymmetry is the row's decision: a round the rewrite omits is a fact left intact, an approval the rewrite omits is a claim nobody made. — **done 2026-09-08** — agent:`P4-12`
-- [ ] **P4-13** Trim and compaction figures — tokens before/after, messages before/after.
-- [ ] **P4-14** Real decode speed, prefill speed, time-to-first-token, context tokens — separating prefill from decode and measured from computed.
+- [x] **P4-13** Trim and compaction figures — tokens before/after, messages before/after.
+  — **premise corrected 2026-09-18 by `p4wire`: the trim half shipped some time ago and the
+  compaction half had no figures anywhere, which is the wrong way round.** `context_trimmed` has
+  carried its four keys since before this wave and `static/js/chat.js` rendered them — *"Context
+  trimmed for this model (9/12 messages sent)"*. Compaction, the step that summarises history away
+  and cannot be undone, emitted `{"type": "compacted", "context_length": N}` and a toast reading
+  *"older messages summarized"* with no way to ask how many. **Three defects came out with it and
+  each is worse than the missing numbers** — a `..._before_trim` pair that was structurally unable
+  to describe a compaction, one metrics key meaning two different boundaries depending on which
+  route answered (`Law 10` on the wire), and a trim notice suppressed on any turn that compacted
+  while the saved metrics carried the trim figures unconditionally. Both pairs go through one
+  `shaping_stats(before, after)` in `routes/chat_helpers.py` now, `_shaping_shrank` is the one
+  predicate for *did this step remove anything*, and `_apply_shaping_metrics` is the one place
+  both steps become metrics — replacing three near-identical blocks of which the third, the
+  `[DONE]` fallback, carried neither pair. The event's figures sit in a `data` block because that
+  is the shape the sibling `context_trimmed` event uses.
+  — **surface half done 2026-09-18.** `static/js/chat.js` reads `json.data` on the `compacted`
+  branch and says how much, exactly as the `context_trimmed` branch four lines below it already
+  does: **"Context compacted — older messages summarized (9/42 messages kept, 81,400 → 12,200
+  tokens)"**. Both clauses appear only when the figures are there and only when they describe a
+  shrink, so an event the backend set the flag on without measuring anything degrades to the
+  sentence it has always shown — a `0/0` beside it would be a measurement rather than a silence,
+  which is the distinction the flag was deliberately set independently of the figures to preserve.
+  The background guard is unchanged: a toast about a chat you are not looking at is a toast about
+  nothing.
+  **How it is tested, because `chat.js` is 8,000 lines and imports most of the product.** The
+  `compacted` arm is **cut out of the real file by its own delimiters and executed** under node —
+  `Law 20`'s second preference (resolve the scope, then assert inside it) feeding its first (call
+  the thing). A substring search for `messages_before` would survive every mutation below, because
+  the word appears in the `context_trimmed` arm four lines down; that is `Law 20`'s third incident
+  in miniature and it is why the arm is run rather than read.
+  **3 mutations, all caught** — the figures read off the top level instead of `data`, the figures
+  computed and dropped, and before/after swapping places.
+  `Verify:` talk until Pantheon compacts the conversation, and the notice tells you how much of it
+  was summarised away — in the same words the trim notice uses.
+  — agents:`p4wire` (event) / `surface` (notice)
+- [x] **P4-14** Real decode speed, prefill speed, time-to-first-token, context tokens —
+  separating prefill from decode and measured from computed.
+  — **premise corrected 2026-09-18 by `p4wire`: half of this shipped and the half that did not is
+  precisely the word the row is built on.** `gen_tps` and `prefill_tps` are read off llama.cpp's
+  `timings` block in `src/llm_core.py`, `_compute_final_metrics` prefers the backend's decode
+  speed over wall-clock, and `tps_source` is already the `backend` / `computed` enum that says
+  which you are looking at. **What was not measured is everything the two rates are quotients
+  OF.** A real `timings` block reports eight keys and the passthrough kept the two per-second
+  rates and dropped the durations and the token counts on the floor — so nothing downstream could
+  separate prefill from decode **in time** (a 40ms prefill and a 4s one produce the same card at
+  the same 78 t/s), and nothing could divide a reported rate back out and check it. `prefill_ms`,
+  `decode_ms`, `prefill_tokens` and `decode_tokens` are on the usage event, on the turn metrics
+  and on each round's bucket now, present exactly when a backend measured them and absent
+  otherwise — the `P4-22` contract, because a `prefill_ms: 0` on a cloud API would read as an
+  instantaneous prefill rather than as a backend that does not say. **`time_to_first_token` stays
+  a wall clock and keeps saying so.**
+  — **surface half done 2026-09-18.** The popup's `Speed` row was `${tps} tok/s` and nothing else:
+  one number standing for two different measurements of two different things. It is two rows now,
+  `speedRows(metrics)` in `static/js/chatRenderer.js`, in the order they happen:
+
+      Prefill   1,240 tok/s   MEASURED
+                reading your prompt — 4,120 tokens in 3.32s
+      Decode       78.4 tok/s MEASURED
+                writing the answer — 512 tokens in 6.53s
+
+  **`tps_source` decides the word beside the decode rate, and that word is the row.** `backend`
+  reads *measured*; `computed` reads *estimated*, with *"from the wall clock, so it reads low"*
+  under it — which is true, because that clock includes the prefill and the overhead. No surface
+  had ever drawn the distinction the row's own title is about.
+  **The phases are named in words a reader has, not only in jargon** (`Law 15`): *reading your
+  prompt* and *writing the answer* sit under the two rows, so the `Verify:` line's *"without
+  anyone explaining what prefill is"* is answered by the popup rather than by a person.
+  **Absence says so.** A backend that reports no prefill draws *"Prefill — not reported · this
+  backend does not measure it"*, never a zero. A partial `timings` block — the prompt half without
+  the predicted half, which some builds report — carries what it measured and invents nothing.
+  **4 mutations, all caught** — an unreported prefill drawn as a zero, every decode rate claiming
+  to be measured, the durations and counts dropped again, and the two rows collapsing back into
+  one.
+  `Verify:` run the same prompt against a local model twice, once with a long conversation behind
+  it, and Message Stats shows the prefill getting slower while the decode speed stays put — and
+  says which of the two numbers anybody actually measured. — agents:`p4wire` (timings) /
+  `surface` (Message Stats)
 - [ ] **P4-15** `tmux_session` on long shell runs → an "attach to this session" affordance.
 
 ### Cheap — one emit line or one field
@@ -5267,7 +5477,7 @@ SKILL.md frontmatter format. That is the pattern to avoid, found in the phase's 
   the art.
 
 - [ ] **P9-01** **Command palette**, framed as extending the existing search rather than a parallel component. Every data source is already a registry: slash commands, settings panels with keywords, the modal auto-wire map, the route table. **`#search-overlay`, `#search-input` and `#search-results` must stay in the DOM** — five call sites including the rail button and `/find`.
-- [ ] **P9-02** Render the settings nav from its own registry. Two sources of truth for one information architecture; the registry was built for this and is consumed only by search. **Keep the class name and data attribute identical** — four modules query them. There is also a `getSettingsRegistryIssues()` self-check that diffs registry against DOM — run it while you work.
+- [x] **P9-02** Render the settings nav from its own registry. Two sources of truth for one information architecture; the registry was built for this and is consumed only by search. **Keep the class name and data attribute identical** — four modules query them. There is also a `getSettingsRegistryIssues()` self-check that diffs registry against DOM — run it while you work. — **done 2026-09-18, and running the self-check the row points at is what dated the premise: the two sources had already diverged, in the most expensive direction.** **Fifteen `data-settings-tab` buttons and fifteen `data-settings-panel` divs in `static/index.html`; fourteen entries in the registry.** The missing one is **`networks`** — `P17-09`'s network allowlist, the panel `Law 16` is enforced from — and because the registry is what Settings search reads, that panel was **unfindable by any word, including its own name**. `getSettingsRegistryIssues()` had been returning *"DOM tab missing from registry: networks"* on every single init since `P17-09` landed, into `console.warn`, where nobody reads it: `Law 15` applied to the tooling rather than the product. The newest panel is the one that goes missing, because the registry is the copy a new panel's author does not know exists. **The row says "four modules query them"; it is five** — `slashCommands.js` (eight selectors, for the first-run tour), `calendar.js` (four), `admin.js`, `emailLibrary.js` and `settings.js` itself — and `static/style.css` keys off those names in eight rules. **Nothing renamed.** `.settings-nav-item`, `data-settings-tab`, `.admin-only`, `.settings-sidebar-divider` and `.settings-sidebar-label` are all written exactly as the markup wrote them, the buttons are still `<button type="button">` for `P10-02`'s reason, and a test resolves every `[data-settings-tab="…"]` selector in those five modules against what is actually drawn. **The renderer runs when `settings.js` is evaluated, not in `initAll()`**, and that is a call path rather than caution: `initAll` is lazy on the first `settingsModule.open()`, and five call sites never use that API — they un-hide `#settings-modal` themselves and click a tab — so a nav built in `initAll` would leave the sidebar empty for anyone who opened Settings from the Calendar. `initAll` redraws it anyway, idempotently, keeping whichever tab was active. **`networks` is `adminOnly: true` and deliberately NOT `controller: 'admin'`**, which is the one place copying its four neighbours would have shipped a control that lies: `controller: 'admin'` routes the click to `window.adminModule.open(tab)` and `admin.js` has no case for it — this panel is drawn by `onSettingsPanelActivated` in `settings.js`, which lazy-imports `networks.js`. The distinction between *admin-only visibility* and *admin-controlled routing* already had a name in `tests/helpers/test_settings_shell.js`; this is the first entry that needs both halves separately. **The self-check now reports where someone will see it**, in the sidebar it is about, drawn with `P9-07`'s shared error state rather than a sixteenth way of saying something is wrong — and the half that can still drift is the half worth watching: the tabs are generated so they cannot, the **panels** are still markup, and a panel added with no entry is exactly what went wrong. **Three shared tests were updated rather than routed around, and each got stronger**: `tests/test_the_network_allowlist_has_a_front_door.py` and `tests/test_embeddings_panel.py` asserted `data-settings-tab="…" in INDEX`, which was asserting on the copy that no longer exists — they now assert the registry entry, its label and its admin gate, which is the property they were reaching for; `tests/helpers/test_settings_shell.js` hard-coded the fourteen panel ids in two places and gains `networks` in both, plus the controller split it sits on. 13 tests in `tests/test_settings_nav_from_registry_js.py`, **all 13 failing on the tree before the change**; 9 mutations, all caught. `Verify:` open Settings and type *allowlist*, *egress*, *firewall* or *offline* into the finder at the top of the sidebar — **Networks** comes back, which it did not before, and clicking the result opens the panel. Then read the sidebar: the same fifteen entries in the same four groups under the same one *Admin* heading, so nothing about it looks different, and an administrator who adds a panel and forgets its entry is told so in that sidebar instead of in a console nobody has open. — agent:`p9`
 - [ ] **P9-03** Unify the library. Chats, Documents, Research and Archive are already tabs of one modal; make it *the* library with Gallery and Email as facets, and settle the three names for one thing (`rail-archive` labelled "Library", `rail-documents` labelled "Docs", modal id `doclib`).
 - [x] **P9-04** Consolidate email settings. **Premise corrected 2026-08-27.** **The consolidation already landed** at `static/index.html:2100-2124`, so this is no longer the highest-priority IA fix — or an IA fix at all. What remains is a **deletion**: two dead forms, `eaf-*` and `set-email-*`. Under `Law 1` a deletion is marked, reviewed and justified before it runs, so treat this as a delete row and not a build row. **Keep compose-in-document-editor** — it is why AI drafting works. — **done 2026-08-31, and the half that remained was never valid.** The consolidation landed, as the row already says. The deletion it was reduced to would have removed **two live forms**. `eaf-*` is the email-account add/edit form, rendered by `static/js/settings.js:2786-2793` — provider picker, IMAP/SMTP host/port auto-fill, OAuth section, From and Display Name — so deleting it removes the only way to configure a mailbox. `set-email-*` is live too: `static/index.html:1845-1849` is the writing-style extractor and Save, `:2213-2229` the three cross-links into Email Settings, Integrations and Tasks. Both read as dead because the consolidation **moved** them, not because nothing calls them — which is the failure mode `Law 1` exists to catch, and it caught it. **There is nothing to delete. That is the finding, and the row closes on it.**
 - [ ] **P9-05** Full views for Calendar and Compare. **Premise corrected 2026-08-27.** **Both views already exist.** The month grid and the N-way comparison are built; what is missing is the full-view presentation, not the feature. And the Compare half of this row **contradicts its own protected constraint**: Compare deliberately shows and hides the original container's children rather than replacing markup (`compare/index.js:328-336`) precisely so the input-bar and mode-toggle listeners survive — putting it inside a ~780px draggable box is the rework that constraint forbids. **Rewrite this as Calendar-only, or state how Compare gets a full view without replacing the container.** As written it asks for the one thing `FORBIDDEN.md` protects.
@@ -5287,12 +5497,12 @@ SKILL.md frontmatter format. That is the pattern to avoid, found in the phase's 
   Scope accordingly: a chat-message embedding lane, an indexing hook on write, **and a backfill
   over existing sessions.** That is a `P13`-sized piece of work sitting on a `P9` line — decide
   whether it moves before anyone starts.
-- [ ] **P9-07** **Empty states.** **Premise corrected 2026-08-27.** **"Not one exists anywhere" is wrong by about fifty-four.** There are ~54 empty-state sites across 20 class names, a shared helper at `ui.js:833`, and `calendar.js:827-855` is a complete, well-built example worth copying. The cookbook clause is false too — `cookbookRunning.js:2411` already renders real output and a diagnosis, not "crashed". **This is a consistency task, not a greenfield one:** pick the `ui.js:833` helper as the one shape, then bring the 20 class names onto it. `Law 14` — do not author a twenty-first.
-- [ ] **P9-08** Honest error messages, same lane. `Depends:` P9-07.
+- [x] **P9-07** **Empty states.** **Premise corrected 2026-08-27.** **"Not one exists anywhere" is wrong by about fifty-four.** There are ~54 empty-state sites across 20 class names, a shared helper at `ui.js:833`, and `calendar.js:827-855` is a complete, well-built example worth copying. The cookbook clause is false too — `cookbookRunning.js:2411` already renders real output and a diagnosis, not "crashed". **This is a consistency task, not a greenfield one:** pick the `ui.js:833` helper as the one shape, then bring the 20 class names onto it. `Law 14` — do not author a twenty-first. — **done 2026-09-18, and the 2026-08-27 correction is closer than the original and wrong in four more ways.** **Every number re-measured, each with its scope, because two honest scans of this give different answers and neither is "54" (`Law 5`).** Counting `class="…"` attributes and `classList.add()` in `static/**/*.js` outside `static/lib/**` plus `static/*.html`: **25 distinct class names containing `empty`, at 70 occurrences across 17 files.** Widening to include `className:`/`className =` string assignments — which is where `settings-search-empty` lives — gives **28 names at 74 occurrences across 19 files.** **There is no shared helper at `ui.js:833`**: that line is inside `styledPrompt`, and the only empty-state export in the file is `emptyStateIcon(kind)`, now at `ui.js:957`, which returns **an SVG face** and nothing else — no title, no message, no action, and each of its five callers hand-writes its own wrapper `<span>` with its own inline nudge. It could not be "the one shape" because it is not a shape, so the row's instruction was not executable as written. `calendar.js:827-855` has moved to **`calendar.js:834-857`** and the row is right about it: `_renderEmpty` is icon + title + message + actions with a separate error variant, and it is what the new helper is modelled on. `cookbookRunning.js:2411` is now the task row's `innerHTML`; the diagnosis the row credits it with is at **`:2422-2426`**, still true, still there. **So the defect is not coverage — it is that a list can be in three situations with three different answers and all three were drawn with one sentence.** Nothing yet (make one), nothing matched (clear the filter), and it broke (`P9-08`). `renderEmptyState(host, spec)` joins `emptyStateIcon` in **`static/js/ui.js`** rather than becoming a module of its own (`Law 14`): that file already owns the only shared piece of this vocabulary, its three faces are exactly the three bands needed, and it is loaded from **72 sites across 50 files**, none of them with a `?v=` — so there was no specifier to move (scope: static `import … from`, dynamic `import()`, `<script src>`, `<link href>` and `sw.js` precache entries, in `static/**/*.js` outside `static/lib/**` plus `static/*.html`). **The caller's own class rides along on the same element**, so `.doclib-empty` and the other 27 names keep the CSS already written for them and nothing is renamed (`Law 2`). **An unrecognised `kind` resolves to `error`, never to `empty`** — drawing "nothing here yet" over a failure is the lie the row exists to end, so the default is the honest end of the range. Every node is built and every string assigned through `textContent`, so a server's words cannot become markup. **The Library modal is the surface it is proved on, because its four tabs answered the same question four ways side by side**: Documents was the only one that told *nothing yet* from *nothing matched* and is now the model rather than the exception; Chats said *"No chats"* whether you had none or had typed a query that matched none; Archive said *"No archived items"* **when all three of its sources had failed** (see `P9-08`); Research drew both its empty state and its failure in `.hwfit-loading`, the *loading* class, so a finished failure read as still working. **14 call sites now draw through the one shape** — 13 in `documentLibrary.js`, one in `settings.js` (`P9-02`'s registry self-check) — and the other class names are inventoried in **`B730`** rather than left as an implied promise. **No new `var(--accent…)` site**: `tests/test_accent_fallback_semantics_css.py` pins `static/style.css` at 814 uses so a new one has to be a decision, and full-strength accent text misses 4.5:1 against `--panel` on seven of the sixteen palettes — the three states are separated by a left rule, `--color-danger` and `currentColor`, which is what the last three waves used. 19 tests in `tests/test_empty_states_js.py`, **all 19 failing on the tree before the change**; 11 mutations, all caught. `Verify:` open the Library from the rail with no chats saved — it says *"No chats yet"* and offers **New chat**. Type something into its search box that matches nothing and it changes to *"No chats match"*, tells you how many chats you have, and offers **Clear filters**, which empties the box. Stop the server and press the Archive tab: it says *"Could not load your archive"*, prints what each of the three sources answered, and offers **Try again**. Three different screens, no tutorial, and you can tell from each one which of the three you are looking at. — agent:`p9`
+- [x] **P9-08** Honest error messages, same lane. `Depends:` P9-07. — **done 2026-09-18, in the same change and on the same helper, because the row is right that it is one lane.** `P9-07` discharges the dependency. **Five load paths in `static/js/documentLibrary.js`, five different ways of being unhelpful, and the two worst were not "unhelpful" but actively false.** **(1) The Archive tab's error branch was unreachable code, and a total failure was drawn as an empty archive.** `_renderLibArchive` fired three fetches and gave **each one its own `.catch(() => ({}))`**, so none of them could ever reject, so the outer `.catch` that would have printed *"Failed to load"* could never run — and `_renderArcGrid` then saw three empty lists and wrote *"No archived items"*. Someone whose server was down was told their archive was gone. The per-source catch is kept, because one source failing must not blank the other two; what it records now is **which** source failed and **what it said**, and the grid prints that beside whatever did load, or as a full error state when all three fail. **(2) `libraryFetch`'s only failure handling was `console.error`** — the quietest shape of the same defect: the Documents tab simply never finished, leaving the loading row or the previous page on screen with no error, no reason and no way to retry. A failing *"Load more"* reports beside the rows instead of over them, because blanking what a person is already reading to tell them the next page did not arrive replaces information with an apology. **(3) and (4) The Chats and Archive loaders said *"Failed to load"*** — two words, no status, no reason, no retry. **(5) The Research loader was the only one that carried the server's words** and it got them by calling `res.json()` on an HTML error page, so what it actually printed was *"Unexpected token '<'"*, in `.hwfit-loading`, with no retry. **`_readError(res)` is the shared answer**: it reads the status line and whatever the API put in `detail`/`error`/`message`, falls back to the status text, and caps the length so a stack trace cannot take over the panel. The reason is rendered **as text**, in a monospaced, selectable block with a `--color-danger` left rule, because the next thing a person does with it is paste it into an issue. **Every error state offers "Try again", and no non-error state does** — "Try again" over an empty shelf says something went wrong when nothing did, which is the same lie pointing the other way. **`tests/test_research_source_link_xss.py` was updated rather than worked around, and the property it guards got stronger.** It pinned `"Failed to load: ${_esc(e.message)}"` — one escaping idiom inside one `innerHTML` template. That template is gone: the failure goes through `textContent` and no markup is built at all, so the old assertion was pinning the *mitigation* rather than the property (`Law 20`). The dangerous spelling is still asserted absent, the positive half is now a scope-resolved check that the path reaches the shared renderer, and `tests/test_empty_states_js.py` drives that renderer with `<img src=x onerror=1>` in the reason and reads back that the node's raw HTML is empty. Covered by the same 19 tests and 11 mutations as `P9-07`; the `_readError` case drives real `Response`-shaped objects rather than asserting on the source. `Verify:` stop the server and open the Library. Every tab says what it could not do, prints the status line and the server's own sentence under it in a block you can select and copy, and has a **Try again** button that works when the server comes back — instead of two words, a loading bar that never finishes, or a screen saying you have nothing. — agent:`p9`
 - [ ] **P9-09** Provenance on everything the model produced. **Premise corrected 2026-08-27.** **Four of the six already have it** — memories (`memory.js:776`), skills (`skills.js:208`), generated images (`gallery.js:1286/1481`) and research reports (`research/panel.js:897`). Only **tidy results and calendar parses** lack it, and "the formatter already exists" is false: the four that work each format their own. So the row is two additions plus a genuine `Law 14` opportunity — **extract one formatter from the four existing ones first**, then use it for the two that are missing. Doing the two additions without that leaves six implementations of the same idea.
 - [ ] **P9-10** Preview before destructive AI operations. **Chat tidy deletes sessions *and* re-folders them with no preview at all**; memory tidy has an animation, not a reviewable diff. Calendar has a real undo stack and is the only surface that does — proof it is solvable here.
 - [ ] **P9-11** Make background work visible with its window closed — skills audit, research jobs, cookbook downloads, memory tidy and email sync all report into windows the user has closed. **Extend the minimized-dock chips**, which already carry per-window status; email writes an unread label onto its own.
-- [ ] **P9-12** Fix "non-passing" in the skills bulk delete — it currently catches **never-audited** skills, so a brand-new hand-written skill counts as failing. Add an undo path. `Depends:` P8-10.
+- [x] **P9-12** Fix "non-passing" in the skills bulk delete — it currently catches **never-audited** skills, so a brand-new hand-written skill counts as failing. Add an undo path. `Depends:` P8-10. — **done 2026-09-18. The row's defect is real and it is the smallest of four in thirteen lines, and the button it feeds has no trash behind it.** `DELETE /api/skills/{name}` removes the whole skill directory including its version history (`services/memory/skills.py:938-963`); there is no server-side restore. **(1) Never audited was the default state, and the backend reads that same absence the opposite way.** The test was `(sk.audit_verdict || '') !== 'pass'`, and `audit_verdict` is `null` until `set_audit` writes one — while `routes/skills_routes.py:1769`, `:1785` and `src/builtin_actions.py:2211` build the **audit queue** out of `not s.get("audit_verdict")`. A skill written by hand thirty seconds ago was on the audit queue and in the delete set at the same time. **(2) Four of the six verdicts `set_audit` writes are not judgements against the skill**, and the audit's own prompt says so at `routes/skills_routes.py:193-196`: *"if the run could NOT proceed because it lacked an input or target the test never provided … that is NOT the skill's fault. Return verdict 'inconclusive' — do NOT mark it fail or needs_work."* `skipped` is written when there was no source to read. Only `fail` and `needs_work` count now. **(3) The bundled library was the whole set.** `/api/skills` folds in the read-only bundled entries and `load_all` does not even *read* a verdict for them (`services/memory/skills.py:657-669`), so every one matched `!== 'pass'` permanently and could never stop matching. `DELETE` refuses them — `_verify_owner` 404s on `owner: null` and `delete_skill` never walks the library directory — so nothing was destroyed, but "Select all" then "Delete non passing" counted them, put the number in the confirmation, and reported a smaller one afterwards. **(4) The recommended keeper was deleted with its duplicates**, and this one is data loss with no 404 in front of it. `_duplicateMeta` groups client-side at a similarity of **0.38** — the server's own dedup-at-creation uses **0.82** (`services/memory/skills.py:775`) — and marks exactly one member `_duplicateKeep`, which the card renders as *"recommended"*; `_necessityKind` returned `'duplicate'` for **every** member including that one, so the whole group went. The threshold disagreement is filed as **`B731`**. **(5) A missing confidence was read as zero**, which is below every threshold, while `services/memory/skills.py:1100-1119` states the opposite rule for the same field and says why: *"Missing confidence = treat as 1.0 (legacy skills shouldn't silently vanish)."* The threshold could not have meant anything before an audit anyway — `add_skill` writes `0.8`, `skill_autosave_min_confidence` defaults to `0.85` (`src/settings.py:557`), and a pass writes `0.95` (`routes/skills_routes.py:933`) — so every skill was below the bar from the moment it was created. It applies to skills that have been scored, which is the only time it means anything. **The undo is the second half of the row and it is why the order of operations changed.** Every SKILL.md is read **before** anything is removed, and a skill whose source will not load is **not deleted at all** — the alternative is a delete that is knowingly unrecoverable. Restoring is two calls because there is no create-from-markdown route: `POST /api/skills/add` remakes the directory under the same name (free after the delete) with `source: 'user'`, which is what exempts it from `add_skill`'s dedup-at-creation — without that flag a restore would silently return the *other* member of the duplicate group it was deleted beside — and `POST /{name}/markdown` writes the exact bytes back, pinning the stored name rather than the frontmatter's (`routes/skills_routes.py:1849`), so the round trip is byte-stable. The affordance is `showToast`'s existing action button at 12s, the same one `notes.js` and `calendar.js` use (`Law 14`); no Ctrl+Z, because there is no skills-scoped undo stack and inventing one would be a second scaffolding. **The copy was wrong on the screen in the same way the code was wrong underneath**, so both moved: the confirmation now names what it will take *and what it leaves alone*, and says the undo exists before you press it; the tooltip says the same; and the disabled state says *why* it is disabled instead of repeating the label. 11 tests in `tests/test_skill_bulk_delete_safety_js.py`, **all 11 failing on the tree before the change**, driving the real `_selectedNonPassingSkills` body against real skill rows; 10 mutations, all caught. `Verify:` write a skill by hand in the Workshop, press **Select**, tick it, and look at the red button — it is greyed out, and hovering it says *"None of the selected skills has failed an audit."* Tick a skill whose card shows a failed audit and the button turns on and says how many it will take and what it will leave. Press it: the confirmation names both, you confirm, and the toast that follows has an **Undo** button that puts the skill back with its text intact. — agent:`p9`
 - [ ] **P9-13** Surface the theme zone highlighter — hovering a colour picker outlines the element it controls on the live page behind the modal. **The best explainability feature in the app**, with no label, legend or hint that it exists. The map is keyed by picker id, so extending it is a data edit.
 - [ ] **P9-14** Bulk-operation reporting. **Premise corrected 2026-08-27.** **Both halves are wrong.** The selection
   count *is* rendered, in four live bulk bars. And three document operations plus one gallery
@@ -5320,7 +5530,25 @@ the only lane through which the theme file gets touched.
 - [ ] **P10-08** Zoom compensation for modals. **Premise corrected 2026-08-27.** **This is backwards.** The generic rule at `style.css:181` already covers every `.modal-content`, so a new modal is compensated by default and needs no line of its own. The five per-modal `ui-scale-125` rules are **exceptions to that rule**, not the pattern to follow. Rewritten deliverable: find out why each of the five needs an override, fold back the ones that do not, and document the remainder. As written this row taught every future contributor the wrong habit.
 - [x] **P10-09** Rebuild, redeploy, bump the cache-buster, verify in-container imports. **`static/` has no bind mount.** — **done 2026-09-10, on the real deployment.** Image rebuilt (exit 0, 2.87GB, replacing one thirteen days old), stack recreated, all four services up. **The row's warning is the whole point and it was checked rather than assumed**: `static/` has no bind mount, so a JS change that never reaches the image is invisible until a user hits it. All six touched assets — `sw.js`, `memory.js`, `notes.js`, `chatRenderer.js`, `style.css`, `index.html` — are **byte-identical between the host working tree and the running container**, and `CACHE_NAME` reads `pantheon-v405-p13-15-mentions` inside the image. (Hashing against *this* container would have failed on line endings alone — cybertooth checks out CRLF — which is its own small lesson about what a comparison is actually comparing.) In-container imports verified by running them: `stem('drives') → 'drive'` and *what do I drive* → the diesel-van memory, which is `B62`'s own probe answering in production. — verified on cybertooth
 - [ ] **P10-10** Full regression: `pytest -q`, `py_compile` across app/routes/src, `node --check` across every touched module, and a manual pass over every surface in the mockup. — **the automated half is done 2026-09-10; the manual pass is not, so this stays open.** `.pantheon/release-gate.py` runs every checker, `py_compile` across the tree, `node --check` across all 187 modules, the retrieval eval and the suite, in one command (**173 when this was written; the figure was CI's, and CI's loop was checking nothing on the first file it named** — `B10`) — 30 seconds with `--fast`. **Every checker and the suite had been run by hand before each commit, which works right up until the run somebody is tired during: a gate you have to remember is a gate that is sometimes not there.** **The list is read out of `.github/workflows/ci.yml` rather than copied** (`Law 13` — a ceiling in two files is a ceiling that will disagree with itself, and the disagreement gets found by a push that fails after a local run said it was fine), and a test asserts no checker is named in the script. **It earned its place on the first run: `check-tracker.py` had existed for weeks and CI never ran it** — the checker that validates the roadmap's own arithmetic, that no id names two rows (`B48`), that the newest Progress entry matches the totals (`B44`), all three of which were real defects and one of which it caught again today. A roadmap that lies about itself had been pushable the whole time. Now in CI, and a test fails if any checker on disk is missing from it. **What remains is the half a script cannot do** — the manual pass over every surface — and the gate prints that rather than printing *passed* and implying a coverage it has not got. 16 tests.
-- [ ] **P10-11** Run the `SECURITY.md` fork checklist before the first public push — `git status --short`, the ignore check, and the secret grep.
+- [x] **P10-11** Run the `SECURITY.md` fork checklist before the first public push — `git status --short`, the ignore check, and the secret grep. — **Run 2026-09-18, the hour the owner said the repository was going public, and it is clean.**
+  All three checks, with the third widened to the **whole history** rather than the working tree,
+  because a public repository exposes every commit and a rewrite afterwards does not un-publish
+  one. `git status --short` empty. `git check-ignore -v` confirms `.env`, `data/auth.json`,
+  `data/app.db`, `logs/compound.log` and `pantheon.db` are all ignored, by `.gitignore:14`, `:28`,
+  `:31` and `:33`. Across **186 commits** exactly two credential-shaped strings exist anywhere in
+  history — `sk-abcdefghijklmnopqrst` and `sk-proj-AAAABBBBCCCCDDDDEEEEFFFF`, a sequential
+  alphabet and repeated letters, both test fixtures, and one of them lives in a test asserting the
+  key is redacted. The only credential-shaped file ever added is `.env.example`. Every password
+  literal in history is `alice-password`, `bob-password`, `adminpass123` or a redaction fixture.
+  **Nothing has leaked.**
+  **The checklist itself was the finding** — see `B770`. Its `sk-` alternation had no left anchor,
+  so it matched the word `task-`: over a hundred `static/` lines, with a real key indistinguishable
+  among them. Anchored, widened to the shapes a 2026 leak actually takes (`ghp_`, `github_pat_`,
+  `AKIA`, PEM headers), and pinned by `tests/test_the_secret_sweep_can_be_read.py`, which runs the
+  document's own regexes against strings that are secrets and strings that are not.
+  `Verify:` the sweep, run as written, produces output a person can read, and a fork owner who
+  runs it before publishing gets a true answer about their history rather than their checkout.
+  — run at the owner's word that the repository was going public — agent:`integrator`
 - [ ] **P10-12** Write the release notes. Lead with the Odysseus credit. Enumerate the breaking renames: env vars, storage keys, vector collections, cookie, CLI scripts, systemd unit, bundle id.
 
 ---
@@ -5820,8 +6048,87 @@ is mostly moving values into a system that exists, then layering roles on top.
   storing the settings key beats the variable; patching the role hook beats both.
   — agent:`p12a`
 
-- [ ] **P12-02** **Limit profiles attached to roles.** Upload size, files per request, request
+- [x] **P12-02** **Limit profiles attached to roles.** Upload size, files per request, request
   rate, context budget, concurrent agent runs, model-serve permission.
+  — **done 2026-09-18, and the blocker had already cleared: what was missing was not the
+  provider, it was the profile.** `P11-02` installed the role limit provider at start-up
+  (`app.py:287`) and it answers. Measured before anything was added (`Law 14`): the provider
+  gates on `roles.limit_keys()`, which was `settings.LIMIT_RANGES` — and `LIMIT_RANGES`
+  answers a **narrower question than the role layer needs**. Its own docstring says so: *the
+  nullable integer limits*, i.e. which settings keys `POST /api/auth/settings` accepts `null`
+  for. **Four limits resolve through `settings.resolve_limit` with an `owner`** — so the role
+  leg is consulted for them on every single call — **and ship a real default rather than
+  `None`, so none of them was in that table and no role could ever answer**:
+  `task_concurrency_cap`, `upload_burst_limit`, `upload_burst_window_seconds` and
+  `approval_timeout_seconds`. `task_concurrency_cap` is the loudest of the four: `P6-08` has
+  spelled its source `"role profile"` since before roles existed.
+  **Scope of that count, because a number without one is not a number (`Law 5`): keys handed
+  to `settings.resolve_limit` / `resolve_limit_detail` / `limit_policy.resolve_int_limit`
+  with an `owner=` keyword, AST-measured across non-test, non-`.pantheon` Python, excluding the
+  resolver's own internal delegation — **nine call sites in six files, twenty-two distinct
+  keys, four of them unreachable by a role.**
+  **The six the row names, each measured and each driven (`Law 20`) rather than asserted:**
+  **upload size** already worked — the ten byte caps are in `LIMIT_RANGES` and `P12-01` wired
+  them; a test drives it and says out loud that it passes before this row as well as after.
+  **request rate** worked for the six auth throttles and the two upload-rate keys and did not
+  for the burst gate, which `P12-06` had resolved *with* an owner against a registry that
+  refused the key. **files per request** had **no key at all**: `MAX_FILES_PER_REQUEST = 25`
+  at `src/upload_handler.py:250`, a constant `routes/upload_routes.py` closed over.
+  **context budget** had no key either and is `P12-04`, which is why the two rows landed
+  together. **concurrent agent runs** is `task_concurrency_cap`, above. **model-serve
+  permission** needed nothing built and that is the finding: `allowed_models`,
+  `allowed_models_restricted` and `block_all_models` are `DEFAULT_PRIVILEGES` keys,
+  `auth_helpers.resolve_privilege` has consulted the role since `P11-02`, and
+  `routes/chat_helpers._allowed_models_for_request` reads it from `get_privileges`. A test
+  drives that path rather than a fourth implementation being written beside it.
+  **One derivation, not a third list (`Law 14`).** `settings.role_limit_ranges()` is
+  `LIMIT_RANGES` plus those four, and **every bound is imported from the module that owns the
+  limit** — `TASK_CONCURRENCY_CAP_MAX` from `src/task_scheduler.py`, `MIN/MAX_APPROVAL_TTL_SECONDS`
+  from `src/tool_approvals.py`, the burst bounds from `src/upload_limits.py` — so the number a
+  role is clamped to and the number the resolver enforces cannot drift into a panel that lies
+  about itself. `roles.limit_keys()` and `GET /api/auth/roles` both read it, and the roles
+  route now serves `limit_ranges` beside `limit_keys` so a form can show the floor and the
+  ceiling instead of discovering them by being refused (`Law 15`). **25 keys in `LIMIT_RANGES`,
+  29 a role may carry, 122 in `DEFAULT_SETTINGS`** — re-counted by a test, not by this sentence.
+  **Files per request is policy and the route resolves it per request.**
+  `upload_max_files_per_request`, bounds `(1, 1000)` — the top is starlette's own form-parser
+  cap, which is the real ceiling underneath it. `MAX_FILES_PER_REQUEST` survives (`Law 1`) as
+  the built-in default and is now `upload_limits.DEFAULT_MAX_FILES_PER_REQUEST` rather than a
+  second copy of 25 (`Law 7`); `tests/test_upload_multifile.py`'s window — at or above the
+  browser's `MAX_FILES`, at or below `upload_rate_limit` — is unchanged and still passes
+  untouched. The gate moved **below** the owner resolution in the handler, because the role
+  layer cannot key off an owner the route has not read yet.
+  **SETTINGS-ONLY, deliberately.** No `PANTHEON_*` variable was added: none existed, so
+  `Law 1` requires nothing and a new variable is a new place the same number can be set
+  (`Law 13`) — `P12-05b`'s reasoning, unchanged. `.pantheon/check-env-declared.py` is
+  therefore flat at `UNDECLARED 71`.
+  **`FORBIDDEN.md` Part 2 is not widened by any of this.** The floor is 1 at definition
+  (`roles._check_limit_value`) **and** again at every read, because `auth.json` is hand-editable
+  and a definition check is not the last word — a test hand-edits a stored role to 10,000,000
+  seconds and the approval TTL still resolves to the 86,400 its own module declares. The role
+  catalogue is `require_admin`, and `/api/auth` is in `_APP_API_BLOCKLIST_PREFIXES`, which is
+  what keeps `approval_timeout_seconds` being role-carriable from undoing `_SELF_RESTRAINT_KEYS`
+  (`B42`). A role is an admin decision about a person; the restraint set is about the agent.
+  **One existing test changed and it got stronger, not weaker.**
+  `test_the_two_namespaces_are_the_two_live_registries` asserted `limit_keys() == LIMIT_RANGES`.
+  It now asserts the derivation **contains** that table rather than replacing it, which is the
+  property it existed to protect, plus the one it could not state before.
+  **What this does NOT do: still no screen (`Law 13`, named rather than hidden).** An admin can
+  define a role through `PUT /api/auth/roles/{name}` or by editing `auth.json`; nothing in
+  `static/` offers a role editor. `P11-11` owns that screen and `P12-07` owns the limits panel.
+  **What `P12-07` must offer, stated here because its whole subject is that these limits have
+  an API and no front door:** one row per key in `GET /api/auth/roles`'s `limit_ranges`, showing
+  **the effective value, the layer that decided it** (`resolve_limit` returns that string and
+  nothing renders it), **and the floor and ceiling from the same payload**; `upload_rate_limit`
+  and `upload_max_files_per_request` shown **together**, because a files-per-request above the
+  rate limit 429s part-way through a batch that the 400 would have refused whole; a `null`
+  control that means *let the layer below answer*, distinct from typing the default; and no
+  control anywhere that reaches 0.
+  **10 tests in `tests/test_role_limit_profiles.py`, 8 mutations, all caught** — the registry
+  back to `LIMIT_RANGES`, each of the three new bounds dropped, the approval bound widened past
+  its owner's, files-per-request back to the constant, that resolver dropping the role layer,
+  the alias becoming a second number, and the floor removed.
+  `Verify:` `python -m pytest -q tests/test_role_limit_profiles.py tests/test_roles_overlay_default_privileges.py tests/test_upload_multifile.py` — one role, one `install_role_layer`, and the same person gets a different upload size, a different files-per-request through `POST /api/upload`, a different burst window, a different context budget, a different task concurrency cap and a different model list, with no restart; everybody else gets the shipped numbers; and a role that tries to reach 0 or 10,000,000 is refused at the door and clamped at the read. — agent:`p12r`
 - [x] **P12-03** **Runtime-adjustable without a restart.** **8 of the 10 caps** are read at
   import today (re-measured 2026-08-27) — so this is a real refactor, not a settings row. The
   other two already re-read per call and are the pattern to copy rather than files to change:
@@ -5867,14 +6174,70 @@ is mostly moving values into a system that exists, then layering roles on top.
   limit, then answers with a stored one, with nothing reimported and no process restarted.
   — agent:`p12a`
 
-- [ ] **P12-04** **Context and attachment budgets become policy.** This is where `P2-08` and
-  `P2-09` land properly. **Premise corrected 2026-08-27.** **There are more budgets than the line admits** — five
-  live in `document_processor.py` alone, including a `.log`-only 10,000 branch nobody has
-  mentioned, and **seven** across the codebase: the shared 24,000-char budget, the PDF's 15,000,
-  the per-file 30,000, the `.log` 10,000, and the skill-injection count. All of them become a
-  single coherent budget with a per-role ceiling — the ceiling is what stops a proven-window
-  scale-up from handing someone twelve untrusted skill blocks. **`src/context_budget.py`
-  already implements the shape this wants.** Extend it; do not author an eighth (`Law 14`). *(Path corrected 2026-08-31: the row said `services/context_budget.py`, which does not exist — `services/` has no such file. The module is `src/context_budget.py`. An agent following the row as written would have found nothing there and authored the eighth budget, which is the exact outcome the sentence exists to prevent.)* Its `budget_is_explicit` is also the working version of the pattern `H06` needs — same idea, used, and correct.
+- [x] **P12-04** **Context and attachment budgets become policy.** This is where `P2-08` and
+  `P2-09` land properly. **Premise corrected 2026-08-27.** **Premise corrected again
+  2026-09-18, and the correction is that "seven" was right and the enumeration under it was
+  not.** Re-measured with the scope stated (`Law 5`): **character or count budgets applied to
+  attachment or injected content on the chat-ingest path, in non-test Python — seven, six of
+  them in `src/document_processor.py`** at `:29` (24,000 shared), `:933` (30,000 per text
+  file **and** 10,000 for `.log`, two budgets on one line), `:1033` (15,000, what the PDF
+  extractor keeps), `:1042` (15,000, Office/EPUB markdown inlined), `:1427` (15,000, the PDF
+  body inlined into the turn). The seventh is `skill_max_injected`, `src/agent_loop.py:3144-3156`.
+  **The row said "the PDF's 15,000" as though there were one. There are three separate 15,000s
+  and they answer three different questions**, so an operator raising "the PDF budget" would
+  have moved one of them and wondered why nothing changed. *(The path correction of 2026-08-31
+  held: `src/context_budget.py` is the module and `services/context_budget.py` still does not
+  exist.)*
+  — **done 2026-09-18. `src/context_budget.py` was extended; there is no eighth.** The module
+  keeps its token-budget half (#1170, `compute_input_token_budget`, `budget_is_explicit`)
+  untouched and gains the character half beside it, because the two are different questions
+  about the same window and `Law 14` asks for the scaffolding that exists.
+  **Six keys, one registry, four layers.** `CONTEXT_BUDGETS` holds the six built-in defaults;
+  each resolves **role profile → instance setting → built-in default** through
+  `limit_policy.resolve_int_limit`, which is `settings.resolve_limit`. There is no environment
+  leg because none of the six had a variable — `P12-05b`'s settings-only reasoning, and
+  `check-env-declared.py` is flat at 71. All six are in `LIMIT_RANGES` and ship `None` in
+  `DEFAULT_SETTINGS`, so `POST /api/auth/settings` validates and clamps them through the block
+  it already had, with **no edit to that route at all**, and a role may carry them.
+  **`context_attachment_total_chars` is a ceiling, not a seventh number beside the others, and
+  that is what makes them "a single coherent budget".** Every per-file budget is clamped to it
+  at read time. Before this, the per-text-file 30,000 was **larger than the whole turn's
+  24,000** — a single large attachment was truncated twice, by two numbers, with two different
+  markers, and the second number was unreachable. A role lowering the ceiling now lowers what
+  any one file can claim, which is exactly what the row asks the ceiling for.
+  **The ceiling is resolved once per turn and threaded down, not resolved per file** —
+  `P12-03`'s rule, held rather than claimed, so a settings save landing between a message's
+  first attachment and its last cannot apply two budgets to one message. A test counts the
+  resolutions rather than inferring them from an answer that did not change.
+  **`Law 1`, and it is load-bearing for an existing test.** `MAX_INLINE_ATTACHMENT_CHARS`
+  survives, is the registry's own number rather than a second copy of 24,000 (`Law 7`), and is
+  read as a **live module attribute** at every call site — so
+  `tests/test_document_processor_attachment_budget.py`, which monkeypatches it, passes
+  untouched and still decides when nothing above it is set. That is `P12-03`'s shape for the
+  byte caps, applied here.
+  **The refusal sentence stopped being a second source of truth.** *"The 24,000-character
+  shared inline attachment budget was already used…"* printed the shipped constant. It now
+  prints the budget that actually applied to that turn, so an operator who lowered a role's
+  ceiling and a user reading why their file was dropped are looking at the same number.
+  **What this does NOT do, and it is the seventh budget:** `skill_max_injected` stays where it
+  is. Its only consumer is `src/agent_loop.py`, which another agent owns this wave, and
+  declaring a seventh key with no consumer is `Law 13`'s unwired half in a phase that keeps
+  finding it. Filed as `B750` with the one edit it needs. `agent_input_token_budget` is the
+  same shape and is `B751`.
+  **19 tests in `tests/test_context_budgets_are_policy.py`, 10 mutations, 8 caught.** The set is
+  one per claim: the `.log` budget collapsed back into the text one, the ceiling clamp removed,
+  the shared budget un-shared, a per-file budget dropped from the role layer, the text/`.log`
+  budget dropped from it, the floor taken to zero, the ceiling back to the constant, the
+  refusal sentence back to the shipped number. **Two survived and are reported rather than
+  hidden.** (1) Rewriting `MAX_INLINE_ATTACHMENT_CHARS` as the literal `24000` is not caught,
+  because the literal equals the registry's value — it becomes a defect the moment either moves,
+  and `test_the_module_constants_are_the_registry_and_not_a_second_copy` goes red at exactly
+  that moment, which is when it matters. (2) Setting `ceiling=None` at the **PDF-body-inlined**
+  site alone survives: that site re-resolves the ceiling and gets the same answer unless a
+  settings change lands mid-turn, and the branch needs a `session_id` and a real PDF to reach,
+  so the resolved-once property is pinned for the text path and stated but not pinned for that
+  one. Both are named here rather than left for the next mutation run to rediscover.
+  `Verify:` `python -m pytest -q tests/test_context_budgets_are_policy.py tests/test_document_processor_attachment_budget.py` — six budgets resolve per call with no restart; a stored ceiling shrinks a real multi-file turn through `build_user_content` and the banner names the new number; a role shrinks it for one person and not another, and shrinks the per-file budgets with it; a `.log` and a `.txt` attachment answer to two different keys; `0` clamps to 1; and the shipped module constant still decides when nothing else is set. — agent:`p12r`
 - [ ] **P12-05** **Per-user and per-role rate limiting.** The current limiter is per-IP, which
   behind any reverse proxy is one bucket for everyone.
 - [x] **P12-05b** **The throttle *values* are still literals, and `P12-05` does not change
@@ -6021,11 +6384,78 @@ is mostly moving values into a system that exists, then layering roles on top.
 
 - [ ] **P12-07** **An admin surface for all of it** — one panel, not eleven env vars in a
   compose file. Depends on `P2-20` landing the admin markup pattern first.
-- [ ] **P12-09** **Make the context budget visible while you work, not in a settings tab.**
+- [x] **P12-09** **Make the context budget visible while you work, not in a settings tab.**
   What is consuming the window right now — system prompt, skills, retrieved memory, attachments,
   history — as a live breakdown at the composer. Nobody self-hosted does this well, and it turns
   every abstract limit in this phase into something a person can see themselves hitting.
-  `Depends:` P12-04.
+  `Depends:` P12-04 — done.
+  — **wire half done 2026-09-18 by `p12r`.** `build_user_content` has computed, on every turn
+  since it was written, exactly how many characters each attachment spent and what the turn had
+  left — and dropped every one of those numbers on the floor. That is `P4`'s shape (*a value
+  computed, used, and never shown*) sitting inside `P12`. It fills an optional `budget_report`
+  out-parameter now, so the breakdown a caller gets is **the one the model will actually receive**
+  rather than a second computation beside it (`Law 14`).
+  `context_budget.context_window_report()` turns that plus the six budgets into the composer's
+  payload. **Three attachment states, not a boolean (`Law 10`):** `full`, `truncated`, `omitted` —
+  and an omitted file is **not free**, it spends the remainder on its own banner. **Four segments
+  say `measured: false` and never `0`**, because system prompt, skills, retrieved memory and
+  history are assembled in `src/agent_loop.py` (`B750`, `B751`).
+  — **surface half done 2026-09-18, and the endpoint came with it.** A meter above the send
+  button (`#context-meter` in `static/index.html`, drawn by `renderContextMeter` in
+  `static/js/fileHandler.js`), whose denominator is the `is_ceiling` budget and whose fill is the
+  `attachments` segment's `chars`; a chip per `items[]` entry with its `name`, its share and its
+  `state` — `full` plain, `truncated` with the amount that fit, `omitted` struck through and
+  saying *"no room in this message"* in words, because a strike-through survives neither greyscale
+  nor a screen reader. The ceiling's `source` sits under it in small type: *"Your role sets this
+  ceiling: 3,000 characters."* — because *"you have 3,000 characters"* and *"your role gives you
+  3,000 characters"* are different sentences and only the second one tells a person who to ask.
+  `clamped: true` on any budget is said out loud rather than shown as a quietly smaller number.
+  **The remainder is hatched, not empty.** The four unmeasured segments are drawn as a hatched
+  band with `unmeasured_reason` as its title and a line under the meter naming them. A bar that
+  drew them as empty space would read as headroom, which teaches the opposite of what the meter is
+  for — `Law 10`'s polarity incident in a bar chart. The hatching is geometry (a repeating 135°
+  gradient) rather than a hue, so it survives greyscale and the four light palettes alike, and it
+  disappears when a report says everything was measured, so it means something.
+  **`GET /api/upload/context-budget` landed here, in this commit, and `B752` is why it could not
+  land in the last one.** `.pantheon/check-unreachable.py` holds a ceiling of **90** routes with no
+  frontend caller; the route alone took it to 91 and the gate went red, and the two honest-looking
+  ways out are both wrong — adding it to `ALLOWED` claims a caller that is not the frontend when
+  the frontend is exactly the caller, and raising the ceiling is widening a ratchet to fit one's
+  own unwired half. The route is declared **above `GET /{file_id}`**, a catch-all FastAPI matches
+  in declaration order (`B53`, same router), and the test asserts that ordering rather than
+  trusting it. With the composer's fetch in the same commit the count is **458 routes, 90 with no
+  frontend caller, ceiling 90** — flat.
+  **A finding worth keeping, because the ratchet was nearly satisfied by prose.** Measured here:
+  `check-unreachable.py` normalises every template hole to `*`, so a fetch written
+  `` `${API_BASE}/api/upload/context-budget${query}` `` normalises to
+  `*/api/upload/context-budget*` and does **not** match the route. The route was matched anyway —
+  by the two `` `GET /api/upload/context-budget` `` mentions in the module's own **comments**,
+  which `_URLISH` cannot tell from a URL because a backtick is a backtick. That is `Law 20`'s first
+  incident — a source file is code and prose about code interleaved — happening to a **ratchet**
+  rather than to a test, and it means tidying the comments would have silently taken the ceiling
+  to 91. The path is now a literal with the query concatenated after it, and
+  `test_the_ratchets_caller_is_the_fetch_and_not_the_prose_around_it` pins the claim with the
+  comments blanked, through the checker's own normaliser rather than a second copy of it. Filed
+  as `B760` for the checker's side of it.
+  **What the meter cannot do yet, named rather than hidden (`Law 13`).** Attachments are uploaded
+  when the message is sent, not when they are attached, so the *numerator* only exists once the
+  files are on the server: with files waiting in the composer the meter shows the ceiling, its
+  source layer and the hatched remainder, and the chips read *"N attached — measured when you
+  send"*. Making the spend visible **before** the send needs the composer to upload on attach,
+  which is a different change to a different module and is filed as `B761`.
+  **No new accent site**, and the theme constraint was the binding one on this surface: borders,
+  left rules, `currentColor` and a hatch. `tests/test_accent_fallback_semantics_css.py` is flat at
+  814.
+  **18 tests in `tests/test_context_meter_js.py`, 11 mutations, all caught** — a meter drawn with
+  no denominator, the unmeasured segments drawn as empty space, omitted and truncated reading the
+  same, a filename going in as markup, a clamped budget shown in silence, the ceiling no longer
+  saying who set it, the composer no longer naming the route, the budget never read at start-up,
+  the endpoint reporting no measurement at all, an unvalidated id being followed, and the caller's
+  literal ceasing to match the route pattern.
+  `Verify:` open a chat and the budget is already above the send button with the number and who
+  set it; attach two files and send, and the meter says what each one cost, what happened to one
+  there was no room for, and that four other things nobody counted are also in this window — all
+  of it without being told where to look. — agents:`p12r` (wire) / `surface` (composer and route)
 - [x] **P12-10** **Auto-deny pending approvals on timeout rather than leaving them open.**
   The approval store already has a TTL; expiry and denial are not the same event. A prompt left
   hanging while nobody is at the keyboard should close as *denied*, and the timeout should be an
@@ -16326,3 +16756,159 @@ this is the same thing happening to the row that corrected the store.
   this product reaches `huggingface.co`; and a function that constructs a FastEmbed client without
   asking fails the suite. `Depends:` nothing. `Closes:` `B722`. — found while adjudicating `B722`
   — agent:`integrator`
+
+- [ ] **B730** **Twenty-eight class names containing `empty`, and fourteen sites on the shared shape.** `P9-07` authored `renderEmptyState` in `static/js/ui.js` and brought the Library modal's four tabs onto it — 13 call sites, plus one in `settings.js`. The rest of the population is unconverted and is inventoried here rather than left as an implied promise. **Measured 2026-09-18, scope stated (`Law 5`): `class="…"` attributes, `classList.add()` and `className` string assignments in `static/**/*.js` outside `static/lib/**` plus `static/*.html` — 28 distinct names at 74 occurrences across 19 files before the change.** The largest holdings are `admin-empty` (18, in `static/js/admin.js` and `static/index.html`), `doclib-empty` in `static/js/sessions.js` (9, all inside `#library-modal`), `cal-empty*` (8, and `calendar.js:834-857` is the good example the shape came from, so converting it is a straight swap), `memory-empty` (5) and `cookbookServe.js` (5). **Not a mechanical sweep**: several of these are genuinely three-state and several are one-state, and the value is the distinction, not the class. `Verify:` pick any list in the product, empty it, filter it to nothing, and break its backend — three different screens, each saying which state it is in and offering the way out of it. `Depends:` P9-07.
+
+- [ ] **B731** **The skills duplicate grouper is twice as eager as the server's, and it drives a delete button.** `_duplicateMeta` in `static/js/skills.js` unions two skills into a duplicate group at a Jaccard-ish similarity of **0.38**; `SkillsManager.add_skill` refuses to create a near-identical skill at **0.82** (`services/memory/skills.py:775`). The two numbers answer the same question and differ by more than a factor of two, so a pair the server was happy to create is presented in the UI as duplicates of each other — and until `P9-12` that presentation fed "Delete non passing", including the member the card labelled *recommended*. `P9-12` spared the keeper; it did not reconcile the thresholds, because which one is right is a judgement about the corpus and not a bug fix. **Decide which number is correct and use it in both places, or state why the UI's advisory grouping should be looser than the server's refusal.** `Verify:` two skills the server was willing to create are not shown to a person as duplicates of each other, or the reason they are is written where the pill's tooltip can say it.
+
+- [ ] **B732** **`admin.js` reports six different failures in the class it uses for "nothing here".** `static/js/admin.js` writes `<div class="admin-empty">` for *"Access denied"* (`:41`), *"No users found"* (`:43`), *"Failed to load tools"* (`:2123`), *"No tools found"* (`:1971`), *"No MCP servers configured"* (`:2133`) and *"No directories indexed"* (`:2489`). An administrator who has lost their session and one who has an empty tool list see the same grey italic sentence in the same place, and neither is told what to do next. Eleven `admin-empty` sites in that file plus seven in `static/index.html`, **five of them the literal string *"Loading..."***, which is a fourth state again. Same fix as `P9-07`, different surface. `Verify:` revoke your admin session and open Settings → Users: the panel says you are not signed in as an administrator, not that there are no users. `Depends:` P9-07.
+
+- [ ] **B733** **`_initScrollDismiss` says "Retry once" and retries forever.** `static/js/ui.js` binds a scroll listener to `#chat-history`, and when the element is absent it calls `setTimeout(_initScrollDismiss, 500)` — recursively, with no cap, under a comment reading *"Retry once if element doesn't exist yet."* On the shipped page the element exists and the first call binds, so this costs nothing in the product; it is a live 500ms timer on any page that loads `ui.js` without a chat history, which is every test sandbox and would be any future page that reuses the module. **The comment is the defect worth fixing either way**: it describes a bound the code does not have, in the file every module imports. `Verify:` the retry either stops after the number of attempts its comment claims, or the comment says what it actually does.
+
+- [ ] **B734** **Four `catch` blocks in `static/js/sessions.js` write *"Failed to load …"* into `#library-modal`, which nothing opens.** `:3459`, `:3497`, `:3556` and the grid states at `:3213`, `:3394`, `:3410`, `:3442`, `:3473`, `:3514` — **nine `doclib-empty` sites in one file** — are the same family of defect `P9-08` fixed in `documentLibrary.js` — no reason, no retry, and *"No sessions loaded"* used for both an empty list and a failed one. They are **not** fixed, because `P9-14` already records that `#library-modal` is unreachable, and converting a surface nobody can open buys nothing. **This row exists so the two facts stay attached to each other**: if `P9-14` resolves the library-modal question by making it reachable, these nine sites are part of that work; if it resolves it by deleting the dead loop under `Law 1`, these go with it. Do not convert them in isolation. `Depends:` P9-14.
+
+- [ ] **B735** **`static/js/ui.js` is loaded from 72 sites across 50 files and carries no version at any of them.** That is *consistent*, which is why `check-specifiers.py` reports `FORKED 0` — one module, one specifier. It is also the largest shared module in the tree with no cache-buster of its own, so the only thing that makes a change to it reach a returning browser is `CACHE_NAME` in `static/sw.js`, and only for clients the service worker is serving. Measured 2026-09-18 with one scope — static `import … from`, dynamic `import()`, `<script src>`, `<link href>` and `sw.js` precache entries, in `static/**/*.js` outside `static/lib/**` plus `static/*.html`. `spinner.js` (48 sites), `state.js` (44), `icons.js` (37), `toolWindowZOrder.js` (27) and `sessions.js` (18) are in the same position. **This is an observation with a decision behind it, not a defect with a fix**: giving `ui.js` a `?v=` means moving a string across 72 sites on every change, which is the contract `D-01` describes as the half that still bites. Either state that `CACHE_NAME` is the buster for unversioned modules — and then `AGENTS.md`'s *"Bump the cache-buster on any changed static asset"* should say which one — or version them. Today an agent reading that line and grepping for `ui.js?v=` finds nothing and has to guess. `Verify:` `AGENTS.md` names, for a module with no `?v=`, the one thing to bump.
+
+- [ ] **B740** **The agent loop's own compaction notice still has no figures.** `P4-13` gave `routes/chat_routes.py` a `_compacted_event` helper that carries `messages_before` / `messages_after` / `tokens_before` / `tokens_after`, used at **five** sites there (`routes/chat_routes.py:2283`, `:2501`, `:2543`, `:2557`, `:2576`). `src/agent_loop.py` yields the same event from **four** more (`:6236`, `:6357`, `:6369`, `:6383`, all `{"type": "compacted", "context_length": _last_route_context_length}`) when a candidate route's own compaction is committed mid-stream, and none of them can say how much: the per-candidate state that path keeps (`_candidate_request_states[i]["compaction_state"]`) holds the summary to apply, not the two lists it was measured between. So an **agent** turn whose route compacts announces it with exactly the figureless toast the chat path just outgrew, and a user cannot tell from the surface which of the two kinds of turn they are in. Not fixed here because the measurement has to happen inside `_route_request_messages`, which reaches into `src/context_budget.py` — owned by another agent this wave — and a second opinion about that function in the same commit is how a row stops being reviewable. `Verify:` compact an **agent** conversation and the notice says how much was summarised, in the same words the Chat one does. `Depends:` `P4-13`. — found by `P4-13` — agent:`p4wire`
+
+- [ ] **B741** **The low-signal direct path reads the usage event and drops the speed out of it.** `src/agent_loop.py:4654` handles `type: "usage"` on the direct (non-agent, single-call) path: it takes `model`, `input_tokens` and `output_tokens` and never looks at `gen_tps` or `prefill_tps`, so the bucket `_usage_bucket` builds at `:4582` and `:4758` carries no speed at all. Under the absence contract that reads as *the backend did not report one*, which on a local llama.cpp is false — it reported one and this branch stepped over it. The agent path's own handler (`:6239`) reads all six timing keys, so the two branches now disagree about what a usage event contains. Two lines. Kept out of `P4-14` because that row's tests drive the agent loop and this path has none of its own, and a fix with no test is the half of `Law 13` that looks finished. `Verify:` a one-shot local turn reports the same measured decode speed an agent turn on the same model does. `Depends:` `P4-14`. — found by `P4-14` — agent:`p4wire`
+
+- [ ] **B742** **`agent_model_wait_time` is a subtraction standing where a measurement now exists.** `_compute_final_metrics` computes it at `src/agent_loop.py:3819` as `max(time_to_first_token − sum(prep_timings), 0)` and Message Stats prints it as *"Model wait"*, beside figures the backend measured. It is a wall clock minus a wall clock with a floor under it, so it silently absorbs every error in either — and the clamp means a prep total that overshoots reports **0s of model wait**, which reads as "the model answered instantly" rather than as "these two clocks disagree". `P4-14` put `prefill_ms` on the same metrics dict, which for the first time makes the claim checkable: on a local backend, model wait should be prefill plus queueing plus network, and a *smaller* model wait than `prefill_ms` is arithmetic that cannot be true. Nothing asserts the relation and no surface shows both. `Verify:` a turn whose reported model wait is shorter than its measured prefill is either impossible or flagged, and Message Stats never prints `0s` for a wait that was not zero. `Depends:` `P4-14`. — found by `P4-14` — agent:`p4wire`
+
+- [ ] **B743** **Two module bindings of `estimate_tokens`, and a test can patch the wrong one and still go green.** `routes/chat_routes.py` and `routes/chat_helpers.py` each do `from src.model_context import estimate_tokens`, so each holds its own name for one function. A test that patches `chat_routes.estimate_tokens` to make counting predictable — which is what `tests/test_foreground_model_routing.py` did — leaves `routes/chat_helpers.shaping_stats` measuring with the **real** estimator, and the assertion then fails against numbers nobody chose, or worse, passes because the real figure happens to match. Cost half an hour on `P4-13` and it is the same shape as `Law 20`'s third incident: the right name exists, in the wrong scope. **Five** import sites across `src/`, `routes/` and `services/` bind `estimate_tokens` this way (`src/agent_loop.py:28`, `routes/chat_routes.py:28`, `routes/chat_helpers.py:19` and two function-local ones in `routes/history/history_routes.py`), in **seven** modules that import from `src.model_context` at all — so a checker that names the measuring module for each shared helper is the general answer rather than a comment on this one. `Verify:` a test that patches a token estimator either affects every counter in the path it drives, or fails loudly saying which module it missed. — found while measuring `P4-13` — agent:`p4wire`
+
+- [ ] **B760** — **`check-unreachable.py` cannot tell a caller from a comment, and a route was
+  reachable only through prose.** `_URLISH` matches any `/api/…` string inside `'`, `"` or
+  `` ` `` — which is every backtick-quoted path in a JSDoc block, of which this tree has many.
+  Measured 2026-09-18 on `P12-09`: `GET /api/upload/context-budget` was resolved by two comment
+  mentions in `static/js/fileHandler.js` while the actual `fetch` normalised to
+  `*/api/upload/context-budget*` and matched nothing, because `${query}` at the end of the
+  template becomes a trailing `*`. Both defects point the same way and each hides the other: a
+  checker that counts prose as wiring will report a dead route as live, and a normaliser that
+  cannot see through a trailing template hole will report a live route as dead. The fix is two
+  lines and one decision: blank comments before scanning (`tests/helpers/source_text.blank` is the
+  one blanker, `B290`), and treat a trailing `*` segment as matching the literal segment it was
+  appended to — or, if that is too loose, say so and require callers to write the path as a
+  literal, which is what `P12-09`'s composer now does. **Scope for the first half, because a
+  number without one is not a number:** every `/api/…` string inside quotes or backticks in
+  `static/*.js`, `static/js/**` and `static/*.html` outside `static/lib/**`, comments **not**
+  blanked — **466 normalised patterns** today, and nobody knows how many of them are sentences.
+  `Verify:` a route whose only mention in `static/` is inside a comment is reported as having no
+  frontend caller, and a route whose caller appends a query string to a literal path is not.
+  — found while wiring `P12-09` — agent:`surface`
+
+- [ ] **B761** — **the composer cannot price an attachment until the message has been sent.**
+  `fileHandler.uploadPending()` runs at send time (`static/js/chat.js`, and at queue time on the
+  queued-message path), so a file sitting in the composer has no upload id and therefore no
+  measurable character cost: `P12-09`'s meter shows the ceiling, its source and the hatched
+  remainder, and the chips say *"N attached — measured when you send"*. That sentence is honest
+  and it is not what the row wanted, which is *see yourself hitting a limit* **before** you hit
+  it. The fix is to upload on attach rather than on send, which the whole-turn endpoint
+  (`GET /api/upload/context-budget?ids=…`) was built to support and which `B03`'s partial-batch
+  handling already half-assumes. It is a behavioural change to when bytes leave the browser — a
+  file the person removes from the composer would have been uploaded already — so it wants a
+  decision about cleanup and about the burst gate before it wants code, and it is deliberately not
+  bundled into a rendering row. `Verify:` attach a 40,000-character log to an empty composer and
+  the meter says it will be truncated **before** the message is sent.
+  `Depends:` `P12-09`. — found while wiring `P12-09` — agent:`surface`
+
+- [ ] **B762** — **`static/js/fileHandler.js` was one of the bare-URL modules, and this wave gave
+  it a version rather than leaving it unbustable.** `B58` made `admin.js`, `emailInbox.js` and
+  `sidebar-layout.js` consistent by making them **bare** in both the precache list and their
+  imports, which fixed the fork it was filed for and left those modules with no cache-buster at
+  all: an HTTP cache serves the old bytes until `CACHE_NAME` moves, and `CACHE_NAME` only moves
+  when the service worker's precache list changes. `fileHandler.js` was in that set and this patch
+  changed it substantively, so it now carries `?v=` at all six sites that name it (`static/sw.js`,
+  `static/app.js`, `static/index.html`, and the imports in `chatRenderer.js`, `gallery.js` and
+  `chat.js`) and `check-specifiers.py` is flat at `FORKED 0`. **The other bare modules were not
+  touched**, and the general question is whether "bare everywhere" is a policy or an accident.
+  Measured scope for whoever takes it: modules named in `static/sw.js`'s precache list with no
+  `?v=` — count them before deciding, and decide once. `Verify:` a changed static module is served
+  under a URL no browser has cached, and the rule that makes that true is written down somewhere
+  other than a habit. — found while bumping `P4-04`'s cache-buster — agent:`surface`
+
+- [ ] **B763** — **`tests/test_vision_owner_scope.py::test_request_vision_call_sites_pass_owner`
+  is red at `fb4a434`, and it is a `Law 20` assertion rather than a defect in the code.** The test
+  asserts the literal string `_process_pdf(path, owner=owner)` is present in
+  `src/document_processor.py`. `P12-04` threaded a `ceiling=` argument through that function
+  (`src/document_processor.py:1020`) and reformatted both call sites (`:1471`, `:1560`) across
+  several lines, so the one-line spelling no longer appears — while both call sites still pass
+  `owner=owner`, which is the property the test exists to protect. **Verified pre-existing:** it
+  fails identically on a clean `git archive fb4a434` tree with none of this wave's surface work in
+  it, so it is not this patch's. It is `Law 20`'s whole subject — a test that greps a file is
+  testing the file — and the fix is the second preference in that law: resolve the scope with
+  `ast.get_source_segment` for `build_user_content` and assert the keyword is present on the call,
+  rather than matching a formatting choice. Left unfixed here deliberately: it is outside
+  `static/**` and outside this agent's six rows, and a blind one-line string update would restore
+  the green without restoring the guarantee. `Verify:` reformatting a call site that still passes
+  `owner=` does not turn the test red, and removing the keyword does.
+  — found while verifying `P12-09` — agent:`surface`
+
+- [x] **B770** **The pre-publication secret grep fired on the word `task-`, and it is the check a
+  fork owner runs once, under time pressure, before doing something irreversible.** Found
+  2026-09-18 while running `P10-11` because the owner said the repository was going public.
+  `SECURITY.md`'s fork checklist carried
+  `sk-[A-Za-z0-9_-]{20,}` with no left anchor. `task-card-delete-busy-label` contains
+  `sk-card-delete-busy-label`; so does `task-form-output-email-account`, and so does every other
+  `task-` class name in `static/`. Run as written, the sweep returns **over a hundred lines**, all
+  of them false, and a real `sk-` key in that output is a needle in the haystack the check itself
+  built. The `Bearer [A-Za-z0-9._~+/-]{20,}` alternation had the same problem for the same reason:
+  it matches any long word after *Bearer*, including every truncated example in the docs.
+  **The class is familiar and this is the worst place for it.** A ratchet with slack in it, a
+  checker that counts a comment as a caller (`B720`, `B760`), a silent-handler list nobody can
+  read — this project keeps finding checks whose output is too noisy to act on. This one is
+  different only in that it is read once, by someone about to publish, and being unreadable is the
+  same as being absent.
+  Anchored with `(^|[^A-Za-z0-9_-])`, widened to the shapes a leak takes now — `ghp_`, `gho_`,
+  `github_pat_`, `AKIA`, `sk-proj-`, PEM private-key headers — and given two things it never had:
+  a pass over `git log --all` rather than the checkout alone, and a pass for credential-shaped
+  **files** ever added, because a committed `auth.json` or `.pem` carries no `sk-` string and is
+  worse than one that does.
+  `tests/test_the_secret_sweep_can_be_read.py` extracts the document's own regexes and runs them,
+  rather than asserting on its prose (`Law 20`): five ordinary class names must not match, five
+  real credential shapes must, the sweep must read history, and it must look for files. Removing
+  the anchor turns four of them red.
+  `Verify:` the checklist, run verbatim on this tree, prints only real candidates; and a class
+  name that happens to contain `sk-` never appears in its output. `Depends:` nothing.
+  — found while running `P10-11` — agent:`integrator`
+
+- [x] **B771** **A test double kept a signature the product had moved past, and the call site's
+  `except Exception` turned that into a wrong diagnosis.** Found 2026-09-18 by the full suite on
+  the `P4`/`P9`/`P12` merge.
+  `P12-04` threaded `ceiling=` through `_process_pdf`. `tests/test_build_user_content_pdf_marker.py`
+  stubbed it as `lambda path, owner=None: raw`, so the real call passed a keyword the stub refused
+  — and `src/document_processor.py:1470-1475` wraps that call in `except Exception: pdf_body_text
+  = None`. The `TypeError` vanished, the PDF body was never inlined, and the test reported
+  **`assert "[Page 1 text]:" in body_lines`** — a missing page heading, which is a plausible
+  product regression and is not what happened.
+  Both stubs in the file now take `**_`. The wider point is the one worth keeping: **a test double
+  with a fixed signature, in front of a call site that swallows exceptions, reports the wrong
+  failure rather than no failure** — and the wrong failure costs more than a red line, because
+  somebody goes looking in the product for a defect that is in the test. `P13`'s agent hit the
+  same shape in the same wave with two `add_entry` doubles built to refuse unknown kwargs.
+  **What this does NOT deliver**: the `except Exception` at that call site is untouched. It is
+  there because a PDF that will not parse should not fail an upload, which is right — but it
+  cannot tell "this PDF is broken" from "this function was called wrongly", and nothing in the
+  tree can today. `Verify:` adding a keyword argument to an extractor does not turn a content
+  assertion red. — found by the full suite at the merge — agent:`integrator`
+
+- [x] **B772** **The ninth test pinned to a cache-buster, and this one went red because the wave
+  fixed a buster that had been stale for four waves.** Found 2026-09-18 by the same run.
+  `tests/test_external_context_tool_gate.py` asserted
+  `index.count("app.js?v=20260815toolapproval4") == 2`. `app.js`'s own `?v=` had sat at that string
+  since 15 August while every module it imports was bumped through
+  `20260829trustladder1`, `20260918workshop1`, `20260918tracefolds1`, `20260918a11yfocus1` and
+  `20260918palettesteps1` — so **a browser holding a cached `app.js` kept importing the previous
+  wave's URLs**, which is precisely the failure `DEFERRED.md` `D-01`'s lockstep contract exists to
+  prevent, sitting inside the file the contract is about. The `surface` agent found it and bumped
+  it, and this assertion turned red for the fix.
+  It now reads both spellings out of the page and asserts what it is actually for: `app.js` is
+  named exactly twice, and both carry the same version. Forking one turns it red; bumping both
+  together does not.
+  **The population is nine and `B651`'s sub-shape has held every time**: the pinned value is one
+  the codebase itself guarantees will move — a ratchet ceiling, a tracker count, a cache-buster.
+  Three of the nine are cache-busters specifically, which is now enough to say the rule out loud:
+  **a test may assert that busters agree; it may not assert which one they agree on.**
+  `Verify:` a buster bump obeying `D-01`'s lockstep contract does not turn any test red, and a
+  bump that breaks lockstep turns this one red. — found by the full suite at the merge —
+  agent:`integrator`

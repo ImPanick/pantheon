@@ -9,14 +9,14 @@
 import Storage from './storage.js';
 import uiModule from './ui.js';
 import sessionModule from './sessions.js';
-import chatRenderer, { buildDiffHtml } from './chatRenderer.js?v=20260918tracefolds1';
-import chatStream from './chatStream.js?v=20260918tracefolds1';
+import chatRenderer, { buildDiffHtml } from './chatRenderer.js?v=20260918surfacehalves1';
+import chatStream from './chatStream.js?v=20260918surfacehalves1';
 import { addAITTSButton } from './tts-ai.js';
 import { prefersReducedMotion } from './motion.js';
 import markdownModule from './markdown.js';
 import spinnerModule from './spinner.js';
 import presetsModule from './presets.js';
-import fileHandlerModule from './fileHandler.js';
+import fileHandlerModule from './fileHandler.js?v=20260918surfacehalves1';
 import searchModule from './search.js';
 import documentModule from './document.js?v=20260815approvalsave1';
 import * as emailInbox from './emailInbox.js?v=20260815approvalsave1';
@@ -4456,7 +4456,35 @@ import agentDrafts from './agentDrafts.js';   // H01
                 uiModule.scrollHistory();
               } else if (json.type === 'compacted') {
                 if (!_isBg) {
-                  uiModule.showToast('Context compacted — older messages summarized');
+                  // `P4-13`. The figures `_compacted_event` (`routes/chat_routes.py`)
+                  // now carries, read out of `json.data` exactly as the
+                  // `context_trimmed` branch directly below reads its own — one
+                  // shape, one reader, because the two events describe the two
+                  // halves of the same step and a renderer reading one nested
+                  // and one flat is how two reports of one thing drift.
+                  //
+                  // Compaction is the irreversible half and it was the half with
+                  // no numbers: the toast said older messages were summarized
+                  // and there was no way to ask how many.
+                  //
+                  // The figures are absent when nothing measured them — the flag
+                  // is set independently of them on purpose — so the sentence
+                  // degrades to the one it has always shown rather than printing
+                  // a `0/0` that would read as a measurement.
+                  const cd = json.data || {};
+                  const cBefore = Number(cd.messages_before || 0);
+                  const cAfter = Number(cd.messages_after || 0);
+                  const tBefore = Number(cd.tokens_before || 0);
+                  const tAfter = Number(cd.tokens_after || 0);
+                  const parts = [];
+                  if (cBefore && cAfter && cBefore > cAfter) {
+                    parts.push(`${cAfter}/${cBefore} messages kept`);
+                  }
+                  if (tBefore && tAfter && tBefore > tAfter) {
+                    parts.push(`${tBefore.toLocaleString()} → ${tAfter.toLocaleString()} tokens`);
+                  }
+                  const cDetail = parts.length ? ` (${parts.join(', ')})` : '';
+                  uiModule.showToast(`Context compacted — older messages summarized${cDetail}`);
                 }
               } else if (json.type === 'context_trimmed') {
                 if (!_isBg) {

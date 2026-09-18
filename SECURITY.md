@@ -115,7 +115,24 @@ Before pushing a public fork, run:
 ```bash
 git status --short
 git check-ignore -v .env data/auth.json data/app.db logs/compound.log pantheon.db
-git grep -n -I -E "(sk-[A-Za-z0-9_-]{20,}|xox[baprs]-|AIza[0-9A-Za-z_-]{20,}|Bearer [A-Za-z0-9._~+/-]{20,})" -- . ':!static/lib/**' ':!package-lock.json'
+# Working tree:
+git grep -nI -E '(^|[^A-Za-z0-9_-])(sk-[A-Za-z0-9]{20,}|sk-proj-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{30,}|ghp_[A-Za-z0-9]{30,}|gho_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{50,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----)' -- . ':!static/lib/**' ':!package-lock.json'
+
+# And the whole history, because a public repository exposes every commit
+# and a rewrite after the fact does not un-publish one:
+git log --all -p --no-color | grep -aoE '(sk-[A-Za-z0-9]{20,}|sk-proj-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{30,}|ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{50,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----)' | sort -u
+
+# Any credential-shaped file ever added:
+git log --all --diff-filter=A --name-only --format="" | sort -u \
+  | grep -iE '(^|/)(\.env$|\.env\.|auth\.json|sessions\.json|.*\.db$|.*\.sqlite|.*\.pem$|.*\.key$|id_rsa|credentials|secrets?\.(json|ya?ml|txt))'
 ```
+
+**The left anchor on `sk-` is not decoration.** Without `(^|[^A-Za-z0-9_-])` the pattern
+matches the word **`task-`** — every `task-card-delete-busy-label` and
+`task-form-output-email-account` in `static/` is a hit, and a real key is
+indistinguishable inside a hundred lines of them. A check whose output nobody can
+read is a check nobody runs (`P10-11`, `B770`). The trailing `Bearer` alternation
+was dropped for the same reason: it matches any long base64-ish string after that
+word, including every truncated example in the docs.
 
 Only `.env.example`, docs, source, tests, and static assets should be committed. Never commit live `.env` values, `data/` contents, local databases, uploaded files, generated media, logs, backups, auth/session files, API keys, model/provider tokens, password hashes, or personal documents.

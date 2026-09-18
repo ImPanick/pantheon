@@ -23,11 +23,29 @@ from src.markitdown_runtime import (  # noqa: F401
     OFFICE_EXTS,
 )
 from src.pdf_runtime import PDF_EXTS
+from src.context_budget import (
+    CONTEXT_BUDGETS,
+    fit_to_context_budget,
+    resolve_context_budget,
+)
 
 logger = logging.getLogger(__name__)
 
-MAX_INLINE_ATTACHMENT_CHARS = 24000
+# `P12-04`. The six character budgets that decide how much of a turn an
+# attachment may take are one registry now — `src.context_budget.CONTEXT_BUDGETS`
+# — and each resolves **role profile → instance setting → built-in default** per
+# request. These two names survive (`Law 1`): the constant is the built-in
+# default for the shared ceiling and is read as a live module attribute at every
+# call site, so a test that sets it still decides, exactly as `P12-03` left the
+# byte caps. It is the registry's own number rather than a second copy of 24000.
+MAX_INLINE_ATTACHMENT_CHARS = CONTEXT_BUDGETS["context_attachment_total_chars"]
 MIN_INLINE_ATTACHMENT_SLICE = 500
+
+
+def _budget(key: str, owner: str | None = None, ceiling=None) -> int:
+    """One character budget, resolved now, under this module's own ceiling."""
+    return resolve_context_budget(
+        key, owner, ceiling_default=MAX_INLINE_ATTACHMENT_CHARS, ceiling=ceiling)
 
 # The extensions the text arm of ``build_user_content`` can actually read.
 # One register per extractor: this one, ``MARKITDOWN_EXTS`` (Office/EPUB) and
@@ -909,7 +927,8 @@ def _is_text_file(path: str) -> bool:
     return any(path.lower().endswith(ext) for ext in TEXT_EXTS)
 
 
-def _process_text_file(path: str, display_name: str | None = None) -> str:
+def _process_text_file(path: str, display_name: str | None = None,
+                       owner: str | None = None, ceiling=None) -> str:
     """Process text file with enhanced formatting and metadata.
 
     *display_name* is the name the user attached the file under. Without it
@@ -930,7 +949,13 @@ def _process_text_file(path: str, display_name: str | None = None) -> str:
     else:
         _, ext = os.path.splitext(path.lower())
         language = attachment_language(path)
-    max_len = 30000 if ext != ".log" else 10000
+    # `P12-04`. Two budgets on one line, and the second is the `.log`-only
+    # branch nobody had written down. They are separate keys because they are
+    # separate decisions: an operator raising the text budget was silently
+    # raising the log one too.
+    max_len = _budget(
+        "context_text_file_chars" if ext != ".log" else "context_log_file_chars",
+        owner, ceiling)
 
     # `B101`: one decoder, and it is reachable. The previous first call was
     # ``personal_docs.read_text_file`` — utf-8 with ``errors="ignore"``, which
@@ -992,7 +1017,7 @@ def _process_text_file(path: str, display_name: str | None = None) -> str:
         return result
 
 
-def _process_pdf(path: str, owner: str | None = None) -> str:
+def _process_pdf(path: str, owner: str | None = None, ceiling=None) -> str:
     """Process PDF file with text extraction (pypdf). Uses VL model for image-heavy pages."""
     try:
         from pypdf import PdfReader
@@ -1029,9 +1054,11 @@ def _process_pdf(path: str, owner: str | None = None) -> str:
                         continue
 
         if pdf_text:
-            if len(pdf_text) > 15000:
-                pdf_text = pdf_text[:15000] + "\n[PDF content truncated]"
-            return f"\n\n[PDF content]:{pdf_text}"
+            pdf_text, marker = fit_to_context_budget(
+                pdf_text, "context_pdf_extract_chars", owner,
+                ceiling_default=MAX_INLINE_ATTACHMENT_CHARS, ceiling=ceiling,
+                marker="\n[PDF content truncated]")
+            return f"\n\n[PDF content]:{pdf_text}{marker}"
         else:
             return "\n\n[PDF processed but no readable content found]"
 
@@ -1039,18 +1066,25 @@ def _process_pdf(path: str, owner: str | None = None) -> str:
         return f"\n\n[PDF processing failed: {str(e)}]"
 
 
-def _truncate_inline(text: str, limit: int = 15000) -> tuple[str, str]:
-    """Cap inline document text so a huge file can't blow the model's context."""
-    text = (text or "").strip()
-    if len(text) > limit:
-        return text[:limit], "\n[…truncated for inline context.]"
-    return text, ""
+def _truncate_inline(text: str, owner: str | None = None,
+                     ceiling=None) -> tuple[str, str]:
+    """Cap inline document text so a huge file can't blow the model's context.
+
+    `P12-04`: the 15,000 that used to be a default argument here is
+    `context_office_inline_chars`, one of three separate 15,000s the row called
+    "the PDF's 15,000". This one bounds Office/EPUB markdown.
+    """
+    return fit_to_context_budget(
+        (text or "").strip(), "context_office_inline_chars", owner,
+        ceiling_default=MAX_INLINE_ATTACHMENT_CHARS, ceiling=ceiling,
+        marker="\n[…truncated for inline context.]")
 
 
 def _fit_inline_attachment_text(
     text: str,
     remaining: int,
     display_name: str,
+    total: int | None = None,
 ) -> tuple[str, int]:
     """Fit extracted attachment text into the shared inline attachment budget.
 
@@ -1063,11 +1097,16 @@ def _fit_inline_attachment_text(
     if len(text) <= remaining:
         return text, remaining - len(text)
 
+    # `P12-04`. The sentence names the budget that actually applied to this
+    # turn, not the shipped constant. An operator who lowered the ceiling for a
+    # role, and a user reading why their attachment was dropped, are looking at
+    # the same number or the message is a second source of truth (`Law 7`).
+    total = MAX_INLINE_ATTACHMENT_CHARS if total is None else int(total)
     name = os.path.basename(display_name or "attachment")
     if remaining < MIN_INLINE_ATTACHMENT_SLICE:
         return (
             f"\n\n[Attachment omitted from inline context: {name}. "
-            f"The {MAX_INLINE_ATTACHMENT_CHARS:,}-character shared inline "
+            f"The {total:,}-character shared inline "
             "attachment budget was already used by earlier attachments. Ask "
             "to inspect this file specifically if more detail is needed.]",
             0,
@@ -1075,7 +1114,7 @@ def _fit_inline_attachment_text(
     marker = (
         f"\n\n[Attachment content truncated: {name}. "
         f"Only {remaining:,} characters of this attachment fit within "
-        f"the {MAX_INLINE_ATTACHMENT_CHARS:,}-character shared inline "
+        f"the {total:,}-character shared inline "
         "attachment budget. Ask to inspect this file specifically if more "
         "detail is needed.]"
     )
@@ -1088,6 +1127,7 @@ def _process_office_document(
     session_id: str | None = None,
     auto_opened_docs: list[Dict[str, Any]] | None = None,
     owner: str | None = None,
+    ceiling=None,
 ) -> str:
     """Extract an Office/EPUB document to Markdown via the optional markitdown dep.
 
@@ -1118,7 +1158,7 @@ def _process_office_document(
     markdown = convert_to_markdown(path)
     if markdown and markdown.strip():
         title = os.path.splitext(os.path.basename(path))[0]
-        body, marker = _truncate_inline(markdown)
+        body, marker = _truncate_inline(markdown, owner, ceiling)
 
         # Persist the full extracted text as a Document. The agent's existing
         # manage_documents tool can then read past the inline cap with offset.
@@ -1301,6 +1341,7 @@ def build_user_content(
     auto_opened_docs: list[Dict[str, Any]] | None = None,
     owner: str | None = None,
     resolved_uploads: dict[str, Dict[str, Any]] | None = None,
+    budget_report: dict | None = None,
 ) -> str | List[Dict[str, Any]]:
     """Build user content with attachments (text, images, audio, documents).
 
@@ -1311,7 +1352,27 @@ def build_user_content(
     frontend can switch to the new doc immediately.
     """
     content = [{"type": "text", "text": text}]
-    inline_attachment_remaining = MAX_INLINE_ATTACHMENT_CHARS
+    # `P12-04` / `P12-03`. Resolved once for the whole turn and threaded into
+    # every processor below, not resolved per file: a settings save or a role
+    # change landing between the first attachment and the last would otherwise
+    # apply two different budgets to one message. This is the same rule
+    # `routes/personal_routes.py` already states for its byte cap.
+    inline_attachment_total = _budget("context_attachment_total_chars", owner)
+    inline_attachment_remaining = inline_attachment_total
+    # `P12-09`. The spend was computed and thrown away on every turn — the
+    # shape `P4` closed thirteen rows of. `budget_report` is an out-parameter so
+    # a caller that wants the breakdown gets the one the product actually
+    # applied, rather than a second computation of it beside this loop
+    # (`Law 14`). Callers that pass nothing are unaffected (`Law 1`).
+    _spend: list[dict] = []
+    if budget_report is not None:
+        budget_report.clear()
+        budget_report.update({
+            "total_chars": inline_attachment_total,
+            "used_chars": 0,
+            "remaining_chars": inline_attachment_total,
+            "attachments": _spend,
+        })
 
     for fid in attachment_ids or []:
         upload_info = (resolved_uploads or {}).get(fid)
@@ -1407,7 +1468,9 @@ def build_user_content(
                         # Pull the PDF prose once — used as either intro_text
                         # (form path) or the doc body (plain path).
                         try:
-                            pdf_body_text = strip_pdf_content_marker(_process_pdf(path, owner=owner))
+                            pdf_body_text = strip_pdf_content_marker(_process_pdf(
+                                path, owner=owner,
+                                ceiling=inline_attachment_total))
                         except Exception:
                             pdf_body_text = None
 
@@ -1424,15 +1487,19 @@ def build_user_content(
                         # Cap the inline copy so a multi-hundred-page PDF
                         # doesn't blow the model's context; the sidebar still
                         # carries the full body for direct reference.
-                        _MAX_INLINE_CHARS = 15000
-                        body_for_chat = (pdf_body_text or "").strip()
-                        truncated_marker = ""
-                        if body_for_chat and len(body_for_chat) > _MAX_INLINE_CHARS:
-                            body_for_chat = body_for_chat[:_MAX_INLINE_CHARS]
-                            truncated_marker = (
+                        # `P12-04`. `context_pdf_inline_chars` — the third of
+                        # the three separate 15,000s, and a different decision
+                        # from how much the extractor keeps.
+                        body_for_chat, truncated_marker = fit_to_context_budget(
+                            (pdf_body_text or "").strip(),
+                            "context_pdf_inline_chars", owner,
+                            ceiling_default=MAX_INLINE_ATTACHMENT_CHARS,
+                            ceiling=inline_attachment_total,
+                            marker=(
                                 "\n[…truncated for inline context — full text "
                                 "available in the document viewer.]"
-                            )
+                            ),
+                        )
 
                         if is_form:
                             fields = extract_fields(path)
@@ -1490,7 +1557,8 @@ def build_user_content(
                     except Exception as e:
                         logger.warning(f"PDF auto-doc creation failed for {path}: {e}")
                 if extracted_text is None:
-                    extracted_text = _process_pdf(path, owner=owner)
+                    extracted_text = _process_pdf(
+                        path, owner=owner, ceiling=inline_attachment_total)
             elif mime.startswith("text/") or _is_text_file(path) or decoded_as_text:
                 # `decoded_as_text` is the `B76` arm. It can only be true when
                 # no register claimed the file, so it cannot divert anything
@@ -1499,7 +1567,8 @@ def build_user_content(
                 # source is the better answer than the image arm: it was in
                 # neither `image_mime_types` nor any register, and a model that
                 # sees the XML can edit it.
-                extracted_text = _process_text_file(path, display_name)
+                extracted_text = _process_text_file(
+                    path, display_name, owner, inline_attachment_total)
             else:
                 extracted_text = _process_office_document(
                     path,
@@ -1507,13 +1576,35 @@ def build_user_content(
                     session_id=session_id,
                     auto_opened_docs=auto_opened_docs,
                     owner=owner,
+                    ceiling=inline_attachment_total,
                 )
 
+            _before = inline_attachment_remaining
             extracted_text, inline_attachment_remaining = _fit_inline_attachment_text(
                 extracted_text,
                 inline_attachment_remaining,
                 display_name,
+                inline_attachment_total,
             )
+            if budget_report is not None:
+                # Three states, not a boolean (`Law 10`): a file that fit, a
+                # file cut to what was left, and a file the turn had no room
+                # for at all are three different things to draw.
+                if "[Attachment omitted from inline context:" in extracted_text:
+                    _state = "omitted"
+                elif "[Attachment content truncated:" in extracted_text:
+                    _state = "truncated"
+                else:
+                    _state = "full"
+                _spend.append({
+                    "id": fid,
+                    "name": os.path.basename(display_name or "attachment"),
+                    "chars": _before - inline_attachment_remaining,
+                    "state": _state,
+                })
+                budget_report["remaining_chars"] = inline_attachment_remaining
+                budget_report["used_chars"] = (
+                    inline_attachment_total - inline_attachment_remaining)
             if content and content[0]["type"] == "text":
                 content[0]["text"] += extracted_text
             else:

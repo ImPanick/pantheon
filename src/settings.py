@@ -371,6 +371,39 @@ DEFAULT_SETTINGS = {
     "auth_setup_rate_window_seconds": None,
     "upload_rate_limit": None,
     "upload_rate_window_seconds": None,
+    # ── The six character budgets (`P12-04`) ──────────────────────────────
+    #
+    # Re-measured 2026-09-18: seven budgets decide how much of a chat turn an
+    # attachment may take, six of them character counts in
+    # `src/document_processor.py` and the seventh the skill-injection count in
+    # `src/agent_loop.py`. The six are here; the seventh is `skill_max_injected`
+    # a few screens down, already a setting, and its only consumer is a file
+    # this row does not own (`B750`).
+    #
+    # SETTINGS-ONLY for the reason the throttles above give: none of the six
+    # had an environment variable, so `Law 1` requires nothing and a new
+    # variable would be a new place the same number can be set (`Law 13`).
+    #
+    # The built-in defaults live in `src/context_budget.CONTEXT_BUDGETS`, beside
+    # the resolver that applies them, and `document_processor`'s own constants
+    # are read from there rather than written twice (`Law 7`).
+    #
+    # `context_attachment_total_chars` is the CEILING the row asks for: it is
+    # the budget a whole turn has, and every per-file budget below is clamped to
+    # it at read time, so raising one file's cap cannot hand one attachment more
+    # than the turn holds.
+    "context_attachment_total_chars": None,
+    "context_text_file_chars": None,
+    "context_log_file_chars": None,
+    "context_pdf_extract_chars": None,
+    "context_office_inline_chars": None,
+    "context_pdf_inline_chars": None,
+    # How many files one `POST /api/upload` may carry (`P12-02`). It was
+    # `MAX_FILES_PER_REQUEST = 25` in `src/upload_handler.py`, a constant the
+    # route closed over — the "files per request" the row names. The constant
+    # survives as the built-in default (`Law 1`) and `tests/test_upload_multifile.py`
+    # still pins it between the browser's `MAX_FILES` and `upload_rate_limit`.
+    "upload_max_files_per_request": None,
     # How often the approval gate asks (P7-03). The values are `TrustRung` in
     # src/tool_capabilities.py; `resolve_trust_rung` in src/agent_loop.py reads
     # this layer and every run resolves it once at start. The default is what
@@ -630,7 +663,75 @@ LIMIT_RANGES: dict[str, tuple[int, int]] = {
     "auth_setup_rate_window_seconds": (1, 86_400),
     "upload_rate_limit": (1, 100_000),
     "upload_rate_window_seconds": (1, 86_400),
+    # `P12-04`. The six character budgets. The floor is 1 for the reason above
+    # — a budget of zero drops every attachment while reading as a configured
+    # number — and the ceiling is sanity: two million characters is past any
+    # model's window and is a typo rather than a decision.
+    "context_attachment_total_chars": (1, 2_000_000),
+    "context_text_file_chars": (1, 2_000_000),
+    "context_log_file_chars": (1, 2_000_000),
+    "context_pdf_extract_chars": (1, 2_000_000),
+    "context_office_inline_chars": (1, 2_000_000),
+    "context_pdf_inline_chars": (1, 2_000_000),
+    # `P12-02`. Files per request. The top is starlette's own form-parser cap,
+    # which is the real ceiling underneath this one.
+    "upload_max_files_per_request": (1, 1000),
 }
+
+
+def role_limit_ranges() -> dict[str, tuple[int, int]]:
+    """Every limit a role may override, and the bounds each is held to.
+
+    `LIMIT_RANGES` answers a narrower question than the role layer needs: *which
+    settings keys are **nullable** integer limits*, which is what
+    `POST /api/auth/settings` validates against. Four limits resolve through
+    `resolve_limit` with an `owner` — so the role leg is consulted for them on
+    every single call — and ship a real default rather than `None`, so they are
+    not in that table and `P11-02`'s provider could never answer for them.
+    `task_concurrency_cap` was the most visible: `P6-08` has spelled its source
+    `"role profile"` since before roles existed.
+
+    This is a derivation, not a third list (`Law 14`). Every bound comes from
+    the module that owns the limit — `src/task_scheduler.py`,
+    `src/tool_approvals.py`, `src/upload_limits.py` — imported here rather than
+    restated, so the number a role is clamped to and the number the resolver
+    enforces cannot drift apart. The imports are function-local because all
+    three modules import this one.
+
+    **A role is still not a way around `FORBIDDEN.md` Part 2.** The floor is 1
+    on every key, `resolve_limit` applies the clamp to the role layer exactly as
+    it does to the environment and the stored setting, and the role catalogue is
+    admin-only (`require_admin`) with `/api/auth` refused to the agent's generic
+    `app_api` tool — which is what keeps `approval_timeout_seconds` here from
+    undoing `_SELF_RESTRAINT_KEYS`.
+    """
+    from src.task_scheduler import (
+        TASK_CONCURRENCY_CAP_MAX,
+        TASK_CONCURRENCY_CAP_SETTING,
+    )
+    from src.tool_approvals import (
+        APPROVAL_TIMEOUT_SETTING,
+        MAX_APPROVAL_TTL_SECONDS,
+        MIN_APPROVAL_TTL_SECONDS,
+    )
+    from src.upload_limits import (
+        MAX_UPLOAD_BURST_LIMIT,
+        MAX_UPLOAD_BURST_WINDOW_SECONDS,
+        MIN_UPLOAD_BURST_LIMIT,
+        MIN_UPLOAD_BURST_WINDOW_SECONDS,
+        UPLOAD_BURST_LIMIT_SETTING,
+        UPLOAD_BURST_WINDOW_SETTING,
+    )
+
+    ranges = dict(LIMIT_RANGES)
+    ranges[TASK_CONCURRENCY_CAP_SETTING] = (1, TASK_CONCURRENCY_CAP_MAX)
+    ranges[APPROVAL_TIMEOUT_SETTING] = (
+        MIN_APPROVAL_TTL_SECONDS, MAX_APPROVAL_TTL_SECONDS)
+    ranges[UPLOAD_BURST_LIMIT_SETTING] = (
+        MIN_UPLOAD_BURST_LIMIT, MAX_UPLOAD_BURST_LIMIT)
+    ranges[UPLOAD_BURST_WINDOW_SETTING] = (
+        MIN_UPLOAD_BURST_WINDOW_SECONDS, MAX_UPLOAD_BURST_WINDOW_SECONDS)
+    return ranges
 
 
 def without_retired_settings(settings: dict) -> dict:

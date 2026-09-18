@@ -171,6 +171,16 @@ export class Node {
   dispatchEvent(ev) { (this.listeners[ev.type] || []).slice().forEach((fn) => fn(ev)); return true; }
   focus() { this.focused = true; }
   scrollIntoView() { this.scrolledIntoView = true; }
+  // Added 2026-09-18 by `P4-06`/`P4-07`/`P4-14`. `displayMetrics` positions the
+  // Message Stats popup against the footer it hangs off, so the real module
+  // calls this on two nodes before the popup is readable. Same terms as
+  // `replaceChildren` and `insertBefore` above: the browser has it, so a shim
+  // without it makes the module throw on a method rather than fail an
+  // assertion. A node with no layout is 0x0 at the origin, which is what an
+  // unattached element measures in a browser too.
+  getBoundingClientRect() {
+    return { top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0, x: 0, y: 0 };
+  }
   closest() { return null; }
   _walk(out) { for (const c of this.childNodes) { out.push(c); c._walk(out); } return out; }
   _matches(sel) {

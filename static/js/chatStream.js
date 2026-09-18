@@ -810,7 +810,7 @@ export function handleUIControl(uiData) {
           // the rail gear, the user bar, `/settings` and four other modules use
           // (`P1-05`). Going through the module rather than clicking a sidebar
           // button keeps this working when Customize UI hides that button.
-          import('./settings.js?v=20260815approvalsave1').then(function (mod) {
+          import('./settings.js?v=20260918emptystates1').then(function (mod) {
             var open = (mod && mod.open) || (mod && mod.default && mod.default.open);
             if (open) open();
           }).catch(function () {});

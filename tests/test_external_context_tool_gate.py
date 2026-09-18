@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression coverage for indirect prompt-injection tool gating."""
 
+import re
 import asyncio
 import json
 from collections import namedtuple
@@ -1322,7 +1323,20 @@ def test_frontend_tool_approval_uses_opaque_id_and_fixed_decisions():
     assert "/test-approval`" in skills
     assert "approval_id: approval.approval_id" in skills
     assert "['approve', 'Allow once'" in skills
-    assert index.count("app.js?v=20260815toolapproval4") == 2
+    # `B772`. This pinned the literal `20260815toolapproval4` and counted it.
+    # `app.js`'s own `?v=` had been stale at that string for several waves while
+    # every module it imports was bumped — so a cached `app.js` kept importing
+    # the previous wave's URLs — and the wave that fixed it turned this red. A
+    # cache-buster is the one value in this product whose whole purpose is to
+    # change, and pinning one is the shape `B520` names and `B651` catalogued.
+    # Ninth instance.
+    #
+    # What the assertion is actually for is **lockstep and count**: `app.js` is
+    # named twice in the page and both must carry the same version as each other
+    # and as the rest of its own wave. Read, not written.
+    app_versions = re.findall(r"app\.js\?v=([A-Za-z0-9._-]+)", index)
+    assert len(app_versions) == 2, f"app.js is named {len(app_versions)} times in index.html"
+    assert len(set(app_versions)) == 1, f"app.js is loaded at two versions: {app_versions}"
     assert "app.js?v=20260808startupshell1" not in index
     approval_module_sources = [
         (root / path).read_text()

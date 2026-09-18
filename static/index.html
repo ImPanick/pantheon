@@ -308,14 +308,14 @@
        real request is discarded and the font fetched a second time. -->
   <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/FiraCode-Regular.woff2">
   <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/FiraCode-SemiBold.woff2">
-  <link rel="stylesheet" href="/static/style.css?v=20260918grantinspector1">
-  <link rel="modulepreload" href="/static/app.js?v=20260815toolapproval4">
+  <link rel="stylesheet" href="/static/style.css?v=20260918surfacehalves1">
+  <link rel="modulepreload" href="/static/app.js?v=20260918surfacehalves1">
   <!-- B58. This must carry the SAME query as the <script> tag below, or the
        browser fetches chat.js twice: the cache and the module map are keyed on
        the full URL. It sat at toolapproval4 while the tag moved to
        approvalcontrol1 and then trustladder1 — bumped twice by people who did
        not know this line existed. check-specifiers.py reads it now. -->
-  <link rel="modulepreload" href="/static/js/chat.js?v=20260918tracefolds1">
+  <link rel="modulepreload" href="/static/js/chat.js?v=20260918surfacehalves1">
   <link rel="modulepreload" href="/static/js/ui.js">
   <link rel="modulepreload" href="/static/js/sessions.js">
   <link rel="modulepreload" href="/static/js/markdown.js">
@@ -626,7 +626,7 @@
               <span id="skills-selected-count">0 Selected</span>
               <button id="skills-bulk-publish" class="memory-toolbar-btn" disabled title="Publish selected drafts" style="margin-left:auto;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><polyline points="20 6 9 17 4 12"/></svg>Approve</button>
               <button id="skills-bulk-audit" class="memory-toolbar-btn" disabled title="Audit selected draft skills"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><polygon points="5 3 19 12 5 21 5 3"/></svg>Audit</button>
-              <button id="skills-bulk-delete-nonpassing" class="memory-toolbar-btn danger" disabled title="Delete selected duplicates, generic/irrelevant skills, failed audits, and skills below threshold"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11l4 4"/><path d="M14 11l-4 4"/></svg>Delete non passing</button>
+              <button id="skills-bulk-delete-nonpassing" class="memory-toolbar-btn danger" disabled title="Delete the selected skills that are duplicates, generic or irrelevant, or that failed an audit. Skills that have not been audited yet are never included. You can undo it."><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11l4 4"/><path d="M14 11l-4 4"/></svg>Delete non passing</button>
               <button id="skills-bulk-delete" class="memory-toolbar-btn danger" disabled><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>Delete</button>
               <button id="skills-bulk-cancel" class="memory-toolbar-btn" title="Cancel (Esc)" style="padding:3px 6px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
             </div>
@@ -1356,6 +1356,14 @@
     <!-- Attachments strip -->
     <div id="attach-strip" class="attach-strip"></div>
 
+    <!-- P12-09. The context budget, where the message is being written rather
+         than in a settings tab: the ceiling this turn's attachments count
+         against, what they have spent of it, and which layer set the number.
+         Drawn by `static/js/fileHandler.js` (`renderContextMeter`); hidden
+         until the budget has been read, so an install whose endpoint is
+         unreachable shows nothing rather than an empty bar. -->
+    <div id="context-meter" class="context-meter" hidden></div>
+
     <!-- Hidden elements for form logic -->
     <input type="checkbox" id="research-toggle" style="display:none;">
     <input type="checkbox" id="rag-toggle" style="display:none;">
@@ -1805,87 +1813,27 @@
               aria-label="Settings search results"
             ></div>
           </div>
-          <!-- Section 1: AI plumbing (Add Models → AI Defaults → Search) -->
-          <button class="settings-nav-item active" data-settings-tab="services">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
-            <span>Add Models</span>
-          </button>
-          <button class="settings-nav-item" data-settings-tab="added-models">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-            <span>Added Models</span>
-          </button>
-          <button class="settings-nav-item" data-settings-tab="ai">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z"/></svg>
-            <span>AI Defaults</span>
-          </button>
-          <button class="settings-nav-item" data-settings-tab="search">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <span>Search</span>
-          </button>
-          <div class="settings-sidebar-divider"></div>
-          <!-- Section 2: Comms (Integrations → Email → Reminders).
-               Integrations leads here because it's where the underlying
-               accounts the other two tabs depend on actually live. -->
-          <button class="settings-nav-item" data-settings-tab="integrations">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-            <span>Integrations</span>
-          </button>
-          <button class="settings-nav-item" data-settings-tab="email">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
-            <span>Email</span>
-          </button>
-          <button class="settings-nav-item" data-settings-tab="reminders">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-            <span>Reminders</span>
-          </button>
-          <div class="settings-sidebar-divider"></div>
-          <!-- Section 3: UX (Appearance → Shortcuts) -->
-          <button class="settings-nav-item" data-settings-tab="appearance">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a7 7 0 0 0 0 20 4 4 0 0 1 0-8 4 4 0 0 0 0-8"/></svg>
-            <span>Appearance</span>
-          </button>
-          <button class="settings-nav-item" data-settings-tab="shortcuts">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/></svg>
-            <span>Shortcuts</span>
-          </button>
-          <div class="settings-sidebar-divider"></div>
-          <!-- Section 4: Account (sits at the bottom of the user section) -->
-          <button class="settings-nav-item" data-settings-tab="account">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-            <span>Account</span>
-          </button>
-          <div class="settings-sidebar-divider admin-only"></div>
-          <div class="settings-sidebar-label admin-only">Admin</div>
-          <button class="settings-nav-item admin-only" data-settings-tab="tools">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
-            <span>Agent Tools</span>
-          </button>
-          <button class="settings-nav-item admin-only" data-settings-tab="users">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            <span>Users</span>
-          </button>
-          <!-- H04. `routes/embedding_routes.py` has been a complete, admin-gated
-               embedding-model manager with no markup at all: the fastembed
-               catalogue with downloaded/downloading/active/recommended/size,
-               download off the event loop, a progress poll, delete that refuses
-               to remove the model in use, and custom endpoint config. -->
-          <button class="settings-nav-item admin-only" data-settings-tab="embeddings">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/><line x1="7" y1="7" x2="10" y2="10"/><line x1="17" y1="7" x2="14" y2="10"/><line x1="7" y1="17" x2="10" y2="14"/><line x1="17" y1="17" x2="14" y2="14"/></svg>
-            <span>Embeddings</span>
-          </button>
-          <!-- `P17-09`. `src/networks.py` has been enforcing since `P16-16` --
-               it is consulted inside `check_outbound_url` and `outbound_fetch`
-               BEFORE DNS -- and it had no panel, no route and no validation.
-               An allowlist the operator has no supported way to write is not
-               operator-set (`Law 15`). -->
-          <button class="settings-nav-item admin-only" data-settings-tab="networks">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="16" y="16" width="6" height="6" rx="1"/><path d="M12 8v4"/><path d="M5 16v-2h14v2"/></svg>
-            <span>Networks</span>
-          </button>
-          <button class="settings-nav-item admin-only" data-settings-tab="system">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v-.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09A1.65 1.65 0 0 0 19.4 15z"/></svg>
-            <span>System</span>
-          </button>
+          <!-- P9-02. The Settings navigation is drawn from
+               `static/js/settings/registry.js` by `renderSettingsNav()` in
+               `static/js/settings/navigation.js`, which runs when `settings.js`
+               is evaluated — before any of the five call sites that reach past
+               `settingsModule.open()` and click a tab directly.
+
+               Fifteen buttons, four dividers and one "Admin" heading used to be
+               written out here by hand beside a registry that described the
+               same fifteen panels. They had already drifted: the markup had
+               `networks` and the registry did not, so `P17-09`'s network
+               allowlist — the panel `Law 16` is enforced from — could not be
+               found by Settings search under any word, including its own name.
+               `getSettingsRegistryIssues()` had been reporting it into
+               `console.warn` since the day it landed.
+
+               The class names and `data-settings-tab` are unchanged: five
+               modules query them and the stylesheet keys off them. The panels
+               below are still markup, and the same self-check still diffs them
+               against the registry — that half is a real second source and it
+               is the half that catches a panel added with no entry. -->
+          <div class="settings-nav-list"></div>
           </div>
         </div>
         <div class="settings-panels">
@@ -3512,7 +3460,7 @@
 <script type="module" src="/static/js/skills.js"></script>
 <script type="module" src="/static/js/tourHints.js"></script>
 <script type="module" src="/static/js/tourAutoplay.js"></script>
-<script type="module" src="/static/js/fileHandler.js"></script>
+<script type="module" src="/static/js/fileHandler.js?v=20260918surfacehalves1"></script>
 <script type="module" src="/static/js/voiceRecorder.js"></script>
 <script type="module" src="/static/js/models.js?v=20260715startupcalm2"></script>  <!-- This must come BEFORE app.js -->
 <script type="module" src="/static/js/rag.js"></script>
@@ -3522,18 +3470,18 @@
 <script type="module" src="/static/js/tts-ai.js"></script>
 <script type="module" src="/static/js/document.js?v=20260815approvalsave1"></script>
 <script type="module" src="/static/js/gallery.js?v=20260708match1"></script>
-<script type="module" src="/static/js/chatRenderer.js?v=20260918tracefolds1"></script>
+<script type="module" src="/static/js/chatRenderer.js?v=20260918surfacehalves1"></script>
 <script type="module" src="/static/js/codeRunner.js"></script>
-<script type="module" src="/static/js/chatStream.js?v=20260918tracefolds1"></script>
-  <script type="module" src="/static/js/chat.js?v=20260918tracefolds1"></script>
+<script type="module" src="/static/js/chatStream.js?v=20260918surfacehalves1"></script>
+  <script type="module" src="/static/js/chat.js?v=20260918surfacehalves1"></script>
 <script type="module" src="/static/js/cookbook.js"></script>
 <script src="/static/js/cookbookSchedule.js"></script>
 <script type="module" src="/static/js/search-chat.js"></script>
 <script type="module" src="/static/js/theme.js"></script>
 <script type="module" src="/static/js/censor.js"></script>
-<script type="module" src="/static/js/settings.js?v=20260815approvalsave1"></script>
+<script type="module" src="/static/js/settings.js?v=20260918emptystates1"></script>
 <script type="module" src="/static/js/assistant.js"></script>
-<script type="module" src="/static/app.js?v=20260815toolapproval4"></script>  <!-- app.js must be LAST -->
+<script type="module" src="/static/app.js?v=20260918surfacehalves1"></script>  <!-- app.js must be LAST -->
   <script type="module" src="/static/js/init.js?v=20260918a11yfocus1"></script>
 <script type="module" src="/static/js/a11y.js"></script>
 <script>if('serviceWorker' in navigator){navigator.serviceWorker.register('/static/sw.js').catch(()=>{});}</script>

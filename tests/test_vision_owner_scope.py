@@ -85,18 +85,57 @@ def test_vision_analysis_uses_owner_scoped_primary_and_fallback(monkeypatch, tmp
     )
 
 
-def test_request_vision_call_sites_pass_owner():
-    chat_source = (ROOT / "src" / "chat_handler.py").read_text()
-    processor_source = (ROOT / "src" / "document_processor.py").read_text()
-    upload_source = (ROOT / "routes" / "upload_routes.py").read_text()
-    document_source = (ROOT / "routes" / "document" / "document_routes.py").read_text()
-    gallery_source = (ROOT / "routes" / "gallery" / "gallery_routes.py").read_text()
-    memory_source = (ROOT / "routes" / "memory" / "memory_routes.py").read_text()
+# `B763`. This used to assert seven one-line spellings — `"_process_pdf(path,
+# owner=owner)" in processor_source` and six like it. `P12-04` threaded a
+# `ceiling=` argument through `_process_pdf` and black-wrapped both call sites
+# across two lines, and the test went red for a change that kept every `owner=`
+# exactly where it was. The property it defends is real and load-bearing: a
+# vision call without an owner resolves somebody else's model. The property is
+# *"every call site passes `owner=`"*, and a source substring is only one
+# spelling of it (`Law 20`).
+#
+# Parsed, so a reformat, a line wrap or a new keyword argument cannot break it,
+# and so a call site added tomorrow is covered without anybody remembering to
+# add a line here — which the substring version could never do.
 
-    assert 'analyze_image_with_vl_result(file_info["path"], owner=owner)' in chat_source
-    assert "analyze_image_with_vl(path, owner=current_user)" in upload_source
-    assert "_process_pdf(path, owner=owner)" in processor_source
-    assert "_process_pdf(pdf_path, owner=user)" in document_source
-    assert "_resolve_vl_model(vl_model, owner=user)" in document_source
-    assert "_resolve_vl_model(configured, owner=user)" in gallery_source
-    assert "_process_pdf(tmp_path, owner=_owner(request))" in memory_source
+_OWNER_SCOPED = (
+    "analyze_image_with_vl_result",
+    "analyze_image_with_vl",
+    "_process_pdf",
+    "_resolve_vl_model",
+)
+
+_OWNER_SCOPED_FILES = (
+    "src/chat_handler.py",
+    "src/document_processor.py",
+    "routes/upload_routes.py",
+    "routes/document/document_routes.py",
+    "routes/gallery/gallery_routes.py",
+    "routes/memory/memory_routes.py",
+)
+
+
+def test_request_vision_call_sites_pass_owner():
+    import ast
+
+    missing = []
+    found = 0
+    for rel in _OWNER_SCOPED_FILES:
+        path = ROOT / rel
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            name = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
+            if name not in _OWNER_SCOPED:
+                continue
+            found += 1
+            if not any(kw.arg == "owner" for kw in node.keywords):
+                missing.append(f"{rel}:{node.lineno} {name}")
+
+    assert found >= 7, (
+        f"only {found} owner-scoped vision calls found across {len(_OWNER_SCOPED_FILES)} "
+        "files — the population shrank, which is either a deletion or a rename")
+    assert not missing, (
+        "a vision call resolves the model without an owner, so it answers with "
+        "somebody else's: " + ", ".join(missing))

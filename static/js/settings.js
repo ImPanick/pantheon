@@ -15,6 +15,7 @@ import {
   activateSettingsPanel,
   getActiveSettingsTab,
   bindSettingsNavigation,
+  renderSettingsNav,
 } from './settings/navigation.js';
 import {
   bindSettingsDrag,
@@ -2605,8 +2606,55 @@ function initAccount() {
   }
 }
 
+/**
+ * `P9-02`. Draw the navigation from the registry as soon as this module is
+ * evaluated.
+ *
+ * NOT in `initAll()`, and the reason is a real call path rather than caution:
+ * `initAll` runs lazily on the first `settingsModule.open()`, and five call
+ * sites reach past that API entirely — `calendar.js` (four, all of them
+ * un-hiding `#settings-modal` and clicking `[data-settings-tab="integrations"]`)
+ * and `emailLibrary.js:1299`. A nav built inside `initAll` would not exist for
+ * any of them, so opening Settings from the calendar would show an empty
+ * sidebar until something else had opened it the long way first.
+ *
+ * `settings.js` is a `<script type="module">`, which is deferred, so the modal's
+ * markup is parsed by the time this line runs.
+ */
+renderSettingsNav(el('settings-modal'));
+
+/**
+ * `P9-02`. Say a registry/DOM mismatch out loud, in the sidebar it is about.
+ *
+ * Deliberately not a toast: this is a build-time mistake in this repository,
+ * not something the person using the app did, and the useful place for it is
+ * beside the navigation that is missing an entry — where whoever added the
+ * panel will be standing. It is drawn with `P9-07`'s shared error state so it
+ * looks like every other failure in the product rather than inventing a
+ * sixteenth way to say something went wrong.
+ */
+function _reportSettingsRegistryIssues(modal, issues) {
+  const list = modal && modal.querySelector('.settings-nav-list');
+  if (!list) return;
+  const existing = list.querySelector('.settings-registry-issues');
+  if (existing) existing.remove();
+  const box = document.createElement('div');
+  box.className = 'settings-registry-issues';
+  uiModule.renderEmptyState(box, {
+    kind: 'error',
+    title: 'Settings is missing an entry',
+    message: 'A panel in the page has no entry in the settings registry, so it cannot be found by search.',
+    reason: issues.join('\n'),
+    icon: null,
+  });
+  list.appendChild(box);
+}
+
 function initAll() {
   modalEl = el('settings-modal');
+  // Idempotent, and cheap. The nav was drawn at module load; redrawing here
+  // means a test or a caller that builds the modal late still gets one.
+  renderSettingsNav(modalEl);
 
   bindSettingsNavigation(modalEl, {
     openAdminTab: openAdminSettingsTab,
@@ -2623,9 +2671,18 @@ function initAll() {
 
   bindSettingsSidebar(modalEl);
 
+  // `P9-02` / `Law 15`. This self-check has run on every init since it was
+  // written and reported into `console.warn`, where nobody reads it — and it
+  // was right the whole time: `networks` had a tab and a panel and no registry
+  // entry, so the operator's network allowlist was unfindable in Settings
+  // search. The nav is now generated, so a *tab* can no longer drift; a
+  // **panel** still can, because the panels are markup, and that is the half
+  // that goes wrong when someone adds a panel and forgets the entry. It now
+  // says so on the screen it is about.
   const registryIssues = getSettingsRegistryIssues(modalEl);
   if (registryIssues.length) {
     console.warn('Settings registry/DOM mismatch:', registryIssues);
+    _reportSettingsRegistryIssues(modalEl, registryIssues);
   }
 
   bindSettingsDrag(modalEl);

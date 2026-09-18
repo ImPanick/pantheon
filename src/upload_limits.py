@@ -206,6 +206,52 @@ MIN_UPLOAD_BURST_WINDOW_SECONDS = 1
 MAX_UPLOAD_BURST_WINDOW_SECONDS = 3600
 
 
+# ── Files per request (`P12-02`) ───────────────────────────────────────────
+#
+# The "files per request" the row names. It was `MAX_FILES_PER_REQUEST = 25` in
+# `src/upload_handler.py` — a constant the route closed over, so an operator who
+# wanted one team to attach forty files had the same non-move every other limit
+# in this phase had. The name there survives and is this number (`Law 1`,
+# `Law 7`): an alias, not a second copy.
+#
+# The window `tests/test_upload_multifile.py` pins is unchanged and still binds
+# the BUILT-IN DEFAULT — at or above the browser's `MAX_FILES`, at or below
+# `upload_rate_limit`, or a legitimate full batch 400s at one end and 429s
+# part-written at the other. An operator raising the setting past
+# `upload_rate_limit` gets the second failure, which is why the two are shown
+# together on the admin surface `P12-07` owes.
+#
+# SETTINGS-ONLY, the reasoning `P12-05b` gives for the throttles: no
+# `PANTHEON_*` variable existed, so `Law 1` requires none and a new one would be
+# a new place the same number can be set (`Law 13`).
+DEFAULT_MAX_FILES_PER_REQUEST = 25
+MAX_FILES_PER_REQUEST_SETTING = "upload_max_files_per_request"
+MIN_MAX_FILES_PER_REQUEST = 1
+# starlette's own form parser stops at 1000 files; above that this number is
+# describing a request the server will never finish parsing.
+MAX_MAX_FILES_PER_REQUEST = 1000
+
+
+def resolve_max_files_per_request(owner=None, *, fallback: int | None = None):
+    """How many files one `POST /api/upload` may carry, resolved now.
+
+    `fallback` is the caller's own constant, honoured so a route holding a
+    number chosen in code keeps it — the same shape `resolve_upload_burst_limit`
+    uses, and what keeps `MAX_FILES_PER_REQUEST` the bottom layer rather than a
+    number this function replaced.
+    """
+    from src.limit_policy import resolve_int_limit
+
+    return resolve_int_limit(
+        MAX_FILES_PER_REQUEST_SETTING,
+        default=(DEFAULT_MAX_FILES_PER_REQUEST if fallback is None else fallback),
+        env_name=None,
+        owner=owner,
+        minimum=MIN_MAX_FILES_PER_REQUEST,
+        maximum=MAX_MAX_FILES_PER_REQUEST,
+    )
+
+
 def resolve_upload_burst_limit(owner=None, *, fallback: int | None = None):
     """How many recent uploads one client may have before the gate refuses.
 

@@ -8,7 +8,7 @@
 //   - Other static assets (images/fonts/libs): cache-first with bg refresh.
 //   - API / non-GET: never cached.
 // Bump CACHE_NAME whenever the precache list or SW logic changes.
-const CACHE_NAME = 'pantheon-v425-grant-inspector';
+const CACHE_NAME = 'pantheon-v427-surface-halves';
 
 // KaTeX resolves these from its own stylesheet, so caching the CSS without them
 // gives offline math fallback glyphs instead of proper typesetting.
@@ -81,8 +81,8 @@ const PRECACHE = [
   // browser error page with no way back, and the same form works the moment
   // the network returns.
   '/login',
-  '/static/style.css?v=20260918grantinspector1',
-  '/static/app.js?v=20260815toolapproval4',
+  '/static/style.css?v=20260918surfacehalves1',
+  '/static/app.js?v=20260918surfacehalves1',
   '/static/js/storage.js',
   '/static/js/appConfig.js',
   '/static/js/ui.js',
@@ -97,7 +97,7 @@ const PRECACHE = [
   '/static/js/memory.js?v=20260918workshop1',
   '/static/js/skills.js',
   '/static/js/tourHints.js',
-  '/static/js/fileHandler.js',
+  '/static/js/fileHandler.js?v=20260918surfacehalves1',
   '/static/js/voiceRecorder.js',
   '/static/js/models.js?v=20260715startupcalm2',
   '/static/js/rag.js',
@@ -107,14 +107,14 @@ const PRECACHE = [
   '/static/js/tts-ai.js',
   '/static/js/document.js?v=20260815approvalsave1',
   '/static/js/gallery.js?v=20260708match1',
-  '/static/js/chatRenderer.js?v=20260918tracefolds1',
+  '/static/js/chatRenderer.js?v=20260918surfacehalves1',
   // `P4-01`: the one builder for a tool card in the agent thread. On the
   // critical path via chat.js and chatRenderer.js.
   '/static/js/agentThread.js',
   '/static/js/trustLadder.js',
   '/static/js/codeRunner.js',
-  '/static/js/chatStream.js?v=20260918tracefolds1',
-  '/static/js/chat.js?v=20260918tracefolds1',
+  '/static/js/chatStream.js?v=20260918surfacehalves1',
+  '/static/js/chat.js?v=20260918surfacehalves1',
   '/static/js/planWindow.js',
   // `B11`/`B13`. Two leaf tables on the critical path: what the plan window and
   // the todo card call themselves, and the word the six run statuses are shown
@@ -125,7 +125,7 @@ const PRECACHE = [
   '/static/js/runStatus.js',
   '/static/js/cookbook.js',
   '/static/js/search-chat.js',
-  '/static/js/compare/index.js?v=20260918tracefolds1',
+  '/static/js/compare/index.js?v=20260918surfacehalves1',
   '/static/js/theme.js',
   '/static/js/censor.js',
   // `B58`. The three entries below carried no query while every importer used
@@ -133,7 +133,7 @@ const PRECACHE = [
   // never answer a versioned request: they were fetched at install and served
   // to nothing. Third recurrence of what `P3-11` and `B54` each fixed, and the
   // first one a checker can see.
-  '/static/js/settings.js?v=20260815approvalsave1',
+  '/static/js/settings.js?v=20260918emptystates1',
   '/static/js/admin.js?v=20260918p2admin1',
   '/static/js/init.js?v=20260918a11yfocus1',
   '/static/js/slashCommands.js?v=20260815approvalsave1',

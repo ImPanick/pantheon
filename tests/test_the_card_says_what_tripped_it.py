@@ -382,3 +382,105 @@ def test_none_of_this_reaches_the_seal():
         content="printf exact",
         workspace=None,
     )
+
+
+# ── `P4-04` — the card's own written reason ─────────────────────────────────
+#
+# Measured 2026-09-18. `description` on `public_payload()` has carried the
+# gate's own sentence since before `P7-07`, both producers pass one
+# (`src/agent_loop.py` the decision's, `src/teacher_escalation.py` its own),
+# every path that re-serves a pending card copies the whole dict, and no line
+# of `static/` reads it: `renderAskUserCard` (`static/js/chatRenderer.js:3218`)
+# draws `aq.question`, `buildApprovalEffects(aq)`, the expiry line, the sealed
+# `aq.action` block, the allow-rule chooser and the per-option descriptions,
+# and never `aq.description`. The only `.description` read in that file is
+# `opt.description`, the text under each button.
+#
+# So the row's premise holds exactly as written and the remaining work is the
+# renderer's. What was wrong on the wire is the **default** sentence, and it is
+# `Law 10` on the one surface where a person is being asked to consent: it
+# asserted that untrusted context influenced the run, on a payload whose own
+# `gate` block says `tainted: false` for a card minted by a trust rung in a
+# clean run, and says `not_available` for `B70`'s credential refusal, which is
+# not about untrusted context or about effects at all.
+
+
+def test_the_card_carries_the_gates_own_sentence_not_a_second_one():
+    context = ToolRunSecurityContext()
+    context.observe_tool_result("web_fetch", {"output": "a page", "exit_code": 0})
+    decision = context.decision_for("bash", "rm -rf /tmp/scratch")
+
+    card = _card(context, "bash", "rm -rf /tmp/scratch")
+
+    assert card["description"] == decision.reason
+    # And the sentence and the structured half name the same effects. Two
+    # renderings of one answer is the design; two answers would be `Law 14`.
+    for effect in card["gate"]["tripped_effects"]:
+        assert effect in card["description"]
+
+
+def test_a_rung_minted_card_with_no_reason_does_not_claim_untrusted_context():
+    """A card built by a producer that wrote no sentence of its own.
+
+    The default said untrusted context influenced the run. On `ask_every_time`
+    nothing did, and the `gate` block on the same payload says so.
+    """
+    store = ToolApprovalStore()
+    pending = store.create(
+        owner="alice",
+        session_id="session-1",
+        origin_run_id="run-1",
+        tool_name="write_file",
+        content="notes.txt\nhello",
+        workspace=None,
+        external_untrusted_context_seen=False,
+        capabilities=capabilities_for_action("write_file", "notes.txt\nhello"),
+    )
+    card = pending.public_payload()
+
+    assert card["gate"]["tainted"] is False
+    assert "untrusted" not in card["description"].lower(), card["description"]
+
+
+def test_the_default_sentence_and_the_gate_block_cannot_contradict_each_other():
+    store = ToolApprovalStore()
+
+    tainted = store.create(
+        owner="alice", session_id="s", origin_run_id="r", tool_name="bash",
+        content="echo hi", workspace=None,
+        external_untrusted_context_seen=True,
+        capabilities=capabilities_for_action("bash", "echo hi"),
+    ).public_payload()
+    assert tainted["gate"]["tainted"] is True
+    assert "untrusted" in tainted["description"].lower()
+
+    clean = store.create(
+        owner="alice", session_id="s", origin_run_id="r", tool_name="bash",
+        content="echo hi", workspace=None,
+        external_untrusted_context_seen=False,
+        capabilities=capabilities_for_action("bash", "echo hi"),
+    ).public_payload()
+    assert clean["gate"]["tainted"] is False
+    assert "untrusted" not in clean["description"].lower()
+
+
+def test_an_unliftable_refusal_does_not_offer_untrusted_context_as_the_reason():
+    """`B70`. No approval lifts this one, so a sentence about approving it is
+    the wrong sentence — and it is what the default said."""
+    context = ToolRunSecurityContext(delegated_credential=True)
+    decision = context.decision_for("bash", "echo hi")
+    assert decision.classification == TOOL_CLASSIFICATION_UNAVAILABLE
+
+    store = ToolApprovalStore()
+    pending = store.create(
+        owner="alice", session_id="s", origin_run_id="r", tool_name="bash",
+        content="echo hi", workspace=None,
+        external_untrusted_context_seen=False,
+        capabilities=capabilities_for_action("bash", "echo hi"),
+        gate_decision=decision,
+    )
+    card = pending.public_payload()
+
+    assert card["gate"]["tool_classification"] == TOOL_CLASSIFICATION_UNAVAILABLE
+    assert "untrusted" not in card["description"].lower()
+    assert "not available" in card["description"].lower()

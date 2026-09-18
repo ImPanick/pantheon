@@ -25406,6 +25406,22 @@ body.gallery-selecting .gallery-dl-btn,
   color: var(--red);
 }
 
+/* `P9-02`. The nav is drawn from `static/js/settings/registry.js`, which holds
+   each panel's icon as a fixed SVG string, so the glyph now sits in a span
+   rather than directly in the button. The rule below still reaches it — it was
+   always a descendant selector — and this keeps the flex row laying out the
+   same way it did when the markup was written by hand. */
+.settings-nav-item-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.settings-nav-list {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
 .settings-nav-item svg {
   flex-shrink: 0;
   opacity: 0.7;
@@ -44635,4 +44651,348 @@ body.settings-sidebar-resize-active {
 :is(#\9#\9#\9, *):focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring) !important;
   outline-offset: var(--focus-ring-offset) !important;
+}
+
+/* ===========================================================================
+   P9-07 / P9-08 — the one empty state.
+
+   Twenty-five class names containing `empty`, at 70 textual occurrences across
+   17 files (re-measured 2026-09-18), and not one of them said which of three
+   states the reader was in: nothing yet, nothing matched, or it broke. These
+   rules are the shape `static/js/ui.js:renderEmptyState()` draws, and the
+   caller's own class stays on the same element so everything already written
+   for `.doclib-empty`, `.admin-empty`, `.memory-empty` and the rest still
+   applies. Nothing is renamed and nothing is removed.
+
+   NO `var(--accent…)` HERE, DELIBERATELY. `tests/test_accent_fallback_semantics_css.py`
+   pins this stylesheet at 814 `--accent` uses so that a new one is a decision
+   rather than a habit, and full-strength accent text misses 4.5:1 against
+   `--panel` on seven of the sixteen palettes. The three states are separated by
+   a left rule and by `currentColor`, which is what the last three waves used.
+   The error band is `--color-danger`, which every other failure in this sheet
+   already uses, so a broken list looks like the other broken things.
+   =========================================================================== */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 28px 18px;
+  text-align: center;
+  font-style: normal;
+}
+.empty-state-icon {
+  display: inline-flex;
+  opacity: 0.45;
+  margin-bottom: 2px;
+}
+.empty-state-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--fg) 75%, transparent);
+}
+.empty-state-message {
+  font-size: 11.5px;
+  line-height: 1.5;
+  max-width: 44ch;
+  color: color-mix(in srgb, var(--fg) 50%, transparent);
+}
+/* The server's own words. Monospaced and selectable because the next thing a
+   person does with them is paste them into an issue. */
+.empty-state-reason {
+  font-family: 'Fira Code', ui-monospace, monospace;
+  font-size: 10.5px;
+  line-height: 1.5;
+  max-width: 60ch;
+  padding: 6px 10px;
+  border-left: 2px solid var(--color-danger);
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+  color: color-mix(in srgb, var(--fg) 62%, transparent);
+  background: color-mix(in srgb, var(--color-danger) 8%, transparent);
+}
+.empty-state-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 4px;
+}
+.empty-state-action {
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: currentColor;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, currentColor 40%, transparent);
+}
+.empty-state-action:hover {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  border-color: color-mix(in srgb, currentColor 70%, transparent);
+}
+/* The three bands. `error` is the only one that changes colour, because it is
+   the only one that is news. */
+.empty-state-empty,
+.empty-state-filtered {
+  color: color-mix(in srgb, var(--fg) 55%, transparent);
+}
+.empty-state-error {
+  color: var(--color-danger);
+}
+.empty-state-error .empty-state-title {
+  color: var(--color-danger);
+}
+
+/* `P9-02`. The registry/DOM self-check, said out loud in the sidebar it is
+   about rather than into `console.warn`. It appears only when a panel in the
+   page has no registry entry — which is a mistake in this repository, not
+   something the person using the app did — so it is scaled to the sidebar and
+   reuses `P9-07`'s error state rather than inventing a way of its own. */
+.settings-registry-issues {
+  margin-top: 10px;
+}
+.settings-registry-issues .empty-state {
+  padding: 12px 8px;
+  gap: 4px;
+}
+.settings-registry-issues .empty-state-title { font-size: 11.5px; }
+.settings-registry-issues .empty-state-message { font-size: 10.5px; }
+.settings-registry-issues .empty-state-reason { font-size: 9.5px; max-width: none; }
+
+/* ══ P4-04 / P4-06 / P4-07 / P4-14 / P12-09 — the surface halves ═════════════
+   Five rows whose backend halves landed in the same merge and whose `Verify:`
+   lines are all `Law 15` sentences about a surface. Nothing here defines or
+   references `--accent`: `tests/test_accent_fallback_semantics_css.py` pins the
+   sheet at 814 uses and says in its own words that a new full-strength accent
+   `color:` is a new instance of a known defect — it fails 4.5:1 on seven of the
+   sixteen palettes. Borders, left rules and `currentColor` are the house
+   alternative and the last four waves all used them. */
+
+/* ── P4-04 · the approval card's own reason ───────────────────────────────
+   The sentence the gate wrote about why it stopped THIS action, above the box
+   that says what the action can do in general. It reads as prose rather than as
+   machine detail, because it is the part that decides the answer — the left
+   rule is the same 2px `routine` weight `.approval-effects` starts at, so the
+   two blocks read as one column rather than two competing boxes. */
+.ask-user-reason {
+  margin: 0 0 10px;
+  padding: 0 0 0 9px;
+  border-left: 2px solid color-mix(in srgb, var(--fg) 34%, transparent);
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--fg);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* ── P4-06 · a turn that stopped is not a turn that finished ──────────────
+   The footer reported a failed turn in the same shape, the same words and the
+   same styling as a successful one. The WORD "Stopped" is what carries this —
+   it survives greyscale, a colour-blind reader and a screen reader, none of
+   which a hue survives — and the rule below it is redundant reinforcement, in
+   the ordering `P7-06`'s effect ladder set one card above. */
+.msg-footer .response-metrics.response-metrics-failed,
+.response-metrics.response-metrics-failed {
+  color: var(--red);
+  border-bottom: 1px dotted currentColor;
+}
+.ctx-failed {
+  margin: 2px 0 6px;
+  padding: 5px 0 5px 8px;
+  border-left: 3px solid var(--red);
+  line-height: 1.45;
+}
+.ctx-failed-headline {
+  font-weight: 600;
+  color: var(--fg);
+  font-size: 0.78rem;
+}
+.ctx-failed-message {
+  font-size: 0.74rem;
+  color: var(--color-muted-alt);
+  overflow-wrap: anywhere;
+}
+
+/* ── P4-14 · which figure was measured and which was computed ─────────────
+   `tps_source` is the distinction the row is named for and no surface had ever
+   drawn it. The tag is small, uppercase and set apart from the number, so
+   "measured" and "estimated" read as a property of the figure rather than as
+   part of it. */
+.ctx-measure {
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+.ctx-sub {
+  margin: -4px 0 3px 60px;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  color: var(--color-muted-alt);
+}
+
+/* ── P4-07 · one line per round ───────────────────────────────────────────
+   `_metricsBillableCost` walked these buckets to price each round on the route
+   that answered it and then returned one float. This is the same walk, drawn. */
+.ctx-rounds {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+.ctx-rounds-title {
+  font-weight: 600;
+  color: var(--fg);
+  margin-bottom: 2px;
+}
+.ctx-round {
+  display: grid;
+  grid-template-columns: 1.2em minmax(0, 1fr) auto auto auto;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 0.72rem;
+  line-height: 1.6;
+}
+.ctx-round-n {
+  color: var(--color-muted-alt);
+  text-align: right;
+}
+.ctx-round-model {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ctx-round-tokens,
+.ctx-round-speed,
+.ctx-round-cost {
+  color: var(--color-muted-alt);
+  white-space: nowrap;
+}
+
+/* ── P12-09 · the context budget, at the composer ─────────────────────────
+   Above the send button, because a limit you can only read in a settings tab is
+   a limit you discover by being refused.
+
+   THE HATCHING IS THE POINT. Four of the five segments say `measured: false` on
+   the wire — system prompt, skills, retrieved memory and history are assembled
+   in `src/agent_loop.py` and are not emitted per turn yet (`B750`, `B751`). A
+   bar that drew them as empty space would read as headroom, which teaches the
+   opposite of what this meter is for. The remainder is therefore hatched, and
+   the hatching is geometry rather than hue so it survives greyscale and the
+   four light palettes alike. */
+.context-meter {
+  margin: 0 2px 6px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fg) 3%, var(--panel));
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--fg);
+}
+.context-meter[hidden] { display: none; }
+.context-meter-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+.context-meter-title {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.55;
+}
+.context-meter-figure {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-muted-alt);
+}
+.context-meter-bar {
+  display: flex;
+  height: 6px;
+  margin: 5px 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.context-meter-fill {
+  display: block;
+  height: 100%;
+  background: currentColor;
+  opacity: 0.55;
+}
+.context-meter-unmeasured {
+  display: block;
+  height: 100%;
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--fg) 22%, transparent) 0 2px,
+    transparent 2px 5px
+  );
+}
+.context-meter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin-top: 4px;
+}
+.context-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  max-width: 100%;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 10px;
+}
+.context-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.context-chip-note { color: var(--color-muted-alt); white-space: nowrap; }
+/* A file that fit, a file cut to what was left, and a file the turn had no room
+   for at all are three different things, and the words say which — the rule and
+   the strike-through are the second and third routes to the same conclusion. */
+.context-chip-truncated { border-left: 3px solid var(--warn); }
+.context-chip-omitted { border-left: 3px solid var(--red); }
+.context-chip-omitted .context-chip-name { text-decoration: line-through; }
+.context-meter-empty { color: var(--color-muted-alt); font-size: 10px; }
+.context-meter-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--color-muted-alt);
+}
+.context-meter-clamped { color: var(--warn); }
+
+@media (max-width: 768px) {
+  .context-meter { font-size: 10.5px; padding: 6px 8px; }
+  .context-meter-head { flex-wrap: wrap; gap: 2px 8px; }
+  .ctx-round {
+    grid-template-columns: 1.2em minmax(0, 1fr) auto;
+    row-gap: 0;
+  }
+  .ctx-round-speed, .ctx-round-cost { grid-column: 2 / -1; }
+  .ctx-sub { margin-left: 0; }
+}
+
+/* The Message Stats heading, promoted out of the row template so the failure
+   block (`P4-06`) and the per-round block (`P4-07`) — both built out of
+   `textContent`, because a provider's sentence and a configured model name are
+   not this popup's to interpolate — have a node to be positioned against. Same
+   values it carried inline. */
+.ctx-popup-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--fg);
 }

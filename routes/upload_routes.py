@@ -34,6 +34,7 @@ from src.upload_handler import (
 # `P12-06`. The burst gate's two numbers, resolved through `P12`'s four layers
 # rather than read off the handler as constants.
 from src.upload_limits import (
+    resolve_max_files_per_request,
     resolve_upload_burst_limit,
     resolve_upload_burst_window_seconds,
 )
@@ -317,16 +318,6 @@ def setup_upload_routes(upload_handler):
         if not files:
             raise HTTPException(400, "No files uploaded")
 
-        # Batch-size cap. The browser's MAX_FILES (static/js/fileHandler.js) is
-        # advisory — it bounds the composer, not the endpoint — so bound the
-        # request here too, before any bytes are written. Cheapest check first:
-        # an oversized batch is rejected whole, with nothing left on disk.
-        if len(files) > MAX_FILES_PER_REQUEST:
-            raise HTTPException(
-                400,
-                f"Too many files in one request (max {MAX_FILES_PER_REQUEST})",
-            )
-
         client_ip = request.client.host if request.client else "unknown"
         out = []
         rejected = []
@@ -336,6 +327,24 @@ def setup_upload_routes(upload_handler):
         # layer of the limit resolution keys off it, so it has to be known
         # before the gate rather than per file.
         owner = effective_user(request)
+
+        # Batch-size cap. The browser's MAX_FILES (static/js/fileHandler.js) is
+        # advisory — it bounds the composer, not the endpoint — so bound the
+        # request here too, before any bytes are written. Cheapest check first:
+        # an oversized batch is rejected whole, with nothing left on disk.
+        #
+        # `P12-02`. `MAX_FILES_PER_REQUEST` was a constant the route closed
+        # over; it is now the built-in default under a role profile and an
+        # instance setting, resolved per request so a change lands without a
+        # restart (`P12-03`'s property, held here rather than claimed). The
+        # owner has to be known first, which is why this moved below it.
+        max_files = int(resolve_max_files_per_request(
+            owner, fallback=MAX_FILES_PER_REQUEST))
+        if len(files) > max_files:
+            raise HTTPException(
+                400,
+                f"Too many files in one request (max {max_files})",
+            )
 
         # Per-IP upload BURST gate. Count genuine recent upload events — NOT the
         # number of files in this batch. The previous check summed over `files`,
@@ -452,6 +461,29 @@ def setup_upload_routes(upload_handler):
         response = {"files": out}
         if rejected:
             response["rejected"] = rejected
+        # `P12-09`. What these attachments will cost the model's window, and the
+        # budgets they count against — on the response to the request that
+        # changed the answer, rather than on a GET endpoint nothing fetches
+        # (`Law 13`: the unwired half does not merge, and
+        # `.pantheon/check-unreachable.py` holds the ceiling that says so).
+        #
+        # The spend is not recomputed here: `build_user_content` runs on the
+        # real path with its `budget_report` out-parameter, so the breakdown the
+        # composer draws is the one the model will actually receive (`Law 14`,
+        # `Law 20`). A failure here is a meter that could not be read, never a
+        # failed upload — the files are already on disk.
+        try:
+            from src.context_budget import context_window_report
+            from src.document_processor import build_user_content
+
+            turn = {}
+            build_user_content(
+                "", [f["id"] for f in out], _upload_root(), upload_handler,
+                owner=owner, budget_report=turn,
+            )
+            response["context_budget"] = context_window_report(owner, turn=turn)
+        except Exception as exc:
+            logger.warning("context budget preview failed: %s", exc)
         return response
     
     @router.post("/cleanup")
@@ -559,6 +591,50 @@ def setup_upload_routes(upload_handler):
         # arm above still serves the file whole.
         return Response(svg_runtime.preview_bytes(content),
                         media_type="image/svg+xml", headers=headers)
+
+    # `P12-09` / `B752`. What the attachments a composer is holding will cost the
+    # model's window, for a turn assembled out of more than one upload request.
+    #
+    # `POST /api/upload` answers the same question for the files in *that*
+    # request; a composer that uploaded twice, or that is showing the budget
+    # before anything has been attached at all, has no request to read it off.
+    #
+    # Registered ABOVE `GET /{file_id}`, which is a catch-all FastAPI matches in
+    # declaration order (`B53`, same router) — below it, `context-budget` would
+    # resolve as a file id and answer 400.
+    #
+    # **It lands in the same commit as its caller and could not land before it.**
+    # `.pantheon/check-unreachable.py` holds a ceiling of 90 routes with no
+    # frontend caller; this route alone took it to 91 and the gate went red when
+    # `P12-09`'s backend half tried to ship on its own. `Law 13` says the unwired
+    # half does not merge, and the checker was right: the only legitimate caller
+    # is a composer in `static/`, and that composer is in this commit
+    # (`static/js/fileHandler.js`, `refreshContextMeter`).
+    #
+    # The spend is never recomputed here: `build_user_content` runs with its
+    # `budget_report` out-parameter, so what the meter draws is what the model
+    # would actually receive (`Law 14`). With no ids it still runs, and the
+    # answer is a measured zero rather than an unmeasured blank — "no
+    # attachments in this message" and "nobody counted" are different things to
+    # draw (`Law 10`).
+    @router.get("/context-budget")
+    async def upload_context_budget(request: Request, ids: str = ""):
+        """The composer's context breakdown for a set of uploaded attachments."""
+        from src.context_budget import context_window_report
+        from src.document_processor import build_user_content
+
+        owner = effective_user(request)
+        wanted = [part.strip() for part in str(ids or "").split(",") if part.strip()]
+        # Ownership is enforced one layer down: `build_user_content` resolves
+        # every id through `upload_handler.resolve_upload(fid, owner=owner)`, so
+        # somebody else's id measures as nothing rather than as a leak.
+        valid = [fid for fid in wanted if upload_handler.validate_upload_id(fid)]
+        turn: dict = {}
+        build_user_content(
+            "", valid, _upload_root(), upload_handler,
+            owner=owner, budget_report=turn,
+        )
+        return context_window_report(owner, turn=turn)
 
     @router.get("/{file_id}")
     async def download_file(request: Request, file_id: str, thumb: int = 0):

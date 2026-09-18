@@ -36,7 +36,12 @@ def test_pdf_body_marker_stripped_without_eating_text(monkeypatch, tmp_path):
 
     # Shape _process_pdf actually returns: marker, then a page-text marker, then body.
     raw = "\n\n[PDF content]:\n\n[Page 1 text]:\nto the board, the agenda is set"
-    monkeypatch.setattr(dp, "_process_pdf", lambda path, owner=None: raw)
+    # `**_` rather than a fixed signature: `P12-04` added `ceiling=`, and the real
+    # call site is wrapped in `except Exception`, so a stub that refuses an unknown
+    # keyword does not fail loudly — it degrades to the "opened in document viewer"
+    # marker, and the assertion below then reports a missing page heading, which is
+    # the wrong diagnosis for a stale test double (`B771`).
+    monkeypatch.setattr(dp, "_process_pdf", lambda path, owner=None, **_: raw)
     monkeypatch.setattr(pdf_forms, "has_form_fields", lambda path: False)
     monkeypatch.setattr(pdf_form_doc, "create_plain_pdf_document", lambda **kw: "doc-123")
 
@@ -64,7 +69,7 @@ def test_pdf_auto_document_uses_original_upload_name(monkeypatch, tmp_path):
     pdf_path.write_bytes(b"%PDF-1.4 fake")
 
     captured = {}
-    monkeypatch.setattr(dp, "_process_pdf", lambda path: "\n\n[PDF content]:\nbody")
+    monkeypatch.setattr(dp, "_process_pdf", lambda path, **_: "\n\n[PDF content]:\nbody")
     monkeypatch.setattr(pdf_forms, "has_form_fields", lambda path: False)
 
     def _capture_plain_pdf_document(**kw):

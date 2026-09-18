@@ -454,9 +454,18 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
     async def list_roles(request: Request):
         """Every defined role, split into its privilege and limit halves."""
         require_admin(request)
+        # `P12-02`. `role_limit_ranges()` rather than `LIMIT_RANGES`: the panel
+        # this feeds must offer exactly the keys `roles.validate_overrides`
+        # accepts, and four limits that consult the role leg on every call are
+        # outside the nullable-settings table. The bounds travel with them so a
+        # form can show the floor and the ceiling instead of discovering them by
+        # being refused (`Law 15`).
+        from src.settings import role_limit_ranges
+        ranges = role_limit_ranges()
         return {"roles": auth_manager.list_roles(),
                 "privilege_keys": sorted(DEFAULT_PRIVILEGES),
-                "limit_keys": sorted(LIMIT_RANGES)}
+                "limit_keys": sorted(ranges),
+                "limit_ranges": {k: list(v) for k, v in sorted(ranges.items())}}
 
     @router.put("/roles/{name}")
     async def upsert_role(name: str, body: DefineRoleRequest, request: Request):

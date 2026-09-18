@@ -98,9 +98,9 @@ rows are marked `second-line` in the register.
 
 ---
 
-## 3. The blocking set — eighteen rows, of which six are now met
+## 3. The blocking set — eighteen rows, of which seven are now met
 
-Fifteen of 234 open rows when this was written; **six have since been met and three
+Fifteen of 234 open rows when this was written; **seven have since been met and three
 have been added, and the met ones are marked `landed` in the register rather than deleted,
 because a line that quietly loses its met gates cannot be audited.** `P0-17` and `P6-08` closed
 on 2026-09-18; `P11-01` and `P11-02d` closed the same day, which is the fail-open privilege
@@ -120,7 +120,13 @@ denied undeclared keys to everybody. Four lines to correct is not a gate; it is 
 row demanded: the list loader first, then the two open `GET`s gated, then the flag flipped. A gate
 over an empty section reads as done and is not, which is why the row refused to be closed by the
 gate alone — and closing it closed `P11-10` with it, the same hole named twice from two phases.
-Twelve stand. One line of reasoning each; the row carries the measurement. Four are security,
+**`P10-11` was met on 2026-09-18, the hour the owner said the repository was going public**, and
+it is the one row here whose cost is irreversible: a pushed secret cannot be recalled. All three
+checks are clean, with the secret sweep widened from the checkout to all 186 commits, because a
+public repository exposes every one of them. The checklist's own grep turned out to match the word
+`task-` and is fixed (`B770`) — the check a fork owner runs once, under time pressure, before
+doing something they cannot undo, returned a hundred false lines.
+Eleven stand. One line of reasoning each; the row carries the measurement. Four are security,
 three are a false documented claim, two are a licence obligation, two are an action rather than
 a commit, one is a defect a first-time user hits, and one is the release artefact.
 
@@ -372,12 +378,15 @@ weakest one in this document: it means nobody adjudicated them individually.
 | `B702` | tracked | second-line | a revoke lands next turn and the panel now says so; timing copy, not a control that lies |
 | `B722` | tracked | security | measured and closed the day it was filed, so it never had to be adjudicated as a gate |
 | `B723` | tracked | security | the `Law 16` gate had two doors; fixed in the same hour, so it was never on the line |
+| `B731` | tracked | second-line | an authoring aid's threshold disagreeing with the server's; nobody's first ten minutes |
+| `B741` | tracked | claim | one of two paths drops two usage fields; what it shows is true, what it omits is the gap |
+| `B742` | tracked | claim | a subtraction standing where a measurement should be — and `P4-14` just made it checkable |
 | `P11-02d` | landed | security | six route files whose gating is unreconciled — an unknown on an auth surface |
 | `B71` | blocking | claim | upstream's artwork under this fork's filenames, and it is the macOS app icon |
 | `B411` | blocking | claim | four numbers in the published ledger do not print from their own repro |
 | `P6-08` | landed | claim | `.env.example` and three compose files document an env override that is dead code |
 | `B400` | blocking | first-ten | a `.docx` imported from the Documents panel is stored as zip bytes, silently |
-| `P10-11` | blocking | pre-flip | the secret grep has not been run and a pushed secret is unrecoverable |
+| `P10-11` | landed | pre-flip | the secret grep has not been run and a pushed secret is unrecoverable |
 | `B357` | blocking | pre-flip | five links route reporters to an advisory form nobody has confirmed is on |
 | `P10-12` | blocking | artefact | release notes; the version half landed under `B450`, the renames have not |
 | `B492` | tracked | second-line | every throttled host but the mailbox is admin-only; an operator surface, not a stranger's first ten minutes |

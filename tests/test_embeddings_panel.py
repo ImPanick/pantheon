@@ -26,6 +26,8 @@ INDEX = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
 PANEL = (ROOT / "static" / "js" / "embeddings.js").read_text(encoding="utf-8")
 SETTINGS = (ROOT / "static" / "js" / "settings.js").read_text(encoding="utf-8")
 REGISTRY = (ROOT / "static" / "js" / "settings" / "registry.js").read_text(encoding="utf-8")
+# `P9-02`: the nav button is drawn from the registry by this module now.
+NAVIGATION = (ROOT / "static" / "js" / "settings" / "navigation.js").read_text(encoding="utf-8")
 ROUTES = (ROOT / "routes" / "embedding_routes.py").read_text(encoding="utf-8")
 
 
@@ -49,12 +51,22 @@ def _js_fn(source, header):
 def test_the_panel_is_registered_as_admin_only():
     """The registry, the nav button and the panel div must agree — there is a
     `getSettingsRegistryIssues` check that warns on a mismatch, and a panel
-    registered but not drawn is exactly the drift this row is about."""
+    registered but not drawn is exactly the drift this row is about.
+
+    UPDATED 2026-09-18 by `P9-02`. The nav button is no longer written in
+    `static/index.html`: `renderSettingsNav()` draws every tab from this entry,
+    so *the entry is the button* and asserting on the markup would be asserting
+    on a copy that no longer exists. The two halves that can still disagree are
+    pinned instead — the registry entry, and the panel div, which is still
+    markup. That is the pair `getSettingsRegistryIssues` compares, and it is the
+    pair that drifted for real: `networks` had a panel here and no entry.
+    """
     entry = REGISTRY.split("id: 'embeddings'", 1)[1].split("}),", 1)[0]
     assert "adminOnly: true" in entry
     assert "controller: 'admin'" in entry
-    assert 'data-settings-tab="embeddings"' in INDEX
+    assert "label: 'Embeddings'" in entry, "the nav button's text comes from here now"
     assert 'data-settings-panel="embeddings"' in INDEX
+    assert "renderSettingsNav" in NAVIGATION, "the nav is no longer drawn from the registry"
 
 
 def test_it_is_findable_by_what_someone_would_search_for():

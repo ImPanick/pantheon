@@ -3729,6 +3729,13 @@ def _compute_final_metrics(
     prep_timings: Optional[Dict[str, float]] = None,
     backend_gen_tps: float = 0,
     backend_prefill_tps: float = 0,
+    # `P4-14`. The measurements the two rates above are quotients of. Separate
+    # arguments rather than a dict, so a caller that has one and not the other
+    # cannot pass a half-filled shape that reads as a full one.
+    backend_prefill_ms: float = 0,
+    backend_decode_ms: float = 0,
+    backend_prefill_tokens: int = 0,
+    backend_decode_tokens: int = 0,
     injected_skills: Optional[list] = None,
     verifier_findings: Optional[list] = None,
 ) -> dict:
@@ -3784,6 +3791,28 @@ def _compute_final_metrics(
     }
     if backend_prefill_tps and backend_prefill_tps > 0:
         metrics["prefill_tps"] = round(backend_prefill_tps, 2)
+    # `P4-14`. Prefill and decode as *durations* and *token counts*, so the two
+    # phases are separable in time and the rates above are checkable against
+    # something. `response_time` and `time_to_first_token` stay wall clocks and
+    # keep meaning what they meant: no backend reports a time to first token,
+    # and a wall clock that includes prep, queueing and network is the honest
+    # figure for the question "how long until I saw something".
+    #
+    # Each key is present exactly when a backend measured it. Absence means
+    # "not reported" — the same contract the prompt-cache counters use, for the
+    # same reason a zero would be a claim rather than a measurement.
+    for _key, _value in (
+        ("prefill_ms", backend_prefill_ms),
+        ("decode_ms", backend_decode_ms),
+    ):
+        if isinstance(_value, (int, float)) and not isinstance(_value, bool) and _value > 0:
+            metrics[_key] = round(float(_value), 2)
+    for _key, _value in (
+        ("prefill_tokens", backend_prefill_tokens),
+        ("decode_tokens", backend_decode_tokens),
+    ):
+        if isinstance(_value, int) and not isinstance(_value, bool) and _value > 0:
+            metrics[_key] = _value
     if prep_timings:
         prep_total = round(sum(prep_timings.values()), 3)
         metrics["agent_prep_time"] = prep_total
@@ -3824,6 +3853,10 @@ def _usage_bucket(
     usage_source: str,
     cache_read: int = 0,
     cache_write: int = 0,
+    gen_tps: float = 0,
+    prefill_tps: float = 0,
+    prefill_ms: float = 0,
+    decode_ms: float = 0,
 ) -> dict:
     """Build non-secret usage attribution for one concrete Agent round."""
 
@@ -3846,6 +3879,24 @@ def _usage_bucket(
     if cache_read or cache_write:
         bucket["cache_read_input_tokens"] = max(int(cache_read or 0), 0)
         bucket["cache_creation_input_tokens"] = max(int(cache_write or 0), 0)
+    # `P4-07` / `P4-14`. The speed the backend measured for THIS round. It was
+    # streamed on every round's usage event and kept in a single variable that
+    # the next round overwrote, so a five-round turn reported the fifth round's
+    # decode speed as the turn's and discarded the other four — and round 1
+    # against a 40k-token prompt is not the same measurement as round 5 against
+    # a 200-token continuation.
+    #
+    # Same absence contract as the cache counters directly above: a key is here
+    # only when a backend reported it, because a `gen_tps: 0` on a cloud API
+    # that does not report timings would read as a stalled round.
+    for _key, _value in (
+        ("gen_tps", gen_tps),
+        ("prefill_tps", prefill_tps),
+        ("prefill_ms", prefill_ms),
+        ("decode_ms", decode_ms),
+    ):
+        if isinstance(_value, (int, float)) and not isinstance(_value, bool) and _value > 0:
+            bucket[_key] = round(float(_value), 2)
     return bucket
 
 
@@ -5404,6 +5455,13 @@ async def stream_agent_loop(
     has_real_usage = False
     backend_gen_tps = 0      # backend-reported true gen speed (llama.cpp timings)
     backend_prefill_tps = 0  # backend-reported prefill speed
+    # `P4-14`. The measurements the two rates above are quotients of. Same
+    # last-round-wins rule as the rates, for the same reason: the turn footer
+    # reports one figure and the per-round record lives in `usage_buckets`.
+    backend_prefill_ms = 0
+    backend_decode_ms = 0
+    backend_prefill_tokens = 0
+    backend_decode_tokens = 0
     requested_model = model
     actual_model = model
     actual_endpoint_id = requested_endpoint_id
@@ -5997,6 +6055,10 @@ async def stream_agent_loop(
         _round_real_input_tokens = 0
         _round_cache_read = 0    # `P4-22`
         _round_cache_write = 0   # `P4-22`
+        _round_gen_tps = 0       # `P4-07` / `P4-14`
+        _round_prefill_tps = 0   # `P4-07` / `P4-14`
+        _round_prefill_ms = 0    # `P4-07` / `P4-14`
+        _round_decode_ms = 0     # `P4-07` / `P4-14`
         _round_real_output_tokens = 0
         _round_has_real_usage = False
         _round_usage_finalized = False
@@ -6037,6 +6099,10 @@ async def stream_agent_loop(
                 usage_source=usage_source,
                 cache_read=_round_cache_read,
                 cache_write=_round_cache_write,
+                gen_tps=_round_gen_tps,
+                prefill_tps=_round_prefill_tps,
+                prefill_ms=_round_prefill_ms,
+                decode_ms=_round_decode_ms,
             ))
         logger.info(
             "[agent-timing] round_start round=%s model=%s endpoint=%s prompt_tokens=%s tools=%s native_tools=%s timeout=%s",
@@ -6207,8 +6273,25 @@ async def stream_agent_loop(
                         # reads low. Keep the last round's value (the gen phase).
                         if u.get("gen_tps"):
                             backend_gen_tps = u["gen_tps"]
+                            _round_gen_tps = u["gen_tps"]
                         if u.get("prefill_tps"):
                             backend_prefill_tps = u["prefill_tps"]
+                            _round_prefill_tps = u["prefill_tps"]
+                        # `P4-14`. The durations and token counts the two rates
+                        # are quotients of, kept per round (`P4-07`) as well as
+                        # per turn — without them prefill and decode cannot be
+                        # told apart in time and a reported rate cannot be
+                        # divided back out and checked.
+                        if u.get("prefill_ms"):
+                            backend_prefill_ms = u["prefill_ms"]
+                            _round_prefill_ms = u["prefill_ms"]
+                        if u.get("decode_ms"):
+                            backend_decode_ms = u["decode_ms"]
+                            _round_decode_ms = u["decode_ms"]
+                        if u.get("prefill_tokens"):
+                            backend_prefill_tokens = u["prefill_tokens"]
+                        if u.get("decode_tokens"):
+                            backend_decode_tokens = u["decode_tokens"]
                     elif data.get("type") == "fallback":
                         # The selected model failed and another answered; surface
                         # the notice so a misconfigured provider isn't masked.
@@ -7650,6 +7733,10 @@ async def stream_agent_loop(
         prep_timings=prep_timings,
         backend_gen_tps=backend_gen_tps,
         backend_prefill_tps=backend_prefill_tps,
+        backend_prefill_ms=backend_prefill_ms,
+        backend_decode_ms=backend_decode_ms,
+        backend_prefill_tokens=backend_prefill_tokens,
+        backend_decode_tokens=backend_decode_tokens,
         injected_skills=_injected_skills_seen,
         verifier_findings=_verifier_findings,
     )

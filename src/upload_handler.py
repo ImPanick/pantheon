@@ -16,6 +16,7 @@ from fastapi import HTTPException, UploadFile
 
 from src.upload_limits import (
     CHAT_UPLOAD_MAX_BYTES_ENV,
+    DEFAULT_MAX_FILES_PER_REQUEST,
     DEFAULT_UPLOAD_BURST_LIMIT,
     DEFAULT_UPLOAD_BURST_WINDOW_SECONDS,
     format_byte_limit,
@@ -247,7 +248,12 @@ def count_recent_uploads(
 # The browser cap is 10 today and 25 is the ceiling P2-11 plans for it, so the
 # server cap is set at 25 and the frontend can be raised to it without a
 # coordinated server change. Raising MAX_FILES past 25 fails the pinning test.
-MAX_FILES_PER_REQUEST = 25
+# `P12-02`. The number now lives in `src/upload_limits.py` beside the resolver
+# that layers a role profile and an instance setting over it, and this name is
+# that number rather than a second copy of 25 (`Law 7`). Everything the comment
+# above says still holds: it is the BUILT-IN DEFAULT and the bottom of four
+# layers, and `tests/test_upload_multifile.py` still pins it inside the window.
+MAX_FILES_PER_REQUEST = DEFAULT_MAX_FILES_PER_REQUEST
 
 
 class UploadHandler:

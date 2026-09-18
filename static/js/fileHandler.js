@@ -191,6 +191,248 @@ function _revokePreviewUrl(f) {
  */
 export function init(apiBase) {
   API_BASE = apiBase;
+  // `P12-09`. Read the budget once at start-up so the ceiling and the layer that
+  // set it are on screen before anybody attaches anything — *"you have 3,000
+  // characters"* and *"your role gives you 3,000 characters"* are different
+  // sentences and only the second one tells a person who to ask. Not awaited:
+  // a meter is never allowed to delay the composer.
+  refreshContextMeter();
+}
+
+/* ── `P12-09` · the context budget, at the composer ──────────────────────────
+ *
+ * The limits in `P12` had an API and a settings tab and no way to see yourself
+ * hitting one. This is that: the ceiling this message's attachments count
+ * against, what they have actually spent of it, which file spent what, and who
+ * set the number — above the send button, where the message is being written.
+ *
+ * **Every figure here is the product's own accounting, never a second copy of
+ * it.** `build_user_content` fills `budget_report` on the real path, so what
+ * this draws is what the model will receive (`Law 14`). Nothing is estimated in
+ * the browser.
+ *
+ * **The four segments nobody measured are drawn hatched, never empty.** System
+ * prompt, skills, retrieved memory and history are assembled in
+ * `src/agent_loop.py` and say `measured: false` on the wire (`B750`, `B751`).
+ * A bar reading 5% full when the real figure is unknown teaches the opposite of
+ * what this meter is for, which is `Law 10`'s polarity incident drawn as a bar
+ * chart.
+ */
+let _contextBudget = null;      // the last report read off the wire
+let _contextMeasuredIds = [];   // which attachment ids that report describes
+let _contextFetching = false;
+
+/** `role` | `setting` | `env` | `default` | `turn`, as a sentence about who to ask. */
+const _CEILING_SOURCE = {
+  role: 'Your role sets this ceiling',
+  setting: 'An instance setting sets this ceiling',
+  env: 'The environment sets this ceiling',
+  turn: 'Set for this message',
+  default: 'Pantheon\'s shipped default',
+};
+
+function _chars(n) {
+  const v = Number(n);
+  return Number.isFinite(v) && v > 0 ? Math.round(v) : 0;
+}
+
+/**
+ * Ask the server what a set of already-uploaded attachments costs the window.
+ *
+ * `GET /api/upload/context-budget` — the whole-turn endpoint `B752` describes.
+ * With no ids it answers the budgets alone, with a measured spend of zero,
+ * which is how the meter exists before anything has been attached.
+ *
+ * A meter that cannot be read is not an error the composer shows: the previous
+ * report stays on screen, or the meter stays hidden if there has never been
+ * one. It is deliberately not a toast — nothing the person did failed.
+ */
+export async function refreshContextMeter(ids) {
+  if (_contextFetching) return _contextBudget;
+  const wanted = (Array.isArray(ids) ? ids : []).filter(Boolean).map(String);
+  _contextFetching = true;
+  try {
+    const query = wanted.length
+      ? `?ids=${encodeURIComponent(wanted.join(','))}`
+      : '';
+    // The path is a literal with NOTHING appended inside the template, and the
+    // query is concatenated after it. `.pantheon/check-unreachable.py`
+    // normalises every template hole to `*`, so a single
+    // `` `…/context-budget${query}` `` reads as the pattern
+    // `/api/upload/context-budget*` and does not match the route — the ratchet
+    // would then be satisfied only by the prose above this function, which is
+    // `Law 20`'s first incident happening to a checker. Measured, and pinned by
+    // `tests/test_context_meter_js.py`.
+    const url = `${API_BASE}/api/upload/context-budget` + query;
+    const res = await fetch(url, { credentials: 'same-origin' });
+    if (!res.ok) {
+      console.warn('context budget unavailable:', res.status);
+      return _contextBudget;
+    }
+    const report = await res.json();
+    if (report && typeof report === 'object') {
+      noteContextBudget(report, wanted);
+    }
+  } catch (e) {
+    console.warn('context budget fetch failed:', e && e.message);
+  } finally {
+    _contextFetching = false;
+  }
+  return _contextBudget;
+}
+
+/** Record a report that arrived on some other response, and redraw. */
+export function noteContextBudget(report, ids) {
+  if (!report || typeof report !== 'object') return;
+  _contextBudget = report;
+  _contextMeasuredIds = (Array.isArray(ids) ? ids : []).filter(Boolean).map(String);
+  renderContextMeter();
+}
+
+/** The ids the report on screen was measured over. */
+export function getContextMeasuredIds() {
+  return _contextMeasuredIds.slice();
+}
+
+/** The report on screen, or null before one has been read. */
+export function getContextBudget() {
+  return _contextBudget;
+}
+
+function _contextChip(item, limit) {
+  const chip = document.createElement('span');
+  const state = String((item && item.state) || 'full');
+  chip.className = `context-chip context-chip-${state}`;
+
+  const name = document.createElement('span');
+  name.className = 'context-chip-name';
+  name.textContent = String((item && item.name) || 'attachment');
+  chip.appendChild(name);
+
+  const spent = _chars(item && item.chars);
+  const note = document.createElement('span');
+  note.className = 'context-chip-note';
+  if (state === 'omitted') {
+    // Not free, and the payload says so: an omitted file still spends the
+    // remainder on its own banner. The words carry the state, because a strike
+    // through survives neither greyscale nor a screen reader on its own.
+    note.textContent = 'no room in this message';
+  } else if (state === 'truncated') {
+    note.textContent = `${spent.toLocaleString()} characters fit`;
+  } else {
+    const share = limit > 0 ? Math.round((spent / limit) * 100) : 0;
+    note.textContent = `${share}% of the budget`;
+  }
+  chip.appendChild(note);
+  chip.title = `${name.textContent} — ${spent.toLocaleString()} characters`;
+  return chip;
+}
+
+/**
+ * Draw the meter from the last report. Idempotent; safe to call on any change.
+ */
+export function renderContextMeter() {
+  const host = document.getElementById('context-meter');
+  if (!host) return;
+  while (host.firstChild) host.removeChild(host.firstChild);
+
+  const report = _contextBudget;
+  const budgets = report && Array.isArray(report.budgets) ? report.budgets : [];
+  const ceiling = budgets.find((b) => b && b.is_ceiling) || null;
+  const limit = _chars(ceiling && ceiling.chars);
+  // Nothing read yet, or a payload with no ceiling in it: draw nothing rather
+  // than a bar with an invented denominator.
+  if (!limit) { host.hidden = true; return; }
+  host.hidden = false;
+
+  const segments = report && Array.isArray(report.segments) ? report.segments : [];
+  const attachments = segments.find((s) => s && s.key === 'attachments') || null;
+  const measured = !!(attachments && attachments.measured);
+  const spent = measured ? _chars(attachments.chars) : 0;
+  const items = measured && Array.isArray(attachments.items) ? attachments.items : [];
+  const unmeasured = segments.filter((s) => s && !s.measured);
+  const pending = pendingFiles.length;
+  const filled = limit > 0 ? Math.max(0, Math.min(100, (spent / limit) * 100)) : 0;
+
+  const head = document.createElement('div');
+  head.className = 'context-meter-head';
+  const title = document.createElement('span');
+  title.className = 'context-meter-title';
+  title.textContent = 'Attachment context';
+  head.appendChild(title);
+  const figure = document.createElement('span');
+  figure.className = 'context-meter-figure';
+  figure.textContent = `${spent.toLocaleString()} of ${limit.toLocaleString()} characters`;
+  head.appendChild(figure);
+  host.appendChild(head);
+
+  const bar = document.createElement('div');
+  bar.className = 'context-meter-bar';
+  bar.setAttribute('role', 'img');
+  const unmeasuredReason = String((report && report.unmeasured_reason) || '');
+  bar.setAttribute('aria-label',
+    `${spent.toLocaleString()} of ${limit.toLocaleString()} characters used by attachments`
+    + (unmeasured.length
+      ? `; ${unmeasured.length} other parts of the message were not measured`
+      : ''));
+  const fill = document.createElement('span');
+  fill.className = 'context-meter-fill';
+  fill.style.width = `${filled}%`;
+  bar.appendChild(fill);
+  if (unmeasured.length) {
+    // The remainder is hatched rather than blank: the four segments in it were
+    // never counted, and empty space would read as headroom.
+    const rest = document.createElement('span');
+    rest.className = 'context-meter-unmeasured';
+    rest.style.width = `${100 - filled}%`;
+    rest.title = unmeasuredReason
+      || `${unmeasured.map((s) => s.label).join(', ')} were not measured`;
+    bar.appendChild(rest);
+  }
+  host.appendChild(bar);
+
+  const chips = document.createElement('div');
+  chips.className = 'context-meter-chips';
+  if (items.length) {
+    items.forEach((item) => chips.appendChild(_contextChip(item, limit)));
+  } else {
+    const empty = document.createElement('span');
+    empty.className = 'context-meter-empty';
+    empty.textContent = pending
+      ? `${pending} attached — measured when you send`
+      : 'No attachments in this message';
+    chips.appendChild(empty);
+  }
+  host.appendChild(chips);
+
+  const foot = document.createElement('div');
+  foot.className = 'context-meter-foot';
+  const source = document.createElement('span');
+  source.className = 'context-meter-source';
+  const sentence = _CEILING_SOURCE[String((ceiling && ceiling.source) || 'default')]
+    || _CEILING_SOURCE.default;
+  source.textContent = `${sentence}: ${limit.toLocaleString()} characters.`;
+  foot.appendChild(source);
+  // `clamped` means the number shown is not the number somebody asked for — it
+  // was reduced to fit the ceiling. Showing the smaller figure and saying
+  // nothing is how an operator concludes their setting did not save.
+  const clamped = budgets.filter((b) => b && b.clamped);
+  if (clamped.length) {
+    const note = document.createElement('span');
+    note.className = 'context-meter-clamped';
+    note.textContent = clamped.length === 1
+      ? `${clamped[0].label} was reduced to fit it.`
+      : `${clamped.length} per-file budgets were reduced to fit it.`;
+    foot.appendChild(note);
+  }
+  if (unmeasured.length) {
+    const rest = document.createElement('span');
+    rest.className = 'context-meter-unmeasured-note';
+    rest.textContent = `${unmeasured.map((s) => s.label).join(', ')}: not measured yet.`;
+    rest.title = unmeasuredReason;
+    foot.appendChild(rest);
+  }
+  host.appendChild(foot);
 }
 
 /**
@@ -209,6 +451,10 @@ export function renderAttachStrip() {
   const strip = document.getElementById('attach-strip');
 
   while (strip.firstChild) strip.removeChild(strip.firstChild);
+  // `P12-09`. The meter tracks the composer: a file added or removed changes
+  // what this message is going to spend, and the count of files still waiting
+  // to be measured is part of what it says.
+  renderContextMeter();
   if (pendingFiles.length === 0) {
     _expanded = false;
     if (window._updateSendBtnIcon) window._updateSendBtnIcon();
@@ -402,6 +648,16 @@ export async function uploadPending(opts = {}) {
     // callers that want it can grab it via getLastUploadedMeta(). Keep the
     // returned shape as `ids` for backward-compatibility with existing call sites.
     _lastUploadedMeta = uploaded;
+    // `P12-09`. The breakdown rides this response because this request is what
+    // changed the answer. It measures the files in THIS request; a composer
+    // carrying attachments from more than one goes back to
+    // `GET /api/upload/context-budget` for the set (`B752`).
+    const uploadedIds = uploaded.map((x) => x && x.id).filter(Boolean);
+    if (data.context_budget && typeof data.context_budget === 'object') {
+      noteContextBudget(data.context_budget, uploadedIds);
+    } else if (uploadedIds.length) {
+      refreshContextMeter(uploadedIds);
+    }
     if (rejected.length) {
       uiModule.showUploadRejections(rejected, {
         suffix: pendingFiles.length ? 'Kept in the composer so you can retry.' : '',
@@ -585,6 +841,11 @@ const fileHandlerModule = {
   isUploading,
   wasLastUploadCancelled,
   cancelUpload,
+  refreshContextMeter,
+  renderContextMeter,
+  noteContextBudget,
+  getContextBudget,
+  getContextMeasuredIds,
 };
 
 export default fileHandlerModule;

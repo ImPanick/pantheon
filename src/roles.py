@@ -112,15 +112,25 @@ def privilege_keys() -> frozenset[str]:
 
 
 def limit_keys() -> frozenset[str]:
-    """The limit keys a role may override — `settings.LIMIT_RANGES`, per call.
+    """The limit keys a role may override — `settings.role_limit_ranges()`.
 
-    That dict is the one place this codebase says *these settings keys are
-    nullable integer limits, and these are their bounds*. It is also what
-    `POST /api/auth/settings` validates against, so a role and an instance
-    setting accept exactly the same keys and refuse exactly the same ones.
+    Was `LIMIT_RANGES`, which answers a narrower question: *which settings keys
+    are **nullable** integer limits*, i.e. what `POST /api/auth/settings`
+    validates. `P12-02` found four limits that resolve through
+    `settings.resolve_limit` **with an owner** — so the role leg is consulted
+    for them on every call — and ship a real default rather than `None`:
+    `task_concurrency_cap`, `upload_burst_limit`, `upload_burst_window_seconds`
+    and `approval_timeout_seconds`. The provider could never answer for any of
+    them, which is `Law 13`'s unwired half wearing a resolution order.
+
+    `role_limit_ranges()` is `LIMIT_RANGES` plus those four, with each one's
+    bounds imported from the module that owns the limit. It is a derivation, not
+    a third list (`Law 14`), and it is still the same table
+    `POST /api/auth/settings` clamps the nullable keys against — so a role and
+    an instance setting still refuse exactly the same values.
     """
-    from src.settings import LIMIT_RANGES
-    return frozenset(LIMIT_RANGES)
+    from src.settings import role_limit_ranges
+    return frozenset(role_limit_ranges())
 
 
 def _check_privilege_value(key: str, value: Any) -> Any:

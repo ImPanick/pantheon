@@ -8,7 +8,7 @@ import markdownModule from './markdown.js';
 import { svgifyEmoji } from './markdown.js';
 import { addAITTSButton } from './tts-ai.js';
 import { providerLogo, providerLabel } from './providers.js';
-import settingsModule from './settings.js?v=20260815approvalsave1';
+import settingsModule from './settings.js?v=20260918emptystates1';
 import spinnerModule from './spinner.js';
 import { bindMenuDismiss } from './escMenuStack.js';
 import { loadPanel } from './panels.js';
@@ -1929,7 +1929,7 @@ export function buildImageBubble(imageUrl, prompt, model, size, quality, imageId
         : 'png';
       const base = (prompt || 'generated-image').slice(0, 36).replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'generated-image';
       const file = new File([blob], `${base}.${ext}`, { type: blob.type || 'image/png', lastModified: Date.now() });
-      const mod = await import('./fileHandler.js');
+      const mod = await import('./fileHandler.js?v=20260918surfacehalves1');
       const addFiles = mod.addFiles || (mod.default && mod.default.addFiles);
       if (!addFiles) throw new Error('attachment handler unavailable');
       await addFiles([file], { skipCrop: true });
@@ -2662,6 +2662,190 @@ export function promptCacheRows(metrics) {
     + ` (${read.toLocaleString()} read, ${write.toLocaleString()} written)</div>`;
 }
 
+/** A duration a person can read at the magnitude it actually has. */
+function _durationStr(ms) {
+  const n = Number(ms);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  return n < 1000 ? `${Math.round(n)}ms` : `${(n / 1000).toFixed(2)}s`;
+}
+
+/** A tokens-per-second figure, at a precision that does not invent digits. */
+function _rateStr(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  return `${n >= 100 ? Math.round(n).toLocaleString() : n.toFixed(1)} tok/s`;
+}
+
+function _posInt(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
+}
+
+/**
+ * `P4-14`. The two phases of generating an answer, as two rows.
+ *
+ * The Speed row was `${tps} tok/s` and nothing else, which is a single number
+ * standing for two different measurements of two different things. **Prefill**
+ * is the model reading what you sent; **decode** is the model writing the
+ * reply. A 40ms prefill and a 4s one produced the identical card at the
+ * identical 78 tok/s, so the one figure that grows with the size of your
+ * conversation was the one the surface could not show.
+ *
+ * `tps_source` decides the word beside the decode rate and it is the row:
+ * `backend` means llama.cpp's own `timings` block measured it, `computed` means
+ * this is tokens divided by wall clock and therefore reads low, because the
+ * wall clock includes the prefill and the overhead. "measured" and "estimated"
+ * are what those two mean to a person, and the surface has never said which one
+ * it was showing.
+ *
+ * Each figure is drawn exactly when a backend reported it — the absence
+ * contract `P4-22`'s cache counters set, for the same reason. `prefill_ms: 0`
+ * on a cloud API would read as an instantaneous prefill rather than as a
+ * backend that does not say, so an unreported prefill says *not reported*
+ * rather than drawing a zero.
+ *
+ * Returns markup and takes only numbers and a two-member enum, none of which
+ * reaches it from a user or a document.
+ */
+export function speedRows(metrics) {
+  const m = metrics || {};
+  const line = (label, value, tag) => `<div><span class="ctx-label">${label}</span> ${value}`
+    + (tag ? ` <span class="ctx-measure">${tag}</span>` : '') + '</div>';
+  const sub = (text) => `<div class="ctx-sub">${text}</div>`;
+
+  const out = [];
+
+  // ── Prefill: reading the prompt ──
+  const prefillRate = _rateStr(m.prefill_tps);
+  const prefillMs = _durationStr(m.prefill_ms);
+  const prefillTokens = _posInt(m.prefill_tokens);
+  const prefillQuotient = [
+    prefillTokens ? `${prefillTokens.toLocaleString()} tokens` : '',
+    prefillMs ? `in ${prefillMs}` : '',
+  ].filter(Boolean).join(' ');
+  if (prefillRate) {
+    out.push(line('Prefill', prefillRate, 'measured'));
+    out.push(sub(`reading your prompt${prefillQuotient ? ` — ${prefillQuotient}` : ''}`));
+  } else if (prefillQuotient) {
+    out.push(line('Prefill', prefillQuotient, 'measured'));
+    out.push(sub('reading your prompt'));
+  } else {
+    out.push(line('Prefill', 'not reported'));
+    out.push(sub('reading your prompt — this backend does not measure it'));
+  }
+
+  // ── Decode: writing the answer ──
+  const tps = m.tokens_per_second;
+  const decodeRate = tps != null && tps !== 'undefined' ? _rateStr(tps) : '';
+  const backendTimed = m.tps_source === 'backend';
+  const decodeMs = _durationStr(m.decode_ms);
+  const decodeTokens = _posInt(m.decode_tokens);
+  const decodeQuotient = [
+    decodeTokens ? `${decodeTokens.toLocaleString()} tokens` : '',
+    decodeMs ? `in ${decodeMs}` : '',
+  ].filter(Boolean).join(' ');
+  if (decodeRate) {
+    out.push(line('Decode', decodeRate, backendTimed ? 'measured' : 'estimated'));
+    out.push(sub(backendTimed
+      ? `writing the answer${decodeQuotient ? ` — ${decodeQuotient}` : ''}`
+      : 'writing the answer — from the wall clock, so it reads low'));
+  } else {
+    out.push(line('Decode', 'not reported'));
+    out.push(sub('writing the answer'));
+  }
+
+  return out.join('\n');
+}
+
+/**
+ * `P4-07`. One line per Agent round: which model answered it, what it spent,
+ * how fast it was and what it cost.
+ *
+ * `_usage_bucket` (`src/agent_loop.py`) has carried every one of those fields
+ * per round since before this wave, and `_metricsBillableCost` — four lines
+ * above, walking this same array — was the tree's only consumer: it prices each
+ * round on the route that answered it and returns **one float**, throwing every
+ * round's attribution away inside the loop that read it. A four-round turn that
+ * fell back from a local model to a paid one showed a single cost and a single
+ * model name, and there was no way to ask which round was which.
+ *
+ * Built as DOM rather than markup because `model` and `endpoint_label` are
+ * strings chosen by whoever configured the endpoint, and this popup is
+ * assembled with `innerHTML`.
+ *
+ * Drawn only for a turn that actually had rounds to tell apart. One bucket says
+ * nothing the Model and token rows above do not already say, and a block that
+ * repeats its own summary is noise a reader learns to skip.
+ */
+function buildRoundBreakdown(metrics, fallbackModel, selectedEndpointUrl) {
+  const buckets = Array.isArray(metrics.usage_buckets) ? metrics.usage_buckets : [];
+  const rounds = buckets.filter((b) => b && typeof b === 'object');
+  if (rounds.length < 2) return null;
+
+  const box = document.createElement('div');
+  box.className = 'ctx-rounds';
+
+  const title = document.createElement('div');
+  title.className = 'ctx-rounds-title';
+  title.textContent = `Rounds (${rounds.length})`;
+  box.appendChild(title);
+
+  const caption = document.createElement('div');
+  caption.className = 'ctx-sub';
+  caption.textContent = 'each one a separate call — the totals above are their sum';
+  box.appendChild(caption);
+
+  rounds.forEach((bucket, index) => {
+    const row = document.createElement('div');
+    row.className = 'ctx-round';
+
+    const number = document.createElement('span');
+    number.className = 'ctx-round-n';
+    number.textContent = String(_posInt(bucket.round) || index + 1);
+    row.appendChild(number);
+
+    const name = document.createElement('span');
+    name.className = 'ctx-round-model';
+    const roundModel = String(bucket.model || fallbackModel || 'Unknown');
+    name.textContent = roundModel.split('/').pop();
+    row.appendChild(name);
+
+    const tokens = document.createElement('span');
+    tokens.className = 'ctx-round-tokens';
+    const inTok = _posInt(bucket.input_tokens);
+    const outTok = _posInt(bucket.output_tokens);
+    tokens.textContent = `${inTok.toLocaleString()} in / ${outTok.toLocaleString()} out`
+      + (bucket.usage_source === 'real' ? '' : '~');
+    row.appendChild(tokens);
+
+    const speed = document.createElement('span');
+    speed.className = 'ctx-round-speed';
+    // The per-round decode speed, present only when a backend measured THIS
+    // round — `backend_gen_tps` used to be one variable every round overwrote,
+    // so the turn reported the last round's speed as its own.
+    speed.textContent = _rateStr(bucket.gen_tps) || '—';
+    row.appendChild(speed);
+
+    const price = document.createElement('span');
+    price.className = 'ctx-round-cost';
+    const roundCost = _billableCost(
+      roundModel, inTok, outTok, bucket.endpoint_cost_tracked, selectedEndpointUrl,
+    );
+    price.textContent = roundCost === null
+      ? 'not billed'
+      : `$${roundCost < 0.01 ? roundCost.toFixed(4) : roundCost.toFixed(3)}`;
+    row.appendChild(price);
+
+    // The route's own name, where there is one: two rounds on the same model
+    // served by two different endpoints are two different bills.
+    const label = bucket.endpoint_label ? String(bucket.endpoint_label) : '';
+    row.title = label ? `Round ${number.textContent} · ${roundModel} · ${label}` : `Round ${number.textContent} · ${roundModel}`;
+    box.appendChild(row);
+  });
+
+  return box;
+}
+
 export function displayMetrics(messageElement, metrics) {
   messageElement
     .querySelectorAll('.response-metrics, .metrics-divider, .ctx-divider, .ctx-ring')
@@ -2677,6 +2861,17 @@ export function displayMetrics(messageElement, metrics) {
   const isReal = metrics.usage_source === 'real';
   const ctxPct = metrics.context_percent;
   const model = metrics.model || 'Unknown';
+  // `P4-06`. The turn stopped rather than finished. Written at three sites —
+  // `src/agent_loop.py`'s direct and agent terminals and `chat_terminal` in
+  // `routes/chat_routes.py` — onto the same envelope `save_assistant_response`
+  // stores, so it is on the reload as well as on the wire. Nothing in
+  // `static/**` read either key, and a failed turn's footer was the same shape,
+  // the same words and the same styling as a successful one.
+  const failed = metrics.failed === true;
+  const failure = (metrics.failure && typeof metrics.failure === 'object')
+    ? metrics.failure : {};
+  const failureMessage = typeof failure.message === 'string' ? failure.message.trim() : '';
+  const failureStatus = failure.status;
   const cost = _metricsBillableCost(
     metrics,
     model,
@@ -2684,8 +2879,10 @@ export function displayMetrics(messageElement, metrics) {
     outputTokens,
   );
 
-  // Nothing useful to show — bail out (only if ALL metrics are missing)
-  if (!responseTime && !inputTokens && !outputTokens && tps == null && !ctxPct) return;
+  // Nothing useful to show — bail out (only if ALL metrics are missing).
+  // A failed turn is never nothing: the footer is the only place that says the
+  // answer above it stopped early, so it draws even when every figure is absent.
+  if (!failed && !responseTime && !inputTokens && !outputTokens && tps == null && !ctxPct) return;
 
   // Rendering can occur when metrics arrive and again after [DONE]. The
   // ledger mutation is idempotent for that shared payload.
@@ -2701,10 +2898,24 @@ export function displayMetrics(messageElement, metrics) {
       : responseTime != null
         ? `${responseTime}s`
         : '';
-  if (!metricsLabel) return;
-  metricsContainer.textContent = metricsLabel;
+  if (!failed && !metricsLabel) return;
+  // `P4-06`. The state, in a word, before any figure. A reader who never opens
+  // the popup still learns that the answer above them is a fragment — the word
+  // carries it, not the colour, so it survives greyscale, a colour-blind reader
+  // and a screen reader, which is the standard `P7-06`'s effect ladder set on
+  // the card above.
+  if (failed) {
+    metricsContainer.classList.add('response-metrics-failed');
+    metricsContainer.textContent = metricsLabel ? `Stopped · ${metricsLabel}` : 'Stopped';
+  } else {
+    metricsContainer.textContent = metricsLabel;
+  }
   metricsContainer.style.cursor = 'pointer';
-  metricsContainer.title = 'Click for details';
+  metricsContainer.title = failed
+    ? (failureMessage
+      ? `This answer stopped early: ${failureMessage} — click for details`
+      : 'This answer stopped early — click for details')
+    : 'Click for details';
   const metricsDivider = document.createElement('span');
   metricsDivider.className = 'metrics-divider';
   metricsDivider.textContent = ' | ';
@@ -2716,7 +2927,6 @@ export function displayMetrics(messageElement, metrics) {
 
     const costStr = cost !== null ? `$${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(3)}` : '';
     const costRows = costStr ? `<div><span class="ctx-label">Cost</span> ${costStr}</div>` : '';
-    const speedStr = tps != null && tps !== 'undefined' ? `${tps} tok/s` : 'n/a';
     const totalTok = inputTokens + outputTokens;
     const ctxColor = ctxPct >= 85 ? 'var(--red, #e06c75)' : ctxPct >= 70 ? '#ff9900' : 'var(--color-muted-alt, #6b7280)';
     const prepTime = metrics.agent_prep_time;
@@ -2735,14 +2945,25 @@ export function displayMetrics(messageElement, metrics) {
 
     const popup = document.createElement('div');
     popup.className = 'ctx-popup';
-    popup.innerHTML = `
-      <div style="font-weight:600;margin-bottom:6px;color:var(--fg);">Message Stats</div>
+    // The heading is a real node rather than the first line of the template
+    // below, so the two blocks `P4-06` and `P4-07` build out of `textContent`
+    // have somewhere to be inserted *relative to*. Index arithmetic against a
+    // template whose row count varies with the payload is how a block ends up
+    // above the title on one turn and below the cache row on the next.
+    const heading = document.createElement('div');
+    heading.className = 'ctx-popup-title';
+    heading.textContent = 'Message Stats';
+    popup.appendChild(heading);
+    const rows = document.createElement('div');
+    rows.className = 'ctx-popup-rows';
+    popup.appendChild(rows);
+    rows.innerHTML = `
       <div><span class="ctx-label">Model</span> ${model.split('/').pop()}</div>
       <div><span class="ctx-label">Input</span> ${inputTokens.toLocaleString()} tokens${isReal ? '' : '~'}</div>
       <div><span class="ctx-label">Output</span> ${outputTokens.toLocaleString()} tokens${isReal ? '' : '~'}</div>
       <div><span class="ctx-label">Total</span> ${totalTok.toLocaleString()} tokens</div>
       ${promptCacheRows(metrics)}
-      <div><span class="ctx-label">Speed</span> ${speedStr}</div>
+      ${speedRows(metrics)}
       <div><span class="ctx-label">Time</span> ${responseTime}s</div>
       ${prepTime != null ? `<div><span class="ctx-label">Prep</span> ${prepTime}s</div>` : ''}
       ${modelWaitTime != null ? `<div><span class="ctx-label">Model wait</span> ${modelWaitTime}s</div>` : ''}
@@ -2757,6 +2978,36 @@ export function displayMetrics(messageElement, metrics) {
       </div>` : ''}
       ${isReal ? '' : '<div style="margin-top:4px;font-size:0.8em;opacity:0.4;">~ estimated token count</div>'}
     `;
+
+    // `P4-06`. What went wrong, in the server's own words, at the top of the
+    // popup because it is the only thing here that is news. The HTTP status is
+    // the half a person can act on — a 429 is "wait", a 502 is "the endpoint",
+    // a 400 is "the request" — and it existed nowhere on any surface.
+    //
+    // Built as a node and inserted rather than interpolated: `failure.message`
+    // is a sentence from a provider and this popup is assembled with
+    // `innerHTML`.
+    if (failed) {
+      const failureBox = document.createElement('div');
+      failureBox.className = 'ctx-failed';
+      const headline = document.createElement('div');
+      headline.className = 'ctx-failed-headline';
+      headline.textContent = failureStatus
+        ? `Stopped — HTTP ${failureStatus}`
+        : 'Stopped before it finished';
+      failureBox.appendChild(headline);
+      if (failureMessage) {
+        const detail = document.createElement('div');
+        detail.className = 'ctx-failed-message';
+        detail.textContent = failureMessage;
+        failureBox.appendChild(detail);
+      }
+      popup.insertBefore(failureBox, rows);
+    }
+
+    // `P4-07`. Per-round attribution, under the turn's own totals.
+    const roundBreakdown = buildRoundBreakdown(metrics, model);
+    if (roundBreakdown) popup.appendChild(roundBreakdown);
 
     const rect = metricsContainer.getBoundingClientRect();
     popup.style.left = rect.left + 'px';
@@ -3258,6 +3509,41 @@ export function renderAskUserCard(payload, options) {
   question.innerHTML = emojiText(aq.question);
   card.appendChild(question);
   card.setAttribute('aria-labelledby', question.id);
+
+  // `P4-04`. The gate's own written sentence for why this card exists.
+  //
+  // `PendingToolApproval.public_payload()` (`src/tool_approvals.py`) has put it
+  // on `description` since exact approvals shipped and this renderer never read
+  // the field — the card asked for consent and could say what the tool was able
+  // to do, but never why it was stopping *this* action.
+  //
+  // Between the question and the effects box on purpose: the sentence says
+  // **why you are being asked**, the box under it says **what the action can
+  // do**, and that is the order a reader needs them in. Above the sealed
+  // `action` dump for the same reason the effects box is.
+  //
+  // `Law 14`, explicitly — this is not a second explanation. `gate.tripped_effects`
+  // and `gate.tripped_effect_labels` (`P7-07`) are the *structured* half of this
+  // same answer, and the server derives the fallback sentence from the payload's
+  // own state (`default_reason()`), so the sentence and the block cannot
+  // disagree. Nothing is re-derived here.
+  //
+  // `textContent`, never `innerHTML`, and it is load-bearing for the reason
+  // `buildApprovalEffects` states at length: this is the one card in the app
+  // where a person is being asked to consent to something, and markup injected
+  // into the description of the thing being approved would be forging it.
+  //
+  // Drawn on presence rather than on `isToolApproval`, because a plain
+  // `ask_user` payload is `{question, options, multi}` and carries no
+  // `description` at all (`src/agent_tools/interaction_tools.py`) — so the only
+  // card this can fire on is the one the field was written for.
+  const askReason = typeof aq.description === 'string' ? aq.description.trim() : '';
+  if (askReason) {
+    const reason = document.createElement('div');
+    reason.className = 'ask-user-reason';
+    reason.textContent = askReason;
+    card.appendChild(reason);
+  }
 
   if (isToolApproval && aq.action) {
     // Above the technical block, because it is the part that decides the

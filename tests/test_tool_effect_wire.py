@@ -474,6 +474,20 @@ def test_the_wire_documents_its_own_new_fields(phrase):
 
 _GATED_FETCH = "```web_fetch\nhttps://example.com\n```"
 
+# `P4-04`. The sentence `public_payload()` falls back to when its producer wrote
+# none. Read off the product rather than retyped, so a test asserting "not the
+# default" keeps meaning that when the default changes.
+_DEFAULT_APPROVAL_REASON = ToolApprovalStore().create(
+    owner="probe",
+    session_id="probe",
+    origin_run_id="probe",
+    tool_name="web_fetch",
+    content="https://example.com",
+    workspace=None,
+    external_untrusted_context_seen=True,
+    capabilities=capabilities_for_action("web_fetch", "https://example.com"),
+).public_payload()["description"]
+
 
 def test_the_approval_card_payload_carries_the_ranked_consequence(monkeypatch):
     events = _gated_run(monkeypatch, _GATED_FETCH, tool="web_fetch")
@@ -658,3 +672,37 @@ def test_the_replayed_grant_persists_its_status_too(monkeypatch):
     live, saved = _status_pair(events)
     assert live == saved, (live, saved)
     assert live in ("ok", "error")
+
+
+# ── `P4-04` — the card's written reason, live and after a reload ────────────
+#
+# The third field on this payload that a surface has to be able to read after a
+# refresh, and the one nothing reads at all yet. `description` carries the
+# gate's own sentence — *why this card exists*, as opposed to `gate` below it,
+# which is the same answer in fields. `B686`'s shape is a field that reaches the
+# streamed event and not the record, so it gets the same assertion the three
+# before it now have.
+
+
+def test_the_gates_written_reason_reaches_the_card(monkeypatch):
+    payload = _first(_gated_run(monkeypatch, _GATED_FETCH, tool="web_fetch"), "ask_user")["data"]
+
+    assert "untrusted context" in payload["description"].lower()
+    assert "web_fetch" in payload["description"]
+    # The sentence names the effect that tripped, and `gate` names it as data.
+    # Two renderings, one decision — a second sentence would be `Law 14`.
+    assert payload["gate"]["tripped_effects"] == ["network_egress"]
+    assert "network_egress" in payload["description"]
+
+
+def test_the_reloaded_card_gives_the_same_reason_as_the_live_one(monkeypatch):
+    events = _gated_run(monkeypatch, _GATED_FETCH, tool="web_fetch")
+    live = _first(events, "ask_user")["data"]
+    saved = _persisted(events)
+
+    assert len(saved) == 1
+    assert saved[0]["ask_user"]["description"] == live["description"]
+    assert saved[0]["ask_user"]["description"] != _DEFAULT_APPROVAL_REASON, (
+        "the saved card fell back to the generic sentence, so a reloaded card "
+        "would explain the refusal less well than the live one did"
+    )

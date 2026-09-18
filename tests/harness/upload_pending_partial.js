@@ -142,6 +142,16 @@ const CustomEvent = class { constructor(t, i) { this.type = t; this.detail = (i 
 
 let renders = 0;
 const renderAttachStrip = () => { renders += 1; };
+
+// `P12-09`. `uploadPending` hands the response's `context_budget` block to the
+// composer's meter, which lives in the same module and is not sliced in here.
+// Injected and RECORDED rather than silently no-op'd, for the same reason
+// `renderAttachStrip` is: a harness that swallows a call cannot tell "it was
+// made" from "it was removed". What the meter then draws is
+// `tests/test_context_meter_js.py`'s subject, not this file's.
+const budgetCalls = [];
+const noteContextBudget = (report, ids) => { budgetCalls.push({ kind: 'note', ids }); };
+const refreshContextMeter = (ids) => { budgetCalls.push({ kind: 'refresh', ids }); };
 let phase = 0;
 const fetchStub = async () => {
   if (mode === 'stale' && phase === 1) {
@@ -169,7 +179,8 @@ const FormData = class {
 const build = new Function(
   'document', 'spinnerModule', 'uiModule', 'renderAttachStrip', 'fetch',
   'API_BASE', 'localStorage', 'window', 'CustomEvent', 'AbortController',
-  'setTimeout', 'clearTimeout', 'FormData', '_getPreviewUrl', 'INITIAL',
+  'setTimeout', 'clearTimeout', 'FormData', '_getPreviewUrl',
+  'noteContextBudget', 'refreshContextMeter', 'INITIAL',
   `
   let pendingFiles = INITIAL.slice();
   let uploaded = [];
@@ -199,7 +210,7 @@ const build = new Function(
 
 const api = build(document, spinnerModule, uiModule, renderAttachStrip, fetchStub,
   '', localStorage, window, CustomEvent, AbortController, setTimeout, clearTimeout,
-  FormData, (f) => `blob:${f.name}`, files);
+  FormData, (f) => `blob:${f.name}`, noteContextBudget, refreshContextMeter, files);
 
 (async () => {
   let ids = await api.uploadPending({});
@@ -210,7 +221,7 @@ const api = build(document, spinnerModule, uiModule, renderAttachStrip, fetchStu
     ids = await api.uploadPending({});
   }
   console.log(JSON.stringify({
-    mode, ids, renders, toasts, rejectionCalls, appended,
+    mode, ids, renders, toasts, rejectionCalls, appended, budgetCalls,
     // Any node the private-toast fallback would have built and parked on body.
     privateToastNodes: bodyAppends.filter(n => n && n.id === '_attach-toast').length,
     nodesAppendedToBody: bodyAppends.length,

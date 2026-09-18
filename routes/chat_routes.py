@@ -80,6 +80,7 @@ from routes.chat_helpers import (
     run_post_response_tasks,
     accumulate_token_usage,
     clean_thinking_for_save,
+    shaping_stats,
     _allowed_models_for_request,
     _enforce_chat_privileges,
 )
@@ -461,6 +462,7 @@ def _chat_candidate_request_factory(
         "requests": {},
         "context_lengths": {},
         "trim_stats": {},
+        "compaction_stats": {},
         "compactions": {},
         "was_compacted": {},
     }
@@ -484,15 +486,120 @@ def _chat_candidate_request_factory(
         state["context_lengths"][index] = context_length
         state["compactions"][index] = compaction_state
         state["was_compacted"][index] = was_compacted
-        state["trim_stats"][index] = {
-            "messages_before": len(messages),
-            "messages_after": len(request_messages),
-            "tokens_before": estimate_tokens(messages),
-            "tokens_after": estimate_tokens(request_messages),
-        }
+        # `P4-13`. The trim's "before" is the list that went INTO the trim —
+        # `candidate_messages`, after compaction — not the list this factory was
+        # handed. It used to be the latter, so `context_messages_before_trim`
+        # meant "before compaction and trim" when a fallback route answered and
+        # "before trim" when the ordinary path did, on the same metrics key.
+        state["trim_stats"][index] = shaping_stats(candidate_messages, request_messages)
+        state["compaction_stats"][index] = (
+            shaping_stats(messages, candidate_messages) if was_compacted else {}
+        )
         return {"messages": request_messages}
 
     return factory, state
+
+
+def _shaping_shrank(stats) -> bool:
+    """`P4-13`. Did this shaping step actually remove anything?
+
+    A `shaping_stats` dict whose after equals its before is a step that ran and
+    changed nothing, and reporting it is how a reader learns to ignore the
+    report.
+    """
+    if not stats:
+        return False
+    return (
+        (stats.get("messages_after") or 0) < (stats.get("messages_before") or 0)
+        or (stats.get("tokens_after") or 0) < (stats.get("tokens_before") or 0)
+    )
+
+
+def _ctx_shaping(ctx, step: str) -> dict:
+    """The `ChatContext` figures for one shaping step, in `shaping_stats` shape.
+
+    `getattr` with a default rather than attribute access: a `ChatContext` built
+    before `P4-13` — and every test double standing in for one — has the trim
+    four and not the compaction four, and a shaping report is never worth an
+    `AttributeError` inside a live stream.
+    """
+    return {
+        "messages_before": getattr(ctx, f"context_messages_before_{step}", 0) or 0,
+        "messages_after": getattr(ctx, f"context_messages_after_{step}", 0) or 0,
+        "tokens_before": getattr(ctx, f"context_tokens_before_{step}", 0) or 0,
+        "tokens_after": getattr(ctx, f"context_tokens_after_{step}", 0) or 0,
+    }
+
+
+def _apply_shaping_metrics(metrics, ctx, *, route_trim=None, route_compaction=None):
+    """`P4-13`. Put both shaping steps onto the record a reload is rebuilt from.
+
+    The trim half of this existed as two near-identical blocks, one per stream
+    branch, and the compaction half existed nowhere: `was_compacted` never
+    reached the saved metrics at all, so a reloaded turn could not say that the
+    earlier half of its own conversation had been summarised away.
+
+    The route's per-candidate figures win over the context's when a fallback
+    route answered, because the route that answered is the one whose window the
+    prompt was shaped to.
+
+    The flag and the figures are set independently on purpose. A compaction that
+    happened is worth saying even when nothing measured it — an older
+    `ChatContext`, or the deferred path before a candidate is chosen — and a
+    `messages_before: 0` beside it would be a measurement rather than a
+    silence.
+    """
+    trim = route_trim if _shaping_shrank(route_trim) else _ctx_shaping(ctx, "trim")
+    if _shaping_shrank(route_trim) or getattr(ctx, "context_trimmed", False):
+        metrics["context_trimmed"] = True
+        metrics["context_messages_before_trim"] = trim.get("messages_before")
+        metrics["context_messages_after_trim"] = trim.get("messages_after")
+        metrics["context_tokens_before_trim"] = trim.get("tokens_before")
+        metrics["context_tokens_after_trim"] = trim.get("tokens_after")
+    compaction = (
+        route_compaction if _shaping_shrank(route_compaction) else _ctx_shaping(ctx, "compact")
+    )
+    if _shaping_shrank(route_compaction) or getattr(ctx, "was_compacted", False):
+        metrics["context_compacted"] = True
+    if _shaping_shrank(compaction):
+        metrics["context_messages_before_compact"] = compaction.get("messages_before")
+        metrics["context_messages_after_compact"] = compaction.get("messages_after")
+        metrics["context_tokens_before_compact"] = compaction.get("tokens_before")
+        metrics["context_tokens_after_compact"] = compaction.get("tokens_after")
+    return metrics
+
+
+def _compacted_event(context_length, stats=None) -> str:
+    """`P4-13`. The compaction notice, with what the compaction cost.
+
+    It carried `context_length` and nothing else, so the toast could say that
+    older messages were summarised and never how many — the one irreversible
+    step in context shaping was the one with no figures, while the reversible
+    one beside it had four.
+
+    The figures go in a `data` block because that is the shape the sibling
+    `context_trimmed` event on the same stream already uses, and a renderer
+    reading one nested and one flat is how two reports of one thing drift. The
+    vocabulary is `context_trimmed`'s four keys rather than the manual
+    `/sessions/{id}/compact` endpoint's `summarized`/`kept`: that is a REST
+    response for a button the user pressed, this is the automatic step's notice
+    beside the automatic trim's notice, and matching the event next to it is
+    what lets one renderer draw both.
+
+    `context_length` stays at the top level as well as inside `data`. It is the
+    key this event has always shipped and removing it would be subtraction
+    (`Law 1`); nothing in `static/` reads it today, so the copy costs an
+    integer and buys every existing reader staying correct.
+    """
+    data = {"context_length": context_length}
+    if _shaping_shrank(stats):
+        data.update({
+            "messages_before": stats.get("messages_before"),
+            "messages_after": stats.get("messages_after"),
+            "tokens_before": stats.get("tokens_before"),
+            "tokens_after": stats.get("tokens_after"),
+        })
+    return f'data: {json.dumps({"type": "compacted", "data": data, "context_length": context_length})}\n\n'
 
 
 def _candidate_index(candidates, actual_candidate) -> int:
@@ -1189,28 +1296,35 @@ def setup_chat_routes(
         )
         requested_route = route_descriptors[0]
         actual_route = route_descriptors[actual_index]
-        actual_trim = candidate_request_state.get("trim_stats", {}).get(actual_index, {})
+        # `P4-13`. Through the same two functions the streaming path uses. This
+        # site had its own inline copy of the shrank predicate and reported only
+        # a `context_trimmed` bool — and because the factory's `trim_stats` used
+        # to start before compaction, that bool said "trimmed" on a turn that
+        # had only been compacted. Both steps, both named, one predicate.
+        _nonstream_metadata = {
+            "model": actual_model,
+            "requested_model": requested_model,
+            "endpoint_id": actual_route.get("endpoint_id"),
+            "endpoint_label": actual_route.get("endpoint_label"),
+            "requested_endpoint_id": requested_route.get("endpoint_id"),
+            "requested_endpoint_label": requested_route.get("endpoint_label"),
+            "context_length": candidate_request_state["context_lengths"].get(
+                actual_index,
+                selected_context_length,
+            ),
+        }
+        _apply_shaping_metrics(
+            _nonstream_metadata,
+            ctx,
+            route_trim=candidate_request_state.get("trim_stats", {}).get(actual_index, {}),
+            route_compaction=candidate_request_state.get("compaction_stats", {}).get(
+                actual_index, {},
+            ),
+        )
+        _nonstream_metadata.setdefault("context_trimmed", False)
         _clean_reply, _clean_md = clean_thinking_for_save(
             reply,
-            {
-                "model": actual_model,
-                "requested_model": requested_model,
-                "endpoint_id": actual_route.get("endpoint_id"),
-                "endpoint_label": actual_route.get("endpoint_label"),
-                "requested_endpoint_id": requested_route.get("endpoint_id"),
-                "requested_endpoint_label": requested_route.get("endpoint_label"),
-                "context_length": candidate_request_state["context_lengths"].get(
-                    actual_index,
-                    selected_context_length,
-                ),
-                "context_trimmed": bool(
-                    actual_trim
-                    and (
-                        actual_trim.get("messages_after") < actual_trim.get("messages_before")
-                        or actual_trim.get("tokens_after") < actual_trim.get("tokens_before")
-                    )
-                ),
-            },
+            _nonstream_metadata,
         )
         sess.add_message(ChatMessage("assistant", _clean_reply, metadata=_clean_md))
 
@@ -2166,8 +2280,14 @@ def setup_chat_routes(
 
             # Auto-compact notification
             if ctx.was_compacted:
-                yield f"data: {json.dumps({'type': 'compacted', 'context_length': ctx.context_length})}\n\n"
-            if ctx.context_trimmed and not ctx.was_compacted:
+                yield _compacted_event(ctx.context_length, _ctx_shaping(ctx, "compact"))
+            # `P4-13`. No longer suppressed by compaction. The two steps are
+            # sequential, not alternative — compaction summarises the older half
+            # and the trim then cuts what still does not fit — and the saved
+            # metrics have always carried the trim figures on a compacted turn,
+            # so suppressing the event left the live stream saying less than the
+            # reload of the same turn.
+            if ctx.context_trimmed:
                 yield f"data: {json.dumps({'type': 'context_trimmed', 'data': {'context_length': ctx.context_length, 'messages_before': ctx.context_messages_before_trim, 'messages_after': ctx.context_messages_after_trim, 'tokens_before': ctx.context_tokens_before_trim, 'tokens_after': ctx.context_tokens_after_trim}})}\n\n"
 
             full_response = ""
@@ -2378,7 +2498,12 @@ def setup_chat_routes(
                                             _actual_candidate_index,
                                             _selected_context_length,
                                         )
-                                        yield f'data: {json.dumps({"type": "compacted", "context_length": _compacted_length})}\n\n'
+                                        yield _compacted_event(
+                                            _compacted_length,
+                                            _chat_request_state.get("compaction_stats", {}).get(
+                                                _actual_candidate_index, {},
+                                            ),
+                                        )
                                     # Reasoning tokens arrive flagged thinking:true.
                                     # Forward them so the client can show a thinking
                                     # indicator, but don't fold them into the saved
@@ -2415,7 +2540,12 @@ def setup_chat_routes(
                                             _actual_candidate_index,
                                             _selected_context_length,
                                         )
-                                        yield f'data: {json.dumps({"type": "compacted", "context_length": _compacted_length})}\n\n'
+                                        yield _compacted_event(
+                                            _compacted_length,
+                                            _chat_request_state.get("compaction_stats", {}).get(
+                                                _actual_candidate_index, {},
+                                            ),
+                                        )
                                     data["selected_model"] = data.get("selected_model") or _requested_model
                                     yield f'data: {json.dumps(data)}\n\n'
                                 elif data.get("type") == "model_actual":
@@ -2424,7 +2554,12 @@ def setup_chat_routes(
                                             _actual_candidate_index,
                                             _selected_context_length,
                                         )
-                                        yield f'data: {json.dumps({"type": "compacted", "context_length": _compacted_length})}\n\n'
+                                        yield _compacted_event(
+                                            _compacted_length,
+                                            _chat_request_state.get("compaction_stats", {}).get(
+                                                _actual_candidate_index, {},
+                                            ),
+                                        )
                                     _actual_model = data.get("model") or _actual_model
                                     data["requested_model"] = _requested_model
                                     data["requested_endpoint_id"] = _requested_route.get("endpoint_id")
@@ -2438,7 +2573,12 @@ def setup_chat_routes(
                                             _actual_candidate_index,
                                             _selected_context_length,
                                         )
-                                        yield f'data: {json.dumps({"type": "compacted", "context_length": _compacted_length})}\n\n'
+                                        yield _compacted_event(
+                                            _compacted_length,
+                                            _chat_request_state.get("compaction_stats", {}).get(
+                                                _actual_candidate_index, {},
+                                            ),
+                                        )
                                     last_metrics = data.get("data", {})
                                     _reported_model = last_metrics.get("model")
                                     last_metrics["requested_model"] = _requested_model
@@ -2458,25 +2598,16 @@ def setup_chat_routes(
                                     _actual_candidate_index,
                                         _selected_context_length,
                                     )
-                                    _route_trim = _chat_request_state.get("trim_stats", {}).get(
-                                        _actual_candidate_index,
-                                        {},
+                                    _apply_shaping_metrics(
+                                        last_metrics,
+                                        ctx,
+                                        route_trim=_chat_request_state.get("trim_stats", {}).get(
+                                            _actual_candidate_index, {},
+                                        ),
+                                        route_compaction=_chat_request_state.get(
+                                            "compaction_stats", {},
+                                        ).get(_actual_candidate_index, {}),
                                     )
-                                    if _route_trim and (
-                                        _route_trim.get("messages_after") < _route_trim.get("messages_before")
-                                        or _route_trim.get("tokens_after") < _route_trim.get("tokens_before")
-                                    ):
-                                        last_metrics["context_trimmed"] = True
-                                        last_metrics["context_messages_before_trim"] = _route_trim.get("messages_before")
-                                        last_metrics["context_messages_after_trim"] = _route_trim.get("messages_after")
-                                        last_metrics["context_tokens_before_trim"] = _route_trim.get("tokens_before")
-                                        last_metrics["context_tokens_after_trim"] = _route_trim.get("tokens_after")
-                                    elif ctx.context_trimmed:
-                                        last_metrics["context_trimmed"] = True
-                                        last_metrics["context_messages_before_trim"] = ctx.context_messages_before_trim
-                                        last_metrics["context_messages_after_trim"] = ctx.context_messages_after_trim
-                                        last_metrics["context_tokens_before_trim"] = ctx.context_tokens_before_trim
-                                        last_metrics["context_tokens_after_trim"] = ctx.context_tokens_after_trim
                                     if _actual_context_length and last_metrics.get("input_tokens"):
                                         pct = min(round((last_metrics["input_tokens"] / _actual_context_length) * 100, 1), 100.0)
                                         last_metrics["context_percent"] = pct
@@ -2633,6 +2764,23 @@ def setup_chat_routes(
                                     last_metrics["endpoint_cost_tracked"] = _actual_route.get(
                                         "endpoint_cost_tracked"
                                     )
+                                # `P4-13`. The third place a Chat turn's metrics
+                                # are built, reached when a provider sends no
+                                # usage event at all, and the one that carried
+                                # neither the trim figures nor the compaction
+                                # ones — so exactly the turns with the least
+                                # provider detail also lost the shaping report
+                                # this route had already measured.
+                                _apply_shaping_metrics(
+                                    last_metrics,
+                                    ctx,
+                                    route_trim=_chat_request_state.get("trim_stats", {}).get(
+                                        _actual_candidate_index, {},
+                                    ),
+                                    route_compaction=_chat_request_state.get(
+                                        "compaction_stats", {},
+                                    ).get(_actual_candidate_index, {}),
+                                )
                                 yield f'data: {json.dumps({"type": "metrics", "data": last_metrics})}\n\n'
                             if full_response:
                                 _commit_chat_compaction(_actual_candidate_index)
@@ -2905,12 +3053,7 @@ def setup_chat_routes(
                                     _reported_model = last_metrics.get("model")
                                     last_metrics["requested_model"] = last_metrics.get("requested_model") or _requested_model
                                     last_metrics["model"] = _reported_model or _actual_model or _answered_by or _requested_model
-                                    if ctx.context_trimmed:
-                                        last_metrics["context_trimmed"] = True
-                                        last_metrics["context_messages_before_trim"] = ctx.context_messages_before_trim
-                                        last_metrics["context_messages_after_trim"] = ctx.context_messages_after_trim
-                                        last_metrics["context_tokens_before_trim"] = ctx.context_tokens_before_trim
-                                        last_metrics["context_tokens_after_trim"] = ctx.context_tokens_after_trim
+                                    _apply_shaping_metrics(last_metrics, ctx)
                                     _metrics_event = {"type": "metrics", "data": last_metrics}
                                     # Inline teacher escalation marks its
                                     # recursively emitted events at the SSE

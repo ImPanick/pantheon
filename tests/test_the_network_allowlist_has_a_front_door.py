@@ -265,12 +265,30 @@ def test_the_check_endpoint_is_admin_only():
 
 
 def test_the_panel_exists_and_is_reachable():
+    """UPDATED 2026-09-18 by `P9-02`, which found this row's own drift.
+
+    The tab used to be a hand-written button in `static/index.html` beside a
+    registry that described every other panel — and this panel was the one the
+    registry did not know about, so Settings search could not find the network
+    allowlist by any word, including "networks". `renderSettingsNav()` now draws
+    every tab from `static/js/settings/registry.js`, so the entry **is** the
+    button and the admin gate is a field rather than a class somebody remembered
+    to type. The panel is still markup, and is still asserted here.
+    """
     html = (_REPO / "static" / "index.html").read_text(encoding="utf-8")
-    assert 'data-settings-tab="networks"' in html, "there is no way to open the panel"
+    registry = (_REPO / "static" / "js" / "settings" / "registry.js").read_text(encoding="utf-8")
     assert 'data-settings-panel="networks"' in html, "the tab opens nothing"
-    tab = html[html.index('data-settings-tab="networks"') - 200:
-               html.index('data-settings-tab="networks"')]
-    assert "admin-only" in tab, "the networks tab is not admin-gated"
+    assert "id: 'networks'" in registry, "there is no way to open the panel"
+    entry = registry.split("id: 'networks'", 1)[1].split("}),", 1)[0]
+    assert "adminOnly: true" in entry, "the networks tab is not admin-gated"
+    assert "label: 'Networks'" in entry, "the nav button's text comes from here now"
+    # `settings.js` activates this panel itself (`onSettingsPanelActivated`
+    # lazy-imports `networks.js`). Routing it through the admin controller —
+    # which every other Administration panel uses — would send the click to
+    # `window.adminModule.open('networks')`, and `admin.js` has no case for it.
+    assert "controller: 'admin'" not in entry, (
+        "an admin controller would send this click somewhere that does not draw it"
+    )
 
 
 def test_opening_the_tab_loads_the_module():

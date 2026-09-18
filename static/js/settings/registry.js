@@ -14,6 +14,7 @@ function definePanel(definition) {
   return Object.freeze({
     controller: 'settings',
     adminOnly: false,
+    icon: '',
     ...definition,
     keywords: Object.freeze([...(definition.keywords || [])]),
   });
@@ -40,6 +41,11 @@ export const SETTINGS_GROUPS = Object.freeze([
     id: 'administration',
     label: 'Administration',
     adminOnly: true,
+    // `P9-02`. The nav draws one heading and four dividers. Only this group has
+    // ever carried a visible label — the other four are separated by a rule and
+    // nothing else — so the heading is a property of the group rather than a
+    // rule the renderer invents.
+    heading: 'Admin',
   }),
 ]);
 
@@ -47,6 +53,7 @@ export const SETTINGS_GROUPS = Object.freeze([
 export const SETTINGS_PANELS = Object.freeze([
   definePanel({
     id: 'services',
+    icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>',
     label: 'Add Models',
     group: 'models',
     controller: 'admin',
@@ -54,6 +61,7 @@ export const SETTINGS_PANELS = Object.freeze([
   }),
   definePanel({
     id: 'added-models',
+    icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
     label: 'Added Models',
     group: 'models',
     controller: 'admin',
@@ -61,12 +69,14 @@ export const SETTINGS_PANELS = Object.freeze([
   }),
   definePanel({
     id: 'ai',
+    icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z"/></svg>',
     label: 'AI Defaults',
     group: 'models',
     keywords: ['ai', 'defaults', 'model', 'vision', 'image', 'tts', 'stt'],
   }),
   definePanel({
     id: 'search',
+    icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
     label: 'Search',
     group: 'models',
     keywords: ['search', 'research', 'provider'],
@@ -74,6 +84,7 @@ export const SETTINGS_PANELS = Object.freeze([
 
   definePanel({
     id: 'integrations',
+    icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>',
     label: 'Integrations',
     group: 'communications',
     controller: 'admin',
@@ -81,12 +92,14 @@ export const SETTINGS_PANELS = Object.freeze([
   }),
   definePanel({
     id: 'email',
+    icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>',
     label: 'Email',
     group: 'communications',
     keywords: ['email', 'imap', 'smtp', 'oauth'],
   }),
   definePanel({
     id: 'reminders',
+    icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>',
     label: 'Reminders',
     group: 'communications',
     keywords: ['reminders', 'notifications', 'alerts'],
@@ -94,6 +107,7 @@ export const SETTINGS_PANELS = Object.freeze([
 
   definePanel({
     id: 'appearance',
+    icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a7 7 0 0 0 0 20 4 4 0 0 1 0-8 4 4 0 0 0 0-8"/></svg>',
     label: 'Appearance',
     group: 'experience',
     // `H15` — the four words the row named. Harvesting control text makes
@@ -108,6 +122,7 @@ export const SETTINGS_PANELS = Object.freeze([
   }),
   definePanel({
     id: 'shortcuts',
+    icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/></svg>',
     label: 'Shortcuts',
     group: 'experience',
     keywords: ['shortcuts', 'keyboard', 'hotkeys'],
@@ -115,6 +130,7 @@ export const SETTINGS_PANELS = Object.freeze([
 
   definePanel({
     id: 'account',
+    icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
     label: 'Account',
     group: 'account',
     keywords: ['account', 'password', 'logout'],
@@ -122,6 +138,7 @@ export const SETTINGS_PANELS = Object.freeze([
 
   definePanel({
     id: 'tools',
+    icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>',
     label: 'Agent Tools',
     group: 'administration',
     controller: 'admin',
@@ -130,6 +147,7 @@ export const SETTINGS_PANELS = Object.freeze([
   }),
   definePanel({
     id: 'users',
+    icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
     label: 'Users',
     group: 'administration',
     controller: 'admin',
@@ -138,6 +156,7 @@ export const SETTINGS_PANELS = Object.freeze([
   }),
   definePanel({
     id: 'embeddings',
+    icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/><line x1="7" y1="7" x2="10" y2="10"/><line x1="17" y1="7" x2="14" y2="10"/><line x1="7" y1="17" x2="10" y2="14"/><line x1="17" y1="17" x2="14" y2="14"/></svg>',
     label: 'Embeddings',
     group: 'administration',
     controller: 'admin',
@@ -149,7 +168,31 @@ export const SETTINGS_PANELS = Object.freeze([
                'fastembed', 'chroma', 'model', 'search'],
   }),
   definePanel({
+    id: 'networks',
+    icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="16" y="16" width="6" height="6" rx="1"/><path d="M12 8v4"/><path d="M5 16v-2h14v2"/></svg>',
+    label: 'Networks',
+    group: 'administration',
+    adminOnly: true,
+    // `P9-02`, and the reason this row exists. `P17-09` added the tab, the
+    // panel and the module and did not add the registry entry, so Settings
+    // search — the registry's only consumer until now — could not find the
+    // operator's network allowlist by any word at all. `getSettingsRegistryIssues()`
+    // had been reporting it into `console.warn` the whole time.
+    //
+    // `controller` stays 'settings' DELIBERATELY. Every other Administration
+    // panel is 'admin', which routes the click through
+    // `openAdminTab` -> `window.adminModule.open(tab)`; `admin.js` has no case
+    // for 'networks' and this panel is activated by
+    // `onSettingsPanelActivated` in `settings.js`, which lazy-imports
+    // `networks.js`. Marking it 'admin' to match its neighbours would send the
+    // click somewhere that does not draw it.
+    keywords: ['networks', 'network', 'allowlist', 'allow list', 'egress',
+               'outbound', 'firewall', 'lan', 'subnet', 'cidr', 'host',
+               'blocked', 'internet', 'offline'],
+  }),
+  definePanel({
     id: 'system',
+    icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v-.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09A1.65 1.65 0 0 0 19.4 15z"/></svg>',
     label: 'System',
     group: 'administration',
     controller: 'admin',
