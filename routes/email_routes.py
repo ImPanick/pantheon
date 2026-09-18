@@ -43,7 +43,7 @@ from src.constants import DATA_DIR
 from src import mail_auth, providers
 
 from src.llm_core import llm_call_async
-from src.upload_limits import read_upload_limited, EMAIL_COMPOSE_UPLOAD_MAX_BYTES
+from src.upload_limits import read_upload_limited, resolve_byte_limit
 
 from routes.email_helpers import (
     _strip_think, _extract_reply, _apply_email_style_mechanics, require_owner, require_user, _assert_owns_account,
@@ -4331,7 +4331,9 @@ def setup_email_routes():
             safe_name = re.sub(r"[^\w\s\-.]", "_", file.filename or "file").strip()
             token = f"{uuid.uuid4().hex}_{safe_name}"
             filepath = COMPOSE_UPLOADS_DIR / token
-            content = await read_upload_limited(file, EMAIL_COMPOSE_UPLOAD_MAX_BYTES, "Attachment")
+            content = await read_upload_limited(
+                file, resolve_byte_limit("email_compose_upload_max_bytes"),
+                "Attachment")
             with open(filepath, "wb") as f:
                 f.write(content)
             return {
@@ -4351,7 +4353,7 @@ def setup_email_routes():
         return safe_name or fallback
 
     def _stage_compose_bytes(filename: str, content: bytes) -> dict:
-        if len(content) > EMAIL_COMPOSE_UPLOAD_MAX_BYTES:
+        if len(content) > resolve_byte_limit("email_compose_upload_max_bytes"):
             raise HTTPException(status_code=413, detail="Attachment too large")
         safe_name = _safe_compose_filename(filename)
         token = f"{uuid.uuid4().hex}_{safe_name}"
@@ -4364,7 +4366,7 @@ def setup_email_routes():
         if not src.exists() or not src.is_file():
             raise HTTPException(status_code=404, detail="File not found")
         size = src.stat().st_size
-        if size > EMAIL_COMPOSE_UPLOAD_MAX_BYTES:
+        if size > resolve_byte_limit("email_compose_upload_max_bytes"):
             raise HTTPException(status_code=413, detail="Attachment too large")
         safe_name = _safe_compose_filename(filename)
         token = f"{uuid.uuid4().hex}_{safe_name}"

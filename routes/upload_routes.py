@@ -31,6 +31,12 @@ from src.upload_handler import (
     count_recent_uploads,
     extract_upload_ids,
 )
+# `P12-06`. The burst gate's two numbers, resolved through `P12`'s four layers
+# rather than read off the handler as constants.
+from src.upload_limits import (
+    resolve_upload_burst_limit,
+    resolve_upload_burst_window_seconds,
+)
 # `B103`: the SVG gate lives in one module so this route and the emoji route ask
 # it the same question. Imported as the module as well, so the gate is resolved
 # at call time and cannot be a second copy.
@@ -326,25 +332,64 @@ def setup_upload_routes(upload_handler):
         rejected = []
         first_rejection: Optional[HTTPException] = None
 
-        # Limit concurrent uploads per IP. Count genuine recent upload events —
-        # NOT the number of files in this batch. The previous check summed over
-        # `files`, so a single multi-file request counted itself as N concurrent
-        # uploads and tripped the limit (issue #1346: "attach more than one file
-        # → the model doesn't even see them"). save_upload still enforces the
-        # per-minute sliding-window rate limit per file.
+        # Resolved once per request and reused by the save loop below. The role
+        # layer of the limit resolution keys off it, so it has to be known
+        # before the gate rather than per file.
+        owner = effective_user(request)
+
+        # Per-IP upload BURST gate. Count genuine recent upload events — NOT the
+        # number of files in this batch. The previous check summed over `files`,
+        # so a single multi-file request counted itself as N uploads and tripped
+        # the limit (issue #1346: "attach more than one file → the model doesn't
+        # even see them"). save_upload still enforces the per-minute
+        # sliding-window rate limit per file.
+        #
+        # `P12-06`. This was `upload_handler.max_concurrent_uploads`, a `3`
+        # nobody could change without a rebuild, against a ten-second window
+        # that was a default argument nobody passed. Both numbers resolve
+        # through `role profile → instance setting → environment → built-in
+        # default` now, per request, so an operator changes either without a
+        # restart. The handler's own attribute is the built-in default, so a
+        # handler configured in code keeps its number — including one that
+        # only knows the old name, which is the shape of the stand-in in
+        # `tests/test_upload_multifile.py:59`.
+        #
+        # The gate is not renamed to something it is not: it reads finished
+        # uploads, so it is a burst limit, and the 429 below says which window
+        # and which ceiling rather than claiming a concurrency this code has
+        # never measured.
+        handler_limit = getattr(
+            upload_handler,
+            "upload_burst_limit",
+            getattr(upload_handler, "max_concurrent_uploads", None),
+        )
+        handler_window = getattr(
+            upload_handler, "upload_burst_window_seconds", None
+        )
+        burst_limit = resolve_upload_burst_limit(
+            owner, fallback=handler_limit,
+        ).value
+        burst_window = resolve_upload_burst_window_seconds(
+            owner, fallback=handler_window,
+        ).value
+
         recent_uploads = count_recent_uploads(
-            upload_handler.upload_rate_log.get(client_ip, []), time.time()
+            upload_handler.upload_rate_log.get(client_ip, []),
+            time.time(),
+            window=burst_window,
         )
 
-        if recent_uploads >= upload_handler.max_concurrent_uploads:
+        if recent_uploads >= burst_limit:
             raise HTTPException(
                 status_code=429,
-                detail=f"Maximum concurrent uploads ({upload_handler.max_concurrent_uploads}) exceeded"
+                detail=(
+                    f"Upload burst limit reached: no more than {burst_limit} "
+                    f"uploads per {burst_window} seconds from one client."
+                ),
             )
         
         for u in files:
             try:
-                owner = effective_user(request)
                 meta = upload_handler.save_upload(u, client_ip, owner=owner)
                 gallery_id = _promote_chat_image_to_gallery(meta, owner, session_id)
                 item = {

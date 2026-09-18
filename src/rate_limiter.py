@@ -21,35 +21,76 @@ class RateLimiter:
             raise HTTPException(429, "Too many requests")
     """
 
-    def __init__(self, max_requests: int, window_seconds: int):
+    def __init__(self, max_requests: int, window_seconds: int, *,
+                 limit_key: str | None = None,
+                 window_key: str | None = None):
         self.max_requests = max_requests
         self.window = window_seconds
+        # `P12-05b`. The settings keys this limiter re-reads on every check, or
+        # `None` for a limiter whose numbers are fixed. Both attributes stay as
+        # the BOTTOM layer — `Law 1`, and the existing two-argument constructor
+        # keeps working unchanged.
+        self.limit_key = limit_key
+        self.window_key = window_key
         self._log: Dict[str, List[float]] = {}
         self._lock = threading.Lock()
         self._last_cleanup = time.monotonic()
         self._cleanup_interval = max(window_seconds * 2, 120)
 
-    def check(self, key: str) -> bool:
+    def effective(self, owner: str | None = None) -> tuple:
+        """`(max_requests, window_seconds)` resolved now.
+
+        **role profile -> instance setting -> the constructor's value.**
+        Settings-only, with no environment leg: none of these four throttles
+        had a `PANTHEON_*` variable before `P12-05b`, so `Law 1` requires
+        nothing, and adding four would be four more places the same number can
+        be set (`Law 13`).
+
+        `minimum=1` on both, and that floor is the point. `FORBIDDEN.md`
+        Part 2 lists the auth rate limiters as a control that never lifts;
+        making the number policy is a different act from removing the limiter,
+        and a resolver that could return 0 would erase the difference.
+        """
+        max_requests, window = self.max_requests, self.window
+        if self.limit_key or self.window_key:
+            from src.settings import resolve_limit
+            if self.limit_key:
+                max_requests = resolve_limit(
+                    self.limit_key, self.max_requests, owner=owner,
+                    minimum=1, maximum=100_000)[0]
+            if self.window_key:
+                window = resolve_limit(
+                    self.window_key, self.window, owner=owner,
+                    minimum=1, maximum=86_400)[0]
+        return max_requests, window
+
+    def check(self, key: str, owner: str | None = None) -> bool:
         """Return True if the request is allowed, False if rate-limited."""
         now = time.monotonic()
+        max_requests, window = self.effective(owner)
         with self._lock:
-            self._maybe_cleanup(now)
+            self._maybe_cleanup(now, window)
             timestamps = self._log.get(key, [])
-            cutoff = now - self.window
+            cutoff = now - window
             timestamps = [t for t in timestamps if t > cutoff]
-            if len(timestamps) >= self.max_requests:
+            if len(timestamps) >= max_requests:
                 self._log[key] = timestamps
                 return False
             timestamps.append(now)
             self._log[key] = timestamps
             return True
 
-    def _maybe_cleanup(self, now: float) -> None:
+    def _maybe_cleanup(self, now: float, window: float | None = None) -> None:
         """Periodically purge stale entries."""
-        if now - self._last_cleanup < self._cleanup_interval:
+        if window is None:
+            window = self.window
+        # A window that shrank must shrink the sweep with it, or entries are
+        # held past the period anything counts them over.
+        interval = max(window * 2, 120)
+        if now - self._last_cleanup < min(interval, self._cleanup_interval):
             return
         self._last_cleanup = now
-        cutoff = now - self.window
+        cutoff = now - window
         stale = [k for k, v in self._log.items() if not v or v[-1] <= cutoff]
         for k in stale:
             del self._log[k]

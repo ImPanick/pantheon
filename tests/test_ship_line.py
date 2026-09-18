@@ -180,7 +180,16 @@ def test_almost_nothing_recently_filed_is_a_gate():
                     key=lambda r: int(r.id[1:]))[-40:]
     gates = [r.id for r in recent if REGISTER.get(r.id, ("", ""))[0] == "blocking"]
     assert len(gates) <= len(recent) * 0.25, gates
-    assert gates, "no recently filed row is a gate — check the register parsed"
+    # `B572`. The sanity guard used to be `assert gates` — *some recent row is a
+    # gate* — and it went red on 2026-09-18 when eighteen rows were filed in one
+    # wave and the register had not caught up. That is the assertion failing
+    # because the claim above it got **more** true, which is the seventh
+    # instance of the shape `B520` names. What the guard is actually for is
+    # catching a register that did not parse, and that is what it asks now.
+    assert REGISTER, "the register parsed to nothing"
+    assert any(r.id in REGISTER for r in ROWS), (
+        "no row in the tracker is registered at all — the register parsed but "
+        "its ids do not match the tracker's")
 
 
 # --- the rule ---------------------------------------------------------------

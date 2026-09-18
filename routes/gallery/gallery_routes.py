@@ -19,8 +19,7 @@ from src.auth_helpers import get_current_user, owner_filter, require_privilege
 from src.env_flags import env_flag
 from src.upload_limits import (
     read_upload_limited,
-    GALLERY_UPLOAD_MAX_BYTES,
-    GALLERY_TRANSFORM_UPLOAD_MAX_BYTES,
+    resolve_byte_limit,
 )
 from src.constants import GENERATED_IMAGES_DIR
 from src.optional_deps import patch_realesrgan_torchvision_compat
@@ -368,7 +367,8 @@ def setup_gallery_routes() -> APIRouter:
 
         user = get_current_user(request)
         album_id = form.get("album_id") or None
-        content = await read_upload_limited(file, GALLERY_UPLOAD_MAX_BYTES, "Gallery upload")
+        content = await read_upload_limited(
+            file, resolve_byte_limit("gallery_upload_max_bytes"), "Gallery upload")
 
         # Duplicate detection via SHA-256
         file_hash = hashlib.sha256(content).hexdigest()
@@ -454,7 +454,9 @@ def setup_gallery_routes() -> APIRouter:
             if not file or not hasattr(file, 'read'):
                 raise HTTPException(400, "No image provided")
 
-            content = await read_upload_limited(file, GALLERY_UPLOAD_MAX_BYTES, "Gallery replacement")
+            content = await read_upload_limited(
+                file, resolve_byte_limit("gallery_upload_max_bytes"),
+                "Gallery replacement")
             GALLERY_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
             img_path = _gallery_image_path(img.filename)
             img_path.write_bytes(content)
@@ -574,7 +576,9 @@ def setup_gallery_routes() -> APIRouter:
         if not file: raise HTTPException(400, "No image")
         scale = int(form.get("scale", "2"))
 
-        image_bytes = await read_upload_limited(file, GALLERY_TRANSFORM_UPLOAD_MAX_BYTES, "Image upload")
+        image_bytes = await read_upload_limited(
+            file, resolve_byte_limit("gallery_transform_upload_max_bytes"),
+            "Image upload")
         b64 = base64.b64encode(image_bytes).decode()
 
         # Find image endpoint
@@ -619,7 +623,9 @@ def setup_gallery_routes() -> APIRouter:
         strength = float(form.get("strength", "0.55"))
         if not file: raise HTTPException(400, "No image")
 
-        image_bytes = await read_upload_limited(file, GALLERY_TRANSFORM_UPLOAD_MAX_BYTES, "Image upload")
+        image_bytes = await read_upload_limited(
+            file, resolve_byte_limit("gallery_transform_upload_max_bytes"),
+            "Image upload")
         b64 = base64.b64encode(image_bytes).decode()
 
         db = SessionLocal()

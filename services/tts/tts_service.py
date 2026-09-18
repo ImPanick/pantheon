@@ -98,9 +98,35 @@ class TTSService:
 
         self._enforce_cache_limit()
 
+    def _cache_limit_bytes(self) -> int:
+        """The live cache cap: role profile -> instance setting -> env -> this
+        instance's own value.
+
+        `P12-01` / `P12-03`. This was the only one of the ten byte caps read at
+        instance init, so an operator who wanted a different TTS cache had to
+        restart the process. `self.max_cache_bytes` stays exactly as `__init__`
+        computed it and is the bottom layer, so `Law 1` holds and
+        `tests/test_tts_service_enforce_cache_limit.py` — which sets the
+        attribute directly — still decides when nothing above it is configured.
+
+        The `ValueError` is `B63`'s: compose exports this variable as an empty
+        string on installs that do not set it, and a value that will not parse
+        must leave TTS running on its documented default rather than raising
+        inside a cache eviction.
+        """
+        from src.upload_limits import resolve_byte_cap
+        try:
+            return resolve_byte_cap(
+                "tts_cache_max_bytes", "PANTHEON_TTS_CACHE_MAX_BYTES",
+                self.max_cache_bytes,
+            )[0]
+        except ValueError:
+            return self.max_cache_bytes
+
     def _enforce_cache_limit(self):
             """Evicts oldest files if the cache exceeds the configured byte limit."""
-            if self.max_cache_bytes <= 0:
+            max_cache_bytes = self._cache_limit_bytes()
+            if max_cache_bytes <= 0:
                 return
 
             try:
@@ -116,9 +142,9 @@ class TTSService:
                     except OSError:
                         continue
 
-                if total_size > self.max_cache_bytes:
+                if total_size > max_cache_bytes:
                     logger.info(
-                        f"TTS cache ({total_size} bytes) exceeded limit ({self.max_cache_bytes} bytes). Evicting oldest files."
+                        f"TTS cache ({total_size} bytes) exceeded limit ({max_cache_bytes} bytes). Evicting oldest files."
                     )
 
                     # Sort files by modification time (oldest first)
@@ -128,7 +154,7 @@ class TTSService:
                         logger.warning(f"Failed to sort cache files by mtime: {e}")
 
                     # Trim down to 80% of max capacity
-                    target_size = self.max_cache_bytes * 0.8
+                    target_size = max_cache_bytes * 0.8
 
                     while files and total_size > target_size:
                         f = files.pop(0)

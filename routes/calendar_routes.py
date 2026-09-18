@@ -16,7 +16,7 @@ from dateutil.rrule import rrulestr
 
 from core.database import SessionLocal, CalendarCal, CalendarDeletedEvent, CalendarEvent
 from src.auth_helpers import effective_user, require_user
-from src.upload_limits import read_upload_limited, ICS_MAX_BYTES
+from src.upload_limits import read_upload_limited, resolve_byte_limit
 from src.upload_handler import reserve_upload_references
 
 logger = logging.getLogger(__name__)
@@ -1484,7 +1484,8 @@ def setup_calendar_routes(upload_handler=None) -> APIRouter:
         owner = _require_user(request)
         db = SessionLocal()
         try:
-            content = await read_upload_limited(file, ICS_MAX_BYTES, "ICS file")
+            content = await read_upload_limited(
+                file, resolve_byte_limit("ics_max_bytes"), "ICS file")
             try:
                 cal_data = iCal.from_ical(content)
             except Exception as e:

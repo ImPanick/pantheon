@@ -320,7 +320,21 @@ def _resolve_search_root(raw_path: str) -> str:
 logger = logging.getLogger(__name__)
 
 
-_ADMIN_TOOLS = {
+# Tools a non-admin owner may not EXECUTE. This is a gate: membership takes
+# something away. Checked at `_execute_tool_block_impl` before
+# `is_public_blocked_tool`, and deliberately kept separate from it — the two
+# return different error strings, and `P2-25` found that pruning a name from
+# `NON_ADMIN_BLOCKED_TOOLS` changes only what is *advertised* while this set
+# still refuses the call, so a wrong prune can pass a manual test.
+#
+# Named `_ADMIN_ONLY_TOOLS`, not `_ADMIN_TOOLS`, because
+# `agent_loop._ADMIN_PROMPT_FORCE_INCLUDE` held the same old name with the
+# opposite meaning — there it force-*includes* tools. Five names are in both
+# sets (`manage_endpoints`, `manage_mcp`, `manage_settings`, `manage_tokens`,
+# `manage_webhooks`), so a grep during an RBAC refactor landed on a set that
+# grants where it looked like it denies. `P11-02c`; `AGENTS.md` Law 14 cites
+# the collision by name.
+_ADMIN_ONLY_TOOLS = {
     "app_api",
     "manage_endpoints",
     "manage_mcp",
@@ -1078,7 +1092,7 @@ async def _execute_tool_block_impl(
         logger.warning("Tool policy blocked tool=%s", tool)
         return desc, result
 
-    if tool in _ADMIN_TOOLS and not _owner_is_admin(owner):
+    if tool in _ADMIN_ONLY_TOOLS and not _owner_is_admin(owner):
         desc = f"{tool}: BLOCKED"
         result = {"error": f"Tool '{tool}' requires an admin user.", "exit_code": 1}
         logger.warning("Admin tool blocked for non-admin owner=%r tool=%s", owner, tool)

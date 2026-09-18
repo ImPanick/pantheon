@@ -55,9 +55,10 @@ def _utcnow() -> datetime:
 #
 # Resolution order is the one P12-01 sets out in .pantheon/ROADMAP.md:
 #   role profile → instance setting → env → built-in default
-# The role-profile layer does not exist yet (it is P11/P12's to build, and
-# Law 14 says extend that scaffolding when it lands rather than start a second
-# one here) — `_role_concurrency_cap` is the single place it plugs in.
+# It is implemented once, in `settings.resolve_limit`, and this module names its
+# key, its variable, its default and its clamp. The role-profile layer does not
+# exist yet (it is P11-02's to build) — `settings.role_limit` is the single
+# place it plugs in, for every limit at once.
 TASK_CONCURRENCY_CAP_SETTING = "task_concurrency_cap"
 TASK_CONCURRENCY_CAP_ENV = "PANTHEON_TASK_CONCURRENCY_CAP"
 TASK_CONCURRENCY_CAP_DEFAULT = 1
@@ -66,35 +67,13 @@ TASK_CONCURRENCY_CAP_DEFAULT = 1
 TASK_CONCURRENCY_CAP_MAX = 16
 
 
-def _coerce_concurrency_cap(raw: Any, source: str) -> int | None:
-    """Parse one candidate value; None means 'not set / unusable, try next'."""
-    if raw is None:
-        return None
-    if isinstance(raw, str):
-        raw = raw.strip()
-        if not raw:
-            return None
-    try:
-        value = int(raw)
-    except (TypeError, ValueError):
-        logger.warning(
-            "Ignoring %s task concurrency cap %r — not an integer", source, raw
-        )
-        return None
-    clamped = max(1, min(value, TASK_CONCURRENCY_CAP_MAX))
-    if clamped != value:
-        logger.warning(
-            "Task concurrency cap %d from %s clamped to %d (allowed 1..%d)",
-            value, source, clamped, TASK_CONCURRENCY_CAP_MAX,
-        )
-    return clamped
-
-
-def _role_concurrency_cap(owner: str | None) -> int | None:
-    """Role-profile layer of the resolution order. Returns None until P11/P12
-    ships role profiles — the hook exists so that lands as one edit here
-    instead of a second settings path elsewhere."""
-    return None
+# `P12-01` removed two private helpers from this module and nothing else moved:
+# `_coerce_concurrency_cap` (parse, clamp, warn) is `settings._coerce_limit`, and
+# `_role_concurrency_cap` (the empty role hook) is `settings.role_limit`. Both
+# were private to this file, both had zero references anywhere else in the tree,
+# and both now exist once for every limit in the product rather than once for
+# this one (`Law 14`). The public names, the four `source` strings and the
+# clamp bounds are unchanged.
 
 
 def resolve_task_concurrency_cap(owner: str | None = None) -> Tuple[int, str]:
@@ -102,42 +81,23 @@ def resolve_task_concurrency_cap(owner: str | None = None) -> Tuple[int, str]:
 
     Order: role profile → instance setting → env → built-in default.
     Always returns a value in [1, TASK_CONCURRENCY_CAP_MAX].
+
+    `H06`. The instance-setting layer here read `get_setting(KEY, None)` and
+    treated a non-None answer as an operator's choice. `get_setting` calls
+    `load_settings`, which merges `DEFAULT_SETTINGS` on **every** read — so it
+    could not return None, returned the shipped 1, and every layer below it was
+    unreachable code from first boot on a machine with no settings file at all.
+    The env var had therefore never worked on any install. `setting_is_explicit`
+    is the question that line was trying to ask, and `settings.resolve_limit`
+    now asks it for every limit in the product.
     """
-    role_cap = _coerce_concurrency_cap(_role_concurrency_cap(owner), "role profile")
-    if role_cap is not None:
-        return role_cap, "role profile"
-
-    # `H06`. This layer read `get_setting(KEY, None)` and treated a non-None
-    # answer as an instance setting. `get_setting` calls `load_settings`, which
-    # merges `DEFAULT_SETTINGS` on **every** read — so it could not return None,
-    # returned the shipped 1, and every line below this block was unreachable
-    # code from first boot on a machine with no settings file at all. The env
-    # var has therefore never worked on any install. `B20` filed this as "the
-    # env var dies on the first admin save"; the save is real and does
-    # materialise the key, but it is not the cause and a fix aimed at it would
-    # have left a fresh install just as broken.
-    #
-    # `setting_is_explicit` answers the question this line was trying to ask.
-    try:
-        from src.settings import get_setting, setting_is_explicit
-        setting_cap = None
-        if setting_is_explicit(TASK_CONCURRENCY_CAP_SETTING):
-            setting_cap = _coerce_concurrency_cap(
-                get_setting(TASK_CONCURRENCY_CAP_SETTING, None), "instance setting"
-            )
-    except Exception:
-        logger.debug("Task concurrency cap: settings read failed", exc_info=True)
-        setting_cap = None
-    if setting_cap is not None:
-        return setting_cap, "instance setting"
-
-    env_cap = _coerce_concurrency_cap(
-        os.getenv(TASK_CONCURRENCY_CAP_ENV), TASK_CONCURRENCY_CAP_ENV
+    from src.settings import resolve_limit
+    return resolve_limit(
+        TASK_CONCURRENCY_CAP_SETTING, TASK_CONCURRENCY_CAP_DEFAULT,
+        env_name=TASK_CONCURRENCY_CAP_ENV, owner=owner,
+        minimum=1, maximum=TASK_CONCURRENCY_CAP_MAX,
+        label="Task concurrency cap",
     )
-    if env_cap is not None:
-        return env_cap, TASK_CONCURRENCY_CAP_ENV
-
-    return TASK_CONCURRENCY_CAP_DEFAULT, "built-in default"
 
 
 # Shell/file tools a scheduled task's agent should be offered by default,

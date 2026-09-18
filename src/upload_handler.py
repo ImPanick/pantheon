@@ -14,7 +14,13 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 from fastapi import HTTPException, UploadFile
 
-from src.upload_limits import format_byte_limit, get_chat_upload_max_bytes
+from src.upload_limits import (
+    CHAT_UPLOAD_MAX_BYTES_ENV,
+    DEFAULT_UPLOAD_BURST_LIMIT,
+    DEFAULT_UPLOAD_BURST_WINDOW_SECONDS,
+    format_byte_limit,
+    get_chat_upload_max_bytes,
+)
 # Derived, not copied: `is_document_file` below used to hand-list 34 extensions
 # that had to stay in step with three registers in other files. Importing the
 # union makes them the same object. The edge is one-way — document_processor
@@ -205,12 +211,22 @@ def _build_upload_id(safe_filename: str) -> str:
     return uuid.uuid4().hex + (("." + ext) if ext else "")
 
 
-def count_recent_uploads(timestamps, now: float, window: float = 10.0) -> int:
+def count_recent_uploads(
+    timestamps,
+    now: float,
+    window: float = DEFAULT_UPLOAD_BURST_WINDOW_SECONDS,
+) -> int:
     """Number of upload events in *timestamps* within the last *window* seconds.
 
-    Used by the per-IP concurrency guard. The count is of genuine prior upload
+    Used by the per-IP burst gate. The count is of genuine prior upload
     events — it must NOT scale with how many files are in the *current* request,
-    or a single multi-file batch would reject itself (issue #1346)."""
+    or a single multi-file batch would reject itself (issue #1346).
+
+    `P12-06`. This counts **completed** uploads, not uploads in flight: every
+    timestamp is appended by `save_upload` when a file is accepted and nothing
+    removes one when the upload finishes. It was called a concurrency guard for
+    exactly as long as nobody read it. The default window is a named constant
+    now because the caller passes an operator-settable one."""
     if not timestamps:
         return 0
     cutoff = now - window
@@ -239,7 +255,13 @@ class UploadHandler:
         self.base_dir = base_dir
         self.upload_dir = upload_dir
         self.max_upload_size = get_chat_upload_max_bytes()
-        self.max_concurrent_uploads = 3
+        # `P12-06`. Was `self.max_concurrent_uploads = 3`. Both halves of that
+        # line were wrong: the number could only be changed by rebuilding, and
+        # "concurrent" described a ten-second lookback over finished uploads.
+        # The old name survives as a property below (`Law 1`) and is an alias
+        # for this attribute, not a second copy of it (`Law 7`).
+        self.upload_burst_limit = DEFAULT_UPLOAD_BURST_LIMIT
+        self.upload_burst_window_seconds = DEFAULT_UPLOAD_BURST_WINDOW_SECONDS
         self.cleanup_days = 30
         # Per-IP per-minute cap. save_upload() counts EACH file, and the chat
         # composer lets a user attach up to MAX_FILES (10, static/js/fileHandler.js)
@@ -278,6 +300,85 @@ class UploadHandler:
         self._index_cache: Optional[Dict[str, Any]] = None
         self._index_signature: Optional[UploadIndexSignature] = None
     
+    # ── The live limits (`P12-01`, `P12-03`, `P12-05b`) ────────────────────
+    #
+    # The three attributes set in `__init__` above are the BOTTOM layer, not
+    # the answer. Each helper resolves
+    # **role profile -> instance setting -> env -> the attribute**, per
+    # request, so an operator can change a cap or a throttle from the settings
+    # store and the next upload honours it without a restart.
+    #
+    # Reading the attribute as the floor rather than closing over a number is
+    # `Law 1` and it is also what keeps six existing tests honest: they set
+    # `handler.upload_rate_limit = 100` or `handler.max_upload_size` directly,
+    # and that keeps deciding whenever nothing above it is configured.
+
+    def effective_max_upload_size(self, owner: str | None = None) -> int:
+        """The chat composer's per-file byte cap, resolved now."""
+        from src.upload_limits import resolve_byte_cap
+        try:
+            return resolve_byte_cap(
+                "chat_upload_max_bytes", CHAT_UPLOAD_MAX_BYTES_ENV,
+                self.max_upload_size, owner,
+            )[0]
+        except ValueError:
+            # A malformed environment value already stopped `__init__`, so this
+            # cannot fire on a running process. It is here because a cap that
+            # raises mid-upload is a worse failure than one that is stale.
+            return self.max_upload_size
+
+    def effective_upload_rate_limit(self, owner: str | None = None) -> int:
+        """Uploads per window per IP, resolved now (`P12-05b`).
+
+        SETTINGS-ONLY — there is no `PANTHEON_UPLOAD_RATE_LIMIT`, and the
+        omission is deliberate: none existed before this row, so `Law 1`
+        requires nothing, and a new variable would be a second place the same
+        number can be set (`Law 13`).
+
+        `minimum=1`. There is no value meaning *off*: `FORBIDDEN.md` Part 2
+        keeps the throttles, and making the number policy is a different act
+        from removing the limiter.
+        """
+        from src.settings import resolve_limit
+        return resolve_limit(
+            "upload_rate_limit", self.upload_rate_limit, owner=owner,
+            minimum=1, maximum=100_000,
+        )[0]
+
+    def effective_upload_rate_window(self, owner: str | None = None) -> int:
+        """The window those uploads are counted over, in seconds."""
+        from src.settings import resolve_limit
+        return resolve_limit(
+            "upload_rate_window_seconds", self.upload_rate_window, owner=owner,
+            minimum=1, maximum=86_400,
+        )[0]
+
+    @property
+    def max_concurrent_uploads(self) -> int:
+        """The old name for `upload_burst_limit` (`P12-06`).
+
+        `Law 1` — the name does not vanish because it turned out to be wrong.
+        It is a property rather than a second attribute so the two cannot
+        drift: a parallel integer would be a fork in the maintenance path where
+        one side goes stale (`Law 7`).
+
+        Who still spells it this way, measured 2026-09-18 over tracked `.py`:
+        `tests/test_upload_multifile.py:59` sets it on its stand-in handler,
+        `src/config.py:106` declares an unread copy of it (`B562`), and
+        `routes/upload_routes.py` reads it as the fallback for a handler that
+        predates the rename. One of those three is a real caller and the gate
+        still has to work for it.
+
+        The name is kept and not trusted: nothing in this class or in
+        `routes/upload_routes.py` counts uploads in flight, and the rejection
+        the route raises no longer says "concurrent".
+        """
+        return self.upload_burst_limit
+
+    @max_concurrent_uploads.setter
+    def max_concurrent_uploads(self, value: int) -> None:
+        self.upload_burst_limit = value
+
     def inside_base_dir(self, path: str) -> bool:
         """Check if path is inside base directory"""
         base = os.path.realpath(self.base_dir)
@@ -1156,11 +1257,15 @@ class UploadHandler:
         now = time.time()
         removed_ips = 0
         removed_timestamps = 0
+        # `P12-05b`. The same window `save_upload` counts against, or a shortened
+        # window here would drop timestamps the enforcement path still needs and
+        # hand the caller back the quota it had just spent.
+        rate_window = self.effective_upload_rate_window()
         
         with self._upload_rate_lock:
             ips_to_delete = []
             for ip, timestamps in list(self.upload_rate_log.items()):
-                new_ts = [t for t in timestamps if now - t < self.upload_rate_window]
+                new_ts = [t for t in timestamps if now - t < rate_window]
                 removed = len(timestamps) - len(new_ts)
                 removed_timestamps += removed
                 if new_ts:
@@ -1215,16 +1320,18 @@ class UploadHandler:
         """Save uploaded file with enhanced security and organization."""
         # Rate limiting
         now = time.time()
+        rate_limit = self.effective_upload_rate_limit(owner)
+        rate_window = self.effective_upload_rate_window(owner)
         with self._upload_rate_lock:
             if client_ip not in self.upload_rate_log:
                 self.upload_rate_log[client_ip] = []
             
             self.upload_rate_log[client_ip] = [
                 timestamp for timestamp in self.upload_rate_log[client_ip]
-                if now - timestamp < self.upload_rate_window
+                if now - timestamp < rate_window
             ]
             
-            if len(self.upload_rate_log[client_ip]) >= self.upload_rate_limit:
+            if len(self.upload_rate_log[client_ip]) >= rate_limit:
                 raise HTTPException(
                     status_code=429,
                     detail="Upload rate limit exceeded. Please try again later."
@@ -1245,10 +1352,11 @@ class UploadHandler:
         if file_size == 0:
             raise HTTPException(400, "File is empty")
             
-        if file_size > self.max_upload_size:
+        max_upload_size = self.effective_max_upload_size(owner)
+        if file_size > max_upload_size:
             raise HTTPException(
                 status_code=400,
-                detail=f"File size exceeds {format_byte_limit(self.max_upload_size)} limit"
+                detail=f"File size exceeds {format_byte_limit(max_upload_size)} limit"
             )
         
         # Get original filename and sanitize it

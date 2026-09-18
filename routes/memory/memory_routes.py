@@ -33,7 +33,7 @@ from services.memory.memory_extractor import audit_memories
 from src.auth_helpers import get_current_user, require_user
 from src.endpoint_resolver import resolve_endpoint
 from src.task_endpoint import resolve_task_endpoint
-from src.upload_limits import read_upload_limited, MEMORY_IMPORT_MAX_BYTES
+from src.upload_limits import read_upload_limited, resolve_byte_limit
 
 logger = logging.getLogger(__name__)
 
@@ -412,7 +412,8 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
         if not endpoint_url or not model:
             raise HTTPException(400, "No LLM model configured. Set a default model in Settings.")
 
-        content = await read_upload_limited(file, MEMORY_IMPORT_MAX_BYTES, "Memory import")
+        content = await read_upload_limited(
+            file, resolve_byte_limit("memory_import_max_bytes"), "Memory import")
         filename = file.filename or "upload"
         _, ext = os.path.splitext(filename.lower())
 

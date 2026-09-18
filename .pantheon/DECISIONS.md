@@ -27,20 +27,36 @@ need some extensive RBAC cleaning and establishment."*
   to stand up an identity provider to log in — that is the deployment this project started from
   and it remains a first-class one.
 
-**Roles.** Named overlays on `DEFAULT_PRIVILEGES` (`core/auth.py:24-38`, 11 keys, AST-verified),
+**Roles.** Named overlays on `DEFAULT_PRIVILEGES` (`core/auth.py:28-44`, 11 keys, AST-verified),
 resolving built-in default → role → user. `is_admin` stays as the superuser role rather than
-being replaced, because 103 call sites depend on it and rewriting them at once is how this goes
+being replaced, because 107 call sites depend on it and rewriting them at once is how this goes
 wrong. This is `Law 14` applied to authorization: the dict is already a control plane, just
 under-populated.
 
 **The clean-up half, which is the part with no other home.** "Extensive RBAC cleaning" is four
 concrete preconditions, all measured:
 
-1. **Close the fail-open default.** `privs.get(key, True)` at `src/auth_helpers.py:172` grants on
-   a typo. `P11-01`.
-2. **Audit all 103 `require_admin` sites** against the role model — 83 direct calls plus 20
-   `Depends(require_admin)`, non-test Python. `P11-02b`.
-3. **Resolve the `_ADMIN_TOOLS` collision.**
+1. **Close the fail-open default.** `privs.get(key, True)` at `src/auth_helpers.py:216` grants on
+   a typo. `P11-01`. **Done 2026-09-18** — `resolve_privilege` in `src/auth_helpers.py` is now the
+   one place that answers "what does this privilege resolve to": stored value, else the registry's
+   declared value, else denied. *(Line was `:172` here and in `P11-01` until 2026-09-18; the guard
+   has been at `:216` and the registry at `core/auth.py:28-44` — `Law 6`, a number copied between
+   documents instead of re-measured.)*
+2. **Audit all 107 `require_admin` sites** against the role model — 87 direct calls plus 20
+   `Depends(require_admin)`, non-test Python. `P11-02b`. **Done 2026-09-18** —
+   `.pantheon/P11-AUTH-MAP.md` holds the table and `.pantheon/check-auth-map.py` fails when it
+   drifts from the tree. *(The number was 103 here and in the row until 2026-09-18, and 84 before
+   that. Both were greps: `webhook_routes.py` imports the gate under an alias, so five of its
+   calls were invisible while six differently-named calls in `shell_routes.py` were counted —
+   wrong in both directions at once. The population is derived by AST now, which is why this is
+   the last time it moves for that reason.)* **And `require_admin` is one of four admin gates**:
+   22 inline decisions in `auth_routes.py`, a reimplementation at `shell_routes.py:54` with six
+   callers, and `owner_is_admin_or_single_user` at eight more — 36 sites no `require_admin` sweep
+   can see, and the reimplementation does not behave the same with auth disabled. `B543`.
+3. **Resolve the `_ADMIN_TOOLS` collision.** `P11-02c`. **Done 2026-09-18** — the execution gate
+   is `tool_execution._ADMIN_ONLY_TOOLS` (11 names, blocks non-admins) and the prompt/schema
+   force-include is `agent_loop._ADMIN_PROMPT_FORCE_INCLUDE` (15 names, grants nothing). Nothing
+   binds `_ADMIN_TOOLS` any more, so the name in this entry is history.
 4. **Reconcile the fifteen route files with no auth call of their own** — nine of which do in
    fact make one; six are the real unknowns. `P11-02d`.
 

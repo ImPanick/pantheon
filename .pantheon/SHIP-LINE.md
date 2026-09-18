@@ -98,15 +98,27 @@ rows are marked `second-line` in the register.
 
 ---
 
-## 3. The blocking set — fifteen rows, of which two are now met
+## 3. The blocking set — eighteen rows, of which five are now met
 
-Fifteen of 234 open rows when this was written; **`P0-17` and `P6-08` closed on
-2026-09-18 and are marked `landed` in the register rather than deleted, because a line that
-quietly loses its met gates cannot be audited.** Thirteen stand. One line of reasoning each;
-the row carries the
-measurement. Four are security, four are a false documented claim, three are a
-licence obligation, two are an action rather than a commit, one is a defect a
-first-time user hits, and one is the release artefact.
+Fifteen of 234 open rows when this was written; **five have since been met and three
+have been added, and the met ones are marked `landed` in the register rather than deleted,
+because a line that quietly loses its met gates cannot be audited.** `P0-17` and `P6-08` closed
+on 2026-09-18; `P11-01` and `P11-02d` closed the same day, which is the fail-open privilege
+default and the six unreconciled route files — both of them gates this document named and both
+of them now measurements rather than unknowns.
+**Two were added on 2026-09-18, and adding them is the point of keeping the line honest.** The
+`P11-02d` reconciliation that met one gate is what found them: `B540`, where any signed-in
+account can clear the instance-wide TTS cache while the same act on uploads is `require_admin`,
+and `B541`, where four `/api/hwfit/*` routes will SSH to a host the caller names — for any
+signed-in account, when the identical question behind `GET /api/cookbook/gpus` is admin-only.
+A line that only ever shrinks is a line that has stopped being measured. The third addition,
+`B533`, was adjudicated and **fixed in the same hour** — the threat model named one of two tool
+gates and said admins always get full access, which stopped being true the moment `P11-01`
+denied undeclared keys to everybody. Four lines to correct is not a gate; it is registered
+`landed` so the adjudication is on the record.
+Thirteen stand. One line of reasoning each; the row carries the measurement. Four are security,
+three are a false documented claim, two are a licence obligation, two are an action rather than
+a commit, one is a defect a first-time user hits, and one is the release artefact.
 
 ### Security — the control does not hold (4)
 
@@ -335,9 +347,18 @@ weakest one in this document: it means nobody adjudicated them individually.
 | `P0-17` | landed | licence | AGPL §13 source link — attaches at network offer; built and dark |
 | `B349` | blocking | licence | `NOTICE` and the published `LEDGER.md` give two dates for one fork |
 | `B370` | blocking | security | two `/static` pages answer 200 with no cookie; no exemption written down |
-| `P11-01` | blocking | security | `privs.get(key, True)` fails open and non-admin accounts are reachable today |
+| `P11-01` | landed | security | `privs.get(key, True)` fails open and non-admin accounts are reachable today |
 | `P2-21` | blocking | security | two `builtin` GETs make no auth call beside a `require_admin` PUT and DELETE |
-| `P11-02d` | blocking | security | six route files whose gating is unreconciled — an unknown on an auth surface |
+| `B540` | blocking | security | any signed-in account clears the instance-wide TTS cache; the same act on uploads is `require_admin` |
+| `B541` | blocking | security | four `/api/hwfit/*` routes SSH to a host the caller names, for any signed-in account |
+| `B542` | tracked | security | two admin writes are middleware-exempt on path alone; their in-handler `is_admin` still stands |
+| `B543` | tracked | claim | the admin gate is written four times; a consistency defect on a surface no stranger reaches first |
+| `B530` | tracked | second-line | the resolution rule longhand at eight sites; fail-open only once roles exist, and roles do not |
+| `B531` | tracked | decision | a corrupt privilege store grants; the fix is a lockout on a one-operator box and needs a ruling |
+| `B532` | tracked | second-line | a derivation `P11-02` will have to change; nothing resolves differently today |
+| `B533` | landed | claim | the threat model named one of two tool gates; corrected at the merge that found it |
+| `B571` | tracked | tooling | a conflicted index triples every checker's count; a runner's index is never conflicted |
+| `P11-02d` | landed | security | six route files whose gating is unreconciled — an unknown on an auth surface |
 | `B71` | blocking | claim | upstream's artwork under this fork's filenames, and it is the macOS app icon |
 | `B411` | blocking | claim | four numbers in the published ledger do not print from their own repro |
 | `P6-08` | landed | claim | `.env.example` and three compose files document an env override that is dead code |

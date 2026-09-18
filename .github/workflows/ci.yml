@@ -268,6 +268,23 @@ jobs:
       # after somebody's keys are gone.
       - name: check-config-writes
         run: python3 .pantheon/check-config-writes.py
+      # P11-02b / P11-02d. Both rows asked for a map of where authorization is
+      # decided and for nothing to be changed until it existed. A map is the
+      # artefact this tracker keeps getting wrong: P11-02b said 84 sites while
+      # its own phase preamble said 103 thirty lines above, and P11-02d named
+      # `chat_routes.py:338/367` as chat's admin check when those two lines are
+      # `_candidate_index` and `_message_plain_text`. So .pantheon/P11-AUTH-MAP.md
+      # is held against the tree here: every `require_admin` site appears with a
+      # tier (resolved through `import ... as`, because five of them answer to
+      # `_require_admin` and a grep finds none of those), every mapped site still
+      # exists, every route in the fifteen files carries the gate the source
+      # actually gives it, and a route the map calls unintended has to name a
+      # `Bxxx`. Rule C is a ratchet on admin decisions taken WITHOUT
+      # `require_admin` — there are three other ways to ask, `routes/auth_routes.py`
+      # holds 22 of them, and only `require_admin` honours `auth_disabled()`
+      # (`B543`). It may fall as they move onto P11-02's roles; it may not rise.
+      - name: check-auth-map
+        run: python3 .pantheon/check-auth-map.py --max 43
       # P19. The ledger is the copy shown to strangers, which makes it the worst
       # one to let drift: `.pantheon/ROADMAP.md` records what was done,
       # `CHANGELOG.md` records what changed because AGPL-3.0 §5(a) requires it,

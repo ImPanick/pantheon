@@ -15,7 +15,7 @@ from src.rag_singleton import get_rag_manager
 from src.auth_helpers import require_privilege, require_user
 from core.middleware import require_admin
 from src.upload_handler import secure_filename
-from src.upload_limits import PERSONAL_UPLOAD_MAX_BYTES
+from src.upload_limits import resolve_byte_limit
 
 UPLOADS_DIR = PERSONAL_UPLOADS_DIR
 
@@ -416,15 +416,18 @@ def setup_personal_routes(personal_docs_manager, rag_manager, rag_available):
         # shared job lock BEFORE offloading so a queued request parks on the loop
         # instead of pinning a threadpool worker, matching add_directory.
         # Read and process one capped payload at a time so a multi-file request
-        # cannot retain len(files) * PERSONAL_UPLOAD_MAX_BYTES in memory.
+        # cannot retain len(files) * the cap in memory. `P12-03`: the cap is
+        # resolved once for the whole request, not per file, so a save that
+        # lands mid-batch cannot apply two different limits to one upload.
+        _personal_cap = resolve_byte_limit("personal_upload_max_bytes")
         async with _index_job_lock:
             for upload in files:
                 try:
                     file_path, stored_name, safe_name = _unique_personal_upload_path(
                         upload_dir, upload.filename
                     )
-                    content_bytes = await upload.read(PERSONAL_UPLOAD_MAX_BYTES + 1)
-                    if len(content_bytes) > PERSONAL_UPLOAD_MAX_BYTES:
+                    content_bytes = await upload.read(_personal_cap + 1)
+                    if len(content_bytes) > _personal_cap:
                         logger.warning(f"Rejected oversized personal upload: {upload.filename!r}")
                         total_failed += 1
                         continue

@@ -93,8 +93,42 @@ class SecurityConfig(BaseSettings):
     """Configuration for security and rate limiting."""
     
     # Rate limiting
+    #
+    # NOTE (`P12-05b`/`P12-06`, 2026-09-18): **nothing reads any field of this
+    # class.** Scope, so the claim can be re-driven: `SecurityConfig` is
+    # instantiated once, at `AppConfig.security` below, and `grep -rn
+    # "\.security\."` over non-test Python returns that line and nothing else.
+    # All six fields here (four rate-limit, `allowed_origins`, `max_file_size`)
+    # are declaration without a reader, and `SECURITY_UPLOAD_RATE_LIMIT` in an
+    # operator's environment populates a field no code consults. `app.py`
+    # imports `config` and passes it to `setup_search_routes`, which never reads
+    # it. This is the third time the class has been read as configuration and
+    # found to be decoration — see the `P2-03` note below, which deleted nine
+    # MIME types and fourteen extensions from it for the same reason.
+    #
+    # Two of the six were also already wrong, and both were reconciled rather
+    # than left to disagree:
+    #
+    #   * `upload_rate_limit` was **5** here while `UploadHandler.__init__` set
+    #     **60**. It is now 60 in both, because 60 is the only one of them that
+    #     has ever run: 5 was an unreachable declaration, and picking it would
+    #     have cut the chat composer's multi-file attach from 25 files to 5
+    #     (issue #1346, "5 work, 6 fail"). The number's home is
+    #     `src/upload_handler.py`, where it is enforced; this is a mirror, and
+    #     `tests/test_limits_are_policy.py` holds the two equal so they cannot
+    #     drift apart again. The live value resolves through
+    #     `UploadHandler.effective_upload_rate_limit` — role profile → instance
+    #     setting → this floor.
+    #   * `max_concurrent_uploads` is 3 in both places and names a concurrency
+    #     the upload gate has never measured; the live number is
+    #     `upload_burst_limit` in `src/upload_limits.py`, resolved per request
+    #     (`P12-06`).
+    #
+    # `Law 1`: the fields stay and `SECURITY_*` keeps binding to them exactly as
+    # pydantic always has. They are labelled so the next reader does not change
+    # a value here and wait for something to happen. `B562`.
     max_concurrent_uploads: int = Field(default=3, description="Maximum concurrent uploads per IP")
-    upload_rate_limit: int = Field(default=5, description="Maximum uploads per minute per IP")
+    upload_rate_limit: int = Field(default=60, description="Maximum uploads per rate window per IP (mirrors UploadHandler)")
     upload_rate_window: int = Field(default=60, description="Rate limit window in seconds")
     upload_rate_max_entries: int = Field(default=1000, description="Maximum number of rate limit entries to keep")
     

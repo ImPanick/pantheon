@@ -595,11 +595,42 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
         # that has to be argued each time is one nobody keeps. Filed as `P7-12`.
         _SELF_RESTRAINT_KEYS = {
             "agent_email_confirm",
+            # `P12-10`. The deadline after which an unanswered approval card
+            # closes as denied. Declaring it made it settable, and this is the
+            # same argument `agent_email_confirm` makes: a longer deadline is a
+            # card that stays answerable instead of closing denied, and a
+            # shorter one is the gate the operator set moving without them. The
+            # request looks identical whether it came from the person or from a
+            # page the agent was told to read, which is the whole reason the
+            # gate exists.
+            "approval_timeout_seconds",
             # Added by `H16`, which declared it — and declaring a key hands it
             # to the agent as well as to the person, because `DEFAULT_SETTINGS`
             # is the allowlist for both. A checker that the checked party can
             # switch off is not a check.
             "agent_verifier_subagent",
+            # `P12-05b`. The six auth throttles, for the reason above in its
+            # sharpest form: `FORBIDDEN.md` Part 2 lists the auth rate limiters
+            # as a control against credential stuffing, and declaring them so an
+            # admin can tune them declares them to the agent at the same time.
+            # A throttle that prompt injection can raise is not a throttle, and
+            # the tool call looks identical whether the instruction came from the
+            # operator or from a page the agent was asked to read.
+            #
+            # The upload throttle and the ten byte caps are NOT here. They are
+            # capacity, not an auth gate — "give me a bigger upload limit" is a
+            # real thing to ask for, and a restriction that has to be argued
+            # each time is one nobody keeps: the reasoning the two loop caps
+            # already carry a few lines above this set, spelled without naming
+            # them because `test_the_loop_caps_are_deliberately_not_in_the_set`
+            # scopes a substring search to this block and cannot tell a key
+            # from prose about one (`Law 20`, `H02`'s exact shape).
+            "auth_login_rate_limit",
+            "auth_login_rate_window_seconds",
+            "auth_signup_rate_limit",
+            "auth_signup_rate_window_seconds",
+            "auth_setup_rate_limit",
+            "auth_setup_rate_window_seconds",
         }
         #
         # `trust_rung` is NOT here, and the first version of this set had it.
@@ -635,6 +666,20 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
                 "decides whether a person has to approve an email before I send it",
             "agent_verifier_subagent":
                 "is the check on whether I actually did what I said I did",
+            "auth_login_rate_limit":
+                "is the throttle that stops someone guessing passwords at your login",
+            "auth_login_rate_window_seconds":
+                "is the window that login throttle counts attempts over",
+            "auth_signup_rate_limit":
+                "is the throttle on account creation",
+            "auth_signup_rate_window_seconds":
+                "is the window that signup throttle counts attempts over",
+            "auth_setup_rate_limit":
+                "is the throttle on first-run admin setup",
+            "auth_setup_rate_window_seconds":
+                "is the window that setup throttle counts attempts over",
+            "approval_timeout_seconds":
+                "is how long you have to answer an approval before it is denied",
         }
 
         def _is_self_restraint(k):

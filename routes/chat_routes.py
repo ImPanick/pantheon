@@ -14,7 +14,7 @@ from fastapi import APIRouter, Request, HTTPException, Form, Query, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ValidationError
 
-from core.models import ChatMessage
+from core.models import ChatMessage, get_session_manager_instance
 from src.request_models import ChatRequest
 from src.llm_core import (
     _normalize_http_status,
@@ -90,7 +90,10 @@ from src.tool_policy import (
     is_web_search_explicitly_denied,
     web_search_enabled_for_turn,
 )
-from src.tool_approvals import tool_approval_store
+from src.tool_approvals import (
+    register_approval_expiry_listener,
+    tool_approval_store,
+)
 from src.tool_approval_scopes import stamp_chat_session_grant
 from src.tool_security import delegated_credential_blocked_tools
 from src import tool_allow_rules
@@ -284,6 +287,47 @@ def _mark_tool_approval_resolved(sess, approval_id: Any, decision: Any) -> bool:
         return False
     finally:
         db.close()
+
+
+def deny_expired_tool_approval(pending) -> bool:
+    """`P12-10`. Mark a lapsed card denied in the transcript that asked for it.
+
+    The run that asked has already returned — it emitted the card and ended —
+    so the only thing left holding the question is the persisted tool event
+    the browser rebuilds the card from. Before this row nothing ever wrote
+    `resolved` on it for a lapse, so a reloaded chat drew the card as live
+    (`chatRenderer.renderAskUserCard` returns `null` only when `resolved` is
+    set) and its buttons answered 409 on the click.
+
+    This is the same field and the same writer an answered card uses, so there
+    is one way a card becomes resolved and not two (`Law 14`). Returns whether
+    the denial was written; `False` covers the ordinary cases — no session
+    manager in this process (a CLI, a test), a session nobody has loaded, a
+    card from a surface with no transcript.
+    """
+    manager = get_session_manager_instance()
+    if manager is None:
+        return False
+    session_id = str(getattr(pending, "session_id", "") or "")
+    approval_id = str(getattr(pending, "approval_id", "") or "")
+    if not session_id or not approval_id:
+        return False
+    sess = (getattr(manager, "sessions", None) or {}).get(session_id)
+    if sess is None:
+        try:
+            sess = manager.get_session(session_id)
+        except Exception:
+            return False
+    if sess is None:
+        return False
+    try:
+        return _mark_tool_approval_resolved(sess, approval_id, "deny")
+    except Exception:
+        logger.warning(
+            "Could not mark lapsed tool approval %s denied", approval_id,
+            exc_info=True,
+        )
+        return False
 
 
 async def _tool_approval_resolution_stream(decision: str) -> AsyncGenerator[str, None]:
@@ -879,6 +923,14 @@ def setup_chat_routes(
         tags=["chat"],
         dependencies=[Depends(require_chat_api_token_scope)],
     )
+
+    # `P12-10`. The store decides a lapsed approval is denied; this is the half
+    # that makes the denial visible to whatever asked. Registered here because
+    # this function runs once at boot and owns `_mark_tool_approval_resolved` —
+    # a listener nothing registers is `Law 13`'s backend with no caller.
+    # Registration is idempotent, so the test suite building the router several
+    # times does not write a denial several times.
+    register_approval_expiry_listener(deny_expired_tool_approval)
 
     # ------------------------------------------------------------------ #
     # POST /api/chat (non-streaming)

@@ -3301,7 +3301,22 @@ def _build_system_prompt(
     return merged, mcp_schemas
 
 
-_ADMIN_TOOLS = {
+# Tools force-INCLUDED in the prompt and in the API schema list when
+# `_detect_admin_intent` fires. This grants nothing: it only makes sure a turn
+# that is plainly about management can still see the management tools after RAG
+# retrieval has narrowed `relevant_tools` down. Whether the caller may actually
+# run any of them is decided later, at execution, by
+# `tool_execution._ADMIN_ONLY_TOOLS`.
+#
+# Named `_ADMIN_PROMPT_FORCE_INCLUDE`, not `_ADMIN_TOOLS`, because that old name
+# was also the name of the execution gate — same identifier, opposite direction.
+# Five names sit in both (`manage_endpoints`, `manage_mcp`, `manage_settings`,
+# `manage_tokens`, `manage_webhooks`), which is what made the collision
+# dangerous rather than merely confusing: reading this set as the gate says a
+# non-admin may run `pipeline` and `create_session`; reading the gate as this
+# set drops `manage_session`, `manage_skills` and `manage_tasks` out of every
+# admin prompt. `P11-02c`; `AGENTS.md` Law 14 cites the collision by name.
+_ADMIN_PROMPT_FORCE_INCLUDE = {
     "manage_session", "manage_skills", "manage_tasks",
     "manage_endpoints", "manage_mcp", "manage_webhooks", "manage_tokens",
     "manage_documents", "manage_settings", "create_session", "list_sessions",
@@ -3360,7 +3375,7 @@ def _build_base_prompt(
         # (ask_user, update_plan) as belt-and-suspenders.
         tool_names = set(relevant_tools) | {"ask_user", "update_plan"}
         if needs_admin:
-            tool_names |= _ADMIN_TOOLS
+            tool_names |= _ADMIN_PROMPT_FORCE_INCLUDE
         agent_prompt = _assemble_prompt(tool_names, disabled, compact=compact)
         _record_fenced_channel(tool_names, disabled, compact, owner)
     else:
@@ -5424,7 +5439,7 @@ async def stream_agent_loop(
             if route_relevant_tools:
                 schema_names = set(route_relevant_tools)
                 if _needs_admin:
-                    schema_names |= _ADMIN_TOOLS
+                    schema_names |= _ADMIN_PROMPT_FORCE_INCLUDE
                 base_schemas = [
                     schema for schema in FUNCTION_TOOL_SCHEMAS
                     if schema.get("function", {}).get("name") in schema_names

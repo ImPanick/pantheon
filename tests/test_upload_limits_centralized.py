@@ -96,16 +96,24 @@ def test_routes_import_from_upload_limits_not_local_defs():
         for needle in needles:
             assert needle not in text, f"{path} still defines limit locally: {needle}"
 
-    # And each imports from upload_limits.
-    imports = {
-        "routes/gallery/gallery_routes.py": "GALLERY_UPLOAD_MAX_BYTES",
-        "routes/memory/memory_routes.py": "MEMORY_IMPORT_MAX_BYTES",
-        "routes/personal_routes.py": "PERSONAL_UPLOAD_MAX_BYTES",
-        "routes/email_routes.py": "EMAIL_COMPOSE_UPLOAD_MAX_BYTES",
-        "routes/stt_routes.py": "STT_MAX_AUDIO_BYTES",
-        "routes/calendar_routes.py": "ICS_MAX_BYTES",
+    # And each gets its cap from upload_limits. `P12-03` moved the routes off
+    # the import-time constants and onto `resolve_byte_limit("<key>")`, which
+    # re-reads role profile → instance setting → env → built-in default on every
+    # request; the property this half of the test protects — the number is not
+    # defined locally — is unchanged, so the assertion names the key instead of
+    # the constant. The keys are checked against the registry rather than being
+    # a second list of strings (`Law 13`).
+    keys = {
+        "routes/gallery/gallery_routes.py": "gallery_upload_max_bytes",
+        "routes/memory/memory_routes.py": "memory_import_max_bytes",
+        "routes/personal_routes.py": "personal_upload_max_bytes",
+        "routes/email_routes.py": "email_compose_upload_max_bytes",
+        "routes/stt_routes.py": "stt_max_audio_bytes",
+        "routes/calendar_routes.py": "ics_max_bytes",
     }
-    for path, const in imports.items():
+    for path, key in keys.items():
         text = (REPO / path).read_text(encoding="utf-8")
         assert "from src.upload_limits import" in text
-        assert const in text
+        assert key in upload_limits.BYTE_LIMITS, f"{key!r} left the registry"
+        assert f'resolve_byte_limit("{key}")' in text, (
+            f"{path} no longer resolves {key} through src.upload_limits")

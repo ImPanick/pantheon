@@ -31,7 +31,11 @@ Pantheon is designed for **trusted users on a private network**, not public expo
 | Vault | ✓ | ✗ |
 | Settings | ✓ | ✗ |
 
-Non-admin defaults are in `core/auth.py:DEFAULT_PRIVILEGES`. Tool enforcement is in `src/tool_security.py:NON_ADMIN_BLOCKED_TOOLS`. Any tool whose name starts with `mcp__` is also blocked for non-admins. Admins always get full access regardless of stored privilege values.
+Non-admin defaults are in `core/auth.py:DEFAULT_PRIVILEGES`.
+
+**Tool enforcement is two gates, and the order matters.** `src/tool_execution.py:_ADMIN_ONLY_TOOLS` (11 names) is checked **first**, with its own refusal message; `src/tool_security.py:NON_ADMIN_BLOCKED_TOOLS` is checked after it. All 11 names in the first gate are currently also in the second, so a name removed from one of them is still refused by the other — which means **a prune of either list looks harmless in a manual test and may not be** (`P2-25` found exactly that). Treat the two as a pair: change one, re-read the other. Any tool whose name starts with `mcp__` is also blocked for non-admins.
+
+Admins get full access to every **declared** privilege regardless of stored values. An undeclared key — a typo, or a name from a newer build — resolves to denied for everybody, admins included, because a privilege the registry has never heard of cannot be granted on the strength of a name (`P11-01`).
 
 ## Authentication
 

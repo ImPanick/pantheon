@@ -607,6 +607,11 @@ _APPROVAL_CONSUME_MESSAGES = {
         "answered here."
     ),
     "bad_decision": "That is not a choice this approval offers.",
+    # `P12-10`. `deny` is a decision the card offers, and it used to report
+    # itself as `bad_decision` because `scope_for_decision` answers `None` for
+    # both. The route never shows this one — a denial returns its own stream —
+    # but a reason with no sentence is how the next caller gets the generic one.
+    "denied": "The action was denied and was not run.",
 }
 
 

@@ -71,8 +71,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P8 | The Workshop | 49 | 45 | **3** | **1** |
 | P9 | Feature surfaces | 18 | 16 | 0 | **2** |
 | P10 | Accessibility & release | 12 | 11 | 0 | **1** |
-| P11 | Identity & access | 14 | 13 | **1** | 0 |
-| P12 | Limits & the control plane | 11 | 11 | 0 | 0 |
+| P11 | Identity & access | 14 | 9 | **1** | **4** |
+| P12 | Limits & the control plane | 11 | 6 | 0 | **5** |
 | P13 | The Brain | 23 | 17 | 0 | **6** |
 | P14 | Measurement | 8 | 0 | 0 | **8** |
 | P15 | Outbound politeness | 12 | 0 | **1** | **11** |
@@ -80,8 +80,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P17 | The network the agent is hosted on | 14 | 0 | 0 | **14** |
 | P18 | One button, and it links | 9 | 0 | 0 | **9** |
 | P19 | The proof ledger | 8 | 0 | 0 | **8** |
-| Backlog | Bugs and hardening found in flight | 286 | 66 | 0 | **220** |
-| **Total** | | **668** | **236** | **10** | **422** |
+| Backlog | Bugs and hardening found in flight | 307 | 84 | 0 | **223** |
+| **Total** | | **689** | **245** | **10** | **434** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -245,13 +245,18 @@ they are for.*
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
 
 ### Five phases finished, and the day stopped counting the wrong population
-`c2d8669..HEAD`. **668 tracked, 422 done. 0 new phase rows, 0 regressions. `P0-17`, `P3-20`,
+`c2d8669..HEAD`. **689 tracked, 434 done. 0 new phase rows, 0 regressions. `P0-17`, `P3-20`,
 `P3-21`, `P6-08`, `P14-06`–`P14-08`, `P15-08`, `P15-11` and all three `P17` rows closed;
 `P16-20` parked under a standing ruling; `B510` disclosed AI use across three surfaces at the
 owner's request; twenty-two backlog rows filed, and `B413` closed by one of them.**
 **The suite is green on the merged tree: 11,100 passed, 6 skipped, 0 failed, 15:14.** The last
 three failures were one leak — `B523` — and chasing it turned up two more of the same shape
 (`B524`, `B525`) and closed the row that had been waiting for exactly this measurement.
+**Then `P11` and `P12` opened.** Four agents in parallel closed `P11-01`, `P11-02b`, `P11-02c`,
+`P11-02d`, `P12-01`, `P12-03`, `P12-05b`, `P12-06` and `P12-10` — the two phases the owner named
+as making no dent, both of which stood at zero. Eighteen backlog rows came with them, including
+`B526`: **CI has never passed because no job has ever started, and the reason is a GitHub billing
+block, not a workflow defect.**
 **The owner said the tracked items kept growing while progress made no dent, and they were
 right for a reason the counts hid.** The tracker holds two populations: **phase rows are the
 project**, backlog rows are defects found while building it. Six waves had closed roughly a
@@ -5028,48 +5033,187 @@ that UI gate does not work. A typo in a privilege key currently grants access.
 None of this is wrong for one admin on a LAN. All of it is wrong the moment a second person
 has an account.
 
-- [ ] **P11-01** **Close the fail-open default.** Known keys default to denied; genuinely
-  unknown keys stay permissive so a new key does not lock everyone out mid-deploy. **Premise corrected 2026-08-27.**
-  **The registry already exists** — `DEFAULT_PRIVILEGES` in `core/auth.py:24-38` is it, with
+- [x] **P11-01** **Close the fail-open default.** Known keys resolve to the registry's declared
+  value; keys nobody declared are denied. **Premise corrected 2026-08-27.**
+  **The registry already exists** — `DEFAULT_PRIVILEGES` in `core/auth.py:28-44` is it, with
   **11 keys** (AST-verified: 9 boolean, 1 integer, 1 list; the earlier 9 was a grep of the
-  booleans only), and `set_privileges` already filters against it. So this is not a new
-  registry: it is **a one-line guard at `src/auth_helpers.py:172`**, changing `privs.get(key,
-  True)` to default known keys closed while leaving genuinely unknown ones open. That moves it
-  from a design task to the cheapest security fix in the tracker. `Verify:` a typo'd key denies
-  rather than grants, and adding a brand-new key to `DEFAULT_PRIVILEGES` does not lock out
-  existing users mid-deploy.
+  booleans only), and `set_privileges` already filters against it (`core/auth.py:443`). So this
+  is not a new registry: it is **a guard at `src/auth_helpers.py:216`**, replacing `privs.get(key,
+  True)`. That moves it from a design task to the cheapest security fix in the tracker.
+  **Premise corrected 2026-09-18, three times, and the third correction is the row's meaning
+  rather than its line numbers.** (i) `DEFAULT_PRIVILEGES` is at `core/auth.py:28-44`, not
+  `24-38`; (ii) the guard is at `src/auth_helpers.py:216`, not `:172` — `require_privilege` itself
+  only starts at `:193`; both numbers were also carried, unchanged, into `DECISIONS.md`
+  `D-2026-08-26-07`, which is `Law 6` happening between two documents that are read as ground
+  truth. (iii) **The row's prose had both halves of the rule backwards relative to its own
+  `Verify:` line.** *"Default known keys closed while leaving genuinely unknown ones open"*
+  cannot produce *"a typo'd key denies"*, because **a typo'd key is an unknown key** — leaving
+  unknown keys open is precisely what grants on a typo. Read the other way round it cannot
+  produce *"a brand-new key does not lock out existing users"* either, since a brand-new key is a
+  known key that no existing user's stored map names. The rule that satisfies both clauses, and
+  the one implemented, is: **stored value → registry's declared value → denied.** A new key
+  behaves as the registry declares it (so a permissive one locks nobody out and a restrictive one
+  bites from the first request); an undeclared key is a bug at a call site and is refused.
+  **The registry is read per call**, not bound at import, so a key added to `DEFAULT_PRIVILEGES`
+  is live without a restart.
+  **`Law 13`, and it is why the fix is a named function rather than a literal one-liner.** The
+  merge that makes this work on the happy path — `{**DEFAULT_PRIVILEGES, **stored}` — lives in
+  `core/auth.py:430`, and the default lived in `auth_helpers.py`. One fact, two files, and only
+  one of them knew the registry existed. `resolve_privilege` is now the single place that answers
+  *what does this privilege resolve to*, so the answer no longer depends on whether the caller
+  remembered to merge: a partial stored map, a duck-typed auth manager, or a corrupt `auth.json`
+  that leaves the map empty all degrade to the declared defaults instead of to `True`. It returns
+  the raw value rather than a verdict because two of the eleven entries are not booleans, and `0`
+  and `[]` both mean *no restriction*. **Eight further `privs.get(key, True)` sites are not
+  changed by this row and are `B530`.**
+  **What this breaks, which is the part worth reading.** Exactly one call site depended on the
+  old behaviour and it is a test:
+  `tests/test_auth_require_privilege_nondict.py:30` asserted `require_privilege(req, "do_x") ==
+  "bob"` for a corrupt non-dict privilege map — `do_x` is declared nowhere, so it now denies. The
+  property that test was written for (a corrupt map produces a 403, never an `AttributeError`
+  500) is unchanged and is now asserted in three cases instead of one. **No shipped route changes
+  behaviour**: all four keys any route passes — `can_use_research`, `can_use_documents`,
+  `can_generate_images`, `can_manage_memory` — are in the eleven. **An undeclared key now denies
+  admins too**, deliberately: `ADMIN_PRIVILEGES` is every *declared* key set permissive, so a
+  typo'd gate that only 403s non-admins gets found by a user, and one that 403s the operator on
+  the first request gets found by the person who can fix it. The docstring that claimed this
+  helper is "a no-op for admins" said so, and now says what is actually true.
+  `Verify:` a typo'd key denies rather than grants, and adding a brand-new key to
+  `DEFAULT_PRIVILEGES` does not lock out existing users mid-deploy. — **done 2026-09-18.**
+  Both clauses are driven through the real helper, not grepped (`Law 20`): the mid-deploy clause
+  adds the key to the live registry with `monkeypatch.setitem` and checks the grant and its typo
+  in the same run, because they are the same deploy. 10 tests over two files, 3 mutations, all
+  caught — restoring `privs.get(key, True)` fails 5, deleting the registry fallback (the naive
+  *known keys closed* reading of the old prose) fails 5, and letting an undeclared key grant
+  again fails 6.
+  **The full suite caught one more thing — in the new test, not the product, and it is `B524`'s
+  class arriving by a new door.** `resolve_privilege` imports the registry **per call**, which is
+  what makes a newly added key live without a restart; the test had captured
+  `DEFAULT_PRIVILEGES` with a module-level `from core.auth import …` at collection time.
+  `tests/test_security_regressions.py:798` pops `core.auth` out of `sys.modules`, so after it runs
+  the resolver reads a **different dict object** than the one the test holds, and
+  `monkeypatch.setitem` on the captured one is invisible. The test passed alone and passed on its
+  own file, and failed once — at `11116 passed, 1 failed`, fifteen minutes into a whole-suite run.
+  It now resolves the registry the same way the code does, and the two-file reproduction
+  (`test_security_regressions.py`, then this file) is recorded in the test's own docstring.
+  **A per-call import is the right production choice and a trap for any test that caches what it
+  patches** — worth knowing before `P11-02`'s roles add anything else to that dict.
+  — agent:`p11a`
+
 - [ ] **P11-02** **Roles as named overlays on `DEFAULT_PRIVILEGES`.** Not a new system — the
   dict already carries booleans, an integer quota and a model allowlist. A role is a named set
   of overrides; a user gets a role and optional per-user overrides on top. Resolution order:
   built-in default → role → user. Keep `is_admin` as the superuser role rather than replacing
   it, because 103 call sites depend on it and rewriting them all at once is how this goes wrong.
-- [ ] **P11-02b** **Audit every `require_admin` site against the role model.** **103** of them
-  — scope: 83 direct `require_admin(` calls plus 20 `Depends(require_admin)`, non-test `.py`,
-  excluding the definition and its imports. *(The line said 84 until 2026-08-28, which this
-  phase's own preamble had already retired twice, thirty lines above. A map 19 gates short would
-  have survived the entire refactor.)* Each is
-  each is currently a binary answer to a question that should have three or four. Produce the
-  mapping before changing any of them: which are genuinely superuser-only, which are
-  "operator", which are "power user", which were `require_admin` because nothing finer existed.
-- [ ] **P11-02c** **Resolve the `_ADMIN_TOOLS` name collision before touching either.**
-  `src/tool_execution.py:322` defines an 11-name set that **blocks** non-admins, checked
-  *before* the public blocklist and with a different error string. `src/agent_loop.py:2842`
-  defines a different 15-name set with the **inverted** meaning — a force-include for prompts
+- [x] **P11-02b** **Audit every `require_admin` site against the role model.** **107**, not 103.
+  Scope, stated (`Law 5`): every call to `core.middleware.require_admin` and every
+  `Depends(require_admin)` in tracked non-test Python outside `.pantheon/`, resolved through
+  `from … import require_admin as X`, excluding the definition — **87 direct + 20 `Depends`**.
+  *(The row said 103 = 83 + 20. Under its own literal grep scope the tree gives **102** = 82 + 20,
+  so the 83 was one too many before anything else is considered. The other five are
+  `routes/webhook/webhook_routes.py`, which imports `require_admin as _require_admin`: a grep for
+  `require_admin(` misses all five of its gates **and** hits the six `_require_admin(` calls in
+  `routes/shell_routes.py`, which are a different function entirely. Wrong in both directions at
+  once, which is why the population is now derived by AST.)*
+  **The map is `.pantheon/P11-AUTH-MAP.md` § A**, grouped by tier so the pattern is visible rather
+  than 107 rows to walk. **superuser 37** — MCP servers, the vault, API tokens, device-flow
+  provider login, SSH keys and remote setup, backup/restore, the wipe route, `DELETE
+  /api/sessions/all`, skill-import-from-URL, companion pairing. These do not move: `P11-02`
+  already says keep `is_admin` as the superuser role. **operator 45** — diagnostics and
+  `/metrics`, model endpoints and every probe, cookbook download/serve/state, webhooks, upload
+  cleanup, embeddings, built-in skill overrides, the personal-docs indexer. **This tier is the
+  phase's entire return**: today the only way to let somebody keep the instance up is to make them
+  the owner, and an `operator` overlay on `DEFAULT_PRIVILEGES` retires 45 gates without touching
+  one of the 37. **power-user 4** — `GET /api/providers`, `GET /api/model-endpoints`,
+  `…/{ep_id}/models`, `…/{ep_id}/dependents`. `allowed_models` already exists in
+  `DEFAULT_PRIVILEGES`; a user who has it still cannot see which endpoints it names.
+  **only-because-nothing-finer-existed 21** — contacts 10, presets 4, the six diagnostics
+  receipt/usage/rerun/diff routes, the personal-docs listing. One shared file with no owner column,
+  or per-run data with no owner scope, so `require_admin` is standing in for an ownership check
+  nobody has written. Retiring these is a data-model change and not an auth change; changing the
+  gate first would swap one wrong answer for another.
+  **The finding that outranks the count: `require_admin` is one of four admin gates, and the
+  other three hold 36 more sites.** `routes/auth_routes.py` decides admin **22** times inline
+  (`_get_current_user` + `auth_manager.is_admin`; 21 a hard 403, one the scrub in
+  `GET /api/auth/settings`) and that is the whole user-administration surface;
+  `routes/shell_routes.py:54` reimplements the gate with six callers; `owner_is_admin_or_single_user`
+  answers the same question at **8** more. Only `core.middleware.require_admin` consults
+  `auth_disabled()` — measured, and filed as `B543`. An RBAC refactor that maps only the 107 walks
+  past the file that creates users. This is `P11-02c`'s hazard in a different spelling.
+  **Nothing was changed.** The row says produce the mapping before changing any of them, and that
+  is all that happened. `CI:` `.pantheon/check-auth-map.py --max 43` — added to `ci.yml`, which
+  takes `release-gate.py`'s checker count from 23 to 24; the `checkers` claim in
+  `.pantheon/ledger/claims.py` and the regenerated `LEDGER.md` move with it, because
+  `check-ledger.py` counts `- name: check-*` in `ci.yml` and fails when the prose disagrees.
+  `Verify:`
+  `python3 .pantheon/check-auth-map.py` exits 0 and reports 107 sites, 107 mapped; and
+  `tests/test_auth_map_holds_against_the_tree.py` fails when a site is added to the tree and not
+  to the map, when the map names a site the tree no longer has, when a tier total does not add up,
+  or when a tier is not one of the four. — agent:`p11b`
+
+- [x] **P11-02c** **Resolve the `_ADMIN_TOOLS` name collision before touching either.**
+  `src/tool_execution.py:323` defined an 11-name set that **blocks** non-admins, checked
+  *before* the public blocklist and with a different error string. `src/agent_loop.py:3304`
+  defined a different 15-name set with the **inverted** meaning — a force-include for prompts
   and schemas. Same name, opposite semantics, one grep away from a serious mistake during an
-  RBAC refactor. Rename one.
-- [ ] **P11-02d** **Audit the fifteen route files that make no auth call of their own.**
-  `assistant` 6, `auth` 29, `chat` 8, `cleanup` 2, `compare` 5, `editor_draft` 5, `emoji` 1,
-  `font` 1, `hwfit` 4, `prefs` 3, `search` 4, `signature` 3, `stt` 2, `tts` 3, `workspace` 2.
-  Several are covered by `AuthMiddleware` and some are deliberately exempt — **this is a
-  reconciliation task, not a list of holes.** The deliverable is a table: route, what actually
-  gates it, and whether that is intended. Nothing here should be changed before that exists.
-  **Premise corrected 2026-08-27.** **Two fixes.** First, the premise: **nine of the fifteen do make an auth call of
-  their own** — `get_current_user` or `owner_filter` — and `chat_routes.py:338/367` performs a
-  real admin check via `owner_is_admin_or_single_user`. Six files are the actual unknowns.
-  Second, four lines of `P11-02`'s role paragraph had been **mis-merged onto the end of this
-  row** and are now removed; they said nine privileges where there are eleven, and they made
-  this reconciliation row read like a build row. `Law 7` — one source of truth per fact, and
-  `P11-02` is the one for roles.
+  RBAC refactor. Rename one. **Premise corrected 2026-09-18:** both sets are as described and
+  both counts are right (AST-verified, 11 and 15), but **both line numbers had drifted** — `322`
+  → `323` and `2842` → `3304`. Both came from `P2-CORRECTED.md:153`, which measured them against
+  an older tree and is correct about everything except where they now live. **And the collision is
+  worse than "one grep away", because the two sets are not disjoint:** five names —
+  `manage_endpoints`, `manage_mcp`, `manage_settings`, `manage_tokens`, `manage_webhooks` — are in
+  both, so either set answers plausibly when read as the other. Reading the prompt set as the gate
+  says a non-admin may run `pipeline` and `create_session`; reading the gate as the prompt set
+  drops `manage_session`, `manage_skills` and `manage_tasks` out of every admin prompt. One of
+  those is a hole and the other is a silent feature loss, and the overlap is why neither looks
+  wrong on inspection.
+  **Both renamed, not one**, because leaving the name on either half means a grep for it still
+  lands on a live binding: the execution gate is `_ADMIN_ONLY_TOOLS` (membership takes something
+  away) and the force-include is `_ADMIN_PROMPT_FORCE_INCLUDE` (membership only decides what the
+  model is *told about*, after RAG has narrowed the tool list; it grants nothing). Each definition
+  carries the reason above it, and each names the other. Nothing in the tree binds `_ADMIN_TOOLS`
+  any more; the only two occurrences left outside `.pantheon/` are the two rename-rationale
+  comments, which is the history the row asked for.
+  `Verify:` a non-admin executing any of the 11 gate names is refused with *"requires an admin
+  user"* — the gate's own string, which only it produces and only because it is checked first —
+  a `needs_admin` prompt contains all 15 force-include names and a non-admin prompt contains
+  none, and `hasattr(mod, "_ADMIN_TOOLS")` is false for both modules. — **done 2026-09-18.**
+  Driven through `execute_tool_block` and `_build_base_prompt` rather than read off the files, so
+  emptying either set fails a test instead of quietly changing what the agent can see or run; the
+  absence check is an attribute lookup on the imported module, not a substring search, because
+  what matters is that the ambiguous name cannot still *resolve*. All 11 gate names are also in
+  `NON_ADMIN_BLOCKED_TOOLS`, so the discriminator is the error string, not the refusal. 7 tests,
+  3 mutations, all caught. — agent:`p11a`
+
+- [x] **P11-02d** **Audit the fifteen route files that make no auth call of their own.**
+  Re-measured 2026-09-18: **88 routes, not 78.** Per file — assistant 6, auth **35** *(row said
+  29)*, chat **12** *(row said 8)*, cleanup 2, compare 5, editor_draft 5, emoji 1, font 1, hwfit 4,
+  prefs 3, search 4, signature 3, stt 2, tts 3, workspace 2. Both gaps are growth in the file
+  since the count, not a miscount at the time.
+  **The premise correction holds and is confirmed. Nine of the fifteen make an auth call; six do
+  not** — `emoji`, `font`, `hwfit`, `search`, `stt`, `tts`, fifteen routes between them, every one
+  of them behind `AuthMiddleware` and nothing finer. **One line of that correction was itself
+  stale**: `chat_routes.py:338/367` are `_candidate_index` and `_message_plain_text`. Chat's
+  `owner_is_admin_or_single_user` check is at `:481` and `:510`, it is reached only from
+  `chat_stream`, and it gates **workspace binding** rather than the route. `Law 6`, inside a
+  correction whose own subject was a carried number.
+  **The table is `.pantheon/P11-AUTH-MAP.md` § B**, one row per route: what actually gates it —
+  `AuthMiddleware`, an `AUTH_EXEMPT_EXACT` exemption, a handler call, a router-level `Depends` —
+  and whether that is intended. The gate column is **derived from the source, never asserted**,
+  through a call-graph closure inside each module: `assistant_routes.py` resolves the caller in a
+  one-line `_owner()` helper, so a per-handler grep reports all six of its routes as ungated, and
+  `chat_routes.py` reaches `_verify_session_owner` the same way.
+  **Nothing here is unauthenticated that should not be.** Ten rows are exempt and all ten are the
+  login surface or a pre-login read; `GET /api/auth/settings` is exempt **and** scrubs, which is
+  the control in the right place. **Seven rows are marked not-intended, and each names a bug row**:
+  `B540`, `B541`, `B542`. `POST /api/search` is deliberately marked *intended* — any signed-in
+  user may search, and the missing per-user ceiling is `P12-05`'s job rather than a hole.
+  **Nothing was changed**, per the row. `CI:` `.pantheon/check-auth-map.py --max 43`. `Verify:` the
+  checker fails when a route in the fifteen is absent from § B, when § B claims a gate the source
+  does not give it, when a per-file route count drifts, or when a row marked not-intended names no
+  `Bxxx` — proved by mutation in `tests/test_auth_map_holds_against_the_tree.py`, where each of
+  those four rules is disabled in turn and exactly one test goes red. — agent:`p11b`
+
 - [ ] **P11-03** **OIDC Authorization Code + PKCE against a discovery document.** BYO
   provider — Keycloak, Zitadel, Authentik, Authelia, or a hosted IdP. Discovery URL, client id,
   client secret, scopes. No provider-specific code.
@@ -5127,18 +5271,110 @@ team bigger uploads has no move except editing compose and rebuilding.
 a file-backed dict with `get_setting` / `set_setting` and a `DEFAULT_SETTINGS` merge — so this
 is mostly moving values into a system that exists, then layering roles on top.
 
-- [ ] **P12-01** **Move the ten byte caps into settings** *(re-measured 2026-08-27 — distinct
+- [x] **P12-01** **Move the ten byte caps into settings** *(re-measured 2026-08-27 — distinct
   `PANTHEON_*BYTES` env names in non-test Python: 7 in `upload_limits.py`, 1 backup, 1 TTS, 1
   lazy. Eleven was one too many, and knowing which ten they are is the row's actual first
   step)*, with the environment variable as
   an *override* rather than the only source. Order: role profile → instance setting → env →
   built-in default.
+  — **done 2026-09-18. Ten is right; the breakdown under it was not.** Re-measured with the scope
+  stated (`Law 5`): **distinct `PANTHEON_*BYTES` environment names in non-test, non-`.pantheon`
+  Python — ten, in three files. Eight are in `src/upload_limits.py`, not seven.** The row's "7 +
+  1 lazy" split the one file in two: the seven module constants and `PANTHEON_CHAT_UPLOAD_MAX_BYTES`,
+  which `get_chat_upload_max_bytes` re-reads per call, all live there. The other two are
+  `PANTHEON_BACKUP_IMPORT_MAX_BYTES` (`routes/backup_routes.py`) and
+  `PANTHEON_TTS_CACHE_MAX_BYTES` (`services/tts/tts_service.py`). The total the row set out to
+  fix was correct and the sentence describing it would have sent a reader to the wrong file for
+  one of them. A test now recounts it rather than a comment claiming it (`Law 6`).
+  **The chain is not a new settings system** (`Law 14`). It already existed once, written out by
+  hand in `src/task_scheduler.resolve_task_concurrency_cap` for a single key, with a comment
+  saying it was implementing this row. That resolution is lifted into `src/settings.py` —
+  `resolve_limit(key, default, env_name=…, owner=…, minimum=…, maximum=…) -> (value, source)` —
+  and the scheduler now calls it. **Two private helpers left `task_scheduler.py` and nothing
+  else moved**: `_coerce_concurrency_cap` is `settings._coerce_limit` and `_role_concurrency_cap`
+  is `settings.role_limit`. Both were private, both had zero references anywhere in the tree, and
+  the four `source` strings, the clamp bounds and every public name are unchanged — the nine tests
+  in `tests/test_task_concurrency_cap_live.py` pass untouched.
+  **The role layer is present and empty, and that is the deliverable `P11-02` slots into.**
+  `settings.role_limit(key, owner)` returns `None` for every key today and is the single place a
+  role profile is read, for every limit in the product at once. `P12-02` is the row that fills it
+  in. A test drives it: patching `role_limit` makes the role layer win over a stored setting, an
+  environment variable and the default, for all eight registry caps.
+  **Eighteen keys are declared in `DEFAULT_SETTINGS` and every one ships `None`** — the ten caps
+  and the eight throttle values `P12-05b` owns. `None` is not tidiness: `load_settings` merges
+  `DEFAULT_SETTINGS` on **every** read, so a shipped number makes the env leg beneath it
+  unreachable code. That is `H06`/`B20` for the fifth time, and `B90`'s third value applied to an
+  integer — it is what lets the store hold *nothing is set here* apart from *an operator typed
+  this*, including when what they typed is the default. `POST /api/auth/settings` takes them
+  through a new `_NULLABLE_INT_RANGES` block that clamps rather than storing a number it will not
+  honour (`otlp_interval_seconds`' reasoning) and refuses a non-integer at the door rather than
+  storing it and ignoring it (`P17-09`'s).
+  **The floor is 1 on all eighteen and there is no value meaning *off*.** `FORBIDDEN.md` Part 2
+  keeps the upload caps and the auth rate limiters; a cap of zero rejects every upload while
+  reading as a configured limit. Making the number policy and removing the control are different
+  acts, and the floor is what holds them apart.
+  **The import-time constants stay** (`Law 1`). `GALLERY_UPLOAD_MAX_BYTES` and the other six still
+  exist, still read the environment at import, and an invalid value still stops the process at
+  boot rather than at somebody's upload — `tests/test_upload_limits_centralized.py`'s three
+  pinning groups pass unchanged. They are the bottom layer now, not the answer.
+  **What this does NOT do: nobody can set any of this from a screen.** The keys are settable by an
+  admin through `POST /api/auth/settings`, by the agent through `manage_settings` for the twelve
+  that are not auth gates, and by editing `data/settings.json` — and there is **no control in the
+  Settings panel for any of the eighteen**. That is `Law 13`'s unwired half named rather than
+  hidden: `P12-07` owns the surface and is blocked on `P2-20`. Until it lands, this is a control
+  plane with an API and no front door.
+  `Verify:` with nothing stored, every cap resolves to its documented default and its source reads
+  `built-in default`; setting the environment variable moves it and the source names the variable;
+  storing the settings key beats the variable; patching the role hook beats both.
+  — agent:`p12a`
+
 - [ ] **P12-02** **Limit profiles attached to roles.** Upload size, files per request, request
   rate, context budget, concurrent agent runs, model-serve permission.
-- [ ] **P12-03** **Runtime-adjustable without a restart.** **8 of the 10 caps** are read at
+- [x] **P12-03** **Runtime-adjustable without a restart.** **8 of the 10 caps** are read at
   import today (re-measured 2026-08-27) — so this is a real refactor, not a settings row. The
   other two already re-read per call and are the pattern to copy rather than files to change:
   `get_chat_upload_max_bytes` re-reads on every call, and the TTS cap is read at instance init.
+  — **done 2026-09-18, and the 8 / 1 / 1 split is exactly right.** Re-measured: seven module-level
+  constants in `src/upload_limits.py` plus `BACKUP_IMPORT_MAX_BYTES` in `routes/backup_routes.py`
+  are evaluated at import; `TTSService.max_cache_bytes` is read in `__init__`; only
+  `get_chat_upload_max_bytes` re-read per call. Eight, one, one.
+  **Every live call site now resolves per request.** Six route files moved from
+  `read_upload_limited(file, CONST, …)` to `resolve_byte_limit("<key>")`; `routes/backup_routes.py`
+  gained `_backup_import_max_bytes()`; `services/tts/tts_service.py` gained `_cache_limit_bytes()`;
+  `src/upload_handler.py` gained `effective_max_upload_size` / `effective_upload_rate_limit` /
+  `effective_upload_rate_window`. **In every one of them the old value is the bottom layer, read
+  as a live attribute rather than closed over**, so a test that sets it still decides. Scope of
+  that claim: **7 assignments to `handler.upload_rate_limit` across two test files, 6
+  `monkeypatch.setattr(br, "BACKUP_IMPORT_MAX_BYTES", …)` in one, and 1 assignment to
+  `service.max_cache_bytes`** — fourteen sites, none of them changed.
+  **One cap is resolved once per request and not once per file.** `routes/personal_routes.py`
+  reads a multi-file batch in a loop; resolving inside it would let a settings save landing
+  mid-batch apply two different limits to one upload.
+  **The proof is one process, two answers.** Every runtime test here builds the object, asserts the
+  old answer, writes the settings file, and asserts the new answer on the **same** object with no
+  reimport — a test that reloads a module proves nothing about the second call. The backup cap is
+  driven through `POST /api/import` itself and the TTS cap through `_enforce_cache_limit` evicting
+  real files, so a route that kept reading its constant fails here even though the resolver works.
+  **Two tests that grepped source were rewritten rather than patched** (`Law 20`).
+  `test_direct_upload_routes_use_bounded_reads` searched for the literal
+  `"read_upload_limited(file, STT_MAX_AUDIO_BYTES"` — wrapping the argument onto the next line
+  broke it while changing nothing it existed to protect. It now parses each route, finds every
+  `read_upload_limited` call, and asserts the second argument is a `resolve_byte_limit` call whose
+  key is in the registry — so a limit from anywhere else fails however it is spelled.
+  `test_routes_import_from_upload_limits_not_local_defs` keeps its forbidden-local-definition half
+  byte for byte and now names the key instead of the constant, checked against the registry rather
+  than against a second list of strings.
+  **What this does NOT do, stated because "without a restart" is otherwise read as
+  "instantly":** the resolution reads `data/settings.json` through `load_settings`, which caches
+  for 2 seconds. `save_settings` invalidates that cache, so a save through the admin route is
+  honoured by the very next request **in the process that wrote it**. A second uvicorn worker, a
+  second replica, or a hand-edit of the JSON file is picked up within the TTL and not before. That
+  is the existing settings cache, not something this row introduced — and it is the same
+  per-process boundary the throttle counters have (`P12-05b`).
+  `Verify:` one `UploadHandler`, one `TTSService`, one auth router — each answers with its shipped
+  limit, then answers with a stored one, with nothing reimported and no process restarted.
+  — agent:`p12a`
+
 - [ ] **P12-04** **Context and attachment budgets become policy.** This is where `P2-08` and
   `P2-09` land properly. **Premise corrected 2026-08-27.** **There are more budgets than the line admits** — five
   live in `document_processor.py` alone, including a `.log`-only 10,000 branch nobody has
@@ -5149,7 +5385,7 @@ is mostly moving values into a system that exists, then layering roles on top.
   already implements the shape this wants.** Extend it; do not author an eighth (`Law 14`). *(Path corrected 2026-08-31: the row said `services/context_budget.py`, which does not exist — `services/` has no such file. The module is `src/context_budget.py`. An agent following the row as written would have found nothing there and authored the eighth budget, which is the exact outcome the sentence exists to prevent.)* Its `budget_is_explicit` is also the working version of the pattern `H06` needs — same idea, used, and correct.
 - [ ] **P12-05** **Per-user and per-role rate limiting.** The current limiter is per-IP, which
   behind any reverse proxy is one bucket for everyone.
-- [ ] **P12-05b** **The throttle *values* are still literals, and `P12-05` does not change
+- [x] **P12-05b** **The throttle *values* are still literals, and `P12-05` does not change
   that.** It changes the key the limiter buckets on. Measured 2026-08-28: `routes/auth_routes.py`
   builds three `RateLimiter`s with hardcoded `15/60`, `3/300` and `3/300`; `src/upload_handler.py`
   sets `self.upload_rate_limit = 60`, **shadowing the default of 5 declared in `src/config.py`** —
@@ -5160,14 +5396,137 @@ is mostly moving values into a system that exists, then layering roles on top.
   `src/rate_limiter.py` is 49 lines and in-memory, so per-user limits behind two replicas are two
   buckets. `Depends:` P12-01. `Verify:` an admin changes a login-attempt limit and the next
   attempt honours it, with no restart.
-- [ ] **P12-06** **Reinstate upload concurrency as an admin control, not a constant.**
+  — **done 2026-09-18. Every number in the row reproduced except the file length, and the
+  "shadowing" is worse than shadowing.** The three literals are at
+  `routes/auth_routes.py:129-131` exactly as stated, and `src/upload_handler.py:250` sets 60.
+  **`src/rate_limiter.py` is 744 lines, not 49** — measured on the tree this row started from,
+  `ff5ee87`. The `RateLimiter` class is 41 of them (`15-55`); the other 689 are
+  `OutboundHostLimiter` and its helpers, which `P15` added after this row was written. The number was true when it was measured and is the shape `Law 6` exists for; the
+  sentence it supports — in-memory, per-process — is still true, and is restated at the bottom.
+  **The reconciliation: 60 wins, because 60 is the only one of the two that has ever run.**
+  `src/config.py`'s `SecurityConfig.upload_rate_limit = 5` is not an overridden value, it is an
+  unreachable declaration. AST-verified across non-test Python: **outside `src/config.py` itself,
+  nothing reads `config.security`, `config.data`, `config.llm` or `config.search`** — `app.py`
+  imports `config` and hands it to `setup_search_routes`, whose body references the parameter
+  **zero** times. So this is the same kind of object `P2-03` already deleted two blocks of from
+  that very file: a decorative copy of a control that really lives somewhere else. Picking 5 would
+  also have cut the chat composer's multi-file attach from 25 files to 5 — issue #1346, *"5 work,
+  6 fail"* — because `save_upload` counts each file. The declaration is kept (`Law 1`; `SECURITY_*`
+  still binds to it) and its default is now 60, with the reasoning written beside it and a test
+  holding the two equal so they cannot drift apart again. The wider defect is filed as `B550`.
+  **All four throttles are settable, and the window of each with them** — eight keys:
+  `auth_login_rate_limit`, `auth_signup_rate_limit`, `auth_setup_rate_limit`, `upload_rate_limit`
+  and a `*_rate_window_seconds` for each. A limit without its window is half a policy.
+  **`RateLimiter` was extended, not wrapped** (`Law 14`): the constructor takes optional
+  `limit_key` / `window_key`, `check()` re-resolves through `settings.resolve_limit` on every
+  call, and the two-argument constructor and `check(key)` signature are unchanged. A shrinking
+  window now shrinks the cleanup sweep with it, or entries outlive the period anything counts them
+  over.
+  **SETTINGS-ONLY, deliberately.** No `PANTHEON_*` variable was added for any of the eight: none
+  existed before this row so `Law 1` requires nothing, and a new variable is a new place the same
+  number can be set (`Law 13`). The reasoning is `events_retention_days`'.
+  **There is no value meaning *off*.** `FORBIDDEN.md` Part 2 lists the auth rate limiters as a
+  control that never lifts; `minimum=1` is enforced in the resolver **and** clamped at the settings
+  route, so the stored value and the effective value are the same number. A test stores `0` and
+  the limiter still refuses the second attempt.
+  **The agent may read the six auth throttles and may not write them.** Declaring a key hands it
+  to the agent as well as to the person — `DEFAULT_SETTINGS` is the allowlist for both — and a
+  credential-stuffing throttle that prompt injection can raise is not a throttle. They join
+  `_SELF_RESTRAINT_KEYS` beside `agent_email_confirm`. **The upload throttle and the ten byte caps
+  are deliberately not restrained**: capacity is not an auth gate, *"give me a bigger upload
+  limit"* is a real thing to ask for, and a restriction that has to be argued each time is one
+  nobody keeps — the reasoning `agent_max_rounds` already carries.
+  **Where the counters live, stated so `P12-05` inherits it rather than discovering it.**
+  `RateLimiter._log` is a plain dict on the instance, guarded by a `threading.Lock`, and the three
+  auth limiters are built inside `setup_auth_routes` — so they are **per router, per process**.
+  Two replicas behind a load balancer are two buckets and a limit of 15 is a limit of 30; two
+  uvicorn workers in one container are the same thing again. Nothing here changes that, and this
+  row does not try: it makes the *number* policy. `P12-05` owns the key the limiter buckets on and
+  **inherits an unsolved storage question with it** — the same one `P11-07` names for sessions,
+  which are file-backed for the same reason. The honest options are a shared store (the events
+  table, or Redis) or an explicit statement that Pantheon is single-process; nobody has chosen.
+  **What this does NOT do:** no screen. Same gap as `P12-01` — admin API, agent tool, or the JSON
+  file. `P12-07`, blocked on `P2-20`. Worse here than there, because `manage_settings`' refusal
+  for the six restrained keys ends *"Open Settings and change it there"* and there is nothing
+  there to open (`B553`).
+  **36 tests in `tests/test_limits_are_policy.py`, 19 mutations, all caught.** The mutation set is
+  one per claim: each of the four layers silenced in turn, the env layer promoted above the
+  instance setting, both floors taken to zero, the settings route left unclamped, the two settings
+  defaults changed from `None` to a truthy number, `RateLimiter.check` stopped re-reading, the
+  login limiter unwired from its key, `save_upload` and the TTS eviction stopped re-reading, the
+  backup route pointed at an undeclared key, a route returned to a literal cap, the two declared
+  upload rate limits set to disagree again, and the agent allowed to write the login throttle.
+  `Verify:` with the router built once and never rebuilt — store `auth_login_rate_limit: 2`, and
+  the third login attempt is refused 429; store `4` without restarting anything, and the next two
+  are accepted before the refusal returns.
+  — agent:`p12a`
+
+- [x] **P12-06** **Reinstate upload concurrency as an admin control, not a constant.**
   `P2-10`'s recommendation to delete it assumed one user on a LAN. Under real infrastructure
   it becomes a per-role setting with the default off. **Premise corrected 2026-08-27.** **The false-positive is
   already fixed** — `upload_routes.py:285-291` (#1346) no longer fires on a normal multi-file
   drag, so the urgency is gone and the deletion argument with it. Two real defects remain and
   they are what this row now owns: **`3` is a hardcoded constant**, and **"concurrent" is
   implemented as a ten-second window**, which is a rate limit wearing the wrong name. Make the
-  number a per-role setting and either make it mean concurrency or rename it.
+  number a per-role setting and either make it mean concurrency or rename it. — **done 2026-09-18.**
+  **Line numbers re-measured first and the row's were wrong by forty-four**: the gate is
+  `routes/upload_routes.py:329-343`, not `:285-291`. The other three numbers held —
+  `self.max_concurrent_uploads = 3` at `src/upload_handler.py:242`, `window: float = 10.0` at
+  `:208` — and a **third** defect the row did not name turned up beside them:
+  `SecurityConfig` in `src/config.py` declares
+  `max_concurrent_uploads = 3` and **nothing reads any field of that class** — scope: it is
+  instantiated once at `AppConfig.security`, and `.security.` appears nowhere else in non-test
+  Python, so all six of its fields are declaration without a reader. That is the same dead
+  second copy `P12-05b` found for `upload_rate_limit` (60 on the handler, 5 in that class).
+  Labelled in place rather than deleted (`Law 1`) and filed as `B562`. *(The three line numbers
+  above are the pre-change tree; this row's own lesson is that they drift.)*
+  **The decision is rename, and the argument is that making it mean concurrency would
+  quietly relax a live control.** `upload_rate_log` is appended to by `save_upload` when a file
+  is *accepted* and **no entry is ever removed when an upload finishes** — driven, not read:
+  a real `save_upload` runs to completion and its timestamp is still in the log afterwards.
+  So the number the gate reads is *uploads completed in the last N seconds*, and nothing in this
+  codebase has ever counted work in progress. A browser sending three files serially inside one
+  second trips a 3-per-10s burst limit and would not trip a 3-in-flight one, so "make it mean
+  concurrency" is a **loosening** nobody asked for, on the exact path that produced #1346. The
+  429 said *"Maximum concurrent uploads (3) exceeded"*, which sends an operator looking for three
+  simultaneous uploads that do not exist — `Law 10`, in the one sentence a user of this gate ever
+  sees. It now names the window and the ceiling.
+  **Both numbers resolve through `src/limit_policy.py`, which is `P12`'s four layers written
+  down as code for the first time**: role profile → instance setting → environment → built-in
+  default, exactly as `FORBIDDEN.md` states the order and `P12-01` will need it. Resolved **per
+  request**, so a change takes effect without a restart (`P12-03`'s property, held here rather
+  than claimed). `upload_burst_limit` and `upload_burst_window_seconds` are settings;
+  `PANTHEON_UPLOAD_BURST_LIMIT` and `PANTHEON_UPLOAD_BURST_WINDOW_SECONDS` are the overrides
+  beneath them, declared in `.env.example`; `POST /api/auth/settings` clamps both to the bounds
+  the resolver enforces, importing them rather than restating them, so the stored number and the
+  effective number are the same number.
+  **The settings layer asks `setting_is_explicit`, not `get_setting`, and that is what keeps the
+  environment reachable.** `load_settings` merges `DEFAULT_SETTINGS` on every read, so a truthy
+  shipped default means an env leg beneath it can never run — `H06`, `B20` and `P16-05` are the
+  same dead shape found three times, and `check-env-declared.py`'s UNREACHABLE rule is the
+  ratchet against a fourth. A test materialises the shipped default into `settings.json` and
+  proves the environment still wins.
+  **The role layer is present, wired and empty**, which is the honest state and is said out
+  loud rather than implied: `set_role_limit_provider` is `P11-02`'s seam, the route passes the
+  request's real owner into it on every upload, and **nothing registers a provider today because
+  there are no roles**. A test registers one and proves a role beats the setting, the environment
+  and the default, so the seam is known to work on the day roles arrive instead of discovered to
+  be decorative (`Law 13`).
+  **`max_concurrent_uploads` still works** — it is a property with a getter and a setter over
+  `upload_burst_limit`, an alias and not a second integer (`Law 1` without `Law 7`'s cost), and
+  the route still gates correctly against a handler that only knows the old name, which is the
+  shape of the stand-in in `tests/test_upload_multifile.py`.
+  **What a human cannot do with this, plainly (`Law 13`):** there is **no UI control**. An admin
+  can set both through `POST /api/auth/settings` or by editing `data/settings.json`; nothing in
+  `static/` offers a field. That is `P12-07`, which is blocked on `P2-20`, and this row did not
+  build admin markup. **25 tests** — 10 in `tests/test_upload_burst_is_not_concurrency.py` and
+  15 in `tests/test_limit_policy.py`, which is the resolver both rows stand on — and **7
+  mutations, all caught**: the limit back to a constant, the window back to the literal ten, the
+  429 back to claiming concurrency, the old attribute name dropped instead of aliased, the role
+  layer not consulted, the settings layer asking presence instead of `setting_is_explicit`, and
+  clamping removed.
+  `Verify:` `python -m pytest -q tests/test_upload_burst_is_not_concurrency.py tests/test_limit_policy.py tests/test_upload_multifile.py` — an operator setting raises and lowers the ceiling and narrows the window on a router built once, with no restart; the 429 contains no word "concurrent"; a finished upload is still counted, which is the measurement the rename rests on. — agent:`p12b`
+
 - [ ] **P12-07** **An admin surface for all of it** — one panel, not eleven env vars in a
   compose file. Depends on `P2-20` landing the admin markup pattern first.
 - [ ] **P12-09** **Make the context budget visible while you work, not in a settings tab.**
@@ -5175,10 +5534,69 @@ is mostly moving values into a system that exists, then layering roles on top.
   history — as a live breakdown at the composer. Nobody self-hosted does this well, and it turns
   every abstract limit in this phase into something a person can see themselves hitting.
   `Depends:` P12-04.
-- [ ] **P12-10** **Auto-deny pending approvals on timeout rather than leaving them open.**
+- [x] **P12-10** **Auto-deny pending approvals on timeout rather than leaving them open.**
   The approval store already has a TTL; expiry and denial are not the same event. A prompt left
   hanging while nobody is at the keyboard should close as *denied*, and the timeout should be an
-  operator setting. Prior art: PandaOS shipped exactly this after the same problem.
+  operator setting. Prior art: PandaOS shipped exactly this after the same problem. — **done
+  2026-09-18, and the row asserted a behaviour nobody had written down, so it was driven before
+  it was changed.** **What actually happened to an expired pending approval, measured against
+  `src/tool_approvals.py` with a script rather than read off the file:**
+  **(1) nothing blocks** — `src/agent_loop.py:6841` creates the pending, emits the card and the
+  run *returns* with `exit_code: None` and `"Waiting for an exact user approval."`, so the row's
+  four options miss the real answer: **the asker has already gone**, and what is left is a record
+  in a dict and a card in a transcript; **(2) the record was dropped lazily** —
+  `_purge_expired_locked` runs only from `create`, `consume`, `peek` and `retire_for_session`,
+  there is no sweeper and no timer, and past its deadline with nothing else touching the store the
+  pending was **still in `_pending` with no event written**; **(3)** the first store call after the
+  deadline wrote exactly one row, `kind=approval outcome=expired`, and **decided nothing**;
+  **(4)** an explicit `deny` recorded **nothing at all** and reported itself through `consume`'s
+  out-parameter as `bad_decision` — the value reserved for a decision the card never offered.
+  So expiry was *counted* and denial *did not exist* as an outcome anywhere in the store.
+  **Expiry is now the denial, in one row and one verdict.** The purge records
+  `denied_timeout` rather than `expired`: the action did not run, and `expired` is a statement
+  about a clock that leaves the decision unsaid (`Law 10`). An explicit `deny` records `denied`,
+  which finally makes `src/task_scheduler.py:2521` visible — it auto-denies **every** card a
+  scheduled run produces, because no unattended surface can answer one, and not a single row said
+  so. `consume` also stops calling a deny a `bad_decision`; `scope_for_decision` returns `None`
+  for both because neither grants a continuation, which is true about scope and was being read as
+  a statement about validity.
+  **The denial reaches what asked, and not only the store.** The store gained an expiry listener
+  registered by `setup_chat_routes`, and `deny_expired_tool_approval` marks the persisted card
+  `resolved: "deny"` through `_mark_tool_approval_resolved` — the same field and the same writer
+  an answered card uses, so a card becomes resolved one way and not two (`Law 14`). That field is
+  what `chatRenderer.renderAskUserCard` reads: until this row a reloaded chat rebuilt a lapsed
+  card as **live**, and its buttons answered 409 on the click. No renderer changed, no markup
+  changed, no cache-buster moved — `DEFERRED.md` D-01 still holds. Listeners are notified
+  **outside** the store lock, because a listener writes to the database and one that reached back
+  into the store would deadlock; a test registers a re-entrant listener to prove it, and another
+  proves a throwing listener cannot take an approval down.
+  **The timeout is an operator setting, and it cannot be typed into an off switch.**
+  `approval_timeout_seconds` (default 600, unchanged) resolves through `src/limit_policy.py`'s
+  four layers **per card**, so a change reaches the next approval rather than the next restart —
+  the store is a module singleton built at import. A constructor TTL still pins it, because four
+  test files and the skill tester choose one on purpose. `FORBIDDEN.md` Part 2 keeps this store's
+  TTL, so the value is clamped to **30 … 86,400 seconds** at the resolver *and* at
+  `POST /api/auth/settings`, from the same two constants: `0` is not "never expires", and an
+  approval that never lapses is the seal with an off switch.
+  **Declaring the key hands it to the agent as well as to the person** — `DEFAULT_SETTINGS` is
+  the allowlist for both — so `approval_timeout_seconds` goes into `_SELF_RESTRAINT_KEYS` beside
+  `agent_email_confirm`. `B42`'s sentence applies unchanged: a gate whose purpose is *a human must
+  confirm* cannot be adjustable through the channel the gate exists to distrust, and the request
+  looks identical whether it came from the operator or from a page the agent was told to read.
+  `tests/test_agent_cannot_loosen_its_own_gates.py` proves it **on the stored value**, which is
+  the only proof that means anything there — these refusals answer `exit_code: 0`.
+  **One existing test changed and it got stronger, not weaker.**
+  `test_the_approval_paths_record_both_outcomes` was two substring searches of
+  `src/tool_approvals.py`; it now builds two stores, claims one approval, lapses another, and
+  asserts on the rows they wrote (`Law 20`).
+  **What a human cannot do with this, plainly (`Law 13`):** there is **no UI control** for the
+  timeout. An admin sets it through `POST /api/auth/settings` or `data/settings.json`; nothing in
+  `static/` offers a field, and `P12-07` is blocked on `P2-20`. **And the sweep is still lazy** —
+  the denial lands when the store is next touched, not on the stroke of the deadline, which on an
+  idle process can be much later. Measured, not fixed, and filed as `B560`. 21 tests, 8
+  mutations, all caught.
+  `Verify:` `python -m pytest -q tests/test_an_unanswered_approval_closes_denied.py tests/test_loop_instrumentation.py tests/test_agent_cannot_loosen_its_own_gates.py` — a lapsed approval writes one `denied_timeout` row, the registered listener is handed the record and marks the transcript card `resolved: "deny"`, `approval_timeout_seconds` moves the next card's deadline with no restart, `0` clamps to 30, and the agent's own attempt to change it leaves the stored value at 600. — agent:`p12b`
+
 - [ ] **P12-08** **Show operators what is actually being consumed** before asking them to set
   **Unfolded from `P14-05` on 2026-09-01, and the reason is worth keeping:** the dataset half is now **built** — `usage_over_time()` and the Settings panel show the last 30 days per model and per owner. What is missing is not data, it is the *place*: this row puts the number next to the field where an operator types a limit, and `P12-07` (the admin surface for the limits) does not exist. The 2026-08-31 fold bet that both halves would land in one build; only one could, and a folded row cannot be half-ticked. `Verify:` unchanged — an operator sets a limit while looking at the last 30 days of the thing they are limiting. **Blocked on `P12-07`**, not on measurement.
   a number. **Same build as `P14-05`, which hosts it (2026-08-31).** *"Usage over time, per model and per owner"* and *"show operators what is being consumed"* are one dataset and one view, asked for from two phases — `P14` because it is measurement, `P12` because a limit you cannot measure cannot be set. Build it once, in `P14`. **This row is `P12`'s consumer of it:** the number goes next to the field where the operator types the limit. The obstacle is shared and belongs on the host row: token usage is stored as a running total with the time dimension discarded at write, so there is nothing to plot until that changes (`D-05`). *(The `[ ]` mark with "Blocked on" in the prose was a disagreement between mark and text; the fold settles it — the blocker is `P14-05`'s, and this row simply waits on its host.)*
@@ -14256,3 +14674,371 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   `monkeypatch.delitem(..., raising=False)` fails
   `test_a_module_absent_before_is_absent_after`. `Depends:` `B271` (landed), `B413` (closed by
   this). — found while closing `B413` — agent:`integrator`
+
+- [ ] **B526** **CI has never passed because no job has ever started, and the reason is a billing
+  message — not a workflow defect.** Established 2026-09-18 by reading the annotations on the six
+  workflows the `ee5cd33`/`ff5ee87` push set off. Every one of them failed in **4–5 seconds**, and
+  every job carries the same annotation:
+
+  > The job was not started because recent account payments have failed or your spending limit
+  > needs to be increased. Please check the 'Billing & plans' section in your settings.
+
+  `ci`, `codeql`, `container-scan`, `container-trivy`, `dependency-review`, `docker-publish`,
+  `secret-scan` and `workflow-security` are all affected, including the four that are
+  merge-blocking. The earlier finding — *"jobs never get a runner"* — was the symptom read
+  correctly; this is the cause, and it is **not in this repository**. No amount of work on
+  `ci.yml` moves it.
+  **What it costs us.** `.pantheon/release-gate.py` runs 23 of the checkers locally and says so,
+  but seven workflows a push sets off are outside it and the gate prints that too. Until a job
+  starts, **every statement in this repository about CI being green is a statement about a local
+  run** (`Law 9`), and the `--fast` footer already refuses to pretend otherwise.
+  **Needs the owner — three ways out, and the third is the one this project would pick.**
+  (1) Settle the account in *Billing & plans*, which is the smallest change and leaves everything
+  as it is. (2) Make the repository public: GitHub's standard runners are free for public repos,
+  but the owner has said going public is not urgent, and this is the wrong reason to do it.
+  (3) **Register a self-hosted runner on the deployment host.** Actions minutes are not billed
+  for self-hosted runners even on a private repository, the machine is already the push source
+  and the deployment target, and a project whose `P16` is titled *Self-hosted by default* running
+  its own CI is the consistent answer rather than a workaround. It needs a runner token from the
+  owner's account, and `runs-on: ubuntu-latest` in eight workflows would need a label decision —
+  neither of which an agent should do on someone's account unasked.
+  `Verify:` one workflow run on `main` reaches a job that executes a step. Nothing in this
+  repository can assert that until then. — found while verifying the push — agent:`integrator`
+
+- [ ] **B530** **The privilege-resolution rule is written out longhand at eight more sites, and
+  the merge is the only thing keeping them honest.** Scope: `privs.get("<privilege key>", True)`
+  in non-test Python, on a map obtained from `AuthManager.get_privileges` —
+  `routes/chat_routes.py:1693, 1695, 1697, 1699, 1701, 1703, 1705` (seven, deciding which tools to
+  disable for a run) and `routes/research/research_routes.py:524` (one, the delegated-owner
+  research check). **None is exploitable today**, and that is the whole reason it is a `B` and not
+  a hole: `get_privileges` returns `{**DEFAULT_PRIVILEGES, **stored}`, so every declared key is
+  already present and the `, True)` default is never reached. It becomes reachable the moment
+  anything hands those call sites a map the manager did not build — a role overlay composing its
+  own dict (`P11-02`), a cached partial map, a test double — and when it does, the failure is
+  silent and grants. This is `Law 13`'s defect class exactly: one rule in nine places, with
+  `P11-01` having just made the ninth the authority. `Verify:` all eight read through
+  `src/auth_helpers.resolve_privilege`, a test drives at least one of them with a deliberately
+  unmerged map and gets the registry's answer rather than `True`, and `privs.get(<key>, True)`
+  returns nothing outside tests. `Depends:` nothing; `resolve_privilege` already exists.
+  — found by `P11-01` — agent:`p11a`
+
+- [ ] **B531** **`require_privilege` still grants when `get_privileges` raises.**
+  `src/auth_helpers.py:208-211`: the `get_privileges` call is wrapped in a bare
+  `except Exception: return user`, so any error resolving a user's privileges — a corrupt
+  `auth.json` that fails to parse, an `AttributeError` in a future role resolver, a lock timeout —
+  passes the caller through with every privilege. `P11-01` closed the *key* default and
+  deliberately did not touch this one, because the two failure modes have opposite costs: a typo'd
+  key is a bug that should be loud, while an unparseable `auth.json` on a single-operator LAN box
+  is a lockout with no way back in except editing a file the app just said it cannot read. **So
+  this needs a decision, not a patch** — and the question is not *fail open or closed* but *what
+  does an operator do next*, which is `Law 15` more than `Law 17`. Note that the non-dict case is
+  already handled without the exception path (`resolve_privilege` answers from the registry), so
+  what is left here is genuinely "we could not ask the question", not "the answer was malformed".
+  `Verify:` the behaviour on an unreadable privilege store is chosen on the record, the chosen
+  branch is driven by a test that makes `get_privileges` raise, and whichever way it goes the
+  operator is told which state they are in. `Depends:` nothing. — found by `P11-01` — agent:`p11a`
+
+- [ ] **B532** **`ADMIN_PRIVILEGES` is derived from `DEFAULT_PRIVILEGES` by type, so a new
+  restrictive key silently becomes permissive for admins and a new int cap silently becomes
+  unlimited.** `core/auth.py:47` builds it as *every bool → `True`, every int → `0`, everything
+  else → `[]`*, then hand-patches the two entries where that is wrong
+  (`allowed_models_restricted`, `block_all_models`) with a comment explaining that the
+  comprehension is backwards for a sentinel. **That comment is the bug report.** The rule is
+  "admins get everything", but the encoding of "everything" depends on a key's Python type and on
+  whoever adds the key remembering to add a twelfth line below the comprehension. `P11-02`'s roles
+  will add keys to this dict, which is when it starts to matter. `Verify:` a new sentinel-shaped
+  key added to `DEFAULT_PRIVILEGES` resolves correctly for an admin without a second hand-written
+  line, or the exceptions are declared beside the keys rather than patched after the fact.
+  `Depends:` nothing. Related to `P11-02`. — found by `P11-01` — agent:`p11a`
+
+- [x] **B533** **Two ticked-looking claims about privileges in `THREAT_MODEL.md` now name the
+  wrong thing.** `THREAT_MODEL.md:34` says non-admin defaults are in
+  `core/auth.py:DEFAULT_PRIVILEGES` and tool enforcement is in
+  `src/tool_security.py:NON_ADMIN_BLOCKED_TOOLS` — both true, and both incomplete in the same
+  direction: the sentence does not mention the *second* tool gate
+  (`tool_execution._ADMIN_ONLY_TOOLS`, 11 names, checked first and with its own error string),
+  which is the gate `P2-25` found could make a blocklist prune look harmless in a manual test and
+  still be wrong. A threat model that names one of two gates is the document someone reads
+  *instead of* the code. **The same sentence's last clause is now narrowly false:** *"Admins
+  always get full access regardless of stored privilege values"* holds for every **declared**
+  privilege and not for an undeclared one, which `P11-01` denies to everybody including admins,
+  on purpose. `Verify:` the paragraph names both gates, says which is checked first, states that
+  all 11 of the first are currently also in the second — so a future prune of either is visibly a
+  change to a pair — and qualifies the admin sentence with *declared*.
+  `Depends:` nothing. — found by `P11-02c` — agent:`p11a`
+
+- [ ] **B540** **Any signed-in non-admin can clear the instance-wide TTS cache.**
+  `POST /api/tts/clear-cache` (`routes/tts_routes.py:79`) calls `tts_service.clear_cache()` with no
+  privilege check of any kind — the handler takes no `Request`, so it cannot make one. Every other
+  route in the file is per-caller work (`/synthesize` renders the caller's own text), and this one
+  discards state shared by everybody on the box. **The asymmetry is the argument, not the
+  severity**: the identical act on uploads, `POST /api/upload/cleanup`, is `require_admin`, and
+  `check-auth-map.py` tiers it `operator`. The cost of the hole is re-synthesis, which is small;
+  the cost of leaving two answers to one question in the tree is `P11-02`'s, and it is the reason
+  this is filed rather than fixed here. `Verify:` a non-admin session gets 403 from
+  `POST /api/tts/clear-cache`, and `.pantheon/P11-AUTH-MAP.md` § B records the route as intended
+  with no `Bxxx`. — found while mapping `P11-02d` — agent:`p11b`
+
+- [ ] **B541** **Four `/api/hwfit/*` routes will SSH to a host the caller names, for any signed-in
+  user.** `GET /api/hwfit/system`, `/models`, `/profiles` and `/image-models` each take `host` and
+  `ssh_port`, pass them through `_validate_detection_target` (`routes/hwfit_routes.py:22`), and
+  hand them to `services.hwfit.hardware.detect_system`, which runs detection over SSH. There is no
+  privilege check on any of the four; `AuthMiddleware` is the whole gate. **The same question is
+  admin-only one directory away, with the reason written down.** `GET /api/cookbook/gpus` is
+  `require_admin`, `POST /api/cookbook/test-ssh` is `require_admin`, and
+  `routes/codex_routes.py:114` states the rationale for the family: *"cookbook surfaces expose host
+  topology, task logs, tmux commands, and model-serving controls."* Hardware detection over SSH is
+  host topology. **What this is not**: not an SSRF row — `validate_remote_host` and
+  `validate_ssh_port` constrain the target, and `Law 17` says a LAN-to-LAN reach on the operator's
+  own boxes is normal. It is that the tier is wrong: `operator`, like every other host-topology
+  read in the map, and one privilege check would give all four the same answer. `Verify:` the four
+  routes answer a non-admin the way `GET /api/cookbook/gpus` does, and § B of the map records them
+  as intended. — found while mapping `P11-02d` — agent:`p11b`
+
+- [ ] **B542** **`AUTH_EXEMPT_EXACT` is matched on the path alone, so two admin *writes* are
+  auth-exempt.** `_is_auth_exempt(path)` in `app.py:318` takes one argument and it is the path;
+  `AuthMiddleware` calls it before anything else. `/api/auth/features` and `/api/auth/settings` are
+  on the list so the pre-login page can read feature flags and keybinds — and the **POST** on each
+  of those paths shares it. `POST /api/auth/features` rewrites the instance's feature toggles and
+  `POST /api/auth/settings` writes every app setting, credentials included. **Nothing is exploitable
+  today**: both handlers check `_get_current_user` + `auth_manager.is_admin` and 403 without it, and
+  `POST /api/auth/settings` is `check-config-writes.py`'s `guarded` store. What is wrong is that a
+  five-line refactor of either handler removes the only remaining gate on an unauthenticated write,
+  and nothing in the exemption list says so — the comment above it describes reads
+  (*"the frontend (and the pre-login page)"*) and the entry it justifies covers writes.
+  `FORBIDDEN.md` Part 2 lists `require_admin` under privilege escalation and this is the one place
+  where no middleware stands in front of it. Two candidate fixes, both cheap: make the exemption
+  `(method, path)` so the GET is exempt and the POST is not, or split the reads onto their own
+  paths. Either is a decision, which is why this is a row. `Verify:` no exempt path in `app.py`
+  answers a mutating method, asserted by a test that walks the app's real routing table rather than
+  the list. — found while mapping `P11-02d` — agent:`p11b`
+
+- [ ] **B543** **The admin gate is written four times and only one of them honours
+  `auth_disabled()`.** Measured 2026-09-18 while building `.pantheon/P11-AUTH-MAP.md`:
+  `core.middleware.require_admin` (107 sites) returns early when auth is off and honours the
+  internal-tool token; `routes/auth_routes.py` writes the check out inline **22** times
+  (`_get_current_user` + `auth_manager.is_admin`); `routes/shell_routes.py:54` defines its own
+  `_require_admin` with six callers; `owner_is_admin_or_single_user` answers the same question at
+  **8** more. Called with `AUTH_ENABLED=false` and no session, `require_admin` **returns** and
+  `routes/shell_routes.py:_require_admin` raises **403 Admin only** — so on a no-auth instance
+  every `require_admin` route opens and all six shell routes shut. The 22 in `auth_routes.py` have
+  the same shape and the same consequence: with auth off there is no session cookie, so
+  `_get_current_user` is `None`, so user administration and `POST /api/auth/settings` 403 for
+  everybody including the operator, on a mode `docs/setup.md` documents and troubleshoots. **Two
+  separate costs.** The behavioural one above, and the audit one: 36 admin decisions are invisible
+  to any sweep that greps for `require_admin`, which is exactly the mistake `P11-02c` is filed
+  against for `_ADMIN_TOOLS` — *"one grep away from a serious mistake during an RBAC refactor."*
+  `Law 14`: extend the first implementation, do not keep a second. **Not a fix to make blind.**
+  `routes/shell_routes.py`'s copy also refuses the literal user `api`, which the real one does not,
+  and shell exec is *"RCE-after-signup"* by its own docstring — so the merge has to keep that
+  refusal, and the question of whether shell should open when auth is off is the owner's, not a
+  refactor's. `Verify:` one function decides admin; `check-auth-map.py`'s rule-C ratchet is below
+  43 and falling; and the `AUTH_ENABLED=false` behaviour of every admin gate is the same, whatever
+  it is decided to be. `Depends:` `P11-02`. — found while mapping `P11-02b` — agent:`p11b`
+
+- [ ] **B550** **`src/config.py` is a second settings system with 40 declared fields, 6 readers
+  and 4 of those doing anything — and four `env_prefix` families that configure nothing.** Found
+  2026-09-18 while reconciling `P12-05b`'s two upload rate limits.
+  AST-verified across non-test Python: `config.security`, `config.data`, `config.llm` and
+  `config.search` are read at **seven sites and all seven are inside `src/config.py` itself** —
+  four path fields in `create_directories()`, and `llm.default_host` / `llm.openai_api_key` in
+  `validate_config()`, whose branches are both `pass`. The only importer outside is `app.py:750`,
+  which passes the object to `setup_search_routes(config)`; that function's body references the
+  parameter **zero** times.
+  So `DataConfig`(11), `LLMConfig`(8), `SearchConfig`(9) and `SecurityConfig`(6) declare 34
+  fields that nothing reads, and `DATA_*`, `LLM_*`, `SEARCH_*` and `SECURITY_*` are four
+  environment prefixes an operator can set with no effect at all — the failure `P17-09` names,
+  at the scale of a whole module. **Two of the dead fields are byte caps** — `data.max_upload_size`
+  (10 MB) and `security.max_file_size` (10 MB) — so the product has twelve declared upload
+  ceilings and ten that run. `P2-03` already deleted two zero-reader blocks from this file
+  (`allowed_extensions`, `dangerous_file_types`) on exactly this evidence and left the rest.
+  **Not fixed here, and the reason is scope, not doubt.** `Law 1` says a field that exists
+  survives, so the answer is to wire the readers or to record the deletion with an audit behind
+  it, and both are bigger than a limits row. `P12-05b` did the one field it had to: `upload_rate_limit`
+  now declares 60 rather than 5, with a test holding it equal to the live value.
+  `Verify:` either something outside `src/config.py` reads each declared field, or each unread
+  field is removed with the audit that proved it dead recorded on this row — and an AST recount of
+  `config.<section>` attribute reads across non-test Python returns the same seven sites, all
+  inside `src/config.py`, that this row claims. — found while reconciling the two declared upload rate limits — agent:`p12a`
+
+- [ ] **B551** **Nine of the ten byte-cap environment variables are invisible to
+  `check-env-declared.py`, so the rule that catches a dead env layer can never fire on them.**
+  Found 2026-09-18 while adding the settings layer above them.
+  `literal_reads()` recognises `os.getenv("X")`, `os.environ["X"]`, `env_flag("X", …)` and
+  `env_backed(settings, key, "X")`. It has no pattern for `read_byte_limit_env("X", default)`,
+  which is how `src/upload_limits.py` and `routes/backup_routes.py` read nine of the ten; inside
+  that helper the name is a parameter, so the `os.getenv` there is not a literal read either.
+  Measured: of `PANTHEON_GALLERY_UPLOAD_MAX_BYTES`, `PANTHEON_ICS_MAX_BYTES`,
+  `PANTHEON_CHAT_UPLOAD_MAX_BYTES`, `PANTHEON_BACKUP_IMPORT_MAX_BYTES`,
+  `PANTHEON_STT_MAX_AUDIO_BYTES` and the four beside them, **only
+  `PANTHEON_TTS_CACHE_MAX_BYTES` is seen** — and only because it is still a raw `os.getenv`. All
+  ten are declared in `.env.example` and survive the `unreferenced` check purely on a plain
+  substring match against the corpus.
+  This is `B91`'s finding recurring: *"a helper that makes the checker blinder than the code it
+  replaced is a worse defect than the one it fixed"*, written in that checker's own source about
+  `env_flag`, and never extended to the other house helper. It matters more now than it did
+  yesterday: `env_layer_reachable` — the `H06`/`B20` rule that fails the build when a truthy
+  default makes an env fallback unreachable — matches an env name against a settings key in the
+  same function, and cannot fire on a name it never saw. `P12-01` ships ten keys whose whole
+  storage shape depends on that rule, and the rule is blind to nine of them.
+  **Not fixed here**: adopting the pattern is three lines, but it moves `UNDECLARED`, and that
+  ratchet is the integrator's to re-baseline rather than mine to nudge inside a limits row.
+  `Verify:` `literal_reads()` returns all ten `PANTHEON_*BYTES` names, the gate's `UNDECLARED`
+  count is re-baselined in `ci.yml` in the same commit, and mutating one of the ten
+  `DEFAULT_SETTINGS` limit keys from `None` to a truthy number fails `check-env-declared.py`.
+  — found while adding the settings layer above the byte caps — agent:`p12a`
+
+- [ ] **B552** **`tests/test_compose_vars_all_have_defaults.py` proves `B63`'s property with a
+  regex over `tts_service.py`'s source, so any reshaping of that `try/except` reads as the guard
+  being deleted.** Found 2026-09-18 when `P12-03` touched the file and the test survived only
+  because `__init__` was left alone on purpose.
+  The assertion is
+  `re.search(r"try:\s*\n\s*self\.max_cache_bytes = int\(os\.getenv\(\s*\n?\s*\"PANTHEON_TTS_CACHE_MAX_BYTES\".*?\n\s*except ValueError:", …)`.
+  The property it defends is real and load-bearing — compose exports the variable as an empty
+  string, `int("")` raises, and something has to catch that or the documented 500 MB default is
+  unreachable. But the property is *behavioural* and the test is a source grep, so it is green for
+  a file that catches `ValueError` and does the wrong thing with it, and red for a correct
+  refactor. It is the third instance of the shape `Law 20` was written for, in a file whose own
+  docstring cites `Law 20` twice.
+  The behavioural version is three lines: set the variable to `""`, construct a `TTSService`, and
+  assert `max_cache_bytes == 500 * 1024 * 1024`. The companion assertion — that the number lives
+  in the service and not in compose (`Law 13`) — is already a legitimate whole-file absence check
+  and stays as it is.
+  **Not fixed here**: rewriting a passing test that is not in this row's path is churn on top of a
+  refactor, and it wants doing in one deliberate commit with the other source-grep tests.
+  `Verify:` the new test passes on the current tree, and a mutation that changes the `except
+  ValueError` to `except KeyError` turns it red — which the regex cannot do.
+  — found while making the TTS cache cap runtime-adjustable — agent:`p12a`
+
+- [ ] **B553** **`manage_settings` refuses a self-restraint key with *"Open Settings and change it
+  there"*, and for eight of the twelve there is nothing there to open.** Found 2026-09-18 on the
+  six auth throttles `P12-05b` added to `_SELF_RESTRAINT_KEYS`.
+  The refusal is the right answer and the sentence is the `H18` commit's: the agent declines,
+  explains why in one line, and points at the surface where a request provably came from the
+  person. That surface exists for `agent_email_confirm` and `agent_verifier_subagent`. It does
+  **not** exist for the six `auth_*_rate_limit` / `auth_*_rate_window_seconds` keys, nor for the
+  ten byte caps or the two upload-throttle keys, because `P12-07` is blocked on `P2-20`. An
+  operator who asks the agent to raise the login throttle is told to go to a panel with no such
+  control, which is worse than either a plain refusal or a working control — it is `Law 15`'s
+  steep curve with a wrong signpost on it.
+  Two honest fixes and they are not the same size. The small one: make the refusal name the place
+  that does exist — `POST /api/auth/settings`, or `data/settings.json` — for keys with no control,
+  which needs the tool to know which keys have one. The real one is `P12-07`.
+  **Not fixed here**: the refusal message is shared by every self-restraint key and changing it
+  for some of them needs the control inventory `P12-07` produces anyway.
+  `Verify:` a refusal names a surface that can actually set the key it refused, for every key in
+  `_SELF_RESTRAINT_KEYS`. — found while keeping the auth throttles out of the agent's reach
+  — agent:`p12a`
+
+- [ ] **B554** **`test_the_loop_caps_are_deliberately_not_in_the_set` scopes its substring search
+  to the right block and still cannot tell a key from a sentence about one.** Found 2026-09-18 by
+  turning the full suite red, from a comment.
+  The test splits `src/agent_tools/admin_tools.py` on `_SELF_RESTRAINT_KEYS = {` and asserts
+  `"agent_max_rounds" not in block`. That is `Law 20`'s second preference done properly — resolve
+  the scope, then assert inside it — and it is still a substring search over **code and prose
+  interleaved**, which is the first half of the same law. `P12-05b` added six keys to that set
+  with a comment explaining which limits were deliberately left out and why, naming the two loop
+  caps as the precedent, and the test failed: the block now *contains* the string, in a sentence
+  saying the key is not there.
+  This is `H02` exactly — *"the corrected comment quotes it, because a reader needs to see what the
+  file used to claim"* — recurring in the file whose set the comment documents. The cost was a
+  full 15-minute suite run to find a defect that was a wording choice.
+  **Worked around rather than fixed**: the comment now makes the same point without the two
+  identifiers, and says in-line why it is spelled that way, so the next person to touch it knows
+  before they run the suite. The test itself is unchanged.
+  The real fix is to assert on the *parsed set* rather than its source text — `ast.literal_eval`
+  on the `Set` node, or importing `_SELF_RESTRAINT_KEYS` (it is a local inside
+  `do_manage_settings`, which is why the test reads source; hoisting it to module scope would
+  make both this test and `_SELF_RESTRAINT_WHY` checkable by calling rather than reading).
+  `Verify:` the assertion still fails when either loop cap is genuinely added to the set, and
+  passes when a comment inside the set merely names one. — found when a comment turned the suite
+  red — agent:`p12a`
+
+- [ ] **B560** **An unanswered approval is denied when somebody next touches the store, not when its deadline passes.** `ToolApprovalStore._purge_expired_locked` is reached from four places — `create`, `consume`, `peek`, `retire_for_session` — and from nowhere else. There is no sweeper thread and no scheduled tick. Measured 2026-09-18 by driving the real store: past its deadline, with nothing else happening in the process, the pending approval was **still in `_pending`, no events row existed, and no listener had been called**; the first `peek` afterwards produced all three at once. `P12-10` made that moment a recorded denial that reaches the transcript, which is the row it was given; it did not make the moment arrive on time. In an install with traffic this is invisible — every chat turn calls `retire_for_session` and every gated action calls `create` — and on an idle box the denial can lag the deadline indefinitely, so the events row's timestamp is the sweep and not the expiry. **Two candidate homes, neither taken here because both are a different row's scope:** a jittered loop in `app.py` beside `_null_owner_sweep_loop` (`check-jitter.py` would govern it, and a period short enough to be timely against a 30-second floor is a lot of ticks), or a line in `src/bg_monitor.py`, which already ticks every five seconds and is always on but is named for background bash jobs and would be doing a second job under one name. `Verify:` an approval created in an otherwise idle process is recorded as denied, and its card marked `resolved: "deny"`, within one sweep period of `expires_at` — with no other store call in between. `Depends:` nothing. — found by `P12-10` — agent:`p12b`
+
+- [ ] **B561** **`routes/chat_routes.py` answers a lapsed approval 409 before `consume` can say why, so `P4-21`'s four reasons are three on the only path a person uses.** `POST /api/chat` calls `tool_approval_store.peek(tool_approval_id)` first and raises `409 "This tool approval is invalid, expired, or belongs to another thread."` when it returns `None` — and `peek` purges, so a lapsed card is gone before the `consume` call twelve lines below ever runs. `_approval_outcome` can therefore never carry `expired` from this route, and `approval_consume_message("expired")` — the one sentence of the four that tells the person what to do, *"Ask again"* — is unreachable from the chat UI. The reasons are all reachable from `consume` itself, which is what `tests/test_the_approval_says_when_it_lapses.py` drives, so the tests are green and the user-facing half is not. Measured 2026-09-18 while reading the same path for `P12-10`. **Not a security defect** — the 409 is correct and the ownership check in `peek` is the same one `consume` makes — it is `P4-21`'s stated purpose landing everywhere except the surface it was written for. `Verify:` a card answered after its deadline, through `POST /api/chat`, returns the sentence containing *"Ask again"*, and a card belonging to someone else still returns the neutral one. `Depends:` nothing. — found by `P12-10` — agent:`p12b`
+
+- [ ] **B562** **Nothing reads any field of `SecurityConfig`, and two of the six already disagree with the live values.** Scope, measured 2026-09-18 over non-test Python: the class is instantiated once, at `AppConfig.security`, and `.security.` matches that line and nothing else — so `max_concurrent_uploads`, `upload_rate_limit`, `upload_rate_window`, `upload_rate_max_entries`, `allowed_origins` and `max_file_size` are all declaration without a reader, and `SECURITY_UPLOAD_RATE_LIMIT` in an operator's environment populates a field no code consults. The real numbers are attributes of `UploadHandler`: `upload_rate_limit` is **60** there (raised deliberately for #1346) against **5** here, and `max_concurrent_uploads` names a concurrency the upload gate has never measured — `P12-06` renamed the live one to `upload_burst_limit`. **`P12-05b` already found the `upload_rate_limit` half and said reconcile them before making either settable**; `P12-06` made one of them settable and found the same disease across the whole class, plus the `P2-03` note two lines below it recording that *nine MIME types and fourteen extensions* were deleted from this very class for exactly this reason — "no module imports this class's fields". So this is the third time the same file has been read as configuration and found to be decoration. Labelled in place by `P12-06` rather than deleted (`Law 1`); `SECURITY_UPLOAD_RATE_LIMIT=10` in an operator's environment still does nothing. `Verify:` either every field in `SecurityConfig` has a reader, or the class says in one line that it has none and names where the live values are; and no `SECURITY_*` variable is ever declared in `.env.example` while that is true, because `check-env-declared.py`'s UNREFERENCED rule would not catch it — the names do appear in the source, on fields nothing reads. `Depends:` nothing. — found by `P12-06` — agent:`p12b`
+
+- [ ] **B563** **`LEDGER.md` says "all 15 checkers" in its own how-to-run block while the same file says twenty-three twice.** `LEDGER.md:573` reads `python3 .pantheon/release-gate.py        # all 15 checkers plus the suite`. The headline row at `:41` and the entry at `:189` both say **23**, and `release-gate.py --fast` printed `release gate · 23 checkers from CI` on 2026-09-18, so the gate and the ledger's headline agree and the ledger disagrees with itself. `Law 6` in its own exhibit: the number was written once and the command line beside it was never re-counted. **Not corrected here** — another agent was adding a twenty-fourth checker in parallel, and two agents editing one count is how the count gets wrong in the other direction. `Verify:` every number in `LEDGER.md` that claims a checker count is derived from `ci.yml` or matches it, and `check-ledger.py` fails if one does not. `Depends:` the parallel checker landing first, so the number is written once. — found by `P12-06` — agent:`p12b`
+
+- [x] **B570** **Two agents working `P12` in parallel each built the phase's resolution chain, and
+  the duplicate was produced by the orchestration rather than by either of them.** Found
+  2026-09-18 at the merge. `P12` states one resolution order — role profile → instance setting →
+  environment → built-in default — and `P12-01`, `P12-03`, `P12-05b`, `P12-06` and `P12-10` all
+  need it. Two agents were given rows from that set and neither could implement its rows without
+  it, so `src/settings.py::resolve_limit` and `src/limit_policy.py::resolve_int_limit` arrived in
+  the same hour, both correct, both complete, both with their own tests and their own mutation
+  runs. **`Law 14` names the defect and neither author committed it** — from inside either
+  worktree there was nothing to extend.
+  `settings.resolve_limit` won on three grounds: it lives in the module that already owns
+  settings; it had already absorbed `task_scheduler.resolve_task_concurrency_cap`'s hand-written
+  copy of the same chain, so keeping the other would have restored a duplicate that had just been
+  removed; and its source vocabulary — `"role profile"`, `"instance setting"`, the variable's own
+  name, `"built-in default"` — is the one `P6-08` has returned since it shipped, and a caller that
+  translates between two vocabularies eventually translates one of them wrong.
+  **Nothing was deleted (`Law 1`).** `src/limit_policy.py` is now an adapter over the one
+  implementation, keeping the part of it that was better: a `ResolvedLimit` verdict object, so a
+  caller can ask whether its number was clamped without unpacking a third value it does not want.
+  `resolve_limit_detail` is the implementation and `resolve_limit` drops the flag, rather than a
+  second resolver existing to carry it. The role-provider registry — `set_role_limit_provider` and
+  its pair, which the other version did not have and which is how a test drives a layer that has
+  no roles behind it yet — moved into `src/settings.py`, so both module names reach one registry.
+  **The lesson is about the fan-out, not the code.** Rows that share an unbuilt primitive cannot
+  be handed to separate agents in the same wave without naming the primitive and its owner first.
+  Two of the four rows in this wave did exactly that, and it cost a merge instead of a defect only
+  because both authors wrote the same chain correctly.
+  `Verify:` one implementation of the four-layer order exists — `grep -c "instance setting"` over
+  non-test Python resolves to one resolver — and `tests/test_limit_policy.py` and
+  `tests/test_limits_are_policy.py` both pass against it. — found at the merge — agent:`integrator`
+
+- [ ] **B571** **Sixteen checkers list the tree with `git ls-files` and none of them de-duplicate,
+  so during a conflicted merge every count they report is tripled.** Found 2026-09-18 when the
+  gate failed three rows in a row on the `P11`/`P12` merge with numbers nobody could reproduce:
+  `silent-failures` said 405 against a ceiling of 402, and `auth-map` said *"admin decisions
+  outside `require_admin` rose from 43 to 45"*. Both were artefacts. `git ls-files` prints an
+  unmerged path **once per stage** — three times for a file with a conflict — and every one of
+  these checkers feeds that list straight into a per-file scan, so `src/upload_handler.py`'s two
+  silent handlers were counted six times and `src/agent_tools/admin_tools.py`'s one was counted
+  three. Running `git add` on the three resolved files and re-running both checkers produced 399
+  and 43, unchanged from the base tree.
+  Scope, measured: `.pantheon/check-auth-map.py`, `check-ci-contract.py`, `check-clipboard.py`,
+  `check-config-writes.py`, `check-env-declared.py`, `check-event-rounds.py`,
+  `check-fork-names.py`, `check-licences.py`, `check-run-statuses.py`,
+  `check-silent-failures.py`, `check-spdx.py`, `check-specifiers.py`, `check-unreachable.py`,
+  `check-vendored-versions.py`, `check-wiring.py` and `release-gate.py` itself — eighteen call
+  sites, each spelling the same listing by hand. That is `Law 13` before it is a bug: the fix is
+  not eighteen `--deduplicate` flags, it is one helper the checkers import, next to the
+  `.pantheon/ledger/` package that already exists for shared checker code.
+  **Never reaches CI** — a runner's index is never conflicted — so this is a cost paid only by
+  whoever is integrating, which is why it went unnoticed and why it cost the integrator twenty
+  minutes on the run that found it. Not fixed in the same commit as the merge that surfaced it:
+  converting sixteen checkers deserves its own suite run rather than riding along with nine phase
+  rows.
+  `Verify:` with a deliberately conflicted index, every checker reports the same counts it reports
+  with a clean one. — found at the `P11`/`P12` merge — agent:`integrator`
+
+- [x] **B572** **The seventh test pinned to today's instance, and it failed because the claim
+  above it got more true.** Found 2026-09-18 by the full suite on the `P11`/`P12` merge.
+  `test_almost_nothing_recently_filed_is_a_gate` computes the ship line's convergence argument:
+  of the last forty `B` rows, at most a quarter may be gates. That assertion is the row's whole
+  point and it passed. The line under it —
+  `assert gates, "no recently filed row is a gate — check the register parsed"` — is a sanity
+  guard, and it went red because **eighteen rows were filed in one wave and none of them had been
+  adjudicated yet**. Nothing was wrong. The register parsed perfectly; the window had simply
+  moved past the last row anybody had classified.
+  The guard's actual job is catching a register that did not parse, so that is what it asks now:
+  the register is non-empty, and at least one id in it matches a row in the tracker. Both fail
+  loudly on a parse break and neither depends on which rows happen to be recent.
+  **Seventh instance, and the population's shape has not varied**: `B96` had the defect written
+  into a parametrize table, `B310` pinned two counts and a `heads[0]`, `B414` pinned four parked
+  theme rows, `B520` and `B521` pinned a ratchet's value and a repaired id, `B522` pinned the
+  blocking-set size, and this one pinned the existence of a recent gate. Every time the fix is the
+  same — **assert the invariant, never the instance** — and every time it was written as a
+  concrete example because the concrete example was in front of the author.
+  **What this does NOT deliver**: still nothing stops an eighth. Seven instances is now enough to
+  see the pattern's *shape* — the failing assertion is always a **secondary** one, a sanity guard
+  or an example beside a correctly-stated invariant — which is a narrower target than "an
+  assertion that names a value", and worth a checker's attention when somebody has time to write
+  one. `Verify:` the guard fails on a register that does not parse, and does not fail on a wave of
+  unadjudicated rows. — found by the full suite on the merge — agent:`integrator`

@@ -223,12 +223,49 @@ def test_a_claimed_approval_is_recorded():
 
 
 def test_the_approval_paths_record_both_outcomes():
-    """Claimed alone would say the ladder always works. Expiry is the outcome
-    worth counting: a ladder answered rarely is one people have learned to
-    ignore."""
-    text = open("src/tool_approvals.py", encoding="utf-8").read()
-    assert '_record_approval("claimed"' in text
-    assert '_record_approval("expired"' in text
+    """Claimed alone would say the ladder always works. The unanswered card is
+    the outcome worth counting: a ladder answered rarely is one people have
+    learned to ignore.
+
+    **This was two substring searches of `src/tool_approvals.py`** and is now
+    two store runs, because a substring cannot tell a call from a comment about
+    one and cannot see what the call actually wrote (`Law 20`). `P12-10` also
+    moved the second outcome: a lapse is recorded as a **denial** rather than as
+    a clock reading, since the action did not run and `expired` left that
+    unsaid. Both outcomes are asserted from the row the store produced.
+    """
+    import time as _time
+    from src.tool_approvals import (
+        APPROVAL_CLAIMED, APPROVAL_DENIED_TIMEOUT, ToolApprovalStore,
+    )
+    from src.tool_capabilities import capabilities_for_action
+
+    def _make(store):
+        return store.create(
+            owner="alice", session_id="s-1", origin_run_id="run-1",
+            tool_name="bash", content="printf exact", workspace=None,
+            external_untrusted_context_seen=False,
+            capabilities=capabilities_for_action("bash", "printf exact"),
+        )
+
+    claimed = ToolApprovalStore(ttl_seconds=600)
+    pending = _make(claimed)
+    grant = claimed.consume(pending.approval_id, decision="approve",
+                            owner="alice", session_id="s-1")
+    assert grant.claim(owner="alice", session_id="s-1", tool_name="bash",
+                       content="printf exact", workspace=None)
+    (r,) = rows("approval")
+    assert r.outcome == APPROVAL_CLAIMED and r.name == "bash"
+
+    lapsing = ToolApprovalStore(ttl_seconds=1)
+    _make(lapsing)
+    _time.sleep(1.05)
+    lapsing.peek("anything")          # any store call is what notices the lapse
+    outcomes = [row.outcome for row in rows("approval")]
+    assert APPROVAL_DENIED_TIMEOUT in outcomes
+    assert APPROVAL_DENIED_TIMEOUT.startswith("denied"), (
+        "an unanswered approval closes as a decision, not as a clock reading"
+    )
 
 
 # --- the migration --------------------------------------------------------

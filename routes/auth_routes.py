@@ -126,9 +126,30 @@ def _secure_cookie(request: Request) -> bool:
 def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
     router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-    _login_limiter = RateLimiter(max_requests=15, window_seconds=60)
-    _signup_limiter = RateLimiter(max_requests=3, window_seconds=300)
-    _setup_limiter = RateLimiter(max_requests=3, window_seconds=300)
+    # `P12-05b`. The numbers below are the BUILT-IN DEFAULTS, not the limits.
+    # Each limiter re-reads `auth_*_rate_limit` / `auth_*_rate_window_seconds`
+    # from the settings store on every `check()`, so an admin who lowers the
+    # login-attempt limit has the next attempt honour it with no restart.
+    # Until 2026-09-18 these three were literals and an operator could not
+    # change a throttle without a rebuild — the thing the owner asked for by
+    # name ("adding admin controls, such as throttling and such").
+    #
+    # `FORBIDDEN.md` Part 2 keeps these as a control that never lifts, and
+    # `RateLimiter.effective` resolves with `minimum=1`: the number is policy,
+    # the limiter is not. The agent may read these keys and may not write them
+    # — see `_SELF_RESTRAINT_KEYS` in `src/agent_tools/admin_tools.py`.
+    _login_limiter = RateLimiter(
+        max_requests=15, window_seconds=60,
+        limit_key="auth_login_rate_limit",
+        window_key="auth_login_rate_window_seconds")
+    _signup_limiter = RateLimiter(
+        max_requests=3, window_seconds=300,
+        limit_key="auth_signup_rate_limit",
+        window_key="auth_signup_rate_window_seconds")
+    _setup_limiter = RateLimiter(
+        max_requests=3, window_seconds=300,
+        limit_key="auth_setup_rate_limit",
+        window_key="auth_setup_rate_window_seconds")
 
     def _get_current_user(request: Request) -> Optional[str]:
         token = request.cookies.get(SESSION_COOKIE)
@@ -880,7 +901,36 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         current = _load_settings()
         # Per-key validation for numeric settings: coerce to int and clamp to a
         # sane range so a bad value can't disable the agent or let it run away.
+        #
+        # `P12`'s three limits import their bounds rather than restating them,
+        # so the number this route stores and the number the resolver enforces
+        # cannot drift into a settings page that lies about itself.
+        from src.tool_approvals import (
+            MAX_APPROVAL_TTL_SECONDS,
+            MIN_APPROVAL_TTL_SECONDS,
+        )
+        from src.upload_limits import (
+            MAX_UPLOAD_BURST_LIMIT,
+            MAX_UPLOAD_BURST_WINDOW_SECONDS,
+            MIN_UPLOAD_BURST_LIMIT,
+            MIN_UPLOAD_BURST_WINDOW_SECONDS,
+        )
         _INT_RANGES = {
+            # `P12-06`. The per-client upload burst gate — N uploads per W
+            # seconds, not N uploads in flight, whatever it used to be called.
+            "upload_burst_limit": (
+                MIN_UPLOAD_BURST_LIMIT, MAX_UPLOAD_BURST_LIMIT,
+            ),
+            "upload_burst_window_seconds": (
+                MIN_UPLOAD_BURST_WINDOW_SECONDS, MAX_UPLOAD_BURST_WINDOW_SECONDS,
+            ),
+            # `P12-10`. How long an approval card stays answerable before it
+            # closes as denied. The floor is not decoration: `0` here would be
+            # an approval that never lapses, and `FORBIDDEN.md` Part 2 keeps
+            # this store's TTL.
+            "approval_timeout_seconds": (
+                MIN_APPROVAL_TTL_SECONDS, MAX_APPROVAL_TTL_SECONDS,
+            ),
             "agent_max_rounds": (1, 200),
             "agent_max_tool_calls": (0, 1000),  # 0 = unlimited
             # `P3-21`. 0 means "no lift — run presets at their own numbers",
@@ -926,6 +976,43 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         _ENUMS = {
             "trust_rung": tuple(rung.value for rung in TrustRung),
         }
+        # `P12-01` / `P12-05b`. The eighteen numeric limits, whose shipped value
+        # is `None` — the third value an integer needs so the flat merged dict
+        # can hold *nothing is stored here* apart from *an operator typed this*
+        # (`B90`, applied to numbers). `null` is therefore a legal value and
+        # means "let the environment or the built-in default answer"; anything
+        # else must be an integer, and is clamped here so the STORED value and
+        # the EFFECTIVE value are the same number — the reasoning
+        # `otlp_interval_seconds` and `index_max_file_mb` already carry.
+        #
+        # **The floor is 1 on every one of them, and it is deliberate.** A byte
+        # cap of 0 rejects every upload while reading as a configured limit, and
+        # `FORBIDDEN.md` Part 2 keeps the auth rate limiters as a control that
+        # never lifts: there must be no value here meaning *off*. The ceilings
+        # are sanity rather than policy — a terabyte cap and a day-long throttle
+        # window are past the point where the number is a decision rather than a
+        # typo.
+        _GIB = 1024 ** 3
+        _NULLABLE_INT_RANGES = {
+            "gallery_upload_max_bytes": (1, 1024 * _GIB),
+            "gallery_transform_upload_max_bytes": (1, 1024 * _GIB),
+            "memory_import_max_bytes": (1, 1024 * _GIB),
+            "personal_upload_max_bytes": (1, 1024 * _GIB),
+            "email_compose_upload_max_bytes": (1, 1024 * _GIB),
+            "stt_max_audio_bytes": (1, 1024 * _GIB),
+            "ics_max_bytes": (1, 1024 * _GIB),
+            "chat_upload_max_bytes": (1, 1024 * _GIB),
+            "backup_import_max_bytes": (1, 1024 * _GIB),
+            "tts_cache_max_bytes": (1, 1024 * _GIB),
+            "auth_login_rate_limit": (1, 100_000),
+            "auth_login_rate_window_seconds": (1, 86_400),
+            "auth_signup_rate_limit": (1, 100_000),
+            "auth_signup_rate_window_seconds": (1, 86_400),
+            "auth_setup_rate_limit": (1, 100_000),
+            "auth_setup_rate_window_seconds": (1, 86_400),
+            "upload_rate_limit": (1, 100_000),
+            "upload_rate_window_seconds": (1, 86_400),
+        }
         # Settings whose value must be a map of strings. `otlp_headers` given a
         # list is *ignored* by the exporter rather than refused, which is the
         # same defect as the enum above wearing different clothes: a 200, the
@@ -952,6 +1039,28 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
                 except (TypeError, ValueError):
                     raise HTTPException(400, f"{key} must be an integer")
                 val = max(lo, min(val, hi))
+            if key in _NULLABLE_INT_RANGES:
+                lo, hi = _NULLABLE_INT_RANGES[key]
+                if val is None or (isinstance(val, str) and not val.strip()):
+                    val = None
+                else:
+                    if isinstance(val, bool):
+                        # `True` is an int in Python and a cap of 1 is not what
+                        # anyone meant. Refuse rather than store a limit of one
+                        # byte or one request.
+                        raise HTTPException(
+                            400,
+                            f"{key} must be a whole number of "
+                            f"{'seconds' if key.endswith('_seconds') else 'bytes or requests'}, "
+                            f"or null to use the default")
+                    try:
+                        val = int(val)
+                    except (TypeError, ValueError):
+                        raise HTTPException(
+                            400,
+                            f"{key} must be an integer, or null to let the "
+                            f"environment or the built-in default decide")
+                    val = max(lo, min(val, hi))
             if key == "netagent_url" and str(val or "").strip():
                 # `P17-01`. Same reasoning as the `networks` block below, and
                 # `P17-09`'s lesson applied before it can happen again: this

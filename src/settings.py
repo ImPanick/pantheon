@@ -9,7 +9,7 @@ All modules should import from here instead of accessing files directly.
 import json
 import time
 import logging
-from typing import Any
+from typing import Any, Callable
 
 from src.constants import SETTINGS_FILE, FEATURES_FILE
 
@@ -117,6 +117,40 @@ DEFAULT_SETTINGS = {
     # removed rather than left as decoration. Retention is not a boot-time
     # concern; Settings is the place to change it.
     "events_retention_days": 90,
+    # ── `P12` · limits that were constants ──────────────────────────────────
+    #
+    # `P12-06`. The per-client upload burst gate: at most N uploads in the last
+    # W seconds, refused with a 429. It shipped as `3` inside
+    # `UploadHandler.__init__` and a `10.0` default argument on
+    # `count_recent_uploads`, and the 429 called it a concurrency limit — which
+    # it has never been, because nothing decrements when an upload finishes.
+    #
+    # Both resolve through `src/limit_policy.py`: role profile → this setting →
+    # environment → built-in default, per request, so a change takes effect
+    # without a restart. `POST /api/auth/settings` clamps both to the bounds in
+    # `src/upload_limits.py`, so the stored number and the effective number are
+    # the same number.
+    #
+    # Deliberately NOT in `_SELF_RESTRAINT_KEYS`: these are throttles with no
+    # approval semantics, the same reasoning that keeps `agent_max_rounds` and
+    # `agent_max_tool_calls` out of that set.
+    "upload_burst_limit": 3,
+    "upload_burst_window_seconds": 10,
+    # `P12-10`. How long an approval card stays answerable before it closes as
+    # **denied**. It was `DEFAULT_APPROVAL_TTL_SECONDS`, a ten-minute constant,
+    # and expiry recorded one `expired` event and decided nothing.
+    #
+    # `FORBIDDEN.md` Part 2 keeps "the approval store's seal, TTL, single-use
+    # consumption and owner binding". Making the TTL settable is not lifting
+    # it, and the floor is what keeps that true: `0` here is not "no timeout",
+    # it is clamped to `MIN_APPROVAL_TTL_SECONDS`. A setting that can be typed
+    # into an off switch is the control with an off switch.
+    #
+    # This one IS in `_SELF_RESTRAINT_KEYS` (`B42`): a longer deadline is a
+    # card that stays answerable instead of closing denied, and a gate whose
+    # purpose is "a human must confirm" cannot be adjustable through the
+    # channel the gate exists to distrust.
+    "approval_timeout_seconds": 600,
     # `P14-07`. The two ceilings on document indexing, in MiB. `0` on either
     # means no ceiling, which is a choice an operator can make and not one they
     # inherit.
@@ -279,6 +313,64 @@ DEFAULT_SETTINGS = {
     # still never runs twice concurrently, which `_executing` guarantees
     # separately. See P6-08.
     "task_concurrency_cap": 1,
+    # ── The ten byte caps (`P12-01`) and the four throttles (`P12-05b`) ──
+    #
+    # All fourteen ship `None`, and `None` is the only value that means
+    # "nothing is stored here — let the environment or the built-in default
+    # answer". `B90` established the third value for booleans; an integer needs
+    # it for the same reason, because `load_settings` merges this dict on every
+    # read and a shipped number would make every layer beneath it unreachable
+    # (`H06`, `B20`). Resolution is `settings.resolve_limit`:
+    # **role profile → instance setting → env → built-in default.**
+    #
+    # The built-in defaults are NOT repeated here. Each number belongs to the
+    # module that enforces it — `src/upload_limits.py`, `routes/backup_routes.py`,
+    # `services/tts/tts_service.py`, `routes/auth_routes.py`,
+    # `src/upload_handler.py` — and writing them a second time here is the
+    # defect `B63` names ("the number belongs to the code that uses it").
+    #
+    # Each key is spelled as its environment variable minus the `PANTHEON_`
+    # prefix, lowercased, so an operator who already knows the variable can
+    # find the setting (`Law 15`) and `.pantheon/check-env-declared.py` can
+    # match the two.
+    "gallery_upload_max_bytes": None,
+    "gallery_transform_upload_max_bytes": None,
+    "memory_import_max_bytes": None,
+    "personal_upload_max_bytes": None,
+    "email_compose_upload_max_bytes": None,
+    "stt_max_audio_bytes": None,
+    "ics_max_bytes": None,
+    "chat_upload_max_bytes": None,
+    "backup_import_max_bytes": None,
+    "tts_cache_max_bytes": None,
+    # The throttles. `P12-05b`: these were literals — `15/60`, `3/300`, `3/300`
+    # in `routes/auth_routes.py` and `self.upload_rate_limit = 60` in
+    # `src/upload_handler.py` — so after every other row in this phase landed,
+    # an operator still could not change a throttle without a rebuild. That is
+    # the thing the owner asked for by name ("adding admin controls, such as
+    # throttling and such").
+    #
+    # SETTINGS-ONLY. No `PANTHEON_*` variable is added for any of them: none
+    # exists today, so `Law 1` requires nothing, and a new variable is a new
+    # place the same number can be set (`Law 13`). The reasoning is
+    # `events_retention_days`'.
+    #
+    # **There is no value meaning "off".** `FORBIDDEN.md` Part 2 lists the auth
+    # rate limiters as a control that never lifts, so `resolve_limit` is called
+    # with `minimum=1` and the panel cannot be talked down to zero. Making the
+    # number policy is not the same act as removing the limiter, and the floor
+    # is what keeps the two apart. The agent may read these and may not write
+    # them — see `_SELF_RESTRAINT_KEYS` in `src/agent_tools/admin_tools.py`:
+    # a credential-stuffing throttle that prompt injection can raise is not a
+    # throttle.
+    "auth_login_rate_limit": None,
+    "auth_login_rate_window_seconds": None,
+    "auth_signup_rate_limit": None,
+    "auth_signup_rate_window_seconds": None,
+    "auth_setup_rate_limit": None,
+    "auth_setup_rate_window_seconds": None,
+    "upload_rate_limit": None,
+    "upload_rate_window_seconds": None,
     # How often the approval gate asks (P7-03). The values are `TrustRung` in
     # src/tool_capabilities.py; `resolve_trust_rung` in src/agent_loop.py reads
     # this layer and every run resolves it once at start. The default is what
@@ -839,6 +931,205 @@ def is_setting_overridden(key: str) -> bool:
         return isinstance(saved, dict) and key in saved
     except (FileNotFoundError, json.JSONDecodeError):
         return False
+
+
+
+# ── Layered numeric limits (`P12-01`) ──────────────────────────────────────
+#
+# **role profile → instance setting → env → built-in default.** That order is
+# `P12-01`'s, and `FORBIDDEN.md` Part 2 restates it over the upload byte caps
+# ("the environment variable is the *override*, not the place a new limit
+# goes"). It already existed once, spelled out by hand in
+# `src/task_scheduler.resolve_task_concurrency_cap` for a single key; this is
+# that resolution lifted to where the settings store lives, so the second,
+# third and eleventh limit extend one rule instead of copying it (`Law 14`).
+#
+# Three things are deliberate here and each cost something to learn:
+#
+# * **`setting_is_explicit`, never `get_setting(key) is not None`.** `H06`:
+#   `load_settings` merges `DEFAULT_SETTINGS` on *every* read, so a truthy
+#   shipped default makes every layer below it unreachable code. That is how
+#   `PANTHEON_TASK_CONCURRENCY_CAP` never worked on any install.
+# * **A limit key ships `None`.** `B90`, applied to integers: `None` is the
+#   third value a flat merged dict needs to tell *unset* from *an operator
+#   typed this*. It also keeps the env leg genuinely reachable, which is what
+#   `.pantheon/check-env-declared.py` fails the build over.
+# * **A value that will not parse falls through with a warning; it does not
+#   raise.** These resolve per request. The import-time constants in
+#   `src/upload_limits.py` still fail fast on a bad environment value, so a
+#   broken env var stops the process at boot rather than at an upload — this
+#   leg is what answers once the process is already up.
+#
+# `minimum` is a floor, not decoration: `FORBIDDEN.md` Part 2 lists the auth
+# rate limiters as a control that never lifts, so the throttle keys resolve
+# through here with `minimum=1` and there is no value meaning *off*.
+
+# The role layer is a registered function rather than a body to be filled in.
+# `P11-02` builds roles as named overlays on `DEFAULT_PRIVILEGES`; when it
+# lands it calls `set_role_limit_provider` once at start-up and every limit in
+# the product inherits the layer in that one edit. The alternative — adding the
+# layer at each call site once roles exist — is the second scaffolding `Law 14`
+# exists to prevent, and `P12-02` (limit profiles attached to roles) is the row
+# that fills this in.
+#
+# A registry rather than a constant `None` because it is also how a test drives
+# the layer: the layer being unreachable and the layer answering `None` are two
+# different states, and only one of them can be verified.
+
+RoleLimitProvider = Callable[[str, Any], Any]
+
+_role_limit_provider: RoleLimitProvider | None = None
+
+
+def set_role_limit_provider(provider: RoleLimitProvider | None) -> None:
+    """Install the function that answers "what does this owner's role say?".
+
+    Nothing installs one today, which is the honest state of the layer and is
+    said out loud on the `P12` rows rather than left for a reader to discover:
+    **every limit here is resolvable per role and no role can currently set
+    one**, because there are no roles.
+    """
+    global _role_limit_provider
+    _role_limit_provider = provider
+
+
+def clear_role_limit_provider() -> None:
+    """Remove the provider. Tests use this; so does a role system being torn
+    down. It differs from `set_role_limit_provider(None)` only in saying what
+    it means at the call site."""
+    set_role_limit_provider(None)
+
+
+def role_limit_provider() -> RoleLimitProvider | None:
+    """The installed provider, or `None`."""
+    return _role_limit_provider
+
+
+def role_limit(key: str, owner: str | None = None) -> Any:
+    """What this owner's role profile says about `key`, or `None`.
+
+    Never raises: a role system that throws must not take an upload route or an
+    approval card down with it. The layer below answers instead.
+
+    `owner` is the authenticated username, the same argument `get_user_setting`
+    takes, so the eventual lookup has what it needs without a signature change.
+    """
+    provider = _role_limit_provider
+    if provider is None:
+        return None
+    try:
+        return provider(str(key or ""), owner)
+    except Exception as exc:
+        logger.warning("role limit provider failed for %s: %s", key, exc)
+        return None
+
+
+def _coerce_limit(raw: Any, *, source: str, minimum: int,
+                  maximum: int | None, label: str) -> tuple[int, bool] | None:
+    """Parse one candidate into `(value, was_clamped)`.
+
+    `None` means 'not set / unusable — try the next layer'.
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, bool):
+        # `True` is an int in Python and a byte cap of 1 is not what anyone
+        # meant. Refuse rather than silently cap every upload at one byte.
+        logger.warning("Ignoring %s %s %r — not an integer", source, label, raw)
+        return None
+    if isinstance(raw, str):
+        raw = raw.strip()
+        if not raw:
+            return None
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        logger.warning("Ignoring %s %s %r — not an integer", source, label, raw)
+        return None
+    clamped = max(minimum, value if maximum is None else min(value, maximum))
+    if clamped != value:
+        logger.warning(
+            "%s %d from %s clamped to %d (allowed %d..%s)",
+            label, value, source, clamped, minimum,
+            "unbounded" if maximum is None else maximum,
+        )
+    # The flag rather than only the number, because "30 because you asked for
+    # 30" and "30 because you asked for 0 and the floor is 30" are two
+    # different answers and an operator setting a limit is entitled to know
+    # which one they got (`Law 10`).
+    return clamped, clamped != value
+
+
+def resolve_limit(key: str, default: int, *, env_name: str | None = None,
+                  owner: str | None = None, minimum: int = 1,
+                  maximum: int | None = None,
+                  label: str | None = None) -> tuple[int, str]:
+    """Return `(value, source)` for one numeric limit.
+
+    `source` is `"role profile"`, `"instance setting"`, the environment
+    variable's own name, or `"built-in default"` — the same four answers
+    `resolve_task_concurrency_cap` has returned since `P6-08`, because a
+    caller that has to translate between two vocabularies will eventually
+    translate one of them wrong.
+
+    `env_name` is optional. A limit with no environment variable is not an
+    oversight: `events_retention_days`, `index_max_file_mb` and
+    `min_task_interval_minutes` all ship settings-only on the reasoning in
+    `DEFAULT_SETTINGS`, and a new variable is a new place the same number can
+    be set (`Law 13`). Pass one only where the variable already exists and
+    `Law 1` requires it to keep working.
+    """
+    value, source, _clamped = resolve_limit_detail(
+        key, default, env_name=env_name, owner=owner, minimum=minimum,
+        maximum=maximum, label=label)
+    return value, source
+
+
+def resolve_limit_detail(key: str, default: int, *,
+                         env_name: str | None = None,
+                         owner: str | None = None, minimum: int = 1,
+                         maximum: int | None = None,
+                         label: str | None = None) -> tuple[int, str, bool]:
+    """`resolve_limit`, plus whether the answer was clamped to the bounds.
+
+    One implementation, two arities. Most callers want the number and do not
+    care that 0 became 1; the settings route and the approval store do care,
+    because *"saved"* and *"saved as something else"* are different things to
+    tell an operator. Splitting it into a second resolver would be the second
+    form of one thing (`Law 14`), so the detail is the implementation and
+    `resolve_limit` drops the third value.
+    """
+    import os
+    label = label or key
+    role = _coerce_limit(role_limit(key, owner), source="role profile",
+                         minimum=minimum, maximum=maximum, label=label)
+    if role is not None:
+        return role[0], "role profile", role[1]
+
+    try:
+        if setting_is_explicit(key):
+            stored = _coerce_limit(load_settings().get(key),
+                                   source="instance setting", minimum=minimum,
+                                   maximum=maximum, label=label)
+            if stored is not None:
+                return stored[0], "instance setting", stored[1]
+    except Exception:
+        logger.debug("%s: settings read failed", label, exc_info=True)
+
+    if env_name:
+        from_env = _coerce_limit(os.environ.get(env_name), source=env_name,
+                                 minimum=minimum, maximum=maximum, label=label)
+        if from_env is not None:
+            return from_env[0], env_name, from_env[1]
+
+    # The built-in default goes through the same bounds as every other layer.
+    # It has never been out of them, and a default that silently sits below its
+    # own floor is exactly the kind of thing this tracker finds two rows later.
+    fallback = _coerce_limit(default, source="built-in default",
+                             minimum=minimum, maximum=maximum, label=label)
+    if fallback is None:
+        raise ValueError(f"{key}: built-in default must be an integer")
+    return fallback[0], "built-in default", fallback[1]
 
 
 # Per-user settings (user prefs override the global admin default). Used for

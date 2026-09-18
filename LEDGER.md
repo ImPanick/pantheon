@@ -38,7 +38,7 @@ are the numbers most likely to be quoted and least able to carry the weight.
 | MRR 0.319 -> 0.931. Rank matters because memory is injected under a slot limit. | `MRR 0.319` | **`MRR 0.931`** | `fixture` |
 | The first scored run found three defects, which is what it was built for. | `0 measured` | **`3 defects on the first run`** | `measured` |
 | Ten thousand memories, under a millisecond a query, no service running. | `a service, or nothing` | **`0.82ms at 10,000 memories (15MB of index)`** | `measured` |
-| Twenty-three checkers in CI, each one built from a defect that actually shipped. | `0` | **`23`** | `counted` |
+| Twenty-four checkers in CI, each one built from a defect that actually shipped. | `0` | **`24`** | `counted` |
 | Test files 792 -> 958, and a suite of 9,580 passing with nothing red. | `792 test files` | **`958 test files · 9,580`** | `diffed` |
 | One tracker, checked by a script, after it was silently wrong by nineteen. | `untracked` | **`370 rows, every one recounted against its section`** | `measured` |
 | Agents can run commands on the host. 52 rules they cannot reach say what never runs. | `no host reach` | **`52 compiled-in rules · 0 bypasses`** | `counted` |
@@ -186,13 +186,13 @@ Argued in: `P13-21`.
 
 *The part that makes every other row here checkable. Upstream has none of it.*
 
-### Twenty-three checkers in CI, each one built from a defect that actually shipped.
+### Twenty-four checkers in CI, each one built from a defect that actually shipped.
 
-**`0` → `23`**  ·  provenance **`counted`**
+**`0` → `24`**  ·  provenance **`counted`**
 
 **Odysseus:** No repository-level checkers.
 
-**Pantheon:** `.pantheon/release-gate.py` runs all twenty-three, reading the list from `ci.yml` rather than keeping a second copy of it.
+**Pantheon:** `.pantheon/release-gate.py` runs all twenty-four, reading the list from `ci.yml` rather than keeping a second copy of it.
 
 **How we got there.** **Not one of these was designed in advance.** Each replaced a paragraph that had already failed to prevent the same defect twice or more — a tool name missing from one of nine registries, a silent `except: pass`, an undeclared environment variable, a module imported under three specifiers, a run status written as a bare string literal at fifteen sites, an extension-to-language map hand-copied into the browser four times while the server derived it once, thirty-one Python dependencies with no version between them and a Dependabot config that could therefore never bump one. And a vendored library whose version lived in prose and drifted eighteen releases before anybody looked. The rule that gets written down is the rule that gets forgotten; the rule that runs in CI is the rule. The gate reads its own checker list out of `ci.yml` so the two cannot disagree.
 
@@ -200,7 +200,7 @@ Argued in: `P13-21`.
 python3 .pantheon/release-gate.py --fast
 ```
 
-Argued in: `P3-13`, `P3-14`, `P3-17`, `P3-23`, `B74`, `B111`, `B161`, `B320`, `B330`, `D-2026-09-10-03`.
+Argued in: `P3-13`, `P3-14`, `P3-17`, `P3-23`, `P11-02b`, `B74`, `B111`, `B161`, `B320`, `B330`, `D-2026-09-10-03`.
 
 ### Test files 792 -> 958, and a suite of 9,580 passing with nothing red.
 

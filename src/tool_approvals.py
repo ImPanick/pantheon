@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import secrets
 import threading
@@ -27,9 +28,115 @@ from src.tool_approval_scopes import (
 )
 from src.tool_capabilities import ToolCapabilities, capabilities_for_action, describe_effects
 
+logger = logging.getLogger(__name__)
+
 
 DEFAULT_APPROVAL_TTL_SECONDS = 10 * 60
 DEFAULT_MAX_PENDING_APPROVALS = 2048
+
+# ── `P12-10` · a prompt nobody answered closes as denied ─────────────────────
+#
+# **What the code did before this row**, driven rather than assumed, because the
+# row asserted a behaviour nobody had written down:
+#
+#   * Nothing blocks. `agent_loop` creates the pending approval, emits the card
+#     and returns with `exit_code: None`. There is no caller on a future, so
+#     "does it block, get a default, get an error, or silently proceed" has a
+#     fourth answer: the asker has already gone, and what is left is a record
+#     in this dict and a card in a transcript.
+#   * The record was dropped LAZILY. `_purge_expired_locked` runs only from
+#     `create`, `consume`, `peek` and `retire_for_session`; there is no sweeper.
+#     Measured: past its deadline and before any other store call, the pending
+#     was still in `_pending` and no event had been written.
+#   * The first store call after the deadline wrote exactly one events row,
+#     `kind=approval outcome=expired`, and decided nothing.
+#   * An explicit `deny` recorded **nothing at all** and reported itself through
+#     the out-parameter as `bad_decision` — the value reserved for a decision
+#     the card never offered.
+#
+# So expiry was counted and denial did not exist. Now expiry IS the denial: one
+# row, one verdict, and the surfaces that hold the card are told so they can
+# mark it. `Law 10` — `denied_timeout` cannot be misread the way `expired`
+# could, because `expired` is a statement about a clock and says nothing about
+# what was decided.
+APPROVAL_DENIED_TIMEOUT = "denied_timeout"
+APPROVAL_DENIED = "denied"
+APPROVAL_CLAIMED = "claimed"
+
+APPROVAL_TIMEOUT_SETTING = "approval_timeout_seconds"
+APPROVAL_TIMEOUT_ENV = "PANTHEON_APPROVAL_TIMEOUT_SECONDS"
+
+# `FORBIDDEN.md` Part 2 keeps the approval store's TTL. Making it settable is
+# not lifting it; the floor is what keeps that true. `0` is not "never
+# expires" — an approval that never expires is the seal with an off switch, and
+# somebody will type `0` meaning "off" exactly once. The ceiling is sanity
+# rather than policy: a card nobody has looked at for a day is not waiting for
+# an answer.
+MIN_APPROVAL_TTL_SECONDS = 30
+MAX_APPROVAL_TTL_SECONDS = 24 * 60 * 60
+
+
+def resolve_approval_ttl_seconds(owner: Any = None) -> int:
+    """The operator's approval deadline, resolved through `P12`'s four layers.
+
+    Read per card rather than per process, so a change takes effect on the next
+    approval and not on the next restart (`P12-03`).
+    """
+    from src.limit_policy import resolve_int_limit
+
+    return resolve_int_limit(
+        APPROVAL_TIMEOUT_SETTING,
+        default=DEFAULT_APPROVAL_TTL_SECONDS,
+        env_name=APPROVAL_TIMEOUT_ENV,
+        owner=owner,
+        minimum=MIN_APPROVAL_TTL_SECONDS,
+        maximum=MAX_APPROVAL_TTL_SECONDS,
+    ).value
+
+
+# ── who is told when a card lapses ───────────────────────────────────────────
+#
+# The store knows an approval died; it does not know where the card that asked
+# for it is drawn. A listener is how the denial leaves this module without this
+# module reaching into `routes/` — `routes/chat_routes.py` registers one in
+# `setup_chat_routes` that marks the persisted card `resolved: "deny"`, which is
+# the same field an answered card gets and the field `chatRenderer` reads to
+# stop drawing a live card on reload.
+#
+# Listeners are notified OUTSIDE the store lock. They write to the database, and
+# holding the lock across that would serialise every approval in the process
+# behind a disk write — and a listener that reached back into the store would
+# deadlock outright.
+_expiry_listeners: list[Any] = []
+_expiry_listeners_lock = threading.Lock()
+
+
+def register_approval_expiry_listener(listener) -> None:
+    """Call *listener* with each `PendingToolApproval` that lapses.
+
+    Idempotent: registering the same callable twice calls it once. Route setup
+    runs more than once in the test suite, and a listener invoked twice would
+    write the same denial twice.
+    """
+    with _expiry_listeners_lock:
+        if listener not in _expiry_listeners:
+            _expiry_listeners.append(listener)
+
+
+def unregister_approval_expiry_listener(listener) -> None:
+    with _expiry_listeners_lock:
+        if listener in _expiry_listeners:
+            _expiry_listeners.remove(listener)
+
+
+def clear_approval_expiry_listeners() -> None:
+    with _expiry_listeners_lock:
+        _expiry_listeners.clear()
+
+
+def approval_expiry_listeners() -> tuple:
+    with _expiry_listeners_lock:
+        return tuple(_expiry_listeners)
 
 
 def _normalized_owner(owner: Any) -> str:
@@ -354,7 +461,7 @@ class ExactToolApproval:
             # P14-02 — approval outcomes. A claim is a human saying yes to a
             # specific tool on a specific payload; "how often is the ladder
             # asking, and does anyone answer" is not visible anywhere else.
-            _record_approval("claimed", tool_name, owner, session_id)
+            _record_approval(APPROVAL_CLAIMED, tool_name, owner, session_id)
             return True
 
 
@@ -378,28 +485,79 @@ class ToolApprovalStore:
     def __init__(
         self,
         *,
-        ttl_seconds: int = DEFAULT_APPROVAL_TTL_SECONDS,
+        ttl_seconds: int | None = None,
         max_pending: int = DEFAULT_MAX_PENDING_APPROVALS,
     ):
-        self._ttl_seconds = max(1, int(ttl_seconds))
+        # `P12-10`. `None` means "ask the operator's setting on every card", so
+        # a change to `approval_timeout_seconds` reaches the next approval
+        # rather than the next restart — the module singleton below is built at
+        # import and lives for the process.
+        #
+        # An explicit number is a caller saying *this one*, and a setting must
+        # not move a deadline a caller chose on purpose. Scope, measured
+        # 2026-09-18 over tracked `.py`: every `ttl_seconds=` call site is a
+        # test (`test_the_approval_says_when_it_lapses`, `test_tool_approvals`,
+        # `test_loop_instrumentation`, `test_an_unanswered_approval_closes_denied`).
+        # No production caller pins one, so on a real install this is always the
+        # resolved value.
+        self._ttl_seconds = None if ttl_seconds is None else max(1, int(ttl_seconds))
         self._max_pending = max(1, int(max_pending))
         self._pending: dict[str, PendingToolApproval] = {}
         self._lock = threading.Lock()
 
-    def _purge_expired_locked(self, now: float) -> None:
-        expired = [
+    def ttl_seconds(self, owner: Any = None) -> int:
+        """The deadline this store will stamp on the next card."""
+        if self._ttl_seconds is not None:
+            return self._ttl_seconds
+        return resolve_approval_ttl_seconds(owner)
+
+    def _purge_expired_locked(self, now: float) -> list[PendingToolApproval]:
+        """Drop every lapsed approval and return them, for announcing.
+
+        Returns rather than announces: the caller holds `self._lock`, and a
+        listener writes to the database.
+        """
+        expired_ids = [
             approval_id
             for approval_id, pending in self._pending.items()
             if pending.expires_at <= now
         ]
-        for approval_id in expired:
+        expired: list[PendingToolApproval] = []
+        for approval_id in expired_ids:
             pending = self._pending.pop(approval_id, None)
-            # P14-02. An expired approval is a question nobody answered, and it
-            # is the outcome most worth counting: a ladder that asks often and
-            # is answered rarely is a ladder people have learned to ignore.
-            _record_approval("expired", getattr(pending, "tool_name", None),
+            if pending is None:
+                continue
+            expired.append(pending)
+            # P14-02 / `P12-10`. A question nobody answered is the outcome most
+            # worth counting — a ladder that asks often and is answered rarely
+            # is a ladder people have learned to ignore. It is recorded as a
+            # DENIAL and not as a clock reading: the action did not run, and
+            # `expired` was a word that left that unsaid.
+            _record_approval(APPROVAL_DENIED_TIMEOUT,
+                             getattr(pending, "tool_name", None),
                              getattr(pending, "owner", None),
                              getattr(pending, "session_id", None))
+        return expired
+
+    def _announce_expired(self, expired) -> None:
+        """Tell every listener, outside the lock, never raising.
+
+        Guarded for the same reason `_record_approval` is: approval logic must
+        not fail over something downstream of the decision, because the failure
+        mode there is a tool running that should not have.
+        """
+        if not expired:
+            return
+        for listener in approval_expiry_listeners():
+            for pending in expired:
+                try:
+                    listener(pending)
+                except Exception:  # pragma: no cover - defensive
+                    logger.warning(
+                        "approval expiry listener failed for %s",
+                        getattr(pending, "approval_id", "?"),
+                        exc_info=True,
+                    )
 
     def create(
         self,
@@ -456,13 +614,13 @@ class ToolApprovalStore:
             result_integrity=result_integrity,
             digest=_canonical_digest(payload),
             created_at=now,
-            expires_at=now + self._ttl_seconds,
+            expires_at=now + self.ttl_seconds(owner),
             selected_tools=tuple(payload["selected_tools"]),
             continuation_query=payload["continuation_query"],
             requested_round=_coerced_round(requested_round),
         )
         with self._lock:
-            self._purge_expired_locked(now)
+            expired = self._purge_expired_locked(now)
             # The chat UI exposes one pending card per session, so supersede an
             # older action there. Headless/manual-test callers use an empty
             # session id; keep independent origin runs separate so two skill
@@ -488,6 +646,7 @@ class ToolApprovalStore:
                 )
                 self._pending.pop(oldest_id, None)
             self._pending[pending.approval_id] = pending
+        self._announce_expired(expired)
         return pending
 
     def consume(
@@ -523,56 +682,79 @@ class ToolApprovalStore:
         become an oracle for whether it was ever real.
         """
         now = time.time()
-        with self._lock:
-            approval_key = str(approval_id or "")
-            # Read before the purge, so "it lapsed" can be told apart from "it
-            # never existed" — the purge is what erased that difference.
-            lapsed = self._pending.get(approval_key)
-            self._purge_expired_locked(now)
-            pending = self._pending.get(approval_key)
-            if pending is None:
+        expired: list[PendingToolApproval] = []
+        try:
+            with self._lock:
+                approval_key = str(approval_id or "")
+                # Read before the purge, so "it lapsed" can be told apart from
+                # "it never existed" — the purge is what erased that difference.
+                lapsed = self._pending.get(approval_key)
+                expired = self._purge_expired_locked(now)
+                pending = self._pending.get(approval_key)
+                if pending is None:
+                    if outcome is not None:
+                        owned = (
+                            lapsed is not None
+                            and lapsed.owner == _normalized_owner(owner)
+                            and lapsed.session_id == str(session_id or "")
+                        )
+                        outcome["reason"] = "expired" if owned else "unknown"
+                    return None
+                if (
+                    pending.owner != _normalized_owner(owner)
+                    or pending.session_id != str(session_id or "")
+                ):
+                    # Authentication is checked before destructive consumption
+                    # so a leaked/guessed opaque id cannot be used to invalidate
+                    # another owner's pending action.
+                    if outcome is not None:
+                        outcome["reason"] = "not_yours"
+                    return None
+                self._pending.pop(approval_key, None)
+            normalized_decision = str(decision or "").strip().lower()
+            scope = scope_for_decision(normalized_decision)
+            if scope is None:
                 if outcome is not None:
-                    owned = (
-                        lapsed is not None
-                        and lapsed.owner == _normalized_owner(owner)
-                        and lapsed.session_id == str(session_id or "")
+                    # `P12-10`. A `deny` is one of the three decisions this card
+                    # offers, and it reported itself as `bad_decision` — the
+                    # value reserved for a decision the card never listed.
+                    # `scope_for_decision` returns `None` for both because
+                    # neither grants a continuation, which is a true statement
+                    # about scope and was being read as one about validity.
+                    outcome["reason"] = (
+                        APPROVAL_DENIED
+                        if normalized_decision == DENY_APPROVAL_DECISION
+                        else "bad_decision"
                     )
-                    outcome["reason"] = "expired" if owned else "unknown"
+                if normalized_decision == DENY_APPROVAL_DECISION:
+                    # The other half of `P12-10`: a denial is recorded whoever
+                    # made it. `src/task_scheduler.py` auto-denies every card a
+                    # scheduled run produces, because no interactive surface can
+                    # answer one, and not a single row said so.
+                    _record_approval(APPROVAL_DENIED, pending.tool_name,
+                                     pending.owner, pending.session_id)
                 return None
-            if (
-                pending.owner != _normalized_owner(owner)
-                or pending.session_id != str(session_id or "")
-            ):
-                # Authentication is checked before destructive consumption so
-                # a leaked/guessed opaque id cannot be used to invalidate
-                # another owner's pending action.
-                if outcome is not None:
-                    outcome["reason"] = "not_yours"
-                return None
-            self._pending.pop(approval_key, None)
-        normalized_decision = str(decision or "").strip().lower()
-        scope = scope_for_decision(normalized_decision)
-        if scope is None:
-            if outcome is not None:
-                outcome["reason"] = "bad_decision"
-            return None
-        if not allow_continuation:
+            if not allow_continuation:
+                return ExactToolApproval(
+                    pending,
+                    scope=ToolApprovalScope.SINGLE_ACTION,
+                    allow_remaining_actions=False,
+                )
             return ExactToolApproval(
                 pending,
-                scope=ToolApprovalScope.SINGLE_ACTION,
-                allow_remaining_actions=False,
+                scope=scope,
+                allow_remaining_actions=True,
             )
-        return ExactToolApproval(
-            pending,
-            scope=scope,
-            allow_remaining_actions=True,
-        )
+        finally:
+            self._announce_expired(expired)
 
     def peek(self, approval_id: Any) -> PendingToolApproval | None:
         now = time.time()
         with self._lock:
-            self._purge_expired_locked(now)
-            return self._pending.get(str(approval_id or ""))
+            expired = self._purge_expired_locked(now)
+            found = self._pending.get(str(approval_id or ""))
+        self._announce_expired(expired)
+        return found
 
     def retire_for_session(self, *, owner: Any, session_id: Any) -> bool:
         """Discard pending actions superseded by an ordinary user turn.
@@ -587,7 +769,7 @@ class ToolApprovalStore:
         if not normalized_session:
             return False
         with self._lock:
-            self._purge_expired_locked(now)
+            expired = self._purge_expired_locked(now)
             retired_ids = [
                 approval_id
                 for approval_id, pending in self._pending.items()
@@ -602,6 +784,7 @@ class ToolApprovalStore:
             )
             for approval_id in retired_ids:
                 self._pending.pop(approval_id, None)
+        self._announce_expired(expired)
         return carried_taint
 
 

@@ -356,19 +356,19 @@ CLAIMS: Tuple[Claim, ...] = (
     Claim(
         id="checkers",
         area="Verification apparatus",
-        headline="Twenty-three checkers in CI, each one built from a defect that actually shipped.",
+        headline="Twenty-four checkers in CI, each one built from a defect that actually shipped.",
         stock="No repository-level checkers.",
         pantheon=(
-            "`.pantheon/release-gate.py` runs all twenty-three, reading the list from "
+            "`.pantheon/release-gate.py` runs all twenty-four, reading the list from "
             "`ci.yml` rather than keeping a second copy of it."
         ),
         before="0",
-        after="23",
+        after="24",
         provenance="counted",
         repro="python3 .pantheon/release-gate.py --fast",
         evidence=(".pantheon/release-gate.py", ".github/workflows/ci.yml"),
-        rows=("P3-13", "P3-14", "P3-17", "P3-23", "B74", "B111", "B161",
-              "B320", "B330", "D-2026-09-10-03"),
+        rows=("P3-13", "P3-14", "P3-17", "P3-23", "P11-02b", "B74", "B111",
+              "B161", "B320", "B330", "D-2026-09-10-03"),
         how=(
             "**Not one of these was designed in advance.** Each replaced a paragraph "
             "that had already failed to prevent the same defect twice or more — a tool "

@@ -67,6 +67,14 @@ def agent(tmp_path, monkeypatch):
 GATES = [
     ("agent_email_confirm", False, "the human-approval gate on sending email"),
     ("agent_verifier_subagent", True, "the check on its own claims"),
+    # `P12-10` declared `approval_timeout_seconds`, and declaring a key hands it
+    # to the agent as well as to the person — `DEFAULT_SETTINGS` is the
+    # allowlist for both. A longer deadline is a card that stays answerable
+    # instead of closing as denied; a shorter one moves the operator's gate
+    # without them. Either direction is the agent editing the clock on the
+    # question it is being asked.
+    ("approval_timeout_seconds", 86_400,
+     "the deadline after which an unanswered approval is denied"),
 ]
 
 

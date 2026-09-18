@@ -10,7 +10,11 @@ from core.middleware import require_admin
 from services.memory import MemoryStoreUnreadable
 from src.auth_helpers import get_current_user
 from src.settings import load_settings, save_settings, load_features, save_features
-from src.upload_limits import format_byte_limit, read_byte_limit_env
+from src.upload_limits import (
+    format_byte_limit,
+    read_byte_limit_env,
+    resolve_byte_cap,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +31,22 @@ logger = logging.getLogger(__name__)
 BACKUP_IMPORT_MAX_BYTES = read_byte_limit_env(
     "PANTHEON_BACKUP_IMPORT_MAX_BYTES", 25 * 1024 * 1024
 )
+
+
+def _backup_import_max_bytes() -> int:
+    """The live cap: role profile -> instance setting -> env -> the constant.
+
+    `P12-01` / `P12-03`. `BACKUP_IMPORT_MAX_BYTES` above is the import-time
+    snapshot and stays — `Law 1`, and three tests set it directly — but it is
+    read here as the module global rather than closed over, so it remains the
+    bottom layer and a test that reassigns it still decides when nothing above
+    it is configured.
+    """
+    return resolve_byte_cap(
+        "backup_import_max_bytes",
+        "PANTHEON_BACKUP_IMPORT_MAX_BYTES",
+        BACKUP_IMPORT_MAX_BYTES,
+    )[0]
 
 
 def _declared_body_length(request: Request):
@@ -133,7 +153,7 @@ def setup_backup_routes(memory_manager, preset_manager, skills_manager) -> APIRo
         user = get_current_user(request)
         # Size ceiling goes AFTER the admin gate, never in place of it.
         try:
-            body = await _load_import_body(request, BACKUP_IMPORT_MAX_BYTES)
+            body = await _load_import_body(request, _backup_import_max_bytes())
         except HTTPException:
             raise  # 413 must not be laundered into "Invalid JSON" below
         except Exception:

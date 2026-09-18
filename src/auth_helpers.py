@@ -2,7 +2,7 @@
 """Shared auth helpers used by all route files."""
 
 import os
-from typing import Optional
+from typing import Any, Optional
 from fastapi import Request, HTTPException
 
 from src.owner_identity import auth_disabled, effective_storage_owner
@@ -190,14 +190,67 @@ def privilege_denied_message(key: str) -> str:
     return f"Your account is not allowed to {phrase}."
 
 
+def resolve_privilege(privs: Any, key: str) -> Any:
+    """Resolve one privilege for a caller. The single source of truth for what
+    a privilege key means when the user's stored map does not answer.
+
+    Three cases, in order:
+
+    1. **The user's map names the key** — that value wins. Nothing else is
+       consulted.
+    2. **`DEFAULT_PRIVILEGES` names the key** — the registry's declared value
+       is the answer. This is what keeps a deploy safe: adding a new key to the
+       registry resolves to whatever that key declares for every existing user
+       who has no entry yet, so a permissive new key does not lock anyone out
+       mid-deploy and a restrictive one is restrictive from the first request.
+    3. **Nobody declares the key** — denied. A key that is in neither map is a
+       typo at a call site or a privilege someone forgot to register; the only
+       safe answer to "may this user do a thing nobody defined?" is no.
+
+    Case 3 is the fix. It used to be `privs.get(key, True)`, so
+    `require_privilege(request, "can_use_reserch")` granted the route to
+    everyone, silently, forever — the comment justified it with "the UI gates
+    display-side" and `P2-18` proved that gate does not work. All four keys any
+    route passes today (`can_use_research`, `can_use_documents`,
+    `can_generate_images`, `can_manage_memory`) are declared in the 11-key
+    registry, so no shipped route changes behaviour; only a typo does.
+
+    Case 2 is why the answer is not simply `privs.get(key, False)`.
+    `AuthManager.get_privileges` already merges `{**DEFAULT_PRIVILEGES,
+    **stored}`, so on the real path the key is present either way — but that
+    merge lives in `core/auth.py` and this default lived here, which is one
+    fact in two places (`Law 13`). Reading the registry here makes the answer
+    the same whether or not the caller merged: a partial map, a duck-typed auth
+    manager in a test, or a corrupt `auth.json` that leaves `privs` empty all
+    degrade to the declared defaults instead of to `True`.
+
+    The registry is imported per call, not bound at module import, so a key
+    added to `DEFAULT_PRIVILEGES` is live without restarting the process.
+
+    Returns the raw value, not a bool: the registry holds an int
+    (`max_messages_per_day`) and a list (`allowed_models`) alongside its nine
+    booleans, and callers that read those need the value, not its truthiness.
+    """
+    from core.auth import DEFAULT_PRIVILEGES
+
+    if isinstance(privs, dict) and key in privs:
+        return privs[key]
+    if key in DEFAULT_PRIVILEGES:
+        return DEFAULT_PRIVILEGES[key]
+    return False
+
+
 def require_privilege(request: Request, key: str) -> str:
     """Reject callers whose `auth.json` privilege flag for `key` is False.
     Returns the username so the route handler can keep using it.
 
-    Admins always have every privilege via `auth_manager.get_privileges`
-    (which returns ADMIN_PRIVILEGES wholesale), so this is a no-op for
-    them. In unauthenticated single-user mode (`require_user` returns ""),
-    privileges aren't enforced.
+    Admins hold every *declared* privilege via `auth_manager.get_privileges`
+    (which returns ADMIN_PRIVILEGES wholesale), so this is a no-op for them on
+    any registered key. An **undeclared** key denies admins too — see
+    `resolve_privilege` case 3; that is deliberate, because a typo'd key is a
+    bug and a 403 on the first request is how it gets found. In
+    unauthenticated single-user mode (`require_user` returns ""), privileges
+    aren't enforced.
     """
     user = require_user(request)
     if not user:
@@ -211,9 +264,9 @@ def require_privilege(request: Request, key: str) -> str:
         return user
     if not isinstance(privs, dict):
         privs = {}
-    # True = permitted; missing key defaults to permitted (unknown privileges
-    # fail open — the UI gates display-side).
-    if not privs.get(key, True):
+    # Declared key -> stored value, else the registry's declared default.
+    # Undeclared key -> denied. `resolve_privilege` carries the reasoning.
+    if not resolve_privilege(privs, key):
         raise HTTPException(403, privilege_denied_message(key))
     return user
 
