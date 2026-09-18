@@ -30,11 +30,22 @@ SKILL_EXTRACT_PROMPT = (
     "- A pure question/answer or explanation with no transferable method.\n"
     "- The agent failed, gave up, or the approach is not worth repeating.\n\n"
     "When (and only when) a genuine reusable procedure exists, return a JSON "
-    "object with:\n"
-    '- "title": short name (under 10 words)\n'
-    '- "problem": what was the challenge (1-2 sentences)\n'
-    '- "solution": what worked (1-2 sentences)\n'
-    '- "steps": array of step-by-step instructions (3-7 short steps)\n'
+    "object matching the SKILL.md schema:\n"
+    '- "name": short kebab-case slug — the skill\'s id, e.g. "rotate-nginx-logs"\n'
+    '- "description": ONE line, under 200 characters. This is the only sentence '
+    "the assistant sees about this skill when deciding whether to open it.\n"
+    '- "category": one lowercase word grouping it — "dev", "email", "system", '
+    '"media", "research", etc.\n'
+    '- "when_to_use": the trigger, in the words a user would actually say. '
+    "Retrieval matches requests against this text, so a vague one means the "
+    "skill is never found.\n"
+    '- "procedure": array of 3-7 short steps, each naming the SPECIFIC tool and '
+    "argument shape to use, generalised away from this particular request\n"
+    '- "pitfalls": array of failure modes hit or narrowly avoided in this '
+    "session, each with how to recover. Use [] only if there genuinely were none.\n"
+    '- "verification": array of checks that confirm the procedure actually '
+    "worked — the commands or observations that prove it, not "
+    '"check it looks right"\n'
     '- "tags": array of relevant keywords (3-5 tags)\n'
     '- "confidence": 0.0-1.0 how reliable AND reusable this procedure is\n\n'
     "Be conservative: if in doubt, return null.\n"
@@ -47,6 +58,54 @@ MIN_CONFIDENCE = 0.6
 
 # How many recent messages to include
 CONTEXT_WINDOW = 12
+
+
+def _normalise_extracted(data: dict) -> dict:
+    """The modern SKILL.md field set, whichever shape the model answered in.
+
+    `P8-17`. The prompt above asked for `title` / `problem` / `solution` /
+    `steps` and the call below passed exactly those four through, so **every
+    skill this extractor has ever written had an empty Pitfalls section, an
+    empty Verification section, and `category: general`** — four of the fields
+    the schema supports, unreachable from the path that produces most of a
+    user's library. The fields are asked for now.
+
+    The old keys are still accepted, and that is not politeness: a 7B local
+    model handed a nine-field schema will sometimes answer with the four-field
+    one it has seen more of on the internet, and dropping that response would
+    turn a partially-filled skill into no skill at all.
+    """
+    def _txt(*keys) -> str:
+        for k in keys:
+            v = data.get(k)
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+        return ""
+
+    def _lst(*keys) -> list:
+        for k in keys:
+            v = data.get(k)
+            if isinstance(v, list):
+                items = [str(x).strip() for x in v if str(x).strip()]
+                if items:
+                    return items
+            elif isinstance(v, str) and v.strip():
+                return [v.strip()]
+        return []
+
+    return {
+        "name": _txt("name"),
+        "description": _txt("description", "title"),
+        "category": _txt("category") or "general",
+        "when_to_use": _txt("when_to_use", "problem"),
+        "procedure": _lst("procedure", "steps"),
+        "pitfalls": _lst("pitfalls"),
+        "verification": _lst("verification"),
+        "tags": _lst("tags"),
+        # Old shape only: with a `procedure` present `add_skill` ignores it, so
+        # this carries a four-field answer's prose body and nothing else.
+        "solution": _txt("solution"),
+    }
 
 
 def _skill_dicts(skills):
@@ -236,9 +295,13 @@ async def maybe_extract_skill(
             logger.debug("[skill-extract] no JSON object found in response, dropping")
             return None
 
-        title = data.get("title", "").strip()
+        fields = _normalise_extracted(data)
+        title = fields["description"]
         if not title:
-            logger.debug("[skill-extract] LLM returned object with no title, dropping")
+            logger.debug("[skill-extract] LLM returned object with no description/title, dropping")
+            return None
+        if not fields["procedure"] and not fields["solution"]:
+            logger.debug("[skill-extract] '%s' has no procedure — dropping", title)
             return None
 
         # Honour the model's own reliability/reusability estimate — low-
@@ -275,17 +338,31 @@ async def maybe_extract_skill(
             pass
 
         entry = skills_manager.add_skill(
-            title=title,
-            problem=data.get("problem", ""),
-            solution=data.get("solution", ""),
-            steps=data.get("steps", []),
-            tags=data.get("tags", []),
+            name=fields["name"] or None,
+            description=fields["description"],
+            category=fields["category"],
+            when_to_use=fields["when_to_use"],
+            procedure=fields["procedure"],
+            pitfalls=fields["pitfalls"],
+            verification=fields["verification"],
+            tags=fields["tags"],
             source="learned",
             confidence=data.get("confidence", 0.7),
             session_id=getattr(session, "session_id", None),
             owner=owner,
             status=_initial_status,
+            # Old-shape carrier: `add_skill` uses it only when `procedure` is
+            # empty, which is the four-field answer this still accepts.
+            solution=fields["solution"],
         )
+        if entry.get("_deduped"):
+            # Nothing was written, so nothing was added. `do_manage_skills`
+            # already returns before firing on this branch, with the comment
+            # saying why; the extractor fired anyway, and a `skill_added` event
+            # for a skill that does not exist is a trigger firing on nothing.
+            logger.debug("[skill-extract] '%s' matched existing `%s` — not created",
+                         title, entry.get("_duplicate_of"))
+            return entry
         try:
             from src.event_bus import fire_event
             fire_event("skill_added", owner)

@@ -15,8 +15,8 @@ from core.database import SessionLocal, ScheduledTask, TaskRun, CrewMember
 from core.constants import internal_api_base
 from src.auth_helpers import get_current_user
 from src.constants import DATA_DIR, EMAIL_URGENCY_CACHE_DIR
+from src.event_bus import DEFAULT_TRIGGER_COUNT, EVENT_CATALOGUE
 from src.task_action_policy import (
-    ADMIN_ONLY_TASK_ACTIONS,
     admin_refusal_message,
     is_admin_only_task_action,
     owner_has_admin_task_privileges,
@@ -254,7 +254,28 @@ def _task_to_dict(t: ScheduledTask, include_last_run_result: bool = False) -> di
     return d
 
 
+def _run_steps(r: TaskRun) -> list:
+    """This run's step log, as a list.
+
+    `P8-25`. The column is JSON text written by the scheduler. A row that
+    predates the column, or one written before it was migrated in, reads as an
+    empty list — "no step log recorded", which is what those runs are. A row
+    holding something that is not a JSON list reads the same way rather than
+    taking the whole Activity response down with it.
+    """
+    raw = getattr(r, "steps", None)
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        logger.debug("Run %s has an unreadable step log", getattr(r, "id", "?"))
+        return []
+    return parsed if isinstance(parsed, list) else []
+
+
 def _run_to_dict(r: TaskRun) -> dict:
+    steps = _run_steps(r)
     return {
         "id": r.id,
         "task_id": r.task_id,
@@ -265,6 +286,14 @@ def _run_to_dict(r: TaskRun) -> dict:
         "error": r.error,
         "tokens_used": r.tokens_used,
         "model": r.model,
+        # `P8-25`. What the run actually did, step by step. Written by the
+        # scheduler and, until this, carried nowhere — the column existed, the
+        # model declared it, and no response had ever contained it, so "fill it
+        # and the shipped Activity view improves" could not have been true.
+        # `step_count` is here so a list view can say "6 steps" without
+        # shipping six step bodies per row.
+        "steps": steps,
+        "step_count": len(steps),
     }
 
 
@@ -435,11 +464,15 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                 db.close()
         return {"ok": True, "opened": True, "enabled": bool(prefs.get("tasks_enabled")), "resumed": resumed}
 
-    # Actions that execute shell/SSH commands or cross into admin-only
-    # Forge serving surfaces — restricted to admins.
-    # Non-admin users cannot create tasks with these action types via the
-    # API. See review CRIT-C.
-    _ADMIN_ONLY_ACTIONS = ADMIN_ONLY_TASK_ACTIONS
+    # Actions that execute shell/SSH commands or cross into admin-only Forge
+    # serving surfaces are restricted to admins: non-admin users cannot create
+    # tasks with these action types via the API (review CRIT-C). The set is
+    # `src.task_action_policy.ADMIN_ONLY_TASK_ACTIONS`; this module reaches it
+    # through `_require_admin_for_task_action` for writes and through
+    # `builtin_actions.build_action_palette` for the picker. `P8-22` removed the
+    # local alias `_ADMIN_ONLY_ACTIONS`, whose one reader was the action
+    # listing — it is filtered at the builder now, so the listing and the write
+    # gate cannot come to different conclusions about the same action.
 
     def _is_admin(user: str | None) -> bool:
         return owner_has_admin_task_privileges(user)
@@ -521,8 +554,14 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                 raise HTTPException(400, too_fast)
         if req.trigger_type == "event" and not req.trigger_event:
             raise HTTPException(400, "Event name is required for event-triggered tasks")
-        if req.trigger_type == "event" and not req.trigger_count:
-            raise HTTPException(400, "Trigger count is required for event-triggered tasks")
+        # `P8-31`. Omitting the count used to be a 400. Nobody ever hit it,
+        # because the form pre-filled 5 — so the number people got was a form
+        # default nobody chose, in front of an API with no opinion, over a bus
+        # that has always read a missing count as "every event". The default is
+        # stated once, beside the bus that reads it, and it is 1.
+        trigger_count = req.trigger_count
+        if req.trigger_type == "event" and not trigger_count:
+            trigger_count = DEFAULT_TRIGGER_COUNT
 
         # Auto-generate name
         name = req.name
@@ -588,7 +627,11 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                 cron_expression=req.cron_expression,
                 trigger_type=req.trigger_type,
                 trigger_event=req.trigger_event,
-                trigger_count=req.trigger_count,
+                # Written down rather than left null: a null meant 1 at the bus
+                # and 5 in the form, and a field whose absence means two
+                # different things in two places is the ambiguity `Law 10` is
+                # about.
+                trigger_count=trigger_count,
                 trigger_counter=0,
                 next_run=next_run,
                 status="active" if (req.trigger_type in ("event", "webhook") or next_run) else "completed",
@@ -995,6 +1038,14 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                     val = d.get(key)
                     if isinstance(val, str) and len(val) > max_result_chars:
                         d[key] = val[:max_result_chars].rstrip() + "\n\n[Activity preview truncated]"
+                # `P8-25`. The step log is a per-run detail, and this endpoint
+                # returns up to 200 runs at once — 200 logs of up to 200 steps
+                # is a response measured in megabytes for a list that shows one
+                # line per row. `step_count` survives so the list can say how
+                # many there were; the log itself comes from
+                # `GET /api/tasks/{task_id}/runs`, which returns one task's
+                # history and is where a person goes to read it.
+                d["steps"] = []
                 return d
 
             return {
@@ -1039,10 +1090,13 @@ def setup_task_routes(task_scheduler) -> APIRouter:
         finally:
             db.close()
 
-    @router.get("/meta/output-targets")
-    async def list_output_targets(request: Request):
-        """List available output targets — only delivery/send tools, not all MCP tools."""
-        _owner(request)
+    def _output_targets() -> list:
+        """The delivery targets a task can send its result to.
+
+        Lifted out of the route body by `P8-22` so the palette's three answers
+        come from three builders rather than three route bodies. The selection
+        rule below is unchanged.
+        """
         targets = [
             {"value": "session", "label": "Session", "description": "Save result to a chat session"},
             {"value": "notification", "label": "Notification", "description": "Push a browser notification with the result (also saved to the session for history)"},
@@ -1074,33 +1128,58 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                         "description": tool.get("description", ""),
                     })
         except Exception:
+            # An MCP server that cannot be reached contributes no delivery
+            # targets. The three built-ins above are always offered, so the
+            # picker is never empty and the failure costs reach, not usability.
             pass
-        return {"targets": targets}
+        return targets
+
+    @router.get("/meta/output-targets")
+    async def list_output_targets(request: Request):
+        """List available output targets — only delivery/send tools, not all MCP tools."""
+        _owner(request)
+        return {"targets": _output_targets()}
 
     @router.get("/meta/actions")
     async def list_actions(request: Request):
-        """List available built-in actions."""
-        user = _owner(request)
-        from src.builtin_actions import BUILTIN_ACTION_INFO
-        return {"actions": [
-            {"name": name, "description": desc}
-            for name, desc in BUILTIN_ACTION_INFO.items()
-            if name not in _ADMIN_ONLY_ACTIONS or _is_admin(user)
-        ]}
+        """The node palette's actions: every built-in this user may schedule,
+        with everything needed to place and draw it.
+
+        `P8-22`. This used to iterate `BUILTIN_ACTION_INFO` directly, and that
+        map had fallen two entries behind the dispatch map — so `run_local` and
+        `cookbook_serve` ran perfectly well and this endpoint, the only one
+        that says what exists, never offered either of them. It reads the one
+        registry now.
+
+        `category`, `icon` and `model_backed` used to be held in
+        `static/js/tasks.js` instead, which meant a new action needed an edit on
+        the far side of the wire before it could be drawn, and `model_backed`
+        was a second list of a fact the scheduler already holds. They ship from
+        here.
+
+        The response gained keys and lost none: a caller reading `name` and
+        `description` off `actions` is unaffected (`Law 1`).
+        """
+        from src.builtin_actions import ACTION_CATEGORY_ORDER, build_action_palette
+        return {
+            "actions": build_action_palette(
+                include_admin_only=_is_admin(_owner(request))),
+            "categories": list(ACTION_CATEGORY_ORDER),
+            "default_trigger_count": DEFAULT_TRIGGER_COUNT,
+        }
 
     @router.get("/meta/events")
     async def list_events(request: Request):
-        """List available event triggers."""
+        """The node palette's events — `src.event_bus.EVENT_CATALOGUE`.
+
+        `P8-30`. This was one of two written-out copies of the event list, the
+        other being the `manage_tasks` tool schema, with five more loose
+        spellings in the housekeeping defaults. Between them they all missed
+        `document_updated`, which production fires, so no task could trigger on
+        a document being edited.
+        """
         _owner(request)
-        return {"events": [
-            {"name": "session_created", "description": "Fires when a new chat session is created"},
-            {"name": "message_sent", "description": "Fires when a user sends a message"},
-            {"name": "document_created", "description": "Fires when a document is created"},
-            {"name": "memory_added", "description": "Fires when a memory is added"},
-            {"name": "research_completed", "description": "Fires when a research report completes"},
-            {"name": "email_received", "description": "Fires when new inbox mail is observed"},
-            {"name": "skill_added", "description": "Fires when a new skill is created"},
-        ]}
+        return {"events": [dict(entry) for entry in EVENT_CATALOGUE]}
 
     @router.post("/{task_id}/webhook/{token}")
     async def webhook_trigger(task_id: str, token: str):

@@ -3416,27 +3416,18 @@ def _build_base_prompt(
     if not suppress_local_context and not suppress_skills:
         try:
             from services.memory.skills import SkillsManager
+            from services.memory.skill_injection import render_skill_index_block
             from src.constants import DATA_DIR
             _sm = SkillsManager(DATA_DIR)
             active_tools = list(set(TOOL_SECTIONS.keys()) - set(disabled or []))
             skill_idx = _sm.index_for(owner=owner, active_toolsets=active_tools)
             if skill_idx:
-                lines = ["## Available skills",
-                         "Procedures the assistant should consult before doing domain work. "
-                         "Fetch the full procedure with `manage_skills` action=view name=<name> "
-                         "when one looks relevant. Entries tagged `(draft)` were written by the "
-                         "teacher-escalation loop after a prior failure — treat them as authoritative "
-                         "guidance; if you follow one and it works, that's a good signal the procedure "
-                         "is correct."]
-                by_cat: dict[str, list] = {}
-                for s in skill_idx:
-                    by_cat.setdefault(s["category"], []).append(s)
-                for cat in sorted(by_cat):
-                    lines.append(f"\n**{cat}**")
-                    for s in by_cat[cat]:
-                        badge = " *(draft)*" if s.get("status") == "draft" else ""
-                        lines.append(f"- `{s['name']}` — {s['description']}{badge}")
-                skill_index_block = "\n\n" + "\n".join(lines)
+                # `P8-06`. The block used to be built here and only here, which
+                # is why `GET /api/skills/index` — the endpoint that exists to
+                # show a user what the model can see — could return the list and
+                # never the text. One renderer, two callers, no second copy of a
+                # prompt string to fall out of step (`Law 7`).
+                skill_index_block = render_skill_index_block(skill_idx)
                 skill_index_used = [
                     {
                         "name": _s.get("name", ""),

@@ -57,8 +57,12 @@ async def test_maybe_extract_skill_recovers_json_past_stray_braces(monkeypatch, 
     )
 
     assert entry is not None
-    assert entry["title"] == "Deploy runbook"
-    assert skills_manager.added and skills_manager.added[0]["title"] == "Deploy runbook"
+    # `P8-17` moved the extractor onto the SKILL.md field names, so the old
+    # response's `title` arrives as `description`. The subject of this test is
+    # the JSON-candidate walk, not the field names — what it still asserts is
+    # that the object past the stray brace was found and carried through.
+    assert entry["description"] == "Deploy runbook"
+    assert skills_manager.added and skills_manager.added[0]["description"] == "Deploy runbook"
 
 
 # Response *starts* with a brace, but it's an invalid fragment — the valid
@@ -92,8 +96,8 @@ async def test_maybe_extract_skill_recovers_json_after_leading_invalid_brace(mon
     )
 
     assert entry is not None
-    assert entry["title"] == "Valid later"
-    assert skills_manager.added and skills_manager.added[0]["title"] == "Valid later"
+    assert entry["description"] == "Valid later"
+    assert skills_manager.added and skills_manager.added[0]["description"] == "Valid later"
 
 
 async def test_maybe_extract_skill_drops_when_no_candidate_parses(monkeypatch):

@@ -196,10 +196,25 @@ function _matches(sk, query) {
   );
 }
 
+// `P8-03`. What a person reads changes; what is stored does not. `draft` is
+// frontmatter, it is compared server-side, and `data-status` is the hook the
+// styling and the select-mode code use — `Law 2`. Only the word moves.
+//
+// It moves because "draft" says unfinished and the state is not that. A draft
+// is left OUT of the catalogue the model browses (`index_for`,
+// services/memory/skills.py:655) and is STILL matched and injected by keyword
+// (`get_relevant_skills`, :725) whenever it clears the minimum confidence.
+// "Inactive" would have been the same wrong idea in a different word: the
+// skill is not switched off, it is unlisted.
+const _STATUS_PILL_TITLE = {
+  published: 'Catalogued: the AI is given its name and description on every request, and the full procedure when your message matches it.',
+  draft: 'Uncatalogued: the AI is not shown it in the list it browses — but it is still injected when your message matches it and its confidence clears the minimum. Publish it to add it to the list.',
+};
+
 function _statusPill(sk) {
   const s = sk.status || (sk._legacy ? 'legacy' : 'draft');
-  if (s === 'published') return '<span class="memory-cat-badge skill-status-pill" data-status="published" style="background:color-mix(in srgb, var(--accent, #4ade80) 30%, transparent)">published</span>';
-  if (s === 'draft')     return '<span class="memory-cat-badge skill-status-pill" data-status="draft" style="background:color-mix(in srgb, var(--fg) 14%, transparent)">draft</span>';
+  if (s === 'published') return `<span class="memory-cat-badge skill-status-pill" data-status="published" title="${esc(_STATUS_PILL_TITLE.published)}" style="background:color-mix(in srgb, var(--accent, #4ade80) 30%, transparent)">published</span>`;
+  if (s === 'draft')     return `<span class="memory-cat-badge skill-status-pill" data-status="draft" title="${esc(_STATUS_PILL_TITLE.draft)}" style="background:color-mix(in srgb, var(--fg) 14%, transparent)">uncatalogued</span>`;
   return `<span class="memory-cat-badge skill-status-pill" data-status="${esc(s)}" style="opacity:0.6">${esc(s)}</span>`;
 }
 
@@ -403,7 +418,7 @@ function _openSkillMenu(btn, card, sk, name, isPublished) {
     item.addEventListener('click', (e) => { e.stopPropagation(); close(); onClick(); });
     menu.appendChild(item);
   };
-  if (isPublished) mk(_ICON.unpublish, 'Unpublish', {}, () => _setSkillStatus(name, 'draft'));
+  if (isPublished) mk(_ICON.unpublish, 'Uncatalogue', {}, () => _setSkillStatus(name, 'draft'));
   else mk(_ICON.approve, 'Publish', {}, () => _setSkillStatus(name, 'published'));
   // Select — moved up to 2nd so it sits next to Publish/Unpublish
   // (bulk actions cluster at the top of the menu).
@@ -747,11 +762,11 @@ function renderSkillsList() {
     pubBtn.className = 'doclib-card-text-btn doclib-card-action-btn';
     if (isPublished) {
       pubBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12l5 5L20 7"/></svg>Unpublish';
-      pubBtn.title = 'Move back to draft';
+      pubBtn.title = 'Take it out of the catalogue — it stays here, and is still injected when a message matches it';
       pubBtn.addEventListener('click', (e) => { e.stopPropagation(); _setSkillStatus(name, 'draft'); });
     } else {
       pubBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>Publish';
-      pubBtn.title = 'Publish — appears in the skills index';
+      pubBtn.title = 'Publish — adds it to the catalogue the AI browses';
       pubBtn.style.color = 'var(--color-success, #4caf50)';
       pubBtn.addEventListener('click', (e) => { e.stopPropagation(); _setSkillStatus(name, 'published'); });
     }
@@ -1108,7 +1123,7 @@ async function _setSkillStatus(name, status) {
       body: JSON.stringify({ status }),
     });
     await loadSkills();
-    uiModule.showToast(status === 'published' ? 'Skill approved' : 'Skill moved to draft');
+    uiModule.showToast(status === 'published' ? 'Skill published — now in the catalogue' : 'Skill uncatalogued — still injected on a match');
   } catch (e) { uiModule.showError('Update failed: ' + e.message); }
 }
 
@@ -1197,14 +1212,33 @@ function _renderTestLog(logEl, verdictEl, job, card, name) {
   else if (verdictEl) verdictEl.innerHTML = '';
 }
 
-// `force` = start a fresh run even if a finished result already exists (Retry).
+// `P8-08`. `POST /api/skills/{name}/test` has read `body.task` since it was
+// written (routes/skills_routes.py:1499) and the UI had never sent one, so
+// every test in the product's history ran the server's invented fallback and
+// nothing said so. One textarea closes that, and it also makes the panel
+// honest about the two things a first-time user cannot otherwise know: that
+// leaving it blank is a real choice with a stated consequence, and that the
+// run can stop and ask (`P8-18`).
 async function _testSkill(card, name, force = false) {
   if (!card.classList.contains('doclib-card-expanded')) await _expandSkillCard(card, name);
   const preview = card.querySelector('.skill-card-preview');
   if (!preview) return;
   preview.innerHTML =
-    '<div class="skill-test"><div class="skill-test-log"></div>' +
-    '<div class="skill-test-verdict"></div></div>';
+    '<div class="skill-test">' +
+      '<div class="skill-test-ask hidden">' +
+        '<label class="skill-test-ask-label">What should it try?' +
+          '<textarea class="skill-test-task-input" rows="2" spellcheck="false" placeholder="Leave blank and the AI invents a realistic example to apply the skill to."></textarea>' +
+        '</label>' +
+        '<div class="skill-test-gate-note">A skill is untrusted text, so this run asks you before anything that writes, runs, sends or deletes — it can stop halfway and wait.</div>' +
+        '<div class="skill-test-ask-actions">' +
+          '<button type="button" class="doclib-card-text-btn doclib-card-action-btn skill-test-run">Run test</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="skill-test-log"></div>' +
+      '<div class="skill-test-verdict"></div></div>';
+  const askEl = preview.querySelector('.skill-test-ask');
+  const taskEl = preview.querySelector('.skill-test-task-input');
+  const runBtn = preview.querySelector('.skill-test-run');
   const logEl = preview.querySelector('.skill-test-log');
   const verdictEl = preview.querySelector('.skill-test-verdict');
   if (card._testPoll) { clearInterval(card._testPoll); card._testPoll = null; }
@@ -1213,26 +1247,56 @@ async function _testSkill(card, name, force = false) {
   let job = force ? { status: 'none' } : await _fetchTestStatus(name);
 
   if (job.status === 'none') {
-    logEl.innerHTML = '<div class="skill-test-meta">Starting test…</div>';
-    let model = '', endpoint_url = '';
-    try {
-      const sm = window.sessionModule;
-      model = (sm && sm.getCurrentModel && sm.getCurrentModel()) || '';
-      endpoint_url = (sm && sm.getCurrentEndpointUrl && sm.getCurrentEndpointUrl()) || '';
-    } catch (_) {}
-    try {
-      const res = await fetch(`${API}/api/skills/${encodeURIComponent(name)}/test`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model, endpoint_url }),
-      });
-      if (!res.ok) { logEl.innerHTML = '<div class="skill-test-err">Test failed: HTTP ' + res.status + '</div>'; return; }
-    } catch (e) { logEl.innerHTML = '<div class="skill-test-err">Test failed: ' + (e.message || e) + '</div>'; return; }
-    job = await _fetchTestStatus(name);
+    // Ask first. Retry pre-fills with whatever the previous run used, which the
+    // status payload already carries, so re-running the same task is one click
+    // and changing it is one edit.
+    if (taskEl && force) {
+      const previous = await _fetchTestStatus(name);
+      if (previous && typeof previous.task === 'string') taskEl.value = previous.task;
+    }
+    askEl?.classList.remove('hidden');
+    logEl.innerHTML = '<div class="skill-test-meta">Not started.</div>';
+    taskEl?.addEventListener('click', (e) => e.stopPropagation());
+    runBtn?.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      runBtn.disabled = true;
+      askEl?.classList.add('hidden');
+      await _startSkillTest(card, name, (taskEl && taskEl.value.trim()) || '', logEl, verdictEl);
+    });
+    return;
   }
 
   _renderTestLog(logEl, verdictEl, job, card, name);
   _setCardRunning(card, job.status === 'running');
 
+  _pollSkillTest(card, name, logEl, verdictEl, job);
+}
+
+/** POST the run, then hand over to the poller. Split out of `_testSkill` so the
+ *  "ask for a task" step and the "watch a run" step are not the same function.
+ */
+async function _startSkillTest(card, name, task, logEl, verdictEl) {
+  logEl.innerHTML = '<div class="skill-test-meta">Starting test…</div>';
+  let model = '', endpoint_url = '';
+  try {
+    const sm = window.sessionModule;
+    model = (sm && sm.getCurrentModel && sm.getCurrentModel()) || '';
+    endpoint_url = (sm && sm.getCurrentEndpointUrl && sm.getCurrentEndpointUrl()) || '';
+  } catch (_) {}
+  try {
+    const res = await fetch(`${API}/api/skills/${encodeURIComponent(name)}/test`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task, model, endpoint_url }),
+    });
+    if (!res.ok) { logEl.innerHTML = '<div class="skill-test-err">Test failed: HTTP ' + res.status + '</div>'; return; }
+  } catch (e) { logEl.innerHTML = '<div class="skill-test-err">Test failed: ' + (e.message || e) + '</div>'; return; }
+  const job = await _fetchTestStatus(name);
+  _renderTestLog(logEl, verdictEl, job, card, name);
+  _setCardRunning(card, job.status === 'running');
+  _pollSkillTest(card, name, logEl, verdictEl, job);
+}
+
+function _pollSkillTest(card, name, logEl, verdictEl, job) {
   if (job.status === 'running') {
     card._testPoll = setInterval(async () => {
       // Keep polling even if the card is collapsed (the test runs server-side);
@@ -1847,6 +1911,118 @@ async function _bulkAudit() {
   await _auditAllSkills({ names: ordered });
 }
 
+// ---- The prompt preview: what the AI is actually handed (`P8-06`/`P8-07`) ----
+
+// `GET /api/skills/index` was written to answer exactly this question, and no
+// frontend file had ever called it: `grep -rn "api/skills/index" static/`
+// returned nothing across the tree until this function.
+//
+// It renders what that endpoint returns and nothing else. It does not re-derive
+// the catalogue in the browser. A preview that computes its own answer is a
+// second renderer (`Law 14`) and stops being the truth the first time the
+// server's rules move, which is the failure mode a preview exists to prevent.
+//
+// `P8-07` is the other half and it is the part people are surprised by: the
+// catalogue carries a name and a description, a match adds the procedure and
+// the pitfalls, and the verification steps and the body of SKILL.md are never
+// sent at all. They are reachable — open the card, or the model asks for the
+// whole file — but nothing said so.
+const _PROMPT_PREVIEW_FACTS = [
+  ['In the list above', 'each skill’s name and description, filed under its category.'],
+  ['Added when your message matches one', 'its when-to-use, its numbered procedure, and its pitfalls.'],
+  ['Never sent', 'its verification steps, and everything below the frontmatter in SKILL.md. Open a skill here to read them — the AI can ask for the whole file itself, one skill at a time.'],
+];
+
+const _PROMPT_PREVIEW_GATE =
+  'All of it arrives as untrusted text, because you or a teacher model wrote it and it can say anything. '
+  + 'So a reply that gets a skill asks you before anything that writes, runs, sends or deletes.';
+
+function _closePromptPreview() {
+  const panel = document.getElementById('skills-prompt-panel');
+  if (panel) { panel.classList.add('hidden'); panel.replaceChildren(); }
+  const btn = document.getElementById('skills-preview-btn');
+  if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+
+function _el(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined && text !== null) n.textContent = String(text);
+  return n;
+}
+
+async function _renderPromptPreview() {
+  const panel = document.getElementById('skills-prompt-panel');
+  if (!panel) return;
+  const btn = document.getElementById('skills-preview-btn');
+  if (!panel.classList.contains('hidden')) { _closePromptPreview(); return; }
+  panel.classList.remove('hidden');
+  if (btn) btn.setAttribute('aria-expanded', 'true');
+  panel.replaceChildren(_el('div', 'skills-audit-summary', 'Reading the catalogue…'));
+
+  let index = [];
+  try {
+    const res = await fetch(`${API}/api/skills/index`, { credentials: 'same-origin' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    index = Array.isArray(data && data.index) ? data.index : [];
+  } catch (e) {
+    panel.replaceChildren(
+      _el('div', 'skills-audit-title', 'The catalogue the AI browses'),
+      _el('div', 'skill-prompt-note', 'Could not read it: ' + (e.message || String(e))),
+    );
+    return;
+  }
+
+  // Every string below this line is skill text a person or a model wrote, so it
+  // reaches the DOM through `textContent` and never through markup. The drafts
+  // panel (`H01`) is the precedent: a skill description is a perfectly good XSS
+  // payload and this is the one surface whose job is to show it verbatim.
+  const head = _el('div', 'skills-audit-head');
+  head.appendChild(_el('span', 'skills-audit-title', 'The catalogue the AI browses'));
+  const close = _el('button', 'memory-toolbar-btn skill-prompt-close', 'Close');
+  close.type = 'button';
+  close.addEventListener('click', (e) => { e.stopPropagation(); _closePromptPreview(); });
+  head.appendChild(close);
+
+  const body = _el('div', 'skill-prompt-body');
+  if (!index.length) {
+    body.appendChild(_el('div', 'skill-prompt-empty',
+      'Empty. The AI is told about no skills at all — publish one and it appears here.'));
+  } else {
+    const byCat = new Map();
+    for (const entry of index) {
+      const cat = (entry && entry.category) || 'general';
+      if (!byCat.has(cat)) byCat.set(cat, []);
+      byCat.get(cat).push(entry);
+    }
+    for (const cat of [...byCat.keys()].sort()) {
+      body.appendChild(_el('div', 'skill-prompt-cat', cat));
+      for (const entry of byCat.get(cat)) {
+        const row = _el('div', 'skill-prompt-row');
+        row.appendChild(_el('code', 'skill-prompt-name', (entry && entry.name) || ''));
+        row.appendChild(_el('span', 'skill-prompt-desc', (entry && entry.description) || ''));
+        if (entry && entry.status === 'draft') {
+          row.appendChild(_el('span', 'skill-prompt-tag',
+            'uncatalogued — the teacher wrote it, so it is listed anyway'));
+        }
+        body.appendChild(row);
+      }
+    }
+  }
+
+  const facts = _el('div', 'skill-prompt-facts');
+  for (const [label, text] of _PROMPT_PREVIEW_FACTS) {
+    const row = _el('div', 'skill-prompt-fact');
+    row.appendChild(_el('span', 'skill-prompt-fact-k', label + ':'));
+    row.appendChild(_el('span', 'skill-prompt-fact-v', text));
+    facts.appendChild(row);
+  }
+  facts.appendChild(_el('div', 'skill-prompt-note', _PROMPT_PREVIEW_GATE));
+
+  panel.replaceChildren(head, body, facts);
+}
+
 async function _showSkillSource(name) {
   let md = '';
   try {
@@ -1933,6 +2109,24 @@ async function importSkillFromUrl() {
   }
 }
 
+/** One step per line, bullet/number prefix stripped. */
+function _linesOf(raw) {
+  return raw
+    ? raw.split('\n').map(s => s.replace(/^\s*(?:[-*]|\d+[.)])\s+/, '').trim()).filter(Boolean)
+    : [];
+}
+
+/** Comma-separated list. */
+function _csvOf(raw) {
+  return raw ? raw.split(',').map(t => t.trim()).filter(Boolean) : [];
+}
+
+// `P8-02`. The four fields below were never a wiring gap — `SkillAddRequest`
+// (routes/skills_routes.py:38) has taken `pitfalls`, `verification`,
+// `platforms` and `requires_toolsets` all along, and the raw SKILL.md editor
+// reaches every one of them. They were a `Law 15` failure: the only route to
+// them was knowing the frontmatter format. So they go on the form that already
+// posts to this endpoint. No second write path.
 async function addSkill() {
   const name = document.getElementById('new-skill-name')?.value.trim()
     || document.getElementById('new-skill-title')?.value.trim();
@@ -1944,15 +2138,21 @@ async function addSkill() {
     || document.getElementById('new-skill-solution')?.value.trim() || '';
   const tagsRaw = document.getElementById('new-skill-tags')?.value.trim();
   const category = document.getElementById('new-skill-category')?.value.trim() || 'general';
+  const pitfallsRaw = document.getElementById('new-skill-pitfalls')?.value.trim() || '';
+  const verificationRaw = document.getElementById('new-skill-verification')?.value.trim() || '';
+  const platformsRaw = document.getElementById('new-skill-platforms')?.value.trim() || '';
+  const toolsetsRaw = document.getElementById('new-skill-toolsets')?.value.trim() || '';
 
   if (!description && !name) {
     uiModule.showError('Description (or name) is required');
     return;
   }
-  const procedure = procedureRaw
-    ? procedureRaw.split('\n').map(s => s.replace(/^\s*(?:[-*]|\d+[.)])\s+/, '').trim()).filter(Boolean)
-    : [];
-  const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
+  const procedure = _linesOf(procedureRaw);
+  const tags = _csvOf(tagsRaw);
+  const pitfalls = _linesOf(pitfallsRaw);
+  const verification = _linesOf(verificationRaw);
+  const platforms = _csvOf(platformsRaw);
+  const requires_toolsets = _csvOf(toolsetsRaw);
 
   try {
     const res = await fetch(`${API}/api/skills/add`, {
@@ -1965,13 +2165,18 @@ async function addSkill() {
         when_to_use: whenToUse,
         procedure,
         tags,
+        pitfalls,
+        verification,
+        platforms,
+        requires_toolsets,
         status: 'draft',
       }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     ['new-skill-name', 'new-skill-title', 'new-skill-description', 'new-skill-when',
      'new-skill-problem', 'new-skill-procedure', 'new-skill-solution', 'new-skill-tags',
-     'new-skill-category']
+     'new-skill-category', 'new-skill-pitfalls', 'new-skill-verification',
+     'new-skill-platforms', 'new-skill-toolsets']
       .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     await loadSkills();
     uiModule.showToast('Skill added (draft)');
@@ -2006,6 +2211,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (_selectMode) _exitSelectMode(); else _enterSelectMode();
   });
   document.getElementById('skills-audit-btn')?.addEventListener('click', _auditAllSkills);
+  document.getElementById('skills-preview-btn')?.addEventListener('click', _renderPromptPreview);
   document.getElementById('skills-select-all')?.addEventListener('change', _toggleSelectAll);
   document.getElementById('skills-bulk-cancel')?.addEventListener('click', _exitSelectMode);
   document.getElementById('skills-bulk-audit')?.addEventListener('click', _bulkAudit);

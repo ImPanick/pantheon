@@ -15,6 +15,7 @@ import logging
 from typing import Optional
 
 from src.agent_tools import ToolBlock, TOOL_TAGS
+from src.event_bus import EVENT_NAMES
 from src.theme_advanced_keys import BASE_COLOR_KEYS, advanced_schema_properties
 from src.tool_parsing import _TOOL_NAME_MAP
 from src.tool_security import BUILTIN_EMAIL_TOOLS
@@ -634,7 +635,16 @@ FUNCTION_TOOL_SCHEMAS = [
                                  "description": "Schedule frequency (for trigger_type=schedule)"},
                     "scheduled_time": {"type": "string", "description": "HH:MM in UTC (for schedule triggers). Convert the user's stated local time using the UTC offset given in the 'Current date and time' context."},
                     "scheduled_day": {"type": "integer", "description": "Day of week 0=Mon (weekly) or day of month (monthly)"},
-                    "trigger_event": {"type": "string", "enum": ["session_created", "message_sent", "document_created", "memory_added", "research_completed", "email_received", "skill_added"],
+                    # `P8-30`. Filled from `src.event_bus.EVENT_CATALOGUE` by
+                    # `_install_trigger_event_enum` just below this list, for
+                    # the reason `B21` gives: this literal is read with
+                    # `ast.literal_eval` and a call inside it makes that parse
+                    # raise. Written out here, this enum was the second copy of
+                    # the event list and the one the MODEL is bound by — an
+                    # event missing from it cannot be chosen however many times
+                    # the product fires it, which is what happened to
+                    # `document_updated`.
+                    "trigger_event": {"type": "string", "enum": [],
                                       "description": "Event name (for trigger_type=event)"},
                     "trigger_count": {"type": "integer", "description": "Fire every N events (for trigger_type=event)"},
                     "output_target": {"type": "string", "description": "Where results go. Defaults to 'session' (results land in a dedicated chat session the user reads) — this is the right choice for 'summarize for me' / 'send to me'. Do NOT go hunting for the user's email address; only use an email MCP tool name here if the user explicitly asked to be emailed AND an address is already known."},
@@ -761,8 +771,9 @@ FUNCTION_TOOL_SCHEMAS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "action": {"type": "string", "enum": ["list", "view", "view_ref", "add", "edit", "patch", "publish", "delete", "search"], "description": "list = name+description summary; view = full SKILL.md; view_ref = sub-file under the skill dir; add = create; edit = full rewrite (content); patch = old_string→new_string; publish = flip status; delete; search = relevance match on published skills."},
-                    "name": {"type": "string", "description": "Slug/name of the skill. Required for add/view/view_ref/edit/patch/publish/delete. For add, choose the exact kebab-case name the user should see and report only the returned name."},
+                    "action": {"type": "string", "enum": ["list", "view", "view_ref", "add", "edit", "patch", "publish", "delete", "search", "lint", "versions", "restore", "export"], "description": "list = name+description summary; view = full SKILL.md; view_ref = sub-file under the skill dir; add = create; edit = full rewrite (content); patch = old_string→new_string; publish = flip status; delete; search = relevance match on published skills; lint = what is wrong with a skill, instantly and with no model call — pass the fields to check a draft before saving it; versions = earlier copies kept automatically on every content change; restore = put one of those back (itself undoable); export = the skill's whole directory as {path: text}."},
+                    "name": {"type": "string", "description": "Slug/name of the skill. Required for add/view/view_ref/edit/patch/publish/delete/versions/restore/export. For add, choose the exact kebab-case name the user should see and report only the returned name."},
+                    "version_id": {"type": "string", "description": "Which earlier copy to restore, as listed by action='versions' (e.g. '0003-1.0.2')."},
                     "path": {"type": "string", "description": "Sub-path under the skill directory for view_ref (e.g. 'references/example.md')."},
                     "description": {"type": "string", "description": "One-line summary surfaced in the skills index (for add)."},
                     "category": {"type": "string", "description": "Organizational grouping like 'dev', 'email', 'system' (for add)."},
@@ -1389,6 +1400,35 @@ def _install_theme_advanced_color_properties() -> None:
 
 
 _install_theme_advanced_color_properties()
+
+
+def _install_trigger_event_enum() -> None:
+    """Point `manage_tasks.trigger_event` at the one event catalogue.
+
+    `P8-30`. Spliced in after the literal rather than written inside it, for
+    the same reason as the colour keys above (`B21`): `FUNCTION_TOOL_SCHEMAS`
+    is read with `ast.literal_eval` by
+    `tests/test_tool_index_schema_parity.py`, and `list(EVENT_NAMES)` inside
+    the literal makes that parse raise.
+
+    Logged rather than raised, matching the helper above — an import-time
+    failure would take the whole app down over a picker list — and
+    `tests/test_event_catalogue.py` fails on an enum that does not equal the
+    registry, which is the case that matters: an empty enum is a
+    `manage_tasks` that can create no event-triggered task at all.
+    """
+    for schema in FUNCTION_TOOL_SCHEMAS:
+        function = schema.get("function", {})
+        if function.get("name") != "manage_tasks":
+            continue
+        function["parameters"]["properties"]["trigger_event"]["enum"] = list(EVENT_NAMES)
+        return
+    logger.error(
+        "manage_tasks schema not found; the model cannot create event-triggered tasks"
+    )
+
+
+_install_trigger_event_enum()
 
 
 # ---------------------------------------------------------------------------

@@ -12,6 +12,13 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Awaitable, Callable, Dict, Tuple
 
 from core.auth import RESERVED_USERNAMES
+from src.event_bus import (
+    EVENT_DOCUMENT_CREATED,
+    EVENT_MEMORY_ADDED,
+    EVENT_RESEARCH_COMPLETED,
+    EVENT_SESSION_CREATED,
+    EVENT_SKILL_ADDED,
+)
 from src.owner_identity import REQUEST_SENTINEL_OWNERS
 from src.task_action_policy import (
     is_admin_only_task_action,
@@ -496,22 +503,27 @@ def _resolve_task_timezone(db, task) -> str | None:
     return None
 
 
+# `P8-30`. The event names below are `src.event_bus` constants, not strings
+# spelled again here. These five were the loose spellings a merge of "the two
+# catalogues" would have walked straight past — they are stored in
+# `ScheduledTask.trigger_event` and join against it, so the VALUES are
+# unchanged and `FORBIDDEN.md` Part 1 still holds; only the spelling moved.
 # Built-in "housekeeping" tasks seeded for every owner, keyed by action.
 # These are the canonical defaults — used both to seed and to revert a
 # built-in task the user has altered. schedule "daily" uses scheduled_time;
 # "cron" uses cron_expression.
 HOUSEKEEPING_DEFAULTS = {
-    "tidy_sessions":        {"name": "Chat Sessions Tidy",       "trigger_type": "event", "trigger_event": "session_created", "trigger_count": 5, "schedule": None, "scheduled_time": None, "cron_expression": None, "legacy_names": ["Tidy Chat Sessions"]},
-    "tidy_documents":       {"name": "Documents Tidy",           "trigger_type": "event", "trigger_event": "document_created", "trigger_count": 5, "schedule": None, "scheduled_time": None, "cron_expression": None, "legacy_names": ["Tidy Documents"]},
-    "consolidate_memory":   {"name": "Memory Tidy",              "trigger_type": "event", "trigger_event": "memory_added", "trigger_count": 5, "schedule": None, "scheduled_time": None, "cron_expression": None, "legacy_names": ["Tidy Memory"]},
-    "tidy_research":        {"name": "Research Tidy",            "trigger_type": "event", "trigger_event": "research_completed", "trigger_count": 5, "schedule": None, "scheduled_time": None, "cron_expression": None, "legacy_names": ["Tidy Research"]},
+    "tidy_sessions":        {"name": "Chat Sessions Tidy",       "trigger_type": "event", "trigger_event": EVENT_SESSION_CREATED, "trigger_count": 5, "schedule": None, "scheduled_time": None, "cron_expression": None, "legacy_names": ["Tidy Chat Sessions"]},
+    "tidy_documents":       {"name": "Documents Tidy",           "trigger_type": "event", "trigger_event": EVENT_DOCUMENT_CREATED, "trigger_count": 5, "schedule": None, "scheduled_time": None, "cron_expression": None, "legacy_names": ["Tidy Documents"]},
+    "consolidate_memory":   {"name": "Memory Tidy",              "trigger_type": "event", "trigger_event": EVENT_MEMORY_ADDED, "trigger_count": 5, "schedule": None, "scheduled_time": None, "cron_expression": None, "legacy_names": ["Tidy Memory"]},
+    "tidy_research":        {"name": "Research Tidy",            "trigger_type": "event", "trigger_event": EVENT_RESEARCH_COMPLETED, "trigger_count": 5, "schedule": None, "scheduled_time": None, "cron_expression": None, "legacy_names": ["Tidy Research"]},
     "summarize_emails":     {"name": "Email (Summary)",          "schedule": "cron",  "scheduled_time": None,    "cron_expression": "0 */2 * * *", "ship_paused": True, "legacy_names": ["Tidy Email (Summary)"]},
     "draft_email_replies":  {"name": "Email AI Auto Reply",      "schedule": "cron",  "scheduled_time": None,    "cron_expression": "0 */2 * * *", "ship_paused": True, "legacy_names": ["Tidy Email (Replies)", "AI Auto Reply"]},
     "email_auto_translate": {"name": "Email Auto Translate",     "schedule": "cron",  "scheduled_time": None,    "cron_expression": "0 */2 * * *", "ship_paused": True, "legacy_names": ["Auto-translate Emails", "Auto Translate Email"]},
     "extract_email_events": {"name": "Email Calendar Events",    "schedule": "cron",  "scheduled_time": None,    "cron_expression": "0 */1 * * *", "ship_paused": True, "legacy_names": ["Email → Calendar Events"]},
     "classify_events":      {"name": "Calendar Classify Events", "schedule": "cron",  "scheduled_time": None,    "cron_expression": "0 6,18 * * *", "ship_paused": True, "legacy_names": ["Classify Calendar Events"]},
     "check_email_urgency":   {"name": "Email Tags",               "schedule": "cron",  "scheduled_time": None,    "cron_expression": "0 * * * *", "ship_paused": True, "old_cron_expressions": ["*/15 * * * *"], "legacy_names": ["Email Triage", "Urgent Email"]},
-    "audit_skills":          {"name": "Skills Audit",             "trigger_type": "event", "trigger_event": "skill_added", "trigger_count": 5, "schedule": None, "scheduled_time": None, "cron_expression": None, "legacy_names": ["Audit Skills"]},
+    "audit_skills":          {"name": "Skills Audit",             "trigger_type": "event", "trigger_event": EVENT_SKILL_ADDED, "trigger_count": 5, "schedule": None, "scheduled_time": None, "cron_expression": None, "legacy_names": ["Audit Skills"]},
 }
 
 RETIRED_HOUSEKEEPING_ACTIONS = frozenset({
@@ -752,6 +764,75 @@ class TaskScheduler:
                 db.close()
         except Exception:
             logger.debug("Task progress update failed", exc_info=True)
+
+    # `P8-25`. A run's step log. `TaskRun.steps` was declared on the model and
+    # never written, so a run recorded one result string for the whole task and
+    # the Activity view could say a task succeeded without ever saying what it
+    # touched. Both executors feed this: an action through the progress
+    # callback it is already handed, an LLM task through the agent loop's own
+    # tool events.
+    #
+    # Capped, because this is JSON in a row somebody loads to read a summary. A
+    # forty-round agent run with a chatty tool would otherwise put a megabyte
+    # of tool output behind every click in Activity.
+    _MAX_RUN_STEPS = 200
+    _MAX_STEP_DETAIL = 400
+
+    def _record_run_step(self, **fields):
+        """Append one step to the run currently executing on this scheduler.
+
+        Carried on the instance, in the same shape and for the same reason as
+        `_last_run_model`, which the run's resolved model already rides on —
+        one place the executors write and `_execute_task_locked` reads
+        (`Law 14`). `B603` records what that shape costs above a concurrency
+        cap of one, which it also already cost `_last_run_model`.
+        """
+        steps = getattr(self, "_last_run_steps", None)
+        if steps is None:
+            steps = []
+            self._last_run_steps = steps
+        if len(steps) >= self._MAX_RUN_STEPS:
+            return None
+        for key in ("detail", "output"):
+            value = fields.get(key)
+            if isinstance(value, str) and len(value) > self._MAX_STEP_DETAIL:
+                fields[key] = value[: self._MAX_STEP_DETAIL].rstrip() + "\u2026"
+        fields.setdefault("at", _utcnow().isoformat() + "Z")
+        steps.append(fields)
+        return fields
+
+    def _close_run_step(self, *, tool, round_, status, output):
+        """Finish the most recent open step for this tool and round.
+
+        A `tool_output` with no matching `tool_start` still records: the point
+        of the log is what happened, and a tool whose start event was missed is
+        exactly the case somebody opens it to understand.
+        """
+        for step in reversed(getattr(self, "_last_run_steps", None) or []):
+            if (step.get("kind") == "tool" and step.get("status") == "running"
+                    and step.get("tool") == tool and step.get("round") == round_):
+                step["status"] = status
+                if output:
+                    step["output"] = output[: self._MAX_STEP_DETAIL]
+                return
+        self._record_run_step(kind="tool", tool=tool or "?", round=round_,
+                              status=status, output=output or "")
+
+    def _attach_run_steps(self, run) -> None:
+        """Persist this run's step log onto its row, if anything recorded one."""
+        steps = getattr(self, "_last_run_steps", None)
+        if run is None or not steps:
+            return
+        try:
+            run.steps = json.dumps(steps)
+        except (TypeError, ValueError):
+            # A step carried something json cannot represent. The run's own
+            # status and result are unaffected and still have to be committed,
+            # so the log is dropped rather than the run — but it is said out
+            # loud, because an empty step log reads exactly like a run that did
+            # nothing at all.
+            logger.warning("Could not serialise the step log for run %s",
+                           getattr(run, "id", "?"))
 
     def _mark_run_aborted(self, task_id: str, run_id: str | None = None, message: str = "Stopped by user") -> bool:
         """Mark an active run as aborted. Used by stop/cancel paths."""
@@ -1363,6 +1444,9 @@ class TaskScheduler:
             # previous llm/research run's model. The executors set it once the
             # model is resolved.
             self._last_run_model = None
+            # `P8-25`. Cleared with the model, for the same reason: the step log
+            # belongs to this run and must not inherit the previous one's.
+            self._last_run_steps = None
             foreground_cancel = {"hit": False}
             foreground_monitor = None
             if gate_foreground:
@@ -1403,6 +1487,7 @@ class TaskScheduler:
                 # Record which model actually ran (resolved inside the executor).
                 if getattr(self, "_last_run_model", None):
                     run.model = self._last_run_model
+                self._attach_run_steps(run)
                 if run.status == "success":
                     await self._deliver_task_result(task, result, db, model=getattr(self, "_last_run_model", None))
             except TaskDeferred as defer:
@@ -1435,6 +1520,9 @@ class TaskScheduler:
                     run_obj.error = msg
                     run_obj.result = run_obj.result or msg
                     run_obj.finished_at = _utcnow()
+                    # An interrupted run is one of the two people most want the
+                    # steps for; the other is the one that errored, below.
+                    self._attach_run_steps(run_obj)
                 task.last_run = _utcnow()
                 if foreground_cancel.get("hit"):
                     task.next_run = _utcnow() + timedelta(minutes=15)
@@ -1467,6 +1555,7 @@ class TaskScheduler:
                 run.status = "skipped"
                 run.result = str(noop)
                 run.finished_at = _utcnow()
+                self._attach_run_steps(run)
                 task.last_run = _utcnow()
                 if (task.trigger_type or "schedule") == "schedule":
                     task.next_run = compute_next_run(
@@ -1604,6 +1693,7 @@ class TaskScheduler:
                     run_obj.status = "error"
                     run_obj.error = err_text[:2000]
                     run_obj.finished_at = _utcnow()
+                    self._attach_run_steps(run_obj)
                 # Advance next_run even on failure so a broken task doesn't
                 # busy-loop the scheduler every tick with a stale past date.
                 task_obj = db.query(ScheduledTask).filter(ScheduledTask.id == task_id).first()
@@ -1714,18 +1804,21 @@ class TaskScheduler:
         "audit_skills",
     })
 
-    _MODEL_BACKED_ACTIONS = frozenset({
-        "summarize_emails",
-        "draft_email_replies",
-        "email_auto_translate",
-        "extract_email_events",
-        "classify_events",
-        "learn_sender_signatures",
-        "check_email_urgency",
-        "test_skills",
-        "audit_skills",
-        "consolidate_memory",
-    })
+    def _action_needs_model(self, action: str | None) -> bool:
+        """Does this built-in action call a model?
+
+        `P8-22`. This was a frozenset spelled out here, to gate the model
+        semaphore, and spelled out again in `static/js/tasks.js`, to draw the
+        "uses model" badge — two lists of the same fact, either of which could
+        be edited without the other. It is stated once now, as `model_backed`
+        in `src.builtin_actions.BUILTIN_ACTION_META`, and
+        `GET /api/tasks/meta/actions` carries the flag to the client so the
+        badge and the semaphore cannot describe the same action differently
+        (`Law 7`). Imported lazily, matching every other reach from this module
+        into `builtin_actions`.
+        """
+        from src.builtin_actions import MODEL_BACKED_ACTIONS
+        return (action or "") in MODEL_BACKED_ACTIONS
 
     def _task_needs_model_slot(self, task_id: str) -> bool:
         """Only LLM/research/model-backed actions should wait in the model
@@ -1740,7 +1833,7 @@ class TaskScheduler:
             task_type = getattr(task, "task_type", "") or "llm"
             if task_type != "action":
                 return True
-            return (getattr(task, "action", "") or "") in self._MODEL_BACKED_ACTIONS
+            return self._action_needs_model(getattr(task, "action", ""))
         finally:
             db.close()
 
@@ -1771,6 +1864,11 @@ class TaskScheduler:
         try:
             # Pass task prompt as script/command for ssh_command/run_script actions.
             def _progress(message: str):
+                # `P8-25`. Every action already reports its progress here and
+                # each line overwrote the last one into `result`, so only the
+                # final line survived and the rest existed nowhere. They are
+                # the run's steps; they are kept now as well as shown.
+                self._record_run_step(kind="progress", detail=message)
                 self._set_run_progress(run_id, message)
 
             kwargs = {"owner": task.owner, "task_name": task.name, "progress_cb": _progress}
@@ -2458,10 +2556,38 @@ class TaskScheduler:
                         if data.get("thinking"):
                             continue
                         full_text += data["delta"]
+                    elif data.get("type") == "tool_start":
+                        # `P8-25`. The run's step log. These events already
+                        # carried everything an Activity row needs to say what
+                        # a task did, and nothing read them.
+                        self._record_run_step(
+                            kind="tool",
+                            tool=data.get("tool") or "?",
+                            round=data.get("round"),
+                            detail=data.get("command") or "",
+                            status="running",
+                        )
+                    elif data.get("type") == "tool_blocked":
+                        # Refused by policy — it never ran, and that is the most
+                        # useful line in the log when a task did less than asked.
+                        self._record_run_step(
+                            kind="tool",
+                            tool=data.get("tool") or "?",
+                            round=data.get("round"),
+                            detail=data.get("command") or "",
+                            status="blocked",
+                            output=data.get("reason") or "",
+                        )
                     elif data.get("type") == "tool_output":
                         # Tool results — capture summary so we have SOMETHING even
                         # if the model never produces a final text response
                         tool_summary = data.get("stdout") or data.get("output") or data.get("result") or ""
+                        self._close_run_step(
+                            tool=data.get("tool") or "?",
+                            round_=data.get("round"),
+                            status="error" if data.get("exit_code") else "ok",
+                            output=tool_summary if isinstance(tool_summary, str) else "",
+                        )
                         if isinstance(tool_summary, str) and tool_summary.strip():
                             tool_results.append(f"[{data.get('tool', '?')}] {tool_summary[:500]}")
                         approval = data.get("ask_user")

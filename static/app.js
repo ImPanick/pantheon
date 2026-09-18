@@ -25,7 +25,7 @@ import {
 import markdownModule from './js/markdown.js';
 import chatRenderer from './js/chatRenderer.js?v=20260829trustladder1';
 import sessionModule from './js/sessions.js';
-import memoryModule from './js/memory.js?v=20260722memoryloading1';
+import memoryModule from './js/memory.js?v=20260918workshop1';
 import voiceRecorderModule from './js/voiceRecorder.js';
 import censorModule from './js/censor.js';
 import galleryModule from './js/gallery.js?v=20260708match1';

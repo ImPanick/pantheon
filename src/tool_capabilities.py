@@ -342,7 +342,8 @@ _PRIVATE_ACTION_READS: Mapping[str, frozenset[str]] = MappingProxyType(
         "manage_notes": frozenset({"list", "search", "find", "view"}),
         "manage_research": frozenset({"list", "read", "open", "view", "get"}),
         "manage_session": frozenset({"list", "switch", "open", "select", "view"}),
-        "manage_skills": frozenset({"list", "index", "view", "view_ref", "search"}),
+        "manage_skills": frozenset({"list", "index", "view", "view_ref", "search",
+                                    "lint", "versions", "export"}),
         "manage_tasks": frozenset({"list"}),
     }
 )
@@ -369,7 +370,7 @@ _PRIVATE_ACTION_WRITES: Mapping[str, frozenset[str]] = MappingProxyType(
                 "fork",
             }
         ),
-        "manage_skills": frozenset({"add", "edit", "patch", "publish", "delete"}),
+        "manage_skills": frozenset({"add", "edit", "patch", "publish", "delete", "restore"}),
         "manage_tasks": frozenset({"create", "edit", "delete", "pause", "resume", "run"}),
     }
 )

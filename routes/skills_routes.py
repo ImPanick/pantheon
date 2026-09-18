@@ -18,6 +18,19 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from services.memory.skills import SkillsManager
+from services.memory.skill_injection import (
+    INJECTED_FIELDS,
+    WITHHELD_FIELDS,
+    render_skill_index_block,
+)
+from services.memory.skill_lint import (
+    DUPLICATE_SIMILARITY,
+    audit_flag_text as _audit_flag_text,
+    audit_generic_blocker as _audit_generic_blocker,
+    base_name as _base_name,
+    should_check_retrieval_precision as _should_check_retrieval_precision,
+    skill_similarity as _skill_similarity,
+)
 from src.auth_helpers import get_current_user
 from src.prompt_security import untrusted_context_message
 from core.middleware import require_admin
@@ -336,30 +349,6 @@ async def _eval_skill_necessity(skill_md: str, others: list, url: str, model: st
     }
 
 
-def _should_check_retrieval_precision(skill: dict) -> bool:
-    """Cheap prefilter for the expensive retrieval-precision judge.
-
-    Skills with broad tags like "network" or "document" are the ones most likely
-    to over-inject. Narrow command/vendor tags alone are fine.
-    """
-    broad = {
-        "arch", "arch linux", "linux", "network", "networking", "wifi",
-        "installation", "install", "system", "ssh", "document", "documents",
-        "search", "email", "calendar", "gpu", "server", "python",
-    }
-    if not isinstance(skill, dict):
-        return False
-    tags = {str(t or "").strip().lower() for t in (skill.get("tags") or [])}
-    if tags & broad:
-        return True
-    text = " ".join([
-        str(skill.get("name") or ""),
-        str(skill.get("description") or ""),
-        str(skill.get("when_to_use") or ""),
-    ]).lower()
-    return sum(1 for t in broad if t in text) >= 2
-
-
 async def _eval_skill_retrieval_precision(skill_md: str, others: list,
                                           url: str, model: str,
                                           headers: Optional[dict]) -> Optional[dict]:
@@ -578,31 +567,13 @@ def _skill_duplicate_blocker(skills_manager, name: str, owner) -> Optional[str]:
     The LLM necessity check catches semantic redundancy, but the UI also has a
     cheap similarity pass. Use the same broad signal before auto-publishing so
     a high-scoring lower-priority duplicate stays draft.
+
+    The token / similarity / base-name core moved to `services.memory.skill_lint`
+    for `P8-12`, because the author-facing lint needs exactly this comparison and
+    a second copy of it would be two answers to "is this a duplicate?" that drift
+    (`Law 14`). What stays here is the part that is specific to the audit: which
+    of a duplicate pair is the keeper.
     """
-    import re as _re
-
-    def _tokens(sk: dict) -> set[str]:
-        text = " ".join([
-            str(sk.get("name") or ""),
-            str(sk.get("description") or ""),
-            str(sk.get("when_to_use") or ""),
-            " ".join(sk.get("procedure") or []),
-            " ".join(sk.get("tags") or []),
-        ]).lower()
-        text = _re.sub(r"-\d+\b", "", text)
-        return {
-            t for t in _re.split(r"[^a-z0-9]+", text)
-            if len(t) > 2 and t not in {"the", "and", "with", "for", "from", "using"}
-        }
-
-    def _sim(a: dict, b: dict) -> float:
-        A, B = _tokens(a), _tokens(b)
-        if not A or not B:
-            return 0.0
-        return len(A & B) / max(1, len(A | B))
-
-    def _base(n: str) -> str:
-        return _re.sub(r"-\d+$", "", str(n or ""))
 
     def _score(sk: dict) -> float:
         return (
@@ -623,7 +594,8 @@ def _skill_duplicate_blocker(skills_manager, name: str, owner) -> Optional[str]:
         other_name = other.get("name") or other.get("id")
         if not other_name or other_name == cur_name:
             continue
-        if _base(cur_name) == _base(other_name) or _sim(current, other) >= 0.38:
+        if (_base_name(cur_name) == _base_name(other_name)
+                or _skill_similarity(current, other) >= DUPLICATE_SIMILARITY):
             duplicates.append(other)
     if not duplicates:
         return None
@@ -641,46 +613,6 @@ def _skill_duplicate_blocker(skills_manager, name: str, owner) -> Optional[str]:
         except Exception:
             pass
         return keeper_name
-    return None
-
-
-def _audit_flag_text(*parts) -> str:
-    text_parts = []
-    for part in parts:
-        if isinstance(part, dict):
-            text_parts.extend(str(v or "") for v in part.values())
-        elif isinstance(part, (list, tuple, set)):
-            text_parts.extend(str(v or "") for v in part)
-        else:
-            text_parts.append(str(part or ""))
-    return " ".join(text_parts).lower()
-
-
-def _audit_generic_blocker(skill: Optional[dict], necessity: Optional[dict],
-                           verdict_data: Optional[dict]) -> Optional[str]:
-    """Return a short reason when a generic/trivial skill must stay draft."""
-    generic_re = re.compile(
-        r"\b(too[-\s]?generic|generic|trivial|capable assistant|without a saved|"
-        r"not need|unnecessary|irrelevant)\b",
-        re.I,
-    )
-    if isinstance(necessity, dict):
-        reason = str(necessity.get("reason") or "")
-        if necessity.get("necessary") is False and generic_re.search(reason):
-            return reason or "Generic or unnecessary skill"
-
-    if isinstance(skill, dict):
-        tag_text = _audit_flag_text(skill.get("tags") or [])
-        if generic_re.search(tag_text):
-            return "Skill is tagged generic"
-
-    if isinstance(verdict_data, dict):
-        verdict_text = _audit_flag_text(
-            verdict_data.get("summary"),
-            verdict_data.get("issues") or [],
-        )
-        if generic_re.search(verdict_text):
-            return "Audit flagged the skill as generic or unnecessary"
     return None
 
 
@@ -1218,12 +1150,37 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
 
     @router.get("/index")
     async def get_index(request: Request):
-        """The lightweight `[{name, description, category}]` list that the
-        agent's system prompt sees. Useful for the UI's "what does the model
-        actually have access to?" view."""
+        """What the model is shown — the list **and** the text. `P8-06`.
+
+        `prompt` is produced by `render_skill_index_block`, which is the same
+        function `agent_loop._build_base_prompt` calls to build the block it
+        injects. It is not a rendering of the list for display; it is the block,
+        so a preview drawn from it cannot drift from the prompt.
+
+        `injected_fields` / `withheld_fields` say which of a skill's fields reach
+        those characters. The answer is narrower than the index rows suggest —
+        `source` and `teacher_model` ride along for `P4-16`'s receipt and never
+        reach a prompt line, and the procedure, pitfalls and verification stay on
+        disk until `manage_skills action=view` fetches them (`P8-07`).
+
+        **One gate the loop applies and this does not:** the loop passes its
+        active toolset list to `index_for`, so a skill whose `requires_toolsets`
+        are switched off is hidden from the prompt and still listed here. This
+        endpoint answers "what does the library make available", not "what did
+        that specific turn carry"; a per-turn answer is what `P4-16`'s receipt is
+        for, and it reads the same list.
+        """
         user = _owner(request)
         idx = skills_manager.index_for(owner=user)
-        return {"index": idx, "count": len(idx)}
+        block = render_skill_index_block(idx)
+        return {
+            "index": idx,
+            "count": len(idx),
+            "prompt": block,
+            "prompt_chars": len(block),
+            "injected_fields": list(INJECTED_FIELDS),
+            "withheld_fields": list(WITHHELD_FIELDS),
+        }
 
     @router.get("/slash-catalog")
     async def get_slash_catalog(request: Request):

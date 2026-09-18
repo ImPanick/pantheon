@@ -141,19 +141,22 @@ We wrote a script that counts element lookups with nothing behind them. It found
 six subsystems, which is the point of writing the script rather than writing the list. What
 follows is that original finding, kept because it is the honest picture of what a fork inherits.
 
-**Run it today and it says 120.** That is not 42 regressions — it is the same script looking at
-more than it used to. It has been widened three times since the 78 was taken, each time because
+**Run it today and it says 40.** It said 120 when this paragraph was written and 78 when the
+original sweep was taken, and neither difference is a regression — it is the same script looking at
+more than it used to, and then a triage driving down what it found. It has been widened three times since the 78 was taken, each time because
 it turned out to be measuring less than it claimed: it read `static/js/` and never `static/app.js`,
 the largest module in the product; it counted a lookup *described in a comment* as a lookup; and
 it scored a lookup that indexes a map with a variable as clean, which on 2026-08-30 hid a live
 defect where the agent reported opening a panel that had no button behind it. Closing that last
-one moved the count from 9 to 124 with no product code changing. **So 78 and 120 are two
-different measurements and the difference between them means nothing.** The ratchet is what
-means something: `check-wiring.py` runs in CI at a ceiling that may come down and may not go up,
-so a *new* unreachable id shows up the day it is written.
+one moved the count from 9 to 124 with no product code changing. **So 78, 120 and 40 are three
+different measurements and the differences between them mean nothing on their own.** The ratchet is
+what means something: `check-wiring.py` runs in CI at a ceiling that may come down and may not go
+up, so a *new* unreachable id shows up the day it is written. It has come down twice since — `P3-20`
+triaged 124 to 40, and `P3-20`'s own test used to pin the literal `120` and went red the day the
+ratchet did its job, which is `B520`.
 
-**Nor are the 120 all defects.** Classified by how each id is reached rather than by name, at
-least 87 of the 124 measured at triage are guarded by construction — code that knows the markup
+**Nor are the remaining 40 all defects.** Classified by how each id is reached rather than by
+name, at least 87 of the 124 measured at the 2026-08-30 triage were guarded by construction — code that knows the markup
 may be absent and returns early. That is a feature removed cleanly with its wiring left behind
 on purpose, costing one null check. The triage is `P3-20`, and its finding was that driving the
 number down is the wrong goal: it would mean deleting guarded code that costs nothing, which
@@ -182,7 +185,7 @@ proved it dead.
 
 ## Status
 
-**689 tracked tasks, 434 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
+**706 tracked tasks, 446 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
 it is the only place work is tracked — one list, one progress area, validated by a script that
 recounts every phase row against its own ticks. It exists because the summary line was once wrong
 by nineteen and carried forward unread from entry to entry, because each author copied the line

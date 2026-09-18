@@ -3424,22 +3424,195 @@ BUILTIN_ACTIONS = {
     # ping_notes removed from the registry — runs only inside `_note_pings_loop`.
 }
 
-# Descriptions for the UI/API
-BUILTIN_ACTION_INFO = {
-    "tidy_sessions": "Clean up empty chat sessions and auto-sort into folders",
-    "tidy_documents": "Remove junk/empty documents",
-    "consolidate_memory": "Remove duplicate memories",
-    "tidy_research": "Remove orphaned research files (sessions that were deleted)",
-    "summarize_emails": "Pre-generate AI summaries for new inbox emails",
-    "draft_email_replies": "Pre-draft AI reply suggestions for new inbox emails",
-    "email_auto_translate": "Detect foreign-language emails and cache translated text for the email reader",
-    "extract_email_events": "Scan emails for booking/meeting confirmations and auto-add to calendar",
-    "classify_events": "Tag upcoming events with importance (low/normal/high/critical) and type (work/health/travel/etc.); colors them too",
-    "daily_brief": "Build a morning digest: today's calendar, unread email count + top senders, active todos",
-    "learn_sender_signatures": "LLM learns each sender's signature from 3+ of their recent emails; cached per address so future renders fold sigs reliably without heuristics",
-    "ssh_command": "Run a shell command on a local or remote host",
-    "run_script": "Run a script locally or on PANTHEON_SCRIPT_HOST",
-    "test_skills": "Run the per-skill Test on every skill: agent run + LLM judge → records verdict on the skill (pass/needs_work/fail/inconclusive). Advisory only — never rewrites or demotes anything.",
-    "audit_skills": "Audit unaudited skills after enough new skills are added: test, narrow metadata, self-edit/retry, optional teacher rewrite, tag duplicates/trivial skills, and publish/draft using the auto-approve threshold.",
-    "check_email_urgency": "Scan unread emails hourly, tag urgent/reply-soon/newsletter/marketing/spam, and send a reminder when a new email needs a fast reply.",
+# `P8-22`. One registry per built-in action — its description, where it belongs
+# in the palette, which icon names it, whether it calls a model, and what the
+# task's `prompt` field carries for it.
+#
+# There were two maps here and they had drifted. `BUILTIN_ACTIONS` dispatches
+# **18** actions; the description map held **16**, and `/meta/actions` iterates
+# the descriptions. So `run_local` and `cookbook_serve` ran perfectly well and
+# were never once offered by the only endpoint that says what exists — two
+# working actions invisible to the palette because the second map had fallen
+# two entries behind the first. `BUILTIN_ACTION_INFO` is derived from this one
+# now (`Law 7`), and `tests/test_node_palette.py` holds the key sets equal so
+# the nineteenth action cannot repeat it. (Counts re-measured 2026-09-18.)
+#
+# `category` and `icon` lived in `static/js/tasks.js` (`_CATEGORY_MAP`,
+# `_TASK_ICONS`), so a new action needed an edit on the other side of the wire
+# before it could be drawn at all. `icon` is a **semantic name**, not path
+# geometry: the view still owns the drawing, this owns which drawing.
+#
+# `model_backed` was stated twice — the scheduler's model-slot gate and the
+# client's "uses model" badge — so an edit to one left the other saying
+# something different about the same action. It is stated here, once.
+#
+# `params` describes what `prompt` carries for this action, exactly as
+# `TaskScheduler._execute_action` unpacks it. `admin_only` is NOT here: it is
+# `src.task_action_policy.ADMIN_ONLY_TASK_ACTIONS` and stays there.
+def _prompt_param(name, label, kind, description):
+    """One parameter, carried in the task's `prompt` field."""
+    return {
+        "name": name,
+        "label": label,
+        "type": kind,
+        "required": True,
+        "source": "prompt",
+        "description": description,
+    }
+
+
+# The order the palette shows categories in. `Forge` first so a just-saved
+# serve schedule is at the top rather than scrolled off the bottom; the rest is
+# the order people have already learned, moved across unchanged.
+ACTION_CATEGORY_ORDER = (
+    "Forge", "Other", "Calendar", "Email", "Chats", "Documents",
+    "Memory", "Research", "Skills", "Assistant", "System",
+)
+
+BUILTIN_ACTION_META = {
+    "tidy_sessions": {
+        "description": "Clean up empty chat sessions and auto-sort into folders",
+        "category": "Chats", "icon": "chat", "model_backed": False,
+        "params": [],
+    },
+    "tidy_documents": {
+        "description": "Remove junk/empty documents",
+        "category": "Documents", "icon": "document", "model_backed": False,
+        "params": [],
+    },
+    "consolidate_memory": {
+        "description": "Remove duplicate memories",
+        "category": "Memory", "icon": "brain", "model_backed": True,
+        "params": [],
+    },
+    "tidy_research": {
+        "description": "Remove orphaned research files (sessions that were deleted)",
+        "category": "Research", "icon": "search", "model_backed": False,
+        "params": [],
+    },
+    "summarize_emails": {
+        "description": "Pre-generate AI summaries for new inbox emails",
+        "category": "Email", "icon": "envelope", "model_backed": True,
+        "params": [],
+    },
+    "draft_email_replies": {
+        "description": "Pre-draft AI reply suggestions for new inbox emails",
+        "category": "Email", "icon": "reply", "model_backed": True,
+        "params": [],
+    },
+    "email_auto_translate": {
+        "description": "Detect foreign-language emails and cache translated text for the email reader",
+        "category": "Email", "icon": "translate", "model_backed": True,
+        "params": [],
+    },
+    "extract_email_events": {
+        "description": "Scan emails for booking/meeting confirmations and auto-add to calendar",
+        "category": "Calendar", "icon": "calendar-plus", "model_backed": True,
+        "params": [],
+    },
+    "classify_events": {
+        "description": "Tag upcoming events with importance (low/normal/high/critical) and type (work/health/travel/etc.); colors them too",
+        "category": "Calendar", "icon": "calendar-tags", "model_backed": True,
+        "params": [],
+    },
+    "daily_brief": {
+        "description": "Build a morning digest: today's calendar, unread email count + top senders, active todos",
+        "category": "Assistant", "icon": "clock", "model_backed": False,
+        "params": [],
+    },
+    "learn_sender_signatures": {
+        "description": "LLM learns each sender's signature from 3+ of their recent emails; cached per address so future renders fold sigs reliably without heuristics",
+        "category": "Email", "icon": "signature", "model_backed": True,
+        "params": [],
+    },
+    "ssh_command": {
+        "description": "Run a shell command on a local or remote host",
+        "category": "System", "icon": "terminal", "model_backed": False,
+        "params": [
+            _prompt_param("command", "Command", "string",
+                          'The shell command to run. Runs locally unless the task names a host.'),
+        ],
+    },
+    "run_script": {
+        "description": "Run a script locally or on PANTHEON_SCRIPT_HOST",
+        "category": "System", "icon": "terminal", "model_backed": False,
+        "params": [
+            _prompt_param("script", "Script", "text",
+                          'The script body. Runs on PANTHEON_SCRIPT_HOST when that is set, otherwise locally.'),
+        ],
+    },
+    "run_local": {
+        "description": "Run a script on this machine — never over SSH",
+        "category": "System", "icon": "terminal", "model_backed": False,
+        "params": [
+            _prompt_param("script", "Script", "text",
+                          'The script body. Always runs on the machine Pantheon is running on.'),
+        ],
+    },
+    "test_skills": {
+        "description": "Run the per-skill Test on every skill: agent run + LLM judge → records verdict on the skill (pass/needs_work/fail/inconclusive). Advisory only — never rewrites or demotes anything.",
+        "category": "Skills", "icon": "check-square", "model_backed": True,
+        "params": [],
+    },
+    "audit_skills": {
+        "description": "Audit unaudited skills after enough new skills are added: test, narrow metadata, self-edit/retry, optional teacher rewrite, tag duplicates/trivial skills, and publish/draft using the auto-approve threshold.",
+        "category": "Skills", "icon": "check-book", "model_backed": True,
+        "params": [],
+    },
+    "check_email_urgency": {
+        "description": "Scan unread emails hourly, tag urgent/reply-soon/newsletter/marketing/spam, and send a reminder when a new email needs a fast reply.",
+        "category": "Email", "icon": "bell", "model_backed": True,
+        "params": [],
+    },
+    "cookbook_serve": {
+        "description": "Launch a Forge model serve on a schedule",
+        "category": "Forge", "icon": "book", "model_backed": False,
+        "params": [
+            _prompt_param("command", "Serve config", "json",
+                          'JSON: {"preset": "name"} or {"repo_id": "...", "cmd": "...", "host": "..."}. Add "end_after_min": N to stop it N minutes after it starts.'),
+        ],
+    },
 }
+
+# Derived, so the descriptions and the registry cannot disagree (`Law 7`).
+# Still a plain dict under the same name: three call sites read it and one test
+# substitutes it.
+BUILTIN_ACTION_INFO = {
+    name: meta["description"] for name, meta in BUILTIN_ACTION_META.items()
+}
+
+# Derived for the same reason. The scheduler reads it to decide whether a run
+# waits for a model slot; the palette ships the same flag to the client so the
+# badge and the semaphore cannot end up describing the same action differently.
+MODEL_BACKED_ACTIONS = frozenset(
+    name for name, meta in BUILTIN_ACTION_META.items() if meta.get("model_backed")
+)
+
+
+def build_action_palette(*, include_admin_only: bool = True) -> list:
+    """Every offerable built-in action, with everything needed to draw it.
+
+    Iterates `BUILTIN_ACTION_INFO` rather than the registry directly, so a
+    caller that substitutes a cut-down description map still exercises the
+    admin filter this function is mostly about. An action with no registry
+    entry is offered uncategorised rather than dropped — dropping it silently
+    is the defect `P8-22` exists to fix, and it should not be reachable twice.
+    """
+    from src.task_action_policy import ADMIN_ONLY_TASK_ACTIONS
+
+    nodes = []
+    for name, description in BUILTIN_ACTION_INFO.items():
+        admin_only = name in ADMIN_ONLY_TASK_ACTIONS
+        if admin_only and not include_admin_only:
+            continue
+        meta = BUILTIN_ACTION_META.get(name) or {}
+        nodes.append({
+            "name": name,
+            "description": description,
+            "category": meta.get("category") or "Other",
+            "icon": meta.get("icon") or "gear",
+            "model_backed": bool(meta.get("model_backed")),
+            "admin_only": admin_only,
+            "params": [dict(p) for p in (meta.get("params") or ())],
+        })
+    return nodes

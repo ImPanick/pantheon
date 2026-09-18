@@ -1456,6 +1456,39 @@ def _migrate_add_task_run_model_column():
         except Exception:
             pass
 
+def _migrate_add_task_run_steps_column():
+    """Add steps column to task_runs if it doesn't exist (JSON log of a run's steps).
+
+    `P8-25`. `TaskRun.steps` was declared on the model and never migrated, so a
+    database built by `create_all` had the column and every database that
+    existed before the declaration did not — which is every upgraded install. A
+    fresh dev box therefore passed and a real deployment raised
+    `OperationalError: no such column: steps` on the first write. The column is
+    nullable, so a run that predates it reads as "no step log recorded", which
+    is exactly what those runs are.
+    """
+    import sqlite3
+    db_path = DATABASE_URL.replace("sqlite:///", "")
+    if not os.path.exists(db_path):
+        return
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.execute("PRAGMA table_info(task_runs)")
+        columns = [row[1] for row in cursor.fetchall()]
+        if columns and "steps" not in columns:
+            conn.execute("ALTER TABLE task_runs ADD COLUMN steps TEXT")
+            conn.commit()
+            logging.getLogger(__name__).info("Migrated: added 'steps' column to task_runs")
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"task_runs steps migration failed: {e}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            # Never opened, or already closed by the error path above.
+            pass
+
 def _migrate_add_supports_tools_column():
     """Add supports_tools column to model_endpoints if it doesn't exist."""
     import sqlite3
@@ -2447,6 +2480,7 @@ def init_db():
     _migrate_add_provider_auth_id_column()
     _migrate_add_supports_tools_column()
     _migrate_add_task_run_model_column()
+    _migrate_add_task_run_steps_column()
     _migrate_add_owner_column()
     _migrate_add_document_archived_column()
     _migrate_add_last_message_at_column()

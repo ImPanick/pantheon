@@ -22,6 +22,12 @@ logger = logging.getLogger(__name__)
 # Skills management tool
 # ---------------------------------------------------------------------------
 
+# One tool result carrying a whole skill bundle. Above this the procedure is
+# returned alone and the rest is fetched per file, because a JSON document cut
+# in half is worth less than a smaller one that is complete.
+_SKILL_EXPORT_MAX_CHARS = 60_000
+
+
 async def do_manage_skills(content: str, owner: Optional[str] = None) -> Dict:
     """Handle manage_skills tool calls.
 
@@ -41,6 +47,18 @@ async def do_manage_skills(content: str, owner: Optional[str] = None) -> Dict:
       publish {name}             — Flip status: draft -> published.
       delete {name}              — Remove the skill directory.
       search {query}             — Relevance match on published skills.
+      lint  {name | fields…}     — What is wrong with a skill, with no model
+                                   call. Pass a name to check a stored one, or
+                                   the fields themselves to check a draft
+                                   BEFORE it is saved (`P8-12`).
+      versions {name}            — Earlier copies kept in the skill's
+                                   `versions/` sibling (`P8-10`).
+      restore {name, version_id} — Put one of those back. The copy it replaces
+                                   is itself kept, so a restore is undoable
+                                   (`P8-11`).
+      export {name}              — The skill's whole directory as
+                                   {path: text}, ready to write out or hand to
+                                   someone else (`P8-16`).
     """
     try:
         args = _parse_tool_args(content)
@@ -49,7 +67,7 @@ async def do_manage_skills(content: str, owner: Optional[str] = None) -> Dict:
 
     action = (args.get("action") or "").strip().lower()
     if not action:
-        return {"error": "action is required (list|view|view_ref|add|edit|patch|publish|delete|search)", "exit_code": 1}
+        return {"error": "action is required (list|view|view_ref|add|edit|patch|publish|delete|search|lint|versions|restore|export)", "exit_code": 1}
     from services.memory.skills import SkillsManager
     from services.memory.skill_format import Skill, slugify
     from src.constants import DATA_DIR
@@ -248,13 +266,102 @@ async def do_manage_skills(content: str, owner: Optional[str] = None) -> Dict:
             lines.append(f"**{sk['name']}**: {sk.get('description','')}\n  When: {sk.get('when_to_use','')}\n  Steps: {steps_str}")
         return {"results": "\n\n".join(lines)}
 
+    if action == "lint":
+        # `P8-12`. Pure and instant — no `llm_call_async`, so it can run while
+        # somebody waits. Given fields, it judges the thing that has not been
+        # saved yet; given only a name, the thing that has.
+        from services.memory.skill_lint import format_lint, lint_skill
+        library = sm.load(owner=owner)
+        authored = {k: v for k, v in args.items()
+                    if k not in ("action", "name", "skill_id")}
+        if authored:
+            subject = dict(authored)
+            subject["name"] = name or subject.get("name") or ""
+            siblings = [s for s in library if s.get("name") != subject["name"]]
+        else:
+            if not name:
+                return {"error": "name (or the skill's fields) is required for lint",
+                        "exit_code": 1}
+            subject = next((s for s in library if s.get("name") == name), None)
+            if subject is None:
+                return {"error": f"Skill {name!r} not found", "exit_code": 1}
+            siblings = [s for s in library if s.get("name") != name]
+        result = lint_skill(subject, siblings)
+        label = subject.get("name") or "(unnamed draft)"
+        return {"results": f"`{label}` — {result['verdict']}\n\n{format_lint(result)}"}
+
+    if action == "versions":
+        if not name:
+            return {"error": "name is required for versions", "exit_code": 1}
+        rows = sm.list_versions(name, owner=owner)
+        if rows is None:
+            return {"error": f"Skill {name!r} not found", "exit_code": 1}
+        if not rows:
+            return {"results": (
+                f"`{name}` has no earlier copies yet. One is kept automatically "
+                "each time its content changes."
+            )}
+        import time as _time
+        lines = [f"Earlier copies of `{name}`, newest first:"]
+        for r in rows:
+            when = _time.strftime("%Y-%m-%d %H:%M:%S", _time.gmtime(r["saved_at"]))
+            lines.append(f"- `{r['id']}` — was version {r['version']}, "
+                         f"{r['bytes']} bytes, replaced {when}Z")
+        lines.append(f"\nPut one back with action='restore', name='{name}', "
+                     f"version_id='{rows[0]['id']}'. Read one first with "
+                     f"action='view_ref', name='{name}', "
+                     f"path='versions/{rows[0]['id']}.md'.")
+        return {"results": "\n".join(lines)}
+
+    if action == "restore":
+        if not name:
+            return {"error": "name is required for restore", "exit_code": 1}
+        version_id = (args.get("version_id") or args.get("version") or "").strip()
+        if not version_id:
+            return {"error": "version_id is required for restore — list them with "
+                             "action='versions'", "exit_code": 1}
+        if not sm.restore_version(name, version_id, owner=owner):
+            return {"error": f"No version {version_id!r} of {name!r} to restore",
+                    "exit_code": 1}
+        return {"results": (
+            f"Restored `{name}` from `{version_id}`. What it replaced was kept, so "
+            f"this is undoable — check action='versions', name='{name}'."
+        )}
+
+    if action == "export":
+        if not name:
+            return {"error": "name is required for export", "exit_code": 1}
+        files = sm.export_skill(name, owner=owner)
+        if files is None:
+            return {"error": f"Skill {name!r} not found", "exit_code": 1}
+        payload = json.dumps({"skill": name, "files": files}, indent=2, ensure_ascii=False)
+        if len(payload) <= _SKILL_EXPORT_MAX_CHARS:
+            return {"results": (
+                f"Export of `{name}` — {len(files)} file(s). Write this JSON out as "
+                f"a bundle; `import-from-url` and the backup importer both read this "
+                f"shape.\n\n{payload}"
+            )}
+        # Too big to hand back in one tool result. The procedure itself is what
+        # a person almost always wants, and the rest is one `view_ref` each —
+        # which is better than a truncated JSON document that parses as nothing.
+        others = [k for k in sorted(files) if k != "SKILL.md"]
+        return {"results": (
+            f"Export of `{name}` is {len(payload)} characters across {len(files)} "
+            f"file(s) — too large to return whole. Here is SKILL.md; fetch the rest "
+            f"one at a time with action='view_ref', name='{name}', path=<path>.\n\n"
+            + (files.get("SKILL.md") or "")
+            + "\n\nOther files: " + (", ".join(others) if others else "(none)")
+        )}
+
     return {
         "error": (
             f"Unknown action: {action!r}. "
-            "Use one of: list, view, view_ref, add, edit, patch, publish, delete, search."
+            "Use one of: list, view, view_ref, add, edit, patch, publish, delete, "
+            "search, lint, versions, restore, export."
         ),
         "exit_code": 1,
     }
+
 
 
 def _skill_dump(sk) -> Dict:
@@ -391,6 +498,14 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
                     args.get("scheduled_day"),
                 )
 
+            # `P8-31`. An event trigger with no count fires on every event.
+            # The bus has always read a missing count that way; this stops the
+            # tool writing a NULL where the REST route now writes a 1.
+            trigger_count = args.get("trigger_count")
+            if trigger_type == "event" and not trigger_count:
+                from src.event_bus import DEFAULT_TRIGGER_COUNT
+                trigger_count = DEFAULT_TRIGGER_COUNT
+
             task_id = str(_uuid.uuid4())
             # Guard each fallback with `or`: args.get("prompt", default) returns
             # None when the key is present but null, and None[:50] raises.
@@ -413,7 +528,7 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
                 scheduled_day=args.get("scheduled_day"),
                 trigger_type=trigger_type,
                 trigger_event=args.get("trigger_event"),
-                trigger_count=args.get("trigger_count"),
+                trigger_count=trigger_count,
                 trigger_counter=0,
                 next_run=next_run,
                 status="active",

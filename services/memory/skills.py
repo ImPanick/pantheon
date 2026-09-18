@@ -23,12 +23,115 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from .skill_format import Skill, slugify
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Versioning — `P8-10`
+# ---------------------------------------------------------------------------
+#
+# A skill is a *directory*, so the copy of what a write replaced goes in a
+# `versions/` sibling: it travels with the skill through a rename or a
+# recategorisation (both are one `os.rename` of the directory), it is deleted
+# with the skill, and it costs no schema anywhere.
+#
+# Snapshots are named `NNNN-<version>.md`, never `SKILL.md`, so `_iter_skill_files`
+# — which yields any directory containing a `SKILL.md` — cannot mistake one for a
+# skill of its own.
+
+VERSIONS_DIRNAME = "versions"
+
+# What the nightly audit costs if nothing caps it: `_audit_one_skill` can rewrite
+# a skill up to three times a night. Twenty keeps roughly a week of real edits per
+# skill and bounds the directory.
+MAX_KEPT_VERSIONS = 20
+
+_VERSION_FILE_RE = re.compile(r"^(\d{4})-([A-Za-z0-9._-]{0,40})\.md$")
+_VERSION_ID_RE = re.compile(r"^\d{4}-[A-Za-z0-9._-]{0,40}$")
+_VERSION_LABEL_UNSAFE_RE = re.compile(r"[^A-Za-z0-9._-]")
+
+# The fields whose change is an *edit*. Deliberately excluding `status`,
+# `confidence`, `owner`, `teacher_model` and `created`: the audit writes those
+# several times per skill per night (`_set_conf`, `_audit_finalize_status`), and
+# a history recording them is a history with the real edit buried in it.
+_SUBSTANTIVE_FIELDS = (
+    "name", "description", "category", "tags", "platforms",
+    "requires_toolsets", "fallback_for_toolsets",
+    "when_to_use", "procedure", "pitfalls", "verification", "body_extra",
+)
+
+
+def _content_fingerprint(sk: Skill) -> tuple:
+    """What has to differ before a write counts as an edit worth keeping."""
+    out = []
+    for field in _SUBSTANTIVE_FIELDS:
+        v = getattr(sk, field, None)
+        out.append(tuple(str(x) for x in v) if isinstance(v, list) else str(v or ""))
+    return tuple(out)
+
+
+def _bump_patch(version: str) -> str:
+    """`1.0.0` → `1.0.1`. Anything unparseable gains a `.1` rather than raising —
+    `version:` is hand-editable frontmatter and a person's `v2-final` must not
+    make a save fail."""
+    s = str(version or "").strip()
+    if not s:
+        return "1.0.1"
+    parts = s.split(".")
+    if parts[-1].isdigit():
+        parts[-1] = str(int(parts[-1]) + 1)
+        return ".".join(parts)
+    return s + ".1"
+
+
+def _version_label(version: str) -> str:
+    """The `<version>` half of a snapshot filename, with anything that could
+    address a directory removed. The `NNNN-` prefix already makes `.`/`..`
+    impossible; this stops a `/` in hand-written frontmatter creating one."""
+    label = _VERSION_LABEL_UNSAFE_RE.sub("_", str(version or "").strip())[:40]
+    return label or "0"
+
+
+# ---------------------------------------------------------------------------
+# Parse cache — `P8-19`
+# ---------------------------------------------------------------------------
+#
+# Module-level, not instance-level, and that is the whole point: `SkillsManager`
+# is constructed fresh at every call site (`SkillsManager(DATA_DIR)` appears in
+# the agent loop three times per request, in every route handler and in the tool
+# handler), so an instance cache would be a cache that is always cold.
+#
+# Keyed on `(st_mtime_ns, st_size, st_ino)` rather than mtime alone: every write
+# in this module goes through `atomic_write_text`, which `os.replace`s a new
+# file into position, so the inode moves even when a filesystem's mtime
+# granularity would not.
+
+_PARSE_CACHE: Dict[str, Tuple[tuple, Dict]] = {}
+
+# Bounded so a long-lived process that churns through skill directories cannot
+# grow it without limit. The bundled library alone is 286 files.
+_PARSE_CACHE_MAX = 4096
+
+
+def invalidate_skill_cache() -> None:
+    """Drop every cached parse. For tests and for anything that edits SKILL.md
+    files behind this module's back."""
+    _PARSE_CACHE.clear()
+
+
+def _copy_skill_dict(d: Dict) -> Dict:
+    """A caller-safe copy of a cached skill dict.
+
+    `load_all` writes the usage counters straight onto what it is handed, and
+    `Skill.to_dict()` has no nested dicts — only lists — so duplicating the lists
+    is the whole of the isolation needed, at a fraction of `deepcopy`'s cost.
+    """
+    return {k: (list(v) if isinstance(v, list) else v) for k, v in d.items()}
 
 
 def _default_library_root() -> str:
@@ -224,11 +327,271 @@ class SkillsManager:
             logger.warning(f"Failed to parse {path}: {e}")
             return None
 
-    def _write_skill(self, sk: Skill) -> str:
+    def _read_skill_dict(self, path: str) -> Optional[Dict]:
+        """`Skill.to_dict()` for one file, parsed at most once per revision.
+
+        `P8-19`. Before this, every request that injected skills re-read and
+        re-parsed the whole store — twice in `_build_base_prompt` /
+        `_build_system_prompt` and again in the tool-RAG pass — and the bundled
+        library is 286 files and 2.5 MB of markdown that never change. The walk
+        still happens (it is how a new or deleted skill is noticed); what is
+        skipped is re-parsing a file whose bytes are the ones already parsed.
+        """
+        try:
+            st = os.stat(path)
+        except OSError:
+            return None
+        stamp = (st.st_mtime_ns, st.st_size, st.st_ino)
+        hit = _PARSE_CACHE.get(path)
+        if hit is not None and hit[0] == stamp:
+            return _copy_skill_dict(hit[1])
+        sk = self._read_skill(path)
+        if sk is None:
+            return None
+        d = sk.to_dict()
+        if len(_PARSE_CACHE) >= _PARSE_CACHE_MAX:
+            _PARSE_CACHE.clear()
+        _PARSE_CACHE[path] = (stamp, d)
+        return _copy_skill_dict(d)
+
+    def _find_skill_path(self, name: str, owner: Optional[str] = None) -> Optional[str]:
+        """The file backing one of the user's own skills, or None.
+
+        Same iteration order and same owner rule as every scan it replaces —
+        it reads the cached parse rather than re-parsing the store to find one
+        name, which is what `read_skill_md` did on every slash-command
+        invocation and every audit step.
+        """
+        for path in self._iter_skill_files():
+            d = self._read_skill_dict(path)
+            if not d or d.get("name") != name:
+                continue
+            if (d.get("owner") or "") != (owner or ""):
+                continue
+            return path
+        return None
+
+    # ----------------------------------------------------------------------
+    # Versions — `P8-10`
+    # ----------------------------------------------------------------------
+
+    def _versions_dir(self, skill_dir: str) -> str:
+        return os.path.join(skill_dir, VERSIONS_DIRNAME)
+
+    def _keep_version(self, path: str, old_text: str, old_version: str) -> Optional[str]:
+        """Put the SKILL.md that is about to be replaced into `versions/`.
+
+        Returns the snapshot id, or None when the copy could not be written —
+        which is logged and never raised: failing a save because the *history*
+        could not be written would lose the edit as well as the copy.
+        """
+        vdir = self._versions_dir(os.path.dirname(path))
+        try:
+            os.makedirs(vdir, exist_ok=True)
+            seq = 0
+            for fn in os.listdir(vdir):
+                m = _VERSION_FILE_RE.match(fn)
+                if m:
+                    seq = max(seq, int(m.group(1)))
+            vid = f"{seq + 1:04d}-{_version_label(old_version)}"
+            from core.atomic_io import atomic_write_text
+            atomic_write_text(os.path.join(vdir, vid + ".md"), old_text)
+            self._prune_versions(vdir)
+            return vid
+        except Exception as e:
+            logger.warning("Could not keep a previous version of %s: %s", path, e)
+            return None
+
+    def _prune_versions(self, vdir: str) -> None:
+        try:
+            kept = sorted(
+                (fn for fn in os.listdir(vdir) if _VERSION_FILE_RE.match(fn)),
+                reverse=True,
+            )
+        except OSError:
+            return
+        for fn in kept[MAX_KEPT_VERSIONS:]:
+            try:
+                os.remove(os.path.join(vdir, fn))
+            except OSError:
+                pass
+
+    def _version_path(self, skill_path: str, version_id: str) -> Optional[str]:
+        """Resolve a snapshot id to a file inside this skill's `versions/`.
+
+        Two guards, because one of them is a shape check and the other is the
+        filesystem's own answer: the id must match `NNNN-<label>`, and the
+        resolved path must still be inside the directory after `realpath`.
+        """
+        if not isinstance(version_id, str) or not _VERSION_ID_RE.match(version_id):
+            return None
+        base = os.path.realpath(self._versions_dir(os.path.dirname(skill_path)))
+        target = os.path.realpath(os.path.join(base, version_id + ".md"))
+        if os.path.commonpath([base, target]) != base or target == base:
+            return None
+        return target if os.path.isfile(target) else None
+
+    def list_versions(self, name: str, owner: Optional[str] = None) -> Optional[List[Dict]]:
+        """Earlier copies of one skill, newest first.
+
+        `None` means "no such skill, for you" and `[]` means "this skill exists
+        and has not been edited yet" — two different answers a caller has to be
+        able to tell apart, which is why this is not one empty list (`Law 10`).
+        """
+        path = self._find_skill_path(name, owner)
+        if path is None:
+            return None
+        vdir = self._versions_dir(os.path.dirname(path))
+        out: List[Dict] = []
+        try:
+            entries = sorted(os.listdir(vdir), reverse=True)
+        except OSError:
+            return out
+        for fn in entries:
+            m = _VERSION_FILE_RE.match(fn)
+            if not m:
+                continue
+            full = os.path.join(vdir, fn)
+            try:
+                st = os.stat(full)
+            except OSError:
+                continue
+            out.append({
+                "id": fn[:-3],
+                "version": m.group(2),
+                "saved_at": int(st.st_mtime),
+                "bytes": int(st.st_size),
+            })
+        return out
+
+    def read_version(self, name: str, version_id: str,
+                     owner: Optional[str] = None) -> Optional[str]:
+        """The SKILL.md text of one earlier copy, or None."""
+        path = self._find_skill_path(name, owner)
+        if path is None:
+            return None
+        target = self._version_path(path, version_id)
+        if target is None:
+            return None
+        try:
+            with open(target, encoding="utf-8") as f:
+                return f.read()
+        except OSError:
+            return None
+
+    def restore_version(self, name: str, version_id: str,
+                        owner: Optional[str] = None) -> bool:
+        """Put an earlier copy back as the live SKILL.md. `P8-11`.
+
+        The restore goes through the ordinary writer, so **the copy it replaces
+        is itself kept** — a rollback made by mistake costs one more click
+        rather than the work it undid.
+
+        Identity does not travel with the body. A snapshot is a file a person can
+        hand-edit, and `name`, `category` and `owner` decide which directory the
+        skill lives in and which id the UI holds; letting a restore carry them
+        would be the rename that `_apply_skill_md` and the markdown-save endpoint
+        each already refuse, arriving by a third door.
+        """
+        path = self._find_skill_path(name, owner)
+        if path is None:
+            return False
+        text = self.read_version(name, version_id, owner=owner)
+        if text is None:
+            return False
+        current = self._read_skill(path)
+        if current is None:
+            return False
+        try:
+            sk = Skill.from_markdown(text, path=path)
+        except Exception as e:
+            logger.warning("Could not parse version %s of %s: %s", version_id, name, e)
+            return False
+        sk.name = current.name
+        sk.category = current.category
+        sk.owner = current.owner
+        sk.created = current.created or sk.created
+        self._write_skill(sk)
+        return True
+
+    # ----------------------------------------------------------------------
+    # Export — `P8-16`
+    # ----------------------------------------------------------------------
+
+    def export_skill(self, name: str, owner: Optional[str] = None) -> Optional[Dict[str, str]]:
+        """One skill's directory as `{relative path: text}`, or None if absent.
+
+        The exact shape `import_bundle_from_files` takes, so an export is an
+        import's inverse and a round trip is a round trip rather than two
+        formats that nearly agree (`Law 14`). The caps are the importer's own
+        constants for the same reason: an export that could not be imported
+        back would be a backup nobody can restore.
+
+        `versions/` is excluded. It is this install's edit history, not part of
+        the skill, and shipping it would put a colleague's rejected drafts in
+        whatever the user shares.
+        """
+        path = self._find_skill_path(name, owner)
+        if path is None:
+            return None
+        from .skill_importer import MAX_FILES, MAX_FILE_BYTES, MAX_TOTAL_BYTES
+
+        base = os.path.dirname(path)
+        out: Dict[str, str] = {}
+        total = 0
+        for root, dirs, files in os.walk(base, followlinks=False):
+            dirs[:] = sorted(d for d in dirs if d != VERSIONS_DIRNAME)
+            for fn in sorted(files):
+                if len(out) >= MAX_FILES or total >= MAX_TOTAL_BYTES:
+                    return out
+                full = os.path.join(root, fn)
+                rel = os.path.relpath(full, base).replace(os.sep, "/")
+                try:
+                    if os.path.getsize(full) > MAX_FILE_BYTES:
+                        logger.info("Skill export: skipping oversized %s", rel)
+                        continue
+                    with open(full, encoding="utf-8") as f:
+                        text = f.read()
+                except (OSError, UnicodeDecodeError):
+                    # A binary or unreadable extra file is not a reason to fail
+                    # the export of the procedure somebody actually wants.
+                    logger.info("Skill export: skipping unreadable %s", rel)
+                    continue
+                total += len(text.encode("utf-8", "ignore"))
+                out[rel] = text
+        return out
+
+    def _write_skill(self, sk: Skill, *, bump: bool = True) -> str:
+        """Persist a skill, keeping whatever it replaced.
+
+        `P8-10`. Every write in this module lands here, which is why one place
+        can make the guarantee: if the new markdown differs *substantively* from
+        what is on disk, the old text goes to `versions/` first and the patch
+        number moves. A caller that set the version itself is believed — a
+        person who typed `2.0.0` meant it — and that is exactly the case no
+        caller in this repo exercises today, which is why the field had never
+        moved off `1.0.0`.
+        """
         path = self._skill_file(sk.category or "general", sk.name)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         from core.atomic_io import atomic_write_text
-        atomic_write_text(path, sk.to_markdown())
+        try:
+            with open(path, encoding="utf-8") as f:
+                old_text = f.read()
+        except OSError:
+            old_text = None
+        text = sk.to_markdown()
+        if old_text is not None and old_text != text:
+            try:
+                old_sk = Skill.from_markdown(old_text)
+            except Exception:
+                old_sk = None
+            if old_sk is not None and _content_fingerprint(old_sk) != _content_fingerprint(sk):
+                self._keep_version(path, old_text, old_sk.version)
+                if bump and str(sk.version or "") == str(old_sk.version or ""):
+                    sk.version = _bump_patch(sk.version)
+                    text = sk.to_markdown()
+        atomic_write_text(path, text)
         sk.path = path
         return path
 
@@ -272,11 +635,11 @@ class SkillsManager:
         out: List[Dict] = []
         seen_names: set[str] = set()
         for path in self._iter_skill_files():
-            sk = self._read_skill(path)
-            if not sk:
+            d = self._read_skill_dict(path)
+            if not d:
                 continue
-            d = sk.to_dict()
-            u = self._usage_entry(usage, sk.name, sk.owner)
+            name, owner_of = d.get("name"), d.get("owner")
+            u = self._usage_entry(usage, name, owner_of)
             d["uses"] = int(u.get("uses", 0))
             d["last_used"] = u.get("last_used")
             d["audit_verdict"] = u.get("audit_verdict")
@@ -286,17 +649,16 @@ class SkillsManager:
             d["audited_at"] = u.get("audited_at")
             d["necessity"] = u.get("necessity")
             out.append(d)
-            seen_names.add(sk.name)
+            seen_names.add(name)
 
         # The bundled library, second so a user's own skill of the same name
         # shadows it. That shadowing *is* the fork mechanism: save a skill under
         # a bundled name and yours wins, with no merge and nothing to undo.
         for path in self._iter_library_files():
-            sk = self._read_skill(path)
-            if not sk or sk.name in seen_names:
+            d = self._read_skill_dict(path)
+            if not d or d.get("name") in seen_names:
                 continue
-            d = sk.to_dict()
-            u = self._usage_entry(usage, sk.name, None)
+            u = self._usage_entry(usage, d.get("name"), None)
             d["uses"] = int(u.get("uses", 0))
             d["last_used"] = u.get("last_used")
             d["source"] = "bundled"
@@ -304,7 +666,7 @@ class SkillsManager:
             d["editable"] = False
             d["owner"] = None          # bundled skills belong to the install
             out.append(d)
-            seen_names.add(sk.name)
+            seen_names.add(d.get("name"))
 
         # Legacy JSON entries — surfaced as draft, not editable from new flow
         if os.path.exists(self.legacy_file):
@@ -613,40 +975,32 @@ class SkillsManager:
     # ----------------------------------------------------------------------
 
     def read_skill_md(self, name: str, owner: Optional[str] = None) -> Optional[str]:
-        for path in self._iter_skill_files():
-            sk = self._read_skill(path)
-            if not sk or sk.name != name:
-                continue
-            if (sk.owner or "") != (owner or ""):
-                continue
-            try:
-                with open(path, encoding="utf-8") as f:
-                    return f.read()
-            except Exception:
-                return None
-        return None
+        path = self._find_skill_path(name, owner)
+        if path is None:
+            return None
+        try:
+            with open(path, encoding="utf-8") as f:
+                return f.read()
+        except Exception:
+            return None
 
     def read_skill_reference(self, name: str, ref_path: str, owner: Optional[str] = None) -> Optional[str]:
         """Read a sub-file under the skill's directory (references/, etc).
         Refuses path traversal."""
-        for path in self._iter_skill_files():
-            sk = self._read_skill(path)
-            if not sk or sk.name != name:
-                continue
-            if (sk.owner or "") != (owner or ""):
-                continue
-            base = os.path.realpath(os.path.dirname(path))
-            target = os.path.realpath(os.path.join(base, ref_path))
-            if os.path.commonpath([base, target]) != base or target == os.path.dirname(path):
-                return None
-            if not os.path.isfile(target):
-                return None
-            try:
-                with open(target, encoding="utf-8") as f:
-                    return f.read()
-            except Exception:
-                return None
-        return None
+        path = self._find_skill_path(name, owner)
+        if path is None:
+            return None
+        base = os.path.realpath(os.path.dirname(path))
+        target = os.path.realpath(os.path.join(base, ref_path))
+        if os.path.commonpath([base, target]) != base or target == os.path.dirname(path):
+            return None
+        if not os.path.isfile(target):
+            return None
+        try:
+            with open(target, encoding="utf-8") as f:
+                return f.read()
+        except Exception:
+            return None
 
     # ----------------------------------------------------------------------
     # Index — the lightweight summary injected into the system prompt

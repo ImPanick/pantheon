@@ -131,6 +131,15 @@ export class Node {
     if (i >= 0) this.childNodes.splice(i, 1);
     n.parentNode = null; return n;
   }
+  // Added 2026-09-18 by `P8-06`. A panel built with `createElement` swaps its
+  // whole contents in one call rather than clearing with `innerHTML = ''`,
+  // which is the discipline `H01` set for any surface printing user-written
+  // text. Without it the real module throws on a method the browser has.
+  replaceChildren(...kids) {
+    for (const c of this.childNodes) c.parentNode = null;
+    this.childNodes = []; this._text = ''; this._html = '';
+    for (const k of kids) this.appendChild(k);
+  }
   remove() { if (this.parentNode) this.parentNode.removeChild(this); }
   addEventListener(t, fn) { (this.listeners[t] = this.listeners[t] || []).push(fn); }
   removeEventListener(t, fn) {

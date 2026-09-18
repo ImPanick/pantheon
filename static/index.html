@@ -308,7 +308,7 @@
        real request is discarded and the font fetched a second time. -->
   <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/FiraCode-Regular.woff2">
   <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/FiraCode-SemiBold.woff2">
-  <link rel="stylesheet" href="/static/style.css?v=20260808startupshell1">
+  <link rel="stylesheet" href="/static/style.css?v=20260918workshop1">
   <link rel="modulepreload" href="/static/app.js?v=20260815toolapproval4">
   <!-- B58. This must carry the SAME query as the <script> tag below, or the
        browser fetches chat.js twice: the cache and the module map are keyed on
@@ -503,6 +503,26 @@
               <input type="text" id="new-skill-tags" placeholder=" " class="memory-add-input skill-hint-input" aria-label="Tags" />
               <span class="skill-rich-ph"><span class="k">Tags</span> — comma-separated, e.g. python, build, vllm</span>
             </div>
+            <details class="skill-more">
+              <summary>More fields &mdash; pitfalls, verification, platforms, required tools</summary>
+              <p class="memory-desc doclib-desc" style="margin:4px 0 8px;">All four are optional, and all four change what happens. <b>Pitfalls</b> go to the AI with the procedure. <b>Verification</b> is kept in the file and never sent &mdash; it is there for you and for the skill test to check against. <b>Platforms</b> and <b>required tools</b> hide the skill when they do not match.</p>
+              <div class="skill-ph-wrap" style="margin-bottom:6px;">
+                <textarea id="new-skill-pitfalls" placeholder=" " class="memory-add-input skill-hint-input" rows="2" style="resize:vertical;" aria-label="Pitfalls &mdash; one per line"></textarea>
+                <span class="skill-rich-ph skill-rich-ph-top"><span class="k">Pitfalls</span> &mdash; one per line; what usually goes wrong</span>
+              </div>
+              <div class="skill-ph-wrap" style="margin-bottom:6px;">
+                <textarea id="new-skill-verification" placeholder=" " class="memory-add-input skill-hint-input" rows="2" style="resize:vertical;" aria-label="Verification &mdash; one per line"></textarea>
+                <span class="skill-rich-ph skill-rich-ph-top"><span class="k">Verification</span> &mdash; one per line; how you tell it worked</span>
+              </div>
+              <div class="skill-ph-wrap" style="margin-bottom:6px;">
+                <input type="text" id="new-skill-platforms" placeholder=" " class="memory-add-input skill-hint-input" aria-label="Platforms" />
+                <span class="skill-rich-ph"><span class="k">Platforms</span> &mdash; comma-separated; blank means all</span>
+              </div>
+              <div class="skill-ph-wrap" style="margin-bottom:6px;">
+                <input type="text" id="new-skill-toolsets" placeholder=" " class="memory-add-input skill-hint-input" aria-label="Required tools" />
+                <span class="skill-rich-ph"><span class="k">Required tools</span> &mdash; comma-separated; hidden unless all are on</span>
+              </div>
+            </details>
             <div style="display:flex;justify-content:flex-end;">
               <button id="add-skill-btn" class="confirm-btn confirm-btn-primary">Add Skill</button>
             </div>
@@ -530,7 +550,7 @@
                   </optgroup>
                   <optgroup label="Filter">
                     <option value="filter:all">All skills</option>
-                    <option value="filter:drafts">Drafts only</option>
+                    <option value="filter:drafts">Uncatalogued only</option>
                     <option value="filter:published">Published only</option>
                     <option value="filter:conf95">Confidence ≤ 95%</option>
                     <option value="filter:conf90">Confidence ≤ 90%</option>
@@ -541,11 +561,13 @@
                   </optgroup>
                 </select>
                 <button id="skills-audit-btn" class="memory-toolbar-btn" title="Test every skill, auto-fix the weak ones, flag what still fails"><svg width="11" height="11" viewBox="0 0 24 24" fill="var(--accent, var(--red))" style="vertical-align:-1px;margin-right:3px;"><path d="M12 0L14.59 8.41L23 12L14.59 15.59L12 24L9.41 15.59L1 12L9.41 8.41Z"/></svg>Audit</button>
+                <button id="skills-preview-btn" class="memory-toolbar-btn" title="Show the catalogue of skills exactly as the AI is handed it"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>Prompt preview</button>
                 <button id="skills-select-btn" class="memory-toolbar-btn" title="Select multiple skills"><svg class="memory-select-btn-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg>Select</button>
               </div>
               <input type="text" id="skills-search" placeholder="Search skills…" class="memory-search-input" aria-label="Search skills" />
             </div>
             <div id="skills-audit-panel" class="skills-audit-panel hidden"></div>
+            <div id="skills-prompt-panel" class="skills-audit-panel hidden"></div>
             <div id="skills-bulk-bar" class="memory-bulk-bar hidden">
               <label class="memory-bulk-check-all" style="position:relative;top:0px;"><input type="checkbox" id="skills-select-all" /> All</label>
               <span id="skills-selected-count">0 Selected</span>
@@ -597,9 +619,11 @@
               <span class="admin-toggle-sub" style="margin:0">Minimum confidence</span>
               <span style="display:flex;align-items:center;gap:8px;flex-shrink:0">
                 <span id="skill-confidence-label" class="admin-toggle-sub" style="margin:0;min-width:42px;text-align:right;font-variant-numeric:tabular-nums">&ge; 85%</span>
-                <input type="range" id="skill-confidence-slider" class="preset-range" min="50" max="100" step="5" value="85" style="width:120px;margin:0" />
+                <input type="range" id="skill-confidence-slider" class="preset-range" min="45" max="100" step="5" value="85" aria-describedby="skill-confidence-hint" style="width:120px;margin:0" />
               </span>
             </div>
+            <span class="admin-toggle-sub" id="skill-confidence-hint" style="display:block;margin-top:6px;opacity:0.6"></span>
+            <span class="admin-toggle-sub" id="skill-approve-coupling" style="display:block;margin-top:6px;opacity:0.6"></span>
           </div>
           <div class="admin-card">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:32px">
@@ -611,6 +635,7 @@
               <input type="number" id="skill-max-input" min="0" max="12" step="1" value="3" aria-label="Max skills to inject" style="flex-shrink:0;width:72px;background:var(--input-bg,var(--panel));color:var(--fg);border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-size:12px;text-align:right;font-variant-numeric:tabular-nums" />
             </div>
             <span class="admin-toggle-sub" style="display:block;margin-top:6px;opacity:0.5">Set to 0 to disable skill injection.</span>
+            <span class="admin-toggle-sub skill-gate-note" style="display:block;margin-top:8px;opacity:0.6">A skill reaches the AI as untrusted text, the same as a web page or an email does &mdash; because you, or a teacher model, wrote it and it can say anything. So any reply a skill is injected into asks you first before anything that writes, runs, sends or deletes. That is also why testing a skill can stop halfway and wait for you.</span>
           </div>
         </div>
       </div>
@@ -3306,7 +3331,7 @@
 <script type="module" src="/static/js/markdown.js"></script>
 <script type="module" src="/static/js/dragSort.js"></script>
 <script type="module" src="/static/js/sessions.js"></script>
-<script type="module" src="/static/js/memory.js?v=20260722memoryloading1"></script>
+<script type="module" src="/static/js/memory.js?v=20260918workshop1"></script>
 <script type="module" src="/static/js/skills.js"></script>
 <script type="module" src="/static/js/tourHints.js"></script>
 <script type="module" src="/static/js/tourAutoplay.js"></script>

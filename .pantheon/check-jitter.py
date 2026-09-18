@@ -137,6 +137,16 @@ INDEXING_ALLOWED = {
     ("routes/research/research_routes.py", "research_library"):
         "Lists the research library by reading each run's metadata JSON. A "
         "listing, per request, over files this product wrote.",
+    ("services/memory/skills.py", "export_skill"):
+        "`P8-16`. Walks ONE skill's own directory to hand it back as a bundle, "
+        "under the skill importer's own caps — MAX_FILES 64, MAX_FILE_BYTES "
+        "400_000, MAX_TOTAL_BYTES 2_000_000, checked with `os.path.getsize` "
+        "before the file is opened and rechecked as the total grows. Those are "
+        "the same three constants that bound what a bundle could contain on the "
+        "way in, which is what makes this the inverse of an import rather than "
+        "an index of user documents: nothing here can be larger than something "
+        "this product already accepted. The 419 MB file the ceiling exists for "
+        "is skipped, by size, without being read.",
 }
 
 

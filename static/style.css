@@ -19296,6 +19296,62 @@ body:not(.email-doc-split-active) #email-lib-modal.email-lib-fullscreen:not(.mod
 .skill-rich-ph .k { color: var(--accent, var(--red)); }
 /* Hide the overlay once the field has real content. */
 .skill-hint-input:not(:placeholder-shown) ~ .skill-rich-ph { display: none; }
+/* ── Add-Skill: the optional half, folded away until someone opens it (`P8-02`).
+   Four fields the API has always taken and only the raw SKILL.md editor could
+   reach. Folded rather than inline because the form is already six fields
+   long, and a `<details>` is findable — which is the whole test. ── */
+.skill-more { margin-bottom: 8px; }
+.skill-more > summary {
+  cursor: pointer;
+  font-size: 12px;
+  opacity: 0.75;
+  padding: 2px 0;
+  list-style-position: inside;
+}
+.skill-more[open] > summary { opacity: 0.95; }
+.skill-more > summary:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+
+/* ── The prompt preview (`P8-06` / `P8-07`) ── */
+.skill-prompt-body { margin: 6px 0 8px; }
+.skill-prompt-cat {
+  font-size: 10.5px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.04em; opacity: 0.55; margin: 6px 0 2px;
+}
+.skill-prompt-row {
+  display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap;
+  font-size: 11px; margin: 1px 0;
+}
+.skill-prompt-name {
+  font-family: ui-monospace, 'SF Mono', 'Fira Code', monospace;
+  font-size: 10.5px;
+}
+.skill-prompt-desc { opacity: 0.8; }
+.skill-prompt-tag { font-size: 10px; opacity: 0.6; font-style: italic; }
+.skill-prompt-empty { font-size: 11px; opacity: 0.75; padding: 6px 0; }
+.skill-prompt-facts { border-top: 1px solid var(--border); padding-top: 6px; }
+.skill-prompt-fact { font-size: 11px; line-height: 1.5; margin: 2px 0; }
+.skill-prompt-fact-k { font-weight: 600; opacity: 0.9; margin-right: 4px; }
+.skill-prompt-fact-v { opacity: 0.75; }
+.skill-prompt-note { font-size: 11px; line-height: 1.5; opacity: 0.75; margin-top: 6px; }
+.skill-prompt-close { margin-left: auto; }
+
+/* ── Ask what to test with, before testing (`P8-08`), and say why the run can
+   stop halfway (`P8-18`). `.skill-test-ask.hidden` is spelled with both
+   classes so it outranks the flex rule above it regardless of source order. ── */
+.skill-test-ask { display: flex; flex-direction: column; gap: 6px; }
+.skill-test-ask.hidden { display: none; }
+.skill-test-ask-label {
+  font-size: 11px; opacity: 0.85;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.skill-test-task-input {
+  width: 100%; box-sizing: border-box; resize: vertical;
+  font-family: inherit; font-size: 12px; padding: 6px 8px;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: var(--input-bg, var(--panel)); color: var(--fg);
+}
+.skill-test-gate-note { font-size: 10.5px; line-height: 1.45; opacity: 0.7; }
+.skill-test-ask-actions { display: flex; justify-content: flex-end; }
 .skill-md-editor {
   flex: 1 1 auto;
   min-height: 0;

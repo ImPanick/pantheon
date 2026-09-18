@@ -119,6 +119,21 @@ def _shell_requests(page: Path) -> list:
     return [u for u in found if u.startswith("/static/")]
 
 
+def _shell_stylesheet() -> str:
+    """The stylesheet URL `index.html` actually asks for, query string and all.
+
+    Derived rather than remembered (`Law 6`). Two assertions below spelled the
+    sheet's cache-buster as a literal, and the first change to bump it for an
+    unrelated reason failed one of them while the other went on fetching a URL
+    the page had stopped requesting — a pinned string that had quietly become
+    evidence about nothing.
+    """
+    urls = [u for u in _shell_requests(_REPO / "static" / "index.html")
+            if u.split("?", 1)[0] == "/static/style.css"]
+    assert len(urls) == 1, urls
+    return urls[0]
+
+
 def test_every_module_and_stylesheet_the_app_shell_loads_is_precached():
     requests = _shell_requests(_REPO / "static" / "index.html")
     # A parser that silently matched nothing would make this test vacuous and
@@ -499,6 +514,10 @@ def test_a_conditional_request_is_actually_cheap_on_this_server(tmp_path):
         "PYTHONPATH": str(_REPO),
         "PYTHON_DOTENV_DISABLED": "1",
     })
+    # The stylesheet URL is resolved HERE and interpolated, because the probe
+    # below runs in a subprocess with `python3 -c` and has none of this
+    # module's helpers. Interpolated as a repr so a URL containing a quote
+    # could not break out of the literal.
     probe = textwrap.dedent(
         """
         import json
@@ -509,7 +528,7 @@ def test_a_conditional_request_is_actually_cheap_on_this_server(tmp_path):
         out = {}
         for label, url in [
             ("js", "/static/app.js?v=20260815toolapproval4"),
-            ("css", "/static/style.css?v=20260808startupshell1"),
+            ("css", __CSS_URL__),
             ("woff2", "/static/fonts/FiraCode-Regular.woff2"),
             ("png", "/static/icons/icon-192.png"),
             ("json", "/static/manifest.json"),
@@ -529,7 +548,7 @@ def test_a_conditional_request_is_actually_cheap_on_this_server(tmp_path):
             }
         print("RESULT=" + json.dumps(out, sort_keys=True))
         """
-    )
+    ).replace("__CSS_URL__", repr(_shell_stylesheet()))
     result = subprocess.run([sys.executable, "-c", probe], cwd=str(_REPO), env=env,
                             capture_output=True, text=True, timeout=300, check=False)
     assert result.returncode == 0, result.stderr
@@ -640,7 +659,7 @@ def test_install_caches_everything_the_documents_it_stores_reference(installed):
         # "no extension" rather than on the single path `/`: a route is not a
         # file and `/login` has no `.html` to recognise it by.
         "/login",
-        "/static/style.css?v=20260808startupshell1",
+        _shell_stylesheet(),
         "/static/lib/katex/katex.min.css",
         "/static/manifest.json",
     }, sorted(assets)

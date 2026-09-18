@@ -1679,9 +1679,17 @@ def _create_email_draft_document(
     """Create an Pantheon email compose document for user review. Does not send."""
     from core.database import SessionLocal, Document, DocumentVersion
     try:
-        from src.event_bus import fire_event
+        # `P8-30`. Named, not respelled. These two call sites were the loose
+        # spellings that kept `document_updated` out of every catalogue while
+        # firing it in production.
+        from src.event_bus import (
+            fire_event,
+            EVENT_DOCUMENT_CREATED,
+            EVENT_DOCUMENT_UPDATED,
+        )
     except Exception:
         fire_event = None
+        EVENT_DOCUMENT_CREATED = EVENT_DOCUMENT_UPDATED = None
 
     cfg = _load_config(account) if account else _load_config(None)
     content = _build_email_document_content(
@@ -1728,7 +1736,7 @@ def _create_email_draft_document(
                 db.commit()
                 if fire_event:
                     try:
-                        fire_event("document_updated", doc_owner)
+                        fire_event(EVENT_DOCUMENT_UPDATED, doc_owner)
                     except Exception:
                         pass
                 return {
@@ -1770,7 +1778,7 @@ def _create_email_draft_document(
         db.commit()
         if fire_event:
             try:
-                fire_event("document_created", doc_owner)
+                fire_event(EVENT_DOCUMENT_CREATED, doc_owner)
             except Exception:
                 pass
         return {

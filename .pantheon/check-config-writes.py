@@ -90,6 +90,14 @@ STORES: dict[tuple[str, str], tuple[str, str]] = {
         STRICT_READ, "import writes files supplied by the caller, not read from the target"),
     ("services/memory/skills.py", "self._skill_file(cat, nm)"): (
         STRICT_READ, "same: the Skill is built from the request, not from the file"),
+    ("services/memory/skills.py", "os.path.join(vdir, vid + '.md')"): (
+        STRICT_READ, "`P8-10`. A version snapshot, at a path that did not exist a "
+                     "moment ago — `vid` is one past the highest sequence number in "
+                     "the directory, so there is no target to read and none to lose. "
+                     "Its content is the SKILL.md text the caller has just read, and "
+                     "that read is the strict one two entries up: `_read_skill` "
+                     "returns None on a parse failure rather than an empty Skill, so "
+                     "a corrupt file is never what gets copied"),
 
     # ── rebuildable: overwriting a corrupt one is the repair ─────────────────
     ("core/auth.py", "self._sessions_path"): (

@@ -17,6 +17,67 @@ from src.constants import AUTH_FILE
 
 logger = logging.getLogger(__name__)
 
+# `P8-30`. THE catalogue of trigger events. There is no second one.
+#
+# There used to be two enumerations of this list — the `/meta/events` route and
+# the `manage_tasks` tool schema — and a scatter of loose strings beside them:
+# five in `HOUSEKEEPING_DEFAULTS` and two in the email MCP server. Because the
+# loose strings were not a catalogue, nobody reconciled them against one, and
+# `document_updated` ended up fired in production (`mcp_servers/email_server.py`,
+# on an email draft being merged into an existing document) while appearing in
+# neither enumeration. The picker never offered it and the tool schema rejected
+# it, so no task could ever trigger on a document being updated.
+#
+# The rule a registry is for: **an event that can be fired is an event that can
+# be chosen.** `tests/test_event_catalogue.py` holds it by walking every
+# `fire_event(...)` call site in the tree, rather than against a list written
+# out a second time (`Law 13`, `Law 14`).
+#
+# `FORBIDDEN.md` Part 1: these names are stored in `ScheduledTask.trigger_event`.
+# Renaming one silently disables every task using it. Adding is fine; renaming
+# is not. The module constants exist so the rest of the tree references a name
+# instead of respelling a string.
+EVENT_SESSION_CREATED = "session_created"
+EVENT_MESSAGE_SENT = "message_sent"
+EVENT_DOCUMENT_CREATED = "document_created"
+EVENT_DOCUMENT_UPDATED = "document_updated"
+EVENT_MEMORY_ADDED = "memory_added"
+EVENT_RESEARCH_COMPLETED = "research_completed"
+EVENT_EMAIL_RECEIVED = "email_received"
+EVENT_SKILL_ADDED = "skill_added"
+
+EVENT_CATALOGUE = (
+    {"name": EVENT_SESSION_CREATED,
+     "description": "Fires when a new chat session is created"},
+    {"name": EVENT_MESSAGE_SENT,
+     "description": "Fires when a user sends a message"},
+    {"name": EVENT_DOCUMENT_CREATED,
+     "description": "Fires when a document is created"},
+    {"name": EVENT_DOCUMENT_UPDATED,
+     "description": "Fires when an existing document is edited"},
+    {"name": EVENT_MEMORY_ADDED,
+     "description": "Fires when a memory is added"},
+    {"name": EVENT_RESEARCH_COMPLETED,
+     "description": "Fires when a research report completes"},
+    {"name": EVENT_EMAIL_RECEIVED,
+     "description": "Fires when new inbox mail is observed"},
+    {"name": EVENT_SKILL_ADDED,
+     "description": "Fires when a new skill is created"},
+)
+
+EVENT_NAMES = tuple(entry["name"] for entry in EVENT_CATALOGUE)
+
+# `P8-31`. How many events an event-triggered task waits for when nobody says.
+#
+# One, because that is what "trigger on document created" means to anyone
+# arriving from a workflow tool, and because it is what this module has always
+# done with a null: `threshold = task.trigger_count or DEFAULT_TRIGGER_COUNT`.
+# What was missing was anywhere that agreed with it — `POST /api/tasks`
+# **refused** a task that omitted the count, and the only reason people did not
+# hit that 400 was a form pre-filling 5. A number nobody chose, in front of an
+# API with no opinion, over a bus that already meant 1.
+DEFAULT_TRIGGER_COUNT = 1
+
 _task_scheduler = None
 
 
@@ -92,7 +153,7 @@ async def _handle_event(event_name: str, owner: Optional[str] = None):
             return
 
         for task in tasks:
-            threshold = task.trigger_count or 1
+            threshold = task.trigger_count or DEFAULT_TRIGGER_COUNT
             task.trigger_counter = (task.trigger_counter or 0) + 1
 
             if task.trigger_counter >= threshold:

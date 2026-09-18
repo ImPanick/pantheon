@@ -238,6 +238,21 @@ async function syncToggles() {
   await syncPrefSlider('skill-confidence-slider', 'skill_min_confidence', 'skill-confidence-label', 0.85);
   await syncPrefNumber('skill-max-input', 'skill_max_injected', 3);
 
+  // `P8-05`. Both controls feed one sentence apiece, and both have to redraw
+  // when either moves — the whole defect is that the toggle changes what the
+  // slider means and said nothing.
+  const approveToggle = document.getElementById('auto-approve-skills-toggle');
+  if (approveToggle && !approveToggle.dataset.boundGateHint) {
+    approveToggle.dataset.boundGateHint = '1';
+    approveToggle.addEventListener('change', refreshSkillGateHints);
+  }
+  const confSlider = document.getElementById('skill-confidence-slider');
+  if (confSlider && !confSlider.dataset.boundGateHint) {
+    confSlider.dataset.boundGateHint = '1';
+    confSlider.addEventListener('input', refreshSkillGateHints);
+  }
+  refreshSkillGateHints();
+
   // Reflect the header toggle into the sidebar dim + modal body opacity.
   const headerToggle = document.getElementById('memory-enabled-header-toggle');
   if (headerToggle) {
@@ -286,20 +301,41 @@ function syncToggleDim(toggle) {
 /** Load/save a confidence slider backed by a float pref (0 = "All", else
  *  0.50–1.00). Slider position is the percent; the MAX position means "All"
  *  (no minimum), and sliding down sets the bar to 95%, 90%, 85%… */
-async function syncPrefSlider(elementId, prefKey, labelId, defaultVal) {
+// `P8-04`. The "All" stop is at the LEFT end now, and that is the whole fix.
+//
+// It used to be at the right. Dragging a control labelled "Minimum confidence"
+// as far right as it goes stored **0**, and 0 is the single value that turns
+// the gate off completely — `get_relevant_skills` only filters at all inside
+// `if min_confidence > 0` (services/memory/skills.py:748). So the strictest
+// setting was one notch short of the end, the end itself was the loosest
+// setting on the control, and it was labelled "All", which reads as a promise
+// about coverage rather than a confession that nothing is being checked.
+//
+// Nothing about what is stored changes: 0 still means "no minimum", 0.85 still
+// means 85%. Only which position maps to 0 moves, so a saved preference keeps
+// its meaning and the geometry stops lying. `slider.min` is the sentinel stop
+// (45, one step below the lowest real percentage) and `min + step` is the
+// lowest percentage the control can express — no setting was taken away.
+export async function syncPrefSlider(elementId, prefKey, labelId, defaultVal) {
   const slider = document.getElementById(elementId);
   if (!slider) return;
   const label = labelId ? document.getElementById(labelId) : null;
+  const allPos = Number(slider.min);
   const maxPos = Number(slider.max);
-  const fmt = (pos) => (Number(pos) >= maxPos ? 'All' : `≥ ${pos}%`);
+  const floorPos = allPos + (Number(slider.step) || 5);
+  const fmt = (pos) => (Number(pos) <= allPos ? 'All' : `≥ ${pos}%`);
   try {
     const res = await fetch(`${window.location.origin}/api/prefs/${prefKey}`);
     if (res.ok) {
       const data = await res.json();
       let pref = (data.value === undefined || data.value === null) ? defaultVal : Number(data.value);
-      // pref 0 (or falsy) = "All" → max slider position; else percent.
-      let pos = (!pref || pref <= 0) ? maxPos : Math.round(pref * 100);
-      pos = Math.max(Number(slider.min), Math.min(maxPos, pos));
+      // pref 0 (or falsy) = "All" → the sentinel stop at the loose end; else
+      // percent, clamped to a position the control can actually express so a
+      // stray sub-floor value is shown as the lowest percentage and never
+      // mistaken for "no minimum".
+      let pos = (!pref || pref <= 0)
+        ? allPos
+        : Math.max(floorPos, Math.min(maxPos, Math.round(pref * 100)));
       slider.value = String(pos);
     }
   } catch (e) {
@@ -311,7 +347,7 @@ async function syncPrefSlider(elementId, prefKey, labelId, defaultVal) {
     slider.addEventListener('input', () => { if (label) label.textContent = fmt(slider.value); });
     slider.addEventListener('change', async () => {
       const pos = Number(slider.value);
-      const pref = pos >= maxPos ? 0 : pos / 100;
+      const pref = pos <= allPos ? 0 : pos / 100;
       try {
         const res = await fetch(`${window.location.origin}/api/prefs/${prefKey}`, {
           method: 'PUT',
@@ -319,13 +355,64 @@ async function syncPrefSlider(elementId, prefKey, labelId, defaultVal) {
           body: JSON.stringify({ value: pref })
         });
         if (!res.ok) { showError('Failed to save preference'); return; }
-        showToast(pref === 0 ? 'Skill confidence: All' : `Skill confidence ≥ ${Math.round(pref * 100)}%`);
+        showToast(pref === 0
+          ? 'Skill confidence: no minimum'
+          : `Skill confidence ≥ ${Math.round(pref * 100)}%`);
       } catch (e) {
         console.error(`Failed to save ${prefKey} pref:`, e);
         showError('Failed to save preference');
       }
     });
   }
+}
+
+/** `P8-04`/`P8-05` — what the two skill-gate controls do, in the words a person
+ *  reads, resolved in one pure function so the sentence and the behaviour
+ *  cannot drift apart.
+ *
+ *  `minConfidence` is the stored preference: a fraction, or 0 meaning no
+ *  minimum. `autoApprove` is `auto_approve_skills`.
+ *
+ *  The coupling is the part nobody could see from the surface.
+ *  `src/agent_loop.py:3091-3093` sets the injection floor to **2.0** when
+ *  auto-approve is off — a number no confidence can reach — so turning off a
+ *  toggle whose label only mentions the audit silently makes injection
+ *  published-only. It is a real and defensible behaviour; it was simply
+ *  invisible, and an invisible coupling is how a person concludes the product
+ *  is ignoring them.
+ */
+export function skillGateHints({ autoApprove = true, minConfidence = 0.85 } = {}) {
+  const value = Number(minConfidence) || 0;
+  const pct = Math.round(value * 100);
+  if (!autoApprove) {
+    return {
+      confidence: 'Not in use for injection while auto-approve is off — it still decides what Audit all publishes.',
+      coupling: 'Auto-approve is off, so only published skills are injected. An uncatalogued skill stays out of every request until you publish it.',
+    };
+  }
+  return {
+    confidence: value <= 0
+      ? 'No minimum: every uncatalogued skill is injected whenever your message matches it, however little the audit trusted it. This is the loosest setting on this control, not the strictest.'
+      : `An uncatalogued skill is injected only at ${pct}% confidence or more; a published one always is. A skill you write here starts at 80%, so at ${pct}% it waits until an audit raises it or you publish it. Audit all publishes at this bar too.`,
+    coupling: 'Auto-approve is on, so uncatalogued skills can be injected — the minimum above is what holds them back.',
+  };
+}
+
+/** Write both sentences from the live state of the two controls. */
+export function refreshSkillGateHints() {
+  const hintEl = document.getElementById('skill-confidence-hint');
+  const couplingEl = document.getElementById('skill-approve-coupling');
+  if (!hintEl && !couplingEl) return;
+  const slider = document.getElementById('skill-confidence-slider');
+  const toggle = document.getElementById('auto-approve-skills-toggle');
+  const allPos = slider ? Number(slider.min) : 45;
+  const pos = slider ? Number(slider.value) : 85;
+  const hints = skillGateHints({
+    autoApprove: toggle ? !!toggle.checked : true,
+    minConfidence: pos <= allPos ? 0 : pos / 100,
+  });
+  if (hintEl) hintEl.textContent = hints.confidence;
+  if (couplingEl) couplingEl.textContent = hints.coupling;
 }
 
 /** Load/save an integer-valued pref backed by a <input type="number">. */
