@@ -99,6 +99,16 @@ const wire = slice('function _wireActivityRows(list) {',
 // say TOGETHER about a single run.
 const history = slice('async function _showRunHistory(taskId, taskName) {',
                       '// ---- Actions ----', '_showRunHistory');
+// `P8-25`. The step log the history draws under each result, and the door the
+// Activity row's chip opens onto it. Both are lifted rather than stubbed for
+// this file's standing reason: a stub would report the harness's markup, and
+// `_showRunHistory` calls the first unconditionally — a harness that stubbed it
+// would go green on a history that had stopped drawing the log at all.
+const runSteps = slice('function _renderRunSteps(run) {',
+                       'async function _showRunHistory(taskId, taskName) {',
+                       '_renderRunSteps');
+const stepLog = slice('function _openStepLogFor(entry) {',
+                      'function _renderRunSteps(run) {', '_openStepLogFor');
 // `B78`. The notification client. Lifted whole for the same reason: `msg` and
 // the branch that decides between `showToast` and `showError` are separate
 // statements, and the defect was that one status set could reach both.
@@ -179,6 +189,7 @@ const make = new Function(...names, 'document', 'detail', 'task', `
   ${openControl}
   ${stopLabel}
   ${entryStatus}
+  ${stepLog}
   ${renderer}
   ${wire}
   function _renderBadge() {
@@ -207,6 +218,7 @@ function makeExtra(extra) {
     ${finished}
     ${completedRow}
     ${completedView}
+    ${runSteps}
     ${history}
     ${notify}
     ${openInChat}

@@ -78,6 +78,29 @@ class SkillAddRequest(BaseModel):
     steps: List[str] = Field(default_factory=list)
 
 
+class SkillLintRequest(BaseModel):
+    """A draft as the Add-Skill form holds it, mid-typing. `P8-12`.
+
+    Deliberately **not** `SkillAddRequest`. That model caps `description` at 200
+    characters and `name` at 80, so a form posting an over-long description
+    would get a 422 — and "your description is 40 characters past the point the
+    API truncates it" is one of the findings this endpoint exists to return. A
+    validator that rejects the input instead of describing it would make the
+    lint unable to report the single most common thing it is asked about.
+
+    Nothing here is written anywhere. The request is a question.
+    """
+
+    name: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+    when_to_use: Optional[str] = None
+    procedure: List[str] = Field(default_factory=list)
+    pitfalls: List[str] = Field(default_factory=list)
+    verification: List[str] = Field(default_factory=list)
+
+
 class SkillImportUrlRequest(BaseModel):
     url: str = Field(..., min_length=8, max_length=2000)
 
@@ -1181,6 +1204,30 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
             "injected_fields": list(INJECTED_FIELDS),
             "withheld_fields": list(WITHHELD_FIELDS),
         }
+
+    @router.post("/lint")
+    async def lint_draft(request: Request, body: SkillLintRequest):
+        """What is wrong with this draft, answered before it is saved. `P8-12`.
+
+        `manage_skills action=lint` has answered this for the tool channel since
+        the lint landed; the Workshop's own form could not ask, because the
+        browser has no way into a tool handler. This is that door, and it is the
+        **same** door: both call `services.memory.skill_lint.lint_skill`, so the
+        chat channel and the form cannot disagree about whether a skill is a
+        duplicate (`Law 14`).
+
+        Nothing is written. The draft never reaches disk, `siblings` is the
+        caller's own library, and the response is advice — the save path does
+        not consult it and is never gated on it.
+        """
+        from services.memory.skill_lint import lint_skill
+
+        user = _owner(request)
+        draft = body.model_dump()
+        name = (draft.get("name") or "").strip()
+        siblings = [s for s in skills_manager.load(owner=user)
+                    if (s.get("name") or "") != name]
+        return lint_skill(draft, siblings)
 
     @router.get("/slash-catalog")
     async def get_slash_catalog(request: Request):

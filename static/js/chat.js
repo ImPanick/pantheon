@@ -7908,7 +7908,7 @@ import agentDrafts from './agentDrafts.js';   // H01
   // `app.js:32` already imports `tasks.js` at boot, so this resolves from cache.
   let _activitySourceHandle = null;
   function _registerQueueActivitySource() {
-    import('./tasks.js?v=20260723tasksbulkfeedback1').then((mod) => {
+    import('./tasks.js?v=20260918palettesteps1').then((mod) => {
       if (!mod || typeof mod.registerActivitySource !== 'function') return;
       mod.registerActivitySource('chat-queue', () => getQueueActivityEntries('all'));
       _activitySourceHandle = mod;

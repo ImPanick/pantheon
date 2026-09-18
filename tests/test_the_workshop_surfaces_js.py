@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`P8-02` / `P8-04` / `P8-05` / `P8-06` / `P8-07` / `P8-08` — the Workshop's surface.
+"""`P8-02` / `P8-04` / `P8-05` / `P8-06` / `P8-07` / `P8-08` / `P8-12` — the Workshop's surface.
 
 Driven under node against the real modules, in the sandbox pattern
 `tests/test_chat_steer_js.py` established and `tests/test_tool_effect_surfaces_js.py`
@@ -30,6 +30,10 @@ import textwrap
 from pathlib import Path
 
 import pytest
+from fastapi import Request
+from fastapi.datastructures import State
+
+from services.memory.skills import SkillsManager
 
 from test_a_draft_skill_is_uncatalogued_not_inactive import js_function  # noqa: E402
 from test_tool_effect_surfaces_js import _DOM, _make_sandbox, _run  # noqa: E402
@@ -215,7 +219,9 @@ def test_the_form_posts_the_four_fields_the_api_has_always_taken(skills_sandbox)
         calls.fetch.length = 0;
         fire(byId('add-skill-btn'), 'click');
         await tick();
-        const post = calls.fetch.find(c => c.method === 'POST');
+        // `P8-12` put a lint POST in front of this one, so "the first POST"
+        // is no longer the save. Named rather than positional (`Law 20`).
+        const post = calls.fetch.find(c => c.method === 'POST' && c.url.endsWith('/api/skills/add'));
         console.log(JSON.stringify({ post }));
     """)
     body = out["post"]["body"]
@@ -262,7 +268,7 @@ def test_an_empty_optional_field_does_not_become_an_empty_string_entry(skills_sa
         calls.fetch.length = 0;
         fire(byId('add-skill-btn'), 'click');
         await tick();
-        console.log(JSON.stringify({ body: calls.fetch.find(c => c.method === 'POST').body }));
+        console.log(JSON.stringify({ body: calls.fetch.find(c => c.method === 'POST' && c.url.endsWith('/api/skills/add')).body }));
     """)
     for field in ("pitfalls", "verification", "platforms", "requires_toolsets"):
         assert out["body"][field] == [], field
@@ -632,3 +638,451 @@ def test_the_shim_is_built_from_the_shipped_markup():
         "the shared DOM shim lost `replaceChildren`, which every panel built "
         "with createElement in this file uses to swap its contents"
     )
+
+
+# ── P8-06 (closing half) · the TEXT, not a list rendered to look like it ────
+#
+# The preview shipped rendering the `index` rows because when it was written the
+# endpoint had no `prompt` to render. It has one:
+# `services/memory/skill_injection.render_skill_index_block`, the same call
+# `agent_loop._build_base_prompt` makes. Every case below chooses a payload whose
+# `prompt` and whose `index` DISAGREE — different order, different wording,
+# characters no row carries — because that is the only way to tell a panel
+# showing the served text from a panel reassembling one that looks like it.
+
+_PROMPT_BLOCK = (
+    "\n\n## Available skills\n"
+    "Procedures the assistant should consult before doing domain work.\n"
+    "\n**ops**\n"
+    "- `tidy-logs` — tidy the build logs\n"
+    "\n**general**\n"
+    "- `retry-with-backoff` — retry politely *(draft)*"
+)
+
+
+def _index_payload(**over) -> str:
+    payload = {
+        "index": [
+            {"name": "tidy-logs", "description": "tidy the build logs",
+             "category": "ops", "status": "published"},
+            {"name": "retry-with-backoff", "description": "retry politely",
+             "category": "general", "status": "draft"},
+        ],
+        "count": 2,
+        "prompt": _PROMPT_BLOCK,
+        "prompt_chars": len(_PROMPT_BLOCK),
+        "injected_fields": ["name", "description", "category", "status"],
+        "withheld_fields": ["procedure", "pitfalls", "verification", "body_extra"],
+    }
+    payload.update(over)
+    return json.dumps(payload)
+
+
+def _preview(sandbox, payload: str, extra: str = "") -> dict:
+    return _skills(sandbox, """
+        mockFetch((url) => {
+          if (url.includes('/api/skills/audit-status')) return res(200, { status: 'idle' });
+          if (url.includes('/api/skills/index')) return res(200, %s);
+          if (url.includes('/api/prefs')) return res(200, {});
+          if (url.includes('/api/skills')) return res(200, { skills: [], count: 0 });
+          return res(200, {});
+        });
+        ready();
+        await tick();
+        fire(byId('skills-preview-btn'), 'click');
+        await tick();
+        const panel = byId('skills-prompt-panel');
+        const pre = panel.querySelector('.skill-prompt-text');
+        %s
+        console.log(JSON.stringify({
+          text: readable(panel),
+          exact: pre ? pre.textContent : null,
+          exactHtml: pre ? pre.innerHTML : null,
+          label: panel.querySelector('.skill-prompt-exact-label')
+                 ? panel.querySelector('.skill-prompt-exact-label').textContent : '',
+          withheld: panel.querySelector('.skill-prompt-withheld')
+                 ? panel.querySelector('.skill-prompt-withheld').textContent : null,
+        }));
+    """ % (payload, extra))
+
+
+def test_the_preview_shows_the_characters_the_model_is_given(skills_sandbox):
+    """The row's whole distinction. `prompt` here carries a heading, a preamble,
+    blank lines, backticks and a `*(draft)*` badge — **none** of which any
+    `index` row contains. A preview rebuilt from the rows cannot produce this
+    string, so a byte-for-byte comparison is the only assertion that separates
+    the two implementations."""
+    out = _preview(skills_sandbox, _index_payload())
+    assert out["exact"] == _PROMPT_BLOCK, (
+        "the panel must print the served `prompt` unaltered — no trim, no "
+        "re-wrap, no re-sort; the moment it formats it, it stops being evidence"
+    )
+
+
+def test_the_prompt_reaches_the_preview_as_text_and_never_as_markup(skills_sandbox):
+    """A skill description is a perfectly good XSS payload and it arrives inside
+    this string. `H01` on the one node in the app whose contents are a prompt
+    assembled out of what users typed."""
+    hostile = "\n\n## Available skills\n- `x` — <img src=x onerror=alert(1)>"
+    out = _preview(skills_sandbox, _index_payload(prompt=hostile,
+                                                  prompt_chars=len(hostile)))
+    assert out["exact"] == hostile
+    assert out["exactHtml"] == "", "the prompt was assigned as markup"
+
+
+def test_the_preview_says_how_much_of_the_prompt_this_is(skills_sandbox):
+    """A person reading a skills catalogue has no way to judge what it costs
+    them. The endpoint counts the characters; printing the number is what makes
+    "my prompt is full of skills" a thing anybody can notice."""
+    out = _preview(skills_sandbox, _index_payload())
+    assert str(len(_PROMPT_BLOCK)) in out["label"].replace(",", ""), out["label"]
+    assert "character" in out["label"].lower()
+
+
+def test_an_empty_library_says_no_line_reaches_the_prompt(skills_sandbox):
+    """`render_skill_index_block` returns `""` for an empty index, and "" is a
+    real answer — *nothing about skills is injected at all* — which a blank
+    panel cannot distinguish from a failed fetch."""
+    out = _preview(skills_sandbox,
+                   _index_payload(index=[], count=0, prompt="", prompt_chars=0))
+    assert out["exact"] is None, "there is no text to print, so there is no block"
+    assert "nothing is injected" in out["label"].lower()
+
+
+def test_the_withheld_list_is_the_servers_and_not_a_sentence_about_it(skills_sandbox):
+    """`WITHHELD_FIELDS` is derived from `Skill.to_dict()`, so a field added to
+    the schema appears there without anyone remembering to. The panel's English
+    beside it is hand-written and cannot follow. Printing the served list is
+    what keeps the two honest (`Law 7`)."""
+    out = _preview(skills_sandbox, _index_payload(
+        withheld_fields=["verification", "body_extra", "a_field_added_tomorrow"]))
+    assert out["withheld"] is not None, "the served list is not drawn"
+    for field in ("verification", "body_extra", "a_field_added_tomorrow"):
+        assert field in out["withheld"], field
+
+
+def test_the_panel_no_longer_titles_itself_after_the_list(skills_sandbox):
+    """It called itself "The catalogue the AI browses" — accurate when the list
+    was all it had, and a promise the prompt block in front of it does not keep."""
+    out = _preview(skills_sandbox, _index_payload())
+    assert "what the ai is given" in out["text"].lower()
+
+
+# ── P8-12 · the lint, on the surface where a person is typing ───────────────
+
+_LINT_TWO = {
+    "verdict": "problems",
+    "counts": {"problem": 1, "advisory": 1},
+    "findings": [
+        {"code": "missing-procedure", "severity": "problem", "field": "procedure",
+         "message": "No Procedure. There is nothing for the model to follow.",
+         "fix": "Add the numbered steps, in the order they are performed."},
+        {"code": "no-tags", "severity": "advisory", "field": "tags",
+         "message": "No tags. A whole-token tag match is the strongest signal.",
+         "fix": "Add three to five keywords a user would actually type."},
+    ],
+}
+
+
+def _lint_store(lint_payload: str, lint_status: int = 200) -> str:
+    return """
+        mockFetch((url) => {
+          if (url.includes('/api/skills/audit-status')) return res(200, { status: 'idle' });
+          if (url.includes('/api/skills/index')) return res(200, { index: [], count: 0 });
+          if (url.includes('/api/skills/lint')) return res(%d, %s);
+          if (url.includes('/api/prefs')) return res(200, {});
+          if (url.includes('/api/skills')) return res(200, { skills: [], count: 0 });
+          return res(200, {});
+        });
+    """ % (lint_status, lint_payload)
+
+
+def test_leaving_a_field_asks_the_lint_what_is_wrong(skills_sandbox):
+    """`manage_skills action=lint` has answered this since the lint landed and
+    the form could not ask, because a browser has no way into a tool handler.
+    On blur, because that is the moment a person has finished saying one thing
+    and has not yet committed to the whole."""
+    out = _skills(skills_sandbox, _lint_store(json.dumps(_LINT_TWO)) + """
+        ready();
+        await tick();
+        setValue('new-skill-name', 'tidy-logs');
+        setValue('new-skill-description', 'tidy the build logs');
+        calls.fetch.length = 0;
+        fire(byId('new-skill-description'), 'blur');
+        await tick();
+        const post = calls.fetch.find(c => c.method === 'POST');
+        console.log(JSON.stringify({ post, text: readable(byId('skill-lint-panel')) }));
+    """)
+    assert out["post"]["url"].endswith("/api/skills/lint")
+    assert out["post"]["body"]["name"] == "tidy-logs"
+    assert out["post"]["body"]["description"] == "tidy the build logs"
+    assert "No Procedure" in out["text"]
+
+
+def test_a_problem_and_a_suggestion_do_not_look_the_same(skills_sandbox):
+    """The row asks for `problem` in the accent colour and `advisory` muted.
+    Colour cannot be driven here, so what is pinned is the thing colour is
+    applied through — a class per severity, taken from the served `severity`
+    rather than guessed from the wording."""
+    out = _skills(skills_sandbox, _lint_store(json.dumps(_LINT_TWO)) + """
+        ready();
+        await tick();
+        setValue('new-skill-description', 'tidy the build logs');
+        fire(byId('new-skill-description'), 'blur');
+        await tick();
+        const panel = byId('skill-lint-panel');
+        console.log(JSON.stringify({
+          problems: panel.querySelectorAll('.skill-lint-problem').map(n => readable(n)),
+          advisories: panel.querySelectorAll('.skill-lint-advisory').map(n => readable(n)),
+        }));
+    """)
+    assert len(out["problems"]) == 1 and len(out["advisories"]) == 1
+    assert "No Procedure" in out["problems"][0]
+    assert "No tags" in out["advisories"][0]
+
+
+def test_every_finding_says_what_is_wrong_and_then_what_to_type(skills_sandbox):
+    """`message` then `fix`. A finding with only the first is a complaint, and
+    the reason this row exists is that nobody could tell what to do about a
+    skill the nightly audit was about to demote."""
+    out = _skills(skills_sandbox, _lint_store(json.dumps(_LINT_TWO)) + """
+        ready();
+        await tick();
+        setValue('new-skill-description', 'x');
+        fire(byId('new-skill-description'), 'blur');
+        await tick();
+        const rows = byId('skill-lint-panel').querySelectorAll('.skill-lint-finding');
+        console.log(JSON.stringify({
+          rows: rows.map(r => ({
+            message: r.querySelector('.skill-lint-message').textContent,
+            fix: r.querySelector('.skill-lint-fix') ? r.querySelector('.skill-lint-fix').textContent : null,
+          })),
+        }));
+    """)
+    for row, expected in zip(out["rows"], _LINT_TWO["findings"]):
+        assert row["message"] == expected["message"]
+        assert row["fix"] == expected["fix"], "the fix is the sentence acted on"
+
+
+def test_the_lint_advises_and_never_gates_the_save(skills_sandbox):
+    """The row's sharpest clause. A draft with a `problems` verdict still
+    reaches `/api/skills/add` — a lint that blocks is a validator, and this
+    product's whole authoring story is that a draft is allowed to be bad."""
+    out = _skills(skills_sandbox, _lint_store(json.dumps(_LINT_TWO)) + """
+        ready();
+        await tick();
+        setValue('new-skill-name', 'tidy-logs');
+        setValue('new-skill-description', 'tidy the build logs');
+        calls.fetch.length = 0;
+        fire(byId('add-skill-btn'), 'click');
+        await tick();
+        console.log(JSON.stringify({
+          posts: calls.fetch.filter(c => c.method === 'POST').map(c => c.url),
+          text: readable(byId('skill-lint-panel')),
+        }));
+    """)
+    assert any(u.endswith("/api/skills/add") for u in out["posts"]), out["posts"]
+    # And the lint ran first, or "before they save" is not what happened.
+    assert out["posts"][0].endswith("/api/skills/lint"), out["posts"]
+    assert "Saved as a draft" in out["text"]
+
+
+def test_a_lint_that_cannot_answer_does_not_take_the_save_with_it(skills_sandbox):
+    """The check is advice. A 500, a dropped connection or an install with the
+    route disabled must cost the person nothing — least of all the skill they
+    just typed."""
+    out = _skills(skills_sandbox, _lint_store("{}", lint_status=500) + """
+        ready();
+        await tick();
+        setValue('new-skill-name', 'tidy-logs');
+        setValue('new-skill-description', 'tidy the build logs');
+        calls.fetch.length = 0;
+        fire(byId('add-skill-btn'), 'click');
+        await tick();
+        console.log(JSON.stringify({
+          posts: calls.fetch.filter(c => c.method === 'POST').map(c => c.url),
+          errors: uiCalls.errors,
+        }));
+    """)
+    assert out["posts"][0].endswith("/api/skills/lint"), (
+        "the lint has to have been asked, or this case proves nothing about "
+        "what happens when it cannot answer"
+    )
+    assert any(u.endswith("/api/skills/add") for u in out["posts"]), out["posts"]
+    assert out["errors"] == [], "a failed lint must not be reported as a failed save"
+
+
+def test_an_untouched_form_is_not_linted(skills_sandbox):
+    """Tabbing through an empty form is not a request for a verdict, and eight
+    findings about a blank form is the surface shouting at somebody who has not
+    started."""
+    out = _skills(skills_sandbox, _lint_store(json.dumps(_LINT_TWO)) + """
+        ready();
+        await tick();
+        calls.fetch.length = 0;
+        fire(byId('new-skill-name'), 'blur');
+        await tick();
+        console.log(JSON.stringify({
+          posts: calls.fetch.filter(c => c.method === 'POST').map(c => c.url),
+          hidden: byId('skill-lint-panel').className.includes('hidden'),
+        }));
+    """)
+    assert out["posts"] == []
+    assert out["hidden"] is True
+
+
+def test_a_clean_draft_is_told_it_is_clean(skills_sandbox):
+    """Silence reads as "the check did not run", which is the state this panel
+    is most often in and the one that makes people stop trusting it."""
+    clean = {"verdict": "clean", "counts": {"problem": 0, "advisory": 0}, "findings": []}
+    out = _skills(skills_sandbox, _lint_store(json.dumps(clean)) + """
+        ready();
+        await tick();
+        setValue('new-skill-description', 'tidy the build logs');
+        fire(byId('new-skill-description'), 'blur');
+        await tick();
+        console.log(JSON.stringify({ text: readable(byId('skill-lint-panel')) }));
+    """)
+    assert "nothing to fix" in out["text"].lower()
+
+
+def test_the_lint_and_the_save_read_the_same_form(skills_sandbox):
+    """Two readers of eight inputs are two chances to disagree about whether the
+    procedure box was empty — and a lint judging different text from the one the
+    save sends is worse than no lint (`Law 14`)."""
+    out = _skills(skills_sandbox, _lint_store(json.dumps(_LINT_TWO)) + """
+        ready();
+        await tick();
+        setValue('new-skill-name', 'tidy-logs');
+        setValue('new-skill-description', 'tidy the build logs');
+        setValue('new-skill-procedure', '1. run it\\n2. read it');
+        setValue('new-skill-tags', 'logs, build');
+        setValue('new-skill-when', 'the build log is enormous');
+        setValue('new-skill-pitfalls', '- it eats symlinks');
+        setValue('new-skill-verification', 'the log is smaller');
+        calls.fetch.length = 0;
+        fire(byId('add-skill-btn'), 'click');
+        await tick();
+        const posts = calls.fetch.filter(c => c.method === 'POST');
+        console.log(JSON.stringify({
+          lint: posts.find(c => c.url.endsWith('/api/skills/lint')).body,
+          add: posts.find(c => c.url.endsWith('/api/skills/add')).body,
+        }));
+    """)
+    for field in ("name", "description", "category", "when_to_use",
+                  "procedure", "tags", "pitfalls", "verification"):
+        assert out["lint"][field] == out["add"][field], field
+
+
+def _lint_request(user: str, body: dict) -> Request:
+    """The minimum `_owner(request)` reads. Lifted from
+    `tests/test_skills_routes_owner_update.py`, which drives these routes the
+    same way — one pattern for reaching a handler, not two (`Law 14`)."""
+    class DummyApp:
+        state = State()
+
+    return Request(scope={
+        "type": "http",
+        "method": "POST",
+        "headers": [(b"content-type", b"application/json")],
+        "app": DummyApp(),
+        "state": {"current_user": user},
+    }, receive=lambda: None)
+
+
+async def test_the_lint_route_answers_a_draft_and_writes_nothing(tmp_path):
+    """The other half, driven for real — the handler, not the function under
+    it. The route is the door the browser needed: `manage_skills action=lint`
+    has answered this since the lint landed and a browser has no way into a tool
+    handler. Both call `lint_skill`, so the chat channel and the form cannot
+    disagree about whether a skill is a duplicate (`Law 14`).
+
+    Nothing may reach disk. The draft is a question.
+    """
+    from routes.skills_routes import SkillLintRequest, setup_skills_routes
+
+    sm = SkillsManager(str(tmp_path))
+    router = setup_skills_routes(sm)
+    handler = next(r.endpoint for r in router.routes
+                   if r.path == "/api/skills/lint" and "POST" in r.methods)
+
+    before = sorted(p.name for p in tmp_path.rglob("SKILL.md"))
+    result = await handler(_lint_request("alice", {}), SkillLintRequest(
+        name="Tidy Logs", description="", procedure=[], when_to_use="",
+        tags=[], pitfalls=[], verification=[], category="general"))
+
+    assert result["verdict"] == "problems"
+    codes = {f["code"] for f in result["findings"]}
+    assert "missing-description" in codes and "missing-procedure" in codes
+    # `name-not-a-slug` is the one nobody guesses: the save silently re-slugs.
+    assert "name-not-a-slug" in codes
+    for finding in result["findings"]:
+        assert finding["fix"], finding["code"]
+        assert finding["severity"] in ("problem", "advisory")
+    assert sorted(p.name for p in tmp_path.rglob("SKILL.md")) == before, (
+        "the lint wrote a skill"
+    )
+
+
+async def test_the_lint_route_compares_the_draft_against_the_callers_library(tmp_path):
+    """`siblings` is what makes `duplicate-of` possible, and it is the finding
+    nobody can reach any other way — the nightly audit demotes the loser of a
+    pair to draft, days later, with no trace on the form that made it."""
+    from routes.skills_routes import SkillLintRequest, setup_skills_routes
+
+    skills_root = tmp_path / "skills"
+    _write_lint_sibling(skills_root, "rotate-nginx-logs", "alice")
+
+    sm = SkillsManager(str(tmp_path))
+    router = setup_skills_routes(sm)
+    handler = next(r.endpoint for r in router.routes
+                   if r.path == "/api/skills/lint" and "POST" in r.methods)
+
+    result = await handler(_lint_request("alice", {}), SkillLintRequest(
+        name="rotate-nginx-logs-2", description="rotate the nginx logs nightly",
+        when_to_use="the nginx logs are enormous",
+        procedure=["rotate them"], tags=["nginx", "logs"]))
+
+    assert "duplicate-of" in {f["code"] for f in result["findings"]}
+
+
+def test_the_lint_request_model_describes_an_over_long_description_rather_than_refusing():
+    """`SkillAddRequest` caps `description` at 200 characters, and "your
+    description is past the point the API truncates it" is one of the findings
+    this endpoint exists to return. A validator that 422s on the input cannot
+    report it."""
+    from routes.skills_routes import SkillLintRequest
+    from services.memory.skill_lint import MAX_DESCRIPTION, lint_skill
+
+    body = SkillLintRequest(name="x", description="d" * (MAX_DESCRIPTION + 40))
+    result = lint_skill(body.model_dump(), [])
+    assert "description-too-long" in {f["code"] for f in result["findings"]}
+
+
+def _write_lint_sibling(skills_root: Path, name: str, owner: str) -> Path:
+    """One published skill on disk, for the duplicate check to find."""
+    skill_dir = skills_root / "general" / name
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    md = textwrap.dedent(f"""\
+        ---
+        name: {name}
+        description: rotate the nginx logs nightly
+        version: 1.0.0
+        category: general
+        tags: [nginx, logs]
+        status: published
+        confidence: 0.9
+        source: user
+        owner: {owner}
+        created: 2026-01-01T00:00:00Z
+        ---
+
+        # When to use
+        the nginx logs are enormous
+
+        # Procedure
+        - rotate them
+        """)
+    path = skill_dir / "SKILL.md"
+    path.write_text(md, encoding="utf-8")
+    return path

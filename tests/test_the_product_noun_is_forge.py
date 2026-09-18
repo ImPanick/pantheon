@@ -260,15 +260,37 @@ def test_the_calendar_a_user_already_has_is_still_theirs():
 def test_the_task_category_agrees_with_itself():
     """`Law 13`. The category name joins a map, an order and an icon table, and
     a rename that reaches two of the three loses the section's icon or its
-    place at the top with nothing to see."""
+    place at the top with nothing to see.
+
+    **Rewritten 2026-09-18 (`P8-22`), and the check got longer rather than
+    weaker.** Two of the three — the action→category map and the group order —
+    were client-side copies of what `src/builtin_actions.py` already held, and
+    they are on the wire now (`/meta/actions`'s `category` and `categories`).
+    So the join this asserts on now **spans the wire**: the map and the order
+    come out of the Python registry and the glyph table out of the shipped
+    `static/js/tasks.js`, and a rename has to reach both sides or this fails.
+    """
+    from src.builtin_actions import ACTION_CATEGORY_ORDER, build_action_palette
+
     out = json.loads(subprocess.run(
         ["node", str(_REPO / "tests" / "harness" / "forge_labels.js")],
         capture_output=True, text=True, check=True, timeout=30).stdout)
-    assert out["map"]["cookbook_serve"] == "Forge", (
+    palette = {n["name"]: n for n in build_action_palette(include_admin_only=True)}
+
+    assert palette["cookbook_serve"]["category"] == "Forge", (
         "the action key is stored in task rows and does not move; its label does")
-    assert out["order"][0] == "Forge", "Forge serves are listed first on purpose"
+    assert ACTION_CATEGORY_ORDER[0] == "Forge", "Forge serves are listed first on purpose"
     assert "Forge" in out["icons"]
-    assert "Cookbook" not in out["order"] and "Cookbook" not in out["icons"]
+    assert "Cookbook" not in ACTION_CATEGORY_ORDER and "Cookbook" not in out["icons"]
+
+    # Every category the registry names has a glyph, and every icon a node
+    # names has a path — the two joins the browser makes on this data. Neither
+    # could be checked at all while the client kept its own table, because the
+    # client's table WAS the answer it was being checked against.
+    missing_cat = sorted(set(ACTION_CATEGORY_ORDER) - set(out["icons"]))
+    assert not missing_cat, f"categories with no glyph: {missing_cat}"
+    missing_icon = sorted({n["icon"] for n in palette.values()} - set(out["actionIcons"]))
+    assert not missing_icon, f"action icons with no path: {missing_icon}"
 
 
 def test_the_panel_the_user_clicks_is_called_forge():

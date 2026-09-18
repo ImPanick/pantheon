@@ -68,7 +68,7 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P5 | Trace & composer restyle | 17 | 16 | 0 | **1** |
 | P6 | Queue & Plan | 18 | 0 | 0 | **18** |
 | P7 | Trust ladder & control plane | 14 | 9 | **1** | **4** |
-| P8 | The Workshop | 49 | 33 | **3** | **13** |
+| P8 | The Workshop | 49 | 28 | **2** | **19** |
 | P9 | Feature surfaces | 18 | 16 | 0 | **2** |
 | P10 | Accessibility & release | 12 | 11 | 0 | **1** |
 | P11 | Identity & access | 14 | 9 | **1** | **4** |
@@ -80,8 +80,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P17 | The network the agent is hosted on | 14 | 0 | 0 | **14** |
 | P18 | One button, and it links | 9 | 0 | 0 | **9** |
 | P19 | The proof ledger | 8 | 0 | 0 | **8** |
-| Backlog | Bugs and hardening found in flight | 324 | 101 | 0 | **223** |
-| **Total** | | **706** | **250** | **10** | **446** |
+| Backlog | Bugs and hardening found in flight | 329 | 106 | 0 | **223** |
+| **Total** | | **711** | **250** | **9** | **452** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -245,7 +245,7 @@ they are for.*
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
 
 ### Five phases finished, and the day stopped counting the wrong population
-`c2d8669..HEAD`. **706 tracked, 446 done. 0 new phase rows, 0 regressions. `P0-17`, `P3-20`,
+`c2d8669..HEAD`. **711 tracked, 452 done. 0 new phase rows, 0 regressions. `P0-17`, `P3-20`,
 `P3-21`, `P6-08`, `P14-06`–`P14-08`, `P15-08`, `P15-11` and all three `P17` rows closed;
 `P16-20` parked under a standing ruling; `B510` disclosed AI use across three surfaces at the
 owner's request; twenty-two backlog rows filed, and `B413` closed by one of them.**
@@ -4880,39 +4880,86 @@ SKILL.md frontmatter format. That is the pattern to avoid, found in the phase's 
 - [x] **P8-03** Relabel "draft". A draft is excluded from the catalogue the model browses and **still keyword-injected** when it matches — "uncatalogued", not "inactive". — **done 2026-09-18, and the premise is true with a condition the row does not state.** Verified by driving both halves rather than reading them: `index_for` (`services/memory/skills.py:655`) drops a user draft from the catalogue, and `get_relevant_skills` (`:725`) keeps drafts in the retrieval pool and returns one on a keyword match. **The condition is the confidence floor**, and it bites on exactly the skill a person is most likely to have: the Add-Skill form stamps `confidence: 0.8` (`SkillAddRequest`, `routes/skills_routes.py:53`; `SkillDoc.confidence`, `services/memory/skill_format.py:370`) and the shipped floor is **0.85**, so a hand-written draft matches and is then filtered out — filed as `B581`. "Still injected when it matches" is therefore true of a teacher-written draft and of anything the audit has raised, and not of the one you just typed; the surface now says both. The pill reads `uncatalogued`, `data-status="draft"` and the stored frontmatter are untouched (`Law 2`), the hover carries the whole rule — out of the list, in on a match, publish to list it — and the Unpublish action, its tooltip, the toast and the "Drafts only" filter follow the same word. `Verify:` someone who has never read this tracker looks at a skill they just added, and can tell from the card alone that the AI will not see it in its list but may still be handed it, and what to do to change that. — agent:`p8ui`
 - [x] **P8-04** Fix the confidence-slider trap: maximum position stores **zero**, labelled "All", which disables the gate entirely. Dragging right is "let everything in", not "only perfect skills". — **done 2026-09-18. Premise confirmed and narrowed: the slider is not inverted end to end, only its last notch is.** `static/index.html` shipped `min="50" max="100" step="5"`, `syncPrefSlider` (`static/js/memory.js`) formatted `pos >= maxPos ? 'All' : '≥ N%'` and saved `pos >= maxPos ? 0 : pos/100`, and `get_relevant_skills` filters only inside `if min_confidence > 0` (`services/memory/skills.py:748`). So 50 → 95 got monotonically stricter and position 100 flipped to no gate at all: **the strictest setting was one stop short of the end and the end was the loosest**, under a word that reads as a promise about coverage. The fix moves the sentinel to the left end (`min="45"`, one step below the lowest real percentage) and leaves every stored value alone — 0 still means no minimum, 0.85 still means 85% — so a saved preference keeps its meaning and only the geometry moves. Nothing was taken away: 50–100 are all still on the control, and a stored value below the lowest stop now clamps to 50% instead of being read as "no minimum". A sentence under the slider says what the current position does, in consequences. `Verify:` someone who has never read this tracker drags the slider to each end and can tell, from the control and the line under it, which end lets more skills through — and the end that lets everything through is the end that looks loose. — agent:`p8ui`
 - [x] **P8-05** Surface the hidden coupling: turning auto-approve off sets the injection floor to 2.0, silently making injection published-only. — **done 2026-09-18, premise exact.** `src/agent_loop.py:3091-3092` sets `_skill_min_conf = 2.0` when `auto_approve_skills` is off, and 2.0 is unreachable — including through the "unset confidence → keep" leniency at `services/memory/skills.py:764-766`, because `SkillDoc.confidence` defaults to 0.8 and the parser fills it, so `None` never reaches that branch for a file-backed skill. Checked by driving it, not by reading it. The toggle's own label mentions only what Audit all publishes, which is why nobody could see this: the control names one policy and sets two. Both are now written under the card and both redraw when either control moves — off says *"only published skills are injected"*, on says the minimum above is what holds drafts back — resolved by one pure function (`skillGateHints`) so the sentence and the behaviour cannot drift apart. The slider's own line changes too, because with auto-approve off the minimum applies to the audit and to nothing else. `Verify:` someone who has never read this tracker turns auto-approve off and can tell, without leaving the panel, that they have just stopped their uncatalogued skills reaching the AI at all. — agent:`p8ui`
-- [~] **P8-06** **Prompt preview** — call `GET /api/skills/index`, which exists to answer exactly
+- [x] **P8-06** **Prompt preview** — call `GET /api/skills/index`, which exists to answer exactly
   this and **no frontend file has ever called**. Extract the injection renderer into a shared
   function so the preview is the truth, not a re-implementation. — **BOTH HALVES BUILT
-  2026-09-18, BY TWO AGENTS, AND THEY DO NOT YET MEET.** `p8ui` shipped the preview: a **Prompt
-  preview** button on the Skills toolbar, first caller of the endpoint in the product's history
-  (`grep -rn "api/skills/index" static/` returned nothing before it), rendering exactly what comes
-  back, grouped by the endpoint's own category, names and descriptions through `textContent` and
-  never as markup (`H01`), re-deriving nothing. `p8core` shipped the extraction:
-  `services/memory/skill_injection.py::render_skill_index_block` is now the one renderer,
-  called by `agent_loop._build_base_prompt` **and** by the route, output proved byte-identical to
-  the old inline code at n = 1, 2, 5, 17 and 40 across four categories and both statuses, and the
-  payload gained `prompt`, `prompt_chars`, `injected_fields` and `withheld_fields`.
-  **What is left is one field.** The preview renders the `index` rows and titles itself *"The
-  catalogue the AI browses"*, because when it was written the endpoint had no `prompt` to render.
-  It has one now. The row closes when the preview shows `prompt` — the characters the model is
-  actually given — rather than a list reassembled from rows, which is the distinction the row's
-  own text is about.
+  2026-09-18, BY TWO AGENTS, AND THEY DID NOT MEET UNTIL 2026-09-18 (second wave).** `p8ui`
+  shipped the preview: a **Prompt preview** button on the Skills toolbar, first caller of the
+  endpoint in the product's history (`grep -rn "api/skills/index" static/` returned nothing
+  before it), rendering exactly what comes back, grouped by the endpoint's own category, names
+  and descriptions through `textContent` and never as markup (`H01`), re-deriving nothing.
+  `p8core` shipped the extraction: `services/memory/skill_injection.py::render_skill_index_block`
+  is the one renderer, called by `agent_loop._build_base_prompt` **and** by the route, output
+  proved byte-identical to the old inline code at n = 1, 2, 5, 17 and 40, and the payload gained
+  `prompt`, `prompt_chars`, `injected_fields` and `withheld_fields`.
+  — **closed 2026-09-18.** The panel leads with a `<pre class="skill-prompt-text">` holding
+  `data.prompt` **unaltered** — no trim, no re-wrap, no re-sort, `textContent` and never
+  `innerHTML` — above `${prompt_chars} characters`, and the per-category rows stay underneath
+  under a subhead, because the rows carry the draft explanation the block only badges (`Law 1`:
+  the text is added, the list is not taken away). The title moved from *"The catalogue the AI
+  browses"* to *"What the AI is given"*: a title promising a catalogue in front of a block of
+  prompt text is the preview lying about itself. An empty library now says **"Nothing is
+  injected. No line about skills reaches the system prompt at all"**, which is what
+  `render_skill_index_block` returning `""` means and what a blank panel could not distinguish
+  from a failed fetch. `withheld_fields` is printed as the served list beside the hand-written
+  sentence about it, because the server derives that list from `Skill.to_dict()` and the English
+  cannot follow a field added to the schema (`Law 7`).
+  **How the distinction is tested, since it is the whole row.** Every case hands the mock a
+  payload whose `prompt` and whose `index` **disagree** — a heading, a preamble, blank lines,
+  backticks and a `*(draft)*` badge that no `index` row contains — and asserts the panel's text
+  is byte-for-byte the served string. A mutation replacing the served block with one reassembled
+  from the rows is caught; so are six others (`/tmp/ui2_mut.py`, 45 of 45 caught, 0 survived).
   **The second gap is real and is `B580`, not this row.** The route asks `index_for` without a
   toolset list and the loop asks with one, so a skill gated on a switched-off toolset is in the
-  preview and not in that turn's prompt. Both answers are correct for their own question — the
-  library versus one turn — and the preview should say which it is showing.
+  preview and not in that turn's prompt.
   *(Filed twice: `p8ui` as `B580` and `p8core` as `B593`, in the same hour, from opposite sides of
-  the same endpoint. Folded into `B580`. Second instance of `B570`'s fan-out effect in two waves,
-  and the cheaper kind — a duplicate finding rather than a duplicate implementation.)*
+  the same endpoint. Folded into `B580`.)*
   `Verify:` someone who has never read this tracker opens Skills, presses one button, and sees
   the text the model is given — character for character, not a list rendered to look like it.
-  `Depends:` nothing. — `p8ui` + `p8core`, reconciled at the merge — agent:`integrator`
+  `CI:` `tests/test_the_workshop_surfaces_js.py` (6 new cases). `Depends:` nothing. — `p8ui` +
+  `p8core`, reconciled at the merge — agent:`integrator` / `p8ui2` (the text)
 - [x] **P8-07** Show what the preview reveals: **verification and body text are never injected.** They surface only through an on-demand view action. — **done 2026-09-18, premise confirmed field by field.** The catalogue block carries `name`, `description` and `category` only (`src/agent_loop.py:3424-3438`); the matched-skill block adds `when_to_use`, `procedure` and `pitfalls` (`:3142-3165`); `verification` appears in neither, and neither does anything below the frontmatter. The preview says all three in those terms — what is in the list, what a match adds, what is never sent — and says where the missing half lives: open the card, or the model asks for the whole file itself. The Add-Skill form says the same thing at the point where a person types a verification step and would otherwise assume it is being sent. `Verify:` someone who has never read this tracker writes a verification step, opens the preview, and can tell that the AI will not be given it — and where it went. — agent:`p8ui`
 - [x] **P8-08** Wire the test's `task` field — the endpoint has accepted a user task all along and the UI has never sent one. One textarea. — **done 2026-09-18, premise exact.** `POST /api/skills/{id}/test` reads `body.task` at `routes/skills_routes.py:1499` and falls back to `_skill_test_task(skill)` (`:95`) when it is blank; `_testSkill` sent `{model, endpoint_url}` and nothing else, so **every skill test in this product's history ran an invented scenario and nothing said so**. Test now opens the panel with the box and a **Run test** button rather than starting immediately — one more click, and it is the click that makes the feature legible, because a blank box that states its own consequence ("leave blank and the AI invents a realistic example") is the only way a person learns the fallback exists. Retry pre-fills from `/test-status`, which has always echoed `task`, so re-running the same task is one click and changing it is one edit — which is also the shape `P8-09` needs when its own blocker clears. `_testSkill` split into ask / start / poll so the three are not one function. `Verify:` someone who has never read this tracker tests a skill against a case they choose, and can tell from the panel what happens if they choose nothing. — agent:`p8ui`
 - [~] **P8-09** **Before/after behaviour diff.** The runner is parameterised on arbitrary markdown *and* an arbitrary task and never reads from disk — call it twice with old and new against the same task. — **BLOCKED (2026-08-27), and this one bites on the first run.** `_run_skill_test_once` **destructively denies a pending approval when it hits a gate**, so calling it twice — which is the entire idea — burns two approvals and the second half of the diff runs against a state the first half changed. `Depends:` P8-08, **`Blocked:` P8-10** — the runner needs to be non-destructive before a before/after diff means anything.
 - [x] **P8-10** **Versioning.** Every write overwrites in place and the audit rewrites destructively with no copy kept; the version field is decorative and never bumped. A skill is a *directory* — a `versions/` sibling costs one line in the writer, and the rewrite path still holds the old markdown in a local when it writes the new one. — **done 2026-09-18.** Premise confirmed in full, and the audit is the worst case exactly as written: `_improve_skill_md` hands a model the current markdown, `_apply_skill_md` puts the rewrite on disk, and the old text's only remaining copy is the caller's `md` local, which goes out of scope. **The row's "one line in the writer" was the right instinct and the wrong count, for a reason worth keeping.** `SkillsManager._write_skill` is indeed the single writer every path funnels through — `add_skill`, `update_skill`, `backfill_owner`, and the audit and editor by way of `update_skill` — but a snapshot on *every* write is unusable: `_set_conf` and `_audit_finalize_status` each call `update_skill` with a bookkeeping field, so one nightly audit of one skill produces two to four writes and none of them is an edit. So the writer compares a **content fingerprint** — name, description, category, tags, the three toolset lists, when-to-use, procedure, pitfalls, verification, body — and keeps a copy only when one of those moved. `status` and `confidence` changes leave no version and no bump, which is what makes the history readable. The patch number moves on the same test, **unless the caller set the version itself**, because a person who typed `2.0.0` meant it — and that is precisely the case no caller in this repo exercises, which is why the field had never left `1.0.0`. Snapshots are `versions/NNNN-<version>.md`, never `SKILL.md`, so `_iter_skill_files` cannot mistake one for a skill; they travel with the directory through a rename (one `os.rename`) and are deleted with it; the sequence caps at 20. **`P8-09` is NOT unblocked by this, and the tracker says it is.** Measured: `_run_skill_test_once` calls `tool_approval_store.consume(..., decision="deny")` on every run that hits a gate — driven twice with a stubbed loop, it denied `appr-1` twice — and that path is untouched by anything here, because versioning is about SKILL.md bytes and the destruction `P8-09` trips over is an approval record. `B592` carries the correction. `Verify:` a person who has never read this tracker asks the assistant what their skill said before last night's audit rewrote it, and is handed the previous text — `manage_skills action=versions` lists it, `action=view_ref path=versions/<id>.md` reads it. `CI:` `tests/test_a_skill_edit_keeps_the_old_one.py` (16 tests). — agent:`p8core`
 - [x] **P8-11** Rollback from a version. `Depends:` P8-10. — **done 2026-09-18.** `restore_version` goes back through the ordinary writer, so **the copy it replaces is itself kept** and a rollback made by mistake costs one more sentence rather than the work it undid. Identity does not travel with the body: `name`, `category` and `owner` are pinned to the live skill's, because a snapshot is a file a person can hand-edit and those three decide which directory the skill lives in and which id the UI holds — letting a restore carry them would be the rename that `_apply_skill_md` and the markdown-save endpoint each already refuse, arriving by a third door. A test plants a tampered snapshot claiming `name: somewhere-else`, `owner: mallory`, `category: elsewhere` and asserts none of the three moves. A version id is matched against `^\d{4}-[A-Za-z0-9._-]{0,40}$` **and** realpath-contained inside the skill's own `versions/`; five traversal shapes are pinned. **Still missing, and it is `p8ui`'s file:** the Workshop card has no history affordance at all, so a person looking at the card cannot tell that earlier copies exist. What it needs is one row per entry from `GET /api/skills/{name}/versions`-equivalent data — currently only the tool channel serves it, deliberately, for the reason `B596` records — with the id, the version it held and when it was replaced, a "view" that shows the old markdown and a "restore" that names what it will replace. `Verify:` someone who has never read this tracker says "put that skill back the way it was" and it is back, and is told that undoing the undo is available. `CI:` `tests/test_a_skill_edit_keeps_the_old_one.py`. — agent:`p8core`
-- [·] **P8-12** Pre-save lint — the necessity and retrieval-precision judges are pure functions of `(skill, siblings)`, already run nightly, callable with no refactor. — **premise corrected 2026-09-18, and the correction changes the deliverable.** They are not pure functions and they are not callable from a save handler. `_eval_skill_necessity` and `_eval_skill_retrieval_precision` are both `async def`, both take `(skill_md, others, url, model, headers)`, and both make an `llm_call_async` — with `timeout=120` and `timeout=90` respectively. A save that waited on either would hang for up to two minutes, and on an install with no model configured it would never answer at all. What **is** pure is the cheap half the audit runs *around* those two calls and has never shown an author: `_should_check_retrieval_precision`, the broad-tag prefilter that decides whether the expensive judge is worth running; `_audit_generic_blocker`, the trivial/generic regex; and the token-overlap comparison inside `_skill_duplicate_blocker`. All three lived in `routes/skills_routes.py`, which is the wrong layer for something a manager, a route and a tool handler all want; they are now `services/memory/skill_lint.py` and `skills_routes` imports them back under their existing private names, so `_skill_duplicate_blocker` and the author-facing lint share **one** comparison rather than two that drift (`Law 14`). A mutation proves the sharing rather than the imports claiming it: making `skill_similarity` return `0.0` stops the nightly blocker seeing a duplicate as well as the lint. On top of those, the structural checks nothing was making at all — the `P8-17` gap seen from the author's side: missing description, when-to-use, procedure, pitfalls, verification, tags, a default category, a name that the save will silently re-slug, a description past the 200 characters the API truncates at. `verdict` is an enum (`clean` · `advisories` · `problems`) and every finding carries `severity` plus a `fix`, because a boolean verdict in this repo has already been read in both directions at once (`Law 10`). **What is left is the word "pre-save".** `manage_skills action=lint` answers for a draft that has not been written — the test asserts nothing lands on disk — but the Workshop's own Save button does not call it, so the surface where a person is actually typing says nothing. It needs `static/` and `static/` is `p8ui`'s: a lint panel beside the editor that runs on blur or on Save, `problem` findings in the accent colour and `advisory` findings muted, each showing `message` then `fix`, and a save that is **never blocked** — the lint advises, it does not gate. `Verify:` someone who has never authored a skill writes a bad one, and the screen tells them what is wrong and what to do about it **before** they save, without a model call and without a delay they notice. `CI:` `tests/test_the_lint_answers_before_the_save.py` (10 tests). — agent:`p8core` (backend) / `p8ui` (surface)
+- [x] **P8-12** Pre-save lint — the necessity and retrieval-precision judges are pure functions of `(skill, siblings)`, already run nightly, callable with no refactor. — **premise corrected 2026-09-18, and the correction changes the deliverable.** They are not pure functions and they are not callable from a save handler. `_eval_skill_necessity` and `_eval_skill_retrieval_precision` are both `async def`, both take `(skill_md, others, url, model, headers)`, and both make an `llm_call_async` — with `timeout=120` and `timeout=90` respectively. A save that waited on either would hang for up to two minutes, and on an install with no model configured it would never answer at all. What **is** pure is the cheap half the audit runs *around* those two calls and has never shown an author: `_should_check_retrieval_precision`, `_audit_generic_blocker`, and the token-overlap comparison inside `_skill_duplicate_blocker`. All three lived in `routes/skills_routes.py`, which is the wrong layer for something a manager, a route and a tool handler all want; they are now `services/memory/skill_lint.py` and `skills_routes` imports them back under their existing private names, so `_skill_duplicate_blocker` and the author-facing lint share **one** comparison rather than two that drift (`Law 14`). On top of those, the structural checks nothing was making at all — the `P8-17` gap seen from the author's side. `verdict` is an enum (`clean` · `advisories` · `problems`) and every finding carries `severity` plus a `fix` (`Law 10`).
+  — **surface closed 2026-09-18, and the row's "it needs `static/`" was half the answer.**
+  `manage_skills action=lint` is a **tool handler**, and a browser has no door into one:
+  measured before this change, `grep -rn "lint_skill\|action=lint" routes/` returned nothing, so
+  no amount of `static/` could have reached it. `POST /api/skills/lint` is that door and it is
+  the *same* door — both it and the tool call `services.memory.skill_lint.lint_skill`, so the
+  chat channel and the form cannot disagree about whether a skill is a duplicate. It takes
+  `SkillLintRequest`, deliberately **not** `SkillAddRequest`: that model caps `description` at
+  200 characters, and *"your description is 40 past the point the API truncates it"* is one of
+  the findings this endpoint exists to return — a validator that 422s on the input cannot report
+  it. Nothing is written; a test asserts the skills root is byte-identical after a lint.
+  **`check-unreachable` had exactly zero headroom** (`B596`: 91 of 91), and this is the wave that
+  spent the slot `P8-06`'s frontend half bought: measured **90 of 91 before and 90 of 91 after**,
+  because a route with a caller never enters the count. `B596`'s question — how a paired
+  backend/frontend change lands — is answered by example here and still deserves a written rule.
+  The panel is `#skill-lint-panel`, above the Add Skill button: it runs on **blur of any of the
+  eleven form fields** and again on Save, marks `problem` findings with a **left rule** in
+  `var(--accent, var(--red))` at full contrast and mutes `advisory` ones, each showing `message`
+  and then `fix` on its own line, and **is never in front of the save**.
+  **The row says "`problem` findings in the accent colour" and that is deliberately not what
+  shipped.** `tests/test_accent_fallback_semantics_css.py` holds a population of **181**
+  full-strength accent `color:` declarations, each of which fails 4.5:1 against `--panel` on seven
+  of the sixteen shipped palettes, and its own words are that a new one is *"a new instance of a
+  known defect"*. A panel whose entire job is a list somebody has to read and act on is the last
+  place to add the 182nd, so the accent went on the rule and the rank is carried by the rule, by
+  full contrast against a muted sibling, and by the field name's weight — which is also what makes
+  it survive a colour-blind reader. The population stayed at 181; the **spelled-fallback** count
+  moved `552 → 553` and the total `813 → 814` for that one border, named in the test's own prose
+  rather than absorbed, and the two mirrored comments that quote it — `static/js/theme.js:300/303`
+  and `static/index.html:48` — moved with it in the same change (`Law 11`: there are three copies
+  of that number and they are synced deliberately, not incidentally). A draft with four problems still POSTs `/api/skills/add`;
+  a lint that 500s, times out or is disabled costs nothing and raises no error toast; a clean
+  draft is told it is clean, because silence reads as *"the check did not run"*. The form is read
+  **once**, by `_draftFromForm`, which the lint and the save both call — two readers of eight
+  inputs are two chances to disagree about whether the procedure box was empty, and a lint judging
+  different text from the one the save sends is worse than no lint (`Law 14`).
+  `Verify:` someone who has never authored a skill writes a bad one, and the screen tells them what is wrong and what to do about it **before** they save, without a model call and without a delay they notice. `CI:` `tests/test_the_lint_answers_before_the_save.py` (10 tests) · `tests/test_the_workshop_surfaces_js.py` (11 new cases). — agent:`p8core` (backend) / `p8ui2` (surface and the route it needed)
 - [ ] **P8-13** "Improve this draft" — the existing rewrite prompt with a synthetic verdict, a trick the audit itself already uses to force a metadata-only fix.
 - [ ] **P8-14** "Draft from my last session" — retarget the teacher's skill-from-trace prompt, which already emits the full modern schema, from a failure trace to a user description.
 - [ ] **P8-15** Surface duplicate overlap at authoring time. Similarity is already computed client-side for a badge and server-side at audit — neither runs when you type. Note hand-written skills post a source value that **exempts them from creation-time dedup**.
@@ -4924,7 +4971,7 @@ SKILL.md frontmatter format. That is the pattern to avoid, found in the phase's 
 - [ ] **P8-21** *(Stretch)* Budget the index. It costs ~15 tokens per published skill on **every single request** and participates in no budget. Also: the usage counter records *retrievals*, not successes, so "most-used" measures keyword luck.
 
 ### Automations
-- [·] **P8-22** Node palette endpoint — merge the three `/meta/*` routes, move the client-side
+- [x] **P8-22** Node palette endpoint — merge the three `/meta/*` routes, move the client-side
   category/icon taxonomy server-side, emit param schemas and a `model_backed` flag (currently
   maintained twice: once to gate the semaphore, once to draw a badge). **A defect this row
   inherits and nobody had recorded** (found 2026-08-27, AST-verified): `BUILTIN_ACTIONS` holds
@@ -4932,167 +4979,182 @@ SKILL.md frontmatter format. That is the pattern to avoid, found in the phase's 
   and are **never offered by `/meta/actions`**. Two working actions are invisible to the palette.
   Reconcile the pair in the same commit — that is the merge's whole point (`Law 7`).
   — **Re-measured 2026-09-18 and the numbers held: 18 and 16, AST-counted, missing exactly
-  `run_local` and `cookbook_serve`.** The pair is reconciled. `src/builtin_actions.py` now carries
-  one `BUILTIN_ACTION_META` — description, category, icon, `model_backed`, `params` — and
-  `BUILTIN_ACTION_INFO` and a new `MODEL_BACKED_ACTIONS` are **derived** from it, so the two maps
-  cannot fall apart again; `tests/test_node_palette.py` holds `set(BUILTIN_ACTIONS) ==
-  set(BUILTIN_ACTION_META)` by recomputing both rather than asserting "18", because a test that
-  asserts a number passes on the day the nineteenth action is added to one map only. The two
-  invisible actions are offered today, to admins, with no client change at all —
-  `static/js/tasks.js:1406-1419` builds the action `<select>` straight out of this endpoint's
-  `name` + `description`, so the picker went from 16 entries to 18 the moment the registry did.
-  `model_backed` was two lists of one fact — `TaskScheduler._MODEL_BACKED_ACTIONS` (the model-slot
-  gate) and `_MODEL_BACKED_ACTIONS` in `static/js/tasks.js:524` (the badge). The server copy is
-  gone; `TaskScheduler._action_needs_model()` reads the registry, and the flag ships on the wire so
-  the badge and the semaphore cannot describe the same action differently.
-  **Premise corrected 2026-09-18 — "merge the three `/meta/*` routes" was implemented as a merge of
-  the BUILDER, not of the URLs, and deliberately.** A fourth endpoint that no page fetches is a
-  route with no caller, which is `Law 13` in one line, and `.pantheon/check-unreachable.py` measures
-  it: **91 routes with no frontend caller against a ceiling of 91**, so `/meta/palette` would have
-  taken the gate to 92 on its own unwiredness. It would also be `Law 14` — a fourth door beside
-  three that already work, while the client still fetches the three. So the taxonomy, the
-  reconciliation and the param schemas landed on the doors that are already called: `/meta/actions`
-  returns full palette nodes (`name`, `description`, `category`, `icon`, `model_backed`,
-  `admin_only`, `params`) plus `categories` and `default_trigger_count`, `/meta/events` returns the
-  registry, `/meta/output-targets` is unchanged in shape and now shares a builder. No key was
-  removed from any response (`Law 1`). **The one-URL merge belongs in the same commit as the one
-  fetch that replaces three**, which is `static/js/tasks.js` and therefore `p8ui`'s.
-  **Open, and the client half is why.** `static/js/tasks.js` still holds the taxonomy it no longer
-  needs to: `_CATEGORY_MAP` (`:660`, 19 entries — two of them, `tidy_calendar` and `ping_events`,
-  for actions that no longer exist), `_CATEGORY_ORDER` (`:687`), `_MODEL_BACKED_ACTIONS` (`:524`)
-  and `_TASK_ICONS` (`:485`, keyed by action name). **What the merge still needs, all in
-  `static/js/tasks.js`:** (1) `_fetchActions` (`:219`) keeps `data.categories` and
-  `data.default_trigger_count` alongside `data.actions`; (2) `_categoryFor` (`:703`) reads
-  `node.category` and keeps its `'Other'` fallback, and `_CATEGORY_MAP` goes; (3) `_CATEGORY_ORDER`
-  becomes `data.categories` — same eleven names, same order, so nothing a user has learned moves;
-  (4) `_TASK_ICONS` keeps every SVG path and is **re-keyed by the server's semantic icon name** —
-  `chat document brain search envelope reply translate calendar-plus calendar-tags signature bell
-  clock check-square check-book terminal book`, plus the existing `_action_default` / `_llm_default`
-  fallbacks — and `_taskIcon` (`:515`) looks up `node.icon`; (5) `_taskAiMark` (`:537`) reads
-  `node.model_backed` and `_MODEL_BACKED_ACTIONS` goes; (6) the action form draws its prompt field
-  from `node.params[0]` (`label`, `type`, `description`) instead of special-casing action names, so
-  `cookbook_serve` says "Serve config, JSON" and `run_local` says "Script" without anyone knowing
-  which is which; (7) the cache-buster `20260723tasksbulkfeedback1` is bumped at **7 import sites**
-  — `static/sw.js:140`, `static/app.js:33`, `static/js/calendar.js:2962`,
+  `run_local` and `cookbook_serve`.** The pair is reconciled. `src/builtin_actions.py` carries
+  one `BUILTIN_ACTION_META` and `BUILTIN_ACTION_INFO` / `MODEL_BACKED_ACTIONS` are derived from
+  it; `TaskScheduler._action_needs_model()` reads the registry.
+  **Premise corrected 2026-09-18 — "merge the three `/meta/*` routes" was implemented as a merge
+  of the BUILDER, not of the URLs, and deliberately.** A fourth endpoint no page fetches is a
+  route with no caller (`Law 13`), and `.pantheon/check-unreachable.py` measures it. So the
+  taxonomy, the reconciliation and the param schemas landed on the doors already called.
+  — **client half closed 2026-09-18 (second wave). Every line number in the open half was
+  re-measured against `1fe7c19` and every one held** — `_fetchActions` `:219`, `_TASK_ICONS`
+  `:485`, `_taskIcon` `:515`, `_MODEL_BACKED_ACTIONS` `:524`, `_taskAiMark` `:537`,
+  `_CATEGORY_MAP` `:660`, `_CATEGORY_ORDER` `:687`, `_categoryFor` `:703`, and all seven buster
+  sites. **One count did not**: `_CATEGORY_MAP` held **20** action→category entries, not 19
+  (counted from its own lines, `Law 6`); two of them, `tidy_calendar` and `ping_events`, were for
+  actions that no longer exist, which is the row's point and one entry sharper than it said.
+  All three copies are gone. `_TASK_ICONS` keeps every shipped SVG path and is **re-keyed by the
+  server's sixteen semantic icon names** — verified identical to the set
+  `BUILTIN_ACTION_META` picks from — plus the two fallbacks, and gains `terminal` and `book`,
+  which is what makes the re-key more than cosmetic: `ssh_command`, `run_script`, `run_local` and
+  `cookbook_serve` were keyed by nothing and drew the generic gear. `_categoryFor`, `_taskIcon`
+  and `_taskAiMark` read `_actionNode(name)`; `_categoryOrder()` is `data.categories`, the same
+  eleven names in the same order, stated once in `ACTION_CATEGORY_ORDER`. Before the palette
+  lands every reader falls back — `Other`, the gear, no badge, no order — and the list re-renders
+  when it arrives, so the first paint of a cold modal is never an exception.
+  **The form's missing box was the largest single gap and the row understates it.** Four
+  built-ins declare a parameter and the form had a box for **none** of them: `syncActionExtra`
+  returned early for anything outside `_EMAIL_ACCOUNT_ACTIONS`, so an admin picking `run_local`
+  saved a task with an empty `prompt` and learned about it when it fired. The field is drawn from
+  `node.params[0]` — `label`, `type` (`text`/`json` get a textarea), `description` — and
+  `_actionPromptValue(action)` reads it back on save, refusing an empty `required` one.
+  `cookbook_serve` now says *"Serve config"* and `run_local` says *"Script"* without anyone
+  knowing which is which.
+  **Two client-side retirements, stated rather than discovered later.** A stored task holding
+  `tidy_calendar` or `ping_events` now files under `Other` with the gear instead of under
+  `Calendar` with a calendar — which is the honest answer, since neither is in `BUILTIN_ACTIONS`
+  and neither can run. And the 145-line anonymous save handler is now `const _saveTaskForm`,
+  because a closure nothing can name is a closure no stack trace and no test can refer to.
+  Cache-buster `20260723tasksbulkfeedback1` → `20260918palettesteps1` at **all seven** import
+  sites — `static/sw.js:140`, `static/app.js:33`, `static/js/calendar.js:2962`,
   `static/js/cookbookSchedule.js:59`, `static/js/chatRenderer.js:1811`,
-  `static/js/settings.js:3164`, `static/js/chat.js:7911` — and `CACHE_NAME` in `static/sw.js:11`
-  with it. Only then is one fetch instead of three worth adding, and `/meta/palette` lands in that
-  commit.
-  `Verify:` an admin who has never opened Tasks clicks **New → Action** and finds all eighteen
-  built-ins in the picker, `run_local` and `cookbook_serve` among them, each with a sentence saying
-  what it does — done, and checkable today by counting the options in the dropdown. **Not yet:** the
-  same person can tell from the picker which actions use a model and which group each belongs to
-  without opening the tracker. — agent:`p8auto`
+  `static/js/settings.js:3164`, `static/js/chat.js:7911` — plus `CACHE_NAME`
+  (`pantheon-v420-p8-workshop-preview` → `pantheon-v421-p8-palette-steps`). A repo-wide grep for
+  the old string returns nothing, and a repo-wide grep for `tasks.js` finds no eighth loader,
+  static or dynamic (`D-01`'s contract; the `presets.js` and seven-site cases are why it was
+  grepped for `import(` as well as for the literal).
+  **One test had to move with the taxonomy, and it got longer rather than weaker.**
+  `test_the_task_category_agrees_with_itself` (`tests/test_the_product_noun_is_forge.py`) and its
+  node harness `tests/harness/forge_labels.js` sliced `_CATEGORY_MAP`, `_CATEGORY_ORDER` and
+  `_CATEGORY_ICONS` out of `tasks.js` and `eval`'d them, to check the category name joined all
+  three. Two of the three are now the server's, so the harness reports the browser's half and the
+  test reads the other two out of `build_action_palette()` and `ACTION_CATEGORY_ORDER` — **the
+  join it asserts on now spans the wire**, which is where it lives. It also gained two checks that
+  were impossible before, because the client's own table used to be the answer it was checked
+  against: every category the registry names has a glyph, and every `icon` a node names has a
+  path.
+  `Verify:` an admin who has never opened Tasks clicks **New → Action**, finds all eighteen
+  built-ins, can tell from the picker which use a model and what group each belongs to, and — for
+  the four that need one — is given a labelled box with a sentence saying what goes in it, rather
+  than saving a task that does nothing.
+  `CI:` `tests/test_node_palette.py` (server) · `tests/test_the_palette_moves_to_the_server_js.py`
+  (client). — agent:`p8auto` (server) / `p8ui2` (client)
 - [ ] **P8-23** **Give triggers payloads.** The event bus takes a name and an owner — a "document created" trigger cannot say *which* document. The webhook route has **no request parameter**: body, query and headers are read by nobody. It is a doorbell. **Highest-leverage change in Automations; everything downstream depends on it.** Do not change the webhook URL shape — it is CI-pinned.
 - [ ] **P8-24** Widen the node output contract from `(text, success)` to `(payload, status)` with a back-compat adapter for the 18 existing actions. The no-op and defer-with-backoff signals already encode skip and retry — generalise them.
-- [·] **P8-25** **Write `TaskRun.steps`** — declared, never written. A run records one result string
+- [x] **P8-25** **Write `TaskRun.steps`** — declared, never written. A run records one result string
   for the whole task. Filling it upgrades the shipped activity view instantly with no new UI. —
-  **BLOCKED (2026-08-27): "migrated" is false.** There is **no `ALTER TABLE task_runs ADD COLUMN
-  steps` anywhere in the tree**, so the column exists in the model and not in any database that was
-  created before it. Writing to it raises `OperationalError` on every upgraded install — a fresh dev
-  box would pass and every real deployment would break. **Unblock by:** writing the migration first.
-  It also blocks `P8-34`.
-  — **UNBLOCKED 2026-09-18. The block was re-measured and held**: one `ALTER TABLE task_runs` in the
-  whole tree (`core/database.py:1448`, adding `model`), and none for `steps`.
-  `_migrate_add_task_run_steps_column` is modelled line for line on
-  `_migrate_add_task_run_model_column` — the migration for the same table, two functions above it —
-  and runs from `init_db` immediately after it. `tests/test_task_run_steps_migration.py` builds the
-  `task_runs` table **by hand, without either column**, and proves the write raises
-  `sqlite3.OperationalError` before the migration and round-trips after it (`Law 20` — a migration
-  test against a schema that already has the column is a test of `create_all`).
+  **BLOCKED (2026-08-27): "migrated" is false.** There was **no `ALTER TABLE task_runs ADD COLUMN
+  steps` anywhere in the tree**.
+  — **UNBLOCKED 2026-09-18.** `_migrate_add_task_run_steps_column` is modelled line for line on
+  `_migrate_add_task_run_model_column` and runs from `init_db`.
   **Premise corrected 2026-09-18 — "with no new UI" was not true, and could not have been.**
-  `_run_to_dict` did not serialise `steps`, so no response had ever contained the column: filling it
-  would have upgraded nothing, because nothing downstream could see it. The wire carries it now —
-  `GET /api/tasks/{task_id}/runs` returns `steps` (parsed) and `step_count`, and `/runs/recent`
-  returns `step_count` with `steps` emptied, because that endpoint returns up to 200 runs and 200
-  step logs is a response measured in megabytes for a list that draws one line per row.
-  **Both executors write it, through the paths they already had.** An action task records every line
-  its `progress_cb` reports — those lines existed already and each overwrote the last into `result`,
-  so only the final one survived and the rest existed nowhere. An LLM task records the agent loop's
-  own `tool_start` / `tool_output` / `tool_blocked` events, which carried the tool, the round, the
-  command and the outcome all along and which nothing read. Steps survive the error, abort and
-  no-op paths as well as success — the run somebody opens a step log for is usually the one that
-  went wrong. Capped at 200 steps and 400 characters a field.
-  **Open on the client half only,** which is `static/js/tasks.js` and therefore `p8ui`'s:
-  `_renderRunHistory` (`:1947-1955`) draws `.task-run-result` and nothing else. It needs to draw
-  `run.steps` under it — each entry has `kind` (`progress` | `tool`) and `at`; a `progress` step has
-  `detail`; a `tool` step has `tool`, `round`, `detail` (the command), `status` (`running` | `ok` |
-  `error` | `blocked`) and `output`. The Activity list carries `step_count` only, so a row there can
-  say "6 steps" and open the history. Same cache-buster bump as `P8-22` names.
-  **`P8-34` is now free of this dependency**: `TaskRun.steps` is migrated, written and served, which
-  is what `P8-34` was waiting on. It still `Depends:` `P8-22` and `P8-26`, and `P8-22` above is
-  open.
+  `_run_to_dict` did not serialise `steps`. The wire carries it now: `GET /api/tasks/{id}/runs`
+  returns `steps` parsed and `step_count`, `/runs/recent` returns `step_count` with `steps`
+  emptied. Both executors write it. Capped at 200 steps and 400 characters a field.
+  — **client half closed 2026-09-18 (second wave), and the function the row names does not
+  exist.** There is no `_renderRunHistory` in the tree and there never was: the renderer is
+  **`_showRunHistory`, `static/js/tasks.js:1908`**, and the cited range `:1947-1955` is the
+  `.task-run-item` template inside it, which is right — `.task-run-result` sits at `:1953`. Name
+  invented, lines correct.
+  `_renderRunSteps(run)` draws the log under the result line: a `<details>` whose summary is
+  *"6 steps · 1 did not finish"* — collapsed, because the run worth reading is one in a list of
+  twenty and the summary is what makes it findable — over one `<li>` per step. A `progress` step
+  shows its `detail`; a `tool` step shows tool, round, command, status and output, and an `error`
+  or `blocked` one is marked by a left rule and a weight as well as a hue, because the failed
+  step is why the log was opened and colour alone does not survive a colour-blind reader. A run
+  with no steps — every run written before the migration, and every genuine no-op — draws
+  nothing, rather than a `0 steps` disclosure on every row of a history. Activity rows carry
+  `stepCount` from `/runs/recent` and a `6 steps` chip that opens **that task's own history**
+  (`_openStepLogFor`), so there is one renderer for the steps and the chip is a door to it; a
+  registered Activity source's row with no task behind it (`P6-07`) gets no chip.
+  **A defect in the test helper `Law 20` recommends, found here and fixed here.**
+  `js_function` (`tests/test_a_draft_skill_is_uncatalogued_not_inactive.py`) resolved a function
+  body by brace balance with quotes skipped — and treated every `'` as a string delimiter,
+  including the ones in `// the app's whirlpool` and `// poll's next render`. This repo's comments
+  are English prose. Measured on `static/js/tasks.js`:
+  `js_function(src, "function _wireActivityRows")` raised `unbalanced braces` (loud, and the only
+  reason it was noticed) and `js_function(src, "function renderTriggerOpts")` returned a
+  **1,434-line** body for a 215-line function — balanced, plausible, and silently file-wide. Every
+  `Law 20` option-2 assertion made inside such a scope was a file-wide grep wearing a scope's
+  clothes, which is the failure `Law 20` exists to stop. `_js_skip` now steps over line comments,
+  block comments, strings and template literals; the four existing callers across three files are
+  green, and two of them were over-scoped before.
+  **`tests/harness/activity_row_status.js` had to learn about both new functions**, and the way
+  it failed is the argument for how it is written: it slices `_showRunHistory` out of `tasks.js`
+  by source anchors and runs it, so the moment the history called `_renderRunSteps` the harness
+  threw `ReferenceError` and took five `test_run_status_is_one_vocabulary.py` cases with it.
+  Both helpers are now **sliced, not stubbed**, for that file's own standing reason — a stub would
+  report the harness's markup, and `_showRunHistory` calls `_renderRunSteps` unconditionally, so a
+  stubbed one would go green on a history that had stopped drawing the log at all.
   `Verify:` someone who has never opened Tasks clicks a finished task, reads its last run, and can
   say what it actually did — which tools it called, in what order, and which one failed — without
-  being told where to look. — agent:`p8auto`
+  being told where to look; and from the Activity list can tell which rows have a log at all.
+  `CI:` `tests/test_task_run_steps_migration.py` (server) ·
+  `tests/test_the_palette_moves_to_the_server_js.py` (client). — agent:`p8auto` (server) /
+  `p8ui2` (client)
 - [ ] **P8-26** Add the graph document. One nullable successor today; the cycle check doubles as a **silent depth cap of ten**. Project the existing successor as a single edge on read.
 - [ ] **P8-27** Run-scoped execution identity — the current one is keyed by task, so a task cannot be in flight twice. Required before fan-out. `Depends:` P8-26.
 - [ ] **P8-28** Branch node — the only conditional in the engine is `status == "success"`. `Depends:` P8-26.
 - [ ] **P8-29** Data mapping between nodes. `Depends:` P8-23, P8-24.
-- [·] **P8-30** Collapse the parallel event catalogues into one registry, and **add
+- [x] **P8-30** Collapse the parallel event catalogues into one registry, and **add
   `document_updated`** — it is fired in production and appears in no catalogue, so nothing can
-  trigger on it. **Re-measured 2026-08-27: not three catalogues but two enumerated ones plus five
-  hardcoded strings** (`task_routes.py:1035-1043`, `tool_schemas.py:583`,
-  `task_scheduler.py:241-251`). The five loose strings are the ones a merge of "three catalogues"
-  would miss entirely.
-  — **Re-measured 2026-09-18. The shape of the 2026-08-27 correction held and every line number in
-  it was stale, and there were two more loose strings than it counted.** As measured: the two
-  enumerated catalogues are `routes/task/task_routes.py:1091-1103` (`/meta/events`, **not**
-  `:1035-1043`) and `src/tool_schemas.py:637` (**not** `:583`); the five loose strings are in
-  `HOUSEKEEPING_DEFAULTS` at `src/task_scheduler.py:504-507` and `:514`. The three citations in the
-  2026-08-27 correction now point at unrelated code: `task_routes.py:1035-1043` is the tail of
-  `list_runs` and the `output-targets` decorator, `tool_schemas.py:583` is inside `ask_user`'s
-  options schema, and `task_scheduler.py:241-251` is the body of `cron_interval_seconds`. Three
-  weeks of unrelated edits, which is why `Law 6` says count it rather than carry it. **Two more the correction missed:**
-  `mcp_servers/email_server.py:1731` and `:1773` — and `:1731` is the `document_updated` site, so
-  the seventh spelling was the one the row is about. Total before: **two enumerations, seven loose
-  strings**, and the event nobody could trigger on lived in one of the two the previous
-  re-measurement did not reach.
-  `src/event_bus.py` now holds `EVENT_CATALOGUE`, `EVENT_NAMES` and one `EVENT_*` constant per
-  event, beside the `fire_event` that dispatches them — eight events, `document_updated` among
-  them. Both enumerations read it; all seven loose strings are now references to the constants, so
-  the count of spellings went from nine to one. The VALUES are byte-identical, which
-  `FORBIDDEN.md` Part 1 requires: they are stored in `ScheduledTask.trigger_event` and a rename
-  disables every task using one.
-  `src/tool_schemas.py` splices its enum in after the literal rather than inside it, following the
-  pattern `B21` already set for the theme colour keys — `FUNCTION_TOOL_SCHEMAS` is read with
-  `ast.literal_eval` by `tests/test_tool_index_schema_parity.py`, and a call inside the literal
-  makes that parse raise. That was found by running the test, not by reading it.
-  **The rule is checked, not restated (`Law 13`/`Law 14`):** `tests/test_event_catalogue.py` walks
-  every `fire_event(...)` call site in tracked source with `ast` and fails on any fired name the
-  catalogue does not carry. A list written out in the test would have been the tenth spelling.
-  **Open on the client half only,** which is `static/js/tasks.js` and therefore `p8ui`'s: the event
-  picker renders whatever `/meta/events` returns, so `document_updated` is already offered — but it
-  is offered as the raw stored name with the underscores swapped for spaces (`_scheduleLabel`, `:361-366`), and the catalogue's `description` is not drawn anywhere. A person choosing a trigger
-  reads "document updated" and has to guess whether that means edited, renamed or re-filed. The
-  description is on the wire and needs rendering.
+  trigger on it. **Re-measured 2026-09-18: not three catalogues but two enumerated ones plus
+  seven loose strings**, two of them in `mcp_servers/email_server.py` — and `:1731` is the
+  `document_updated` site, so the seventh spelling was the one the row is about. `src/event_bus.py`
+  now holds `EVENT_CATALOGUE`, `EVENT_NAMES` and one `EVENT_*` constant per event; the count of
+  spellings went from nine to one, the VALUES are byte-identical (`FORBIDDEN.md` Part 1), and
+  `tests/test_event_catalogue.py` walks every `fire_event(...)` call site with `ast` rather than
+  restating the list.
+  — **client half closed 2026-09-18 (second wave), and the open half's premise was wrong in a way
+  worth keeping.** It said *"the catalogue's `description` is not drawn anywhere"*. Measured
+  against `1fe7c19`: `static/js/tasks.js:1550` drew
+  `` opt.textContent = `${ev.name} — ${ev.description}` `` and had since commit `fff72ec`, well
+  before this wave — the description **was** drawn, in the `<option>` label. The sentence also
+  conflates two surfaces: `_scheduleLabel` (`:361-366`, both numbers correct) is the **task
+  card's** schedule line, not the picker.
+  What was actually wrong is narrower and worse: a `<select>` shows one option at a time and
+  truncates it, the option led with the raw stored name, and once a choice was made nothing said
+  what it meant. So the option now leads with English (`Document updated — Fires when an existing
+  document is edited`, `title` carrying the stored name) and a `#task-form-event-desc` line under
+  the select carries the chosen event's own sentence plus `Stored as document_updated`, re-read on
+  `change` — a description that does not follow the selection describes a trigger the person just
+  moved away from. The stored value is untouched everywhere: it is the `<option>`'s `value`, it is
+  what goes into `ScheduledTask.trigger_event`, and a rename would disable every task using one.
+  `_scheduleLabel` said `Every 1 document updated` and pluralised the verb at 2 — `P8-31` makes 1
+  the common case, so it reads `On document updated` / `Every 5 × document updated` now.
+  The picker's population moved out of `renderTriggerOpts` into `_populateEventPicker`, because a
+  closure inside a closure inside a modal built from an `innerHTML` string cannot be called, and
+  every claim about it would otherwise be a claim about its source text.
   `Verify:` someone who has never opened Tasks creates an automation that runs when a document is
   edited, finds the trigger in the picker without being told it exists, and can tell from the
-  picker alone what will fire it. — agent:`p8auto`
-- [·] **P8-31** Default a user-built automation's event count to 1. The UI defaults to 5; anyone
+  picker alone what will fire it — after choosing it, not only while scrolling past it.
+  `CI:` `tests/test_event_catalogue.py` (server) ·
+  `tests/test_the_palette_moves_to_the_server_js.py` (client). — agent:`p8auto` (server) /
+  `p8ui2` (client)
+- [x] **P8-31** Default a user-built automation's event count to 1. The UI defaults to 5; anyone
   arriving from a workflow tool expects every event.
   — **Premise corrected 2026-09-18. The server did not default to 5; it had no default and refused
   the request.** `POST /api/tasks` raised `400 "Trigger count is required for event-triggered
   tasks"` when the count was omitted, and the only reason nobody ever met that 400 is that
-  `static/js/tasks.js:1541` pre-fills the field with `5` and `:1884` posts `parseInt(value || '5')`.
-  So the number a person got was a form default nobody chose, in front of an API with no opinion —
-  over a bus that has always read a missing count as one (`src/event_bus.py`, `task.trigger_count
-  or 1`). Three answers to the same question, and the one the engine used was already the right
-  one.
-  `DEFAULT_TRIGGER_COUNT = 1` now lives beside the bus that reads it. `POST /api/tasks` applies it
-  instead of refusing, `manage_tasks` (`src/tools/system.py`) applies it instead of writing a NULL,
-  and it ships on `/meta/actions` as `default_trigger_count` so the form can stop inventing one. The
-  value is **written into the row** rather than left null: a null meant one at the bus and five in
-  the form, and a field whose absence means two different things in two places is exactly the
-  ambiguity `Law 10` is about. Rows that already carry NULL keep firing every event — driven
-  through `_handle_event`, not asserted about.
-  **Open on the client half only,** which is `static/js/tasks.js` and therefore `p8ui`'s:
-  `:1541` `value="${existing?.trigger_count || 5}"` and `:1884` `parseInt(countInput?.value || '5',
-  10)` are the two remaining fives. Both should read the served `default_trigger_count`. Same
-  cache-buster bump as `P8-22` names.
+  `static/js/tasks.js:1541` pre-filled the field with `5` and `:1884` posted
+  `parseInt(value || '5')`. Three answers to the same question, and the one the engine used —
+  `task.trigger_count or 1` at the bus — was already the right one. `DEFAULT_TRIGGER_COUNT = 1`
+  lives beside that bus, `POST /api/tasks` and `manage_tasks` apply it instead of refusing or
+  writing a NULL, and it ships on `/meta/actions` as `default_trigger_count`. The value is
+  **written into the row** rather than left null (`Law 10`).
+  — **closed 2026-09-18 (second wave). Both fives re-measured at exactly the lines the row names**
+  — `static/js/tasks.js:1541` and `:1884` at `1fe7c19` — and both are gone. The form and the
+  payload call `_defaultTriggerCount()`, which is the served `default_trigger_count`; where the
+  palette has not answered yet the field falls back to **1**, which is not a copy of the server's
+  number but what the bus does with a NULL, and the field refreshes when `/meta/actions` lands
+  unless the person has already typed in it. Same cache-buster bump as `P8-22`.
+  **One thing this leaves crooked and `B614` records:** `default_trigger_count` is a fact about
+  *triggers* riding on the *actions* endpoint, so the trigger form now fetches the action palette
+  to learn a number that has nothing to do with actions.
   `Verify:` someone who has never opened Tasks builds "when a document is created, summarise it",
   does not touch the count field, and it runs on the next document — not the fifth.
-  — agent:`p8auto`
+  `CI:` `tests/test_the_palette_moves_to_the_server_js.py`. — agent:`p8auto` (server) / `p8ui2`
+  (client)
 - [ ] **P8-32** Per-task timezone, retries, and a per-task timeout — none exist. Timezone today comes only via a crew member.
 - [ ] **P8-33** A dry run that is actually dry. "Run now" is a real run with real side effects — no mocking, no pinned input, no per-node execution.
 - [ ] **P8-34** The canvas, last, against a stable API. **Ship a Mermaid rendering of a workflow first** — it is already vendored and wired, works today, and needs no graph library. `Depends:` P8-22, P8-25, P8-26.
@@ -15340,3 +15402,73 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   test to update, not a reason not to; it is just not a change to make in the same commit as four
   rows. `Verify:` with `task_concurrency_cap` at 4, four overlapping runs each record their own
   model and their own step log. — found during P8-25 — agent:`p8auto`
+
+- [ ] **B610** **`_CATEGORY_ICONS` in `static/js/tasks.js` has no consumer — eleven SVG paths, one
+  per task category, that nothing has ever drawn.** Measured 2026-09-18: `grep -n "_CATEGORY_ICONS"
+  static/js/tasks.js` returns exactly one line, its own declaration at `:779`. It survived `P8-22`'s
+  removal of `_CATEGORY_MAP` and `_CATEGORY_ORDER` because it is not a copy of anything the server
+  holds — it is a glyph per category and the server sends a glyph per *action* — so deleting it
+  would lose art, and `Law 1` says the answer is a door rather than a delete. The door is obvious
+  and small: the category filter chips (`_renderTaskChips`, `:900`) are text-only
+  `.memory-cat-chip` buttons, and the document library's chips beside them carry icons. `Law 13`
+  in the file `P8-22` just cleaned. **The one thing keeping it alive is a test**:
+  `tests/harness/forge_labels.js` slices it out to check the category names agree across the wire,
+  so the constant's only consumer is the check that it agrees with something — which is `Law 13`
+  wearing a green tick. `Verify:` either the category chips draw these glyphs, or the
+  constant is gone and the chips are stated as text-only on purpose. `Depends:` nothing. — found
+  during `P8-22` — agent:`p8ui2`
+
+- [ ] **B611** **`static/js/tasks.js` has two HTML escapers that do not escape the same
+  characters, and every builder in the file picks one by habit.** Measured 2026-09-18: `_esc`
+  (`:1214`) is a DOM round-trip — `createElement('div')`, `textContent = s`, return `innerHTML` —
+  and `_escHtml` (`:3504`) is five `String.replace` calls. They differ: `_escHtml` escapes `'` to
+  `&#39;` and `_esc` does not, because the browser's serialiser leaves apostrophes alone. Both are
+  correct for a text node and only one is correct inside a single-quoted attribute, and the file
+  interpolates into both. `_showRunHistory` uses `_esc` throughout; `_renderActivityEntry` uses
+  `_escHtml` throughout; `P8-25`'s `_renderRunSteps` had to pick, and picked `_escHtml` because it
+  is the one that works without a DOM. Not merged here because the choice is not free — `_esc`'s
+  round-trip is what makes it safe against anything the serialiser knows and the replace list does
+  not — and `P8-22` and `P8-25` were already changing 400 lines of this file. `Verify:` one escaper
+  in this file, or two with a comment on each saying which contexts it is for and a test that
+  proves the difference. `Depends:` nothing. — found during `P8-25` — agent:`p8ui2`
+
+- [ ] **B612** **A tool's output is silently truncated on one of the two step-log paths and
+  marked on the other.** `TaskScheduler._record_run_step` (`src/task_scheduler.py:796-799`) cuts
+  `detail` and `output` at `_MAX_STEP_DETAIL` and appends `…`; `_close_run_step` (`:816`) cuts the
+  same `output` at the same 400 and appends **nothing**. So whether a person reading a step log can
+  tell they are missing the tail depends on whether the tool's `tool_output` event arrived while a
+  matching `tool_start` was still open — which is invisible from the UI and is the common path.
+  One fact, two behaviours, in adjacent methods (`Law 10`). The same method pair has a second,
+  larger version of it: `_MAX_RUN_STEPS = 200` makes `_record_run_step` return `None` past the
+  cap, so a forty-round run's log **stops** at 200 steps and the UI's summary says "200 steps" as
+  though that were all of them. Both caps are right; neither says it applied. Found while drawing
+  the log for `P8-25`, and left because it is `src/task_scheduler.py` and this wave's rows are
+  `static/`. `Verify:` a run whose log or whose output hit a cap says so, in the step log, where
+  the person is reading it. `Depends:` nothing. — found during `P8-25` — agent:`p8ui2`
+
+- [ ] **B613** **The raw SKILL.md card editor gets no lint, so the one surface where an existing
+  skill is edited says nothing about what is wrong with it.** `P8-12` put the lint panel on the
+  Add-Skill form, which is where a skill is *created*; `_toggleSkillEdit` / `_saveSkillEdit`
+  (`static/js/skills.js:1051` / `:1074`) are where one is *changed*, and they POST the whole
+  markdown to `/api/skills/{name}/markdown` with no check at all. The gap bites hardest exactly
+  where the lint is most useful: the nightly audit demotes a duplicate to draft days later, and the
+  person most likely to create one is somebody editing a skill that already exists. The blocker is
+  shape, not effort — `lint_skill` takes a skill dict and the card editor holds markdown, so it
+  needs a parse, and `services/memory/skill_format.py` already has one on the server side. Not done
+  here because `P8-02` and `P8-06` both added affordances to this surface and a third control in
+  one pass is the legibility cost `P8-00` is a gate against. `Verify:` someone editing an existing
+  skill's SKILL.md is told, before saving, the same things the Add form would have told them.
+  `Depends:` nothing. — found during `P8-12` — agent:`p8ui2`
+
+- [ ] **B614** **`default_trigger_count` is a fact about triggers and it ships on the actions
+  endpoint, so the trigger form fetches the action palette to learn it.** `/meta/actions` returns
+  `{actions, categories, default_trigger_count}` (`routes/task/task_routes.py:1164-1169`), and
+  after `P8-31` the event-trigger branch of the task form calls `_fetchActions()` for no reason
+  except that number — the form may be building an **LLM** task, which has no action at all.
+  `P8-22` put it there because `/meta/actions` is the endpoint that was already gaining
+  `categories`, and `/meta/events` — which exists, which that branch already fetches, and which is
+  about triggers — would have cost nothing. This is small and it is the kind of small that gets
+  copied: the next per-form default will go on whichever endpoint is being edited that day.
+  `Verify:` a form that needs only the trigger default fetches only `/meta/events`, and
+  `/meta/actions` keeps `default_trigger_count` for back-compat or drops it in the same change as
+  its last caller (`Law 1`). `Depends:` nothing. — found during `P8-31` — agent:`p8ui2`

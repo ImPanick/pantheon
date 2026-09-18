@@ -10,11 +10,11 @@ sixteen palettes are protected territory (`DECISIONS.md` D-2026-08-26-03) and a
 the whole stylesheet to one global colour.
 
 `static/style.css` named `--accent` 828 times before this file, 817 after, and
-813 since `B23` moved SIX links off it — four spelled `var(--accent, var(--red))`
+814 since `B23` moved SIX links off it — four spelled `var(--accent, var(--red))`
 and the two `details a` rules, which were bare.
 Three populations, and they are not the same kind of thing:
 
-  * **561 sites reach the theme's red through their fallback.** 552 of them
+  * **562 sites reach the theme's red through their fallback.** 553 of them
     spell it `var(--accent, var(--red))`; nine take a longer road —
     `var(--red, #e53935)` and two more literals, plus two routed through the
     undefined `--accent-primary` first. They resolved to the theme's red before
@@ -64,7 +64,7 @@ What is pinned below, and why each is a defect if it breaks:
 
   * **`--accent` is defined nowhere in this stylesheet.** The single failure
     mode the row is built to avoid, asserted directly rather than inferred;
-  * **the no-change population stays 552 spelled and 561 resolved**, so a
+  * **the no-change population stays 553 spelled and 562 resolved**, so a
     fallback rewritten in place is visible in the diff of a test rather than
     only in a screenshot;
   * **every token named inside an `--accent` fallback exists**, with the one
@@ -442,7 +442,7 @@ def _distance(a: tuple, b: tuple) -> float:
 
 
 def test_accent_is_defined_nowhere_in_the_stylesheet():
-    """A `:root { --accent: … }` would out-rank all 813 fallbacks at once.
+    """A `:root { --accent: … }` would out-rank all 814 fallbacks at once.
 
     `--accent` is set per theme, beside `--red`, at the three places that set
     `--red`. Defining it here as well — in `:root`, in `:root.light`, in a
@@ -472,11 +472,19 @@ def test_the_no_change_population_holds_at_both_of_its_counts():
 
     Two counts, because the two that get quoted about this row are counts of
     different things and disagreeing about it has already cost one review pass:
-    552 sites spell the fallback `var(--red)` exactly, and a further nine reach
+    553 sites spell the fallback `var(--red)` exactly, and a further nine reach
     the same colour through a chain — `var(--red, #e53935)` and friends, plus
     two that route through the undefined `--accent-primary` first.
 
-It was 556 until `B23`, and the four that left are named rather than
+It was 552 until 2026-09-18, and the one that arrived is named rather than
+    absorbed: `.skill-lint-problem`'s `border-left-color`, the rule that ranks a
+    `problem` finding in `P8-12`'s pre-save lint panel. It is a **border** and
+    not a `color:` deliberately — the population below holds at 181 because a
+    182nd full-strength accent `color:` would be a 182nd site failing 4.5:1 on
+    seven palettes, and a panel of things somebody has to read and act on is the
+    last place to add one.
+
+    It was 556 until `B23`, and the four that left are named rather than
     absorbed: `.doclib-research-sources a`, the Gmail chip link inside
     `.email-reader-body`, `.note-form-content-reader a` and
     `.note-fullscreen-overlay .note-cl-text-reader a`. All four are LINKS in
@@ -484,13 +492,14 @@ It was 556 until `B23`, and the four that left are named rather than
     `--link-fg` — the one link idiom that clears AA against `--panel` on all
     sixteen palettes. `B23` moved two more that this count does not see,
     because `details a` and its second rule spelled the accent BARE: they are
-    in the total below, which fell 815 → 813. None of the six stopped being an
+    in the total below, which fell 815 → 813, and rose to 814 on 2026-09-18
+    with `.skill-lint-problem`. None of the six stopped being an
     accent site by accident.
     """
     exact = [expr for _, expr in _var_uses("accent")
              if _fallback(expr) == "var(--red)"]
-    assert len(exact) == 552, (
-        f"expected 552 sites spelling the fallback `var(--red)` exactly, found "
+    assert len(exact) == 553, (
+        f"expected 553 sites spelling the fallback `var(--red)` exactly, found "
         f"{len(exact)}. If a site was legitimately added or removed, move this "
         "number and say which site in the commit — do not widen the assertion."
     )
@@ -508,12 +517,12 @@ It was 556 until `B23`, and the four that left are named rather than
             continue  # a gaining site, counted by the population above
         if painted == red:
             resolving.append(expr)
-    assert len(resolving) == 561, (
-        f"expected 561 sites whose fallback resolves to the theme's red, found "
+    assert len(resolving) == 562, (
+        f"expected 562 sites whose fallback resolves to the theme's red, found "
         f"{len(resolving)}"
     )
-    assert len(_var_uses("accent")) == 813, (
-        f"expected 813 uses of --accent in total, found {len(_var_uses('accent'))}"
+    assert len(_var_uses("accent")) == 814, (
+        f"expected 814 uses of --accent in total, found {len(_var_uses('accent'))}"
     )
 
 

@@ -215,17 +215,79 @@ async function _fetchOutputTargets() {
   return _outputTargets;
 }
 
+// `P8-22`. `/meta/actions` returns whole palette nodes now — `category`, `icon`,
+// `model_backed`, `admin_only` and `params` beside the `name` and `description`
+// it always carried — plus `categories` (the group order) and
+// `default_trigger_count`. This file used to keep its own copies of the first
+// three and its own eleven-name order, so adding an action needed an edit on
+// both sides of the wire and `model_backed` was a second list of a fact the
+// scheduler already held. There is one list now and it is the server's.
 let _builtinActions = null;
+let _actionByName = new Map();
+let _actionCategories = null;
+let _servedTriggerCount = null;
+
 async function _fetchActions() {
   if (_builtinActions) return _builtinActions;
   try {
     const res = await fetch(`${API_BASE}/api/tasks/meta/actions`, { credentials: 'same-origin' });
     const data = await res.json();
     _builtinActions = data.actions || [];
+    if (Array.isArray(data.categories) && data.categories.length) {
+      _actionCategories = data.categories.slice();
+    }
+    if (Number.isFinite(data.default_trigger_count)) {
+      _servedTriggerCount = data.default_trigger_count;
+    }
   } catch (e) {
     _builtinActions = [];
   }
+  _actionByName = new Map((_builtinActions || []).map(a => [a.name, a]));
   return _builtinActions;
+}
+
+/** The palette node for an action name, or `null` before the fetch lands. */
+function _actionNode(name) {
+  return (name && _actionByName.get(name)) || null;
+}
+
+/** Group order, as served. `[]` before the fetch: `indexOf` then answers -1 for
+ *  every name, which sorts them together instead of inventing an order this
+ *  file would have to keep in step with the server's. The list re-renders when
+ *  the palette arrives. */
+function _categoryOrder() {
+  return _actionCategories || [];
+}
+
+/**
+ * `P8-22`. What an action's single parameter is, and what is currently typed
+ * into it — `null` for an action that takes none.
+ *
+ * A function rather than four lines inside the save handler, because the save
+ * handler is a 145-line closure nothing can call: a mutation that stops reading
+ * the box survives every assertion made about that handler's source text and
+ * dies here (`Law 20` — call the thing).
+ */
+function _actionPromptValue(action) {
+  const param = _actionNode(action)?.params?.[0];
+  if (!param) return null;
+  const el = document.getElementById('task-form-action-param');
+  return { param, value: String((el && el.value) || '').trim() };
+}
+
+/**
+ * `P8-31`. The count an event-triggered task fires on when nobody chooses.
+ *
+ * The form used to write `5` in two places in front of an API that had no
+ * opinion and a bus that has always read a missing count as one. The served
+ * number is the answer; the `1` here is only what the bus does with a NULL
+ * (`task.trigger_count or 1`), used for the window before `/meta/actions`
+ * answers, and the field is refreshed when it does.
+ */
+function _defaultTriggerCount() {
+  return Number.isFinite(_servedTriggerCount) && _servedTriggerCount > 0
+    ? _servedTriggerCount
+    : 1;
 }
 
 async function _fetchUrgentEmailSettings() {
@@ -358,12 +420,70 @@ async function _fetchEvents() {
 
 // ---- Helpers ----
 
+/**
+ * Fill the trigger picker from `/meta/events` and say what the chosen event is.
+ *
+ * `P8-30`. The registry carries a `description` per event and the picker put it
+ * in the `<option>` label — where a `<select>` shows one option at a time and
+ * truncates it, so somebody deciding between "document created" and "document
+ * updated" read neither sentence. It goes under the select now, for whatever is
+ * currently chosen, and it re-reads on change.
+ *
+ * Module-level rather than inline in `renderTriggerOpts` for the same reason
+ * `_actionPromptValue` is: that builder is a closure inside a closure and
+ * nothing can call it, so every claim about it would be a claim about its
+ * source text.
+ */
+async function _populateEventPicker(selectedName) {
+  const events = await _fetchEvents();
+  const sel = document.getElementById('task-form-event');
+  const desc = document.getElementById('task-form-event-desc');
+  if (!sel) return events;
+  sel.innerHTML = '';
+  for (const ev of events) {
+    const opt = document.createElement('option');
+    // The VALUE is the stored name and never a label: it goes into
+    // `ScheduledTask.trigger_event`, and `FORBIDDEN.md` Part 1 turns on those
+    // bytes — a rename disables every task using one.
+    opt.value = ev.name;
+    // The option leads with English and keeps the sentence the registry wrote;
+    // the stored name stays reachable through `title` and through the line
+    // below, because it is what a person matches against a log line (`Law 1`).
+    opt.textContent = `${_eventLabel(ev.name)} — ${ev.description || ''}`;
+    opt.title = ev.name;
+    if (selectedName === ev.name) { opt.selected = true; sel.value = ev.name; }
+    sel.appendChild(opt);
+  }
+  const syncEventDesc = () => {
+    if (!desc) return;
+    const chosen = events.find(ev => ev.name === sel.value);
+    desc.textContent = chosen
+      ? `${chosen.description || ''} Stored as ${chosen.name}.`
+      : '';
+  };
+  sel.addEventListener('change', syncEventDesc);
+  syncEventDesc();
+  return events;
+}
+
+
+/** A stored event name as a sentence opener: `document_updated` → `Document
+ *  updated`. `P8-30`. The stored value never changes — `FORBIDDEN.md` Part 1
+ *  and `ScheduledTask.trigger_event` both depend on it — so this is a reading
+ *  of it and nothing else. */
+function _eventLabel(name) {
+  const words = String(name || '').replace(/_/g, ' ').trim();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : '';
+}
+
 function _scheduleLabel(task) {
   const tt = task.trigger_type || 'schedule';
   if (tt === 'event') {
-    const evtName = (task.trigger_event || 'event').replace(/_/g, ' ');
+    // `Every 1 document updated` is what this said, and `P8-31` makes 1 the
+    // common case rather than the rare one. `s` was pluralising the verb.
+    const evtName = String(task.trigger_event || 'event').replace(/_/g, ' ');
     const n = task.trigger_count || 1;
-    return `Every ${n} ${evtName}${n > 1 ? 's' : ''}`;
+    return n > 1 ? `Every ${n} × ${evtName}` : `On ${evtName}`;
   }
   if (tt === 'webhook') return 'Webhook';
   const t = task.scheduled_time || '00:00';
@@ -482,62 +602,54 @@ function _statusDot(status) {
   return `<span class="task-log-status${cls ? ` task-log-status-${cls}` : ''}"></span>`;
 }
 
+// `P8-22`. Keyed by the server's **semantic icon name**, not by action name.
+// Every path here is the one that shipped; what changed is the key, so an
+// eighteenth action arrives already drawn as long as it names one of these —
+// and it does, because the same sixteen names are what `BUILTIN_ACTION_META`
+// picks from. Adding a glyph is now the only edit a new icon needs.
+//
+// `terminal` and `book` are new, and they are why this re-key was not cosmetic:
+// `ssh_command`, `run_script`, `run_local` and `cookbook_serve` were keyed by
+// nothing and drew the generic gear.
 const _TASK_ICONS = {
-  // Chats
-  tidy_sessions:       '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
-  // Documents
-  tidy_documents:      '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>',
-  // Memory (brain)
-  consolidate_memory:  '<path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z"/>',
-  // Research (magnifying glass)
-  tidy_research:       '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
-  // Calendar
-  tidy_calendar:       '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
-  // Email
-  summarize_emails:    '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
-  draft_email_replies: '<polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>',
-  email_auto_translate:'<path d="M5 8h9"/><path d="M9 4v4"/><path d="M4 13c2.2-.2 4.2-1.1 5.5-2.8"/><path d="M10.5 13c-1.1-.6-2-1.5-2.7-2.8"/><path d="M14 20l4-9 4 9"/><path d="M15.4 17h5.2"/>',
-  extract_email_events:'<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M7 14h5"/><path d="M7 18h8"/>',
-  classify_events:    '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M8 15h.01M12 15h.01M16 15h.01"/>',
-  learn_sender_signatures:'<path d="M20 6 9 17l-5-5"/><path d="M14 6h6v6"/>',
-  check_email_urgency: '<path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/>',
-  // Skills
-  test_skills:         '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
-  audit_skills:        '<path d="M9 11l3 3L22 4"/><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v15H6.5A2.5 2.5 0 0 0 4 19.5z"/>',
-  // Assistant
-  daily_brief:         '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+  chat:           '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  document:       '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>',
+  brain:          '<path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z"/>',
+  search:         '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
+  envelope:       '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
+  reply:          '<polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>',
+  translate:      '<path d="M5 8h9"/><path d="M9 4v4"/><path d="M4 13c2.2-.2 4.2-1.1 5.5-2.8"/><path d="M10.5 13c-1.1-.6-2-1.5-2.7-2.8"/><path d="M14 20l4-9 4 9"/><path d="M15.4 17h5.2"/>',
+  'calendar-plus':'<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M7 14h5"/><path d="M7 18h8"/>',
+  'calendar-tags':'<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M8 15h.01M12 15h.01M16 15h.01"/>',
+  signature:      '<path d="M20 6 9 17l-5-5"/><path d="M14 6h6v6"/>',
+  bell:           '<path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/>',
+  clock:          '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+  'check-square': '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+  'check-book':   '<path d="M9 11l3 3L22 4"/><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v15H6.5A2.5 2.5 0 0 0 4 19.5z"/>',
+  terminal:       '<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>',
+  book:           '<path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/>',
   // Generic action fallback (gear)
-  _action_default:     '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+  _action_default:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
   // LLM task fallback (chat bubble)
-  _llm_default:        '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  _llm_default:   '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
 };
 
 function _taskIcon(task) {
-  const action = task.action;
-  let path = _TASK_ICONS[action];
+  const node = _actionNode(task && task.action);
+  let path = node ? _TASK_ICONS[node.icon] : null;
   if (!path) {
     path = task.task_type === 'action' ? _TASK_ICONS._action_default : _TASK_ICONS._llm_default;
   }
   return `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.4;flex-shrink:0;position:relative;top:-4px;">${path}</svg>`;
 }
 
-const _MODEL_BACKED_ACTIONS = new Set([
-  'summarize_emails',
-  'draft_email_replies',
-  'email_auto_translate',
-  'extract_email_events',
-  'classify_events',
-  'learn_sender_signatures',
-  'check_email_urgency',
-  'test_skills',
-  'audit_skills',
-  'consolidate_memory',
-]);
-
 function _taskAiMark(task) {
   const kind = task?.task_type || task?.kind || '';
-  const action = task?.action || '';
-  const aiAction = _MODEL_BACKED_ACTIONS.has(action);
+  // `P8-22`. This was a hand-kept `Set` of ten action names beside a
+  // `TaskScheduler._MODEL_BACKED_ACTIONS` that decided whether the same action
+  // took a model slot. One fact, two lists, and nothing checked they agreed.
+  // The badge now reads the flag the scheduler reads.
+  const aiAction = !!_actionNode(task?.action || '')?.model_backed;
   if (!(kind === 'llm' || kind === 'research' || task?.model || task?.endpointUrl || aiAction)) return '';
   return '<svg class="task-ai-mark" width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-label="Uses model" title="Uses model"><path d="M12 0L14.59 8.41L23 12L14.59 15.59L12 24L9.41 15.59L1 12L9.41 8.41Z"/></svg>';
 }
@@ -657,34 +769,13 @@ function _getDatePickerValue(containerId) {
 
 // ---- Render ----
 
-const _CATEGORY_MAP = {
-  // action -> category
-  tidy_sessions:        'Chats',
-  tidy_documents:       'Documents',
-  consolidate_memory:   'Memory',
-  tidy_research:        'Research',
-  tidy_calendar:        'Calendar',
-  classify_events:      'Calendar',
-  ping_events:          'Calendar',
-  extract_email_events: 'Calendar',
-  summarize_emails:           'Email',
-  draft_email_replies:        'Email',
-  email_auto_translate:       'Email',
-  learn_sender_signatures:    'Email',
-  check_email_urgency:        'Email',
-  daily_brief:                'Assistant',
-  test_skills:                'Skills',
-  audit_skills:               'Skills',
-  ssh_command:          'System',
-  run_script:           'System',
-  run_local:            'System',
-  cookbook_serve:       'Forge',
-};
-// Forge serves listed FIRST so a just-saved schedule shows at the
-// top instead of scrolling off the bottom of the list. The remaining
-// order is preserved for backwards-compatibility with users who've
-// learned where things are.
-const _CATEGORY_ORDER = ['Forge', 'Other', 'Calendar', 'Email', 'Chats', 'Documents', 'Memory', 'Research', 'Skills', 'Assistant', 'System'];
+// `P8-22`. `_CATEGORY_MAP` — nineteen action→category entries, two of them
+// (`tidy_calendar`, `ping_events`) for actions that no longer exist — and
+// `_CATEGORY_ORDER`, eleven names in the order the groups render, both lived
+// here. They are `/meta/actions`'s `category` and `categories` now. The order
+// is byte-identical to what shipped (Forge first so a just-saved schedule is at
+// the top, then the order users have already learned); it is stated once, in
+// `src/builtin_actions.ACTION_CATEGORY_ORDER`, and read here.
 const _CATEGORY_ICONS = {
   Calendar:  '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
   Email:     '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
@@ -702,7 +793,7 @@ const _CATEGORY_ICONS = {
 
 function _categoryFor(task) {
   if (task.task_type === 'action' && task.action) {
-    return _CATEGORY_MAP[task.action] || 'Other';
+    return _actionNode(task.action)?.category || 'Other';
   }
   // LLM tasks → Assistant if linked to a crew member, else Other
   if (task.task_type === 'llm' || !task.task_type) {
@@ -812,7 +903,8 @@ function _renderTaskChips() {
   const counts = {};
   for (const t of _tasks) { const c = _categoryFor(t); counts[c] = (counts[c] || 0) + 1; }
   const cats = Object.keys(counts).sort((a, b) => {
-    const ia = _CATEGORY_ORDER.indexOf(a), ib = _CATEGORY_ORDER.indexOf(b);
+    const order = _categoryOrder();
+    const ia = order.indexOf(a), ib = order.indexOf(b);
     return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
   });
   if (_taskFilter && !counts[_taskFilter]) _taskFilter = null;
@@ -885,7 +977,8 @@ function _renderList() {
       return (a.name || '').localeCompare(b.name || '');
     }
     // 'recent' (default): category order, then name.
-    const ia = _CATEGORY_ORDER.indexOf(_categoryFor(a)), ib = _CATEGORY_ORDER.indexOf(_categoryFor(b));
+    const order = _categoryOrder();
+    const ia = order.indexOf(_categoryFor(a)), ib = order.indexOf(_categoryFor(b));
     if (ia !== ib) return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
     return (a.name || '').localeCompare(b.name || '');
   });
@@ -1381,11 +1474,31 @@ function _showForm(existing, initTaskType, initTriggerType) {
         const extra = document.getElementById('task-form-action-extra');
         if (!sel || !extra) return;
         const action = sel.value;
-        if (!_EMAIL_ACCOUNT_ACTIONS.has(action)) {
-          extra.innerHTML = '';
-          return;
-        }
         extra.innerHTML = '';
+        // `P8-22`. Four built-ins take an argument and the form had no box for
+        // any of them: `ssh_command` wanted a command, `run_script` and
+        // `run_local` a script body, `cookbook_serve` a serve config. Picking
+        // one in this form produced a task with an empty `prompt`. The schema
+        // is on the wire — `label`, `type`, `description` — so the field is
+        // drawn from the node instead of from a list of action names this file
+        // would have to keep in step with the registry.
+        const param = _actionNode(action)?.params?.[0];
+        if (param) {
+          const isLong = param.type === 'text' || param.type === 'json';
+          const box = isLong
+            ? `<textarea id="task-form-action-param" class="task-form-input task-form-textarea" rows="4" placeholder="${_escHtml(param.label || '')}"></textarea>`
+            : `<input type="text" id="task-form-action-param" class="task-form-input" placeholder="${_escHtml(param.label || '')}" />`;
+          extra.insertAdjacentHTML('beforeend', `
+            <label class="task-form-label" for="task-form-action-param">${_escHtml(param.label || param.name || 'Argument')}</label>
+            ${box}
+            <div class="memory-desc" style="font-size:11px;margin-top:4px;">${_escHtml(param.description || '')}</div>
+          `);
+          // `value` is assigned rather than interpolated: a stored command is
+          // arbitrary text and `</textarea>` in it would close the element.
+          const paramEl = document.getElementById('task-form-action-param');
+          if (paramEl && existing?.action === action) paramEl.value = existing.prompt || '';
+        }
+        if (!_EMAIL_ACCOUNT_ACTIONS.has(action)) return;
         await _renderEmailActionOptions(action, existing, extra);
         if (action === 'check_email_urgency') {
           extra.insertAdjacentHTML('beforeend', `
@@ -1537,21 +1650,25 @@ function _showForm(existing, initTaskType, initTriggerType) {
         <select id="task-form-event" class="task-form-input">
           <option value="">Loading…</option>
         </select>
+        <div id="task-form-event-desc" class="task-form-event-desc"></div>
         <label class="task-form-label">Every N occurrences</label>
-        <input type="number" id="task-form-trigger-count" class="task-form-input" min="1" max="1000" value="${existing?.trigger_count || 5}" />
+        <input type="number" id="task-form-trigger-count" class="task-form-input" min="1" max="1000" value="${existing?.trigger_count || _defaultTriggerCount()}" />
       `;
-      _fetchEvents().then(events => {
-        const sel = document.getElementById('task-form-event');
-        if (!sel) return;
-        sel.innerHTML = '';
-        for (const ev of events) {
-          const opt = document.createElement('option');
-          opt.value = ev.name;
-          opt.textContent = `${ev.name} — ${ev.description}`;
-          if (existing?.trigger_event === ev.name) opt.selected = true;
-          sel.appendChild(opt);
+      // `P8-31`. The field used to be pre-filled with a literal 5 — a number
+      // nobody chose, in front of an API that had no default and a bus that
+      // reads a missing count as one. It reads the served
+      // `default_trigger_count` now; this refresh covers the case where the
+      // palette has not landed yet, and stops the moment the person types.
+      const countEl = document.getElementById('task-form-trigger-count');
+      if (countEl) {
+        countEl.addEventListener('input', () => { countEl.dataset.touched = '1'; });
+        if (!existing?.trigger_count) {
+          _fetchActions().then(() => {
+            if (!countEl.dataset.touched) countEl.value = String(_defaultTriggerCount());
+          });
         }
-      });
+      }
+      _populateEventPicker(existing?.trigger_event);
     } else if (triggerType === 'webhook') {
       if (existing?.webhook_token) {
         const url = `${API_BASE}/api/tasks/${existing.id}/webhook/${existing.webhook_token}`;
@@ -1773,7 +1890,9 @@ function _showForm(existing, initTaskType, initTriggerType) {
   document.addEventListener('keydown', window._tasksFormEsc, true);
 
   // Save
-  document.getElementById('task-form-save').addEventListener('click', async () => {
+  // Named rather than anonymous: 200 lines of payload assembly that no
+  // stack trace and no test could refer to by anything but a line number.
+  const _saveTaskForm = async () => {
     const nameEl = document.getElementById('task-form-name');
     const outputSelValue = document.getElementById('task-form-output')?.value || 'session';
     let outputTarget = outputSelValue;
@@ -1832,7 +1951,19 @@ function _showForm(existing, initTaskType, initTriggerType) {
         return;
       }
       payload.action = action;
-      if (_EMAIL_ACCOUNT_ACTIONS.has(action)) {
+      // `P8-22`. An action that declares a parameter carries it in `prompt` —
+      // that is the column the scheduler already reads for `ssh_command` and
+      // its three siblings. Required means required: saving a `run_local` with
+      // an empty script produced a task that ran nothing and said so only when
+      // it fired.
+      const chosen = _actionPromptValue(action);
+      if (chosen) {
+        if (!chosen.value && chosen.param.required) {
+          if (uiModule) uiModule.showError(`${chosen.param.label || chosen.param.name} is required for ${action}`);
+          return;
+        }
+        payload.prompt = chosen.value;
+      } else if (_EMAIL_ACCOUNT_ACTIONS.has(action)) {
         const accountId = document.getElementById('task-form-email-account')?.value || '';
         payload.prompt = accountId ? JSON.stringify({ account_id: accountId }) : '';
       }
@@ -1881,7 +2012,10 @@ function _showForm(existing, initTaskType, initTriggerType) {
         return;
       }
       payload.trigger_event = evSel.value;
-      payload.trigger_count = parseInt(countInput?.value || '5', 10);
+      // `P8-31`. The second of the two fives. The served default is the answer
+      // when the field is blank; `DEFAULT_TRIGGER_COUNT` lives beside the bus
+      // that reads it and ships on `/meta/actions`.
+      payload.trigger_count = parseInt(countInput?.value || String(_defaultTriggerCount()), 10);
     }
     // webhook: no extra fields needed, token is auto-generated server-side
 
@@ -1900,10 +2034,68 @@ function _showForm(existing, initTaskType, initTriggerType) {
     } catch (e) {
       if (uiModule) uiModule.showError(e.message);
     }
-  });
+  };
+  document.getElementById('task-form-save').addEventListener('click', _saveTaskForm);
 }
 
 // ---- Run History ----
+
+/**
+ * `P8-25`. Open the step log for one Activity row.
+ *
+ * The chip is a door, not a second renderer: the steps are drawn in one place
+ * and this is what takes you there. A named function because the handler that
+ * calls it lives in `_wireActivityRows`, against markup the DOM shim does not
+ * parse — so a mutation emptying the handler would only ever be visible to an
+ * assertion about its source text.
+ */
+function _openStepLogFor(entry) {
+  if (!entry || !entry.taskId) return false;
+  _showRunHistory(entry.taskId, entry.taskName || 'Task');
+  return true;
+}
+
+
+/**
+ * `P8-25`. What a run actually did, step by step.
+ *
+ * `TaskRun.steps` is migrated, written by both executors and serialised on
+ * `GET /api/tasks/{id}/runs` — and until this, nothing drew it: the history
+ * showed one result string for the whole task, which for an action task was the
+ * LAST line its `progress_cb` reported and for an LLM task was the final
+ * answer. The tools it called, the order, and which one failed were recorded
+ * and shown to nobody.
+ *
+ * Two shapes, as served: a `progress` step has `detail`; a `tool` step has
+ * `tool`, `round`, `detail` (the command), `status` and `output`. Collapsed
+ * behind a `<details>` because the interesting run is one in a list of twenty,
+ * and the summary carries the count so the interesting one is findable without
+ * opening all of them.
+ */
+function _renderRunSteps(run) {
+  const steps = Array.isArray(run && run.steps) ? run.steps : [];
+  if (!steps.length) return '';
+  const rows = steps.map((s) => {
+    const kind = (s && s.kind) === 'tool' ? 'tool' : 'progress';
+    const status = String((s && s.status) || '');
+    const statusClass = status ? ` task-run-step-${_escHtml(status)}` : '';
+    const head = kind === 'tool'
+      ? `<span class="task-run-step-tool">${_escHtml(s.tool || 'tool')}</span>`
+        + (s.round ? `<span class="task-run-step-round">round ${_escHtml(s.round)}</span>` : '')
+        + (status ? `<span class="task-run-step-status">${_escHtml(status)}</span>` : '')
+      : '<span class="task-run-step-kind">progress</span>';
+    const detail = s && s.detail ? `<span class="task-run-step-detail">${_escHtml(s.detail)}</span>` : '';
+    const output = s && s.output ? `<div class="task-run-step-output">${_escHtml(s.output)}</div>` : '';
+    return `<li class="task-run-step task-run-step-${kind}${statusClass}">${head}${detail}${output}</li>`;
+  }).join('');
+  const failed = steps.filter(s => s && (s.status === 'error' || s.status === 'blocked')).length;
+  const summary = `${steps.length} step${steps.length === 1 ? '' : 's'}`
+    + (failed ? ` · ${failed} did not finish` : '');
+  return `<details class="task-run-steps">
+      <summary>${_escHtml(summary)}</summary>
+      <ol class="task-run-step-list">${rows}</ol>
+    </details>`;
+}
 
 async function _showRunHistory(taskId, taskName) {
   _viewingRuns = taskId;
@@ -1951,6 +2143,7 @@ async function _showRunHistory(taskId, taskName) {
           <span class="task-run-time" title="${run.started_at ? _esc(_relativeTime(run.started_at)) : ''}">${run.started_at ? _absoluteTime(run.started_at) : ''}</span>
         </div>
         <div class="task-run-result">${_esc(run.result ? (run.result.length > 300 ? run.result.slice(0, 300) + '…' : run.result) : run.error || '—')}</div>
+        ${_renderRunSteps(run)}
       </div>`;
     }
     html += '</div>';
@@ -2164,6 +2357,11 @@ function _runToActivityEntry(r) {
     sessionId: r.session_id || '',
     researchId: r.research_id || '',
     output_target: r.output_target || 'session',
+    // `P8-25`. `/runs/recent` serves `step_count` with `steps` emptied — 200
+    // runs of up to 200 steps is a response in megabytes for a list drawing one
+    // line each. The count is enough for the row; the log is one click away in
+    // the task's own history.
+    stepCount: Number(r.step_count) || 0,
   };
 }
 
@@ -2737,6 +2935,12 @@ function _wireActivityRows(list) {
         uiModule.showError(err.message || 'Failed to stop task');
       }
     });
+    // `P8-25`. The chip is the door to the step log, which lives in the task's
+    // own run history — one renderer for the steps, not two.
+    row.querySelector('.task-log-steps')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      _openStepLogFor(_activityEntries[parseInt(row.dataset.entryIdx, 10)]);
+    });
     row.querySelector('.task-log-run-again')?.addEventListener('click', (e) => {
       e.stopPropagation();
       const idx = parseInt(row.dataset.entryIdx, 10);
@@ -3233,6 +3437,15 @@ function _renderActivityEntry(entry, opts = {}) {
     rightHtml = `<span class="task-log-time" title="${_escHtml(tsAbs)}">${_escHtml(tsLabel)}</span>`;
   }
 
+  // `P8-25`. The one thing an Activity row could never say is how much happened
+  // inside it — a five-tool run and a one-line no-op drew the same row. The
+  // count is served per run; the log lives in the task's own history, so the
+  // chip is the door to it rather than a second place the steps are drawn.
+  const stepChip = (entry.stepCount > 0 && entry.taskId)
+    ? `<button class="task-log-steps" type="button" title="Open this task's run history and read the step log">`
+      + `${_escHtml(entry.stepCount)} step${entry.stepCount === 1 ? '' : 's'}</button>`
+    : '';
+
   // Slim variant for skipped (noop) rows — single line, no body, no actions,
   // dimmed. The reason (entry.result, e.g. "no pings due") sits inline so
   // users can see *why* the row was skipped without expanding anything.
@@ -3274,6 +3487,7 @@ function _renderActivityEntry(entry, opts = {}) {
         <span class="task-log-task-icon">${_taskIcon({ action: entry.action, task_type: entry.kind })}</span>
         <span class="task-log-name">${_escHtml(entry.taskName)}</span>${failedTag}${_taskAiMark(entry)}
         ${repeatBadge}
+        ${stepChip}
         <span style="flex:1"></span>
         ${rightHtml}
       </div>

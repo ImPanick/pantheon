@@ -19311,7 +19311,86 @@ body:not(.email-doc-split-active) #email-lib-modal.email-lib-fullscreen:not(.mod
 .skill-more[open] > summary { opacity: 0.95; }
 .skill-more > summary:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
 
-/* ── The prompt preview (`P8-06` / `P8-07`) ── */
+/* ── Pre-save lint (`P8-12`) ──
+   `problem` in the accent colour, `advisory` muted — and the difference is
+   carried by a left border and a weight as well as a hue, because a hue-only
+   distinction is unreadable to a colour-blind author and this panel's whole job
+   is ranking. Never `display:none` on a finding: the panel is emptied instead,
+   so a screen reader's live region announces a change rather than nothing. ── */
+.skill-lint-panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 9px;
+  margin: 0 0 8px;
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+}
+.skill-lint-panel.hidden { display: none; }
+.skill-lint-head { font-size: 11px; opacity: 0.85; margin-bottom: 4px; }
+.skill-lint-clean { opacity: 0.7; margin-bottom: 0; }
+.skill-lint-finding {
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 3px 0;
+  padding-left: 7px;
+  border-left: 2px solid transparent;
+}
+/* The accent marks a problem on the RULE, not on the sentence.
+   `tests/test_accent_fallback_semantics_css.py` holds a population of 181
+   full-strength accent `color:` declarations, every one of which fails 4.5:1
+   against `--panel` on seven of the sixteen shipped palettes — and this panel
+   is a list of things somebody has to read and act on, so it is the last place
+   to add the 182nd. The rank is carried by the rule, by full contrast against a
+   muted sibling, and by the field name's weight. */
+.skill-lint-problem {
+  border-left-color: var(--accent, var(--red));
+  opacity: 1;
+}
+.skill-lint-advisory {
+  border-left-color: color-mix(in srgb, var(--fg) 18%, transparent);
+  opacity: 0.7;
+}
+.skill-lint-field {
+  font-family: ui-monospace, 'SF Mono', 'Fira Code', monospace;
+  font-size: 10px;
+  opacity: 0.75;
+  margin-right: 5px;
+}
+.skill-lint-problem .skill-lint-field { font-weight: 700; opacity: 0.95; }
+.skill-lint-message { margin-right: 4px; }
+/* The fix is the sentence a person acts on, so it is not styled as an aside —
+   it is set apart from the complaint and kept at full contrast. */
+.skill-lint-fix { display: block; opacity: 0.85; font-style: italic; }
+
+/* ── The prompt preview (`P8-06` / `P8-07`) ──
+   The block below `.skill-prompt-exact` is the string the endpoint returned,
+   printed verbatim. `white-space: pre-wrap` because the block's own newlines
+   and blank lines ARE the prompt — collapsing them would make the preview a
+   paraphrase of the thing it exists to show. ── */
+.skill-prompt-exact { margin: 6px 0 8px; }
+.skill-prompt-exact-label { font-size: 11px; opacity: 0.7; margin-bottom: 4px; }
+.skill-prompt-text {
+  margin: 0;
+  max-height: 34vh;
+  overflow-y: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+  font-family: ui-monospace, 'SF Mono', 'Fira Code', monospace;
+  font-size: 10.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.skill-prompt-subhead {
+  font-size: 11px; opacity: 0.7;
+  border-top: 1px solid var(--border);
+  padding-top: 6px; margin-top: 2px;
+}
+.skill-prompt-withheld {
+  font-family: ui-monospace, 'SF Mono', 'Fira Code', monospace;
+  font-size: 10px;
+}
 .skill-prompt-body { margin: 6px 0 8px; }
 .skill-prompt-cat {
   font-size: 10.5px; font-weight: 600; text-transform: uppercase;
@@ -26355,6 +26434,88 @@ select.task-form-input { text-overflow: ellipsis; }
   line-height: 1.4;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* ── The step log (`P8-25`) ──
+   `TaskRun.steps` is written by both executors and served per run; this is the
+   only place it is drawn. Collapsed, because the run worth reading is one in a
+   list of twenty and the summary is what makes it findable. ── */
+.task-run-steps { margin-top: 5px; }
+.task-run-steps > summary {
+  cursor: pointer;
+  font-size: 10.5px;
+  opacity: 0.6;
+  list-style-position: inside;
+}
+.task-run-steps[open] > summary { opacity: 0.85; }
+.task-run-steps > summary:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+.task-run-step-list {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  font-size: 10.5px;
+  line-height: 1.5;
+  max-height: 32vh;
+  overflow-y: auto;
+}
+.task-run-step { margin: 2px 0; opacity: 0.75; }
+.task-run-step-kind,
+.task-run-step-round,
+.task-run-step-status {
+  font-size: 9.5px;
+  opacity: 0.65;
+  margin-right: 5px;
+  white-space: nowrap;
+}
+.task-run-step-tool {
+  font-family: ui-monospace, 'SF Mono', 'Fira Code', monospace;
+  font-size: 10px;
+  margin-right: 5px;
+}
+.task-run-step-detail { word-break: break-word; }
+.task-run-step-output {
+  opacity: 0.6;
+  padding-left: 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+/* A step that did not finish is the reason someone opened the log. It is
+   marked by weight and a left rule as well as a hue, so the distinction
+   survives a colour-blind reader and a monochrome print. */
+.task-run-step-error,
+.task-run-step-blocked {
+  opacity: 1;
+  border-left: 2px solid var(--color-danger, #e06c75);
+  padding-left: 5px;
+  margin-left: -7px;
+}
+.task-run-step-error .task-run-step-status,
+.task-run-step-blocked .task-run-step-status {
+  color: var(--color-danger, #e06c75);
+  opacity: 0.95;
+  font-weight: 700;
+}
+
+/* The Activity row's door into the log above (`P8-25`). */
+.task-log-steps {
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: color-mix(in srgb, var(--fg) 62%, transparent);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.task-log-steps:hover { color: var(--fg); border-color: color-mix(in srgb, var(--fg) 40%, transparent); }
+.task-log-steps:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+
+/* The chosen trigger's own sentence, under the picker (`P8-30`). */
+.task-form-event-desc {
+  font-size: 11px;
+  line-height: 1.45;
+  opacity: 0.65;
+  margin: 3px 0 2px;
 }
 
 /* ── Task card last-run badge (`B07`, moved out of JS by `B110`) ───────────

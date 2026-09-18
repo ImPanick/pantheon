@@ -1928,7 +1928,7 @@ async function _bulkAudit() {
 // sent at all. They are reachable — open the card, or the model asks for the
 // whole file — but nothing said so.
 const _PROMPT_PREVIEW_FACTS = [
-  ['In the list above', 'each skill’s name and description, filed under its category.'],
+  ['In the block above', 'each skill’s name and description, filed under its category.'],
   ['Added when your message matches one', 'its when-to-use, its numbered procedure, and its pitfalls.'],
   ['Never sent', 'its verification steps, and everything below the frontmatter in SKILL.md. Open a skill here to read them — the AI can ask for the whole file itself, one skill at a time.'],
 ];
@@ -1951,6 +1951,18 @@ function _el(tag, cls, text) {
   return n;
 }
 
+// The panel's own title. It named the *list* — "The catalogue the AI browses" —
+// because when it was written the endpoint had no `prompt` to render. It has
+// one now, the panel leads with it, and a title promising a catalogue in front
+// of a block of prompt text would be the preview lying about itself.
+const _PROMPT_PREVIEW_TITLE = 'What the AI is given';
+
+function _formatChars(n) {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return '';
+  return v.toLocaleString ? v.toLocaleString() : String(v);
+}
+
 async function _renderPromptPreview() {
   const panel = document.getElementById('skills-prompt-panel');
   if (!panel) return;
@@ -1961,14 +1973,26 @@ async function _renderPromptPreview() {
   panel.replaceChildren(_el('div', 'skills-audit-summary', 'Reading the catalogue…'));
 
   let index = [];
+  let promptText = '';
+  let promptChars = 0;
+  let withheld = [];
   try {
     const res = await fetch(`${API}/api/skills/index`, { credentials: 'same-origin' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     index = Array.isArray(data && data.index) ? data.index : [];
+    // `P8-06`'s closing half. `prompt` is the string
+    // `services/memory/skill_injection.py::render_skill_index_block` returns —
+    // the same call `agent_loop._build_base_prompt` makes — so what is drawn
+    // below is the characters the model is handed, not a list re-rendered to
+    // look like them. It is taken verbatim: no trim, no re-wrap, no re-sort.
+    // The moment this file formats it, the preview stops being evidence.
+    promptText = typeof (data && data.prompt) === 'string' ? data.prompt : '';
+    promptChars = Number.isFinite(data && data.prompt_chars) ? data.prompt_chars : promptText.length;
+    withheld = Array.isArray(data && data.withheld_fields) ? data.withheld_fields : [];
   } catch (e) {
     panel.replaceChildren(
-      _el('div', 'skills-audit-title', 'The catalogue the AI browses'),
+      _el('div', 'skills-audit-title', _PROMPT_PREVIEW_TITLE),
       _el('div', 'skill-prompt-note', 'Could not read it: ' + (e.message || String(e))),
     );
     return;
@@ -1979,13 +2003,31 @@ async function _renderPromptPreview() {
   // panel (`H01`) is the precedent: a skill description is a perfectly good XSS
   // payload and this is the one surface whose job is to show it verbatim.
   const head = _el('div', 'skills-audit-head');
-  head.appendChild(_el('span', 'skills-audit-title', 'The catalogue the AI browses'));
+  head.appendChild(_el('span', 'skills-audit-title', _PROMPT_PREVIEW_TITLE));
   const close = _el('button', 'memory-toolbar-btn skill-prompt-close', 'Close');
   close.type = 'button';
   close.addEventListener('click', (e) => { e.stopPropagation(); _closePromptPreview(); });
   head.appendChild(close);
 
+  // ---- The text itself, which is the answer this panel exists to give. ----
+  const exact = _el('div', 'skill-prompt-exact');
+  exact.appendChild(_el('div', 'skill-prompt-exact-label',
+    promptText
+      ? `Injected into every system prompt, exactly as shown — ${_formatChars(promptChars)} characters.`
+      : 'Nothing is injected. No line about skills reaches the system prompt at all.'));
+  if (promptText) {
+    const pre = _el('pre', 'skill-prompt-text');
+    // `textContent`, not `innerHTML`: this is the one node in the app whose
+    // contents are a prompt assembled out of user-written descriptions.
+    pre.textContent = promptText;
+    exact.appendChild(pre);
+  }
+
   const body = _el('div', 'skill-prompt-body');
+  if (index.length) {
+    body.appendChild(_el('div', 'skill-prompt-subhead',
+      'Every entry in that block, and what its status means:'));
+  }
   if (!index.length) {
     body.appendChild(_el('div', 'skill-prompt-empty',
       'Empty. The AI is told about no skills at all — publish one and it appears here.'));
@@ -2018,9 +2060,20 @@ async function _renderPromptPreview() {
     row.appendChild(_el('span', 'skill-prompt-fact-v', text));
     facts.appendChild(row);
   }
+  // The sentence above is English and the server derives the same answer from
+  // the schema (`WITHHELD_FIELDS`, built from `Skill.to_dict()`). Printing the
+  // served list beside the sentence is what stops a field added to the schema
+  // being silently missing from the prose — one source of truth, restated by
+  // nobody (`Law 7`).
+  if (withheld.length) {
+    const row = _el('div', 'skill-prompt-fact');
+    row.appendChild(_el('span', 'skill-prompt-fact-k', 'Withheld, field by field:'));
+    row.appendChild(_el('code', 'skill-prompt-fact-v skill-prompt-withheld', withheld.join(', ')));
+    facts.appendChild(row);
+  }
   facts.appendChild(_el('div', 'skill-prompt-note', _PROMPT_PREVIEW_GATE));
 
-  panel.replaceChildren(head, body, facts);
+  panel.replaceChildren(head, exact, body, facts);
 }
 
 async function _showSkillSource(name) {
@@ -2121,6 +2174,125 @@ function _csvOf(raw) {
   return raw ? raw.split(',').map(t => t.trim()).filter(Boolean) : [];
 }
 
+/** The Add-Skill form, read once, in one place.
+ *
+ * `P8-12`. The lint and the save ask the same question of the same eight
+ * fields, so they read them through the same function. Two readers would be two
+ * chances to disagree about whether the procedure box was empty, and the whole
+ * point of linting before a save is that it is judging what the save will send.
+ */
+function _draftFromForm() {
+  const v = (id) => document.getElementById(id)?.value.trim() || '';
+  const name = v('new-skill-name') || v('new-skill-title');
+  const description = v('new-skill-description') || v('new-skill-title');
+  return {
+    name,
+    description,
+    category: v('new-skill-category') || 'general',
+    when_to_use: v('new-skill-when') || v('new-skill-problem'),
+    procedure: _linesOf(v('new-skill-procedure') || v('new-skill-solution')),
+    tags: _csvOf(v('new-skill-tags')),
+    pitfalls: _linesOf(v('new-skill-pitfalls')),
+    verification: _linesOf(v('new-skill-verification')),
+    platforms: _csvOf(v('new-skill-platforms')),
+    requires_toolsets: _csvOf(v('new-skill-toolsets')),
+  };
+}
+
+/** True when the form holds nothing worth judging. */
+function _draftIsEmpty(draft) {
+  return !draft.name && !draft.description && !draft.when_to_use
+    && !draft.procedure.length && !draft.tags.length
+    && !draft.pitfalls.length && !draft.verification.length;
+}
+
+// `P8-12`. The lint advises; it never gates. Every path through this file that
+// runs it goes on to do what it was going to do — the panel is beside the Save
+// button, not in front of it, and its own heading says so, because a person who
+// sees red beside a button reasonably assumes the button is now refusing.
+const _LINT_NEVER_BLOCKS = 'None of this stops you saving.';
+
+function _renderLint(result, opts) {
+  const panel = document.getElementById('skill-lint-panel');
+  if (!panel) return;
+  const o = opts || {};
+  const findings = Array.isArray(result && result.findings) ? result.findings : [];
+  const counts = (result && result.counts) || {};
+  const problems = Number(counts.problem) || 0;
+  const advisories = Number(counts.advisory) || 0;
+
+  if (!findings.length && !o.saved) {
+    // Clean is worth saying out loud: silence reads as "the check did not run".
+    panel.classList.remove('hidden');
+    panel.replaceChildren(_el('div', 'skill-lint-head skill-lint-clean',
+      'Nothing to fix — this has a name, a description, when to use it, steps, '
+      + 'pitfalls, verification and tags.'));
+    return;
+  }
+
+  panel.classList.remove('hidden');
+  const kids = [];
+  const parts = [];
+  if (problems) parts.push(`${problems} ${problems === 1 ? 'problem' : 'problems'}`);
+  if (advisories) parts.push(`${advisories} ${advisories === 1 ? 'suggestion' : 'suggestions'}`);
+  const head = _el('div', 'skill-lint-head',
+    (o.saved ? `Saved as a draft. ${parts.length ? parts.join(', ') + ' — open its card to fix them. ' : ''}`
+             : (parts.length ? parts.join(', ') + '. ' : ''))
+    + (o.saved ? '' : _LINT_NEVER_BLOCKS));
+  kids.push(head);
+
+  for (const f of findings) {
+    const severity = f && f.severity === 'problem' ? 'problem' : 'advisory';
+    const row = _el('div', `skill-lint-finding skill-lint-${severity}`);
+    row.appendChild(_el('span', 'skill-lint-field', (f && f.field) || 'skill'));
+    // `message` then `fix`, in that order and visibly different: the first says
+    // what is wrong, the second says what to type. A finding with only the
+    // first is a complaint.
+    row.appendChild(_el('span', 'skill-lint-message', (f && f.message) || ''));
+    if (f && f.fix) row.appendChild(_el('span', 'skill-lint-fix', f.fix));
+    kids.push(row);
+  }
+  panel.replaceChildren(...kids);
+}
+
+function _clearLint() {
+  const panel = document.getElementById('skill-lint-panel');
+  if (!panel) return;
+  panel.classList.add('hidden');
+  panel.replaceChildren();
+}
+
+/**
+ * Ask the server what is wrong with what is currently typed.
+ *
+ * `POST /api/skills/lint` runs `lint_skill` — the same function
+ * `manage_skills action=lint` runs — and writes nothing. It is pure and makes
+ * no model call, so it answers while somebody is still typing; that is the
+ * whole reason `P8-12`'s premise correction moved the two `llm_call_async`
+ * judges out of scope.
+ *
+ * Returns the result, or `null` when the check could not run. A failed lint is
+ * silent by design: the check is advice, and an error toast for advice nobody
+ * asked for would punish the person for the network.
+ */
+async function _runSkillLint(opts) {
+  const draft = _draftFromForm();
+  if (_draftIsEmpty(draft)) { _clearLint(); return null; }
+  try {
+    const res = await fetch(`${API}/api/skills/lint`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(draft),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const result = await res.json();
+    _renderLint(result, opts);
+    return result;
+  } catch (e) {
+    return null;
+  }
+}
+
 // `P8-02`. The four fields below were never a wiring gap — `SkillAddRequest`
 // (routes/skills_routes.py:38) has taken `pitfalls`, `verification`,
 // `platforms` and `requires_toolsets` all along, and the raw SKILL.md editor
@@ -2128,31 +2300,22 @@ function _csvOf(raw) {
 // them was knowing the frontmatter format. So they go on the form that already
 // posts to this endpoint. No second write path.
 async function addSkill() {
-  const name = document.getElementById('new-skill-name')?.value.trim()
-    || document.getElementById('new-skill-title')?.value.trim();
-  const description = document.getElementById('new-skill-description')?.value.trim()
-    || document.getElementById('new-skill-title')?.value.trim();
-  const whenToUse = document.getElementById('new-skill-when')?.value.trim()
-    || document.getElementById('new-skill-problem')?.value.trim() || '';
-  const procedureRaw = document.getElementById('new-skill-procedure')?.value.trim()
-    || document.getElementById('new-skill-solution')?.value.trim() || '';
-  const tagsRaw = document.getElementById('new-skill-tags')?.value.trim();
-  const category = document.getElementById('new-skill-category')?.value.trim() || 'general';
-  const pitfallsRaw = document.getElementById('new-skill-pitfalls')?.value.trim() || '';
-  const verificationRaw = document.getElementById('new-skill-verification')?.value.trim() || '';
-  const platformsRaw = document.getElementById('new-skill-platforms')?.value.trim() || '';
-  const toolsetsRaw = document.getElementById('new-skill-toolsets')?.value.trim() || '';
+  const draft = _draftFromForm();
+  const { name, description, category, when_to_use: whenToUse,
+          procedure, tags, pitfalls, verification, platforms,
+          requires_toolsets } = draft;
 
   if (!description && !name) {
     uiModule.showError('Description (or name) is required');
     return;
   }
-  const procedure = _linesOf(procedureRaw);
-  const tags = _csvOf(tagsRaw);
-  const pitfalls = _linesOf(pitfallsRaw);
-  const verification = _linesOf(verificationRaw);
-  const platforms = _csvOf(platformsRaw);
-  const requires_toolsets = _csvOf(toolsetsRaw);
+
+  // `P8-12`. The lint runs on the way past and the save does not wait on its
+  // verdict beyond drawing it: `_runSkillLint` never throws, never returns
+  // early, and no branch below reads the verdict. Someone saving a skill with
+  // four problems gets the skill AND the list. It is drawn here rather than
+  // after the POST so a save that fails still leaves the findings on screen.
+  const lint = await _runSkillLint();
 
   try {
     const res = await fetch(`${API}/api/skills/add`, {
@@ -2178,6 +2341,9 @@ async function addSkill() {
      'new-skill-category', 'new-skill-pitfalls', 'new-skill-verification',
      'new-skill-platforms', 'new-skill-toolsets']
       .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    // The form is empty again, so the findings have to say which skill they are
+    // about or they read as a verdict on the blank form in front of them.
+    if (lint) _renderLint(lint, { saved: true });
     await loadSkills();
     uiModule.showToast('Skill added (draft)');
   } catch (err) {
@@ -2224,6 +2390,16 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('new-skill-name')?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') addSkill();
   });
+  // `P8-12`. On blur, because that is the moment a person has finished saying
+  // one thing and has not yet committed to the whole — early enough to be
+  // advice, late enough not to be nagging at them mid-word. Every field is
+  // wired, so the panel keeps up with whichever one they leave last.
+  for (const id of ['new-skill-name', 'new-skill-description', 'new-skill-when',
+                    'new-skill-procedure', 'new-skill-category', 'new-skill-tags',
+                    'new-skill-pitfalls', 'new-skill-verification',
+                    'new-skill-title', 'new-skill-problem', 'new-skill-solution']) {
+    document.getElementById(id)?.addEventListener('blur', () => { _runSkillLint(); });
+  }
 });
 
 export default { loadSkills, openSkill };

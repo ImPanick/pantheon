@@ -45,11 +45,11 @@
         s.setProperty('--panel', c.panel);
         s.setProperty('--border', c.border);
         if (c.red) s.setProperty('--red', c.red);
-        // P1-01, mirrored from applyColors() in static/js/theme.js. The 552
+        // P1-01, mirrored from applyColors() in static/js/theme.js. The 553
         // `var(--accent, var(--red))` sites in style.css ride the `--red` set
         // on the line above, but the 200 bare `var(--accent)` ones stay voided
         // until the module boots — a visible flash on every cold load without
-        // this. Counts re-derived 2026-08-30; they move as style.css grows.
+        // this. Counts re-derived 2026-09-18; they move as style.css grows.
         var _ac = c.accent || c.red;
         if (_ac) s.setProperty('--accent', _ac);
         // Set --brand-color now (= custom brand or the theme red) so the
@@ -523,6 +523,11 @@
                 <span class="skill-rich-ph"><span class="k">Required tools</span> &mdash; comma-separated; hidden unless all are on</span>
               </div>
             </details>
+            <!-- `P8-12`. The lint's findings, beside the form that produced
+                 them. Empty until a field loses focus or Save is pressed; it
+                 never stops a save, and the panel says so in the one place a
+                 person would wonder. -->
+            <div id="skill-lint-panel" class="skill-lint-panel hidden" role="status" aria-live="polite"></div>
             <div style="display:flex;justify-content:flex-end;">
               <button id="add-skill-btn" class="confirm-btn confirm-btn-primary">Add Skill</button>
             </div>

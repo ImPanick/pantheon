@@ -56,7 +56,7 @@ try { (function () {
   let _tasksMod = null;
   async function _getTasksMod() {
     if (_tasksMod) return _tasksMod;
-    try { _tasksMod = await import("/static/js/tasks.js?v=20260723tasksbulkfeedback1"); } catch (_) {}
+    try { _tasksMod = await import("/static/js/tasks.js?v=20260918palettesteps1"); } catch (_) {}
     return _tasksMod;
   }
   async function openTaskInTasksTab(taskId) {

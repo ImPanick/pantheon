@@ -3,15 +3,20 @@
 // `P0-29`. The three places a task's category name has to agree with itself,
 // evaluated out of the shipped module rather than read.
 //
-// `static/js/tasks.js` maps a built-in action key to a display category
-// (`_CATEGORY_MAP`), fixes the order categories are listed in
-// (`_CATEGORY_ORDER`), and holds one glyph per category (`_CATEGORY_ICONS`).
-// The category name is the join key for all three, so renaming it in one is
-// how the Forge section loses its icon, or its place at the top, or both —
-// silently, because a missing key is just a category drawn plain and last.
-// None of the three is exported, so this slices the declarations out and
-// evaluates them: the answer comes from the file's own values, not from a
-// regex that would be a second copy of them.
+// **The join moved across the wire on 2026-09-18 (`P8-22`) and so did this
+// harness.** Two of the three lived here — `_CATEGORY_MAP`, an action→category
+// table, and `_CATEGORY_ORDER`, the order the groups render in — and both were
+// second copies of what `src/builtin_actions.py` already knew, so a new action
+// needed an edit on the far side of the wire before it could be filed or drawn.
+// They are `/meta/actions`'s `category` and `categories` now. What is still
+// only in `static/js/tasks.js` is `_CATEGORY_ICONS`, one glyph per category,
+// and the category NAME is still the join key — so renaming it server-side is
+// how the Forge section silently loses its icon.
+//
+// This file therefore reports the half that lives in the browser. The caller
+// (`tests/test_the_product_noun_is_forge.py`) reads the other two out of the
+// Python registry and checks the three agree, which is a stronger check than
+// the one it replaced: it now spans the wire the rename would have to cross.
 //
 // Usage: node forge_labels.js
 const fs = require('fs');
@@ -30,8 +35,7 @@ function decl(name) {
   return src.slice(at, stop);
 }
 
-const code = [decl('_CATEGORY_MAP'), decl('_CATEGORY_ORDER'), decl('_CATEGORY_ICONS')]
-  .join('\n');
+const code = [decl('_CATEGORY_ICONS'), decl('_TASK_ICONS')].join('\n');
 // eslint-disable-next-line no-eval
-const out = eval(`${code}\n({map: _CATEGORY_MAP, order: _CATEGORY_ORDER, icons: Object.keys(_CATEGORY_ICONS)})`);
+const out = eval(`${code}\n({icons: Object.keys(_CATEGORY_ICONS), actionIcons: Object.keys(_TASK_ICONS)})`);
 console.log(JSON.stringify(out));
