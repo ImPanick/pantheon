@@ -9,8 +9,8 @@
 import Storage from './storage.js';
 import uiModule from './ui.js';
 import sessionModule from './sessions.js';
-import chatRenderer, { buildDiffHtml } from './chatRenderer.js?v=20260829trustladder1';
-import chatStream from './chatStream.js?v=20260829trustladder1';
+import chatRenderer, { buildDiffHtml } from './chatRenderer.js?v=20260918tracefolds1';
+import chatStream from './chatStream.js?v=20260918tracefolds1';
 import { addAITTSButton } from './tts-ai.js';
 import { prefersReducedMotion } from './motion.js';
 import markdownModule from './markdown.js';
@@ -25,7 +25,8 @@ import slashCommands, { initSlashCommands, isCommand, handleSlashCommand, handle
 import createResearchSynapse from './researchSynapse.js';
 import { createStreamRenderer } from './streamingRenderer.js';
 import { applyAgentThreadNode, verifierCardOptions, blockedCardOptions,
-         toolOutputPanesHtml, TOOL_LABELS } from './agentThread.js';
+         toolOutputPanesHtml, agentThreadContent, ensureThreadToggleAll,
+         toggleThreadAll, syncThreadToggleAll, TOOL_LABELS } from './agentThread.js';
 import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArrowUpRecall.js?v=20260714promptrecall';
 import {
   createIncrementalDisplayProjector,
@@ -4657,7 +4658,9 @@ import agentDrafts from './agentDrafts.js';   // H01
                 if (!currentToolBubble) continue;
                 const isImageProgress = /image/i.test(String(json.tool || '')) || /image/i.test(String(json.message || ''));
                 if (json.total || json.percent != null || isImageProgress) {
-                  const content = currentToolBubble.querySelector('.agent-thread-content');
+                  // `P5-02`: the fold animates on one grid item, so anything
+                  // added after the card was built goes inside the wrapper.
+                  const content = agentThreadContent(currentToolBubble);
                   if (content) {
                     let progressEl = currentToolBubble.querySelector('.agent-image-progress');
 	                    if (!progressEl) {
@@ -4701,7 +4704,7 @@ import agentDrafts from './agentDrafts.js';   // H01
                     tailEl = document.createElement('pre');
                     tailEl.className = 'agent-thread-tail';
                     tailEl.style.cssText = 'margin:4px 0 0;padding:6px 8px;font-size:11px;background:rgba(0,0,0,0.18);border-radius:4px;max-height:140px;overflow:auto;white-space:pre-wrap;opacity:0.85;';
-                    const content = currentToolBubble.querySelector('.agent-thread-content');
+                    const content = agentThreadContent(currentToolBubble);   // `P5-02`
                     if (content) content.appendChild(tailEl);
                   }
                   tailEl.textContent = tailStr;
@@ -4774,7 +4777,7 @@ import agentDrafts from './agentDrafts.js';   // H01
                 }
                 // --- Render browser screenshots in tool output ---
                 if (json.screenshot && currentToolBubble) {
-                  const contentEl = currentToolBubble.querySelector('.agent-thread-content');
+                  const contentEl = agentThreadContent(currentToolBubble);   // `P5-02`
                   if (contentEl) {
                     const screenshotSrc = chatRenderer.safeToolScreenshotSrc(json.screenshot);
                     if (screenshotSrc) {
@@ -6491,37 +6494,21 @@ import agentDrafts from './agentDrafts.js';   // H01
       }
     });
 
-    // Tapping a code block body (not its buttons) toggles the overlay
-    // copy/edit/run buttons, which otherwise cover the text on mobile.
-    document.addEventListener('click', (e) => {
-      if (e.target.closest('.copy-code, .edit-code, .run-code')) return;
-      const pre = e.target.closest('pre');
-      if (!pre || !pre.querySelector('.copy-code')) return;
-      // Don't hide while editing — the buttons (incl. the Done checkmark) matter.
-      if (pre.classList.contains('editing')) return;
-      pre.classList.toggle('buttons-hidden');
-    });
-
-    // Position copy/run buttons top or bottom based on viewport position
-    // — DESKTOP ONLY. On mobile this was constantly retriggering on tap
-    // (synthetic mouseenter) and made the buttons jump, so the user's
-    // finger landed on the moved target. Keep them pinned at the top on
-    // touch — no auto-repositioning.
-    document.addEventListener('mouseenter', (e) => {
-      if (window.matchMedia('(max-width: 768px)').matches) return;
-      const pre = e.target.closest ? e.target.closest('pre') : null;
-      if (!pre || pre.dataset.btnPosComputed) return;
-      const rect = pre.getBoundingClientRect();
-      const threshold = window.innerHeight * 0.35;
-      const isBottom = rect.top < threshold;
-      const copyBtn = pre.querySelector('.copy-code');
-      if (copyBtn) copyBtn.classList.toggle('bottom', isBottom);
-      const editBtn = pre.querySelector('.edit-code');
-      if (editBtn) editBtn.classList.toggle('bottom', isBottom);
-      const runBtn = pre.querySelector('.run-code');
-      if (runBtn) runBtn.classList.toggle('bottom', isBottom);
-      pre.dataset.btnPosComputed = '1';
-    }, true);
+    // `P5-06`. Two workarounds used to live here, and both existed for one
+    // reason: copy/edit/run were absolutely positioned over the first line of
+    // the code block.
+    //
+    //   * a click on the code body toggled `.buttons-hidden`, so a reader on a
+    //     phone could get the buttons off the text. It also meant tapping a
+    //     code block made its controls disappear for no reason a first-time
+    //     reader could see (`Law 15`);
+    //   * a `mouseenter` handler measured the block against the viewport and
+    //     flipped the buttons to the bottom when it sat high on screen. Its own
+    //     comment records that this had to be disabled on mobile because the
+    //     buttons moved out from under the finger reaching for them.
+    //
+    // The buttons are in `.code-block-header` now. They cover nothing, they do
+    // not move, and neither workaround has anything left to do.
 
     // Tab suspension recovery: when user tabs back in, check if stream froze
     document.addEventListener('visibilitychange', () => {
@@ -7950,6 +7937,9 @@ import agentDrafts from './agentDrafts.js';   // H01
       const node = header.closest('.agent-thread-node');
       if (!node) return;
       const opened = node.classList.toggle('open');
+      // `P5-08`: the thread's own control says "Expand all" or "Collapse all",
+      // and opening the last shut card by hand is exactly when it goes stale.
+      syncThreadToggleAll(node.closest('.agent-thread'));
       if (opened) {
         // Expanding the final tool trace can push a pending ask_user card below
         // the viewport.  Keep that immediately-adjacent prompt visible.
@@ -7961,6 +7951,72 @@ import agentDrafts from './agentDrafts.js';   // H01
       }
     });
     window.__pantheon_thread_click_bound = true;
+  }
+
+  // `P5-08`. Expand all / Collapse all, and the copy button on a tool output.
+  //
+  // Both are delegated on `document.body`, for the same reason the fold above
+  // is: these cards are rebuilt by `innerHTML` on every result event, and a
+  // per-node listener re-attached on each rewrite is `B56` — two listeners,
+  // one click, the card toggles twice and nothing appears to happen.
+  if (!window.__pantheon_thread_expandall_bound) {
+    document.body.addEventListener('click', (e) => {
+      const btn = e.target.closest('.agent-thread-expand-all');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      toggleThreadAll(btn.closest('.agent-thread'));
+    });
+    document.body.addEventListener('click', (e) => {
+      const btn = e.target.closest('.agent-tool-output-copy');
+      if (!btn) return;
+      // `preventDefault` is load-bearing: this button lives inside a
+      // `<summary>`, and without it the copy also folds the pane shut.
+      e.preventDefault();
+      e.stopPropagation();
+      const pane = btn.closest('.agent-tool-output');
+      const text = pane?.querySelector('pre')?.textContent || '';
+      if (!text) return;
+      uiModule.copyToClipboard(text);
+      btn.classList.add('copied');
+      clearTimeout(btn._copiedTimer);
+      btn._copiedTimer = setTimeout(() => btn.classList.remove('copied'), 1500);
+    });
+    window.__pantheon_thread_expandall_bound = true;
+  }
+
+  // One observer draws the control on every thread, wherever it was built —
+  // the live stream, history replay and compare mode each create their own
+  // `.agent-thread`, and putting the call in all three is how this file ended
+  // up with six copies of a tool card (`P4-01`). Same shape as the compact-`pre`
+  // observer above, deliberately (`Law 14`).
+  if (!window.__pantheon_thread_toolbar_observer) {
+    window.__pantheon_thread_toolbar_observer = true;
+    const _sweepThreads = (root) => {
+      if (!root || !root.querySelectorAll) return;
+      if (root.matches && root.matches('.agent-thread')) ensureThreadToggleAll(root);
+      root.querySelectorAll('.agent-thread').forEach(ensureThreadToggleAll);
+    };
+    const _startThreadToolbars = () => {
+      if (!document.body) return;
+      _sweepThreads(document.body);
+      new MutationObserver((muts) => {
+        for (const m of muts) {
+          if (m.target && m.target.closest) {
+            const t = m.target.closest('.agent-thread');
+            if (t) ensureThreadToggleAll(t);
+          }
+          for (const n of m.addedNodes) {
+            if (n.nodeType === 1) _sweepThreads(n);
+          }
+        }
+      }).observe(document.body, { childList: true, subtree: true });
+    };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', _startThreadToolbars, { once: true });
+    } else {
+      _startThreadToolbars();
+    }
   }
 
   // `P5-07`. Copy the executed command. One delegated listener for the same

@@ -839,10 +839,13 @@ nothing:
 
 | Package | Where | Licence |
 |---|---|---|
-| [`@antithesishq/bombadil`](https://github.com/antithesishq/bombadil) `^0.6.1` | `package.json` — `devDependencies` | MIT |
+| [`@antithesishq/bombadil`](https://github.com/antithesishq/bombadil) `^0.7.6` | `package.json` — `devDependencies` | MIT |
 
-*Read on 2026-08-27 from `package.json`, from `package-lock.json`'s recorded
-`"license": "MIT"` for the pinned 0.6.1, and from the npm registry metadata.*
+*Re-read on 2026-09-18 from `package.json`, from `package-lock.json`'s recorded
+`"license": "MIT"` for the pinned 0.7.6, and from the npm registry metadata —
+still MIT, still zero runtime dependencies, still types-only. Nothing checks
+that this row and `package.json` agree, so a bump has to change both by hand
+(`B623`).*
 
 ---
 

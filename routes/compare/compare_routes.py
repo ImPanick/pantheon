@@ -92,6 +92,46 @@ def _vote_meta(body) -> Dict[str, Any]:
     return meta
 
 
+# What a comparison with no recorded mapping means: left is A, right is B.
+# `POST /api/compare/start` is the only writer of a real one, and it always
+# writes one, so this is the shape for every row that path did not create.
+_IDENTITY_MAPPING = {"left": "a", "right": "b"}
+
+
+def _blind_mapping(c) -> Dict[str, str]:
+    """Which side is which, for one comparison. `P13-12`.
+
+    Always returns both keys. `vote_comparison` indexes `mapping["left"]` and
+    `mapping["right"]` unconditionally — including in the reveal block, which
+    runs even for a tie — so anything that can hand it a dict without them is a
+    500 rather than a bad request. Before this row that was reachable: a vote
+    recorded through `POST /api/compare/record` stored `{"models": [...]}` in
+    this column, and a `winner` of `""` slips past the "Already voted" guard
+    that otherwise hides the shape mismatch.
+
+    The payload has moved to `vote_meta` and the migration moved the existing
+    rows, so the wrong shape should no longer exist. This still refuses to
+    index a blob it has not checked: a store can be older than its migration,
+    and the last thing `/vote` should do with a row it does not recognise is
+    crash on it.
+    """
+    if not getattr(c, "blind_mapping", None):
+        return dict(_IDENTITY_MAPPING)
+    try:
+        blob = json.loads(c.blind_mapping)
+    except (ValueError, TypeError):
+        return dict(_IDENTITY_MAPPING)
+    if not isinstance(blob, dict):
+        return dict(_IDENTITY_MAPPING)
+    left, right = blob.get("left"), blob.get("right")
+    if left not in ("a", "b") or right not in ("a", "b"):
+        logger.warning(
+            "Comparison %s has a blind_mapping that is not a left/right mapping; "
+            "reading it as the identity mapping", getattr(c, "id", "?"))
+        return dict(_IDENTITY_MAPPING)
+    return {"left": left, "right": right}
+
+
 def _history_row(c) -> Dict[str, Any]:
     """One comparison as the Scoreboard needs it. `H12`.
 
@@ -105,13 +145,24 @@ def _history_row(c) -> Dict[str, Any]:
     from the two columns. That matters: every vote recorded before this change
     has either no blob at all (N==2) or one carrying models only, and they must
     not vanish from a history that is about to become the source of truth.
+
+    `P13-12`. **It reads one column now, and it no longer guesses.** It used to
+    read `blind_mapping`, which by then meant three different things depending
+    on which endpoint had written the row, and told them apart by which keys
+    were present. The guess was correct; the column having two meanings was the
+    defect, and `POST /api/compare/{id}/vote` is where it cost something — that
+    handler indexes `mapping["left"]` and raised `KeyError` on any row this
+    path had written. The payload moved to `vote_meta`, and
+    `_migrate_add_comparison_vote_meta_column` moved the existing rows with it,
+    so a history recorded before the migration reads back exactly as before.
     """
     models: List[str] = []
     costs = None
     mode = None
-    if c.blind_mapping:
+    meta = getattr(c, "vote_meta", None)
+    if meta:
         try:
-            blob = json.loads(c.blind_mapping)
+            blob = json.loads(meta)
             if isinstance(blob, dict):
                 if isinstance(blob.get("models"), list):
                     models = [str(m) for m in blob["models"]]
@@ -337,7 +388,7 @@ def setup_compare_routes(session_manager: SessionManager):
             if comp.winner:
                 raise HTTPException(400, "Already voted")
 
-            mapping = json.loads(comp.blind_mapping) if comp.blind_mapping else {"left": "a", "right": "b"}
+            mapping = _blind_mapping(comp)
 
             if winner == "tie":
                 comp.winner = "tie"
@@ -372,19 +423,20 @@ def setup_compare_routes(session_manager: SessionManager):
         model_a = body.models[0] if len(body.models) > 0 else ""
         model_b = body.models[1] if len(body.models) > 1 else ""
 
-        # `H12`. This column already carried `{"models": [...]}` on this path
-        # for N>2 — the lightweight vote endpoint has always repurposed it,
-        # because `model_a`/`model_b` cannot hold three models. Now it carries
-        # the full list ALWAYS, plus the two fields the browser is the only
-        # holder of, so `/history` can rebuild a vote without the browser that
-        # cast it. Writing it unconditionally also removes the N==2 special
-        # case, which was the reason a two-model vote read back differently
-        # from a three-model one.
+        # `H12`. The full model list (which is why `model_a`/`model_b` were
+        # never enough), plus the two fields the browser is the only holder of,
+        # so `/history` can rebuild a vote without the browser that cast it.
+        # Written unconditionally, which removes the N==2 special case that made
+        # a two-model vote read back in a different shape from a three-model one.
         #
-        # That this column is named `blind_mapping` and holds none of what its
-        # name says is not made worse here, but it is not made better either —
-        # filed as `P13-12`.
-        blind_mapping = json.dumps(_vote_meta(body))
+        # `P13-12`. This went into `blind_mapping` until now, because
+        # `model_a`/`model_b` cannot hold three models and there was nowhere
+        # else without a migration. There is a column for it now, and this path
+        # leaves `blind_mapping` NULL: a vote recorded here was never blind in
+        # the left/right sense — nothing was hidden behind a side — so there is
+        # no mapping to record, and writing one would be inventing a fact to
+        # fill a field.
+        vote_meta = json.dumps(_vote_meta(body))
 
         db = SessionLocal()
         try:
@@ -397,7 +449,7 @@ def setup_compare_routes(session_manager: SessionManager):
                 endpoint_b="",
                 winner=body.winner,
                 is_blind=body.is_blind,
-                blind_mapping=blind_mapping,
+                vote_meta=vote_meta,
                 voted_at=datetime.utcnow(),
                 owner=user,
             )

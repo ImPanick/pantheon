@@ -20,6 +20,7 @@ imports are guarded. These tests hold the report honest — that it reads
 `requirements.txt` rather than a second list, that it reports what is genuinely
 missing, and that it never fails a run.
 """
+import importlib.metadata
 import subprocess
 import sys
 from pathlib import Path
@@ -60,6 +61,57 @@ def test_it_reports_a_package_that_is_genuinely_absent():
 def test_the_count_is_not_zero_here_today():
     """The row's own `Verify` line, asserted rather than asserted-about."""
     assert len(suite_conftest._declared_dependency_gaps()) >= 10
+
+
+def _gaps_for(monkeypatch, tmp_path, requirement: str) -> list:
+    """Run the reporter against one crafted requirement instead of the real file.
+
+    `_declared_dependency_gaps` builds its path as
+    `join(dirname(dirname(abspath(__file__))), "requirements.txt")`, so stubbing
+    `dirname` points it at `tmp_path` — the same lever
+    `test_the_report_survives_a_requirements_file_it_cannot_read` already pulls,
+    rather than a second way in (`Law 14`).
+    """
+    (tmp_path / "requirements.txt").write_text(requirement + "\n", encoding="utf-8")
+    monkeypatch.setattr(
+        suite_conftest.os.path, "dirname",
+        lambda p: str(tmp_path), raising=False)
+    return suite_conftest._declared_dependency_gaps()
+
+
+def test_a_package_installed_above_an_exact_pin_is_still_a_gap(monkeypatch,
+                                                               tmp_path):
+    """`B620`. `B325`'s row says thirteen dependencies are *"at a version other
+    than the pin"*. The reporter said *below* it — one `<` covering both `==`
+    and `>=` — so an environment holding a **newer** release than the pin was
+    reported as satisfying it.
+
+    That is the one case this footer exists to describe. Measured 2026-09-18:
+    `mcp==1.30.0` is declared, `mcp` 2.2.0 installed makes all four built-in MCP
+    servers fail at import, and the footer named 17 gaps and `mcp` was not one
+    of them. `pytest` stands in for it here because it is installed in every
+    environment that can run this file at all.
+    """
+    installed = importlib.metadata.version("pytest")
+    gaps = _gaps_for(monkeypatch, tmp_path, "pytest==0.0.1")
+    assert gaps == [f"pytest: {installed} installed, pytest==0.0.1 declared"], (
+        "a package installed above its exact pin was not reported — the footer "
+        "says 'does not satisfy requirements.txt' and a different major version "
+        "does not satisfy it either")
+
+
+def test_a_floor_is_not_a_gap_when_the_installed_version_is_above_it(monkeypatch,
+                                                                    tmp_path):
+    """The other half, and the reason the rule is not simply `!=`. `>=` is a
+    floor: a release above it satisfies it, and reporting one would make the
+    footer noise on the very files that still carry a floor."""
+    assert _gaps_for(monkeypatch, tmp_path, "pytest>=0.0.1") == []
+
+
+def test_an_exact_pin_that_is_met_exactly_is_not_a_gap(monkeypatch, tmp_path):
+    """And the pin the environment does satisfy stays out of the report."""
+    installed = importlib.metadata.version("pytest")
+    assert _gaps_for(monkeypatch, tmp_path, f"pytest=={installed}") == []
 
 
 def test_the_report_survives_a_requirements_file_it_cannot_read(monkeypatch,

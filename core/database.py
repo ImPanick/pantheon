@@ -608,7 +608,28 @@ class Comparison(TimestampMixin, Base):
     metrics_b = Column(Text, nullable=True)         # JSON string
     winner = Column(String, nullable=True)           # "a", "b", "tie", or null
     is_blind = Column(Boolean, default=True)
+    # `P13-12`. This column now holds ONE thing again: which side of the blind
+    # comparison is which. `POST /api/compare/start` writes it, `POST
+    # /api/compare/{id}/vote` reads it, and nothing else touches it.
+    #
+    # It used to hold three. The lightweight vote endpoint repurposed it for
+    # `{"models": [...]}` because `model_a`/`model_b` cannot hold three models,
+    # `H12` then added `costs` and `mode` for the Scoreboard, and `_history_row`
+    # had to guess which of the two shapes it was holding. The guess worked;
+    # what did not was `/vote`, which indexes `mapping["left"]` unconditionally
+    # and raised `KeyError` — a 500 — on any row the vote path had written.
     blind_mapping = Column(Text, nullable=True)      # JSON: {"left": "a"/"b", "right": "a"/"b"}
+    # `P13-12`. What a vote records beyond the two model columns: the full
+    # model list (which is why `model_a`/`model_b` were never enough), the
+    # browser's per-model cost estimate, and which compare mode produced it.
+    #
+    # A new column rather than `metrics_a`/`metrics_b` — which are declared
+    # above and have never been written or read by anything in the tree — on
+    # purpose: those two are per-model and there are two of them, and the whole
+    # reason this data went somewhere else is that a three-model vote does not
+    # fit in a pair of columns. Reusing them would rebuild the same problem
+    # under a better name. `B641` covers what to do with them.
+    vote_meta = Column(Text, nullable=True)          # JSON: {"models": [...], "costs": [...], "mode": str}
     voted_at = Column(DateTime, nullable=True)
 
     __table_args__ = (
@@ -1506,6 +1527,80 @@ def _migrate_add_supports_tools_column():
             logging.getLogger(__name__).info("Migrated: added 'supports_tools' column to model_endpoints")
     except Exception as e:
         logging.getLogger(__name__).warning(f"supports_tools migration failed: {e}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def _migrate_add_comparison_vote_meta_column():
+    """Give the vote path its own column, and move what it stored into it. `P13-12`.
+
+    Two halves, and the second is the one that makes this a `Law 7` fix rather
+    than a new field beside an old mess:
+
+    1. **Add `comparisons.vote_meta`.** Declaring a column without this is the
+       `P8-25` defect exactly — `create_all` builds it on a fresh box and every
+       test passes, while every install that predates the declaration raises
+       `OperationalError: table comparisons has no column named vote_meta` on
+       the first vote. Modelled on `_migrate_add_supports_tools_column`, which
+       is the pattern `P13-12` names.
+
+    2. **Move the vote blobs out of `blind_mapping`.** Rows written by
+       `POST /api/compare/record` hold `{"models": [...]}` there — not a blind
+       mapping, and `/vote` raises `KeyError` on `mapping["left"]` when it meets
+       one. Copying the blob and clearing the old cell is what leaves the column
+       with one meaning; copying without clearing would leave two readers of one
+       cell, which is the defect this row is about.
+
+    The shape test is deliberately narrow: a dict with `models` and **no**
+    `left`. A blob carrying both is not one this code has ever written, so it is
+    left exactly where it is for a person to look at rather than guessed about.
+    """
+    import json
+    import sqlite3
+    db_path = DATABASE_URL.replace("sqlite:///", "")
+    if not os.path.exists(db_path):
+        return
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        columns = [row[1] for row in conn.execute("PRAGMA table_info(comparisons)")]
+        if not columns:
+            return  # no comparisons table yet; create_all will build it whole
+        if "vote_meta" not in columns:
+            conn.execute("ALTER TABLE comparisons ADD COLUMN vote_meta TEXT")
+            conn.commit()
+            logging.getLogger(__name__).info(
+                "Migrated: added 'vote_meta' column to comparisons")
+
+        moved = 0
+        rows = conn.execute(
+            "SELECT id, blind_mapping FROM comparisons "
+            "WHERE blind_mapping IS NOT NULL AND vote_meta IS NULL"
+        ).fetchall()
+        for comp_id, blob in rows:
+            try:
+                parsed = json.loads(blob)
+            except (ValueError, TypeError):
+                continue
+            if not isinstance(parsed, dict):
+                continue
+            if "models" not in parsed or "left" in parsed:
+                continue
+            conn.execute(
+                "UPDATE comparisons SET vote_meta = ?, blind_mapping = NULL WHERE id = ?",
+                (blob, comp_id),
+            )
+            moved += 1
+        if moved:
+            conn.commit()
+            logging.getLogger(__name__).info(
+                "Migrated: moved %d vote payload(s) from comparisons.blind_mapping "
+                "to comparisons.vote_meta", moved)
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"vote_meta migration failed: {e}")
     finally:
         try:
             conn.close()
@@ -2479,6 +2574,7 @@ def init_db():
     _migrate_add_model_endpoint_owner_column()
     _migrate_add_provider_auth_id_column()
     _migrate_add_supports_tools_column()
+    _migrate_add_comparison_vote_meta_column()
     _migrate_add_task_run_model_column()
     _migrate_add_task_run_steps_column()
     _migrate_add_owner_column()

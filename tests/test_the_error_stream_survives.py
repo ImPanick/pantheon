@@ -29,6 +29,8 @@ from pathlib import Path
 
 import pytest
 
+from test_tool_effect_surfaces_js import _copy_unstubbed_imports  # noqa: E402
+
 from src.agent_tools.subprocess_tools import split_streams
 from src.constants import MAX_OUTPUT_CHARS
 
@@ -154,6 +156,12 @@ def sandbox(tmp_path_factory):
     d = tmp_path_factory.mktemp("panes")
     (d / "ui.js").write_text(_UI_STUB, encoding="utf-8")
     shutil.copy(_MODULE, d / "agentThread.js")
+    # `P5-04` added an import to `agentThread.js`, and a sandbox that copies one
+    # file cannot see one. `_copy_unstubbed_imports` was written for exactly this
+    # ("adding one import to a sandboxed module breaks every sandbox that copies
+    # it") and is borrowed rather than re-implemented here (`Law 14`): `ui.js` keeps
+    # its stub, everything else comes in for real, transitively.
+    _copy_unstubbed_imports(d, _MODULE, {"ui.js"})
     return d
 
 
@@ -191,7 +199,10 @@ def test_the_error_pane_does_not_need_a_click(sandbox):
 def test_a_clean_command_gets_one_pane_as_before(sandbox):
     html = _panes(sandbox, {"output": "hello", "exit_code": 0})
     assert "agent-tool-stderr" not in html
-    assert html.count("agent-tool-output") == 1
+    # Count the pane, not the word. `P5-08` put a copy button in the summary
+    # whose class is `agent-tool-output-copy`, and a substring count read that
+    # as a second pane — `Law 20`'s exact failure, caught by its own file.
+    assert html.count('<details class="agent-tool-output') == 1
     assert ">hello<" in html
 
 
@@ -232,6 +243,10 @@ def test_both_surfaces_use_the_one_builder():
     for rel in ("static/js/chat.js", "static/js/chatRenderer.js"):
         text = (_REPO / rel).read_text(encoding="utf-8")
         assert "toolOutputPanesHtml(" in text, rel
+        # The literal a hand-built copy would carry. It is not the builder's
+        # own string any more (`P5-08` put a copy button between the label and
+        # the `</summary>`), which is the point: a caller still emitting the
+        # old markup is a caller that stopped tracking the builder.
         assert '<details class="agent-tool-output"><summary>Output</summary>' not in text, (
             f"{rel} still builds the output pane by hand"
         )

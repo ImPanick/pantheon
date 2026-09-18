@@ -9,6 +9,7 @@ import uiModule from './ui.js';
 import { splitTableRow } from './markdown/tableRow.js';
 import { replaceEmojiShortcodes, hasEmojiShortcode } from './emojiShortcodes.js';
 import { playIcon } from './icons.js';
+import { langIcon } from './langIcons.js';
 
 var escapeHtml = uiModule.esc;
 
@@ -492,29 +493,23 @@ export function extractThinkingBlocks(text) {
 }
 
 /**
- * Create a collapsible thinking section
+ * The reasoning fold. `P5-08`: it is `createCollapsible()` with a label and a
+ * duration, not a second copy of that markup.
+ *
+ * The two were byte-similar and a hundred lines apart in this one file — the
+ * same `.thinking-section` / `.thinking-header[data-thinking-id]` /
+ * `.thinking-content` shell written twice — and they had already drifted in
+ * the way `Law 14` predicts: this one shipped no `data-label`, so
+ * `_setThinkingExpanded` fell through to a hard-coded `'thinking process'`
+ * string that only happened to match the text above it. One builder now, so
+ * the label is stated once and the fold that opens is the fold that closes.
  */
 function createThinkingSection(thinkingContent, index = 0, thinkingTime = null) {
-  const id = `thinking-${Date.now()}-${index}`;
   const timeHtml = thinkingTime ? `<span style="font-size:11px;opacity:0.4;font-variant-numeric:tabular-nums;">${thinkingTime}s</span>` : '';
-  return `
-    <div class="thinking-section">
-      <div class="thinking-header" data-thinking-id="${id}">
-        <div class="thinking-header-left">
-          <span>View thinking process</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:6px;">
-          ${timeHtml}
-          <span class="thinking-toggle" id="${id}-toggle"></span>
-        </div>
-      </div>
-      <div class="thinking-content" id="${id}">
-        <div class="thinking-content-inner">
-          ${mdToHtml(thinkingContent)}
-        </div>
-      </div>
-    </div>
-  `;
+  return createCollapsible(thinkingContent, 'thinking process', {
+    id: `thinking-${Date.now()}-${index}`,
+    aside: timeHtml,
+  });
 }
 
 function createTaskCompletedMarker() {
@@ -601,19 +596,40 @@ export function svgifyEmoji(html, opts) {
   return parts.join('');
 }
 /**
- * Generic collapsible section that reuses the thinking-dropdown styling and its
- * delegated toggle (any `.thinking-header[data-thinking-id]`). The label drives
- * the "View <label>" / "Hide <label>" text via data-label. Used e.g. for the
- * vision-model image description on a user's photo message.
+ * The one collapsible section in the chat transcript.
+ *
+ * It reuses `.thinking-section`'s styling, its delegated toggle (any
+ * `.thinking-header[data-thinking-id]`) and its content-hash persistence, so a
+ * fold built here reopens itself after a refresh without its caller doing
+ * anything. The label drives the "View <label>" / "Hide <label>" text through
+ * `data-label`.
+ *
+ * `P5-08`. **This was reachable from nothing.** Its own docstring named a
+ * caller — "the vision-model image description on a user's photo message" —
+ * that does not exist anywhere in `static/`; that surface ships an editor
+ * instead. Meanwhile `createThinkingSection` above was a second copy of this
+ * markup, so the file held one orphan and one duplicate of it at the same
+ * time. `createThinkingSection` now calls this, which makes it the builder for
+ * every reasoning fold in the product — the busiest collapsible there is.
+ *
+ * @param {string} contentMarkdown  the body, rendered as markdown
+ * @param {string} [label]          "View <label>" / "Hide <label>"
+ * @param {object} [opts]
+ * @param {string} [opts.id]        the fold's element id, if the caller needs
+ *                                  a predictable one
+ * @param {string} [opts.aside]     pre-rendered HTML shown in the header
+ *                                  beside the chevron (the thinking duration)
  */
-export function createCollapsible(contentMarkdown, label = 'details') {
-  const id = `collapse-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+export function createCollapsible(contentMarkdown, label = 'details', opts = {}) {
+  const id = (opts && opts.id)
+    || `collapse-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
   const safeLabel = escapeHtml(label);
+  const aside = (opts && opts.aside) || '';
   return `
     <div class="thinking-section">
       <div class="thinking-header" data-thinking-id="${id}">
         <div class="thinking-header-left"><span data-label="${safeLabel}">View ${safeLabel}</span></div>
-        <div style="display:flex;align-items:center;gap:6px;"><span class="thinking-toggle" id="${id}-toggle"></span></div>
+        <div style="display:flex;align-items:center;gap:6px;">${aside}<span class="thinking-toggle" id="${id}-toggle"></span></div>
       </div>
       <div class="thinking-content" id="${id}"><div class="thinking-content-inner">${mdToHtml(contentMarkdown)}</div></div>
     </div>`;
@@ -684,7 +700,36 @@ export function mdToHtml(src, opts) {
       ? `<button type="button" class="run-code" data-code="${escapeHtml(escaped)}" data-lang="${lang}" title="Run code">${playIcon({ size: 14, outline: true })}</button>`
       : '';
     const editBtn = `<button type="button" class="edit-code" title="Edit"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>`;
-    codeBlocks.push(`<pre><code${langClass} data-lang="${lang || ''}">${escapeHtml(escaped)}</code>${runBtn}${editBtn}<button type="button" class="copy-code" data-code="${escapeHtml(escaped)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></pre>`);
+    const copyBtn = `<button type="button" class="copy-code" data-code="${escapeHtml(escaped)}" title="Copy code" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>`;
+    // `P5-06`. The code block's header — both halves of it already existed and
+    // had never met.
+    //
+    //   * `data-lang` has been written onto every `<code>` this builder emits
+    //     since the builder was written, and nothing ever displayed it. A
+    //     reader could not tell `sh` from `python` except by reading the code.
+    //   * `langIcons.js` has held a drawn glyph per language the whole time,
+    //     imported by `document.js` and `documentLibrary.js` and **never by
+    //     chat** — so the document library named its languages and the place
+    //     people actually read code did not.
+    //
+    // The header is also where copy/edit/run go, and that is the other half of
+    // the row: those three were `position: absolute` over the first line of the
+    // block. On a phone they sat on top of the code, which is why `chat.js`
+    // grew a tap-to-hide toggle and a top/bottom repositioner, and why
+    // `.pre-compact` reserved 200px of right padding on a one-line block. In a
+    // header they cover nothing, and all three workarounds go with them.
+    //
+    // It stays INSIDE the `<pre>`: `closest('pre')` is how the copy, edit and
+    // run handlers find their code element, `_markCompactPre` reads
+    // `pre.querySelector('code')`, and the hljs sweep matches `pre code`. A
+    // wrapper `<div>` around the block would have been a quieter-looking change
+    // that broke all four.
+    const headerLang = lang
+      ? `<span class="code-block-lang">${langIcon(lang, 13)}<span>${escapeHtml(lang)}</span></span>`
+      : '<span class="code-block-lang"></span>';
+    const header = `<div class="code-block-header">${headerLang}`
+      + `<span class="code-block-actions">${runBtn}${editBtn}${copyBtn}</span></div>`;
+    codeBlocks.push(`<pre>${header}<code${langClass} data-lang="${lang || ''}">${escapeHtml(escaped)}</code></pre>`);
 
     return placeholder;
   });

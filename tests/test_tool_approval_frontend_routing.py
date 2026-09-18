@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
+import re
 from pathlib import Path
 
 
@@ -89,13 +90,38 @@ def test_every_changed_approval_module_is_cache_busted_together():
     """
 
     root = Path(__file__).resolve().parents[1]
-    version = "20260829trustladder1"
+
+    # The string is READ from the page rather than written here. It was a
+    # literal until `P5-08` had to move it, and a literal makes the test a
+    # second place the version lives — `Law 6`, and the control this test
+    # exists to hold is *lockstep*, not any particular value. `index.html`'s
+    # `chat.js` script tag is the canonical execution site, so it is the one
+    # that defines what the wave is called; every other site has to agree.
     index = (root / "static/index.html").read_text(encoding="utf-8")
+    version = re.search(r"js/chat\.js\?v=([A-Za-z0-9._-]+)", index).group(1)
+
+    # Every place any of the five approval-path modules is named, across the
+    # whole of `static/` — a stale one here pairs new code with a cached
+    # interceptor and the approval click lands on the New-chat branch.
+    modules = ("chat.js", "chatRenderer.js", "chatStream.js",
+               "compare/index.js", "compare/stream.js")
+    stale = {}
+    for path in sorted((root / "static").rglob("*")):
+        if path.suffix not in (".js", ".html") or "/lib/" in path.as_posix():
+            continue
+        text = path.read_text(encoding="utf-8")
+        for name in modules:
+            for found in re.findall(re.escape(name) + r"\?v=([A-Za-z0-9._-]+)", text):
+                if found != version:
+                    stale.setdefault(str(path.relative_to(root)), set()).add(f"{name}={found}")
+    assert not stale, f"approval-path modules out of lockstep with {version}: {stale}"
+
+    # And the sites the original form of this test named one by one, kept so a
+    # scan that quietly stopped finding anything cannot pass by being empty.
     app = (root / "static/app.js").read_text(encoding="utf-8")
     chat = (root / "static/js/chat.js").read_text(encoding="utf-8")
     compare_index = (root / "static/js/compare/index.js").read_text(encoding="utf-8")
     compare_stream = (root / "static/js/compare/stream.js").read_text(encoding="utf-8")
-
     assert f"chatStream.js?v={version}" in index
     assert f"chatStream.js?v={version}" in chat
     assert f"compare/index.js?v={version}" in app

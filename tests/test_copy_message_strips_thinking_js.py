@@ -68,6 +68,18 @@ def _extract_thinking_blocks(text: str) -> dict:
             return (row || '').replace(/^\\s*\\|/, '').replace(/\\|\\s*$/, '').split('|').map(c => c.trim());
           }`
         );
+        // `P5-06`. `markdown.js` draws the code block's language icon with
+        // `langIcons.js`, the module the document surfaces already used and
+        // chat never did. Inlined for real on the same terms as the icon table
+        // above: a stub would give this test a glyph nobody ships.
+        const langIconsSource = fs.readFileSync('./static/js/langIcons.js', 'utf8')
+          .replace(/^export const /gm, 'const ')
+          .replace(/^export function /gm, 'function ')
+          .replace(/^export default .*$/m, '');
+        source = source.replace(
+          /import \{ langIcon \} from ['"]\.\/langIcons\.js['"];/,
+          () => langIconsSource
+        );
         const emojiSource = fs.readFileSync('./static/js/emojiShortcodes.js', 'utf8')
           .replace(/^export default .*$/m, '')
           .replace(/export const /g, 'const ')

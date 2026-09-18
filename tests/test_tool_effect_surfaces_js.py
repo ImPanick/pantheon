@@ -140,6 +140,29 @@ export class Node {
     this.childNodes = []; this._text = ''; this._html = '';
     for (const k of kids) this.appendChild(k);
   }
+  // Added 2026-09-18 by `P5-08`. The agent thread's "Expand all" control is
+  // inserted at the TOP of a thread that already has cards in it, so the real
+  // module reaches for `firstChild`, `insertBefore` and `ownerDocument`. Same
+  // terms as `replaceChildren` above: the browser has these, so a shim without
+  // them makes the module throw on a method rather than fail an assertion.
+  get firstChild() { return this.childNodes[0] || null; }
+  get ownerDocument() {
+    let n = this;
+    while (n.parentNode) n = n.parentNode;
+    return n.tagName === '#DOCUMENT' ? n : (typeof document === 'undefined' ? null : document);
+  }
+  insertBefore(n, ref) {
+    if (n.parentNode) n.parentNode.removeChild(n);
+    const i = ref ? this.childNodes.indexOf(ref) : -1;
+    n.parentNode = this;
+    if (i < 0) this.childNodes.push(n); else this.childNodes.splice(i, 0, n);
+    if (this._text || this._html) { this._text = ''; this._html = ''; }
+    return n;
+  }
+  matches(sel) {
+    return String(sel).split(',').map((x) => x.trim()).filter(Boolean)
+      .some((p) => this._matches(p));
+  }
   remove() { if (this.parentNode) this.parentNode.removeChild(this); }
   addEventListener(t, fn) { (this.listeners[t] = this.listeners[t] || []).push(fn); }
   removeEventListener(t, fn) {

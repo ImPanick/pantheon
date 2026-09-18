@@ -49,7 +49,7 @@ import re
 import time
 from collections import Counter
 
-from src import retrieval_engine, text_stemmer
+from src import memory_edges, retrieval_engine, text_stemmer
 
 # ── tokens ────────────────────────────────────────────────────────────────────
 
@@ -267,6 +267,20 @@ def _rank(query, memories, k, vector, report, now):
     if not memories or not (query or "").strip():
         return []
 
+    # `P13-02`. The graph is read once per query, before anything is scored,
+    # because its first rule removes candidates rather than reordering them: a
+    # superseded memory does not rank badly, it does not rank. Applied here
+    # rather than at each call site so every surface gets it — the Brain's
+    # search and debug endpoints, the agent's MCP `memory_search`, the memory
+    # provider's fallback, `ai_interaction` and the chat preface all come
+    # through this one scorer (`P13-14`), and an edge honoured by some of them
+    # is worse than one honoured by none.
+    graph = memory_edges.build_edge_index(memories)
+    if graph["superseded"]:
+        memories = memory_edges.live(memories)
+        if not memories:
+            return []
+
     query_tokens = set(content_tokens(query))
     vectors, healthy = _vector_scores(query, memories, vector, k)
 
@@ -289,9 +303,10 @@ def _rank(query, memories, k, vector, report, now):
         # early return would otherwise be the one place the exact-phrase rule
         # silently does not apply. Found by a test asserting the rule was
         # unconditional, which it was not.
-        return [(_VERBATIM_SCORE, memory,
-                 _reason(0.0, 0.0, set(), 1.0, None, False, 0, verbatim=True))
-                for memory in memories if _verbatim(query, memory)][:k]
+        verbatim_rows = [(_VERBATIM_SCORE, memory,
+                          _reason(0.0, 0.0, set(), 1.0, None, False, 0, verbatim=True))
+                         for memory in memories if _verbatim(query, memory)]
+        return _apply_edges(verbatim_rows, {}, k, graph, memories)
 
     doc_freq = Counter()
     tokens_by_id = {}
@@ -306,6 +321,14 @@ def _rank(query, memories, k, vector, report, now):
 
     intent = _query_intent(query)
     ranked = []
+    # `P13-02`. Every memory's score and reason, cleared or not. A contradiction
+    # partner has to be able to surface beside the memory it contradicts even
+    # when it shares no words with the question — that is the whole point of
+    # recording the contradiction — and it has to surface with **its own**
+    # score rather than borrowing the score of whatever pulled it in, which
+    # would be `H11`'s defect (a number that explains nothing) wearing a
+    # relation.
+    pool = {}
     for memory in memories:
         mid = memory.get("id")
         vector_score = vectors.get(mid, 0.0)
@@ -333,8 +356,6 @@ def _rank(query, memories, k, vector, report, now):
             final = (_W_VECTOR * vector_score) + (_W_KEYWORD * keyword) + tiebreak
         else:
             final = (_W_KEYWORD_ALONE * keyword) + tiebreak
-        if not cleared and not _verbatim(query, memory):
-            continue
 
         # `P13-14`, carried across from the scorer this replaces rather than
         # lost with it (`Law 1`). A query that appears in a memory word for word
@@ -345,14 +366,148 @@ def _rank(query, memories, k, vector, report, now):
         if verbatim:
             final = max(final, _VERBATIM_SCORE)
 
+        row = (final, memory, _reason(
+            vector_score, keyword, shared, boost, intent, healthy, days_old, verbatim,
+            int(memory.get("mention_sessions", 0) or 0)))
+        if mid:
+            pool[mid] = row
+        # The gates are unchanged and still decide what RANKS. What changed is
+        # that a memory failing them is now scored and kept aside rather than
+        # dropped on the floor, so `_apply_edges` can surface it as the other
+        # half of a contradiction with a real number beside it.
+        if not cleared and not verbatim:
+            continue
         if final <= _MIN_FINAL:
             continue
-        ranked.append((final, memory, _reason(
-            vector_score, keyword, shared, boost, intent, healthy, days_old, verbatim,
-            int(memory.get("mention_sessions", 0) or 0))))
+        ranked.append(row)
 
     ranked.sort(key=lambda row: row[0], reverse=True)
-    return ranked[:k]
+    return _apply_edges(ranked, pool, k, graph, memories)
+
+
+def _snippet(memory: dict, limit: int = 60) -> str:
+    """A memory named the way a person would recognise it, not by its uuid."""
+    text = (memory.get("text") or "").strip()
+    return text if len(text) <= limit else text[:limit - 1].rstrip() + "…"
+
+
+def _apply_edges(ranked, pool, k, graph, memories):
+    """The edge rules, applied to a ranked list, cut to `k`. `P13-02`.
+
+    Three of the four edge types act here; the fourth, `supersedes`, has
+    already acted by removing its targets from the corpus before anything was
+    scored.
+
+    * **`derived_from`** — when a memory and the memory it was derived from
+      both qualify, only the derived one takes a slot. Not a suppression of the
+      source in general: a source that ranks on its own, with nothing derived
+      from it in the results, is returned normally. Compared by rank position
+      rather than by iteration order, so the rule does not depend on which one
+      the loop happens to reach first.
+
+    * **`contradicts`** — both sides surface, and the conflict is named. The
+      partner is pulled from the whole live corpus rather than from what
+      already ranked, because the entire reason to record a contradiction is
+      that the other side might not match the question: *"user lives in
+      Berlin"* and *"user lives in Munich"* share every word, but *"allergic to
+      shellfish"* and *"had prawns last night"* share none. **A memory whose
+      partner does not fit in `k` still says so in its reason** — the slot
+      budget is allowed to hide the other side, it is not allowed to hide that
+      there is one.
+
+    * **`co_occurs`** — a partner that *already cleared the relevance gates*
+      and fell below the cut is pulled up beside what it accompanies. Only from
+      `ranked`, never from the corpus, and with no score change: this reorders
+      inside the qualified set and never promotes something that did not
+      qualify. That restraint is the row's own test ("an edge that only exists
+      to be drawn is not worth storing") applied honestly — the alternative is
+      a boost with an invented constant, and `P13-13`'s golden set is the
+      instrument that would have to justify one.
+
+    Pull-ins are one hop. A partner's own partners are not chased, because a
+    chain of contradictions is a corpus problem and not a query's job to walk.
+    """
+    if k <= 0:
+        return []
+    by_id = {m.get("id"): m for m in memories if isinstance(m, dict) and m.get("id")}
+    contradicts = graph.get(memory_edges.EDGE_CONTRADICTS) or {}
+    co_occurs = graph.get(memory_edges.EDGE_CO_OCCURS) or {}
+    derived_from = graph.get(memory_edges.EDGE_DERIVED_FROM) or {}
+
+    rank_pos = {}
+    for position, (_score, memory, _why) in enumerate(ranked):
+        mid = memory.get("id")
+        if mid and mid not in rank_pos:
+            rank_pos[mid] = position
+
+    # `B derived_from A` stored on B; this is the lookup the other way, which
+    # is the direction the rule reads in.
+    derived_children = {}
+    for child, sources in derived_from.items():
+        for source in sources:
+            derived_children.setdefault(source, set()).add(child)
+
+    selected, taken = [], set()
+
+    def _take(row, reason_override=None):
+        score, memory, why = row
+        mid = memory.get("id")
+        # Guarded on a truthy id, not on membership alone. A memory with no id
+        # cannot be a duplicate of another memory with no id — putting `None`
+        # in the set would return the first such row and silently drop every
+        # other one, which is how an id-less test corpus (or a store someone
+        # hand-edited) would come back one memory long.
+        if mid:
+            if mid in taken:
+                return
+            taken.add(mid)
+        selected.append((score, memory, reason_override or why))
+
+    for position, row in enumerate(ranked):
+        if len(selected) >= k:
+            break
+        memory = row[1]
+        mid = memory.get("id")
+        if mid in taken:
+            continue
+
+        # `derived_from`: something derived from this ranked above it.
+        if any(rank_pos.get(child, len(ranked)) < position
+               for child in derived_children.get(mid, ())):
+            continue
+
+        partners = [p for p in sorted(contradicts.get(mid, ())) if p in by_id]
+        if partners:
+            named = ", ".join(f'"{_snippet(by_id[p])}"' for p in partners[:2])
+            more = f" (+{len(partners) - 2} more)" if len(partners) > 2 else ""
+            _take(row, f"{row[2]}; contradicted by {named}{more}, "
+                       f"which is recorded rather than resolved")
+        else:
+            _take(row)
+
+        for partner_id in partners:
+            if len(selected) >= k or partner_id in taken:
+                continue
+            partner_row = pool.get(partner_id)
+            partner = partner_row[1] if partner_row else by_id[partner_id]
+            score = partner_row[0] if partner_row else 0.0
+            _take((score, partner, ""),
+                  f'included because it contradicts "{_snippet(memory)}", '
+                  f"which matched this question")
+
+        for partner_id in sorted(co_occurs.get(mid, ())):
+            if len(selected) >= k or partner_id in taken:
+                continue
+            if partner_id not in rank_pos:
+                continue  # never cleared the gates; a relation is not a boost
+            partner_row = pool.get(partner_id)
+            if not partner_row:
+                continue
+            _take(partner_row,
+                  f'{partner_row[2]}; recorded as coming up together with '
+                  f'"{_snippet(memory)}"')
+
+    return selected[:k]
 
 
 def _durability(memory: dict) -> float:

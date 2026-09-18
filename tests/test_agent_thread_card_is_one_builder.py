@@ -40,6 +40,9 @@ from pathlib import Path
 
 import pytest
 
+from test_a_draft_skill_is_uncatalogued_not_inactive import js_function  # noqa: E402
+from test_tool_effect_surfaces_js import _copy_unstubbed_imports  # noqa: E402
+
 _REPO = Path(__file__).resolve().parent.parent
 _MODULE = _REPO / "static" / "js" / "agentThread.js"
 pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
@@ -55,6 +58,12 @@ def sandbox(tmp_path_factory):
     d = tmp_path_factory.mktemp("agentthread")
     (d / "ui.js").write_text(_UI_STUB, encoding="utf-8")
     shutil.copy(_MODULE, d / "agentThread.js")
+    # `P5-04` added an import to `agentThread.js`, and a sandbox that copies one
+    # file cannot see one. `_copy_unstubbed_imports` was written for exactly this
+    # ("adding one import to a sandboxed module breaks every sandbox that copies
+    # it") and is borrowed rather than re-implemented here (`Law 14`): `ui.js` keeps
+    # its stub, everything else comes in for real, transitively.
+    _copy_unstubbed_imports(d, _MODULE, {"ui.js"})
     return d
 
 
@@ -86,7 +95,34 @@ def test_a_web_search_shows_the_magnifier_while_it_runs(sandbox):
 
 
 def test_a_tool_with_no_icon_of_its_own_gets_the_triangle(sandbox):
-    assert "▶" in _html(sandbox, {"tool": "bash", "state": "running"})
+    # This asked about `bash` until `P5-04`, which is when `bash` stopped being
+    # a tool with no icon of its own — the map went from one entry to
+    # twenty-one. The property is the fallback, not the tool, so the case moves
+    # to a tool that genuinely has no entry rather than the assertion being
+    # dropped.
+    assert "▶" in _html(sandbox, {"tool": "some_new_tool", "state": "running"})
+
+
+def test_every_tool_the_thread_can_name_it_can_also_draw(sandbox):
+    """`P5-04`. One entry against 21 labels meant twenty of twenty-one running
+    cards drew the same triangle — and seven of the running *labels* are shared
+    (`bash` and `python` are both "Running"), so a card gave no way at all to
+    tell which tool was running. A label without a glyph is that defect coming
+    back one tool at a time."""
+    out = _run(sandbox, """
+        const missing = Object.keys(m.TOOL_LABELS).filter((t) => !m.TOOL_ICONS[t]);
+        const wrong = Object.entries(m.TOOL_ICONS)
+          .filter(([, svg]) => !/^<svg /.test(svg) || !svg.includes('currentColor'))
+          .map(([tool]) => tool);
+        console.log(JSON.stringify({
+          labels: Object.keys(m.TOOL_LABELS).length, missing, wrong,
+        }));
+    """)
+    assert out["labels"] == 21, out["labels"]
+    assert out["missing"] == [], out["missing"]
+    # Monochrome and inline, as the row asks: a glyph that names its own colour
+    # is a glyph that is wrong on fifteen of the sixteen palettes.
+    assert out["wrong"] == [], out["wrong"]
 
 
 @pytest.mark.parametrize("ok, glyph", [(True, "✓"), (False, "✗")])
@@ -323,3 +359,165 @@ def test_the_label_vocabulary_is_not_duplicated_either():
         and "'Searching'" in path.read_text(encoding="utf-8")
     ]
     assert hits == ["static/js/agentThread.js"], f"a second label vocabulary: {hits}"
+
+
+# ── `P5-02` · the fold has one grid item ─────────────────────────────────────
+
+
+def test_the_card_body_is_one_box_that_can_be_animated(sandbox):
+    """`P5-02` opens the card on `grid-template-rows: 0fr -> 1fr`, and that
+    only works while `.agent-thread-content` has exactly **one** child: a
+    second lands in an implicit `auto` row and stays visible while the card is
+    shut. Three callers in `chat.js` append to this box after the card is
+    built — the screenshot pane, the image progress row and the streaming tail
+    — so the wrapper is the contract between them and the CSS."""
+    html = _html(sandbox, {
+        "tool": "bash", "state": "done", "ok": True, "command": "ls",
+        "output": "<div class='out'>x</div>",
+    })
+    body = html[html.index('<div class="agent-thread-content">'):]
+    assert body.startswith(
+        '<div class="agent-thread-content"><div class="agent-thread-content-inner">'
+    ), body[:140]
+    assert body.count('class="agent-thread-content-inner"') == 1
+
+
+def test_a_caller_is_handed_the_box_it_should_append_to(sandbox):
+    """The helper, not the class name, is the thing callers use — so the next
+    person adding a pane cannot append into the animating box by accident."""
+    out = _run(sandbox, """
+        const node = { querySelector: (sel) => ({ sel }) };
+        const bare = { querySelector: (sel) =>
+          (sel === '.agent-thread-content-inner' ? null : { sel }) };
+        console.log(JSON.stringify({
+          preferred: m.agentThreadContent(node).sel,
+          fallback: m.agentThreadContent(bare).sel,
+          nothing: m.agentThreadContent(null),
+        }));
+    """)
+    assert out["preferred"] == ".agent-thread-content-inner"
+    # A card built by an older cached module still gets somewhere to put a pane.
+    assert out["fallback"] == ".agent-thread-content"
+    assert out["nothing"] is None
+
+
+# ── `P5-08` · arguments a person can read ────────────────────────────────────
+
+
+def test_a_minified_argument_blob_is_laid_out_before_it_is_shown(sandbox):
+    out = _run(sandbox, """
+        console.log(JSON.stringify({
+          obj: m.prettyJson('{"path":"/etc/hosts","mode":"append"}'),
+          arr: m.prettyJson('[{"a":1},{"b":2}]'),
+        }));
+    """)
+    assert out["obj"] == '{\n  "path": "/etc/hosts",\n  "mode": "append"\n}'
+    assert out["arr"].startswith("[\n")
+
+
+@pytest.mark.parametrize("text", [
+    "/var/log/syslog",                       # a path
+    "ls -la /tmp",                           # a command
+    'SELECT * FROM t WHERE a = "{"',         # a query that merely contains a brace
+    '{"path":"/etc/hosts","content":"aaa',   # truncated at 80 chars by the backend
+    '"just a string"',                       # valid JSON, not an argument object
+    "42",
+    "",
+])
+def test_nothing_that_is_not_an_argument_object_is_treated_as_one(sandbox, text):
+    """`P5-07` kept highlighting to two languages because guessing a language
+    paints a filename in string-literal green and a wrong colour reads as a
+    bug. This row does not reopen that: the text either parses as a JSON
+    object or array or it is left exactly as it was. The truncated case is the
+    one that matters — the document tools send the first 80 characters and the
+    approval replay the first 240."""
+    out = _run(sandbox, "console.log(JSON.stringify({ v: m.prettyJson(%s) }));"
+               % json.dumps(text))
+    assert out["v"] is None
+
+
+def test_a_blob_that_arrived_laid_out_is_still_named_json(sandbox):
+    """Found by mutation: an early return when the pretty form matched the
+    input left the highlight depending on how the sender happened to format
+    the arguments. Two identical objects, one minified and one not, came out
+    of the card looking like different kinds of thing."""
+    out = _run(sandbox, """
+        const already = '{\\n  "path": "/etc/hosts"\\n}';
+        console.log(JSON.stringify({
+          pretty: m.prettyJson(already),
+          html: m.commandBlockHtml(already, '', 'write_file'),
+        }));
+    """)
+    assert out["pretty"] == '{\n  "path": "/etc/hosts"\n}'
+    assert 'class="language-json"' in out["html"]
+
+
+def test_the_command_block_shows_the_laid_out_form_and_says_it_is_json(sandbox):
+    out = _run(sandbox, """
+        console.log(JSON.stringify({
+          json: m.commandBlockHtml('{"path":"/etc/hosts","mode":"append"}', '', 'write_file'),
+          path: m.commandBlockHtml('/etc/hosts', '', 'write_file'),
+          bash: m.commandBlockHtml('ls -la', '', 'bash'),
+        }));
+    """)
+    assert 'class="language-json"' in out["json"]
+    assert "&quot;path&quot;: &quot;/etc/hosts&quot;" in out["json"]
+    # A path keeps the plain `<pre>` every card had before `P5-07`.
+    assert "language-" not in out["path"]
+    # And the two languages `P5-07` chose on purpose are undisturbed.
+    assert 'class="language-bash"' in out["bash"]
+
+
+def test_the_arguments_behind_the_fold_are_laid_out_too(sandbox):
+    """The full arguments are the ones most likely to be a wall of JSON — that
+    is why they are behind a fold in the first place."""
+    out = _run(sandbox, """
+        console.log(JSON.stringify({ html: m.commandBlockHtml(
+          '/etc/hosts', '{"path":"/etc/hosts","content":"127.0.0.1 localhost"}', 'write_file') }));
+    """)
+    html = out["html"]
+    assert 'class="agent-thread-cmd-full"' in html
+    assert html.count('class="language-json"') == 1, "the summary line is not JSON"
+    assert "&quot;content&quot;: " in html
+
+
+def test_the_output_a_person_wants_most_can_be_copied(sandbox):
+    """Every other block of text in this thread can be copied — the command
+    since `P5-07`, a code block in the reply since long before that — and the
+    one people actually want, the traceback, could only be selected by dragging
+    inside a fold."""
+    out = _run(sandbox, """
+        console.log(JSON.stringify({ html: m.toolOutputPanesHtml({
+          output: 'ok', stdout: 'ok', stderr: 'Traceback…', exit_code: 1 }) }));
+    """)
+    html = out["html"]
+    # One per pane, and inside the `<summary>` so it is reachable without
+    # opening the pane at all.
+    assert html.count('class="agent-tool-output-copy"') == 2
+    for pane in html.split("<details")[1:]:
+        summary = pane[pane.index("<summary>"):pane.index("</summary>")]
+        assert 'class="agent-tool-output-copy"' in summary
+    assert 'aria-label="Copy output"' in html
+    assert 'aria-label="Copy error output"' in html
+
+
+def test_the_output_copy_button_does_not_fold_the_pane_it_belongs_to():
+    """It sits inside a `<summary>`, where a click toggles the `<details>`.
+    Without `preventDefault` the copy also shuts the pane, which reads as the
+    button having done something else entirely."""
+    # `Law 20` option 2, and the anchor matters: `js_function` steps over a
+    # parameter list and then looks for the body brace, so handing it the
+    # `closest(...)` call walked past the whole listener and returned a
+    # 40-line block from further down the file. Anchoring on the arrow's own
+    # parameter list, found by searching backwards from the selector, resolves
+    # the 15 lines that are actually this handler. The length check below is
+    # not decoration — it is what caught the wrong anchor.
+    src = (_REPO / "static" / "js" / "chat.js").read_text(encoding="utf-8")
+    start = src.rindex("(e) => {", 0, src.index(".agent-tool-output-copy'"))
+    handler = js_function(src[start:], "(e)")
+    assert len(handler.splitlines()) < 25, (
+        f"scope resolved to {len(handler.splitlines())} lines — that is not one handler"
+    )
+    assert ".agent-tool-output-copy" in handler
+    assert "e.preventDefault()" in handler
+    assert "copyToClipboard" in handler

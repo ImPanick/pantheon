@@ -25,6 +25,7 @@ def _strip_list_prefix(text: str) -> str:
     return _LIST_PREFIX_RE.sub("", text, count=1).strip()
 
 from services.memory import MemoryManager, MemoryStoreUnreadable
+from src.memory import new_provenance
 from core.session_manager import SessionManager
 from src.request_models import MemoryAddRequest
 from core.database import SessionLocal
@@ -128,7 +129,18 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
             # ranking, and its own docstring now says so.
             "query_type": memory_retrieval.query_intent(query),
             "explanations": [
-                {"id": row["memory"].get("id"), "score": row["score"], "reason": row["reason"]}
+                {"id": row["memory"].get("id"), "score": row["score"],
+                 "reason": row["reason"],
+                 # `P13-01`. Beside the score and never folded into it. The
+                 # score says how well this matched the question; the
+                 # confidence says how sure whatever wrote it was that it is
+                 # true, and `None` says nobody recorded one. A diagnostic that
+                 # showed one number for both would be the `CONFIDENCE 66% ·
+                 # 1 mentions` reading the phase preamble is about.
+                 "confidence": row["memory"].get("confidence"),
+                 # `P13-03`. Which producer and which message, so "why do you
+                 # think that" has an answer that is not "an LLM said so".
+                 "provenance": row["memory"].get("provenance")}
                 for row in explained
             ],
         }
@@ -165,7 +177,20 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
                 raise HTTPException(404, "Session not found")
             _assert_session_owner(session_obj, user)
 
-        new_entry = memory_manager.add_entry(text, memory_data.source, memory_data.category, owner=user)
+        new_entry = memory_manager.add_entry(
+            text, memory_data.source, memory_data.category, owner=user,
+            # `P13-01`. Left unrecorded on purpose, and this is the case that
+            # makes the field honest: a person typing a memory into the Brain
+            # is not a 1.0, they are a producer nobody asked. Writing a number
+            # here would make hand-entered memories outrank extracted ones on a
+            # confidence sort for no reason anybody could defend.
+            confidence=None,
+            # `P13-03`. The producer, which `source` cannot give: `source` is
+            # whatever the caller passed ("user" by default, but this endpoint
+            # accepts any string), and it is the same word whether the request
+            # came from the Brain, a script or a token.
+            provenance=new_provenance("memory_routes.add"),
+        )
         if memory_data.session_id:
             new_entry["session_id"] = memory_data.session_id
         all_mem = _load_for_update(memory_manager)
@@ -366,6 +391,15 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
             "before": result.get("before", 0),
             "after": result.get("after", 0),
             "removed": result.get("before", 0) - result.get("after", 0),
+            # `P13-09`, both additive — `removed` keeps its exact meaning
+            # ("stopped surfacing") and its exact arithmetic. `superseded` is
+            # how many of those are still on the record with a `supersedes`
+            # edge naming the entry that replaced them, so a person reading
+            # "9 removed" can be told that 8 of them are recoverable and only
+            # one was genuinely junk. `contradictions` is the conflicts the
+            # pass recorded instead of resolving.
+            "superseded": result.get("superseded", 0),
+            "contradictions": result.get("contradictions", 0),
             # True when the audit skipped the LLM because nothing changed
             # since the last tidy. Frontend already says "Already clean"
             # for removed==0, so this is here for future use / debugging.

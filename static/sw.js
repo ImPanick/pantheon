@@ -8,7 +8,7 @@
 //   - Other static assets (images/fonts/libs): cache-first with bg refresh.
 //   - API / non-GET: never cached.
 // Bump CACHE_NAME whenever the precache list or SW logic changes.
-const CACHE_NAME = 'pantheon-v421-p8-palette-steps';
+const CACHE_NAME = 'pantheon-v422-p5-trace-folds';
 
 // KaTeX resolves these from its own stylesheet, so caching the CSS without them
 // gives offline math fallback glyphs instead of proper typesetting.
@@ -81,12 +81,17 @@ const PRECACHE = [
   // browser error page with no way back, and the same form works the moment
   // the network returns.
   '/login',
-  '/static/style.css?v=20260918workshop1',
+  '/static/style.css?v=20260918tracefolds1',
   '/static/app.js?v=20260815toolapproval4',
   '/static/js/storage.js',
   '/static/js/appConfig.js',
   '/static/js/ui.js',
   '/static/js/markdown.js',
+  // `P5-06`: the code block's language glyph. `markdown.js` imports it now, so
+  // the offline shell cannot render a fenced block without it. It reached the
+  // tree with `document.js` and was never precached, which was invisible while
+  // only the document surfaces used it.
+  '/static/js/langIcons.js',
   '/static/js/dragSort.js',
   '/static/js/sessions.js',
   '/static/js/memory.js?v=20260918workshop1',
@@ -102,14 +107,14 @@ const PRECACHE = [
   '/static/js/tts-ai.js',
   '/static/js/document.js?v=20260815approvalsave1',
   '/static/js/gallery.js?v=20260708match1',
-  '/static/js/chatRenderer.js?v=20260829trustladder1',
+  '/static/js/chatRenderer.js?v=20260918tracefolds1',
   // `P4-01`: the one builder for a tool card in the agent thread. On the
   // critical path via chat.js and chatRenderer.js.
   '/static/js/agentThread.js',
   '/static/js/trustLadder.js',
   '/static/js/codeRunner.js',
-  '/static/js/chatStream.js?v=20260829trustladder1',
-  '/static/js/chat.js?v=20260829trustladder1',
+  '/static/js/chatStream.js?v=20260918tracefolds1',
+  '/static/js/chat.js?v=20260918tracefolds1',
   '/static/js/planWindow.js',
   // `B11`/`B13`. Two leaf tables on the critical path: what the plan window and
   // the todo card call themselves, and the word the six run statuses are shown
@@ -120,7 +125,7 @@ const PRECACHE = [
   '/static/js/runStatus.js',
   '/static/js/cookbook.js',
   '/static/js/search-chat.js',
-  '/static/js/compare/index.js?v=20260829trustladder1',
+  '/static/js/compare/index.js?v=20260918tracefolds1',
   '/static/js/theme.js',
   '/static/js/censor.js',
   // `B58`. The three entries below carried no query while every importer used

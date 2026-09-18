@@ -18,9 +18,51 @@ import os
 import re
 from typing import Optional
 
-from src.memory import MemoryStoreUnreadable
+from src.memory import (
+    MemoryManager,
+    MemoryStoreUnreadable,
+    new_provenance,
+    normalise_confidence,
+)
+from src.memory_edges import (
+    EDGE_CONTRADICTS,
+    EDGE_SUPERSEDES,
+    attach as attach_edge,
+    live as live_memories,
+)
+# `P13-01`. The floor is **imported, not copied.** `skill_extractor` has scored
+# every extracted skill 0..1 and dropped anything under this number since long
+# before the Brain had a confidence concept at all, and the row asks for "the
+# same shape, the same tuning surface, one fewer concept to learn". A second
+# constant here would be a second tuning surface that drifts from the first the
+# day somebody moves one of them (`Law 14`), so moving the skill floor moves
+# the memory floor, on purpose.
+from services.memory.skill_extractor import MIN_CONFIDENCE
 
 logger = logging.getLogger(__name__)
+
+# What the extractor assumes when the model returns no `confidence` at all.
+# `skill_extractor` uses the same number for the same reason: a model that did
+# not answer the question has not expressed doubt, and defaulting below the
+# floor would silently discard every fact from a model too small to follow the
+# schema.
+DEFAULT_CONFIDENCE = 0.7
+
+# `_fallback_memory_candidates` is not a model. It is a handful of regexes over
+# the user's own sentence — "my name is X" — so the floor, which exists to drop
+# a *model's* uncertainty, has nothing to act on. Recorded high and explicitly
+# rather than left unset, because "a pattern matched your own words" is a
+# stronger provenance than anything the LLM path can offer, and a blank here
+# would read as "not recorded" when the truth is "recorded, and by the most
+# reliable producer in this module".
+FALLBACK_CONFIDENCE = 0.9
+
+# `P13-03`. The two producers in this module, named so a record can say which
+# of them wrote it. `source` already says "auto" for both, which is exactly the
+# distinction the row is about.
+PRODUCER_LLM = "memory_extractor.llm"
+PRODUCER_FALLBACK = "memory_extractor.pattern"
+PRODUCER_AUDIT = "memory_extractor.audit"
 
 
 def _tidy_state_path(memory_manager) -> str:
@@ -83,8 +125,19 @@ EXTRACT_SYSTEM_PROMPT = (
     "- Each fact must be a single short sentence (under 15 words)\n"
     "- If a fact is similar to something likely already known, skip it\n"
     "- If nothing durable was revealed, return []\n\n"
-    "Return a JSON array of objects with 'text' and 'category' fields.\n"
-    "Categories: 'identity', 'preference', 'fact', 'contact', 'project', 'goal'\n\n"
+    "Return a JSON array of objects with 'text', 'category', 'confidence' and "
+    "'quote' fields.\n"
+    "Categories: 'identity', 'preference', 'fact', 'contact', 'project', 'goal'\n"
+    # `P13-01`. The same question the skill extractor has always asked, asked
+    # of a fact instead of a procedure.
+    "- 'confidence': 0.0-1.0, how sure you are the user actually stated or "
+    "clearly implied this. Be honest; a low number is better than a wrong fact.\n"
+    # `P13-03`. A citation, checked against the transcript before it is stored
+    # — see `_verified_quote`. Asking for it costs nothing when the model
+    # cannot supply one, and an unverifiable quote is discarded rather than
+    # believed.
+    "- 'quote': the user's own words this came from, copied EXACTLY from the "
+    "transcript above. Do not paraphrase and do not invent one.\n\n"
     "Return ONLY valid JSON, no markdown fences."
 )
 
@@ -107,8 +160,19 @@ AUDIT_SYSTEM_PROMPT = (
     "3. Keep the original wording. Only lightly trim obvious redundancy — do "
     "NOT aggressively rewrite or shorten.\n"
     "4. Preserve the 'id' of the entry you keep when merging.\n"
-    "5. Never invent facts. When unsure, KEEP.\n\n"
-    "Return a JSON array of objects with fields: id, text, category.\n"
+    "5. Never invent facts. When unsure, KEEP.\n"
+    # `P13-09`. The pass could merge and remove but had no way to SAY what it
+    # had done, so consolidation was a winner picked quietly. These two fields
+    # are how it says so, and both are validated against the ids that were sent
+    # before anything is written.
+    "6. When you merge entries, list the ids you merged INTO the survivor in "
+    "its 'merged_from' array. Do not drop an id silently.\n"
+    "7. When two entries you KEPT state incompatible facts, list each other's "
+    "id in their 'contradicts' array. Recording a conflict is not resolving "
+    "it — keep both entries and do not choose between them.\n\n"
+    "Return a JSON array of objects with fields: id, text, category, "
+    "merged_from (array of ids, may be empty), contradicts (array of ids, may "
+    "be empty).\n"
     "Return ONLY valid JSON, no markdown fences."
 )
 
@@ -159,6 +223,11 @@ def _fallback_memory_candidates(messages) -> list[dict]:
     """
     candidates = []
     seen = set()
+    # `P13-01` / `P13-03`. This path knows exactly which message it matched and
+    # matched it on the user's own words, so it records both — and it is the
+    # only producer in this module that can name a message index without asking
+    # a model to cite itself.
+    cursor = {"index": None, "text": ""}
 
     def add(text: str, category: str):
         text = _clean_memory_value(text, 120)
@@ -168,14 +237,22 @@ def _fallback_memory_candidates(messages) -> list[dict]:
         if key in seen:
             return
         seen.add(key)
-        candidates.append({"text": text, "category": category})
+        candidates.append({
+            "text": text,
+            "category": category,
+            "confidence": FALLBACK_CONFIDENCE,
+            "producer": PRODUCER_FALLBACK,
+            "message_index": cursor["index"],
+            "quote": cursor["text"],
+        })
 
-    for msg in messages:
+    for _index, msg in enumerate(messages):
         if _message_role(msg) != "user":
             continue
         text = _message_text(msg)
         if not text:
             continue
+        cursor["index"], cursor["text"] = _index, text
 
         m = re.search(r"\bmy name is\s+([A-Za-z][A-Za-z0-9 .'\-]{1,50})\b", text, re.I)
         if m:
@@ -221,6 +298,43 @@ def _fallback_memory_candidates(messages) -> list[dict]:
                 add(f"User wants to visit {destination}.", "goal")
 
     return candidates[:2]
+
+
+# A citation shorter than this matches by accident. "Sam" appears in any
+# message containing the word and proves nothing about where a fact came from,
+# so a quote that short is treated as absent rather than as evidence.
+_MIN_QUOTE_CHARS = 8
+
+_WHITESPACE = re.compile(r"\s+")
+
+
+def _normalised(text: str) -> str:
+    return _WHITESPACE.sub(" ", (text or "")).strip().lower()
+
+
+def _verified_quote(quote, messages):
+    """`(message_index, quote)` when the model's citation is really in the
+    transcript, `(None, None)` when it is not. `P13-03`.
+
+    **The model is not trusted for this.** Asked to cite its source, a model
+    will produce a plausible sentence the user never typed, and a fabricated
+    citation is worse than no citation: `quote` is the one field a person would
+    read to decide whether to believe a memory, so it has to be checked against
+    the thing it claims to quote.
+
+    Only user messages are searched. The prompt asks for "the user's own
+    words", and a fact sourced from something the assistant said is exactly
+    what `EXTRACT_SYSTEM_PROMPT` lists under "Bad examples".
+    """
+    needle = _normalised(quote)
+    if len(needle) < _MIN_QUOTE_CHARS:
+        return None, None
+    for index, message in enumerate(messages or []):
+        if _message_role(message) != "user":
+            continue
+        if needle in _normalised(_message_text(message)):
+            return index, (quote or "").strip()
+    return None, None
 
 
 def _text_duplicate_of(new_text: str, existing: list, threshold: float = 0.6):
@@ -436,17 +550,50 @@ async def extract_and_store(
             return
         added = 0
 
+        dropped_low_confidence = 0
         for fact in facts:
             if isinstance(fact, str):
                 fact_text = fact
                 category = "fact"
+                confidence = DEFAULT_CONFIDENCE
+                producer = PRODUCER_LLM
+                message_index, quote = None, None
             elif isinstance(fact, dict):
                 fact_text = fact.get("text", "").strip()
                 category = fact.get("category", "fact")
+                # `P13-01`. A model that answered the question is believed; one
+                # that did not is given the same benefit of the doubt the skill
+                # extractor gives it, and one that answered with nonsense falls
+                # back to the default rather than to zero — "unparseable" and
+                # "not sure" are different claims and only the second should
+                # cost a fact its place.
+                confidence = normalise_confidence(
+                    fact.get("confidence"), DEFAULT_CONFIDENCE)
+                producer = fact.get("producer") or PRODUCER_LLM
+                if producer == PRODUCER_FALLBACK:
+                    # Already a verified match on the user's own sentence: this
+                    # path found the message itself rather than asking for a
+                    # citation, so there is nothing to check.
+                    message_index = fact.get("message_index")
+                    quote = fact.get("quote")
+                else:
+                    message_index, quote = _verified_quote(
+                        fact.get("quote"), stripped_recent)
             else:
                 continue
 
             if not fact_text or len(fact_text) < 5:
+                continue
+
+            # `P13-01`. The skill extractor's floor, on the other half of the
+            # feature. `MIN_CONFIDENCE` is imported rather than restated, so
+            # this is the same number in the same place for both.
+            if confidence is not None and confidence < MIN_CONFIDENCE:
+                dropped_low_confidence += 1
+                logger.debug(
+                    "[memory-extract] '%s' below confidence floor (%.2f < %.2f) — dropped",
+                    fact_text[:50], confidence, MIN_CONFIDENCE,
+                )
                 continue
 
             # Dedup: check vector similarity first (fast), then exact text match.
@@ -486,7 +633,13 @@ async def extract_and_store(
                 _note_restatement(memory_manager, _fuzzy, session, fact_text)
                 continue
 
-            entry = memory_manager.add_entry(fact_text, source="auto", category=category, owner=_owner)
+            entry = memory_manager.add_entry(
+                fact_text, source="auto", category=category, owner=_owner,
+                confidence=confidence,
+                # `P13-03`. `session_id` is set below and is not repeated in
+                # here — one fact, one place (`Law 7`).
+                provenance=new_provenance(producer, message_index, quote),
+            )
             # Auto-pin identity facts (name, job, location) — core context
             if category == "identity":
                 entry["pinned"] = True
@@ -526,11 +679,71 @@ async def extract_and_store(
                 await audit_memories(
                     memory_manager, memory_vector, endpoint_url, model, headers, owner=_owner
                 )
+        elif dropped_low_confidence:
+            # Said out loud rather than logged as a plain zero. "0 added"
+            # after a run that extracted three facts and dropped all three
+            # under the floor looks identical to a model that returned
+            # nothing, and they are opposite problems.
+            logger.info(
+                "Auto memory extraction ran: 0 added (%d below the %.2f "
+                "confidence floor)", dropped_low_confidence, MIN_CONFIDENCE)
         else:
             logger.info("Auto memory extraction ran: 0 added")
 
     except Exception as e:
         logger.error(f"Memory extraction failed: {e}")
+
+
+def _absorb(survivor: dict, merged: dict) -> None:
+    """Fold what a merged-away memory knew into the one that outlived it. `P13-09`.
+
+    **Confidence is raised to `max`, never incremented.** `P13-01` fixes
+    confidence as the extractor's self-report at the moment of extraction — the
+    number that must not move on its own — and two independent extractions
+    agreeing is the one event that is genuinely evidence about it. `max` says
+    "the best-evidenced of these" and cannot invent a growth curve; an
+    increment would, and after enough tidies everything would read 1.0.
+
+    **`mentions` is summed and `mention_sessions` is not.** Every mention was a
+    real statement by the person, so the sum is exact. Sessions are not: the
+    same conversation can have produced a mention of both records, and counts
+    alone cannot tell. The distinct-session ids are unioned where both records
+    kept them (`P13-15` bounds that list at 32) and the count is the larger of
+    that union and either original — which can under-count and cannot
+    over-count. Over-counting durability is the failure that matters: it makes
+    a guess look like a pattern.
+    """
+    survivor_conf = normalise_confidence(survivor.get("confidence"))
+    merged_conf = normalise_confidence(merged.get("confidence"))
+    if merged_conf is not None:
+        survivor["confidence"] = merged_conf if survivor_conf is None \
+            else max(survivor_conf, merged_conf)
+
+    survivor["mentions"] = (int(survivor.get("mentions", 0) or 0)
+                            + int(merged.get("mentions", 0) or 0))
+
+    ids = [i for i in (survivor.get("mention_session_ids") or []) if i]
+    for sid in (merged.get("mention_session_ids") or []):
+        if sid and sid not in ids:
+            ids.append(sid)
+    if ids:
+        # `P13-15` owns this bound and states why (beyond it the count is kept
+        # and the ids are forgotten, because the oldest session id has already
+        # done its work). Read from there rather than restated as a literal:
+        # two copies of one number is one of them going stale (`Law 7`).
+        survivor["mention_session_ids"] = ids[-MemoryManager.MENTION_SESSION_MEMORY:]
+    survivor["mention_sessions"] = max(
+        len(ids),
+        int(survivor.get("mention_sessions", 0) or 0),
+        int(merged.get("mention_sessions", 0) or 0),
+    )
+
+    first = [t for t in (survivor.get("first_mentioned"), merged.get("first_mentioned"),
+                         survivor.get("timestamp"), merged.get("timestamp")) if t]
+    if first:
+        # The older of the two: the fact has been known since whichever record
+        # heard it first, and the merge is not the moment it was learned.
+        survivor["first_mentioned"] = min(int(t) for t in first)
 
 
 async def audit_memories(
@@ -554,7 +767,15 @@ async def audit_memories(
     try:
         from src.llm_core import llm_call_async
 
-        existing = memory_manager.load(owner=owner)
+        owned = memory_manager.load(owner=owner)
+        # `P13-09`. The audit reads the LIVE set only. What a previous pass
+        # merged away is kept on the record (see below) and must not be sent
+        # back to the model — re-auditing an archive would resurrect it as a
+        # "duplicate" of the entry that replaced it, and it would also make the
+        # tidy fingerprint below never match, so every call would spend a full
+        # LLM round discovering nothing had changed.
+        archived = [m for m in owned if m not in live_memories(owned)]
+        existing = live_memories(owned)
         if not existing:
             logger.info("Memory audit: nothing to audit")
             return {"before": 0, "after": 0}
@@ -638,6 +859,8 @@ async def audit_memories(
         originals = {m["id"]: m for m in existing}
 
         final_entries = []
+        claimed_merges = {}      # survivor id -> ids the model says it absorbed
+        claimed_conflicts = []   # (id, id) pairs the model says disagree
         for item in cleaned:
             if not isinstance(item, dict):
                 continue
@@ -657,6 +880,27 @@ async def audit_memories(
                 logger.debug(f"Audit returned unknown id {mid}, skipping")
                 continue
 
+            # `P13-09`. Both are claims about ids, and a model that answers
+            # with an id it invented must be ignored rather than believed —
+            # the same discipline `_verified_quote` applies to a citation.
+            #
+            # The check for that is NOT here, and that is deliberate. Every
+            # claim below is resolved against `by_id` (the entries that
+            # survived) or refused by `attach_edge`, so an `id in originals`
+            # test at this point cannot change any answer — mutation testing
+            # proved it: inverting it changed nothing. A branch that cannot
+            # change an answer is deleted rather than tested around, which is
+            # what `P13-14`'s `cutoff`, `P13-15`'s `sessions <= 1` guard and
+            # `B62`'s seven stemmer rules each concluded. What survives is the
+            # type test, which is load-bearing: a non-string id is unhashable
+            # or unorderable and would raise rather than be ignored.
+            for merged_id in (item.get("merged_from") or []):
+                if isinstance(merged_id, str):
+                    claimed_merges.setdefault(mid, []).append(merged_id)
+            for other_id in (item.get("contradicts") or []):
+                if isinstance(other_id, str):
+                    claimed_conflicts.append((mid, other_id))
+
             final_entries.append(entry)
 
         after_count = len(final_entries)
@@ -666,12 +910,83 @@ async def audit_memories(
         # returned far fewer entries than it was given (over-consolidation, a
         # dropped/truncated list, or it ignored ids), treat it as a misfire and
         # DON'T save. Better to no-op than to silently lose memories.
+        #
+        # `B640`, found while writing `P13-09`'s tests. The `>= 8` floor left
+        # every small store unguarded, and "small" is a person's first weeks
+        # with the product: a reply that parsed as a list but named no id the
+        # store recognises produced `final_entries == []`, which sailed past
+        # this check and saved an empty store over a real one. The write is
+        # atomic, so the loss was durable. A tidy that would remove EVERYTHING
+        # is a misfire at any size — there is no corpus for which "all of it
+        # was junk" is the likely reading of a model's answer.
+        if before_count > 0 and after_count == 0:
+            logger.warning(
+                "Memory audit returned nothing usable for %d entries — refusing "
+                "as unsafe, keeping originals", before_count)
+            return {"before": before_count, "after": before_count,
+                    "error": "unsafe_removal"}
         if before_count >= 8 and after_count < before_count * 0.5:
             logger.warning(
                 f"Memory audit would cut {before_count} -> {after_count} "
                 f"(>50% removed) — refusing as unsafe, keeping originals"
             )
             return {"before": before_count, "after": before_count, "error": "unsafe_removal"}
+
+        # ── `P13-09`: record the consolidation instead of performing it quietly ──
+        #
+        # Everything above this point is unchanged: the model returned a list,
+        # and whatever it did not return was deleted. That deletion is the
+        # "picking a winner quietly" the row is about — the pass located a
+        # duplicate precisely, chose which copy to keep, and left no trace of
+        # either the choice or the corroboration it had just observed. Same
+        # defect class as `P13-15`, where the moment a fact was confirmed was
+        # the moment the observation was discarded.
+        by_id = {e["id"]: e for e in final_entries}
+        explicit_survivor = {}
+        for survivor_id, merged_ids in claimed_merges.items():
+            for merged_id in merged_ids:
+                explicit_survivor.setdefault(merged_id, survivor_id)
+
+        superseded = []
+        for original in existing:
+            if original["id"] in by_id:
+                continue
+            survivor = by_id.get(explicit_survivor.get(original["id"]))
+            if survivor is None:
+                # The model dropped this id without saying what absorbed it,
+                # which is what a model too small to follow the extended schema
+                # will always do. Look for the survivor the same way the
+                # extractor's own dedupe does (`Law 14` — `_text_duplicate_of`
+                # already answers "which memory does this restate", and it
+                # answers it here too). No near-duplicate survives means this
+                # was a removal rather than a merge, and removal is still
+                # removal.
+                survivor = _text_duplicate_of(original.get("text", ""), final_entries)
+            if survivor is None:
+                continue
+            _absorb(survivor, original)
+            attach_edge(survivor, EDGE_SUPERSEDES, original["id"], originals,
+                        note="merged by the memory audit")
+            # Kept, not deleted. `supersedes` already stops it surfacing in
+            # every search (`P13-02`), so consolidation still consolidates —
+            # what changes is that the copy the audit chose against is still
+            # there to be read, corrected or restored, and the record says
+            # which entry replaced it.
+            archived_copy = dict(original)
+            archived_copy["superseded_by"] = survivor["id"]
+            superseded.append(archived_copy)
+
+        conflicts = 0
+        for left, right in claimed_conflicts:
+            if left in by_id and right in by_id:
+                if attach_edge(by_id[left], EDGE_CONTRADICTS, right, by_id,
+                               note="flagged as incompatible by the memory audit"):
+                    conflicts += 1
+
+        if superseded or conflicts:
+            logger.info(
+                "Memory audit: %d entries superseded rather than deleted, "
+                "%d contradictions recorded", len(superseded), conflicts)
 
         # Merge audited entries back with other users' entries
         if owner:
@@ -693,26 +1008,47 @@ async def audit_memories(
             for e in all_entries:
                 if e.get("owner") is None and e["id"] not in audited_ids and e["id"] not in {o["id"] for o in other_entries}:
                     other_entries.append(e)
-            saved_entries = final_entries + other_entries
+            saved_entries = final_entries + superseded + archived + other_entries
         else:
-            saved_entries = final_entries
+            saved_entries = final_entries + superseded + archived
         memory_manager.save(saved_entries)
         logger.info(
-            f"Memory audit complete: {before_count} -> {after_count} entries "
-            f"({before_count - after_count} removed/merged)"
+            "Memory audit complete: %d -> %d entries (%d superseded and kept, "
+            "%d removed)",
+            before_count, after_count, len(superseded),
+            before_count - after_count - len(superseded),
         )
 
         # Rebuild vector index from the full saved set, not just this owner's
         # slice — otherwise the shared collection is wiped of every other
         # owner's entries until they happen to run their own audit.
+        #
+        # `P13-09`: the LIVE set of that, though. A superseded memory that
+        # stayed in the index would still be returned by
+        # `MemoryVectorStore.find_similar`, which is what the extractor's first
+        # dedupe gate calls — so the next time the person stated the fact, the
+        # restatement would be credited to the archived copy and the live one
+        # would never hear about it. The scorer filters them out anyway
+        # (`P13-02`); this stops them being found by the path that does not go
+        # through the scorer at all.
         if memory_vector and memory_vector.healthy:
-            memory_vector.rebuild(saved_entries)
+            memory_vector.rebuild(live_memories(saved_entries))
 
         # Persist the post-tidy fingerprint so the next call short-circuits
         # if nothing has changed in the meantime.
         _save_tidy_state(memory_manager, owner, _fingerprint_entries(final_entries))
 
-        return {"before": before_count, "after": after_count}
+        return {
+            "before": before_count,
+            "after": after_count,
+            # Additive. `before - after` has always meant "stopped surfacing";
+            # what is new is that most of that is now recoverable rather than
+            # gone, and a caller that reports "12 removed" when 11 of them are
+            # one click from being restored is telling a person something
+            # frightening and false.
+            "superseded": len(superseded),
+            "contradictions": conflicts,
+        }
 
     except Exception as e:
         logger.error(f"Memory audit failed: {e}")

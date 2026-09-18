@@ -533,13 +533,23 @@ def _declared_dependency_gaps() -> list:
             continue
         except Exception:  # pragma: no cover - metadata oddities
             continue
-        want = _re.search(r"(?:==|>=)\s*([0-9][^,;\s]*)", spec)
+        # `B620`. `==` is a pin and `>=` is a floor, and only one of the two is
+        # satisfied by a newer release. This was one `<` covering both, so an
+        # environment holding a version **above** an exact pin was reported as
+        # satisfying it — the one case the footer exists to describe. Measured
+        # 2026-09-18: `mcp` 2.2.0 against a declared `mcp==1.30.0` makes all four
+        # built-in MCP servers fail at import, and the footer named 17 gaps with
+        # `mcp` not among them. `B325`'s own row says "at a version other than
+        # the pin"; the code said "below it" (`Law 10`).
+        want = _re.search(r"(==|>=)\s*([0-9][^,;\s]*)", spec)
         if not want:
             continue
+        operator, target = want.group(1), want.group(2)
         try:
-            if _parts(have) < _parts(want.group(1)):
-                gaps.append(f"{name}: {have} installed, {spec} declared")
+            behind = _parts(have) < _parts(target)
         except TypeError:  # pragma: no cover - unorderable version parts
-            continue
+            behind = False
+        if behind or (operator == "==" and _parts(have) != _parts(target)):
+            gaps.append(f"{name}: {have} installed, {spec} declared")
     _DECLARED_COUNT[0] = declared
     return gaps

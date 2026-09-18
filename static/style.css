@@ -5147,6 +5147,77 @@ body.bg-pattern-sparkles {
     }
     .edit-save-btn:hover { background:var(--panel); }
     .edit-cancel-btn:hover { background:var(--panel); }
+    /* `P5-06`. The code block's header: the language on the left, the three
+       actions on the right. It bleeds to the block's edges with negative
+       margins because `pre`'s own padding belongs to the code, not to this.
+       No `--accent` anywhere in here — this is text somebody reads, and a
+       full-strength accent `color:` misses 4.5:1 on seven of the sixteen
+       palettes. */
+    .code-block-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: -6px -4px 6px -4px;
+      padding: 3px 6px;
+      border-bottom: 1px solid var(--border);
+      background: color-mix(in srgb, var(--fg) 5%, transparent);
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 10px;
+      line-height: 1;
+      min-height: 22px;
+      user-select: none;
+    }
+    .code-block-lang {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: var(--fg);
+      opacity: 0.62;
+      font-weight: 600;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+    .code-block-lang svg { flex-shrink: 0; opacity: 0.85; }
+    .code-block-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+    /* In the header the buttons are in normal flow, always visible, and cover
+       nothing. Everything below that used to fade them in on `pre:hover`, flip
+       them top-to-bottom or hide them on tap existed only because they were
+       floating over the first line of code. */
+    .code-block-actions .copy-code,
+    .code-block-actions .edit-code,
+    .code-block-actions .run-code {
+      position: static;
+      width: auto;
+      min-width: 22px;
+      height: 20px;
+      padding: 0 5px;
+      opacity: 0.55;
+      background: transparent;
+      border-color: transparent;
+    }
+    .code-block-actions .copy-code:hover,
+    .code-block-actions .edit-code:hover,
+    .code-block-actions .run-code:hover {
+      opacity: 1;
+      background: var(--bg);
+      border-color: var(--border);
+    }
+    .code-block-actions button:focus-visible {
+      opacity: 1;
+      outline: 2px solid var(--fg);
+      outline-offset: 1px;
+    }
+
     pre .copy-code {
       position:absolute; right:6px;
       background:var(--bg); color:var(--fg);
@@ -5156,7 +5227,6 @@ body.bg-pattern-sparkles {
       display:flex; align-items:center; justify-content:center;
     }
     pre .copy-code { top:6px; }
-    pre .copy-code.bottom { top:auto; bottom:6px; }
     pre:hover .copy-code { opacity:0.7; }
     pre .copy-code:hover { opacity:1; }
     pre .copy-code.copied {
@@ -5184,7 +5254,6 @@ body.bg-pattern-sparkles {
       opacity:0; transition: opacity .15s, color .15s, border-color .15s;
       display:flex; align-items:center; justify-content:center;
     }
-    pre .edit-code.bottom { top:auto; bottom:6px; }
     pre:hover .edit-code { opacity:0.7; }
     pre .edit-code:hover { opacity:1; }
     /* When the edit-code button is in "save" mode (checkmark), use the
@@ -5226,9 +5295,9 @@ body.bg-pattern-sparkles {
 
     /* Tapping the code body (not a button) toggles the overlay buttons off so
        they stop covering the text on touch screens. Tap again to bring back. */
-    pre.buttons-hidden .copy-code,
-    pre.buttons-hidden .edit-code,
-    pre.buttons-hidden .run-code { opacity:0 !important; pointer-events:none !important; }
+    /* `P5-06`. `.buttons-hidden` was the tap-to-hide workaround for buttons
+       that covered the code on a phone. The buttons are in the header now, so
+       nothing writes this class and nothing needs it. */
 
     /* Editing state — subtle border on the code block */
     /* Editing state: was a 1px subtle outline that was almost invisible on
@@ -5261,15 +5330,18 @@ body.bg-pattern-sparkles {
       opacity:0; transition: opacity .15s, color .15s, border-color .15s;
       display:flex; align-items:center; justify-content:center;
     }
-    pre .run-code.bottom { top:auto; bottom:6px; }
     pre:hover .run-code { opacity:0.7; }
     pre .run-code:hover { opacity:1; color:var(--hl-function, #61afef); border-color:var(--hl-function, #61afef); }
 
     /* Compact (single-line) code blocks: slim buttons so the row doesn't
        double the height of a 1-line bash. Copy is text ("Copy" → "✓ Copied"),
        Run and Edit keep their icons but at smaller sizes. Edit swaps to
-       a "Save" text label when its .active state is on. */
-    pre.pre-compact { padding-right: 200px; min-height: 0; }
+       a "Save" text label when its .active state is on.
+       `P5-06` dropped `padding-right: 200px` from here: it reserved a gutter
+       for three absolutely-positioned buttons that are now in the header, and
+       because `_markCompactPre` tags **every** short `<pre>` in the app it was
+       indenting one-line blocks that had no buttons at all. */
+    pre.pre-compact { min-height: 0; }
     pre.pre-compact .copy-code,
     pre.pre-compact .edit-code,
     pre.pre-compact .run-code {
@@ -5278,13 +5350,11 @@ body.bg-pattern-sparkles {
       font-size: 10px;
       font-weight: 500;
       line-height: 20px;
-      top: 3px;
     }
     /* Copy: text-only, hide SVG */
     pre.pre-compact .copy-code {
       width: auto;
       padding: 0 8px;
-      right: 6px;
       gap: 0;
     }
     pre.pre-compact .copy-code svg { display: none; }
@@ -5295,7 +5365,6 @@ body.bg-pattern-sparkles {
       width: auto;
       padding: 0 8px 0 6px;
       gap: 3px;
-      right: 64px;
     }
     pre.pre-compact .edit-code svg { width: 12px; height: 12px; }
     pre.pre-compact .edit-code::after { content: 'Edit'; }
@@ -5305,17 +5374,12 @@ body.bg-pattern-sparkles {
       width: auto;
       padding: 0 8px 0 6px;
       gap: 3px;
-      right: 126px;
     }
     pre.pre-compact .run-code svg { width: 12px; height: 12px; }
     pre.pre-compact .run-code::after { content: 'Run'; }
-    /* Bottom-positioned slim buttons (when pre is near the top of the
-       viewport, the existing JS toggles .bottom to flip them down). */
-    pre.pre-compact .copy-code.bottom,
-    pre.pre-compact .edit-code.bottom,
-    pre.pre-compact .run-code.bottom { top: auto; bottom: 3px; }
-
-    /* Touch devices: no hover, so always show copy/run/edit buttons */
+    /* Touch devices: no hover, so always show copy/run/edit buttons. Kept for
+       `.use-code`'s siblings and any `<pre>` outside the markdown builder; the
+       header's own buttons are visible on every device by default. */
     @media (hover: none) {
       pre .copy-code { opacity:0.7; }
       pre .edit-code { opacity:0.7; }
@@ -9317,7 +9381,7 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
       details { display: block !important; }
       details[open] summary ~ * { display: block !important; }
       details > summary { list-style: none; }
-      details > summary::before { content: "" !important; }
+      details > summary::after { content: "" !important; }   /* `P5-05` */
       #chat-history::before { content: attr(data-print-title); display: block; font-size: 1.3em; font-weight: bold; margin-bottom: 1em; color: #000; }
       a { color: #000 !important; text-decoration: underline; }
     }
@@ -10406,17 +10470,32 @@ body.fullwidth-chat .chat-history {
   transform: rotate(180deg);
 }
 
+/* `P5-01`. The reasoning fold opens on a grid row, not on a capped height.
+   It was `max-height: 0 -> 300px` with `overflow-y: auto` at the open end, so
+   a long chain of thought landed in a 300px scroller nested inside the page
+   scroller: two wheels on one page, the inner one swallowing the gesture.
+   `0fr -> 1fr` animates to the content's real height, so the fold grows and
+   the page scrolls — one scrollbar, and the text ends where it ends. */
 .thinking-content {
-  max-height: 0;
+  display: grid;
+  grid-template-rows: 0fr;
   overflow: hidden;
-  transition: max-height 0.3s ease, padding 0.3s ease;
+  transition: grid-template-rows 0.3s ease, padding 0.3s ease;
   padding: 0 12px;
 }
 
 .thinking-content.expanded {
-  max-height: 300px;
-  overflow-y: auto;
+  grid-template-rows: 1fr;
   padding: 12px;
+}
+
+/* A grid item's `min-height` is `auto`, which refuses to shrink below its
+   content and would hold the row open at full height while the track says 0.
+   This is the half of the idiom that is easy to leave out and impossible to
+   see in the diff. */
+.thinking-content > * {
+  min-height: 0;
+  overflow: hidden;
 }
 
 .thinking-content-inner {
@@ -10500,17 +10579,23 @@ body.fullwidth-chat .chat-history {
   flex-shrink: 0;
   opacity: 0.7;
 }
+/* `P5-05`. Right side already, but by swapping ▶ for ▼ with `transition:
+   none` — a third mechanism wearing the second one's clothes. It is the same
+   glyph on the same curve as every other fold now; `data-arrow` keeps its
+   name and its meaning (`FORBIDDEN.md` Part 1 is about names, and the
+   renderer still writes `right`/`down`), it just drives a rotation. */
 .sources-toggle {
   font-size: 0.8em;
   color: var(--red);
   opacity: 0.7;
-  transition: none;
+  display: inline-block;
+  transition: transform 0.3s ease;
 }
 .sources-toggle::after {
-  content: '\25B6'; /* ▶ right arrow */
+  content: '\25BC'; /* ▼ */
 }
-.sources-toggle[data-arrow="down"]::after {
-  content: '\25BC'; /* ▼ down arrow */
+.sources-toggle[data-arrow="down"] {
+  transform: rotate(180deg);
 }
 .sources-content {
   max-height: 0;
@@ -10754,6 +10839,42 @@ body.fullwidth-chat .chat-history {
   70% { opacity: 0.35; top: calc(100% - 20px); }
   100% { opacity: 0; top: calc(100% - 20px); }
 }
+/* `P5-08`. The thread's own control.
+   It says what it does in words, and it is the only thing in the thread that
+   tells a first-time reader these cards open at all. Right-aligned so it does
+   not sit on the rail, and outside the timeline's rhythm because it is not a
+   step in it. Colour comes from `--fg` and `--border`, never `--accent`: a
+   full-strength accent `color:` fails 4.5:1 on seven of the sixteen palettes
+   and this is a word somebody has to read. */
+.agent-thread-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 0 2px;
+}
+.agent-thread-expand-all {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--fg);
+  opacity: 0.6;
+  font-family: inherit;
+  font-size: 0.72em;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: opacity 0.15s ease, border-color 0.15s ease;
+}
+.agent-thread-expand-all:hover {
+  opacity: 1;
+  border-color: color-mix(in srgb, var(--fg) 45%, transparent);
+}
+.agent-thread-expand-all:focus-visible {
+  outline: 2px solid var(--fg);
+  outline-offset: 1px;
+  opacity: 1;
+}
+
 .agent-thread-node {
   position: relative;
   padding: 5px 0;
@@ -10933,14 +11054,31 @@ body.fullwidth-chat .chat-history {
   color: var(--fg);
   border: 1px solid var(--border);
 }
+/* `P5-02`. Tool cards open the way reasoning does.
+   This was `display: none` -> `display: block`: the card snapped while the
+   `.thinking-content` a few pixels above it inched open over 300ms, and two
+   folds in one thread behaving differently reads as one of them being broken.
+   Same idiom as `P5-01` — `grid-template-rows: 0fr -> 1fr` — so both folds
+   move at the same speed on the same curve.
+   `overflow-x` stays on the inner wrapper: a wide command still scrolls
+   sideways, and putting it on the animating box would clip the transition. */
 .agent-thread-content {
-  display: none;
-  padding: 4px 0 2px 0;
-  overflow-x: auto;
-  overflow-y: hidden;
+  display: grid;
+  grid-template-rows: 0fr;
+  padding: 0;
+  overflow: hidden;
+  transition: grid-template-rows 0.25s ease, padding 0.25s ease;
 }
 .agent-thread-node.open .agent-thread-content {
-  display: block;
+  grid-template-rows: 1fr;
+  padding: 4px 0 2px 0;
+}
+/* The grid item. `min-height: 0` is what lets the track actually reach zero
+   (a grid item's default `min-height: auto` refuses to shrink below content). */
+.agent-thread-content-inner {
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 .agent-thread-cmd {
   background: color-mix(in srgb, var(--fg) 5%, transparent);
@@ -11229,7 +11367,8 @@ body.fullwidth-chat .chat-history {
     max-width: 100%;
     overflow-x: auto;
   }
-  .agent-thread-content {
+  .agent-thread-content,
+  .agent-thread-content-inner {
     max-width: calc(100vw - 90px);
   }
   .agent-tool-output pre {
@@ -11328,17 +11467,47 @@ body.fullwidth-chat .chat-history {
 .diff-pre .diff-hunk { color: var(--accent); opacity: 0.85; }
 .diff-pre .diff-meta { opacity: 0.55; }
 .diff-pre .diff-ctx { opacity: 0.8; }
-/* Suppress the global `summary::before { content: '▶' }` left arrow — this
-   section uses a right-side chevron instead. */
-.agent-tool-output summary::before { content: none; }
+/* `P5-05`. The global rule now draws this chevron, on this side, with this
+   motion — the suppressor that used to sit here (`summary::before { content:
+   none }`) had nothing left to suppress and is gone. What stays is the part
+   that is local: the colour, the size, and `margin-left: 0`, because this
+   summary is already `justify-content: space-between` and a second auto
+   margin would split the gap instead of pinning the chevron right. */
 .agent-tool-output summary::after {
   content: '\25BC'; /* ▼ */
   color: var(--red);
   font-size: 0.9em;
+  margin-left: 0;
   transition: transform 0.3s ease;
 }
 .agent-tool-output[open] > summary::after {
   transform: rotate(180deg);
+}
+/* `P5-08`. Copy the output. Sits in the `<summary>` next to the chevron, so
+   it is reachable without opening the pane; `margin-left: auto` puts it there
+   and leaves the chevron on the edge. */
+.agent-tool-output-copy {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  padding: 0 2px;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.45;
+  display: inline-flex;
+  align-items: center;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+.agent-tool-output summary:hover .agent-tool-output-copy { opacity: 0.85; }
+.agent-tool-output-copy:hover { opacity: 1; }
+.agent-tool-output-copy:focus-visible {
+  outline: 1px solid currentColor;
+  outline-offset: 2px;
+  opacity: 1;
+}
+.agent-tool-output-copy.copied {
+  opacity: 1;
+  color: var(--color-save-green, #4caf50);
 }
 .agent-tool-output summary:hover {
   background: color-mix(in srgb, var(--red) 15%, transparent);
@@ -11364,8 +11533,13 @@ body.fullwidth-chat .chat-history {
   border-radius: 0;
   padding: 10px 14px;
   margin-top: 0;
-  max-height: 300px;
-  overflow-y: auto;
+  /* `P5-01`. The second nested 300px scroller. This one is not a transition
+     site — it is a static clip inside a native `<details>` — so it is removed
+     rather than converted: the fold above it is already the show/hide, and a
+     scroller inside a scroller inside the fold was three ways to move the same
+     text. The output the backend sends is capped before it gets here
+     (`P4-19`), so what opens is bounded by the data, not by a magic number. */
+  max-height: none;
   font-size: 0.95em;
   color: var(--fg);
   opacity: 0.85;
@@ -11466,16 +11640,25 @@ summary:hover {
   background: color-mix(in srgb, var(--hl-string) 15%, transparent);
 }
 
-/* Add custom arrow */
-summary::before {
-  content: '▶';
+/* `P5-05`. One disclosure idiom: a chevron on the RIGHT that flips.
+   This rule used to draw `▶` on the left and rotate it 90°, and it was the
+   minority report — reasoning (`.thinking-toggle`), tool output, the two
+   hwfit folds and the email folds had each independently gone right-side,
+   and a reader met two different "this opens" signs in one message. The
+   glyph, the side and the motion are now declared once, here, and every
+   `<details>` in the product inherits them.
+   `> summary` and not a descendant selector: a nested `<details>` inside an
+   open one used to get its parent's rotation as well as its own. */
+summary::after {
+  content: '▼';
   display: inline-block;
+  margin-left: auto;       /* pushes it to the right edge of the flex header */
   transition: transform 0.3s ease;
-  font-size: 0.75em;  /* Smaller arrow */
+  font-size: 0.75em;
 }
 
-details[open] summary::before {
-  transform: rotate(90deg);
+details[open] > summary::after {
+  transform: rotate(180deg);
 }
 
 /* Hide default marker in webkit browsers */
@@ -30170,13 +30353,13 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
   user-select: none;
 }
 .ge-adj-hist-details > summary::-webkit-details-marker { display: none; }
-.ge-adj-hist-details > summary::before {
-  content: '▸ ';
-  display: inline-block;
-  transition: transform 0.12s;
-}
-.ge-adj-hist-details[open] > summary::before {
-  content: '▾ ';
+/* `P5-05`. This drew its own left-side `▸`/`▾` pair. It now inherits the one
+   right-side chevron, so a fold in the gallery editor opens with the same sign
+   as a fold in the trace. `display: flex` is what lets the shared rule's
+   `margin-left: auto` reach the right edge. */
+.ge-adj-hist-details > summary {
+  display: flex;
+  align-items: center;
 }
 .ge-adj-hist-details .ge-adj-hist-wrap {
   margin-top: 4px;
@@ -33371,11 +33554,13 @@ button .spinner-whirlpool {
   color: var(--fg); opacity: 0.55;
   user-select: none;
 }
-/* Suppress the global `summary::before { content: '▶' }` rule from
-   leaking the chevron-emoji onto our header — we use the trailing SVG
-   chevron only. */
-.email-sig-fold .email-fold-summary::before,
-.email-quote-fold .email-fold-summary::before { content: none !important; }
+/* Suppress the global disclosure chevron from leaking onto our header — we
+   use the trailing SVG chevron only, which is the same sign in a different
+   medium. (`P5-05` moved that rule from `::before` to `::after`; this
+   suppressor had to move with it or the emoji would have come back on the
+   other side.) */
+.email-sig-fold .email-fold-summary::after,
+.email-quote-fold .email-fold-summary::after { content: none !important; }
 .email-sig-fold .email-fold-summary::-webkit-details-marker,
 .email-sig-fold .email-fold-summary::marker { display: none; content: none; }
 .email-sig-fold .email-fold-summary:hover { opacity: 1; }
@@ -43555,8 +43740,12 @@ body.theme-frosted .modal {
   list-style: none;
 }
 .usage-summary-toggle::-webkit-details-marker { display: none; }
-.usage-summary-toggle::before { content: "\25B8 "; opacity: .6; }
-.usage-panel[open] > .usage-summary-toggle::before { content: "\25BE "; }
+/* `P5-05`. A fourth left-side glyph pair — `▸`/`▾` — found by this row's own
+   test rather than by the grep that wrote the row, because the selector is
+   `.usage-summary-toggle::before` and the grep was looking for
+   `summary::before`. It inherits the one right-side chevron now. */
+.usage-summary-toggle { display: flex; align-items: center; }
+.usage-summary-toggle::after { opacity: .6; }
 .usage-summary-toggle:focus-visible { outline: 2px solid var(--fg); outline-offset: -2px; }
 .usage-controls {
   display: flex;
@@ -43621,8 +43810,11 @@ body.theme-frosted .modal {
   list-style: none;
 }
 .bug-report-summary::-webkit-details-marker { display: none; }
-.bug-report-summary::before { content: "▸ "; opacity: .6; }
-.bug-report[open] > .bug-report-summary::before { content: "▾ "; }
+/* `P5-05`. A third left-side glyph pair, retired onto the shared right-side
+   chevron. `display: flex` is what the shared rule's `margin-left: auto`
+   needs to reach the right edge. */
+.bug-report-summary { display: flex; align-items: center; }
+.bug-report-summary::after { opacity: .6; }
 .bug-report-summary:focus-visible {
   outline: 2px solid var(--fg);
   outline-offset: -2px;

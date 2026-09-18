@@ -15,6 +15,7 @@ from src.tool_approval_scopes import (
 )
 from src.tool_approvals import ExactToolApproval, ToolApprovalStore
 from src.tool_capabilities import ToolRunSecurityContext, capabilities_for_action
+import re
 
 
 def _pending(
@@ -350,7 +351,14 @@ def test_route_context_agent_frontend_and_cache_bust_wire_the_contract():
     assert "CHAT_SESSION_APPROVAL_CONTEXT_MARKER" in capabilities
     assert "CHAT_SESSION_APPROVAL_CONTEXT_MARKER" in models
 
-    version = "20260829trustladder1"
+    # Read from the page, not written here. This was the literal
+    # `20260829trustladder1` until `P5-01`–`P5-08` moved the wave, and a
+    # literal makes this test a second place the version lives (`Law 6`). The
+    # control it holds is **lockstep**, not any particular string, and a
+    # cache-buster is the one value in the product whose entire purpose is to
+    # change — eighth instance of the shape `B520` names, and the most clear-cut
+    # (`B651`). `index.html`'s `chat.js` tag is the canonical execution site.
+    version = re.search(r"js/chat\.js\?v=([A-Za-z0-9._-]+)", index).group(1)
     assert f"chat.js?v={version}" in app
     assert f"chat.js?v={version}" in index
     assert f"chatRenderer.js?v={version}" in frontend

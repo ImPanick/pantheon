@@ -52,4 +52,12 @@ PyMuPDF==1.28.2
 # magika (onnxruntime), already a core dep via fastembed. We avoid the
 # [all]/Azure/audio extras (cloud + heavy). Pinned to a release >30 days old per
 # the dependency-age discussion in issue #485.
-markitdown[docx,pptx,xlsx,xls]==0.1.6
+# `B624`. 0.1.7 was published 2026-07-29 and is 51 days old at this bump
+# (2026-09-18), so it clears that bar; 0.1.8b1 and 0.1.8b2 also exist and are
+# betas, which do not. Measured before moving the pin: markitdown 0.1.7
+# installed on this interpreter, and the five test files that touch it —
+# test_markitdown_runtime, test_markitdown_format_nonstring,
+# test_one_office_register_across_both_doors, test_personal_docs_office_index
+# and test_attachment_extension_registers — give 195 passed on 0.1.7 and 195
+# passed on 0.1.6. Same files, same count, no new failure.
+markitdown[docx,pptx,xlsx,xls]==0.1.7

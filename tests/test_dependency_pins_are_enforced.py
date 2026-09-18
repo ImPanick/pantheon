@@ -126,7 +126,7 @@ def test_the_shapes_a_real_requirements_file_uses_are_accepted(tmp_path, line):
 
     `requirements-optional.txt` really does carry
     `kokoro==0.9.4; python_version >= "3.11" and python_version < "3.13"` and
-    `markitdown[docx,pptx,xlsx,xls]==0.1.6`. A rule that flagged either would be
+    `markitdown[docx,pptx,xlsx,xls]==0.1.7`. A rule that flagged either would be
     deleted within a week, which is how a checker stops being a gate.
     """
     checker = _load(_CHECKER, "pins_ok", _tree(tmp_path, line))

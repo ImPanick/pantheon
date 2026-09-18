@@ -29,6 +29,8 @@ from pathlib import Path
 
 import pytest
 
+from test_tool_effect_surfaces_js import _copy_unstubbed_imports  # noqa: E402
+
 import src.agent_loop as agent_loop
 from src.agent_loop import VerifierVerdict, _run_verifier_subagent
 
@@ -266,6 +268,12 @@ def sandbox(tmp_path_factory):
     d = tmp_path_factory.mktemp("verifiercard")
     (d / "ui.js").write_text(_UI_STUB, encoding="utf-8")
     shutil.copy(_MODULE, d / "agentThread.js")
+    # `P5-04` added an import to `agentThread.js`, and a sandbox that copies one
+    # file cannot see one. `_copy_unstubbed_imports` was written for exactly this
+    # ("adding one import to a sandboxed module breaks every sandbox that copies
+    # it") and is borrowed rather than re-implemented here (`Law 14`): `ui.js` keeps
+    # its stub, everything else comes in for real, transitively.
+    _copy_unstubbed_imports(d, _MODULE, {"ui.js"})
     return d
 
 

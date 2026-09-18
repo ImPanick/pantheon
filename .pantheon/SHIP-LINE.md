@@ -359,6 +359,8 @@ weakest one in this document: it means nobody adjudicated them individually.
 | `B533` | landed | claim | the threat model named one of two tool gates; corrected at the merge that found it |
 | `B571` | tracked | tooling | a conflicted index triples every checker's count; a runner's index is never conflicted |
 | `P8-12` | tracked | second-line | an authoring aid in the Workshop; the rule flagged it on the word *supply*, which is about a skill's fields |
+| `P13-01` | tracked | second-line | a confidence number on memories; the rule flagged it on *first ten minutes* and it is not one of them |
+| `B623` | tracked | claim | `CREDITS.md` is correct today and nothing holds it so; a missing guard, not a false statement |
 | `P11-02d` | landed | security | six route files whose gating is unreconciled — an unknown on an auth surface |
 | `B71` | blocking | claim | upstream's artwork under this fork's filenames, and it is the macOS app icon |
 | `B411` | blocking | claim | four numbers in the published ledger do not print from their own repro |

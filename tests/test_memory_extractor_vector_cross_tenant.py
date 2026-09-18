@@ -81,10 +81,15 @@ class FakeMemoryManager:
         t = text.strip().lower()
         return [r for r in subset if r.get("text", "").strip().lower() == t]
 
-    def add_entry(self, text, source="auto", category="fact", owner=None):
+    def add_entry(self, text, source="auto", category="fact", owner=None,
+                  confidence=None, provenance=None):
+        # `P13-01` / `P13-03` widened the real constructor; the double mirrors
+        # it rather than swallowing extra kwargs, so the day a caller passes
+        # something this fake cannot represent, the fake says so.
         self._n += 1
         entry = {"id": f"new-{self._n}", "text": text, "owner": owner,
-                 "source": source, "category": category}
+                 "source": source, "category": category,
+                 "confidence": confidence, "provenance": provenance}
         self.rows.append(entry)
         return entry
 

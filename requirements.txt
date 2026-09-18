@@ -91,6 +91,22 @@ bcrypt==5.0.0
 # Ceiling before pinning: <2. That ceiling is still the rule — a Dependabot PR
 # that moves this pin to 2.x is a migration, not a bump, and is refused until
 # the built-in servers move together.
+#
+# `B621`. That refusal is now a measurement rather than a position. mcp 2.2.0
+# was installed on 2026-09-18 and the MCP-touching tests run against it:
+# **23 failed and 8 errored, against 1283 passed and nothing failing on the
+# installed 1.27.0.** `mcp.server.Server` in 2.x has no `list_tools` decorator
+# — the v1 low-level API named above — so all four servers under
+# `mcp_servers/` die at import, and `builtin_mcp.py` would log "failed to
+# connect" and carry on. On the client side `streamablehttp_client` is now
+# `streamable_http_client` and has lost its `auth=` parameter, which is the
+# only way `src/mcp_manager.py:358` attaches the OAuth provider, and 2.x moves
+# the client onto `httpx2` — the package pinned nine lines below this one and
+# declared there for the test client only.
+# This pin is not staleness: 1.30.0 is the highest release on the 1.x line
+# (PyPI, read 2026-09-18), and installed here on the same day it gives 1283
+# passed and nothing failing across the same tests. It is current for the line
+# the product is written against.
 mcp==1.30.0
 pyotp==2.10.0
 qrcode[pil]==8.2

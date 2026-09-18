@@ -66,7 +66,17 @@ def initialize_managers(base_dir: str, rag_manager=None) -> Dict[str, Any]:
         if memory_vector.healthy:
             # Rebuild index from existing memories if empty
             if memory_vector.count() == 0:
-                existing = memory_manager.load()
+                # `P13-09`. The LIVE memories, not all of them. The audit keeps
+                # what it merged away — a `supersedes` edge stops it surfacing
+                # in every search — but this rebuild reads the whole store, so
+                # without the filter the next boot would put the archive back
+                # into the vector index. `MemoryVectorStore.find_similar` is
+                # the extractor's first dedupe gate and does not go through the
+                # scorer, so a match there would credit the person's next
+                # restatement to a memory nothing can retrieve, and drop the
+                # fact they just stated.
+                from src.memory_edges import live as _live_memories
+                existing = _live_memories(memory_manager.load())
                 if existing:
                     memory_vector.rebuild(existing)
                     logger.info(f"Rebuilt memory vector index from {len(existing)} existing entries")

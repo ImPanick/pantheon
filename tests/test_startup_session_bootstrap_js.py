@@ -12,10 +12,19 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import re
 
 
 _REPO = Path(__file__).resolve().parent.parent
 _SESSIONS = _REPO / "static" / "js" / "sessions.js"
+
+# The cache-buster `sessions.js` currently names on its `chatRenderer` import.
+# Read, never written: `check-specifiers.py` is what holds every consumer on one
+# string, and this fixture only needs to find the line so it can point it at a
+# stub (`B651`).
+_LIVE_BUSTER = re.search(
+    r"chatRenderer\.js\?v=([A-Za-z0-9._-]+)",
+    _SESSIONS.read_text(encoding="utf-8")).group(1)
 _SHELL_URL = (_REPO / "static" / "js" / "startupShell.js").as_uri()
 _HAS_NODE = shutil.which("node") is not None
 
@@ -31,7 +40,16 @@ _IMPORT_REWRITES = {
     # consumer still on the pre-approval-control string, which meant it received
     # a SECOND chatRenderer instance and FORBIDDEN.md's six-module approval bump
     # could never reach it. check-specifiers.py now fails CI if that recurs.
-    "import chatRenderer from './chatRenderer.js?v=20260829trustladder1';": (
+    #
+    # The version is READ from `sessions.js` rather than written here. It was
+    # the literal `20260829trustladder1` until `P5-01`–`P5-08` moved the wave,
+    # and a rewrite key that names a cache-buster pins the one value in the
+    # product whose purpose is to change — this fixture then errors on a
+    # correct bump, which is `B520`'s shape and `B651`'s instance. What the
+    # assertion below is for is that the import *line* still exists to be
+    # rewritten, and that survives the version moving. `check-specifiers.py`
+    # is what holds the version itself in lockstep.
+    f"import chatRenderer from './chatRenderer.js?v={_LIVE_BUSTER}';": (
         "import chatRenderer from './chatRenderer.mjs';"
     ),
     "import { providerLogo } from './providers.js';": (

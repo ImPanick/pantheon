@@ -22,6 +22,7 @@ cannot assert its own blind spots, and `--max 0` in CI proves nothing about a
 place the regexes never look.
 """
 import importlib.util
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -191,3 +192,49 @@ def test_an_escaped_quote_does_not_end_the_string_early():
     stripped = check_specifiers.strip_comments(source, html=False)
     found = [m.group(1) for m in check_specifiers.IMPORT_RE.finditer(stripped)]
     assert found == ["./y.js?v=3"], (found, stripped)
+
+
+# ── the same defect, one asset type down ────────────────────────────────────
+
+_CSS_URL = re.compile(r"""["'](/static/[^"']+\.css)(\?[^"']*)?["']""")
+
+
+def _css_urls():
+    """(published path -> {query strings}) for every stylesheet URL written in
+    a tracked `static/` file. Same scope statement as the checker's: every
+    `<link href>`, every service-worker precache entry, every dynamic
+    `import`-adjacent string — excluding `static/lib/`."""
+    found = {}
+    for rel in check_specifiers.tracked():
+        text = (_REPO / rel).read_text(encoding="utf-8")
+        for path, query in _CSS_URL.findall(text):
+            found.setdefault(path, {}).setdefault(query, []).append(rel)
+    return found
+
+
+def test_a_stylesheet_is_reachable_under_one_url_too():
+    """`B630`. `check-specifiers.py` is deliberately about **modules** — its
+    patterns end in `.js`, and a test above pins that a stylesheet link is not
+    mistaken for one. That is correct for what it measures and it leaves
+    `style.css` with two version sites and nothing holding them equal: the
+    `<link>` in `index.html` and the precache entry in `static/sw.js`.
+
+    Bumping one and not the other is silent and costs exactly what `B58` cost
+    for `admin.js` — `sw.js` matches with `cache.match(e.request)` and **no**
+    `ignoreSearch`, so the precached stylesheet is downloaded at install and
+    can never answer a request, while the page fetches the other URL over the
+    network on every cold load. Found 2026-09-18 by mutating `P5-01`'s own
+    buster bump and watching nothing notice.
+    """
+    forked = {path: {q: files for q, files in queries.items()}
+              for path, queries in _css_urls().items() if len(queries) > 1}
+    assert not forked, forked
+
+
+def test_the_stylesheet_scan_is_actually_finding_the_sites():
+    """A scan that quietly stops matching passes the test above by being empty.
+    `style.css` is written in at least the page and the service worker."""
+    urls = _css_urls()
+    assert "/static/style.css" in urls, sorted(urls)
+    files = sorted({f for q in urls["/static/style.css"].values() for f in q})
+    assert "static/index.html" in files and "static/sw.js" in files, files

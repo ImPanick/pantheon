@@ -36,6 +36,7 @@
 // This module owns the card *shell* and nothing else.
 
 import uiModule from './ui.js';
+import { langIcon } from './langIcons.js';
 
 const esc = uiModule.esc;
 
@@ -73,9 +74,125 @@ export const TOOL_LABELS = {
   'ui_control':       { running: 'Adjusting',    done: 'Interface' },
 };
 
-/** Tool id → an icon for the running card. Anything absent gets `▶`. */
+/**
+ * `P5-04`. One glyph per tool, drawn the same way as the label beside it.
+ *
+ * This map had **one** entry — `web_search` — against the 21 labels above, so
+ * twenty of twenty-one running cards drew the same `▶` and a thread of four
+ * tools was four identical triangles. That is worse than it sounds, because
+ * seven of the running labels are shared: `bash` and `python` both say
+ * "Running", `read_file` and `read_document` both say "Reading", and with one
+ * glyph between them **a card gave no way at all to tell which tool was
+ * running** (`Law 15`).
+ *
+ * Inline monochrome SVG, one geometry for all of them — 14px in a 24 viewBox,
+ * `stroke="currentColor"`, stroke-width 2 — so the strip inherits the theme
+ * and does not need `P5-13` run on it afterwards. `currentColor` is also why
+ * none of this touches `--accent`: the icon is the colour of the text it sits
+ * beside, on all sixteen palettes.
+ *
+ * `bash` and `python` come from `langIcons.js` rather than being drawn again
+ * here (`Law 14`): that module already owns "what does this language look
+ * like", it is already the same stroke family, and a terminal glyph that
+ * differs between a code block and a tool card is exactly the drift `P4-01`
+ * spent six copies of this file fixing.
+ */
+const ICON_ATTRS =
+  'width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+  + 'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" '
+  + 'style="vertical-align:-2px;margin-right:4px"';
+
+/** Wrap path data in the one icon geometry this thread uses. */
+function icon(body) {
+  return `<svg ${ICON_ATTRS}>${body}</svg>`;
+}
+
+/** `langIcons.js`'s glyph, re-wrapped in this thread's geometry so it lines up
+ *  with its neighbours. `langIcon()` returns a whole `<svg>`; only its innards
+ *  are wanted here. */
+function langGlyph(lang) {
+  const svg = langIcon(lang, 14);
+  const open = svg.indexOf('>');
+  const close = svg.lastIndexOf('</svg>');
+  if (open < 0 || close < 0) return '';
+  return icon(svg.slice(open + 1, close));
+}
+
+const DOC_OUTLINE =
+  '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>'
+  + '<polyline points="14 2 14 8 20 8"/>';
+const PENCIL =
+  '<path d="M12 20h9"/>'
+  + '<path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>';
+
 export const TOOL_ICONS = {
   'web_search': SEARCH_ICON,
+  // A terminal and a snake, from the module that already owns both.
+  'bash': langGlyph('bash'),
+  'python': langGlyph('python'),
+  // Reading — an open book for a document, a page for a file.
+  'read_document': icon('<path d="M2 4h6a3 3 0 0 1 3 3v13a2.5 2.5 0 0 0-2.5-2.5H2z"/>'
+    + '<path d="M22 4h-6a3 3 0 0 0-3 3v13a2.5 2.5 0 0 1 2.5-2.5H22z"/>'),
+  'read_file': icon(DOC_OUTLINE + '<line x1="8" y1="13" x2="14" y2="13"/>'
+    + '<line x1="8" y1="17" x2="16" y2="17"/>'),
+  // Writing — a page with a plus on it.
+  'write_file': icon(DOC_OUTLINE + '<line x1="12" y1="12" x2="12" y2="18"/>'
+    + '<line x1="9" y1="15" x2="15" y2="15"/>'),
+  'create_document': icon(DOC_OUTLINE + '<line x1="12" y1="12" x2="12" y2="18"/>'
+    + '<line x1="9" y1="15" x2="15" y2="15"/>'),
+  // Editing — a pencil, on a page when the target is a file.
+  'edit_file': icon('<path d="M13 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6"/>'
+    + '<path d="M17.5 2.5a2.1 2.1 0 0 1 3 3L12 14l-4 1 1-4z"/>'),
+  'edit_document': icon(PENCIL),
+  // Rewriting — the arrows that mean "again".
+  'update_document': icon('<polyline points="21 4 21 10 15 10"/>'
+    + '<polyline points="3 20 3 14 9 14"/>'
+    + '<path d="M19.5 9A8 8 0 0 0 6 6.3L3 9"/>'
+    + '<path d="M4.5 15A8 8 0 0 0 18 17.7l3-2.7"/>'),
+  // Reviewing — a suggestion, which is a comment and not yet a change.
+  'suggest_document': icon('<path d="M21 14a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>'
+    + '<polyline points="8.5 9.5 11 12 15.5 7.5"/>'),
+  // Browsing a directory, and browsing a catalogue: a folder, and a grid.
+  'list_files': icon('<path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'),
+  'list_models': icon('<rect x="3" y="3" width="7" height="7" rx="1.5"/>'
+    + '<rect x="14" y="3" width="7" height="7" rx="1.5"/>'
+    + '<rect x="3" y="14" width="7" height="7" rx="1.5"/>'
+    + '<rect x="14" y="14" width="7" height="7" rx="1.5"/>'),
+  // Generating a picture — a framed image.
+  'image_gen': icon('<rect x="3" y="4" width="18" height="16" rx="2"/>'
+    + '<circle cx="8.5" cy="9.5" r="1.8"/>'
+    + '<polyline points="21 16 15.5 10.5 5 20"/>'),
+  'generate_image': icon('<rect x="3" y="4" width="18" height="16" rx="2"/>'
+    + '<circle cx="8.5" cy="9.5" r="1.8"/>'
+    + '<polyline points="21 16 15.5 10.5 5 20"/>'),
+  // Memory — a store with a node in it; recall is the same store, rewound.
+  'manage_memory': icon('<rect x="4" y="4" width="16" height="16" rx="3"/>'
+    + '<circle cx="12" cy="12" r="2.4"/>'
+    + '<line x1="12" y1="4" x2="12" y2="9.6"/>'
+    + '<line x1="12" y1="14.4" x2="12" y2="20"/>'
+    + '<line x1="4" y1="12" x2="9.6" y2="12"/>'
+    + '<line x1="14.4" y1="12" x2="20" y2="12"/>'),
+  'save_memory': icon('<rect x="4" y="4" width="16" height="16" rx="3"/>'
+    + '<circle cx="12" cy="12" r="2.4"/>'
+    + '<line x1="12" y1="4" x2="12" y2="9.6"/>'
+    + '<line x1="12" y1="14.4" x2="12" y2="20"/>'
+    + '<line x1="4" y1="12" x2="9.6" y2="12"/>'
+    + '<line x1="14.4" y1="12" x2="20" y2="12"/>'),
+  'search_memory': icon('<path d="M3 12a9 9 0 1 0 2.6-6.4"/>'
+    + '<polyline points="3 3 3 8 8 8"/>'
+    + '<polyline points="12 8 12 12 15 14"/>'),
+  // Organising sessions — a stack of conversations.
+  'manage_session': icon('<path d="M8 13a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-6l-4 3.5z"/>'
+    + '<path d="M16 16v2a2 2 0 0 1-2 2H8l-4 3.5V20a2 2 0 0 1-2-2v-4"/>'),
+  // Deep research — a compass, because the work is a survey and not a lookup.
+  'deep_research': icon('<circle cx="12" cy="12" r="9"/>'
+    + '<polygon points="15.5 8.5 13.5 13.5 8.5 15.5 10.5 10.5"/>'),
+  // Adjusting the interface — sliders.
+  'ui_control': icon('<line x1="4" y1="7" x2="20" y2="7"/>'
+    + '<line x1="4" y1="12" x2="20" y2="12"/>'
+    + '<line x1="4" y1="17" x2="20" y2="17"/>'
+    + '<circle cx="9" cy="7" r="2.2"/><circle cx="15" cy="12" r="2.2"/>'
+    + '<circle cx="8" cy="17" r="2.2"/>'),
 };
 
 /** What to call `tool` in `state` ('running' | 'done'). Unknown tools keep
@@ -186,18 +303,29 @@ export function verifierCardOptions(o) {
  */
 export function toolOutputPanesHtml(o) {
   const opts = o || {};
+  // `P5-08`. Every other block of text in this thread can be copied — the
+  // command since `P5-07`, a code block in the reply since long before that —
+  // and the one a person actually wants (the traceback, the failing test's
+  // output) could only be selected by dragging inside a fold. The button
+  // lives in the `<summary>` so it is reachable without opening the pane, and
+  // the handler that serves it is the delegated one in `chat.js`, beside the
+  // command's: a per-node listener on these cards is `B56`.
+  const copyBtn = (what) =>
+    `<button type="button" class="agent-tool-output-copy" title="Copy ${what}" `
+    + `aria-label="Copy ${what}">${COPY_ICON}</button>`;
   const stderr = typeof opts.stderr === 'string' ? opts.stderr : '';
   const merged = typeof opts.output === 'string' ? opts.output : '';
   const stdout = typeof opts.stdout === 'string' ? opts.stdout : '';
   const primary = stderr.trim() && stdout ? stdout : merged;
   let html = '';
   if (primary && primary.trim()) {
-    html += '<details class="agent-tool-output"><summary>Output</summary>'
+    html += '<details class="agent-tool-output"><summary>Output'
+      + copyBtn('output') + '</summary>'
       + `<pre>${esc(primary)}</pre></details>`;
   }
   if (stderr.trim()) {
     html += '<details class="agent-tool-output agent-tool-stderr" open>'
-      + '<summary>Error output (stderr)</summary>'
+      + '<summary>Error output (stderr)' + copyBtn('error output') + '</summary>'
       + `<pre>${esc(stderr)}</pre></details>`;
   }
   const code = Number(opts.exit_code);
@@ -300,14 +428,63 @@ export const CMD_LANGUAGES = {
   'python': 'python',
 };
 
+/**
+ * `P5-08`. A JSON argument blob, printed so a person can read it.
+ *
+ * Most tools send their arguments as one line of minified JSON, and one line
+ * of minified JSON is not a thing anyone reads — `{"path":"/etc/hosts",
+ * "content":"…","mode":"append"}` wraps across four lines of the card with no
+ * structure at all. Pretty-printed it is four labelled lines.
+ *
+ * This does **not** re-open the question `P5-07` settled. That row kept
+ * highlighting to `bash` and `python` because guessing a language paints a
+ * filename in string-literal green, and a wrong colour reads as a bug. There
+ * is no guess here: the text either parses as a JSON object or array or it
+ * does not, and only then is it called JSON. A truncated blob — the document
+ * tools send the first 80 characters, the approval replay the first 240 —
+ * fails to parse and is shown exactly as it was before.
+ *
+ * Returns `null` when the text is not JSON, which is the signal to fall back.
+ */
+export function prettyJson(text) {
+  const t = String(text == null ? '' : text).trim();
+  // One gate, on purpose. A `startsWith('{')` early-out was here too and it
+  // made the real check below unreachable — anything that starts with `{` or
+  // `[` and parses *is* an object or an array — so neither guard could be
+  // mutated on its own and the pair tested as dead code. Cheap is not worth a
+  // second rule that hides the first.
+  let parsed;
+  try {
+    parsed = JSON.parse(t);
+  } catch (_err) {
+    return null;   // truncated, or not JSON at all
+  }
+  // The gate, and the only one: an argument blob is an object or an array.
+  // `42` and `"a string"` are valid JSON and are not arguments, and calling
+  // them JSON would paint a bare path in string-literal green the first time
+  // one happened to parse — which is the exact failure `P5-07` chose its two
+  // languages to avoid.
+  if (parsed === null || typeof parsed !== 'object') return null;
+  // Returned even when it comes back unchanged, so a blob that arrived
+  // already laid out is still *named* JSON. Short-circuiting here made the
+  // highlight depend on how the sender happened to format it, which is a
+  // difference a reader can see and cannot explain.
+  return JSON.stringify(parsed, null, 2);
+}
+
 export function commandBlockHtml(command, fullCommand, tool) {
   const shown = command == null ? '' : String(command);
   if (!shown) return '';
   const full = fullCommand == null ? '' : String(fullCommand);
-  const lang = CMD_LANGUAGES[String(tool || '').toLowerCase()];
-  const body = (text) => (lang
-    ? `<pre class="agent-thread-cmd"><code class="language-${lang}">${esc(text)}</code></pre>`
-    : `<pre class="agent-thread-cmd">${esc(text)}</pre>`);
+  const mapped = CMD_LANGUAGES[String(tool || '').toLowerCase()];
+  const body = (text) => {
+    const pretty = prettyJson(text);
+    const lang = pretty ? 'json' : mapped;
+    const shownText = pretty || text;
+    return lang
+      ? `<pre class="agent-thread-cmd"><code class="language-${lang}">${esc(shownText)}</code></pre>`
+      : `<pre class="agent-thread-cmd">${esc(shownText)}</pre>`;
+  };
   const block = '<div class="agent-thread-cmd-block">' + body(shown) + COPY_BUTTON + '</div>';
   if (!full || full === shown) return block;
   return block
@@ -390,7 +567,106 @@ export function agentThreadNodeHtml(o) {
     + tail
     + '</div>'
     + todo
-    + `<div class="agent-thread-content">${cmd}${o.output || ''}${diff}</div>`;
+    + '<div class="agent-thread-content">'
+    + `<div class="agent-thread-content-inner">${cmd}${o.output || ''}${diff}</div>`
+    + '</div>';
+}
+
+/**
+ * `P5-02`. Where a caller appends something to an open card.
+ *
+ * The fold animates on `grid-template-rows: 0fr -> 1fr`, and that only works
+ * with **one** grid item: a second child lands in an implicit `auto` row and
+ * stays visible while the card is shut. So `.agent-thread-content` now holds a
+ * single wrapper, and anything added after the card was built goes inside it.
+ *
+ * Three callers in `chat.js` append here — the screenshot pane, the image
+ * progress row and the browser-step block — and all three found the box with
+ * `querySelector('.agent-thread-content')`. Pointing them at a helper rather
+ * than at a second class name means the next one cannot get it wrong, and the
+ * fallback covers a card built by an older cached module (the buster contract
+ * makes that unlikely, not impossible).
+ */
+export function agentThreadContent(node) {
+  if (!node || typeof node.querySelector !== 'function') return null;
+  return node.querySelector('.agent-thread-content-inner')
+    || node.querySelector('.agent-thread-content');
+}
+
+/**
+ * `P5-08`. Open or shut every card in one thread.
+ *
+ * A nine-tool round is nine folds, and reading what the agent actually did
+ * meant nine clicks — then nine more to put it back. The control says
+ * "Expand all" and "Collapse all" in words rather than drawing a symbol,
+ * because a glyph here is a thing somebody has to be taught (`Law 15`), and
+ * the words also tell a first-time reader that these cards open at all, which
+ * the collapsed chevron on its own does not.
+ *
+ * It is drawn by one function called from one observer rather than by the
+ * three places that build an `.agent-thread` (live, history replay, compare),
+ * because three copies of a control is how this file came to need `P4-01`.
+ * Threads of a single card do not get one: "expand all" over one thing is
+ * noise, and the chevron beside it already does the job.
+ */
+export const EXPAND_ALL_LABEL = 'Expand all';
+export const COLLAPSE_ALL_LABEL = 'Collapse all';
+
+/** True when every card in `thread` is open (and there is at least one). */
+export function threadIsAllOpen(thread) {
+  if (!thread || typeof thread.querySelectorAll !== 'function') return false;
+  const nodes = [...thread.querySelectorAll('.agent-thread-node')];
+  return nodes.length > 0 && nodes.every((n) => n.classList.contains('open'));
+}
+
+/** Put the control's label in step with what the thread is actually showing.
+ *  A button reading "Expand all" over an already-open thread is the `Law 15`
+ *  failure this whole row is about, one level up. */
+export function syncThreadToggleAll(thread) {
+  const btn = thread && typeof thread.querySelector === 'function'
+    ? thread.querySelector('.agent-thread-expand-all') : null;
+  if (!btn) return null;
+  const allOpen = threadIsAllOpen(thread);
+  btn.textContent = allOpen ? COLLAPSE_ALL_LABEL : EXPAND_ALL_LABEL;
+  btn.setAttribute('aria-expanded', allOpen ? 'true' : 'false');
+  return btn;
+}
+
+/** Add the control to `thread` when it has earned one, and keep it current. */
+export function ensureThreadToggleAll(thread) {
+  if (!thread || typeof thread.querySelectorAll !== 'function') return null;
+  const count = thread.querySelectorAll('.agent-thread-node').length;
+  let bar = thread.querySelector('.agent-thread-toolbar');
+  if (count < 2) {
+    if (bar && bar.remove) bar.remove();
+    return null;
+  }
+  if (!bar) {
+    const doc = thread.ownerDocument || (typeof document !== 'undefined' ? document : null);
+    if (!doc) return null;
+    bar = doc.createElement('div');
+    bar.className = 'agent-thread-toolbar';
+    const btn = doc.createElement('button');
+    btn.type = 'button';
+    btn.className = 'agent-thread-expand-all';
+    btn.textContent = EXPAND_ALL_LABEL;
+    btn.setAttribute('aria-expanded', 'false');
+    bar.appendChild(btn);
+    thread.insertBefore(bar, thread.firstChild);
+  }
+  syncThreadToggleAll(thread);
+  return bar;
+}
+
+/** Open or shut every card in `thread`; returns what it did. */
+export function toggleThreadAll(thread) {
+  if (!thread || typeof thread.querySelectorAll !== 'function') return null;
+  const open = !threadIsAllOpen(thread);
+  thread.querySelectorAll('.agent-thread-node').forEach((n) => {
+    n.classList.toggle('open', open);
+  });
+  syncThreadToggleAll(thread);
+  return open ? 'expanded' : 'collapsed';
 }
 
 /** Set both the className and the markup, so a caller cannot drift on one.
@@ -418,7 +694,10 @@ export function applyAgentThreadNode(node, o) {
   return node;
 }
 
-export default { agentThreadNodeHtml, applyAgentThreadNode, toolLabel, toolIcon,
+export default { agentThreadNodeHtml, applyAgentThreadNode, agentThreadContent,
+                 ensureThreadToggleAll, toggleThreadAll, syncThreadToggleAll,
+                 threadIsAllOpen, prettyJson,
+                 toolLabel, toolIcon,
                  nodeClassName, roundBadgeHtml, approvedBadgeHtml,
                  commandBlockHtml, highlightCommandBlocks, verifierCardOptions,
                  blockedCardOptions, toolOutputPanesHtml,

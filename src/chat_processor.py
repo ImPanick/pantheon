@@ -225,7 +225,15 @@ class ChatProcessor:
                     # pointed the other way.
                     self._last_used_memories.append({
                         "text": m["text"], "category": m.get("category", "fact"),
-                        "type": "pinned", "engine": retrieval_engine.PINNED})
+                        "type": "pinned", "engine": retrieval_engine.PINNED,
+                        # `P13-01`/`P13-10`. The trace already says WHICH
+                        # memories changed the answer and by which engine; the
+                        # one field it never had is how sure anything was that
+                        # they are true. `None` where nobody recorded one,
+                        # never a default — a pill reading "80%" over a memory
+                        # that was never assessed is the exact failure the
+                        # phase preamble cites from PandAtlas.
+                        "confidence": m.get("confidence")})
                     if m.get("id"):
                         _used_ids.append(m["id"])
 
@@ -260,7 +268,8 @@ class ChatProcessor:
                                        else retrieval_engine.KEYWORD)
                         self._last_used_memories.append({
                             "text": m["text"], "category": m.get("category", "fact"),
-                            "type": "recalled", "engine": _engine})
+                            "type": "recalled", "engine": _engine,
+                            "confidence": m.get("confidence")})
                         if m.get("id"):
                             _used_ids.append(m["id"])
 

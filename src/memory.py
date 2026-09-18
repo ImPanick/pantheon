@@ -10,6 +10,13 @@ from typing import List, Dict, Tuple
 from datetime import datetime
 
 from src import memory_retrieval
+# `P13-02`'s edge vocabulary is NOT imported here, and not re-exported either.
+# It lives in `src/memory_edges.py` — which imports nothing from the project —
+# because retrieval is where the relations have to be honoured and this file
+# already imports retrieval. Re-exporting the names through here would give
+# them two import paths for no caller, which is how a second vocabulary starts
+# (`Law 13`, `Law 14`). `edges` appears below only as a field this file
+# defaults, the same way `mentions` is.
 
 logger = logging.getLogger(__name__)
 
@@ -121,8 +128,86 @@ def get_text_similarity(text1: str, text2: str) -> float:
         
     intersection = tokens1.intersection(tokens2)
     union = tokens1.union(tokens2)
-    
+
     return len(intersection) / len(union)
+
+
+# ── Confidence ────────────────────────────────────────────────────────────────
+
+def normalise_confidence(value, default=None):
+    """A memory's 0..1 confidence, or `default` when there is no usable number.
+
+    `P13-01`. This is the extractor's **self-report at the moment of
+    extraction**, and it does not move on its own afterwards. What moves on its
+    own is corroboration — `mentions` and `mention_sessions` (`P13-15`) — and
+    keeping the two apart is the entire point of having both. PandAtlas ships
+    the merged version and it reads `CONFIDENCE 66%` beside `1 mentions`:
+    two-thirds certainty from a single unconfirmed statement, which *looks*
+    like evidence and is not.
+
+    `None` means **not recorded**, and it is the honest answer for every memory
+    written before this row existed. That is the same call `P13-15` made for
+    `mentions` ("legacy memories read zero, not one") for the same reason: a
+    number invented for a record that never had one makes an old memory look
+    freshly assessed.
+
+    Clamped rather than rejected, because a model asked for 0..1 will
+    occasionally answer 1.5 and the useful reading of that is "very sure", not
+    "unparseable".
+    """
+    if value is None or isinstance(value, bool):
+        return default
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    if number != number:  # NaN — float("nan") parses and then poisons any compare
+        return default
+    return round(min(max(number, 0.0), 1.0), 3)
+
+
+# ── Provenance ────────────────────────────────────────────────────────────────
+
+# The user's own words are copied onto the record, so they are bounded. Long
+# enough to be recognisable, short enough that the store does not become a
+# second transcript.
+PROVENANCE_QUOTE_LIMIT = 240
+
+
+def new_provenance(producer: str, message_index: int = None, quote: str = None) -> Dict:
+    """Where a memory came from. `P13-03`.
+
+    Three fields, and what is **not** here matters as much as what is:
+
+    * `producer` — the code path that wrote this record. Not `source`, which
+      already exists and says *user* / *auto* / *ai_agent*: that is who, this
+      is which. `source="ai_agent"` cannot tell the MCP `memory_add` tool from
+      `ai_interaction` from a builtin action, and "which tool produced this" is
+      the row's own wording.
+    * `message_index` — which message in the session, `None` when the producer
+      genuinely cannot know. The background extractor is handed a flattened
+      six-message transcript and gets back sentences, so it can only know this
+      via `quote`; pretending otherwise would be a number that looks like a
+      record and is a guess.
+    * `quote` — the words this was drawn from, **verified against the
+      transcript by the caller**, never trusted. A model asked to cite its
+      source will invent one, and an invented citation is worse than none: it
+      is the one field a person would use to decide whether to believe the
+      memory.
+
+    **`session_id` is deliberately absent.** It is already on the record, and
+    `/api/memory/by-session` and the timeline read it there. A second copy
+    inside `provenance` is two places to change one fact, and the one that does
+    not get changed is the one somebody reads (`Law 7`).
+    """
+    row = {"producer": str(producer), "message_index": None, "quote": None}
+    if isinstance(message_index, int) and not isinstance(message_index, bool) \
+            and message_index >= 0:
+        row["message_index"] = message_index
+    if quote:
+        row["quote"] = str(quote).strip()[:PROVENANCE_QUOTE_LIMIT]
+    return row
+
 
 class MemoryManager:
     def __init__(self, data_dir: str):
@@ -316,6 +401,21 @@ class MemoryManager:
                 entry["mentions"] = 0
             if "mention_sessions" not in entry:
                 entry["mention_sessions"] = 0
+            # `P13-01` / `P13-02` / `P13-03`. All three default to "not
+            # recorded" rather than to a value. A memory written before any of
+            # these rows has no extractor self-report, no relations and no idea
+            # which message it came from, and the store is the wrong place to
+            # invent one — the same call `mentions` made two rows earlier.
+            # `edges` is the exception and defaults to `[]`, because "this
+            # memory has no relations" is a thing the store genuinely knows.
+            if "confidence" not in entry:
+                entry["confidence"] = None
+            else:
+                entry["confidence"] = normalise_confidence(entry["confidence"])
+            if "provenance" not in entry:
+                entry["provenance"] = None
+            if not isinstance(entry.get("edges"), list):
+                entry["edges"] = []
             validated.append(entry)
         return validated
     
@@ -365,8 +465,20 @@ class MemoryManager:
             json.dump(entries, f, ensure_ascii=False, indent=2)
         os.replace(tmp_file, self.memory_file)
     
-    def add_entry(self, text: str, source: str = "user", category: str = "fact", owner: str = None) -> Dict:
-        """Add a new memory entry."""
+    def add_entry(self, text: str, source: str = "user", category: str = "fact",
+                  owner: str = None, confidence=None, provenance: Dict = None) -> Dict:
+        """Add a new memory entry.
+
+        `confidence` (`P13-01`) is how sure the producer was, 0..1, or `None`
+        for a producer that does not report one — a person typing into the
+        Brain is not a 1.0, they are a source that was never asked.
+
+        `provenance` (`P13-03`) is which message and which producer this came
+        from. It deliberately does **not** carry `session_id`: that field
+        already exists on the record, `/api/memory/by-session` and the timeline
+        read it there, and copying it inside would be two places to change one
+        fact (`Law 7`).
+        """
         if not text.strip():
             raise ValueError("Memory text cannot be empty")
 
@@ -385,6 +497,12 @@ class MemoryManager:
             "mentions": 0,
             "mention_sessions": 0,
             "first_mentioned": int(time.time()),
+            # `P13-01` / `P13-02` / `P13-03`, initialised here for the same
+            # reason `mentions` is: a caller reading the returned dict should
+            # not have to know that `load` backfills them.
+            "confidence": normalise_confidence(confidence),
+            "provenance": provenance if isinstance(provenance, dict) else None,
+            "edges": [],
         }
         if owner:
             entry["owner"] = owner

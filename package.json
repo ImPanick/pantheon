@@ -6,6 +6,6 @@
     "url": "https://github.com/ImPanick/pantheon.git"
   },
   "devDependencies": {
-    "@antithesishq/bombadil": "^0.6.1"
+    "@antithesishq/bombadil": "^0.7.6"
   }
 }

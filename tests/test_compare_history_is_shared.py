@@ -42,14 +42,21 @@ def _js_fn(source, header):
 
 
 class _Row:
-    """A `Comparison` as `_history_row` sees it."""
-    def __init__(self, blind_mapping=None, model_a="a", model_b="b"):
+    """A `Comparison` as `_history_row` sees it.
+
+    `P13-12` gave the vote payload its own column. `vote_meta` is what the
+    reader reads; `blind_mapping` is left here because a row can still carry
+    one (the full comparison flow writes a real left/right mapping) and the
+    reader must not go looking in it.
+    """
+    def __init__(self, vote_meta=None, model_a="a", model_b="b", blind_mapping=None):
         self.id = "cmp-1"
         self.prompt = "p" * 300
         self.model_a, self.model_b = model_a, model_b
         self.winner, self.is_blind = "a", True
         self.voted_at = self.created_at = None
         self.blind_mapping = blind_mapping
+        self.vote_meta = vote_meta
 
 
 @pytest.fixture
@@ -62,7 +69,7 @@ def history_row():
 
 def test_a_new_vote_round_trips_models_costs_and_mode(history_row):
     blob = json.dumps({"models": ["a", "b", "c"], "costs": [0.1, None, 0.3], "mode": "search"})
-    row = history_row(_Row(blind_mapping=blob))
+    row = history_row(_Row(vote_meta=blob))
     assert row["models"] == ["a", "b", "c"]
     assert row["costs"] == [0.1, None, 0.3]
     assert row["mode"] == "search"
@@ -72,7 +79,7 @@ def test_a_two_model_vote_reads_back_like_a_three_model_one(history_row):
     """Before `H12` the blob was only written for N>2, so a two-model vote and
     a three-model vote read back in different shapes from the same endpoint."""
     blob = json.dumps({"models": ["a", "b"], "costs": [0.1, 0.2], "mode": "chat"})
-    row = history_row(_Row(blind_mapping=blob))
+    row = history_row(_Row(vote_meta=blob))
     assert row["models"] == ["a", "b"]
     assert row["costs"] == [0.1, 0.2]
 
@@ -81,15 +88,41 @@ def test_a_two_model_vote_reads_back_like_a_three_model_one(history_row):
     (None, ["a", "b"]),
     ('{"models": ["a", "b", "c"]}', ["a", "b", "c"]),
     ('not json at all', ["a", "b"]),
-    ('{"left": "a", "right": "b"}', ["a", "b"]),
     ('[1, 2, 3]', ["a", "b"]),
-], ids=["legacy-n2", "legacy-n3", "corrupt", "a-real-blind-mapping", "not-an-object"])
+], ids=["legacy-n2", "legacy-n3", "corrupt", "not-an-object"])
 def test_every_older_row_still_yields_usable_models(history_row, blob, expected):
     """This history is about to become the source of truth, so every vote
-    already in the table has to survive the change. `{"left": ...}` is the
-    shape the FULL comparison flow writes into the same column — a different
-    writer, a different meaning, and it must not be mistaken for a vote blob."""
-    assert history_row(_Row(blind_mapping=blob))["models"] == expected
+    already in the table has to survive the change."""
+    assert history_row(_Row(vote_meta=blob))["models"] == expected
+
+
+def test_a_real_blind_mapping_is_not_read_as_a_vote_payload(history_row):
+    """`P13-12`. The other writer's column, which is a different fact.
+
+    `POST /api/compare/start` writes `{"left": ..., "right": ...}` into
+    `blind_mapping`, and for a while the vote payload lived there too, so
+    `_history_row` had to tell them apart by which keys were present. It reads
+    `vote_meta` now and must not fall back to the other column when that is
+    empty: a row with a genuine blind mapping and no vote payload reports the
+    two model columns, which is all it knows.
+    """
+    row = history_row(_Row(blind_mapping='{"left": "b", "right": "a"}'))
+    assert row["models"] == ["a", "b"]
+    assert row["costs"] is None and row["mode"] is None
+
+
+def test_a_row_written_before_the_migration_reads_its_models_from_the_columns(history_row):
+    """An install whose `init_db` has not run yet still answers, with less.
+
+    The vote payload for such a row is in `blind_mapping`, and this reader no
+    longer looks there — deliberately, because looking in two columns for one
+    fact is what `P13-12` removed. What carries a three-model vote across is
+    `_migrate_add_comparison_vote_meta_column`, proved on a database built
+    without the column in `tests/test_comparison_vote_meta_migration.py`. Until
+    it runs, the row degrades to its two model columns rather than to nothing.
+    """
+    row = history_row(_Row(blind_mapping='{"models": ["a", "b", "c"]}'))
+    assert row["models"] == ["a", "b"]
 
 
 def test_the_existing_keys_are_untouched(history_row):
@@ -114,7 +147,7 @@ def test_what_the_writer_stores_is_what_the_reader_recovers():
         body = RecordVoteRequest(prompt="p", models=models, winner=models[0],
                                  costs=costs, mode=mode)
         stored = json.dumps(_vote_meta(body))
-        row = _history_row(_Row(blind_mapping=stored, model_a=models[0], model_b=models[1]))
+        row = _history_row(_Row(vote_meta=stored, model_a=models[0], model_b=models[1]))
         assert row["models"] == models
         assert row["costs"] == costs
         assert row["mode"] == mode
@@ -146,9 +179,13 @@ def test_the_route_actually_stores_the_meta_it_computes(monkeypatch):
         prompt="p", models=["a", "b"], winner="a", costs=[0.1, 0.2], mode="chat"))
 
     assert len(saved) == 1
-    blob = json.loads(saved[0].blind_mapping)
+    blob = json.loads(saved[0].vote_meta)
     assert blob == {"models": ["a", "b"], "costs": [0.1, 0.2], "mode": "chat"}, \
         "a two-model vote must store its costs and mode like any other"
+    # `P13-12`. And it does NOT put it in the column that means something else.
+    assert saved[0].blind_mapping is None, (
+        "a vote recorded through /record hid nothing behind a side, so there is "
+        "no blind mapping to write — writing one invents a fact to fill a field")
     assert saved[0].owner == "bob"
 
 

@@ -48,6 +48,19 @@ export async function loadMarkdown() {
     /import \{[^}]*\} from ['"]\.\/icons\.js['"];/,
     () => icons,
   );
+  // `P5-06`. The code block's header draws its language glyph with
+  // `langIcons.js` — the module `document.js` and `documentLibrary.js` already
+  // imported and chat never did. Same treatment and the same reason as the
+  // icon table above: a relative specifier cannot resolve from a `data:` URL,
+  // and a stub would hand this test a glyph nobody ships. `export default` is
+  // stripped because two of them in one module is a syntax error.
+  const langIcons = fs
+    .readFileSync(path.join(REPO, 'static/js/langIcons.js'), 'utf8')
+    .replace(/^export default .*$/m, '');
+  src = src.replace(
+    /import \{[^}]*\} from ['"]\.\/langIcons\.js['"];/,
+    () => langIcons,
+  );
   const emoji = fs
     .readFileSync(path.join(REPO, 'static/js/emojiShortcodes.js'), 'utf8')
     .replace(/^export default .*$/m, '')
