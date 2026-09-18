@@ -13,7 +13,17 @@ import re
 from pathlib import Path
 
 from core.atomic_io import atomic_write_json, atomic_write_text
-from core.auth import AuthManager, RESERVED_USERNAMES, SetAdminResult, TOKEN_TTL
+from core.auth import (
+    AuthManager, DEFAULT_PRIVILEGES, RESERVED_USERNAMES, SetAdminResult, TOKEN_TTL,
+)
+from core.middleware import require_admin
+from src.events import record_auth_event
+# Imported under its own name, never aliased. An aliased auth call is
+# invisible to `.pantheon/check-auth-map.py`'s call-graph closure — which
+# is the exact defect that hid five `require_admin` gates in
+# `webhook_routes.py` and made `P11-02b`'s count wrong in both directions.
+from src.auth_helpers import get_current_user
+from src.roles import RoleError, describe as describe_role
 from src.constants import DEEP_RESEARCH_DIR, MEMORY_FILE, PASSWORD_MIN_LENGTH, SKILLS_DIR
 from src.rate_limiter import RateLimiter
 from src.settings_scrub import scrub_settings
@@ -24,6 +34,7 @@ from src.settings import (
     save_features as _save_features,
     DEFAULT_SETTINGS,
     ENV_BACKED_FLAGS,
+    LIMIT_RANGES,
     RETIRED_SETTING_KEYS,
     without_retired_settings,
 )
@@ -85,6 +96,19 @@ class SetAdminRequest(BaseModel):
 
 class SetOpenRegistrationRequest(BaseModel):
     enabled: bool
+
+
+class DefineRoleRequest(BaseModel):
+    """A role body: the overrides, flat, keyed exactly as the registries key
+    them. Deliberately not split into `privileges` / `limits` on the wire — the
+    split is derived from which registry declares each key (`src/roles.py`), and
+    asking the caller to classify a key is asking them to get it wrong."""
+    overrides: dict = {}
+
+
+class SetUserRoleRequest(BaseModel):
+    """`role: null` takes the role away; there is no separate DELETE for it."""
+    role: Optional[str] = None
 
 SESSION_COOKIE = "pantheon_session"
 
@@ -159,6 +183,8 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
     async def first_run_setup(body: SetupRequest, request: Request):
         """Create initial admin account. Only works if no accounts exist."""
         if not _setup_limiter.check(request.client.host):
+            record_auth_event("setup", outcome="error",
+                              detail={"reason": "rate_limited"})
             raise HTTPException(429, "Too many requests — try again later")
         if auth_manager.is_configured:
             raise HTTPException(400, "Already configured")
@@ -170,17 +196,26 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             raise HTTPException(403, "Username is reserved")
         ok = await asyncio.to_thread(auth_manager.setup, body.username, body.password)
         if not ok:
+            record_auth_event("setup", subject=body.username, outcome="error",
+                              detail={"reason": "setup_failed"})
             raise HTTPException(500, "Setup failed")
+        record_auth_event("user_create", actor=body.username,
+                          subject=body.username,
+                          detail={"via": "setup", "is_admin": True})
         return {"ok": True, "message": "Admin account created"}
 
     @router.post("/signup")
     async def signup(body: SignupRequest, request: Request):
         """Create a new user account. Only works if signup is enabled by admin."""
         if not _signup_limiter.check(request.client.host):
+            record_auth_event("user_create", outcome="error",
+                              detail={"via": "signup", "reason": "rate_limited"})
             raise HTTPException(429, "Too many requests — try again later")
         if not auth_manager.is_configured:
             raise HTTPException(400, "Run setup first")
         if not auth_manager.signup_enabled:
+            record_auth_event("user_create", subject=body.username, outcome="error",
+                              detail={"via": "signup", "reason": "signup_disabled"})
             raise HTTPException(403, "Registration is disabled. Ask an admin for an account.")
         if len(body.password) < PASSWORD_MIN_LENGTH:
             raise HTTPException(400, f"Password must be at least {PASSWORD_MIN_LENGTH} characters")
@@ -190,16 +225,28 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             raise HTTPException(403, "Username is reserved")
         ok = await asyncio.to_thread(auth_manager.create_user, body.username, body.password, is_admin=False)
         if not ok:
+            record_auth_event("user_create", subject=body.username, outcome="error",
+                              detail={"via": "signup", "reason": "username_taken"})
             raise HTTPException(409, "Username already taken")
+        record_auth_event("user_create", actor=body.username, subject=body.username,
+                          detail={"via": "signup", "is_admin": False})
         return {"ok": True, "message": "Account created"}
 
     @router.post("/login")
     async def login(body: LoginRequest, request: Request, response: Response):
         if not _login_limiter.check(request.client.host):
+            record_auth_event("login", actor=body.username, outcome="error",
+                              detail={"reason": "rate_limited"})
             raise HTTPException(429, "Too many requests — try again later")
         # Verify password first
         username = body.username.strip().lower()
         if not await asyncio.to_thread(auth_manager.verify_password, username, body.password):
+            # The reason is `invalid_credentials` whether the account exists or
+            # not, deliberately: the 401 above does not distinguish them and an
+            # audit row that does would be a username oracle for anyone who can
+            # read it, which on a shared instance is every admin.
+            record_auth_event("login", actor=username, outcome="error",
+                              detail={"reason": "invalid_credentials"})
             raise HTTPException(401, "Invalid credentials")
         # Check 2FA if enabled
         if auth_manager.totp_enabled(username):
@@ -207,10 +254,14 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
                 # Password OK but need TOTP — tell client to show code input
                 return {"ok": False, "requires_totp": True, "username": username}
             if not auth_manager.totp_verify(username, body.totp_code):
+                record_auth_event("login", actor=username, outcome="error",
+                                  detail={"reason": "invalid_totp"})
                 raise HTTPException(401, "Invalid 2FA code")
         # All checks passed — create session (password already verified above)
         token = await asyncio.to_thread(auth_manager.create_session_trusted, username)
         if not token:
+            record_auth_event("login", actor=username, outcome="error",
+                              detail={"reason": "session_refused"})
             raise HTTPException(401, "Invalid credentials")
         cookie_kwargs = dict(
             key=SESSION_COOKIE,
@@ -223,12 +274,17 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         if body.remember:
             cookie_kwargs["max_age"] = TOKEN_TTL
         response.set_cookie(**cookie_kwargs)
+        record_auth_event("login", actor=username,
+                          detail={"remember": bool(body.remember),
+                                  "totp": auth_manager.totp_enabled(username)})
         return {"ok": True, "username": username}
 
     @router.post("/logout")
     async def logout(request: Request, response: Response):
         token = request.cookies.get(SESSION_COOKIE)
         if token:
+            # Resolved before the revoke, or there is nobody to name.
+            record_auth_event("logout", actor=auth_manager.get_username_for_token(token))
             auth_manager.revoke_token(token)
         response.delete_cookie(SESSION_COOKIE, path="/")
         return {"ok": True}
@@ -349,7 +405,12 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             raise HTTPException(403, "Username is reserved")
         ok = auth_manager.create_user(body.username, body.password, body.is_admin)
         if not ok:
+            record_auth_event("user_create", actor=user, subject=body.username,
+                              outcome="error",
+                              detail={"via": "admin", "reason": "username_taken"})
             raise HTTPException(409, "Username already taken")
+        record_auth_event("user_create", actor=user, subject=body.username,
+                          detail={"via": "admin", "is_admin": bool(body.is_admin)})
         return {"ok": True}
 
     @router.put("/users/{username}/privileges")
@@ -360,8 +421,91 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         body = await request.json()
         ok = auth_manager.set_privileges(username, body)
         if not ok:
+            record_auth_event("privilege_change", actor=user, subject=username,
+                              outcome="error",
+                              detail={"reason": "not_found_or_admin"})
             raise HTTPException(404, "User not found or is admin")
+        # The keys the admin actually moved, and what to. `P11-08` asks for
+        # privilege grants specifically; a row saying only "privileges changed"
+        # cannot answer *which* grant let somebody do the thing they did.
+        record_auth_event(
+            "privilege_change", actor=user, subject=username,
+            detail={"set": {k: v for k, v in (body or {}).items() if v is not None},
+                    "cleared": sorted(k for k, v in (body or {}).items() if v is None)})
         return {"ok": True, "privileges": auth_manager.get_privileges(username)}
+
+    # ---- Roles (`P11-02`) ----
+    #
+    # These four are the caller `P11-02`'s role layer would otherwise not have.
+    # A resolution layer nothing can reach is `Law 13`'s unwired half, and
+    # "hand-edit auth.json and restart" is the failure `P11-11` was filed to
+    # stop. `P11-11` is the SCREEN for these; this is the API under it.
+    #
+    # They gate with `core.middleware.require_admin` rather than this module's
+    # inline `_get_current_user(...) + is_admin(...)` pattern, on purpose.
+    # Only `require_admin` consults `auth_disabled()` (`B543`,
+    # `.pantheon/P11-AUTH-MAP.md`), so the inline one refuses the single
+    # operator of an auth-disabled box access to their own role catalogue; and
+    # `check-auth-map.py`'s rule C ratchets the count of admin decisions taken
+    # some other way, which may fall and may not rise. Both reasons point the
+    # same way.
+
+    @router.get("/roles")
+    async def list_roles(request: Request):
+        """Every defined role, split into its privilege and limit halves."""
+        require_admin(request)
+        return {"roles": auth_manager.list_roles(),
+                "privilege_keys": sorted(DEFAULT_PRIVILEGES),
+                "limit_keys": sorted(LIMIT_RANGES)}
+
+    @router.put("/roles/{name}")
+    async def upsert_role(name: str, body: DefineRoleRequest, request: Request):
+        """Create or replace one role. Admin only."""
+        require_admin(request)
+        actor = get_current_user(request)
+        try:
+            stored = auth_manager.define_role(name, body.overrides)
+        except RoleError as exc:
+            record_auth_event("role_define", actor=actor, subject=name,
+                              outcome="error", detail={"reason": str(exc)})
+            raise HTTPException(400, str(exc))
+        record_auth_event("role_define", actor=actor, subject=stored,
+                          detail={"overrides": dict(body.overrides or {})})
+        return {"ok": True, "role": describe_role(stored, auth_manager.roles.get(stored))}
+
+    @router.delete("/roles/{name}")
+    async def remove_role(name: str, request: Request):
+        """Delete a role and take it off every user holding it. Admin only."""
+        require_admin(request)
+        actor = get_current_user(request)
+        if not auth_manager.delete_role(name):
+            record_auth_event("role_delete", actor=actor, subject=name,
+                              outcome="error", detail={"reason": "not_found"})
+            raise HTTPException(404, "No such role")
+        record_auth_event("role_delete", actor=actor, subject=name)
+        return {"ok": True}
+
+    @router.put("/users/{username}/role")
+    async def set_user_role(username: str, body: SetUserRoleRequest, request: Request):
+        """Assign a role to a user, or clear it with `role: null`. Admin only."""
+        require_admin(request)
+        actor = get_current_user(request)
+        try:
+            ok = auth_manager.set_user_role(username, body.role)
+        except RoleError as exc:
+            record_auth_event("role_change", actor=actor, subject=username,
+                              outcome="error", detail={"reason": str(exc)})
+            raise HTTPException(400, str(exc))
+        if not ok:
+            record_auth_event("role_change", actor=actor, subject=username,
+                              outcome="error", detail={"reason": "user_not_found"})
+            raise HTTPException(404, "User not found")
+        record_auth_event("role_change", actor=actor, subject=username,
+                          detail={"role": body.role})
+        return {"ok": True, "username": (username or "").strip().lower(),
+                "role": auth_manager.get_role(username),
+                "privileges": auth_manager.get_privileges(
+                    (username or "").strip().lower())}
 
     @router.put("/users/{username}/rename")
     async def rename_user(username: str, body: RenameUserRequest, request: Request):
@@ -650,12 +794,19 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         if not user or not auth_manager.is_admin(user):
             raise HTTPException(403, "Admin only")
         result = auth_manager.set_admin(username, body.is_admin, user)
+        if result is not SetAdminResult.OK:
+            record_auth_event("admin_change", actor=user, subject=username,
+                              outcome="error",
+                              detail={"is_admin": bool(body.is_admin),
+                                      "reason": result.value})
         if result is SetAdminResult.USER_NOT_FOUND:
             raise HTTPException(404, "User not found")
         if result is SetAdminResult.NOT_AUTHORIZED:
             raise HTTPException(403, "Admin only")
         if result is SetAdminResult.LAST_ADMIN:
             raise HTTPException(400, "Cannot demote the last admin")
+        record_auth_event("admin_change", actor=user, subject=username,
+                          detail={"is_admin": bool(body.is_admin)})
         target = (username or "").strip().lower()
         return {
             "ok": True,
@@ -711,7 +862,10 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             _invalidate_api_token_cache()
             raise
         if not ok:
+            record_auth_event("user_delete", actor=user, subject=body.username,
+                              outcome="error", detail={"reason": "refused"})
             raise HTTPException(400, "Cannot delete user")
+        record_auth_event("user_delete", actor=user, subject=body.username)
         # delete_user removes the user's ApiToken rows, but the bearer-auth
         # middleware serves from an in-memory prefix->token cache that only
         # rebuilds when flagged dirty. Without this, a deleted user's already
@@ -992,27 +1146,12 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         # are sanity rather than policy — a terabyte cap and a day-long throttle
         # window are past the point where the number is a decision rather than a
         # typo.
-        _GIB = 1024 ** 3
-        _NULLABLE_INT_RANGES = {
-            "gallery_upload_max_bytes": (1, 1024 * _GIB),
-            "gallery_transform_upload_max_bytes": (1, 1024 * _GIB),
-            "memory_import_max_bytes": (1, 1024 * _GIB),
-            "personal_upload_max_bytes": (1, 1024 * _GIB),
-            "email_compose_upload_max_bytes": (1, 1024 * _GIB),
-            "stt_max_audio_bytes": (1, 1024 * _GIB),
-            "ics_max_bytes": (1, 1024 * _GIB),
-            "chat_upload_max_bytes": (1, 1024 * _GIB),
-            "backup_import_max_bytes": (1, 1024 * _GIB),
-            "tts_cache_max_bytes": (1, 1024 * _GIB),
-            "auth_login_rate_limit": (1, 100_000),
-            "auth_login_rate_window_seconds": (1, 86_400),
-            "auth_signup_rate_limit": (1, 100_000),
-            "auth_signup_rate_window_seconds": (1, 86_400),
-            "auth_setup_rate_limit": (1, 100_000),
-            "auth_setup_rate_window_seconds": (1, 86_400),
-            "upload_rate_limit": (1, 100_000),
-            "upload_rate_window_seconds": (1, 86_400),
-        }
+        # `P11-02` moved the table to `src.settings.LIMIT_RANGES`: a role is a
+        # named set of overrides and has to refuse exactly the keys this route
+        # refuses, and two lists answering "which settings keys are limits" is
+        # the fork `Law 14` exists to stop. The name below is unchanged, so the
+        # validation under it reads as it did.
+        _NULLABLE_INT_RANGES = LIMIT_RANGES
         # Settings whose value must be a map of strings. `otlp_headers` given a
         # list is *ignored* by the exporter rather than refused, which is the
         # same defect as the enum above wearing different clothes: a 200, the

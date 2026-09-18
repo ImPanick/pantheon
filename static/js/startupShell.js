@@ -25,6 +25,28 @@ function _loader() {
   return document.getElementById(LOADER_ID);
 }
 
+/**
+ * Say what boot is doing, on the loader's stage line (`P10-07`).
+ *
+ * The element belongs to `index.html`'s inline bootstrap — the same script
+ * that owns the wave — so this goes through the callback it publishes rather
+ * than reaching for `#loader-stage` directly. One writer, one place to change
+ * it, and the module keeps working on a page that has no loader at all (the
+ * login page, a test harness, or simply after the node has been retired).
+ *
+ * Nothing here throws: a stage line is commentary, and commentary that can
+ * break the boot it is describing is worse than silence.
+ */
+export function reportBootStage(text) {
+  try {
+    if (typeof window !== 'undefined' && window.__pantheonLoaderStage) {
+      window.__pantheonLoaderStage(text);
+      return true;
+    }
+  } catch (_) {}
+  return false;
+}
+
 /** Run `fn` after the next paint has committed (two animation frames). */
 export function afterNextPaint(fn) {
   requestAnimationFrame(() => requestAnimationFrame(fn));
@@ -52,6 +74,7 @@ export function revealApplicationShellAfterPaint() {
   const loader = _loader();
   if (!loader || loader.dataset.shellRevealScheduled === 'true') return;
   loader.dataset.shellRevealScheduled = 'true';
+  reportBootStage('Interface ready');
   afterNextPaint(() => _makeLoaderInert(_loader()));
 }
 
@@ -121,8 +144,10 @@ export function runDeferredRouteOpener({ sessionsSettled = false } = {}) {
  *   the session module failed to load.
  */
 export function settleSessionHydration(loadSessions) {
+  reportBootStage('Loading your chats\u2026');
   const settle = (succeeded) => {
     if (!succeeded) {
+      reportBootStage('Chats unavailable');
       markSessionListUnavailableIfStillBootstrapping();
       // A later unrelated caller must not be able to release a stale startup
       // opener against unknown session state.

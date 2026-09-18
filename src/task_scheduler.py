@@ -18,6 +18,8 @@ from src.event_bus import (
     EVENT_RESEARCH_COMPLETED,
     EVENT_SESSION_CREATED,
     EVENT_SKILL_ADDED,
+    trigger_context_message as _trigger_context_message,
+    trigger_summary as _trigger_summary,
 )
 from src.owner_identity import REQUEST_SENTINEL_OWNERS
 from src.task_action_policy import (
@@ -72,6 +74,105 @@ TASK_CONCURRENCY_CAP_DEFAULT = 1
 # Upper bound. Each concurrent run holds a model slot on the inference backend,
 # so an unbounded value is a self-inflicted outage on a single-GPU host.
 TASK_CONCURRENCY_CAP_MAX = 16
+
+# ── `P8-26` · the graph document ────────────────────────────────────────────
+#
+# A workflow in this engine is one nullable column: `ScheduledTask.then_task_id`,
+# "run this next if the last one succeeded". That is a graph — a path — and
+# nothing in the product ever said so, so nothing could draw it, validate it or
+# extend it. `P8-34` wants to render one, `P8-27` wants runs on one and `P8-28`
+# wants a second edge out of a node.
+#
+# So this projects what already exists rather than storing a second copy of it
+# (`Law 14`): the successor IS the edge, read at request time, and there is no
+# new column, no migration and no way for a stored graph to disagree with the
+# stored chain. Everything that works today keeps working because nothing about
+# how a chain runs has moved.
+#
+# **The depth cap is the part nobody could see.** `_has_chain_cycle` walked ten
+# steps and returned "cycle" when it ran out, so an eleven-step chain was
+# refused under a name that describes a different thing entirely. It is a real
+# limit of this engine; it now has a name, a reason and a place on the wire.
+CHAIN_MAX_DEPTH = 10
+EDGE_WHEN_SUCCESS = "success"
+# `P8-28`. The second condition, and the first conditional this engine has ever
+# had that is not "did it work". `then_task_id` runs on success and
+# `else_task_id` runs on anything else, which is the whole branch: a workflow
+# could say what comes next and never what to do when the step failed, so a
+# failure ended the chain and the person found out from an Activity row.
+#
+# These are the RUN's own statuses and not a new set of words (`Law 14`):
+# `success` is `TaskRun.status == "success"` and `error` is the other terminal
+# outcome a finished run can carry here. `skipped`, `aborted` and a deferred
+# run do not reach the branch at all — they return before it, unchanged.
+EDGE_WHEN_ERROR = "error"
+EDGE_CONDITIONS = (EDGE_WHEN_SUCCESS, EDGE_WHEN_ERROR)
+# Which column carries which condition. One table, so the projection, the
+# engine and the validator cannot disagree about what `else` means.
+EDGE_COLUMNS = {
+    EDGE_WHEN_SUCCESS: "then_task_id",
+    EDGE_WHEN_ERROR: "else_task_id",
+}
+
+CHAIN_CYCLE = "cycle"
+CHAIN_TOO_DEEP = "too_deep"
+CHAIN_CROSS_OWNER = "cross_owner"
+# `Law 10`: the reason is an enum and the sentence is derived from it, so the
+# log line and the wire cannot describe the same refusal differently.
+CHAIN_REFUSAL_REASONS = {
+    CHAIN_CYCLE: "the chain loops back on itself",
+    CHAIN_TOO_DEEP: f"the chain is longer than {CHAIN_MAX_DEPTH} steps",
+    CHAIN_CROSS_OWNER: "the chain reaches another owner's task",
+}
+
+
+def task_edges(task) -> list:
+    """The edges leaving one task, in `EDGE_CONDITIONS` order.
+
+    Derived entirely from the two successor columns — there is no second place
+    an edge can be stored, which is the whole point of projecting rather than
+    storing a graph. Zero, one or two entries.
+    """
+    edges = []
+    for when in EDGE_CONDITIONS:
+        successor = getattr(task, EDGE_COLUMNS[when], None)
+        if successor:
+            edges.append({"from": task.id, "to": successor, "when": when})
+    return edges
+
+
+def build_task_graph(tasks) -> dict:
+    """Nodes, edges and the limits, for a set of tasks the caller already has.
+
+    Takes the rows rather than a session, so the one place that lists tasks can
+    hand its own query in and there is no second query returning a different
+    set (`Law 7`). An edge pointing outside the set is kept and marked
+    `dangling` — a chain to a task the caller cannot see is a real fact about
+    the workflow, and dropping it would draw a graph that ends for no reason.
+    """
+    nodes = []
+    edges = []
+    known = set()
+    for task in tasks:
+        known.add(task.id)
+        nodes.append({
+            "id": task.id,
+            "name": getattr(task, "name", None),
+            "task_type": getattr(task, "task_type", None) or "llm",
+            "action": getattr(task, "action", None),
+            "status": getattr(task, "status", None),
+        })
+    for task in tasks:
+        for edge in task_edges(task):
+            edge = dict(edge)
+            edge["dangling"] = edge["to"] not in known
+            edges.append(edge)
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "conditions": list(EDGE_CONDITIONS),
+        "max_depth": CHAIN_MAX_DEPTH,
+    }
 
 
 # `P12-01` removed two private helpers from this module and nothing else moved:
@@ -680,6 +781,24 @@ class TaskScheduler:
         self._slot_permits = self._concurrency_cap
         self._slot_drain = None
         self._task_handles = {}
+        # `P8-27` / `B603`. Per-run state, keyed by run.
+        #
+        # `_last_run_model` and `_last_run_steps` were single instance
+        # attributes, so which model a run resolved and what it did were
+        # recorded in one slot shared by every run on this scheduler. That is
+        # sound at `TASK_CONCURRENCY_CAP_DEFAULT`, which is 1. It is an operator
+        # setting with a ceiling of 16, and at any value above one two runs
+        # write the same slot between the executor returning and the row being
+        # committed: run A gets stamped with run B's model and B's step log.
+        # Nothing in the tree measured it, so the only symptom was a run history
+        # that occasionally described the wrong run.
+        #
+        # A dict and not a lock, because the state is not contended — it is
+        # simply mis-addressed. `run_id` is the address. `None` is a legitimate
+        # key for a call made outside `_execute_task_locked` (the agent loop
+        # driven directly by a test, a future node runner with no row yet), so
+        # that case records somewhere real instead of into the previous run.
+        self._run_state = {}
 
     def _refresh_concurrency_cap(self) -> int:
         """Re-resolve the cap and make the new number the one that governs.
@@ -778,19 +897,69 @@ class TaskScheduler:
     _MAX_RUN_STEPS = 200
     _MAX_STEP_DETAIL = 400
 
-    def _record_run_step(self, **fields):
-        """Append one step to the run currently executing on this scheduler.
+    # `P8-27`. Every accessor below takes the run's id. There is no
+    # "the current run" on a scheduler that can hold sixteen of them.
 
-        Carried on the instance, in the same shape and for the same reason as
-        `_last_run_model`, which the run's resolved model already rides on —
-        one place the executors write and `_execute_task_locked` reads
-        (`Law 14`). `B603` records what that shape costs above a concurrency
-        cap of one, which it also already cost `_last_run_model`.
+    def _runs(self) -> dict:
+        """The slot table, created on demand.
+
+        `__init__` makes it; this exists because a scheduler built with
+        `__new__` and hand-set attributes is how several tests drive one
+        executor without a whole engine, and the two attributes this replaces
+        were read through `getattr(..., None)` for exactly that reason.
         """
-        steps = getattr(self, "_last_run_steps", None)
-        if steps is None:
-            steps = []
-            self._last_run_steps = steps
+        state = getattr(self, "_run_state", None)
+        if state is None:
+            state = {}
+            self._run_state = state
+        return state
+
+    def _state_for(self, run_id):
+        """This run's slot, created on first write."""
+        runs = self._runs()
+        state = runs.get(run_id)
+        if state is None:
+            state = {"model": None, "steps": [], "trigger": None}
+            runs[run_id] = state
+        return state
+
+    def _clear_run_state(self, run_id) -> None:
+        """Drop a finished run's slot. Called on every exit from a run."""
+        self._runs().pop(run_id, None)
+
+    def run_steps(self, run_id) -> list:
+        """This run's step log so far. Empty for a run that recorded none."""
+        state = self._runs().get(run_id)
+        return list(state["steps"]) if state else []
+
+    def run_model(self, run_id):
+        """The model this run actually resolved on, once an executor says."""
+        state = self._runs().get(run_id)
+        return state["model"] if state else None
+
+    def run_trigger(self, run_id):
+        """What fired this run — the `P8-23` envelope, or `None` for a schedule.
+
+        On the run's slot rather than threaded through four signatures, because
+        a trigger payload is a fact about the run and `P8-27` just gave a run
+        somewhere to keep its facts.
+        """
+        state = self._runs().get(run_id)
+        return state["trigger"] if state else None
+
+    def set_run_model(self, run_id, model) -> None:
+        self._state_for(run_id)["model"] = model
+
+    def _record_run_step(self, run_id, **fields):
+        """Append one step to a run's log.
+
+        `P8-25` put this on the instance beside `_last_run_model`, in the same
+        shape and for the same reason — one place the executors write and
+        `_execute_task_locked` reads (`Law 14`). `B603` recorded what that shape
+        cost above a concurrency cap of one. `P8-27` keys it by run, which is
+        the same one place, correctly addressed.
+        """
+        steps = self._state_for(run_id)["steps"]
         if len(steps) >= self._MAX_RUN_STEPS:
             return None
         for key in ("detail", "output"):
@@ -801,26 +970,111 @@ class TaskScheduler:
         steps.append(fields)
         return fields
 
-    def _close_run_step(self, *, tool, round_, status, output):
+    def _close_run_step(self, run_id, *, tool, round_, status, output):
         """Finish the most recent open step for this tool and round.
 
         A `tool_output` with no matching `tool_start` still records: the point
         of the log is what happened, and a tool whose start event was missed is
         exactly the case somebody opens it to understand.
         """
-        for step in reversed(getattr(self, "_last_run_steps", None) or []):
+        state = self._runs().get(run_id)
+        for step in reversed(state["steps"] if state else []):
             if (step.get("kind") == "tool" and step.get("status") == "running"
                     and step.get("tool") == tool and step.get("round") == round_):
                 step["status"] = status
                 if output:
                     step["output"] = output[: self._MAX_STEP_DETAIL]
                 return
-        self._record_run_step(kind="tool", tool=tool or "?", round=round_,
+        self._record_run_step(run_id, kind="tool", tool=tool or "?", round=round_,
                               status=status, output=output or "")
 
-    def _attach_run_steps(self, run) -> None:
+    def _advance_chain(self, db, task, run_status: str, run_id: str) -> None:
+        """Follow the edge this run's outcome matches, if there is one.
+
+        `P8-28`. The engine's only conditional was `status == "success"` and it
+        was written inline, so a workflow could say what comes next and never
+        what to do when the step failed: the failure ended the chain, and the
+        only trace was an Activity row. The branch is `EDGE_COLUMNS` — one
+        table naming which column carries which condition — so the projection
+        (`task_edges`), the engine and the route validator cannot disagree
+        about what `else` means.
+
+        Success behaves exactly as it did. What is new is that `error` now has
+        an edge it can take, and that the decision is one function called from
+        both the ordinary path and the exception path — an LLM task that RAISED
+        used to leave the chain untouched while an action that RETURNED a
+        failure would at least have been considered, which is the same workflow
+        behaving two ways depending on how the failure was expressed.
+        """
+        from core.database import ScheduledTask
+
+        when = run_status if run_status in EDGE_CONDITIONS else None
+        chain_id = getattr(task, EDGE_COLUMNS[when], None) if when else None
+        if not chain_id:
+            return
+        chain_task = db.query(ScheduledTask).filter(
+            ScheduledTask.id == chain_id).first()
+        if not chain_task or chain_task.owner != task.owner:
+            logger.warning(
+                "Skipping chain from %r: target task %s is missing or not owned by %r",
+                task.name, chain_id, task.owner,
+            )
+            self._record_chain_outcome(
+                db, run_id,
+                f"Did not continue to the next task: {chain_id} is missing "
+                f"or belongs to somebody else")
+            return
+        refusal = self._chain_refusal(db, chain_id, owner=task.owner)
+        label = chain_task.name or chain_id
+        lead = "Continued to" if when == EDGE_WHEN_SUCCESS else "Failed, so continued to"
+        if refusal is None:
+            logger.info("Chaining on %s: %r → task %s", when, task.name, chain_id)
+            self._record_chain_outcome(db, run_id, f"{lead} {label}")
+            asyncio.create_task(self._run_chained(chain_id))
+            return
+        # `P8-26`. This said "cycle detected" for all three reasons, including
+        # a chain that is simply longer than `CHAIN_MAX_DEPTH` and has no cycle
+        # in it.
+        logger.warning("Skipping chain from %r: %s",
+                       task.name, CHAIN_REFUSAL_REASONS[refusal])
+        # `P8-26` / `Law 15`. The depth cap is a real limit of this engine and
+        # the ONLY trace of it was a server log line naming the wrong cause.
+        # Whoever built the workflow is not reading the log; they are looking at
+        # a chain that stopped at step ten for no stated reason. It is in the
+        # run's own step log now, in the words the enum resolves to, so the two
+        # cannot drift apart.
+        self._record_chain_outcome(
+            db, run_id,
+            f"Did not continue to {label}: {CHAIN_REFUSAL_REASONS[refusal]}")
+
+    def _record_chain_outcome(self, db, run_id, detail: str) -> None:
+        """Append one step about what happened AFTER this run finished.
+
+        `P8-26`. The chain decision is taken after the run row has already been
+        written and committed, so a step recorded there would never reach the
+        row without this. It re-reads the run, re-attaches the log and commits
+        again — three cheap statements on a path that runs once per chained
+        task, against a line somebody needs in order to understand why their
+        workflow stopped.
+        """
+        from core.database import TaskRun
+
+        self._record_run_step(run_id, kind="progress", detail=detail)
+        try:
+            run = db.query(TaskRun).filter(TaskRun.id == run_id).first()
+            if run is not None:
+                self._attach_run_steps(run_id, run)
+                db.commit()
+        except Exception:
+            # The run itself is finished and committed; losing the last line of
+            # its log must not turn a successful run into an error.
+            logger.debug("Could not record the chain outcome for run %s",
+                         run_id, exc_info=True)
+
+    def _attach_run_steps(self, run_id, run) -> None:
         """Persist this run's step log onto its row, if anything recorded one."""
-        steps = getattr(self, "_last_run_steps", None)
+        state = self._runs().get(run_id)
+        steps = state["steps"] if state else None
         if run is None or not steps:
             return
         try:
@@ -1274,7 +1528,8 @@ class TaskScheduler:
                 raise
         await self._execute_task(task_id)
 
-    async def _execute_task(self, task_id: str, *, bypass_model_slot: bool = False, release_executing: bool = True):
+    async def _execute_task(self, task_id: str, *, bypass_model_slot: bool = False,
+                            release_executing: bool = True, trigger: dict | None = None):
         # Create the run record with status="queued" BEFORE waiting on the
         # semaphore so the UI can show that a manually-triggered task is in
         # line behind another. Once we acquire the slot, flip to "running"
@@ -1307,6 +1562,7 @@ class TaskScheduler:
                     run_id,
                     release_executing=release_executing,
                     gate_foreground=not bypass_model_slot,
+                    trigger=trigger,
                 )
                 return
 
@@ -1316,6 +1572,7 @@ class TaskScheduler:
                     run_id,
                     release_executing=release_executing,
                     gate_foreground=True,
+                    trigger=trigger,
                 )
         except asyncio.CancelledError:
             # If cancellation happens while queued behind the semaphore,
@@ -1360,6 +1617,7 @@ class TaskScheduler:
         *,
         release_executing: bool = True,
         gate_foreground: bool = True,
+        trigger: dict | None = None,
     ):
         from core.database import SessionLocal, ScheduledTask, TaskRun
 
@@ -1440,13 +1698,22 @@ class TaskScheduler:
 
             from src.builtin_actions import TaskDeferred, TaskNoop
 
-            # Cleared each run so an action task (no model) doesn't inherit a
-            # previous llm/research run's model. The executors set it once the
-            # model is resolved.
-            self._last_run_model = None
-            # `P8-25`. Cleared with the model, for the same reason: the step log
-            # belongs to this run and must not inherit the previous one's.
-            self._last_run_steps = None
+            # `P8-23`. What fired this run, recorded before anything it does —
+            # so the first line of the step log is the cause and the rest is the
+            # effect. The run's slot carries the envelope for the executors.
+            if trigger:
+                self._state_for(run_id)["trigger"] = trigger
+                self._record_run_step(
+                    run_id, kind="trigger",
+                    detail=_trigger_summary(trigger),
+                )
+            # `P8-27`. Nothing to clear: this run's slot is keyed by `run_id`
+            # and is created empty on first write. The two lines that used to be
+            # here reset a shared attribute so an action task would not inherit
+            # the previous llm/research run's model — which worked only because
+            # one run existed at a time. A run's slot is dropped in the `finally`
+            # below, so a scheduler that has been up for a week holds state for
+            # the runs in flight and no others.
             foreground_cancel = {"hit": False}
             foreground_monitor = None
             if gate_foreground:
@@ -1470,26 +1737,35 @@ class TaskScheduler:
                 foreground_monitor = asyncio.create_task(_cancel_if_foreground_active())
             try:
                 if task_type == "action":
-                    result, success = await self._execute_action(task, run_id=run_id)
-                    run.status = "success" if success else "error"
+                    node = await self._execute_action(task, run_id=run_id)
+                    # `P8-24`. `skipped` and `deferred` are raised here rather
+                    # than branched on, so the two handlers below stay the only
+                    # code that writes a no-op row or pushes `next_run` — one
+                    # vocabulary at the node boundary, one set of handlers
+                    # inside the scheduler (`Law 14`).
+                    signal = node.as_signal()
+                    if signal is not None:
+                        raise signal
+                    result = node.text
+                    run.status = "success" if node.ok else "error"
                     run.result = result
-                    if not success:
+                    if node.failed:
                         run.error = result
                 elif task_type == "research":
-                    result = await self._execute_research_task(task, db)
+                    result = await self._execute_research_task(task, db, run_id=run_id)
                     run.status = "success"
                     run.result = result
                 else:
                     # LLM task — use agent loop for tool access
-                    result = await self._execute_llm_task(task, db)
+                    result = await self._execute_llm_task(task, db, run_id=run_id)
                     run.status = "success"
                     run.result = result
                 # Record which model actually ran (resolved inside the executor).
-                if getattr(self, "_last_run_model", None):
-                    run.model = self._last_run_model
-                self._attach_run_steps(run)
+                if self.run_model(run_id):
+                    run.model = self.run_model(run_id)
+                self._attach_run_steps(run_id, run)
                 if run.status == "success":
-                    await self._deliver_task_result(task, result, db, model=getattr(self, "_last_run_model", None))
+                    await self._deliver_task_result(task, result, db, model=self.run_model(run_id))
             except TaskDeferred as defer:
                 count = self._task_defer_counts.get(task_id, 0) + 1
                 self._task_defer_counts[task_id] = count
@@ -1522,7 +1798,7 @@ class TaskScheduler:
                     run_obj.finished_at = _utcnow()
                     # An interrupted run is one of the two people most want the
                     # steps for; the other is the one that errored, below.
-                    self._attach_run_steps(run_obj)
+                    self._attach_run_steps(run_id, run_obj)
                 task.last_run = _utcnow()
                 if foreground_cancel.get("hit"):
                     task.next_run = _utcnow() + timedelta(minutes=15)
@@ -1555,7 +1831,7 @@ class TaskScheduler:
                 run.status = "skipped"
                 run.result = str(noop)
                 run.finished_at = _utcnow()
-                self._attach_run_steps(run)
+                self._attach_run_steps(run_id, run)
                 task.last_run = _utcnow()
                 if (task.trigger_type or "schedule") == "schedule":
                     task.next_run = compute_next_run(
@@ -1648,20 +1924,8 @@ class TaskScheduler:
             if run.status == "success":
                 self._log_to_assistant(db, task, run.result or "[success]")
 
-            # Task chaining — trigger the next task on success
-            if run.status == "success" and task.then_task_id:
-                chain_id = task.then_task_id
-                chain_task = db.query(ScheduledTask).filter(ScheduledTask.id == chain_id).first()
-                if not chain_task or chain_task.owner != task.owner:
-                    logger.warning(
-                        "Skipping chain from %r: target task %s is missing or not owned by %r",
-                        task.name, chain_id, task.owner,
-                    )
-                elif not self._has_chain_cycle(db, chain_id, owner=task.owner):
-                    logger.info(f"Chaining: '{task.name}' → task {chain_id}")
-                    asyncio.create_task(self._run_chained(chain_id))
-                else:
-                    logger.warning(f"Skipping chain from '{task.name}': cycle detected")
+            # `P8-28`. Take the edge whose condition this run's outcome met.
+            self._advance_chain(db, task, run.status, run_id)
 
         except Exception as exec_exc:
             logger.exception(f"Task {task_id} execution error")
@@ -1693,7 +1957,7 @@ class TaskScheduler:
                     run_obj.status = "error"
                     run_obj.error = err_text[:2000]
                     run_obj.finished_at = _utcnow()
-                    self._attach_run_steps(run_obj)
+                    self._attach_run_steps(run_id, run_obj)
                 # Advance next_run even on failure so a broken task doesn't
                 # busy-loop the scheduler every tick with a stale past date.
                 task_obj = db.query(ScheduledTask).filter(ScheduledTask.id == task_id).first()
@@ -1742,6 +2006,13 @@ class TaskScheduler:
                         )
                 try:
                     db.commit()
+                    # `P8-28`. The same branch the ordinary path takes. A task
+                    # that RAISED and a task that RETURNED a failure are the
+                    # same failure to whoever built the workflow, and before
+                    # this the first one silently skipped the branch.
+                    if (task_obj is not None and run_obj is not None
+                            and run_obj.status == "error"):
+                        self._advance_chain(db, task_obj, "error", run_id)
                 except Exception as commit_err:
                     # Commit failed — without a fallback the run row stays
                     # "running" forever AND next_run stays in the past, so the
@@ -1776,6 +2047,11 @@ class TaskScheduler:
                 logger.exception("Task %s error-path failed unexpectedly", task_id)
         finally:
             db.close()
+            # `P8-27`. The run is over on every path out of this function —
+            # success, no-op, defer, abort, error, and the early returns above
+            # that never reached an executor. Dropping the slot here and nowhere
+            # else is what keeps `_run_state` the size of what is in flight.
+            self._clear_run_state(run_id)
             handle = self._task_handles.get(task_id)
             if handle is asyncio.current_task():
                 self._task_handles.pop(task_id, None)
@@ -1852,15 +2128,31 @@ class TaskScheduler:
             category=(task.name or "Task"),
         )
 
-    async def _execute_action(self, task, run_id: str | None = None) -> tuple:
-        """Execute a built-in action (no LLM needed)."""
-        from src.builtin_actions import BUILTIN_ACTIONS
+    async def _execute_action(self, task, run_id: str | None = None):
+        """Execute a built-in action (no LLM needed).
+
+        `P8-24`. Returns a `NodeResult`, not `(text, success)`. The eighteen
+        shipped actions still return the pair and are read through
+        `coerce_node_result` — the adapter is here, at the one boundary, and
+        not eighteen edits to working code.
+
+        `TaskNoop` and `TaskDeferred` come back as `skipped` and `deferred`
+        rather than propagating from here, so the four statuses are all things
+        this function actually produces. `_execute_task_locked` raises them
+        again through `as_signal()`, because the branches that know how to
+        write a `skipped` row and how to push `next_run` are already written and
+        a second copy of them is the `Law 14` mistake this row is warned about.
+        """
+        from src.builtin_actions import (
+            BUILTIN_ACTIONS, NODE_STATUS_ERROR, NodeResult, coerce_node_result,
+        )
 
         action_fn = BUILTIN_ACTIONS.get(task.action)
         if not action_fn:
-            return f"Unknown action: {task.action}", False
+            return NodeResult(NODE_STATUS_ERROR,
+                              payload=f"Unknown action: {task.action}")
 
-        from src.builtin_actions import TaskNoop
+        from src.builtin_actions import TaskNoop, TaskDeferred
         try:
             # Pass task prompt as script/command for ssh_command/run_script actions.
             def _progress(message: str):
@@ -1868,7 +2160,7 @@ class TaskScheduler:
                 # each line overwrote the last one into `result`, so only the
                 # final line survived and the rest existed nowhere. They are
                 # the run's steps; they are kept now as well as shown.
-                self._record_run_step(kind="progress", detail=message)
+                self._record_run_step(run_id, kind="progress", detail=message)
                 self._set_run_progress(run_id, message)
 
             kwargs = {"owner": task.owner, "task_name": task.name, "progress_cb": _progress}
@@ -1880,14 +2172,16 @@ class TaskScheduler:
             # through as `command` so action_cookbook_serve can json.loads it.
             elif task.action == "cookbook_serve" and task.prompt:
                 kwargs["command"] = task.prompt
-            result, success = await action_fn(**kwargs)
-            return result, success
-        except TaskNoop:
-            # Bubble up so _execute_task_locked can drop the run row silently.
-            raise
+            return coerce_node_result(await action_fn(**kwargs))
+        except (TaskNoop, TaskDeferred) as signal:
+            # `P8-24`. The two signals the engine has always had, spoken in the
+            # same vocabulary as everything else a node can say — so all four
+            # statuses are things this function returns rather than two of them
+            # being a separate control-flow channel nobody can branch on.
+            return NodeResult.from_signal(signal)
         except Exception as e:
             logger.error(f"Action '{task.action}' failed: {e}")
-            return str(e), False
+            return NodeResult(NODE_STATUS_ERROR, payload=str(e))
 
     # ── Check-in source discovery ──
     # Pattern-based: if an MCP server has a tool matching a pattern, it becomes
@@ -1947,7 +2241,8 @@ class TaskScheduler:
         return "\n".join(lines[:10])
 
     async def _execute_checkin(self, task, crew, db, session_id: str,
-                               endpoint_url: str, model: str) -> str:
+                               endpoint_url: str, model: str,
+                               run_id: str | None = None) -> str:
         """Gather raw data from all integrations, hand it to the LLM to write the check-in."""
         from src.tool_implementations import do_manage_notes
         from src.tool_utils import get_mcp_manager
@@ -2123,10 +2418,18 @@ class TaskScheduler:
             system_prompt=(crew.personality or "").strip() if crew else None,
             disabled_tools=None, relevant_tools=None,
             override_user_message=context,
+            trigger_context_msg=_trigger_context_message(self.run_trigger(run_id)),
+            run_id=run_id,
         )
 
-    async def _execute_llm_task(self, task, db) -> str:
-        """Execute an LLM task with full tool access via the agent loop."""
+    async def _execute_llm_task(self, task, db, run_id: str | None = None) -> str:
+        """Execute an LLM task with full tool access via the agent loop.
+
+        `P8-27`. `run_id` addresses this run's slot — the resolved model and the
+        step log. It defaults to `None` so a caller that has not been updated
+        still runs; what it loses is the row those two facts land on, not the
+        run.
+        """
         from core.database import Session as DbSession, ChatMessage, CrewMember
 
         # If this task is wired to a CrewMember (personal assistant, custom
@@ -2151,8 +2454,9 @@ class TaskScheduler:
         endpoint_url = _normalize_chat_endpoint(endpoint_url)
         # Record the resolved model so _execute_task_locked can persist it on
         # the run (tasks rarely pin a model, so this is the only record of
-        # which model actually produced the output).
-        self._last_run_model = model
+        # which model actually produced the output). `P8-27`: against this run,
+        # not against the scheduler.
+        self.set_run_model(run_id, model)
 
         # Ensure a session exists for output
         session_id = task.session_id
@@ -2184,7 +2488,8 @@ class TaskScheduler:
         # as separate messages. More reliable than hoping the model calls tools.
         is_checkin = crew and crew.is_default_assistant and "check-in" in (task.name or "").lower()
         if is_checkin:
-            return await self._execute_checkin(task, crew, db, session_id, endpoint_url, model)
+            return await self._execute_checkin(task, crew, db, session_id, endpoint_url, model,
+                                               run_id=run_id)
 
         # Build system prompt: crew member persona overrides the default.
         # Built-in character_id (Socrates, Razor, etc.) further biases the
@@ -2260,6 +2565,11 @@ class TaskScheduler:
         except Exception as e:
             logger.warning(f"[assistant] RAG tool selection failed, using all: {e}")
 
+        # `P8-23`. What fired this run, as a message the model can read and must
+        # not obey. `None` when nothing triggered it, which is every scheduled
+        # run — so those build exactly the message list they built before.
+        _trigger_msg = _trigger_context_message(self.run_trigger(run_id))
+
         # Try using the agent loop for full tool access
         try:
             result = await self._run_agent_loop(
@@ -2267,6 +2577,8 @@ class TaskScheduler:
                 system_prompt=system_prompt, disabled_tools=disabled_tools or None,
                 relevant_tools=relevant_tools,
                 datetime_context_msg=_dt_msg,
+                trigger_context_msg=_trigger_msg,
+                run_id=run_id,
             )
         except Exception as e:
             logger.warning(f"Agent loop failed for task '{task.name}', falling back to simple call: {e}")
@@ -2274,6 +2586,12 @@ class TaskScheduler:
             messages: list = [{"role": "system", "content": system_prompt}]
             if _dt_msg:
                 messages.append(_dt_msg)
+            # `P8-23`. The fallback path builds its own message list, so a
+            # trigger payload has to be added here too or a task that ran
+            # because the agent loop was down would be the one run that could
+            # not say what fired it.
+            if _trigger_msg:
+                messages.append(_trigger_msg)
             messages.append({"role": "user", "content": task.prompt})
             result = await task_llm_call_async(
                 messages,
@@ -2480,7 +2798,9 @@ class TaskScheduler:
                               disabled_tools: set | None = None,
                               relevant_tools: set | None = None,
                               override_user_message: str | None = None,
-                              datetime_context_msg: dict | None = None) -> str:
+                              datetime_context_msg: dict | None = None,
+                              trigger_context_msg: dict | None = None,
+                              run_id: str | None = None) -> str:
         """Run the full agent loop with tool access, collecting the final text."""
         from src.agent_loop import stream_agent_loop
 
@@ -2492,6 +2812,12 @@ class TaskScheduler:
         messages: list = [{"role": "system", "content": system_content}]
         if datetime_context_msg:
             messages.append(datetime_context_msg)
+        # `P8-23`. The trigger payload goes after the time context and before
+        # the prompt, in the same slot and for the same reason: the system
+        # prefix stays byte-identical and cacheable, and the model reads what
+        # fired the task immediately before being told what to do about it.
+        if trigger_context_msg:
+            messages.append(trigger_context_msg)
         messages.append({"role": "user", "content": user_content})
 
         # Resolve headers from the endpoint's API key
@@ -2561,6 +2887,7 @@ class TaskScheduler:
                         # carried everything an Activity row needs to say what
                         # a task did, and nothing read them.
                         self._record_run_step(
+                            run_id,
                             kind="tool",
                             tool=data.get("tool") or "?",
                             round=data.get("round"),
@@ -2571,6 +2898,7 @@ class TaskScheduler:
                         # Refused by policy — it never ran, and that is the most
                         # useful line in the log when a task did less than asked.
                         self._record_run_step(
+                            run_id,
                             kind="tool",
                             tool=data.get("tool") or "?",
                             round=data.get("round"),
@@ -2582,10 +2910,21 @@ class TaskScheduler:
                         # Tool results — capture summary so we have SOMETHING even
                         # if the model never produces a final text response
                         tool_summary = data.get("stdout") or data.get("output") or data.get("result") or ""
+                        # `B600`. This read `"error" if data.get("exit_code")
+                        # else "ok"`, and only the shell and python branches ever
+                        # set `exit_code` — so ~70 tools reported `ok` whatever
+                        # happened, including a `web_fetch` that 404'd. The event
+                        # states its own outcome now (`agent_loop.tool_outcome`);
+                        # the fallback keeps an older event readable rather than
+                        # calling it an error for lacking a field it predates.
+                        _status = data.get("status")
+                        if _status not in ("ok", "error"):
+                            _status = "error" if data.get("exit_code") else "ok"
                         self._close_run_step(
+                            run_id,
                             tool=data.get("tool") or "?",
                             round_=data.get("round"),
-                            status="error" if data.get("exit_code") else "ok",
+                            status=_status,
                             output=tool_summary if isinstance(tool_summary, str) else "",
                         )
                         if isinstance(tool_summary, str) and tool_summary.strip():
@@ -2659,7 +2998,7 @@ class TaskScheduler:
 
         return full_text or "(no output)"
 
-    async def _execute_research_task(self, task, db) -> str:
+    async def _execute_research_task(self, task, db, run_id: str | None = None) -> str:
         """Execute a deep research task using DeepResearcher."""
         from core.database import Session as DbSession, ChatMessage
         from src.deep_research import DeepResearcher
@@ -2697,7 +3036,7 @@ class TaskScheduler:
             raise RuntimeError("No model/endpoint configured for research")
         endpoint_url = _normalize_chat_endpoint(endpoint_url)
         # Record the resolved model for the run record (see _execute_task_locked).
-        self._last_run_model = model
+        self.set_run_model(run_id, model)
 
         # Resolve headers
         try:
@@ -2786,7 +3125,9 @@ class TaskScheduler:
             (RESEARCH_DATA_DIR / f"{session_id}.json").write_text(json.dumps(payload), encoding="utf-8")
             try:
                 from src.event_bus import fire_event
-                fire_event("research_completed", task.owner or None)
+                fire_event("research_completed", task.owner or None,
+                           {"session_id": session_id,
+                            "topic": payload.get("query")})
             except Exception:
                 logger.debug("research_completed event dispatch failed", exc_info=True)
         except Exception as e:
@@ -2804,22 +3145,48 @@ class TaskScheduler:
             self._executing.add(task_id)
         await self._execute_task(task_id)
 
-    def _has_chain_cycle(self, db, start_id: str, max_depth: int = 10, owner: str | None = None) -> bool:
-        """Detect cycles in task chains."""
+    def _chain_refusal(self, db, start_id: str, max_depth: int = CHAIN_MAX_DEPTH,
+                       owner: str | None = None) -> str | None:
+        """Why this chain may not run, or `None` if it may.
+
+        `P8-26`. This function used to answer one boolean for three different
+        situations, and the row is about the second of them: a chain longer
+        than ten steps returned `True` from something called
+        `_has_chain_cycle`, so the log said *"cycle detected"* about a workflow
+        that has no cycle in it and is simply eleven steps long. **The depth cap
+        is a real limit of this engine and it had no name, no message and no
+        way for anyone to find out it existed** — the only symptom was a chain
+        that stopped at step ten and a log line that named the wrong cause.
+
+        Nothing is permitted that was refused before (`Law 1` runs both ways
+        here: the cap stays, and the cycle check stays). What changes is that
+        the caller can say which one happened, and `build_task_graph` can put
+        the same answer on the wire.
+        """
         from core.database import ScheduledTask
         visited = set()
         current = start_id
         for _ in range(max_depth):
             if current in visited:
-                return True
+                return CHAIN_CYCLE
             visited.add(current)
             task = db.query(ScheduledTask).filter(ScheduledTask.id == current).first()
             if owner is not None and task and task.owner != owner:
-                return True
+                return CHAIN_CROSS_OWNER
             if not task or not task.then_task_id:
-                return False
+                return None
             current = task.then_task_id
-        return True  # too deep, treat as cycle
+        return CHAIN_TOO_DEEP
+
+    def _has_chain_cycle(self, db, start_id: str, max_depth: int = CHAIN_MAX_DEPTH,
+                         owner: str | None = None) -> bool:
+        """Kept, with its old name and its old answer.
+
+        Three callers and two tests ask this question as a boolean and the
+        answer they get is unchanged. `_chain_refusal` is the same walk with
+        the reason kept instead of thrown away.
+        """
+        return self._chain_refusal(db, start_id, max_depth, owner) is not None
 
     def _resolve_defaults(self, db, owner):
         """Find the first available endpoint + model from an existing session."""
@@ -2909,16 +3276,25 @@ class TaskScheduler:
         except Exception as e:
             logger.error(f"Task {task.id} MCP delivery failed: {e}")
 
-    async def run_task_now(self, task_id: str, *, force: bool = False):
-        """Manually trigger a task execution."""
+    async def run_task_now(self, task_id: str, *, force: bool = False,
+                           trigger: dict | None = None):
+        """Manually trigger a task execution.
+
+        `P8-23`. `trigger` is what fired it — the event bus's envelope or the
+        webhook's. `None` is a run nobody can name a cause for, which is every
+        scheduled run and every button press, and those behave exactly as
+        before.
+        """
         if force:
-            asyncio.create_task(self._execute_task(task_id, bypass_model_slot=True, release_executing=False))
+            asyncio.create_task(self._execute_task(
+                task_id, bypass_model_slot=True, release_executing=False,
+                trigger=trigger))
             return True
         async with self._executing_lock:
             if task_id in self._executing:
                 return False
             self._executing.add(task_id)
-        asyncio.create_task(self._execute_task(task_id))
+        asyncio.create_task(self._execute_task(task_id, trigger=trigger))
         return True
 
     async def stop_task(self, task_id: str) -> bool:

@@ -177,6 +177,50 @@ def _effect_fields(tool_name: Any, content: Any) -> Dict[str, Any]:
         return {}
 
 
+# `B600` / `P8-24`. Did this tool call work?
+#
+# `tool_output` carried `exit_code`, and only the shell and python branches of
+# `_direct_fallback` ever set it. Every other tool left it absent, so the one
+# consumer that had to decide — `P8-25`'s step log — read `None` as success and
+# printed `ok` beside a `web_fetch` that 404'd and a `write_file` that was
+# refused. That is the honest reading of an event that carries no other failure
+# signal, which is why the step log shipped with it rather than guessing.
+#
+# `Law 10`: a field whose absence means either "succeeded" or "does not apply"
+# will be read both ways. So the outcome is stated for every tool, from whatever
+# that tool actually reports, and `exit_code` stays exactly where it was for the
+# two that set it (`Law 1` — the field is added, nothing is taken away).
+TOOL_OUTCOME_OK = "ok"
+TOOL_OUTCOME_ERROR = "error"
+
+
+def tool_outcome(result: Any) -> str:
+    """`ok` or `error` for one tool result, from the signals it actually carries.
+
+    Three signals, checked in the order of how explicit they are:
+    `error` (the tool said what went wrong), `success` (the file tools' own
+    boolean), then `exit_code` (the two shell branches). A result with none of
+    them ran and said nothing, which is the ordinary successful case for most of
+    this tree's tools.
+
+    The value is a STRING on purpose. `static/js/chat.js` treats any streamed
+    event with `status >= 400` as a terminal stream error; a string never
+    satisfies that comparison and a number would.
+    """
+    if not isinstance(result, dict):
+        return TOOL_OUTCOME_OK
+    err = result.get("error")
+    if isinstance(err, str) and err.strip():
+        return TOOL_OUTCOME_ERROR
+    if err not in (None, "", False) and not isinstance(err, str):
+        return TOOL_OUTCOME_ERROR
+    if "success" in result and not result.get("success"):
+        return TOOL_OUTCOME_ERROR
+    if result.get("exit_code"):
+        return TOOL_OUTCOME_ERROR
+    return TOOL_OUTCOME_OK
+
+
 def _stream_fields(result: Any) -> Dict[str, Any]:
     """The two streams, apart, for a card that can show them apart (`P4-19`).
 
@@ -5641,6 +5685,15 @@ async def stream_agent_loop(
                if approval_matches else {}),
             "output": _truncate(approved_output),
             "exit_code": approved_result.get("exit_code"),
+            # `P8-24`/`B600`, and `P4-09`'s lesson applied one row later.
+            # `status` reached the live path and not this one, which is exactly
+            # the shape `full_command` had — a field that exists while the run
+            # is streaming and is gone the moment anybody reloads. `exit_code`
+            # is set by the shell and python tools and by nothing else, so
+            # without this a replayed `web_fetch` that failed read `ok` on the
+            # card. `tests/test_tool_effect_wire.py` pins both paths to the same
+            # key set and is what caught it.
+            "status": tool_outcome(approved_result),
             "approved": approved_ran,
             **approved_effects,
         }
@@ -5724,6 +5777,8 @@ async def stream_agent_loop(
                if approval_matches else {}),
             "output": _truncate(approved_output),
             "exit_code": approved_result.get("exit_code"),
+            # `P8-24`/`B686`, same reason as the streamed twin above it.
+            "status": tool_outcome(approved_result),
             "approved": approved_ran,
             "approval_digest": approved.digest[:16],
             # Same reason as the main path: the ranking has to survive a reload.
@@ -7143,7 +7198,7 @@ async def stream_agent_loop(
             # `P4-09`: `full_command`. It was on `tool_start` and nowhere else, so the
             # card lost the full arguments the moment the tool finished — the
             # rewrite that draws the result had only the truncated line.
-            tool_output_data = {"type": "tool_output", "tool": block.tool_type, "command": cmd_display, "round": round_num, **_command_fields(cmd_display, full_command), "output": output_text, "exit_code": result.get("exit_code"), **_stream_fields(result), **block_effects}
+            tool_output_data = {"type": "tool_output", "tool": block.tool_type, "command": cmd_display, "round": round_num, **_command_fields(cmd_display, full_command), "output": output_text, "exit_code": result.get("exit_code"), "status": tool_outcome(result), **_stream_fields(result), **block_effects}
             if is_doc_tool and "action" in result:
                 tool_output_data.update({
                     "doc_id": result.get("doc_id"),
@@ -7361,6 +7416,14 @@ async def stream_agent_loop(
                 }),
                 "desc": desc,
                 "command": cmd_display,
+                # `P8-24`/`B686`. Third instance of one shape: a field reaches
+                # the streamed event and not its persisted twin, so the card
+                # answers one way live and another after a reload. `P4-11` was
+                # `round`, `P4-09` was `full_command`, this is `status` — and
+                # `status` is the only signal ~70 of this tree's tools give at
+                # all, because `exit_code` is set by the two shell branches and
+                # nothing else.
+                "status": tool_outcome(result),
                 # `P4-09`. Without this the expansion is a live-only feature: a
                 # reloaded thread showed the first 80 characters of a document
                 # write and had no way back to the rest.

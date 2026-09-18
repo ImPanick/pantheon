@@ -337,3 +337,225 @@ def test_the_helper_survives_a_webview_with_no_matchmedia():
                        cwd=ROOT, capture_output=True, text=True, timeout=20)
     assert p.returncode == 0, p.stderr
     assert json.loads(p.stdout.strip().splitlines()[-1])["reduced"] is False
+
+
+# ===========================================================================
+# `P10-05` — verifying the coverage, and the three things the audit missed.
+#
+# `P10-05` asks for a verification rather than a feature: does the guard cover
+# **all 160 keyframes and the 7 canvas animators, including the 12 that
+# `slashCommands.js` injects at runtime**? Re-measured 2026-09-18, and four of
+# those numbers are wrong — two of them already corrected by `P1-12` on its own
+# row, and two of them not:
+#
+#   * **139 `@keyframes` in `static/style.css`**, not 148 and not 149.
+#     (`grep -c "@keyframes"` says 142; three of those lines are prose about
+#     keyframes, in this file's own comments and in `P1-12`'s. That gap is why
+#     the count is taken with comments blanked.)
+#   * **5 distinct injected by `slashCommands.js`**, not 12 — the module carries
+#     the same three-keyframe `egg-styles` string ten times verbatim, guarded by
+#     an id check so only the first can ever apply. `P1-12` corrected this.
+#   * **A sixth runtime injection nobody counted**: `chatStream.js` writes
+#     `steer-pulse` into `document.head`. It carries its own narrow block, so it
+#     was never a defect — but it was never in the audit either, and the next
+#     one might not bring its own guard.
+#   * **`static/login.html` defines `login-spin` and no guard reached it.** That
+#     is the row's real finding and the only live defect here. The login page
+#     does not load `style.css` — it mirrors the palette by hand so its first
+#     paint owes nothing to the app's stylesheet — so it owed nothing to the
+#     app's guard either. A person who has asked their operating system to stop
+#     moving things got a ring spinning at 86rpm on the first screen the
+#     product ever shows them.
+#
+# And one animator the row could not have named, because it is not a keyframe
+# and not a canvas: `scrollHistory()` in `static/js/ui.js` lerps `scrollTop`
+# frame by frame on its own `requestAnimationFrame` loop. It is invisible to the
+# CSS guard (which describes declarative scrolling), to `P1-15`'s sweep (which
+# looks for the literal `behavior: 'smooth'`), and to `theme.js`'s canvas check.
+# Eight JS animators, not seven.
+# ===========================================================================
+
+_KEYFRAMES = re.compile(r"@(?:-webkit-)?keyframes\s+([\w-]+)")
+LOGIN = (ROOT / "static" / "login.html").read_text(encoding="utf-8")
+UI_JS = (ROOT / "static" / "js" / "ui.js").read_text(encoding="utf-8")
+
+
+def _injected_keyframes() -> dict:
+    """module path -> the distinct keyframe names it writes at runtime."""
+    out = {}
+    for path in sorted((ROOT / "static").rglob("*.js")):
+        if "lib/" in str(path):
+            continue
+        names = set(_KEYFRAMES.findall(blank(path)))
+        if names:
+            out[str(path.relative_to(ROOT))] = sorted(names)
+    return out
+
+
+def test_the_keyframe_census_is_not_the_number_on_the_row():
+    """`Law 6`. Every figure here is measured at read time; none is carried."""
+    in_css = _KEYFRAMES.findall(blank_text(CSS, "css"))
+    assert len(in_css) == 139, (
+        f"expected 139 `@keyframes` in static/style.css, found {len(in_css)}. "
+        "The row says 160 (148 + 12) and `P1-12` says 149; both were measured "
+        "on an older file and neither is today's number."
+    )
+    assert len(set(in_css)) == len(in_css), (
+        "two @keyframes share a name — they are global, so the last one wins "
+        "for every consumer"
+    )
+
+    injected = _injected_keyframes()
+    assert set(injected) == {
+        "static/js/chatStream.js",
+        "static/js/slashCommands.js",
+    }, f"a module started injecting keyframes: {sorted(injected)}"
+    assert len(injected["static/js/slashCommands.js"]) == 5, injected
+    assert injected["static/js/chatStream.js"] == ["steer-pulse"], injected
+
+
+# One exception, and it is one page rather than a pattern. `wave-variants.html`
+# is a developer sandbox — it is *served*, because the `/static` mount has no
+# allowlist, but nothing in the product links to it and its own first comment
+# says so. What it animates it animates with a `setInterval` that no CSS guard
+# could reach in any case: picking the shape of a moving thing side by side is
+# the entire reason the page exists. Its two siblings,
+# `whirlpool-variants.html` and `modal-control-variants.html`, are NOT excused
+# — they simply declare no CSS motion, so the rule above passes on them
+# honestly and will start failing the day one of them does. Named rather than
+# matched by `*-variants.html`, so a real page cannot join the exception by
+# being given a similar filename. The unguarded script motion in the two that
+# animate from JavaScript is `B663`.
+_DEVELOPER_SANDBOXES = {"wave-variants.html"}
+
+
+def test_every_shipped_page_that_animates_is_under_a_guard():
+    """The question the row asks, asked of pages rather than of one file.
+
+    A page is covered when it links `static/style.css` (and therefore the
+    global guard) **or** carries a `prefers-reduced-motion` block of its own.
+    `login.html` failed this and nothing said so, because every previous audit
+    was scoped to the stylesheet that already had the guard in it — which is
+    the shape of this defect in one sentence: the audit was run inside the file
+    that had already been fixed.
+    """
+    uncovered = []
+    for page in sorted((ROOT / "static").glob("*.html")):
+        if page.name in _DEVELOPER_SANDBOXES:
+            continue
+        text = page.read_text(encoding="utf-8")
+        blanked = blank_text(text, "html")
+        animates = bool(_KEYFRAMES.search(blanked)) or bool(
+            re.search(r"(?:^|[{;])\s*(?:animation|transition)\s*:", blanked, re.M)
+        )
+        if not animates:
+            continue
+        links_sheet = "/static/style.css" in text
+        own_guard = "prefers-reduced-motion" in blanked
+        if not (links_sheet or own_guard):
+            uncovered.append(page.name)
+    assert uncovered == [], (
+        f"these shipped pages animate and no reduced-motion guard reaches "
+        f"them: {uncovered}"
+    )
+
+
+def test_the_excused_pages_are_still_the_sandboxes_they_claim_to_be():
+    """An exception list that nobody re-reads is how a real page ends up
+    excused. Each of the three still has to say what it is, in its own file."""
+    for name in sorted(_DEVELOPER_SANDBOXES):
+        page = ROOT / "static" / name
+        assert page.exists(), f"{name} is gone; drop it from the exception list"
+        head = page.read_text(encoding="utf-8")[:1200]
+        assert "developer sandbox" in head.lower(), (
+            f"{name} no longer declares itself a developer sandbox, so it is "
+            "not obviously excused from the guard any more"
+        )
+
+
+def test_the_login_page_carries_the_same_guard_and_not_a_different_one():
+    """It cannot borrow the app's: it deliberately links no stylesheet. So it
+    gets the same shape, with the same two decisions behind it — `0.01ms`
+    rather than `none`, and the `:is()` armour rather than `*` — because two
+    idioms for one rule is how the second one goes stale (`Law 14`)."""
+    assert "/static/style.css" not in LOGIN, (
+        "the login page now links the app stylesheet, so it inherits the "
+        "global guard and this local one is a second way to do one thing"
+    )
+    blanked = blank_text(LOGIN, "html")
+    assert "@media (prefers-reduced-motion: reduce)" in blanked, (
+        "the login page's spinner still animates for someone who asked it not "
+        "to — and it is the first screen the product shows"
+    )
+    guard = blanked.split("@media (prefers-reduced-motion: reduce)", 1)[1]
+    guard = guard[: guard.index("}\n  }") + 4] if "}\n  }" in guard else guard[:600]
+    assert GUARD_SHAPE.search(guard), (
+        f"the login guard is not the armoured shape: {guard[:200]!r}"
+    )
+    assert "0.01ms" in guard and "animation: none" not in guard
+    assert _KEYFRAMES.search(blanked), (
+        "login.html no longer defines a keyframe, so this guard has nothing "
+        "left to guard — check before deleting it, the spinner may just have "
+        "moved"
+    )
+
+
+def test_the_canvas_registry_is_still_the_seven_the_row_counted():
+    registry = THEME.split("const _CANVAS_PATTERNS", 1)[1].split("};", 1)[0]
+    names = re.findall(r"'?([\w-]+)'?\s*:\s*_init", registry)
+    assert len(names) == 7, f"expected seven canvas animators, found {names}"
+
+
+def test_the_scroll_lerp_asks_before_it_animates():
+    """The eighth animator, and the one nothing covered.
+
+    `Law 20` option 2 — the function is resolved first and the assertion made
+    inside it. `ui.js` is 2,000+ lines with five imports and a module-scope
+    toast singleton, and `scrollHistory` is four lines; a file-wide search for
+    `prefersReducedMotion` would be satisfied by the import statement alone,
+    which is exactly the mistake `B41` shipped green.
+    """
+    from test_a_draft_skill_is_uncatalogued_not_inactive import js_function
+
+    body = js_function(UI_JS, "export function scrollHistory")
+    assert len(body.splitlines()) < 30, (
+        f"js_function returned {len(body.splitlines())} lines for a short "
+        "function; the scope resolution has drifted and this assertion is "
+        "file-wide"
+    )
+    assert "prefersReducedMotion()" in body, (
+        "`scrollHistory` starts a requestAnimationFrame lerp over `scrollTop` "
+        "without asking. The CSS guard's `scroll-behavior: auto !important` "
+        "does not reach it — that describes a declarative scroll, and this is "
+        "a script writing a number every frame."
+    )
+    assert "scrollHistoryInstant()" in body, (
+        "the reduced-motion path should use the instant scroller that already "
+        "sits beside it rather than a second one"
+    )
+    assert "import { prefersReducedMotion } from './motion.js';" in UI_JS, (
+        "one module owns the query (`P1-12`); ui.js must not grow a second copy"
+    )
+
+
+def test_the_one_copy_of_the_query_outside_a_module_is_the_one_that_has_to_be():
+    """`test_one_module_owns_the_media_query_string` scopes itself to
+    `static/js/**`, so the two inline scripts in the shipped pages are outside
+    it. They are named here rather than left unmeasured.
+
+    `index.html`'s boot loader genuinely cannot import `motion.js`: it runs
+    before any module is fetched, and deciding whether to start a 150ms
+    interval is the first thing it does. `login.html` has no guard in script at
+    all — its answer is pure CSS. Anything else asking `matchMedia` about
+    motion from a page rather than from a module is a third copy, and this
+    fails.
+    """
+    asked = []
+    for page in sorted((ROOT / "static").glob("*.html")):
+        text = blank_text(page.read_text(encoding="utf-8"), "html")
+        for m in re.finditer(r"matchMedia\s*\(\s*['\"]([^'\"]*)['\"]", text):
+            if "prefers-reduced-motion" in m.group(1):
+                asked.append(page.name)
+    assert asked == ["index.html"], (
+        f"expected the boot loader to be the only page-level copy, found {asked}"
+    )

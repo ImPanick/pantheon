@@ -68,10 +68,10 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P5 | Trace & composer restyle | 17 | 9 | 0 | **8** |
 | P6 | Queue & Plan | 18 | 0 | 0 | **18** |
 | P7 | Trust ladder & control plane | 14 | 9 | **1** | **4** |
-| P8 | The Workshop | 49 | 28 | **2** | **19** |
+| P8 | The Workshop | 49 | 23 | **2** | **24** |
 | P9 | Feature surfaces | 18 | 16 | 0 | **2** |
-| P10 | Accessibility & release | 12 | 11 | 0 | **1** |
-| P11 | Identity & access | 14 | 9 | **1** | **4** |
+| P10 | Accessibility & release | 12 | 6 | 0 | **6** |
+| P11 | Identity & access | 14 | 7 | **1** | **6** |
 | P12 | Limits & the control plane | 11 | 6 | 0 | **5** |
 | P13 | The Brain | 23 | 13 | 0 | **10** |
 | P14 | Measurement | 8 | 0 | 0 | **8** |
@@ -80,8 +80,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P17 | The network the agent is hosted on | 14 | 0 | 0 | **14** |
 | P18 | One button, and it links | 9 | 0 | 0 | **9** |
 | P19 | The proof ledger | 8 | 0 | 0 | **8** |
-| Backlog | Bugs and hardening found in flight | 349 | 117 | 0 | **232** |
-| **Total** | | **731** | **250** | **9** | **472** |
+| Backlog | Bugs and hardening found in flight | 365 | 132 | 0 | **233** |
+| **Total** | | **747** | **253** | **9** | **485** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -245,7 +245,7 @@ they are for.*
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
 
 ### Five phases finished, and the day stopped counting the wrong population
-`c2d8669..HEAD`. **731 tracked, 472 done. 0 new phase rows, 0 regressions. `P0-17`, `P3-20`,
+`c2d8669..HEAD`. **747 tracked, 485 done. 0 new phase rows, 0 regressions. `P0-17`, `P3-20`,
 `P3-21`, `P6-08`, `P14-06`–`P14-08`, `P15-08`, `P15-11` and all three `P17` rows closed;
 `P16-20` parked under a standing ruling; `B510` disclosed AI use across three surfaces at the
 owner's request; twenty-two backlog rows filed, and `B413` closed by one of them.**
@@ -275,6 +275,16 @@ the number — 1,283 tests pass on the 1.27.0 this container has and on the decl
 all four of this product's MCP servers die at import. Eighteen backlog rows came with them, and
 `B650`: **an agent's process overwrote a file in the integrator's own working tree, and the only
 reason it was caught is that the agent looked and said so.**
+**Then `P10`, `P11`'s role layer and `P8`'s automations engine.** `P10` went 1 → 6 of 12 — one
+focus ring, sidebar rows that are real buttons, resize handles a keyboard can reach, a loader
+that says what it is doing, and a reduced-motion audit that found `static/login.html` links no
+stylesheet at all, so the guard has never reached the spinner on the first screen the product
+shows. `P8` went 19 → 24 of 49: triggers carry payloads, the node contract is `(payload, status)`,
+the graph is a document, execution identity is run-scoped and a chain can branch on failure.
+`P11` went 4 → 6 of 14 with **roles**, which fills the layer `P12` built empty — and the row's
+real first step was a defect nobody had recorded: **`create_user` stored a full copy of
+`DEFAULT_PRIVILEGES` on every non-admin, so every user created normally would have silently
+shadowed every role.** Sixteen backlog rows came with them.
 **The owner said the tracked items kept growing while progress made no dent, and they were
 right for a reason the counts hid.** The tracker holds two populations: **phase rows are the
 project**, backlog rows are defects found while building it. Six waves had closed roughly a
@@ -5051,8 +5061,22 @@ SKILL.md frontmatter format. That is the pattern to avoid, found in the phase's 
   than saving a task that does nothing.
   `CI:` `tests/test_node_palette.py` (server) · `tests/test_the_palette_moves_to_the_server_js.py`
   (client). — agent:`p8auto` (server) / `p8ui2` (client)
-- [ ] **P8-23** **Give triggers payloads.** The event bus takes a name and an owner — a "document created" trigger cannot say *which* document. The webhook route has **no request parameter**: body, query and headers are read by nobody. It is a doorbell. **Highest-leverage change in Automations; everything downstream depends on it.** Do not change the webhook URL shape — it is CI-pinned.
-- [ ] **P8-24** Widen the node output contract from `(text, success)` to `(payload, status)` with a back-compat adapter for the 18 existing actions. The no-op and defer-with-backoff signals already encode skip and retry — generalise them.
+- [x] **P8-23** **Give triggers payloads.** The event bus takes a name and an owner — a "document created" trigger cannot say *which* document. The webhook route has **no request parameter**: body, query and headers are read by nobody. It is a doorbell. **Highest-leverage change in Automations; everything downstream depends on it.** Do not change the webhook URL shape — it is CI-pinned.
+  — **done 2026-09-18, and both halves of the premise were exactly true.** Measured before touching either: `fire_event(event_name, owner)` was the whole signature (`src/event_bus.py`), and `webhook_trigger(task_id: str, token: str)` took no `Request` at all. `B602` is closed by this row: **all eight** catalogued events now carry a payload, not the four it names, because four producers with payloads and four without would be the ninth spelling the registry exists to prevent. **21 `fire_event` call sites** in tracked non-test source — AST-counted, `tests/` and `.pantheon/` excluded — and all 21 pass one.
+  **The catalogue is the schema.** Each `EVENT_CATALOGUE` entry declares `payload` (the field list) and `payload_summary` (the same fact in English, for the picker), and `build_trigger` (`src/event_bus.py:157`) keeps exactly the declared keys and drops the rest. So a producer cannot invent a field, and `EVENT_PAYLOAD_FIELDS` (`:103`) is a schema rather than documentation (`Law 10`). `document_created` and `document_updated` carry `document_id` + `title`; `memory_added` carries `memory_id` + `text`; `research_completed` carries `session_id` + `topic`; `email_received` carries `account` + `folder` + `message_key`; `session_created` carries `session_id` + `name`; `message_sent` carries `session_id` + `text`; `skill_added` carries `name`.
+  **The webhook is not a doorbell any more and its URL did not move.** `_webhook_payload` (`routes/task/task_routes.py:1235`) reads body, query and an **allowlist of five headers**, and a JSON body is parsed where it parses so a task can be told `data.json.issue.title` without re-parsing a string. The allowlist is the security half: `x-hub-signature-256` and `authorization` are deliberately absent, because this payload ends in a model prompt and in a row somebody reads. `request` is the **third** positional parameter, after the two path parameters — FastAPI resolves it by type, the URL shape is byte-identical, and three existing tests that call the handler as `webhook_trigger(task_id, token)` keep working with one argument added.
+  **The payload reaches the model as data, never as instructions.** `trigger_context_message` (`:211`) wraps it with `src.prompt_security.untrusted_context_message`, `provenance_origin="external"`, `arm_tool_gate=True` — so `messages_contain_external_untrusted_context` sees it and **the post-external blocked-effect gate arms for a run that has a payload** (`FORBIDDEN.md` Part 2, kept rather than widened). It has to: the webhook route is unauthenticated, and `document_updated` is fired by the email MCP server merging a **received** draft into a document, so "which document" can be a title somebody else wrote. A run with no payload builds a byte-identical message list to the one it built before this row (`Law 1`), which is every scheduled run in the product.
+  **`Law 15`, which is what `P8-00` asks for:** the run's step log leads with what fired it — `Triggered by document_updated — document_id=doc-42, title=Q3 plan` — as step one, before anything the run did.
+  **What the merge still needs, and it is `static/**` so it is not in this patch:** `_renderRunSteps` (`static/js/tasks.js:2079`) maps every non-`tool` step to the literal word `progress`, so a `kind: "trigger"` step draws its detail correctly under a label that says "progress". One line: give `trigger` its own branch and its own word. And `/api/tasks/meta/events` now serves `payload_summary` per event, which `_populateEventPicker` (`static/js/tasks.js:437`) should append to `#task-form-event-desc` beside the description so someone choosing a trigger knows what they will be able to refer to before they write the prompt.
+  `Verify:` someone who has never opened Tasks builds "when a document is updated, summarise it", edits a document, and the task summarises **that** document — then opens the run and can see, without being told where to look, which document set it off.
+  `CI:` `tests/test_trigger_payloads.py`. — agent:`p8b`
+- [x] **P8-24** Widen the node output contract from `(text, success)` to `(payload, status)` with a back-compat adapter for the 18 existing actions. The no-op and defer-with-backoff signals already encode skip and retry — generalise them.
+  — **done 2026-09-18. The 18 re-measured and it is still 18** — AST-counted from `BUILTIN_ACTIONS`'s own keys, and `BUILTIN_ACTION_META` now holds the same 18 since `P8-22` reconciled them, so the adapter covers the registry exactly.
+  `NodeResult` (`src/builtin_actions.py:477`) carries `status`, `payload`, `text` and `retry_after`. `coerce_node_result` (`:549`) is the adapter and it runs **one way only**: whatever a node returned becomes a `NodeResult`, and `as_legacy()` exists for a caller not yet widened. Nothing produces the old pair from new code, which is the `Law 13` line this row is warned about — an adapter that also accepts the old shape on the consumer side would make `(text, bool)` a supported return type for ever.
+  **`Law 14`: the skip and retry vocabulary is the one the engine already had.** `NODE_STATUSES` is `('success', 'error', 'skipped', 'deferred')`; `skipped` **is** `TaskNoop` and `deferred` **is** `TaskDeferred`, converted by `from_signal`/`as_signal`, and `_execute_task_locked` raises what comes back so its existing `except TaskNoop` and `except TaskDeferred` blocks stay the only code that writes a no-op row or pushes `next_run`. A status outside the four raises at construction. `aborted` is deliberately not a node status: being stopped is done **to** a run, never decided by a step.
+  **`B600` closes here, because the row says it belongs here.** `agent_loop.tool_outcome` (`src/agent_loop.py:197`) states an outcome for every tool from the signals it actually carries — `error`, then `success`, then `exit_code` — and `tool_output` ships it as `status`. It is a **string** on purpose: `static/js/chat.js:3836` treats any streamed event with `status >= 400` as a terminal stream error, and a number there would have killed every tool stream. The step log reads the explicit value and falls back to the old `exit_code` test for an event that predates the field, so a saved stream still reads correctly. Before this, `exit_code` was set by the shell and python branches of `_direct_fallback` and by nothing else, so ~70 tools reported `ok` whatever happened.
+  `Verify:` someone who has never opened Tasks runs a task whose web fetch 404s, opens the run, and the failed step is marked as failed — instead of `ok` beside the thing that did not work.
+  `CI:` `tests/test_node_output_contract.py`. — agent:`p8b`
 - [x] **P8-25** **Write `TaskRun.steps`** — declared, never written. A run records one result string
   for the whole task. Filling it upgrades the shipped activity view instantly with no new UI. —
   **BLOCKED (2026-08-27): "migrated" is false.** There was **no `ALTER TABLE task_runs ADD COLUMN
@@ -5104,9 +5128,27 @@ SKILL.md frontmatter format. That is the pattern to avoid, found in the phase's 
   `CI:` `tests/test_task_run_steps_migration.py` (server) ·
   `tests/test_the_palette_moves_to_the_server_js.py` (client). — agent:`p8auto` (server) /
   `p8ui2` (client)
-- [ ] **P8-26** Add the graph document. One nullable successor today; the cycle check doubles as a **silent depth cap of ten**. Project the existing successor as a single edge on read.
-- [ ] **P8-27** Run-scoped execution identity — the current one is keyed by task, so a task cannot be in flight twice. Required before fan-out. `Depends:` P8-26.
-- [ ] **P8-28** Branch node — the only conditional in the engine is `status == "success"`. `Depends:` P8-26.
+- [x] **P8-26** Add the graph document. One nullable successor today; the cycle check doubles as a **silent depth cap of ten**. Project the existing successor as a single edge on read.
+  — **done 2026-09-18. Both halves of the premise held exactly**: `ScheduledTask.then_task_id` was the whole graph, and `_has_chain_cycle(db, start_id, max_depth=10, owner=None)` returned `True` from a loop that had simply run out of steps.
+  `task_edges` (`src/task_scheduler.py:129`) and `build_task_graph` (`:144`) project the successor at read time. **There is no new column and no stored graph**, so a chain and a drawing of it cannot disagree (`Law 14`), and `then_task_id` keeps its name and its readers (`Law 1`). `build_task_graph` takes the rows the caller already queried rather than a session, so there is no second query answering the same question (`Law 7`), and an edge pointing outside the set is kept and marked `dangling` — reachable on the default screen, since the list filters by `status` and a chain into a paused task leaves the set while the row is still there.
+  **It rides a door that is already fetched.** `GET /api/tasks` returns `graph` beside `tasks`, and each task row gains `edges`. A fourth endpoint nothing fetches is a route with no caller, and `.pantheon/check-unreachable.py` measures it — **90 of a ceiling of 91** before this change, so one new unfetched route would have spent the entire remaining margin.
+  **The depth cap had no name, no message and no way to find out it existed.** `_chain_refusal` (`:3148`) is the same walk with the reason kept: `cycle`, `too_deep` or `cross_owner`. `_has_chain_cycle` is kept with its old name and its old boolean for its three callers and two tests, and **nothing that was refused is now permitted**. What changed is that the run's own step log says which — `Did not continue to Nightly report: the chain is longer than 10 steps` — via `_record_chain_outcome` (`:1050`), which re-attaches the log after the run row has already been committed. Whoever built the workflow is not reading the server log; they are looking at a chain that stopped at step ten for no stated reason.
+  **What the merge still needs (`static/**`, not in this patch):** nothing draws the graph. `P8-34` is the row for that and already declares `Depends: P8-26`; the payload it needs is on `GET /api/tasks` now — `graph.nodes`, `graph.edges` with a `when` per edge, `graph.conditions` and `graph.max_depth`.
+  `Verify:` someone who has never opened Tasks chains eleven tasks together, runs the first, and can tell from the run itself that the chain stopped because it is too long — not that it "detected a cycle", and not nothing at all.
+  `CI:` `tests/test_task_graph_document.py`. — agent:`p8b`
+- [x] **P8-27** Run-scoped execution identity — the current one is keyed by task, so a task cannot be in flight twice. Required before fan-out. `Depends:` P8-26.
+  — **done 2026-09-18, and the row's framing needs one correction.** The identity that was wrong is not `_executing` (which is keyed by task deliberately, and is what makes `run_task_now` return `False` and the webhook answer `409`); it is the **per-run state**, `_last_run_model` and `_last_run_steps`, which were single attributes on the scheduler. `B603` is the accurate statement of it and is closed by this row. **The "a task cannot be in flight twice" policy is unchanged** — widening it is a separate decision with a 409 and a double-dispatch guard behind it, filed as `B674` rather than changed in passing.
+  `TaskScheduler._run_state` is a dict keyed by `run_id`, with `_state_for`, `_clear_run_state`, `run_steps`, `run_model`, `set_run_model` and `run_trigger`. `run_id` is threaded through `_execute_llm_task`, `_execute_research_task`, `_execute_checkin` and `_run_agent_loop`, and the slot is dropped in `_execute_task_locked`'s outermost `finally`, so a scheduler up for a week holds state for what is in flight and nothing else. `None` is a legitimate key, for the agent loop driven without a run row.
+  **`B603`'s premises re-measured and all three held**: `TASK_CONCURRENCY_CAP_DEFAULT` is **1** and `TASK_CONCURRENCY_CAP_MAX` is **16**; `tests/test_task_shell_tools.py:114-119` is the `_run_agent_loop` stub, at exactly those lines, and it is updated. The defect reproduces on the pre-change tree: two interleaved runs, and run A is committed with **run B's model**.
+  `Verify:` an operator who raises the concurrency cap to 4 runs four overlapping tasks, opens two of their histories, and each one reports the model it actually used and the tools it actually called — rather than the other run's.
+  `CI:` `tests/test_run_scoped_execution_identity.py`. — agent:`p8b`
+- [x] **P8-28** Branch node — the only conditional in the engine is `status == "success"`. `Depends:` P8-26.
+  — **done 2026-09-18, premise exact.** `ScheduledTask.else_task_id` is the other branch, stored the same way `then_task_id` is and projected by the same `task_edges`, so `EDGE_CONDITIONS` is `('success', 'error')` and `EDGE_COLUMNS` is the one table saying which column carries which condition (`Law 7`). There is no edge table and no second place a successor can live.
+  **`Law 20`, and the trap `P8-25` fell into is live for this row too.** `_migrate_add_scheduled_task_else_column` (`core/database.py:1521`) runs from `init_db`, and the test builds `scheduled_tasks` **by hand in its pre-column shape** rather than from the model — a migration test run against a schema `create_all` just built is a test of `create_all`. The `REFERENCES … ON DELETE SET NULL` clause is carried across in the `ALTER`, so a migrated database behaves like a fresh one instead of silently accepting a dead id; SQLite permits it because the new column defaults to NULL.
+  **One thing found while doing it, and fixed here rather than filed.** The conditional was written inline after the run row was committed, so a task that **RETURNED** a failure reached it and a task that **RAISED** did not — the same failure, expressed two ways, taking two different paths through the workflow. `_advance_chain` (`src/task_scheduler.py:991`) is one function called from both. `skipped`, `aborted` and a deferred run take no edge at all, unchanged: they return before the branch.
+  **What the merge still needs (`static/**`, not in this patch):** the form has no second picker. `static/js/tasks.js` has exactly one chain control — `#task-form-chain`, populated at `:1852` from `existing?.then_task_id` and posted as `payload.then_task_id` at `:1929`. It needs a sibling bound to `else_task_id`, labelled in consequences — *"if it fails, run…"* — and the task card's schedule line should say a task has a failure branch, or nobody will find out it exists. The API is complete: `TaskCreate`/`TaskUpdate` accept `else_task_id`, it is validated by the same `_validate_then_task_id` (same owner, no self-chain), and `_task_to_dict` serves it beside `edges`.
+  `Verify:` someone who has never opened Tasks wires "if the nightly backup fails, message me", makes it fail, and the message task runs — without being told that a failure branch exists anywhere other than the form.
+  `CI:` `tests/test_task_branch_node.py`. — agent:`p8b`
 - [ ] **P8-29** Data mapping between nodes. `Depends:` P8-23, P8-24.
 - [x] **P8-30** Collapse the parallel event catalogues into one registry, and **add
   `document_updated`** — it is fired in production and appears in no catalogue, so nothing can
@@ -5252,13 +5294,13 @@ SKILL.md frontmatter format. That is the pattern to avoid, found in the phase's 
 The accessibility pass is the upstream roadmap's own item, unclaimed, and historically
 the only lane through which the theme file gets touched.
 
-- [ ] **P10-01** One focus ring through `:focus-visible`. **97 `outline:none` suppressions — plus 2 `outline:0`, so 99 in total** (re-measured 2026-08-27; the 97 confirmed exactly, and the two stragglers are the ones a find-and-replace on `outline:none` leaves behind) — against 35 `:focus-visible` rules and six competing ring styles. The a11y shim's own header notes the ring already exists and never fired because rows were never focusable. Most suppressions can then be deleted.
-- [ ] **P10-02** Author sidebar rows as real buttons. **Keep `.list-item`** — the a11y shim and the drag-sort module both query it, and rows *contain* nested buttons, which is exactly why the shim declines `role="button"` on them. **Change the tag, not the class.**
-- [ ] **P10-03** Make the resize handles visible and keyboard-reachable. **Premise corrected 2026-08-27.** **There are three, not two** — and `#settings-sidebar-resize-handle` is **already done**. That makes it the template: copy its treatment onto the other two rather than inventing one. They are mouse-only and invisible because their entire treatment routes through the accent token. `Depends:` P1-01.
+- [x] **P10-01** One focus ring through `:focus-visible`. **97 `outline:none` suppressions — plus 2 `outline:0`, so 99 in total** (re-measured 2026-08-27; the 97 confirmed exactly, and the two stragglers are the ones a find-and-replace on `outline:none` leaves behind) — against 35 `:focus-visible` rules and six competing ring styles. The a11y shim's own header notes the ring already exists and never fired because rows were never focusable. Most suppressions can then be deleted. — **done 2026-09-18, and three of the row's four numbers had moved.** **Re-measured with comments blanked (`Law 6`): 98 `outline: none` and 2 `outline: 0`, in 100 distinct rules, not 99.** **45 `:focus-visible` occurrences across 42 rules, not 35** — both readings given because they are answers to different questions (`Law 5`), and they are 49 / 46 after this row and `P10-03`. **Seven competing ring styles, not six.** The only figure that survived untouched is the shim's own claim, and it was right: the ring has been in the sheet the whole time. **What was wrong with it is arithmetic, not absence.** `:focus-visible { outline: 2px solid var(--red) }` is written at **(0,1,0)**, and the hundred suppressions split three ways, each failing differently: **47 spell `outline: none` with no focus pseudo-class at all** — which reads as harmless, because `outline-style` is already `none` by default, and is therefore a ring suppression in plain clothes, since the focus state is the only one in which anything sets an outline; **45 are scoped to `:focus`** at (0,2,0) or heavier and simply out-rank it; **8 are scoped to `:focus-visible`** and substitute their own `border-color` plus 1px `box-shadow`. **The fix is one rule and nothing is deleted.** `:is(#\9#\9#\9, *):focus-visible` at **(3,1,0)**, `!important`, painting `var(--focus-ring-width) solid var(--focus-ring)` at `var(--focus-ring-offset)` — the same armour `P1-12`'s motion guard carries and for the same reason, because **two of the hundred are `!important`** (`.doc-editor-textarea:hover/:focus/:active` and `.email-quote-fold`) and between two `!important` author declarations specificity decides before order does, so no polite rule reaches them however late it is written. The heaviest suppression in the sheet is `.chat-input-bar textarea#message` at (1,1,1); the heaviest `!important` outline rule that is not the guard is `body.doc-find-active mark.doc-find-mark.current` at (0,3,2). Both ceilings are **recomputed by the test**, so a rule that ever climbs above the armour fails rather than silently taking the ring away from whatever it matches. **`--focus-ring` is a new `:root` token and it resolves to `var(--red, #e06c75)` — deliberately not the accent.** Full-strength accent text misses 4.5:1 against `--panel` on **seven of the sixteen palettes**, and a ring is the last thing to paint in a colour a reader cannot find; it would also have added a site to the population `tests/test_accent_fallback_semantics_css.py` pins at 814 precisely so that a new accent site has to be a decision. The `:root` prohibition from `P1-01` does not carry — that one exists because 553 sites ship a `var(--red)` fallback a `:root` rule would flip, and nothing carries a fallback for a focus ring because until now nothing named one. **No suppression is removed, and the reason is stated rather than skipped.** All hundred are now dead *as ring suppressions* and the test proves it rule by rule — which is the "shown to be dead" `Law 1` demands before a subtraction — but *dead in the cascade* is not *dead in the file*: several carry `border`, `background` and `box-shadow` in the same block, and the eight `:focus-visible` ones now read as extra emphasis rather than as a replacement. The sweep is filed as **`B662`** with this test as its evidence, so removing them is a decision somebody makes rather than a cleanup that happens. The original (0,1,0) rule is kept as the fallback for anything that cannot parse `:is()`, and a test fails if it goes. 8 tests, 5 of which fail on the tree before the change; 3 mutations, all caught. `Verify:` press Tab from the address bar and keep pressing. Every control you land on — the composer textarea, the model picker, a settings input, a note's checkbox, the document editor — draws the same 2px ring 2px outside its box, on all sixteen themes, and a mouse click on the same control draws none. — agent:`p10`
+- [x] **P10-02** Author sidebar rows as real buttons. **Keep `.list-item`** — the a11y shim and the drag-sort module both query it, and rows *contain* nested buttons, which is exactly why the shim declines `role="button"` on them. **Change the tag, not the class.** — **done 2026-09-18. Eleven of the twelve, and the twelfth is the premise the row did not have.** Twelve rows in `static/index.html` carry `class="list-item"` on a `<div>` with a click handler — New Chat, Search and the ten Tools launchers. **`#tool-library-btn` cannot become a `<button>`: it *contains* one** (`#library-new-doc-btn`, the inline "+ document" action), and a button inside a button is invalid markup that axe reports as `nested-interactive` and that screen readers disagree about. That is the same case `a11y.js` already declines `role="button"` for, so the shim's rule and this row's exception are **one decision rather than two** — it stays a `<div>`, focusable and Enter/Space-activatable through the shim exactly as before, with the reason written into the markup beside it. The other eleven are `<button type="button" class="list-item">` now: the class did not move (`FORBIDDEN.md` Part 1 — the shim queries `#sidebar .list-item` and `dragSort.js` queries the same selector), the tag did. **The explicit `type` is not decoration**: without it a `<button>` inside a form submits it, and "none of these is in a form" is exactly the kind of fact that changes later and takes a page's state with it. **The second half of the change is undoing the UA's own button defaults**, and without it the row would have shipped looking wrong rather than behaving wrong: `appearance: none`, `font-family: inherit`, `font-weight: inherit`, `color: inherit`, `text-align: left` and `width: 100%` join the existing `.list-item, .models-row` rule, because a `<button>` otherwise paints `color: buttontext` in a 13.333px system font, centred, and shrink-to-fits under `-webkit-appearance` even at `display: flex` — so the hover background would have stopped at the end of the label, beside eleven dynamic session rows that are still `<div>`s and must stay that way for the nested-button reason above. **The shim needs no change and that is the point**: `enhanceRow` already returns early for `BUTTON`, so the eleven rows leave the shim's care and get the browser's own tab order, Enter and Space handling, and announcement — while the rows it still owns keep it. 7 tests, 4 of which fail before the change; 2 mutations, both caught. `Verify:` press Tab into the sidebar. New Chat, Search and nine of the ten Tools rows take focus in order, draw `P10-01`'s ring, and open on Enter and on Space; a screen reader announces each as a button by its visible name. Library is the tenth and still works — it is reached the same way and announces without the button role, because it has a button of its own inside it. — agent:`p10`
+- [x] **P10-03** Make the resize handles visible and keyboard-reachable. **Premise corrected 2026-08-27.** **There are three, not two** — and `#settings-sidebar-resize-handle` is **already done**. That makes it the template: copy its treatment onto the other two rather than inventing one. They are mouse-only and invisible because their entire treatment routes through the accent token. `Depends:` P1-01. — **done 2026-09-18, and `Depends: P1-01` is no longer a block — checked rather than assumed.** `P1-01` is ticked (2026-08-30), so `--accent` is defined per theme and `.sidebar-resize-handle:hover` / `.rail-resize-handle:hover` — which spell a **bare** `var(--accent)` and were two of that row's 204 sites that painted nothing — already resolve and paint. **So half this row's diagnosis was delivered by someone else's row and the remaining half is the one it is named after: they are mouse-only.** No tabindex, no role, no key binding, no announced value. The template really is done and it is copied rather than re-invented (`Law 14`): `role="separator"`, `aria-orientation="vertical"`, an `aria-label`, all three `aria-value*`, `tabindex="0"`, arrows to resize and Enter/Space to collapse, mirroring `static/js/settings/sidebar.js` into `static/js/init.js`. **One question the template could not answer, because the settings navigation only ever sits on the left: the arrows move the separator, not the width.** The main sidebar and the icon rail can both be moved to the right of the window (`.right-side`, which the existing drag handler already reads), and there "wider" is to the **left**. Binding ArrowRight to *wider* unconditionally would have been the literal copy and backwards half the time, so what is bound is the direction the edge visibly moves. The narrowing arrow at the declared minimum **collapses** rather than clamping — without that boundary transition the clamp puts 184px back to 200px forever and keyboard collapse is unreachable, which is the trap the settings handle documents in its own comment. `aria-valuenow` is rewritten after a drag as well as after a press, because a number a screen reader states confidently and wrongly is worse than no number. **The CSS adds no new `var(--accent)` site**: `:focus-visible` joins the *existing* `:hover` selector lists on all three handles, because a rule of its own would have been a new accent use and `tests/test_accent_fallback_semantics_css.py` pins that population at 814 exactly so a new one has to be deliberate. 9 tests, 7 of which fail before the change; 2 mutations, both caught. `Verify:` press Tab until the thin strip at the sidebar's edge takes focus (it lights up in the theme's accent). Left and Right move the edge 16px in the direction you pressed — on either side of the window — Enter closes the sidebar, and Tab to the strip on the icon rail and press Right or Enter to bring it back. — agent:`p10`
 - [ ] **P10-04** Contrast audit across all 16 themes with the guard from P1-09 enforcing it. `Depends:` P1-09.
-- [ ] **P10-05** Verify the reduced-motion guard covers all **160** keyframes and the 7 canvas animators — **including the 12 that `slashCommands.js` injects into `document.head` at runtime**, which a CSS-only audit will not see. `Depends:` P1-12.
-- [ ] **P10-06** Keyboard navigation pass over the rail, the sidebar, the composer, the window system and the Workshop.
-- [ ] **P10-07** Give the loader a stage line so boot is not silent, move it off `innerHTML`-per-frame, and add a reduced-motion guard. **Keep the wave.**
+- [x] **P10-05** Verify the reduced-motion guard covers all **160** keyframes and the 7 canvas animators — **including the 12 that `slashCommands.js` injects into `document.head` at runtime**, which a CSS-only audit will not see. `Depends:` P1-12. — **verified 2026-09-18, `Depends: P1-12` is discharged (it is ticked), and the verification found two things the audit could not have: one live defect and one animator nobody had counted.** **Four of the row's numbers are wrong and every one is re-measured here rather than carried.** **139 `@keyframes` in `static/style.css`** — not 148, not the 149 `P1-12` recorded, and not 160. (`grep -c "@keyframes"` says 142; three of those lines are English prose *about* keyframes, in `P1-12`'s own comment block and in the test's, which is why the count is taken with comments blanked and why `Law 20` exists.) **5 distinct keyframes injected by `slashCommands.js`, not 12** — `P1-12` corrected this already: the module carries the same three-keyframe `egg-styles` string ten times verbatim behind an id check, so 32 textual occurrences resolve to 5 that can ever apply. **A sixth runtime injection nobody had counted**: `chatStream.js` writes `steer-pulse` into `document.head`; it brings its own narrow `prefers-reduced-motion` block so it was never a defect, but it was never in the audit either. **The 7 canvas animators are exactly 7** and `applyBgPattern` still refuses to start them under the preference. **The live defect: `static/login.html` defines `login-spin` and no guard reached it.** The login page deliberately links **no stylesheet** — it mirrors the palette by hand so its first paint owes nothing to `style.css` — and the cost of that is that it owed nothing to `P1-12`'s guard either. Someone who has asked their operating system to stop moving things met a ring spinning at 86rpm on the first screen this product shows them, and every previous audit missed it **because the audit was run inside the file that had already been fixed**. It now carries the same guard in the same shape, `0.01ms` rather than `none` and the `:is(#\9#\9#\9, *)` armour rather than `*`, so there is one idiom and not two. **And an eighth JS animator the row could not have named, because it is neither a keyframe nor a canvas**: `scrollHistory()` in `static/js/ui.js` lerps `scrollTop` a fraction of the remaining distance **every frame** on its own `requestAnimationFrame` loop. It is invisible to the CSS guard (whose `scroll-behavior: auto !important` describes a *declarative* scroll, not a script writing a number), to `P1-15`'s sweep (which looks for the literal `behavior: 'smooth'`, and there is none here) and to `theme.js`'s canvas check. Under reduced motion it now lands where it was always going to land, in one frame, through the `scrollHistoryInstant()` that already sat beside it. The test file gains a page-level rule — **every shipped page that animates is either under `style.css` or carries its own guard** — with one named exception, `wave-variants.html`, a developer sandbox whose own first comment says nothing links to it and whose motion is a `setInterval` no CSS guard could reach anyway; its two siblings are *not* excused, they simply declare no CSS motion, and a second test fails if the excused page stops calling itself a sandbox. 6 new tests in `tests/test_reduced_motion_guard.py` (extending it rather than starting a third file), 4 of which fail before the change; 2 mutations, both caught. `Verify:` turn on Reduce Motion in the OS, then load `/login` — the button's spinner is a still ring rather than a spinning one — and send a long message in a chat: the history jumps to the bottom instead of gliding there. — agent:`p10`
+- [ ] **P10-06** Keyboard navigation pass over the rail, the sidebar, the composer, the window system and the Workshop. — **three of the five done 2026-09-18; the other two are audited, measured and filed, so this stays open with what is left named.** **The rail is done and it is the biggest single win.** Every launcher in it is already a real `<button>`, which is the defect and not the fix: **18 of them**, two shipping hidden, sit between the top of the page and the sidebar, so reaching the composer by Tab cost eighteen presses through a strip a mouse user skips by not looking at it. It is now a `role="toolbar"` with `aria-orientation="vertical"`, a label, and a **roving tabindex** — one tab stop, Up/Down to move inside it with wrap, Home/End for the ends. Left/Right are deliberately **not** bound, and the non-binding is asserted: the rail can be moved to the right of the window and a horizontal binding reads backwards there, which is the same question `P10-03` had to answer for the separators. Hidden launchers can never hold the stop, because Customize UI hides them by writing `style.display = 'none'` (`applyUIVis` in `app.js`) and a tab stop on a hidden button leaves the rail with no way in at all; a `MutationObserver` on `style` over the rail's own 18 elements re-picks the stop the moment one disappears. It lives in `static/js/a11y.js` and rides that module's **existing** delegated `keydown` listener rather than adding a second one (`Law 14`) — two keydown listeners on `document` is two places to discover a key is already taken. **The sidebar is done by `P10-02`** (eleven rows are native buttons; the twelfth and the dynamic session rows keep the shim). **The composer was already reachable and this was checked rather than assumed**: every control in it is a real `<button type="button">` with an `aria-label`, and the textarea has one — what it lacked was a visible ring, which `P10-01` restores by out-ranking `.chat-input-bar textarea#message { outline: none }` at (1,1,1). **What is left, both measured.** **(1) The window system is mouse-only for move and resize**: `windowDrag.js` and `windowResize.js` contain **zero** `keydown` handlers between them, so a docked tool window can be opened and closed from a keyboard but not positioned. Filed as **`B660`**. Its *dialog* semantics are already right and deliberately so — `tests/test_dialog_aria.py` shows `styledConfirm`/`styledPrompt` trap Tab and restore focus, while the dockable tool windows are `role="dialog"` **without** `aria-modal` because they do not block, and a focus trap there would be the wrong fix. **(2) The Workshop's own panels are clean** — `skills.js` and `memory.js` put **no** `onclick` on a `<div>` and the shipped markup carries none either — but the general defect is larger than the Workshop and is worth one row rather than five: **130 non-native elements across 35 modules are given a click handler**, led by `sessions.js` (23), `emailLibrary.js` (16) and `document.js` (9). The 23 in `sessions.js` are inside `#sidebar` so the shim already reaches them; most of the rest are not. Filed as **`B661`**. `Verify:` press Tab once from the page's first control — the whole icon rail is a single stop — then Down and Up to walk the launchers, Home and End to jump, and Enter to open one; Tab again and you are past the rail rather than eighteen presses into it. — agent:`p10`
+- [x] **P10-07** Give the loader a stage line so boot is not silent, move it off `innerHTML`-per-frame, and add a reduced-motion guard. **Keep the wave.** — **done 2026-09-18, and the wave is kept exactly as it was.** Three defects in nine lines of inline script, and the first is why the other two were worth fixing rather than deleting. **Boot was silent**: three bars bobbed and nothing said what was being waited for, so a cold load and a load about to give up after five seconds looked identical — a `Law 15` surface, because what is on screen cannot tell you what it is doing. There is a `#loader-stage` line beneath the wave now, `role="status"` with `aria-live="polite"`, shipping with *Starting Pantheon…* already in it rather than empty. Its **only writer** is `window.__pantheonLoaderStage`, published by the same inline script that owns the wave and for the same reason the wave's stop callback is, and `static/js/startupShell.js` — which already owns the loader's lifecycle — reaches it through one exported `reportBootStage()` and calls it at three real milestones: *Interface ready* on reveal, *Loading your chats…* when hydration starts, *Chats unavailable* when it fails. **The fourth stage is the one the row is actually named after**: if nothing has reported by 2.5s the module graph is slow or broken, and the loader says so instead of bobbing — and it does **not** stamp on a real stage that arrived at 2.4s, which would replace information with an apology. `app.js` was deliberately not made a caller: it is one of the six modules sharing the approval cache-buster string, and a stage line is not worth a coordinated six-module bump. **`innerHTML` per frame is gone.** `el.innerHTML = '<span style="…">•</span><span>▁▂▃</span>'` ran every 150ms — seven times a second, re-parsing markup and rebuilding two elements, on the critical path of a cold boot while the module graph is still downloading — when nothing about a frame changes except one glyph run and one `translate`. Two nodes are built once and mutated. **The reduced-motion guard is asked for here rather than imported**, and that is not laziness: this script runs before any module exists, so `motion.js` is not loaded yet, and the CSS guard cannot reach a `setInterval` at all. Under the preference the interval is never created and **the wave still renders** — one still frame, held at the crest rather than at frame 0, so it reads as a wave rather than as a ramp that stopped. The 5s last-resort fallback still **removes** the node, which is load-bearing rather than cleanup: `sessions.js` reads its presence as "startup in progress" and stops clearing the composer while it is there. 13 tests driving the real script **extracted from the shipped page** (so a comment about `innerHTML` can never be mistaken for a use of one), 9 of which fail before the change; 3 mutations, all caught. `Verify:` load the app with the network throttled. The line under the wave says *Starting Pantheon…*, then *Still starting — this is taking longer than usual* if it drags, then *Loading your chats…* — and with Reduce Motion on, the wave is a still frame and the line still changes. — agent:`p10`
 - [ ] **P10-08** Zoom compensation for modals. **Premise corrected 2026-08-27.** **This is backwards.** The generic rule at `style.css:181` already covers every `.modal-content`, so a new modal is compensated by default and needs no line of its own. The five per-modal `ui-scale-125` rules are **exceptions to that rule**, not the pattern to follow. Rewritten deliverable: find out why each of the five needs an override, fold back the ones that do not, and document the remainder. As written this row taught every future contributor the wrong habit.
 - [x] **P10-09** Rebuild, redeploy, bump the cache-buster, verify in-container imports. **`static/` has no bind mount.** — **done 2026-09-10, on the real deployment.** Image rebuilt (exit 0, 2.87GB, replacing one thirteen days old), stack recreated, all four services up. **The row's warning is the whole point and it was checked rather than assumed**: `static/` has no bind mount, so a JS change that never reaches the image is invisible until a user hits it. All six touched assets — `sw.js`, `memory.js`, `notes.js`, `chatRenderer.js`, `style.css`, `index.html` — are **byte-identical between the host working tree and the running container**, and `CACHE_NAME` reads `pantheon-v405-p13-15-mentions` inside the image. (Hashing against *this* container would have failed on line endings alone — cybertooth checks out CRLF — which is its own small lesson about what a comparison is actually comparing.) In-container imports verified by running them: `stem('drives') → 'drive'` and *what do I drive* → the diesel-van memory, which is `B62`'s own probe answering in production. — verified on cybertooth
 - [ ] **P10-10** Full regression: `pytest -q`, `py_compile` across app/routes/src, `node --check` across every touched module, and a manual pass over every surface in the mockup. — **the automated half is done 2026-09-10; the manual pass is not, so this stays open.** `.pantheon/release-gate.py` runs every checker, `py_compile` across the tree, `node --check` across all 187 modules, the retrieval eval and the suite, in one command (**173 when this was written; the figure was CI's, and CI's loop was checking nothing on the first file it named** — `B10`) — 30 seconds with `--fast`. **Every checker and the suite had been run by hand before each commit, which works right up until the run somebody is tired during: a gate you have to remember is a gate that is sometimes not there.** **The list is read out of `.github/workflows/ci.yml` rather than copied** (`Law 13` — a ceiling in two files is a ceiling that will disagree with itself, and the disagreement gets found by a push that fails after a local run said it was fine), and a test asserts no checker is named in the script. **It earned its place on the first run: `check-tracker.py` had existed for weeks and CI never ran it** — the checker that validates the roadmap's own arithmetic, that no id names two rows (`B48`), that the newest Progress entry matches the totals (`B44`), all three of which were real defects and one of which it caught again today. A roadmap that lies about itself had been pushable the whole time. Now in CI, and a test fails if any checker on disk is missing from it. **What remains is the half a script cannot do** — the manual pass over every surface — and the gate prints that rather than printing *passed* and implying a coverage it has not got. 16 tests.
@@ -5365,11 +5407,130 @@ has an account.
   patches** — worth knowing before `P11-02`'s roles add anything else to that dict.
   — agent:`p11a`
 
-- [ ] **P11-02** **Roles as named overlays on `DEFAULT_PRIVILEGES`.** Not a new system — the
+- [x] **P11-02** **Roles as named overlays on `DEFAULT_PRIVILEGES`.** Not a new system — the
   dict already carries booleans, an integer quota and a model allowlist. A role is a named set
   of overrides; a user gets a role and optional per-user overrides on top. Resolution order:
   built-in default → role → user. Keep `is_admin` as the superuser role rather than replacing
   it, because 103 call sites depend on it and rewriting them all at once is how this goes wrong.
+  — **done 2026-09-18.**
+  **Premise corrections, four, and the fourth is the row's actual first step.**
+  (i) **103 is stale and was already corrected one row below this one.** Re-derived by AST at
+  `c968997` with `check-auth-map.py`'s own scope: **107** (87 direct + 20 `Depends`). `P11-02b`
+  fixed the number in its own line and in `DECISIONS.md` and this row kept the old one — `Law 6`
+  between two lines of the same file. The count is **111** after this row, because the four
+  role-management routes below gate with `require_admin`; `.pantheon/P11-AUTH-MAP.md` § A moved
+  with them and its checker passes at 111/111.
+  (ii) **"nine booleans, an integer quota and a model allowlist" is exactly right** —
+  AST-verified: 11 keys at `core/auth.py:28`, 9 bool, 1 int, 1 list. The only premise in this
+  row that survived unchanged.
+  (iii) **`resolve_privilege` is at `src/auth_helpers.py:193`, not `:216`.** `:216` is the line
+  `P11-01` replaced and it is now *inside* the function; `require_privilege` starts at `:265`.
+  Line numbers in prose (`Law 6` again).
+  (iv) **`create_user` stored a full copy of `DEFAULT_PRIVILEGES` on every non-admin, and that
+  fact is the difference between this row shipping and this row being dead code.** A stored map
+  naming all eleven keys is eleven per-user overrides; per-user beats role; so a role would have
+  been shadowed for **every user created through the normal path**, silently, with the catalogue
+  reading correctly and the resolver ignoring it. Nothing in the roadmap, `DECISIONS.md` or the
+  auth map said so. A new non-admin now stores `{}` — the effective map is byte-identical,
+  because an absent key resolves to what the registry declares — and `set_privileges` stores the
+  *overrides* rather than the resolved map for the same reason. Two more writers of a complete
+  map were found on the way: `set_admin`'s promote stash (`target.get("privileges") or
+  DEFAULT_PRIVILEGES`, so an empty map stashed the whole registry) and its demote restore
+  (`... or DEFAULT_PRIVILEGES`, which cannot tell *stashed empty* from *no stash*). Both now
+  use an `is None` sentinel, and `tests/test_set_admin.py` passes untouched.
+  **The layer is inside the one resolver, not beside it (`Law 13`).**
+  `resolve_privilege(privs, key, *, role_overrides=None)` is still the only place that answers
+  *what does this privilege resolve to*, and it now answers in four steps — user → role →
+  registry → denied. It takes the resolved role body rather than a role name, so it stays a pure
+  function of its arguments and there is no second lookup path; `AuthManager.get_privileges` is
+  the caller that knows which role a user holds, and it builds its map by calling this function
+  for every declared key instead of merging by hand. The role leg only ever answers a key
+  `DEFAULT_PRIVILEGES` declares: `auth.json` is hand-editable, and `P11-01`'s rule that a key
+  nobody declared is denied has to survive a new layer that could otherwise carry one.
+  **`is_admin` is untouched and is still the superuser role.** `get_privileges` short-circuits
+  to `ADMIN_PRIVILEGES` before a role is consulted, `role_overrides_for_user` returns `{}` for an
+  admin, and `set_user_role` refuses an admin outright rather than storing a decision that never
+  applies. **The short-circuit needed its own test**: a mutation deleting it *survived* the
+  obvious one, because `set_admin` writes `ADMIN_PRIVILEGES` into the stored map on promotion and
+  the merge then produces the same answer by accident. The flag is the authority, not the copy —
+  setting `is_admin` on a row is how an operator recovers access to their own box.
+  **`P12-01`'s registry is installed, and that is the row's second half.**
+  `settings.set_role_limit_provider` was built by `P12` and deliberately left empty, with the
+  comment naming `P11-02` as the row that would call it. `app.py` calls
+  `src.roles.install_role_layer(auth_manager)` one line after the `AuthManager` is built, and
+  **every limit in the product inherits the layer in that one edit** — ten byte caps, six auth
+  throttles, the upload throttle, the task concurrency cap — with no call site changing. That
+  closes the gap `P12-01`, `P12-03`, `P12-05b`, `P12-06` and `P12-10` each state out loud: *every
+  limit is resolvable per role and no role can currently set one.* Driven through
+  `resolve_byte_limit_with_source` and `resolve_limit`, not through the provider, because the
+  claim is about the product's limits rather than about a registry holding a function.
+  **Two namespaces, no third list (`Law 14`).** A role's overrides are validated key by key
+  against the registry that declares the key — `DEFAULT_PRIVILEGES` for privileges,
+  `settings.LIMIT_RANGES` for limits — and a key in neither is **refused at the door** rather
+  than stored and ignored (`P17-09`'s reasoning; `can_use_bsah: true` answered with a 200 tells
+  an operator they granted something they did not). `LIMIT_RANGES` is `_NULLABLE_INT_RANGES`
+  moved out of a function body in `POST /api/auth/settings` into `src/settings.py`: it was the
+  only list in the tree answering *which settings keys are limits*, a second reader arrived, and
+  the route now binds the same object under its old name so the validation beneath it reads as it
+  did. The floor is 1 on every limit key and there is no value meaning *off* — `FORBIDDEN.md`
+  Part 2 keeps the upload caps and the auth rate limiters, and a role is not a way round a list
+  that says never.
+  **Where a role lives.** `auth.json`, under a top-level `roles` map, with the name on the
+  user's own row. It is already the file that answers who may do what, already written through
+  `_save`'s atomic path, and already the file `P3-16` refuses to overwrite from a failed read; a
+  role table anywhere else would be a second answer to the same question and would make
+  authorization depend on the database being up. Both keys are **absent** on an install that has
+  never defined a role, and every function returns empty in that case.
+  **What the agent can and cannot do with this.** A role can set the six auth throttles that
+  `_SELF_RESTRAINT_KEYS` in `src/agent_tools/admin_tools.py` keeps the agent away from — *"a
+  throttle that prompt injection can raise is not a throttle"* — so a role must not become a
+  second door to them. It is not one: every role route is under `/api/auth`, which
+  `_APP_API_BLOCKLIST_PREFIXES` already refuses to the generic `app_api` bridge, and nothing in
+  `manage_settings` touches roles. That is asserted against the live router and the live
+  blocklist tuple rather than either file's text, because it is the kind of fact a later refactor
+  breaks without noticing.
+  **WHAT THE ADMIN SURFACE NOW NEEDS — `P11-11`'s subject, said precisely.** This row shipped the
+  API so the layer has a caller (`Law 13`); the screen is still missing and is `P11-11`'s.
+  Four endpoints exist and none of them has a control:
+  * `GET /api/auth/roles` → `{roles: [{name, privileges, limits}], privilege_keys: [...11],
+    limit_keys: [...18]}`. The two key lists are in the response **so the panel does not
+    hard-code them** — a fourteenth privilege key must appear in the editor without a front-end
+    change, the same contract `ADV_KEYS` broke and `FORBIDDEN.md` protects.
+  * `PUT /api/auth/roles/{name}` with `{"overrides": {...}}` — one flat map. The
+    privilege/limit split is **derived** from which registry declares each key, so the editor
+    renders two groups and posts one object; asking the operator to classify a key is asking them
+    to get it wrong. A refusal is a 400 carrying a sentence written for a person
+    (*"'can_use_bsah' is not a privilege or a limit this build declares"*), so the panel shows the
+    message rather than inventing one.
+  * `DELETE /api/auth/roles/{name}` — deletes and **revokes from every holder in one write**. The
+    UI must say that: it is not a tidy-up, it is a permission change for N people.
+  * `PUT /api/auth/users/{username}/role` with `{"role": "operator"}` or `{"role": null}` to
+    clear. It returns the user's newly resolved privileges, so the row can re-render without a
+    second fetch.
+  Three more things the panel needs and does not have: `GET /api/auth/users` now carries
+  `role` per row and `GET /api/auth/status` carries the caller's own `role`, so both lists can
+  show a **name** rather than nine booleans a person has to reverse-engineer (`Law 15`); the
+  existing per-user privilege editor at `#adm-userList` needs a **tri-state** rather than a
+  checkbox, because `null` now means *inherit from the role* and is the only way back from an
+  override — a two-state control can set a per-user value and can never clear one; and **no
+  role ships defined**, deliberately, so the panel's empty state is the first thing anyone sees
+  and has to explain what a role is for. The tier names in `.pantheon/P11-AUTH-MAP.md` §A —
+  `operator`, `power-user` — are what the empty state should offer, and `B683` is why they
+  cannot yet be shipped as built-ins.
+  `CI:` `.pantheon/check-auth-map.py --max 43` — unchanged at **43**, which is the point: the
+  four new routes gate with `core.middleware.require_admin` rather than this file's hand-rolled
+  `_get_current_user` + `is_admin` pattern, and rule C does not count `require_admin`. That gate
+  is also the only one of the four implementations that consults `auth_disabled()` (`B543`), so
+  the single operator of an auth-disabled box can reach their own role catalogue.
+  `Verify:` with no role defined, every user's privileges and every limit in the product resolve
+  exactly as they did before this row, and `is_admin` still answers first; with a role defined
+  and assigned, an undeclared key still denies, a per-user override still wins, `null` gives a
+  key back to the role, deleting the role revokes it from every holder, and the same role sets a
+  byte cap and a login throttle through `settings.resolve_limit` with the source reading
+  `role profile`. — **26 tests in `tests/test_roles_overlay_default_privileges.py`, all 26 red on
+  `c968997`; 21 mutations, all caught.** The two `Law 1` proofs are named as such in the file and
+  are the only ones that *survive* a mutation reverting `get_privileges` and `create_user` to
+  their pre-role forms — which is what an invariance proof is for. — agent:`p11r`
 - [x] **P11-02b** **Audit every `require_admin` site against the role model.** **107**, not 103.
   Scope, stated (`Law 5`): every call to `core.middleware.require_admin` and every
   `Depends(require_admin)` in tracked non-test Python outside `.pantheon/`, resolved through
@@ -5492,8 +5653,46 @@ has an account.
 - [ ] **P11-07** **Sessions that survive more than one process.** They are file-backed today
   (`Loaded N session(s) from disk`), which is fine for one container and wrong behind a load
   balancer. Decide before, not after, someone runs two replicas.
-- [ ] **P11-08** **An auth audit log** — logins, role changes, privilege grants, failures.
-  Feeds `D-05`'s telemetry table rather than inventing a second store.
+- [x] **P11-08** **An auth audit log** — logins, role changes, privilege grants, failures.
+  Feeds `D-05`'s telemetry table rather than inventing a second store. — **done 2026-09-18.**
+  **Premise corrected: `D-05` built nothing and is still parked.** The table the row means
+  exists because `P14-01` built it — `core.database.Event` (`events`), written through
+  `src/events.py`, pruned on `events_retention_days`. An agent looking for *"`D-05`'s telemetry
+  table"* finds a `DEFERRED.md` entry arguing for TimescaleDB and no table at all. The
+  instruction is right and the attribution is not; the row should read *`P14-01`'s events
+  table, which is what `D-05` asked for*.
+  **So this is `record_event` with a fixed kind, not a writer.** `record_auth_event(action, *,
+  actor, subject, outcome, detail)` in `src/events.py` writes `kind="auth"`. `actor` lands in
+  `owner`, so *everything this account did* is an index that already exists;
+  `subject` — who it was done **to**, a different person on every admin action — goes in
+  `detail`, because the table has one owner column and overloading it would make both questions
+  unanswerable. A separate store would have been the second retention policy nobody remembers to
+  prune, and `Law 14` names that before it happens.
+  **Fifteen call sites, all in `routes/auth_routes.py`**: login (success, bad password, bad 2FA,
+  rate-limited, session refused), logout, user create (setup, signup, admin, and each refusal),
+  user delete, privilege change, admin promote/demote, and the four role operations `P11-02`
+  added. **A refusal is an event, not a missing one** — `outcome="error"` with a reason — which
+  is the half of an audit log that actually gets read.
+  **Two rules enforced rather than requested.** A login failure records `invalid_credentials`
+  whether or not the account exists, deliberately: the 401 does not distinguish them and a row
+  that did would be a username oracle for everyone who can read the table, which on a shared
+  instance is every admin. And `_audit_detail` **redacts** any detail key containing
+  `password`, `token`, `secret`, `totp`, `code`, `hash`, `cookie`, `authorization`,
+  `credential` or `key` — rule 2 of `src/events.py` says a credential must never be written,
+  and the function holding a password is the function recording the login, so a deny-list beats
+  a docstring asking every future caller to remember.
+  **`Law 16`: the destination is the same SQLite file as every other event.** Nothing new leaves
+  the machine; these rows reach an exporter only through the OTLP/Prometheus paths an operator
+  configured, and they are pruned by the same 90-day window rather than accumulating in an
+  append-only file nobody sweeps.
+  `Verify:` a successful login, a refused login, a role change and a privilege grant each write
+  exactly one `kind="auth"` row naming the actor, the subject and the outcome; a password handed
+  to the recorder never appears in the stored row; and a login on a database created **without**
+  the `events` table still succeeds. — **11 tests in `tests/test_auth_audit_log.py`, all 11 red
+  on `c968997`; 4 mutations, all caught.** The rows are read back out of a real SQLite database
+  rather than asserted through a mock, and the missing-table case is driven against a database
+  built with no `Base.metadata.create_all` at all (`Law 20`, and the trap `P8-25` fell into).
+  — agent:`p11r`
 - [ ] **P11-11** **Where an operator actually does any of this.** `P11-03` names four values
   someone must supply — discovery URL, client id, client secret, scopes — and gives them no
   home. `P11-04` calls the claim map "configurable" without saying where. `P11-02` never says
@@ -14995,9 +15194,20 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   does an operator do next*, which is `Law 15` more than `Law 17`. Note that the non-dict case is
   already handled without the exception path (`resolve_privilege` answers from the registry), so
   what is left here is genuinely "we could not ask the question", not "the answer was malformed".
+  **Filed a second time as `B682` by `P11-02`, from the other side of the same handler, and folded
+  in here.** Its additions are worth keeping: `P11-02` **removed one route into that branch** — a
+  non-dict stored map used to raise inside `{**DEFAULT_PRIVILEGES, **stored}` and now degrades to
+  the declared defaults with a warning — and the branch itself is untouched, so an auth-store read
+  error, a lock timeout or any future exception in `get_privileges` still grants every gated route
+  to whoever asked. It also sharpens the `Verify:`: the single-user path (`require_user` returning
+  `""`) must still short-circuit before any of it, and the exception must be logged once rather
+  than swallowed. *(Third duplicate filing produced by the fan-out, after `B570` and
+  `B580`/`B593`. All three were two agents meeting at one seam from opposite sides, and all three
+  were cheap to fold — but the pattern is now the thing to notice, not the instances.)*
   `Verify:` the behaviour on an unreadable privilege store is chosen on the record, the chosen
-  branch is driven by a test that makes `get_privileges` raise, and whichever way it goes the
-  operator is told which state they are in. `Depends:` nothing. — found by `P11-01` — agent:`p11a`
+  branch is driven by a test that makes `get_privileges` raise, the single-user short-circuit still
+  runs first, and whichever way it goes the operator is told which state they are in.
+  `Depends:` nothing. — found by `P11-01`, re-found by `P11-02` — agent:`p11a`
 
 - [ ] **B532** **`ADMIN_PRIVILEGES` is derived from `DEFAULT_PRIVILEGES` by type, so a new
   restrictive key silently becomes permissive for admins and a new int cap silently becomes
@@ -15775,3 +15985,226 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   worth flagging. `Verify:` a cache-buster bump obeying `D-01`'s lockstep contract does not fail
   or error any test, and a bump that breaks lockstep fails `check-specifiers.py`. — found by the
   full suite at the merge — agent:`integrator`
+
+- [ ] **B660** **A docked tool window cannot be moved or resized from a keyboard.** `static/js/windowDrag.js` and `static/js/windowResize.js` contain **zero** `keydown` handlers between them (measured 2026-09-18) — every position and size change is a pointer drag. A keyboard user can open a tool window, use it and close it, but cannot get it out of the way of the thing underneath it, which on a tiling surface is most of what positioning is for. The treatment already exists twice in this product and neither is a new idea: `#settings-sidebar-resize-handle` (`P10-03`'s template) and the two handles `P10-03` brought up to it are `role="separator"`, `tabindex="0"`, arrow-stepped and `aria-value*`-announced. Suggested fix: a focusable grab affordance on the window chrome with arrow-key move and Shift+arrow resize, stepping the same 16px, announcing through `aria-value*` the way the separators do. **Not** a focus trap — these are `role="dialog"` *without* `aria-modal` on purpose, because they do not block, and `tests/test_dialog_aria.py` shows the two dialogs that genuinely do block (`styledConfirm`, `styledPrompt`) already trap Tab and restore focus. `Verify:` focus a docked tool window's title bar and move it to the other side of the screen without touching the mouse. — found during P10-06 — agent:`p10`
+
+- [ ] **B661** **130 non-native elements are given a click handler, across 35 modules.** Measured 2026-09-18, scope: `const|let|var <name> = document.createElement('div'|'span'|'li'|'td'|'tr')` followed anywhere in the same module by `<name>.addEventListener('click'` or `<name>.onclick =`, over `static/**/*.js` excluding `static/lib/**`, comments blanked. The heaviest are `sessions.js` (23), `emailLibrary.js` (16), `document.js` (9), `chatRenderer.js` (8), `memory.js` (6) and `documentLibrary.js` (5). **Not all of them are unreachable**: `a11y.js` enhances anything matching `#sidebar .list-item`, which covers most of the 23 in `sessions.js`, and that is exactly why the total is worth having — nobody could previously say which of the 130 were covered and which were not. The shipped markup itself is clean (`0` `onclick` on a `<div>` or `<span>` in `static/index.html`), so this is entirely a runtime-construction problem. **`P10-02` is the shape of the fix and not a precedent for a shim**: build the thing as a `<button type="button">` unless it contains another control, in which case say why in place. Suggested first cut: the six modules above account for 67 of the 130, and `emailLibrary.js` and `document.js` are the two with no shim coverage at all. `Verify:` Tab through the email library and the document editor and reach every row you can click. — found during P10-06 — agent:`p10`
+
+- [ ] **B662** **100 `outline` suppressions are now dead and none of them has been removed.** `P10-01`'s armoured `:is(#\9#\9#\9, *):focus-visible` rule out-ranks every one of them — `tests/test_one_focus_ring_css.py::test_the_ring_out_ranks_every_suppression_in_the_sheet` recomputes the cascade rule by rule and fails if one ever wins again — so the "shown to be dead" that `Law 1` requires before a subtraction now exists, in a form that is re-derived rather than remembered. They are kept anyway, deliberately, because **dead in the cascade is not dead in the file**: of the 100 rules, 47 carry only the suppression, 45 are `:focus`-scoped and 8 substitute a ring of their own — seven distinct styles — in `border-color` and `box-shadow` declarations that still paint and now read as extra emphasis rather than as a replacement. A sweep therefore has three separable questions and should be three separable commits: (a) delete the 47 bare `outline: none` declarations, which change nothing whatsoever once the guard is in; (b) delete the 45 `:focus`-scoped ones, which additionally requires agreeing that no supported browser still paints a focus ring on `:focus` rather than `:focus-visible`; (c) decide, by looking, whether the 8 substitute rings stay as emphasis or go — that one is a visual judgement and cannot be made from a test. **Do (a) first and alone**; it is the one with a proof attached. `Verify:` after a sweep, the ring looks identical on every surface named in `P10-01`'s own `Verify:` line, on all sixteen themes. — found during P10-01 — agent:`p10`
+
+- [ ] **B663** **The two variant sandbox pages animate on a `setInterval` and ignore `prefers-reduced-motion`.** `static/wave-variants.html` and `static/whirlpool-variants.html` are developer sandboxes — nothing in the product links to them and each says so — but the `/static` mount has no allowlist, so both are **served** and openable, and `tests/test_offline_shell_manifest.py` asserts the first of them is mounted. Their motion is script-driven, so neither the global CSS guard nor a local one would reach it; the honest fix is a `matchMedia` check in each page's own inline script, the way `P10-07` did it for the boot loader. Low value and named anyway, because `tests/test_reduced_motion_guard.py::test_every_shipped_page_that_animates_is_under_a_guard` carries `wave-variants.html` as its one exception, and an exception with no row behind it is how a real page eventually joins it. `Verify:` open `/static/wave-variants.html` with Reduce Motion on and see the waves hold still. — found during P10-05 — agent:`p10`
+
+---
+
+## Notes for the integrator
+
+**Cache-buster spread, measured rather than assumed.** Two versioned assets were
+touched and both moved across every site that loads them, in this change:
+`static/style.css` at `static/index.html:311` and `static/sw.js:84`, and
+`static/js/init.js` at `static/index.html:3437` and `static/sw.js:138` — both
+`20260918tracefolds1` / `20260715freshroot3` → `20260918a11yfocus1`.
+`python3 .pantheon/check-specifiers.py` reports `FORKED 0` after, which is the
+check that would catch a half-bump. The other four touched modules —
+`static/js/a11y.js`, `static/js/ui.js`, `static/js/startupShell.js` and
+`static/login.html` — carry **no** version at any of their sites (`ui.js` alone
+is imported bare at more than twenty), so versioning one would fork it; they are
+covered by `CACHE_NAME`, bumped `pantheon-v422-p5-trace-folds` →
+`pantheon-v423-p10-focus-ring`. `static/index.html` is the document and has no
+buster of its own.
+
+**`P10-04` was not touched.** It is not mine, it depends on `P1-09`, and it is
+the row that would touch the theme file. Nothing in this change defines
+`--accent` anywhere, adds a `var(--accent…)` site, or edits `static/js/theme.js`
+or the `THEMES` table; the one new `:root` token is `--focus-ring`, which
+resolves through `var(--red)`.
+
+- [ ] **B670** **The trigger step in a run's log is drawn with the word `progress`.** Found
+  2026-09-18 while closing `P8-23`. `_renderRunSteps` (`static/js/tasks.js:2079`) reads
+  `const kind = (s && s.kind) === 'tool' ? 'tool' : 'progress';`, so every step that is not a
+  tool call is labelled `progress` whatever it actually is. `P8-23` writes a `kind: "trigger"`
+  step as step one of every triggered run — its `detail` renders correctly and reads
+  *"Triggered by document_updated — document_id=…"*, under a label that says the run was making
+  progress. The server half is complete and the word is the remaining half; it is `static/**`,
+  which another agent owned this wave. One branch in one function. `Verify:` a run fired by an
+  event shows its cause labelled as a cause. — found during P8-23 — agent:`p8b`
+
+- [ ] **B671** **A trigger's payload is declared on the wire and shown nowhere.** Found
+  2026-09-18 while closing `P8-23`. `GET /api/tasks/meta/events` now serves `payload_summary`
+  per event — *"the document's id and title"* — because someone choosing a trigger needs to know
+  what they will be able to refer to **before** they write the prompt, which is `Law 15` in the
+  shape `P8-00` is about. `_populateEventPicker` (`static/js/tasks.js:437`) sets the option to
+  `` `${_eventLabel(ev.name)} — ${ev.description}` `` and `#task-form-event-desc` to
+  `` `${ev.description} Stored as ${ev.name}.` ``, and neither reads the new field, so the capability exists and only someone who has read
+  this row can use it. `Verify:` someone who has never opened Tasks picks "Document updated" and
+  can tell, from the form, that their prompt can refer to the document's title. — found during
+  P8-23 — agent:`p8b`
+
+- [ ] **B672** **The failure branch has no picker, so `else_task_id` is reachable only through
+  the API.** Found 2026-09-18 while closing `P8-28`. The column, the migration, the validation,
+  the projection and the engine all ship; `static/js/tasks.js` has exactly one chain control —
+  `#task-form-chain`, populated at `:1852` and posted as `payload.then_task_id` at `:1929` —
+  and no sibling. So a person can build a workflow that says what comes next
+  and still cannot say what to do when it fails, which is the exact `P8-00` failure mode: the
+  capability exists and only an API caller reaches it. Needs a second select bound to
+  `else_task_id`, labelled in consequences (*"if it fails, run…"*), and a line on the task card
+  saying a task has a failure branch — a branch nobody can see is a branch nobody debugs.
+  `Verify:` someone who has never opened Tasks wires "if this fails, message me" from the form
+  alone. — found during P8-28 — agent:`p8b`
+
+- [ ] **B673** **`manage_tasks` cannot build a workflow at all — the model has no way to chain
+  two tasks.** Measured 2026-09-18 while wiring `P8-28`'s API: `grep -n "then_task_id"
+  src/tool_schemas.py src/tool_implementations.py src/agent_tools/*.py` returns **nothing**. The
+  HTTP API has accepted `then_task_id` since before the fork and the tool schema the model writes
+  tasks through has never carried it, so "set up a nightly backup and email me the result" is two
+  tasks the agent can create and cannot join. `P8-28` deliberately did **not** add `else_task_id`
+  to the schema, because adding the failure branch while the success branch is still missing
+  would put the two edges of one graph on different sides of the wire. Both belong in one change,
+  with the same owner-scoped validation the route uses. `Verify:` the agent, asked in chat to
+  make one task run after another, does it. — found during P8-28 — agent:`p8b`
+
+- [ ] **B674** **A task cannot be in flight twice, and that is a policy with three enforcement
+  points and no owner.** Found 2026-09-18 while closing `P8-27`. `P8-27`'s row line says the
+  execution identity is "keyed by task, so a task cannot be in flight twice", and `P8-27` fixed
+  the half of that which was a defect (`B603` — per-run state on a shared attribute). The other
+  half is deliberate and load-bearing: `self._executing` is a set of task ids, `run_task_now`
+  returns `False` when the id is in it, the webhook route turns that into a `409`, and
+  `_run_chained` re-checks it so an overlapping scheduler tick cannot double-dispatch. Fan-out
+  (`P8-29` onward) needs the *identity* run-scoped, which it now is, but whether two runs of the
+  **same** task may overlap is a separate decision with a user-visible 409 behind it and a
+  re-entrancy question for every action that writes a checkpoint file. Nothing in the tree states
+  the policy or tests it as one. `Verify:` the answer to "can the same automation run twice at
+  once" is written down once, and the three sites agree with it. — found during P8-27 —
+  agent:`p8b`
+
+- [ ] **B675** **A deferred run leaves no trace of why it deferred.** Found 2026-09-18 while
+  widening the node contract for `P8-24`. `TaskDeferred` is handled by deleting the queued
+  `TaskRun` row outright — deliberately, so a quiet-window defer does not fill Activity with
+  rows nobody wants — and with it goes the step log, including the line saying the action asked
+  to come back in N seconds and why. A task that defers on every tick is therefore
+  indistinguishable, from every surface, from a task that is simply not running: no row, no
+  status, and `next_run` quietly moving. `P8-24` gives the engine the vocabulary to say it
+  (`NODE_STATUS_DEFERRED` carries `retry_after`), so the missing piece is a place to put it that
+  is not a full Activity row — the task card's next-run line is the obvious one. `Verify:`
+  someone whose automation has not run for three hours can tell that it deferred, and until
+  when. — found during P8-24 — agent:`p8b`
+
+- [ ] **B680** **Demoting a user who was *created* as an admin still writes a complete
+  `DEFAULT_PRIVILEGES` map onto their row, which shadows any role they are given afterwards.**
+  `AuthManager.set_admin`'s demote branch falls back to `dict(DEFAULT_PRIVILEGES)` when there is
+  no `privileges_before_admin` stash, and a user created with `is_admin=True` has never been
+  promoted so never has one. `P11-02` fixed the two writers it could — `create_user` now stores
+  `{}` for a non-admin and the promote/demote stash round-trips an empty map through an `is None`
+  sentinel — and left this one because
+  `tests/test_set_admin.py:test_demote_with_two_admins_resets_to_default_privileges` asserts the
+  stored map **equals** `DEFAULT_PRIVILEGES` at exactly that point. The test's *intent* (an
+  account created as admin must not keep admin privileges past demotion) is satisfied by `{}`
+  just as well, because an absent key resolves to what the registry declares; rewriting a pinned
+  assertion in the same commit as the behaviour it pins is how a deliberate change becomes
+  indistinguishable from a regression, so it was not done here. Effective privileges are
+  identical today and wrong the moment such a user is given a role: eleven stored keys are
+  eleven per-user overrides and per-user beats role. Measured 2026-09-18 by driving the real
+  manager. `Verify:` a user created as an admin, demoted, then given a role holds that role's
+  privileges; and the rewritten `test_set_admin.py` assertion says what it is actually checking.
+  `Depends:` nothing. — found by `P11-02` — agent:`p11r`
+
+- [ ] **B681** **Two admin gates now sit side by side in one file and disagree about an
+  auth-disabled box.** `routes/auth_routes.py` decides admin 22 times inline
+  (`_get_current_user` + `auth_manager.is_admin`) and, since `P11-02`, four times with
+  `core.middleware.require_admin`. Only the second consults `auth_disabled()`. So on an install
+  with `AUTH_ENABLED=false` the operator can list, create, assign and delete **roles** and cannot
+  list users, edit a privilege, or promote anybody — in the same panel, from the same screen,
+  with no explanation available to the person hitting it. `B543` already names the underlying
+  split across four implementations; this is the first place where the two behave differently
+  at one arm's length, and it arrived because the new routes used the *correct* gate. The fix is
+  `B543`'s — move the 22 onto `require_admin` — and doing it here would have taken
+  `check-auth-map.py`'s rule C from 43 to about 22 in the same commit as a feature, which is a
+  ratchet moving for two reasons at once. Measured 2026-09-18: `require_admin` returns under
+  `auth_disabled()`, the inline pattern raises `403 Admin only`. `Verify:` every admin decision
+  in `routes/auth_routes.py` answers the same way with auth disabled, and rule C's count falls to
+  match. `Depends:` `B543`. — found by `P11-02` — agent:`p11r`
+
+- [ ] **B683** **A role can overlay every privilege the registry declares and cannot retire a
+  single one of the 45 `operator` gates, because no privilege key describes them.**
+  `.pantheon/P11-AUTH-MAP.md` calls the operator tier *"the phase's entire return"* — 45
+  `require_admin` sites that a non-owner should be able to hold — and `P11-02` built the
+  mechanism that would carry them. It cannot carry them yet: `DEFAULT_PRIVILEGES` has eleven
+  keys and not one of them means *may run the instance*, so a role named `operator` today is a
+  name with no gate reading it, and all 45 sites still ask `is_admin`. The same is true of the
+  four `power-user` sites, which the map says are one privilege key (`allowed_models`) away —
+  the key exists and the endpoint-listing routes do not consult it. This is the next row rather
+  than a defect in the last one: it needs new declared keys, and then 49 gate changes that
+  `check-auth-map.py` will hold honest one tier at a time. Measured 2026-09-18: 111
+  `require_admin` sites, 0 of them reading any `DEFAULT_PRIVILEGES` key. `Verify:` a user with
+  the `operator` role reaches every site the map tiers `operator` and none it tiers `superuser`,
+  and § A's tier table shrinks by the number retired. `Depends:` `P11-02`.
+  — found by `P11-02` — agent:`p11r`
+
+- [ ] **B684** **The auth audit log has no reader.** `P11-08` writes `kind="auth"` rows into the
+  events table and nothing anywhere reads them: `usage_over_time` and `usage_summary` both filter
+  `kind == "llm_round"`, `receipt()`'s kind switch has arms for `run_config`, `llm_round`,
+  `tool_call`, `retrieval`, `approval` and `replay` and none for `auth`, `src/metrics_export.py`
+  counts the same four kinds and not this one, and the diagnostics surface `P14-05` builds shows
+  usage rather than access. So *"who logged in, who changed a role, what
+  was refused"* is answerable only with SQL against `data/app.db`, which is `Law 13`'s unwired
+  half and `Law 15`'s steep curve in the one place a person reaches for after something has gone
+  wrong. Named rather than hidden: the write is the row `P11-08` was given and the surface is
+  not. **Two things it needs that a usage view does not**: a filter by *subject* as well as by
+  owner, because an admin action names two people and only one is in the indexed column; and a
+  default that shows failures first, because the successful logins are the noise. Measured
+  2026-09-18 over `src/events.py`, `src/metrics_export.py` and `routes/diagnostics_routes.py`.
+  A Prometheus counter for failed logins is `Law 16`-clean — the operator owns the scrape
+  endpoint — and belongs beside the four `P16-12` already emits. `Verify:` an admin can see the
+  last N auth events, filtered by outcome and by either party, without opening a database, and a
+  failed-login counter appears on the metrics endpoint when one is enabled.
+  `Depends:` `P11-08`. — found by `P11-08` — agent:`p11r`
+
+- [ ] **B685** **One retention knob serves two purposes, and the audit trail is the one that
+  loses.** `events_retention_days` (90) prunes every row in the events table, so `P11-08`'s
+  access history expires on the same schedule as token-usage telemetry. Those are not the same
+  question: an operator may want thirty days of round latency and a year of *who was made an
+  admin*, and today lengthening the second means storing twelve months of every LLM round to get
+  it. Shipping a second retention setting is the obvious move and is the wrong one on its own —
+  `prune_events` deletes by `ts` in one batched pass and would need a per-kind window, which is a
+  real change to the pruner rather than a new key. Deliberately not done inside `P11-08`, whose
+  scope is the write. Measured 2026-09-18: `prune_events` filters on `ts` alone, no `kind`
+  predicate. `Verify:` auth rows survive a prune that removes `llm_round` rows of the same age,
+  on a window an operator set for them specifically, and the pruner still finishes inside its
+  half-second budget. `Depends:` `P11-08`. — found by `P11-08` — agent:`p11r`
+
+- [x] **B686** **A field reached the streamed tool event and not the record a reload is rebuilt
+  from — the third instance, and the first one a test caught instead of a person.** Found
+  2026-09-18 by the full suite on the `P10`/`P8`/`P11` merge.
+  `P8-24` added `status` to `tool_output` on the main path. `tests/test_tool_effect_wire.py` pins
+  that event's key set exactly — *"and nothing else"* — so it went red on the new key, which is
+  the guard working. Adding `status` to the declared set then turned the **replay** path red, and
+  that one was not a bookkeeping failure: the approval-continuation path emitted `tool_output`
+  without `status` at all. Following it out, the two **persisted** twins — the `tool_events`
+  records `chatRenderer` rebuilds a reloaded thread from — did not carry it either, nor did
+  `src/bg_monitor.py`'s mirror of the same shape for background runs.
+  **Why it matters more than it looks.** `exit_code` is set by the shell and python branches and
+  by nothing else; roughly seventy other tools report neither it nor anything like it. `status` is
+  the only outcome signal most of this tree's tools give. So a reloaded card — or any background
+  run's card — read `ok` beside a `web_fetch` that had failed.
+  **The shape is now a population of three and it has not varied.** `P4-11` was `round`: the
+  persisted twin had always carried it, so the card drew a round number after a reload and none
+  while it was live. `P4-09` was `full_command`: on `tool_start` and nowhere else, so a reloaded
+  thread showed eighty characters of a document write with no way back to the rest. This is
+  `status`. Every time it is one event with two writers and a third that persists it, and every
+  time the field lands on one of them.
+  Fixed at all four sites, and the agreement is now asserted rather than assumed: three tests
+  drive a real run and compare the streamed `status` against the persisted one, including a tool
+  that reports `error` with no `exit_code` — the case the field exists for — and the replay path,
+  which has lagged on both previous instances. Removing the persisted write turns two of them red.
+  **A fourth pair of writers turned up while fixing the first three**: the image tool's
+  `tool_output` and its persisted `_ev` in `routes/chat_routes.py`, which derive `exit_code` from
+  whether the result carries an error and said nothing about outcome. Both carry `status` now.
+  `src/bg_monitor.py`'s mirror copies it **only when the source event has one**, which is the shape
+  `_command_fields` and `_stream_fields` already use: a `status: None` on a record is a key that
+  reads as an answer and is not one, and the test that pinned that record's exact shape is what
+  said so.
+  **What this does NOT deliver**: nothing stops a fifth. The writers are still six literals in four
+  files and agree only because a test says so. A single builder they all call is the
+  `Law 14` answer and it is a refactor on the hottest path in the product, which is a row of its
+  own rather than a ride-along. `Verify:` every key on the streamed `tool_output` is on the
+  persisted twin, and a card says the same thing after a reload as it did while it streamed.
+  — found by the full suite at the merge — agent:`integrator`

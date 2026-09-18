@@ -10,6 +10,7 @@ import * as Modals from './modalManager.js?v=20260723compareicon2';
 import spinnerModule from './spinner.js';
 import { registerMenuDismiss, dismissTopMenu, dismissOrRemove } from './escMenuStack.js';
 import { nextToolWindowZ, topToolWindowZ } from './toolWindowZOrder.js';
+import { prefersReducedMotion } from './motion.js';
 
 let toastEl = null;
 let autoScrollEnabled = true;
@@ -569,6 +570,16 @@ export function scrollHistory() {
   // Throttle: only start a new scroll animation every 500ms
   if (_scrollThrottleTimer) return;
   _scrollThrottleTimer = setTimeout(() => { _scrollThrottleTimer = null; }, 500);
+  // `P10-05`. The eighth JS animator, and the one nothing was covering. This
+  // is a hand-rolled lerp — it moves `scrollTop` a fraction of the remaining
+  // distance every frame — so it is invisible to all three guards that exist:
+  // the CSS one in `style.css` (`scroll-behavior: auto !important` describes a
+  // *declarative* scroll, not a script writing `scrollTop`), `P1-15`'s sweep
+  // (which looks for the literal `behavior: 'smooth'`, and there is none here),
+  // and `theme.js`'s canvas check. Under reduced motion it lands where it was
+  // always going to land, in one frame, through the instant path that already
+  // exists beside it rather than a second one written here.
+  if (prefersReducedMotion()) { scrollHistoryInstant(); return; }
   if (!_scrollRafId) {
     _scrollRafId = requestAnimationFrame(_smoothScrollStep);
   }

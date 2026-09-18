@@ -308,6 +308,37 @@
     vertical-align: -3px;
   }
   @keyframes login-spin { to { transform: rotate(360deg); } }
+
+  /* `P10-05`. The one animation in this product that no reduced-motion guard
+     reached. `P1-12` put a global guard in `static/style.css` and audited the
+     149 keyframes there plus the ones `slashCommands.js` injects — but **this
+     page does not load `style.css`**. It mirrors the palette by hand (see the
+     `:root` note above) precisely so that the first paint of the login screen
+     owes nothing to the app's stylesheet, and the cost of that is that it owes
+     nothing to the app's guards either. So a person who has asked their
+     operating system to stop moving things got a ring spinning at 86rpm on the
+     first screen the product ever shows them.
+
+     Same shape as the guard in `style.css`, deliberately, so there is one
+     idiom rather than two: `0.01ms` and not `none`, because `none` means an
+     `animationend` handler never fires and the "safer" spelling is the one
+     that leaves state stuck; and `:is(#\9#\9#\9, *)` rather than `*`, so that
+     an `!important` motion declaration added to this page later cannot
+     silently out-rank it the way 21 of them already do in `style.css`. There
+     is no such declaration here today — which is exactly when headroom is
+     cheap. */
+  @media (prefers-reduced-motion: reduce) {
+    :is(#\9#\9#\9, *),
+    :is(#\9#\9#\9, *)::before,
+    :is(#\9#\9#\9, *)::after {
+      animation-duration: 0.01ms !important;
+      animation-delay: 0s !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      transition-delay: 0s !important;
+      scroll-behavior: auto !important;
+    }
+  }
 </style>
 </head>
 <body>

@@ -241,8 +241,19 @@ async def test_webhook_rejects_stale_non_admin_cookbook_serve_task(
     )
     webhook_trigger = _endpoint("POST", "/api/tasks/{task_id}/webhook/{token}")
 
+    # `P8-23` gave the handler a `Request` so a caller's body, query and
+    # headers can reach the task. This test is about the refusal that happens
+    # before any of that is read, so it sends an empty one.
+    from starlette.requests import Request as _Req
+
+    async def _receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    _request = _Req({"type": "http", "method": "POST", "path": "/",
+                     "query_string": b"", "headers": []}, _receive)
+
     with pytest.raises(HTTPException) as exc:
-        await webhook_trigger("alice-task", "secret")
+        await webhook_trigger("alice-task", "secret", _request)
 
     assert exc.value.status_code == 403
     db = task_db()

@@ -62,7 +62,9 @@ async def create_session(content: str, session_id: Optional[str] = None, owner: 
             sess.headers = headers
         try:
             from src.event_bus import fire_event
-            fire_event("session_created", owner)
+            # `P8-23`. Which chat.
+            fire_event("session_created", owner,
+                       {"session_id": sid, "name": name})
         except Exception:
             logger.debug("session_created event dispatch failed", exc_info=True)
 
@@ -453,7 +455,9 @@ async def manage_session(content: str, session_id: Optional[str] = None, owner: 
                 new_sess.add_message(InMemoryMsg(msg["role"], msg["content"]))
             try:
                 from src.event_bus import fire_event
-                fire_event("session_created", owner)
+                fire_event("session_created", owner,
+                           {"session_id": new_sid,
+                            "name": getattr(new_sess, "name", None)})
             except Exception:
                 logger.debug("session_created event dispatch failed", exc_info=True)
 

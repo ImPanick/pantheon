@@ -242,6 +242,25 @@
      drift, and nobody here knows which. They are named on `P1-14`'s row so the
      question survives being asked. */
   --ease-signature: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* The one focus ring (`P10-01`).
+     ─────────────────────────────────────────────────────────────────────────
+     A name rather than a literal because the ring is now written in exactly
+     one rule and a theme that wants a different one should have somewhere to
+     say so. `var(--red)` is what the previous global `:focus-visible` rule at
+     line ~7099 already painted, so this token changes no pixel on its own —
+     it only gives the colour a place to be overridden from.
+
+     `:root` is the right home and the `P1-01` prohibition does not carry:
+     that one exists because 553 sites ship a `var(--red)` fallback a `:root`
+     rule would flip. Nothing carries a fallback for a focus ring, because
+     until now nothing named one. `--accent` is deliberately NOT used — it is
+     the token whose full-strength text misses 4.5:1 on seven of the sixteen
+     palettes (`tests/test_accent_fallback_semantics_css.py`), and a ring is
+     the last thing to paint in a colour a reader cannot see. */
+  --focus-ring: var(--red, #e06c75);
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
 }
 
 :root.light {
@@ -653,7 +672,15 @@ body.bg-pattern-sparkles {
       z-index: 10;
       background: transparent;
     }
+    /* `P10-03`. `:focus-visible` joins the EXISTING selector list rather than
+       getting a rule of its own — a second rule would be a second
+       `var(--accent)` use, and `tests/test_accent_fallback_semantics_css.py`
+       pins that population at 814 precisely so a new accent site has to be a
+       decision. A keyboard user reaching this handle now sees the same 6px
+       strip a mouse user sees on hover, plus the one focus ring from
+       `P10-01`. */
     .sidebar-resize-handle:hover,
+    .sidebar-resize-handle:focus-visible,
     .sidebar-resize-handle.dragging {
       background: var(--accent);
       opacity: 0.6;
@@ -928,6 +955,7 @@ body.bg-pattern-sparkles {
       background: transparent;
     }
     .rail-resize-handle:hover,
+    .rail-resize-handle:focus-visible,
     .rail-resize-handle.dragging {
       background: var(--accent);
       opacity: 0.6;
@@ -1926,6 +1954,23 @@ body.bg-pattern-sparkles {
       margin: 4px 0;
       transition: height 0.15s ease;
     }
+    /* `P10-02`. Eleven of these are `<button type="button">` in the shipped
+       markup now, not `<div>`, so the browser puts them in the tab order and
+       runs Enter/Space itself — which is what the a11y shim's own header says
+       was missing ("the ring already exists; it simply never fired because the
+       rows were never focusable"). The class does not move (`FORBIDDEN.md`
+       Part 1): the shim and `dragSort.js` both query it and everything below
+       styles it. The tag moved; the class did not.
+
+       The six declarations below are what a `<button>` needs to stop looking
+       like one. `appearance` removes the platform chrome, and the other five
+       undo the UA's own button defaults — `color: buttontext`, a 13.333px
+       system font, and `text-align: center`, all of which would have made the
+       converted rows a different colour, a different face and centred against
+       the eleven dynamic session rows beside them that are still `<div>`s.
+       `width: 100%` because a form control's `width: auto` is shrink-to-fit
+       under `-webkit-appearance` even at `display: flex`, so without it the
+       hover background stops at the end of the label. */
     .list-item,
     .models-row {
       display: flex;
@@ -1941,6 +1986,13 @@ body.bg-pattern-sparkles {
       transition: background 0.08s;
       cursor: pointer;
       touch-action: pan-y;
+      appearance: none;
+      -webkit-appearance: none;
+      font-family: inherit;
+      font-weight: inherit;
+      color: inherit;
+      text-align: left;
+      width: 100%;
     }
     .list-item button {
       margin: 0;
@@ -44023,6 +44075,7 @@ body.theme-frosted .modal {
 }
 
 .settings-sidebar-resize-handle:hover,
+.settings-sidebar-resize-handle:focus-visible,
 .settings-sidebar-resizing .settings-sidebar-resize-handle {
   background: var(--accent, var(--red));
   opacity: 0.45;
@@ -44322,3 +44375,52 @@ body.settings-sidebar-resize-active {
   opacity: 0.75;
 }
 .host-guard-why { flex: 1 1 auto; opacity: 0.9; line-height: 1.45; }
+
+
+/* ===========================================================================
+   `P10-01` — one focus ring, and the hundred declarations that were silencing
+   it.
+
+   The ring already existed. `:focus-visible { outline: 2px solid var(--red) }`
+   has been in this file the whole time, at (0,1,0), and **100 rules in this
+   same sheet out-rank it**: 47 that spell `outline: none` with no focus
+   pseudo-class at all, 45 scoped to `:focus`, and 8 scoped to
+   `:focus-visible` itself. Re-measured 2026-09-18 with comments blanked: 98
+   `outline: none` and 2 `outline: 0`, in 100 distinct rules. The row said 97 +
+   2 = 99; one more arrived since 2026-08-27 and the count is corrected here
+   rather than carried.
+
+   Two of those hundred are `!important`, which is the whole reason this block
+   is `!important` too: `.doc-editor-textarea:hover, …:focus, …:active` and
+   `.email-quote-fold`. Between two `!important` author declarations
+   specificity decides before order does, so a polite rule cannot reach them
+   however late it is written.
+
+   `:is(#\9#\9#\9, *)`, not `*`, for the same reason `P1-12`'s motion guard
+   needs it and with the same escape: `:is()` takes the specificity of its most
+   specific argument, `#\9` is an id nothing can have (the escape is a tab), and
+   `*` is what actually matches. That buys (3,1,0), which out-ranks every one
+   of the hundred — the heaviest is `.chat-input-bar textarea#message` at
+   (1,1,1). `tests/test_one_focus_ring_css.py` recomputes the ceiling from the
+   sheet and fails if anything ever climbs above it, so this is a measured
+   claim rather than a remembered one.
+
+   **Nothing is deleted.** Every one of the hundred is now dead *as a ring
+   suppression* — the test proves it selector by selector — but `Law 1` says
+   add, and "dead in the cascade" is not the same claim as "dead in the file":
+   several of them also carry `border`, `box-shadow` and `background` in the
+   same rule, and eight of them substitute a ring of their own that is now
+   extra emphasis rather than a replacement. The sweep is filed as `B662` with
+   this test as its evidence, so removing them is a decision somebody makes
+   rather than a cleanup that happens.
+
+   Why the offset is 2px and the ring is outside the box: an `outline` does not
+   participate in layout, so nothing reflows when it appears. That is the
+   property `box-shadow` rings share and `border` rings do not — three of the
+   competing styles in this sheet move their element by a pixel when it takes
+   focus.
+   =========================================================================== */
+:is(#\9#\9#\9, *):focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring) !important;
+  outline-offset: var(--focus-ring-offset) !important;
+}

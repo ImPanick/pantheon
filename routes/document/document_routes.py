@@ -211,7 +211,10 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
             db.refresh(doc)
             try:
                 from src.event_bus import fire_event
-                fire_event("document_created", doc.owner)
+                # `P8-23` / `B602`. Which document. "When a document is created,
+                # summarise it" could not be told what to summarise before this.
+                fire_event("document_created", doc.owner,
+                           {"document_id": doc.id, "title": doc.title})
             except Exception:
                 logger.debug("document_created event dispatch failed", exc_info=True)
             return _doc_to_dict(doc)
@@ -447,7 +450,10 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
             db.refresh(doc)
             try:
                 from src.event_bus import fire_event
-                fire_event("document_created", doc.owner)
+                # `P8-23` / `B602`. Which document. "When a document is created,
+                # summarise it" could not be told what to summarise before this.
+                fire_event("document_created", doc.owner,
+                           {"document_id": doc.id, "title": doc.title})
             except Exception:
                 logger.debug("document_created event dispatch failed", exc_info=True)
             return _doc_to_dict(doc)

@@ -767,7 +767,9 @@ def setup_research_routes(research_handler, session_manager=None) -> APIRouter:
             session_manager.save_sessions()
         try:
             from src.event_bus import fire_event
-            fire_event("session_created", user)
+            fire_event("session_created", user,
+                       {"session_id": getattr(new_sess, "id", None),
+                        "name": getattr(new_sess, "name", None)})
         except Exception:
             logger.debug("session_created event dispatch failed", exc_info=True)
 

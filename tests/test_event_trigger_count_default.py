@@ -132,7 +132,11 @@ async def test_a_legacy_row_with_no_count_fires_on_the_first_event(task_db, monk
     ran = []
 
     class _Sched:
-        async def run_task_now(self, task_id):
+        async def run_task_now(self, task_id, *, trigger=None):
+            # `P8-23` gave the bus a payload to hand over. It is accepted and
+            # ignored here: this test is about the counter, and a stub that
+            # refused the argument would fail for a reason that has nothing to
+            # do with what it asserts.
             ran.append(task_id)
             return True
 

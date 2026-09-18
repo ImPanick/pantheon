@@ -247,6 +247,74 @@ def record_event(kind: str, *, name: Optional[str] = None,
     return True
 
 
+#: `P11-08`. One `kind` for the whole auth audit trail, so "who logged in, who
+#: changed a role, what was refused" is one range scan over the same table
+#: everything else in `P14` already writes to.
+AUTH_EVENT_KIND = "auth"
+
+#: Substrings that make a detail key a credential. `record_auth_event` drops
+#: any key containing one, whatever the caller meant by it. Rule 2 of this
+#: module already says a credential must never be written; an audit log is the
+#: place most likely to be handed a password by accident, because the function
+#: that has one is the function recording the login. A deny-list here is worth
+#: more than a docstring asking every future caller to remember.
+_SECRETISH = ("password", "passwd", "secret", "token", "totp", "otp", "code",
+              "hash", "cookie", "authorization", "credential", "key")
+
+
+def _audit_detail(detail: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """`detail`, with anything credential-shaped removed. Never raises."""
+    if not isinstance(detail, dict):
+        return None
+    clean: Dict[str, Any] = {}
+    for raw_key, value in detail.items():
+        key = str(raw_key)
+        if any(word in key.lower() for word in _SECRETISH):
+            clean[key] = "[redacted]"
+            continue
+        clean[key] = value
+    return clean or None
+
+
+def record_auth_event(action: str, *, actor: Optional[str] = None,
+                      subject: Optional[str] = None, outcome: str = "ok",
+                      detail: Optional[Dict[str, Any]] = None) -> bool:
+    """One row for one authentication or authorization decision. Never raises.
+
+    `P11-08`. The row asks for logins, role changes, privilege grants and
+    failures, and says to feed the telemetry table rather than invent a second
+    store — so this is `record_event` with a fixed `kind` and a redaction pass,
+    not a new writer. `D-05` made the case for the table and `P14-01` built it;
+    an audit log in its own file would be the second store the row forbids and
+    the second retention policy nobody would remember to prune (`Law 14`).
+
+    `actor` is who did it and lands in `owner`, so "everything this account did"
+    is the index that already exists. `subject` is who it was done TO, which is
+    a different person for every admin action and goes in `detail` because the
+    table has one owner column and overloading it would make both questions
+    unanswerable.
+
+    `outcome` is `"ok"` or `"error"`; a refusal is an event, not a missing one.
+
+    **Local by default, like everything else here.** `Law 16` is about the
+    destination: these rows go to the same SQLite table as every other event,
+    they leave the machine only through an exporter the operator configured,
+    and they are pruned by `events_retention_days` along with the rest — a
+    90-day audit window is a choice an operator can change and an append-only
+    file nobody prunes is not.
+    """
+    payload = _audit_detail(detail) or {}
+    if subject:
+        payload["subject"] = str(subject)[:200]
+    return record_event(
+        AUTH_EVENT_KIND,
+        name=str(action or "").strip()[:200] or None,
+        owner=str(actor).strip().lower()[:200] if actor else None,
+        outcome=outcome,
+        detail=payload or None,
+    )
+
+
 def record_llm_round(session_id: str, metrics: Dict[str, Any], *,
                      outcome: str = "ok") -> bool:
     """One row for one model round. Returns True if it landed; never raises.

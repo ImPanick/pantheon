@@ -311,6 +311,7 @@ document.addEventListener('DOMContentLoaded', markComposerUserEdited, { once: tr
         Storage.set(STORAGE_KEY, String(finalWidth));
       }
     }
+    syncHandleAria();   // P10-03
   }
 
   function onExpandDrag(e) {
@@ -349,7 +350,133 @@ document.addEventListener('DOMContentLoaded', markComposerUserEdited, { once: tr
       }
       if (typeof syncRailSide === 'function') syncRailSide();
     }
+    syncHandleAria();   // P10-03: the announced value follows the drag too
   }
+
+  /* ── `P10-03`: the same handle, from a keyboard ──────────────────────────
+     `#settings-sidebar-resize-handle` shipped done — `role="separator"`,
+     `tabindex="0"`, `aria-value*`, ArrowLeft/ArrowRight to resize and
+     Enter/Space to collapse, all in `static/js/settings/sidebar.js`. These two
+     are the same control in two more places, so this is that treatment copied
+     rather than a third one invented (`Law 14`).
+
+     One thing the template could not answer, because the settings navigation
+     only ever sits on the left: **the arrows move the separator, not the
+     width.** On a left-side sidebar moving the separator right makes it wider;
+     on a right-side sidebar (`.right-side`, which this product supports and
+     the drag handler above already reads) moving it LEFT makes it wider. A
+     keyboard user watching the edge move sees it go where they pushed it,
+     which is the whole point of `role="separator"`. Binding "ArrowRight =
+     wider" unconditionally would have been the literal copy and it would be
+     backwards half the time.
+
+     16px per press is the settings handle's own step, kept so the two feel the
+     same. */
+  const KEY_STEP = 16;
+
+  function railIsRight() {
+    return sidebar.classList.contains('right-side')
+      || !!(iconRail && iconRail.classList.contains('right-side'));
+  }
+
+  /** Publish the live geometry on whichever handles are present. */
+  function syncHandleAria() {
+    const hidden = sidebar.classList.contains('hidden');
+    const width = hidden ? 0 : Math.round(sidebar.getBoundingClientRect().width);
+    if (handle) {
+      handle.setAttribute('aria-valuemin', String(MIN_WIDTH));
+      handle.setAttribute('aria-valuemax', String(MAX_WIDTH));
+      handle.setAttribute('aria-valuenow', String(width));
+    }
+    if (railHandle) {
+      railHandle.setAttribute('aria-valuemin', '0');
+      railHandle.setAttribute('aria-valuemax', String(MAX_WIDTH));
+      railHandle.setAttribute('aria-valuenow', String(width));
+    }
+  }
+
+  /** Show the sidebar at its saved width. Returns the width applied. */
+  function expandSidebar() {
+    const width = getSavedWidth();
+    sidebar.classList.remove('hidden');
+    sidebar.style.width = width + 'px';
+    sidebar.style.opacity = '';
+    Storage.set(STORAGE_KEY, String(width));
+    if (typeof syncRailSide === 'function') syncRailSide();
+    syncHandleAria();
+    return width;
+  }
+
+  function collapseSidebar() {
+    sidebar.style.width = '';
+    sidebar.classList.add('hidden');
+    sidebar.style.opacity = '';
+    if (typeof syncRailSide === 'function') syncRailSide();
+    syncHandleAria();
+  }
+
+  /** True when this key should make the sidebar WIDER, given which side it is
+   *  on. Returns null for a key that is not a horizontal arrow. */
+  function widensOn(key) {
+    if (key !== 'ArrowLeft' && key !== 'ArrowRight') return null;
+    return (key === 'ArrowRight') !== railIsRight();
+  }
+
+  handle.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+      e.preventDefault();
+      if (sidebar.classList.contains('hidden')) expandSidebar();
+      else collapseSidebar();
+      return;
+    }
+    const wider = widensOn(e.key);
+    if (wider === null) return;
+    e.preventDefault();
+    if (sidebar.classList.contains('hidden')) { expandSidebar(); return; }
+
+    const current = sidebar.getBoundingClientRect().width;
+    // At the declared minimum, one more press in the narrowing direction
+    // collapses rather than clamping forever — the boundary transition the
+    // settings handle documents, and without which keyboard collapse is
+    // unreachable because the clamp puts 184px back to 200px every time.
+    if (!wider && current <= MIN_WIDTH) { collapseSidebar(); return; }
+
+    const next = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH,
+      current + (wider ? KEY_STEP : -KEY_STEP)));
+    sidebar.style.width = next + 'px';
+    Storage.set(STORAGE_KEY, String(next));
+    syncHandleAria();
+  });
+
+  if (railHandle) {
+    railHandle.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+        e.preventDefault();
+        if (sidebar.classList.contains('hidden')) expandSidebar();
+        else collapseSidebar();
+        return;
+      }
+      const wider = widensOn(e.key);
+      if (wider === null) return;
+      e.preventDefault();
+      // This handle's whole job is to drag a collapsed sidebar back open, so
+      // the widening arrow opens it and the narrowing one is a no-op while it
+      // is already closed.
+      if (sidebar.classList.contains('hidden')) {
+        if (wider) expandSidebar();
+        return;
+      }
+      const current = sidebar.getBoundingClientRect().width;
+      if (!wider && current <= MIN_WIDTH) { collapseSidebar(); return; }
+      const next = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH,
+        current + (wider ? KEY_STEP : -KEY_STEP)));
+      sidebar.style.width = next + 'px';
+      Storage.set(STORAGE_KEY, String(next));
+      syncHandleAria();
+    });
+  }
+
+  syncHandleAria();
 
   } // end if (sidebar && handle)
 }

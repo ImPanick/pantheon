@@ -361,6 +361,9 @@ weakest one in this document: it means nobody adjudicated them individually.
 | `P8-12` | tracked | second-line | an authoring aid in the Workshop; the rule flagged it on the word *supply*, which is about a skill's fields |
 | `P13-01` | tracked | second-line | a confidence number on memories; the rule flagged it on *first ten minutes* and it is not one of them |
 | `B623` | tracked | claim | `CREDITS.md` is correct today and nothing holds it so; a missing guard, not a false statement |
+| `B680` | tracked | second-line | shadows a role that cannot be created yet; no role ships defined and no panel assigns one |
+| `B681` | tracked | second-line | `B543`'s class on a new surface, behind `require_admin`, reachable by an operator not a stranger |
+| `B683` | tracked | second-line | the `operator` tier has no privilege key yet; a scope statement about roles, not a defect in the tree |
 | `P11-02d` | landed | security | six route files whose gating is unreconciled — an unknown on an auth surface |
 | `B71` | blocking | claim | upstream's artwork under this fork's filenames, and it is the macOS app icon |
 | `B411` | blocking | claim | four numbers in the published ledger do not print from their own repro |

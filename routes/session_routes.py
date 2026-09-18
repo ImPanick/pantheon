@@ -481,7 +481,8 @@ def setup_session_routes(
             })
         # Fire event for automation tasks
         from src.event_bus import fire_event
-        fire_event("session_created", user)
+        fire_event("session_created", user,
+                   {"session_id": sid, "name": session.name})
         return SessionResponse(
             id=sid,
             name=session.name,
@@ -960,7 +961,7 @@ def setup_session_routes(
         session.headers = {"Authorization": f"Bearer {OPENAI_API_KEY}"}
         session_manager.save_sessions()
         from src.event_bus import fire_event
-        fire_event("session_created", user)
+        fire_event("session_created", user, {"session_id": sid})
         return {"id": sid, "name": "", "model": model}
     
     @router.post("/session/{session_id}/important")

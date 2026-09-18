@@ -165,7 +165,7 @@ async def do_manage_skills(content: str, owner: Optional[str] = None) -> Dict:
             )}
         try:
             from src.event_bus import fire_event
-            fire_event("skill_added", owner)
+            fire_event("skill_added", owner, {"name": entry.get("name")})
         except Exception:
             logger.debug("skill_added event dispatch failed", exc_info=True)
         verify_hint = ""

@@ -59,8 +59,16 @@ TOOL_START_BASE_KEYS = frozenset({"type", "tool", "command", "full_command", "ro
 # `tool_event`. It was on `tool_start` and nowhere else, so the full arguments
 # were live-only and one rewrite deep: the result event that redraws the card
 # never carried them, and after a reload they did not exist at all.
+# `P8-24`/`B600` added `status`. `exit_code` is set by the shell and python
+# tools and by nothing else — about seventy other tools report neither — so a
+# step log read `ok` beside a failed `web_fetch`. `status` is the one key every
+# tool answers, and it is a **string** (`"ok"`/`"error"`) rather than a numeric
+# code on purpose: `static/js/chat.js:3836` treats any streamed event carrying a
+# `status >= 400` as a terminal stream error, so a numeric one here would have
+# killed every tool stream.
 TOOL_OUTPUT_BASE_KEYS = frozenset(
-    {"type", "tool", "command", "full_command", "round", "output", "exit_code"})
+    {"type", "tool", "command", "full_command", "round", "output", "exit_code",
+     "status"})
 APPROVED_START_BASE_KEYS = TOOL_START_BASE_KEYS | {"approved"}
 APPROVED_OUTPUT_BASE_KEYS = TOOL_OUTPUT_BASE_KEYS | {"approved"}
 
@@ -596,3 +604,57 @@ def test_a_mismatched_grant_persists_no_effect_claim(monkeypatch):
     assert saved, "the refusal is still recorded"
     for event in saved:
         assert not EFFECT_KEYS & set(event)
+
+
+# ── `B686` — the streamed event and its persisted twin must agree ────────────
+#
+# Three fields have now reached the streamed `tool_output` and not the record
+# the reload is rebuilt from: `round` (`P4-11`), `full_command` (`P4-09`) and
+# `status` (`P8-24`). Each time the symptom was the same — a card that answers
+# one way while it streams and another after a refresh — and each time it was
+# found by something other than a test about it. This is that test.
+
+
+def _status_pair(events):
+    """(streamed status, persisted status) for the first tool in a run."""
+    live = _first(events, "tool_output")
+    saved = _persisted(events)
+    assert saved, "the run persisted no tool events"
+    return live.get("status"), saved[0].get("status")
+
+
+def test_the_streamed_status_and_the_persisted_one_are_the_same(monkeypatch):
+    """`exit_code` is the two shell branches and nothing else, so `status` is
+    the only outcome signal most of this tree's tools give at all. A reloaded
+    card without it shows `ok` for a tool that failed."""
+    events = _run(
+        monkeypatch,
+        ["```bash\nprintf hi\n```"],
+        relevant_tools={"bash"},
+        results={"bash": {"output": "ok", "exit_code": 0}},
+    )
+    live, saved = _status_pair(events)
+    assert live == saved == "ok", (live, saved)
+
+
+def test_a_failure_survives_the_reload_on_a_tool_with_no_exit_code(monkeypatch):
+    """The case the field exists for: a tool that reports `error` and no
+    `exit_code` at all. Before `B686` the persisted record had nothing to say
+    and the reloaded card read as a success."""
+    events = _run(
+        monkeypatch,
+        ["```bash\nprintf hi\n```"],
+        relevant_tools={"bash"},
+        results={"bash": {"output": "nope", "error": "provider said 429"}},
+    )
+    live, saved = _status_pair(events)
+    assert live == saved == "error", (live, saved)
+
+
+def test_the_replayed_grant_persists_its_status_too(monkeypatch):
+    """The approval path has its own pair of writers and has been the one that
+    lags every time (`P4-09`, `P4-11`)."""
+    events = _approved_run(monkeypatch, tool_name="bash", content="printf hi")
+    live, saved = _status_pair(events)
+    assert live == saved, (live, saved)
+    assert live in ("ok", "error")

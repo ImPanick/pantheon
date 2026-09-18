@@ -15,14 +15,25 @@ from core.database import SessionLocal, ScheduledTask, TaskRun, CrewMember
 from core.constants import internal_api_base
 from src.auth_helpers import get_current_user
 from src.constants import DATA_DIR, EMAIL_URGENCY_CACHE_DIR
-from src.event_bus import DEFAULT_TRIGGER_COUNT, EVENT_CATALOGUE
+from src.event_bus import (
+    DEFAULT_TRIGGER_COUNT,
+    EVENT_CATALOGUE,
+    TRIGGER_FIELD_MAX_CHARS,
+    TRIGGER_SOURCE_WEBHOOK,
+    build_trigger,
+)
 from src.task_action_policy import (
     admin_refusal_message,
     is_admin_only_task_action,
     owner_has_admin_task_privileges,
     record_admin_refusal,
 )
-from src.task_scheduler import compute_next_run, HOUSEKEEPING_DEFAULTS
+from src.task_scheduler import (
+    HOUSEKEEPING_DEFAULTS,
+    build_task_graph,
+    compute_next_run,
+    task_edges,
+)
 from routes.prefs_routes import _load_for_user, _save_for_user
 
 logger = logging.getLogger(__name__)
@@ -158,6 +169,10 @@ class TaskCreate(BaseModel):
     model: Optional[str] = None
     endpoint_url: Optional[str] = None
     then_task_id: Optional[str] = None            # chain: run this task after success
+    # `P8-28`. The other branch — run this one when the run did NOT succeed.
+    # Validated by the same function, for the same reasons, so the two edges
+    # cannot end up under different rules.
+    else_task_id: Optional[str] = None            # chain: run this task after failure
     notifications_enabled: Optional[bool] = None  # None lets action-specific defaults apply
     character_id: Optional[str] = None             # built-in persona id (PERSONAS) — biases output voice
     # Assign the task to a crew member (personal assistant / custom crew).
@@ -189,6 +204,7 @@ class TaskUpdate(BaseModel):
     model: Optional[str] = None
     endpoint_url: Optional[str] = None
     then_task_id: Optional[str] = None
+    else_task_id: Optional[str] = None            # see TaskCreate.else_task_id
     notifications_enabled: Optional[bool] = None
     character_id: Optional[str] = None
     crew_member_id: Optional[str] = None          # see TaskCreate.crew_member_id
@@ -229,6 +245,13 @@ def _task_to_dict(t: ScheduledTask, include_last_run_result: bool = False) -> di
         "endpoint_url": t.endpoint_url,
         "run_count": t.run_count or 0,
         "then_task_id": t.then_task_id,
+        "else_task_id": getattr(t, "else_task_id", None),
+        # `P8-26`. The successor projected as a single edge on read. The
+        # column stays exactly where it is and keeps its name, so nothing that
+        # reads `then_task_id` stops working; this is the same fact in the
+        # shape a graph needs, derived once in `task_edges` rather than
+        # re-derived by whatever draws it.
+        "edges": task_edges(t),
         "notifications_enabled": bool(getattr(t, "notifications_enabled", True)),
         "webhook_token": t.webhook_token if (t.trigger_type or "schedule") == "webhook" else None,
         "created_at": t.created_at.isoformat() + "Z" if t.created_at else None,
@@ -409,7 +432,15 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             if status:
                 q = q.filter(ScheduledTask.status == status)
             tasks = q.order_by(ScheduledTask.created_at.desc()).all()
-            return {"tasks": [_task_to_dict(t, include_last_run_result=include_last_run) for t in tasks]}
+            # `P8-26`. The graph document rides on the door that already lists
+            # tasks, built from the SAME rows the list is built from — a second
+            # endpoint would be a second query answering the same question, and
+            # `check-unreachable.py` counts a route no page fetches.
+            return {
+                "tasks": [_task_to_dict(t, include_last_run_result=include_last_run)
+                          for t in tasks],
+                "graph": build_task_graph(tasks),
+            }
         finally:
             db.close()
 
@@ -598,6 +629,7 @@ def setup_task_routes(task_scheduler) -> APIRouter:
         db = SessionLocal()
         try:
             then_task_id = _validate_then_task_id(db, req.then_task_id, user)
+            else_task_id = _validate_then_task_id(db, req.else_task_id, user)
             crew_member_id = _validate_crew_member_id(db, req.crew_member_id, user)
             notifications_enabled = (
                 False if req.task_type == "action" and req.notifications_enabled is None
@@ -639,6 +671,7 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                 model=req.model or None,
                 endpoint_url=req.endpoint_url or None,
                 then_task_id=then_task_id,
+                else_task_id=else_task_id,
                 webhook_token=webhook_token,
                 notifications_enabled=notifications_enabled,
                 character_id=(req.character_id or None),
@@ -796,6 +829,8 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                 task.trigger_count = req.trigger_count
             if req.then_task_id is not None:
                 task.then_task_id = _validate_then_task_id(db, req.then_task_id, user, current_task_id=task.id)
+            if req.else_task_id is not None:
+                task.else_task_id = _validate_then_task_id(db, req.else_task_id, user, current_task_id=task.id)
             if req.notifications_enabled is not None:
                 task.notifications_enabled = bool(req.notifications_enabled)
             if req.character_id is not None:
@@ -1181,9 +1216,93 @@ def setup_task_routes(task_scheduler) -> APIRouter:
         _owner(request)
         return {"events": [dict(entry) for entry in EVENT_CATALOGUE]}
 
+    # `P8-23`. Which request headers a webhook payload carries.
+    #
+    # An allowlist and not a copy of the headers, because everything a proxy
+    # adds is either the caller's credential or the machine's own plumbing, and
+    # the payload ends up in a model prompt and in a row somebody reads. These
+    # five are how a sender says what it sent and who it says it is —
+    # `X-GitHub-Event`, `X-Hub-Signature` and their kin are deliberately NOT
+    # here: a signature in a prompt is a secret in a prompt.
+    _WEBHOOK_HEADERS = ("content-type", "user-agent", "x-request-id",
+                        "x-event-name", "x-webhook-event")
+    # How much of the body is read at all. `build_trigger` caps each field again
+    # at `TRIGGER_FIELD_MAX_CHARS` and `trigger_as_text` caps the whole envelope
+    # on the way to the model, so this is the outermost of three and exists to
+    # stop a megabyte being decoded before any of them apply.
+    _WEBHOOK_BODY_MAX = TRIGGER_FIELD_MAX_CHARS * 4
+
+    async def _webhook_payload(request) -> dict:
+        """Everything the caller sent that a task can be told about.
+
+        The route had NO request parameter at all until 2026-09-18 — body,
+        query and headers were read by nobody, which made this a doorbell: it
+        could say a POST had happened and never what was in it.
+
+        Parsed where it parses (`json` becomes `json`, so a task can be told
+        `data.json.issue.title` without re-parsing a string) and kept as text
+        where it does not, rather than refusing a body this route has never
+        had an opinion about.
+        """
+        raw = b""
+        try:
+            raw = await request.body()
+        except Exception:
+            logger.debug("Webhook body could not be read", exc_info=True)
+        text = ""
+        if raw:
+            try:
+                text = raw.decode("utf-8", errors="replace")
+            except Exception:
+                text = ""
+        if len(text) > _WEBHOOK_BODY_MAX:
+            text = text[:_WEBHOOK_BODY_MAX].rstrip() + "\u2026"
+        payload: Dict[str, Any] = {}
+        if text:
+            payload["body"] = text
+            try:
+                parsed = json.loads(text)
+            except (ValueError, TypeError):
+                parsed = None
+            if isinstance(parsed, (dict, list)):
+                payload["json"] = parsed
+        try:
+            query = dict(request.query_params)
+        except Exception:
+            query = {}
+        if query:
+            payload["query"] = {
+                k: (v[:TRIGGER_FIELD_MAX_CHARS] if isinstance(v, str) else v)
+                for k, v in list(query.items())[:20]
+            }
+        try:
+            headers = {
+                name: request.headers.get(name)
+                for name in _WEBHOOK_HEADERS
+                if request.headers.get(name)
+            }
+        except Exception:
+            headers = {}
+        if headers:
+            payload["headers"] = headers
+        return payload
+
     @router.post("/{task_id}/webhook/{token}")
-    async def webhook_trigger(task_id: str, token: str):
-        """Unauthenticated endpoint — the token IS the auth."""
+    async def webhook_trigger(task_id: str, token: str, request: Request):
+        """Unauthenticated endpoint — the token IS the auth.
+
+        `FORBIDDEN.md` Part 1 pins the URL SHAPE — `/{task_id}/webhook/{token}`
+        — and it is unchanged. `request` is a parameter FastAPI fills from the
+        connection; it adds no path segment, no query requirement and no header
+        requirement, so every caller that worked before works unchanged and a
+        caller that sends nothing still rings the doorbell.
+
+        It goes AFTER the two path parameters rather than before them, which is
+        not the house style elsewhere in this file and is deliberate here: the
+        positional order matches the URL, and three tests call this handler
+        directly as `webhook_trigger(task_id, token)`. FastAPI resolves
+        `request` by type and not by position, so the order costs nothing.
+        """
         db = SessionLocal()
         try:
             task = db.query(ScheduledTask).filter(
@@ -1204,7 +1323,12 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                 raise HTTPException(403, record_admin_refusal(db, task))
         finally:
             db.close()
-        started = await task_scheduler.run_task_now(task_id)
+        trigger = build_trigger(
+            TRIGGER_SOURCE_WEBHOOK, TRIGGER_SOURCE_WEBHOOK,
+            await _webhook_payload(request),
+            fields=("body", "json", "query", "headers"),
+        )
+        started = await task_scheduler.run_task_now(task_id, trigger=trigger)
         if not started:
             raise HTTPException(409, "Task is already running")
         return {"ok": True, "message": "Task triggered via webhook"}

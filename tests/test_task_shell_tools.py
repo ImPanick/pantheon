@@ -113,9 +113,15 @@ async def test_scheduled_task_honors_global_disabled_tools(monkeypatch):
 
     async def _capture(endpoint_url, model, task, session_id, *,
                        system_prompt=None, disabled_tools=None, relevant_tools=None,
-                       datetime_context_msg=None):
+                       datetime_context_msg=None, trigger_context_msg=None,
+                       run_id=None):
+        # `P8-27` threads `run_id` and `P8-23` threads `trigger_context_msg`
+        # through this call. Both are accepted and unused: the stub exists to
+        # capture the two tool lists, and a signature that refused a new
+        # keyword would fail on the signature rather than on the merge.
         captured["disabled_tools"] = disabled_tools
         captured["relevant_tools"] = relevant_tools
+        captured["run_id"] = run_id
         return "done"
 
     scheduler = TaskScheduler(session_manager=None)

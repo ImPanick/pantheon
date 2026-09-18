@@ -56,6 +56,106 @@
     (root || document).querySelectorAll(ROW_SELECTOR).forEach(enhanceRow);
   }
 
+  // ---- The icon rail, as a toolbar ---------------------------------------
+  // `P10-06`. Every button in the rail is a real `<button>`, so every one of
+  // them is already in the tab order — which is the problem. Eighteen launchers
+  // sit between the page's first control and the sidebar, so a keyboard user
+  // pays eighteen Tab presses to get past a strip a mouse user skips by not
+  // looking at it. That is the failure `role="toolbar"` and a roving tabindex
+  // exist for: the rail becomes ONE tab stop, and the arrow keys move inside
+  // it.
+  //
+  // Vertical, so Up/Down and Home/End — the axis `aria-orientation` declares.
+  // Left/Right are deliberately not bound: the rail can be moved to the right
+  // side of the window (`.right-side`), and a horizontal binding would then
+  // read backwards, which is the bug `P10-03` had to answer for the resize
+  // separators. An axis that is always true is better than one that is true
+  // half the time.
+  //
+  // Visibility is read off the inline `display`, because that is how this
+  // product hides these buttons: `applyUIVis()` in `app.js` writes
+  // `el.style.display = 'none'` for every Customize-UI key, and the two
+  // `.rail-dynamic` launchers ship that way in the markup. A hidden button is
+  // not focusable, so the ring must not be able to land on one.
+  var RAIL_ID = 'icon-rail';
+  var RAIL_ITEM = '.icon-rail-btn';
+  var RAIL_KEYS = ['ArrowDown', 'ArrowUp', 'Home', 'End'];
+
+  /** `Element.closest`, written out — see the note in `init()`. */
+  function up(el, sel) {
+    for (var n = el; n; n = n.parentNode) {
+      if (n.matches && n.matches(sel)) return n;
+    }
+    return null;
+  }
+
+  function railVisible(btn) {
+    return !btn.disabled
+      && (btn.style ? btn.style.display !== 'none' : true)
+      && btn.getAttribute('hidden') == null;
+  }
+
+  function railItems(rail) {
+    return Array.prototype.filter.call(rail.querySelectorAll(RAIL_ITEM), railVisible);
+  }
+
+  /**
+   * Leave exactly one tab stop in the rail.
+   *
+   * Every button is written, not just the visible ones: a hidden button that
+   * kept `tabindex="0"` becomes a second tab stop the moment Customize UI
+   * turns it back on, and two tab stops in a toolbar is the defect this
+   * function exists to prevent, arriving later and from a settings panel.
+   */
+  function setRailTabStop(rail, preferred) {
+    var all = rail.querySelectorAll(RAIL_ITEM);
+    var visible = railItems(rail);
+    var stop = null;
+    if (preferred && visible.indexOf(preferred) >= 0) stop = preferred;
+    if (!stop) {
+      for (var i = 0; i < visible.length; i++) {
+        if (visible[i].className && visible[i].className.split(/\s+/).indexOf('active') >= 0) {
+          stop = visible[i];
+          break;
+        }
+      }
+    }
+    if (!stop) stop = visible[0] || null;
+    Array.prototype.forEach.call(all, function (b) {
+      b.setAttribute('tabindex', b === stop ? '0' : '-1');
+    });
+    return stop;
+  }
+
+  function enhanceRail(rail) {
+    if (!rail || rail.dataset.a11yToolbar === '1') return;
+    rail.dataset.a11yToolbar = '1';
+    if (rail.getAttribute('role') == null) rail.setAttribute('role', 'toolbar');
+    if (rail.getAttribute('aria-orientation') == null) {
+      rail.setAttribute('aria-orientation', 'vertical');
+    }
+    if (rail.getAttribute('aria-label') == null) {
+      rail.setAttribute('aria-label', 'Tools');
+    }
+    setRailTabStop(rail, null);
+  }
+
+  /** Move the rail's focus. Returns the button focused, or null. */
+  function moveRailFocus(rail, from, key) {
+    var items = railItems(rail);
+    var i = items.indexOf(from);
+    if (i < 0 || !items.length) return null;
+    var next;
+    if (key === 'ArrowDown') next = items[(i + 1) % items.length];
+    else if (key === 'ArrowUp') next = items[(i - 1 + items.length) % items.length];
+    else if (key === 'Home') next = items[0];
+    else if (key === 'End') next = items[items.length - 1];
+    else return null;
+    setRailTabStop(rail, next);
+    next.focus();
+    return next;
+  }
+
   // ---- Modal dialogs -----------------------------------------------------
   // Pantheon modals are plain <div class="modal-content"> boxes. Marking
   // them as ARIA dialogs lets screen readers announce them as dialogs and
@@ -112,16 +212,42 @@
   // itself an enhanced row (keydown targets the focused element), so a press
   // on a nested native button is left to the browser's own handling.
   document.addEventListener('keydown', function (e) {
-    if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
     var el = e.target;
-    if (!el || !el.matches || !el.matches('[data-a11y-activatable]')) return;
-    e.preventDefault(); // Space would otherwise scroll the page
-    el.click();
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+      if (!el || !el.matches || !el.matches('[data-a11y-activatable]')) return;
+      e.preventDefault(); // Space would otherwise scroll the page
+      el.click();
+      return;
+    }
+    // `P10-06`. The rail's arrows ride the SAME delegated listener rather than
+    // one of their own. Two keydown listeners on `document` is two places to
+    // discover that a key is already taken, and this module exists because the
+    // first one was not enough on its own.
+    if (RAIL_KEYS.indexOf(e.key) < 0) return;
+    if (!el) return;
+    var btn = up(el, RAIL_ITEM);
+    if (!btn) return;
+    var rail = up(btn, '#' + RAIL_ID);
+    if (!rail) return;
+    if (moveRailFocus(rail, btn, e.key)) e.preventDefault();
+  });
+
+  // Focus entering the rail from outside (a Tab press, or a script) decides
+  // where the single tab stop sits next, so Shift+Tab back into the rail
+  // returns to the button the user left rather than to the top of the strip.
+  document.addEventListener('focusin', function (e) {
+    var el = e.target;
+    if (!el) return;
+    var btn = up(el, RAIL_ITEM);
+    if (!btn) return;
+    var rail = up(btn, '#' + RAIL_ID);
+    if (rail) setRailTabStop(rail, btn);
   });
 
   function init() {
     enhanceAll(document);
     enhanceModals(document);
+    enhanceRail(document.getElementById(RAIL_ID));
 
     // Sidebar content is re-rendered as the user navigates (session lists,
     // tool sub-rows, etc.). Watch for new rows and enhance them too.
@@ -138,6 +264,19 @@
           }
         }
       }).observe(sidebar, { childList: true, subtree: true });
+    }
+
+    // Customize UI hides rail launchers by writing `style.display`, and the
+    // one holding the tab stop can be among them — which would leave the rail
+    // with no way in at all. Watching `style` on the rail's own subtree is 18
+    // elements and one attribute, and it re-picks the stop the moment one
+    // disappears. `setRailTabStop` writes `tabindex`, never `style`, so this
+    // cannot observe its own work.
+    var _rail = document.getElementById(RAIL_ID);
+    if (_rail && 'MutationObserver' in window) {
+      new MutationObserver(function () {
+        setRailTabStop(_rail, null);
+      }).observe(_rail, { attributes: true, subtree: true, attributeFilter: ['style'] });
     }
 
     // Some modals (Notes, Tasks, …) are injected at runtime, usually as

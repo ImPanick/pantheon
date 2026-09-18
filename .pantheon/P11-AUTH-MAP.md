@@ -74,18 +74,18 @@ The four tiers are `P11-02b`'s own question. A site is exactly one of them:
   ownership check or a privilege key that does not exist. The fix is a data model, not
   an auth change.
 
-derived: direct 87 · Depends 20 · total 107
+derived: direct 91 · Depends 20 · total 111
 
 ### tier summary
 
 | tier | sites |
 |---|---|
-| `superuser` | 37 |
+| `superuser` | 41 |
 | `operator` | 45 |
 | `power-user` | 4 |
 | `only-because-nothing-finer-existed` | 21 |
 
-### `superuser` — **37 superuser sites.** A credential, an execution surface, or the whole instance's data. These stay `is_admin` under any role model — `P11-02` says so in its own words: *"keep `is_admin` as the superuser role rather than replacing it"*.
+### `superuser` — **41 superuser sites.** A credential, an execution surface, or the whole instance's data. These stay `is_admin` under any role model — `P11-02` says so in its own words: *"keep `is_admin` as the superuser role rather than replacing it"*.
 
 | file | function | route | protects |
 |---|---|---|---|
@@ -126,6 +126,10 @@ derived: direct 87 · Depends 20 · total 107
 | `routes/vault/vault_routes.py` | `login` | `POST /api/vault/login` | authenticates to the vault |
 | `routes/vault/vault_routes.py` | `logout` | `POST /api/vault/logout` | ends the vault session |
 | `routes/vault/vault_routes.py` | `unlock` | `POST /api/vault/unlock` | unlocks stored secrets for use |
+| `routes/auth_routes.py` | `list_roles` | `GET /api/auth/roles` | the role catalogue, which is the map of who may do what. `P11-02` |
+| `routes/auth_routes.py` | `upsert_role` | `PUT /api/auth/roles/{name}` | defines what a role grants — an escalation surface: a role is a privilege grant to everyone holding it. `P11-02` |
+| `routes/auth_routes.py` | `remove_role` | `DELETE /api/auth/roles/{name}` | removes a role and revokes it from every user holding it. `P11-02` |
+| `routes/auth_routes.py` | `set_user_role` | `PUT /api/auth/users/{username}/role` | grants somebody else a role. `P11-02` |
 
 ### `operator` — **45 operator sites.** Running the box: endpoints, models, probes, logs, webhooks, storage. A person who keeps the instance up needs all of it and needs none of the tier above. This is the tier that makes a role model worth building, because today the only way to hand someone the operator's job is to hand them the owner's.
 
@@ -255,7 +259,9 @@ routes: 6
 
 The largest file in the fifteen and the one that matters most. Every row below whose gate ends `+ is_admin` is admin-gated **by hand** — `_get_current_user` + `auth_manager.is_admin`, written out — rather than by `require_admin`. That is why a `require_admin` audit sees nothing in this file, and why `B543` exists.
 
-routes: 35
+**The four role routes at the bottom are the exception, deliberately** (`P11-02`). They gate with `core.middleware.require_admin`, which is the only one of the four implementations that consults `auth_disabled()` — the hand-rolled one refuses the single operator of an auth-disabled box. They are also the reason § A's superuser tier moved from 37 to 41 and this file's count from 35 to 39. Rule C's ratchet did not move: `require_admin` is not one of the gates it counts, which is the point.
+
+routes: 39
 
 | route | handler | gate | intended |
 |---|---|---|---|
@@ -274,6 +280,10 @@ routes: 35
 | `POST /api/auth/users` | `admin_create_user` | `middleware + _get_current_user + is_admin` | yes — admin is right for this. The *mechanism* is not: it is hand-rolled rather than `require_admin`, so no `require_admin` audit sees it. `B543`. |
 | `PUT /api/auth/users/{username}/privileges` | `update_user_privileges` | `middleware + _get_current_user + is_admin` | yes — admin is right for this. The *mechanism* is not: it is hand-rolled rather than `require_admin`, so no `require_admin` audit sees it. `B543`. |
 | `PUT /api/auth/users/{username}/rename` | `rename_user` | `middleware + _get_current_user + is_admin` | yes — admin is right for this. The *mechanism* is not: it is hand-rolled rather than `require_admin`, so no `require_admin` audit sees it. `B543`. |
+| `GET /api/auth/roles` | `list_roles` | `middleware + require_admin` | yes — the role catalogue plus the two key registries a panel needs to render an editor. `P11-02`. |
+| `PUT /api/auth/roles/{name}` | `upsert_role` | `middleware + get_current_user + require_admin` | yes — defining a role is granting a privilege to everyone who holds it. `P11-02`. |
+| `DELETE /api/auth/roles/{name}` | `remove_role` | `middleware + get_current_user + require_admin` | yes — deleting a role revokes it from every user holding it, in one write. `P11-02`. |
+| `PUT /api/auth/users/{username}/role` | `set_user_role` | `middleware + get_current_user + require_admin` | yes — assigning somebody else's role. `P11-02`. |
 | `PUT /api/auth/users/{username}/admin` | `set_user_admin` | `middleware + _get_current_user + is_admin` | yes — admin is right for this. The *mechanism* is not: it is hand-rolled rather than `require_admin`, so no `require_admin` audit sees it. `B543`. |
 | `POST /api/auth/signup-toggle` | `toggle_signup` | `middleware + _get_current_user + is_admin` | yes — admin is right for this. The *mechanism* is not: it is hand-rolled rather than `require_admin`, so no `require_admin` audit sees it. `B543`. |
 | `PUT /api/auth/open-signup` | `set_signup_enabled` | `middleware + _get_current_user + is_admin` | yes — admin is right for this. The *mechanism* is not: it is hand-rolled rather than `require_admin`, so no `require_admin` audit sees it. `B543`. |
@@ -445,9 +455,15 @@ routes: 2
 
 `P11-02` keeps `is_admin` as the superuser role *"because 103 call sites depend on it
 and rewriting them all at once is how this goes wrong."* That reasoning holds at 107,
-and the tables above say which of the 107 the rewrite can actually leave alone:
+and the tables above say which of the 107 the rewrite can actually leave alone.
 
-- **37 superuser sites do not move.** They are already right.
+**Re-measured 2026-09-18 after `P11-02` landed: 111, not 107**, and the four new ones are
+`P11-02`'s own role-management routes. They are gated with `require_admin` rather than
+this file's hand-rolled pattern, so the population that this map covers grew by exactly
+the number of admin decisions added — which is the behaviour the map was built to give.
+The paragraph above is about the 107 that predate roles; the counts below are live.
+
+- **41 superuser sites do not move.** They are already right.
 - **45 operator sites are the phase's return.** Today the only way to let someone keep
   the instance up is to make them the owner. An `operator` overlay on
   `DEFAULT_PRIVILEGES` retires 45 gates without touching a single one of the 37.

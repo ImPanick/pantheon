@@ -594,6 +594,45 @@ DEFAULT_SETTINGS = {
 }
 
 
+# The nullable integer limits, with the bounds every layer is held to.
+#
+# `P11-02` moved this here from a local inside `POST /api/auth/settings`, where
+# it was spelled `_NULLABLE_INT_RANGES`, because a second reader arrived: a
+# role is a named set of overrides and it has to refuse the same keys the
+# settings route refuses, or an operator can put a byte cap in a role that the
+# settings panel would have rejected. Two lists answering "which settings keys
+# are limits" is the fork in the maintenance path `Law 14` exists to stop, and
+# the route still validates through this dict under its own name.
+#
+# **The floor is 1 on every one of them and there is no value meaning *off*.**
+# `FORBIDDEN.md` Part 2 keeps the upload caps and the auth rate limiters as
+# controls that never lift; a cap of zero rejects every upload while reading as
+# a configured limit. The ceilings are sanity rather than policy — a terabyte
+# cap and a day-long throttle window are past the point where the number is a
+# decision rather than a typo.
+_GIB = 1024 ** 3
+LIMIT_RANGES: dict[str, tuple[int, int]] = {
+    "gallery_upload_max_bytes": (1, 1024 * _GIB),
+    "gallery_transform_upload_max_bytes": (1, 1024 * _GIB),
+    "memory_import_max_bytes": (1, 1024 * _GIB),
+    "personal_upload_max_bytes": (1, 1024 * _GIB),
+    "email_compose_upload_max_bytes": (1, 1024 * _GIB),
+    "stt_max_audio_bytes": (1, 1024 * _GIB),
+    "ics_max_bytes": (1, 1024 * _GIB),
+    "chat_upload_max_bytes": (1, 1024 * _GIB),
+    "backup_import_max_bytes": (1, 1024 * _GIB),
+    "tts_cache_max_bytes": (1, 1024 * _GIB),
+    "auth_login_rate_limit": (1, 100_000),
+    "auth_login_rate_window_seconds": (1, 86_400),
+    "auth_signup_rate_limit": (1, 100_000),
+    "auth_signup_rate_window_seconds": (1, 86_400),
+    "auth_setup_rate_limit": (1, 100_000),
+    "auth_setup_rate_window_seconds": (1, 86_400),
+    "upload_rate_limit": (1, 100_000),
+    "upload_rate_window_seconds": (1, 86_400),
+}
+
+
 def without_retired_settings(settings: dict) -> dict:
     """Return a shallow copy suitable for generic settings interfaces."""
     if not isinstance(settings, dict):

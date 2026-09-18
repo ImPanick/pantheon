@@ -284,6 +284,23 @@ async def test_a_task_with_notifications_off_is_still_not_told(task_db, configur
 # The webhook path — the recording that did not exist
 # ---------------------------------------------------------------------------
 
+def _bare_request():
+    """A POST with nothing in it.
+
+    `P8-23` gave `webhook_trigger` a `Request` so the body, query and headers a
+    caller sends can reach the task. Every refusal test here is about what
+    happens BEFORE the request is read, so they send an empty one — which is
+    also the shape of every caller that only rings the doorbell.
+    """
+    from starlette.requests import Request
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    return Request({"type": "http", "method": "POST", "path": "/",
+                    "query_string": b"", "headers": []}, receive)
+
+
 @pytest.mark.asyncio
 async def test_webhook_refusal_is_visible_in_activity(task_db, configured_auth):
     """It used to pause the task and write nothing, so Activity showed no reason."""
@@ -291,7 +308,7 @@ async def test_webhook_refusal_is_visible_in_activity(task_db, configured_auth):
     webhook_trigger = _endpoint("POST", "/api/tasks/{task_id}/webhook/{token}")
 
     with pytest.raises(HTTPException) as exc:
-        await webhook_trigger("alice-task", "secret")
+        await webhook_trigger("alice-task", "secret", _bare_request())
 
     assert exc.value.status_code == 403
     assert exc.value.detail == REFUSAL
@@ -316,7 +333,7 @@ async def test_webhook_refusal_never_starts_the_task(task_db, configured_auth):
         "POST", "/api/tasks/{task_id}/webhook/{token}", scheduler=scheduler)
 
     with pytest.raises(HTTPException):
-        await webhook_trigger("alice-task", "secret")
+        await webhook_trigger("alice-task", "secret", _bare_request())
 
     scheduler.run_task_now.assert_not_called()
 
@@ -343,7 +360,7 @@ async def test_both_refusal_paths_record_the_same_thing(task_db, configured_auth
 
     webhook_trigger = _endpoint("POST", "/api/tasks/{task_id}/webhook/{token}")
     with pytest.raises(HTTPException):
-        await webhook_trigger("hook-task", "secret")
+        await webhook_trigger("hook-task", "secret", _bare_request())
 
     (sched,) = _runs(task_db, "sched-task")
     (hook,) = _runs(task_db, "hook-task")
@@ -429,7 +446,7 @@ async def test_migration_predicate_matches_what_the_code_writes(task_db, configu
     _seed(task_db, webhook_token="secret")
     webhook_trigger = _endpoint("POST", "/api/tasks/{task_id}/webhook/{token}")
     with pytest.raises(HTTPException):
-        await webhook_trigger("alice-task", "secret")
+        await webhook_trigger("alice-task", "secret", _bare_request())
 
     db = task_db()
     try:
@@ -598,7 +615,11 @@ async def test_a_failing_quiet_action_task_still_reaches_its_owner(
     scheduler._pending_notifications = []
 
     async def _fail(task, run_id=None):
-        return "the tidy action exited 1", False
+        # `P8-24` widened what `_execute_action` hands back from
+        # `(text, success)` to a `NodeResult`. The stub says the same thing in
+        # the new vocabulary; `error` is what `success=False` meant.
+        from src.builtin_actions import NODE_STATUS_ERROR, NodeResult
+        return NodeResult(NODE_STATUS_ERROR, "the tidy action exited 1")
 
     monkeypatch.setattr(scheduler, "_execute_action", _fail, raising=False)
     await scheduler._execute_task_locked(
@@ -636,7 +657,8 @@ async def test_a_succeeding_quiet_action_task_stays_quiet(
     scheduler._pending_notifications = []
 
     async def _ok(task, run_id=None):
-        return "tidied 3 sessions", True
+        from src.builtin_actions import NODE_STATUS_SUCCESS, NodeResult
+        return NodeResult(NODE_STATUS_SUCCESS, "tidied 3 sessions")
 
     monkeypatch.setattr(scheduler, "_execute_action", _ok, raising=False)
     monkeypatch.setattr(scheduler, "_log_to_assistant", lambda *a, **k: None,

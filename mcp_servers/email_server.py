@@ -1736,7 +1736,13 @@ def _create_email_draft_document(
                 db.commit()
                 if fire_event:
                     try:
-                        fire_event(EVENT_DOCUMENT_UPDATED, doc_owner)
+                        # `P8-23` / `B602`. The row's own example: this is the
+                        # site that fires `document_updated` in production, and
+                        # until now the task it triggered could not be told
+                        # which document had been edited.
+                        fire_event(EVENT_DOCUMENT_UPDATED, doc_owner,
+                                   {"document_id": existing.id,
+                                    "title": existing.title})
                     except Exception:
                         pass
                 return {
@@ -1778,7 +1784,8 @@ def _create_email_draft_document(
         db.commit()
         if fire_event:
             try:
-                fire_event(EVENT_DOCUMENT_CREATED, doc_owner)
+                fire_event(EVENT_DOCUMENT_CREATED, doc_owner,
+                           {"document_id": doc_id, "title": doc_title})
             except Exception:
                 pass
         return {

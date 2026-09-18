@@ -411,7 +411,8 @@ async def do_manage_memory(content: str, session_id: Optional[str] = None, owner
                 pass
         try:
             from src.event_bus import fire_event
-            fire_event("memory_added", owner)
+            fire_event("memory_added", owner,
+                       {"memory_id": entry.get("id"), "text": text})
         except Exception:
             logger.debug("memory_added event dispatch failed", exc_info=True)
 

@@ -143,10 +143,13 @@ async def test_an_llm_run_records_the_tools_the_agent_called(task_db, monkeypatc
         max_steps=None,
     )
     text = await sched._run_agent_loop(
-        "http://localhost:11434/v1/chat/completions", "m", task, "sess-1")
+        "http://localhost:11434/v1/chat/completions", "m", task, "sess-1",
+        run_id="r1")
 
     assert text.strip() == "All done."
-    steps = sched._last_run_steps
+    # `P8-27`. The log is addressed by run now, not by "whichever run this
+    # scheduler touched last".
+    steps = sched.run_steps("r1")
     assert steps, "the agent loop recorded no steps"
     assert [(s["tool"], s["round"], s["status"]) for s in steps] == [
         ("web_search", 1, "ok"), ("write_file", 2, "ok")]

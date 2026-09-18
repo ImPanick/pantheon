@@ -839,6 +839,14 @@ class ScheduledTask(TimestampMixin, Base):
 
     cron_expression = Column(String, nullable=True)           # cron string e.g. "*/5 * * * *"
     then_task_id   = Column(String, ForeignKey("scheduled_tasks.id", ondelete="SET NULL"), nullable=True)
+    # `P8-28`. The other branch: run this one when the run did NOT succeed.
+    # The engine's only conditional was `status == "success"`, so a workflow
+    # could say what to do next and never what to do when the step failed —
+    # the failure simply ended the chain and the person found out from an
+    # Activity row. This is the second edge of the same shape, stored the same
+    # way and projected the same way (`src.task_scheduler.task_edges`); there
+    # is no new edge table and no second place a successor can live.
+    else_task_id   = Column(String, ForeignKey("scheduled_tasks.id", ondelete="SET NULL"), nullable=True)
     webhook_token  = Column(String, nullable=True, unique=True)
     crew_member_id = Column(String, nullable=True)     # optional link to crew_members.id
     # character_id historically referenced an agent_characters table that was
@@ -1509,6 +1517,48 @@ def _migrate_add_task_run_steps_column():
         except Exception:
             # Never opened, or already closed by the error path above.
             pass
+
+def _migrate_add_scheduled_task_else_column():
+    """Add `else_task_id` to scheduled_tasks if it isn't there.
+
+    `P8-28`. Modelled line for line on the two task-run migrations above, for
+    the reason `P8-25` learned the hard way: a column declared on the model and
+    not migrated exists on a fresh `create_all` box and on no install that was
+    created before the declaration. The asymmetry is invisible until a real
+    deployment writes to it.
+
+    The `REFERENCES` clause is carried across, so a migrated database gets the
+    same `ON DELETE SET NULL` behaviour a fresh one gets — SQLite allows a
+    foreign key on `ADD COLUMN` as long as the new column defaults to NULL,
+    which this one does, and every existing row therefore satisfies it.
+    """
+    import sqlite3
+    db_path = DATABASE_URL.replace("sqlite:///", "")
+    if not os.path.exists(db_path):
+        return
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.execute("PRAGMA table_info(scheduled_tasks)")
+        columns = [row[1] for row in cursor.fetchall()]
+        if columns and "else_task_id" not in columns:
+            conn.execute(
+                "ALTER TABLE scheduled_tasks ADD COLUMN else_task_id TEXT "
+                "REFERENCES scheduled_tasks(id) ON DELETE SET NULL"
+            )
+            conn.commit()
+            logging.getLogger(__name__).info(
+                "Migrated: added 'else_task_id' column to scheduled_tasks")
+    except Exception as e:
+        logging.getLogger(__name__).warning(
+            f"scheduled_tasks else_task_id migration failed: {e}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            # Never opened, or already closed by the error path above.
+            pass
+
 
 def _migrate_add_supports_tools_column():
     """Add supports_tools column to model_endpoints if it doesn't exist."""
@@ -2577,6 +2627,7 @@ def init_db():
     _migrate_add_comparison_vote_meta_column()
     _migrate_add_task_run_model_column()
     _migrate_add_task_run_steps_column()
+    _migrate_add_scheduled_task_else_column()
     _migrate_add_owner_column()
     _migrate_add_document_archived_column()
     _migrate_add_last_message_at_column()

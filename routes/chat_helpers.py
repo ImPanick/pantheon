@@ -433,7 +433,10 @@ def fire_message_event(request, webhook_manager, session_id: str, sess, message:
         })
     from src.event_bus import fire_event
     user = effective_user(request)
-    fire_event("message_sent", user)
+    # `P8-23`. Which chat, and what was said — so "when I send a message, log
+    # it" can log the message rather than the fact that one existed.
+    fire_event("message_sent", user,
+               {"session_id": session_id, "text": message})
 
 
 def _session_url_matches_endpoint(session_url: str, endpoint_base: str) -> bool:

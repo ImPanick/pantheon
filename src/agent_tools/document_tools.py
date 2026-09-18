@@ -458,7 +458,8 @@ class CreateDocumentTool:
             set_active_document(doc_id)
             try:
                 from src.event_bus import fire_event
-                fire_event("document_created", _owner)
+                fire_event("document_created", _owner,
+                           {"document_id": doc_id, "title": title})
             except Exception:
                 logger.debug("document_created event dispatch failed", exc_info=True)
 

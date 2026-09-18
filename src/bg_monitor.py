@@ -121,6 +121,13 @@ async def _drain_agent(sess, messages):
                 "command": d.get("command"),
                 "output": d.get("output"),
                 "exit_code": d.get("exit_code"),
+                # `P8-24`/`B686`. This mirror is the background job's version of
+                # the same record, and a field missing here is a background run
+                # whose card reads `ok` for a tool that failed. Copied only when
+                # the source event has one — the same shape `_command_fields`
+                # and `_stream_fields` use — because a `status: None` on the
+                # record is a key that reads as an answer and is not one.
+                **({"status": d["status"]} if d.get("status") else {}),
             }
             if isinstance(d.get("ask_user"), dict):
                 # Preserve exact-approval cards from a tainted background-job

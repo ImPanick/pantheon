@@ -53,6 +53,10 @@ ADMIN_PRIVILEGES["block_all_models"] = False
 
 from src.constants import AUTH_FILE, PASSWORD_MIN_LENGTH
 from src.owner_identity import RESERVED_AUTH_USERNAMES
+# One spelling for the two `auth.json` keys `P11-02` adds. They are defined in
+# `src/roles.py` beside the rules that govern them and imported here rather
+# than written out again, so a rename cannot land on one file only (`Law 7`).
+from src.roles import ROLE_CATALOGUE_KEY, USER_ROLE_FIELD
 DEFAULT_AUTH_PATH = AUTH_FILE
 TOKEN_TTL = 60 * 60 * 24 * 7  # 7 days
 
@@ -321,7 +325,18 @@ class AuthManager:
                 "password_hash": _hash_password(password),
                 "created": time.time(),
                 "is_admin": is_admin,
-                "privileges": dict(ADMIN_PRIVILEGES if is_admin else DEFAULT_PRIVILEGES),
+                # `P11-02`. A new non-admin starts with NO per-user overrides,
+                # not a full copy of the registry. The effective map is
+                # identical — `get_privileges` resolves an absent key to what
+                # `DEFAULT_PRIVILEGES` declares — and the difference is the
+                # whole role layer: a stored map that names all eleven keys is
+                # eleven per-user overrides, and per-user beats role, so a copy
+                # of the defaults here would have shadowed every role on every
+                # user created through the normal path. Admins keep theirs:
+                # the map is inert while `is_admin` is set (`get_privileges`
+                # short-circuits) and `set_admin` reads it as the demotion
+                # stash.
+                "privileges": dict(ADMIN_PRIVILEGES) if is_admin else {},
             }
             self._save()
         logger.info(f"Created user '{username}' (admin={is_admin})")
@@ -416,18 +431,60 @@ class AuthManager:
 
     def list_users(self) -> List[Dict[str, Any]]:
         return [
-            {"username": u, "is_admin": d.get("is_admin", False), "privileges": self.get_privileges(u)}
+            {"username": u, "is_admin": d.get("is_admin", False),
+             "role": self.get_role(u),
+             "privileges": self.get_privileges(u)}
             for u, d in self.users.items()
         ]
 
     def get_privileges(self, username: str) -> Dict[str, Any]:
-        """Get privileges for a user. Admins get all privileges."""
+        """Get privileges for a user. Admins get all privileges.
+
+        `P11-02`. Three layers, resolved **built-in default → role → user**,
+        and the order lives in exactly one function:
+        `src.auth_helpers.resolve_privilege`. This method's job is to say who
+        the user is and what their role carries; it does not decide anything
+        itself, because a second place that decides is how the two answers
+        drift apart (`Law 13`).
+
+        `is_admin` still short-circuits, and still to `ADMIN_PRIVILEGES`. It is
+        the superuser role: it outranks every named role, a role cannot confer
+        it, and the 107 `require_admin` sites in
+        `.pantheon/P11-AUTH-MAP.md` keep reading exactly the flag they read
+        before.
+
+        With no roles defined the loop below returns what
+        `{**DEFAULT_PRIVILEGES, **stored}` returned — for every declared key,
+        `resolve_privilege` with no role IS that merge — so an install that has
+        never named a role is byte-for-byte unchanged (`Law 1`).
+        """
+        from src.auth_helpers import resolve_privilege
+
         user = self.users.get(username, {})
         if user.get("is_admin"):
             return dict(ADMIN_PRIVILEGES)
-        # Merge stored privileges with defaults (in case new privileges were added)
         stored = user.get("privileges", {})
-        return {**DEFAULT_PRIVILEGES, **stored}
+        if not isinstance(stored, dict):
+            # A hand-edited or truncated `auth.json` can put anything here, and
+            # `{**DEFAULT_PRIVILEGES, **stored}` raised on it — which
+            # `require_privilege` catches and answers by returning the user,
+            # i.e. granting. Degrading to "no per-user overrides" resolves to
+            # the declared defaults instead, which is `P11-01`'s rule applied
+            # to the shape of the map rather than to one key.
+            logger.warning(
+                "Privileges for '%s' are %s, not an object — resolving to the "
+                "declared defaults.", username, type(stored).__name__,
+            )
+            stored = {}
+        role_overrides = self.role_overrides_for_user(username)
+        # Keys nobody declared are carried through untouched: they are not
+        # resolvable (nothing reads them) and dropping them would lose an
+        # operator's hand-edit without saying so (`Law 1`).
+        merged = {**DEFAULT_PRIVILEGES, **stored}
+        for key in DEFAULT_PRIVILEGES:
+            merged[key] = resolve_privilege(
+                stored, key, role_overrides=role_overrides)
+        return merged
 
     def set_privileges(self, username: str, privileges: Dict[str, Any]) -> bool:
         """Update privileges for a user. Can't modify admin privileges."""
@@ -437,14 +494,176 @@ class AuthManager:
                 return False
             if self.users[username].get("is_admin"):
                 return False  # admins always have full access
-            # Only allow known privilege keys
-            current = self.get_privileges(username)
+            # Only allow known privilege keys.
+            #
+            # `P11-02`. What is stored is the user's OVERRIDES, built on what
+            # they already had — not the resolved map. Storing the resolved map
+            # wrote every declared key on every save, which turned each of them
+            # into a per-user override and made the role layer invisible for
+            # anybody an admin had ever edited. Effective privileges are
+            # unchanged either way, because an unstored key resolves to the
+            # role's value and then to the registry's.
+            #
+            # `None` CLEARS an override rather than storing it: it is the third
+            # value `B90` established for booleans, here meaning *inherit* —
+            # the role's answer if it has one, the registry's if not. Without
+            # it an admin can express "false" and "true" and has no way back to
+            # "whatever the role says".
+            stored = self.users[username].get("privileges")
+            current = dict(stored) if isinstance(stored, dict) else {}
             for k, v in privileges.items():
-                if k in DEFAULT_PRIVILEGES:
+                if k not in DEFAULT_PRIVILEGES:
+                    continue
+                if v is None:
+                    current.pop(k, None)
+                else:
                     current[k] = v
             self._config["users"][username]["privileges"] = current
             self._save()
         logger.info(f"Updated privileges for '{username}': {current}")
+        return True
+
+    # ------------------------------------------------------------------
+    # Roles (`P11-02`) — named overlays on the registries, stored beside the
+    # users they apply to.
+    #
+    # `auth.json` is the store because it is already the file that answers
+    # "who may do what", it is already written atomically through `_save`, and
+    # it is already the thing `P3-16` refuses to overwrite from a failed read.
+    # A role table in a second place would be a second answer to the same
+    # question (`Law 14`), and a database table would make authorization depend
+    # on the database being up.
+    #
+    # Both keys are ABSENT on every install that has never defined a role, and
+    # every method below returns empty in that case.
+    # ------------------------------------------------------------------
+
+    @property
+    def roles(self) -> Dict[str, Dict[str, Any]]:
+        """The role catalogue: name -> overrides. `{}` when none are defined."""
+        found = self._config.get(ROLE_CATALOGUE_KEY)
+        return found if isinstance(found, dict) else {}
+
+    def list_roles(self) -> List[Dict[str, Any]]:
+        """Every role, split into its privilege and limit halves."""
+        from src.roles import describe
+        return [describe(name, body) for name, body in sorted(self.roles.items())]
+
+    def get_role(self, username: str) -> Optional[str]:
+        """The role name on this user's row, or `None`.
+
+        A name that is no longer in the catalogue answers `None`: deleting a
+        role has to take its grants away, and a dangling name that kept
+        resolving would be a permission nobody can see or revoke.
+        """
+        user = self.users.get(str(username or "").strip().lower(), {})
+        name = user.get(USER_ROLE_FIELD)
+        if not isinstance(name, str) or not name:
+            return None
+        return name if name in self.roles else None
+
+    def role_overrides_for_user(self, username: Any) -> Dict[str, Any]:
+        """Everything this user's role overrides. `{}` for admins and for
+        users with no role — an admin's privileges are `ADMIN_PRIVILEGES`
+        wholesale and no role layer applies to the superuser role."""
+        key = str(username or "").strip().lower()
+        if not key:
+            return {}
+        if self.users.get(key, {}).get("is_admin"):
+            return {}
+        name = self.get_role(key)
+        if not name:
+            return {}
+        body = self.roles.get(name)
+        return dict(body) if isinstance(body, dict) else {}
+
+    def define_role(self, name: str, overrides: Dict[str, Any]) -> str:
+        """Create or replace a role. Returns its stored name.
+
+        Raises `src.roles.RoleError` with a sentence for the operator when the
+        name or any override is refused — validation happens before anything is
+        written, so a rejected definition leaves the catalogue exactly as it
+        was.
+        """
+        from src.roles import RoleError, normalize_role_name, validate_overrides, MAX_ROLES
+
+        key = normalize_role_name(name)
+        body = validate_overrides(overrides)
+        with self._config_lock:
+            catalogue = self._config.get(ROLE_CATALOGUE_KEY)
+            if not isinstance(catalogue, dict):
+                catalogue = {}
+            if key not in catalogue and len(catalogue) >= MAX_ROLES:
+                raise RoleError(
+                    f"This install already has {len(catalogue)} roles, which is "
+                    "the ceiling. Delete one first."
+                )
+            catalogue[key] = body
+            self._config[ROLE_CATALOGUE_KEY] = catalogue
+            self._save()
+        logger.info("Defined role '%s' with %d override(s)", key, len(body))
+        return key
+
+    def delete_role(self, name: str) -> bool:
+        """Remove a role and take it off every user holding it.
+
+        Both halves in one critical section and one `_save`. Leaving the name
+        on a user row would be a grant with nothing behind it — `get_role`
+        already refuses to resolve a dangling name, and leaving the row dirty
+        would mean re-creating a role silently re-granted it to whoever used to
+        hold it.
+        """
+        key = str(name or "").strip().lower()
+        with self._config_lock:
+            catalogue = self._config.get(ROLE_CATALOGUE_KEY)
+            if not isinstance(catalogue, dict) or key not in catalogue:
+                return False
+            catalogue.pop(key, None)
+            cleared = 0
+            for row in self._config.get("users", {}).values():
+                if isinstance(row, dict) and row.get(USER_ROLE_FIELD) == key:
+                    row.pop(USER_ROLE_FIELD, None)
+                    cleared += 1
+            self._save()
+        logger.info("Deleted role '%s'; cleared it from %d user(s)", key, cleared)
+        return True
+
+    def set_user_role(self, username: str, role: Optional[str]) -> bool:
+        """Give a user a role, or `None` to take it away.
+
+        Refuses an unknown role name rather than storing it: a role assigned
+        before it is defined grants nothing and looks configured, which is the
+        failure mode a permission surface can least afford.
+
+        Admins are refused for the same reason `set_privileges` refuses them —
+        `is_admin` is the superuser role and outranks every named one, so
+        assigning a second role to an admin would store a decision that never
+        applies.
+        """
+        from src.roles import RoleError
+
+        key = str(username or "").strip().lower()
+        with self._config_lock:
+            row = self._config.get("users", {}).get(key)
+            if row is None:
+                return False
+            if row.get("is_admin"):
+                raise RoleError(
+                    f"'{key}' is an admin. Administrator access is the superuser "
+                    "role and outranks every named role; demote them first."
+                )
+            if role is None or not str(role).strip():
+                if row.pop(USER_ROLE_FIELD, None) is None:
+                    return True
+                self._save()
+                logger.info("Cleared role for '%s'", key)
+                return True
+            wanted = str(role).strip().lower()
+            if wanted not in self.roles:
+                raise RoleError(f"There is no role called '{wanted}'.")
+            row[USER_ROLE_FIELD] = wanted
+            self._save()
+        logger.info("Set role '%s' for '%s'", wanted, key)
         return True
 
     def set_admin(self, username: str, is_admin: bool,
@@ -492,8 +711,14 @@ class AuthManager:
                 # While is_admin is set the stored map is inert: get_privileges
                 # short-circuits to ADMIN_PRIVILEGES and set_privileges refuses
                 # admins, so only set_admin ever touches the stash.
+                # `dict(... or {})`, not `or DEFAULT_PRIVILEGES`: a user with
+                # no per-user overrides has an empty map, and stashing the
+                # registry instead would restore eleven overrides at demotion
+                # and shadow their role forever after (`P11-02`). The
+                # no-stash-at-all case is still answered with the defaults, on
+                # demotion, where the reasoning belongs.
                 target["privileges_before_admin"] = dict(
-                    target.get("privileges") or DEFAULT_PRIVILEGES
+                    target.get("privileges") or {}
                 )
                 target["privileges"] = dict(ADMIN_PRIVILEGES)
             else:
@@ -501,9 +726,14 @@ class AuthManager:
                 # users created as admins (their stored map is ADMIN_PRIVILEGES,
                 # which must not leak past demotion — e.g. can_use_bash) and
                 # for admins promoted before the stash existed.
-                target["privileges"] = dict(
-                    target.pop("privileges_before_admin", None)
-                    or DEFAULT_PRIVILEGES
+                # `is None`, not falsiness: an empty stash is a real answer
+                # ("this user had no per-user overrides") and `or` cannot tell
+                # it from "there was no stash". The fallback below is for the
+                # second case only.
+                stash = target.pop("privileges_before_admin", None)
+                target["privileges"] = (
+                    dict(stash) if isinstance(stash, dict)
+                    else dict(DEFAULT_PRIVILEGES)
                 )
                 target["is_admin"] = False
             self._save()
@@ -722,4 +952,9 @@ class AuthManager:
         }
         if authenticated:
             result["privileges"] = self.get_privileges(username)
+            # `P11-02`. The resolved privileges already carry the role's effect;
+            # the NAME is what lets a surface say *why* — "Operator" rather than
+            # nine booleans a person has to reverse-engineer (`Law 15`). `None`
+            # for an admin and for anyone with no role.
+            result["role"] = self.get_role(username)
         return result

@@ -2171,7 +2171,11 @@ def setup_chat_routes(
                     yield f'data: {json.dumps(_progress_data)}\n\n'
                 _img_result = await _img_task
                 _img_output = _img_result.get("results", _img_result.get("error", ""))
-                _img_tool_data = {"type": "tool_output", "tool": _image_tool_name, "command": _user_msg[:100], "round": 1, "output": _img_output, "exit_code": 0 if "error" not in _img_result else 1}
+                # `B686`: `status` on both the streamed event and the record below it.
+                # The image path is the third pair of writers for this shape and
+                # was the one nobody had followed out.
+                _img_status = "error" if "error" in _img_result else "ok"
+                _img_tool_data = {"type": "tool_output", "tool": _image_tool_name, "command": _user_msg[:100], "round": 1, "output": _img_output, "exit_code": 0 if "error" not in _img_result else 1, "status": _img_status}
                 for _k in ("image_url", "image_id", "image_prompt", "image_model", "image_size", "image_quality"):
                     if _k in _img_result:
                         _img_tool_data[_k] = _img_result[_k]
@@ -2192,7 +2196,7 @@ def setup_chat_routes(
                 yield f'data: {json.dumps({"delta": _desc})}\n\n'
                 # Save to session history
                 if not incognito:
-                    _ev = {"round": 1, "tool": _image_tool_name, "command": _user_msg[:100], "output": _img_output, "exit_code": 0 if "error" not in _img_result else 1}
+                    _ev = {"round": 1, "tool": _image_tool_name, "command": _user_msg[:100], "output": _img_output, "exit_code": 0 if "error" not in _img_result else 1, "status": _img_status}
                     for _ek in ("image_url", "image_id", "image_prompt", "image_model", "image_size", "image_quality"):
                         if _img_result.get(_ek):
                             _ev[_ek] = _img_result[_ek]

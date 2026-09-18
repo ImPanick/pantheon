@@ -432,6 +432,151 @@ class TaskDeferred(BaseException):
         self.delay_seconds = delay_seconds
 
 
+# ── `P8-24` · what a node hands back ────────────────────────────────────────
+#
+# Every built-in action returns `(text, success)`. A boolean is enough for a
+# chain whose only conditional is "did it work", and it is not enough for
+# anything `P8-26` onward wants: a branch node needs to ask WHY it did not
+# work, and a data-mapping node (`P8-29`) needs the thing the step produced
+# rather than the sentence about it.
+#
+# So the contract widens to `(payload, status)`. Two rules shape it:
+#
+#   **`Law 14` — the skip and retry vocabulary already exists.** `TaskNoop`
+#   means "nothing to do" and `TaskDeferred` means "not now, try again in N
+#   seconds", and both already have handling in `_execute_task_locked` that
+#   writes the right run status and the right `next_run`. This does not invent
+#   a third way to say either. `skipped` IS `TaskNoop` and `deferred` IS
+#   `TaskDeferred` — `from_signal` converts one way, `as_signal` the other, and
+#   the scheduler's existing branches stay the code that acts on them.
+#
+#   **`Law 13` — the adapter must not become a second output vocabulary.**
+#   There is one direction of travel: `coerce` turns whatever a node returned
+#   into a `NodeResult`, and `as_legacy` turns a `NodeResult` back into the old
+#   pair for a caller not yet widened. Nothing produces the old pair from new
+#   code; the eighteen shipped actions are read, not rewritten, which is the
+#   whole point of an adapter.
+#
+# The four statuses are deliberately the words `core/database.py` already uses
+# for a run, minus the two that describe infrastructure rather than a node
+# (`queued`, `running`, `aborted`) and plus the one the engine has always had
+# and never named (`deferred`). A node cannot report `aborted`: being stopped
+# is something done TO a run, never something a step decides.
+NODE_STATUS_SUCCESS = "success"
+NODE_STATUS_ERROR = "error"
+NODE_STATUS_SKIPPED = "skipped"
+NODE_STATUS_DEFERRED = "deferred"
+NODE_STATUSES = (NODE_STATUS_SUCCESS, NODE_STATUS_ERROR,
+                 NODE_STATUS_SKIPPED, NODE_STATUS_DEFERRED)
+# The two that mean the step produced nothing and the engine should not treat
+# that as failure. Named, because "is this a failure" is asked in four places.
+NODE_STATUSES_NOT_FAILURE = (NODE_STATUS_SUCCESS, NODE_STATUS_SKIPPED,
+                             NODE_STATUS_DEFERRED)
+
+
+class NodeResult:
+    """One step's output: what it produced, and how it went.
+
+    `payload` is the thing — for the eighteen adapted actions it is the text
+    they already returned, because that is genuinely all they produce; a node
+    written against this contract can return a dict and a later node can read
+    a field out of it without parsing English.
+
+    `text` is the human line. It is derived from `payload` when a node does not
+    supply one, so there is still exactly one place a run's `result` comes
+    from, and `str(payload)` never reaches a database row by accident.
+    """
+
+    __slots__ = ("status", "payload", "text", "retry_after")
+
+    def __init__(self, status: str, payload=None, text: str = None,
+                 retry_after: int = None):
+        if status not in NODE_STATUSES:
+            raise ValueError(f"not a node status: {status!r}")
+        self.status = status
+        self.payload = payload
+        if text is None:
+            text = payload if isinstance(payload, str) else (
+                "" if payload is None else json.dumps(payload, default=str))
+        self.text = text
+        self.retry_after = retry_after
+
+    # `Law 10`: a verdict is an enum here and a boolean at the old boundary,
+    # and these two names say which is which rather than leaving a reader to
+    # work out what `True` meant.
+    @property
+    def ok(self) -> bool:
+        return self.status == NODE_STATUS_SUCCESS
+
+    @property
+    def failed(self) -> bool:
+        return self.status == NODE_STATUS_ERROR
+
+    def as_legacy(self) -> Tuple[str, bool]:
+        """The old `(text, success)` pair, for a caller not yet widened."""
+        return self.text, self.ok
+
+    def as_signal(self):
+        """The exception this status means, or `None` for a plain outcome.
+
+        `skipped` and `deferred` are not new control flow: they are the two
+        signals the engine has always had, named in the status vocabulary so a
+        node can RETURN them instead of only raising them. The scheduler raises
+        what comes back here so the branches that already know how to write a
+        `skipped` row and how to push `next_run` stay the only code that does.
+        """
+        if self.status == NODE_STATUS_SKIPPED:
+            return TaskNoop(self.text or "Nothing to do")
+        if self.status == NODE_STATUS_DEFERRED:
+            return TaskDeferred(self.text or "Deferred",
+                                self.retry_after or 20 * 60)
+        return None
+
+    @classmethod
+    def from_signal(cls, exc: BaseException) -> "NodeResult":
+        """`TaskNoop` / `TaskDeferred` as a status. The other direction."""
+        if isinstance(exc, TaskDeferred):
+            return cls(NODE_STATUS_DEFERRED, payload=str(exc),
+                       retry_after=getattr(exc, "delay_seconds", None))
+        if isinstance(exc, TaskNoop):
+            return cls(NODE_STATUS_SKIPPED, payload=str(exc))
+        return cls(NODE_STATUS_ERROR, payload=str(exc))
+
+    def __repr__(self):  # pragma: no cover - diagnostics
+        return f"NodeResult({self.status!r}, text={self.text!r})"
+
+
+def coerce_node_result(value) -> NodeResult:
+    """Whatever a node returned, as a `NodeResult`. The adapter.
+
+    Reads the eighteen shipped actions without touching one of them: they all
+    return `(text, success)` and `success` is the only verdict they have, so
+    `True` is `success` and `False` is `error` — which is exactly what
+    `_execute_task_locked` did with the boolean before this existed.
+
+    A node that already speaks the new contract passes through. A bare string
+    is a success with that text, because a node that returned only prose did
+    not fail. Anything else is a success carrying the value as its payload,
+    rather than an error: a node's return type is not the place to discover
+    that somebody changed a signature, and turning an unexpected shape into a
+    failed run would report a defect in the wrong place.
+    """
+    if isinstance(value, NodeResult):
+        return value
+    if isinstance(value, tuple) and len(value) == 2:
+        text, verdict = value
+        if isinstance(verdict, str) and verdict in NODE_STATUSES:
+            # A widened action that returns `(payload, status)` directly.
+            return NodeResult(verdict, payload=text)
+        return NodeResult(
+            NODE_STATUS_SUCCESS if verdict else NODE_STATUS_ERROR,
+            payload=text,
+        )
+    if isinstance(value, str):
+        return NodeResult(NODE_STATUS_SUCCESS, payload=value)
+    return NodeResult(NODE_STATUS_SUCCESS, payload=value)
+
+
 async def action_tidy_sessions(owner: str, **kwargs) -> Tuple[str, bool]:
     """Delete empty sessions for the owner. Pure heuristic —
     the LLM folder-sort phase is skipped (user opted to keep this task

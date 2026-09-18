@@ -579,8 +579,14 @@ def _record_email_received_events(owner: str, account_id: str | None, folder: st
             conn.close()
 
         if count and new_keys:
-            for _ in new_keys[:50]:
-                fire_event("email_received", owner)
+            for _key in new_keys[:50]:
+                # `P8-23` / `B602`. One event per new message, so each one names
+                # its message. The key is whatever identified it above — the
+                # RFC `Message-ID` where the server gave one, the UID otherwise
+                # — which is what the email tools take to fetch it.
+                fire_event("email_received", owner,
+                           {"account": account_key, "folder": folder,
+                            "message_key": _key})
             logger.info("Fired email_received for %d new message(s)", min(len(new_keys), 50))
             try:
                 loop = asyncio.get_running_loop()

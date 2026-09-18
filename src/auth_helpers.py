@@ -190,24 +190,43 @@ def privilege_denied_message(key: str) -> str:
     return f"Your account is not allowed to {phrase}."
 
 
-def resolve_privilege(privs: Any, key: str) -> Any:
+def resolve_privilege(privs: Any, key: str, *,
+                      role_overrides: Any = None) -> Any:
     """Resolve one privilege for a caller. The single source of truth for what
     a privilege key means when the user's stored map does not answer.
 
-    Three cases, in order:
+    Four cases, in order — **built-in default → role → user**, read from the
+    bottom up:
 
     1. **The user's map names the key** — that value wins. Nothing else is
-       consulted.
-    2. **`DEFAULT_PRIVILEGES` names the key** — the registry's declared value
+       consulted. Per-user beats role, which is the whole point of having both:
+       a role is the policy for a kind of person and an override is the
+       exception someone made deliberately.
+    2. **The user's role names the key** (`P11-02`) — the role's value is the
+       answer. A role is a *named overlay on `DEFAULT_PRIVILEGES`*, so this leg
+       only ever answers a key the registry already declares; a role body that
+       names something undeclared cannot grant it, which matters because
+       `auth.json` can be hand-edited and case 4 is the rule that a key nobody
+       declared is denied.
+    3. **`DEFAULT_PRIVILEGES` names the key** — the registry's declared value
        is the answer. This is what keeps a deploy safe: adding a new key to the
        registry resolves to whatever that key declares for every existing user
        who has no entry yet, so a permissive new key does not lock anyone out
        mid-deploy and a restrictive one is restrictive from the first request.
-    3. **Nobody declares the key** — denied. A key that is in neither map is a
+    4. **Nobody declares the key** — denied. A key that is in neither map is a
        typo at a call site or a privilege someone forgot to register; the only
        safe answer to "may this user do a thing nobody defined?" is no.
 
-    Case 3 is the fix. It used to be `privs.get(key, True)`, so
+    `role_overrides` is the resolved body of the caller's role, supplied by
+    `AuthManager.get_privileges`, which is the only thing that knows which role
+    a user holds. It is passed in rather than looked up here so this stays a
+    pure function of its arguments: the role layer is **inside** the one
+    resolver rather than beside it, and there is still exactly one place that
+    answers what a privilege means (`Law 13`). Omitting it is the
+    pre-`P11-02` behaviour exactly, which is what makes an install with no
+    roles identical to one before roles existed.
+
+    Case 4 is the fix. It used to be `privs.get(key, True)`, so
     `require_privilege(request, "can_use_reserch")` granted the route to
     everyone, silently, forever — the comment justified it with "the UI gates
     display-side" and `P2-18` proved that gate does not work. All four keys any
@@ -215,11 +234,11 @@ def resolve_privilege(privs: Any, key: str) -> Any:
     `can_generate_images`, `can_manage_memory`) are declared in the 11-key
     registry, so no shipped route changes behaviour; only a typo does.
 
-    Case 2 is why the answer is not simply `privs.get(key, False)`.
-    `AuthManager.get_privileges` already merges `{**DEFAULT_PRIVILEGES,
-    **stored}`, so on the real path the key is present either way — but that
-    merge lives in `core/auth.py` and this default lived here, which is one
-    fact in two places (`Law 13`). Reading the registry here makes the answer
+    Case 3 is why the answer is not simply `privs.get(key, False)`.
+    `AuthManager.get_privileges` builds its map by calling THIS function for
+    every declared key, so on the real path the key is present either way — but
+    the merge it replaced lived in `core/auth.py` and this default lived here,
+    which was one fact in two places (`Law 13`). Reading the registry here makes the answer
     the same whether or not the caller merged: a partial map, a duck-typed auth
     manager in a test, or a corrupt `auth.json` that leaves `privs` empty all
     degrade to the declared defaults instead of to `True`.
@@ -235,6 +254,9 @@ def resolve_privilege(privs: Any, key: str) -> Any:
 
     if isinstance(privs, dict) and key in privs:
         return privs[key]
+    if (isinstance(role_overrides, dict) and key in role_overrides
+            and key in DEFAULT_PRIVILEGES):
+        return role_overrides[key]
     if key in DEFAULT_PRIVILEGES:
         return DEFAULT_PRIVILEGES[key]
     return False
@@ -247,7 +269,7 @@ def require_privilege(request: Request, key: str) -> str:
     Admins hold every *declared* privilege via `auth_manager.get_privileges`
     (which returns ADMIN_PRIVILEGES wholesale), so this is a no-op for them on
     any registered key. An **undeclared** key denies admins too — see
-    `resolve_privilege` case 3; that is deliberate, because a typo'd key is a
+    `resolve_privilege` case 4; that is deliberate, because a typo'd key is a
     bug and a 403 on the first request is how it gets found. In
     unauthenticated single-user mode (`require_user` returns ""), privileges
     aren't enforced.

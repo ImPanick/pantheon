@@ -549,6 +549,7 @@ async def extract_and_store(
             logger.error("Skipping auto memory extraction, store unreadable: %s", e)
             return
         added = 0
+        added_entries = []
 
         dropped_low_confidence = 0
         for fact in facts:
@@ -660,13 +661,19 @@ async def extract_and_store(
                     logger.warning(f"Memory vector add failed for {entry['id']}: {e}")
 
             added += 1
+            # `P8-23`. The events fired below are one per memory, so they carry
+            # one memory each. Collected rather than re-derived from `existing`,
+            # which also holds everything that was already there.
+            added_entries.append(entry)
 
         if added > 0:
             memory_manager.save(existing)
             try:
                 from src.event_bus import fire_event
-                for _ in range(added):
-                    fire_event("memory_added", _owner)
+                for _entry in added_entries:
+                    fire_event("memory_added", _owner,
+                               {"memory_id": _entry.get("id"),
+                                "text": _entry.get("text")})
             except Exception:
                 logger.debug("memory_added event dispatch failed", exc_info=True)
             logger.info(f"Auto-extracted {added} memories from session")

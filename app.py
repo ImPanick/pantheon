@@ -274,9 +274,17 @@ app.add_middleware(_SlowRequestLogMiddleware)
 
 # ========= AUTH =========
 from routes.auth_routes import setup_auth_routes, SESSION_COOKIE
+from src.roles import install_role_layer
 
 auth_manager = AuthManager()
 app.state.auth_manager = auth_manager
+# `P11-02`. The one line `P12-01` left this registry waiting for: from here on
+# `settings.resolve_limit` consults the caller's role profile before the
+# instance setting, the environment and the built-in default — for every byte
+# cap, every upload throttle and every auth throttle at once, with no call site
+# changing. With no roles defined the provider answers `None` for every key and
+# the layers below decide exactly as they did (`Law 1`).
+install_role_layer(auth_manager)
 AUTH_ENABLED = not auth_disabled()
 # env-spelling: `B91` holds this one. Widening to the shared vocabulary would
 # turn an AUTH BYPASS on for every host already carrying `LOCALHOST_BYPASS=1`,
