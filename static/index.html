@@ -2086,6 +2086,16 @@
                   <option value="serper" data-search-logo="serper">Serper</option>
                 </select>
               </div>
+              <!-- `P3-20`. `saveResearchSearch` (static/js/settings.js:1696)
+                   writes "Saved" here on every change of the select above, and
+                   this element did not exist: the assignment threw a
+                   TypeError, the catch clause assigned to the same null and
+                   threw again uncaught, and the only unguarded lookup in the
+                   whole 120-id inventory was also the only one on a control a
+                   user touches. The provider did save; nothing ever said so.
+                   Placed beside the select rather than at the foot of the card
+                   because the message belongs to that one control. -->
+              <div id="set-researchSearchMsg" style="font-size:11px;"></div>
               <div class="settings-row">
                 <label class="settings-label">Max Tokens</label>
                 <input id="set-researchMaxTokens" type="text" inputmode="numeric" placeholder="8192 (default)" class="settings-select" style="width:382.5px;flex:0 0 auto;margin-left:auto;">
@@ -2767,6 +2777,26 @@
                 type is honoured as typed. Raise it on a premium API with a very
                 large window you actually want to fill; lower it if you are
                 watching costs.
+              </div>
+              <!-- P3-21 / D-2026-09-08-02. This number is the MACHINE's, not
+                   the preset's. On local inference every preset's max_tokens
+                   was raised to a hardcoded 1,000,000, so Code Analyze (8000),
+                   Reason (6000) and Brainstorm (4096) all generated the same
+                   way and the picker was cosmetic. The lift is right — on your
+                   own GPU the ceiling is what the box can serve — but the
+                   owner changes hardware and could not say so without editing
+                   `src/agent_loop.py`. Presets are floors: the effective value
+                   is max(preset, this), so 0 means "run every preset at its
+                   own number". Cloud endpoints never get the lift. -->
+              <div class="settings-row">
+                <label class="settings-label" for="set-localMaxTokens">Local reply ceiling</label>
+                <input id="set-localMaxTokens" type="text" inputmode="numeric" placeholder="1000000" class="settings-select" style="width:200px;flex:0 0 auto;margin-left:auto;">
+              </div>
+              <div class="admin-toggle-sub" style="margin:-4px 0 4px;font-size:11px;opacity:0.6;line-height:1.4;">
+                Tokens this machine will generate for one reply when the model
+                runs locally. A preset asking for more still gets more — this
+                raises, it never truncates. Set 0 to turn the lift off and let
+                each preset use the number it ships with.
               </div>
               <div id="set-agentMsg" style="font-size:11px;color:color-mix(in srgb, var(--fg) 45%, transparent);"></div>
             </div>

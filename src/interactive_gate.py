@@ -3,7 +3,7 @@
 
 Background tasks are allowed to run only after normal UI/API traffic has
 settled. This keeps scheduled jobs and email pollers from competing with the
-user opening Pantheon, Cookbook, email, documents, notes, or other panels.
+user opening Pantheon, Forge, email, documents, notes, or other panels.
 """
 
 from __future__ import annotations

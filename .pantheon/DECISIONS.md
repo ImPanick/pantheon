@@ -2162,3 +2162,241 @@ first two by construction:
 `review_by = 2027-03-16`, six months out, and the offline checker **fails the release gate** once
 that date passes. The remedy for that red gate is to re-read the advisory and record what is true
 then. Moving the date without looking is the failure this entry exists to prevent.
+
+---
+
+## D-2026-09-18-01 — the events table stays in SQLite, and a hosted metrics store is not on the table
+
+*Row `P14-06`. Written the day the row was picked up, because the two rows it gates — `P14-07`'s
+bounding and `P14-08`'s judge — were both waiting on which store this phase is built on.*
+
+**Decided:** `P14-01`'s `events` table stays in the application's own SQLite database. No
+TimescaleDB, no second server process, and — separately and permanently — **no hosted metrics
+backend unless the operator links one themselves**. `DEFERRED.md` D-05's case for Timescale is
+not refused on taste; it is refused on the numbers below, and it keeps its revisit condition.
+
+### What was measured
+
+Rows generated against the shipped schema (three indexes, `llm_round` / `tool_call` / `retrieval`
+/ `approval` in the ratios `P14-02` writes), then read back through `usage_over_time()` and
+`usage_summary()` exactly as the Settings panel calls them:
+
+| Shape | Rows | File | `usage_over_time(30)` | `usage_summary(90)` |
+|---|---|---|---|---|
+| 90 days × 200 events/day — an ordinary single-user install | 18,000 | 11 MB | 13 ms | 18 ms |
+| 90 days × 2,000 events/day — a heavy one | 180,000 | 88 MB | 87 ms | 214 ms |
+| 365 days × 2,000 events/day — retention off, a year in | 730,000 | 369 MB | 195 ms | 297 ms |
+
+**A year of a heavy install draws its chart in under a fifth of a second.** That is the whole
+argument. Hypertables, native compression and continuous aggregates are answers to a problem this
+table does not have and will not have at the volume one person's harness produces.
+
+### What it costs to say no
+
+* **No compression.** 506 bytes a row on disk, and the 90-day default window is the ceiling that
+  makes that irrelevant. An operator who turns retention off is choosing ~185 MB a year at heavy
+  use, and is now told so — see below.
+* **No continuous aggregates.** The daily rollup is recomputed per request. Measured at 195 ms
+  over 730,000 rows, and the panel queries only when it is opened (`P14-05`), so the cost lands on
+  someone who asked for it.
+* **No horizontal anything.** Correct: `D-2026-09-01-01` says who this is for. One box.
+
+### The clause that is not a performance question
+
+`Law 16` clause 4, and the owner's amendment: *"telemetry is fine, but 'phone home' to an external
+destination is not allowed."* A hosted metrics backend — Grafana Cloud, Datadog, anything with an
+ingest key — is that, whatever the vendor's word for it is, and it does not become acceptable by
+being convenient. The two shapes that are allowed already shipped and are both operator-addressed:
+`P16-12`'s `/metrics` scrape (pull — nothing leaves unless something on the operator's own network
+asks) and `P16-19`'s OTLP push to an endpoint that ships **empty** (`D-2026-09-05-01`). This
+decision adds nothing to that surface and forecloses the third shape.
+
+### What the code does about it, so this is not just a paragraph
+
+A decision that SQLite is *fine until it is not* is dishonest unless somebody can tell which side
+of "not" they are on, and until this row nothing in the product could say how many rows that table
+held.
+
+* `src/events.py: store_status()` reports rows, span, estimated size and `pressure` against two
+  named thresholds — `STORE_WATCH_ROWS = 500,000` (~250 MB, ~130 ms a chart) and
+  `STORE_OVER_ROWS = 2,000,000` (~1 GB, a chart a person waits for).
+* `src/self_checks.py: events_store_size()` puts that in front of the operator on the surface
+  `P16-15` built for exactly this, with the remedy on the row. It is also the first thing that
+  says anything at all about `events_retention_days = 0` — *keep everything* is a real choice and
+  it should not be a silent one.
+* **The measurement faulted one thing and it is fixed rather than filed:** the retention prune ran
+  as a single `DELETE`, on the thread that has just finished somebody's chat turn, and 550,000
+  expired rows took **7.3 seconds**. It is batched and time-boxed now (5,000 rows a pass, 0.5 s a
+  turn), and an unfinished prune rearms the 24-hour gate so the backlog drains over a few turns
+  instead of stalling one. Steady state — a day's expiry, a couple of thousand rows — finishes in
+  the first batch and is unchanged.
+
+### What reopens it
+
+* `store_status()` reports `over` on a real install. That is the revisit condition, and it is now
+  a reading rather than a memory.
+* Postgres arrives for a different reason. `D-04` is explicit that the swap which actually pays is
+  Postgres replacing SQLite **and** Chroma at once; if that happens, Timescale is an extension on a
+  database that is already there rather than a second server, and the arithmetic changes.
+* Retention is genuinely needed in years rather than days — a compliance requirement, a research
+  archive. Compression is the honest answer to that and this table is not it.
+
+**What does not reopen it:** a hosted backend being easier. That is the clause, not the trade-off.
+
+---
+
+## D-2026-09-18-02 — the eval harness does not get a judge model, and every score says so
+
+*Row `P14-08`, which asked for a judge **"if it earns its place"**. It does not, and this records
+the measurement rather than the preference — the next agent to read `P14-03` will want to add one.*
+
+**Decided:** `src/evals.py` grades deterministically and has no model-graded scoring. A suite that
+configures one is **refused**, by name, pointing here. Every result carries `grading:
+"deterministic"`, so if this is ever reversed the method travels with the number instead of
+changing underneath it.
+
+### What was measured
+
+* **The deterministic scorer, as it ships.** 10,000 scorings of one case through `score_case`:
+  **one** distinct verdict, 66 ms total, 6.6 µs each, **zero model calls**. That is the baseline a
+  judge has to beat, and what it would be replacing is not "vibes" — it is a free, reproducible
+  answer.
+* **What a judge costs.** A suite of N cases is N replays today; a judge makes it **2N model
+  calls**, with the second N spent re-reading output the first N just produced. On the local-first
+  install this product is built for, that is the difference between a suite you run on every change
+  and one you schedule.
+* **What it would be judged by.** `src/replay.py` runs a case at `temperature=0.2` when the
+  receipt has no sampling recorded. A judge on that path is **non-deterministic by construction**,
+  and the same suite would score differently on a re-run with nothing changed — which is the one
+  failure an eval harness may not have, because a moved number is the signal it exists to give.
+* **Whose model.** There is one endpoint chain here. Absent a second, explicitly configured
+  endpoint, the judge is the model under test **grading its own homework** — and `Law 16` closes
+  the obvious way out: a cloud judge by default is clause 4 arriving through a side door.
+* **Demand.** `eval_suites` ships empty and nothing in the tree writes one. There is no suite
+  today whose question the five deterministic checks cannot express.
+
+### The defect this row found on the way to "no"
+
+`validate_suite` validated the keys inside `case["expect"]` against an allowlist and **ignored
+everything else**. A suite carrying `{"judge": {"model": "gpt-4o"}, "cases": [...]}` therefore
+validated clean, ran, and returned a pass rate computed entirely from the deterministic checks —
+the operator's judge never called, and nothing in the result saying so. That is this row's `Verify`
+line failing in the direction nobody checks: **silently scored some other way**, and scored green.
+Refused now, at validation, before a model call is spent.
+
+### What it costs
+
+*"Is this summary better than that one"* stays unanswerable here. That is a real question and this
+harness does not answer it; an operator who needs it writes `contains`/`regex` assertions about the
+properties they actually care about, which is a weaker instrument and an honest one.
+
+### What reopens it
+
+* A judge endpoint that is **separately configured** — a different model from the one under test,
+  at a temperature the operator sets, with the model and settings reported beside the score. That
+  is the shape `P14-08`'s `Verify` describes and it stays the bar.
+* Somebody has a real suite whose question the deterministic checks cannot express. One suite is
+  evidence; a hypothetical is not.
+* A judge whose verdicts are **reproducible** on this stack — pinned model, temperature 0, seeded
+  — measured over the same 10,000 repeats above. If it answers identically, the determinism
+  objection is gone and only the cost one remains.
+
+## D-2026-09-18-03 — discovery is a switch the operator throws, and the answers are what the allowlist gates
+
+*`P17-10`. Everything else the network agent does is a read: `/whoami` asks a socket for its own
+source address, `/neighbours` opens `/proc/net/arp` or calls `GetIpNetTable`, `/reach` opens one
+TCP connection to an address the operator already named. Discovery is the first thing in this
+phase that **sends**, and what it sends is multicast — every device on the segment receives it.
+Two decisions follow from that and neither is obvious enough to leave implicit.*
+
+**Decided: `/discover` ships OFF.** Not off in an example config — off in
+`DiscoveryPolicy.__init__`'s default, off in `Handler.discovery_policy`, and off in
+`discover()`'s own no-argument call, so a wiring somebody forgets fails closed rather than open.
+`--discover` (or `PANTHEON_NETAGENT_DISCOVERY=1`) is how an operator says yes, and the server logs
+it at `WARNING` on startup exactly the way `--allow-exec` is logged, because it is the other thing
+this process does that the rest of the network can notice.
+
+The argument is not that mDNS is dangerous. It is that a self-hosted AI workspace which begins
+broadcasting service queries onto its owner's network **because it was installed** is a surprise,
+and a surprise on a managed segment is one somebody's IDS writes down and somebody else has to
+explain. `Law 16` is about not reaching outward without being told to, and `Law 17` says LAN-to-LAN
+is fine — both are satisfied by an operator who turned it on, and neither is satisfied by a
+default. `P17-03` already made the same call in the smaller case, refusing to expand a CIDR into a
+sweep; this is that reasoning at the point where it costs a feature being on.
+
+**Decided: the allowlist filters the ANSWERS, and the filtering is stated.** A broadcast cannot be
+gated the way a target can — the question reaches the whole segment whatever we do — so claiming
+the allowlist bounds the *question* would be a lie about the control. What it bounds is what may be
+*reported*, and `seen_total` and `withheld` are printed beside the rows for the same reason
+`/neighbours` prints them: a filtered list that looks complete sends an operator hunting a fault
+that is actually a narrow allowlist.
+
+**Decided: DHCP leases are not built.** The row offered them and the answer is no. The leases are
+the router's, so reading them means credentials for a device whose API is per-vendor and
+undocumented — an integration, not an observation, and `P17-05` keeps that risk class out of this
+package. What a router volunteers over SSDP *is* on the segment and *is* reported. The line is:
+we read what is announced, and we do not log in to anything.
+
+### What it costs
+
+An operator who wants discovery has to read one line of the README and restart the agent with a
+flag. `/discover` answers `403` until they do, which will look like a bug to somebody for about
+five seconds — which is why the refusal says `--discover` and names the environment variable
+rather than saying "forbidden". The alternative cost is a product that scans its owner's network
+on install, and that is not a trade.
+
+### What would reopen this
+
+* The owner says discovery should be on by default. It is his network and his call; the code is one
+  default away and the reasoning above is what he would be overruling.
+* A discovery path gains a parameter that names a destination. Then the SSRF argument in
+  `netagent/discovery.py` no longer holds by construction and has to hold by check, which is a
+  weaker thing and needs saying out loud.
+* Somebody implements the SSDP `LOCATION:` fetch. That is not an extension of this decision, it is
+  its opposite: an HTTP request from the process that has the LAN to an address chosen by whatever
+  answered the broadcast.
+
+## D-2026-09-18-04 — the product noun moves; the identifiers stay where they are
+
+**What it decides.** `D-2026-08-26-05` renamed Cookbook to Forge. It did not say what *"Cookbook"*
+means, and the 3,529 occurrences it counted are at least seven different things with seven
+different costs. This records the line the sweep drew, so the next pass does not redraw it.
+
+**Moved — the word a person reads.** Rail and window labels, task categories, toast text, HTTP
+error bodies, slash-command help and usage, agent-visible tool descriptions, and the docs. 261
+replacements across 51 files. Measured by a rule rather than a list: the standalone capitalised
+word, which no identifier in this tree matches.
+
+**Not moved, and each is a different reason.**
+
+| Category | Why it stays |
+|---|---|
+| Route paths (`/cookbook`, 17 × `/api/cookbook/*`, the codex + Claude agent surfaces) | A contract with an existing install, a saved `api_call`, and two shipped integration skills. `Law 1` makes a rename **two** routes per endpoint, not one. Its own row. |
+| Persisted keys (`data/cookbook_state.json`, `cookbook-last-state`, `cookbook-tasks`, `cookbook_dl_tab_folded_v1`, the `cookbook:read` / `cookbook:launch` token scopes, the `open_cookbook` keybinding id) | Something the user's install already holds. Renaming without a read-old path resets their data; with one, it is a migration needing its own evidence. |
+| `cookbook_serve` | A built-in action key stored in task rows. `FORBIDDEN` Part 1. |
+| Element ids, CSS classes, JS module filenames | Styling and wiring, in `static/index.html` and `static/style.css`; `data-modal-id` is `FORBIDDEN` Part 1. Labels and ids move in one edit or not at all. |
+| `Pantheon-Cookbook/1.0` | An outbound User-Agent. A wire header is not a label. |
+| `recipe` | `D-2026-08-26-05` already ruled: a vLLM recipe genuinely is a parameterised launch config. |
+
+**What was made to keep answering** (`Law 1`). `/cookbook` and `/cook` still open the panel beside
+the new `/forge` — **one** command entry with the old names as aliases, not a second command, so
+the help text and the dispatcher cannot disagree about which exists (`Law 14`). `open_panel
+cookbook` still reaches the same branch as `open_panel forge`, because a model quoting an older
+conversation must not hit a dead switch.
+
+**One read-old-write-new path was genuinely needed**, and it is the one nobody would have predicted:
+the schedule mirror creates a **calendar by name**. Writing `Forge` while looking only for
+`cookbook` gives an existing install two calendars with half its mirrored serves in each. It now
+writes `Forge` and matches either, and it does not rename anybody's calendar behind their back —
+that is the user's data and theirs to rename.
+
+**The general form, which is the part worth keeping.** A rename has a *label* half and an
+*identifier* half, and they are not the same work. The label half is reversible, testable by one
+derived rule, and worth doing in one sitting. The identifier half is a migration per key, and
+bundling it into a label sweep is how a rename becomes a data-loss incident. When a row says
+"rename X", ask which half it means before touching anything.
+
+**What would reopen this.** `B471` — `Forge` already denotes Stable Diffusion WebUI Forge, which
+this product detects by name and serves. If the owner reopens `D-2026-08-26-05`, the label half is
+one rule re-run and the identifier half was never touched, which is the other reason to have kept
+them apart.

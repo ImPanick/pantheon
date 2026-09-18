@@ -11,6 +11,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from src.preset_manager import PresetManager
+from tests.helpers.fresh_import import drop_for_fresh_import
 
 
 async def _execute_without_run_context(execute_tool_block, *args, **kwargs):
@@ -147,9 +148,9 @@ def _install_model_route_import_stubs(monkeypatch):
     session_mgr_mod = types.ModuleType("core.session_manager")
     session_mgr_mod.SessionManager = MagicMock()
 
-    monkeypatch.delitem(sys.modules, "routes.model_routes", raising=False)
-    monkeypatch.delitem(sys.modules, "routes.chat_routes", raising=False)
-    monkeypatch.delitem(sys.modules, "routes.session_routes", raising=False)
+    drop_for_fresh_import(monkeypatch, "routes.model_routes")
+    drop_for_fresh_import(monkeypatch, "routes.chat_routes")
+    drop_for_fresh_import(monkeypatch, "routes.session_routes")
     monkeypatch.setitem(sys.modules, "core", core_mod)
     monkeypatch.setitem(sys.modules, "core.database", db_mod)
     monkeypatch.setitem(sys.modules, "core.middleware", middleware_mod)
@@ -1542,7 +1543,7 @@ def test_a_core_submodule_no_stub_names_still_imports(monkeypatch):
     # vote. `monkeypatch` puts the original module object back afterwards; the
     # one imported here is a leaf of pure functions that nothing binds by value
     # during this test.
-    monkeypatch.delitem(sys.modules, "core.log_safety", raising=False)
+    drop_for_fresh_import(monkeypatch, "core.log_safety")
     _install_model_route_import_stubs(monkeypatch)
 
     log_safety = importlib.import_module("core.log_safety")
@@ -1608,7 +1609,7 @@ def test_the_import_helper_never_binds_a_mock_into_the_module_it_returns(
         "from _b202_dep import thing\n", encoding="utf-8")
     monkeypatch.syspath_prepend(str(tmp_path))
     for name in ("_b202_dep", "_b202_target"):
-        monkeypatch.delitem(sys.modules, name, raising=False)
+        drop_for_fresh_import(monkeypatch, name)
 
     module = _import_without_mocks(monkeypatch, "_b202_target", ("_b202_dep",))
 
@@ -1624,7 +1625,7 @@ def test_the_import_helper_never_binds_a_mock_into_the_module_it_returns(
     (tmp_path / "_b202_broken.py").write_text(
         "from _b202_missing import nothing\n", encoding="utf-8")
     for name in ("_b202_broken", "_b202_missing"):
-        monkeypatch.delitem(sys.modules, name, raising=False)
+        drop_for_fresh_import(monkeypatch, name)
 
     broken = _import_without_mocks(monkeypatch, "_b202_broken", ("_b202_missing",))
 

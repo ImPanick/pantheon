@@ -53,7 +53,7 @@ are the numbers most likely to be quoted and least able to carry the weight.
 | Four event types carried an approval flag no line of the frontend ever read. | `4 events lying` | **`0`** | `cited` |
 | 1,541 files of program text now declare their licence. None did. | `0 files` | **`1,541 files`** | `measured` |
 | CREDITS.md 105 -> 483 lines, and thirteen licence texts that were never shipped. | `105 lines` | **`483 lines · 13 licence texts`** | `counted` |
-| Unreachable UI 78 -> 120 and ratcheted, with 1,524 lines deleted against 340 added. | `78` | **`120`** | `measured` |
+| Unreachable UI 78 -> 120 -> 40 and ratcheted, with 1,524 lines deleted against 340 added. | `78` | **`40`** | `measured` |
 | A 3,126-line module was parsed three times per page load. | `11 forked` | **`0`** | `measured` |
 | 440 silent exception handlers, 12 of them explained. The mutating ones are now zero. | `26 mutating-and-silent` | **`0`** | `measured` |
 | White-on-accent fails WCAG AA on 15 of 16 themes. The fix was not a new token. | `15 of 16 themes failing` | **`0 by construction`** | `measured` |
@@ -466,18 +466,18 @@ Argued in: `P0-19`, `P0-20`, `P0-21`, `P0-21b`, `P0-30`, `D-2026-09-07-01`.
 
 *Code that shipped, ran, and reached nothing.*
 
-### Unreachable UI 78 -> 120 and ratcheted, with 1,524 lines deleted against 340 added.
+### Unreachable UI 78 -> 120 -> 40 and ratcheted, with 1,524 lines deleted against 340 added.
 
-**`78` → `120`**  ·  provenance **`measured`**
+**`78` → `40`**  ·  provenance **`measured`**
 
 **Odysseus:** 78 wiring defects: markup, handlers and ids that nothing could reach.
 
 **Pantheon:** A ratchet in CI that cannot go up.
 
-**How we got there.** The fix was **overwhelmingly deletion** — 1,524 lines removed against 340 added — which is what a wiring defect usually is: code that was written, shipped, and never reached. The companion route checker had a worse version of the same disease: it recursed, found nothing, and reported **23 routes when the real number was 443**, looking entirely correct while doing so. The figure above is the ceiling CI holds, not a floor anybody reached: `check-wiring.py` reports **120** unresolved lookups today and `ci.yml` refuses 121. It said `2` here until `B348`, against its own repro command printing `120` — the ledger failing on the ledger.
+**How we got there.** The fix was **overwhelmingly deletion** — 1,524 lines removed against 340 added — which is what a wiring defect usually is: code that was written, shipped, and never reached. The companion route checker had a worse version of the same disease: it recursed, found nothing, and reported **23 routes when the real number was 443**, looking entirely correct while doing so. The figure above is the ceiling CI holds, not a floor anybody reached: `check-wiring.py` reports **40** unresolved lookups today and `ci.yml` refuses 41. It said `2` here until `B348`, against its own repro command printing `120` — the ledger failing on the ledger.
 
 ```
-python3 .pantheon/check-wiring.py --max 120
+python3 .pantheon/check-wiring.py --max 40
 ```
 
 Argued in: `P3-13`, `P3-14`, `P3-15`.

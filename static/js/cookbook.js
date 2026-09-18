@@ -540,7 +540,7 @@ export function _detectBackend(model) {
 
   // Apple Silicon (Metal) → llama.cpp (GGUF). vLLM/SGLang are CUDA/ROCm-only and
   // don't run on macOS; vLLM-native quantized models are already filtered out
-  // of metal Cookbook results, so llama.cpp is always the right engine here.
+  // of metal Forge results, so llama.cpp is always the right engine here.
   if (['metal', 'mps', 'apple'].includes(sysBackend)) {
     return { backend: 'mlx', label: 'MLX' };
   }
@@ -996,7 +996,7 @@ export function _buildServeCmd(f, modelName, backend) {
     } else if (/^\d+$/.test(mlxMaxTokens)) {
       // MLX-LM server has no vLLM-style --context-length flag. The closest
       // server-side request budget it exposes is --max-tokens, so wire the
-      // Cookbook Context/Auto control there for MLX launches.
+      // Forge Context/Auto control there for MLX launches.
       cmd += ` --max-tokens ${mlxMaxTokens}`;
     }
   }
@@ -1201,7 +1201,7 @@ async function _fetchDependencies() {
       // When llama_cpp (or any future engine) reports build_deps_missing
       // from its system_prereqs probe, surface a one-tap install button
       // that fires the OS package manager on the target via
-      // /api/cookbook/install-system-deps. Keeps the user inside Cookbook
+      // /api/cookbook/install-system-deps. Keeps the user inside Forge
       // instead of forcing them out to a shell to apt/pacman/dnf.
       const _bdm = Array.isArray(pkg.build_deps_missing) ? pkg.build_deps_missing : [];
       const _buildDepsBtn = _bdm.length
@@ -1211,7 +1211,7 @@ async function _fetchDependencies() {
       // Renders inline as a yellow banner with two clear actions: one-tap
       // Install (runs the reinstall in cookbook) or Copy command (paste
       // into a terminal). Same content surfaces whether the user solves
-      // it from inside Cookbook or from a shell.
+      // it from inside Forge or from a shell.
       const _gpuWheelCmd = 'CMAKE_ARGS="-DGGML_CUDA=on" python3 -m pip install --user --break-system-packages --force-reinstall --no-cache-dir "llama-cpp-python[server]" --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu124';
       const _gpuUpgradeBox = (pkg.partial && pkg.partial_action === 'reinstall_llama_cpp_cuda')
         ? `<div class="cookbook-dep-gpu-upgrade" style="margin-top:6px;font-size:11px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;background:color-mix(in srgb, var(--yellow, #f1fa8c) 14%, transparent);border:1px solid color-mix(in srgb, var(--yellow, #f1fa8c) 40%, var(--border));padding:6px 8px;border-radius:6px;">`
@@ -1789,7 +1789,7 @@ async function _fetchDependencies() {
       const where = host || 'this server';
       const action = updateSource ? 'Update llama.cpp source and rebuild' : 'Rebuild llama.cpp engine';
       const detail = updateSource
-        ? 'This fast-forwards the Cookbook-managed ~/llama.cpp checkout when possible, then clears the cached llama-server build. The next launch recompiles or installs the latest matching prebuilt.'
+        ? 'This fast-forwards the Forge-managed ~/llama.cpp checkout when possible, then clears the cached llama-server build. The next launch recompiles or installs the latest matching prebuilt.'
         : 'This clears the cached llama-server build. The next launch recompiles or installs a matching prebuilt.';
       if (!confirm(`${action} on ${where}?\n\n${detail}`)) return;
       const oldText = statusEl?.textContent;
@@ -2856,7 +2856,7 @@ export function _serverEntryHtml(s, i, defaultServer, forceRemote, isNew) {
     // sense once the server is saved.
     html += `<span style="margin-left:auto;display:inline-flex;gap:4px;align-items:center;">${_checkBtn}${_keyBtn}<button class="cookbook-server-cancel-btn" title="Discard this new server" style="height:22px;box-sizing:border-box;display:inline-flex;align-items:center;position:relative;top:-2px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;flex-shrink:0;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>Cancel</button></span>`;
   } else {
-    html += `<span style="margin-left:auto;display:inline-flex;gap:4px;align-items:center;">${!isLocal ? _checkBtn + _keyBtn : ''}<span class="cookbook-srv-default${_isDefaultSrv ? ' active' : ''}" title="${_isDefaultSrv ? 'Default server — Cookbook opens here' : 'Make this the default server'}" data-srv-key="${esc(_srvKey)}">${_serverDefaultHtml(_isDefaultSrv)}</span></span>`;
+    html += `<span style="margin-left:auto;display:inline-flex;gap:4px;align-items:center;">${!isLocal ? _checkBtn + _keyBtn : ''}<span class="cookbook-srv-default${_isDefaultSrv ? ' active' : ''}" title="${_isDefaultSrv ? 'Default server — Forge opens here' : 'Make this the default server'}" data-srv-key="${esc(_srvKey)}">${_serverDefaultHtml(_isDefaultSrv)}</span></span>`;
   }
   html += `</span>`;
   html += `<div class="cookbook-server-row">`;
@@ -3230,7 +3230,7 @@ let _rendered = false;
 let _closeGen = 0;
 
 // ESC while a Serve card is expanded should collapse just that card, not
-// close the whole Cookbook modal. Capture-phase so we run before the
+// close the whole Forge modal. Capture-phase so we run before the
 // modal manager's global ESC-to-close handler and can stop it.
 if (typeof window !== 'undefined' && !window._cookbookServeEscBound) {
   window._cookbookServeEscBound = true;
@@ -3322,7 +3322,7 @@ export async function open(opts) {
   // holds the last-known state. Gating this on `!synced` left the render's
   // _envState empty whenever sync succeeded → "servers don't show".
   try { Object.assign(_envState, _readStoredEnvState()); } catch {}
-  // Honour a user-set default server: always land on it when Cookbook opens, so
+  // Honour a user-set default server: always land on it when Forge opens, so
   // every dropdown (scan/download/serve/cache/deps) starts on the same machine.
   if (_envState.defaultServer) {
     const _dk = _envState.defaultServer;
@@ -3370,7 +3370,7 @@ export async function open(opts) {
   }
 }
 
-// Make the Cookbook modal draggable (it had no drag wiring at all). We do
+// Make the Forge modal draggable (it had no drag wiring at all). We do
 // NOT supply a fsClass fullscreen here — that would cover the whole viewport
 // incl. the sidebar. Instead tileManager.js handles maximize/tiling (its
 // safe-rect sits the window NEXT TO the sidebar), same as tasks/gallery/etc.
@@ -3384,7 +3384,7 @@ function _wireCookbookDrag(modal) {
   makeWindowDraggable(modal, {
     content, header,
     skipSelector: '.close-btn, .modal-close',
-    // Keep only the "close to the edge" dock gesture for Cookbook. The
+    // Keep only the "close to the edge" dock gesture for Forge. The
     // tileManager side snap is suppressed for this modal so there isn't a
     // second, tighter edge state fighting the working one.
     enableDock: true,

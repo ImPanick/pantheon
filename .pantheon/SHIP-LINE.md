@@ -98,9 +98,12 @@ rows are marked `second-line` in the register.
 
 ---
 
-## 3. The blocking set — fifteen rows
+## 3. The blocking set — fifteen rows, of which two are now met
 
-Fifteen of 234 open rows. One line of reasoning each; the row carries the
+Fifteen of 234 open rows when this was written; **`P0-17` and `P6-08` closed on
+2026-09-18 and are marked `landed` in the register rather than deleted, because a line that
+quietly loses its met gates cannot be audited.** Thirteen stand. One line of reasoning each;
+the row carries the
 measurement. Four are security, four are a false documented claim, three are a
 licence obligation, two are an action rather than a commit, one is a defect a
 first-time user hits, and one is the release artefact.
@@ -329,7 +332,7 @@ weakest one in this document: it means nobody adjudicated them individually.
 | row | verdict | class | why |
 |---|---|---|---|
 | `P0-16` | blocking | licence | Apache-2.0 §4(b): the `services/search/` point needs the copyright holder's call, before publication |
-| `P0-17` | blocking | licence | AGPL §13 source link — attaches at network offer; built and dark |
+| `P0-17` | landed | licence | AGPL §13 source link — attaches at network offer; built and dark |
 | `B349` | blocking | licence | `NOTICE` and the published `LEDGER.md` give two dates for one fork |
 | `B370` | blocking | security | two `/static` pages answer 200 with no cookie; no exemption written down |
 | `P11-01` | blocking | security | `privs.get(key, True)` fails open and non-admin accounts are reachable today |
@@ -337,11 +340,13 @@ weakest one in this document: it means nobody adjudicated them individually.
 | `P11-02d` | blocking | security | six route files whose gating is unreconciled — an unknown on an auth surface |
 | `B71` | blocking | claim | upstream's artwork under this fork's filenames, and it is the macOS app icon |
 | `B411` | blocking | claim | four numbers in the published ledger do not print from their own repro |
-| `P6-08` | blocking | claim | `.env.example` and three compose files document an env override that is dead code |
+| `P6-08` | landed | claim | `.env.example` and three compose files document an env override that is dead code |
 | `B400` | blocking | first-ten | a `.docx` imported from the Documents panel is stored as zip bytes, silently |
 | `P10-11` | blocking | pre-flip | the secret grep has not been run and a pushed secret is unrecoverable |
 | `B357` | blocking | pre-flip | five links route reporters to an advisory form nobody has confirmed is on |
 | `P10-12` | blocking | artefact | release notes; the version half landed under `B450`, the renames have not |
+| `B492` | tracked | second-line | every throttled host but the mailbox is admin-only; an operator surface, not a stranger's first ten minutes |
+| `B505` | tracked | coverage | the tool eval is not in CI — a gap in enforcement, not a defect a user meets |
 | `P0-13` | tracked | identity | a missing mark is not a gate — shipping upstream's is, and that is `B71` |
 | `B437` | tracked | fail-open | a workflow that reports and always exits 0 — written down, and it cannot run at all until Actions does |
 | `B441` | tracked | claim | `/api/ready` answers 401 against its own docstring; the reader is an orchestrator, not a stranger in the first ten minutes |

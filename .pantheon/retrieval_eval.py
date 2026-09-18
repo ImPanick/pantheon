@@ -46,6 +46,22 @@ sys.path.insert(0, str(_REPO))
 
 _DEFAULT_CORPUS = Path(__file__).resolve().parent / "fixtures" / "retrieval_probe.json"
 
+# `P17-14`. The second thing in this product that retrieves by embedding is the
+# TOOL selector, and until this row it had no number at all — which is how
+# `.pantheon/GAP-ANALYSIS.md` could report `web_search` offered 37 times and
+# called 0, and `create_document` offered once and called 19, with nothing to
+# say whether that was the selector's fault or the tools'.
+#
+# It is scored HERE rather than in a second script, because it is the same
+# question (did retrieval put the right thing in front of the model), the same
+# provenance problem (a corpus somebody wrote is a fact about them), and the
+# same failure to avoid — a second scorer is a second opinion to reconcile.
+# What differs is the output shape, and only that: memory retrieval returns a
+# RANKED LIST and tool selection returns a SET, so recall transfers and MRR
+# does not. `score_selection` says so rather than inventing a rank.
+_DEFAULT_TOOL_CORPUS = (Path(__file__).resolve().parent / "fixtures"
+                        / "tool_selection_probe.json")
+
 PROVENANCE_NOTE = {
     "fixture": "harness fixture — these numbers describe the scorer, not the product",
     "generated": "machine-drafted and NOT yet checked by a person — treat as a starting point",
@@ -55,6 +71,8 @@ PROVENANCE_NOTE = {
 
 def _load(path: Path) -> dict:
     data = json.loads(path.read_text(encoding="utf-8"))
+    if data.get("kind") == "tools":
+        return _load_tools(path, data)
     for key in ("memories", "probes"):
         if not isinstance(data.get(key), list) or not data[key]:
             raise SystemExit(f"{path}: `{key}` must be a non-empty list")
@@ -65,6 +83,37 @@ def _load(path: Path) -> dict:
             raise SystemExit(f"{path}: probe {probe['query']!r} expects unknown ids {sorted(missing)}")
         if not probe.get("expect"):
             raise SystemExit(f"{path}: probe {probe['query']!r} expects nothing")
+    data.setdefault("kind", "memory")
+    data.setdefault("provenance", "unknown")
+    return data
+
+
+def _load_tools(path: Path, data: dict) -> dict:
+    """A tool-selection corpus, validated against the real tool surface.
+
+    The names in `expect` and `reject` are checked against `TOOL_TAGS` — the
+    register both call channels gate on — so a probe cannot quietly expect a
+    tool that was renamed or never existed and score a miss forever.
+    `expect` MAY be empty here, unlike a memory probe: *offer nothing extra*
+    is the assertion for half this corpus, and a scorer that refuses to hold a
+    selector to it can only ever measure recall.
+    """
+    if not isinstance(data.get("probes"), list) or not data["probes"]:
+        raise SystemExit(f"{path}: `probes` must be a non-empty list")
+    from src.agent_tools import TOOL_TAGS  # noqa: F401 — see `main`'s import order
+
+    known = set(TOOL_TAGS)
+    for probe in data["probes"]:
+        if not str(probe.get("query") or "").strip():
+            raise SystemExit(f"{path}: a probe has no `query`")
+        for field in ("expect", "reject"):
+            unknown = set(probe.get(field) or ()) - known
+            if unknown:
+                raise SystemExit(f"{path}: probe {probe['query']!r} names "
+                                 f"{sorted(unknown)} in `{field}`, which is not "
+                                 f"in TOOL_TAGS")
+        if not probe.get("expect") and not probe.get("reject"):
+            raise SystemExit(f"{path}: probe {probe['query']!r} asserts nothing")
     data.setdefault("provenance", "unknown")
     return data
 
@@ -158,6 +207,130 @@ CALL_PATHS = ("manager", "preface")
 DELETED_SCORER_BASELINE = {"recall": 0.40, "mrr": 0.319}
 
 
+# ── the tool selector, `P17-14` ───────────────────────────────────────────────
+
+
+def _selector(corpus: dict, k: int) -> dict:
+    """`ToolIndex.select_without_embeddings` — the selector with no vector store.
+
+    The degraded path, and the one a person actually meets: it runs whenever
+    ChromaDB is down, whenever the embedding backend exceeds the selection
+    timeout, and on every run of a deployment that never had a vector service.
+    `src/agent_loop.py` used to carry a second, drifted copy of it (`P17-14`);
+    there is one now, and this scores it.
+
+    `k` is unused and that is the shape of the thing being measured, not an
+    oversight: a keyword/structural selector returns a set with no cutoff. The
+    *size* of that set is reported instead, because "offered eleven of
+    eighty-one" is the number `GAP-ANALYSIS.md` actually has.
+    """
+    from src.tool_index import ALWAYS_AVAILABLE, ToolIndex
+
+    return {p["query"]: ToolIndex.select_without_embeddings(
+        p["query"], set(ALWAYS_AVAILABLE)) for p in corpus["probes"]}
+
+
+def _tool_semantic(corpus: dict, k: int) -> dict:
+    """Embeddings only, over `BUILTIN_TOOL_DESCRIPTIONS`, in process.
+
+    The ceiling, exactly as `_semantic` is for memory: what the selector would
+    return if the vector lane were up and nothing else fired. Same model, same
+    brute-force cosine, no ChromaDB — and the same `SkipEngine` when fastembed
+    is not importable, so a missing dependency is reported rather than silently
+    scoring one engine and calling it two.
+
+    `ALWAYS_AVAILABLE` is unioned in because the product does that
+    unconditionally, and leaving it out would score a selector that does not
+    ship. It is also why `ask_user`, `update_plan` and `manage_memory` can
+    never be a selector miss — `P17-14`'s classification turns on that.
+    """
+    try:
+        import numpy as np
+        from fastembed import TextEmbedding
+    except ImportError as e:
+        raise SkipEngine(f"fastembed unavailable ({e})") from e
+
+    from src.tool_index import ALWAYS_AVAILABLE, BUILTIN_TOOL_DESCRIPTIONS
+
+    names = list(BUILTIN_TOOL_DESCRIPTIONS)
+    model = TextEmbedding()
+    docs = np.array(list(model.embed([f"Tool: {n}\n{BUILTIN_TOOL_DESCRIPTIONS[n]}"
+                                      for n in names])))
+    docs /= np.linalg.norm(docs, axis=1, keepdims=True)
+    queries = [p["query"] for p in corpus["probes"]]
+    qs = np.array(list(model.embed(queries)))
+    qs /= np.linalg.norm(qs, axis=1, keepdims=True)
+    scores = qs @ docs.T
+    return {q: set(ALWAYS_AVAILABLE) | {names[j] for j in np.argsort(-scores[i])[:k]}
+            for i, q in enumerate(queries)}
+
+
+TOOL_ENGINES = {"selector": _selector, "semantic": _tool_semantic}
+
+
+def score_selection(corpus: dict, offered: dict) -> dict:
+    """Score a SET-valued selector. No MRR, and the absence is the point.
+
+    Memory retrieval hands the injector a ranked list under a slot limit, so
+    rank is not cosmetic and MRR measures something. Tool selection hands the
+    model a set — every tool in it is in the request, in schema order, and
+    there is no rank to be near the top of. Reporting an MRR here would mean
+    inventing an order and then scoring it, which is the kind of number that
+    survives by looking like the one next to it.
+
+    What is reported instead:
+
+      recall      the share of probes whose every `expect` was offered. A tool
+                  that is not offered cannot be called, so this is the ceiling
+                  on everything the call column can ever say.
+      refusal     the share of probes that offered none of their `reject`.
+                  This is the half `GAP-ANALYSIS.md` has no column for: 69 of
+                  81 tools offered and never picked is a precision failure, and
+                  a scorer that only measures recall rewards offering
+                  everything.
+      offered     the mean size of the offered set — `GAP-ANALYSIS.md`'s
+                  "median 11 of 81", measured rather than recalled.
+    """
+    hits, clean, sizes, misses, spills = 0, 0, [], [], []
+    for probe in corpus["probes"]:
+        want = set(probe.get("expect") or ())
+        avoid = set(probe.get("reject") or ())
+        got = set(offered.get(probe["query"]) or ())
+        sizes.append(len(got))
+        if want <= got:
+            hits += 1
+        else:
+            misses.append({"query": probe["query"], "missing": sorted(want - got),
+                           "why": probe.get("why", "")})
+        offered_bad = sorted(avoid & got)
+        if offered_bad:
+            spills.append({"query": probe["query"], "offered": offered_bad,
+                           "why": probe.get("why", "")})
+        else:
+            clean += 1
+    n = len(corpus["probes"])
+    return {"n": n, "recall": hits / n, "refusal": clean / n,
+            "offered": sum(sizes) / n, "hits": hits, "clean": clean,
+            "misses": misses, "spills": spills}
+
+
+def _report_selection(name: str, result: dict, verbose: bool) -> None:
+    print(f"  {name:<10} recall {result['recall']:.2f}"
+          f"   refusal {result['refusal']:.2f}"
+          f"   offered {result['offered']:.1f} tools/query"
+          f"   ({result['hits']}/{result['n']}, {result['clean']}/{result['n']})")
+    if not verbose:
+        return
+    for miss in result["misses"]:
+        print(f"      MISS  {miss['query']!r} did not offer {miss['missing']}")
+        if miss["why"]:
+            print(f"            {miss['why']}")
+    for spill in result["spills"]:
+        print(f"      SPILL {spill['query']!r} offered {spill['offered']}")
+        if spill["why"]:
+            print(f"            {spill['why']}")
+
+
 # ── scoring ───────────────────────────────────────────────────────────────────
 
 
@@ -231,12 +404,74 @@ def _generate(memory_path: Path) -> dict:
             "memories": memories, "probes": probes}
 
 
+def _main_tools(args) -> int:
+    """`--kind tools`. Same corpus discipline, same provenance warning.
+
+    Kept as its own function rather than branching through `main` because the
+    two retrievers report different columns — a set has no MRR — and a printer
+    that switches on a flag halfway down is how one of them ends up quietly
+    reporting the other's number.
+    """
+    corpus = _load(args.corpus)
+    if corpus.get("kind") != "tools":
+        raise SystemExit(f"{args.corpus}: --kind tools needs a corpus declaring "
+                         f'"kind": "tools"')
+    names = list(TOOL_ENGINES) if args.engine == "both" else [args.engine]
+    unknown = [n for n in names if n not in TOOL_ENGINES]
+    if unknown:
+        raise SystemExit(f"--kind tools has no engine {unknown[0]!r}; "
+                         f"choose from {sorted(TOOL_ENGINES)}")
+    results, skipped = {}, {}
+    for name in names:
+        try:
+            results[name] = score_selection(corpus, TOOL_ENGINES[name](corpus, args.k))
+        except SkipEngine as e:
+            skipped[name] = str(e)
+
+    if args.json:
+        json.dump({"kind": "tools", "provenance": corpus["provenance"],
+                   "skipped": skipped,
+                   "results": {n: {k: v for k, v in r.items()
+                                   if k not in ("misses", "spills")}
+                               for n, r in results.items()}},
+                  sys.stdout, indent=2)
+        print()
+        return 0
+
+    from src.agent_tools import TOOL_TAGS  # noqa: F401 — import order, see below
+
+    print(f"tool-selection eval · {args.corpus.name} · {len(corpus['probes'])} "
+          f"probes · {len(TOOL_TAGS)} tools in the surface · no ChromaDB service")
+    print(f"provenance: {corpus['provenance']} — "
+          f"{PROVENANCE_NOTE.get(corpus['provenance'], 'unrecognised, treat with suspicion')}")
+    print()
+    for name in results:
+        _report_selection(name, results[name], args.verbose)
+    for name, why in skipped.items():
+        print(f"  {name:<10} not scored — {why}")
+    print()
+    if corpus["provenance"] != "curated":
+        print("These probes were written here, not typed by an operator. The "
+              "numbers describe the selector on the shapes we chose; run it "
+              "against your own deployment's asks before quoting them.")
+    # A report, never a gate — the same call `P13-13` made for memory and for
+    # the same reason: a ratchet on a number nobody has calibrated is `P3-20`'s
+    # mistake. `tests/test_the_selector_is_measured_not_asserted.py` is where
+    # the specific properties this row fixed are held.
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--corpus", type=Path, default=_DEFAULT_CORPUS)
-    ap.add_argument("--engine", choices=[*ENGINES, "both"], default="both")
+    ap.add_argument("--corpus", type=Path, default=None)
+    ap.add_argument("--engine", choices=[*ENGINES, *TOOL_ENGINES, "both"], default="both")
     ap.add_argument("--k", type=int, default=5)
     ap.add_argument("--generate", type=Path, metavar="MEMORY_JSON")
+    # `P17-14`. Default `memory`, so the invocation CI already runs keeps
+    # meaning what it meant. The tool selector is the other retriever in this
+    # product and it had no number at all until this row.
+    ap.add_argument("--kind", choices=("memory", "tools"), default="memory",
+                    help="which retriever to score (default: memory)")
     ap.add_argument("--verbose", action="store_true", help="print every miss and why it was chosen")
     ap.add_argument("--json", action="store_true", help="machine-readable output")
     args = ap.parse_args()
@@ -245,6 +480,12 @@ def main() -> int:
         json.dump(_generate(args.generate), sys.stdout, indent=2, ensure_ascii=False)
         print()
         return 0
+
+    if args.corpus is None:
+        args.corpus = _DEFAULT_TOOL_CORPUS if args.kind == "tools" else _DEFAULT_CORPUS
+
+    if args.kind == "tools":
+        return _main_tools(args)
 
     corpus = _load(args.corpus)
     names = list(ENGINES) if args.engine == "both" else [args.engine]

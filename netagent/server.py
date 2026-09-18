@@ -33,6 +33,7 @@ from urllib.parse import parse_qs, urlsplit
 if __package__ in (None, ""):  # running the file directly on the host
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from netagent import discovery
 from netagent import execute as host_exec
 from netagent import guard
 from netagent import neighbours as neighbour_table
@@ -53,7 +54,10 @@ VERSION = 1
 
 # Routes that need no target. Every one is a read; there is deliberately no
 # writer (`P17-05`).
-def _routes(allowlist: Allowlist) -> Dict[str, Callable[[], object]]:
+def _routes(allowlist: Allowlist,
+            discovery_policy: "discovery.DiscoveryPolicy | None" = None
+            ) -> Dict[str, Callable[[], object]]:
+    policy = discovery_policy if discovery_policy is not None else discovery.DiscoveryPolicy()
     return {
         "/health": lambda: {
             "agent": AGENT, "version": VERSION, "ok": True,
@@ -69,6 +73,16 @@ def _routes(allowlist: Allowlist) -> Dict[str, Callable[[], object]]:
         # may be *reported* from it is the allowlist's, so the rows are filtered
         # here rather than inside the reader — one gate, at the door.
         "/neighbours": lambda: _neighbours_for(allowlist),
+        # `P17-10`. The one route in this agent that SENDS. It takes no target —
+        # the multicast groups are constants in `discovery.py` and every send
+        # goes through `_assert_local_group` — so it is deliberately not in
+        # `TARGET_ROUTES`: there is no `?target=` for it to read and therefore
+        # nothing an injection can aim. The allowlist still applies, to the
+        # *answers* rather than to a destination, because a broadcast cannot be
+        # gated the way a target can and pretending otherwise would be the lie.
+        # Off by default; `_discover_for` returns the refusal when it is off and
+        # the handler turns that into a 403.
+        "/discover": lambda: _discover_for(allowlist, policy),
         # `P17-11`. The boundary, readable. An operator should be able to see
         # what this agent will refuse without running something to find out, and
         # a list nobody can read is a list nobody can check.
@@ -88,6 +102,15 @@ def _neighbours_for(allowlist: Allowlist) -> Dict[str, object]:
     result["seen_total"] = len(rows)
     result["devices"] = sum(1 for r in kept if r.get("kind") == "device")
     result["withheld"] = len(rows) - len(kept)
+    result["allowlist"] = allowlist.as_dict()
+    return result
+
+
+def _discover_for(allowlist: Allowlist,
+                  policy: "discovery.DiscoveryPolicy") -> Dict[str, object]:
+    """`P17-10`. The allowlist filters the answers; the policy decides whether
+    the question is asked at all."""
+    result = discovery.discover(policy, allowlist.allows)
     result["allowlist"] = allowlist.as_dict()
     return result
 
@@ -113,6 +136,9 @@ class Handler(BaseHTTPRequestHandler):
     token_hash = ""           # set by `serve()`
     allowlist: Allowlist = Allowlist()
     exec_policy: host_exec.ExecPolicy = host_exec.ExecPolicy()
+    # `P17-10`. Off unless `serve()` was told otherwise, and the class default
+    # being the safe one is what makes a forgotten wiring fail closed.
+    discovery_policy: discovery.DiscoveryPolicy = discovery.DiscoveryPolicy()
 
     def log_message(self, fmt, *args):  # noqa: A003
         # The default writes to stderr with no level and no logger. Route it so
@@ -150,7 +176,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(401, {"error": "unauthorized"})
             return
 
-        plain = _routes(self.allowlist)
+        plain = _routes(self.allowlist, self.discovery_policy)
         if path in TARGET_ROUTES:
             target = self._target()
             if not target:
@@ -178,10 +204,21 @@ class Handler(BaseHTTPRequestHandler):
                              "routes": sorted(list(plain) + list(TARGET_ROUTES))})
             return
         try:
-            self._send(200, handler())
+            payload = handler()
         except Exception as e:  # noqa: BLE001
             logger.exception("route %s failed", path)
             self._send(500, {"error": f"{type(e).__name__}"})
+            return
+        # `P17-10`. A route that is switched off answers 403 with its own
+        # sentence, so a refusal reads the same way an allowlist refusal and an
+        # exec refusal already do and a caller has one shape to handle. 200 with
+        # an empty list would be indistinguishable from "your segment is quiet",
+        # which is the wrong thing to tell an operator who has not turned it on.
+        if isinstance(payload, dict) and payload.get("enabled") is False:
+            self._send(403, {"error": payload.get("detail", "this route is off"),
+                             **payload})
+            return
+        self._send(200, payload)
 
     def _body(self) -> Dict:
         """The JSON body, bounded. An unbounded read on an authenticated-but-
@@ -232,9 +269,12 @@ class Handler(BaseHTTPRequestHandler):
 def serve(*, bind: str = DEFAULT_BIND, port: int = DEFAULT_PORT,
           state_dir: Path | None = None, serve_forever: bool = True,
           allowlist: Allowlist | None = None,
-          exec_policy: host_exec.ExecPolicy | None = None):
+          exec_policy: host_exec.ExecPolicy | None = None,
+          discovery_policy: "discovery.DiscoveryPolicy | None" = None):
     allowlist = allowlist if allowlist is not None else Allowlist.from_env_and_args()
     exec_policy = exec_policy if exec_policy is not None else host_exec.ExecPolicy()
+    discovery_policy = (discovery_policy if discovery_policy is not None
+                        else discovery.DiscoveryPolicy())
     state = Path(state_dir) if state_dir else Path.home() / ".pantheon-netagent"
     token_hash, minted = load_or_create(state)
     if minted:
@@ -267,9 +307,19 @@ def serve(*, bind: str = DEFAULT_BIND, port: int = DEFAULT_PORT,
     else:
         logger.info("host execution is off (start with --allow-exec to enable it)")
 
+    if discovery_policy.enabled:
+        # Said at the same volume as host execution, because it is the other
+        # thing this process does that the segment can notice. `P17-10`.
+        logger.warning("discovery is ENABLED. This agent will send mDNS and SSDP "
+                       "multicast on this segment when asked, waiting up to %.1fs "
+                       "per query.", discovery_policy.wait)
+    else:
+        logger.info("discovery is off (start with --discover to enable it)")
+
     handler = type("BoundHandler", (Handler,),
                    {"token_hash": token_hash, "allowlist": allowlist,
-                    "exec_policy": exec_policy})
+                    "exec_policy": exec_policy,
+                    "discovery_policy": discovery_policy})
     httpd = ThreadingHTTPServer((bind, port), handler)
     logger.info("netagent listening on %s:%s", bind, port)
     if not serve_forever:
@@ -320,6 +370,28 @@ def main(argv=None) -> int:
                          "own (UAC / sudo), so a person still consents to it.")
     ap.add_argument("--exec-cwd", default=os.environ.get("PANTHEON_NETAGENT_EXEC_CWD", ""),
                     help="working directory for host commands (default: your home)")
+    ap.add_argument("--discover", action="store_true",
+                    # Same env-spelling discipline `--allow-exec` uses (`B91`):
+                    # the strict list is the point, because a host carrying
+                    # `PANTHEON_NETAGENT_DISCOVERY=on` should not start
+                    # broadcasting because somebody guessed a truthy word.
+                    # flag-spelling: the same three words `--allow-exec`
+                    # takes, deliberately. This package imports nothing from the
+                    # app (rule 1), so `src/env_flags.py` is unreachable from
+                    # here — matching the neighbouring flag is the way to not be
+                    # a fourth vocabulary rather than a fifth.
+                    default=os.environ.get(discovery.ENV_DISCOVERY, "").lower()
+                    in ("1", "true", "yes"),
+                    help="answer /discover by sending mDNS and SSDP multicast on "
+                         "this segment. OFF by default: everything else in this "
+                         "agent only reads, and this one asks. Answers are still "
+                         f"filtered to the allowlist. Also read from "
+                         f"${discovery.ENV_DISCOVERY}.")
+    ap.add_argument("--discover-wait", type=float, default=discovery.DEFAULT_WAIT_SECONDS,
+                    metavar="SECONDS",
+                    help=f"how long to listen per protocol (default "
+                         f"{discovery.DEFAULT_WAIT_SECONDS}, capped at "
+                         f"{discovery.MAX_WAIT_SECONDS})")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     serve(bind=args.bind, port=args.port,
@@ -328,7 +400,9 @@ def main(argv=None) -> int:
           exec_policy=host_exec.ExecPolicy(
               enabled=args.allow_exec,
               elevated_commands=args.allow_elevated,
-              cwd=args.exec_cwd or None))
+              cwd=args.exec_cwd or None),
+          discovery_policy=discovery.DiscoveryPolicy(
+              enabled=args.discover, wait=args.discover_wait))
     return 0
 
 

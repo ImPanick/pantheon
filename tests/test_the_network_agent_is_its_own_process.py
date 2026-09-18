@@ -650,7 +650,14 @@ def test_every_target_route_is_gated_and_none_was_forgotten():
     # `/guard` joined in `P17-11`: the nuclear list, readable, because a boundary
     # nobody can read is a boundary nobody can check. It takes no target — it
     # describes what the agent refuses rather than acting on anything.
-    assert plain == {"/health", "/whoami", "/networks", "/neighbours", "/guard"}
+    # `/discover` joined in `P17-10` and is in the PLAIN table on purpose: it is
+    # the one route that sends, and it takes no target because the multicast
+    # groups are constants in `discovery.py` checked on every send. Being in
+    # `TARGET_ROUTES` would mean the dispatcher read a `?target=` for it, which
+    # is the parameter an injection would need and which therefore does not
+    # exist. It is off unless the operator started the agent with `--discover`.
+    assert plain == {"/health", "/whoami", "/networks", "/neighbours", "/guard",
+                     "/discover"}
     assert plain.isdisjoint(srv.TARGET_ROUTES), "a route is in both tables"
 
 

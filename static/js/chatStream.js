@@ -758,7 +758,11 @@ export function handleUIControl(uiData) {
           var fn = mod.openLibrary || (mod.default && mod.default.openLibrary);
           if (fn) fn();
         }).catch(function(){});
-      } else if (panel === 'cookbook') {
+      } else if (panel === 'forge' || panel === 'cookbook') {
+        // `P0-29`. `open_panel` is wire protocol between the model and this
+        // switch, and a model that has read the new tool description says
+        // `forge` while a model quoting an older conversation still says
+        // `cookbook`. Both land here (`Law 1`); neither is the panel's id.
         import('./cookbook.js').then(function(mod) {
           var fn = mod.open || (mod.default && mod.default.open);
           if (fn) fn();

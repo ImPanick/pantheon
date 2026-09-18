@@ -883,6 +883,12 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         _INT_RANGES = {
             "agent_max_rounds": (1, 200),
             "agent_max_tool_calls": (0, 1000),  # 0 = unlimited
+            # `P3-21`. 0 means "no lift — run presets at their own numbers",
+            # which is a reachable, documented value rather than a disabled
+            # setting. The top is a machine ceiling, not a budget: ten million
+            # tokens is past any local context window and stops a typo from
+            # becoming an unbounded generation.
+            "local_inference_max_tokens": (0, 10_000_000),
             # `P16-19`. The exporter floors this itself; clamping here too keeps
             # the STORED value and the EFFECTIVE value the same number, so the
             # settings page never shows a `1` that is really a `10`.
@@ -894,6 +900,21 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             # effective value are the same number.
             "skill_audit_hour": (0, 23),
             "skill_audit_batch": (1, 100),
+            # `P14-07`. The two ceilings on document indexing, in MiB. `0` is a
+            # real answer on both — no ceiling — so the floor of the range is 0
+            # and not 1. The tops are sanity, not policy: a 4 GiB single file
+            # and a 16 GiB in-memory index are past the point where the number
+            # is a decision rather than a typo. Clamped here for the reason
+            # stated above: `index_walk` falls back to the default on a value it
+            # cannot use, and a stored number that is not the effective one is
+            # the settings page lying about itself.
+            "index_max_file_mb": (0, 4096),
+            "index_budget_mb": (0, 16384),
+            # `P15-08`. The floor under a schedulable task, in minutes. `0`
+            # turns it off, which an operator whose tasks only touch their own
+            # LAN is entitled to; a day is the top, because past that the floor
+            # is not a floor, it is the schedule.
+            "min_task_interval_minutes": (0, 1440),
         }
         # Per-key validation for settings whose values are a closed set. A
         # security setting must not be *quietly* rejected: `coerce_trust_rung`
@@ -1007,6 +1028,23 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
                         normalise_endpoint(val)
                     except ValueError as e:
                         raise HTTPException(400, f"otlp_endpoint: {e}")
+            if key == "source_url":
+                # `P0-17`. Same reasoning as `otlp_endpoint` above and one step
+                # sharper: this value is written into an `href` on the **login
+                # page**, the one document served before anyone authenticates.
+                # The renderer already refuses a non-http(s) scheme, so a bad
+                # value cannot reach the DOM — but accepting it here would
+                # answer 200, echo it back, and leave the operator looking at a
+                # settings field that holds their URL and a page that shows no
+                # link, with nothing saying why.
+                val = (val or "").strip() if isinstance(val, str) else ""
+                if val:
+                    from src.source_link import normalise_source_url
+                    if not normalise_source_url(val):
+                        raise HTTPException(
+                            400,
+                            "source_url: must be an absolute http:// or https:// URL "
+                            "(empty means no source link is shown)")
             current[key] = val
         _save_settings(current)
         return without_retired_settings(current)

@@ -183,7 +183,7 @@ def _local_tooling_path_export(executable: str) -> str:
 def _pip_install_no_cache(cmd: str) -> str:
     """Add ``--no-cache-dir`` to a pip install command.
 
-    Cookbook dependency installs (vLLM, llama-cpp-python, …) build large wheels;
+    Forge dependency installs (vLLM, llama-cpp-python, …) build large wheels;
     pip's default cache lives under ``$HOME/.cache/pip`` and these builds can fill
     a small home filesystem with ``[Errno 28] No space left on device`` mid-build
     (issue #1219), leaving the dependency "installed" but unusable (#1459).
@@ -202,7 +202,7 @@ def _pip_install_attempt(pip_cmd: str) -> str:
     Without this wrapper, `pip … 2>&1 | tail -5` returns ``tail``'s exit
     code (0), masking pip's real failure and preventing the next fallback
     from running.  The generated snippet captures all output to a temp
-    file, prints the last 5 lines on failure (so the Cookbook log panel
+    file, prints the last 5 lines on failure (so the Forge log panel
     shows useful diagnostics), cleans up, and exits with pip's original
     status.
     """
@@ -237,7 +237,7 @@ def _pip_install_fallback_chain(package: str, *, python_cmd: str = "python3 -m p
 
     Each attempt is wrapped via :func:`_pip_install_attempt` so pip's real
     exit code is preserved (no ``| tail`` masking) and the last 5 lines of
-    pip output appear in the Cookbook log on failure.
+    pip output appear in the Forge log on failure.
     """
     from core.platform_compat import IS_WINDOWS
     upgrade_flag = " -U" if upgrade else ""
@@ -282,7 +282,7 @@ def _pip_install_fallback_chain(package: str, *, python_cmd: str = "python3 -m p
 def _venv_safe_local_pip_install_cmd(cmd: str, *, local: bool, in_venv: bool) -> str:
     """Drop pip user-install flags that are invalid for local venv installs.
 
-    Cookbook dependency installs run through the model-serve task path so users
+    Forge dependency installs run through the model-serve task path so users
     can watch progress in the same log UI. For local POSIX runs, that task
     prepends Pantheon' own interpreter directory to PATH. If Pantheon itself is
     running from a venv, `python3` resolves to the venv Python and pip rejects
@@ -774,7 +774,7 @@ def _validate_serve_cmd(v: str | None) -> str | None:
         return v
 
     # Otherwise: a single invocation — no shell metacharacters allowed. Replace
-    # only the exact command substitutions emitted by the Cookbook UI:
+    # only the exact command substitutions emitted by the Forge UI:
     # $(printf %s 'safe-path') and the mmproj lookup
     # $(find <path> -iname 'mmproj*.gguf' 2>/dev/null | sort | head -1).
     def _replace_safe_subshell(match: re.Match[str]) -> str:
@@ -847,7 +847,7 @@ def _append_serve_exit_code_lines(
 def _append_llama_cpp_linux_accel_build_lines(runner_lines: list[str]) -> None:
     """Append Linux llama.cpp build lines that prefer ROCm/HIP when available.
 
-    Cookbook already detects AMD GPUs elsewhere, but the llama.cpp bootstrap used
+    Forge already detects AMD GPUs elsewhere, but the llama.cpp bootstrap used
     to hard-wire CUDA on Linux. That made ROCm hosts attempt a CUDA configure and
     fail with "CUDA Toolkit not found" instead of building with HIP.
     """
@@ -925,7 +925,7 @@ def _append_llama_cpp_linux_accel_build_lines(runner_lines: list[str]) -> None:
     # would hang a tmux-backgrounded serve task waiting for a password. If
     # sudo asks for a password the install is skipped silently and the
     # diagnosis pattern (cookbook_routes.py / cookbook_helpers.py) surfaces
-    # an explicit "install cmake" suggestion in the Cookbook diagnosis
+    # an explicit "install cmake" suggestion in the Forge diagnosis
     # toolbar after the inevitable build failure.
     runner_lines.append('    _pantheon_apt_bootstrap() {')
     runner_lines.append('      local _missing=""')
@@ -946,7 +946,7 @@ def _append_llama_cpp_linux_accel_build_lines(runner_lines: list[str]) -> None:
     runner_lines.append('        local _dnfpkgs="$(echo "$_missing" | sed -e \'s/build-essential/gcc gcc-c++ make/g\')"')
     runner_lines.append('        sudo -n dnf install -y $_dnfpkgs 2>&1 | tail -5 || true')
     runner_lines.append('      else')
-    runner_lines.append('        echo "[pantheon] WARNING: missing build deps ($_missing) — passwordless sudo is unavailable, cannot auto-install. Cookbook Diagnosis will explain the fix after the build fails."')
+    runner_lines.append('        echo "[pantheon] WARNING: missing build deps ($_missing) — passwordless sudo is unavailable, cannot auto-install. Forge Diagnosis will explain the fix after the build fails."')
     runner_lines.append('      fi')
     runner_lines.append('    }')
     runner_lines.append('    _pantheon_apt_bootstrap')
@@ -1032,14 +1032,14 @@ def _append_llama_cpp_linux_accel_build_lines(runner_lines: list[str]) -> None:
 
 
 def _llama_cpp_rebuild_cmd(update_source: bool = False) -> str:
-    """Shell command that clears the Cookbook-managed llama.cpp build.
+    """Shell command that clears the Forge-managed llama.cpp build.
 
     Removes the cached ``llama-server`` symlink and the ``~/llama.cpp/build*``
     directory so the next llama.cpp serve recompiles from source, picking up a
     CUDA or HIP toolchain if one is now available. The serve bootstrap only
     builds when ``llama-server`` is missing from PATH, so without this an
     existing CPU-only build is reused forever. When ``update_source`` is true,
-    the command also fast-forwards the Cookbook-managed ``~/llama.cpp`` checkout
+    the command also fast-forwards the Forge-managed ``~/llama.cpp`` checkout
     if it exists. The rebuild itself happens on the next serve.
     """
     update_cmd = ''
@@ -1251,7 +1251,7 @@ WIN_SESSION_DIR = "$env:TEMP\\\\pantheon-sessions"
 
 
 def _diagnose_serve_output(text: str) -> dict | None:
-    """Server-side mirror of the Cookbook UI's common serve diagnoses.
+    """Server-side mirror of the Forge UI's common serve diagnoses.
 
     The browser uses cookbook-diagnosis.js for clickable fixes. This gives
     the agent/tool path the same structured signal so it can retry with an
@@ -1327,7 +1327,7 @@ def _diagnose_serve_output(text: str) -> dict | None:
         (
             r"No CUDA GPUs are available|no GPU.*found|CUDA_VISIBLE_DEVICES.*invalid",
             "No GPUs are visible to the serve process.",
-            [{"label": "clear Cookbook GPU selection or choose available GPUs", "op": "settings", "field": "gpus", "value": ""}],
+            [{"label": "clear Forge GPU selection or choose available GPUs", "op": "settings", "field": "gpus", "value": ""}],
         ),
         (
             r"Failed to infer device type|NVML Shared Library Not Found|No module named 'amdsmi'|platform is not available",
@@ -1341,7 +1341,7 @@ def _diagnose_serve_output(text: str) -> dict | None:
         (
             r"vllm.*command not found|No module named vllm|ERROR: vLLM is not installed",
             "vLLM is not installed or not in PATH on this server.",
-            [{"label": "install vLLM in Cookbook Dependencies", "op": "dependency", "package": "vllm"}],
+            [{"label": "install vLLM in Forge Dependencies", "op": "dependency", "package": "vllm"}],
         ),
         (
             r"sgl_kernel[\s\S]*(Python\.h|libnuma\.so\.1|common_ops|libnvrtc\.so)|"
@@ -1358,12 +1358,12 @@ def _diagnose_serve_output(text: str) -> dict | None:
         (
             r"sglang.*command not found|No module named sglang|SGLang is not installed",
             "SGLang is not installed or not in PATH on this server.",
-            [{"label": "install SGLang in Cookbook Dependencies", "op": "dependency", "package": "sglang[all]"}],
+            [{"label": "install SGLang in Forge Dependencies", "op": "dependency", "package": "sglang[all]"}],
         ),
         (
             r"No module named ['\"]?mlx_lm|mlx_lm.*command not found|MLX is not installed|MLX LM is not installed",
             "MLX LM is not installed on this server.",
-            [{"label": "install mlx-lm in Cookbook Dependencies", "op": "dependency", "package": "mlx-lm"}],
+            [{"label": "install mlx-lm in Forge Dependencies", "op": "dependency", "package": "mlx-lm"}],
         ),
         (
             r"OmniGen2Pipeline|module diffusers has no attribute .*Pipeline|custom_pipeline=.*failed",
@@ -1373,7 +1373,7 @@ def _diagnose_serve_output(text: str) -> dict | None:
         (
             r"mflux-generate-qwen.*not found|mflux-generate.*not found|MLX image serving requires mflux|No module named ['\"]?mflux",
             "MLX image serving requires mflux on this Apple Silicon server.",
-            [{"label": "install mflux in Cookbook Dependencies", "op": "dependency", "package": "mflux"}],
+            [{"label": "install mflux in Forge Dependencies", "op": "dependency", "package": "mflux"}],
         ),
         (
             r"mlx-lama-swift|pantheon-mlx-inpaint|mlx-lama-serve|LaMa / MI-GAN MLX inpainting models require",
@@ -1425,7 +1425,7 @@ def _diagnose_serve_output(text: str) -> dict | None:
         (
             r"No module named 'torch'|No module named torch|No module named 'torchvision'|No module named torchvision|No module named 'diffusers'|No module named diffusers|No module named 'scipy'|No module named scipy|install scipy if you want to use beta sigmas|requires the Torchvision library",
             "Diffusion serving requires PyTorch, Torchvision, Diffusers, Accelerate, and SciPy.",
-            [{"label": "install Diffusers image deps in Cookbook Dependencies", "op": "dependency", "package": "diffusers[torch] torchvision accelerate scipy python-multipart"}],
+            [{"label": "install Diffusers image deps in Forge Dependencies", "op": "dependency", "package": "diffusers[torch] torchvision accelerate scipy python-multipart"}],
         ),
         (
             r"403 Forbidden|401 Unauthorized|Access to model.*is restricted|gated repo|not in the authorized list|awaiting a review",

@@ -513,9 +513,9 @@ def setup_codex_routes(
             raise HTTPException(400, f"Invalid document payload: {exc}")
         return await _as_owner(request, owner, documents_create_endpoint, request, req)
 
-    # ── Cookbook surface ──
+    # ── Forge surface ──
     # Lets the agent run the same launch / monitor / kill loop the user
-    # would do by hand in the Cookbook UI: read the current task list +
+    # would do by hand in the Forge UI: read the current task list +
     # tmux output, launch a serve task, stop one.  Two scopes:
     #   cookbook:read   — list tasks + tail output + list servers
     #   cookbook:launch — also start/stop serves (host shell exec)

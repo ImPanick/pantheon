@@ -6,7 +6,7 @@
 
 import spinnerModule from './spinner.js';
 import sessionModule from './sessions.js';
-import { initEmailLibrary, openEmailLibrary, closeEmailLibrary, isOpen as isLibOpen, prewarmEmailLibrary, prewarmUnreadEmails } from './emailLibrary.js?v=20260815approvalsave1';
+import { initEmailLibrary, openEmailLibrary, closeEmailLibrary, isOpen as isLibOpen, prewarmEmailLibrary, prewarmUnreadEmails, noteMailboxSync } from './emailLibrary.js?v=20260815approvalsave1';
 import * as Modals from './modalManager.js?v=20260723compareicon2';
 import { applyEdgeDock } from './modalSnap.js';
 import { buildReplyAllCc, extractEmail } from './emailLibrary/replyRecipients.js';
@@ -341,6 +341,15 @@ async function _refreshUnreadCount() {
     ]);
     if (!stateRes || !stateRes.ok) return;
     const data = await stateRes.json();
+
+    // `P15-11`. This response has carried `sync.source: "unavailable"` and a
+    // `retry_in` since `P15-12`, written for this row, and every one of them
+    // was dropped on the floor right here — so a mailbox Pantheon had
+    // deliberately stopped calling (a stale password, a provider locking the
+    // account) polled every 60 seconds in every tab and looked *exactly* like
+    // a mailbox with no new mail. Zero unread is what the server says while
+    // it cannot see the mailbox; it is not a fact about the mailbox.
+    noteMailboxSync(data.sync);
     if (!dot) return;
 
     const unreadCount = Number(data.unread_count || 0);

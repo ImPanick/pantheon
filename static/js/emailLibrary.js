@@ -27,6 +27,11 @@ import { state } from './emailLibrary/state.js';
 import { getSettings } from './appConfig.js';
 import { collapseSidebarToRail } from './modalSnap.js';
 import { emailApiUrl } from './emailShared.js';
+// `P15-11`. The words for a destination we have stopped calling come from
+// the one vocabulary module, never from this renderer — six places in the
+// product already know what a throttle is and a seventh is the defect
+// (`Law 13`).
+import { isThrottledSource, throttleNotice } from './runStatus.js';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { chevronIcon } from './icons.js';
 
@@ -1818,6 +1823,12 @@ let _libSyncStatus = {
   source: '',
   warming: false,
   loading: false,
+  // `P15-11`. `retry_in` has been on the unread-poll response since `P15-12`
+  // and was read by nobody; without it a mailbox Pantheon has deliberately
+  // stopped calling looks exactly like a mailbox with no new mail.
+  retryIn: 0,
+  throttleDetail: '',
+  throttledAt: 0,
 };
 let _libSyncTicker = null;
 
@@ -1840,6 +1851,16 @@ function _libRelativeTime(value) {
   return `${days}d ago`;
 }
 
+/** Seconds left on the cooldown, counted down from when we were told. */
+function _libThrottleRemaining() {
+  if (!isThrottledSource(_libSyncStatus.source)) return 0;
+  const started = _libSyncStatus.throttledAt || 0;
+  const total = Number(_libSyncStatus.retryIn || 0);
+  if (!total) return 0;
+  const gone = started ? (Date.now() - started) / 1000 : 0;
+  return Math.max(0, total - gone);
+}
+
 function _renderEmailSyncStatus() {
   const el = document.getElementById('email-lib-sync-status');
   if (!el) return;
@@ -1849,9 +1870,22 @@ function _renderEmailSyncStatus() {
     return;
   }
   const parts = [];
+  // `P15-11`. First, and before the timestamp: "Last updated: 2d ago" on its
+  // own reads as "nothing has arrived", which is the sentence that makes a
+  // person sit and wait for mail that is not coming. The throttle says why,
+  // and when it clears. The 30-second ticker that already drives the relative
+  // time counts it down for free.
+  const notice = throttleNotice({
+    source: _libSyncStatus.source,
+    retryIn: _libThrottleRemaining(),
+    what: 'This mailbox',
+  });
+  if (notice) parts.push(notice);
   const rel = _libRelativeTime(_libSyncStatus.updatedAt);
   if (rel) parts.push(`Last updated: ${rel}`);
   el.textContent = parts.join(' · ');
+  el.title = notice && _libSyncStatus.throttleDetail
+    ? _libSyncStatus.throttleDetail : '';
   el.style.visibility = parts.length ? 'visible' : 'hidden';
 }
 
@@ -1866,6 +1900,28 @@ function _setEmailSyncStatus(next = {}) {
   }
   if (Object.prototype.hasOwnProperty.call(next, 'source')) {
     _libSyncStatus.source = next.source || '';
+    if (!isThrottledSource(_libSyncStatus.source)) {
+      // It answered. Drop the countdown rather than letting a stale one tick
+      // on beside a list that is plainly updating again.
+      _libSyncStatus.retryIn = 0;
+      _libSyncStatus.throttledAt = 0;
+      _libSyncStatus.throttleDetail = '';
+    }
+    // There is deliberately no "started the clock" branch here. One was
+    // written and a mutation proved it decorative: `retryIn` below stamps
+    // `throttledAt` whenever there is a countdown to run, and when there is no
+    // countdown the stamp is never read. A second assignment that cannot
+    // change an outcome is a line the next reader has to disprove.
+  }
+  if (Object.prototype.hasOwnProperty.call(next, 'retryIn')) {
+    const secs = Number(next.retryIn || 0);
+    if (secs > 0) {
+      _libSyncStatus.retryIn = secs;
+      _libSyncStatus.throttledAt = Date.now();
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(next, 'throttleDetail')) {
+    _libSyncStatus.throttleDetail = String(next.throttleDetail || '');
   }
   if (Object.prototype.hasOwnProperty.call(next, 'warming')) {
     _libSyncStatus.warming = Boolean(next.warming);
@@ -2427,6 +2483,8 @@ async function _prewarmEmailViews({ signal, generation } = {}) {
     _setEmailSyncStatus({
       updatedAt: sync.updated_at || new Date().toISOString(),
       source: sync.source || '',
+      retryIn: sync.retry_in || 0,
+      throttleDetail: sync.detail || '',
       warming: true,
     });
     return true;
@@ -2508,6 +2566,29 @@ export function initEmailLibrary(config) {
 }
 
 export function isOpen() { return state._libOpen; }
+
+/**
+ * `P15-11`. What the 60-second unread poll learned about this mailbox.
+ *
+ * `routes/email_routes.py` has answered that poll with `sync.source:
+ * "unavailable"` and a `retry_in` since `P15-12` — put there for this row —
+ * and `emailInbox.js` dropped the whole `sync` object. The poll runs whether
+ * or not the library is open, so this is also what makes the status line
+ * correct the instant somebody opens it rather than one refresh later.
+ */
+export function noteMailboxSync(sync) {
+  if (!sync || typeof sync !== 'object') return;
+  // The throttle and nothing else. The poll asks about INBOX unread and the
+  // library may be showing another folder, so passing a freshness timestamp
+  // from here would put "Last updated: just now" over a list that has not been
+  // refetched. A poll that succeeds clears a throttle, because the cooldown it
+  // clears is the account's rather than the folder's.
+  _setEmailSyncStatus({
+    source: sync.source || '',
+    retryIn: sync.retry_in || 0,
+    throttleDetail: sync.detail || '',
+  });
+}
 
 export function openEmailLibrary(opts = {}) {
   // Foreground email always wins: cancel a delayed/idle callback and abort the
@@ -4387,6 +4468,8 @@ async function _doSearch() {
       _setEmailSyncStatus({
         updatedAt: data.sync?.updated_at || '',
         source: data.sync?.source || data.source || '',
+        retryIn: data.sync?.retry_in || 0,
+        throttleDetail: data.sync?.detail || '',
         loading: false,
       });
       return true;
@@ -4422,6 +4505,8 @@ async function _doSearch() {
     _setEmailSyncStatus({
       updatedAt: interim ? '' : (data.sync?.updated_at || ''),
       source: data.sync?.source || data.source || '',
+      retryIn: data.sync?.retry_in || 0,
+      throttleDetail: data.sync?.detail || '',
       loading: interim,
     });
     if (interim && results.length) paintedInterimResults = true;

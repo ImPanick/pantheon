@@ -163,7 +163,13 @@ def test_only_the_declared_routes_exist():
     of them goes stale while the other keeps passing, which is exactly what
     happened to the agent-side copy of this same pin (`Law 13`).
     """
-    assert nac.ROUTES == frozenset({"health", "whoami", "networks", "neighbours"})
+    # `discover` joined in `P17-10`, in `ROUTES` and deliberately not in
+    # `TARGET_ROUTES`: it takes no address on either side of the wire, because
+    # the multicast groups are constants on the agent and every send is checked
+    # against them. A target parameter is the seam an injection would use, and
+    # this route does not have one.
+    assert nac.ROUTES == frozenset({"health", "whoami", "networks", "neighbours",
+                                    "discover"})
     assert nac.TARGET_ROUTES == frozenset({"reach", "dns"})
     assert nac.ROUTES.isdisjoint(nac.TARGET_ROUTES), (
         "a route is in both tables; whether it needs a target is now ambiguous")

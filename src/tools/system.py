@@ -735,11 +735,11 @@ async def do_app_api(content: str, owner: Optional[str] = None) -> Dict:
         if "/api/email/accounts" in path:
             return {"error": "Don't use /api/email/accounts via app_api — it is owner-filtered in tool context and may return empty. Use the `list_email_accounts` email tool, then pass `account` to list_emails/read_email.", "exit_code": 1}
         if "/api/cookbook/packages/install" in path:
-            return {"error": "Don't POST /api/cookbook/packages/install via app_api — package installation is host code execution. Use the dedicated Cookbook dependency UI/flow instead.", "exit_code": 1}
+            return {"error": "Don't POST /api/cookbook/packages/install via app_api — package installation is host code execution. Use the dedicated Forge dependency UI/flow instead.", "exit_code": 1}
         if "/api/cookbook/rebuild-engine" in path:
-            return {"error": "Don't POST /api/cookbook/rebuild-engine via app_api — engine rebuild mutates local or remote host state. Use the dedicated Cookbook UI/flow instead.", "exit_code": 1}
+            return {"error": "Don't POST /api/cookbook/rebuild-engine via app_api — engine rebuild mutates local or remote host state. Use the dedicated Forge UI/flow instead.", "exit_code": 1}
         if "/api/cookbook/kill-pid" in path:
-            return {"error": "Don't POST /api/cookbook/kill-pid via app_api — process signalling is host control. Use the dedicated Cookbook stop/diagnostic flow instead.", "exit_code": 1}
+            return {"error": "Don't POST /api/cookbook/kill-pid via app_api — process signalling is host control. Use the dedicated Forge stop/diagnostic flow instead.", "exit_code": 1}
         if "/api/model/download" in path:
             return {"error": "Don't POST /api/model/download directly — use the `download_model` tool (it resolves the server name, sets the venv env_prefix, and registers the task so it shows in the UI).", "exit_code": 1}
         if "/api/model/serve" in path:

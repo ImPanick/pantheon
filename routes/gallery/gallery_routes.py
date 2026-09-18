@@ -68,7 +68,7 @@ def _load_sam_backend():
     except Exception as exc:
         raise HTTPException(
             501,
-            "SAM mask tools are not installed. Install Cookbook Dependencies -> SAM mask tools.",
+            "SAM mask tools are not installed. Install Forge Dependencies -> SAM mask tools.",
         ) from exc
 
     device = "cpu"
@@ -104,7 +104,7 @@ def _load_grounding_backend():
     except Exception as exc:
         raise HTTPException(
             501,
-            "Object mask tools are not installed. Install Cookbook Dependencies -> SAM mask tools.",
+            "Object mask tools are not installed. Install Forge Dependencies -> SAM mask tools.",
         ) from exc
 
     device = "cpu"
@@ -1288,7 +1288,7 @@ def setup_gallery_routes() -> APIRouter:
             try:
                 ep = _first_visible_image_endpoint(db, user)
                 if not ep:
-                    raise HTTPException(400, "No image generation endpoint configured. Serve a diffusion model via Cookbook first.")
+                    raise HTTPException(400, "No image generation endpoint configured. Serve a diffusion model via Forge first.")
                 base = ep.base_url.rstrip("/")
                 api_key = ep.api_key
             finally:
@@ -1606,8 +1606,15 @@ def setup_gallery_routes() -> APIRouter:
         if _is_openai_api_base(base):
             raise HTTPException(400,
                 "Harmonize needs a diffusion server that supports img2img "
-                "(SD WebUI / Forge / Comfy). OpenAI's API doesn't expose "
-                "one. Cookbook → Models can serve an SD-compatible model "
+                # "Forge" twice in one sentence and meaning two different
+                # things: Stable Diffusion WebUI Forge is a third-party image
+                # backend this product already detects by name
+                # (`src/tools/cookbook.py`'s `Forge WebUI` entry), and it is
+                # now also the name of the subsystem that serves it (`B471`).
+                # Spelled out here because the sentence is what a user reads
+                # when their image generation has just refused.
+                "(SD WebUI / SD-Forge / Comfy). OpenAI's API doesn't expose "
+                "one. Pantheon's Forge → Models can serve an SD-compatible model "
                 "locally in a few clicks.")
 
         # Try img2img-shaped routes in order. Most self-hosted servers
@@ -1742,7 +1749,7 @@ def setup_gallery_routes() -> APIRouter:
     # ---- POST /api/image/denoise ----
     # AI denoise via Real-ESRGAN with the realesr-general-x4v3 weights at
     # outscale=1 + denoise_strength. Falls back to a "package missing"
-    # error so the client can prompt the user to install via Cookbook.
+    # error so the client can prompt the user to install via Forge.
     @router.post("/api/image/denoise")
     async def denoise_image(request: Request):
         require_privilege(request, "can_generate_images")
@@ -1768,7 +1775,7 @@ def setup_gallery_routes() -> APIRouter:
             patch_realesrgan_torchvision_compat()
             from realesrgan import RealESRGANer
         except ImportError:
-            return {"error": "realesrgan not installed. Install it from Cookbook → Dependencies (search 'realesrgan')."}
+            return {"error": "realesrgan not installed. Install it from Forge → Dependencies (search 'realesrgan')."}
         try:
             # General-purpose lightweight model with denoise control.
             from realesrgan.archs.srvgg_arch import SRVGGNetCompact
@@ -1819,7 +1826,7 @@ def setup_gallery_routes() -> APIRouter:
             from basicsr.archs.rrdbnet_arch import RRDBNet
             from realesrgan import RealESRGANer
         except ImportError:
-            return {"error": "realesrgan not installed. Install it from Cookbook → Dependencies (search 'realesrgan')."}
+            return {"error": "realesrgan not installed. Install it from Forge → Dependencies (search 'realesrgan')."}
         try:
             model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64,
                             num_block=23, num_grow_ch=32, scale=4)

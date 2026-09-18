@@ -226,6 +226,178 @@ async def _cached(key: Tuple, ttl: float, fetch: Callable[[], Awaitable[Any]]) -
             _shared_cache_pending.pop(key, None)
 
 
+# ── P15-08 · the floor under a schedule, and the brake under a failure ──────
+#
+# `routes/task/task_routes.py` validated cron SYNTAX and nothing else, against a
+# free-text field. `* * * * *` was accepted: 1,440 runs a day, each one able to
+# open IMAP, walk the whole search-provider chain and call a model API. `P15`
+# exists because the owner's IP was soft-banned by this product in an afternoon;
+# a minute-by-minute task is that, scheduled.
+#
+# Five minutes, and the number is a floor rather than a recommendation. At one a
+# minute a task is a scraper; at five it is 288 runs a day, which is still more
+# than any of this product's own seeded jobs and enough for anything local. The
+# precedent is on the row: `check_email_urgency` shipped at `*/15` and was walked
+# back to hourly with a migration, so this exact failure has already cost this
+# product once.
+#
+# A setting, with `0` meaning no floor, because an operator running entirely
+# against their own LAN is entitled to a one-minute task and `Law 1` says the
+# capability stays — what changes is what you get by not thinking about it.
+MIN_TASK_INTERVAL_SECONDS = 300
+# How far a failing task is pushed out, doubling per consecutive failure. The
+# ladder is `rate_limiter.penalise`'s, deliberately: same shape, same cap, so
+# there is one idea of "back off" in this product and not two (`Law 14`).
+FAILURE_BACKOFF_BASE_SECONDS = 300
+FAILURE_BACKOFF_CAP_SECONDS = 6 * 60 * 60
+
+
+def min_task_interval_seconds() -> int:
+    """The floor, in seconds. `0` means an operator turned it off."""
+    try:
+        from src.settings import get_setting
+        minutes = int(get_setting("min_task_interval_minutes",
+                                  MIN_TASK_INTERVAL_SECONDS // 60))
+    except Exception:
+        return MIN_TASK_INTERVAL_SECONDS
+    return max(0, minutes) * 60
+
+
+def cron_interval_seconds(cron_expression: str, *, samples: int = 24) -> float | None:
+    """The SHORTEST gap between two consecutive firings of this expression.
+
+    Not "the interval" — a cron expression need not have one. `0,1,30 * * * *`
+    fires three times an hour with a one-minute gap in it, and reading only the
+    first two firings, or dividing an hour by three, both miss that. The
+    expression is stepped and the smallest gap wins, which is the only number a
+    floor can honestly be compared against.
+
+    `None` when croniter cannot parse it — that is the syntax check's answer to
+    give, not this one's.
+    """
+    try:
+        from croniter import croniter
+        # A fixed base, so the answer does not depend on when it is asked.
+        base = datetime(2026, 1, 5, 0, 0, 0)
+        it = croniter(cron_expression, base)
+        prev = it.get_next(datetime)
+        smallest = None
+        for _ in range(max(2, samples)):
+            nxt = it.get_next(datetime)
+            gap = (nxt - prev).total_seconds()
+            if gap > 0 and (smallest is None or gap < smallest):
+                smallest = gap
+            prev = nxt
+        return smallest
+    except Exception:
+        return None
+
+
+def cron_floor_problem(cron_expression: str) -> str | None:
+    """The sentence a user reads when their schedule is too fast, or `None`.
+
+    A refusal that only says *"too frequent"* sends someone back to the same
+    field to guess. This names what they asked for, what the floor is, and the
+    setting that moves it — because a limit whose remedy is unstated reads as a
+    bug in the product rather than a decision it made.
+    """
+    floor = min_task_interval_seconds()
+    if not floor or not cron_expression:
+        return None
+    gap = cron_interval_seconds(cron_expression)
+    if gap is None or gap >= floor:
+        return None
+    return (
+        f"That schedule runs every {_human_gap(gap)}, and the minimum is "
+        f"{_human_gap(floor)}. A task can open a mailbox, search the web and "
+        f"call a model on every run, and at that rate providers rate-limit or "
+        f"block the account — Pantheon has done it to its own owner once. "
+        f"Use a slower schedule, or change min_task_interval_minutes in "
+        f"Settings if this task only touches your own machines."
+    )
+
+
+def consecutive_failures(db, task_id: str, *, before_run_id: str = None,
+                         limit: int = 16) -> int:
+    """How many times in a row this task has just failed.
+
+    Read from `task_runs` rather than from a new column: the history is already
+    written, already indexed by `(task_id, started_at)`, and a counter on the
+    task would be a second copy of it that can disagree (`Law 14`).
+
+    `before_run_id` excludes the run being processed right now, because its row
+    is updated in an unflushed session and would otherwise be counted or not
+    depending on autoflush. The caller adds the current failure itself, which
+    is the arithmetic being explicit instead of implicit.
+
+    `queued`/`running` rows are skipped rather than treated as a success: an
+    in-flight or stuck row says nothing about whether the last finished attempt
+    worked. `skipped` and `aborted` are not failures and are not successes
+    either — they end the streak only in the sense that they are not part of it,
+    so they stop the count rather than resetting it to zero.
+    """
+    from core.database import TaskRun
+
+    q = (db.query(TaskRun.id, TaskRun.status)
+           .filter(TaskRun.task_id == task_id)
+           .order_by(TaskRun.started_at.desc(), TaskRun.id.desc())
+           .limit(limit))
+    n = 0
+    for run_id, status in q.all():
+        if before_run_id and run_id == before_run_id:
+            continue
+        if status in ("queued", "running"):
+            continue
+        if status == "error":
+            n += 1
+            continue
+        break
+    return n
+
+
+def failure_backoff_seconds(failures: int) -> float:
+    """Escalating, jittered, capped. The ladder `rate_limiter` already uses.
+
+    Jittered through `src/jitter.py` for `P15-10`'s reason and not a new one: a
+    provider that rate-limits everyone at once is the synchronising event, and a
+    fleet of Pantheons all retrying a failed task at exactly 5, 10 and 20
+    minutes past the outage is the herd arriving three times.
+    """
+    from src.jitter import jittered
+
+    failures = max(1, int(failures))
+    delay = min(FAILURE_BACKOFF_BASE_SECONDS * (2 ** (failures - 1)),
+                FAILURE_BACKOFF_CAP_SECONDS)
+    return jittered(delay, fraction=0.2)
+
+
+def _human_gap(seconds: float) -> str:
+    seconds = int(seconds)
+    if seconds % 3600 == 0 and seconds >= 3600:
+        n = seconds // 3600
+        return "hour" if n == 1 else f"{n} hours"
+    if seconds % 60 == 0:
+        n = seconds // 60
+        return "minute" if n == 1 else f"{n} minutes"
+    return f"{seconds} seconds"
+
+
+def apply_interval_floor(next_run: datetime | None,
+                         after: datetime | None = None) -> datetime | None:
+    """Push a next run out to the floor. The half that covers rows already here.
+
+    Refusing `* * * * *` at the API stops NEW ones; it does nothing about a task
+    created before this shipped, seeded by a migration, or written straight into
+    the database. Those are paced rather than broken (`Law 1`): the schedule the
+    user set still runs, just not more often than the floor.
+    """
+    floor = min_task_interval_seconds()
+    if next_run is None or not floor:
+        return next_run
+    earliest = (after or _utcnow()) + timedelta(seconds=floor)
+    return max(next_run, earliest)
+
+
 def compute_next_run(schedule: str, scheduled_time: str,
                      scheduled_day: int = None,
                      scheduled_date: datetime = None,
@@ -275,7 +447,11 @@ def compute_next_run(schedule: str, scheduled_time: str,
             nxt = cron.get_next(datetime)
             if tz is not None and nxt.tzinfo is None:
                 nxt = nxt.replace(tzinfo=tz)
-            return _to_utc_naive(nxt) if tz is not None else nxt
+            out = _to_utc_naive(nxt) if tz is not None else nxt
+            # `P15-08`. The floor applies to what is ALREADY in the database as
+            # well as to what the API will accept from here on — a `* * * * *`
+            # row created before this shipped is paced, not broken.
+            return apply_interval_floor(out, after=(after or _utcnow()))
         except Exception as e:
             logger.warning(f"Invalid cron expression '{cron_expression}': {e}")
             return None
@@ -526,20 +702,79 @@ class TaskScheduler:
         # need a process restart to change it.
         self._concurrency_cap, self._concurrency_cap_source = resolve_task_concurrency_cap()
         self._run_semaphore = asyncio.Semaphore(self._concurrency_cap)
+        # Permits currently in circulation on `_run_semaphore`. Tracked
+        # separately because `asyncio.Semaphore` does not expose its own count
+        # and because a permit a run is holding is still in circulation.
+        self._slot_permits = self._concurrency_cap
+        self._slot_drain = None
         self._task_handles = {}
 
     def _refresh_concurrency_cap(self) -> int:
-        """Re-resolve the cap and rebuild the slot if it changed.
+        """Re-resolve the cap and make the new number the one that governs.
 
-        Safe only while no run holds the semaphore — call it from start(),
-        before the loop begins dispatching. Rebuilding under load would drop
-        the waiters already parked on the old object.
+        `P6-08`. This used to say "safe only while no run holds the semaphore"
+        and to REBUILD the semaphore, and both halves were the row: rebuilding
+        under load drops the waiters parked on the old object, so the only
+        caller it could have was `start()`, so the resolver's answer was fixed
+        at boot and "configurable without a restart" was not true. The cap is
+        now moved by adding and retiring permits on the SAME object, which the
+        waiters are parked on, so this is safe to call from the running loop —
+        and it is, once per tick.
         """
         cap, source = resolve_task_concurrency_cap()
-        if cap != self._concurrency_cap:
-            self._run_semaphore = asyncio.Semaphore(cap)
+        changed = cap != self._concurrency_cap
         self._concurrency_cap, self._concurrency_cap_source = cap, source
+        if changed:
+            logger.info(
+                "Task concurrency cap is now %d (from %s)", cap, source)
+            self._sync_run_slot()
         return cap
+
+    def _sync_run_slot(self) -> None:
+        """Move the live slot to `self._concurrency_cap`.
+
+        Raising is immediate: `release()` on an `asyncio.Semaphore` adds a
+        permit above its initial value and wakes a waiter, so a run queued
+        behind the old cap starts at once rather than after the run ahead of
+        it finishes.
+
+        LOWERING CANNOT BE IMMEDIATE and pretending otherwise is what the old
+        rebuild did. A permit held by a run in flight is not ours to take, so
+        the surplus is retired by *acquiring* it — which parks behind the runs
+        already using it and hands nothing back. The effect is a drain: no run
+        is killed, and the slot narrows as work finishes.
+        """
+        while self._slot_permits < self._concurrency_cap:
+            self._run_semaphore.release()
+            self._slot_permits += 1
+        if self._slot_permits <= self._concurrency_cap:
+            return
+        if self._slot_drain is not None and not self._slot_drain.done():
+            return                      # a drain is already converging on it
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No loop: construction, or a synchronous caller. Nothing can be
+            # holding the slot, so the exact object is safe to rebuild and the
+            # drain would have nothing to wait for anyway.
+            self._run_semaphore = asyncio.Semaphore(self._concurrency_cap)
+            self._slot_permits = self._concurrency_cap
+            return
+        self._slot_drain = loop.create_task(self._drain_run_slot())
+
+    async def _drain_run_slot(self) -> None:
+        """Retire surplus permits one at a time, then re-apply any raise that
+        landed while we were waiting."""
+        try:
+            while self._slot_permits > self._concurrency_cap:
+                await self._run_semaphore.acquire()   # retired, never released
+                self._slot_permits -= 1
+        finally:
+            # A raise during the drain released permits this loop then took
+            # back; converge rather than leave the slot one short.
+            while self._slot_permits < self._concurrency_cap:
+                self._run_semaphore.release()
+                self._slot_permits += 1
 
     def _set_run_progress(self, run_id: str, message: str):
         """Persist short live progress text for Activity while a run is active."""
@@ -674,7 +909,9 @@ class TaskScheduler:
         # Re-read the concurrency cap here, not just in __init__: the scheduler
         # is constructed at import/wiring time, so a settings change made after
         # boot would otherwise need a full process restart to take effect.
-        # Nothing holds the semaphore yet at this point.
+        # Nothing holds the semaphore yet at this point. `_check_due_tasks`
+        # re-reads it every tick as well (`P6-08`); this call is what makes the
+        # start-up log line report the cap the first dispatch will actually use.
         self._refresh_concurrency_cap()
         # On startup, mark any leftover "running" task_runs as aborted. Without
         # this, a server crash leaves rows stuck running indefinitely and the
@@ -929,6 +1166,14 @@ class TaskScheduler:
             await asyncio.sleep(sleep_for)
 
     async def _check_due_tasks(self):
+        # `P6-08`. The settings-change path for this cap is every tick, not a
+        # hook on one writer. `save_settings` has ~20 call sites (the admin
+        # endpoint, the agent's own `manage_settings`, a backup restore) and
+        # `data/settings.json` is also hand-edited — a listener on any one of
+        # them is `Law 13`'s defect class. Re-resolving here costs one cached
+        # settings read per tick and cannot miss a writer, including one that
+        # does not exist yet.
+        self._refresh_concurrency_cap()
         from core.database import SessionLocal, ScheduledTask
         db = SessionLocal()
         try:
@@ -1412,6 +1657,25 @@ class TaskScheduler:
                             cron_expression=task_obj.cron_expression,
                             tz_name=_resolve_task_timezone(db, task_obj),
                         )
+                        # `P15-08`. Advancing to the next slot is what this line
+                        # did and all it did: a task failing against a
+                        # rate-limiting provider retried at full cadence, for
+                        # ever, and every retry is another request to the thing
+                        # that is already refusing us. The schedule is kept —
+                        # this only ever pushes the next run LATER — and the
+                        # first success clears the ladder, because the count is
+                        # read from the run history rather than carried.
+                        if task_obj.next_run is not None:
+                            failures = consecutive_failures(
+                                db, task_id, before_run_id=run_id) + 1
+                            delay = failure_backoff_seconds(failures)
+                            backed_off = _utcnow() + timedelta(seconds=delay)
+                            if backed_off > task_obj.next_run:
+                                logger.warning(
+                                    "Task %s has failed %d time(s) in a row; next run "
+                                    "held back to %s (+%.0fs) instead of its schedule",
+                                    task_id, failures, backed_off, delay)
+                                task_obj.next_run = backed_off
                     except Exception as exc:
                         # `P3-17`. `last_run` was set on the line above, so
                         # swallowing this leaves `next_run` at a time that has

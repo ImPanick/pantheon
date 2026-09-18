@@ -15,7 +15,7 @@
  *    layer, save state, composite, refresh the layer panel.
  *  - Error reporting: surface failures via toast. Detects "needs
  *    img2img server" and "package not installed" failure modes and
- *    surfaces an action-toast that opens Cookbook to fix.
+ *    surfaces an action-toast that opens Forge to fix.
  *
  * @param {{
  *   flatten:                    () => HTMLCanvasElement,
@@ -130,7 +130,7 @@ export function createApplyImageTool({
         } else if (needsImg2Img && uiModule.showToast.length >= 2) {
           uiModule.showToast(layerName + ' failed: ' + e.message, {
             duration: 9000,
-            action: 'Open Cookbook',
+            action: 'Open Forge',
             onAction: () => openCookbookForImg2img(),
           });
         } else {

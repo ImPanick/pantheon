@@ -39,7 +39,7 @@ def __getattr__(name):
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-# Cookbook (model serving) domain extracted to src/tools/cookbook.py
+# Forge (model serving) domain extracted to src/tools/cookbook.py
 # (slice 1, #4082/#4071). Re-imported here so this module stays a working
 # facade. cookbook.py pulls `_internal_headers` / `_INTERNAL_BASE` back
 # function-locally from this facade (which re-exports them from _common).

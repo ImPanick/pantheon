@@ -110,7 +110,7 @@ BUILTIN_TOOL_DESCRIPTIONS: Dict[str, str] = {
     "search_chats": "Search past session transcripts across chats.",
     "ask_user": "Ask the user a multiple-choice question to get a decision or clarification. Use this when the task is genuinely ambiguous and the answer changes what you do next — pick between approaches, confirm an assumption, choose among options — instead of guessing. Provide a clear `question` and 2-6 `options` (each with a short `label`, optional `description`). Omit `multi`/keep it false unless the question explicitly permits choosing multiple options. Calling this ENDS your turn: the user sees clickable buttons and their choice arrives as your next message. Don't use it for things you can decide from context or sensible defaults, or for irreversible-action confirmation if a dedicated flow exists.",
     "update_plan": "Write back to the ACTIVE PLAN while executing an approved plan: mark steps done or revise them. After finishing a step call this with the full checklist and that step marked done; when the user asks to change the plan call it with the revised checklist. Always pass the COMPLETE markdown checklist (`- [ ]` / `- [x]`), not a diff. The user's docked plan window updates live. No effect when there is no active plan.",
-    "ui_control": "Control the UI and toggle tools on/off. Use this to turn off / turn on / disable / enable individual tools and features: shell (bash), search (web), research, browser, documents, incognito. Open panels (documents library, gallery, email inbox, sessions, notes, memories/brain, skills, settings, cookbook) via `open_panel <name>`. Use `open_email_reply <uid> <folder> reply <body text>` (or structured body) to open an email reply draft document without sending. USE THIS whenever the user says to write/draft a reply or tells you what to say — opening an empty draft or sending immediately is wrong. Body can continue on subsequent lines for multi-line replies. Also switches between chat/agent modes, changes the current model, and applies/creates themes.",
+    "ui_control": "Control the UI and toggle tools on/off. Use this to turn off / turn on / disable / enable individual tools and features: shell (bash), search (web), research, browser, documents, incognito. Open panels (documents library, gallery, email inbox, sessions, notes, memories/brain, skills, settings, forge (formerly cookbook — both are accepted)) via `open_panel <name>`. Use `open_email_reply <uid> <folder> reply <body text>` (or structured body) to open an email reply draft document without sending. USE THIS whenever the user says to write/draft a reply or tells you what to say — opening an empty draft or sending immediately is wrong. Body can continue on subsequent lines for multi-line replies. Also switches between chat/agent modes, changes the current model, and applies/creates themes.",
     "list_email_accounts": "List configured email accounts and default status. Use before reading or sending mail when the user mentions Gmail, work mail, custom domain mail, another mailbox, or asks to compare/check multiple inboxes.",
     "list_emails": "List emails for a folder/account, newest first, including read messages by default. Shows subject, sender, date, UID, account, and AI summary. Check inbox, find emails needing replies. Supports account from list_email_accounts for Gmail/work/custom mailboxes. For last/latest/newest email, use max_results=1 and unread_only=false.",
     "read_email": "Read the full content of a specific email by UID or Message-ID. View email body, check details. Supports account from list_email_accounts when the UID belongs to a non-default mailbox.",
@@ -122,24 +122,43 @@ BUILTIN_TOOL_DESCRIPTIONS: Dict[str, str] = {
     "delete_email": "Delete an email — moves to Trash by default, or expunges permanently with permanent=true.",
     "mark_email_read": "Mark an email as read or unread by toggling the \\Seen flag.",
     "bulk_email": "Perform one action on many emails at once. Use for delete all those, archive these, mark all read, move spam to junk. Takes explicit UIDs from list_emails or all_unread=true. Always pass account for Gmail/work/custom mailbox results.",
+    # `P17-06`. THESE FIVE WERE IN `TOOL_TAGS` AND ANNOUNCED NOWHERE THE MODEL
+    # COULD SEE THEM. They are dispatchable (`BUILTIN_EMAIL_TOOLS` routes them
+    # to `mcp__email__*`), served with full descriptions by
+    # `mcp_servers/email_server.py`, and classified in `TOOL_CAPABILITIES` — but
+    # they have no `FUNCTION_TOOL_SCHEMAS` entry (deliberately: fenced-channel
+    # only), they were in no keyword hint and no `_DOMAIN_TOOL_MAP` domain, the
+    # system prompt never names them, and built-in servers are skipped from
+    # `get_tool_descriptions_for_prompt` — so the one register that could have
+    # surfaced them in agent mode is this one, and it did not. `send_email`'s
+    # own schema meanwhile tells the model *"for normal assistant-written mail
+    # prefer draft_email so the user reviews it first"*, which is `B66` exactly:
+    # the prompt ordering a tool nothing announces. Here the ordered tool is the
+    # review-first one and the reachable one sends immediately, so the cost of
+    # the gap was borne on the side that matters.
+    "draft_email": "Write an email WITHOUT sending it — opens a compose draft in the editor for the user to review, edit and send. This is the default way to write a new email on the user's behalf; only use send_email when they say to send it now.",
+    "draft_email_reply": "Write a reply to an existing email WITHOUT sending it — opens a threaded compose draft (In-Reply-To/References set) for the user to review. Use for 'draft a reply', 'write a response'; reply_to_email sends immediately and is for 'send the reply now'.",
+    "ai_draft_email_reply": "Generate a reply to an email using the user's configured writing style (Settings > Email) and open it as a draft for review. Use when asked to 'draft a reply in my voice' or to answer a message without dictating the wording.",
+    "search_emails": "Search mail by free text across sender, subject and body, walking Inbox, Sent and Archive so older threads are findable. Use for 'find the email about X', 'what did they say about Y'; list_emails only pages one folder newest-first.",
+    "download_attachment": "Download an email attachment to local disk and return its path, so it can then be opened with read_file. Use when the user asks about a file that arrived by email.",
     "resolve_contact": "Look up a contact's email address by name. Searches CardDAV address book and sent email history. Use when the user says 'message [name]', 'email [name]', or 'send to [name]' without an email address.",
     "manage_contact": "Save / update / delete / list address-book contacts (CardDAV). Use for info about ANOTHER person — name, email, phone, postal address. Args: action=list|add|update|delete, name, email, phones, address, uid (from list). For 'save this for <person>' / address pastes / phone numbers next to a name, this is the right tool — NOT manage_memory. Do NOT use for facts about the USER ('my name is X'); those are manage_memory.",
     "manage_notes": "Create and manage notes and checklists (Google Keep-style). ALWAYS use this for note/todo/checklist/reminder creation — NEVER hit /api/notes via app_api. Accepts natural-language `due_date` like 'tomorrow at 9am' or '11pm today' (parsed in the USER'S timezone). The due_date IS the reminder — it fires a notification at that time, so do NOT also create a calendar event for the same reminder. Set colors, labels, pin, archive. Do NOT use manage_memory for note content.",
     "manage_calendar": "Calendar event management: list, create, update, delete. Each event can carry a tag/category (event_type — work/personal/health/travel/meal/social/admin/other) and importance (low/normal/high/critical). Resolve today/tomorrow using the Current date and time context, then use ISO datetimes in the user's local wall time; supports all-day events. Use rrule only for explicit recurrence; for update_event pass rrule='' to remove repeats. For event reminders/alarms, pass reminder_minutes; this creates the Notes reminder, so do not also call manage_notes for the same reminder.",
     "download_model": "Download a HuggingFace model to a local or remote server. Specify repo_id (e.g. 'Qwen/Qwen3-8B'), optional server host, and optional include filter for specific files.",
     "serve_model": "Start serving a model with vLLM, SGLang, llama.cpp, Ollama, or Diffusers. cmd MUST start with the binary directly — e.g. `vllm serve /mnt/HADES/models/Qwen3.5-397B-A17B-AWQ --port 8003 --tensor-parallel-size 8 …`. NEVER prefix with `cd …`, `source …`, or chain with `&&`/`||` — those get rejected by the validator. The venv activation (env_prefix) and CUDA env are added automatically from the target host's saved settings. For image/inpainting/diffusion use python3 scripts/diffusion_server.py --model <repo> --port 8100. After launch, call list_served_models for readiness/errors and retry suggestions. If serve_model fails with 'Invalid characters in cmd', simplify to the bare binary + args.",
-    "list_served_models": "List currently running model servers in the Cookbook — shows status (loading, ready, idle, error), model name, port, throughput, and serve failure diagnosis/retry suggestions. Use when the user asks 'what's running', 'show my cookbook', 'which models are up', 'what's serving'.",
-    "stop_served_model": "Stop a running model server in the Cookbook by session ID or model name. Use when the user says 'kill my cookbook', 'stop the model', 'kill the serve', 'shut down vLLM', 'cancel the running model'.",
+    "list_served_models": "List currently running model servers in the Forge — shows status (loading, ready, idle, error), model name, port, throughput, and serve failure diagnosis/retry suggestions. Use when the user asks 'what's running', 'show my forge', 'show my cookbook', 'which models are up', 'what's serving'.",
+    "stop_served_model": "Stop a running model server in the Forge by session ID or model name. Use when the user says 'kill my forge', 'kill my cookbook', 'stop the model', 'kill the serve', 'shut down vLLM', 'cancel the running model'.",
     "tail_serve_output": "Read the actual tmux stderr/traceback of a cookbook serve/download task. Use to debug WHY a task is `crashed`/`error` (compute_89 nvcc mismatch, OOM, missing kernels, wrong attention backend, etc.) so you can call serve_model with adjusted flags. Pass session_id from list_served_models; tail defaults to 300, bump if the error references 'see root cause above'.",
-    "list_downloads": "List in-progress HuggingFace model downloads in the Cookbook. Shows model name, phase, percent, session ID. Use for 'what's downloading', 'show my downloads', 'check download progress'.",
+    "list_downloads": "List in-progress HuggingFace model downloads in the Forge. Shows model name, phase, percent, session ID. Use for 'what's downloading', 'show my downloads', 'check download progress'.",
     "cancel_download": "Cancel an in-progress model download by tmux session ID. Use for 'cancel the download', 'stop downloading X', 'kill the download'. Call list_downloads first to get the session_id.",
     "search_hf_models": "Search HuggingFace for models matching a query (e.g. 'qwen 8B', 'flux', 'llama-3 instruct'). Returns ranked repo IDs with sizes and download counts. Use for 'find a model', 'search huggingface for X', 'what models are there for Y'.",
-    "list_cached_models": "List models already cached on disk locally or on a remote host. Accepts friendly Cookbook server names like workstation. Use for 'what models do I have', 'show cached models', 'is X downloaded', 'list my models'. Avoids re-downloading.",
-    "list_serve_presets": "List saved Cookbook serve presets (templates with model+host+port+cmd). Call this BEFORE raw serve_model when the user asks to launch a known model manually.",
-    "serve_preset": "Launch a saved Cookbook serve preset by name. Reuses the exact tmux command + host the user already saved. Use for 'run stable diffusion 3.5', 'serve vllm-qwen', 'start the inpaint model' — preset-name matches the user's UI labels.",
-    "adopt_served_model": "Register an existing tmux model server (one started manually or outside the cookbook flow) into Cookbook tracking AND add it as a chat endpoint. Use when the user (or a previous turn) launched something via ssh+tmux and now wants it visible in the UI, stoppable via stop_served_model, and usable in the model picker.",
+    "list_cached_models": "List models already cached on disk locally or on a remote host. Accepts friendly Forge server names like workstation. Use for 'what models do I have', 'show cached models', 'is X downloaded', 'list my models'. Avoids re-downloading.",
+    "list_serve_presets": "List saved Forge serve presets (templates with model+host+port+cmd). Call this BEFORE raw serve_model when the user asks to launch a known model manually.",
+    "serve_preset": "Launch a saved Forge serve preset by name. Reuses the exact tmux command + host the user already saved. Use for 'run stable diffusion 3.5', 'serve vllm-qwen', 'start the inpaint model' — preset-name matches the user's UI labels.",
+    "adopt_served_model": "Register an existing tmux model server (one started manually or outside the cookbook flow) into Forge tracking AND add it as a chat endpoint. Use when the user (or a previous turn) launched something via ssh+tmux and now wants it visible in the UI, stoppable via stop_served_model, and usable in the model picker.",
     "list_cookbook_servers": "List the cookbook's configured servers (remote GPU boxes + local) and which is the current default. Use this BEFORE download_model/serve_model when the user didn't name a host — to decide where to run, or to ask the user which server when ambiguous. Downloads/serves default to the cookbook's selected server, NOT localhost.",
-    "app_api": "Generic loopback to allowed Pantheon internal endpoints. Use this when the user wants something the UI can do but there's no named tool for it. Covers calendar, gallery, library/documents, memory, notes, tasks, settings, research, compare, cookbook GPUs/state — allowed UI buttons hit /api/* endpoints and you can hit them too. Sensitive auth/user/admin/shell paths and host-control Cookbook mutation routes are blocked; do NOT use app_api for shell commands, package installs, engine rebuilds, or PID signalling. Use named command tooling for shell commands. action='endpoints' with filter=<keyword> lists available endpoints. action='call' takes method+path+body. Hits same routes the UI uses — auth flows free. NOTE: themes are NOT an API endpoint — use the ui_control tool (create_theme / set_theme), not app_api. SESSIONS/CHATS: do NOT use app_api for these — GET /api/sessions returns EMPTY for tool calls (it's owner-filtered and tool calls authenticate as a different identity). EMAIL ACCOUNTS: do NOT use /api/email/accounts via app_api; use list_email_accounts, list_emails, and read_email instead. To list/rename/archive/delete/fork chats use the list_sessions and manage_session tools instead.",
+    "app_api": "Generic loopback to allowed Pantheon internal endpoints. Use this when the user wants something the UI can do but there's no named tool for it. Covers calendar, gallery, library/documents, memory, notes, tasks, settings, research, compare, cookbook GPUs/state — allowed UI buttons hit /api/* endpoints and you can hit them too. Sensitive auth/user/admin/shell paths and host-control Forge mutation routes are blocked; do NOT use app_api for shell commands, package installs, engine rebuilds, or PID signalling. Use named command tooling for shell commands. action='endpoints' with filter=<keyword> lists available endpoints. action='call' takes method+path+body. Hits same routes the UI uses — auth flows free. NOTE: themes are NOT an API endpoint — use the ui_control tool (create_theme / set_theme), not app_api. SESSIONS/CHATS: do NOT use app_api for these — GET /api/sessions returns EMPTY for tool calls (it's owner-filtered and tool calls authenticate as a different identity). EMAIL ACCOUNTS: do NOT use /api/email/accounts via app_api; use list_email_accounts, list_emails, and read_email instead. To list/rename/archive/delete/fork chats use the list_sessions and manage_session tools instead.",
     "edit_image": "Edit an image in the gallery: upscale (increase resolution), remove background (rembg), inpaint (fill selected area), or harmonize (blend edits). Specify image ID and action.",
     "trigger_research": "Start a deep research job on any topic — appears in the Deep Research sidebar, streams progress, produces a detailed report. Use for 'research X', 'look into Y', 'do deep research on Z', 'investigate'. NOT a scheduled task — it runs now and surfaces in the sidebar.",
     "manage_bg_jobs": "Inspect and control detached background `bash` jobs (the ones started with a `#!bg` marker). action='list' shows this chat's jobs (id/status/age/command); action='output' returns a job's captured output so far (check on a long-running job, or re-read a finished one); action='kill' stops a runaway job by id. Use for 'is the background job done', 'check on that job', 'show the build output', 'kill the background job', 'stop the bg task'. output/kill need a job_id from list.",
@@ -357,7 +376,19 @@ class ToolIndex:
         # whole email toolset and crowding out the relevant tools — the model then
         # believed it had only email tools and refused web/other tasks (#1707).
         frozenset({"email", "emails", "mail", "mails", "gmail", "googlemail", "message", "messages", "send", "reply", "replies", "inbox", "unread"}):
-            {"list_email_accounts", "list_emails", "read_email", "scan_email_unsubscribes", "unsubscribe_email", "send_email", "reply_to_email", "bulk_email", "delete_email", "archive_email", "mark_email_read", "resolve_contact", "ui_control"},
+            # `P17-06`. This set calls itself "the whole email toolset" and was
+            # missing five of the eighteen — the four draft/search tools and
+            # `download_attachment` — which are the ones with no function
+            # schema, so the keyword path was their only route into a *selected*
+            # tool set. Leaving them out meant that on the no-embeddings path
+            # the agent could `send_email` and could not `draft_email`, while
+            # `send_email`'s own description told it to prefer the draft.
+            {"list_email_accounts", "list_emails", "read_email", "search_emails",
+             "scan_email_unsubscribes", "unsubscribe_email", "send_email",
+             "draft_email", "draft_email_reply", "ai_draft_email_reply",
+             "reply_to_email", "bulk_email", "delete_email", "archive_email",
+             "mark_email_read", "download_attachment", "resolve_contact",
+             "ui_control"},
         frozenset({"calendar", "event", "meeting", "schedule", "appointment"}):
             {"manage_calendar"},
         # Detached background `bash` jobs (#!bg): check on / read output / kill.
@@ -470,7 +501,7 @@ class ToolIndex:
                    "make it light", "make the ui", "switch theme", "change theme",
                    "dark mode", "light mode", "toggle"}):
             {"ui_control"},
-        # Cookbook / model serving intent — user says "kill cookbook",
+        # Forge / model serving intent — user says "kill cookbook",
         # "stop the model", "what's running", etc.
         frozenset({"cookbook", "kill cookbook", "stop cookbook",
                    "stop the model", "kill the model", "kill my model",
@@ -479,7 +510,7 @@ class ToolIndex:
                    "shut down vllm", "shutdown vllm", "stop vllm",
                    "stop serving", "kill serve", "cancel serve"}):
             {"list_served_models", "stop_served_model"},
-        # Cookbook serve / launch / preset / server selection
+        # Forge serve / launch / preset / server selection
         frozenset({"serve", "launch", "spin up", "start the model", "run the model",
                    "debug launch", "launch command", "drivers", "driver",
                    "preset", "presets", "which server", "what servers",
@@ -487,7 +518,7 @@ class ToolIndex:
                    "on the server", "on the gpu"}):
             {"serve_preset", "serve_model", "list_serve_presets",
              "list_cookbook_servers", "list_cached_models"},
-        # Cookbook downloads
+        # Forge downloads
         frozenset({"download", "downloading", "downloads",
                    "cancel download", "stop download", "kill download",
                    "what's downloading", "download progress", "pull model", "grab model"}):
@@ -528,13 +559,50 @@ class ToolIndex:
         base = set(always_include or ALWAYS_AVAILABLE)
         retrieved = self.retrieve(query, k=k)
         base.update(retrieved)
+        return self.select_without_embeddings(query, base)
+
+    @staticmethod
+    def select_without_embeddings(
+        query: str, base: Optional[Set[str]] = None
+    ) -> Set[str]:
+        """The deterministic half of tool selection: keywords, structure, steering.
+
+        `P17-14`. **This used to be written twice and the two copies had
+        drifted.** The body below lived inline in `get_tools_for_query`, and
+        `src/agent_loop.py` carried a second, shorter copy for the case where
+        the embedding backend is unavailable or slow — the path a person
+        actually meets, since it is the one that runs when ChromaDB is down.
+        That copy matched with `kw in ql` rather than on word boundaries, and
+        it ran none of the structural signals at all. Measured on this tree
+        before the change:
+
+          * `"this document is unreadable"` selected **16** tools there against
+            **3** here — the whole email family, because `"unread"` is a
+            substring of `"unreadable"`. That is issue #1707 exactly, whose fix
+            is recorded in `_KEYWORD_HINTS` and was applied to one of the two
+            call sites (`Law 13`).
+          * `"visit https://example.com and tell me the title"` selected **3**
+            tools there against **5** here, because `_WEB_RE` never ran — so
+            the fallback path could not fetch a URL the user had pasted.
+
+        Over-selection and under-selection in the same function, in opposite
+        directions, which is what makes this a `Law 14` row rather than a tuning
+        one: the fix is not to correct the copy, it is to stop there being one.
+        `get_tools_for_query` is now this function plus retrieval, and the
+        agent-loop fallback is this function with no retrieval.
+
+        Takes and returns a plain set so it can be scored without a collection,
+        an embedding lane or a ChromaDB service — `.pantheon/retrieval_eval.py`
+        `--kind tools` calls exactly this.
+        """
+        base = set(base if base is not None else ALWAYS_AVAILABLE)
         # Keyword-based force-include for common intents. Match on word
         # boundaries, not raw substrings, so short hints like "fix", "line",
         # "serve", "reply" or "unread" don't fire inside unrelated words
         # ("prefix", "deadline"/"online", "observe"/"reserve", "replying",
         # "unreadable"). Same word-boundary matching used in topic_analyzer.
         ql = query.lower()
-        for keywords, tools in self._KEYWORD_HINTS.items():
+        for keywords, tools in ToolIndex._KEYWORD_HINTS.items():
             if any(re.search(rf"\b{re.escape(kw)}\b", ql) for kw in keywords):
                 base.update(tools)
         # Structural scheduling-intent detection — typo-resilient (the literal
@@ -542,12 +610,12 @@ class ToolIndex:
         # daily/nightly/etc., or a clock time like "at 7:30 am" / "7am", which
         # all signal a recurring/scheduled task. Force-include manage_tasks so
         # the agent can actually create the cron job instead of fumbling.
-        if self._SCHEDULE_RE.search(ql):
+        if ToolIndex._SCHEDULE_RE.search(ql):
             base.add("manage_tasks")
         # URL/site requests need web tools even when embedding retrieval is
         # stubbed/unavailable. Keep this structural, not always-on, so trivial
         # prompts do not drag web schemas into the agent context.
-        if self._WEB_RE.search(query):
+        if ToolIndex._WEB_RE.search(query):
             base.update({"web_search", "web_fetch"})
         # Hard steering: when the query is a clear "save info about a specific
         # person" pattern (address paste + name, phone next to a name, etc.),

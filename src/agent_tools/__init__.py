@@ -112,7 +112,7 @@ TOOL_TAGS = {"bash", "python", "web_search", "web_fetch", "read_file", "write_fi
              # Email tool names come from BUILTIN_EMAIL_TOOLS (unioned below)
              # so the fence regex, dispatch, and non-admin blocklist all cover
              # the same set.
-             # Cookbook tools (LLM serving + downloads). Without these
+             # Forge tools (LLM serving + downloads). Without these
              # entries, native function calls to e.g. list_served_models
              # are rejected as "Unknown function call" before reaching
              # the dispatcher — silent failure for the whole cookbook

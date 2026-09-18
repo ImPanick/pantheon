@@ -3,7 +3,7 @@
 //
 // Several primary controls in Pantheon are authored as click-only <div>s
 // (most notably the whole sidebar navigation: New Chat, Search, Brain,
-// Calendar, Compare, Cookbook, Deep Research, Gallery, Library, Notes,
+// Calendar, Compare, Forge, Deep Research, Gallery, Library, Notes,
 // Tasks, Theme, plus the account row). <div>s are not in the tab order and
 // are not announced as buttons, so keyboard and screen-reader users cannot
 // reach or operate them.

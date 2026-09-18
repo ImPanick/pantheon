@@ -6,12 +6,13 @@ from src.optional_deps import (
     patch_realesrgan_torchvision_compat,
     prepare_optional_dependency_import,
 )
+from tests.helpers.fresh_import import drop_for_fresh_import
 
 
 def test_realesrgan_patch_restores_removed_functional_tensor_module(monkeypatch):
     for name in list(sys.modules):
         if name.startswith("torchvision"):
-            monkeypatch.delitem(sys.modules, name, raising=False)
+            drop_for_fresh_import(monkeypatch, name)
 
     sentinel = object()
     torchvision = types.ModuleType("torchvision")

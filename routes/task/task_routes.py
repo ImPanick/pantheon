@@ -38,7 +38,7 @@ def _maybe_cascade_calendar_event(task) -> None:
 
       2. FALLBACK — for tasks created before the marker was wired up
          (or when the PATCH to add the marker failed silently), scan
-         the Cookbook calendar for events whose summary equals the
+         the Forge calendar for events whose summary equals the
          task name and delete the matches.
 
     Best-effort throughout: errors are logged but never block the task
@@ -84,13 +84,13 @@ def _maybe_cascade_calendar_event(task) -> None:
         _try_delete(event_uid)
         return
 
-    # Strategy 2: scan the Cookbook calendar for matching summaries.
+    # Strategy 2: scan the Forge calendar for matching summaries.
     # Only runs for tasks missing the marker (old tasks or PATCH failures).
     if not task.name:
         return
     try:
         with httpx.Client(timeout=10) as client:
-            # Find the Cookbook calendar.
+            # Find the Forge calendar.
             cal_r = client.get(f"{internal_api_base()}/api/calendar/calendars", headers=headers)
             if cal_r.status_code >= 400:
                 return
@@ -436,7 +436,7 @@ def setup_task_routes(task_scheduler) -> APIRouter:
         return {"ok": True, "opened": True, "enabled": bool(prefs.get("tasks_enabled")), "resumed": resumed}
 
     # Actions that execute shell/SSH commands or cross into admin-only
-    # Cookbook serving surfaces — restricted to admins.
+    # Forge serving surfaces — restricted to admins.
     # Non-admin users cannot create tasks with these action types via the
     # API. See review CRIT-C.
     _ADMIN_ONLY_ACTIONS = ADMIN_ONLY_TASK_ACTIONS
@@ -509,6 +509,16 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                 croniter(req.cron_expression)
             except Exception:
                 raise HTTPException(400, "Invalid cron expression")
+            # `P15-08`. Syntax was the ONLY thing checked here, against a
+            # free-text field: `* * * * *` validated clean — 1,440 runs a day,
+            # each able to open a mailbox, walk the search providers and call a
+            # model. The floor and its sentence live in `task_scheduler` so this
+            # route and the update route below cannot drift apart about what is
+            # allowed (`Law 13`).
+            from src.task_scheduler import cron_floor_problem
+            too_fast = cron_floor_problem(req.cron_expression)
+            if too_fast:
+                raise HTTPException(400, too_fast)
         if req.trigger_type == "event" and not req.trigger_event:
             raise HTTPException(400, "Event name is required for event-triggered tasks")
         if req.trigger_type == "event" and not req.trigger_count:
@@ -759,6 +769,12 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                         croniter(req.cron_expression)
                     except Exception:
                         raise HTTPException(400, "Invalid cron expression")
+                    # `P15-08`. The same floor as create. An edit was the way
+                    # round it: create hourly, then PUT `* * * * *`.
+                    from src.task_scheduler import cron_floor_problem
+                    too_fast = cron_floor_problem(req.cron_expression)
+                    if too_fast:
+                        raise HTTPException(400, too_fast)
                 task.cron_expression = req.cron_expression or None
 
             # Recompute next_run if schedule changed

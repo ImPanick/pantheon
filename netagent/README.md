@@ -23,6 +23,7 @@ preference.
 | `GET /whoami` | the hostname, and every address this host answers on, classified |
 | `GET /networks` | the private `/24`s it sits on, ready to paste into Settings → Networks |
 | `GET /neighbours` | the ARP/neighbour table — devices this machine has actually talked to |
+| `GET /discover` | devices that answer mDNS/SSDP on this segment — **off unless you turn it on** |
 | `GET /reach?target=…` | whether something is there, and which ports answered |
 | `GET /dns?target=…` | reverse lookup of an address, forward lookup of an allowed name |
 
@@ -32,6 +33,37 @@ a quiet device will not appear. That is deliberate: turning "look at my network"
 into a sweep is how a convenience becomes something your IDS reports. Its rows
 are filtered to the allowlist, and the answer says how many were withheld, so a
 short list reads as a narrow allowlist rather than an empty network.
+
+`/discover` **is the one route that sends**, and it is off until you start the
+agent with `--discover`. Everything else here reads a file, a kernel table or a
+socket's own source address; this one puts an mDNS query and an SSDP `M-SEARCH`
+onto the segment, and the whole segment hears it. A self-hosted workspace that
+starts broadcasting because it was installed is a surprise, and on a managed
+network it is a surprise somebody's IDS writes down — so it is a switch you
+throw, not a default (`P17-10`, `D-2026-09-18-03`). Switched off, the route
+answers **403** with a sentence saying how to turn it on, rather than `200` with
+an empty list: "your segment is quiet" and "you never enabled this" are different
+answers and must not look alike.
+
+Three things about it that do not move:
+
+* **It takes no target.** The two multicast groups are constants in
+  `discovery.py` and every send is checked against them, so there is no
+  parameter — on either side of the wire — through which an address can arrive.
+  *"Discover 169.254.169.254"* has nowhere to be put.
+* **Its packets cannot leave this segment.** Every socket sets
+  `IP_MULTICAST_TTL = 1`; a router decrements it to zero.
+* **SSDP's `LOCATION:` header is reported and never fetched.** Following it would
+  be an HTTP request, from the process that has your LAN, to an address chosen by
+  whatever answered. The header is data; the fetch would be the hole.
+
+Answers are filtered to the allowlist and the count of what was withheld is
+reported beside them — a broadcast cannot be gated the way a target can, so the
+honest shape is to gate the answers and say so. **DHCP leases are deliberately
+not here:** they belong to your router, reading them means credentials for a
+per-vendor undocumented API, and that is an integration rather than an
+observation. What the router volunteers over SSDP is on the segment and is
+reported; we do not log in to anything.
 
 `/dns` is gated like `/reach` and for a reason worth stating: a **forward** lookup
 is an outbound channel. Resolving `<secret>.attacker.example.com` puts the secret
@@ -55,6 +87,10 @@ the widening move does not exist on its side of the wire.
 ```
 python -m netagent.server --allow 192.168.1.0/24
 ```
+
+Add `--discover` if you want `/discover` to answer; it is off otherwise, and
+`--discover-wait SECONDS` sets how long it listens per protocol (default 2.5,
+capped at 6).
 
 Repeatable. `--allow-host nas.local` names a single host. Also read from
 `PANTHEON_NETAGENT_ALLOW` and `PANTHEON_NETAGENT_ALLOW_HOSTS`; the command line
@@ -145,6 +181,7 @@ worth stopping to read.
 | `PANTHEON_NETAGENT_STATE` | `~/.pantheon-netagent` | where the token hash is kept |
 | `PANTHEON_NETAGENT_ALLOW` | *(empty — refuses everything)* | networks it may be asked about |
 | `PANTHEON_NETAGENT_ALLOW_HOSTS` | *(empty)* | single names it may be asked about |
+| `PANTHEON_NETAGENT_DISCOVERY` | *(empty — off)* | `1`, `true` or `yes` answers `/discover`; same three words `--allow-exec` takes |
 
 ## If the token is lost
 

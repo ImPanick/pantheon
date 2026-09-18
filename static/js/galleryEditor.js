@@ -3720,15 +3720,15 @@ export async function exportToGallery() {
   }
 }
 
-// Open the Cookbook modal scoped to img2img-capable models so the user
-// can serve one in a few clicks. Falls back to plain Cookbook if the
+// Open the Forge modal scoped to img2img-capable models so the user
+// can serve one in a few clicks. Falls back to plain Forge if the
 // filter hook isn't available.
-// Open Cookbook on its Dependencies tab and highlight a specific
+// Open Forge on its Dependencies tab and highlight a specific
 // package row. Used for "rembg not installed" → install path.
 function _openCookbookForDependency(pkgName) {
   // Use cookbookModule.open({ tab: 'Dependencies' }) so the intent is
-  // honored after Cookbook's async render. The old path clicked the
-  // sidebar button + polled for the modal, but Cookbook's _renderRecipes
+  // honored after Forge's async render. The old path clicked the
+  // sidebar button + polled for the modal, but Forge's _renderRecipes
   // runs AFTER an awaited _syncFromServer, so depsTab.click() often
   // raced and the user landed on Download.
   const cookbook = window.cookbookModule;
@@ -3737,7 +3737,7 @@ function _openCookbookForDependency(pkgName) {
     // on window for some reason.
     const btn = document.getElementById('tool-cookbook-btn');
     if (btn) btn.click();
-    else if (uiModule) uiModule.showToast(`Open Cookbook to install ${pkgName}`, 6000);
+    else if (uiModule) uiModule.showToast(`Open Forge to install ${pkgName}`, 6000);
     return;
   }
   cookbook.open({ tab: 'Dependencies' });
@@ -3820,7 +3820,7 @@ function _openCookbookForImg2img() {
       const cb = document.getElementById('cookbook-modal');
       const serveTab = cb ? cb.querySelector('.cookbook-tab[data-backend="Serve"]') : null;
       // Retry until BOTH the modal mounts AND its tab bar has rendered.
-      // Cookbook builds its body html after the modal opens, so we need
+      // Forge builds its body html after the modal opens, so we need
       // to wait a bit longer than just "modal exists".
       if (!cb || !serveTab) {
         if (attempt < 40) return setTimeout(() => tryServe(attempt + 1), 80);
@@ -3845,7 +3845,7 @@ function _openCookbookForImg2img() {
     tryServe();
     return;
   }
-  if (uiModule) uiModule.showToast('Open Cookbook from the sidebar to serve an img2img model', 6000);
+  if (uiModule) uiModule.showToast('Open Forge from the sidebar to serve an img2img model', 6000);
 }
 
 export function downloadPNG() {

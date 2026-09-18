@@ -1,0 +1,306 @@
+{
+  "kind": "tools",
+  "provenance": "fixture",
+  "note": "P17-14. Probes for the TOOL selector, not for memory retrieval. Provenance is `fixture` and the report says so: these queries were written here, not typed by an operator, so the numbers describe the selector's behaviour on the shapes we chose. What keeps them from being pure imagination is that every probe cites something already recorded in this tree — issue #1707's own words in `_KEYWORD_HINTS`, the substring defects listed in tests/test_tool_index_keyword_boundaries.py's docstring, or a tool's called/offered counts in .pantheon/GAP-ANALYSIS.md. `expect` is what must be OFFERED (a tool not offered cannot be called); `reject` is what must not be, which is the half the offered-never-called column is about.",
+  "probes": [
+    {
+      "query": "visit https://example.com and tell me the title",
+      "expect": [
+        "web_fetch",
+        "web_search"
+      ],
+      "reject": [
+        "send_email",
+        "reply_to_email",
+        "list_emails"
+      ],
+      "why": "#1707, quoted in _KEYWORD_HINTS: 'tell' fired the whole email toolset and crowded out the relevant tools, so the model believed it had only email tools and refused the web task."
+    },
+    {
+      "query": "open this link and summarise the page for me",
+      "expect": [
+        "web_fetch"
+      ],
+      "reject": [
+        "list_emails",
+        "manage_tasks"
+      ],
+      "why": "web_fetch is 3 of 3 called on the deployment (GAP-ANALYSIS.md #2); a pasted link is the shape that reaches it."
+    },
+    {
+      "query": "what is the current price of a second-hand 3090",
+      "expect": [
+        "web_search"
+      ],
+      "reject": [
+        "manage_calendar"
+      ],
+      "why": "web_search is offered 37 of 39 runs and called 0 (GAP-ANALYSIS.md #3). This is the shape it is FOR — if it does not score here the problem is not over-selection."
+    },
+    {
+      "query": "this document is unreadable",
+      "expect": [],
+      "reject": [
+        "send_email",
+        "reply_to_email",
+        "list_emails",
+        "bulk_email",
+        "delete_email"
+      ],
+      "why": "'unread' is a substring of 'unreadable'. tests/test_tool_index_keyword_boundaries.py names this one; agent_loop.py's copy of the selector still matched it until P17-14."
+    },
+    {
+      "query": "i am replying to your github comment",
+      "expect": [],
+      "reject": [
+        "send_email",
+        "reply_to_email",
+        "archive_email"
+      ],
+      "why": "'reply' inside 'replying'. Same test docstring."
+    },
+    {
+      "query": "prefix the output with a label",
+      "expect": [],
+      "reject": [
+        "edit_document",
+        "update_document",
+        "create_document"
+      ],
+      "why": "'fix' inside 'prefix'. Same test docstring."
+    },
+    {
+      "query": "the deadline is online already",
+      "expect": [],
+      "reject": [
+        "edit_document",
+        "update_document"
+      ],
+      "why": "'line' inside 'deadline' and 'online'. Same test docstring."
+    },
+    {
+      "query": "please observe the reserve levels",
+      "expect": [],
+      "reject": [
+        "serve_model",
+        "serve_preset",
+        "list_serve_presets"
+      ],
+      "why": "'serve' inside 'observe' and 'reserve'. Same test docstring."
+    },
+    {
+      "query": "concurrent requests are timing out",
+      "expect": [],
+      "reject": [
+        "web_search",
+        "web_fetch"
+      ],
+      "why": "'current' inside 'concurrent'. Found by P17-14 while measuring the two copies against each other; it is not in the boundary test's list."
+    },
+    {
+      "query": "write a poem about the sea",
+      "expect": [
+        "create_document"
+      ],
+      "reject": [
+        "list_emails",
+        "bash"
+      ],
+      "why": "create_document is the most-called tool on the deployment — 19 calls — and was in its run's recorded offer once (GAP-ANALYSIS.md #1/#3). This is the shape that should reach it."
+    },
+    {
+      "query": "draft an essay on the history of the fork",
+      "expect": [
+        "create_document"
+      ],
+      "reject": [
+        "send_email"
+      ],
+      "why": "Same tool, second shape. One probe per tool measures a keyword, not a selector."
+    },
+    {
+      "query": "fix the typo in the second paragraph of the document",
+      "expect": [
+        "edit_document"
+      ],
+      "reject": [
+        "serve_model"
+      ],
+      "why": "The edit path, which shares a hint set with creation."
+    },
+    {
+      "query": "reply to this email and cc the finance team",
+      "expect": [
+        "reply_to_email",
+        "send_email",
+        "list_emails"
+      ],
+      "reject": [
+        "serve_model"
+      ],
+      "why": "The email family is correct here. A corpus of only rejections measures a selector that returns nothing."
+    },
+    {
+      "query": "summarise my inbox every morning at 7am",
+      "expect": [
+        "manage_tasks"
+      ],
+      "reject": [
+        "bash"
+      ],
+      "why": "The recurring-schedule shape _SCHEDULE_RE exists for, with a clock time as well as 'every <word>'."
+    },
+    {
+      "query": "back up the database every dya at 3am",
+      "expect": [
+        "manage_tasks"
+      ],
+      "reject": [
+        "send_email"
+      ],
+      "why": "_SCHEDULE_RE exists because the literal keyword 'every day' misses the typo 'every dya'. No keyword hint matches this query, so it is the only probe that can tell the structural signal from the hint list."
+    },
+    {
+      "query": "check every file in the repo for a licence header",
+      "expect": [],
+      "reject": [
+        "manage_tasks"
+      ],
+      "why": "manage_tasks is offered 17 of 39 runs and called 0 (GAP-ANALYSIS.md #3). _SCHEDULE_RE's `\\bevery\\s+\\w+` fires on 'every file' — a quantifier, not a schedule. Filed as B502; this probe is expected to FAIL until it is fixed, which is what a probe is for."
+    },
+    {
+      "query": "run the tests every time i push a commit",
+      "expect": [],
+      "reject": [
+        "manage_tasks"
+      ],
+      "why": "'every time' is the same over-trigger as 'every file'. B502."
+    },
+    {
+      "query": "add a note to remind me to call the dentist",
+      "expect": [
+        "manage_notes"
+      ],
+      "reject": [
+        "send_email"
+      ],
+      "why": "Notes/reminders, which share vocabulary with tasks and must not collapse into them."
+    },
+    {
+      "query": "put a meeting with sam in my calendar for thursday",
+      "expect": [
+        "manage_calendar"
+      ],
+      "reject": [
+        "bash"
+      ],
+      "why": "Calendar, adjacent to notes and tasks and separately hinted."
+    },
+    {
+      "query": "save this address for alex: 14 mill lane",
+      "expect": [
+        "manage_contact"
+      ],
+      "reject": [
+        "manage_memory"
+      ],
+      "why": "The contact-steering block in select_without_embeddings exists to DISCARD manage_memory here, and that steering lived only in the primary path until P17-14."
+    },
+    {
+      "query": "remember that i prefer metric units",
+      "expect": [
+        "manage_memory"
+      ],
+      "reject": [
+        "manage_contact"
+      ],
+      "why": "The other side of the same steering: a fact about the user is memory, and the discard must not fire."
+    },
+    {
+      "query": "serve qwen3 on the gpu box with vllm",
+      "expect": [
+        "serve_model",
+        "serve_preset",
+        "list_cookbook_servers"
+      ],
+      "reject": [
+        "send_email"
+      ],
+      "why": "Model serving, whose hints are the ones 'observe'/'reserve' fired by accident."
+    },
+    {
+      "query": "what models do i have downloaded already",
+      "expect": [
+        "list_cached_models"
+      ],
+      "reject": [
+        "send_email"
+      ],
+      "why": "Cached models, distinct from serving them."
+    },
+    {
+      "query": "rename the last twelve chats to match their topics",
+      "expect": [
+        "manage_session",
+        "list_sessions"
+      ],
+      "reject": [
+        "app_api"
+      ],
+      "why": "Sessions. The hint set's own comment says app_api is the wrong answer here because /api/sessions is owner-filtered and returns empty for tool calls."
+    },
+    {
+      "query": "turn off shell and switch to chat mode",
+      "expect": [
+        "ui_control"
+      ],
+      "reject": [
+        "bash"
+      ],
+      "why": "UI control. 'shell off' must reach the toggle, not the shell."
+    },
+    {
+      "query": "is that background job finished yet",
+      "expect": [
+        "manage_bg_jobs"
+      ],
+      "reject": [
+        "manage_tasks"
+      ],
+      "why": "manage_bg_jobs was called once on the deployment. A detached bash job and a scheduled task are different things that share the words 'background' and 'job'."
+    },
+    {
+      "query": "change my default model to the local one",
+      "expect": [
+        "manage_settings"
+      ],
+      "reject": [
+        "list_emails"
+      ],
+      "why": "Settings, whose hint set is broad ('change my', 'set my') and therefore the most likely to over-fire."
+    },
+    {
+      "query": "hello",
+      "expect": [],
+      "reject": [
+        "web_search",
+        "web_fetch",
+        "manage_tasks",
+        "send_email",
+        "bash"
+      ],
+      "why": "The floor. A query with no intent must select nothing beyond ALWAYS_AVAILABLE — this is the probe that catches a hint set widened until everything matches."
+    },
+    {
+      "query": "thanks, that worked",
+      "expect": [],
+      "reject": [
+        "web_search",
+        "manage_tasks",
+        "edit_document",
+        "send_email"
+      ],
+      "why": "Second floor probe. 'that worked' contains no hint and a selector that offers eleven tools for it is measuring nothing."
+    }
+  ]
+}

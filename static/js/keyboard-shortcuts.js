@@ -60,7 +60,7 @@ export const KEYBIND_LABELS = {
   focus_input: 'Focus chat input',
   open_calendar: 'Open Calendar',
   open_compare: 'Open Compare',
-  open_cookbook: 'Open Cookbook',
+  open_cookbook: 'Open Forge',
   open_research: 'Open Deep Research',
   open_gallery: 'Open Gallery',
   open_library: 'Open Library',
@@ -156,7 +156,13 @@ export function initKeyboardShortcuts(modules) {
     'settings-modal':         'user-bar-settings',
     'theme-modal':            'tool-theme-btn',
     'tasks-modal':            'tool-tasks-btn',
-    'notes-panel':            'tool-notes-btn',
+    // `P3-20`: the key is the ELEMENT id — `_windowVisible` and the close
+    // branch below both `getElementById` it — and this said `notes-panel`,
+    // which is the modal-registry key notes.js registers under. The pane's
+    // own id is `notes-pane` (static/js/notes.js:1252), so Toggle Window has
+    // never been able to see Notes open: it fell through to "reopen the last
+    // window" with Notes filling the screen.
+    'notes-pane':             'tool-notes-btn',
     'memory-modal':           'tool-memory-btn',
     'doclib-modal':           'tool-library-btn',
     'gallery-modal':          'tool-gallery-btn',

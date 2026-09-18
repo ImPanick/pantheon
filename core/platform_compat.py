@@ -236,7 +236,7 @@ def find_bash() -> Optional[str]:
     """Locate a real ``bash`` interpreter, or None.
 
     On Windows this is typically Git Bash / WSL. Many Pantheon features (the
-    agent ``bash`` tool, background jobs, Cookbook scripts) emit bash syntax, so
+    agent ``bash`` tool, background jobs, Forge scripts) emit bash syntax, so
     when a bash is present we use it and keep full parity with POSIX. Result is
     cached.
     """

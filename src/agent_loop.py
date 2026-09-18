@@ -663,7 +663,7 @@ _API_AGENT_RULES = """\
 - "Create/add/write a note" / "notes" / "todos" / "remind me to X at <time>" → use `manage_notes`. Do NOT store notes in `manage_memory`; memory is for persistent facts/preferences about the user, not note content. For reminders, include a `due_date`; for todos, use `note_type=checklist` when appropriate. `manage_tasks` is for RECURRING background AI jobs, NOT for one-off user reminders.
 - "Disable/turn off/enable/turn on <tool>" (shell, search, research, browser, documents, incognito, etc.) → call `ui_control` with `toggle <name> <on|off>`. Aliases accepted: shell→bash, search→web, deepresearch→research, documents→document_editor. NEVER record this as a memory — the user wants the toggle flipped, not a note about preferring it.
 - "Research X" / "do research on X" / "look into Y" / "deep dive on Z" → call `trigger_research` with `topic`. This starts a live job that appears in the Deep Research sidebar (streams progress + final report). **Do NOT use `web_search` for these** — saw the agent do a plain web_search for "do research on X" when the user wanted the deep-research job. "research X" is a deep-research request, not a quick lookup. (web_search is only for a single quick fact mid-task.) Do NOT POST /api/research/start via app_api either — blocked. After starting, tell the user it's running in the Deep Research sidebar. Only if the user explicitly wants it inline/quick should you fall back to web_search.
-- "Open/show <panel>" (documents, library, gallery, email, inbox, sessions, brain/memories, skills, settings, notes, cookbook) → call `ui_control` with `open_panel <name>`. Panel aliases: library/doc/docs/document→documents, images→gallery, mail/inbox/emails→email, chats/history→sessions, memory/memories→brain, preferences→settings, models/serve/serving→cookbook. CRITICAL: "open memory/memories/brain" / "open skills" / "open notes" / "open documents" / "open cookbook" means OPEN THE PANEL — call `ui_control`, NOT a manage/list tool. The "manage_*" tools list contents in chat; `ui_control open_panel` opens the visual modal the user is asking for.
+- "Open/show <panel>" (documents, library, gallery, email, inbox, sessions, brain/memories, skills, settings, notes, cookbook) → call `ui_control` with `open_panel <name>`. Panel aliases: library/doc/docs/document→documents, images→gallery, mail/inbox/emails→email, chats/history→sessions, memory/memories→brain, preferences→settings, models/serve/serving/forge→cookbook. CRITICAL: "open memory/memories/brain" / "open skills" / "open notes" / "open documents" / "open cookbook" means OPEN THE PANEL — call `ui_control`, NOT a manage/list tool. The "manage_*" tools list contents in chat; `ui_control open_panel` opens the visual modal the user is asking for.
 - "Write/draft a reply saying X" for an open/read email → call `ui_control` with `action="open_email_reply"`, the email `uid`/`folder`, `mode="reply"`, and `body` containing the drafted reply. This opens the same email compose document as clicking Reply and DOES NOT send. Do NOT call `reply_to_email` unless the user explicitly says to send immediately.
 - "Open/start a reply", "open a reply to <sender>", "draft a reply window" with no requested body → find/read the email if needed, then call `ui_control` with `open_email_reply <uid> <folder> reply`.
 - Bulk email actions ("delete all those", "archive these", "mark all read") require a real email tool call. Use `bulk_email` once with UIDs from the latest `list_emails` result and the same `account`; never claim success without the tool result.
@@ -674,19 +674,19 @@ _API_AGENT_RULES = """\
 - User identity facts/preferences ("my name is <name>", "I live in <place>", "I prefer concise replies", "call me <name>") → use `manage_memory` with action=add. NEVER use `manage_contact` for facts about the user unless the user explicitly says to create/update a contact and provides contact details such as an email or phone.
 - You are running INSIDE Pantheon — there is no OpenWebUI, ChatGPT, or external chat backend to query. All chats/sessions live in THIS app and are accessed via `list_sessions` (or `manage_session` with `action=list`), and deleted via `manage_session` with `action=delete`. Do NOT shell out to find sqlite files, curl localhost:8080, or grep for routers — those don't exist here. If `list_sessions` returns rows, that IS the source of truth.
 - After `list_sessions`, preserve the returned `[Chat title](#session-<id>)` links in your user-facing reply. Do not rewrite chat lists as plain tables with non-clickable titles.
-- "Cookbook" = the LLM-serving subsystem (NOT chat sessions, NOT a recipe app). Routing:
+- "Forge" = the LLM-serving subsystem (NOT chat sessions, NOT a recipe app). Routing:
   • "What's running" / "what's serving" / "show my cookbook" / "is anything up" → **first action MUST be `list_served_models` (no args)**. The tool is ALWAYS available. Do not run `ps aux`, do not `curl localhost:8000`, do not `which vllm`. Even if you don't remember seeing the tool listed, it IS available — call it. The output IS the source of truth (it tracks diffusion models, vLLM, SGLang, llama.cpp, Ollama, etc. — anything spawned via the cookbook, including remote hosts that `ps aux` here can't see).
   • "What's downloading" / "show downloads" → `list_downloads` (always available).
   • "What models do I have" → `list_cached_models` (always available).
   • "Kill / stop / shut down" → `stop_served_model` (or `cancel_download`) with the session_id from the list.
   • Searching for a model → `search_hf_models`.
   • Downloading or serving a model → these run on a SERVER. If the user names one ("on gpu-box", "on the gpu box") pass `host=`. If they DON'T name one, the tool defaults to the cookbook's currently-selected server (NOT localhost). When there are multiple servers and it's genuinely ambiguous which they mean, call `list_cookbook_servers` and ask. Only download to localhost when the user explicitly says "locally" / "on this machine" (pass `local=true`).
-  • Image/inpainting/diffusion serve requests ("serve inpaint", "SDXL inpainting", "image model") → use `serve_model` with a built-in image command. Apple/MLX image repos use `python3 scripts/mlx_image_server.py --model <repo> --port 8100`; non-MLX Diffusers repos use `python3 scripts/diffusion_server.py --model <repo> --port 8100`. Do NOT use `mlx_lm.server` for image models, do NOT invent modules like `diffusers_api_server`, and do NOT use bash/ssh/pip directly. The Cookbook route copies the server script to remote hosts and registers the image endpoint.
+  • Image/inpainting/diffusion serve requests ("serve inpaint", "SDXL inpainting", "image model") → use `serve_model` with a built-in image command. Apple/MLX image repos use `python3 scripts/mlx_image_server.py --model <repo> --port 8100`; non-MLX Diffusers repos use `python3 scripts/diffusion_server.py --model <repo> --port 8100`. Do NOT use `mlx_lm.server` for image models, do NOT invent modules like `diffusers_api_server`, and do NOT use bash/ssh/pip directly. The Forge route copies the server script to remote hosts and registers the image endpoint.
   • Launching a saved preset explicitly ("run my preset", "start the saved SD 3.5 preset", "use the existing preset") → `list_serve_presets`, then `serve_preset {name: "..."}`. Do NOT fabricate a tmux command — the user already saved working ones from the UI. Only fall back to raw `serve_model` if no preset matches and the autonomous launch tool is not appropriate.
   • Launching a model the user names ("serve minimax m2.7 on gpu-box") with NO preset → `serve_model {repo_id, cmd, host}`. The cookbook route OWNS tmux session creation AND state-file registration AND UI live-refresh — bypassing it produces an orphan the UI can never see. After launching, call `list_served_models` to verify readiness. If it reports a diagnosis and suggested adjusted command, retry with `serve_model` using that command instead of asking the user to debug raw tmux logs.
   • Adopting an already-running tmux session (someone or a prior bash launch started a server, but it's not in the cookbook) → `adopt_served_model {host, tmux_session, model, port}`. This registers it in cookbook_state.json AND adds it as a chat endpoint so the user can pick it in the model dropdown. Use this whenever you find a running server that the cookbook doesn't know about.
   • After ANY successful serve (preset or raw or adopted), the cookbook's serve flow auto-adds the model as an endpoint. If for some reason it didn't (e.g. the launch was external), call `adopt_served_model` to fix both at once, or `manage_endpoints` with action=add to register the URL manually.
-  **Anti-pattern (CRITICAL — saw the agent do this and it produced an orphan session invisible to the UI):** `ssh <host> 'tmux new-session ... vllm serve ...'` via bash. THIS IS WRONG even when it "works". The launch must go through `serve_model` so the cookbook route creates the tmux session AND writes the task to cookbook_state.json. If the user asks for a launch and you reach for bash/ssh/tmux, STOP — call `serve_model` instead. Bash launches don't show up in the Cookbook UI, can't be `stop_served_model`'d, and don't survive a UI refresh.
+  **Anti-pattern (CRITICAL — saw the agent do this and it produced an orphan session invisible to the UI):** `ssh <host> 'tmux new-session ... vllm serve ...'` via bash. THIS IS WRONG even when it "works". The launch must go through `serve_model` so the cookbook route creates the tmux session AND writes the task to cookbook_state.json. If the user asks for a launch and you reach for bash/ssh/tmux, STOP — call `serve_model` instead. Bash launches don't show up in the Forge UI, can't be `stop_served_model`'d, and don't survive a UI refresh.
   Anti-pattern (DO NOT do this — saw it twice): "I don't see list_served_models in my tool list, let me try bash ps aux." → wrong. The tool IS available. Just call it.
   Anti-pattern: POSTing to `/api/cookbook/state` via `app_api` — that overwrites the whole state file (presets and all). Blocked. Use serve_preset / serve_model / stop_served_model.
 
@@ -771,11 +771,11 @@ _DOMAIN_RULES = {
 - Bulk email actions use `bulk_email` once with explicit UIDs; do not loop one message at a time.
 - "Write/draft a reply saying X" means open a pre-filled draft via `ui_control open_email_reply ... <body>` / structured `body`; only `reply_to_email` when the user clearly wants to send now.""",
     "cookbook": """\
-## Cookbook/model-serving rules
-- Cookbook is the LLM-serving subsystem.
+## Forge/model-serving rules
+- Forge is the LLM-serving subsystem.
 - "What's running/serving" starts with `list_served_models`. "What's downloading" uses `list_downloads`.
 - Launch known models manually by checking `list_serve_presets` before raw `serve_model`.
-- Downloads/serves run on a Cookbook server; pass the named `host` when the user names one.
+- Downloads/serves run on a Forge server; pass the named `host` when the user names one.
 - Do not launch model servers manually with bash/ssh/tmux. Use `serve_model`/`serve_preset` so the UI can track and stop them.
 - After a successful serve, verify with `list_served_models`; if an external server is running but invisible, use `adopt_served_model`.""",
     "notes_calendar_tasks": """\
@@ -1043,15 +1043,15 @@ If the user asks for a reminder/alarm before the event, pass `reminder_minutes` 
     "ui_control": "- ```ui_control``` — Control the UI: toggle tools on/off, OPEN PANELS, open email reply drafts, switch models, change themes. Commands: `toggle <name> on/off` (names: bash/shell, web/search, research, incognito, document_editor/documents), `open_panel <name>` (panels: documents, gallery, email, sessions, notes, memories/brain, skills, settings, cookbook), `open_email_reply <uid> <folder> <reply|reply-all|ai-reply> <body text>` (opens an email compose document pre-filled with body, DOES NOT send; use this for normal “write/draft a reply saying X” requests), `set_mode agent/chat`, `switch_model <name>`, `set_theme <preset>`, `create_theme <name> <bg> <fg> <panel> <border> <accent>` (optional key=val for advanced colors AND background effects: bgPattern=<none|dots|synapse|rain|constellations|perlin-flow|petals|sparkles|embers>, bgEffectColor=#RRGGBB, bgEffectIntensity=<num>, bgEffectSize=<num>, frosted=true|false). \"open documents\" / \"open library\" / \"show gallery\" / \"open inbox\" / \"open notes\" / \"open cookbook\" all map to `open_panel <name>`. Built-in theme presets: dark, light, midnight, paper, cyberpunk, retrowave, forest, ocean, ume, copper, terminal, organs, lavender, gpt, claude, cute. For any other vibe/name, use create_theme.",
     "ask_user": "- ```ask_user``` — Ask the user a multiple-choice question when the task is genuinely ambiguous and the answer changes what you do next (pick an approach, confirm an assumption, choose a target). Args (JSON): {\"question\": \"...\", \"options\": [{\"label\": \"...\", \"description\": \"...\"?}, ...], \"multi\": false?}. 2-6 options. The user gets clickable buttons; calling this ENDS your turn and their choice comes back as your next message. Prefer sensible defaults — only ask when you truly can't proceed well without their input.",
     "update_plan": "- ```update_plan``` — While executing an approved plan, write the plan back: tick steps done or revise them. Args (JSON): {\"plan\": \"- [x] done step\\n- [ ] next step\"}. Always pass the COMPLETE checklist, not a diff. Call it after finishing each step (mark it `- [x]`) and whenever the user asks to change the plan. The user's docked plan window updates live. Does nothing if there's no active plan.",
-    "list_served_models": "- ```list_served_models``` — Show what the Cookbook (LLM-serving subsystem) is currently running. NO args. Use this for ANY 'what's running' / 'what's serving' / 'show my cookbook' / 'is anything up' query. DO NOT shell out (`ps aux`, `docker ps`, etc.) — this tool is the source of truth. Failed serve tasks include recent logs plus diagnosis/retry suggestions; use those suggestions to call `serve_model` again with an adjusted command when appropriate.",
+    "list_served_models": "- ```list_served_models``` — Show what the Forge (LLM-serving subsystem) is currently running. NO args. Use this for ANY 'what's running' / 'what's serving' / 'show my cookbook' / 'is anything up' query. DO NOT shell out (`ps aux`, `docker ps`, etc.) — this tool is the source of truth. Failed serve tasks include recent logs plus diagnosis/retry suggestions; use those suggestions to call `serve_model` again with an adjusted command when appropriate.",
     "stop_served_model": "- ```stop_served_model``` — Stop a running model server. Args (JSON): {\"session_id\": \"<from list_served_models>\"}. Use for 'kill my cookbook' / 'stop the model' / 'shut down vLLM'.",
     "tail_serve_output": "- ```tail_serve_output``` — Read the actual tmux stderr/traceback of a CURRENTLY failing cookbook task. Args (JSON): {\"session_id\": \"<from list_served_models>\", \"tail\": 150?}. **Use ONLY after** you just launched something via `serve_model` AND `list_served_models` reports YOUR new task as `crashed`/`error`. DO NOT use it on old stopped/completed download tasks (they're historical noise — won't predict whether a new launch succeeds). DO NOT call it before launching a fresh attempt. When you do call it, bump `tail` to 400+ only if the visible error references 'see root cause above'.",
     "download_model": "- ```download_model``` — Download a HuggingFace model. Args (JSON): {\"repo_id\": \"Qwen/Qwen3-8B\", \"host\": \"user@gpu-box\"?, \"include\": \"*Q4_K_M*\"?}.",
     "serve_model": "- ```serve_model``` — Start serving a model with vLLM / SGLang / llama.cpp / Ollama / MLX Image / Diffusers. Args (JSON): {\"repo_id\": \"...\", \"cmd\": \"vllm serve <repo> --port 8000\" or \"python3 -m sglang.launch_server --model-path <repo> --port 30000\" or \"python3 scripts/mlx_image_server.py --model <repo> --port 8100\" or \"python3 scripts/diffusion_server.py --model <repo> --port 8100\", \"host\": \"user@gpu-box\"?}. For MLX image models, use `scripts/mlx_image_server.py`; for non-MLX image/inpaint/diffusion models, use `scripts/diffusion_server.py`. Never use `mlx_lm.server` for image models. After launch, call `list_served_models`; if it returns a diagnosis with an adjusted command, retry with that command.",
-    "list_downloads": "- ```list_downloads``` — Show in-progress HuggingFace model downloads (filters Cookbook tasks/status to downloads only). NO args. Use for 'what's downloading' / 'show my downloads' / 'check download progress'.",
+    "list_downloads": "- ```list_downloads``` — Show in-progress HuggingFace model downloads (filters Forge tasks/status to downloads only). NO args. Use for 'what's downloading' / 'show my downloads' / 'check download progress'.",
     "cancel_download": "- ```cancel_download``` — Cancel an in-progress download. Args (JSON): {\"session_id\": \"<from list_downloads>\"}. Use for 'cancel the download' / 'kill the download'.",
     "search_hf_models": "- ```search_hf_models``` — Search HuggingFace for models. Args (JSON): {\"query\": \"qwen 8b\", \"limit\": 10?}. Use for 'find a model for X' / 'search huggingface' / 'what models are there for Y'.",
-    "list_cached_models": "- ```list_cached_models``` — List models already on disk. Args (JSON, all optional): {\"host\": \"server-name or user@gpu-box\"?, \"model_dir\": \"/data/models,/extra\"?}. Friendly Cookbook server names work. Use for 'what models do I have' / 'show cached models' / 'is X downloaded'.",
+    "list_cached_models": "- ```list_cached_models``` — List models already on disk. Args (JSON, all optional): {\"host\": \"server-name or user@gpu-box\"?, \"model_dir\": \"/data/models,/extra\"?}. Friendly Forge server names work. Use for 'what models do I have' / 'show cached models' / 'is X downloaded'.",
     "app_api": """\
 ```app_api
 {"action": "call", "method": "GET", "path": "/api/cookbook/gpus"}
@@ -1062,7 +1062,7 @@ GENERIC LOOPBACK to allowed Pantheon internal endpoints. Use this whenever the u
 
 **Common surfaces (use `endpoints` with filter to discover the full set per domain):**
 - Calendar: `/api/calendar/events`, `/api/calendar/calendars`, `/api/calendar/events/{uid}`
-- Cookbook: `/api/cookbook/gpus`, `/api/cookbook/state`, `/api/cookbook/setup`, `/api/cookbook/packages`, `/api/cookbook/hf-latest`, `/api/model/cached`. Do NOT use `app_api` for package installs, engine rebuilds, or PID signalling.
+- Forge: `/api/cookbook/gpus`, `/api/cookbook/state`, `/api/cookbook/setup`, `/api/cookbook/packages`, `/api/cookbook/hf-latest`, `/api/model/cached`. Do NOT use `app_api` for package installs, engine rebuilds, or PID signalling.
 - Gallery: `/api/gallery/list`, `/api/gallery/delete`, `/api/gallery/{id}`, `/api/gallery/albums`
 - Library / Documents: list all via `/api/documents/library`; docs in a session via `/api/documents/{session_id}`; a single doc via `/api/document/{id}` (singular) and its history via `/api/document/{id}/versions` (singular). Note the plural `/api/documents/...` vs singular `/api/document/{id}` split.
 - Memory: `/api/memory`, `/api/memory/{id}`, `/api/memory/search`
@@ -1652,9 +1652,9 @@ def _local_computer_rules() -> str:
     return (
         "\n\n## Pantheon Terminus local-machine mode\n"
         "- The user referred to this computer/local machine or a named computer. Treat this as a machine-targeted agent task, not ordinary chat.\n"
-        "- Configured Cookbook server names and SSH aliases are target machines. When the user names one, keep actions scoped to that machine.\n"
-        "- For model-serving/download/cached-model tasks on a named machine, use Cookbook tools and pass the named host. Start with `list_cookbook_servers` if the exact configured host is unclear.\n"
-        "- For non-Cookbook terminal/file tasks on a named remote machine, use shell/SSH carefully and prefer read-only inspection before changes.\n"
+        "- Configured Forge server names and SSH aliases are target machines. When the user names one, keep actions scoped to that machine.\n"
+        "- For model-serving/download/cached-model tasks on a named machine, use Forge tools and pass the named host. Start with `list_cookbook_servers` if the exact configured host is unclear.\n"
+        "- For non-Forge terminal/file tasks on a named remote machine, use shell/SSH carefully and prefer read-only inspection before changes.\n"
         "- Use `get_workspace` first. If no workspace is set, work from explicit paths, uploaded files, configured safe roots, or shell output.\n"
         "- Use dedicated file tools when they can reach the path. Use shell only when needed for local inspection, downloads, conversions, tests, or commands.\n"
         "- Do not use personal-assistant tools like email, calendar, notes, memory, documents, gallery, or UI panels for local-machine work unless the user explicitly asks for those domains.\n"
@@ -1775,10 +1775,10 @@ def _is_casual_low_signal(text: str) -> bool:
 def _is_contextual_retry_continuation(messages: List[Dict], text: str) -> bool:
     """Treat "try again / it failed" as a continuation only for active tool work.
 
-    These follow-ups are common after Cookbook launches: the latest user turn
+    These follow-ups are common after Forge launches: the latest user turn
     says only "try again it failed", while the actionable model/host/command
     details live one or two turns back. Keep this intentionally narrow so
-    ordinary chat does not inherit stale Cookbook context.
+    ordinary chat does not inherit stale Forge context.
     """
     latest = str(text or "").strip()
     if not latest or not _RETRY_CONTINUATION_RE.search(latest):
@@ -1792,7 +1792,7 @@ def _assistant_requested_followup(messages: List[Dict]) -> bool:
 
     This allows natural replies like "buy milk" after "What would you like on
     your to-do list?" to inherit the prior domain, without letting random
-    greetings inherit stale Cookbook/email/document context.
+    greetings inherit stale Forge/email/document context.
     """
     seen_latest_user = False
     for msg in reversed(messages):
@@ -1822,7 +1822,7 @@ def _assistant_requested_followup(messages: List[Dict]) -> bool:
 def _classify_agent_request(messages: List[Dict], last_user: str) -> Dict[str, object]:
     """Classify only whether this turn deserves domain tool retrieval.
 
-    Normal chat should not inherit old Cookbook/email/document context. Recent
+    Normal chat should not inherit old Forge/email/document context. Recent
     context is used only for explicit continuations ("yes", "do it", "1").
     This function does not inject tools directly; selected tools later decide
     which domain rule packs get appended to the system prompt.
@@ -4104,6 +4104,42 @@ def _lift_cap(value: int, lifted: int, *, unlimited: bool, pinned: bool) -> int:
     return lift_cap(value, lifted, unlimited=unlimited, pinned=pinned)
 
 
+LOCAL_MAX_TOKENS_KEY = "local_inference_max_tokens"
+LOCAL_MAX_TOKENS_DEFAULT = 1_000_000
+
+
+def _local_max_tokens_ceiling() -> int:
+    """How many tokens this machine will generate for one local reply. `P3-21`.
+
+    `D-2026-09-08-02`: the 1,000,000 that used to sit inline in
+    `_resolve_local_lifts` is a statement about the hardware, and the owner
+    changes hardware. It is a default here, not a law.
+
+    Resolution is `setting_is_explicit` -> stored value, otherwise the shipped
+    default, which is `H08`'s shape and **not** a bare `get_setting`. A bare
+    read cannot tell a value an operator typed from one the first settings save
+    materialised out of `DEFAULT_SETTINGS`, and building this on that
+    distinction is what `B20`/`H06` cost the concurrency cap: the layer below
+    became unreachable code on every install from first boot. There is no lower
+    layer here today; using the resolver that has one is what stops the next
+    person adding one and finding it dead.
+
+    Anything unreadable, unparseable or negative falls back to the default,
+    which is the shipped behaviour and therefore the least surprising thing a
+    broken settings file can do.
+    """
+    try:
+        from src.settings import get_setting, setting_is_explicit
+        if not setting_is_explicit(LOCAL_MAX_TOKENS_KEY):
+            return LOCAL_MAX_TOKENS_DEFAULT
+        ceiling = int(get_setting(LOCAL_MAX_TOKENS_KEY, LOCAL_MAX_TOKENS_DEFAULT))
+    except Exception:
+        logger.debug("P3-21: could not read %s; using the shipped default",
+                     LOCAL_MAX_TOKENS_KEY, exc_info=True)
+        return LOCAL_MAX_TOKENS_DEFAULT
+    return ceiling if ceiling >= 0 else LOCAL_MAX_TOKENS_DEFAULT
+
+
 def _resolve_local_lifts(max_rounds: int, max_tokens: int, *, unlimited: bool):
     """The local-inference lift for one request. `H08`.
 
@@ -4119,12 +4155,24 @@ def _resolve_local_lifts(max_rounds: int, max_tokens: int, *, unlimited: bool):
     it was — but gating rounds on the pin would have made an explicit ROUNDS
     setting silently disable the TOKENS lift as well.
 
-    `max_tokens` is passed `pinned=False` because it does not come from
-    settings at all: it is the active preset's value, and every shipped preset
-    sets one deliberately (8000 for Code Analyze, 4096 for Brainstorm, 6000 for
-    Reason). Lifting them all to 1,000,000 on local inference makes a preset's
-    token budget mean nothing, which is a real question and a different one —
-    `P3-21`.
+    `max_tokens` is passed `pinned=False` because the preset's number is not
+    the thing an operator configures: the CEILING is. Every shipped preset sets
+    a `max_tokens` deliberately (8000 for Code Analyze, 4096 for Brainstorm,
+    6000 for Reason) and on local inference all three used to come out as the
+    same 1,000,000, so the picker a user chooses between produced one
+    behaviour — `P3-21`, and `Law 15`: a control that appears to do something.
+
+    `D-2026-09-08-02` settles which half was wrong. The lift is right — on your
+    own GPU the ceiling is what the box can serve, not what a cloud bill once
+    made someone type — but the number is the machine's and has to be settable
+    as such, so `_local_max_tokens_ceiling()` supplies it and 1,000,000 is its
+    default. The presets keep their numbers untouched (`Law 1`) and `lift_cap`
+    reads them as FLOORS: `max(preset, ceiling)`. Three consequences worth
+    stating, because each is a behaviour someone will rely on — a preset above
+    the ceiling is never lowered; a ceiling of 0 turns the lift off and every
+    preset runs at its own number; and with the setting untouched the resolved
+    value is bit-for-bit what it was before this row, so no existing install
+    changes.
 
     The timeout is not lifted here: it is recomputed every round from settings,
     so only the *pin* is resolved, once, since whether an operator chose a value
@@ -4134,8 +4182,9 @@ def _resolve_local_lifts(max_rounds: int, max_tokens: int, *, unlimited: bool):
         # ~unlimited rounds for long autonomous local runs
         _lift_cap(max_rounds, 100_000, unlimited=unlimited,
                   pinned=_setting_pinned("agent_max_rounds")),
-        # ~unbounded generation for local inference
-        _lift_cap(max_tokens, 1_000_000, unlimited=unlimited, pinned=False),
+        # The machine's local-inference ceiling; the preset is the floor.
+        _lift_cap(max_tokens, _local_max_tokens_ceiling(),
+                  unlimited=unlimited, pinned=False),
         _setting_pinned("agent_stream_timeout_seconds"),
     )
 
@@ -4727,12 +4776,17 @@ async def stream_agent_loop(
     # Fallback: if RAG unavailable, use keyword-based tool selection
     # instead of sending ALL tools (which overwhelms the model).
     if not guide_only and not _relevant_tools and _retrieval_query:
+        # `P17-14`. This used to be a SECOND COPY of the selector's keyword
+        # loop, and it had drifted from the one in `src/tool_index.py` in both
+        # directions at once: it matched `kw in ql` (raw substring), so
+        # "this document is unreadable" force-included the entire email family
+        # — issue #1707's exact defect, fixed in one of the two call sites —
+        # and it ran none of the structural signals, so a pasted URL selected
+        # no web tools on the one path that runs when embeddings are down.
+        # `Law 13`/`Law 14`: one rule, one place.
         from src.tool_index import ALWAYS_AVAILABLE, ToolIndex
-        _relevant_tools = set(ALWAYS_AVAILABLE)
-        ql = _retrieval_query.lower()
-        for keywords, tools in ToolIndex._KEYWORD_HINTS.items():
-            if any(kw in ql for kw in keywords):
-                _relevant_tools.update(tools)
+        _relevant_tools = ToolIndex.select_without_embeddings(
+            _retrieval_query, set(ALWAYS_AVAILABLE))
         logger.info(f"[tool-rag] Keyword fallback selected: {sorted(_relevant_tools - ALWAYS_AVAILABLE)}")
 
     # If deterministic domain detection fired, seed the corresponding domain
@@ -6531,7 +6585,7 @@ async def stream_agent_loop(
                 _cookbook_log_hint = ""
                 if any(_word in _lower_phrase for _word in ("log", "logs", "output", "tail", "status")):
                     _cookbook_log_hint = (
-                        " If this is about a Cookbook/model serve, the concrete calls are: "
+                        " If this is about a Forge/model serve, the concrete calls are: "
                         "`list_served_models` first, then `tail_serve_output` with the "
                         "session_id from the serve/list result. Never answer with "
                         "\"check logs\" when those tools are available."

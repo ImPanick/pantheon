@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Cookbook Schedule — opens a small inline form (styled with the app's
+// Forge Schedule — opens a small inline form (styled with the app's
 // existing .cookbook-* classes) that creates a ScheduledTask with
 // action=cookbook_serve. Mounted from two places:
 //
@@ -121,7 +121,7 @@ try { (function () {
           </svg>
           <span class="hwfit-schedule-title-text">Schedule serve: <strong>${esc(cfg.title)}</strong></span>
           <span class="hwfit-schedule-title-spacer"></span>
-          <label class="hwfit-schedule-mirror-toggle" title="Also create a calendar event on the Cookbook calendar">
+          <label class="hwfit-schedule-mirror-toggle" title="Also create a calendar event on the Forge calendar">
             <span class="hwfit-schedule-mirror-label">Create event in calendar</span>
             <span class="admin-switch hwfit-schedule-mirror-switch">
               <input type="checkbox" class="hwfit-sched-calendar-mirror" />
@@ -289,16 +289,26 @@ try { (function () {
           return;
         }
         if (mirrorToCalendar) {
-          // Mirror onto a dedicated "Cookbook" calendar so the user can
+          // Mirror onto a dedicated "Forge" calendar so the user can
           // toggle the whole set on/off as a unit in the calendar UI.
           // Best-effort: if anything here fails, we still consider the
           // task creation a success (the task itself works regardless).
           try {
             const calsRes = await fetch("/api/calendar/calendars", { credentials: "same-origin" });
             const calsBody = calsRes.ok ? await calsRes.json() : {};
-            let cookbookCal = (calsBody.calendars || []).find(c => (c.name || "").toLowerCase() === "cookbook");
+            // `P0-29`. The calendar is named "Forge" from now on, and a
+            // "Cookbook" calendar an existing install already created still
+            // counts as this one (`Law 1`). Renaming it here would leave the
+            // user with two calendars holding half their mirrored serves each
+            // and nothing saying why — a rename read as a new calendar is the
+            // whole class of bug this clause exists to avoid. Nothing renames
+            // the user's calendar behind their back: it is *their* data, and
+            // theirs to rename or not.
+            const _FORGE_CAL_NAMES = ["forge", "cookbook"];
+            let cookbookCal = (calsBody.calendars || []).find(
+              c => _FORGE_CAL_NAMES.includes((c.name || "").toLowerCase()));
             if (!cookbookCal) {
-              const mk = await fetch("/api/calendar/calendars?name=Cookbook&color=%233b82f6", {
+              const mk = await fetch("/api/calendar/calendars?name=Forge&color=%233b82f6", {
                 method: "POST", credentials: "same-origin",
               });
               if (mk.ok) {
@@ -311,7 +321,7 @@ try { (function () {
             }
             // The `cookbook_task_id:` marker on its own line lets
             // calendar.js's event-form code detect that this event was
-            // created from a Cookbook schedule and render an
+            // created from a Forge schedule and render an
             // "Open task" button alongside the description, so the user
             // can jump straight to the source task from the calendar UI.
             const evBody = {
@@ -319,7 +329,7 @@ try { (function () {
               dtstart: new Date().toISOString(),
               dtend: new Date(Date.now() + dur * 60 * 1000).toISOString(),
               all_day: false,
-              description: `Auto-mirrored from Cookbook schedule task ${data.id || ""}.\n`
+              description: `Auto-mirrored from Forge schedule task ${data.id || ""}.\n`
                 + `Edit/delete the task in the Tasks tab — this event will follow.\n`
                 + `cookbook_task_id: ${data.id || ""}`,
               rrule: weekdaysOnly

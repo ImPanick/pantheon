@@ -114,10 +114,18 @@ class _Task:
         self.tz_name = None
 
 
-def test_an_hourly_task_gets_a_useful_spread_and_a_minutely_one_gets_a_small_one():
+def test_an_hourly_task_gets_a_useful_spread_and_a_fast_one_gets_a_small_one():
     """Scaled to the period rather than flat: the herd this breaks is
-    hourly-and-slower, while a `* * * * *` task delayed half a minute would
-    start skipping periods once its own runtime is added."""
+    hourly-and-slower, while a fast task delayed a large fraction of its own
+    period would start skipping periods once its runtime is added.
+
+    **`P15-08` changed the second half of this test and not the rule it holds.**
+    A `* * * * *` task no longer has a one-minute period, because the schedule
+    floor paces it to `min_task_interval_minutes` — so the number that was 3.1
+    seconds is now 5% of the floored period. The invariant is the one that was
+    always being protected and is now asserted directly: **a hold is a fraction
+    of the real period, never a multiple of it.**
+    """
     pytest.importorskip("croniter")
     from datetime import datetime
     from src.task_scheduler import dispatch_hold, DISPATCH_JITTER_CAP_SECONDS
@@ -138,8 +146,15 @@ def test_an_hourly_task_gets_a_useful_spread_and_a_minutely_one_gets_a_small_one
 
     assert max(hourly) > 10, "an hourly task barely moved off the boundary"
     assert max(hourly) <= DISPATCH_JITTER_CAP_SECONDS
-    assert max(minutely) <= 3.1, "a minute-cadence task was held long enough to skip"
     assert min(hourly) >= 0 and min(minutely) >= 0
+
+    from src.task_scheduler import (DISPATCH_JITTER_FRACTION,
+                                    _task_period_seconds)
+    period = _task_period_seconds(_Task("* * * * *"), now=at_the_boundary)
+    assert max(minutely) <= period * DISPATCH_JITTER_FRACTION + 0.01, (
+        "a fast task was held for more than a fraction of its own period")
+    assert max(minutely) < max(hourly), (
+        "the spread stopped being scaled to the cadence")
 
 
 def test_an_underivable_period_still_gets_a_small_spread():
@@ -223,10 +238,17 @@ def repo(tmp_path):
     # every entry would read as an orphan here. Strip it: the orphan rule is
     # tested by ADDING one below, which is the direction that matters.
     text = CHECKER.read_text(encoding="utf-8")
-    start = text.index("ALLOWED = {")
-    end = text.index("\n}\n", start) + len("\n}\n")
-    (dst / ".pantheon" / "check-jitter.py").write_text(
-        text[:start] + "ALLOWED = {}\n" + text[end:], encoding="utf-8")
+
+    def _empty(name, src):
+        start = src.index(f"{name} = {{")
+        end = src.index("\n}\n", start) + len("\n}\n")
+        return src[:start] + f"{name} = {{}}\n" + src[end:]
+
+    # `P14-07` added a second allowlist, and it names real files for the same
+    # reason the first one does — so it needs the same treatment here or every
+    # test in this file fails on three orphans that are about the real tree.
+    text = _empty("INDEXING_ALLOWED", _empty("ALLOWED", text))
+    (dst / ".pantheon" / "check-jitter.py").write_text(text, encoding="utf-8")
     (dst / "app.py").write_text(
         "import asyncio\n"
         "async def fine():\n"

@@ -149,13 +149,68 @@ _PAGE_CACHE: dict[str, _Page] = {}
 _NONCE_PLACEHOLDER = "{{CSP_NONCE}}"
 
 
+_BODY_CLOSE = "</body>"
+
+
+def _source_offer_key() -> str:
+    """What the injected offer depends on, for the page cache key."""
+    from src.source_link import source_url
+
+    try:
+        return source_url()
+    except Exception:
+        return ""
+
+
+def _with_source_offer(html: str, url: str) -> str:
+    """Put the AGPL §13 source offer in front of whoever is using this page.
+
+    `P0-17`. It goes here — the one front door both `/` and `/login` come
+    through — rather than into the two documents, so the obligation is
+    discharged in one place and a page added to `ROUTE_OWNED_STATIC_PAGES`
+    tomorrow carries it without anybody remembering (`Law 13`). A licence term
+    satisfied at N sites is a licence term satisfied at N-1 sites shortly
+    afterwards.
+
+    Empty when no repository address is configured, which is the shipped state
+    (`D-2026-09-08-06`): the app makes no claim it cannot honour.
+
+    Appended before the final `</body>` so it is inside the document rather
+    than after it, and last so it paints over nothing. A page with no `</body>`
+    is returned untouched — malformed markup is not worth a 500 on the app
+    shell, and the control is absent in the same way it is absent when unset.
+    """
+    if not url:
+        return html
+    from src.source_link import source_link_html
+
+    try:
+        offer = source_link_html(url)
+    except Exception:
+        logger.exception("Failed to render the §13 source offer")
+        return html
+    if not offer:
+        return html
+    at = html.rfind(_BODY_CLOSE)
+    if at < 0:
+        logger.warning("No </body> in the served page; the §13 source link is not injected")
+        return html
+    return html[:at] + offer + html[at:]
+
+
 def _read_page(file_path: str) -> _Page:
     """The page, its inline-script hashes and its validators, cached per
     version of the file."""
+    # Part of the key and not only of the body: the offer is configuration
+    # rather than file content, so an operator setting `source_url` changes the
+    # served bytes with no edit to the file the rest of this key describes.
+    # Left out, the cache would serve the pre-configuration page — and its
+    # ETag — until a restart.
+    offer_url = _source_offer_key()
     try:
         with open(file_path, "r", encoding="utf-8") as f:
             stat = os.fstat(f.fileno())
-            key = (stat.st_dev, stat.st_ino, stat.st_mtime_ns, stat.st_size)
+            key = (stat.st_dev, stat.st_ino, stat.st_mtime_ns, stat.st_size, offer_url)
             cached = _PAGE_CACHE.get(file_path)
             if cached is not None and cached.key == key:
                 return cached
@@ -163,6 +218,7 @@ def _read_page(file_path: str) -> _Page:
     except OSError:
         logger.exception("Failed to read page %s", file_path)
         raise HTTPException(500, "Internal server error")
+    html = _with_source_offer(html, offer_url)
     body = html.encode("utf-8")
     page = _Page(
         key=key,

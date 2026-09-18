@@ -2882,7 +2882,7 @@ function _showEventForm(existing, defaultDate, defaultEndDate) {
       </select>
       <textarea id="cal-f-desc" placeholder="Description" class="cal-input" rows="2">${_e(existing?.description || '')}</textarea>
       ${(() => {
-        // Cookbook-task back-link. When the description carries a
+        // Forge-task back-link. When the description carries a
         // "cookbook_task_id: <id>" marker (set by cookbookSchedule.js
         // when the user ticks "Create event in calendar"), render an
         // Open-task button so the user can jump straight to the
@@ -2900,7 +2900,7 @@ function _showEventForm(existing, defaultDate, defaultEndDate) {
             </svg>
             <span>Open in Tasks</span>
           </button>
-          <span style="font-size:11px;opacity:0.5;">Linked to a Cookbook scheduled task</span>
+          <span style="font-size:11px;opacity:0.5;">Linked to a Forge scheduled task</span>
         </div>`;
       })()}
       <div class="cal-form-row" style="align-items:center;gap:8px;">

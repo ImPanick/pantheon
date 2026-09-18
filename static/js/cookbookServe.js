@@ -1970,7 +1970,7 @@ function _rerenderCachedModels() {
           _ctxAutoNote.title = backend === 'llamacpp' || backend === 'ollama'
             ? `Estimated from scanned GGUF/model size, trained context limit, and ${_llamaMemoryLabel} for llama.cpp KV cache.`
             : backend === 'mlx'
-            ? `MLX-LM server does not expose a context-length flag; Cookbook maps this estimate to MLX --max-tokens using scanned unified memory and model size.`
+            ? `MLX-LM server does not expose a context-length flag; Forge maps this estimate to MLX --max-tokens using scanned unified memory and model size.`
             : `Estimated from model size, selected GPU VRAM, GPU utilization, TP, and KV dtype.`;
         }
         if (apply && _ctxEl0.dataset.autoCtx === '1') {
@@ -4285,7 +4285,7 @@ export function initServe(shared) {
 
 export { _cachedAllModels, _filterCachedList, _rerenderCachedModels, _deleteCachedModel };
 
-// Click the "running" pill on a serve-card → switch to Cookbook → Running
+// Click the "running" pill on a serve-card → switch to Forge → Running
 // tab and scroll the matching task into view, with a brief flash so the
 // user can find it among a long list. Tracks the click via event
 // delegation so it survives every _rerenderCachedModels() pass.

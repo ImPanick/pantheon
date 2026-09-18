@@ -148,7 +148,7 @@ def _detect_nvidia():
     if not gpus:
         if unified:
             # Unified-memory CUDA box: report the GPU backed by system RAM so the
-            # Cookbook recommends models and serving works. The pool is shared
+            # Forge recommends models and serving works. The pool is shared
             # (not per-GPU discrete VRAM), so report the RAM total once.
             ram_gb = round(_get_ram_gb(), 1)
             gpus = [{"index": g["index"], "name": g["name"], "vram_gb": ram_gb} for g in unified]
@@ -312,7 +312,7 @@ def _detect_apple_silicon():
 
     Macs have no discrete VRAM — the GPU shares the system's unified memory.
     We report a fraction of total RAM as the usable GPU budget (matching macOS's
-    default Metal working-set limit) so the Cookbook recommends models that
+    default Metal working-set limit) so the Forge recommends models that
     actually run on the GPU instead of classifying the machine as CPU-only.
 
     backend="metal" is what services.hwfit.fit and the serve-command generation
@@ -739,7 +739,7 @@ def _hardware_visibility_warning(result):
             "severity": "warning",
             "title": "No GPU visible inside Docker",
             "message": (
-                "Cookbook is scanning hardware from inside the Pantheon container. "
+                "Forge is scanning hardware from inside the Pantheon container. "
                 "If your host has a GPU, Docker may not be exposing it to the container, "
                 "so model recommendations may be CPU-only or too conservative."
             ),
@@ -757,7 +757,7 @@ def _hardware_visibility_warning(result):
             "severity": "info",
             "title": "Container-visible RAM may be lower than host RAM",
             "message": (
-                "Cookbook is seeing the RAM available inside the container. "
+                "Forge is seeing the RAM available inside the container. "
                 "If your host has more memory, validate host RAM separately or use Manual Hardware."
             ),
             "actions": [

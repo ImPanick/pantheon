@@ -117,6 +117,43 @@ DEFAULT_SETTINGS = {
     # removed rather than left as decoration. Retention is not a boot-time
     # concern; Settings is the place to change it.
     "events_retention_days": 90,
+    # `P14-07`. The two ceilings on document indexing, in MiB. `0` on either
+    # means no ceiling, which is a choice an operator can make and not one they
+    # inherit.
+    #
+    # Measured before this row: one 419 MB file in a documents folder took the
+    # process from 185 MB to 1,384 MB of RSS while it was chunked — the decoded
+    # string plus a chunk list that overlaps and is therefore bigger than the
+    # file. That is the PandaOS crash `P14-07` cites, in this tree, and nothing
+    # capped it. 32 MiB is about four times the largest file in any real
+    # document set measured here and costs ~105 MB at the same multiplier.
+    #
+    # `index_budget_mb` is the other half: the keyword index holds every chunk
+    # for the life of the process (105 MB of notes measured at 131,200 chunks
+    # and 137 MB of RSS) and had no ceiling at all. Past it a file is still
+    # listed, with the reason and this setting's name on it.
+    #
+    # SETTINGS-ONLY, for the reason spelled out at `events_retention_days`
+    # above: an env fallback beneath a truthy default is unreachable code.
+    "index_max_file_mb": 32,
+    "index_budget_mb": 256,
+    # `P15-08`. The floor under a schedulable task, in minutes. `0` turns it off.
+    #
+    # The cron field is free text and only its SYNTAX was checked, so
+    # `* * * * *` was accepted: 1,440 runs a day, each able to open IMAP, walk
+    # the search providers and call a model API. `P15` exists because this
+    # product got its owner's IP soft-banned in an afternoon, and this is that
+    # afternoon on a timer. The product's own `check_email_urgency` shipped at
+    # `*/15` and had to be walked back to hourly with a migration, so the
+    # failure is not hypothetical here either.
+    #
+    # Five minutes is a floor, not a recommendation — 288 runs a day is still
+    # more than any job this product ships. An operator whose tasks only touch
+    # their own machines can lower it; what they cannot do is get a
+    # minute-by-minute provider poll by not thinking about it (`Law 1`).
+    #
+    # SETTINGS-ONLY, for the reason spelled out at `events_retention_days`.
+    "min_task_interval_minutes": 5,
     # Serve GET /metrics for a Prometheus scrape (`P16-12`). Ships OFF.
     #
     # Off is not shyness about telemetry — `Law 16` clause 4 explicitly permits
@@ -143,6 +180,22 @@ DEFAULT_SETTINGS = {
     # Falsy, so PANTHEON_OTLP_ENDPOINT beneath it is genuinely reachable (H06,
     # B20). Either the base URL or the full `/v1/metrics` one; both are taken.
     "otlp_endpoint": "",
+    # Where this instance's Corresponding Source lives (`P0-17`, AGPL-3.0 §13).
+    #
+    # SHIPS EMPTY, AND EMPTY MEANS THE CONTROL DOES NOT RENDER. §13's
+    # obligation attaches to whoever *offers* a modified version over a
+    # network; until an operator does that there is nothing to offer, and a
+    # link to a repository a stranger 404s on is an offer that cannot be
+    # honoured — worse than no link, which is what `B25` cost once already.
+    #
+    # The address is the switch and there is no boolean beside it
+    # (`D-2026-09-05-01`, `D-2026-09-08-06`). Not a destination in the
+    # `Law 16` sense — nothing here is fetched, it is an href the user's own
+    # browser follows — but it is `*_url`-shaped, so
+    # `.pantheon/check-destinations.py` holds the empty default for us.
+    #
+    # Falsy, so PANTHEON_SOURCE_URL beneath it is genuinely reachable (H06, B20).
+    "source_url": "",
     # Seconds between pushes. Floored at 10 in code — the loop is the one
     # request in the product that fires whether or not anyone is watching, and
     # a one-second metrics tick is a self-inflicted rate limit (`P15`).
@@ -313,6 +366,22 @@ DEFAULT_SETTINGS = {
     "research_run_timeout_seconds": 1800,
     "agent_max_tool_calls": 0,
     "agent_max_rounds": 20,  # per-message agent step cap (clamped 1..200)
+    # `P3-21` / `D-2026-09-08-02`. The local-inference `max_tokens` ceiling:
+    # how many tokens THIS MACHINE is willing to generate for one reply when
+    # inference is local. It is a property of the hardware, not of the preset —
+    # the owner's words: "This is the machines defined max_tokens integer — it
+    # can change if I put everything on stronger hardware instead of my gaming
+    # pc." Until this key existed it was a literal inside
+    # `src/agent_loop._resolve_local_lifts`, so the only way to answer "what
+    # does this box actually do" was to edit source.
+    #
+    # A preset's own `max_tokens` is a FLOOR, never a cap: the effective value
+    # is `max(preset, this)`, so raising a preset above the ceiling still
+    # works and lowering the ceiling never truncates a preset that asked for
+    # more. Set 0 to turn the lift off entirely and run presets at their own
+    # numbers. Clamped to [0, 10_000_000]. No effect on cloud endpoints, which
+    # never get the lift at all.
+    "local_inference_max_tokens": 1_000_000,
     # Soft input-token budget for the agent loop. The DEFAULT value (6000) is the
     # "auto" sentinel: it means "scale the budget to the model's context window"
     # (#1230) — so long-context models aren't capped at 6000. Set ANY OTHER value

@@ -798,12 +798,12 @@ def rank_models(system, use_case=None, limit=50, search=None, sort="score", quan
         # a model is Metal-servable ONLY if it ships a real GGUF. Drop everything
         # else — raw safetensors repos (which the catalog still tags with a
         # default GGUF quant) and vLLM-only AWQ/GPTQ/FP8 builds alike. Without
-        # this the Cookbook recommends models the Mac can't run; on CUDA these
+        # this the Forge recommends models the Mac can't run; on CUDA these
         # stay visible because vLLM serves safetensors directly.
         #
         # Consumer AMD (RDNA) is the same story: GGUF via llama.cpp is the
         # servable path, so a model needs a real GGUF to be recommended.
-        # Otherwise the Cookbook rates vLLM-only AWQ/GPTQ builds "GOOD" on a
+        # Otherwise the Forge rates vLLM-only AWQ/GPTQ builds "GOOD" on a
         # Radeon that can't actually serve them.
         #
         # Windows is the same: Pantheon only supports llama.cpp on Windows,

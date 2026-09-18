@@ -15,8 +15,8 @@
  * inpaint dropdown only sees image+mask edit models and the per-tool
  * dropdowns get everything img2img-capable.
  *
- * Every picker ends with a "+ Serve a model in Cookbook…" sentinel —
- * choosing it opens Cookbook → Serve filtered to image models, then
+ * Every picker ends with a "+ Serve a model in Forge…" sentinel —
+ * choosing it opens Forge → Serve filtered to image models, then
  * reverts the picker to its prior value (so it's an action, not a
  * selectable model).
  *
@@ -64,7 +64,7 @@ function modelCaps(modelId, endpointName, endpointType) {
 }
 
 export function wireAIModelSelectors({ container, apiBase, openCookbookForImg2img }) {
-  // Delegated handler for the "+ Serve a model in Cookbook…" sentinel
+  // Delegated handler for the "+ Serve a model in Forge…" sentinel
   // option — catches clicks regardless of whether loadAIModels has
   // rewired the individual select yet and survives any innerHTML
   // reset later.
@@ -107,7 +107,7 @@ export function wireAIModelSelectors({ container, apiBase, openCookbookForImg2im
         const isImageEndpoint = (ep.model_type || '').toLowerCase() === 'image';
         // Image/inpaint endpoints can be called by URL even when their
         // /models cache is still empty, so don't strand a freshly served
-        // Cookbook model as "(offline)" in the editor picker.
+        // Forge model as "(offline)" in the editor picker.
         const epUsable = !!ep.online || isImageEndpoint;
         for (const modelId of models) {
           const caps = modelCaps(modelId || ep.name, ep.name, ep.model_type);
@@ -149,7 +149,7 @@ export function wireAIModelSelectors({ container, apiBase, openCookbookForImg2im
         else if (hasValue(aiInpaintSelect, prevInpaintValue)) aiInpaintSelect.value = prevInpaintValue;
         else if (firstInpaint) aiInpaintSelect.value = firstInpaint;
       }
-      // Append the "Serve a model in Cookbook…" sentinel at the
+      // Append the "Serve a model in Forge…" sentinel at the
       // bottom of every model dropdown.
       const appendServeSentinel = (sel) => {
         const sep = document.createElement('option');
@@ -158,7 +158,7 @@ export function wireAIModelSelectors({ container, apiBase, openCookbookForImg2im
         sel.appendChild(sep);
         const serveOpt = document.createElement('option');
         serveOpt.value = '__serve_cookbook__';
-        serveOpt.textContent = '+ Serve a model in Cookbook…';
+        serveOpt.textContent = '+ Serve a model in Forge…';
         sel.appendChild(serveOpt);
       };
       for (const ts of perToolSelects) appendServeSentinel(ts);
@@ -201,7 +201,7 @@ export function wireAIModelSelectors({ container, apiBase, openCookbookForImg2im
       // Fetch failed — still give the user the affordance to set up
       // a model. Otherwise the dropdown shows only "Auto" with no
       // hint about what to do next.
-      const fallback = '<option value="">Auto</option><option value="" disabled>──────────</option><option value="__serve_cookbook__">+ Serve a model in Cookbook…</option>';
+      const fallback = '<option value="">Auto</option><option value="" disabled>──────────</option><option value="__serve_cookbook__">+ Serve a model in Forge…</option>';
       if (aiInpaintSelect) aiInpaintSelect.innerHTML = fallback;
       document.querySelectorAll('select.ge-tool-model').forEach(ts => { ts.innerHTML = fallback; });
       const wireServe = (sel) => {
@@ -230,7 +230,7 @@ export function wireAIModelSelectors({ container, apiBase, openCookbookForImg2im
   };
   window.addEventListener('ge:model-endpoints-updated', onModelEndpointsUpdated);
   // Re-fetch the model list when the user opens the inpaint dropdown,
-  // so a model served via Cookbook mid-edit shows up without having to
+  // so a model served via Forge mid-edit shows up without having to
   // close and reopen the editor. Debounced to one refresh per 3s so
   // rapid open/close doesn't hammer the endpoint. Preserves the
   // current selection across the reload.

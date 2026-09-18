@@ -191,3 +191,82 @@ export function runLeftNoAnswer(status) {
 export function runStaleLabel(subject = 'job') {
   return subject === 'message' ? 'Still sending' : 'Still running';
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * `P15-11` — the word for a destination we have stopped calling
+ *
+ * `OutboundHostLimiter.snapshot()` has held per-host cooldowns, the 429 count
+ * and the seconds waited since `P15-01`, and until this row its only readers
+ * were a Prometheus scrape, a diagnostic bundle and an ADMIN-ONLY self-check
+ * panel in Settings. The person watching a feature do nothing had nothing at
+ * all: `routes/email_routes.py` has been answering the 60-second unread poll
+ * with `sync.source: "unavailable"` and a `retry_in` since `P15-12` — written,
+ * in the response, for this row — and both clients dropped it on the floor.
+ *
+ * WHY THE WORDS LIVE HERE AND NOT AT THE RENDERER.
+ *
+ * Six places in the product already know what a throttle is: the limiter, the
+ * self-check, the metrics exporter, the diagnostic bundle, the unread poll and
+ * the skill importer's message. `Law 13` is the rule that a seventh is a defect
+ * — so the CLIENT gets one vocabulary, here, beside the other words a person
+ * reads out of a status slot, and the renderers call it.
+ *
+ * A THROTTLE IS NOT A RUN STATUS, and that is why nothing above changes.
+ * `RUN_STATUSES` are values stored in `task_runs.status` and pinned by
+ * `FORBIDDEN.md`; a cooldown is a property of a DESTINATION, has no row, and
+ * can be true while a run is queued, running or finished. Adding a seventh
+ * member to that list would have been the quick version of this and would have
+ * put a word that is not in the database into the enum that is.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/** The `sync.source` values that mean "we are not calling this right now". */
+export const THROTTLED_SOURCES = ['unavailable', 'throttled', 'cooldown'];
+
+export function isThrottledSource(source) {
+  return THROTTLED_SOURCES.includes(String(source || '').toLowerCase());
+}
+
+/**
+ * *"in 4 min"*, from a number of seconds. `''` when there is no number.
+ *
+ * An absent countdown is common and honest — a protocol with no `Retry-After`
+ * gives us an escalating local cooldown and not a promise — so the caller gets
+ * an empty string to leave out rather than a fabricated "in 0s". Rounded UP,
+ * because a countdown that reads "in 0 min" for the last minute is a countdown
+ * that looks stuck.
+ */
+export function clearsInLabel(seconds) {
+  const s = Number(seconds);
+  if (!Number.isFinite(s) || s <= 0) return '';
+  if (s < 90) return `in ${Math.max(1, Math.ceil(s))}s`;
+  const mins = Math.ceil(s / 60);
+  if (mins < 90) return `in ${mins} min`;
+  return `in ${Math.ceil(mins / 60)} h`;
+}
+
+/**
+ * The full sentence for a throttled destination, or `''` when nothing is.
+ *
+ * `{ source, retryIn, what }` — `what` names the thing that is quiet ("This
+ * mailbox", "GitHub"); the default is deliberately vague because a renderer
+ * that does not know should say less rather than guess.
+ *
+ * The sentence says three things and always in this order: **it is paused**,
+ * **when it clears**, and **that this is deliberate**. The third is the part
+ * people get wrong — without it a pause reads as a fault, and the thing a user
+ * does about a fault is press the button again, which is what deepens a rate
+ * limit (`P15-03` learned that on a real ban).
+ */
+export function throttleNotice({ source, retryIn, what } = {}) {
+  if (!isThrottledSource(source)) return '';
+  const subject = what || 'This';
+  const when = clearsInLabel(retryIn);
+  return when
+    ? `${subject} is paused — retrying ${when}`
+    : `${subject} is paused until the service lets us back in`;
+}
+
+/** The dot/stripe class for a throttled row, from the same ladder as the rest. */
+export function throttleDotClass() {
+  return 'skipped';        // `runStatusTone('skipped') === 'info'` — not an error
+}

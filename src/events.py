@@ -35,6 +35,31 @@ ships at 90; `0` means keep everything, and that is a choice someone makes, not
 one they inherit. Pruning is time-gated in-process rather than scheduled,
 following `rate_limiter.py`'s pattern — this product has no daily job runner and
 adding one for a DELETE would be the larger change.
+
+THE STORE IS SQLITE, AND THAT IS A DECISION WITH A MEASUREMENT BEHIND IT
+(`P14-06`, `D-2026-09-18-01`).
+
+`DEFERRED.md` D-05 makes the case for TimescaleDB — hypertables, compression,
+continuous aggregates — and the decision is *not yet, and not by default*, on
+numbers rather than taste. Measured on this schema, this machine, with
+`usage_over_time` and `usage_summary` as they ship:
+
+    90 days ×   200 events/day =  18,000 rows ·  11 MB · chart  13 ms
+    90 days × 2,000 events/day = 180,000 rows ·  88 MB · chart  87 ms
+   365 days × 2,000 events/day = 730,000 rows · 369 MB · chart 195 ms
+
+A year of a **heavy** install draws its chart in under a fifth of a second on
+the store that is already here, so a second database earns nothing today, and
+`Law 16` is why a hosted one is not even on the table: a metrics backend nobody
+linked is *phoning home*, whatever the vendor calls it. `store_status()` below
+is what makes "fine until it is not" a reading rather than a feeling — the
+decision names the thresholds, and `src/self_checks.py` puts them in front of
+the operator instead of waiting for someone to notice.
+
+**The one thing the measurement did fault was the prune**, and it is fixed here
+rather than filed: deleting 550,000 expired rows took **7.3 seconds in one
+statement**, on the thread that has just finished a person's chat turn. See
+`prune_events`.
 """
 import contextvars
 import json
@@ -50,9 +75,43 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_RETENTION_DAYS = 90
 
+# `P14-06`. The thresholds the decision named, in the code the decision is about.
+#
+# Both are row counts, because rows are what retention controls and bytes are
+# what they imply: the measurement puts a row at ~506 bytes on disk with this
+# schema's three indexes, so 500,000 rows is ~250 MB and a ~130 ms chart, and
+# 2,000,000 is ~1 GB and a chart a person waits for. `watch` is "this is bigger
+# than the shape it was designed for, look at your retention"; `over` is "the
+# decision's own revisit condition has arrived".
+#
+# They are constants rather than settings on purpose: an operator tuning the
+# number at which they are warned is tuning the warning, not the store.
+STORE_WATCH_ROWS = 500_000
+STORE_OVER_ROWS = 2_000_000
+# Measured, not guessed — see the module docstring's table. Used only to turn a
+# row count into a size an operator can picture; the real file size is reported
+# beside it when the database is one we can stat.
+MEASURED_BYTES_PER_ROW = 506
+
 # Prune at most this often per process. Cheap enough to check on every write,
 # rare enough that the DELETE is invisible.
 _PRUNE_INTERVAL_SECONDS = 24 * 60 * 60
+# `P14-06`. How much of one prune a person's turn may pay for.
+#
+# The prune runs inline, at the tail of `record_event`/`record_llm_round`, which
+# is the thread that has just finished someone's chat turn. Measured: one
+# `DELETE ... WHERE ts < cutoff` over 550,000 expired rows took **7.3 seconds**.
+# Steady state is nothing like that — a day's worth is a couple of thousand rows
+# and a few milliseconds — but the states that produce a backlog are ordinary:
+# retention lowered from `0`, an install that has been off for a month, a first
+# prune on a process that has been up for a day.
+#
+# So the DELETE is batched and time-boxed. What is left over is not forgotten:
+# an unfinished prune rearms the interval gate (`_maybe_prune`) so the next
+# write picks it up, and the backlog drains over a handful of turns instead of
+# stalling one.
+_PRUNE_BATCH_ROWS = 5_000
+_PRUNE_BUDGET_SECONDS = 0.5
 # None means "never pruned in this process", NOT "pruned at time zero".
 #
 # This was 0.0, and on Linux `time.monotonic()` counts from BOOT — so
@@ -63,6 +122,11 @@ _PRUNE_INTERVAL_SECONDS = 24 * 60 * 60
 # finding: correct-looking, and load-bearing on something unrelated.
 _last_prune: Optional[float] = None
 _prune_lock = threading.Lock()
+# `P14-06`. True when the last prune stopped on its time budget with expired
+# rows still in the table. It defeats the 24-hour gate — an unfinished prune
+# that then waits a day is a backlog that never drains — and nothing else reads
+# it, so a failed prune (which returns 0 and sets nothing) is unaffected.
+_prune_unfinished = False
 
 _URLISH = re.compile(r"[a-z][a-z0-9+.-]*://", re.I)
 
@@ -235,46 +299,149 @@ def record_llm_round(session_id: str, metrics: Dict[str, Any], *,
     return True
 
 
-def prune_events(days: Optional[int] = None) -> int:
+def prune_events(days: Optional[int] = None, *,
+                 budget_seconds: float = _PRUNE_BUDGET_SECONDS,
+                 batch_rows: int = _PRUNE_BATCH_ROWS) -> int:
     """Delete rows older than the retention window. Returns rows removed.
 
     `days=0` keeps everything, and says so by doing nothing rather than by
     quietly using a default — a retention setting that silently ignores the
     value you gave it is worse than none.
+
+    **Batched and time-boxed** (`P14-06`). This runs on the thread that has just
+    finished a person's chat turn, and one DELETE over a real backlog is not a
+    fast statement: 550,000 expired rows measured at 7.3 seconds. It now deletes
+    `batch_rows` at a time and stops when the budget is spent, which makes the
+    cost of a prune a property of this function rather than of how long the
+    machine was switched off.
+
+    `unfinished_prune()` reports whether anything was left; `_maybe_prune` reads
+    it and rearms so the next write continues rather than waiting a day. A
+    caller that genuinely wants the whole thing in one go — a test, a migration —
+    passes `budget_seconds=0`, which means *no budget*, not *no work*.
     """
+    global _prune_unfinished
     days = _retention_days() if days is None else days
     if days <= 0:
         return 0
+    removed_total = 0
     try:
+        from sqlalchemy import select
         from core.database import SessionLocal, Event, utcnow_naive
         cutoff = utcnow_naive() - timedelta(days=days)
+        started = time.monotonic()
         db = SessionLocal()
         try:
-            removed = db.query(Event).filter(Event.ts < cutoff).delete(
-                synchronize_session=False)
-            db.commit()
-            if removed:
-                logger.info("Pruned %d event(s) older than %d days", removed, days)
-            return int(removed or 0)
+            while True:
+                # Delete by id, in batches. `LIMIT` on a DELETE is not portable
+                # (SQLite needs a compile-time option, and this runs on whatever
+                # `DATABASE_URL` points at), so the batch is selected first and
+                # deleted by primary key.
+                ids = [row[0] for row in db.execute(
+                    select(Event.id).where(Event.ts < cutoff).limit(max(1, batch_rows))
+                ).all()]
+                if not ids:
+                    _prune_unfinished = False
+                    break
+                removed = db.query(Event).filter(Event.id.in_(ids)).delete(
+                    synchronize_session=False)
+                db.commit()
+                removed_total += int(removed or 0)
+                if budget_seconds and (time.monotonic() - started) >= budget_seconds:
+                    # More to go. Say so rather than leaving the caller to
+                    # assume the window is now clean — the whole point of a
+                    # budget is that it stops early, and a silent early stop is
+                    # indistinguishable from a finished job.
+                    _prune_unfinished = True
+                    logger.info(
+                        "Prune budget spent after %d event(s); more remain older "
+                        "than %d days and the next write will continue",
+                        removed_total, days)
+                    break
+            if removed_total and not _prune_unfinished:
+                logger.info("Pruned %d event(s) older than %d days", removed_total, days)
+            return removed_total
         finally:
             db.close()
     except Exception as e:
         logger.debug("event prune skipped: %s: %s", type(e).__name__, e)
-        return 0
+        return removed_total
+
+
+def unfinished_prune() -> bool:
+    """True when the last prune stopped on its budget with rows still expired."""
+    return _prune_unfinished
 
 
 def _maybe_prune() -> None:
     """Time-gated, so the check costs a float compare on the hot path."""
     global _last_prune
     now = time.monotonic()
-    if _last_prune is not None and now - _last_prune < _PRUNE_INTERVAL_SECONDS:
+    if (_last_prune is not None and not _prune_unfinished
+            and now - _last_prune < _PRUNE_INTERVAL_SECONDS):
         return
     with _prune_lock:
-        if (_last_prune is not None
+        if (_last_prune is not None and not _prune_unfinished
                 and time.monotonic() - _last_prune < _PRUNE_INTERVAL_SECONDS):
             return
         _last_prune = time.monotonic()
     prune_events()
+
+
+def store_status() -> Dict[str, Any]:
+    """How big the store has got, against the size the decision was made at.
+
+    `P14-06` / `D-2026-09-18-01`. The decision is *SQLite stays*, and it was made
+    on a measurement — 730,000 rows draws a 30-day chart in 195 ms. A decision
+    like that is only honest while somebody can tell where they are against it,
+    and nothing in the product could say how big this table had become. This is
+    that reading, and `src/self_checks.py` is what puts it in front of a person
+    rather than waiting to be asked.
+
+    `pressure` is `ok`, `watch` or `over` against `STORE_WATCH_ROWS` /
+    `STORE_OVER_ROWS`. `db_bytes` is the whole database file when the store is a
+    file-backed SQLite one — it holds thirty other tables, so it is reported as
+    what it is and never as the events table's own size, which is what
+    `est_bytes` estimates from the measured per-row cost.
+
+    Never raises: it is read by a health surface, and a diagnostic that can take
+    a page down is a diagnostic nobody leaves switched on.
+    """
+    out: Dict[str, Any] = {
+        "rows": 0, "oldest": None, "newest": None,
+        "retention_days": _retention_days(),
+        "est_bytes": 0, "db_bytes": None,
+        "watch_rows": STORE_WATCH_ROWS, "over_rows": STORE_OVER_ROWS,
+        "pressure": "ok", "unfinished_prune": _prune_unfinished,
+    }
+    try:
+        import os
+        from sqlalchemy import func
+        from core.database import SessionLocal, Event, engine, _sqlite_db_path
+
+        db = SessionLocal()
+        try:
+            rows, oldest, newest = db.query(
+                func.count(Event.id), func.min(Event.ts), func.max(Event.ts)).one()
+        finally:
+            db.close()
+        out["rows"] = int(rows or 0)
+        out["oldest"] = oldest.isoformat() if oldest else None
+        out["newest"] = newest.isoformat() if newest else None
+        out["est_bytes"] = out["rows"] * MEASURED_BYTES_PER_ROW
+        if out["rows"] >= STORE_OVER_ROWS:
+            out["pressure"] = "over"
+        elif out["rows"] >= STORE_WATCH_ROWS:
+            out["pressure"] = "watch"
+        try:
+            path = _sqlite_db_path(engine.url)
+            if path and os.path.exists(path):
+                out["db_bytes"] = os.path.getsize(path)
+        except Exception:
+            pass
+    except Exception as e:
+        out["error"] = f"{type(e).__name__}: {e}"
+    return out
 
 
 def usage_over_time(days: int = 30, owner: Optional[str] = None) -> Dict[str, Any]:

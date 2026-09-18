@@ -59,8 +59,16 @@ PROGRESS = re.compile(r"\*\*(\d+) tracked, (\d+) done\.")
 # Register lines in SHIP-LINE.md. One id, one verdict, one line of reasoning:
 #     | `B370` | blocking | security | two pages answer 200 with no cookie |
 #     | `B421` | tracked  | written-down | the 27 advisories are recorded and unreachable |
+#     | `P0-17` | landed  | licence | the gate was met on 2026-09-18 |
+#
+# `B522`. `landed` is the third verdict and it exists because the first two could
+# not say *"this was a gate and it is now met"*. Without it a met gate had two bad
+# options: stay `blocking` — which makes the checker report a ticked row as an open
+# gate, correctly, and go red forever — or leave the register, which loses the
+# record that it was ever a gate and quietly shrinks the count nobody can then
+# audit. A line that cannot show its own history is not evidence of anything.
 REGISTER = re.compile(
-    r"^\|\s*`((?:P\d+-\d+[a-z]?)|(?:[BH]\d+))`\s*\|\s*(blocking|tracked)\s*\|\s*([\w-]+)\s*\|"
+    r"^\|\s*`((?:P\d+-\d+[a-z]?)|(?:[BH]\d+))`\s*\|\s*(blocking|tracked|landed)\s*\|\s*([\w-]+)\s*\|"
 )
 
 

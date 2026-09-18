@@ -17,6 +17,7 @@ import pytest
 
 pytest.importorskip("PIL")
 from PIL import Image
+from tests.helpers.fresh_import import drop_for_fresh_import
 
 
 @pytest.fixture
@@ -33,7 +34,7 @@ def extract_exif(monkeypatch):
             return MagicMock()
 
     monkeypatch.setitem(sys.modules, "core.database", _DBStub("core.database"))
-    monkeypatch.delitem(sys.modules, "routes.gallery.gallery_helpers", raising=False)
+    drop_for_fresh_import(monkeypatch, "routes.gallery.gallery_helpers")
     mod = importlib.import_module("routes.gallery.gallery_helpers")
     return mod._extract_exif
 

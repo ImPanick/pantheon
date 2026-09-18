@@ -132,7 +132,7 @@ function _syncResearchRail() {
     toolBtn.classList.toggle('research-notif-active', active);
     toolBtn.style.opacity = active ? '1' : '';
     // Sidebar feedback while running — a small pulsing dot + round text,
-    // same style as Cookbook's running indicator (no glow).
+    // same style as Forge's running indicator (no glow).
     let wrap = toolBtn.querySelector('.research-sb-running');
     if (running > 0) {
       if (!wrap) {

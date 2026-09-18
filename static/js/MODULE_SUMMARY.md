@@ -144,11 +144,11 @@ The largest and most central subsystem. Chat submission → backend SSE → prog
 
 ---
 
-## 10. Cookbook (Model Serving)
+## 10. Forge (Model Serving)
 
 | Module | Responsibility |
 |---|---|
-| **`cookbook.js`** | Cookbook main UI: hardware fitting, presets, action panels. |
+| **`cookbook.js`** | Forge main UI: hardware fitting, presets, action panels. |
 | **`cookbook-hwfit.js`** / **`cookbook-diagnosis.js`** / **`cookbook-deps-recipes.js`** | Hardware-fit scoring, dependency diagnosis, recipe handling. |
 | **`cookbookDownload.js`** / **`cookbookServe.js`** / **`cookbookRunning.js`** / **`cookbookSchedule.js`** / **`cookbookPorts.js`** / **`cookbookProgressSignal.js`** | Model download/serve flow, running job cards, scheduling, port detection, and progress computation. |
 

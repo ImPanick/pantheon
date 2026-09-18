@@ -1,9 +1,24 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""No recurring job fires on an exact boundary (`P15-10`).
+"""Background work does not hit anybody all at once (`P15-10`, `P14-07`).
 
     python3 .pantheon/check-jitter.py            # report
     python3 .pantheon/check-jitter.py --quiet    # findings only
+
+TWO RULES, AND THEY ARE THE SAME RULE POINTED AT TWO MACHINES.
+
+  BOUNDARY  a recurring job that fires on an exact wall-clock instant, so every
+            install in the world hits a shared provider on the same second
+            (`P15-10`). About somebody *else's* server.
+
+  UNPACED   a file walk that reads documents flat out, with no ceiling and no
+            yield, on the machine a person is sitting in front of (`P14-07`).
+            About the operator's *own* box.
+
+The second rule lives here rather than in a file of its own because the subject
+is one subject — background work nobody is watching — and because a second
+checker would have needed its own scan, its own allowlist and its own orphan
+rule, which is `Law 14` exactly.
 
 WHY THIS IS A CHECKER AND NOT JUST A FIX.
 
@@ -78,6 +93,51 @@ ALLOWED = {
 
 _SCANNED = ("app.py", "src", "services", "routes", "core")
 _FOREVER_CALLS = {"sleep_jittered"}
+
+# ---------------------------------------------------------------------------
+# P14-07 — the walk that reads documents
+# ---------------------------------------------------------------------------
+#
+# WHAT IT LOOKS FOR: a `for` over `os.walk` / `rglob` / `glob` / `iterdir` whose
+# body READS FILE CONTENT. A walk that only stats, lists or deletes is not this
+# defect — it is cheap and it is over in a moment. The cost is in opening the
+# files, and it is a cost in two currencies at once: the memory the content
+# takes while it is held (one 419 MB file measured at 1,384 MB of RSS before
+# `P14-07` capped it) and the core it holds while it works.
+#
+# The fix is never "add a sleep here". It is to take the files from
+# `src.index_walk`'s paced walk — `personal_docs.walk_index_candidates` — which
+# applies the per-file ceiling, the retained-memory budget and the duty cycle in
+# one place, so the two indexers cannot drift apart again (#5559, `B75`).
+_READS_CONTENT = {
+    "open", "read_text", "read_bytes", "extract_index_text", "decode_text_file",
+    "read_text_file", "extract_document_text", "extract_pdf_text",
+    "extract_office_text",
+}
+# A loop is paced when its function drives the pacer or takes its files from the
+# walk that does.
+_PACED_CALLS = {"tick", "IndexPacer", "walk_index_candidates"}
+_WALK_CALLS = {"walk", "rglob", "glob", "iterdir"}
+# Wrappers that do not change what is being iterated.
+_TRANSPARENT = {"sorted", "list", "enumerate", "reversed", "tuple"}
+
+# (file, enclosing function) -> why this walk does not need the paced one.
+#
+# Every entry is a walk over METADATA — a sidecar JSON, a manifest, a name — at
+# a scale set by the product rather than by whatever a user dropped in a folder.
+# None of them is an index. The orphan rule below applies to this list too.
+INDEXING_ALLOWED = {
+    ("src/research_handler.py", "get_avg_duration"):
+        "Reads each research run's small JSON sidecar to average a duration. "
+        "Bounded by the number of research runs this install has made, and the "
+        "files are metadata, not documents.",
+    ("routes/auth_routes.py", "rename_user"):
+        "A one-off admin rename, walking the renamed user's own skill files. "
+        "Human-triggered, once, and the person is watching it.",
+    ("routes/research/research_routes.py", "research_library"):
+        "Lists the research library by reading each run's metadata JSON. A "
+        "listing, per request, over files this product wrote.",
+}
 
 
 def _is_forever_loop(node) -> bool:
@@ -164,15 +224,90 @@ def scan(problems, seen):
                 )
 
 
-def orphans(problems, seen):
+def _call_names(node):
+    """Every function name called anywhere inside `node`."""
+    out = set()
+    for call in ast.walk(node):
+        if isinstance(call, ast.Call):
+            name = getattr(call.func, "attr", None) or getattr(call.func, "id", None)
+            if name:
+                out.add(name)
+    return out
+
+
+def _walk_iterator(node) -> bool:
+    """`for ... in os.walk(x)` / `p.rglob(...)`, through the usual wrappers.
+
+    `walk` is accepted **only** as `os.walk`, and that is not pedantry: the
+    first run of this rule flagged `routes/email_helpers.py`'s
+    `_extract_attachment_text`, which walks `msg.walk()` — the MIME parts of one
+    email. Same verb, no filesystem, already capped at 2 MB a part. A rule that
+    cannot tell those apart is a rule people route around.
+    """
+    if not isinstance(node, ast.For):
+        return False
+    it = node.iter
+    while (isinstance(it, ast.Call)
+           and (getattr(it.func, "id", None) in _TRANSPARENT) and it.args):
+        it = it.args[0]
+    if not isinstance(it, ast.Call):
+        return False
+    func = it.func
+    name = getattr(func, "attr", None) or getattr(func, "id", None)
+    if name == "walk":
+        return (isinstance(func, ast.Attribute)
+                and isinstance(func.value, ast.Name)
+                and func.value.id in ("os", "_os"))
+    return name in _WALK_CALLS
+
+
+def scan_indexing(problems, seen):
+    """`P14-07`. A content-reading file walk that nothing paces or bounds."""
+    for path in _python_files():
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except (OSError, SyntaxError):
+            continue
+        rel = path.relative_to(ROOT).as_posix()
+        for loop in ast.walk(tree):
+            if not _walk_iterator(loop):
+                continue
+            if not (_call_names(loop) & _READS_CONTENT):
+                continue            # a walk that only stats or lists is cheap
+            where = _enclosing_function(tree, loop)
+            seen.append((rel, where, loop.lineno))
+            if (rel, where) in INDEXING_ALLOWED:
+                continue
+            fn = next((n for n in ast.walk(tree)
+                       if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                       and n.name == where), None)
+            if fn is not None and (_call_names(fn) & _PACED_CALLS):
+                continue            # it drives the pacer, or takes the paced walk
+            problems.append(
+                f"UNPACED     {rel}:{loop.lineno} in {where}()\n"
+                f"            A file walk that READS the files it finds, with no\n"
+                f"            ceiling on their size and nothing yielding the CPU. One\n"
+                f"            419 MB file took this process from 185 MB to 1,384 MB of\n"
+                f"            RSS before P14-07 capped it, on the machine somebody is\n"
+                f"            using. Take the files from\n"
+                f"            `personal_docs.walk_index_candidates`, which applies the\n"
+                f"            ceiling, the memory budget and the duty cycle in one\n"
+                f"            place — or add an entry to INDEXING_ALLOWED in this file\n"
+                f"            with the reason this one is metadata rather than an index."
+            )
+
+
+def orphans(problems, seen, allowed=None, what="recurring sleep",
+            listname="ALLOWED", fixed="jittered"):
     """An allowlist entry that matches nothing is a decision about code that no
     longer exists. `check-licences.py` learned this rule first: an allowlist
     that only ever grows stops describing the tree and starts excusing it."""
+    allowed = ALLOWED if allowed is None else allowed
     matched = {(rel, where) for rel, where, _ in seen}
-    for key in sorted(set(ALLOWED) - matched):
+    for key in sorted(set(allowed) - matched):
         problems.append(
-            f"ORPHAN      ALLOWED[{key!r}] matches no recurring sleep\n"
-            f"            The code it excused is gone or has been jittered. Remove the\n"
+            f"ORPHAN      {listname}[{key!r}] matches no {what}\n"
+            f"            The code it excused is gone or has been {fixed}. Remove the\n"
             f"            entry — an allowlist that only grows stops describing the tree."
         )
 
@@ -182,8 +317,13 @@ def main() -> int:
     problems, seen = [], []
     scan(problems, seen)
     orphans(problems, seen)
+    walks = []
+    scan_indexing(problems, walks)
+    orphans(problems, walks, INDEXING_ALLOWED, "content-reading file walk",
+            "INDEXING_ALLOWED", "paced")
     if not quiet:
         print(f"recurring sleeps {len(seen)}  ·  allowed {len(ALLOWED)}  ·  "
+              f"indexing walks {len(walks)}  ·  allowed {len(INDEXING_ALLOWED)}  ·  "
               f"PROBLEMS {len(problems)}")
     if problems:
         print()
@@ -192,7 +332,8 @@ def main() -> int:
         print(f"\nFAIL: {len(problems)} problem(s).")
         return 1
     if not quiet:
-        print("OK — no recurring job fires on an exact boundary.")
+        print("OK — no recurring job fires on an exact boundary, and every "
+              "content-reading walk is paced.")
     return 0
 
 

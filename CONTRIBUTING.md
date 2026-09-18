@@ -194,6 +194,87 @@ If you need a value that has no constant or helper yet, add it to `src/constants
 
 **Commits:** use [Conventional Commits](https://www.conventionalcommits.org), `type(scope): summary` (e.g. `fix(search): ...`, `feat(notes): ...`, `docs(contributing): ...`). Common types: `fix`, `feat`, `refactor`, `docs`, `test`, `chore`, `ci`. Keep the subject short and imperative; put the "why" in the body when it isn't obvious.
 
+## Adding a tool
+
+The agent's tool surface is **80 dispatchable names** (`TOOL_TAGS`), of which 73
+have a function schema, 29 are classes under `src/agent_tools/` across 12
+modules, 16 are email tools served by a built-in MCP server, and the rest
+dispatch from a branch in `src/tool_execution.py`. Three shapes, not two — and
+until `P17-06` there was no rule saying which a new capability should be, so the
+choice looked like taste. It isn't. Run `python3 .pantheon/check-tool-surface.py`
+for today's counts rather than trusting the ones in this paragraph.
+
+### Which shape
+
+Ask the three questions in order and stop at the first *yes*.
+
+1. **Does it carry a dependency set, a long-lived connection, or a blast radius
+   that should not be in the web process?** Then it is **its own process** — an
+   MCP server under `mcp_servers/`, or, when it needs hardware or a network the
+   container does not have, a separate host agent (`netagent/` is the worked
+   example). Email is a server because it holds IMAP/SMTP connections. RAG is a
+   server because it holds a vector client. *"It is a lot of code"* is **not** a
+   reason: `wc -l` on the four built-in servers was 2913, 286, 243 and 185, and
+   all four import from `src/` anyway, so size never predicted anything.
+2. **Is it a distinct verb the model will name, with arguments a schema can
+   describe?** Then it is a **native tool** — a class under `src/agent_tools/`
+   with a `TOOL_HANDLERS` entry.
+3. **Otherwise it is neither.** A capability that is one more `action=` on an
+   existing tool, or a behaviour the agent gets for free from a tool it already
+   has, is not a new name. Every new name costs the selector: a run is offered a
+   median of 11 tools out of 80, so a name that is never the right answer is not
+   free, it displaces one that is.
+
+**One name, one implementation.** A built-in MCP server is spawned on every
+startup, so a name it serves must not also have a native handler — `B66` shipped
+*three* `manage_rag`s and `B67` two `manage_memory`s, and in both cases nothing
+decided which one answered. (A route into an *optional* server — `bash`,
+`python`, `filesystem`, `web_search`, `web_fetch` — is different and fine: the
+operator registers those, and the native handler is the documented fallback for
+when they have not.)
+
+### What a new tool must declare
+
+A tool name has to be registered in up to nine places, and a name missing from
+any one of them **fails silently and differently**. That has shipped four times
+(the cookbook family, `tail_serve_output`, `api_call`, `manage_rag`), so the
+list is enforced rather than remembered — `.pantheon/check-tool-surface.py`
+refuses a half-registered tool, and its header is the canonical list:
+
+| | register | file | what breaks without it |
+|---|---|---|---|
+| 1 | `TOOL_TAGS` | `src/agent_tools/__init__.py` | the fence parser drops the block with **no error at all** |
+| 2 | `FUNCTION_TOOL_SCHEMAS` | `src/tool_schemas.py` | no function-calling channel |
+| 3 | a dispatch route | `src/tool_execution.py`, `TOOL_HANDLERS` or `_MCP_TOOL_MAP` | "unknown tool" |
+| 4 | `TOOL_CAPABILITIES` | `src/tool_capabilities.py` | the approval card cannot say what it does |
+| 5 | a feature flag | `src/tool_security.py` `_FEATURE_TOOLS` | the operator cannot switch the feature off (only if it belongs to one) |
+| 6 | the `disable_tool` group alias | `src/agent_tools/admin_tools.py` | it cannot be disabled by group |
+| 7 | the system prompt | `src/agent_loop.py` | full-prompt turns never mention it |
+| 8 | the MCP server | `mcp_servers/*.py` | third-party MCP clients cannot see it |
+| 9 | `BUILTIN_TOOL_DESCRIPTIONS` | `src/tool_index.py` | **agent mode can never retrieve it** |
+
+Registers 1–4 and 8 make the tool *work*. Registers 7 and 9 make it *findable*,
+and that is a separate failure with the same silence: five email tools —
+`draft_email`, `draft_email_reply`, `ai_draft_email_reply`, `search_emails`,
+`download_attachment` — were fully wired, fully served, and named in no channel
+the model reads, while `send_email`'s own description told the model to *prefer
+`draft_email`*. Check F refuses that now.
+
+If a tool is deliberately fenced-channel-only (no function schema), say so where
+it is declared; `.pantheon/check-mcp-schemas.py` check C is what tells that apart
+from a missed registration.
+
+### Before you open the PR
+
+```bash
+python3 .pantheon/check-tool-surface.py     # every register, every name
+python3 .pantheon/check-mcp-schemas.py      # one schema per tool, not one per audience
+python3 .pantheon/retrieval_eval.py --kind tools   # can the selector find it
+```
+
+The third is a report, not a gate. A tool the selector never offers is not a
+tool the agent has.
+
 ## Issue Reports
 
 For bugs, include:

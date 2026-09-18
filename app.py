@@ -971,7 +971,7 @@ app.include_router(calendar_router)
 from routes.shell_routes import setup_shell_routes
 app.include_router(setup_shell_routes())
 
-# Cookbook (model download/serve/cache, cookbook state sync)
+# Forge (model download/serve/cache, cookbook state sync)
 from routes.cookbook_routes import setup_cookbook_routes
 app.include_router(setup_cookbook_routes())
 
@@ -1646,7 +1646,7 @@ async def _startup_event():
 
     _startup_tasks.append(asyncio.create_task(_skill_audit_nightly_loop()))
 
-    # Cookbook serve lifecycle — kills scheduler-launched serves whose
+    # Forge serve lifecycle — kills scheduler-launched serves whose
     # window-end has passed. Paired with the cookbook_serve builtin
     # action; both are no-ops unless a scheduled task actually launches
     # something with end_after_min set. Removing this line + the

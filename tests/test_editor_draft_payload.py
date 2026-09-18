@@ -2,6 +2,7 @@
 import sys
 import types
 from unittest.mock import MagicMock
+from tests.helpers.fresh_import import drop_for_fresh_import
 
 
 def _load_module(monkeypatch):
@@ -9,7 +10,7 @@ def _load_module(monkeypatch):
     db_stub.EditorDraft = MagicMock()
     db_stub.SessionLocal = MagicMock()
     monkeypatch.setitem(sys.modules, "core.database", db_stub)
-    monkeypatch.delitem(sys.modules, "routes.editor_draft_routes", raising=False)
+    drop_for_fresh_import(monkeypatch, "routes.editor_draft_routes")
 
     import routes.editor_draft_routes as mod
 

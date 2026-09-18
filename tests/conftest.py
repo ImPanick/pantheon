@@ -336,7 +336,8 @@ def pytest_collection_finish(session):
 # ~8,600 sweeps instead of ~900 and buys nothing a file name does not already
 # tell you.
 
-_isolation = {"file": None, "seen": set(), "leaks": {}, "on": True, "scans": 0}
+_isolation = {"file": None, "seen": set(), "leaks": {}, "on": True, "scans": 0,
+              "mapped": {}}
 
 
 def pytest_addoption(parser):
@@ -351,35 +352,81 @@ def pytest_addoption(parser):
     )
 
 
-def _mock_bindings() -> dict:
-    """`qualified name -> what it is` for every Mock reachable from production."""
+def _scan_production_namespaces():
+    """One pass over production modules; two answers.
+
+    `(mocks, mapped)` — `mocks` is `qualified name -> what it is` for every Mock
+    reachable from production, and `mapped` is `qualified name -> id(class)` for
+    every SQLAlchemy-mapped class bound there. Both sweeps want the same walk
+    over the same dicts, and doing it twice at ~900 file boundaries buys nothing
+    (`Law 14`).
+    """
     from unittest.mock import NonCallableMock
 
-    found = {}
+    mocks = {}
+    mapped = {}
     for name, mod in list(sys.modules.items()):
         if not name.startswith(_PRODUCTION_ROOTS) or mod is None:
             continue
         if isinstance(mod, NonCallableMock):
-            found[name] = "the module itself"
+            mocks[name] = "the module itself"
             continue
         namespace = getattr(mod, "__dict__", None)
         if not isinstance(namespace, dict):
             continue
         for attr, value in list(namespace.items()):
             if isinstance(value, NonCallableMock):
-                found[f"{name}.{attr}"] = type(value).__name__
-    return found
+                mocks[f"{name}.{attr}"] = type(value).__name__
+            elif isinstance(value, type) and hasattr(value, "__mapper__"):
+                mapped[f"{name}.{attr}"] = id(value)
+    return mocks, mapped
+
+
+def _mock_bindings() -> dict:
+    """`qualified name -> what it is` for every Mock reachable from production."""
+    return _scan_production_namespaces()[0]
+
+
+# ---------------------------------------------------------------------------
+# `B523` — the same leak, wearing a real class
+# ---------------------------------------------------------------------------
+# The Mock sweep above is a predicate about `unittest.mock`, and the worst
+# instance of this defect found so far was not a Mock. A scheduler test built a
+# nine-column stand-in for `ScheduledTask` against its own `declarative_base()`
+# and assigned it onto `core.database` — a genuine mapped class, invisible to
+# the Mock scan, left bound for the remaining 282 files of the session. The
+# real model has `schedule`, `cron_expression` and `trigger_type`; the stand-in
+# does not, so `tests/test_task_schedule_floor.py` failed in the full suite
+# while passing on its own, and the give-away was buried in a `TypeError` about
+# a keyword argument.
+#
+# Substituting a mapped class is never a legitimate thing to leave behind — the
+# tables are one thing and the classes that map them are one thing (`Law 13`).
+# So this is reported on identity: same qualified name, different object, at a
+# file boundary where the file that did it can still be named.
 
 
 def _isolation_sweep(finished_file):
     if not _isolation["on"] or finished_file is None:
         return
     _isolation["scans"] += 1
-    for where, kind in _mock_bindings().items():
+    mocks, mapped = _scan_production_namespaces()
+    for where, kind in mocks.items():
         if where in _isolation["seen"]:
             continue
         _isolation["seen"].add(where)
         _isolation["leaks"].setdefault(finished_file, []).append(f"{where} ({kind})")
+    # `setdefault`, not `[...]`: the sweep owns its own bookkeeping slot, so a
+    # caller that hands it a state dict does not have to know about it.
+    known = _isolation.setdefault("mapped", {})
+    for where, ident in mapped.items():
+        was = known.get(where)
+        known[where] = ident
+        if was is None or was == ident or where in _isolation["seen"]:
+            continue
+        _isolation["seen"].add(where)
+        _isolation["leaks"].setdefault(finished_file, []).append(
+            f"{where} (a different mapped class than the one the session started with)")
 
 
 def pytest_runtest_logstart(nodeid, location):
@@ -406,7 +453,8 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
     if leaks:
         strict = config.getoption("--strict-isolation")
         terminalreporter.write_sep(
-            "=", "B271: mocks left bound in production modules", red=strict,
+            "=", "B271/B523: stand-ins left bound in production modules",
+            red=strict,
             yellow=not strict)
         for where, names in sorted(leaks.items()):
             terminalreporter.write_line(f"{where} left:")

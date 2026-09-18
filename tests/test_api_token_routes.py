@@ -21,6 +21,7 @@ import pytest
 from fastapi import HTTPException
 
 from core.api_tokens import TOKEN_PREFIX, bearer_credential
+from tests.helpers.fresh_import import drop_for_fresh_import
 
 
 # ---------------------------------------------------------------------------
@@ -62,7 +63,7 @@ def token_routes_mod(monkeypatch):
     monkeypatch.setitem(sys.modules, "core.database", db_stub)
 
     # Force a fresh import so the route module binds to the stubbed core.database
-    monkeypatch.delitem(sys.modules, "routes.api_token_routes", raising=False)
+    drop_for_fresh_import(monkeypatch, "routes.api_token_routes")
 
     import routes.api_token_routes as mod  # noqa: PLC0415
     return mod

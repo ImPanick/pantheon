@@ -13,6 +13,37 @@ correctness hazard.
 import os
 import tempfile
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _put_the_two_modules_back():
+    """`_make_manager` rewrites `DATABASE_URL` and reloads two modules.
+
+    `importlib.reload` re-executes a module into the *same* module object, so
+    every name in it is replaced while every earlier `from core.database import
+    Session` still holds the old one — and `core.database.engine` is left
+    pointing at a temp file that this test deletes nothing of. Seventy test
+    files are collected after this one. Snapshotting and restoring both module
+    dicts costs two dict copies and makes the reload local to this file
+    (`B524`).
+    """
+    import core.database as database
+    import core.session_manager as sm_mod
+
+    saved = [(m, dict(m.__dict__)) for m in (database, sm_mod)]
+    saved_url = os.environ.get("DATABASE_URL")
+    try:
+        yield
+    finally:
+        for module, attrs in saved:
+            module.__dict__.clear()
+            module.__dict__.update(attrs)
+        if saved_url is None:
+            os.environ.pop("DATABASE_URL", None)
+        else:
+            os.environ["DATABASE_URL"] = saved_url
+
 
 def _make_manager():
     db_fd, db_path = tempfile.mkstemp(suffix=".db")

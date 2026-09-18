@@ -15,6 +15,7 @@ import sys
 import types
 
 import pytest
+from tests.helpers.fresh_import import drop_for_fresh_import
 
 
 @pytest.fixture
@@ -28,7 +29,7 @@ def handler_cls(monkeypatch):
     monkeypatch.setitem(sys.modules, "services", pkg)
     monkeypatch.setitem(sys.modules, "services.research", sub)
     name = "services.research.research_handler"
-    monkeypatch.delitem(sys.modules, name, raising=False)
+    drop_for_fresh_import(monkeypatch, name)
     spec = importlib.util.spec_from_file_location(
         name, "services/research/research_handler.py"
     )

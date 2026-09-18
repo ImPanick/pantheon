@@ -191,11 +191,80 @@ class LocalCollection:
                                  else np.vstack([self._vectors, incoming[n:n + 1]]))
             self._persist()
 
+    # `add` already replaces a row whose id is present, so upserting is what it
+    # does — this is the Chroma spelling of it, not a second implementation
+    # (`Law 14`). It is here because its absence was not cosmetic: `B470`.
+    # `src/tool_index.py` is the only caller in the tree that reaches for this
+    # name, and `AttributeError` there failed *every* lane, so `get_tool_index`
+    # returned `None` and agent-mode tool selection fell back to
+    # `ToolIndex._KEYWORD_HINTS`. `P13-21` set out to make a downed index
+    # degrade to semantic search rather than to keyword matching; it achieved
+    # that for memory and RAG, which call `add`, and missed the one consumer
+    # that does not.
+    upsert = add
+
+    def update(self, ids: Sequence[str],
+               metadatas: Optional[Sequence[Dict[str, Any]]] = None,
+               documents: Optional[Sequence[str]] = None,
+               embeddings: Optional[Sequence[Sequence[float]]] = None) -> None:
+        """Change fields of rows that already exist, leaving the rest alone.
+
+        `B470`. Not `add`: `add` needs an embedding per id, and the caller here
+        (`rag_vector.rename_owner`) is rewriting *metadata* on documents whose
+        vectors are fine — re-embedding a corpus to change an owner string is
+        not a rename, it is a rebuild. An id this does not hold is skipped, as
+        Chroma skips it, because a rename that half-matches must not invent
+        rows.
+        """
+        import numpy as np
+
+        with self._lock:
+            incoming = None
+            if embeddings is not None:
+                incoming = np.asarray(embeddings, dtype=_DTYPE)
+                if incoming.ndim == 1:
+                    incoming = incoming.reshape(1, -1)
+                norms = np.linalg.norm(incoming, axis=1, keepdims=True)
+                incoming = incoming / np.where(norms == 0, 1.0, norms)
+            touched = False
+            for n, mid in enumerate(ids):
+                if mid not in self._ids:
+                    continue
+                at = self._ids.index(mid)
+                if metadatas is not None:
+                    self._metas[at] = metadatas[n]
+                if documents is not None:
+                    self._docs[at] = documents[n]
+                if incoming is not None:
+                    self._vectors[at] = incoming[n]
+                touched = True
+            if touched:
+                self._persist()
+
     def get(self, ids: Optional[Sequence[str]] = None,
-            include: Optional[Sequence[str]] = None) -> Dict[str, Any]:
+            include: Optional[Sequence[str]] = None,
+            where: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         with self._lock:
             wanted = list(ids) if ids is not None else list(self._ids)
             rows = [(self._ids.index(m), m) for m in wanted if m in self._ids]
+            if where:
+                # Flat equality only — the one call site
+                # (`tool_index.index_builtin_tools`, pruning stale `builtin_*`
+                # rows) passes `{"tool_type": "builtin"}`. Chroma's operator
+                # forms (`$eq`, `$and`, …) are deliberately not guessed at:
+                # silently matching nothing on a filter this does not
+                # understand would prune the whole collection, so anything
+                # non-scalar raises instead.
+                for value in where.values():
+                    if isinstance(value, (dict, list, tuple, set)):
+                        raise ValueError(
+                            f"LocalCollection.get: unsupported `where` operator in {where!r}; "
+                            "only flat equality is implemented"
+                        )
+                rows = [
+                    (at, m) for at, m in rows
+                    if all(self._metas[at].get(k) == v for k, v in where.items())
+                ]
             out: Dict[str, Any] = {"ids": [m for _at, m in rows]}
             fields = set(include or ())
             if "documents" in fields:
@@ -220,8 +289,17 @@ class LocalCollection:
             self._persist()
 
     def query(self, query_embeddings: Sequence[Sequence[float]], n_results: int = 8,
-              include: Optional[Sequence[str]] = None) -> Dict[str, Any]:
-        """Nearest neighbours, as Chroma returns them: distance = 1 - cosine."""
+              include: Optional[Sequence[str]] = None,
+              where: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Nearest neighbours, as Chroma returns them: distance = 1 - cosine.
+
+        `where` is flat metadata equality, filtered **before** the top-k rather
+        than after it (`B470`). Filtering a top-k window is the subtly wrong
+        version: ask for 5 of one owner's documents and you get however many of
+        that owner happen to fall inside the global nearest 5, which is usually
+        fewer and is sometimes none — a scoping bug that looks like an empty
+        index.
+        """
         import numpy as np
 
         with self._lock:
@@ -234,7 +312,35 @@ class LocalCollection:
             q = q / np.where(norms == 0, 1.0, norms)
 
             similarity = q @ self._vectors.T
-            k = max(0, min(int(n_results), len(self._ids)))
+            if where:
+                for value in where.values():
+                    if isinstance(value, (dict, list, tuple, set)):
+                        raise ValueError(
+                            f"LocalCollection.query: unsupported `where` operator in {where!r}; "
+                            "only flat equality is implemented"
+                        )
+                allowed = np.array(
+                    [all(meta.get(key) == val for key, val in where.items())
+                     for meta in self._metas],
+                    dtype=bool,
+                )
+                # No early return for "nothing matched". A draft of this had
+                # one and mutation testing could not kill it: with every column
+                # at `-inf` the ordinary path already produces `k = 0` and an
+                # empty result — and produces it while honouring `include`,
+                # which the early return did not. A branch no test can tell
+                # from its absence, answering differently from the path beside
+                # it, is two behaviours where the file claims one.
+                #
+                # `-inf` rather than dropping columns: the column index stays
+                # the row index, so nothing below has to translate positions
+                # back, and a filtered row can never win a top-k.
+                similarity = np.where(allowed[None, :], similarity, -np.inf)
+                available = int(allowed.sum())
+            else:
+                available = len(self._ids)
+
+            k = max(0, min(int(n_results), available))
             ids, dists, docs, metas = [], [], [], []
             for row in similarity:
                 # `argpartition` is O(n) against `argsort`'s O(n log n), which

@@ -309,7 +309,7 @@ function _buildCrashReport(task, outputText) {
   const diag = _diagnose(capturedOutput);
   const started = task?.ts ? new Date(task.ts).toISOString() : '';
   const report = [
-    '## Pantheon Cookbook crash report',
+    '## Pantheon Forge crash report',
     '',
     'Please review this report for secrets before posting it publicly.',
     '',
@@ -4385,7 +4385,7 @@ async function _pollBackgroundStatus() {
     // Also clear the sidebar/rail icon highlight when no tasks are alive.
     // Without this, the cookbook icon stays at full opacity ("highlighted")
     // indefinitely once any task fires the notif, because the modal-open
-    // clear only runs when the user actually reopens Cookbook.
+    // clear only runs when the user actually reopens Forge.
     if (!activeTasks.length && !errorTasks.length) {
       _clearCookbookNotif();
     }
@@ -4424,7 +4424,7 @@ export function initRunning(shared) {
 
   // App boot: pull authoritative state from server, but don't start the
   // running-task monitor unless there is real work to watch. Starting it
-  // unconditionally made a plain Cookbook open keep probing stale tmux/SSH
+  // unconditionally made a plain Forge open keep probing stale tmux/SSH
   // sessions, which is expensive when a saved remote host is unreachable.
   (async () => {
     try {

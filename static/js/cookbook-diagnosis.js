@@ -681,7 +681,7 @@ export const ERROR_PATTERNS = [
   {
     pattern: /cmake: command not found|cmake.*not found.*Could not/i,
     message: 'cmake is required to compile llama.cpp from source, but it is not installed on this server.',
-    suggestion: 'Suggested action: install cmake via the OS package manager — apt: cmake build-essential / pacman: cmake base-devel / dnf: cmake gcc-c++ make / brew: cmake. Cookbook can do this automatically on the next launch if your user has passwordless sudo for apt/pacman/dnf.',
+    suggestion: 'Suggested action: install cmake via the OS package manager — apt: cmake build-essential / pacman: cmake base-devel / dnf: cmake gcc-c++ make / brew: cmake. Forge can do this automatically on the next launch if your user has passwordless sudo for apt/pacman/dnf.',
     fixes: [
       { label: 'Open Dependencies', action: () => _openCookbookDependencies('llama_cpp') },
       { label: 'Copy apt install', action: () => _copyText('sudo apt install -y cmake build-essential git') },
@@ -733,7 +733,7 @@ export const ERROR_PATTERNS = [
   },
   {
     pattern: /No module named ['"]?torch|No module named ['"]?torchvision|No module named ['"]?diffusers|No module named ['"]?scipy|install scipy if you want to use beta sigmas|requires the Torchvision library|diffusers.*command not found/i,
-    message: 'Diffusion serving needs PyTorch, Torchvision, Diffusers, Accelerate, and SciPy. Install Diffusers image deps from Cookbook → Dependencies.',
+    message: 'Diffusion serving needs PyTorch, Torchvision, Diffusers, Accelerate, and SciPy. Install Diffusers image deps from Forge → Dependencies.',
     fixes: [
       { label: 'Open Dependencies', action: () => _openCookbookDependencies('diffusers') },
       { label: 'Copy install command', action: () => _copyText('python3 -m pip install "diffusers[torch]" torchvision accelerate scipy python-multipart') },
@@ -877,7 +877,7 @@ export function _diagnose(text) {
 }
 
 function _diagnosisCopyBundle(task, diagnosis, sourceText, suggestionText) {
-  const lines = ['## Pantheon Cookbook troubleshooting'];
+  const lines = ['## Pantheon Forge troubleshooting'];
   if (task) {
     lines.push(
       '',

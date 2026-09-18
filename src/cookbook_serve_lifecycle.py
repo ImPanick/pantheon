@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Cookbook serve lifecycle: kills scheduler-owned serves whose end-of-
+"""Forge serve lifecycle: kills scheduler-owned serves whose end-of-
 window has passed.
 
 Pairs with action_cookbook_serve in builtin_actions.py — that action

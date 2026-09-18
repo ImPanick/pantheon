@@ -30,6 +30,8 @@ makes the deletion stick.
 from __future__ import annotations
 
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -114,6 +116,24 @@ def test_the_wiring_ceiling_came_down_with_the_ids():
     four new unresolved lookups take their place silently, which is the failure
     mode a ratchet exists to prevent.
     """
+    # `B520`. This pinned the literal `120` and went red the day `P3-20` brought
+    # the ratchet down to 40 — on work that is the whole point of a ratchet. It is
+    # the fourth test here to fail because it named today's number (`B310`, `B414`,
+    # and `B96`'s table, which pinned the defect itself). **A ratchet's invariant is
+    # not its value.** Two things must hold: CI states exactly one ceiling — two
+    # would let a lookup hide behind the looser one — and the ceiling is not above
+    # what the checker reports, which is what makes it a ratchet rather than a note.
     ci = CI.read_text(encoding="utf-8")
     ceilings = {int(n) for n in re.findall(r"check-wiring\.py --max (\d+)", ci)}
-    assert ceilings == {120}, f"expected a single ceiling of 120, found {ceilings}"
+    assert len(ceilings) == 1, f"CI must state one wiring ceiling, found {ceilings}"
+    ceiling = ceilings.pop()
+    out = subprocess.run(
+        [sys.executable, str(ROOT / ".pantheon" / "check-wiring.py"), "--max", str(ceiling)],
+        cwd=str(ROOT), capture_output=True, text=True, timeout=300)
+    assert out.returncode == 0, (
+        f"the CI ceiling ({ceiling}) is below what the checker reports:\n{out.stdout[-600:]}")
+    reported = {int(n) for n in re.findall(r"UNRESOLVED (\d+)", out.stdout)}
+    assert reported, f"could not read an UNRESOLVED count from:\n{out.stdout[-400:]}"
+    assert ceiling == max(reported), (
+        f"ceiling {ceiling} is above the reported {max(reported)} — slack in a ratchet "
+        f"is where the next unresolved lookup hides")

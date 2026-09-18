@@ -35,7 +35,16 @@ logger = logging.getLogger(__name__)
 # Every route this client will ever ask for. Declared, not derived: a client
 # that forwards an arbitrary path is a proxy, and a proxy into the host network
 # is precisely what the container is not allowed to have.
-ROUTES = frozenset({"health", "whoami", "networks", "neighbours"})
+# `P17-10` adds `discover`. It belongs in THIS table and not in `TARGET_ROUTES`
+# below, and the distinction is the security argument rather than bookkeeping:
+# a target route takes an address, and discovery has none to take. The groups it
+# sends to are constants on the agent, checked on every send, so there is no
+# parameter on either side of the wire through which a destination can arrive —
+# the same property `test_no_parameter_can_change_where_the_request_goes` already
+# holds for `call()`. The agent's own switch decides whether it answers at all,
+# and Pantheon cannot flip it: it is a flag on the process the operator started,
+# exactly like the allowlist (`P17-02`).
+ROUTES = frozenset({"health", "whoami", "networks", "neighbours", "discover"})
 
 # Routes that take an address. Separate from `ROUTES` for the same reason the
 # agent keeps `TARGET_ROUTES` separate: it makes "does this need a target" a

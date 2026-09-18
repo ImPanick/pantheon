@@ -3164,7 +3164,7 @@ async def action_cookbook_serve(
     command: str = "",
     **kwargs,
 ) -> Tuple[str, bool]:
-    """Launch a Cookbook model serve as a scheduled task.
+    """Launch a Forge model serve as a scheduled task.
 
     `command` is the JSON config string the task carries in `prompt`,
     of shape: {"preset": "name"} OR {"repo_id": "...", "cmd": "...", "host": "..."}.
@@ -3250,7 +3250,7 @@ async def action_cookbook_serve(
         preset_names = [(p.get("name") or "") for p in (state.get("presets") or []) if isinstance(p, dict)]
         hint = f" Saved presets: {preset_names!r}" if preset_names else ""
         return (f"No launchable config for {preset_name!r} (repo_id={repo_id!r}). "
-                f"Check Cookbook → Presets has a real cmd, not 'adopted'.{hint}", False)
+                f"Check Forge → Presets has a real cmd, not 'adopted'.{hint}", False)
 
     # Resolve env_prefix etc. from the host's saved cookbook server entry,
     # matching the chat agent's serve_model path.
@@ -3331,7 +3331,7 @@ async def action_cookbook_serve(
     # scheduler-owner markers. /api/model/serve spawns the tmux session
     # but leaves the state-write to the UI — when a scheduled action
     # launches a serve from server-side, NOBODY writes the task into
-    # state, so the Cookbook tab never shows it. We do the write here.
+    # state, so the Forge tab never shows it. We do the write here.
     if sid:
         try:
             # Re-read fresh (the route may have updated state already).

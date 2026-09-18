@@ -285,6 +285,236 @@ _LOOKUPS = (
 )
 
 
+# ── DECLARED ABSENT (`P3-20`) ────────────────────────────────────────────────
+#
+# An unresolved lookup is one of three things and the count was treating them
+# as one. (a) A defect: markup that should exist and does not, or a lookup that
+# can never succeed. (b) A feature whose panel was replaced, whose JavaScript
+# checks before it touches anything, and whose wiring was left in place on
+# purpose — `Law 1` says that is not a thing to delete. (c) A dead lookup.
+#
+# Only (a) belongs in a number CI holds a ceiling on. The 2026-09-07 triage
+# established that most of the inventory is (b) and concluded the number should
+# therefore never move; the conclusion that follows instead is that (b) should
+# be SAID OUT LOUD rather than counted silently. So each entry below names the
+# guard that makes the absence safe, the live surface that does the job now,
+# and the exact ids it covers.
+#
+# DECLARING IS NOT FREE, which is the whole point — `main` fails when:
+#
+#   * the `guard` source is no longer in `where` (the early return was removed,
+#     so the lookups underneath it are no longer guarded);
+#   * a declared id turns up in markup (the panel came back — delete the entry);
+#   * a declared id is looked up from a file `where` does not name (the code
+#     moved and the declaration no longer covers it);
+#   * a declared id is not looked up at all any more (stale — delete it);
+#   * two entries declare the same id.
+#
+# `guard` is matched against the COMMENT-STRIPPED source, so a sentence about a
+# guard cannot stand in for one. That trap has caught this file twice already
+# (blind spot 2, and `Law 20`).
+#
+# What this deliberately does NOT do is decide (b) by inspection. A guard proves
+# the code will not throw; it proves nothing about whether the behaviour still
+# happens. `set-researchSearchMsg` was UNguarded and live, and `notes-panel`
+# was guarded and broken — both were in the same 120.
+ABSENT_BY_DESIGN = [
+    {
+        "where": "static/js/admin.js",
+        "guard": "if (!cmdEl) return;",
+        "why": "The admin MCP form was replaced by the unified integrations "
+               "form (`uf-mcp-*`, static/js/settings.js). `initMcpForm` and "
+               "`loadMcpServers` both return on their sentinel.",
+        "ids": (
+            "adm-mcpAddBtn", "adm-mcpArgs", "adm-mcpCommand", "adm-mcpEnv",
+            "adm-mcpEnvFields", "adm-mcpEnvRow", "adm-mcpHelp", "adm-mcpList",
+            "adm-mcpMsg", "adm-mcpName", "adm-mcpPreset", "adm-mcpSseRow",
+            "adm-mcpTransport", "adm-mcpUrl",
+        ),
+    },
+    {
+        "where": "static/js/admin.js",
+        "guard": "if (!addBtn || addBtn.dataset.bound) return;",
+        "why": "API tokens are created and managed in the unified "
+               "integrations panel (`unified-integrations-list`, "
+               "static/js/settings.js:5619+), not in a form of their own.",
+        "ids": (
+            "adm-tokenAddBtn", "adm-tokenCopyBtn", "adm-tokenList",
+            "adm-tokenMsg", "adm-tokenName", "adm-tokenReveal",
+            "adm-tokenScopes", "adm-tokenValue",
+        ),
+    },
+    {
+        "where": "static/js/admin.js",
+        "guard": "if (!urlIn || !saveBtn) return;",
+        "why": "The admin CalDAV form was replaced by `uf-caldav-*` in the "
+               "unified integrations form (static/js/settings.js:4055+).",
+        "ids": (
+            "caldav-pass", "caldav-save-btn", "caldav-status",
+            "caldav-test-btn", "caldav-url", "caldav-user",
+        ),
+    },
+    {
+        "where": "static/js/admin.js",
+        "guard": "el(kind === 'local' ? 'adm-epLocalMsg' : 'adm-epApiMsg') || el('adm-epMsg')",
+        "why": "Endpoint editing split into a local and an API form; these two "
+               "are the pre-split spellings, kept as the last leg of an `||` "
+               "chain and behind `if (epType)`. Each is a sentence about a "
+               "rename nobody finished, and neither can throw.",
+        "ids": ("adm-epMsg", "adm-epType"),
+    },
+    {
+        "where": "static/js/settings.js",
+        "guard": "if (!listEl || !formCard) return;",
+        "why": "The standalone integrations list and editor were replaced by "
+               "the unified panel (`unified-integrations-list`, "
+               "static/index.html:2711). `initIntegrations` returns on its "
+               "sentinel pair.",
+        "ids": (
+            "integration-form-card", "integration-form-title",
+            "integrations-list", "intg-add-btn", "intg-auth-header",
+            "intg-auth-header-row", "intg-auth-type", "intg-cancel-btn",
+            "intg-description", "intg-key", "intg-name", "intg-preset",
+            "intg-save-btn", "intg-status", "intg-test-btn", "intg-url",
+        ),
+    },
+    {
+        "where": "static/js/settings.js",
+        "guard": "if (!provSel) return;",
+        "why": "Speech-to-text was removed from AI Defaults; the comment at "
+               "the guard says so. Text-to-speech, which kept its card, is "
+               "`set-tts*` and resolves.",
+        "ids": (
+            "set-sttConfigWrap", "set-sttEnabledToggle", "set-sttLangInput",
+            "set-sttLangRow", "set-sttModelInput", "set-sttModelRow",
+            "set-sttModelSelect", "set-sttProviderSelect",
+            "set-sttSettingsMsg",
+        ),
+    },
+    {
+        "where": "static/js/settings.js",
+        "guard": "if (!epSel || !modelSel) return;",
+        "why": "The Teacher Model card is hidden by a decision written into "
+               "static/index.html:1948 — the escalation flow is dormant while "
+               "`teacher_model` is unset, and the card comes back when the "
+               "core experience is faster. `H18` left it deliberately.",
+        "ids": (
+            "set-teacherChatMsg", "set-teacherEnabledToggle",
+            "set-teacherEpSelect", "set-teacherModelSelect",
+        ),
+    },
+    {
+        "where": "static/js/settings.js",
+        "guard": "el('set-email-save')?.addEventListener",
+        "why": "The flat IMAP/SMTP form was replaced by the per-account "
+               "unified form (`uf-email-*`, `uf-imap-*`, `uf-smtp-*`). Every "
+               "read is `if (el(...))` and the save handler is `?.`-bound, so "
+               "the block costs one null check per settings open. Building "
+               "this markup would be a second mail form — the `H07` note "
+               "above the sibling CardDAV block says why not.",
+        "ids": (
+            "set-email-from", "set-email-imap-host", "set-email-imap-pass",
+            "set-email-imap-port", "set-email-imap-user", "set-email-msg",
+            "set-email-save", "set-email-smtp-host", "set-email-smtp-pass",
+            "set-email-smtp-port", "set-email-smtp-user",
+        ),
+    },
+    {
+        "where": "static/js/settings.js",
+        "guard": "el('set-carddav-save')?.addEventListener",
+        "why": "`H07` triaged this block, kept it rather than deleting it, and "
+               "wrote the reason above it: the live CardDAV form is "
+               "`uf-carddav-*` and a second one is what `Law 14` prevents.",
+        "ids": (
+            "set-carddav-msg", "set-carddav-pass", "set-carddav-save",
+            "set-carddav-url", "set-carddav-user",
+        ),
+    },
+    {
+        "where": "static/js/settings.js",
+        "guard": "if (supInput) supInput.checked = !!settings.agent_supervisor_ladder;",
+        "why": "`agent_supervisor_ladder` exists in no Python file in the "
+               "repository — not in `DEFAULT_SETTINGS`, not read by the agent "
+               "loop. The control is absent because the setting behind it is. "
+               "Both reads are `if (supInput)`-guarded, so the payload key is "
+               "never written either.",
+        "ids": ("set-agentSupervisorLadder",),
+    },
+]
+
+
+def drop_lookup_prefixes(where: dict) -> list:
+    """Remove the fixed half of a concatenated lookup from `where`, in place.
+
+    The OTHER half of the concatenated-id rule, and it was missing. `made`
+    already understood that `id="cmp-history-' + i` declares a PREFIX; the
+    lookup side did not, so `getElementById('adv-' + key)` — the theme editor's
+    fourteen colour pickers, every one of which index.html provides — put a
+    literal id `adv-` into the count that nothing could ever resolve. Same
+    signal, same length gate, same file as `made_prefixes`: a trailing
+    separator means the author was building an id, not naming one.
+
+    Returns what it dropped, so a caller can say so.
+    """
+    dropped = [i for i in where if i.endswith(("-", "_")) and len(i) > 3]
+    for i in dropped:
+        del where[i]
+    return sorted(dropped)
+
+
+def declared_absent() -> dict:
+    """`{id: entry}` for every id an `ABSENT_BY_DESIGN` entry covers."""
+    out = {}
+    for entry in ABSENT_BY_DESIGN:
+        for i in entry["ids"]:
+            out[i] = entry
+    return out
+
+
+def declaration_faults(sources: dict, html_ids: set, where: dict) -> list:
+    """Every way a declaration can have gone stale, as printable lines.
+
+    `ABSENT_BY_DESIGN` is data about THIS repository. When the checker is
+    pointed at a tree that holds none of the files the declarations name — a
+    fixture, a stand-in repo built by a test — the declarations are not stale,
+    they are simply not about it, and reporting twenty faults would say the
+    algorithm is broken when only the subject changed. So: none of the declared
+    files present means the whole set is inert. SOME of them present is a
+    different story and stays a fault, because that is a file being deleted out
+    from under a live declaration.
+    """
+    faults, seen = [], {}
+    if not any(e["where"] in sources for e in ABSENT_BY_DESIGN):
+        return faults
+    for entry in ABSENT_BY_DESIGN:
+        file_, guard = entry["where"], entry["guard"]
+        if file_ not in sources:
+            faults.append(f"{file_}: declared guard file is not scanned")
+        elif guard not in sources[file_]:
+            faults.append(
+                f"{file_}: guard `{guard}` is gone — the lookups it covered "
+                f"({', '.join(sorted(entry['ids'])[:3])} …) are no longer "
+                f"guarded, so they are defects again")
+        for i in entry["ids"]:
+            if i in seen and seen[i] is not entry:
+                faults.append(f"{i}: declared twice")
+            seen[i] = entry
+            if i in html_ids:
+                faults.append(f"{i}: declared absent, but markup provides it — "
+                              f"delete the declaration")
+            elif i not in where:
+                faults.append(f"{i}: declared absent, but nothing looks it up "
+                              f"any more — delete the declaration")
+            else:
+                stray = sorted(f for f in where[i] if f != file_)
+                if stray:
+                    faults.append(
+                        f"{i}: declared against {file_}, looked up from "
+                        f"{', '.join(stray)} — the declaration does not "
+                        f"cover that site")
+    return faults
+
+
 def main() -> int:
     limit = None
     if "--max" in sys.argv:
@@ -342,20 +572,38 @@ def main() -> int:
         for i in indirect_lookups(text):
             where.setdefault(i, set()).add(f)
 
+    drop_lookup_prefixes(where)
+
     looked = set(where)
     known = html_ids | made
-    dead = sorted(i for i in looked - known
-                  if len(i) > 3 and not i.startswith("__")
-                  and not i.startswith(made_prefixes))
+    unresolved = sorted(i for i in looked - known
+                        if len(i) > 3 and not i.startswith("__")
+                        and not i.startswith(made_prefixes))
+
+    faults = declaration_faults(sources, html_ids, where)
+    declared = declared_absent()
+    dead = [i for i in unresolved if i not in declared]
 
     print(f"lookups {len(looked)}  ·  in markup {len(looked & html_ids)}  ·  "
-          f"made at runtime {len(looked & made - html_ids)}  ·  UNRESOLVED {len(dead)}")
+          f"made at runtime {len(looked & made - html_ids)}  ·  "
+          f"declared absent {len(unresolved) - len(dead)}  ·  "
+          f"UNRESOLVED {len(dead)}")
     print()
     for prefix, n in Counter(d.split("-")[0] for d in dead).most_common():
         ids = [d for d in dead if d.split("-")[0] == prefix]
         print(f"  {n:>3}  {prefix + '-*':<14} {', '.join(sorted(ids)[:4])}"
               f"{' …' if len(ids) > 4 else ''}")
 
+    if faults:
+        print("\nSTALE DECLARATIONS — ABSENT_BY_DESIGN no longer describes the tree:")
+        for line in faults:
+            print(f"  {line}")
+
+    if faults:
+        print("\nFAIL — a declaration that has stopped being true is worse than no "
+              "declaration: it subtracts ids from the count on a claim nobody "
+              "re-checked.")
+        return 1
     if limit is None:
         return 0
     if len(dead) > limit:

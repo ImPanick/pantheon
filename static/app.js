@@ -177,7 +177,7 @@ function initRailHoverLabels() {
     'rail-assistant': 'Assistant',   // H02
     'rail-calendar': 'Calendar',
     'rail-compare': 'Compare',
-    'rail-cookbook': 'Cookbook',
+    'rail-cookbook': 'Forge',
     'rail-research': 'Research',
     'rail-email': 'Email',
     'rail-gallery': 'Gallery',
@@ -1018,7 +1018,7 @@ function initializeEventListeners() {
     });
   }
 
-  // ── Cookbook modal toggle ──
+  // ── Forge modal toggle ──
   const toolCookbookBtn = el('tool-cookbook-btn');
   if (toolCookbookBtn) {
     toolCookbookBtn.addEventListener('click', async () => {
@@ -1337,10 +1337,28 @@ function initializeEventListeners() {
       if (d.privileges) {
         window._userPrivileges = d.privileges;
         const p = d.privileges;
-        // Hide agent mode toggle
+        // Hide agent mode toggle.
+        //
+        // `P3-20`: this read `#mode-toggle` and `.chat-input-toggle`, neither
+        // of which exists. The control became a two-button segmented picker
+        // (`#mode-agent-btn` / `#mode-chat-btn` inside `.mode-toggle`, a CLASS)
+        // and this branch was never updated, so a user whose admin had turned
+        // `can_use_agent` off still saw Agent, could press it, and got a
+        // refusal from `routes/chat_routes.py:1705` on send. The server side
+        // was never the hole; the affordance was (`Law 15`).
+        //
+        // The Agent button goes, not the whole picker — Chat has to stay
+        // reachable and has to be what the user is on.
         if (!p.can_use_agent) {
-          const modeToggle = document.getElementById('mode-toggle');
-          if (modeToggle) modeToggle.closest('.chat-input-toggle')?.style.setProperty('display', 'none');
+          const agentBtn = document.getElementById('mode-agent-btn');
+          if (agentBtn) {
+            agentBtn.style.display = 'none';
+            try {
+              if (typeof window.__pantheonSetChatMode === 'function') {
+                window.__pantheonSetChatMode('chat');
+              }
+            } catch (_) {}
+          }
         }
         // Hide bash toggle
         if (!p.can_use_bash) {

@@ -785,25 +785,25 @@ CLAIMS: Tuple[Claim, ...] = (
     Claim(
         id="wiring",
         area="Dead code and wiring",
-        headline="Unreachable UI 78 -> 120 and ratcheted, with 1,524 lines deleted against 340 added.",
+        headline="Unreachable UI 78 -> 120 -> 40 and ratcheted, with 1,524 lines deleted against 340 added.",
         stock="78 wiring defects: markup, handlers and ids that nothing could reach.",
         pantheon="A ratchet in CI that cannot go up.",
         before="78",
         # `B348`. This said **2** while `check-wiring.py` printed **120**, and the
-        # repro carried `--max 124` against CI's `--max 120` — so a reader
+        # repro carried `--max 124` against CI's `--max 40` — so a reader
         # following the ledger's own instruction ran a different gate from the
         # one guarding the tree, and the command disproved the claim it was
         # printed under. Both halves are now compared by `check-ledger.py`
         # against the checker and against `ci.yml`, so neither can drift again.
         #
-        # `78 -> 120` is not a regression: the `78` was counted before `B58`
+        # `78 -> 120 -> 40` is not a regression: the `78` was counted before `B58`
         # widened the checker from four of the six places a lookup is written to
         # all six. The honest statement of the win is the ratchet, not the
         # count — the count went UP because the measurement got better, which is
         # the sort of thing a ledger has to be able to say about itself.
-        after="120",
+        after="40",
         provenance="measured",
-        repro="python3 .pantheon/check-wiring.py --max 120",
+        repro="python3 .pantheon/check-wiring.py --max 40",
         evidence=(".pantheon/check-wiring.py",),
         rows=("P3-13", "P3-14", "P3-15"),
         how=(
@@ -813,8 +813,8 @@ CLAIMS: Tuple[Claim, ...] = (
             "version of the same disease: it recursed, found nothing, and reported "
             "**23 routes when the real number was 443**, looking entirely correct while "
             "doing so. The figure above is the ceiling CI holds, not a floor anybody "
-            "reached: `check-wiring.py` reports **120** unresolved lookups today and "
-            "`ci.yml` refuses 121. It said `2` here until `B348`, against its own "
+            "reached: `check-wiring.py` reports **40** unresolved lookups today and "
+            "`ci.yml` refuses 41. It said `2` here until `B348`, against its own "
             "repro command printing `120` — the ledger failing on the ledger."
         ),
     ),

@@ -216,11 +216,63 @@ def abandoned_followups() -> Dict[str, Any]:
     )
 
 
+# ---------------------------------------------------------------------------
+# P14-06 — the store we decided to keep, against the size we decided it at
+# ---------------------------------------------------------------------------
+
+def events_store_size() -> Dict[str, Any]:
+    """How big the measurement table has got.
+
+    `D-2026-09-18-01` decided that the events table stays in SQLite, on a
+    measurement: 730,000 rows draws a 30-day usage chart in 195 ms. *SQLite is
+    fine until it is not* is only an honest decision while somebody can tell
+    which side of "not" they are on, and until this check nothing in the product
+    could say how many rows that table held.
+
+    This is the decision's revisit condition, wired to the operator instead of
+    to a memory. It is also the one place the `0` retention setting — keep
+    everything, a real choice someone can make — stops being silent.
+    """
+    try:
+        from src.events import store_status
+
+        st = store_status()
+    except Exception as e:
+        return _check("events_store_size", "Measurement store", UNKNOWN,
+                      f"Could not read the events table: {e}")
+    if st.get("error"):
+        return _check("events_store_size", "Measurement store", UNKNOWN,
+                      f"Could not read the events table: {st['error']}")
+
+    rows = int(st.get("rows") or 0)
+    mb = (st.get("est_bytes") or 0) / (1024.0 * 1024.0)
+    keeping = int(st.get("retention_days") or 0)
+    window = f"{keeping} days" if keeping > 0 else "for ever (retention is 0)"
+    if st.get("pressure") == "ok":
+        return _check("events_store_size", "Measurement store", OK,
+                      f"{rows:,} events (~{mb:.0f} MB), keeping {window}.",
+                      count=rows, rows=rows, pressure="ok")
+    over = st.get("pressure") == "over"
+    return _check(
+        "events_store_size", "Measurement store",
+        STUCK if over else ATTENTION,
+        f"{rows:,} events (~{mb:.0f} MB), keeping {window}. "
+        + ("That is past the size this store was measured good for."
+           if over else "That is larger than the shape this store was sized for."),
+        count=rows,
+        action=("Lower `events_retention_days` in Settings — it prunes on the next write. "
+                "If you need this much history online, `D-2026-09-18-01` is the decision "
+                "to revisit: it names the numbers and what would replace SQLite."),
+        rows=rows, pressure=st.get("pressure"),
+    )
+
+
 CHECKS = (
     agent_email_backlog,
     outbound_cooldowns,
     embedding_availability,
     abandoned_followups,
+    events_store_size,
 )
 
 _RANK = {STUCK: 0, ATTENTION: 1, UNKNOWN: 2, OK: 3}

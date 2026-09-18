@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Image generation model registry and VRAM fitting for Cookbook."""
+"""Image generation model registry and VRAM fitting for Forge."""
 
 from __future__ import annotations
 

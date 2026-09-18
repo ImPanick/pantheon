@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Shared window-resize helper. Companion to makeWindowDraggable: gives every
 // draggable tool window (Library, Notes, Tasks, Calendar, Gallery, Email,
-// Cookbook, Memory, Settings, Theme, Compare, Research, Sessions) edge- and
+// Forge, Memory, Settings, Theme, Compare, Research, Sessions) edge- and
 // corner-resize, the same way a native desktop window resizes — grab any of
 // the four edges or four corners and drag.
 //

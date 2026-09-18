@@ -141,9 +141,23 @@ def test_every_registered_row_exists_and_every_blocking_row_is_open():
 def test_the_blocking_set_is_the_size_the_proposal_states():
     blocking = [r for r in ROWS
                 if r.open and REGISTER.get(r.id, ("", ""))[0] == "blocking"]
-    assert len(blocking) == 15, sorted(r.id for r in blocking)
+    landed = [rid for rid, (v, _c) in REGISTER.items() if v == "landed"]
+    body = PROPOSAL.read_text(encoding="utf-8")
+    # `B522`. This pinned `15` and went red the day `P0-17` and `P6-08` closed —
+    # two of the gates being *met*, which is the only direction this number is
+    # supposed to move. Sixth instance of the shape `B520` names. The durable
+    # claim is that the document and the register agree, whatever the number is:
+    # a line whose prose and whose machine-readable half disagree is worse than
+    # no line. `landed` rows stay in the register on purpose so a met gate can be
+    # audited rather than quietly vanishing.
+    stated = re.search(r"§?\s*3\.? The blocking set — (\w+) rows", body)
+    assert stated, "§ 3's heading no longer states a count"
+    words = {"ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
+             "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18}
+    assert words[stated.group(1)] == len(blocking) + len(landed), (
+        f"§ 3 says {stated.group(1)} and the register holds {len(blocking)} blocking "
+        f"+ {len(landed)} landed")
     body = PROPOSAL.read_text(encoding="utf-8").lower()
-    assert "fifteen rows" in body, "§ 3's heading no longer states the count"
     assert "fourteen" not in body.split("## 3.")[1].split("## 4.")[0], (
         "§ 3 still says fourteen somewhere — a count carried forward rather than "
         "recomputed is the defect `B44` is named after")
@@ -285,7 +299,10 @@ def test_the_rule_reaches_every_blocking_row_it_claims_to():
         f"the rule no longer reaches {sorted(set(missed) - RULE_CANNOT_SEE)}. "
         f"A gate the rule cannot see is a gate nobody is asked about."
     )
-    assert len(blocking) - len(missed) == 14, (len(blocking), missed)
+    # `B522`. Was `== 14`, i.e. "all but one of fifteen". The claim is the recall
+    # of the rule, not an absolute: at most one blocking row may be invisible to
+    # it, and the one that is must be named in the document.
+    assert len(missed) <= 1, (len(blocking), missed)
 
 
 def test_the_rule_clears_an_ordinary_tidiness_row():

@@ -22,15 +22,36 @@ def _test_utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def _stub_heavy():
+def _stub_heavy(monkeypatch):
+    """Stand in for five heavy `src.*` modules, and put them back afterwards.
+
+    `sys.modules.setdefault` used to do this, which meant the empty stubs
+    outlived the test: every file collected after this one that imported
+    `src.agent_loop` got a module object with nothing in it. `setitem` through
+    `monkeypatch` records the slot — absent or occupied — and restores it at
+    teardown (`B523`).
+    """
     for name in [
         "src.builtin_actions", "src.ai_interaction", "src.endpoint_resolver",
         "src.agent_loop", "src.session_manager",
     ]:
-        sys.modules.setdefault(name, types.ModuleType(name))
+        if name not in sys.modules:
+            monkeypatch.setitem(sys.modules, name, types.ModuleType(name))
 
 
-def _setup_isolated_db():
+def _setup_isolated_db(monkeypatch):
+    """Four-column stand-ins for the two task models, bound where the scheduler
+    looks — and unbound again when the test ends.
+
+    These were assigned onto `core.database` directly and left there. The real
+    `ScheduledTask` has `schedule`, `cron_expression`, `trigger_type` and the
+    rest; this one has nine columns. Every test collected after this file that
+    said `from core.database import ScheduledTask` got the stand-in, and three
+    of them in `tests/test_task_schedule_floor.py` failed in the full suite
+    while passing on their own — the give-away in the traceback being
+    `test_scheduler_restart_doublefire._setup_isolated_db.<locals>.ScheduledTask`.
+    `monkeypatch.setattr` puts the real four attributes back (`B523`).
+    """
     import core.database as cd
     B = declarative_base()
 
@@ -57,10 +78,12 @@ def _setup_isolated_db():
 
     eng = create_engine("sqlite:///:memory:")
     B.metadata.create_all(eng)
-    cd.engine = eng
-    cd.SessionLocal = sessionmaker(bind=eng, autocommit=False, autoflush=False)
-    cd.ScheduledTask = ScheduledTask
-    cd.TaskRun = TaskRun
+    monkeypatch.setattr(cd, "engine", eng)
+    monkeypatch.setattr(cd, "SessionLocal",
+                        sessionmaker(bind=eng, autocommit=False,
+                                     autoflush=False))
+    monkeypatch.setattr(cd, "ScheduledTask", ScheduledTask)
+    monkeypatch.setattr(cd, "TaskRun", TaskRun)
     return cd, ScheduledTask, TaskRun
 
 
@@ -75,8 +98,8 @@ def test_scheduler_utcnow_preserves_naive_utc_contract():
 
 def _drive_scheduler(monkeypatch, pre_start_setup=None):
     """Build a TaskScheduler bypassing __init__ and run start() + two polls."""
-    _stub_heavy()
-    cd, ScheduledTask, TaskRun = _setup_isolated_db()
+    _stub_heavy(monkeypatch)
+    cd, ScheduledTask, TaskRun = _setup_isolated_db(monkeypatch)
 
     from src.task_scheduler import TaskScheduler
     sch = TaskScheduler.__new__(TaskScheduler)

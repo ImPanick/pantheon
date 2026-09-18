@@ -22,6 +22,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from fastapi import HTTPException
+from tests.helpers.fresh_import import drop_for_fresh_import
 
 
 def test_get_upcoming_events_is_owner_scoped():
@@ -182,7 +183,7 @@ def _install_multipart_stub(monkeypatch):
 def _import_calendar_routes(monkeypatch):
     _install_calendar_db_stub(monkeypatch)
     _install_multipart_stub(monkeypatch)
-    monkeypatch.delitem(sys.modules, "routes.calendar_routes", raising=False)
+    drop_for_fresh_import(monkeypatch, "routes.calendar_routes")
     mod = __import__("routes.calendar_routes", fromlist=["setup_calendar_routes"])
     monkeypatch.setattr(mod, "or_", lambda *args: _Expr("or", children=args))
     monkeypatch.setattr(mod, "and_", lambda *args: _Expr("and", children=args))

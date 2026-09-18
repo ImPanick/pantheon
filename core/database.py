@@ -545,7 +545,7 @@ class ModelEndpoint(TimestampMixin, Base):
     model_refresh_interval = Column(Integer, nullable=True, default=None)
     model_refresh_timeout = Column(Integer, nullable=True, default=None)
     # Whether models on this endpoint accept OpenAI-style function
-    # schemas + emit `tool_calls`. Auto-detected at Cookbook auto-
+    # schemas + emit `tool_calls`. Auto-detected at Forge auto-
     # register time from `--enable-auto-tool-choice` in the serve cmd;
     # can be toggled per-endpoint in the UI. NULL = unknown, falls
     # back to the model-name keyword heuristic in agent_loop.py.
@@ -972,8 +972,11 @@ TASK_RUN_NOTIFY: "dict[str, tuple[bool, str]]" = {
     ),
     "error": (
         True,
-        "the run failed and will fail again on the same schedule until somebody "
-        "looks. This is the one outcome that overrides the per-task quiet gates.",
+        "the run failed and will keep failing until somebody looks — on a "
+        "schedule that now slows down each time (`P15-08`), which changes how "
+        "often it costs a provider a request and not whether the owner needs "
+        "to know. This is the one outcome that overrides the per-task quiet "
+        "gates.",
     ),
     "skipped": (
         True,

@@ -8,7 +8,7 @@ profiles — Quality / Balanced / Speed — with concrete llama.cpp flags
 context, how much headroom to leave for a vision encoder) into a formula.
 
 Pure/deterministic — no benchmarking, no I/O. Reuses the same VRAM math as
-fit.py/models.py so "what the Cookbook recommends" and "what it serves" agree.
+fit.py/models.py so "what the Forge recommends" and "what it serves" agree.
 
 NOTE: token/s figures are NOT computed here — real speed on partial-offload MoE
 is CPU-bound and not reliably predictable from specs. The UI labels profiles by

@@ -977,7 +977,7 @@ export async function _hwfitFetch(fresh = false, opts = {}) {
   }
 }
 
-// Renders a non-blocking hardware visibility warning when Cookbook is using
+// Renders a non-blocking hardware visibility warning when Forge is using
 // container-visible hardware that may not match the user's actual host machine.
 function _renderHwVisibilityWarning(sys) {
   const row = document.getElementById('hwfit-hw-row');
@@ -1031,7 +1031,7 @@ function _renderHwVisibilityWarning(sys) {
   box.querySelector('[data-hw-action="copy"]')?.addEventListener('click', () => {
     // Keep diagnostics copy/paste friendly for GitHub issues and Docker support.
     const text = [
-      'Pantheon Cookbook hardware diagnostics',
+      'Pantheon Forge hardware diagnostics',
       `probe_scope=${sys?.probe_scope || ''}`,
       `containerized=${sys?.containerized === true}`,
       `backend=${sys?.backend || ''}`,
@@ -2458,7 +2458,7 @@ export function _hwfitInit() {
       });
     }
     // Default-server toggle: exclusive checkmark in the entry title. The chosen
-    // server is what Cookbook lands on (all dropdowns) on the next open.
+    // server is what Forge lands on (all dropdowns) on the next open.
     const _defBtn = entry.querySelector('.cookbook-srv-default');
     if (_defBtn && !_defBtn.dataset.bound) {
       _defBtn.dataset.bound = '1';
@@ -2472,7 +2472,7 @@ export function _hwfitInit() {
           const on = !!_envState.defaultServer && b.dataset.srvKey === _envState.defaultServer;
           b.classList.toggle('active', on);
           b.innerHTML = _serverDefaultHtml(on);
-          b.title = on ? 'Default server — Cookbook opens here' : 'Make this the default server';
+          b.title = on ? 'Default server — Forge opens here' : 'Make this the default server';
         });
         // Apply immediately so the dropdowns reflect it without reopening
         // (inline — _applyServerSelection lives in cookbook.js and isn't imported here).
@@ -2558,7 +2558,7 @@ export function _hwfitInit() {
     });
     // Manual connectivity test after editing host or port. Existing saved
     // servers are not auto-tested on panel open; unreachable hosts can stall the
-    // Cookbook UI and make opening the panel feel blocked.
+    // Forge UI and make opening the panel feel blocked.
     entry.querySelectorAll('.cookbook-srv-host, .cookbook-srv-port').forEach(el => {
       el.addEventListener('blur', () => _testServerConnection(entry));
     });

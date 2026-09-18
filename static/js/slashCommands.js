@@ -1367,7 +1367,7 @@ async function _cmdToggleSidebar(args, ctx) {
 async function _cmdOpen(args, ctx) {
   const target = (args[0] || '').trim().toLowerCase();
   if (!target) {
-    slashReply('Open what? Try /open Cookbook, /open Settings, /open Gallery, /open Notes, /open Tasks, /open Library, /open Research, or /open Compare.');
+    slashReply('Open what? Try /open Forge, /open Settings, /open Gallery, /open Notes, /open Tasks, /open Library, /open Research, or /open Compare.');
     return true;
   }
   const clickFirst = (...ids) => {
@@ -1378,7 +1378,10 @@ async function _cmdOpen(args, ctx) {
     return false;
   };
   try {
-    if (target === 'cookbook' || target === 'cook') {
+    // `P0-29`. `forge` is the name now; `cookbook` and `cook` keep
+    // answering because a user who learned `/open cookbook` did not
+    // agree to relearn it (`Law 1` — we add, we do not subtract).
+    if (target === 'forge' || target === 'cookbook' || target === 'cook') {
       if (cookbookModule && typeof cookbookModule.open === 'function') await cookbookModule.open({ tab: 'Download' });
       else clickFirst('tool-cookbook-btn', 'rail-cookbook');
       return true;
@@ -1415,7 +1418,7 @@ async function _cmdOpen(args, ctx) {
 async function _cmdToolPanel(tool, args, ctx) {
   const target = String(tool || '').toLowerCase();
   const rest = (args || []).join(' ').trim();
-  if (target === 'cookbook') {
+  if (target === 'cookbook' || target === 'forge') {
     const sub = (args[0] || '').toLowerCase();
     if (sub === 'serve') {
       const query = args.slice(1).join(' ').trim();
@@ -1434,7 +1437,7 @@ async function _cmdToolPanel(tool, args, ctx) {
           document.getElementById('tool-cookbook-btn')?.click();
         }
       } catch (e) {
-        slashReply(`Could not open Cookbook Serve${e?.message ? `: ${ctx.esc(e.message)}` : ''}`);
+        slashReply(`Could not open Forge Serve${e?.message ? `: ${ctx.esc(e.message)}` : ''}`);
       }
       return true;
     }
@@ -2856,7 +2859,7 @@ async function _cmdTourCompare(args, ctx) {
   return true;
 }
 
-// ── Cookbook tour ──
+// ── Forge tour ──
 async function _cmdTourCookbook(args, ctx) {
   // Clear the chat input so "/tour-cookbook" doesn't linger.
   const _msgEl = document.getElementById('message');
@@ -2901,7 +2904,7 @@ async function _cmdTourCookbook(args, ctx) {
     }
   }
   if (!modal || modal.classList.contains('hidden')) {
-    slashReply('Could not open Cookbook. Try clicking the Cookbook tool first.');
+    slashReply('Could not open Forge. Try clicking the Forge tool first.');
     return true;
   }
 
@@ -3029,7 +3032,7 @@ async function _cmdTourCookbook(args, ctx) {
   // without having to navigate manually. Keep copy tight — no walls of text.
   const steps = [
     { sel: '#cookbook-modal .modal-content',
-      text: '<b>Welcome to Cookbook!</b> Download / Cook / Serve models here!',
+      text: '<b>Welcome to Forge!</b> Download / Cook / Serve models here!',
       placement: 'center-above' },
     { sel: '#cookbook-modal .cookbook-tab[data-backend="Settings"]',
       text: 'Hosting on another machine? Configure it under <b>Settings</b>.' },
@@ -3076,10 +3079,10 @@ async function _cmdTourCookbook(args, ctx) {
     if (res === 'back') { if (i > 0) i -= 2; continue; }
   }
 
-  // Leave Cookbook on the Download tab so the user can start downloading immediately.
+  // Leave Forge on the Download tab so the user can start downloading immediately.
   _clickTab('Search');
   _clear();
-  await typewriterReply('That’s Cookbook. Pick a model that catches your eye and let it cook.');
+  await typewriterReply('That’s Forge. Pick a model that catches your eye and let it cook.');
   return true;
 }
 
@@ -5947,12 +5950,12 @@ const COMMANDS = {
     handler: _cmdTourCompare,
     usage: '/tour-compare'
   },
-  'tour-cookbook': {
-    alias: ['cookbook-tour'],
+  'tour-forge': {
+    alias: ['tour-cookbook', 'cookbook-tour', 'forge-tour'],
     category: 'Tours',
-    help: 'Cookbook tour: hardware, downloads, serving',
+    help: 'Forge tour: hardware, downloads, serving',
     handler: _cmdTourCookbook,
-    usage: '/tour-cookbook'
+    usage: '/tour-forge'
   },
   'tour-research': {
     alias: ['research-tour'],
@@ -6037,14 +6040,18 @@ const COMMANDS = {
     hidden: true,
     help: 'Open a tool panel',
     handler: _cmdOpen,
-    usage: '/open Cookbook'
+    usage: '/open Forge'
   },
-  cookbook: {
-    alias: ['cook'],
+  // `P0-29`. The command is `/forge` now and `/cookbook` is an alias, not a
+  // separate command: one entry, so the help text, the palette and the
+  // dispatcher cannot disagree about which one exists (`Law 14`). Anyone with
+  // `/cookbook serve qwen` in their muscle memory keeps it (`Law 1`).
+  forge: {
+    alias: ['cookbook', 'cook'],
     category: 'Tools',
-    help: 'Open Cookbook; use "serve" to jump to model serving',
-    handler: (args, ctx) => _cmdToolPanel('cookbook', args, ctx),
-    usage: '/cookbook  ·  /cookbook serve qwen'
+    help: 'Open Forge; use "serve" to jump to model serving',
+    handler: (args, ctx) => _cmdToolPanel('forge', args, ctx),
+    usage: '/forge  ·  /forge serve qwen'
   },
   email: {
     alias: ['mail', 'inbox'],

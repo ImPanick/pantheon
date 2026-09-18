@@ -7,7 +7,8 @@ import logging
 from typing import List, Dict, Set, Any, Tuple
 from dataclasses import dataclass
 
-from src.index_walk import prune_index_dirs, is_indexable_file
+from src.index_walk import (IndexBudget, IndexPacer, file_is_too_large,
+                            is_indexable_file, max_file_bytes, prune_index_dirs)
 
 # `B162`/`B180`. The registers are imported, never restated. ``MARKITDOWN_EXTS``
 # is kept as a re-export because this module has exported it since `B75` and
@@ -116,10 +117,23 @@ SKIP_UNREADABLE = "could not be read"
 # operator at the wrong fix. It is grouped with ``SKIP_UNSUPPORTED`` everywhere
 # a decision is made (see ``NOT_LISTED``); only the sentence differs.
 SKIP_UNKNOWN_ENCODING = "text in an unidentifiable encoding"
+# `P14-07`: a fifth, and it is the only one that is about US rather than about
+# the file. The other four say "we cannot read this"; these two say "we can, and
+# we chose not to, and here is the number that decided it" — so the sentence
+# carries the ceiling and the setting, because a skip whose remedy is a setting
+# is useless without the setting's name.
+SKIP_TOO_LARGE = "larger than the {mb} MB index ceiling (index_max_file_mb)"
+SKIP_INDEX_FULL = ("listed but not held in memory: the index reached its "
+                   "{mb} MB ceiling (index_budget_mb)")
 
 # The reasons that mean "this file is not in the index at all", as opposed to
 # "it is listed and holds nothing". One tuple so a new reason cannot be added
 # without deciding which side of that line it falls on.
+#
+# `SKIP_TOO_LARGE` and `SKIP_INDEX_FULL` are deliberately NOT here. A file we
+# declined to read is one the user put in their documents folder and can see in
+# their file manager; dropping it from the listing as well would answer "where
+# is my 400 MB export" with silence, which is the failure mode `B75` filed.
 NOT_LISTED = (SKIP_UNSUPPORTED, SKIP_UNREADABLE, SKIP_UNKNOWN_ENCODING)
 
 
@@ -271,7 +285,7 @@ def extract_document_text(path: str) -> str:
     return extract_index_text(path)[0]
 
 
-def walk_index_candidates(directory: str, extensions=None):
+def walk_index_candidates(directory: str, extensions=None, pacer=None):
     """Yield ``(path, ext, text, reason)`` for every file the shared walk policy
     admits under ``directory`` (`B75`).
 
@@ -293,12 +307,25 @@ def walk_index_candidates(directory: str, extensions=None):
     is treated as no filter at all — otherwise the byte-decoded formats, which
     by definition have no registered suffix, would be filtered out by the
     default argument of the only two callers there are.
+
+    `P14-07`: a file over ``index_max_file_mb`` is reported as ``SKIP_TOO_LARGE``
+    **without being read**, and the walk rests periodically so a long index does
+    not own the machine somebody is using. ``pacer`` is an ``IndexPacer``; the
+    default builds one per walk, and a caller indexing several directories in a
+    row can pass one so the duty cycle spans the whole job rather than resetting
+    at each directory boundary.
     """
     allowed = None
     if extensions is not None:
         allowed = {str(e).lower() for e in extensions}
         if allowed.issuperset(INDEXABLE_EXTENSIONS):
             allowed = None
+    # `P14-07`. The ceiling and the duty cycle sit here, at the one generator
+    # both indexers consume, rather than at each of them — a bound applied in
+    # one of two places is the defect class `Law 13` names, and these two have
+    # drifted from each other before (#5559, `B75`).
+    ceiling = max_file_bytes()
+    pacer = pacer or IndexPacer()
     for root, dirs, names in os.walk(directory):
         # Hidden/junk pruning is single-sourced in src.index_walk (#5559); the
         # passed-in root is exempt, as it is for both indexers today.
@@ -318,6 +345,16 @@ def walk_index_candidates(directory: str, extensions=None):
             if not os.path.isfile(path):
                 yield path, ext, "", SKIP_UNREADABLE
                 continue
+            # Before the extractor, because the extractor is where the memory
+            # goes: one 419 MB file measured at 1,384 MB of RSS, and by the time
+            # it is a `str` the decision has already been made.
+            if file_is_too_large(path, ceiling):
+                yield path, ext, "", SKIP_TOO_LARGE.format(
+                    mb=ceiling // (1024 * 1024))
+                continue
+            # Once per file, and it sleeps only after a run of solid work — a
+            # short index never reaches the first rest.
+            pacer.tick()
             text, reason = extract_index_text(path, name)
             if not reason and allowed is not None and ext not in allowed:
                 continue
@@ -371,6 +408,8 @@ def load_personal_index(
     personal_dir: str,
     extensions: Tuple[str, ...] = config.DEFAULT_EXTENSIONS,
     skipped: List[Dict[str, str]] = None,
+    budget: "IndexBudget" = None,
+    pacer: "IndexPacer" = None,
 ) -> List[Dict[str, Any]]:
     """Load and index personal documents.
 
@@ -389,9 +428,18 @@ def load_personal_index(
     it always has been — the docs listing shows the user the file it found — and
     is additionally reported in ``skipped`` with a reason, because "listed but
     unsearchable" is the state this row exists to stop being silent.
+
+    `P14-07`: ``budget`` caps what is held in memory across the whole call, and
+    ``pacer`` is the duty cycle. Both default to a fresh one per call; a caller
+    indexing several directories — ``PersonalDocsManager.refresh_index`` does —
+    passes one of each so the ceiling covers the *index*, not each directory
+    separately, which would be a ceiling multiplied by however many folders
+    somebody happened to add.
     """
     files = []
-    for path, _ext, text, reason in walk_index_candidates(personal_dir, extensions):
+    budget = budget if budget is not None else IndexBudget()
+    for path, _ext, text, reason in walk_index_candidates(
+            personal_dir, extensions, pacer=pacer):
         if reason in NOT_LISTED:
             if skipped is not None:
                 skipped.append({"path": path, "reason": reason})
@@ -403,6 +451,23 @@ def load_personal_index(
         except OSError:
             size = 0
         chunks = split_chunks(text)
+        # `P14-07`. The chunks are what this index IS — they are held for the
+        # life of the process, and `PersonalDocsManager.__init__` builds them at
+        # startup before anybody has asked for anything. Measured: 105 MB of
+        # notes retained 131,200 chunks and 137 MB of RSS, with no ceiling of
+        # any kind above it.
+        #
+        # Past the ceiling the file is still LISTED — the user can see it, with
+        # the reason and the setting that raises it — and simply holds nothing.
+        # That is the same state as a file whose extractor produced no text,
+        # which this index has always had and `B75` made visible rather than
+        # silent. Dropping the file from the listing instead would answer "where
+        # is my document" with nothing at all.
+        if chunks and not budget.take(sum(len(c) for c in chunks)):
+            chunks = []
+            if skipped is not None:
+                skipped.append({"path": path, "reason": SKIP_INDEX_FULL.format(
+                    mb=budget.limit // (1024 * 1024))})
         display = os.path.relpath(path, personal_dir)
         files.append({"name": display, "path": path, "size": size, "chunks": chunks})
     return files
@@ -672,8 +737,17 @@ class PersonalDocsManager:
         self.index = []
         self.skipped: List[Dict[str, str]] = []
 
+        # `P14-07`. ONE budget and ONE pacer for the whole refresh, not one per
+        # directory. Thirteen folders each politely stopping at their own
+        # ceiling is thirteen ceilings, which is not a ceiling — the same
+        # mistake `P15-05` found in the HuggingFace refresh, where per-source
+        # caps summed to a burst.
+        budget = IndexBudget()
+        pacer = IndexPacer()
+
         # Index the base personal directory
-        base_files = load_personal_index(self.personal_dir, skipped=self.skipped)
+        base_files = load_personal_index(self.personal_dir, skipped=self.skipped,
+                                         budget=budget, pacer=pacer)
         for f in base_files:
             if os.path.abspath(f.get("path", "")) in self.excluded_files:
                 continue
@@ -691,7 +765,8 @@ class PersonalDocsManager:
                 continue
 
             # Load files from this directory
-            dir_files = load_personal_index(directory, skipped=self.skipped)
+            dir_files = load_personal_index(directory, skipped=self.skipped,
+                                            budget=budget, pacer=pacer)
             for f in dir_files:
                 if os.path.abspath(f.get("path", "")) in self.excluded_files:
                     continue
@@ -700,7 +775,17 @@ class PersonalDocsManager:
                 f['name'] = f"{os.path.basename(directory)}/{f['name']}"
                 self.index.append(f)
 
-        logger.info(f"Refreshed index: {len(self.index)} documents from {len(self.indexed_directories) + 1} directories")
+        # Kept so `get_stats` can report what was held and what was not. A
+        # ceiling nobody can see is a ceiling that gets diagnosed as "search is
+        # broken" (`Law 15`).
+        self.index_budget = budget
+        self.index_pacer = pacer
+        logger.info(
+            f"Refreshed index: {len(self.index)} documents from "
+            f"{len(self.indexed_directories) + 1} directories "
+            f"({budget.used / (1024 * 1024):.0f} MB held"
+            + (f", {budget.dropped} file(s) over the ceiling" if budget.dropped else "")
+            + (f", rested {pacer.slept:.1f}s" if pacer.rests else "") + ")")
 
     def retrieve(self, query: str, k: int = 5) -> List[str]:
         """Retrieve relevant documents for a query."""
@@ -721,6 +806,10 @@ class PersonalDocsManager:
             ext = os.path.splitext(doc['path'])[1]
             extensions[ext] = extensions.get(ext, 0) + 1
         
+        # `P14-07`. What the in-memory index is holding, against what it is
+        # allowed to hold. Zero-cost to report and the difference between
+        # "search does not find my file" and "search is broken".
+        budget = getattr(self, 'index_budget', None)
         return {
             'total_documents': total_docs,
             'total_chunks': total_chunks,
@@ -729,7 +818,10 @@ class PersonalDocsManager:
             'file_types': extensions,
             'directories_count': len(self.indexed_directories) + 1,
             'base_directory': self.personal_dir,
-            'additional_directories': self.indexed_directories
+            'additional_directories': self.indexed_directories,
+            'held_bytes': getattr(budget, 'used', 0),
+            'held_limit_bytes': getattr(budget, 'limit', 0),
+            'files_over_budget': getattr(budget, 'dropped', 0),
         }
         
     def index_all_directories(self):

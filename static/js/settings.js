@@ -1967,6 +1967,7 @@ async function initAgentSettings() {
   var roundsInput = el('set-agentMaxRounds');
   var supInput = el('set-agentSupervisorLadder');
   var verInput = el('set-agentVerifier');   // H16
+  var ceilInput = el('set-localMaxTokens'); // P3-21
   var msg = el('set-agentMsg');
   if (!toolsInput) return;
 
@@ -1979,6 +1980,15 @@ async function initAgentSettings() {
     // H16. `!!` on a value the server now always sends, rather than a
     // truthiness test on a key that used to be absent from every response.
     if (verInput) verInput.checked = !!settings.agent_verifier_subagent;
+    // P3-21. Blank means "not configured" and the loop uses its own default;
+    // writing 1000000 into the box on load would turn a default into a typed
+    // value the first time anything else on this card saves, which is the
+    // materialised-default trap `setting_is_explicit` exists for. The
+    // placeholder carries the default instead.
+    if (ceilInput && settings.local_inference_max_tokens !== undefined &&
+        settings.local_inference_max_tokens !== 1000000) {
+      ceilInput.value = settings.local_inference_max_tokens;
+    }
   } catch (e) {}
 
   // Clamp + coerce a raw input to an int in [lo, hi]; falls back to `dflt`
@@ -1998,11 +2008,22 @@ async function initAgentSettings() {
     if (rounds != null) payload.agent_max_rounds = rounds;
     if (supInput) payload.agent_supervisor_ladder = !!supInput.checked;
     if (verInput) payload.agent_verifier_subagent = !!verInput.checked;   // H16
+    // P3-21. A blank box is not a zero: zero is the documented "no lift" value
+    // and blank means "leave the machine ceiling at its default", so only a
+    // number is ever sent.
+    var ceiling = null;
+    if (ceilInput && String(ceilInput.value).trim() !== '') {
+      ceiling = clampInt(ceilInput.value, 0, 10000000, 1000000);
+      ceilInput.value = ceiling;                    // reflect the clamped value
+      payload.local_inference_max_tokens = ceiling;
+    }
     try {
       await _postSettings(payload);
       msg.textContent = (tools > 0 ? 'Limit: ' + tools + ' tool calls' : 'Unlimited tool calls') +
         (rounds != null ? ' · ' + rounds + ' steps/message' : '') +
-        (supInput && supInput.checked ? ' · supervisor on' : '');
+        (supInput && supInput.checked ? ' · supervisor on' : '') +
+        (ceiling === 0 ? ' · local lift off'
+          : ceiling != null ? ' · local ceiling ' + ceiling : '');
       msg.style.color = 'var(--fg)';
     } catch (e) { msg.textContent = 'Failed to save'; msg.style.color = 'var(--red)'; }
   }
@@ -2011,6 +2032,7 @@ async function initAgentSettings() {
   if (roundsInput) roundsInput.addEventListener('change', save);
   if (supInput) supInput.addEventListener('change', save);
   if (verInput) verInput.addEventListener('change', save);   // H16
+  if (ceilInput) ceilInput.addEventListener('change', save);  // P3-21
   var cur = parseInt(toolsInput.value, 10) || 0;
   var curR = roundsInput ? (parseInt(roundsInput.value, 10) || 20) : null;
   msg.textContent = (cur > 0 ? 'Limit: ' + cur + ' tool calls' : 'Unlimited tool calls') +
@@ -5632,8 +5654,8 @@ async function initUnifiedIntegrations() {
       { key: 'calendar:write', label: 'Calendar write', detail: 'Create and update calendar events' },
       { key: 'memory:read', label: 'Memory', detail: 'Read memory when enabled' },
       { key: 'memory:write', label: 'Memory write', detail: 'Write memory when enabled' },
-      { key: 'cookbook:read', label: 'Cookbook', detail: 'List cookbook tasks + tail their tmux output (debug a model serve from outside the UI)' },
-      { key: 'cookbook:launch', label: 'Cookbook launch', detail: 'Launch and stop cookbook serve tasks. Powerful: runs SSH commands on your configured servers, bounded by the same allowlist the UI uses (vllm/python3/sglang/llama-server/...)' },
+      { key: 'cookbook:read', label: 'Forge', detail: 'List cookbook tasks + tail their tmux output (debug a model serve from outside the UI)' },
+      { key: 'cookbook:launch', label: 'Forge launch', detail: 'Launch and stop cookbook serve tasks. Powerful: runs SSH commands on your configured servers, bounded by the same allowlist the UI uses (vllm/python3/sglang/llama-server/...)' },
     ];
     // Strict name-prefix match keeps Codex and Claude tokens in their own forms.
     const agentTokens = (Array.isArray(tokens) ? tokens : []).filter(tok =>

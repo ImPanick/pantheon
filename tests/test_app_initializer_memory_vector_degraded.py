@@ -39,6 +39,15 @@ def _neutralize_collaborators(monkeypatch):
         "ResearchHandler", "ChatHandler", "ModelDiscovery",
     ]:
         monkeypatch.setattr(app_init, name, lambda *a, **k: MagicMock())
+    # `initialize_managers` hands the UploadHandler it just built to
+    # `src.tool_utils.set_upload_handler`, which writes a module global. The
+    # handler here is a MagicMock, and without this line it stayed bound for
+    # the rest of the session — the second of the two leaks the widened `B271`
+    # sweep named on a full run (`B525`). Re-setting the attribute to its own
+    # current value is the whole fix: `monkeypatch` records what was there and
+    # puts it back.
+    import src.tool_utils as tool_utils
+    monkeypatch.setattr(tool_utils, "_upload_handler", tool_utils._upload_handler)
     monkeypatch.setattr(app_init, "set_session_manager", lambda *a, **k: None)
     monkeypatch.setattr(app_init, "update_search_config", lambda *a, **k: None)
     monkeypatch.setattr(app_init, "create_directories", lambda: None)

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Cookbook (model serving) tool domain — slice 1 (#4082/#4071).
+"""Forge (model serving) tool domain — slice 1 (#4082/#4071).
 
 Download, serve, list, stop, tail, search, adopt and cache HuggingFace / model
 serving operations, plus their private helpers. Extracted verbatim from
@@ -147,7 +147,7 @@ async def _resolve_cookbook_host(name_or_host: str) -> str:
 async def _cookbook_env_for_host(host: str) -> Dict[str, Any]:
     """Resolve env_prefix / gpus / platform / hf_token / ssh_port for a
     given host by looking it up in cookbook_state.env. The user
-    configures these per-host in the Cookbook UI; without them, raw
+    configures these per-host in the Forge UI; without them, raw
     `vllm serve …` fails with 'command not found' because vLLM lives
     inside a venv that has to be sourced first.
 
@@ -298,7 +298,7 @@ async def _cookbook_register_task(
     """Append a task entry to cookbook_state.json after the agent
     launches via /api/model/serve or /api/model/download. The route
     spawns tmux but leaves state-writing to the UI; the agent needs to
-    do that here so the task shows up in the Cookbook tab.
+    do that here so the task shows up in the Forge tab.
     Returns True on success, False if the write failed (best-effort)."""
     from src.tool_implementations import _internal_headers, _INTERNAL_BASE  # shared, lives in facade
     import httpx
@@ -385,7 +385,7 @@ _MODEL_PROCESS_PATTERNS = [
 
 
 def _cookbook_apply_retry_suggestion(cmd: str, suggestion: Dict[str, Any]) -> str:
-    """Apply a structured Cookbook diagnosis suggestion to a serve command."""
+    """Apply a structured Forge diagnosis suggestion to a serve command."""
     if not cmd or not suggestion:
         return cmd
     op = suggestion.get("op")
@@ -416,7 +416,7 @@ def _cookbook_engine_from_model_info(repo_id: str, info: Optional[Dict[str, Any]
 
     This is intentionally heuristic: the model card / file list tells us the
     official repo and likely format, while the actual serve command still goes
-    through Cookbook and is diagnosed/retried after launch.
+    through Forge and is diagnosed/retried after launch.
     """
     rid = (repo_id or "").lower()
     info = info or {}
@@ -797,7 +797,7 @@ async def do_list_served_models(content: str, owner: Optional[str] = None) -> Di
     import asyncio
     import httpx
 
-    # Cookbook-tracked tasks (best-effort; don't fail the whole call if
+    # Forge-tracked tasks (best-effort; don't fail the whole call if
     # this is unreachable).
     cookbook_tasks: List[Dict[str, Any]] = []
     try:
@@ -1233,7 +1233,7 @@ async def do_search_hf_models(content: str, owner: Optional[str] = None) -> Dict
 
 async def do_adopt_served_model(content: str, owner: Optional[str] = None) -> Dict:
     """Register an externally-launched model server (bash + tmux + ssh, or
-    anything else) into the Cookbook so it appears in list_served_models,
+    anything else) into the Forge so it appears in list_served_models,
     can be stopped via stop_served_model, and is added to the user's
     endpoint list for chat. Use this when a model was started outside
     the cookbook's serve flow but you want first-class tracking.
@@ -1431,7 +1431,7 @@ async def do_list_serve_presets(content: str, owner: Optional[str] = None) -> Di
     presets = state.get("presets") or []
     if not presets:
         return {
-            "output": "No serve presets saved. Tell the user to save one from the Cookbook UI first, or use serve_model with explicit repo_id + cmd + host.",
+            "output": "No serve presets saved. Tell the user to save one from the Forge UI first, or use serve_model with explicit repo_id + cmd + host.",
             "presets": [],
             "exit_code": 0,
         }
@@ -1543,7 +1543,7 @@ async def do_serve_preset(content: str, owner: Optional[str] = None) -> Dict:
 async def do_list_cached_models(content: str, owner: Optional[str] = None) -> Dict:
     """List models already cached locally and/or on remote hosts.
 
-    With no `host` arg, scans EVERY configured Cookbook server (and local)
+    With no `host` arg, scans EVERY configured Forge server (and local)
     and aggregates — so the agent sees the full inventory in one call
     instead of having to query each server individually.
     """
@@ -1663,7 +1663,7 @@ async def do_list_cached_models(content: str, owner: Optional[str] = None) -> Di
         if not models:
             # Cache scans can miss models downloaded into the HF default cache
             # when the server has no explicit model_dir configured. Surface
-            # completed Cookbook download tasks so the agent doesn't conclude
+            # completed Forge download tasks so the agent doesn't conclude
             # a model is absent and re-download it.
             downloaded = []
             try:
@@ -1685,8 +1685,8 @@ async def do_list_cached_models(content: str, owner: Optional[str] = None) -> Di
                 downloaded = []
             host_str = f" on {raw_host}" if raw_host else ""
             if downloaded:
-                lines = [f"No cache paths were detected{host_str}, but Cookbook has completed download task(s):"]
-                lines.extend(f"- {repo} — downloaded via Cookbook task" for repo in downloaded)
+                lines = [f"No cache paths were detected{host_str}, but Forge has completed download task(s):"]
+                lines.extend(f"- {repo} — downloaded via Forge task" for repo in downloaded)
                 return {"output": "\n".join(lines), "models": [{"repo_id": repo, "source": "cookbook_task"} for repo in downloaded], "exit_code": 0}
             return {"output": f"No cached models found{host_str}.", "exit_code": 0}
         # Multi-host scan: group by host so the agent sees inventory per server.

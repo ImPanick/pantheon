@@ -128,7 +128,7 @@ def _docker_row_status(
 def _pip_dist_name(pkg: dict) -> str:
     """Distribution name for importlib.metadata lookups.
 
-    The Cookbook package catalog carries both the import name (``name``, e.g.
+    The Forge package catalog carries both the import name (``name``, e.g.
     ``llama_cpp``) and the pip spec (``pip``, e.g. ``llama-cpp-python[server]``).
     The distribution is NOT always the import name with underscores swapped for
     dashes — ``llama_cpp`` ships in the ``llama-cpp-python`` distribution — so
@@ -149,7 +149,7 @@ def _import_optional_dependency_for_status(name: str):
 
 
 def _package_installed_from_probe(name: str, probe: dict) -> bool:
-    """Return whether an optional dependency is usable by Cookbook.
+    """Return whether an optional dependency is usable by Forge.
 
     A Python import alone is not enough: namespace packages can be created by a
     same-named directory, and vLLM serving needs the CLI on PATH. Keep this
@@ -304,8 +304,8 @@ def _package_pip_update_status(
 ) -> PackageUpdateStatus:
     """Return whether the Dependencies UI should offer a generic pip update.
 
-    "Installed" means Cookbook can use the dependency. It does not always mean
-    the dependency is a Python package that Cookbook should update with pip:
+    "Installed" means Forge can use the dependency. It does not always mean
+    the dependency is a Python package that Forge should update with pip:
     native llama-server can come from a package manager/source build, and a CLI
     may be on PATH without matching Python package metadata.
     """
@@ -351,7 +351,7 @@ def _package_pip_update_status(
 def _prepend_user_install_bins_to_path() -> None:
     """Make pip --user console scripts visible to dependency probes.
 
-    Docker Cookbook installs vLLM with `python -m pip install --user`, which
+    Docker Forge installs vLLM with `python -m pip install --user`, which
     drops the `vllm` CLI in /app/.local/bin. The running app process does not
     inherit that PATH update, so `shutil.which("vllm")` can report missing even
     after a successful install.
@@ -513,7 +513,7 @@ _REMOTE_TMUX_PATH_PREFIX = 'PATH="$HOME/.local/bin:$HOME/bin:/opt/homebrew/bin:/
 
 
 def _normalize_legacy_remote_tmux_exec(command: str) -> str:
-    """Repair stale frontend Cookbook tmux SSH commands.
+    """Repair stale frontend Forge tmux SSH commands.
 
     Older loaded JS sends `ssh host 'tmux capture-pane ...'`. On macOS/Homebrew
     remotes, non-login SSH shells often lack /opt/homebrew/bin, so tmux is
@@ -867,7 +867,7 @@ async def _generate_win_detached(cmd: str, request: Request):
     that writes output to a log file, and tail that log over SSE. Prefers bash
     (Git Bash) for command-syntax parity; falls back to cmd.exe. There's no
     `tmux attach` equivalent, but the "keeps running if you disconnect" contract
-    holds, which is the point of the feature for long Cookbook downloads."""
+    holds, which is the point of the feature for long Forge downloads."""
     TMUX_LOG_DIR.mkdir(parents=True, exist_ok=True)
     session_id = f"cookbook-{uuid.uuid4().hex[:8]}"
     log_path = TMUX_LOG_DIR / f"{session_id}.log"
@@ -1220,7 +1220,7 @@ def setup_shell_routes() -> APIRouter:
             user_site = site.getusersitepackages()
             if user_site and os.path.isdir(user_site):
                 # Use addsitedir(), NOT a bare sys.path.append(). When a package
-                # is `pip install --user`'d at runtime (Cookbook → Install) the
+                # is `pip install --user`'d at runtime (Forge → Install) the
                 # long-lived server process started before the user-site existed,
                 # so site never processed it — including its `.pth` hooks. On
                 # Python 3.12+ `distutils` is gone from stdlib and is only
@@ -1242,11 +1242,11 @@ def setup_shell_routes() -> APIRouter:
             {
                 "name": "tmux",
                 "pip": "",
-                "desc": "Required for Linux/Termux Cookbook background downloads and serves",
+                "desc": "Required for Linux/Termux Forge background downloads and serves",
                 "category": "System",
                 "target": "remote",
                 "kind": "system",
-                "install_hint": "Run Cookbook server setup, or install tmux with apt/pacman/dnf/apk/zypper.",
+                "install_hint": "Run Forge server setup, or install tmux with apt/pacman/dnf/apk/zypper.",
             },
             {
                 "name": "docker",
@@ -1277,7 +1277,7 @@ def setup_shell_routes() -> APIRouter:
                 "desc": "Great for single-GPU or CPU inference with GGUF models",
                 "category": "LLM",
                 "target": "remote",
-                # Build-toolchain prereqs. Cookbook's launch bootstrap
+                # Build-toolchain prereqs. Forge's launch bootstrap
                 # compiles llama-server from source when no prebuilt
                 # binary is present; without these the build aborts
                 # with `cmake: command not found`. Surfaced inline on
@@ -1408,7 +1408,7 @@ def setup_shell_routes() -> APIRouter:
         ]
 
         # Most packages should not be installed through external means. Hence, set the default of the
-        # install_cmd and update_cmd to None, which indicates that the recommended way to install/update is through the Cookbook # server setup or pip. Only system packages, should have explicit install/update commands provided.
+        # install_cmd and update_cmd to None, which indicates that the recommended way to install/update is through the Forge # server setup or pip. Only system packages, should have explicit install/update commands provided.
         for pkg in packages:
             pkg.setdefault("install_cmd", None)
             pkg.setdefault("update_cmd", None)
@@ -1500,7 +1500,7 @@ def setup_shell_routes() -> APIRouter:
                     pass
         # Union of system_names + every package's system_prereqs. Probing
         # the prereqs alongside the main system deps in a single SSH call
-        # avoids a second round-trip per Cookbook → Dependencies refresh.
+        # avoids a second round-trip per Forge → Dependencies refresh.
         prereq_names: set[str] = set()
         for p in packages:
             for pr in p.get("system_prereqs") or []:
@@ -1657,7 +1657,7 @@ def setup_shell_routes() -> APIRouter:
                 _gpu_capable = False
                 _has_nvidia_target = False
                 if _native_llama_server:
-                    # Native llama-server is the launcher path Cookbook now
+                    # Native llama-server is the launcher path Forge now
                     # prefers. Do not mark this as a CPU-only Python wheel just
                     # because llama-cpp-python is absent from the selected venv.
                     _gpu_capable = True
@@ -1880,7 +1880,7 @@ def setup_shell_routes() -> APIRouter:
             'if [ "$(id -u)" = "0" ]; then SUDO=""; '
             'elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then SUDO="sudo -n"; '
             'else '
-            '  echo "ERROR: this target needs sudo for its OS package manager, but passwordless sudo is unavailable. Open a terminal on the target and run the shown install command once, then retry in Cookbook." >&2; exit 2; fi; '
+            '  echo "ERROR: this target needs sudo for its OS package manager, but passwordless sudo is unavailable. Open a terminal on the target and run the shown install command once, then retry in Forge." >&2; exit 2; fi; '
             'if command -v apt-get >/dev/null 2>&1; then '
             f'  $SUDO env DEBIAN_FRONTEND=noninteractive apt-get update -qq && $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends {apt_pkgs}; '
             'elif command -v pacman >/dev/null 2>&1; then '
@@ -1932,7 +1932,7 @@ def setup_shell_routes() -> APIRouter:
     async def rebuild_engine(request: Request):
         """Clear the cached llama.cpp build so the next serve recompiles.
 
-        Admin only — this removes the Cookbook-managed ``~/bin/llama-server``
+        Admin only — this removes the Forge-managed ``~/bin/llama-server``
         symlink and ``~/llama.cpp/build`` directory, locally or on the selected
         remote server. It installs and downloads nothing; the next llama.cpp
         serve rebuilds from source and picks up CUDA/HIP if a toolchain is now

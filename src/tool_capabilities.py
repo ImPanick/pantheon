@@ -85,7 +85,7 @@ _register(
     },
     ToolEffect.READ_PRIVATE,
     # These readers return provider-controlled model identifiers or durable
-    # user/admin-authored Cookbook and process state.  Local brokering does not
+    # user/admin-authored Forge and process state.  Local brokering does not
     # make the returned text server-authored.
     result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED,
 )
@@ -261,7 +261,7 @@ _register(
         "vault_unlock",
     },
     ToolEffect.ADMIN_CHANGE,
-    # Cookbook/process operations can return stored presets, provider data,
+    # Forge/process operations can return stored presets, provider data,
     # remote shell output, and command errors.
     result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED,
 )

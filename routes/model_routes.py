@@ -123,9 +123,9 @@ _COOKBOOK_ACTIVE_SERVE_STATUSES = {
 
 
 def _active_cookbook_endpoint_ids() -> set[str]:
-    """Endpoint IDs owned by active Cookbook serve tasks.
+    """Endpoint IDs owned by active Forge serve tasks.
 
-    Cookbook auto-registers endpoints with ids like ``local-*``. Those rows are
+    Forge auto-registers endpoints with ids like ``local-*``. Those rows are
     managed lifecycle state, not durable user configuration. If a tmux stream is
     stopped or an old task lingers, the row must stop participating in model
     selection and defaults.
@@ -171,7 +171,7 @@ def _disable_stale_cookbook_local_endpoints(db) -> int:
         ep.model_refresh_mode = "disabled"
         if _clear_endpoint_settings_for_endpoint(settings, ep.id):
             touched_settings = True
-        logger.info("Disabled stale Cookbook endpoint %s (%s @ %s)", ep.id, ep.name, ep.base_url)
+        logger.info("Disabled stale Forge endpoint %s (%s @ %s)", ep.id, ep.name, ep.base_url)
     if touched_settings:
         _save_settings(settings)
     db.commit()
@@ -296,7 +296,7 @@ def _rewrite_loopback_for_docker(base_url: str, *, container_local: bool = False
     a connection error and the endpoint is rejected with a misleading "No
     models found for that provider/key".
 
-    Cookbook local serves are the opposite case: Pantheon started the model
+    Forge local serves are the opposite case: Pantheon started the model
     server inside the same container/process environment, so the saved endpoint
     must remain container-local. In that mode, normalize a bind address such as
     0.0.0.0 to a connectable loopback host, but do not jump to the Docker host.
@@ -797,7 +797,7 @@ def _local_ip_literal(host: str) -> bool:
 def _classify_endpoint(base_url: str, endpoint_kind: str = "auto") -> str:
     """Return 'local' if the endpoint URL points to a private/local address, else 'api'.
     Includes the Tailscale CGNAT range (100.64.0.0/10) so tailnet-hosted
-    servers (e.g. Cookbook serve endpoints) get reachability-probed too."""
+    servers (e.g. Forge serve endpoints) get reachability-probed too."""
     kind = _normalize_endpoint_kind(endpoint_kind)
     if kind == "local":
         return "local"
@@ -2094,7 +2094,7 @@ def setup_model_routes(model_discovery):
         from src.endpoint_resolver import resolve_url
         base_url = resolve_url(base_url)
         # In Docker, manually added loopback URLs usually point at a host-local
-        # server. Cookbook local serves are launched inside Pantheon itself, so
+        # server. Forge local serves are launched inside Pantheon itself, so
         # keep those container-local when the frontend marks them as such.
         base_url = _rewrite_loopback_for_docker(base_url, container_local=_truthy(container_local))
 
@@ -2172,7 +2172,7 @@ def setup_model_routes(model_discovery):
                     existing.api_key = api_key.strip()
                     changed = True
                 # Keep duplicate endpoint registration cheap. This path is hit
-                # by Cookbook/browser auto-register flows and can run while the
+                # by Forge/browser auto-register flows and can run while the
                 # user is sending a chat message. Probing a stale LAN endpoint
                 # here used to hold the request open for tens of seconds and
                 # contend with session creation, making "send" feel blocked.

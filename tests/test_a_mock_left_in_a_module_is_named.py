@@ -234,8 +234,155 @@ def test_a_file_that_leaks_is_named_in_the_run_that_ran_it(tmp_path, strict):
                               text=True, timeout=300)
     finally:
         leaky.unlink()
-    assert "B271: mocks left bound in production modules" in proc.stdout
+    # The invariant, not the sentence: a section exists, it is about things
+    # left bound in production modules, and `B271` is what it is filed under.
+    # The literal header moved once already when `B523` widened the sweep,
+    # and a test pinned to the wording fails on an improvement (`B520`).
+    assert "left bound in production modules" in proc.stdout
+    assert "B271" in proc.stdout
     assert "_b271_leaky_probe_test.py left:" in proc.stdout
     assert "src.settings._b271_left_behind" in proc.stdout
     assert (proc.returncode != 0) is strict, (
         "the report must not fail a run unless --strict-isolation asked it to")
+
+
+# ── `B523` — the same leak, wearing a real class ─────────────────────────────
+#
+# The sweep above is a predicate about `unittest.mock`, and the worst instance
+# of this defect found so far was not a Mock. `tests/test_scheduler_restart_
+# doublefire.py` built a nine-column stand-in for `ScheduledTask` against its
+# own `declarative_base()` and assigned it onto `core.database` — a genuine
+# mapped class, invisible to the Mock scan, left bound for the remaining 282
+# files of the session. Three tests in `tests/test_task_schedule_floor.py`
+# failed in the full suite and passed on their own, with the give-away buried
+# in `TypeError: 'schedule' is an invalid keyword argument for ScheduledTask`.
+
+
+def _stand_in_for(model_name):
+    """A mapped class with the same name and none of the columns."""
+    from sqlalchemy import Column, String
+    from sqlalchemy.orm import declarative_base
+
+    base = declarative_base()
+    return type(model_name, (base,), {
+        "__tablename__": f"_b523_probe_{model_name.lower()}",
+        "id": Column(String, primary_key=True),
+    })
+
+
+def test_a_mapped_class_swapped_for_a_stand_in_is_seen(monkeypatch):
+    """Identity, not type: both objects are real mapped classes."""
+    import core.database as cdb
+
+    monkeypatch.setattr(suite_conftest, "_isolation",
+                        {"file": None, "seen": set(), "leaks": {}, "on": True,
+                         "scans": 0})
+    real = cdb.ScheduledTask
+    suite_conftest._isolation_sweep("tests/a_file_that_behaved.py")
+    assert "tests/a_file_that_behaved.py" not in suite_conftest._isolation["leaks"]
+
+    monkeypatch.setattr(cdb, "ScheduledTask", _stand_in_for("ScheduledTask"))
+    assert cdb.ScheduledTask is not real
+    suite_conftest._isolation_sweep("tests/the_file_that_did_it.py")
+
+    named = suite_conftest._isolation["leaks"].get("tests/the_file_that_did_it.py", [])
+    assert any("core.database.ScheduledTask" in entry for entry in named), named
+
+
+def test_the_baseline_is_the_first_sighting_not_an_absence(monkeypatch):
+    """A class the session has never seen before is not a swap.
+
+    Production modules are imported lazily all session long, so `mapped` grows;
+    growth is not a leak and reporting it would drown the real signal.
+    """
+    import core.database as cdb
+
+    monkeypatch.setattr(suite_conftest, "_isolation",
+                        {"file": None, "seen": set(), "leaks": {}, "on": True,
+                         "scans": 0})
+    monkeypatch.setattr(cdb, "_b523_newly_imported", _stand_in_for("Arrival"),
+                        raising=False)
+    suite_conftest._isolation_sweep("tests/the_file_that_imported_it.py")
+    assert suite_conftest._isolation["leaks"] == {}
+
+
+def test_the_scheduler_restart_file_puts_the_models_back():
+    """The regression itself, driven rather than read (`Law 20`).
+
+    Run that file in its own process together with a file that asks
+    `core.database` for the real `ScheduledTask` afterwards. Before the fix the
+    second file could not construct one.
+    """
+    probe = ROOT / "tests" / "_b523_after_probe_test.py"
+    probe.write_text(
+        "def test_the_real_model_is_still_there():\n"
+        "    from core.database import ScheduledTask\n"
+        "    row = ScheduledTask(id='x', name='n', task_type='llm',\n"
+        "                        schedule='cron', cron_expression='0 * * * *',\n"
+        "                        trigger_type='schedule')\n"
+        "    assert row.cron_expression == '0 * * * *'\n"
+        "    assert ScheduledTask.__module__ == 'core.database'\n",
+        encoding="utf-8")
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", "-p", "no:randomly",
+             str(ROOT / "tests" / "test_scheduler_restart_doublefire.py"),
+             str(probe), "--strict-isolation"],
+            cwd=str(ROOT), capture_output=True, text=True, timeout=300)
+    finally:
+        probe.unlink()
+    assert proc.returncode == 0, proc.stdout[-4000:]
+
+
+# ── `B525` — the undo pytest does not record ─────────────────────────────────
+#
+# `monkeypatch.delitem(sys.modules, name, raising=False)` records an undo entry
+# only when the key was there. On the common path — this file is the first to
+# import the module it is about to stub — nothing is recorded, so the fresh
+# import under the test's stubs stays in `sys.modules` for the rest of the
+# session. Fourteen sites in this suite were written that way, and a full run
+# caught two of them arriving: `routes.api_token_routes.ApiToken` as a
+# `MagicMock` for the back half of 11,100 tests, and `src.tool_utils.
+# _upload_handler` likewise.
+
+
+def test_a_module_absent_before_is_absent_after():
+    """The case pytest's own `delitem` does not cover."""
+    from tests.helpers.fresh_import import drop_for_fresh_import
+
+    name = "_b525_probe_module"
+    sys.modules.pop(name, None)
+    with pytest.MonkeyPatch.context() as mp:
+        drop_for_fresh_import(mp, name)
+        sys.modules[name] = types.ModuleType(name)   # the "fresh import"
+    assert name not in sys.modules, (
+        "the module imported under stubs outlived the test that stubbed it")
+
+
+def test_a_module_present_before_is_the_same_object_after():
+    """And the case it does cover, still covered."""
+    from tests.helpers.fresh_import import drop_for_fresh_import
+
+    name = "_b525_probe_module_present"
+    original = types.ModuleType(name)
+    sys.modules[name] = original
+    try:
+        with pytest.MonkeyPatch.context() as mp:
+            drop_for_fresh_import(mp, name)
+            assert name not in sys.modules, "the caller's re-import must be fresh"
+            sys.modules[name] = types.ModuleType(name)
+        assert sys.modules[name] is original
+    finally:
+        sys.modules.pop(name, None)
+
+
+def test_the_placeholder_never_survives_the_call():
+    """It is a mechanism, not a value anybody should be able to import."""
+    from tests.helpers import fresh_import
+
+    name = "_b525_probe_placeholder"
+    sys.modules.pop(name, None)
+    with pytest.MonkeyPatch.context() as mp:
+        fresh_import.drop_for_fresh_import(mp, name)
+        assert sys.modules.get(name) is not fresh_import._PLACEHOLDER
+    assert sys.modules.get(name) is not fresh_import._PLACEHOLDER

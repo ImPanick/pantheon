@@ -17,7 +17,17 @@ THREE DECISIONS, AND THE THIRD IS THE ONE THAT MATTERS.
 that is a real technique and a bigger decision (whose model? at what
 temperature? paid for by whom?), and a harness whose *first* answer to "did that
 change help" is itself non-deterministic has replaced vibes with dearer vibes.
-Model-graded scoring is filed as `P14-08` for when someone wants it.
+
+**`P14-08` asked whether a judge earns its place here, and the answer is no**
+(`D-2026-09-18-02`). Two things follow, and both are in this file rather than
+only in the decision:
+
+  * every result says **how it was graded** (`grading`), so a judge cannot
+    arrive later and grade silently. A score whose method is not on it is the
+    one thing this row's `Verify` line will not have;
+  * a suite that **configures** a judge is refused, loudly, naming the
+    decision — it is not accepted and then scored deterministically as if the
+    judge had run, which is what this code did before the row was read.
 
 **2. Structural facts come free and are always reported.** Whether it errored,
 how many tool calls failed, how long it took, how much it cost. Those need no
@@ -45,6 +55,23 @@ logger = logging.getLogger(__name__)
 # a suite pass for the wrong reason, which is the only failure mode of an eval
 # harness that actually costs anything.
 CHECKS = ("contains", "not_contains", "regex", "max_tool_failures", "no_error")
+
+# `P14-08` / `D-2026-09-18-02`. How this harness grades, on every result it
+# returns. One word, because there is exactly one method — and it is written
+# down precisely so that a second one cannot arrive without this field changing
+# and every reader of a score noticing.
+GRADING = "deterministic"
+
+# Keys that mean "grade this with a model". Refused rather than ignored.
+#
+# Measured on the tree before this row: a suite carrying `{"judge": {"model":
+# "gpt-4o"}}` validated clean, ran, and printed a pass rate computed entirely
+# from the deterministic checks — the operator's judge was never called and
+# nothing in the result said so. Silently scoring something a different way than
+# the operator asked for is worse than refusing, because a pass is the one
+# result nobody investigates.
+JUDGE_KEYS = ("judge", "judge_model", "judge_prompt", "judge_endpoint",
+              "llm_judge", "grader", "graded_by", "rubric")
 
 
 def load_suites() -> List[Dict[str, Any]]:
@@ -83,9 +110,32 @@ def get_suite(name: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+def _judge_keys_in(obj: Any) -> List[str]:
+    if not isinstance(obj, dict):
+        return []
+    return [k for k in JUDGE_KEYS if k in obj]
+
+
+def _no_judge(where: str, obj: Any) -> List[str]:
+    """`P14-08`. Say no where the operator wrote it, and say why.
+
+    The refusal names the decision rather than the field, because *"judge is not
+    a key"* reads like a typo and sends someone hunting for the right spelling.
+    There is no right spelling; there is a decision.
+    """
+    return [
+        f"{where} configures {k!r}: this harness grades deterministically and "
+        f"has no judge model (`P14-08` / `D-2026-09-18-02`). Assert with "
+        f"{', '.join(CHECKS)} instead, or read the decision for what a judge "
+        f"would have to settle first."
+        for k in _judge_keys_in(obj)
+    ]
+
+
 def validate_suite(suite: Dict[str, Any]) -> List[str]:
     """Problems with a suite, before it costs anybody a model call."""
     problems: List[str] = []
+    problems += _no_judge("suite", suite)
     cases = suite.get("cases")
     if not isinstance(cases, list) or not cases:
         problems.append("suite has no cases")
@@ -96,8 +146,12 @@ def validate_suite(suite: Dict[str, Any]) -> List[str]:
             continue
         if not str(case.get("run_id") or "").strip():
             problems.append(f"case {i} has no run_id")
+        problems += _no_judge(f"case {i}", case)
+        problems += _no_judge(f"case {i}'s expect", case.get("expect"))
         for key in (case.get("expect") or {}):
-            if key not in CHECKS:
+            if key not in CHECKS or key in JUDGE_KEYS:
+                if key in JUDGE_KEYS:
+                    continue          # already refused, by name, above
                 problems.append(
                     f"case {i} asserts {key!r}, which is not a check "
                     f"({', '.join(CHECKS)})")
@@ -166,6 +220,11 @@ async def run_suite(name: str, *, model: Optional[str] = None,
         "suite": name, "model": model, "cases": [],
         "passed": 0, "failed": 0, "skipped": 0, "total": 0,
         "pass_rate": None, "drift_cases": 0, "problems": [], "headline": "",
+        # `P14-08`. Set here, on every path out of this function including the
+        # two refusals, because a score that does not say how it was graded is
+        # exactly what this row asked us not to ship. Today there is one answer;
+        # the field exists so a second one cannot be quiet.
+        "grading": GRADING,
     }
 
     suite = get_suite(name)

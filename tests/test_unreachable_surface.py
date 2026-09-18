@@ -311,9 +311,40 @@ def test_static_app_js_is_actually_scanned(wiring_report):
 
 def test_the_indirect_path_is_actually_used(wiring_report):
     """Same trap, other blind spot: `indirect_lookups()` can be correct and
-    never called. `notes-panel` is reachable only through a literal collection,
-    so it is reported only if `main()` uses that path."""
-    assert "notes-panel" in wiring_report
+    never called, so `main()` must actually use that path.
+
+    `B521`. This named `notes-panel` as the example, and `P3-20` **fixed it** —
+    `_windowVisible` was looking up a key the pane did not carry, which is why
+    Toggle Window had never been able to see Notes open. A resolved id leaves
+    the unresolved report, so the test went red on the defect being repaired.
+    Fifth instance of one shape in this tree: a test that names today's answer
+    fails the day the answer improves (`B310`, `B414`, `B520`, and `B96`'s table,
+    which had the defect written down as correct).
+
+    The durable claim is not *which* id arrives by the indirect path — every one
+    of them is a defect somebody may fix tomorrow. It is that the path is
+    **exercised at all**: `main()` must report ids that only `indirect_lookups()`
+    can find, and the count it prints must be the count that path produced. If
+    the indirect population ever empties legitimately, this fails loudly rather
+    than passing vacuously, which is the failure mode `test_the_scan_itself_is_
+    not_a_tautology` exists for elsewhere in this repository."""
+    import re
+
+    mod = _wiring()
+    js = "\n".join(
+        f.read_text(encoding="utf-8", errors="replace")
+        for f in sorted((ROOT / "static").rglob("*.js"))
+        if "/lib/" not in f.as_posix())
+    indirect = mod.indirect_lookups(js)
+    assert indirect, (
+        "indirect_lookups() found nothing — either the collection idiom is gone "
+        "from the tree (say so here) or the finder has stopped working")
+
+    m = re.search(r"made at runtime (\d+)", wiring_report)
+    assert m, f"no runtime-lookup count in the report:\n{wiring_report[:400]}"
+    assert int(m.group(1)) >= len(indirect), (
+        f"main() reports {m.group(1)} runtime lookups but indirect_lookups() finds "
+        f"{len(indirect)} — the indirect path is not reaching the report")
 
 
 def test_the_unresolved_count_is_the_one_ci_pins(wiring_report):

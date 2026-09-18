@@ -252,7 +252,7 @@ class ModelDiscovery:
 
         logger.info(f"Scanning {len(hosts)} hosts for models: {hosts}")
 
-        # Well-known ports: 8000-8020 (vLLM, SGLang, Cookbook), 8080 (llama.cpp /
+        # Well-known ports: 8000-8020 (vLLM, SGLang, Forge), 8080 (llama.cpp /
         # llama-server default), 1234 (LM Studio), 11434 (Ollama), 11435 for APFEL
         # as its default port is occupied by Ollama. The env vars can add more
         # ports which will be merged in.

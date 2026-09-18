@@ -57,6 +57,59 @@ The checks, each one derived from a defect that actually shipped:
   E. Every built-in MCP server that gets connected at startup serves at least
      one tool something can actually route to. A connected server nothing
      reaches is a subprocess and a duplicate client held open for nothing.
+  F. Every name in `TOOL_TAGS` is ANNOUNCED to the model somewhere. See below.
+  G. A name a built-in server serves has no native `TOOL_HANDLERS` entry.
+     One name, one implementation.
+
+`P17-06` CLOSED THIS FILE'S SECOND CLAUSE, AND ADDED F AND G. The row asked for
+*"the rule that decides where a new capability goes"*. Checks A–E answer the
+half of that question about **wiring**: whatever shape you choose, these are the
+registers. F and G answer the half that had no rule at all.
+
+**F — being dispatchable and being offered are different properties, and only
+one of them was checked.** A–E prove a name can be *executed*. Nothing proved
+the model is ever *told the name exists*. On this tree that was not
+hypothetical: `draft_email`, `draft_email_reply`, `ai_draft_email_reply`,
+`search_emails` and `download_attachment` were in `TOOL_TAGS`, classified in
+`TOOL_CAPABILITIES`, routed through `BUILTIN_EMAIL_TOOLS` to `mcp__email__*`,
+and served with full descriptions by `mcp_servers/email_server.py` — and the
+model was never shown one of them by any channel. They have no function schema
+(deliberately: fenced-channel only, which `check-mcp-schemas.py` check C already
+blesses), they were in no `BUILTIN_TOOL_DESCRIPTIONS` entry so agent-mode
+retrieval could not surface them, the system prompt names none of them, and
+built-in servers are skipped from `get_tool_descriptions_for_prompt`. Meanwhile
+`send_email`'s own schema — which the model does read — says *"for normal
+assistant-written mail prefer `draft_email` so the user reviews it first"*.
+That is `B66`'s defect with the sides swapped: there the prompt named a tool
+the tags did not carry, here the tags carry tools nothing names. So the
+announcement channels are enumerated and one of them has to be true:
+
+  * a `FUNCTION_TOOL_SCHEMAS` entry — the function channel ships its own
+    description;
+  * a `BUILTIN_TOOL_DESCRIPTIONS` entry — agent mode embeds these and retrieves
+    against them, so this is the only way a tool enters a *selected* tool set;
+  * a backticked mention in the system prompt — the fence channel on a
+    full-prompt turn.
+
+`tests/test_tool_index_schema_parity.py` is not this check and does not cover
+it: it runs schema → index, so a tool with no schema is outside it in exactly
+the direction that goes wrong.
+
+**G — one name, one implementation.** `B66` found *three* `manage_rag`s (the
+prompt's, the server's, and a dead in-process `do_manage_rag` with a smaller
+action set) and `B67` found two `manage_memory`s. A built-in server is spawned
+on every startup, so a name it serves that also has a native handler is two live
+implementations of one name with nothing deciding which answers. Routes into
+*optional* servers (`_MCP_TOOL_MAP` → `bash`, `python`, `filesystem`,
+`web_search`, `web_fetch`) are a different thing and are not checked: those
+servers are registered by an operator, the native handler is the documented
+fallback when they are not, and one of the two is always absent.
+
+**THE PLACEMENT RULE ITSELF IS PROSE AND LIVES IN `CONTRIBUTING.md`**, under
+*Adding a tool*, because it is a judgement a contributor makes before writing
+code and a checker cannot make it for them. What a checker can do is refuse the
+half-registered result, which is what this file is. `D-2026-09-10-03` records
+the rule's own accuracy against the servers that existed when it was written.
 """
 import ast
 import re
@@ -126,6 +179,29 @@ def _mcp_server_tool_names(rel: str) -> set:
     return names
 
 
+def unannounced(tags, schema_names, descriptions, prompt_names) -> list:
+    """Names the model is never told about. Check F's rule, as a function.
+
+    Pulled out so a test can drive the rule with inputs it controls rather than
+    re-deriving it (`Law 13`: the rule reads one way, in one place). `main`
+    calls it with the real registers.
+    """
+    announced = set(schema_names) | set(descriptions) | set(prompt_names)
+    return sorted(set(tags) - announced)
+
+
+def doubly_implemented(server_tools, handlers) -> list:
+    """`(server_id, name)` for every name a built-in server AND a handler owns.
+
+    Check G's rule, same reasoning as above. Optional-server routes are not
+    passed in, because only a *built-in* server is spawned unconditionally and
+    only then are both implementations live at once.
+    """
+    return sorted((sid, name)
+                  for sid, names in server_tools.items()
+                  for name in set(names) & set(handlers))
+
+
 def main() -> int:
     import src.agent_tools as agent_tools  # noqa: F401  (breaks a circular import)
     from src.agent_tools import TOOL_TAGS, TOOL_HANDLERS
@@ -193,6 +269,24 @@ def main() -> int:
             f"E  '{sid}' is exempted as shadowed but is no longer a built-in "
             f"server — delete the exemption")
 
+    # ── F. the model is told the name exists ────────────────────────────────
+    from src.tool_index import BUILTIN_TOOL_DESCRIPTIONS
+
+    announced = schema_names | set(BUILTIN_TOOL_DESCRIPTIONS) | prompt_names
+    for name in unannounced(TOOL_TAGS, schema_names, BUILTIN_TOOL_DESCRIPTIONS,
+                            prompt_names):
+        problems.append(
+            f"F  {name} is dispatchable and the model is never told it exists — "
+            f"no function schema, no BUILTIN_TOOL_DESCRIPTIONS entry for agent-mode "
+            f"retrieval, and the system prompt does not name it")
+
+    # ── G. one name, one implementation ─────────────────────────────────────
+    for sid, name in doubly_implemented(server_tools, TOOL_HANDLERS):
+        problems.append(
+            f"G  {name} is served by the built-in '{sid}' server AND has a "
+            f"native TOOL_HANDLERS entry — two live implementations of one "
+            f"name, which is how B66 shipped three manage_rags")
+
     if problems:
         print("tool surface PROBLEMS\n")
         for p in problems:
@@ -203,7 +297,9 @@ def main() -> int:
 
     print(f"tool surface OK — {len(TOOL_TAGS)} tagged names, "
           f"{len(schema_names)} function schemas, {len(server_tools)} built-in servers, "
-          f"{len(prompt_names)} named in the prompt, all registered everywhere")
+          f"{len(prompt_names)} named in the prompt, "
+          f"{len(set(TOOL_TAGS) & announced)} announced to the model, "
+          f"all registered everywhere")
     for sid in sorted(SHADOWED_ON_PURPOSE):
         print(f"  shadowed on purpose: {sid}")
     return 0
