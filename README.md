@@ -31,6 +31,7 @@
     access, and a workflow that has never run reads <em>no status</em> rather than failing. What the
     badges can and cannot tell you, in each state, is written down in
     <a href="docs/security-ci.md#how-to-tell-whether-ci-is-actually-passing">the security CI guide</a>.
+    Anyway questions can be directed to my Discord which is in my profile or you can DM me on GH.
   </sub>
 </p>
 
