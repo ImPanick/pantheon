@@ -411,14 +411,16 @@ class _Manager:
         return [r for r in subset if r.get("text", "").strip().lower() == t]
 
     def add_entry(self, text, source="auto", category="fact", owner=None,
-                  confidence=None, provenance=None):
-        # `P13-01` / `P13-03` widened the real constructor; the double mirrors
-        # it rather than swallowing extra kwargs, so the day a caller passes
-        # something this fake cannot represent, the fake says so.
+                  confidence=None, provenance=None, status=None):
+        # `P13-01` / `P13-03` / `P13-05` widened the real constructor; the
+        # double mirrors it rather than swallowing extra kwargs, so the day a
+        # caller passes something this fake cannot represent, the fake says so.
+        # It said so, on `status`, which is why this line moved.
         self._n += 1
         entry = {"id": f"new-{self._n}", "text": text, "owner": owner,
                  "source": source, "category": category,
-                 "confidence": confidence, "provenance": provenance}
+                 "confidence": confidence, "provenance": provenance,
+                 "status": status or "committed"}
         self.rows.append(entry)
         return entry
 

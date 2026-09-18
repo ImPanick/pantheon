@@ -8,7 +8,7 @@
 //   - Other static assets (images/fonts/libs): cache-first with bg refresh.
 //   - API / non-GET: never cached.
 // Bump CACHE_NAME whenever the precache list or SW logic changes.
-const CACHE_NAME = 'pantheon-v423-p10-focus-ring';
+const CACHE_NAME = 'pantheon-v425-grant-inspector';
 
 // KaTeX resolves these from its own stylesheet, so caching the CSS without them
 // gives offline math fallback glyphs instead of proper typesetting.
@@ -81,7 +81,7 @@ const PRECACHE = [
   // browser error page with no way back, and the same form works the moment
   // the network returns.
   '/login',
-  '/static/style.css?v=20260918a11yfocus1',
+  '/static/style.css?v=20260918grantinspector1',
   '/static/app.js?v=20260815toolapproval4',
   '/static/js/storage.js',
   '/static/js/appConfig.js',
@@ -134,7 +134,7 @@ const PRECACHE = [
   // to nothing. Third recurrence of what `P3-11` and `B54` each fixed, and the
   // first one a checker can see.
   '/static/js/settings.js?v=20260815approvalsave1',
-  '/static/js/admin.js?v=20260716openrouter3',
+  '/static/js/admin.js?v=20260918p2admin1',
   '/static/js/init.js?v=20260918a11yfocus1',
   '/static/js/slashCommands.js?v=20260815approvalsave1',
   '/static/js/emailInbox.js?v=20260815approvalsave1',

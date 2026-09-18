@@ -5,12 +5,20 @@
 // as an acceptance criterion on both rows: *"Auto-Pilot as the existing default
 // with the ladder added below it, never above."*
 //
-// Three surfaces, one module, because they are one vocabulary. The ladder in
+// Four surfaces, one module, because they are one vocabulary. The ladder in
 // Settings chooses how often the gate asks; the scope chooser on the approval
 // card turns one approval into a standing rule the `allow_listed` rung will
-// honour; and the list under the ladder shows every rule that exists and takes
-// one back. A second copy of any of those words would drift, and then the same
-// choice would read as two different promises in three places.
+// honour; the list under the ladder shows every rule that exists and takes one
+// back; and below that, `P7-09`'s list shows the blanket yes a card can hand
+// out for a whole chat and takes that back too. A second copy of any of those
+// words would drift, and then the same choice would read as two different
+// promises in four places.
+//
+// CORRECTED 2026-09-18. This said "three surfaces" and the fourth is `P7-09`,
+// whose backend half — `GET` and `DELETE /api/tool-approval-grants/{id}` —
+// landed with nothing drawing either, which is the same shape as the defect the
+// 2026-08-29 correction below records: a grant that could be given in one click
+// and then neither seen nor taken back from any screen.
 //
 // CORRECTED 2026-08-29. This said "two surfaces", and there were two — which is
 // the defect refutation called the worst thing in the change. A rule could be
@@ -208,6 +216,10 @@ function _coerceRung(value) {
 
 let _statePromise = null;
 let _rung = null;
+// Set by `renderTrustLadder` so a settled rung write repaints `P7-09`'s list,
+// whose one rung-dependent sentence would otherwise go stale on the screen the
+// person is looking at.
+let _repaintLadderGrants = null;
 
 function _loadTrustState() {
   if (_statePromise) return _statePromise;
@@ -374,6 +386,10 @@ export function renderTrustLadder(host, rung) {
         if (saved) settled = rungDef.value;
         else showSettled();
         paintRules();
+        // The grants list carries one sentence about the rung — whether these
+        // grants are being honoured at all — so it is repainted on the same
+        // settled write rather than being left saying the opposite.
+        if (_repaintLadderGrants) _repaintLadderGrants();
       });
     });
     list.appendChild(row);
@@ -396,6 +412,42 @@ export function renderTrustLadder(host, rung) {
   // wrong.
   const paintRules = () => { renderAllowRuleList(rules, settled); };
   paintRules();
+
+  // `P7-09`, under the standing rules and on every rung. Same screen because it
+  // is the same question one size up — what have I told Pantheon to stop asking
+  // about — and the wider of the two answers belongs beside the narrower one
+  // rather than in a panel of its own (`Law 14`).
+  //
+  // Unlike the rules above it, this one is NOT gated on the rung: the bypass a
+  // session grant sets is honoured on the default rung and ignored on the two
+  // stricter ones, which is the opposite way round, so hiding it off
+  // `allow_listed` would hide a live grant from the only people it is live for.
+  // See `SESSION_GRANT_RUNG_NOTE`.
+  const grants = _el('div', 'session-grant-list');
+  box.appendChild(grants);
+  // `renderSessionGrantList` draws from what the module already knows and asks
+  // nothing, exactly as `renderAllowRuleList` does — a renderer with a side
+  // effect is two places to fix when one of them is wrong.
+  const paintGrants = () => { renderSessionGrantList(grants, settled); };
+  paintGrants();
+  _watchSessionGrants(paintGrants);
+  _repaintLadderGrants = paintGrants;
+  // And one ask here, from the initialiser rather than from the renderer, the
+  // way `_saveRung` asks the rule store on its way onto the rung.
+  //
+  // `pantheon:session-changed` fires on a CHANGE, and this module's listener is
+  // registered behind `GET /api/auth/settings` while `selectSession` runs behind
+  // `loadSessions()` — two async chains with no ordering between them. A reload
+  // that lands straight into an open chat can therefore finish selecting it
+  // before this line exists to hear about it, and without this ask the panel
+  // would be empty for the rest of that page's life. `assistant.js` had to
+  // learn the same thing in `H02` and its comment says so: *"the event fires on
+  // a CHANGE and there is none on first paint."*
+  //
+  // Not forced, so it costs nothing when a watcher has already asked about this
+  // chat, and costs nothing at all when no chat is open yet — which is the
+  // ordinary cold start.
+  refreshSessionGrants().then(paintGrants);
 
   host.appendChild(box);
   return box;
@@ -811,6 +863,11 @@ export function buildAllowRuleChooser(aq) {
 // owner-scoped rules in a table, they outlive every chat, and they are the ones
 // nothing could see. Two different things, and this builds only the second.
 //
+// `P7-09` is Job 4, below this one, and the two are neighbours on the screen
+// for the reason this paragraph gives: they answer the same question — what
+// have I told Pantheon to stop asking about — at two sizes. Keeping them
+// distinct is why each says its own scope in its own title.
+//
 // It reuses the endpoints that already shipped and adds no vocabulary: the
 // rows are `allowRuleWording`, the same sentences the approval card offered
 // when the grant was made.
@@ -880,7 +937,15 @@ export async function revokeAllowRule(id) {
   if (!key) return 'failed';
   let res = null;
   try {
-    res = await fetch(`${ALLOW_RULE_API}/${encodeURIComponent(key)}`, {
+    // The path is written out rather than built from `ALLOW_RULE_API`, and
+    // that is not an oversight about `Law 7`: these are two routes, not one
+    // fact. `.pantheon/check-unreachable.py` reads string literals out of
+    // `static/**`, and a URL assembled from a constant mentions no path — so
+    // `DELETE /api/tool-allow-rules/{rule_id}` sat in that report as a route
+    // with no caller for as long as this list has existed, while the button
+    // calling it was on screen two lines below. One literal per route, at the
+    // one place that route is called.
+    res = await fetch(`/api/tool-allow-rules/${encodeURIComponent(key)}`, {
       method: 'DELETE',
       credentials: 'same-origin',
     });
@@ -985,6 +1050,470 @@ export function renderAllowRuleList(host, rung) {
     rows.appendChild(row);
   });
   return host;
+}
+
+
+// ── Job 4: the blanket yes for a whole chat, and taking it back ─────────────
+//
+// `P7-09`. The other thing an approval card hands out, and the wider of the
+// two by a long way.
+//
+// `src/tool_approvals.py:361` offers a button labelled **"Allow for this chat
+// session"**, and its own description says what it does: *"stop asking at this
+// gate for later requests in this chat."* That is not a rule about the tool it
+// asked about. `ToolRunSecurityContext.decision_for` tests
+// `approval_gate_bypassed` **before** it looks at the tool name, the content or
+// a single effect, so one click covers everything Pantheon goes on to do for
+// the rest of the conversation. Until this list existed, nothing in the product
+// said it had happened and nothing took it back: the only escape was to start a
+// new chat, and you had to already know that.
+//
+// This is `Job 3` one size up, on the same screen, in the same words — the list
+// above shows the standing rules that outlive every chat, this one shows the
+// blanket yes that dies with this one. A second panel somewhere else for the
+// wider grant would be the mistake `Law 14` names.
+//
+// ── WHY THE BUTTON IS ONE BUTTON, AND NOT ONE PER ROW ──────────────────────
+//
+// `DELETE /api/tool-approval-grants/{session_id}` takes back the whole chat's
+// grants at once, and its docstring says why in terms this screen has to obey:
+// `core/models._history_grants_chat_session_approval` **stops at the first card
+// it can verify**, so revoking one card while a second signed one is still in
+// the transcript would revoke nothing a person could observe. A Revoke on every
+// row would therefore be three buttons reporting three successes and changing
+// nothing — the defect `P7-04` shipped and had to come back and fix. One
+// control, one sentence saying it covers the chat.
+//
+// ── WHAT A GRANT ENTRY ACTUALLY CARRIES ────────────────────────────────────
+//
+// `list_chat_session_grants` (routes/chat_routes.py) returns four fields and no
+// more — `approval_id`, `tool`, `digest`, `state`. There is no timestamp and no
+// command text: the card's `action.content` is not carried into the listing. So
+// this screen says *when you answered a card about `bash`*, which is what the
+// data supports, and never pretends to know when or what was run.
+//
+// `state` is an enum and not `live: true/false`, deliberately (`Law 10`), and
+// all three values are drawn:
+//
+//   live    — in force. This is the one the Revoke is for.
+//   revoked — you took it back. Listed on purpose: a list that showed only live
+//             grants could not tell *"you never gave one"* apart from *"you
+//             gave one and took it back"*, and the second is the state a person
+//             checking after a revoke is in. That is the listing's own reason,
+//             and dropping the row here would throw it away one layer up.
+//   stale   — the signature no longer verifies for a reason that is not a
+//             revoke: a rotated application key, a transcript copied between
+//             installs. Nothing a person did, and nothing they need to undo, so
+//             it is said plainly rather than dressed as either of the others.
+//
+// ── PROBED, THE SAME WAY AND FOR THE SAME REASONS AS JOB 3 ─────────────────
+//
+// `_probeAllowRules` above refuses to draw an affordance that is certain to be
+// refused. Same test here, same statuses, one difference that is stated rather
+// than copied:
+//
+//   * 404 / 405 / 501 — this build has no such route. Never drawn.
+//   * 401 / 403 — this caller may not. `require_user` answers 403 to an API
+//     token and 401 to nobody at all, and `_verify_session_owner` answers 404
+//     for another owner's chat. An affordance certain to be refused is not an
+//     affordance.
+//   * **no open chat** — this is the condition that replaces Job 3's rung test,
+//     because the route is per chat and there is nothing to ask about until one
+//     is open. It is not the same question as the rung, and the rung test must
+//     NOT be copied here: see the note on `SESSION_GRANT_RUNG_NOTE` below.
+//
+// A 404 is ambiguous on this route in a way it is not on the rule store — it
+// means *no such route* or *no such chat*, and a chat the browser has opened
+// but never sent a message to is the second. Both answers are "nothing to
+// draw", so the handling is the same; the difference is that the probe is keyed
+// on the chat id and re-asks when that changes, so the 404 for an empty chat is
+// not a permanent no the way a 404 for a missing route is.
+//
+// ── WHAT IT DEPENDS ON THAT IT SHOULD NOT HAVE TO ─────────────────────────
+//
+// This list is drawn inside the ladder, so a build whose `GET /api/auth/settings`
+// does not report `trust_rung` draws no ladder and therefore no grant list
+// either. That coupling is deliberate and it is bounded: `trust_rung` is a
+// `DEFAULT_SETTINGS` key from `P7-03`, and these two routes are newer than that
+// row, so a build that carries the routes and not the setting does not exist and
+// cannot come into existence going forwards. It is written down rather than
+// guarded against, because a second visibility path for the same panel is the
+// thing `Law 14` is about and this one would never run.
+//
+// ── WHEN IT ASKS ───────────────────────────────────────────────────────────
+//
+// Never at page load: at first paint no chat is open yet, so there is nothing
+// to ask about, and an install whose owner never opens a chat never makes the
+// request. It asks when the open chat changes, and again whenever an approval
+// card is answered — because answering one is the only thing that can create a
+// grant, and a person who has just clicked the wide button and gone looking for
+// it in Settings is the exact reader this row exists for. A list fetched once
+// at boot would be missing the grant they came to find.
+//
+// It refreshes on **every** decision rather than only on the one that grants,
+// and that is not laziness: this file would otherwise hold a second copy of a
+// wire value `src/tool_approval_scopes.py` owns, and the consequence of casting
+// the net too wide here is one extra read, while the consequence of casting it
+// too narrow is the list being wrong in exactly the case it is for.
+
+/** One chat's grants, as a URL.
+ *
+ * The path is written out rather than assembled from a constant, and the same
+ * is now true of `revokeAllowRule` above. `.pantheon/check-unreachable.py`
+ * reads string literals out of `static/**`, so a URL built from a bare constant
+ * mentions no path and the route reads as one with no caller — which is how
+ * `DELETE /api/tool-allow-rules/{rule_id}` sat in that report while the button
+ * calling it was on screen. One literal per route, at the one place that route
+ * is called.
+ */
+function _sessionGrantUrl(sessionId) {
+  // The coercion is a statement and not an expression inside the hole, and that
+  // is load-bearing rather than style. `check-unreachable.py`'s reader is
+  // ``['"`]([^'"`\n]*?)['"`]`` — it stops at the first quote INSIDE the
+  // literal — so `${String(x == null ? '' : x)}` truncates the path it reads at
+  // the `''` and the route goes back to looking like one with no caller, with
+  // the caller sitting right here. `B720` carries the checker half.
+  const id = String(sessionId == null ? '' : sessionId);
+  return `/api/tool-approval-grants/${encodeURIComponent(id)}`;
+}
+
+/**
+ * The chat this panel is about, or '' when there is not one.
+ *
+ * Through `window.sessionModule` rather than by importing `sessions.js`: that
+ * module imports `chatRenderer.js`, which imports this one, so a static import
+ * here would close a cycle. `chat.js` and `assistant.js` both reach it exactly
+ * this way, and `H02` is the row that established `getCurrentSessionId` is the
+ * real name — `getActiveSession` was written at one call site and never existed.
+ */
+function _currentChatSessionId() {
+  try {
+    const mod = typeof window === 'undefined' ? null : window.sessionModule;
+    const sid = mod && typeof mod.getCurrentSessionId === 'function'
+      ? mod.getCurrentSessionId()
+      : '';
+    return String(sid == null ? '' : sid).trim();
+  } catch (_) {
+    return '';
+  }
+}
+
+// What the server has told us, and which chat it told us about. `false` on
+// `_grantsKnown` is "not asked yet", which is not the empty list and must not be
+// drawn as one — the same distinction `_rulesKnown` draws for Job 3.
+let _grants = [];
+let _grantsKnown = false;
+let _grantsChat = '';
+let _grantsProbe = null;
+let _grantsProbeFor = '';
+
+/**
+ * Ask this chat for its session-wide grants. Resolves whether there are any.
+ *
+ * Cached per chat id, so a second render of the ladder on the same chat asks
+ * nothing and a render after the chat changed asks about the new one. `force`
+ * re-asks the same chat, which is what the watchers below do after something
+ * happened that could have changed the answer — a card answered, a chat opened.
+ *
+ * The chat id is half of that cache key and not an optimisation: a promise
+ * cached without it would answer a question about the chat the person has since
+ * left, which is the panel telling the lie it exists to stop telling.
+ */
+export function refreshSessionGrants(force) {
+  const chat = _currentChatSessionId();
+  if (!chat) {
+    // No chat, nothing to draw, and nothing cached that could be about one.
+    _grants = [];
+    _grantsKnown = false;
+    _grantsChat = '';
+    _grantsProbe = null;
+    _grantsProbeFor = '';
+    return Promise.resolve(false);
+  }
+  if (!force && _grantsProbe && _grantsProbeFor === chat) return _grantsProbe;
+  _grantsProbeFor = chat;
+  _grantsProbe = Promise.resolve()
+    .then(() => fetch(_sessionGrantUrl(chat), { credentials: 'same-origin' }))
+    .then(async (res) => {
+      // Any answer that is not a 2xx means do not draw. Same breadth as the
+      // rule probe and for the same reason: a build with no such route, a
+      // caller the two doors refuse, a chat the server has never heard of and a
+      // store that cannot answer all end in "there is nothing to show", and
+      // there is no "the route is fine, this call was not" case for a narrower
+      // test to rescue.
+      if (!res || !res.ok) return false;
+      let data = {};
+      try { data = await res.json(); } catch (_) { return false; }
+      // A reply that arrived after the person opened another chat is about the
+      // chat they left. Dropped rather than drawn.
+      if (_grantsProbeFor !== chat) return _grantsKnown && _grants.length > 0;
+      _grants = Array.isArray(data && data.grants) ? data.grants.filter(Boolean) : [];
+      _grantsKnown = true;
+      _grantsChat = chat;
+      return _grants.length > 0;
+    })
+    .catch(() => false);
+  return _grantsProbe;
+}
+
+export const SESSION_GRANT_LIST_TITLE = 'What you have allowed for this chat';
+
+// What the button they pressed actually did. The card's own label is quoted so
+// the promise and the receipt are findable as the same words — the argument
+// `allowRuleWording` makes for Job 3, applied to the wider grant.
+export const SESSION_GRANT_LIST_HINT =
+  'When Pantheon stops to ask before doing something, one of the buttons on '
+  + 'that card is “Allow for this chat session”. It is wider than it looks: it '
+  + 'does not just allow the one thing it asked about, it stops Pantheon asking '
+  + 'again for the rest of this chat, whatever it goes on to do. Every time you '
+  + 'have pressed it in this chat is listed below.';
+
+// `B702`, said before the button rather than after it. A revoke lands on the
+// next message because `ToolRunSecurityContext` resolves the bypass once, at
+// the start of a turn, from the transcript — the same once-per-turn rule the
+// rung is resolved under, and for the same reason: two actions in one turn
+// answerable to two policies is worse than a one-turn lag. A person clicking
+// Revoke *because something is happening right now* will expect otherwise, so
+// the expectation is set in words, in front of the control, instead of being
+// corrected afterwards.
+export const SESSION_GRANT_TIMING =
+  'Taking this back starts at your next message. A reply Pantheon is writing '
+  + 'right now keeps the yes it began with, and a question already on your '
+  + 'screen is still waiting for your answer — taking this back does not answer '
+  + 'it for you.';
+
+// Shown only off the default rung, and the *absence* of a rung test on the list
+// itself is the deliberate part.
+//
+// Job 3 hides the rule list off `allow_listed` because the store is genuinely
+// not consulted anywhere else, so those rules grant nothing there. A
+// session-wide grant is the other way round: `decision_for` honours the bypass
+// only when the rung is NOT one of the two that ask in a clean run
+// (`_RUNGS_THAT_ASK_UNTAINTED`, src/tool_capabilities.py) — so it is the
+// *default* rung where it applies, and the two stricter rungs where it is
+// ignored. Copying Job 3's test would therefore hide a live grant from the
+// person on the default setting, who is the only person it is live for, which
+// is the whole defect this row exists to end. So the list is drawn on every
+// rung and the rung is reported instead: a grant that is being ignored right
+// now still comes back into force the moment the setting above moves back.
+export const SESSION_GRANT_RUNG_NOTE =
+  'Right now these are not being used. The setting above is one of the two '
+  + 'stricter ones, and Pantheon asks even when you have allowed the chat. '
+  + 'Move it back to the first option and they apply again — so it is still '
+  + 'worth taking back anything here you did not mean to allow.';
+
+export const SESSION_GRANT_LIST_EMPTY =
+  'Nothing yet. You have not told Pantheon to stop asking for the rest of this '
+  + 'chat. It is a button on the card Pantheon shows when it stops to ask — '
+  + '“Allow for this chat session” — and if you press it, it turns up here.';
+
+export const SESSION_GRANT_REVOKE_LABEL = 'Take all of these back';
+
+/**
+ * One grant, in words. Never `null` — every state has a sentence.
+ *
+ * The three states are told apart by what the sentence says, not by a colour:
+ * `terminal` and `retrowave` spell `--fg` and `--red` the same hex, so a hue is
+ * a channel this product cannot spend on meaning (`P7-06`'s measurement).
+ */
+export function sessionGrantWording(grant) {
+  const tool = String((grant && grant.tool) || '').trim();
+  const state = String((grant && grant.state) || '').trim().toLowerCase();
+  const asked = tool
+    ? `You pressed it when Pantheon asked about ${tool}.`
+    : 'You pressed it on one of Pantheon’s confirmation cards.';
+  if (state === 'revoked') {
+    return {
+      state: 'revoked',
+      label: 'Taken back',
+      sentence: `${asked} You have since taken it back, so it allows nothing. `
+        + 'It is listed so you can see it happened.',
+    };
+  }
+  if (state === 'live') {
+    return {
+      state: 'live',
+      label: 'In force for this chat',
+      sentence: `${asked} Until you take it back, Pantheon goes ahead with `
+        + 'anything it would otherwise stop and check with you about, for the '
+        + 'rest of this chat.',
+    };
+  }
+  // Anything else, including a state this build has never heard of. Said to be
+  // not in force rather than guessed at in either direction: claiming "live"
+  // for an unknown state would frighten someone about a grant that is not
+  // there, and claiming "taken back" would reassure them about one that is.
+  return {
+    state: 'stale',
+    label: 'No longer in force',
+    sentence: `${asked} Pantheon can no longer tell that this is genuine — `
+      + 'that happens when a chat is copied between installs, or after the '
+      + 'application key is replaced — so it is not being honoured and there '
+      + 'is nothing here to take back.',
+  };
+}
+
+/**
+ * Take back every live grant in this chat. Resolves `'revoked'`,
+ * `'nothing'` or `'failed'`.
+ *
+ * `'nothing'` is the server's own `nothing_to_revoke`, which for this caller
+ * means the thing they wanted is already true — another tab, another device, or
+ * a second press. Reported separately from a success so the sentence can be
+ * accurate, and drawn the same way, for the reason `revokeAllowRule` gives:
+ * the person's intent has been served.
+ */
+export async function revokeSessionGrants() {
+  const chat = _currentChatSessionId();
+  if (!chat) return 'failed';
+  let res = null;
+  try {
+    res = await fetch(_sessionGrantUrl(chat), {
+      method: 'DELETE',
+      credentials: 'same-origin',
+    });
+  } catch (_) {
+    return 'failed';
+  }
+  if (!res || !res.ok) return 'failed';
+  let data = {};
+  try { data = await res.json(); } catch (_) { data = {}; }
+  // The route answers with the refreshed listing, so the list is redrawn from
+  // what the server now holds rather than from this file's guess about what the
+  // revoke did. No second request, and no window in which the screen disagrees
+  // with the store.
+  if (Array.isArray(data && data.grants)) {
+    _grants = data.grants.filter(Boolean);
+    _grantsKnown = true;
+    _grantsChat = chat;
+  }
+  return String(data && data.status) === 'nothing_to_revoke' ? 'nothing' : 'revoked';
+}
+
+/**
+ * Draw the list into `host`, or empty and hide it when there is nothing to say.
+ *
+ * `rung` is used for one sentence and for nothing else — see
+ * `SESSION_GRANT_RUNG_NOTE`. Hidden rather than removed, like Job 3's list, so
+ * a repaint after a chat switch costs no request when the answer is cached.
+ */
+export function renderSessionGrantList(host, rung) {
+  if (!host) return null;
+  host.textContent = '';
+  // Before the server has answered there is no list to draw, and "Nothing yet"
+  // would be a claim about a chat nobody managed to ask about.
+  const on = _grantsKnown && !!_grantsChat && _grantsChat === _currentChatSessionId();
+  host.hidden = !on;
+  if (!on) return null;
+
+  host.appendChild(_el('div', 'session-grant-list-title', SESSION_GRANT_LIST_TITLE));
+  host.appendChild(_el('p', 'session-grant-list-hint', SESSION_GRANT_LIST_HINT));
+
+  const status = _el('div', 'session-grant-list-status', '');
+  status.setAttribute('role', 'status');
+  status.setAttribute('aria-live', 'polite');
+  host.appendChild(status);
+
+  if (!_grants.length) {
+    host.appendChild(_el('p', 'session-grant-list-empty', SESSION_GRANT_LIST_EMPTY));
+    return host;
+  }
+
+  const rows = _el('div', 'session-grant-rows');
+  host.appendChild(rows);
+  let live = 0;
+  _grants.forEach((grant) => {
+    const words = sessionGrantWording(grant);
+    if (words.state === 'live') live += 1;
+    const row = _el('div', 'session-grant-row');
+    row.dataset.grantState = words.state;
+    row.dataset.grantId = String((grant && grant.approval_id) || '');
+
+    const text = _el('span', 'session-grant-row-text');
+    text.appendChild(_el('span', 'session-grant-row-label', words.label));
+    text.appendChild(_el('span', 'session-grant-row-sentence', words.sentence));
+    // The digest, as the machine detail it is, and only when the server sent
+    // one. It is the one thing that ties this row to a card in the transcript,
+    // and `.allow-rule-row-detail` already established what that looks like.
+    const digest = String((grant && grant.digest) || '').trim();
+    if (digest) text.appendChild(_el('span', 'session-grant-row-detail', digest));
+    row.appendChild(text);
+    rows.appendChild(row);
+  });
+
+  // The rung sentence goes after the rows, because it is about all of them.
+  if (_coerceRung(rung) !== DEFAULT_TRUST_RUNG) {
+    host.appendChild(_el('p', 'session-grant-list-note', SESSION_GRANT_RUNG_NOTE));
+  }
+
+  // No live grant, no button. `DELETE` would answer `nothing_to_revoke` and the
+  // control would be reporting a success for work it did not do — which is the
+  // shape `Law 13` names and the shape this row's own route refused to build.
+  if (!live) return host;
+
+  const actions = _el('div', 'session-grant-actions');
+  actions.appendChild(_el('p', 'session-grant-timing', SESSION_GRANT_TIMING));
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'session-grant-revoke';
+  // The whole chat is what the route takes back, so the button says so in its
+  // own words rather than leaving the scope to a sentence the reader may have
+  // skipped. One button reading "Revoke" beside three rows would read as
+  // belonging to one of them.
+  button.textContent = SESSION_GRANT_REVOKE_LABEL;
+  button.addEventListener('click', () => {
+    if (button.disabled) return;
+    button.disabled = true;
+    status.textContent = 'Taking it back…';
+    revokeSessionGrants().then((outcome) => {
+      if (outcome === 'failed') {
+        // `P7-04`'s failure copy, which says the unwelcome half out loud: the
+        // grant is still standing. A silent failure here leaves somebody
+        // believing they took a permission back when they did not.
+        button.disabled = false;
+        status.textContent =
+          'That could not be taken back, so Pantheon can still go ahead '
+          + 'without asking. Try again in a moment.';
+        return;
+      }
+      const said = outcome === 'nothing'
+        ? 'There was nothing left to take back. '
+        : 'Taken back. ';
+      renderSessionGrantList(host, rung);
+      const after = host.querySelector('.session-grant-list-status');
+      if (after) {
+        after.textContent = said
+          + 'Pantheon asks again from your next message in this chat. A reply '
+          + 'it is writing right now keeps the yes it began with, and a '
+          + 'question already on your screen still needs your answer.';
+      }
+    });
+  });
+  actions.appendChild(button);
+  host.appendChild(actions);
+  return host;
+}
+
+// The watchers. Registered once, whatever happens to the renderer, because a
+// listener added per render is a leak with a repaint count attached.
+let _grantWatchersWired = false;
+let _grantRepaint = null;
+
+function _watchSessionGrants(repaint) {
+  _grantRepaint = repaint;
+  if (_grantWatchersWired || typeof document === 'undefined') return;
+  _grantWatchersWired = true;
+  const again = () => {
+    refreshSessionGrants(true).then(() => { if (_grantRepaint) _grantRepaint(); });
+  };
+  // `sessions.js` dispatches this when the open chat changes. The answer is
+  // about a different chat from that moment on, so it is re-asked rather than
+  // repainted.
+  document.addEventListener('pantheon:session-changed', again);
+  // `chatRenderer.js` dispatches this when a person answers an approval card,
+  // which is the only way a grant is ever created.
+  document.addEventListener('pantheon:tool-approval', again);
 }
 
 // Self-init. `initTrustLadder` is a no-op without `#trust-ladder` in the page,

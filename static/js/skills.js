@@ -106,7 +106,7 @@ export async function loadSkills(cascade = false) {
       return true;
     });
     _loadSkillApprovalThreshold();
-    // Built-in capabilities are no longer surfaced in the Skills menu.
+    await _loadBuiltinCapabilities();
     loaded = true;
     renderSkillsList();
     updateCount();
@@ -127,6 +127,28 @@ export async function loadSkills(cascade = false) {
   }
   })();
   return _loadPromise;
+}
+
+// `P2-21`. The list behind the "Built-in capabilities" section. It was never
+// written: `builtinSkills` sat at `[]` for the life of the file and nothing in
+// the tree fetched `GET /api/skills/builtin`, so flipping the section's flag on
+// its own drew a header counting nothing.
+//
+// The route is admin-gated (`P2-21` / `P11-10`), so most signed-in people get a
+// 403 here and that is the ordinary case, not a failure: the list stays empty,
+// the section is not drawn at all, and nothing is said about it. A toast for a
+// panel the person did not ask for would be worse than the missing panel.
+// Errors are swallowed for the same reason — the Workshop's own skills are the
+// point of this screen and they have already loaded by the time this runs.
+async function _loadBuiltinCapabilities() {
+  try {
+    const res = await fetch(`${API}/api/skills/builtin`);
+    if (!res.ok) { builtinSkills = []; return; }
+    const data = await res.json();
+    builtinSkills = Array.isArray(data.builtin) ? data.builtin : [];
+  } catch (_) {
+    builtinSkills = [];
+  }
 }
 
 function _focusSkillRow(name) {
@@ -477,12 +499,27 @@ function _openSkillMenu(btn, card, sk, name, isPublished) {
   const close = bindMenuDismiss(menu, () => { menu.remove(); }, (ev) => !menu.contains(ev.target));
 }
 
+// The built-ins that survive the toolbar's current filter. They carry no
+// `status` and no `confidence`, so the drafts / published / confidence filters
+// exclude the whole section rather than quietly matching none of it — a
+// "Built-in capabilities 0" header under a drafts filter says the built-ins
+// went away, and they did not. The search box does apply, because a person
+// typing a tool's name is looking for that tool wherever it lives.
+function _getFilteredBuiltins() {
+  if (_showDraftsOnly || _showPublishedOnly || _confMax != null) return [];
+  const query = (document.getElementById('skills-search')?.value || '').toLowerCase();
+  if (!query) return builtinSkills;
+  return builtinSkills.filter(b =>
+    String(b.name || '').toLowerCase().includes(query) ||
+    String(b.description || '').toLowerCase().includes(query));
+}
+
 // Cards for the agent's built-in tool capabilities (from
 // /api/skills/builtin → TOOL_SECTIONS). Expandable to preview the
 // instruction block; editable with a warning + a revert-to-default
 // button (overrides stored in settings, applied to the prompt).
-function _buildBuiltinCards() {
-  return builtinSkills.map(b => {
+function _buildBuiltinCards(rows) {
+  return (rows || []).map(b => {
     const card = document.createElement('div');
     card.className = 'doclib-card skill-card skill-builtin-card';
     card.dataset.builtinName = b.name;
@@ -646,11 +683,16 @@ function renderSkillsList() {
   container.closest('.admin-card')?.classList.remove('skills-has-expanded');
 
   const sorted = _getFilteredSkills();
-  // Built-in capabilities show as their own read-only section (skipped when
-  // the user is filtering to drafts, since built-ins aren't drafts).
-  // Skills menu shows the user's own skills only (built-in capabilities
-  // are intentionally not surfaced here).
-  const showBuiltin = false;
+  // Built-in capabilities show as their own section: the agent's native tools,
+  // with the instruction block each one is given and an editor for it.
+  //
+  // `P2-21`. The flag was a literal `false` over a list nothing populated, so
+  // it is now the list itself. That keeps the two halves of this row from ever
+  // coming apart again — an empty list draws no header, whether it is empty
+  // because the loader has not run yet, because the person is not an admin and
+  // the gated route answered 403, or because a filter excluded the section.
+  const builtins = _getFilteredBuiltins();
+  const showBuiltin = builtins.length > 0;
 
   if (!sorted.length && !showBuiltin) {
     const selectBtn = document.getElementById('skills-select-btn');
@@ -884,16 +926,25 @@ function renderSkillsList() {
     return hdr;
   };
 
-  // "Your skills" section — show the header only when there's also a
+  // The SKILL.md section — show the header only when there's also a
   // built-in section to distinguish from (otherwise it's just the list).
+  //
+  // It said "Your skills" until 2026-09-18, and this header had never been
+  // drawn, because the built-in flag it is conditional on was a literal
+  // `false`. `P2-21` turning that flag on would have made the label appear for
+  // the first time over a list that is mostly not the person's: `/api/skills`
+  // folds in the 286 read-only bundled library entries (`source: "bundled"`,
+  // `owner: null`), and `B590` is open because none of them can be opened.
+  // "Skills" is what this section actually holds — SKILL.md files, whoever
+  // wrote them — beside "Built-in capabilities", which holds native tools.
   if (cards.length) {
-    if (showBuiltin) container.appendChild(_mkSectionHeader('user', 'Your skills', cards.length));
+    if (showBuiltin) container.appendChild(_mkSectionHeader('user', 'Skills', cards.length));
     cards.forEach(c => { c.dataset.skillSection = 'user'; container.appendChild(c); });
   }
 
   // Built-in capabilities — read-only cards (the agent's native tools).
   if (showBuiltin) {
-    const builtinCards = _buildBuiltinCards();
+    const builtinCards = _buildBuiltinCards(builtins);
     container.appendChild(_mkSectionHeader('builtin', 'Built-in capabilities', builtinCards.length));
     builtinCards.forEach(c => { c.dataset.skillSection = 'builtin'; container.appendChild(c); });
   }

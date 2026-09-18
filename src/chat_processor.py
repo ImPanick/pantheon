@@ -95,7 +95,14 @@ class ChatProcessor:
             "address",
         ))
 
-    def _select_pinned_memories(self, message: str, pinned: list) -> list:
+    # `P13-10`. What a core pinned memory says when the trace asks why it is
+    # there. Nothing ranked it, so there is no match to describe and inventing
+    # one would be `B61`'s defect wearing a reason — the honest answer is the
+    # rule that put it in the prompt.
+    PINNED_REASON = "pinned, so it is always available — nothing ranked it"
+
+    def _select_pinned_memories(self, message: str, pinned: list,
+                                report: dict | None = None) -> list:
         """Keep pinned memories high-priority without injecting all of them.
 
         Pinned used to mean "always send every pinned memory to the model".
@@ -125,10 +132,15 @@ class ChatProcessor:
             if not (m.get("id") and m.get("id") in core_ids)
         ]
         remaining_slots = max(self.PINNED_MEMORY_LIMIT - len(core), 0)
+        # `P13-10`. The report is threaded through so a pinned memory that had
+        # to MATCH can say how it matched. Only these rows get a scorer reason:
+        # `core` below was never ranked, and giving it one would be `B61`'s lie
+        # in the shape of an explanation.
         contextual = self._hybrid_retrieve(
             message,
             contextual_candidates,
             k=remaining_slots,
+            report=report,
         ) if remaining_slots else []
 
         selected = []
@@ -209,7 +221,12 @@ class ChatProcessor:
             extended = [m for m in mem_entries if not m.get("pinned")]
 
             _used_ids: list = []
-            selected_pinned = self._select_pinned_memories(message, pinned)
+            _pinned_report: dict = {}
+            selected_pinned = self._select_pinned_memories(
+                message, pinned, report=_pinned_report)
+            _pinned_reasons = {row["id"]: row["reason"]
+                               for row in (_pinned_report.get("selected") or ())
+                               if row.get("id")}
             if selected_pinned:
                 pinned_text = "\n- ".join([m["text"] for m in selected_pinned])
                 preface.append(untrusted_context_message(
@@ -233,7 +250,15 @@ class ChatProcessor:
                         # never a default — a pill reading "80%" over a memory
                         # that was never assessed is the exact failure the
                         # phase preamble cites from PandAtlas.
-                        "confidence": m.get("confidence")})
+                        "confidence": m.get("confidence"),
+                        # `P13-10`. The id, so the panel can open the memory
+                        # the pill names rather than matching on text; and the
+                        # reason, which the scorer already wrote. A pinned
+                        # memory that had to match reports how it matched; a
+                        # core one reports the rule that included it.
+                        "id": m.get("id"),
+                        "reason": _pinned_reasons.get(m.get("id"),
+                                                      self.PINNED_REASON)})
                     if m.get("id"):
                         _used_ids.append(m["id"])
 
@@ -257,6 +282,13 @@ class ChatProcessor:
                     # the default happened to be, which is this row's whole subject.
                     _run_engine = recall_report["engine"]
                     _vector_ids = set(recall_report.get("vector_ids") or ())
+                    # `P13-10`. Indexed for the same reason `engine` is: the
+                    # scorer writes this key before every early return, so a
+                    # missing one means that guarantee broke and a default here
+                    # would hide it behind whatever the default happened to be.
+                    _reasons = {row["id"]: row["reason"]
+                                for row in recall_report["selected"]
+                                if row.get("id")}
                     for m in relevant:
                         # Per memory, not per run. On a hybrid run some of these
                         # were found by the index and some only by BM25, and a
@@ -269,7 +301,9 @@ class ChatProcessor:
                         self._last_used_memories.append({
                             "text": m["text"], "category": m.get("category", "fact"),
                             "type": "recalled", "engine": _engine,
-                            "confidence": m.get("confidence")})
+                            "confidence": m.get("confidence"),
+                            "id": m.get("id"),
+                            "reason": _reasons.get(m.get("id"), "")})
                         if m.get("id"):
                             _used_ids.append(m["id"])
 

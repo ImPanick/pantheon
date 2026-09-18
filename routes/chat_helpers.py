@@ -644,8 +644,41 @@ def note_escalation(reasons: list, why: str) -> bool:
     return True
 
 
+def escalation_grants_shell(allow_bash) -> bool:
+    """May a chat→agent promotion switch the shell on for this turn?
+
+    `P7-01`. Two sites in `chat_routes` answered "always" — a workspace or shell
+    intent set `allow_bash = "true"` outright, so a person who had switched the
+    shell **off** got it back by typing a message containing one of the words a
+    classifier reads as workspace work. The toggle said off; the engine ran
+    commands. That is the whole of what the row means by the toggle lying, and
+    it is the backend half of it: the browser has its own copy of the same
+    override in `static/js/chat.js`.
+
+    So: a promotion may **grant** a capability nobody expressed a view about,
+    and may not **overrule** an explicit no.
+
+      None            no preference sent. Granting is what already happens —
+                      the gate below only disables the shell for an explicitly
+                      falsy value — so this returns True and nothing moves.
+      "true"          already on. True, and also a no-op.
+      anything else   an explicit denial. False.
+
+    The spelling test is `str(x).lower() == "true"` and not `request_truthy`,
+    deliberately and for `B97`'s reason: this field is the one place in the
+    route where widening the accepted spellings would turn `allow_bash=1` from
+    *shell denied* into *shell granted*. This predicate must read the value the
+    same way the gate that enforces it does, or the two disagree about what the
+    person asked for.
+    """
+    if allow_bash is None:
+        return True
+    return str(allow_bash).lower() == "true"
+
+
 def escalation_withholds(*, promoted: bool, workspace_intent: bool,
-                         allow_browser: bool, browser_tools) -> list[str]:
+                         allow_browser: bool, browser_tools,
+                         shell_granted: bool = True) -> list[str]:
     """The tools a light promotion takes away, by name.
 
     `P4-18`. A chat turn promoted for a notes or calendar intent should not
@@ -658,9 +691,19 @@ def escalation_withholds(*, promoted: bool, workspace_intent: bool,
     A promotion that grants the shell (`workspace_intent`) withholds nothing,
     and an unpromoted turn withholds nothing — both return the empty list,
     which is the honest answer and not a missing one.
+
+    `P7-01` adds the case that used to be impossible: a **workspace** promotion
+    on a turn where the person switched the shell off. It no longer silently
+    switches it back on, so the shells are withheld and the same wire field that
+    already reports a light promotion's withholdings reports these — otherwise
+    the fix would be a capability quietly disappearing, which is the defect this
+    function exists to prevent, one level up. `host_shell` travels with `bash`
+    because `P17-11` made them one switch.
     """
-    if not promoted or workspace_intent:
+    if not promoted:
         return []
+    if workspace_intent:
+        return [] if shell_granted else ["bash", "host_shell"]
     withheld = {"bash", "python", "read_file", "write_file"}
     if not allow_browser:
         withheld |= set(browser_tools or ())

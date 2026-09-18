@@ -308,7 +308,7 @@
        real request is discarded and the font fetched a second time. -->
   <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/FiraCode-Regular.woff2">
   <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/FiraCode-SemiBold.woff2">
-  <link rel="stylesheet" href="/static/style.css?v=20260918a11yfocus1">
+  <link rel="stylesheet" href="/static/style.css?v=20260918grantinspector1">
   <link rel="modulepreload" href="/static/app.js?v=20260815toolapproval4">
   <!-- B58. This must carry the SAME query as the <script> tag below, or the
        browser fetches chat.js twice: the cache and the module map are keyed on
@@ -2965,7 +2965,16 @@
                The same module draws the standing allow rules underneath the
                ladder, and the Revoke beside each one — this is the only screen
                in the product that shows a grant exists or takes it back, so the
-               card is not a place to tuck anything else in beside them. -->
+               card is not a place to tuck anything else in beside them.
+
+               `P7-09` adds a third block under those two: the blanket yes a
+               confirmation card can hand out for a whole chat ("Allow for this
+               chat session"), which until that row nothing listed and nothing
+               revoked. It is drawn on every rung, unlike the allow rules above
+               it, because a session grant is honoured on the DEFAULT rung and
+               ignored on the two stricter ones — the opposite way round, so
+               hiding it the same way would hide a live grant from the only
+               people it is live for. -->
           <div class="admin-card" id="trust-ladder-card" style="margin-bottom:12px;" hidden>
             <div id="trust-ladder"></div>
           </div>
@@ -2973,6 +2982,23 @@
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>Built-in Tools</h2>
             <div class="admin-toggle-sub" style="margin-bottom:8px">Enable or disable tools available to the AI agent.</div>
             <div id="adm-builtin-tools-list" class="admin-user-list"></div>
+          </div>
+
+          <!-- P2-20. The feature switches. `loadFeatures` has been in
+               `static/js/admin.js` since the fork with no markup and no caller:
+               the only way to turn one of these off was the `/features` slash
+               command, which you had to know existed. They sit beside Built-in
+               Tools because both answer the same question — what can this
+               instance do — at two different sizes: a feature is a whole
+               surface, a tool is one call the agent can make. -->
+          <div class="admin-card" style="margin-bottom:12px;">
+            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><rect x="1" y="5" width="22" height="14" rx="7"/><circle cx="16" cy="12" r="3"/></svg>Features</h2>
+            <div class="admin-toggle-sub" style="margin-bottom:8px">
+              Whole surfaces, on or off for everyone on this instance. Turning
+              one off hides its controls and stops the agent reaching for it;
+              nothing already stored is deleted.
+            </div>
+            <div id="adm-featureToggles"><div class="admin-empty">Loading...</div></div>
           </div>
         </div>
 
@@ -3165,6 +3191,80 @@
             </div>
             <div class="settings-col" id="settings-envflags-rows"></div>
             <div class="admin-toggle-sub" id="set-envflagsMsg" style="margin-top:8px;font-size:11px;opacity:0.75;min-height:14px"></div>
+          </div>
+
+          <!-- P2-19. The webhook panel. Five admin-gated routes have been
+               live since the fork and nothing in the product drew a single
+               element for them; `initWebhookForm` and `loadWebhooks` were both
+               written, both left out of `inits` and `refreshAll`, and both
+               unreachable. The event checkboxes carry the class
+               `adm-wh-event` because that is the selector the form reads —
+               without them it reports "Select at least one event" and can
+               never submit, which is why they are here rather than built in
+               JS beside the list. -->
+          <div class="admin-card">
+            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>Webhooks</h2>
+            <div class="admin-toggle-sub" style="margin-bottom:8px">
+              Pantheon POSTs a small JSON body to a URL you own when one of
+              these things happens. The destination has to be reachable from
+              outside this machine &mdash; a private or loopback address is
+              refused when you add it, so point this at a public URL or at a
+              relay you run. A secret is optional; supply one and each delivery
+              is signed so the receiver can tell it came from here.
+            </div>
+            <div id="adm-whList"><div class="admin-empty">Loading...</div></div>
+            <div class="admin-rag-section-label">Add a webhook</div>
+            <div class="admin-rag-dir-row" style="flex-wrap:wrap;">
+              <input id="adm-whName" type="text" placeholder="Name, e.g. deploy bot" autocomplete="off" style="min-width:140px;">
+              <input id="adm-whUrl" type="text" placeholder="https://example.com/hooks/pantheon" autocomplete="off" style="min-width:220px;">
+              <input id="adm-whSecret" type="password" placeholder="Signing secret (optional)" autocomplete="new-password" style="min-width:160px;">
+            </div>
+            <div class="admin-toggle-sub" style="margin:2px 0 6px;">Send on</div>
+            <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px;font-size:12px;">
+              <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;"><input class="adm-wh-event" type="checkbox" value="session.created"> a chat is started</label>
+              <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;"><input class="adm-wh-event" type="checkbox" value="chat.message"> a message is sent</label>
+              <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;"><input class="adm-wh-event" type="checkbox" value="chat.completed"> a reply finishes</label>
+            </div>
+            <button class="admin-btn-add" id="adm-whAddBtn">Add Webhook</button>
+            <div id="adm-whMsg" class="admin-rag-status" role="status" aria-live="polite"></div>
+          </div>
+
+          <!-- P2-20. The RAG index panel. `loadRag` and `initRag` were written,
+               left out of both lists, and had zero callers tree-wide; the
+               sixteen `.admin-rag-*` rules in style.css have been orphaned this
+               whole time, which is why `P3-03` is blocked on this row rather
+               than the other way round.
+               This is not a second copy of the document drop-zone the Library
+               already ships (`P2-23`). Three of the four things here &mdash;
+               add a directory, remove one, reload the index &mdash; are
+               `require_admin` routes, and `POST /api/personal/reload` had no
+               caller anywhere in the product. -->
+          <div class="admin-card">
+            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>Knowledge index</h2>
+            <div class="admin-toggle-sub" style="margin-bottom:8px">
+              What the assistant can search when it answers. Drop files here, or
+              point it at a directory on this machine and everything under that
+              directory is indexed. Removing an entry takes it out of the index;
+              the file itself is left where it is.
+            </div>
+            <div class="admin-rag-upload-zone" id="adm-ragDropZone">
+              <div class="admin-rag-icon" aria-hidden="true">&#8681;</div>
+              <div>Drop files here, or click to choose</div>
+              <p>Indexed straight away. Anything the text extractor can read.</p>
+            </div>
+            <input type="file" id="adm-ragFileInput" multiple style="display:none;">
+            <div class="admin-rag-toolbar">
+              <button class="admin-btn-sm" id="adm-ragReloadBtn" title="Re-read every indexed file and directory from disk">Reload Index</button>
+            </div>
+            <div class="admin-rag-section-label">Indexed directories</div>
+            <div id="adm-ragDirList"><div class="admin-empty">Loading...</div></div>
+            <div class="admin-rag-dir-row">
+              <input id="adm-ragDirInput" type="text" placeholder="/path/to/a/directory on this machine" autocomplete="off">
+              <button id="adm-ragAddDirBtn">Add Directory</button>
+            </div>
+            <div class="admin-rag-section-label">Indexed files</div>
+            <div id="adm-ragFileList"><div class="admin-empty">Loading...</div></div>
+            <div class="admin-rag-status" id="adm-ragStatus" role="status" aria-live="polite"></div>
           </div>
 
           <div class="admin-card" id="settings-system-logs-card">

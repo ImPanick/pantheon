@@ -43537,6 +43537,200 @@ body.theme-frosted .modal {
   cursor: default;
 }
 
+/* ── P7-09 · the blanket yes for a whole chat ─────────────────────────────
+   "What you have allowed for this chat", under the standing-rule list and on
+   every rung — unlike that list, which is hidden off `allow_listed` because the
+   store is not consulted there. A session grant is honoured on the DEFAULT rung
+   and ignored on the two stricter ones, so hiding it the same way would hide a
+   live grant from exactly the people it is live for.
+
+   Same construction as the list above it, for the same measured reasons: every
+   string is `var(--fg)` on `var(--panel)`, no panel tint (measured across the
+   sixteen palettes it costs a string up to 8% of its contrast, and the strings
+   here include the line that says a revoke failed), and no hue anywhere. It is
+   told apart from the rule list by its border and its own title.
+
+   The three grant states are told apart by border STYLE and border WIDTH plus a
+   label that says the state in words — never by colour. `terminal` and
+   `retrowave` spell `--fg` and `--red` the same hex, so a hue carries nothing on
+   two of sixteen palettes and nothing at all in greyscale; `P7-06`'s refutation
+   measured the previous attempt at 2.11:1 on `paper` for the one line that
+   mattered most. A solid 2px left rule means in force, a 2px dashed one means
+   over — the same vocabulary `.allow-rule-row` and `.allow-rule-scope` already
+   use for "this exists" against "this is being offered". */
+.session-grant-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 2px;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+/* Emptied and hidden before the chat has been asked, not deleted. `display:
+   flex` above would otherwise beat the browser's own `[hidden]` rule and leave
+   an empty bordered box in a settings panel — which reads as a feature that
+   failed to load, and is the answer this whole surface exists to stop giving. */
+.session-grant-list[hidden] {
+  display: none;
+}
+.session-grant-list-title {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg);
+  opacity: 0.55;
+}
+.session-grant-list-hint {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--fg);
+  opacity: 0.75;
+}
+/* Whether these grants are being honoured at all, given the rung chosen above.
+   Carried at the weight of the hint rather than below it: a person reading a
+   list of things they have allowed needs "these are not in use right now" at
+   the same size as the list, or they will take the list at face value. */
+.session-grant-list-note {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--fg);
+  opacity: 0.9;
+  padding-left: 8px;
+  border-left: 2px solid color-mix(in srgb, var(--fg) 34%, transparent);
+}
+/* What the last Revoke did. Never smaller or dimmer than the hint: on the
+   failure path this line is the only thing saying the grant is still standing,
+   and a control that whispers that has not reported it. */
+.session-grant-list-status {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--fg);
+  opacity: 1;
+  min-height: 15px;
+}
+/* An empty list is a sentence. "You have never given one" and "you gave one and
+   took it back" are different states and a blank space is neither. */
+.session-grant-list-empty {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--fg);
+  opacity: 0.8;
+}
+.session-grant-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.session-grant-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--fg);
+}
+/* In force: the solid 2px left rule `.allow-rule-row` uses for a grant that
+   exists and is being honoured. */
+.session-grant-row[data-grant-state="live"] {
+  border-left: 2px solid color-mix(in srgb, var(--fg) 34%, transparent);
+}
+/* Over, either way. Dashed says "not in force" in a channel that survives
+   greyscale and a screen reader gets the same answer from the label. The two
+   are not merged: one is something the person did and one is not, and the
+   sentences differ. */
+.session-grant-row[data-grant-state="revoked"],
+.session-grant-row[data-grant-state="stale"] {
+  border-left: 2px dashed color-mix(in srgb, var(--fg) 26%, transparent);
+}
+.session-grant-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.session-grant-row-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg);
+}
+/* A row that is over says so at the same size as one that is in force, and is
+   not dimmed to make the point: "taken back" is the good news a person came
+   here to confirm, and news you have to squint at has not been delivered. */
+.session-grant-row-sentence {
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--fg);
+  opacity: 0.8;
+  overflow-wrap: anywhere;
+}
+/* The sealed action's digest, as the machine detail it is — the one thing that
+   ties this row to a card in the transcript. Same treatment as
+   `.allow-rule-row-detail`. */
+.session-grant-row-detail {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  color: var(--fg);
+  opacity: 0.7;
+  overflow-wrap: anywhere;
+}
+/* The one control, and the sentence that has to be read before it. Stacked
+   rather than laid out side by side: the timing line is what stops the button
+   implying something it does not do (`B702` — a revoke lands on the next
+   message), so it gets the full width above it and not a column beside it. */
+.session-grant-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 7px;
+}
+.session-grant-timing {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--fg);
+  opacity: 0.8;
+}
+/* One button for the whole chat, because that is the unit the route takes back.
+   A bordered control with a verb in it — no hue, for the reason the rule list
+   above gives. Aligned to the start so it does not read as a form's submit. */
+.session-grant-revoke {
+  align-self: flex-start;
+  padding: 5px 11px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.session-grant-revoke:hover {
+  border-color: color-mix(in srgb, var(--fg) 30%, var(--border));
+}
+/* In flight. Dimmed *and* unclickable, so the two channels agree — a button
+   that only looks busy invites the second press. */
+.session-grant-revoke:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 /* Both narrow breakpoints. Nothing below restates a border width, a mark or a
    weight, so the ladder above reaches every form factor intact — and nothing
    below is a `display: none`. `P6-04` deleted the queue panel's state line
@@ -43548,6 +43742,7 @@ body.theme-frosted .modal {
   .trust-rung { padding: 9px 10px; gap: 9px; }
   .trust-ladder-note { font-size: 10px; }
   .allow-rule-list { padding: 8px 9px; }
+  .session-grant-list { padding: 8px 9px; }
 }
 @media (max-width: 640px) {
   .trust-ladder-title { font-size: 12px; }
@@ -43577,6 +43772,23 @@ body.theme-frosted .modal {
   .allow-rule-row-detail { font-size: 9px; }
   .allow-rule-row-sentence { font-size: 10px; }
   .allow-rule-row-when { font-size: 9px; }
+  /* Same rule as the list above: nothing here is hidden away, and the
+     sentences keep their size relative to each other. The Revoke goes full
+     width once it is on its own line so it stays a comfortable target at
+     320px. (The phrase this comment is avoiding is asserted absent from the
+     whole region by `test_both_narrow_breakpoints_keep_the_whole_ladder` —
+     `Law 20`: a substring search cannot tell prose about a declaration from
+     the declaration.) */
+  .session-grant-list-hint { font-size: 10px; }
+  .session-grant-list-note { font-size: 10px; }
+  .session-grant-list-status { font-size: 10px; }
+  .session-grant-list-empty { font-size: 10px; }
+  .session-grant-timing { font-size: 10px; }
+  .session-grant-row { padding: 6px 8px; }
+  .session-grant-row-label { font-size: 11px; }
+  .session-grant-row-sentence { font-size: 10px; }
+  .session-grant-row-detail { font-size: 9px; }
+  .session-grant-revoke { align-self: stretch; padding: 6px 11px; }
 }
 
 /* ── Workspace picker ───────────────────────────────────────────── */

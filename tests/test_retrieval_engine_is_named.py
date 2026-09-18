@@ -171,9 +171,17 @@ def test_a_hybrid_run_labels_each_memory_by_what_actually_found_it():
     # recalled exactly one memory — so the loop over the others ran zero times
     # and a mutation labelling *everything* `vector` survived. A test whose
     # negative half never executes is not a test.
+    #
+    # `P13-16` moved the index score from `0.9` to `0.6`, and the reason is the
+    # row: at `0.9` the vector hit scores `0.86` against the keyword hit's
+    # `0.40`, and the selection step drops anything under half the best answer —
+    # so `coffee` stopped coming back and the negative half stopped executing
+    # again, for a new reason. `0.6` is still an unambiguous vector hit, well
+    # clear of `_MIN_VECTOR`, and it keeps both memories in the result, which is
+    # the only thing this test needs from the number.
     rows = _rows()
     used = _used("dark mode editor and dark roast coffee beans", rows,
-                 _Vector([{"memory_id": "dark", "score": 0.9}]))
+                 _Vector([{"memory_id": "dark", "score": 0.6}]))
     recalled = {m["text"]: m["engine"] for m in used if m["type"] == "recalled"}
     by_id = {m["text"]: m["id"] for m in rows}
     labelled = {by_id[text]: engine for text, engine in recalled.items()}

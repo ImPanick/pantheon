@@ -302,9 +302,25 @@ def test_a_tier_total_that_does_not_add_up_fails(checker, map_text, sites):
 
 def test_a_tier_count_restated_in_prose_is_checked_too(checker, map_text):
     """The map argues from these numbers, so a right table under a wrong
-    paragraph is the same drift wearing a different hat."""
-    mutated = map_text.replace("45 operator sites", "44 operator sites")
-    assert mutated != map_text
+    paragraph is the same drift wearing a different hat.
+
+    The anchor is **computed**, not typed. It read `"45 operator sites"` until
+    2026-09-18, when `P2-21` gated two more reads and the tier became 47 — so
+    the mutation matched nothing, `mutated == map_text`, and this test failed
+    on its own literal while the map and the checker were both correct. That
+    is `B520`'s lesson — *assert the invariant, never the instance* — which
+    `test_the_ci_ceiling_has_no_slack` states four tests below this one, and
+    which every other case in this section already follows.
+    """
+    counts = {tier: 0 for tier in checker.TIERS}
+    for row in checker.parse_map(map_text).sites.values():
+        counts[row["tier"]] += 1
+    real = counts["operator"]
+    mutated = map_text.replace(f"{real} operator sites", f"{real - 1} operator sites")
+    assert mutated != map_text, (
+        f"no prose restatement of `{real} operator sites` to mutate — either "
+        f"the map stopped arguing from the number or the spelling moved"
+    )
     found, _ = checker.problems(ROOT, mutated, max_other=_ci_ceiling())
     assert any("in prose" in p for p in found), found
 

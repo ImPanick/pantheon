@@ -26,7 +26,15 @@ from src.tool_approval_scopes import (
     ToolApprovalScope,
     scope_for_decision,
 )
-from src.tool_capabilities import ToolCapabilities, capabilities_for_action, describe_effects
+from src.tool_capabilities import (
+    CARRIED_TAINT_SOURCE,
+    TAINT_KIND_CARRIED,
+    TOOL_CLASSIFICATION_RECOGNISED,
+    ToolCapabilities,
+    ToolGateDecision,
+    capabilities_for_action,
+    describe_effects,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -220,6 +228,31 @@ def document_content_digest(content: Any) -> str:
     return hashlib.sha256(str(content or "").encode("utf-8")).hexdigest()
 
 
+def _normalized_taint_trail(trail: Any, *, tainted: bool) -> tuple[dict[str, Any], ...]:
+    """`P7-08`. A safe, complete copy of the trail for one card.
+
+    Copied rather than referenced because the run that produced it keeps
+    appending: a card is a statement about the moment it was minted, and a live
+    list would rewrite that statement behind the person reading it.
+
+    **Falls back rather than to nothing.** A producer that asserts taint without
+    a trail — the teacher escalation asserts it directly, with no run context —
+    still gets one entry saying the one true thing, so no card ever claims
+    untrusted content influenced the run and then shows an empty list.
+    """
+    entries: list[dict[str, Any]] = []
+    for entry in trail or ():
+        if not isinstance(entry, dict):
+            continue
+        kind = str(entry.get("kind") or "").strip()
+        source = str(entry.get("source") or "").strip()
+        if kind and source:
+            entries.append({"kind": kind, "source": source})
+    if tainted and not entries:
+        entries.append({"kind": TAINT_KIND_CARRIED, "source": CARRIED_TAINT_SOURCE})
+    return tuple(entries)
+
+
 def _binding_payload(
     *,
     owner: Any,
@@ -288,6 +321,18 @@ class PendingToolApproval:
     # and widening the seal for a badge would mean changing the seal's meaning
     # for a cosmetic reason. Nothing reads it to make a decision.
     requested_round: int = 0
+    # `P7-07` / `P7-08`. Why this card exists, as opposed to what it authorises.
+    # **Deliberately outside `_binding_payload` and so outside the digest**, for
+    # exactly the reason `requested_round` is: they are a rendering of a
+    # decision the server has already taken, and `matches()` re-derives the
+    # seal from the tool, the content and the capabilities alone. Widening the
+    # seal to cover a sentence would change what the seal *means* — and a
+    # replay whose run is tainted differently would then fail to match for a
+    # display reason, which is the opposite of the property `FORBIDDEN.md`
+    # Part 2 protects. Nothing reads any of the three to make a decision.
+    tripped_effects: tuple[str, ...] = ()
+    tool_classification: str = TOOL_CLASSIFICATION_RECOGNISED
+    taint_trail: tuple[dict[str, Any], ...] = ()
 
     def public_payload(self, *, reason: str | None = None) -> dict[str, Any]:
         return {
@@ -360,6 +405,36 @@ class PendingToolApproval:
             # baked in at render time would start again from ten minutes.
             "expires_at": self.expires_at,
             "ttl_seconds": max(0, int(round(self.expires_at - self.created_at))),
+            # `P7-07` / `P7-08`. Why the gate stopped *this* action, in one
+            # block, beside the `effects` list that says what the tool can do in
+            # general. The two are different questions and the card had only
+            # ever been able to answer the second.
+            #
+            # Resolved here for the same reason `describe_effects` is: this
+            # payload is what every producer of an approval card hands to a
+            # renderer, and five copies of one answer is how three of them
+            # ended up disagreeing (`P7-06`).
+            #
+            # `D-01` still defers *drawing* any of it. It is computed and sent.
+            "gate": {
+                # Severity-ranked, most severe first. Empty on a refusal that
+                # was not about effects at all — see `tool_classification`.
+                "tripped_effects": list(self.tripped_effects),
+                "tripped_effect_labels": list(
+                    describe_effects(self.tripped_effects).get("effect_labels", ())
+                ),
+                # `recognised` | `unrecognised` | `not_available`. An enum, not
+                # a boolean (`Law 10`): `unrecognised` means the effects above
+                # are this module's assumed worst case rather than a
+                # measurement, and that is the case the row calls the risky one.
+                "tool_classification": self.tool_classification,
+                # What armed this run's gate, in the order it happened. Never
+                # empty while `external_untrusted_context_seen` is true — a card
+                # that says untrusted content influenced the run and then lists
+                # nothing is two contradicting statements on one surface.
+                "taint_trail": [dict(entry) for entry in self.taint_trail],
+                "tainted": bool(self.external_untrusted_context_seen),
+            },
         }
 
 
@@ -576,7 +651,13 @@ class ToolApprovalStore:
         requested_round: Any = 0,
         external_untrusted_context_seen: bool,
         capabilities: ToolCapabilities,
+        gate_decision: ToolGateDecision | None = None,
+        taint_trail: Any = None,
     ) -> PendingToolApproval:
+        """`gate_decision` and `taint_trail` are display-only (`P7-07`,
+        `P7-08`). Both default to nothing so the producers that have no run
+        security context to hand — the teacher escalation, the skill tester —
+        are untouched and keep minting exactly the card they minted before."""
         now = time.time()
         effects = tuple(sorted(effect.value for effect in capabilities.effects))
         result_integrity = capabilities.result_integrity.value
@@ -618,6 +699,17 @@ class ToolApprovalStore:
             selected_tools=tuple(payload["selected_tools"]),
             continuation_query=payload["continuation_query"],
             requested_round=_coerced_round(requested_round),
+            tripped_effects=tuple(
+                getattr(gate_decision, "tripped_effects", ()) or ()
+            ),
+            tool_classification=str(
+                getattr(gate_decision, "classification", None)
+                or TOOL_CLASSIFICATION_RECOGNISED
+            ),
+            taint_trail=_normalized_taint_trail(
+                taint_trail,
+                tainted=payload["external_untrusted_context_seen"],
+            ),
         )
         with self._lock:
             expired = self._purge_expired_locked(now)

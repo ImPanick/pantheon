@@ -160,6 +160,32 @@ class ModelDownloadNotPermitted(RuntimeError):
     """Constructing this client would fetch a model, and nobody asked for that."""
 
 
+def ensure_fastembed_download_permitted() -> None:
+    """Raise unless building a FastEmbed client can be done without the network.
+
+    **The `Law 16` gate, in one place.** `B723`: it used to be written out
+    inside `_build_fastembed_client`, and `src/embeddings.py`'s
+    `get_embedding_client` had a second, ungated construction of the same client
+    on the path taken whenever the HTTP embedding API is unreachable — which is
+    the default on a fresh install with no embedding server configured. So the
+    rule held on the lane builder and not on the fallback every RAG, memory and
+    tool probe goes through. `Law 13`'s defect class, on the law the owner
+    stated in their own words: *"we drop external dependence. i dont want things
+    that'll may route to external services unless the user (or sysadmin)
+    explicitly links it."*
+
+    Both callers call this. A third construction anywhere is a third door, and
+    `tests/test_the_model_download_gate_has_one_door.py` fails on one.
+    """
+    if fastembed_model_is_cached() or model_download_allowed():
+        return
+    raise ModelDownloadNotPermitted(
+        "the local embedding model is not downloaded, and Pantheon does not fetch "
+        "models on its own. Point EMBEDDING_URL at a local embedding server (Ollama "
+        "serves one), or set allow_model_download to fetch ~90MB from HuggingFace once."
+    )
+
+
 def _build_fastembed_client():
     """Build the local ONNX embedding client, downloading the model if needed.
 
@@ -174,12 +200,7 @@ def _build_fastembed_client():
     """
     from src.embeddings import FastEmbedClient
 
-    if not fastembed_model_is_cached() and not model_download_allowed():
-        raise ModelDownloadNotPermitted(
-            "the local embedding model is not downloaded, and Pantheon does not fetch "
-            "models on its own. Point EMBEDDING_URL at a local embedding server (Ollama "
-            "serves one), or set allow_model_download to fetch ~90MB from HuggingFace once."
-        )
+    ensure_fastembed_download_permitted()
 
     client = FastEmbedClient()
     client.get_sentence_embedding_dimension()

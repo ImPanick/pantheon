@@ -48,6 +48,8 @@ _SERVER_OWNED_METADATA_KEYS = (
 )
 
 
+
+
 def _grant_key() -> bytes | None:
     """Key material for grant signatures, or None when it is unavailable.
 
@@ -143,6 +145,71 @@ def stamp_chat_session_grant(
     )
     if signature:
         ask_user[CHAT_SESSION_APPROVAL_SIGNATURE_FIELD] = signature
+
+
+# ── P7-09: taking a session-wide grant back ────────────────────────────────
+#
+# A chat-session grant is not a row anywhere. It is *derived*, every turn, by
+# `core/models._history_grants_chat_session_approval` walking the transcript for
+# a resolved card that carries the server's signature. So revoking one is not a
+# delete from a store — it is removing the thing the derivation needs, and the
+# derivation already fails closed without it (`B70`).
+#
+# That is why this is three lines and not a second grant store: the control that
+# closed the forgery path is the same control that makes revocation possible,
+# and building a separate "revoked grants" table beside it would be a second
+# source of truth for one fact (`Law 7`, `Law 14`).
+#
+# The card itself is left resolved and a marker is written beside it, because
+# the transcript is a record of what happened: the person did approve, and then
+# took it back. Erasing the first half would make the history lie.
+CHAT_SESSION_GRANT_REVOKED_FIELD = "_grant_revoked"
+
+# Written by the server on the revoke path only. It needs no entry in
+# `_SERVER_OWNED_METADATA_KEYS` below because it lives *inside* `tool_events`,
+# which that filter already drops wholesale from a caller-supplied blob — and
+# writing it is only ever a tightening in any case.
+
+
+def revoke_chat_session_grant(ask_user: dict) -> bool:
+    """Take back one resolved chat-session grant. Returns whether one was there.
+
+    `P7-09`. Removes the server signature, which is the only thing
+    `_history_grants_chat_session_approval` accepts as authority, and marks the
+    card revoked for whatever draws it. Idempotent: a card with no signature was
+    never a live grant, so revoking it again answers `False` rather than
+    reporting a second success.
+    """
+    if not isinstance(ask_user, dict):
+        return False
+    had_grant = bool(ask_user.pop(CHAT_SESSION_APPROVAL_SIGNATURE_FIELD, None))
+    if had_grant:
+        ask_user[CHAT_SESSION_GRANT_REVOKED_FIELD] = True
+    return had_grant
+
+
+def chat_session_grant_is_live(ask_user: object, session_id: object) -> bool:
+    """Whether this resolved card is, right now, a usable session-wide grant.
+
+    The same four conditions `core/models._history_grants_chat_session_approval`
+    applies, asked of one card so a listing and the gate cannot disagree about
+    what counts (`Law 7`). Kept here rather than in `core/models` because this
+    module already owns every other fact about the grant's shape.
+    """
+    if not isinstance(ask_user, dict):
+        return False
+    if ask_user.get("kind") != "tool_approval":
+        return False
+    if ask_user.get("resolved") != CHAT_SESSION_APPROVAL_DECISION:
+        return False
+    if str(ask_user.get("session_id") or "") != str(session_id or ""):
+        return False
+    return verify_chat_session_grant(
+        ask_user.get(CHAT_SESSION_APPROVAL_SIGNATURE_FIELD),
+        session_id,
+        ask_user.get("approval_id"),
+        CHAT_SESSION_APPROVAL_DECISION,
+    )
 
 
 def sanitize_client_message_metadata(metadata):

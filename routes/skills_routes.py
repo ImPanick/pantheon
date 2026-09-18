@@ -1265,7 +1265,15 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
         sessions, tasks, email, etc.) — the things it natively knows how to do.
         Surfaced so the Skills tab can show them in a separate "Built-in"
         section alongside the user's learned SKILL.md skills. Sourced from
-        agent_loop.TOOL_SECTIONS (the same descriptions the model is given)."""
+        agent_loop.TOOL_SECTIONS (the same descriptions the model is given).
+
+        Admin-only (`P2-21` / `P11-10`). The PUT and DELETE beside this route
+        have always called `require_admin`; the two reads made no auth call at
+        all, so any signed-in non-admin could read every built-in instruction
+        block — the same text the model is given, including whatever an
+        operator has overridden it with. Read and write are the same secret
+        here, which is why the read is gated at the same height as the write."""
+        require_admin(request)
         import re
 
         def _clean(raw: str) -> str:
@@ -1299,7 +1307,12 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
     @router.get("/builtin/{name}")
     async def get_builtin_skill(name: str, request: Request):
         """Full text of a built-in tool's instruction block — the override
-        if one is set, plus the shipped default (for the revert button)."""
+        if one is set, plus the shipped default (for the revert button).
+
+        Admin-only, for the reason on the list route above: this is the whole
+        block rather than its first 240 characters, so it is the stronger half
+        of the same read."""
+        require_admin(request)
         try:
             from src.agent_loop import TOOL_SECTIONS, get_builtin_overrides
         except Exception as e:

@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import re
+import time
 from typing import Optional
 
 from src.memory import (
@@ -27,7 +28,10 @@ from src.memory import (
 from src.memory_edges import (
     EDGE_CONTRADICTS,
     EDGE_SUPERSEDES,
+    STATUS_COMMITTED,
+    STATUS_PROPOSED,
     attach as attach_edge,
+    is_committed,
     live as live_memories,
 )
 # `P13-01`. The floor is **imported, not copied.** `skill_extractor` has scored
@@ -390,6 +394,148 @@ def _note_restatement(memory_manager, entry, session, fact_text: str) -> None:
         logger.debug("Memory mention: '%s' restates %s", fact_text[:50], entry["id"])
 
 
+# `P13-05`. The two answers a commitment can have, as an enum and never as a
+# boolean. `Law 10`: `ok: false` beside a `reason` is read both as *the commit
+# failed* and as *the memory was not acceptable*, and the reviewer incident that
+# law is built on is eight good findings discarded over exactly that ambiguity.
+COMMIT_COMMITTED = "committed"
+COMMIT_REFUSED = "refused"
+
+# What the gate will not promote, phrased for a person rather than for a log.
+# Each one is a refusal that changes nothing on the record.
+_REFUSE_UNREADABLE = "the memory store could not be read, so nothing was changed"
+_REFUSE_UNKNOWN = "no memory with that id"
+_REFUSE_ALREADY = "this memory is already committed"
+_REFUSE_EMPTY = "there is nothing here to commit"
+
+# Shorter than this is not a fact, it is a fragment. `extract_and_store` has
+# dropped candidates on this number since before the gate existed, as a bare
+# `5` on its own line; naming it and using it in both places is `Law 14` at its
+# smallest scale — the alternative is one length rule with two values the day
+# somebody tunes either.
+MIN_TEXT_CHARS = 5
+
+
+def commit_memory(memory_manager, memory_id: str, *, by: str = None,
+                  owner: str = None, memory_vector=None) -> dict:
+    """Bind a proposed memory. The explicit act `P13-05` is about.
+
+    Until this, extraction and commitment were one event: the background
+    extractor wrote straight into the store, and the only thing between a
+    sentence somebody typed in frustration and a fact the assistant treats as
+    true was a confidence number the extractor gave itself. The phase preamble
+    names where that ends — a competitor's behavioural policy list holding raw
+    venting *"promoted to a rule at 95%"*.
+
+    **The gate refuses four things, and what it does NOT refuse is the
+    interesting half.** It does not re-apply the confidence floor. That floor
+    belongs at extraction, where nobody has looked at the candidate yet; a
+    person who has read a proposal and decided to keep it has performed the
+    strongest signal this system can receive, and `setting_is_explicit` —
+    `H06`, `H08`, `D-2026-09-08-02`, `D-2026-09-09-01` — says a thing a person
+    typed beats a thing the system inferred. A gate that could veto them would
+    make this an approval queue with a second opinion, which is not a quality
+    gate, it is a disagreement.
+
+    **A refused restatement is recorded rather than dropped.** `P13-15`'s whole
+    finding was that the moment a fact is confirmed is the moment the
+    observation gets discarded; somebody proposing a thing the Brain already
+    knows is a mention of the memory that knows it, and `record_mention` is
+    where that goes. The duplicate check is `_text_duplicate_of`, which already
+    answers *"which memory does this restate"* — Jaccard at 0.6, so it catches a
+    restatement and not a rewording, and that limit is stated here rather than
+    left for somebody to discover.
+
+    Returns `{"verdict": ..., "reason": ..., "memory_id": ...}` and, on a
+    refused duplicate, `"duplicate_of"`. Never raises: a commitment that throws
+    is a button that does nothing.
+    """
+    def _refuse(reason, **extra):
+        row = {"verdict": COMMIT_REFUSED, "reason": reason, "memory_id": memory_id}
+        row.update(extra)
+        _record_commit(row, by)
+        return row
+
+    if not memory_id:
+        return _refuse(_REFUSE_UNKNOWN)
+    try:
+        entries = memory_manager.load_all_for_update()
+    except MemoryStoreUnreadable as e:
+        # Strict, for the reason `#5673` exists: a read-modify-write that
+        # degrades to `[]` saves one memory over everything a person had, and
+        # the writes are atomic so the loss is durable.
+        logger.error("Refusing to commit, memory store unreadable: %s", e)
+        return _refuse(_REFUSE_UNREADABLE)
+
+    entry = next((e for e in entries if e.get("id") == memory_id), None)
+    if entry is None:
+        return _refuse(_REFUSE_UNKNOWN)
+    if is_committed(entry):
+        return _refuse(_REFUSE_ALREADY)
+
+    text = (entry.get("text") or "").strip()
+    if len(text) < MIN_TEXT_CHARS:
+        return _refuse(_REFUSE_EMPTY)
+
+    # Scoped to this memory's own owner and to what is already COMMITTED. A
+    # proposal does not make another proposal a duplicate: neither is binding
+    # yet, and refusing the second would let whichever arrived first win an
+    # argument nobody had.
+    mine = [e for e in entries
+            if e is not entry and is_committed(e)
+            and (owner is None or e.get("owner") == owner or e.get("owner") is None)]
+    match = next(iter(memory_manager.find_duplicates(text, mine)), None) \
+        or _text_duplicate_of(text, mine)
+    if match is not None:
+        _note_restatement(memory_manager, match, None, text)
+        return _refuse(
+            f'the Brain already knows this — "{(match.get("text") or "")[:60]}"',
+            duplicate_of=match.get("id"))
+
+    entry["status"] = STATUS_COMMITTED
+    entry["committed_at"] = int(time.time())
+    entry["committed_by"] = by
+    memory_manager.save(entries)
+
+    # Only now does it reach the index. A proposal is deliberately never
+    # embedded: `live()` excludes it from the boot-time rebuild, so an index
+    # that held one would have different contents before and after a restart,
+    # and an index whose contents depend on when you last rebooted is the class
+    # of bug `P0-05` shipped. The cost is stated rather than hidden — a
+    # restatement of a PROPOSAL is caught by text dedupe alone, so a reworded
+    # one starts a second proposal.
+    if memory_vector is not None and getattr(memory_vector, "healthy", False):
+        try:
+            memory_vector.add(entry["id"], text)
+        except Exception as e:
+            logger.warning("Memory vector add failed for %s: %s", entry["id"], e)
+
+    row = {"verdict": COMMIT_COMMITTED, "reason": "committed", "memory_id": memory_id}
+    _record_commit(row, by)
+    return row
+
+
+def _record_commit(row: dict, by: str = None) -> None:
+    """The audit trail, in the table `P14-01` already built for this.
+
+    *"Can be audited afterwards"* is the row's own wording, and it needs no
+    store of its own: `events` already answers "what happened at 14:02" for
+    tool calls, retrievals and approvals, and a commitment is the same kind of
+    thing. `outcome` carries the verdict, so a refusal is as visible as a
+    promotion — a log that only records successes cannot answer the question
+    anybody actually asks it.
+    """
+    try:
+        from src.events import record_event
+        record_event("memory", name="commit", owner=by,
+                     outcome=row["verdict"],
+                     detail={"memory_id": row.get("memory_id"),
+                             "reason": row.get("reason"),
+                             "duplicate_of": row.get("duplicate_of")})
+    except Exception:
+        logger.debug("commit event not recorded", exc_info=True)
+
+
 def _parse_extraction_json(raw: str) -> list:
     """Parse the extraction LLM's reply into a list of facts, tolerating
     reasoning-model noise.
@@ -551,6 +697,26 @@ async def extract_and_store(
         added = 0
         added_entries = []
 
+        # `P13-05`. Whether this run BINDS what it extracts or merely proposes
+        # it. Read once per run rather than per fact, and shaped exactly like
+        # `skill_extractor`'s auto-publish gate — same preference name pattern,
+        # same default, same swallowed import — because this is that mechanism
+        # lifted onto the other half of the feature and a second shape would be
+        # a second thing to learn (`Law 14`).
+        #
+        # **Default ON, and it has to be.** Flipping it would mean every
+        # existing install stops remembering anything new until somebody finds
+        # a review queue that no surface draws yet (`B710`). A person who wants
+        # extraction to propose turns it off; the mechanism is here, wired end
+        # to end, for the moment the Brain page can show them the queue.
+        _status = STATUS_COMMITTED
+        try:
+            from routes.prefs_routes import _load_for_user as _load_prefs
+            if not (_load_prefs(_owner) or {}).get("auto_approve_memories", True):
+                _status = STATUS_PROPOSED
+        except Exception:
+            pass
+
         dropped_low_confidence = 0
         for fact in facts:
             if isinstance(fact, str):
@@ -583,7 +749,7 @@ async def extract_and_store(
             else:
                 continue
 
-            if not fact_text or len(fact_text) < 5:
+            if not fact_text or len(fact_text) < MIN_TEXT_CHARS:
                 continue
 
             # `P13-01`. The skill extractor's floor, on the other half of the
@@ -640,8 +806,12 @@ async def extract_and_store(
                 # `P13-03`. `session_id` is set below and is not repeated in
                 # here — one fact, one place (`Law 7`).
                 provenance=new_provenance(producer, message_index, quote),
+                status=_status,
             )
-            # Auto-pin identity facts (name, job, location) — core context
+            # Auto-pin identity facts (name, job, location) — core context.
+            # A proposal can carry `pinned` and still not surface: `live()`
+            # excludes it before anything reads the flag, so the pin takes
+            # effect at the moment of commitment rather than being lost.
             if category == "identity":
                 entry["pinned"] = True
             if hasattr(session, "session_id"):
@@ -654,7 +824,12 @@ async def extract_and_store(
             # Add to vector index. The JSON store (saved below) is the source of
             # truth and the keyword path can still retrieve this entry, so a vector
             # write failure must not drop the fact or abort the remaining batch.
-            if memory_vector and memory_vector.healthy:
+            #
+            # `P13-05`: not for a proposal. `live()` excludes proposals from the
+            # boot-time rebuild, so indexing one would give the index different
+            # contents before and after a restart. `commit_memory` adds it at
+            # the moment it starts binding.
+            if _status == STATUS_COMMITTED and memory_vector and memory_vector.healthy:
                 try:
                     memory_vector.add(entry["id"], fact_text)
                 except Exception as e:

@@ -178,6 +178,59 @@ def _semantic(corpus: dict, k: int) -> dict:
             for i, q in enumerate(queries)}
 
 
+def _local(corpus: dict, k: int) -> dict:
+    """The PRODUCT path with the in-process vector index. `P13-16`, `P13-21`.
+
+    `manager` and `preface` score the scorer with `vector=None`, which was the
+    product's degraded path until `P13-21` — after it, an unreachable ChromaDB
+    falls back to in-process vectors rather than to keyword matching, and two of
+    the three shipped deployments never had a service to reach in the first
+    place (`B64`). So the numbers those two engines print describe a
+    configuration the product no longer has, and nothing here measured the one
+    it does.
+
+    This is that one: `_rank` with a real `MemoryVectorStore`, gates, edges,
+    selection and all. ChromaDB is refused outright rather than probed, so the
+    run is deterministic, never spends the 2s TCP timeout, and can never touch
+    an operator's own index.
+
+    Raises `SkipEngine` when the index cannot be built — `fastembed` absent, or
+    the model not cached and no fetch permitted (`P16-05`) — so the report says
+    so rather than scoring four engines and calling it five.
+    """
+    import tempfile
+
+    from src import chroma_client, constants, memory_retrieval
+
+    def _no_service():
+        raise RuntimeError("retrieval_eval: ChromaDB deliberately refused")
+
+    real_client, real_dir = chroma_client.get_chroma_client, constants.DATA_DIR
+    workspace = tempfile.mkdtemp(prefix="retrieval-eval-")
+    chroma_client.get_chroma_client, constants.DATA_DIR = _no_service, workspace
+    try:
+        from src.memory_vector import MemoryVectorStore
+
+        vector = MemoryVectorStore(workspace)
+        if not vector.healthy:
+            raise SkipEngine("no embedding lane available in this process")
+        for memory in corpus["memories"]:
+            vector.add(memory["id"], memory["text"])
+        out = {}
+        for probe in corpus["probes"]:
+            rows = memory_retrieval.retrieve(
+                probe["query"], [dict(m) for m in corpus["memories"]], k,
+                vector=vector)
+            out[probe["query"]] = [r["id"] for r in rows]
+        return out
+    except SkipEngine:
+        raise
+    except Exception as e:
+        raise SkipEngine(f"in-process index unavailable ({e})") from e
+    finally:
+        chroma_client.get_chroma_client, constants.DATA_DIR = real_client, real_dir
+
+
 class SkipEngine(RuntimeError):
     """This engine cannot run here. Reported, never silently dropped."""
 
@@ -191,7 +244,8 @@ class SkipEngine(RuntimeError):
 # `semantic` is the third thing and it is not a call path at all: it is what the
 # product does when the vector store is reachable, measured directly so the
 # lexical numbers can be read against something rather than admired alone.
-ENGINES = {"manager": _manager, "preface": _preface, "semantic": _semantic}
+ENGINES = {"manager": _manager, "preface": _preface,
+           "local": _local, "semantic": _semantic}
 
 # The two that go through `src/memory_retrieval.py`. They must agree with each
 # other; `semantic` is a different thing being measured and must not be held to
@@ -335,11 +389,32 @@ def _report_selection(name: str, result: dict, verbose: bool) -> None:
 
 
 def score(corpus: dict, ranked: dict, k: int) -> dict:
+    """recall@k, MRR, and what it cost to get them. `P13-13`, `P13-16`.
+
+    **`returned` and `precision` are `P13-16`'s columns and they are not
+    precision@k.** Every probe in a memory corpus names one right answer, so
+    precision@k is `recall@k / k` by construction — on this fixture the
+    `semantic` engine scores `recall@5 1.00` and therefore `precision@5 0.20`
+    whatever it does, and quoting that as *"four of the five memories injected
+    are irrelevant"* describes the arithmetic rather than the engine.
+
+    What the engine actually controls is **how many it returned**, which is not
+    `k`: the relevance gates already cut most runs well short of it. So the two
+    honest columns are the mean size of the returned list and the share of
+    those returned rows that were wanted — precision over what was injected, at
+    whatever length the engine chose. A selection step that drops three
+    irrelevant memories and keeps the right one moves those two and cannot move
+    recall or MRR at all, which is why it needed columns of its own.
+    """
     hits, reciprocal, misses = 0, 0.0, []
+    returned = wanted = 0
     for probe in corpus["probes"]:
         expect = set(probe["expect"])
         order = ranked.get(probe["query"], [])
-        rank = next((i + 1 for i, mid in enumerate(order[:k]) if mid in expect), None)
+        shown = order[:k]
+        returned += len(shown)
+        wanted += len([mid for mid in shown if mid in expect])
+        rank = next((i + 1 for i, mid in enumerate(shown) if mid in expect), None)
         if rank:
             hits += 1
             reciprocal += 1.0 / rank
@@ -352,12 +427,19 @@ def score(corpus: dict, ranked: dict, k: int) -> dict:
                            "got": order[:3], "found_at": deeper, "why": probe.get("why", "")})
     n = len(corpus["probes"])
     return {"n": n, f"recall@{k}": hits / n, "mrr": reciprocal / n,
+            "returned": returned / n,
+            # Zero returned is reported as zero precision rather than as a
+            # division error or a 1.0. An engine that answers nothing is not a
+            # precise engine.
+            "precision": (wanted / returned) if returned else 0.0,
             "hits": hits, "misses": misses}
 
 
 def _report(name: str, result: dict, k: int, verbose: bool) -> None:
     print(f"  {name:<10} recall@{k} {result[f'recall@{k}']:.2f}"
           f"   MRR {result['mrr']:.3f}"
+          f"   returned {result['returned']:.2f}/query"
+          f"   precision {result['precision']:.2f}"
           f"   ({result['hits']}/{result['n']})")
     if verbose and result["misses"]:
         for miss in result["misses"]:

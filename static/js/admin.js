@@ -3752,9 +3752,15 @@ function initLogsView() {
    ═══════════════════════════════════════════ */
 function initAll() {
   modalEl = el('settings-modal');
+  // `P2-19` / `P2-20` added `initWebhookForm` and `initRag`. Both were written
+  // with the panels they serve and left out of this array, so neither had run
+  // since the fork — the markup being absent was the second half of that, not
+  // the cause. Anything added here needs a line in `refreshAll` too, or the
+  // panel binds its controls and then renders nothing to use them on.
   const inits = [
     initSignupToggle, initShareDefaultsToggle, initAddUser, initEndpointForm, initMcpForm,
     initCalDAV, initBackup, initCleanup, initDangerZone, initTokenForm, initLogsView,
+    initWebhookForm, initRag,
     () => settingsModule.initIntegrations()
   ];
   for (const fn of inits) {
@@ -3770,6 +3776,9 @@ function refreshAll() {
   loadBuiltinTools();
   loadMcpServers();
   loadTokens();
+  loadWebhooks();
+  loadRag();
+  loadFeatures();
   loadLogs(false);
 }
 

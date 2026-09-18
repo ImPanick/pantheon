@@ -74,14 +74,14 @@ The four tiers are `P11-02b`'s own question. A site is exactly one of them:
   ownership check or a privilege key that does not exist. The fix is a data model, not
   an auth change.
 
-derived: direct 91 · Depends 20 · total 111
+derived: direct 93 · Depends 20 · total 113
 
 ### tier summary
 
 | tier | sites |
 |---|---|
 | `superuser` | 41 |
-| `operator` | 45 |
+| `operator` | 47 |
 | `power-user` | 4 |
 | `only-because-nothing-finer-existed` | 21 |
 
@@ -131,7 +131,7 @@ derived: direct 91 · Depends 20 · total 111
 | `routes/auth_routes.py` | `remove_role` | `DELETE /api/auth/roles/{name}` | removes a role and revokes it from every user holding it. `P11-02` |
 | `routes/auth_routes.py` | `set_user_role` | `PUT /api/auth/users/{username}/role` | grants somebody else a role. `P11-02` |
 
-### `operator` — **45 operator sites.** Running the box: endpoints, models, probes, logs, webhooks, storage. A person who keeps the instance up needs all of it and needs none of the tier above. This is the tier that makes a role model worth building, because today the only way to hand someone the operator's job is to hand them the owner's.
+### `operator` — **47 operator sites.** Running the box: endpoints, models, probes, logs, webhooks, storage. A person who keeps the instance up needs all of it and needs none of the tier above. This is the tier that makes a role model worth building, because today the only way to hand someone the operator's job is to hand them the owner's.
 
 | file | function | route | protects |
 |---|---|---|---|
@@ -171,6 +171,8 @@ derived: direct 91 · Depends 20 · total 111
 | `routes/personal_routes.py` | `remove_directory_from_rag` | `DELETE /api/personal/remove_directory` | un-points it |
 | `routes/personal_routes.py` | `add_directory_to_rag` | `POST /api/personal/add_directory` | points the indexer at a host directory — filesystem reach, not document management |
 | `routes/personal_routes.py` | `api_personal_reload` | `POST /api/personal/reload` | re-indexes the whole corpus |
+| `routes/skills_routes.py` | `list_builtin_skills` | `GET /api/skills/builtin` | the inventory of every built-in tool the agent has, with the first 240 characters of the instruction block each one is given. Gated by `P2-21` on 2026-09-18; until then it made no auth call at all, beside the PUT and DELETE below it |
+| `routes/skills_routes.py` | `get_builtin_skill` | `GET /api/skills/builtin/{name}` | the whole instruction block, override included — the same text the model is given. The read half of the pair below, gated at the same height for the same reason |
 | `routes/skills_routes.py` | `reset_builtin_override` | `DELETE /api/skills/builtin/{name}` | puts it back |
 | `routes/skills_routes.py` | `set_builtin_override` | `PUT /api/skills/builtin/{name}` | rewrites a built-in skill's text for every user's agent |
 | `routes/upload_routes.py` | `upload_stats` | `GET /api/upload/stats` | aggregate upload storage |
@@ -309,7 +311,7 @@ routes: 39
 
 The router carries `dependencies=[Depends(require_chat_api_token_scope)]`, so every route below gets it whether or not the handler mentions auth, and every session route reaches `_verify_session_owner` (imported from `routes/session_routes.py`). `P11-02d` named `chat_routes.py:338/367` as the admin check; those two lines are `_candidate_index` and `_message_plain_text`. The real admin check is `owner_is_admin_or_single_user` at 481 and 510, reached only from `chat_stream`, and it gates workspace binding rather than the route.
 
-routes: 12
+routes: 14
 
 | route | handler | gate | intended |
 |---|---|---|---|
@@ -325,6 +327,8 @@ routes: 12
 | `GET /api/tool-allow-rules` | `list_tool_allow_rules` | `middleware + require_chat_api_token_scope + require_user + storage_owner_for_request` | yes — `require_user` 403s a bearer token outright, then `storage_owner_for_request` scopes the rows. |
 | `POST /api/tool-allow-rules` | `create_tool_allow_rule` | `middleware + require_chat_api_token_scope + require_user + storage_owner_for_request` | yes — same pair, and these rules decide what the agent may run without asking. |
 | `DELETE /api/tool-allow-rules/{rule_id}` | `delete_tool_allow_rule` | `middleware + require_chat_api_token_scope + require_user + storage_owner_for_request` | yes — same pair. |
+| `GET /api/tool-approval-grants/{session_id}` | `list_tool_approval_grants` | `middleware + _verify_session_owner + require_chat_api_token_scope + require_user` | yes (`P7-09`) — `require_user` 403s a bearer token, then `_verify_session_owner` refuses another owner's chat and refuses "not yours" and "no such session" identically, so the listing cannot be used to probe which chats exist. |
+| `DELETE /api/tool-approval-grants/{session_id}` | `revoke_tool_approval_grants` | `middleware + _verify_session_owner + require_chat_api_token_scope + require_user` | yes (`P7-09`) — the same pair. Revoking is a tightening, but listing is not, and both doors are the same door. |
 
 #### `routes/cleanup/cleanup_routes.py`
 
@@ -464,9 +468,9 @@ the number of admin decisions added — which is the behaviour the map was built
 The paragraph above is about the 107 that predate roles; the counts below are live.
 
 - **41 superuser sites do not move.** They are already right.
-- **45 operator sites are the phase's return.** Today the only way to let someone keep
+- **47 operator sites are the phase's return.** Today the only way to let someone keep
   the instance up is to make them the owner. An `operator` overlay on
-  `DEFAULT_PRIVILEGES` retires 45 gates without touching a single one of the 37.
+  `DEFAULT_PRIVILEGES` retires 47 gates without touching a single one of the 37.
 - **4 power-user sites are one privilege key.** `allowed_models` already exists in
   `DEFAULT_PRIVILEGES`; a user who has it still cannot list the endpoints it names.
 - **21 only-because-nothing-finer-existed sites are not an auth job at all.** Contacts,

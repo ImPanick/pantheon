@@ -9,8 +9,10 @@ import re
 from typing import List, Dict, Tuple
 from datetime import datetime
 
-from src import memory_retrieval
-# `P13-02`'s edge vocabulary is NOT imported here, and not re-exported either.
+from src import memory_edges, memory_retrieval
+# `P13-02`'s edge vocabulary is imported for ONE name — `status_of`, which
+# `P13-05` put beside `live()` because `live()` is the predicate it feeds — and
+# nothing from it is re-exported.
 # It lives in `src/memory_edges.py` — which imports nothing from the project —
 # because retrieval is where the relations have to be honoured and this file
 # already imports retrieval. Re-exporting the names through here would give
@@ -414,6 +416,18 @@ class MemoryManager:
                 entry["confidence"] = normalise_confidence(entry["confidence"])
             if "provenance" not in entry:
                 entry["provenance"] = None
+            # `P13-05`. The one field here whose honest default is a VALUE and
+            # not "not recorded", and the difference is worth stating because
+            # the three above it went the other way. `confidence`, `provenance`
+            # and `mentions` describe judgements nobody made about an old
+            # record, so inventing one would make it look freshly assessed.
+            # Commitment is not a judgement about the record, it is what the
+            # record already IS: every memory in a store today is being
+            # injected into prompts, so `committed` is the true reading and
+            # `proposed` would be an upgrade that silently stopped the Brain
+            # working. Normalised through `status_of`, so a hand-edited typo
+            # reads as committed rather than vanishing from every prompt.
+            entry["status"] = memory_edges.status_of(entry)
             if not isinstance(entry.get("edges"), list):
                 entry["edges"] = []
             validated.append(entry)
@@ -466,7 +480,8 @@ class MemoryManager:
         os.replace(tmp_file, self.memory_file)
     
     def add_entry(self, text: str, source: str = "user", category: str = "fact",
-                  owner: str = None, confidence=None, provenance: Dict = None) -> Dict:
+                  owner: str = None, confidence=None, provenance: Dict = None,
+                  status: str = None) -> Dict:
         """Add a new memory entry.
 
         `confidence` (`P13-01`) is how sure the producer was, 0..1, or `None`
@@ -478,6 +493,13 @@ class MemoryManager:
         already exists on the record, `/api/memory/by-session` and the timeline
         read it there, and copying it inside would be two places to change one
         fact (`Law 7`).
+
+        `status` (`P13-05`) defaults to committed, and the default belongs to
+        the caller that omits it rather than to the store: a person typing into
+        the Brain has already performed the explicit act this row is about, and
+        asking them to perform it twice is a modal dialog rather than a quality
+        gate. The producer that passes `proposed` is background extraction,
+        because that is the one that was never asked.
         """
         if not text.strip():
             raise ValueError("Memory text cannot be empty")
@@ -502,6 +524,15 @@ class MemoryManager:
             # not have to know that `load` backfills them.
             "confidence": normalise_confidence(confidence),
             "provenance": provenance if isinstance(provenance, dict) else None,
+            "status": memory_edges.status_of({"status": status}),
+            # `P13-05`. `None` until somebody commits it, and `None` forever for
+            # a memory that was born committed — the act is what these record,
+            # and there was no act to date or attribute. Initialised here rather
+            # than left absent for the same reason `mentions` is: a caller
+            # reading the returned dict should not have to know what `load`
+            # backfills.
+            "committed_at": None,
+            "committed_by": None,
             "edges": [],
         }
         if owner:

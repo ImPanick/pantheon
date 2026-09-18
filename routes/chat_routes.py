@@ -71,6 +71,7 @@ def _mark_turn_start() -> None:
 
 from routes.chat_helpers import (
     approval_consume_message,
+    escalation_grants_shell,
     escalation_withholds,
     note_escalation,
     resolve_session_auth,
@@ -94,7 +95,13 @@ from src.tool_approvals import (
     register_approval_expiry_listener,
     tool_approval_store,
 )
-from src.tool_approval_scopes import stamp_chat_session_grant
+from src.tool_approval_scopes import (
+    CHAT_SESSION_APPROVAL_DECISION,
+    CHAT_SESSION_GRANT_REVOKED_FIELD,
+    chat_session_grant_is_live,
+    revoke_chat_session_grant,
+    stamp_chat_session_grant,
+)
 from src.tool_security import delegated_credential_blocked_tools
 from src import tool_allow_rules
 
@@ -270,23 +277,129 @@ def _mark_tool_approval_resolved(sess, approval_id: Any, decision: Any) -> bool:
     if resolved_metadata is None or not message_id:
         return False
 
+    return _persist_message_metadata(
+        str(getattr(sess, "id", "")), message_id, resolved_metadata
+    )
+
+
+def _persist_message_metadata(session_id: str, message_id: Any, metadata: dict) -> bool:
+    """Write one message's metadata back to the row it came from.
+
+    Split out of `_mark_tool_approval_resolved` by `P7-09`, which needed the
+    same write for a different edit and would otherwise have been a second copy
+    of the `_db_id` convention, the owner filter and the rollback (`Law 14`).
+    """
+    if not message_id:
+        return False
+    payload = {key: value for key, value in metadata.items() if key != "_db_id"}
     db = SessionLocal()
     try:
         db_message = db.query(DBChatMessage).filter(
             DBChatMessage.id == message_id,
-            DBChatMessage.session_id == str(getattr(sess, "id", "")),
+            DBChatMessage.session_id == str(session_id or ""),
         ).first()
         if db_message is None:
             return False
-        db_message.meta_data = json.dumps(resolved_metadata)
+        db_message.meta_data = json.dumps(payload)
         db.commit()
         return True
     except Exception:
         db.rollback()
-        logger.exception("Failed to persist tool approval resolution")
+        logger.exception("Failed to persist chat message metadata")
         return False
     finally:
         db.close()
+
+
+def _iter_session_approval_cards(sess):
+    """Every approval card in a transcript, oldest first, with its message.
+
+    Yields `(metadata, ask_user)`. One walker so the grant listing and the
+    revoke path cannot disagree about where grants live — `P7-09` is a row about
+    a control that was unlistable *and* unrevokable, and giving each half its
+    own traversal is how the two would drift.
+    """
+    for item in getattr(sess, "history", []) or []:
+        metadata = getattr(item, "metadata", None)
+        if not isinstance(metadata, dict):
+            continue
+        tool_events = metadata.get("tool_events")
+        if not isinstance(tool_events, list):
+            continue
+        for event in tool_events:
+            ask_user = event.get("ask_user") if isinstance(event, dict) else None
+            if isinstance(ask_user, dict):
+                yield metadata, ask_user
+
+
+def list_chat_session_grants(sess) -> List[Dict[str, Any]]:
+    """`P7-09`. Every session-wide grant this chat has ever handed out.
+
+    Revoked ones are listed too, and that is the point rather than an oversight:
+    a page that shows only live grants cannot tell "you never gave one" apart
+    from "you gave one and took it back", and the second is the state a person
+    checking after a revoke is in.
+    """
+    session_id = str(getattr(sess, "id", "") or "")
+    grants: List[Dict[str, Any]] = []
+    for _metadata, ask_user in _iter_session_approval_cards(sess):
+        if ask_user.get("kind") != "tool_approval":
+            continue
+        if ask_user.get("resolved") != CHAT_SESSION_APPROVAL_DECISION:
+            continue
+        if str(ask_user.get("session_id") or "") != session_id:
+            continue
+        action = ask_user.get("action") if isinstance(ask_user.get("action"), dict) else {}
+        grants.append({
+            "approval_id": ask_user.get("approval_id"),
+            "tool": action.get("tool"),
+            "digest": action.get("digest"),
+            # `Law 10`: an enum, not `live: true/false`. `revoked` and `stale`
+            # are different states — the second is a grant whose signature no
+            # longer verifies for some reason other than a revoke (a rotated
+            # application key, a transcript copied between installs) and it is
+            # not something a person did.
+            "state": (
+                "revoked"
+                if ask_user.get(CHAT_SESSION_GRANT_REVOKED_FIELD)
+                else (
+                    "live"
+                    if chat_session_grant_is_live(ask_user, session_id)
+                    else "stale"
+                )
+            ),
+        })
+    return grants
+
+
+def revoke_chat_session_grants(sess) -> int:
+    """`P7-09`. Take back every live session-wide grant in this chat.
+
+    Returns how many were taken back. **The gate re-arms on the next turn with
+    no further work**, because the grant was never stored: `get_context_messages`
+    re-derives it from the transcript every time, and the signature this removes
+    is the only thing that derivation accepts (`B70`).
+
+    A message whose metadata cannot be written back is counted as NOT revoked,
+    because an in-memory revoke that does not survive the next session load is
+    the failure `P7-04`'s own revoke path names out loud: telling somebody a
+    grant is gone when it is not is worse than telling them it could not be.
+    """
+    session_id = str(getattr(sess, "id", "") or "")
+    touched: dict[Any, tuple[dict, int]] = {}
+    for metadata, ask_user in _iter_session_approval_cards(sess):
+        if not chat_session_grant_is_live(ask_user, session_id):
+            continue
+        if revoke_chat_session_grant(ask_user):
+            existing, count = touched.get(id(metadata), (metadata, 0))
+            touched[id(metadata)] = (existing, count + 1)
+    revoked = 0
+    for metadata, count in touched.values():
+        # Count only what survives a reload. The in-memory edit stands for this
+        # process either way, which is the safe direction to fail in.
+        if _persist_message_metadata(session_id, metadata.get("_db_id"), metadata):
+            revoked += count
+    return revoked
 
 
 def deny_expired_tool_approval(pending) -> bool:
@@ -1244,13 +1357,21 @@ def setup_chat_routes(
         auto_escalated = False
         _tool_intent = _classify_tool_intent(message) if isinstance(message, str) else None
         _workspace_agent_intent = False
+        # `P7-01`. Whether a workspace promotion was allowed to switch the shell
+        # on. Tracked rather than assumed, because the two sites below used to
+        # assume yes and overwrite an explicit `allow_bash=false` — see
+        # `escalation_grants_shell`. Starts True because a turn that is never
+        # promoted withholds nothing.
+        _escalation_shell_granted = True
         if chat_mode == "chat" and _tool_intent and _tool_intent.needs_tools:
             chat_mode = "agent"
             auto_escalated = _escalate(
                 f"{_tool_intent.category}: {_tool_intent.reason}")
             _workspace_agent_intent = _tool_intent.category in {"shell", "workspace"}
             if _workspace_agent_intent:
-                allow_bash = "true"
+                _escalation_shell_granted = escalation_grants_shell(allow_bash)
+                if _escalation_shell_granted:
+                    allow_bash = "true"
         elif chat_mode == "chat" and _search_enabled:
             chat_mode = "agent"
             auto_escalated = _escalate("web search is switched on for this chat")
@@ -1472,7 +1593,9 @@ def setup_chat_routes(
                     auto_escalated = _escalate(
                         f"the message names a path in {workspace}")
                     _workspace_agent_intent = True
-                    allow_bash = "true"
+                    _escalation_shell_granted = escalation_grants_shell(allow_bash)
+                    if _escalation_shell_granted:
+                        allow_bash = "true"
         except SessionNotFoundError as e:
             raise HTTPException(404, str(e))
         except (ValueError, ValidationError):
@@ -1775,6 +1898,7 @@ def setup_chat_routes(
             workspace_intent=_workspace_agent_intent,
             allow_browser=_allow_browser_for_web_turn,
             browser_tools=_BROWSER_MCP_TOOLS,
+            shell_granted=_escalation_shell_granted,
         )
         disabled_tools.update(_escalation_withheld)
         # `P4-18`. Built once, here, where both halves are known: the reasons
@@ -3298,5 +3422,61 @@ def setup_chat_routes(
             # real.
             raise HTTPException(404, "Allow rule not found")
         return {"status": "revoked", "id": rule_id}
+
+    # ------------------------------------------------------------------ #
+    # P7-09 — the session-wide grant, listed and revocable.
+    #
+    # "Allow for this chat session" is the widest thing an approval card hands
+    # out: it stops the gate asking for the rest of the conversation. Until this
+    # row nothing listed one and nothing took one back — a person who clicked it
+    # by mistake had no way to undo it short of starting a new chat, and no way
+    # to find out they had clicked it at all.
+    #
+    # Same two doors and the same order as the allow rules above: `require_user`
+    # first (a bearer token may not touch an owner's confirmation gate — `B70`),
+    # then `_verify_session_owner`, which 404s another owner's chat rather than
+    # confirming it exists.
+    # ------------------------------------------------------------------ #
+
+    def _grant_session(request: Request, session_id: str):
+        require_user(request)
+        _verify_session_owner(request, session_id)
+        try:
+            return session_manager.get_session(session_id)
+        except KeyError:
+            raise HTTPException(404, f"Session '{session_id}' not found")
+
+    @router.get("/api/tool-approval-grants/{session_id}")
+    async def list_tool_approval_grants(
+        request: Request, session_id: str
+    ) -> Dict[str, Any]:
+        """Every session-wide grant this chat has given, live or revoked."""
+        sess = _grant_session(request, session_id)
+        return {"session_id": session_id, "grants": list_chat_session_grants(sess)}
+
+    @router.delete("/api/tool-approval-grants/{session_id}")
+    async def revoke_tool_approval_grants(
+        request: Request, session_id: str
+    ) -> Dict[str, Any]:
+        """Take back every live session-wide grant in this chat.
+
+        The whole chat rather than one card, because that is the unit the grant
+        actually has: `_history_grants_chat_session_approval` stops at the first
+        card it can verify, so leaving a second signed grant behind would revoke
+        nothing a person could observe. A per-card door would be a control that
+        reports success and changes nothing, which is the defect `P7-04` shipped
+        and had to come back and fix.
+        """
+        sess = _grant_session(request, session_id)
+        try:
+            revoked = revoke_chat_session_grants(sess)
+        except Exception:
+            logger.warning("tool approval grant revoke failed", exc_info=True)
+            raise HTTPException(500, "Could not revoke the session grant")
+        return {
+            "status": "revoked" if revoked else "nothing_to_revoke",
+            "revoked": revoked,
+            "grants": list_chat_session_grants(sess),
+        }
 
     return router

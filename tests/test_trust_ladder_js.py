@@ -111,11 +111,32 @@ export function replyWith(next) { _reply = next; }
 export function rulesReplyWith(next) { _rules = next; }
 /** `DELETE /api/tool-allow-rules/{id}`. */
 export function revokeReplyWith(next) { _revoke = next; }
+
+// `P7-09`. The chat this page has open, and what the two grant routes answer.
+// `trustLadder.js` reads the id through `window.sessionModule`, the way
+// `chat.js` and `assistant.js` do, so the stub is that module and not an import.
+let _chat = '';
+export function setChat(id) {
+  _chat = String(id || '');
+  globalThis.sessionModule = _chat
+    ? { getCurrentSessionId: () => _chat }
+    : { getCurrentSessionId: () => '' };
+}
+setChat('');
+let _grants = { ok: true, status: 200, body: { session_id: '', grants: [] } };
+let _grantRevoke = { ok: true, status: 200, body: { status: 'revoked', revoked: 1, grants: [] } };
+/** `GET /api/tool-approval-grants/{session_id}`. */
+export function grantsReplyWith(next) { _grants = next; }
+/** `DELETE /api/tool-approval-grants/{session_id}`. */
+export function grantRevokeReplyWith(next) { _grantRevoke = next; }
+
 globalThis.fetch = async (url, init) => {
   const method = String(((init || {}).method) || 'GET').toUpperCase();
   posts.push({ url: String(url), method, init: init || {} });
   let reply = _reply;
-  if (String(url).indexOf('/api/tool-allow-rules') >= 0) {
+  if (String(url).indexOf('/api/tool-approval-grants') >= 0) {
+    reply = method === 'DELETE' ? _grantRevoke : _grants;
+  } else if (String(url).indexOf('/api/tool-allow-rules') >= 0) {
     reply = method === 'DELETE' ? _revoke : _rules;
   }
   return {
@@ -124,6 +145,64 @@ globalThis.fetch = async (url, init) => {
     json: async () => reply.body,
   };
 };
+
+/** Every request this case made to the grant routes, in order. */
+export function grantCalls() {
+  return posts.filter((p) => p.url.indexOf('/api/tool-approval-grants') >= 0)
+    .map((p) => ({ url: p.url, method: p.method }));
+}
+
+/** The two events that make the answer stale, dispatched the way the app does. */
+export function chatChanged(id) {
+  setChat(id);
+  document.dispatchEvent(new CustomEvent('pantheon:session-changed', {
+    detail: { sessionId: _chat },
+  }));
+}
+export function approvalAnswered(decision) {
+  document.dispatchEvent(new CustomEvent('pantheon:tool-approval', {
+    detail: { decision: String(decision || 'approve') },
+  }));
+}
+
+/** The session-grant list under the ladder, as a person reads it off the screen. */
+export function readGrants() {
+  const box = document.querySelector('.session-grant-list');
+  if (!box) return null;
+  const text = (node) => (node ? node.textContent : null);
+  const button = box.querySelector('.session-grant-revoke');
+  return {
+    hidden: !!box.hidden,
+    title: text(box.querySelector('.session-grant-list-title')),
+    hint: text(box.querySelector('.session-grant-list-hint')),
+    note: text(box.querySelector('.session-grant-list-note')),
+    status: text(box.querySelector('.session-grant-list-status')),
+    empty: text(box.querySelector('.session-grant-list-empty')),
+    timing: text(box.querySelector('.session-grant-timing')),
+    revoke: text(button),
+    revokeDisabled: !!(button && button.disabled),
+    rows: box.querySelectorAll('.session-grant-row').map((row) => {
+      const sentence = row.querySelector('.session-grant-row-sentence');
+      const detail = row.querySelector('.session-grant-row-detail');
+      return {
+        state: row.dataset.grantState || null,
+        id: row.dataset.grantId || null,
+        label: text(row.querySelector('.session-grant-row-label')),
+        sentence: text(sentence),
+        // Raw `_html`: '' if and only if the renderer used `textContent`.
+        sentenceHtml: sentence ? sentence._html : null,
+        detail: detail ? detail.textContent : null,
+      };
+    }),
+    text: box.readable,
+  };
+}
+
+export function revokeGrants() {
+  const button = document.querySelector('.session-grant-revoke');
+  button.dispatchEvent(new Event('click'));
+  return button;
+}
 
 /** The ladder as a person reads it off the screen. */
 export function readLadder() {
@@ -255,7 +334,9 @@ def ladder_sandbox(tmp_path_factory):
 
 _LADDER_PREAMBLE = (
     "import { document, host, card, readLadder, pick, posts, replyWith,"
-    " readRules, revoke, rulesReplyWith, revokeReplyWith, settle }"
+    " readRules, revoke, rulesReplyWith, revokeReplyWith, settle,"
+    " setChat, grantsReplyWith, grantRevokeReplyWith, grantCalls,"
+    " chatChanged, approvalAnswered, readGrants, revokeGrants }"
     " from './shim.js';\n"
     "import { setSettings } from './appConfig.js';\n"
 )
@@ -2439,3 +2520,745 @@ def test_the_renderer_owns_no_second_copy_of_the_trust_vocabulary():
         assert phrase not in renderer, phrase
     for rung in RUNGS:
         assert rung not in renderer, rung
+
+
+# ── Job 5 (`P7-09`): the blanket yes for a whole chat ───────────────────────
+#
+# The other grant a confirmation card hands out, and the wider one. Its backend
+# half landed with nothing calling either verb — `GET` and
+# `DELETE /api/tool-approval-grants/{session_id}` — which is the same shape as
+# the defect `P7-04` had to come back for and `Law 13` names: a control that is
+# one click to give and nothing at all to see or undo.
+#
+# What is pinned, and why each is a defect if it breaks:
+#
+#   * **the list is not drawn unless this chat has actually been asked.** Same
+#     probe as the rule list above it and the same statuses: 404/405/501 is a
+#     build with no such route, 401/403 is a caller the two doors refuse, and
+#     "no chat open" is the condition that replaces the rung test, because the
+#     route is per chat. An empty bordered box in a settings panel reads as a
+#     feature that failed to load;
+#
+#   * **it IS drawn on every rung**, and that is the deliberate difference from
+#     the rule list. `decision_for` honours `approval_gate_bypassed` only when
+#     the rung is not one of the two that ask in a clean run, so a session grant
+#     applies on the DEFAULT rung and is ignored on the two stricter ones — the
+#     opposite way round. Copying Job 3's rung test would hide a live grant from
+#     the only people it is live for;
+#
+#   * **one Revoke for the chat, never one per row.** The route takes the whole
+#     chat back because `_history_grants_chat_session_approval` stops at the
+#     first card it can verify, so a per-card door would report success and
+#     change nothing — the defect `P7-04` shipped;
+#
+#   * **revoked and stale grants are still listed.** `list_chat_session_grants`
+#     returns them on purpose: a list of only live grants cannot tell "you never
+#     gave one" apart from "you gave one and took it back", and the second is
+#     the state a person checking after a revoke is in;
+#
+#   * **the copy says when a revoke starts** (`B702`). The bypass is resolved
+#     once per turn from the transcript, so a revoke lands on the next message
+#     and does not answer a card already on screen. A button that implies
+#     otherwise is worse than no button.
+
+_GRANT_PRELUDE = _HAS_KEY + "\nsetChat('chat-1');\n"
+
+
+def _live(approval_id="appr-1", tool="bash", digest="abc123def456"):
+    return {"approval_id": approval_id, "tool": tool, "digest": digest, "state": "live"}
+
+
+def _grants_body(*grants):
+    return {"session_id": "chat-1", "grants": list(grants)}
+
+
+def _grants(script: str, sandbox: Path) -> dict:
+    return _ladder(script, sandbox)
+
+
+# ── The probe: what is certain to be refused is never drawn ─────────────────
+
+
+def test_no_chat_open_asks_nothing_and_draws_nothing(ladder_sandbox):
+    """`Law 16` in the small, and `Law 13` in the large: an install whose owner
+    has not opened a chat makes no request, and a settings panel with nothing to
+    say about grants says nothing rather than showing an empty box."""
+
+    out = _grants("""
+        %s
+        setChat('');
+        %s
+        await settle();
+        console.log(JSON.stringify({ grants: readGrants(), calls: grantCalls() }));
+    """ % (_HAS_KEY, _IMPORT), ladder_sandbox)
+
+    assert out["calls"] == []
+    assert out["grants"]["hidden"] is True
+    assert out["grants"]["rows"] == []
+    assert out["grants"]["empty"] is None
+
+
+@pytest.mark.parametrize("status", [404, 405, 501])
+def test_a_build_without_the_grant_routes_draws_no_list(ladder_sandbox, status):
+    """This build has no such route. Never drawn — and a 404 here is also "no
+    such chat", which is the same answer for a different reason."""
+
+    out = _grants("""
+        %s
+        grantsReplyWith({ ok: false, status: %d, body: {} });
+        %s
+        chatChanged('chat-1');
+        await settle();
+        console.log(JSON.stringify({ grants: readGrants(), calls: grantCalls() }));
+    """ % (_GRANT_PRELUDE, status, _IMPORT), ladder_sandbox)
+
+    # The initialiser asked, and the chat change asked again; both were refused
+    # and neither is retried after that.
+    assert len(out["calls"]) == 2, out["calls"]
+    assert out["grants"]["hidden"] is True
+    assert out["grants"]["rows"] == []
+
+
+@pytest.mark.parametrize("status", [401, 403])
+def test_a_caller_the_doors_refuse_draws_no_list(ladder_sandbox, status):
+    """`require_user` answers 403 to an API token and 401 to nobody at all.
+    An affordance certain to be refused is not an affordance."""
+
+    out = _grants("""
+        %s
+        grantsReplyWith({ ok: false, status: %d, body: {} });
+        %s
+        chatChanged('chat-1');
+        await settle();
+        console.log(JSON.stringify({ grants: readGrants() }));
+    """ % (_GRANT_PRELUDE, status, _IMPORT), ladder_sandbox)
+
+    assert out["grants"]["hidden"] is True
+
+
+def test_a_chat_with_no_grants_says_so_and_names_the_button_that_makes_one(
+    ladder_sandbox,
+):
+    """"Nothing yet" is a sentence, not a blank space — and it has to say where
+    a grant comes from, or the list is a screen nobody can act on (`Law 15`)."""
+
+    out = _grants("""
+        %s
+        grantsReplyWith({ ok: true, status: 200, body: { session_id: 'chat-1', grants: [] } });
+        %s
+        chatChanged('chat-1');
+        await settle();
+        console.log(JSON.stringify({ grants: readGrants() }));
+    """ % (_GRANT_PRELUDE, _IMPORT), ladder_sandbox)
+
+    grants = out["grants"]
+    assert grants["hidden"] is False
+    assert grants["rows"] == []
+    assert grants["empty"], "an empty chat must say so"
+    # The exact label `src/tool_approvals.py:361` puts on the card, so a person
+    # can find the promise and its receipt as the same words.
+    assert "Allow for this chat session" in grants["empty"]
+    # And no control, because there is nothing for it to do.
+    assert grants["revoke"] is None
+    assert grants["timing"] is None
+
+
+# ── What it draws ──────────────────────────────────────────────────────────
+
+
+def test_a_live_grant_says_it_covers_the_whole_chat(ladder_sandbox):
+    """The card's own description is *"stop asking at this gate for later
+    requests in this chat"*, and `decision_for` tests the bypass before it looks
+    at a tool name or an effect. A row that read like a rule about `bash` would
+    understate the widest thing in the product."""
+
+    out = _grants("""
+        %s
+        grantsReplyWith({ ok: true, status: 200, body: %s });
+        %s
+        chatChanged('chat-1');
+        await settle();
+        console.log(JSON.stringify({ grants: readGrants() }));
+    """ % (_GRANT_PRELUDE, json.dumps(_grants_body(_live())), _IMPORT), ladder_sandbox)
+
+    grants = out["grants"]
+    assert grants["hidden"] is False
+    assert [row["state"] for row in grants["rows"]] == ["live"]
+    row = grants["rows"][0]
+    assert row["id"] == "appr-1"
+    # The sealed digest, which is the one thing tying this row to a card.
+    assert row["detail"] == "abc123def456"
+    # Provenance, not scope: it says which card you pressed it on...
+    assert "bash" in row["sentence"]
+    # ...and then says the scope is the chat and everything in it.
+    assert "rest of this chat" in row["sentence"]
+    # Never `innerHTML`: '' iff the renderer used `textContent`.
+    assert row["sentenceHtml"] == ""
+    assert grants["title"] and grants["hint"]
+
+
+def test_the_grant_states_are_three_and_each_says_which_it_is(ladder_sandbox):
+    """`Law 10`: the listing answers an enum and not `live: true/false`, because
+    "you took it back" and "the signature no longer verifies" are different
+    things and only one of them is something a person did."""
+
+    body = _grants_body(
+        _live("appr-1"),
+        {"approval_id": "appr-2", "tool": "write_file", "digest": "d2", "state": "revoked"},
+        {"approval_id": "appr-3", "tool": "bash", "digest": "d3", "state": "stale"},
+    )
+    out = _grants("""
+        %s
+        grantsReplyWith({ ok: true, status: 200, body: %s });
+        %s
+        chatChanged('chat-1');
+        await settle();
+        console.log(JSON.stringify({ grants: readGrants() }));
+    """ % (_GRANT_PRELUDE, json.dumps(body), _IMPORT), ladder_sandbox)
+
+    rows = out["grants"]["rows"]
+    assert [row["state"] for row in rows] == ["live", "revoked", "stale"]
+    # Three distinct labels, each readable on its own — a screen reader reaches
+    # the label and never the border that carries the same fact visually.
+    labels = [row["label"] for row in rows]
+    assert len(set(labels)) == 3, labels
+    assert all(labels)
+    # And the two that are over say so without being mistakable for each other.
+    assert "back" in rows[1]["label"].lower()
+    assert "no longer" in rows[2]["label"].lower()
+    # One control for the chat, not one per row.
+    assert out["grants"]["revoke"] is not None
+
+
+def test_an_unknown_state_is_drawn_as_not_in_force(ladder_sandbox):
+    """Fail toward the answer that does not mislead. Calling an unrecognised
+    state "live" frightens a person about a grant that is not there; calling it
+    "taken back" reassures them about one that is."""
+
+    body = _grants_body({"approval_id": "a", "tool": "bash", "digest": "", "state": "sideways"})
+    out = _grants("""
+        %s
+        grantsReplyWith({ ok: true, status: 200, body: %s });
+        %s
+        chatChanged('chat-1');
+        await settle();
+        console.log(JSON.stringify({ grants: readGrants() }));
+    """ % (_GRANT_PRELUDE, json.dumps(body), _IMPORT), ladder_sandbox)
+
+    rows = out["grants"]["rows"]
+    assert [row["state"] for row in rows] == ["stale"]
+    # No digest, no detail line — the row does not invent one.
+    assert rows[0]["detail"] is None
+    # And nothing to revoke, so no button.
+    assert out["grants"]["revoke"] is None
+
+
+def test_a_chat_whose_grants_are_all_over_offers_no_revoke(ladder_sandbox):
+    """`Law 13`. `DELETE` would answer `nothing_to_revoke`, so the button would
+    be reporting a success for work it did not do."""
+
+    body = _grants_body(
+        {"approval_id": "a", "tool": "bash", "digest": "d", "state": "revoked"},
+        {"approval_id": "b", "tool": "bash", "digest": "e", "state": "stale"},
+    )
+    out = _grants("""
+        %s
+        grantsReplyWith({ ok: true, status: 200, body: %s });
+        %s
+        chatChanged('chat-1');
+        await settle();
+        console.log(JSON.stringify({ grants: readGrants() }));
+    """ % (_GRANT_PRELUDE, json.dumps(body), _IMPORT), ladder_sandbox)
+
+    assert len(out["grants"]["rows"]) == 2
+    assert out["grants"]["revoke"] is None
+    assert out["grants"]["timing"] is None
+
+
+# ── The rung: drawn on all three, and reported on two ──────────────────────
+
+
+@pytest.mark.parametrize("rung", list(RUNGS))
+def test_the_grant_list_is_drawn_on_every_rung(ladder_sandbox, rung):
+    """The difference from Job 3, and the reason it is written down: a session
+    grant is honoured on the DEFAULT rung and ignored on the two stricter ones,
+    so Job 3's "hide it off the rung that reads it" would hide a live grant from
+    the only people it is live for."""
+
+    out = _grants("""
+        setSettings({ trust_rung: '%s', tts_enabled: true });
+        setChat('chat-1');
+        grantsReplyWith({ ok: true, status: 200, body: %s });
+        %s
+        chatChanged('chat-1');
+        await settle();
+        console.log(JSON.stringify({ grants: readGrants() }));
+    """ % (rung, json.dumps(_grants_body(_live())), _IMPORT), ladder_sandbox)
+
+    assert out["grants"]["hidden"] is False, rung
+    assert [row["state"] for row in out["grants"]["rows"]] == ["live"], rung
+    # The note is the report, and it appears on exactly the rungs where these
+    # grants are not being used.
+    if rung == DEFAULT_RUNG:
+        assert out["grants"]["note"] is None
+    else:
+        assert out["grants"]["note"], rung
+        assert "not being used" in out["grants"]["note"]
+
+
+def test_moving_the_rung_repaints_the_grant_list(ladder_sandbox):
+    """The note is about the setting directly above it. Left unrepainted it says
+    the opposite of what the screen shows, on the screen the person is looking
+    at."""
+
+    out = _grants("""
+        %s
+        grantsReplyWith({ ok: true, status: 200, body: %s });
+        %s
+        chatChanged('chat-1');
+        await settle();
+        const before = readGrants().note;
+        replyWith({ ok: true, status: 200, body: { trust_rung: 'ask_every_time' } });
+        pick('ask_every_time');
+        await settle();
+        console.log(JSON.stringify({ before, after: readGrants().note }));
+    """ % (_GRANT_PRELUDE, json.dumps(_grants_body(_live())), _IMPORT), ladder_sandbox)
+
+    assert out["before"] is None
+    assert out["after"], "the rung note did not follow the rung"
+
+
+# ── Taking it back ─────────────────────────────────────────────────────────
+
+
+def test_the_revoke_asks_the_chat_route_and_never_a_per_card_one(ladder_sandbox):
+    """The whole point of the route's shape.
+    `_history_grants_chat_session_approval` stops at the first card it can
+    verify, so revoking one card while a second signed one remains would revoke
+    nothing a person could observe."""
+
+    body = _grants_body(_live("appr-1"), _live("appr-2", "write_file", "d2"))
+    out = _grants("""
+        %s
+        grantsReplyWith({ ok: true, status: 200, body: %s });
+        grantRevokeReplyWith({ ok: true, status: 200, body:
+          { status: 'revoked', revoked: 2, grants: [
+            { approval_id: 'appr-1', tool: 'bash', digest: 'abc123def456', state: 'revoked' },
+            { approval_id: 'appr-2', tool: 'write_file', digest: 'd2', state: 'revoked' }] } });
+        %s
+        chatChanged('chat-1');
+        await settle();
+        revokeGrants();
+        await settle();
+        console.log(JSON.stringify({ grants: readGrants(), calls: grantCalls() }));
+    """ % (_GRANT_PRELUDE, json.dumps(body), _IMPORT), ladder_sandbox)
+
+    deletes = [call for call in out["calls"] if call["method"] == "DELETE"]
+    assert len(deletes) == 1, out["calls"]
+    # The chat's own URL, and no approval id anywhere in it.
+    assert deletes[0]["url"] == "/api/tool-approval-grants/chat-1"
+    assert "appr-" not in deletes[0]["url"]
+    # Redrawn from the listing the route answered with, so the screen and the
+    # store cannot disagree — and both rows survive, now over.
+    assert [row["state"] for row in out["grants"]["rows"]] == ["revoked", "revoked"]
+    assert out["grants"]["revoke"] is None
+
+
+def test_the_revoke_confirmation_says_which_turn_it_starts_on(ladder_sandbox):
+    """`B702`. `ToolRunSecurityContext` resolves the bypass once, at the start of
+    a turn, so a revoke lands on the next message — and it does not answer a card
+    already on screen. A person clicking Revoke because something is happening
+    right now has to be told both, in words, without knowing what a run is."""
+
+    out = _grants("""
+        %s
+        grantsReplyWith({ ok: true, status: 200, body: %s });
+        grantRevokeReplyWith({ ok: true, status: 200, body:
+          { status: 'revoked', revoked: 1, grants: [] } });
+        %s
+        chatChanged('chat-1');
+        await settle();
+        const timing = readGrants().timing;
+        revokeGrants();
+        await settle();
+        console.log(JSON.stringify({ timing, after: readGrants() }));
+    """ % (_GRANT_PRELUDE, json.dumps(_grants_body(_live())), _IMPORT), ladder_sandbox)
+
+    # Said before the button as well as after it, so nobody presses it expecting
+    # something else.
+    for said in (out["timing"], out["after"]["status"]):
+        assert said, "the timing was not stated"
+        assert "next message" in said
+        # And the open-card half, which is the part that reads as half-done.
+        assert "screen" in said
+    # Nothing left, so the list returns to its empty sentence rather than to a
+    # blank box.
+    assert out["after"]["rows"] == []
+    assert out["after"]["empty"]
+    assert out["after"]["revoke"] is None
+    # No jargon: a person does not have to know what a run or a turn is.
+    for word in ("run", "turn", "bypass", "gate"):
+        assert word not in out["timing"].lower().split()
+
+
+def test_nothing_left_to_revoke_is_reported_as_done_and_not_as_a_failure(
+    ladder_sandbox,
+):
+    """Another tab, another device, or a second press. The person's intent has
+    been served, so it is drawn the way a success is — the argument
+    `revokeAllowRule`'s 404 branch already makes."""
+
+    out = _grants("""
+        %s
+        grantsReplyWith({ ok: true, status: 200, body: %s });
+        grantRevokeReplyWith({ ok: true, status: 200, body:
+          { status: 'nothing_to_revoke', revoked: 0, grants: [] } });
+        %s
+        chatChanged('chat-1');
+        await settle();
+        revokeGrants();
+        await settle();
+        console.log(JSON.stringify({ grants: readGrants() }));
+    """ % (_GRANT_PRELUDE, json.dumps(_grants_body(_live())), _IMPORT), ladder_sandbox)
+
+    status = out["grants"]["status"]
+    assert "nothing left" in status.lower()
+    assert "next message" in status
+    # Not the failure sentence.
+    assert "still go ahead" not in status
+
+
+def test_a_failed_revoke_says_the_grant_is_still_standing(ladder_sandbox):
+    """`P7-04`'s copy, verbatim in intent: the unwelcome half out loud. A silent
+    failure leaves somebody believing they took a permission back when they did
+    not — and the row stays, because it is still a live grant."""
+
+    out = _grants("""
+        %s
+        grantsReplyWith({ ok: true, status: 200, body: %s });
+        grantRevokeReplyWith({ ok: false, status: 500, body: {} });
+        %s
+        chatChanged('chat-1');
+        await settle();
+        revokeGrants();
+        await settle();
+        console.log(JSON.stringify({ grants: readGrants() }));
+    """ % (_GRANT_PRELUDE, json.dumps(_grants_body(_live())), _IMPORT), ladder_sandbox)
+
+    grants = out["grants"]
+    assert "could not be taken back" in grants["status"]
+    assert "still go ahead" in grants["status"]
+    # The row is still there and the button works again.
+    assert [row["state"] for row in grants["rows"]] == ["live"]
+    assert grants["revokeDisabled"] is False
+
+
+# ── Staying honest between visits ──────────────────────────────────────────
+
+
+def test_answering_a_card_re_asks_this_chat_for_its_grants(ladder_sandbox):
+    """The case this row exists for: somebody presses the wide button and goes
+    looking for it in Settings. A list fetched once would be missing the grant
+    they came to find."""
+
+    out = _grants("""
+        %s
+        grantsReplyWith({ ok: true, status: 200, body: { session_id: 'chat-1', grants: [] } });
+        %s
+        chatChanged('chat-1');
+        await settle();
+        const before = readGrants();
+        grantsReplyWith({ ok: true, status: 200, body: %s });
+        approvalAnswered('approve');
+        await settle();
+        console.log(JSON.stringify({ before, after: readGrants(), calls: grantCalls() }));
+    """ % (_GRANT_PRELUDE, _IMPORT, json.dumps(_grants_body(_live()))), ladder_sandbox)
+
+    assert out["before"]["rows"] == []
+    assert [row["state"] for row in out["after"]["rows"]] == ["live"]
+    # The card's answer asked again. (The initialiser's own ask and the
+    # `chatChanged` above it are the two before it.)
+    gets = [call for call in out["calls"] if call["method"] == "GET"]
+    assert len(gets) == 3, out["calls"]
+
+
+def test_a_denial_re_asks_too_rather_than_keeping_a_copy_of_the_wire_value(
+    ladder_sandbox,
+):
+    """Deliberate. Narrowing this to the one decision that grants would put a
+    second copy of a `src/tool_approval_scopes.py` wire value in this file, and
+    the cost of being too wide is one read while the cost of being too narrow is
+    the list being wrong in the case it is for."""
+
+    out = _grants("""
+        %s
+        grantsReplyWith({ ok: true, status: 200, body: { session_id: 'chat-1', grants: [] } });
+        %s
+        chatChanged('chat-1');
+        await settle();
+        approvalAnswered('deny');
+        await settle();
+        console.log(JSON.stringify({ calls: grantCalls() }));
+    """ % (_GRANT_PRELUDE, _IMPORT), ladder_sandbox)
+
+    assert len([call for call in out["calls"] if call["method"] == "GET"]) == 3
+    ladder = TRUST_LADDER.read_text(encoding="utf-8")
+    assert "approve_task" not in ladder
+    assert "'approve'" not in ladder and '"approve"' not in ladder
+
+
+def test_opening_another_chat_asks_about_that_chat(ladder_sandbox):
+    """The route is per chat, so the answer is too. A cached list drawn beside a
+    different conversation is the panel telling the lie it exists to stop."""
+
+    out = _grants("""
+        %s
+        grantsReplyWith({ ok: true, status: 200, body: %s });
+        %s
+        chatChanged('chat-1');
+        await settle();
+        const first = readGrants().rows.length;
+        grantsReplyWith({ ok: true, status: 200, body: { session_id: 'chat-2', grants: [] } });
+        chatChanged('chat-2');
+        await settle();
+        console.log(JSON.stringify({ first, after: readGrants(), calls: grantCalls() }));
+    """ % (_GRANT_PRELUDE, json.dumps(_grants_body(_live())), _IMPORT), ladder_sandbox)
+
+    assert out["first"] == 1
+    assert out["after"]["rows"] == []
+    urls = [call["url"] for call in out["calls"]]
+    # Whatever the boot ask did, the last word is about the chat now open.
+    assert urls[-1] == "/api/tool-approval-grants/chat-2"
+    assert "/api/tool-approval-grants/chat-1" in urls
+
+
+def test_a_reload_that_lands_in_an_open_chat_draws_the_list_with_no_event(
+    ladder_sandbox,
+):
+    """`pantheon:session-changed` fires on a CHANGE, and this module registers
+    its listener behind `GET /api/auth/settings` while `selectSession` runs
+    behind `loadSessions()` — two async chains with no ordering between them.
+    Without the ask the initialiser makes, a reload straight into an open chat
+    leaves this panel empty for the life of the page. `assistant.js` learned the
+    same thing in `H02`."""
+
+    out = _grants("""
+        %s
+        grantsReplyWith({ ok: true, status: 200, body: %s });
+        %s
+        await settle();
+        console.log(JSON.stringify({ grants: readGrants(), calls: grantCalls() }));
+    """ % (_GRANT_PRELUDE, json.dumps(_grants_body(_live())), _IMPORT), ladder_sandbox)
+
+    # No `chatChanged` anywhere above: the chat was already open when the module
+    # loaded, which is what a reload looks like.
+    assert out["grants"]["hidden"] is False
+    assert [row["state"] for row in out["grants"]["rows"]] == ["live"]
+    assert [call["url"] for call in out["calls"]] == [
+        "/api/tool-approval-grants/chat-1",
+    ]
+
+
+def test_drawing_the_ladder_again_asks_about_the_chat_that_is_open_now(
+    ladder_sandbox,
+):
+    """The chat id is half the cache key, and not as an optimisation. A promise
+    cached without it answers a question about the chat the person has since
+    left — and the initialiser's ask is deliberately not forced, so the key is
+    the only thing standing between a second render and a stale list."""
+
+    out = _grants("""
+        %s
+        grantsReplyWith({ ok: true, status: 200, body: %s });
+        %s
+        await settle();
+        const first = readGrants().rows.length;
+        setChat('chat-2');
+        grantsReplyWith({ ok: true, status: 200, body: { session_id: 'chat-2', grants: [] } });
+        const { renderTrustLadder } = await import('./trustLadder.js');
+        renderTrustLadder(host, 'gate_on_untrusted');
+        await settle();
+        const moved = grantCalls().length;
+        // And again, with nothing changed. A repaint is not a question.
+        renderTrustLadder(host, 'gate_on_untrusted');
+        await settle();
+        console.log(JSON.stringify({ first, moved, after: readGrants(), calls: grantCalls() }));
+    """ % (_GRANT_PRELUDE, json.dumps(_grants_body(_live())), _IMPORT), ladder_sandbox)
+
+    assert out["first"] == 1
+    assert out["moved"] == 2
+    # The third render asked nothing: the initialiser's ask is deliberately not
+    # forced, so the cache key is what decides, and on an unchanged chat it
+    # decides no.
+    assert [call["url"] for call in out["calls"]] == [
+        "/api/tool-approval-grants/chat-1",
+        "/api/tool-approval-grants/chat-2",
+    ]
+    # The new chat has none, and the list says so rather than showing the old
+    # chat's grant beside the new conversation.
+    assert out["after"]["rows"] == []
+    assert out["after"]["empty"]
+
+
+def test_closing_the_last_chat_takes_the_list_away(ladder_sandbox):
+    """There is no chat, so there is nothing this list could be about. Drawn as
+    absent rather than as an empty one, which would be a claim about a chat
+    nobody managed to ask."""
+
+    out = _grants("""
+        %s
+        grantsReplyWith({ ok: true, status: 200, body: %s });
+        %s
+        chatChanged('chat-1');
+        await settle();
+        chatChanged('');
+        await settle();
+        console.log(JSON.stringify({ grants: readGrants() }));
+    """ % (_GRANT_PRELUDE, json.dumps(_grants_body(_live())), _IMPORT), ladder_sandbox)
+
+    assert out["grants"]["hidden"] is True
+    assert out["grants"]["rows"] == []
+
+
+# ── The caller the route audit has to be able to see ───────────────────────
+
+
+def _checker():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "check_unreachable", ROOT / ".pantheon" / "check-unreachable.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_both_grant_verbs_and_the_rule_revoke_have_a_visible_caller():
+    """`Law 20`, twice over: the checker's own reader is run rather than
+    grepping for a URL, and it is run over this module's CODE and not its file.
+
+    `check-unreachable` reads quoted strings out of `static/**`, and a backtick
+    is one of the quotes it accepts — so a route path written in prose satisfies
+    it just as well as a `fetch`. Every route named in the comments of this file
+    is therefore invisible to this test, which is the only way it can mean "the
+    caller exists" rather than "the route is mentioned somewhere".
+
+    A URL built from a bare constant mentions no path, which is how
+    `DELETE /api/tool-allow-rules/{id}` sat in that report as a route with no
+    caller for as long as the revoke button has existed, and how `P7-09`'s two
+    routes arrived there beside it.
+    """
+    checker = _checker()
+    code = blank(TRUST_LADDER)
+    called = set()
+    for match in checker._URLISH.findall(code):
+        idx = match.find("/api/")
+        called.add(checker.normalise(match[idx:] if idx >= 0 else match))
+
+    # Both verbs share one path, so one pattern answers for both.
+    assert checker.normalise("/api/tool-approval-grants/{session_id}") in called
+    assert checker.normalise("/api/tool-allow-rules/{rule_id}") in called
+    # And the collection routes the list and the chooser already used.
+    assert checker.normalise("/api/tool-allow-rules") in called
+
+
+def test_the_route_audit_agrees_that_both_are_reached():
+    """The same claim, end to end, through the tool CI runs. Kept beside the
+    code-only test above rather than instead of it: this one passes on a file
+    whose only mention of the route is a comment, and that one does not."""
+
+    checker = _checker()
+    called = checker.frontend_paths()
+    assert checker.normalise("/api/tool-approval-grants/{session_id}") in called
+    assert checker.normalise("/api/tool-allow-rules/{rule_id}") in called
+
+
+def test_the_ci_ceiling_for_unreachable_routes_only_ever_came_down():
+    """A ratchet whose number goes up is a ratchet. 92 was the count with
+    `P7-09`'s backend half landed and nothing calling it; drawing the caller and
+    making the rule revoke visible took it to 90."""
+
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    ceiling = int(ci.split("check-unreachable.py --max-routes")[1].split()[0])
+    assert ceiling <= 90, ceiling
+
+
+# ── Job 5's stylesheet, read as values ─────────────────────────────────────
+
+
+def test_the_grant_states_are_told_apart_without_a_hue():
+    """`P7-06`'s measurement is why: on `terminal` and `retrowave` `--fg` and
+    `--red` are the same hex, so a colour carries nothing on two of the sixteen
+    palettes and nothing at all in greyscale. Border style and width carry it,
+    and the label says it in words for anyone reaching the row through a screen
+    reader."""
+
+    live = _cascade("desktop", '.session-grant-row[data-grant-state="live"]')
+    revoked = _cascade("desktop", '.session-grant-row[data-grant-state="revoked"],\n.session-grant-row[data-grant-state="stale"]')
+    assert live["border-left"].split()[1] == "solid"
+    assert revoked["border-left"].split()[1] == "dashed"
+    # Same width, so the difference is the style and not a thickness a reader
+    # has to compare across two rows to notice.
+    assert _px(live["border-left"].split()[0]) == _px(revoked["border-left"].split()[0])
+
+
+def test_no_string_in_the_grant_list_is_painted_anything_but_the_foreground():
+    """The same construction the rule list above it is built on, and for the
+    same measured reason: a 3% panel tint costs a string up to 8% of its
+    contrast across the sixteen palettes, and the strings here include the line
+    that says a revoke failed."""
+
+    block = _block()
+    start = block.index(".session-grant-list {")
+    ours = block[start:block.index("@media (max-width: 768px)", start)]
+    colours = re.findall(r"(?<![-\w])color:\s*([^;]+);", ours)
+    assert colours, "the grant list paints no text at all"
+    assert set(value.strip() for value in colours) == {"var(--fg)"}, colours
+    # And no accent anywhere in it — not as a fallback, not as a border.
+    assert "--accent" not in ours
+    assert "--red" not in ours
+    # `--accent` is never defined in `:root`, which is what makes every
+    # `var(--accent, …)` fallback in this sheet resolve. Re-asserted here
+    # because this block is new and a `:root` definition added beside it would
+    # flip the whole stylesheet at once (`D-2026-08-26-03`).
+    assert "--accent:" not in STYLE.read_text(encoding="utf-8").split(":root")[1].split("}")[0]
+
+
+def test_the_grant_list_survives_both_narrow_breakpoints_intact():
+    """`P6-04` deleted a panel's state line under 768px and removed the sentence
+    that said what state it was in from the form factor with the least room to
+    guess. The timing sentence and the rung note are the same kind of line."""
+
+    regions = _regions()
+    # Nothing is hidden at either width.
+    for where in ("m768", "m640"):
+        assert "display: none" not in regions[where], where
+        assert "display:none" not in regions[where], where
+    # 768 restates padding and nothing that carries meaning.
+    for selector in (".session-grant-row", ".session-grant-timing",
+                     ".session-grant-list-note"):
+        assert not _decls(selector, "m768"), f"{selector} is restated at 768px"
+    # 640 shrinks the type, and the three sentences that cannot be guessed from
+    # anything else on screen are all still declared.
+    for selector in (".session-grant-list-hint", ".session-grant-list-note",
+                     ".session-grant-timing", ".session-grant-list-empty",
+                     ".session-grant-list-status"):
+        assert _decls(selector, "m640"), f"{selector} is not sized at 640px"
+    # The state border is never restated, so the distinction reaches the phone
+    # exactly as it left the desktop.
+    for state in ("live", "revoked"):
+        assert not _decls(f'.session-grant-row[data-grant-state="{state}"]', "m640"), state
+    # The one control goes full width once it is on its own line, so it stays a
+    # comfortable target at 320px.
+    assert _cascade("m640", ".session-grant-revoke")["align-self"] == "stretch"
+
+
+def test_the_grant_list_is_hidden_rather_than_left_as_an_empty_bordered_box():
+    """`display: flex` on the container would beat the browser's own `[hidden]`
+    rule, and an empty bordered box in a settings panel reads as a feature that
+    failed to load — which is the answer this whole surface exists to stop
+    giving."""
+
+    assert _cascade("desktop", ".session-grant-list")["display"] == "flex"
+    assert _cascade("desktop", ".session-grant-list[hidden]")["display"] == "none"

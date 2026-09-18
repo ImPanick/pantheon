@@ -178,6 +178,13 @@ export class Node {
     let attr = null;
     const am = p.match(/\[([a-zA-Z-]+)(?:="([^"]*)")?\]/);
     if (am) { attr = am; p = p.replace(am[0], ''); }
+    // Added 2026-09-18 by `P2-19`. `initWebhookForm` reads its event list with
+    // `querySelectorAll('.adm-wh-event:checked')`, and without this the pseudo
+    // fell through to the tag test, matched nothing, and the form reported
+    // "Select at least one event" forever — a shim that makes the code under
+    // test look broken is worse than a shim that throws.
+    const checked = p.match(/:checked\b/);
+    if (checked) { if (!this.checked) return false; p = p.replace(checked[0], ''); }
     const idm = p.match(/#([A-Za-z0-9_-]+)/);
     if (idm) { if (this.id !== idm[1]) return false; p = p.replace(idm[0], ''); }
     const classes = (p.match(/\.[A-Za-z0-9_-]+/g) || []).map((c) => c.slice(1));

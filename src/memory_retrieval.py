@@ -202,6 +202,42 @@ _MIN_VECTOR, _MIN_KEYWORD, _MIN_FINAL = 0.20, 0.08, 0.12
 # how a refactor hides a behaviour change.
 _VERBATIM_SCORE = 0.8
 
+# `P13-16`, stage two. What a memory has to score *against the best answer this
+# query found* to be worth one of the slots beside it.
+#
+# The gates above ask an absolute question — is this relevant at all — and they
+# were also, until this row, the only thing deciding how MANY memories were
+# injected. One threshold cannot do both jobs: set high enough to control
+# volume it drops real answers, and set low enough to keep them it injects
+# four irrelevant memories beside every right one. This is the second job,
+# given its own number.
+#
+# **Relative, and the word is the whole design.** A score means nothing across
+# queries — measured on the golden set through the in-process index, the right
+# answer to *"what should I know about food"* scores `0.062` while an off-topic
+# *"convert 40 fahrenheit to celsius"* scores `0.144` against a memory about a
+# loft conversion. There is no absolute line that admits the first and refuses
+# the second. What IS comparable is the shape of one query's own ranking, and
+# "at least half what the best answer scored" is a question that can be asked
+# inside a query and answered honestly.
+#
+# **Measured before it was chosen** (`P13-13`'s golden set, `--engine local`,
+# in-process vectors, no ChromaDB): recall and MRR are identical for every
+# value from 0.30 to 0.60 and fall at 0.70, so 0.5 sits inside a flat band with
+# headroom on both sides rather than at its edge. It is deliberately NOT the
+# value that maximises the fixture's precision — 0.80 scores better there and
+# costs recall, which is a constant fitted to thirty probes.
+#
+# **What this cannot do, stated here because the row is otherwise read as
+# finished.** A relative floor is scale-free, so on a question the Brain has
+# nothing to say about it keeps the best piece of rubbish exactly the way it
+# keeps a real answer. That is why the absolute gates above were not lowered to
+# let stage one widen: dropping them takes recall from 0.933 to 1.000 and
+# off-topic injection from 0.12 to 1.50 memories per query. Telling those two
+# cases apart needs something that can read the question, which is the half of
+# `P13-16` that is still open.
+_RELATIVE_FLOOR = 0.5
+
 
 def _query_intent(query: str) -> str | None:
     lowered = (query or "").lower()
@@ -263,7 +299,26 @@ def _rank(query, memories, k, vector, report, now):
         # reads as "vector search answered", which is the class of lie `B61`
         # exists to end.
         report.update({"engine": retrieval_engine.KEYWORD,
-                       "vector_healthy": False, "vector_ids": []})
+                       "vector_healthy": False, "vector_ids": [],
+                       # `P13-16`. Written here with every other key for the
+                       # reason `B61` gives about `engine`: a field present on
+                       # some paths and absent on others makes every reader
+                       # invent a default, and the default is the answer nobody
+                       # measured. `selection_floor` is constant and reported
+                       # anyway, because "three were dropped" is unreadable
+                       # without the rule that dropped them.
+                       "selection_floor": _RELATIVE_FLOOR,
+                       "selection_dropped": 0,
+                       # `P13-10`. The rows that were actually RETURNED, with
+                       # the score and the reason `_rank` computes for every one
+                       # of them and `retrieve` drops on its last line. The
+                       # retrieval trace has always said *which* memories
+                       # changed an answer and never *why*, which is the row's
+                       # own word — and the reason was never missing, only
+                       # discarded at this boundary because five call sites
+                       # unpack a list of memories. It rides the out-parameter
+                       # rather than a widened return type for that reason.
+                       "selected": []})
     if not memories or not (query or "").strip():
         return []
 
@@ -276,10 +331,14 @@ def _rank(query, memories, k, vector, report, now):
     # through this one scorer (`P13-14`), and an edge honoured by some of them
     # is worse than one honoured by none.
     graph = memory_edges.build_edge_index(memories)
-    if graph["superseded"]:
-        memories = memory_edges.live(memories)
-        if not memories:
-            return []
+    # `P13-05`. Unconditional now, where it used to run only when something was
+    # superseded: the predicate has a second input — a memory nobody has
+    # committed yet — and that one is true on corpora with no edges at all,
+    # which is almost all of them. The already-built index is handed over so the
+    # graph is walked once per query rather than twice.
+    memories = memory_edges.live(memories, graph)
+    if not memories:
+        return []
 
     query_tokens = set(content_tokens(query))
     vectors, healthy = _vector_scores(query, memories, vector, k)
@@ -306,7 +365,7 @@ def _rank(query, memories, k, vector, report, now):
         verbatim_rows = [(_VERBATIM_SCORE, memory,
                           _reason(0.0, 0.0, set(), 1.0, None, False, 0, verbatim=True))
                          for memory in memories if _verbatim(query, memory)]
-        return _apply_edges(verbatim_rows, {}, k, graph, memories)
+        return _trace(_apply_edges(verbatim_rows, {}, k, graph, memories), report)
 
     doc_freq = Counter()
     tokens_by_id = {}
@@ -382,7 +441,65 @@ def _rank(query, memories, k, vector, report, now):
         ranked.append(row)
 
     ranked.sort(key=lambda row: row[0], reverse=True)
-    return _apply_edges(ranked, pool, k, graph, memories)
+    ranked = _select(ranked, report)
+    return _trace(_apply_edges(ranked, pool, k, graph, memories), report)
+
+
+def _trace(selected, report):
+    """Record what was returned, and why, for the caller. `P13-10`.
+
+    Written from the FINAL rows and nowhere earlier: `_apply_edges` both drops
+    rows (a `derived_from` source that lost its slot) and adds them (a
+    contradiction partner pulled in from the corpus), so a trace taken before it
+    would name memories the model never saw and omit ones it did. A trace that
+    over-reports is worse than none, because it is believed.
+    """
+    if report is not None:
+        report["selected"] = [{"id": memory.get("id"),
+                               "score": round(score, 4), "reason": why}
+                              for score, memory, why in selected]
+    return selected
+
+
+def _select(ranked, report=None):
+    """Stage two. Keep what belongs beside the best answer. `P13-16`.
+
+    Removes; never reorders. A selector that also ranked would be a second
+    ranking to reconcile with the first, and `P13-14` exists because this tree
+    had two of those.
+
+    Applied to the ranked list and **before** `_apply_edges`, which is not an
+    ordering detail: `P13-02` pulls a contradiction partner in from the whole
+    live corpus precisely because it may share no words with the question, so
+    it arrives with a low score by construction. Selecting after the edge rules
+    would delete exactly the rows the edge rules exist to add.
+
+    The verbatim early return in `_rank` does not come through here and does
+    not need to: every verbatim row carries `_VERBATIM_SCORE`, so a floor
+    computed from the top of them keeps all of them. A branch that cannot
+    change an answer is a branch a mutation deletes for free.
+    """
+    if not ranked:
+        # Nothing written here on purpose: `_rank` initialises
+        # `selection_dropped` to 0 with every other report key before its first
+        # early return, so a second write on this path cannot change an answer
+        # and a mutation deletes it for free. The same reasoning as the
+        # zero-score guard below, reached from the other direction.
+        return ranked
+    # No guard on a non-positive top score, and the absence is deliberate. A
+    # floor computed from a top of zero would be zero, which keeps everything —
+    # the same answer the guard would have given — and in any case a row only
+    # reaches `ranked` by clearing `_MIN_FINAL` (0.12) or by being a verbatim
+    # match (0.8), so the best score in hand is always positive. Mutation
+    # testing proved the branch could not change an answer, which is
+    # `P13-14`'s `cutoff`, `P13-15`'s `sessions <= 1` and `B62`'s seven
+    # undistinguishable stemmer rules again: a branch nothing can tell from its
+    # own absence is a branch a mutation deletes for free.
+    floor = _RELATIVE_FLOOR * ranked[0][0]
+    kept = [row for row in ranked if row[0] >= floor]
+    if report is not None:
+        report["selection_dropped"] = len(ranked) - len(kept)
+    return kept
 
 
 def _snippet(memory: dict, limit: int = 60) -> str:

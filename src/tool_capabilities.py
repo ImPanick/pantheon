@@ -897,10 +897,43 @@ def coerce_trust_rung(value: Any) -> TrustRung:
         return DEFAULT_TRUST_RUNG
 
 
+# `P7-07`. How well this action is understood, as an enum and not a boolean.
+# `Law 10`: `known: true/false` on a card reads as "is this allowed" as easily
+# as "did we recognise the tool", and the consumer of a misread verdict here is
+# the sentence a person approves on.
+#
+#   recognised     the tool is in the capability registry and the effects below
+#                  are what it actually does.
+#   unrecognised   no registry entry. The effects below are the worst case this
+#                  module assumes, not a measurement — and this is the case the
+#                  row calls the risky one, because it was previously rendered
+#                  identically to a classified tool.
+#   not_available  refused by policy rather than by effect; no approval lifts it
+#                  (`B70`, delegated credentials). There is nothing to rank.
+TOOL_CLASSIFICATION_RECOGNISED = "recognised"
+TOOL_CLASSIFICATION_UNRECOGNISED = "unrecognised"
+TOOL_CLASSIFICATION_UNAVAILABLE = "not_available"
+
+
 @dataclass(frozen=True)
 class ToolGateDecision:
     allowed: bool
     reason: str | None = None
+    # `P7-07`. The effects that actually intersected the gate's blocked set —
+    # not every effect the tool has. `manage_rag` is `read_workspace` +
+    # `write_private`; only the second one stops it, and a card listing both
+    # makes the person read two phrases to find the one that mattered.
+    #
+    # **Measured before it was written, and it is a smaller defect than it
+    # sounds**: of the 83 registry tools, 74 are refusable in a tainted run and
+    # exactly 2 ever over-listed (`manage_rag`, `web_fetch`); every multiplexed
+    # action over-listed 0, because the action tables already answer narrow. The
+    # half of this row that is universal is `classification` below.
+    #
+    # Severity-ranked by `describe_effects`, most severe first, so a surface
+    # never re-derives an ordering that lives in this module (`P7-06`).
+    tripped_effects: tuple[str, ...] = ()
+    classification: str = TOOL_CLASSIFICATION_RECOGNISED
 
 
 _EXTERNAL_MESSAGE_SOURCES = frozenset(
@@ -915,33 +948,85 @@ _EXTERNAL_MESSAGE_SOURCES = frozenset(
 _EXTERNAL_MESSAGE_SOURCE_PREFIXES = ("web page:",)
 
 
-def messages_contain_external_untrusted_context(messages: Iterable[dict]) -> bool:
-    """Detect explicitly labelled external context already present in a run."""
+# `P7-08`. What a taint-trail entry says about itself. Three kinds, because the
+# three answer different questions for the person reading the card, and one
+# undifferentiated list of strings would answer none of them:
+#
+#   tool      a tool this run called returned content the model then saw.
+#   context   labelled external text was already in the prompt — a prefetched
+#             search, a fetched page, a research injection. No tool call of this
+#             run is responsible for it.
+#   carried   the run began tainted: an approval sealed in a tainted run, or a
+#             card retired by an ordinary turn. The originating tool is not
+#             recoverable here, and saying "carried" is more honest than
+#             attributing it to whichever tool happens to be running now.
+TAINT_KIND_TOOL = "tool"
+TAINT_KIND_CONTEXT = "context"
+TAINT_KIND_CARRIED = "carried"
+
+# Used whenever taint is asserted with no nameable origin. It exists so a trail
+# is never *empty* while the gate is telling the person untrusted content
+# influenced the run — two statements that contradict each other on one card is
+# exactly the ambiguity `Law 10` is about.
+CARRIED_TAINT_SOURCE = "untrusted content from earlier in this run"
+
+
+def external_untrusted_context_sources(messages: Iterable[dict]) -> list[str]:
+    """Name every labelled external context already present in a run.
+
+    `P7-08`. The predicate below used to be the whole of this: it answered
+    *whether* untrusted text was in the prompt and threw away *which*, so a run
+    tainted by a prefetched web page and a run tainted by a research injection
+    produced the same card and the same silence. The names are recovered here,
+    in prompt order, de-duplicated, and the predicate is derived from this so
+    the two can never disagree about what counts (`Law 7`).
+
+    A message's own `source` label is preferred because it is what the wrapper
+    already wrote for a person to read — `"web page: https://example.com"`
+    rather than `"external"`. Where there is no label, the fallback names the
+    reason the message qualified instead of inventing a source.
+    """
+    sources: list[str] = []
+
+    def _note(label: Any) -> None:
+        text = str(label or "").strip()
+        if text and text not in sources:
+            sources.append(text)
+
     for message in messages or ():
         if not isinstance(message, dict):
             continue
         metadata = message.get("metadata")
         if not isinstance(metadata, dict) or metadata.get("trusted") is not False:
             continue
+        raw_source = metadata.get("source")
+        label = raw_source if isinstance(raw_source, str) else ""
         gate_marker = metadata.get("tool_gate_untrusted")
         if gate_marker is True:
-            return True
+            _note(label or "untrusted context in the prompt")
+            continue
         if gate_marker is False:
             # Explicit current-format opt-outs are authoritative.  The source
             # label heuristics below exist only for older saved wrappers that
             # predate the marker.
             continue
         if metadata.get("provenance_origin") == "external":
-            return True
-        source = metadata.get("source")
-        if not isinstance(source, str):
+            _note(label or "external content in the prompt")
             continue
-        normalized_source = source.strip().casefold()
+        if not isinstance(raw_source, str):
+            continue
+        normalized_source = raw_source.strip().casefold()
         if normalized_source in _EXTERNAL_MESSAGE_SOURCES:
-            return True
+            _note(raw_source)
+            continue
         if normalized_source.startswith(_EXTERNAL_MESSAGE_SOURCE_PREFIXES):
-            return True
-    return False
+            _note(raw_source)
+    return sources
+
+
+def messages_contain_external_untrusted_context(messages: Iterable[dict]) -> bool:
+    """Detect explicitly labelled external context already present in a run."""
+    return bool(external_untrusted_context_sources(messages))
 
 
 @dataclass
@@ -950,6 +1035,16 @@ class ToolRunSecurityContext:
 
     external_untrusted_context_seen: bool = False
     external_sources: list[str] = field(default_factory=list)
+    # `P7-08`. The ordered record of what armed this run's gate — the same
+    # events `external_sources` records, plus the two kinds it cannot express:
+    # prompt-borne context, which is not a tool, and taint carried in at run
+    # start, which has no name left. Entries are `{"kind": ..., "source": ...}`.
+    #
+    # `external_sources` is NOT derived from this and is not removed: it is the
+    # existing tool-name list and it keeps meaning exactly what it meant
+    # (`Law 1`). Both are written by `_note_taint` and by nothing else, so the
+    # two views cannot drift apart at a call site.
+    taint_trail: list[dict] = field(default_factory=list)
     run_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     # Task-scope approval sets this for the resumed in-memory run. Chat-scope
     # approval is projected from the server-owned session history marker below.
@@ -970,6 +1065,38 @@ class ToolRunSecurityContext:
     # Privileged tools are refused outright and no approval can lift it.
     delegated_credential: bool = False
 
+    def __post_init__(self) -> None:
+        """`P7-08`. A run that starts tainted still has to be able to say so.
+
+        `src/agent_loop.py` builds this with `external_untrusted_context_seen`
+        already true when the route carried taint forward — a card retired by an
+        ordinary turn, or an approval sealed in a tainted run. No tool of *this*
+        run did that and no prompt message names it, so the trail records the
+        one true thing: it arrived before this run started.
+        """
+        if self.external_untrusted_context_seen and not self.taint_trail:
+            self._note_taint(CARRIED_TAINT_SOURCE, TAINT_KIND_CARRIED)
+
+    def _note_taint(self, source: Any, kind: str) -> None:
+        """Record one thing that armed the gate. The only writer of both views.
+
+        De-duplicated on `(kind, source)` so a page fetched four times is one
+        line on the card rather than four, and appended in the order it
+        happened, because "what tainted this run first" is the question a person
+        reading a trail is actually asking.
+        """
+        text = str(source or "").strip()
+        if not text:
+            return
+        if any(
+            entry.get("kind") == kind and entry.get("source") == text
+            for entry in self.taint_trail
+        ):
+            return
+        self.taint_trail.append({"kind": kind, "source": text})
+        if kind == TAINT_KIND_TOOL and text not in self.external_sources:
+            self.external_sources.append(text)
+
     def observe_messages(self, messages: Iterable[dict]) -> None:
         """Apply server-owned chat scope and promote untrusted prompt context."""
         message_list = list(messages or ())
@@ -980,8 +1107,7 @@ class ToolRunSecurityContext:
             # driving the same chat. The untrusted-context promotion below
             # still runs, because that is about the content and not the caller.
             self.approval_gate_bypassed = False
-            if messages_contain_external_untrusted_context(message_list):
-                self.external_untrusted_context_seen = True
+            self.observe_prompt_context(message_list)
             return
         if any(
             isinstance(message, dict)
@@ -992,8 +1118,20 @@ class ToolRunSecurityContext:
             for message in message_list
         ):
             self.approval_gate_bypassed = True
-        if messages_contain_external_untrusted_context(message_list):
+        self.observe_prompt_context(message_list)
+
+    def observe_prompt_context(self, messages: list) -> None:
+        """`P7-08`. Arm on labelled prompt context, and name what armed it.
+
+        Public because `src/agent_loop.py` needs it at construction time. It
+        used to fold this question into the constructor's boolean, which armed
+        the gate correctly and lost every name — so a run tainted entirely by a
+        fetched page in the prompt reported `carried`, the entry that exists for
+        taint with nothing left to attribute it to.
+        """
+        for source in external_untrusted_context_sources(messages):
             self.external_untrusted_context_seen = True
+            self._note_taint(source, TAINT_KIND_CONTEXT)
 
     @property
     def gate_is_armed(self) -> bool:
@@ -1027,6 +1165,7 @@ class ToolRunSecurityContext:
                     f"Tool '{tool_name}' is not available to API-token callers. "
                     "It requires an interactive session."
                 ),
+                classification=TOOL_CLASSIFICATION_UNAVAILABLE,
             )
         # The bypass does not outrank a rung that asks. **Refutation proved the
         # ladder inverted without this line**, and the reproduction is worth
@@ -1121,6 +1260,19 @@ class ToolRunSecurityContext:
         effects = ", ".join(sorted(effect.value for effect in blocked_effects))
         if not capabilities.known:
             effects = "unknown/high-impact"
+        # `P7-07`. The effects that tripped, ranked by the one ordering this
+        # module owns (`P7-06`), carried on the decision so the card can name
+        # them instead of listing everything the tool can do. For an
+        # unrecognised tool these are the assumed worst case, which is why the
+        # classification travels beside them and not as a phrase inside the
+        # sentence — a surface has to be able to draw that case differently,
+        # and until now it could not tell the two apart at all.
+        tripped = tuple(describe_effects(blocked_effects).get("effects", ()))
+        classification = (
+            TOOL_CLASSIFICATION_RECOGNISED
+            if capabilities.known
+            else TOOL_CLASSIFICATION_UNRECOGNISED
+        )
         if self.external_untrusted_context_seen:
             why = "External untrusted context has already influenced this run. "
         else:
@@ -1134,6 +1286,8 @@ class ToolRunSecurityContext:
                 f"Tool '{tool_name}' requires a separate user-authorized action "
                 f"because it can cause {effects}."
             ),
+            tripped_effects=tripped,
+            classification=classification,
         )
 
     def _allow_rule_matches(self, tool_name: Any, content: Any) -> bool:
@@ -1161,8 +1315,8 @@ class ToolRunSecurityContext:
         if not tool_result_should_arm_gate(tool_name, result, content):
             return
         self.external_untrusted_context_seen = True
-        if isinstance(tool_name, str) and tool_name not in self.external_sources:
-            self.external_sources.append(tool_name)
+        if isinstance(tool_name, str):
+            self._note_taint(tool_name, TAINT_KIND_TOOL)
 
 
 def blocked_tool_result(tool_name: Any, reason: str) -> tuple[str, dict]:

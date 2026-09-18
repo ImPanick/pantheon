@@ -98,9 +98,9 @@ rows are marked `second-line` in the register.
 
 ---
 
-## 3. The blocking set — eighteen rows, of which five are now met
+## 3. The blocking set — eighteen rows, of which six are now met
 
-Fifteen of 234 open rows when this was written; **five have since been met and three
+Fifteen of 234 open rows when this was written; **six have since been met and three
 have been added, and the met ones are marked `landed` in the register rather than deleted,
 because a line that quietly loses its met gates cannot be audited.** `P0-17` and `P6-08` closed
 on 2026-09-18; `P11-01` and `P11-02d` closed the same day, which is the fail-open privilege
@@ -116,7 +116,11 @@ A line that only ever shrinks is a line that has stopped being measured. The thi
 gates and said admins always get full access, which stopped being true the moment `P11-01`
 denied undeclared keys to everybody. Four lines to correct is not a gate; it is registered
 `landed` so the adjudication is on the record.
-Thirteen stand. One line of reasoning each; the row carries the measurement. Four are security,
+**`P2-21` was met on 2026-09-18** and it is the first of these that was met in the order its own
+row demanded: the list loader first, then the two open `GET`s gated, then the flag flipped. A gate
+over an empty section reads as done and is not, which is why the row refused to be closed by the
+gate alone — and closing it closed `P11-10` with it, the same hole named twice from two phases.
+Twelve stand. One line of reasoning each; the row carries the measurement. Four are security,
 three are a false documented claim, two are a licence obligation, two are an action rather than
 a commit, one is a defect a first-time user hits, and one is the release artefact.
 
@@ -348,7 +352,7 @@ weakest one in this document: it means nobody adjudicated them individually.
 | `B349` | blocking | licence | `NOTICE` and the published `LEDGER.md` give two dates for one fork |
 | `B370` | blocking | security | two `/static` pages answer 200 with no cookie; no exemption written down |
 | `P11-01` | landed | security | `privs.get(key, True)` fails open and non-admin accounts are reachable today |
-| `P2-21` | blocking | security | two `builtin` GETs make no auth call beside a `require_admin` PUT and DELETE |
+| `P2-21` | landed | security | two `builtin` GETs make no auth call beside a `require_admin` PUT and DELETE |
 | `B540` | blocking | security | any signed-in account clears the instance-wide TTS cache; the same act on uploads is `require_admin` |
 | `B541` | blocking | security | four `/api/hwfit/*` routes SSH to a host the caller names, for any signed-in account |
 | `B542` | tracked | security | two admin writes are middleware-exempt on path alone; their in-handler `is_admin` still stands |
@@ -364,6 +368,10 @@ weakest one in this document: it means nobody adjudicated them individually.
 | `B680` | tracked | second-line | shadows a role that cannot be created yet; no role ships defined and no panel assigns one |
 | `B681` | tracked | second-line | `B543`'s class on a new surface, behind `require_admin`, reachable by an operator not a stranger |
 | `B683` | tracked | second-line | the `operator` tier has no privilege key yet; a scope statement about roles, not a defect in the tree |
+| `B692` | tracked | decision | a `FORBIDDEN.md` Part 2 validator refuses the LAN `Law 17` allows; the owner rules, an agent does not |
+| `B702` | tracked | second-line | a revoke lands next turn and the panel now says so; timing copy, not a control that lies |
+| `B722` | tracked | security | measured and closed the day it was filed, so it never had to be adjudicated as a gate |
+| `B723` | tracked | security | the `Law 16` gate had two doors; fixed in the same hour, so it was never on the line |
 | `P11-02d` | landed | security | six route files whose gating is unreconciled — an unknown on an auth surface |
 | `B71` | blocking | claim | upstream's artwork under this fork's filenames, and it is the macOS app icon |
 | `B411` | blocking | claim | four numbers in the published ledger do not print from their own repro |

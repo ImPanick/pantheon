@@ -314,8 +314,16 @@ def get_embedding_client():
             _http_embed_down = True
             logger.warning(f"HTTP embedding API unavailable ({e}); using local FastEmbed for the rest of this process")
 
-    # Fall back to local fastembed
+    # Fall back to local fastembed — behind the same `Law 16` gate the lane
+    # builder uses, because this is the path a fresh install actually takes.
+    # `B723`: the gate lived only on the lane builder, and constructing the
+    # client here downloads ~90MB from HuggingFace on a machine whose operator
+    # has said nothing about that. Imported inside the function: `embedding_lanes`
+    # imports `FastEmbedClient` from this module, so a module-level import would
+    # be a cycle.
     try:
+        from src.embedding_lanes import ensure_fastembed_download_permitted
+        ensure_fastembed_download_permitted()
         client = FastEmbedClient()
         client.get_sentence_embedding_dimension()
         logger.info(f"Using local FastEmbed: model={client.model}")

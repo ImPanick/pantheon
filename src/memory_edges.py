@@ -18,6 +18,17 @@ retrieval is precisely where these relations have to be honoured, so the names
 cannot live in either of the two files that need them. Carved out for the same
 reason `src/retrieval_engine.py` was: it imports nothing from the project, so a
 label describing a relation never depends on the subsystem that stores it.
+
+**`P13-05` added the second reason a memory does not surface, and it is here
+rather than in a module of its own.** `live()` below is already documented as
+the one place that decides what retrieval, the audit and the boot-time index
+rebuild are allowed to see — *"records kept on purpose that must not be shown,
+re-audited, re-indexed or counted"* — and a memory nobody has committed yet is
+exactly that. Two predicates for "does this memory surface" is how a proposal
+ends up hidden from search and sent to a model anyway, which is the failure
+`superseded_ids` already exists to prevent. So the module is wider than its name
+by one concept, and saying so here is cheaper than a rename that would touch
+four call sites to move two constants (`Law 2`).
 """
 
 from __future__ import annotations
@@ -47,6 +58,45 @@ EDGE_TYPES = (EDGE_SUPERSEDES, EDGE_CONTRADICTS, EDGE_DERIVED_FROM, EDGE_CO_OCCU
 # Stored once and read from both ends. The asymmetric two are not in here
 # because their direction is their meaning.
 SYMMETRIC_EDGE_TYPES = (EDGE_CONTRADICTS, EDGE_CO_OCCURS)
+
+
+# ── commitment, `P13-05` ──────────────────────────────────────────────────────
+
+# The memory binds: it is retrieved, audited, indexed and counted. This is the
+# default and the honest reading of every record written before the row —
+# they ARE binding, because they are being injected into prompts today.
+STATUS_COMMITTED = "committed"
+
+# Extraction proposed it and nobody has agreed yet. On the record, visible,
+# gathering mentions, and invisible to everything that feeds a model. The
+# phase preamble's argument for this state is a competitor's "Avoid" list with
+# raw venting promoted to a rule at 95%: extraction and commitment were one
+# event, so there was nothing between a sentence and a policy.
+STATUS_PROPOSED = "proposed"
+
+MEMORY_STATUSES = (STATUS_COMMITTED, STATUS_PROPOSED)
+
+
+def status_of(memory) -> str:
+    """One of `MEMORY_STATUSES`, and `STATUS_COMMITTED` for anything else.
+
+    **Unrecognised reads as committed, and the direction of that default is the
+    decision.** A memory store is a file a person can edit, so a typo in this
+    field is reachable — and the failure mode of the other direction is that
+    memories silently stop reaching the model, which is the least visible bug
+    this product can have (`P0-05` shipped looking done for exactly that
+    reason). A record that binds when it should not is wrong and obvious; a
+    record that stops binding is wrong and invisible.
+    """
+    if not isinstance(memory, dict):
+        return STATUS_COMMITTED
+    value = memory.get("status")
+    return value if value in MEMORY_STATUSES else STATUS_COMMITTED
+
+
+def is_committed(memory) -> bool:
+    """Whether this memory is allowed to change an answer. `P13-05`."""
+    return status_of(memory) == STATUS_COMMITTED
 
 
 def edges_of(memory) -> List[Dict]:
@@ -142,19 +192,32 @@ def superseded_ids(memories) -> set:
     return set(build_edge_index(memories)["superseded"])
 
 
-def live(memories) -> List[Dict]:
-    """The memories that still surface: everything nothing supersedes.
+def live(memories, index: Dict = None) -> List[Dict]:
+    """The memories that still surface. One predicate, four callers.
 
-    `P13-09` archives rather than deletes what an audit merged away, so the
-    store now holds records that are kept on purpose and must not be shown,
-    re-audited, re-indexed or counted. This is the predicate for that, in one
-    place.
+    Two reasons a record stays in the store and out of every prompt, and they
+    arrived a row apart:
+
+    * `P13-09` archives rather than deletes what an audit merged away, so the
+      store holds entries that are kept on purpose and must not be shown,
+      re-audited, re-indexed or counted;
+    * `P13-05` lets extraction propose without binding, so the store holds
+      entries nobody has agreed to yet.
+
+    Both are here because the alternative is two predicates that disagree, and
+    the way that fails is a memory hidden from search and sent to a model
+    anyway. It is also why `src/app_initializer.py` — which rebuilds the vector
+    index from the whole store at boot — needed no change for either row.
+
+    `index` is an already-built edge index, passed by a caller that has one so
+    the graph is not walked twice for one query. The **unconditional** filter
+    matters as much as the sharing: the caller in `_rank` used to skip this
+    entirely when nothing was superseded, which on a corpus with no edges at
+    all — which is almost every corpus — would have let a proposal through.
     """
-    stale = superseded_ids(memories)
-    if not stale:
-        return list(memories)
+    stale = set((index or build_edge_index(memories))["superseded"])
     return [m for m in memories
-            if not (isinstance(m, dict) and m.get("id") in stale)]
+            if is_committed(m) and not (isinstance(m, dict) and m.get("id") in stale)]
 
 
 def attach(entry: Dict, edge_type: str, target_id: str, by_id: Dict,

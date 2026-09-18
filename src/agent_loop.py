@@ -51,7 +51,6 @@ from src.tool_capabilities import (
     capabilities_for_tool,
     coerce_trust_rung,
     describe_effects,
-    messages_contain_external_untrusted_context,
     tool_result_is_successful,
     tool_result_should_arm_gate,
 )
@@ -4320,7 +4319,6 @@ async def stream_agent_loop(
                 exact_approval
                 and exact_approval.pending.external_untrusted_context_seen
             )
-            or messages_contain_external_untrusted_context(messages)
         ),
         approval_gate_bypassed=bool(
             exact_approval and exact_approval.allow_remaining_actions
@@ -4333,6 +4331,11 @@ async def stream_agent_loop(
             else None
         ),
     )
+    # `P7-08`. The prompt-borne half of the same question, asked here rather
+    # than folded into the boolean above: it arms the gate at exactly the same
+    # moment it always did, and it now records *which* labelled context did it
+    # instead of leaving the trail to report an unattributed "carried".
+    run_security.observe_prompt_context(list(messages or ()))
     if _run_rung is not DEFAULT_TRUST_RUNG:
         logger.info(
             "[agent] trust rung=%s for session=%s", _run_rung.value, session_id
@@ -6936,6 +6939,14 @@ async def stream_agent_loop(
                             block.tool_type,
                             block.content,
                         ),
+                        # `P7-07` / `P7-08`. The card is minted from the very
+                        # decision that refused the action, so the effects it
+                        # names are the ones that tripped and not the tool's
+                        # whole capability list — and the trail it shows is this
+                        # run's, not a guess. Both are display-only and neither
+                        # enters the seal; see `PendingToolApproval`.
+                        gate_decision=security_decision,
+                        taint_trail=run_security.taint_trail,
                     )
                     desc = f"{block.tool_type}: APPROVAL REQUIRED"
                     result = {

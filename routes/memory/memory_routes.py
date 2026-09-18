@@ -30,7 +30,11 @@ from core.session_manager import SessionManager
 from src.request_models import MemoryAddRequest
 from core.database import SessionLocal
 from src.llm_core import llm_call_async
-from services.memory.memory_extractor import audit_memories
+from services.memory.memory_extractor import (
+    COMMIT_COMMITTED,
+    audit_memories,
+    commit_memory,
+)
 from src.auth_helpers import get_current_user, require_user
 from src.endpoint_resolver import resolve_endpoint
 from src.task_endpoint import resolve_task_endpoint
@@ -583,6 +587,59 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
                 memory_manager.save(all_mem)
                 return {"ok": True, "pinned": pinned}
         raise HTTPException(404, f"Memory item {memory_id} not found")
+
+    @router.post("/{memory_id}/commit")
+    def commit_memory_item(request: Request, memory_id: str):
+        """Bind a proposed memory. `P13-05` — the explicit act.
+
+        Beside `/pin` rather than folded into `PUT /{memory_id}`, because it is
+        a different kind of change: an edit alters what a memory says, and this
+        alters whether it is allowed to say anything at all. Modelled on the
+        route that already exists for the same shape of decision.
+
+        `can_manage_memory`, the same privilege `/add` requires, because the
+        effect is the same: after this call a sentence starts reaching models.
+
+        The verdict is an enum in the body and the status code is always 200 for
+        a decision the gate actually made — a refusal is an answer, not an
+        error, and a 4xx would make the panel show a failure banner for
+        *"the Brain already knows this"*, which is the most useful thing it can
+        say. A genuinely unknown id is the one case that is a 404.
+        """
+        from src.auth_helpers import require_privilege
+        require_privilege(request, "can_manage_memory")
+
+        user = _owner(request)
+        # Unscoped read plus `_verify_memory_owner`, which is the shape every
+        # other mutating route in this file uses (`/pin`, `PUT`, `DELETE`) and
+        # not the belt-and-braces union of that and a scoped load. Mutation
+        # testing is what settled it: with `load(owner=user)` in front, the
+        # ownership check can never fire — a scoped load returns nothing for
+        # another tenant and returns everything when auth is off, which is the
+        # branch `_verify_memory_owner` returns early on — so deleting the
+        # check changed no test, and a control nothing can distinguish from its
+        # own absence is not a control (`P13-09`, `P13-14`, `B62`). One
+        # reachable gate, exercised by a test that fails when it goes.
+        #
+        # `_load_for_update` and not `load`: a store that cannot be read is a
+        # 503, not a 404. "There is no such memory" and "I could not look" are
+        # different answers and only one of them tells the person to try again.
+        entry = next((m for m in _load_for_update(memory_manager)
+                      if m.get("id") == memory_id), None)
+        if entry is None:
+            raise HTTPException(404, f"Memory item {memory_id} not found")
+        _verify_memory_owner(entry, user)
+
+        result = commit_memory(memory_manager, memory_id, by=user, owner=user,
+                               memory_vector=memory_vector)
+        if result["verdict"] == COMMIT_COMMITTED:
+            try:
+                from src.event_bus import fire_event
+                fire_event("memory_added", user,
+                           {"memory_id": memory_id, "text": entry.get("text")})
+            except Exception:
+                logger.debug("memory_added event dispatch failed", exc_info=True)
+        return result
 
     # Wildcard routes MUST come last — otherwise they swallow /import, /search, etc.
     @router.get("/{memory_id}")
