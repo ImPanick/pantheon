@@ -68,7 +68,7 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P5 | Trace & composer restyle | 17 | 5 | 0 | **12** |
 | P6 | Queue & Plan | 18 | 0 | 0 | **18** |
 | P7 | Trust ladder & control plane | 14 | 6 | **1** | **7** |
-| P8 | The Workshop | 49 | 10 | **2** | **37** |
+| P8 | The Workshop | 49 | 2 | **2** | **45** |
 | P9 | Feature surfaces | 18 | 9 | 0 | **9** |
 | P10 | Accessibility & release | 12 | 5 | 0 | **7** |
 | P11 | Identity & access | 14 | 6 | **1** | **7** |
@@ -80,8 +80,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P17 | The network the agent is hosted on | 14 | 0 | 0 | **14** |
 | P18 | One button, and it links | 9 | 0 | 0 | **9** |
 | P19 | The proof ledger | 8 | 0 | 0 | **8** |
-| Backlog | Bugs and hardening found in flight | 448 | 193 | 0 | **255** |
-| **Total** | | **830** | **267** | **9** | **554** |
+| Backlog | Bugs and hardening found in flight | 460 | 200 | 0 | **260** |
+| **Total** | | **842** | **266** | **9** | **567** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -243,6 +243,42 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### The Workshop finishes, and the escaper sweep found nineteen of them
+`6524083..HEAD`. **842 tracked, 567 done. 0 new phase rows, 0 regressions. `P8-34`, `P8-38`,
+`P8-40`, `P8-41`, `P8-42`, `P8-43`, `P8-44`, `P8-47`, `B611`, `B865`, `B866`, `B867`, `B877` and
+`B878` closed; `B870`–`B876` and `B879`–`B881` filed. `P8` goes 37 → 45 of 49.** Three agents,
+no collisions, and four of the premises they re-measured were wrong before they were built on.
+**`B867` was the keystone.** `annotations` was captured at both connect sites and read by
+`mcp_tool_is_readonly` and **never copied into the payload**, so nothing above the manager could
+see a tool's `readOnlyHint`. `P8-40` closed it by collapsing three inline tool-record builders
+into one, so the HTTP transport carries annotations because there is one builder rather than
+because a fourth line was added — which is `Law 13` applied rather than quoted. `P8-44` made one
+parse and one build the sole spelling of a namespaced tool name, `P8-42` stopped an empty env dict
+erasing the environment, `P8-43` gave the browser server one launch definition instead of a
+four-entry allowlist that had been wrong since `B67` removed a server from it, and `P8-38` kept
+the `initialize` result that three connect sites were discarding.
+**`B866`'s sweep found nineteen local escapers in seventeen files**, and the largest class was not
+a shadow at all: seven DOM round-trips whose own comment claimed they handled "all the entities
+that matter", measured against a real parser to leave `"` and `'` alone — and
+`x" onerror=BOOM y="` through one of them into `<img alt="…">` parses as **three attributes**.
+Twenty attribute sites in `gallery.js` alone, including the user's own typed prompt. Two that
+looked like the same defect are not, and the proof is in both files now: an attribute value is
+decoded after it is delimited, so a second-stage escaper that adds `&` double-escapes — changed,
+caught by a test, changed back with the reason written down. `B611` came out of the same sweep,
+and the reason nothing had caught it is `B874`: the palette test's `esc` stub returned its input,
+so a test asserting escaping was green only because the module kept its own replaces.
+**`P8-34` ships a workflow you did not write as a diagram you can read**, through the renderer
+that already existed (`Law 14` — `tasks.js` is its fourth caller), no colour emitted because there
+are sixteen palettes. It immediately found `B873`: the failure branch the engine, the API, the
+edge table and now the diagram all understand **has no front end at all**, so nobody using the
+browser can make one. **`P8-47`** generates a working MCP server onto the data volume and refuses
+to weaken the command validation to register it — two tests pin the same rule from opposite
+sides, that the agent path must refuse what it produces and the admin route must accept it.
+**`P8-09` stays blocked and its reason is corrected**: `P8-10` was never the blocker. The runner's
+destructive deny is still at `routes/skills_routes.py:744-749`, and `B879` is the second one
+nobody had recorded — one job slot per skill, so the before half's result is gone before the after
+half starts.
 
 ### The Workshop, and a skills retriever that answered nothing
 `81ea48c..HEAD`. **830 tracked, 554 done. 0 new phase rows, 0 regressions. `P8-14`, `P8-20`,
@@ -5272,7 +5308,7 @@ SKILL.md frontmatter format. That is the pattern to avoid, found in the phase's 
   `p8core`, reconciled at the merge — agent:`integrator` / `p8ui2` (the text)
 - [x] **P8-07** Show what the preview reveals: **verification and body text are never injected.** They surface only through an on-demand view action. — **done 2026-09-18, premise confirmed field by field.** The catalogue block carries `name`, `description` and `category` only (`src/agent_loop.py:3424-3438`); the matched-skill block adds `when_to_use`, `procedure` and `pitfalls` (`:3142-3165`); `verification` appears in neither, and neither does anything below the frontmatter. The preview says all three in those terms — what is in the list, what a match adds, what is never sent — and says where the missing half lives: open the card, or the model asks for the whole file itself. The Add-Skill form says the same thing at the point where a person types a verification step and would otherwise assume it is being sent. `Verify:` someone who has never read this tracker writes a verification step, opens the preview, and can tell that the AI will not be given it — and where it went. — agent:`p8ui`
 - [x] **P8-08** Wire the test's `task` field — the endpoint has accepted a user task all along and the UI has never sent one. One textarea. — **done 2026-09-18, premise exact.** `POST /api/skills/{id}/test` reads `body.task` at `routes/skills_routes.py:1499` and falls back to `_skill_test_task(skill)` (`:95`) when it is blank; `_testSkill` sent `{model, endpoint_url}` and nothing else, so **every skill test in this product's history ran an invented scenario and nothing said so**. Test now opens the panel with the box and a **Run test** button rather than starting immediately — one more click, and it is the click that makes the feature legible, because a blank box that states its own consequence ("leave blank and the AI invents a realistic example") is the only way a person learns the fallback exists. Retry pre-fills from `/test-status`, which has always echoed `task`, so re-running the same task is one click and changing it is one edit — which is also the shape `P8-09` needs when its own blocker clears. `_testSkill` split into ask / start / poll so the three are not one function. `Verify:` someone who has never read this tracker tests a skill against a case they choose, and can tell from the panel what happens if they choose nothing. — agent:`p8ui`
-- [~] **P8-09** **Before/after behaviour diff.** The runner is parameterised on arbitrary markdown *and* an arbitrary task and never reads from disk — call it twice with old and new against the same task. — **BLOCKED (2026-08-27), and this one bites on the first run.** `_run_skill_test_once` **destructively denies a pending approval when it hits a gate**, so calling it twice — which is the entire idea — burns two approvals and the second half of the diff runs against a state the first half changed. `Depends:` P8-08, **`Blocked:` P8-10** — the runner needs to be non-destructive before a before/after diff means anything.
+- [~] **P8-09** **Before/after behaviour diff.** The runner is parameterised on arbitrary markdown *and* an arbitrary task and never reads from disk — call it twice with old and new against the same task. — **STILL BLOCKED. Re-measured 2026-09-19 by driving it, and the re-measurement found a second blocker the tracker does not have.** `B592`'s finding is unchanged: `_run_skill_test_once` still ends a gated run with `tool_approval_store.consume(..., decision="deny", owner=owner, session_id=None)` at `routes/skills_routes.py:744-749`, under the comment at `:739-741` explaining why an unattended audit has no authority to leave the record pending. Driven twice against a stubbed `stream_agent_loop` emitting one `tool_approval`: `consume` was called `[('appr-1', 'deny'), ('appr-1', 'deny')]` and both halves returned `approval_required: True` — the same numbers `P8-10` measured on 2026-09-18, so nothing has moved. The function's signature is still `(md, task, url, model, headers, owner)`: the parameter `B592` names as the unblocking change — a way to *leave* the approval alone when the caller is a diff, with the deny staying the default — does not exist. **`src/builtin_actions.py:2137` is the only other caller** and passes the same six arguments, so the change has exactly one call site to update. **The second blocker is at the endpoint and is not in `B592`.** `POST /api/skills/{id}/test` keys its job store by `(owner, skill_name)` and **overwrites it**: `_skill_test_jobs[key] = {...}` at `routes/skills_routes.py:1599` is unconditional, and immediately above it `:1591` denies the *previous* job's pending approval by hand. Driven 2026-09-19 through the real route with a stubbed manager and endpoint resolver — post a test, park `appr-1` and a `needs_work` verdict on it, post the same skill again: the second call consumed `[('appr-1', 'deny')]`, `GET /test-status` then answered `verdict: None, approval: None`, and there was still exactly one job slot for the skill. So even with `_run_skill_test_once` made non-destructive, **the before half's result is destroyed the moment the after half starts**, and a diff has nowhere to keep two answers. `P8-10` and `P8-11` are both `[x]` and neither touches either site, because both are about SKILL.md bytes and these two destructions are an approval record and an in-memory job slot. **What this row needs, in order:** the parameter in `_run_skill_test_once` (one call site), then somewhere for two runs of one skill to coexist — a second key, or a job that holds an ordered list of runs rather than one — then the diff itself. **Left `[~]` deliberately:** the honest re-measurement is the whole of this pass, and the unblocking change is `B592`'s row to close, not this one's to smuggle. `Depends:` P8-08. **`Blocked:` `B592`** (the deny in `_run_skill_test_once`) **and the single job slot at `routes/skills_routes.py:1599`** — *not* `P8-10`, which the tracker still names and which has never been the obstacle. — agent:`p8scaffold`
 - [x] **P8-10** **Versioning.** Every write overwrites in place and the audit rewrites destructively with no copy kept; the version field is decorative and never bumped. A skill is a *directory* — a `versions/` sibling costs one line in the writer, and the rewrite path still holds the old markdown in a local when it writes the new one. — **done 2026-09-18.** Premise confirmed in full, and the audit is the worst case exactly as written: `_improve_skill_md` hands a model the current markdown, `_apply_skill_md` puts the rewrite on disk, and the old text's only remaining copy is the caller's `md` local, which goes out of scope. **The row's "one line in the writer" was the right instinct and the wrong count, for a reason worth keeping.** `SkillsManager._write_skill` is indeed the single writer every path funnels through — `add_skill`, `update_skill`, `backfill_owner`, and the audit and editor by way of `update_skill` — but a snapshot on *every* write is unusable: `_set_conf` and `_audit_finalize_status` each call `update_skill` with a bookkeeping field, so one nightly audit of one skill produces two to four writes and none of them is an edit. So the writer compares a **content fingerprint** — name, description, category, tags, the three toolset lists, when-to-use, procedure, pitfalls, verification, body — and keeps a copy only when one of those moved. `status` and `confidence` changes leave no version and no bump, which is what makes the history readable. The patch number moves on the same test, **unless the caller set the version itself**, because a person who typed `2.0.0` meant it — and that is precisely the case no caller in this repo exercises, which is why the field had never left `1.0.0`. Snapshots are `versions/NNNN-<version>.md`, never `SKILL.md`, so `_iter_skill_files` cannot mistake one for a skill; they travel with the directory through a rename (one `os.rename`) and are deleted with it; the sequence caps at 20. **`P8-09` is NOT unblocked by this, and the tracker says it is.** Measured: `_run_skill_test_once` calls `tool_approval_store.consume(..., decision="deny")` on every run that hits a gate — driven twice with a stubbed loop, it denied `appr-1` twice — and that path is untouched by anything here, because versioning is about SKILL.md bytes and the destruction `P8-09` trips over is an approval record. `B592` carries the correction. `Verify:` a person who has never read this tracker asks the assistant what their skill said before last night's audit rewrote it, and is handed the previous text — `manage_skills action=versions` lists it, `action=view_ref path=versions/<id>.md` reads it. `CI:` `tests/test_a_skill_edit_keeps_the_old_one.py` (16 tests). — agent:`p8core`
 - [x] **P8-11** Rollback from a version. `Depends:` P8-10. — **done 2026-09-18.** `restore_version` goes back through the ordinary writer, so **the copy it replaces is itself kept** and a rollback made by mistake costs one more sentence rather than the work it undid. Identity does not travel with the body: `name`, `category` and `owner` are pinned to the live skill's, because a snapshot is a file a person can hand-edit and those three decide which directory the skill lives in and which id the UI holds — letting a restore carry them would be the rename that `_apply_skill_md` and the markdown-save endpoint each already refuse, arriving by a third door. A test plants a tampered snapshot claiming `name: somewhere-else`, `owner: mallory`, `category: elsewhere` and asserts none of the three moves. A version id is matched against `^\d{4}-[A-Za-z0-9._-]{0,40}$` **and** realpath-contained inside the skill's own `versions/`; five traversal shapes are pinned. **Still missing, and it is `p8ui`'s file:** the Workshop card has no history affordance at all, so a person looking at the card cannot tell that earlier copies exist. What it needs is one row per entry from `GET /api/skills/{name}/versions`-equivalent data — currently only the tool channel serves it, deliberately, for the reason `B596` records — with the id, the version it held and when it was replaced, a "view" that shows the old markdown and a "restore" that names what it will replace. `Verify:` someone who has never read this tracker says "put that skill back the way it was" and it is back, and is told that undoing the undo is available. `CI:` `tests/test_a_skill_edit_keeps_the_old_one.py`. — agent:`p8core`
 - [x] **P8-12** Pre-save lint — the necessity and retrieval-precision judges are pure functions of `(skill, siblings)`, already run nightly, callable with no refactor. — **premise corrected 2026-09-18, and the correction changes the deliverable.** They are not pure functions and they are not callable from a save handler. `_eval_skill_necessity` and `_eval_skill_retrieval_precision` are both `async def`, both take `(skill_md, others, url, model, headers)`, and both make an `llm_call_async` — with `timeout=120` and `timeout=90` respectively. A save that waited on either would hang for up to two minutes, and on an install with no model configured it would never answer at all. What **is** pure is the cheap half the audit runs *around* those two calls and has never shown an author: `_should_check_retrieval_precision`, `_audit_generic_blocker`, and the token-overlap comparison inside `_skill_duplicate_blocker`. All three lived in `routes/skills_routes.py`, which is the wrong layer for something a manager, a route and a tool handler all want; they are now `services/memory/skill_lint.py` and `skills_routes` imports them back under their existing private names, so `_skill_duplicate_blocker` and the author-facing lint share **one** comparison rather than two that drift (`Law 14`). On top of those, the structural checks nothing was making at all — the `P8-17` gap seen from the author's side. `verdict` is an enum (`clean` · `advisories` · `problems`) and every finding carries `severity` plus a `fix` (`Law 10`).
@@ -5748,7 +5784,13 @@ SKILL.md frontmatter format. That is the pattern to avoid, found in the phase's 
   email, and no email is sent — and they are told, on the card, what the real run would
   have done and which two actions a dry run cannot tell them anything about.
   `CI:` `tests/test_a_dry_run_is_dry.py` (30 cases). `Depends:` P8-22, P8-24. — agent:`p8d`
-- [ ] **P8-34** The canvas, last, against a stable API. **Ship a Mermaid rendering of a workflow first** — it is already vendored and wired, works today, and needs no graph library. `Depends:` P8-22, P8-25, P8-26.
+- [x] **P8-34** The canvas, last, against a stable API. **Ship a Mermaid rendering of a workflow first** — it is already vendored and wired, works today, and needs no graph library. `Depends:` P8-22, P8-25, P8-26. — **done 2026-09-19, and the measurement that mattered was how little of the served graph anything read.** `GET /api/tasks` has answered `{tasks, graph}` since `P8-26`: `build_task_graph` (`src/task_scheduler.py:145`) puts `nodes`, `edges` with a `when` on each, the `conditions` vocabulary and `max_depth` on the wire, built from the same rows the list is built from, and `_task_to_dict` puts `then_task_id`, `else_task_id` and a per-task `edges` list on every row. **`static/` read none of it.** `_fetchTasks` (`static/js/tasks.js:58`) was `_tasks = data.tasks || []` and the graph went in the bin; `grep -rn "else_task_id" static/` returned **nothing at all**, and `then_task_id` appeared in exactly two places, both inside the edit form (`:1853` filling a `<select>`, `:1923` posting it back). So `P8-28`'s branch could be stored and never seen, and the only way to learn that finishing one task starts another was to open Edit on that task and read a dropdown.
+  **`Law 14` first, as the row demands.** The renderer already exists and this is not a second one: `markdown.js:renderMermaid` (`:1035`) loads the vendored bundle on first use (`ensureMermaid`, `:90`), finds `pre.mermaid:not([data-processed])` in a container and calls `mermaid.run({nodes})`. `chatRenderer.js:3939`, `document.js:9831` and `slashCommands.js:476` already call it; `tasks.js` is the **fourth caller**. It emits the same `<div class="mermaid-container"><pre class="mermaid">` markup `markdown.js:690` emits for a fence in a chat message, and it does not load, initialise or configure Mermaid. The per-task view mechanism is `_showRunHistory`'s, reused exactly — module flag, replace `.modal-body`, `← Back` returns to `_renderMainView()` — rather than a second way of showing a per-task view in the same file.
+  **What shipped.** `static/js/tasks/workflowDiagram.js` (new, 267 lines) is the graph half and is **pure** — no DOM, no fetch, no module state — so the test calls it directly with no sandbox and no stubs: `componentOf` (the connected component, walked **both** ways, because the thing a person most often needs is what runs *before* the task they opened), `longestChain`, `workflowMermaid`, `workflowSentence`, `mermaidText` and `themeDirective`. `tasks.js` keeps the words that belong to it — `_scheduleLabel` for the trigger and `_actionNode` for what an action does, off `P8-22`'s palette — and builds the view; duplicating either in the new module would be the `Law 13` shape this phase keeps finding. Reachable two ways: **Workflow** in the card's ⋮ menu beside History, and a chip under the meta line of any task in a chain — *"Part of a 3-step workflow"* — because a capability only in a kebab menu is what `P8-00` is a gate against.
+  **Three decisions came from `P8-00` and not from taste.** (1) **No colour.** Sixteen palettes ship, Mermaid draws its own SVG, so a `classDef fill:#…` would be right in one theme and wrong in fifteen; every distinction is a shape (rectangle prompt / rounded research / hexagon action) or a word (`paused` written into the label), which also survives being printed. (2) **The trigger is in the box**, on entry nodes only — a downstream node is started by the arrow into it, and repeating its own schedule there would state something untrue. (3) **The arrows are sentences**: the wire's `success`/`error` stay stored and are drawn as `if it works` (solid) and `if it fails` (dotted). The served `max_depth` is shown for the first time too — a chain at 9 of 10 now says a further step would be refused, where before it looked exactly like a chain of two.
+  `Verify:` someone who has never read this tracker opens Tasks, sees *"Part of a 3-step workflow"* under a task they did not write, clicks it, and can say out loud what the automation does — what starts it, what runs next when a step works, what runs instead when it fails, and which step is the one they were looking at — without opening Edit, reading `then_task_id`, or being told the chain exists.
+  `CI:` `tests/test_a_workflow_you_did_not_write_js.py` (14 cases). The pure module is driven directly; the Mermaid text it produces is then handed to **the real vendored `static/lib/mermaid.min.js`** through `tests/harness/mermaid_diagram_parse.js`, which now takes extra cases as an argument, because no assertion written in a test can say whether Mermaid accepts something — only Mermaid can. The surface half runs through the shared `tasks.js` sandbox. Six mutations, all caught: dropping `data.graph` again, one arrow for both branches, removing the `"` case from `mermaidText`, putting the trigger on every node, a downstream-only component walk, and never calling `renderMermaid`.
+  **The harness had to be repaired to do that, and what was wrong with it is the more useful finding.** DOMPurify — which the bundle carries and which mermaid runs every label through once the grammar has accepted it — returns an object with **no `sanitize`** unless `document.nodeType === 9`. The shim document had no `nodeType`, so every diagram with text in a node came back `ao.sanitize is not a function`. It passed its own three flowchart cases only because all of them (`graph TD; A-->B;`, `A@{ shape: person }`, `erDiagram`) have no node labels — i.e. **the harness had never parsed a diagram of the kind the product actually emits**. One line of shim; `broken` is still rejected, so nothing was loosened. — agent:`p8canvas`
 
 ### MCP Creator
 - [x] **P8-35** **An update endpoint — the structural blocker. `PUT
@@ -5875,7 +5917,48 @@ SKILL.md frontmatter format. That is the pattern to avoid, found in the phase's 
   `CI:` `tests/test_mcp_call_has_a_deadline.py` (19 cases, drives `McpManager`, including
   the `Law 1` cases: a normal call, a tool error, a crashed built-in),
   `tests/cli/test_mcp_cli_call_and_update.py` (real hung server). — agent:`p8core`
-- [ ] **P8-38** Keep the handshake. The initialize result is discarded at exactly three connect sites; it carries server name and version, protocol version, advertised capabilities and the server's own instructions, and **nothing in the app records any of it.** One line each.
+- [x] **P8-38** Keep the handshake. The initialize result is discarded at exactly three
+  connect sites; it carries server name and version, protocol version, advertised
+  capabilities and the server's own instructions, and **nothing in the app records any of
+  it.** One line each. **Done 2026-09-19. Exactly three, re-counted, and the row's
+  description of the payload is right.**
+  At `HEAD` all three sites spelled it `await session.initialize()` — a statement, not an
+  assignment: `src/mcp_manager.py:296` (stdio), `:365` (SSE), `:452` (HTTP). Driven
+  against the SDK's real `InitializeResult`, what was being dropped is `serverInfo`
+  (`name`, `version`, `title`), `protocolVersion`, `capabilities` and `instructions`.
+  `get_server_status` returned `{status, name, transport, tool_count}` and nothing above
+  it could have shown any of the rest, because none of it existed anywhere.
+  It is one line each, as the row said: `summarize_initialize_result`
+  (`src/mcp_manager.py:346`) takes the result and returns plain JSON, and each site
+  merges it into its connection record. The summary is defensive about a third party's
+  data — names and versions go through `_sanitize_schema_token`, capabilities are reduced
+  to the advertised feature names, `instructions` is capped at 2000 characters — and a
+  field the server did not send is **absent** rather than present and empty, so a caller
+  can tell "not advertised" from "advertised as nothing".
+  **What can be shown now that could not be before.** Three things, all reachable without
+  reading source. (1) `manage_mcp list` (`src/agent_tools/admin_tools.py:240-256`)
+  reports `server_name`, `server_version`, `protocol_version`, `capabilities` and
+  `instructions` beside the operator's own label, so asking the assistant *"what MCP
+  servers do I have"* now answers with what the software on the other end calls itself
+  rather than only with what was typed into the form. (2) `GET /api/mcp/servers` carries
+  the same fields, which is the payload the Settings list is drawn from — the browser
+  half is `static/**` and is not in this patch. (3) `instructions` is the one handshake
+  field the MCP spec has the server write **for the model**, and it now reaches the
+  system prompt: `get_tool_descriptions_for_prompt` emits
+  `(server instructions: …)` under the server's heading, whitespace-collapsed and capped
+  at 600 characters because the prompt pays for it on every turn. Before this the agent
+  got a server's tool list and never the note the server wrote to go with it.
+  `Verify:` an operator with a connected MCP server asks the assistant what that server
+  is and is told its own name and version and the protocol it negotiated — e.g.
+  `filesystem-mcp 1.4.2, protocol 2025-06-18, capabilities: tools` — none of which
+  appeared anywhere in the product before; and a server whose `instructions` say *"call
+  read_file before write_file"* has that sentence in front of the model when it chooses.
+  `CI:` `tests/test_mcp_connect_keeps_the_handshake.py` (20 cases; the handshake half is
+  parametrised over all three transports against the SDK's real `InitializeResult`, plus
+  a server that advertises nothing adding nothing, the prompt line and its bound, the
+  status clearing on disconnect, and two `P8-00` cases that drive `manage_mcp list` and
+  `GET /api/mcp/servers` for the fields a person actually reads). Mutation-checked:
+  discarding the result again fails 8 of 20. `Depends:` nothing. — agent:`p8conn`
 - [x] **P8-39** **Encrypt server env vars — storage only.** Measured before:
   `core/database.py:585` at `HEAD` was `env = Column(Text, nullable=True)`, and it was
   the **only secret-bearing column in the schema encrypted at no layer**. Six were
@@ -5913,48 +5996,188 @@ SKILL.md frontmatter format. That is the pattern to avoid, found in the phase's 
   absent from a real on-disk SQLite file, the legacy-row read, the migration, its
   idempotence, its registration in `init_db`, and the rotated-key degradation).
   — agent:`p8core`
-- [ ] **P8-40** Capture `annotations` on the HTTP transport — stdio and SSE both do, HTTP does not, so a remote server gets no plan-mode read-only credit however it advertises itself.
-- [ ] **P8-41** Fix the **two** stale comments claiming MCP is dropped in plan mode.
-  **Re-counted 2026-09-19** by the same multiline proximity scan across `src/`,
-  `routes/`, `core/`, `services/`, `static/` and `docs/` (23 `mcp`×`plan mode` proximity
-  hits, three of which make a drop claim). **The number is still two**, and they are:
-  (a) `src/tool_security.py:424-425` at `HEAD`, in `plan_mode_disabled_tools`' docstring —
-  *"MCP tools are handled separately — the loop drops the MCP manager entirely in plan
-  mode."* **Fixed.** It now says what the code does: the loop keeps the manager and
-  filters it, adding every not-clearly-read-only tool to the MCP disabled map and its
-  qualified `mcp__<server>__<tool>` name to the same denylist, so it is hidden from the
-  schemas *and* refused at call time, while read-only MCP tools stay callable — which is
-  the point, plan mode is for investigating. The classification is
-  `mcp_tool_is_readonly`: the server's own `readOnlyHint`/`destructiveHint` first, a
-  leading-verb heuristic second, failing closed on anything ambiguous
-  (`src/mcp_manager.py:99-113` at `HEAD`, live and unchanged by this patch).
+- [x] **P8-40** Capture `annotations` on the HTTP transport — stdio and SSE both do, HTTP
+  does not, so a remote server gets no plan-mode read-only credit however it advertises
+  itself. **Done 2026-09-19. Premise held; the cause was one line short of three
+  copies.**
+  Measured at `HEAD`: the per-tool record was built inline at all three connect sites and
+  the HTTP one was written with three keys instead of four —
+  `src/mcp_manager.py:302-309` (stdio, has `annotations`), `:370-378` (SSE, has it),
+  `:456-461` (HTTP, does not). Driven: a `Tool` carrying
+  `ToolAnnotations(readOnlyHint=True)` through `_connect_sse` reached
+  `mcp_tool_is_readonly`; the same tool through `_connect_http` did not, so the same
+  server was callable in plan mode over SSE and refused over Streamable HTTP.
+  Fixed by deleting the copies rather than adding a fourth. `_tool_entries`
+  (`src/mcp_manager.py:391`) is now the one builder and all three sites call it, so the
+  next transport gets `annotations` without anyone remembering to. This is the same
+  `Law 13` shape as `is_builtin`'s two spellings of `_BUILTIN_SERVERS`, and the same
+  answer.
+  `Verify:` an operator connects a remote MCP server over Streamable HTTP that advertises
+  `readOnlyHint: true`, switches the chat to plan mode, and can call that server's
+  read-only tools — which over SSE they always could and over HTTP they never could.
+  `CI:` `tests/test_mcp_connect_keeps_the_handshake.py` (20 cases; the annotation half is
+  parametrised over all three transports and drives the real `_connect_stdio`,
+  `_connect_sse` and `_connect_http` against the SDK's real `Tool`, `ToolAnnotations` and
+  `InitializeResult` models). The plan-mode case is built so the verb heuristic gets both
+  annotated tools **wrong** on its own — `slurp_file` is not a read verb and
+  `fetch_and_delete` is — so if `annotations` is dropped on any transport that
+  transport's verdicts invert rather than merely weakening. `Depends:` nothing.
+  — agent:`p8conn`
+- [x] **P8-41** Fix the **two** stale comments claiming MCP is dropped in plan mode.
+  **Done 2026-09-19. Re-counted from scratch and the live number was one, not two.**
+  Re-ran the same multiline proximity scan across `src/`, `routes/`, `core/`, `services/`,
+  `static/` and `docs/`: **31** `mcp` x `plan mode` proximity hits, up from the 23 the
+  previous pass recorded, because that pass's correction added prose of its own. Three of
+  the 31 contain the word "drop", and two of those three are that correction quoting the
+  sentence it replaced (`src/tool_security.py:424` — *"MCP tools are handled separately,
+  and **not** by dropping them"* — and `:426`, which quotes the old text inside the
+  explanation). So on the tree this pass started from there was **one** live stale claim,
+  not two: the row's count was right when it was written and half of it had already been
+  fixed. Worth recording because anyone re-running this grep gets 3 and has to read all
+  three to find the 1.
+  (a) `src/tool_security.py:424-425` — fixed in the previous pass, unchanged here.
   (b) `routes/chat_routes.py:2046-2048` — *"(stream_agent_loop enforces this again +
-  drops MCP, so this is belt-and-suspenders.)"* **NOT fixed: `routes/chat_routes.py` is
-  outside this agent's file ownership.** The correction is one clause: `drops MCP` →
-  `filters MCP to read-only tools`. The row cannot be honestly ticked until it lands
-  (`Law 9`), so it stays `- [ ]`.
-  **A third hit reads the same and is accurate, so it is recorded rather than changed:**
-  `src/tool_security.py:213` says the advertisement path compensates *"by dropping the
-  MCP manager entirely (`agent_loop`)"*. That is the **non-admin** path, not plan mode —
-  `blocked_tools_for_owner(owner)` non-empty → `mcp_mgr = None` at
+  drops MCP, so this is belt-and-suspenders.)"* **Fixed.** `routes/chat_routes.py` is in
+  this agent's ownership now, and the correction is the one clause the row specified:
+  `drops MCP` → `filters MCP to read-only tools`. The claim it replaces was wrong about
+  both layers. The route's own denylist contains no `mcp__` name at all; the loop keeps
+  the manager (`src/agent_loop.py:4827-4830`, `if plan_mode and mcp_mgr:`) and filters it
+  per tool through `plan_mode_blocked_mcp`, so read-only MCP tools stay callable — which
+  is the point, plan mode is for investigating.
+  **The third hit reads the same and is accurate, so it is still recorded rather than
+  changed:** `src/tool_security.py:213` says the advertisement path compensates *"by
+  dropping the MCP manager entirely (`agent_loop`)"*. That is the **non-admin** path, not
+  plan mode — `blocked_tools_for_owner(owner)` non-empty → `mcp_mgr = None` at
   `src/agent_loop.py:4459`. Different question, different answer, and the answer there
-  really is "dropped". Anyone re-running this grep will hit it; it is not a fourth
-  defect.
-  `Verify:` a contributor reading `plan_mode_disabled_tools` before changing plan-mode
-  gating is told that MCP is filtered rather than dropped, and where the filter is — so
-  they do not "restore" a drop that would remove read-only MCP investigation from plan
-  mode.
-  `CI:` `tests/test_mcp_plan_mode_is_filtered_not_dropped.py` (5 cases, drives
-  `McpManager.plan_mode_blocked_mcp` — a read-only tool survives, a write tool is blocked
-  in both spellings, the server's annotation beats the verb, an ambiguous name fails
-  closed). A test that grepped the comment would be testing the file (`Law 20`), so it
-  pins the behaviour the comment now describes instead. — agent:`p8core`
-- [ ] **P8-42** Fix the empty-env trap: an empty env dict yields `None`, so the SDK substitutes a minimal environment. **Premise corrected 2026-08-27.** **`PATH` and `HOME` are not the casualties** — both are in `DEFAULT_INHERITED_ENV_VARS` and survive. What vanishes is `PYTHONPATH`, `NODE_PATH`, the npm cache location and every proxy variable, and **only when the env dict is empty**. That is a narrower trap and a much harder one to diagnose: a server that resolves its interpreter fine and then cannot find its own packages, or cannot reach the network from behind a corporate proxy. `Verify:` a generated server with an empty env dict inherits the parent's `PYTHONPATH` and proxy settings.
-- [ ] **P8-43** Let `builtin_browser` auto-reconnect — the reconnect helper hard-returns false for anything outside a four-entry map, despite the browser server counting as built-in. A crashed Playwright server stays dead until a manual reconnect.
-- [ ] **P8-44** Server-id validation. One `split("__", 2)` is the sole parse of the namespaced name; **an id containing `__` routes the call to the wrong server.** Unreachable today because ids are uuid4-derived — the moment a Creator lets people name servers, this field holds the invariant.
+  really is "dropped". It is not a fourth defect.
+  `Verify:` a contributor reading either comment before changing plan-mode gating is told
+  that MCP is filtered rather than dropped, and where the filter is — so they do not
+  "restore" a drop that would remove read-only MCP investigation from plan mode.
+  `CI:` `tests/test_mcp_plan_mode_is_filtered_not_dropped.py` (7 cases, up from 5). A
+  test that grepped the comment would be testing the file (`Law 20`), so the two new
+  cases pin what the corrected clause now claims: `plan_mode_disabled_tools()` — the list
+  the route actually adds — contains no `mcp__` name, so the route never hid MCP by
+  itself; and the union of that list with `plan_mode_blocked_mcp()`'s qualified set
+  leaves a read-only MCP tool callable while blocking the write one beside it.
+  `Depends:` nothing. — agent:`p8conn`
+- [x] **P8-42** Fix the empty-env trap: an empty env dict yields `None`, so the SDK
+  substitutes a minimal environment. **Premise corrected 2026-08-27, re-measured again
+  2026-09-19 and it holds.** **`PATH` and `HOME` are not the casualties** — both are in
+  `DEFAULT_INHERITED_ENV_VARS` and survive. Re-measured against the installed SDK: that
+  list is exactly `['HOME', 'LOGNAME', 'PATH', 'SHELL', 'TERM', 'USER']`, six names, and
+  `get_default_environment()` on this machine returns four of them. What vanishes is
+  `PYTHONPATH`, `NODE_PATH`, the npm cache location and every proxy variable, and **only
+  when the env dict is empty** — `src/mcp_manager.py:285` at `HEAD` read
+  `env={**os.environ, **env} if env else None`, and `None` is not "no overrides" to the
+  SDK, it is a request for the minimal environment. That is a narrower trap and a much
+  harder one to diagnose: a server that resolves its interpreter fine and then cannot
+  find its own packages, or cannot reach the network from behind a corporate proxy. The
+  tell that made it nearly undiagnosable is that **one unrelated variable fixes it** —
+  `{"ANYTHING": "1"}` makes the dict truthy and the whole parent environment arrives —
+  so two servers with the same command behave differently for a reason that is nowhere
+  in either config.
+  Fixed at `src/mcp_manager.py:640`: `env={**os.environ, **(env or {})}`. An empty dict
+  now means what it says. A server that sets nothing and a server that sets one key
+  inherit the same environment; an explicit override still wins.
+  `Verify:` a generated server with an empty env dict inherits the parent's `PYTHONPATH`
+  and proxy settings — driven end to end, not reasoned about: the test writes a real
+  `FastMCP` server to a temp dir, starts it through the real `McpManager` over the real
+  stdio transport with `env={}`, calls a tool on it and reads back the environment the
+  subprocess actually got.
+  `CI:` `tests/test_mcp_empty_env_still_inherits.py` (5 cases: the end-to-end inheritance
+  of `PYTHONPATH`, `HTTPS_PROXY`, `NO_PROXY`, `NPM_CONFIG_CACHE` and an arbitrary
+  sentinel for both `{}` and `None`; `PATH` and `HOME` still arriving, so the fix did not
+  trade one half of the environment for the other; an explicit override still winning;
+  and one case that states the SDK's behaviour as a fact, so the day the premise expires
+  is loud rather than silent). Mutation-checked: restoring the `if env else None` fails
+  3 of the 5. `Depends:` nothing. — agent:`p8conn`
+- [x] **P8-43** Let `builtin_browser` auto-reconnect — the reconnect helper hard-returns
+  false for anything outside a four-entry map, despite the browser server counting as
+  built-in. A crashed Playwright server stays dead until a manual reconnect. **Done
+  2026-09-19. The map is three entries, not four.**
+  Re-measured: `_BUILTIN_SERVERS` holds `image_gen`, `rag`, `email`. `memory` was removed
+  from it by `B67` and this row's count was never updated. Everything else held.
+  `McpManager.call_tool` catches a failed call, asks `is_builtin(server_id)`, and on True
+  reconnects and retries once; `is_builtin` returns True for anything starting
+  `builtin_`, so `builtin_browser` takes that branch — and `_reconnect_builtin`
+  (`src/mcp_manager.py:691` at `HEAD`) opened with `if server_id not in _BUILTIN_SERVERS:
+  return False` against the **Python-script** map. The browser lives in
+  `_BUILTIN_NPX_SERVERS`, so a crashed Playwright subprocess answered every later call
+  with *"MCP server crashed and reconnect failed: builtin_browser"* until somebody opened
+  Settings and pressed Reconnect.
+  The cause was that "how does this built-in start" had two answers and only one of them
+  was a function. Boot built the browser's launch line inline inside
+  `register_builtin_servers._start_npx_servers` — the `_browser_mcp_args` rewrite that
+  adds `--executable-path`, `--isolated` and `--no-sandbox`, the `XDG_CACHE_HOME` /
+  `PLAYWRIGHT_BROWSERS_PATH` pair, the resolved npx binary — and the restart path could
+  not see any of it. `builtin_connect_spec` (`src/builtin_mcp.py:209`) is now the single
+  answer, covering both maps, and boot and restart both ask it (`Law 14`), so a change to
+  how the browser starts reaches the restart as well.
+  The npx cache gate is deliberately **not** repeated on the restart path: it exists so a
+  fresh install does not reach registry.npmjs.org uninvited (`Law 16`, and
+  `BROWSER_MCP_REQUIRE_CACHE`), and a server that was running a second ago is already on
+  disk. A built-in whose script has since been deleted is refused with a log rather than
+  a spawn.
+  `Verify:` a person whose browser automation has crashed mid-session asks for another
+  page and gets it — the next tool call restarts Playwright and completes, instead of
+  returning *"MCP server crashed and reconnect failed"* until they find Settings →
+  Integrations → Reconnect.
+  `CI:` `tests/test_builtin_mcp_browser_reconnects.py` (10 cases, driving the public
+  entry point: a crashed session, one failed call, a reconnect and a successful retry;
+  the restart's connect kwargs compared **field by field against the real boot path's**,
+  with `register_builtin_servers` actually run, so the two cannot drift; the three Python
+  built-ins still reconnecting; a stranger still refused; a missing script refused
+  without a spawn). Mutation-checked: making `builtin_connect_spec` forget the npx map
+  fails 3 of 10. `Depends:` nothing. — agent:`p8conn`
+- [x] **P8-44** Server-id validation. One `split("__", 2)` is the sole parse of the
+  namespaced name; **an id containing `__` routes the call to the wrong server.**
+  Unreachable today because ids are uuid4-derived — the moment a Creator lets people name
+  servers, this field holds the invariant. **Done 2026-09-19.**
+  Measured at `HEAD`: `src/mcp_manager.py:573` was the only place `mcp__<server>__<tool>`
+  was taken apart, and no code anywhere held the invariant that makes that parse correct.
+  The failure is not an error, it is a misroute, and it is shown rather than argued in
+  the test: `qualify_mcp_tool_name("a__b", "t")` and `qualify_mcp_tool_name("a",
+  "b__t")` are the same string, `mcp__a__b__t`, and the parse resolves it to server `a`
+  every time — so tools of a server named `a__b` would execute against a server named
+  `a` if one existed.
+  The invariant is held where ids enter the manager, not where they are minted:
+  `McpManager.connect_server` validates `server_id` before dispatch, so the admin route,
+  `manage_mcp add`, `scripts/pantheon-mcp`, `connect_all_enabled` on boot and the
+  built-ins all get the rule without any of them restating it (`Law 13`).
+  `validate_mcp_server_id` (`:170`) refuses the separator with a sentence that says what
+  would have happened and what to write instead, and refuses empty, whitespace-padded,
+  over-64-character and non-`[A-Za-z0-9._-]` ids on the way past. The parse itself is now
+  a named function, `split_mcp_tool_name` (`:205`), and `qualify_mcp_tool_name` (`:198`)
+  is the one spelling of the build — three inline f-strings collapsed into it — so the
+  builder and the parser cannot disagree. `maxsplit=2` stays, and the comment now says
+  why it is correct: the **server** may not hold the separator, the **tool** still may,
+  and a third-party server is free to ship a tool called `files__read`.
+  This is a validation row and it added validation only: no existing command, arg or env
+  rule was touched, and `FORBIDDEN.md` Part 2's MCP command/arg/env controls are
+  re-asserted in the same test file.
+  `Verify:` nothing changes for any server that exists today — every `uuid4[:8]` id, the
+  CLI's full `uuid4`, and all four built-in ids are accepted, pinned by a case that runs
+  200 real uuid4s through the rule — and a server registered with `a__b` as its id is
+  refused at registration with *"contains '__', which is the separator in the tool name
+  `mcp__<server>__<tool>`"* instead of silently sending its calls somewhere else.
+  `CI:` `tests/test_mcp_registration_invariants.py` (the `P8-44` half: the collision
+  demonstrated by driving `qualify_mcp_tool_name` and `split_mcp_tool_name`; the refusal,
+  asserting **no transport was opened**, with `stdio_client` and `sse_client` patched to
+  raise if reached; ten bad ids, eight good ones including all four built-ins; eight
+  malformed qualified names driven through `call_tool`). `Depends:` nothing.
+  — agent:`p8conn`
 - [~] **P8-45** Surface the **15**-entry preset catalogue (14 with setup walkthroughs) currently sitting in **420** lines of unreachable code. Its two entry points look up DOM ids no template has ever rendered. *(Re-measured 2026-08-27 by balanced-bracket parse: 15 top-level objects at `admin.js:1793-1859`. A naive `{ name:` regex returns 23 — that is exactly how the wrong figure was produced, and it is worth recording because the same regex habit produced several others in this pass.)* `Depends:` P2-20. **`Blocked:` `Law 14` — `settings.js:5000` already ships a working MCP form.** Decide whether these presets feed *that* form before building a second surface for them.
 - [x] **P8-46** Replace the single-line JSON inputs — a parse failure is caught and **silently discarded**, posting empty args and env, after which the server fails to connect for a reason nothing explains. — **done 2026-09-19. Half the premise was already fixed and the half in the headline had never been touched.** The silent discard went on 2026-09-13 with `1dc03f5`: both catches in `settings.js` and the server's `_parsed_json_field` (`routes/mcp/mcp_routes.py:206-216`) got a `return`, pinned by `tests/test_a_server_you_could_not_start_is_not_added.py`. What survived is what the headline asks for — **the inputs were still single-line JSON**, `static/js/settings.js:5624-5625`, two `<input>` elements whose placeholders (`["-y", "@modelcontextprotocol/server-filesystem"]`, `{"KEY": "value"}`) are wider than the boxes that hold them, so a person with two arguments had to write a JSON array by hand and was answered with *"Args must be valid JSON, e.g. `["-y", "pkg"]`"* in an 11px span shared with every other message on the card, 140px below the box it was about. That names the field and then repeats the format's name at somebody who has just failed to produce it: no *where*, no *what*. **And a third defect in the same handler, not in the row:** `settings.js:5686` read `r.status` and threw `data` away, so `add_server`'s own 400 `detail` — written to be read, naming the field and the shape that would have worked — rendered as **`Failed (400)`**, while the *unreachable* Admin form in the other file printed `data.detail` (`static/js/admin.js:2460`, dead since `initMcpForm` returns at `admin.js:2269` on a DOM id no template renders). Two copies of one thing, disagreeing, with the live one worse — `Law 13`. **What shipped.** `static/js/settings/mcpFields.js` (new, 959 lines) holds the field: one box per argument, one KEY/value pair per variable, `+ Add` and `×`, nothing to quote or balance; the JSON textarea is kept behind a **Paste JSON** link as a second *mode of the same field* rather than a second field (`Law 1` keeps the raw route, `Law 14` keeps it one field). A paste that will not parse is read by `readJsonTypo`, which is independent of `JSON.parse`'s message on purpose — V8 says `Unexpected token '-', "[-y, pkg]" is not valid JSON`, SpiderMonkey says `expected property name or '}' at line 1 column 2`, JavaScriptCore says neither, so an engine's sentence can be neither shown nor asserted on. Seven readings, each with a caret under the offending character and a line/column: single quotes, curly quotes from a web page or a word processor, an unquoted word (named back), a trailing comma, an unclosed string, an unbalanced bracket with both counts, and `KEY=value` shell syntax in the Env field. Entry types are checked too, which the server does not do (see the new defect below). A refusal is drawn **inside the field it is about**, `role="alert"`, `aria-invalid` on the control, and **nothing typed is ever cleared** — the mode switch refuses rather than dropping back to empty boxes. `describeServerRefusal` puts the server's own sentence on the named field, verbatim. A line under the form says `Pantheon will run: npx -y @modelcontextprotocol/server-filesystem`, live, which is the one thing nobody could work out from "Command" plus "Arguments". `Law 14` held: this is `settings.js:5481`'s form getting better, not a second form — no new surface, no new route, one changed `innerHTML` block and one changed click handler. `Verify:` someone who has never registered an MCP server, and has never written JSON, opens Settings → Integrations → + → MCP Tool Server, types `npx`, then `-y` and a package name into two boxes, reads the command line that will be run back to themselves, and gets a working server; and if they paste a config with single quotes in it they are told *"Single quotes — JSON has no single-quoted strings"* with a `^` under the quote, on the Arguments field, with their paste still in the box. `CI:` `tests/test_the_mcp_form_names_the_field_js.py` (44 cases, driven under node against the real module — no case greps a file), plus `tests/test_a_server_you_could_not_start_is_not_added.py` (17, two rewritten to the new shape and one added for the discarded `detail`). `Depends:` nothing. — agent:`p8ui`
-- [ ] **P8-47** Scaffold generator, writing to the **data volume** — the source tree is baked into the image with no bind mount, so generated servers cannot be built-ins and must register as ordinary rows with an absolute path. **That path is denied on the agent's registration path by design.** Author here; register through the admin route. **Do not weaken the command validation** — it closes a reported RCE and is pinned by 10 tests.
+- [x] **P8-47** Scaffold generator, writing to the **data volume** — the source tree is baked into the image with no bind mount, so generated servers cannot be built-ins and must register as ordinary rows with an absolute path. **That path is denied on the agent's registration path by design.** Author here; register through the admin route. **Do not weaken the command validation** — it closes a reported RCE and is pinned by 10 tests. — **done 2026-09-19. Every constraint in the row is true; all three were re-measured before a line was written, and the command validation is not merely untouched — it is now pinned from a second side.**
+  **What was there before: nothing, and the gap is the first step rather than a missing option.** `scripts/pantheon-mcp` has nine subcommands — `list`, `show`, `enable`, `disable`, `add`, `update`, `tools`, `call`, `delete` — and every one of them takes a server that already exists; the Settings form `P8-46` rebuilt asks for a Command and Arguments a person must already have. `git grep` over `src/`, `routes/`, `scripts/`, `static/` and `mcp_servers/` returns no template, no starter and no generator of any kind. So the product could manage MCP servers and could not produce one, and the step it could not do is the one where somebody who has never written an MCP server stops.
+  **The three constraints, driven rather than taken on trust.** **(1)** `docker-compose.yml:7` mounts `${APP_DATA_DIR:-./data}:/app/data` and nothing else, so a file written beside `mcp_servers/memory_server.py` is gone at the next image pull while the `mcp_servers` row pointing at it survives — the database is on the volume and the source tree is not. **(2)** `_BUILTIN_SERVERS` (`src/builtin_mcp.py:101-105`) is a fixed map of three app-root-relative script paths connected at startup, so a generated server cannot be one without editing the image; and `scripts/pantheon-deploy:379` globs `mcp_servers/*_server.py` and imports every match in a fresh interpreter as a deploy gate (`B131`'s probe), so a file dropped in there would also become a gate dependency for something the image does not carry. **(3)** A generated Python server is therefore `<interpreter> <absolute path>`, and `_validate_mcp_command` refuses **both halves** — driven 2026-09-19: `/usr/bin/python3` and `/app/venv/bin/python` each answer *"command must be a bare executable name, not a path"*, and bare `python3`/`python` answer *"…is not allowed on the agent MCP path: interpreters, runtimes, package runners, and shells can execute arbitrary code. **Register such a server via the admin route instead.**"* The validator's own last sentence is this row's instruction, which is why the module quotes it rather than paraphrasing it.
+  **So the module registers nothing at all.** `src/mcp_scaffold.py` (new, 866 lines) writes the files, starts them, and hands back the admin route's fields. `refusal_on_the_agent_path()` does not carry a copy of the rule — it calls `_validate_mcp_command` and prints what comes back, so an operator who opts a launcher in through `PANTHEON_MCP_ALLOWED_COMMANDS` gets *"Nothing — on this install manage_mcp would accept this registration"* instead of a stale sentence (`Law 13`; pinned by a test that flips the env var and watches the sentence change). Nothing in `src/agent_tools/admin_tools.py`, `routes/mcp/**` or `src/mcp_manager.py` was edited — they are read and called.
+  **"Working" is a claim, so it is checked by starting the thing.** `verify_server` connects through `McpManager.connect_server` — the method the app uses and the one `pantheon-mcp tools` uses (`Law 14`; a second launcher would be a second opinion about whether a server runs) — completes the handshake, lists the tools and disconnects. A test goes one step further and calls a generated tool through `McpManager.call_tool`, the same envelope a real turn gets: `{'stdout': "get_forecast has not been written yet. It was called with text='Tuesday'", 'stderr': '', 'exit_code': 0}`. The probe uses `asyncio.timeout` and not `asyncio.wait_for`, which was found by running it: `wait_for` wraps the call in a new Task, so `connect_server`'s `AsyncExitStack` is entered there and closed here, and anyio answered every successful run with *"Error closing MCP server …: Attempted to exit cancel scope in a different task than it was entered in"*. A test asserts that line is absent from the manager's log.
+  **Nothing it writes can be text somebody typed.** Every interpolated value goes through `json.dumps`, whose output is a double-quoted literal with no raw newline and every quote and backslash escaped, and which Python reads the way JSON writes it — so seven hostile descriptions (triple quotes, a `SERVER_NAME` reassignment, an `__import__` sandwich, CRLF, NUL and BEL, `U+2028`) each produce a module whose top-level assignments are exactly `SERVER_NAME, SERVER_DESCRIPTION, TOOLS, HANDLERS, server` and whose imports are exactly the six the template has — and the text still round-trips out of the file unchanged, because escaping that loses the text is a different bug from escaping that fails. A tool name is refused if it contains `__`, because `mcp__{server_id}__{tool_name}` is `FORBIDDEN.md` Part 1 and its sole parse is one `split("__", 2)` (`P8-44`'s invariant, held here at the only place that has ever let a person name a tool); if it would shadow the generated wiring (`call_tool`, `list_tools`, `server`, `TOOLS`, …); or if it is a Python keyword. A directory name goes through the skill store's own `slugify` (`Law 14`) and is then realpath-contained anyway, which is the guard the regex cannot give: a symlink planted in the scaffold root is refused, and a test plants one.
+  **It never overwrites.** There is no `--force`. A second run against a name that exists refuses and says so, because the only thing an overwrite here could destroy is code somebody wrote; a test appends a line to a generated server, runs the scaffold again, and asserts the bytes are unchanged. `server.py` is written `0o700` — it is about to be run as the app user and it will hold whatever the person puts in it.
+  `Verify:` **someone who has never written an MCP server types one line and gets one that runs.** `pantheon mcp-new weather --tool get_forecast` (or `scripts/pantheon-mcp-new …`) writes `<DATA_DIR>/mcp_servers/weather/server.py` and a `README.md` beside it, starts the server, completes the MCP handshake, and prints `"self_test": {"started": true, "tools": ["get_forecast"]}` above `"next"`: *Register it: Settings → Integrations → + → MCP Tool Server — Command `/usr/local/bin/python`, Arguments `/app/data/mcp_servers/weather/server.py`, Environment empty.* Those are the three boxes on the form `P8-46` rebuilt, and the form's own live line then reads back `Pantheon will run: /usr/local/bin/python /app/data/mcp_servers/weather/server.py` before they save. The generated file is three numbered sections — what it offers, what they do, and wiring labelled *"you should not need to change anything below this line"* — and every tool answers with its own argument repeated back, so the whole chain is visible before a line of their own code exists. When they ask the assistant to register it instead, it refuses, and the README they were handed already contains that exact refusal and two paragraphs on why it is deliberate. After an edit, `pantheon mcp-new weather --check` starts the file again and exits non-zero with the reason if it broke — a syntax error comes back as *"Connection closed — anything the server printed while failing went to this process's standard error, above this"*, with the interpreter's own traceback above it, because "Connection closed" alone reads like a network fault. **The shell half of that was driven end to end on 2026-09-19**, not described: the exact `pantheon-mcp add --name weather --transport stdio --command /usr/bin/python3 --args '["…/server.py"]'` line the README prints was pasted back in, and `pantheon-mcp tools <id>` then answered with `get_forecast` and its description — scaffold, register, connect, one tool, through two CLIs neither of which knows about the other.
+  `CI:` `tests/test_a_generated_mcp_server_runs.py` — **66 tests**, of which six spawn a real server. Two of them are the row's load-bearing pair and they pin the same rule from opposite sides: `_validate_mcp_command` must **refuse** the registration this scaffold produces (that test goes red the day the reported-RCE fix is weakened to make a Creator convenient), and `POST /api/mcp/servers` behind `require_admin` must **accept** it, store the absolute path and hand the manager exactly that argv. **Mutation: 16 real mutations, 16 caught** — naive quoting in place of `json.dumps`, dropping the `__` guard, dropping the reserved-name guard, dropping the realpath containment, allowing an overwrite, `0o755` on the generated file, a hardcoded refusal in place of asking the validator, a relative path in the registration, `verify_server` claiming success regardless, dropping the tool cap, dropping the duplicate check, scaffolding into the source tree instead of the volume, dropping the description cap, `wait_for` for `asyncio.timeout`, telling you to register a server that did not start, and dropping the hint about where the failure was printed.
+  **Two things the merge still needs, both in files that were not mine this hour.** (a) **The door belongs on `scripts/pantheon-mcp` as a `new` subcommand, not beside it** (`Law 14`): `scripts/pantheon-mcp-new` is 43 lines of argv and an exit code over `mcp_scaffold.main`, so folding it in is moving `_build_parser`'s arguments onto a `sub.add_parser("new")`. (b) `scripts/pantheon:66` reads `re.sub(r"^pantheon-\w+\s*—\s*", "", first)`, and `\w` excludes `-`, so the dispatcher's listing prints `mcp-new    pantheon-mcp-new — make a working MCP server…` with the name twice. One character (`\w+` → `[\w-]+`) fixes it for every hyphenated subcommand; `mcp-new` is the first one this repo has had, which is why nobody has seen it. Filed as `B`-rows rather than edited. `Depends:` nothing. — agent:`p8scaffold`
 - [ ] **P8-48** Tool schema editor + `readOnlyHint` / `destructiveHint` annotation UI. The schema is already carried end-to-end and nothing edits it; `manage_mcp list_tools` drops it entirely, so the LLM cannot see a tool's parameters through its own tool. — **read half shipped 2026-09-19; the editor and the annotations are blocked on `src/**` and stay open.** **Premise re-measured and it is three claims, of which two hold and one does not.** `input_schema` *is* carried end to end: `McpManager.get_all_tools` (`src/mcp_manager.py:606-622`) copies it onto every entry and `GET /api/mcp/servers/{id}/tools` (`routes/mcp/mcp_routes.py:415-433`) returns those entries unchanged — and `grep -rc input_schema static/` returned **0**, so no frontend file had ever read it. `manage_mcp list_tools` does drop it: `src/agent_tools/admin_tools.py:360-367` projects `{name, server, description[:100]}` and nothing else, so the LLM cannot see a parameter list or even the `mcp__<id>__<tool>` name through its own tool. **`annotations` is not carried end to end at all** — it is captured at both connect sites (`src/mcp_manager.py:217` stdio, `:286` SSE) and read by `mcp_tool_is_readonly` (`:108-133`), and `get_all_tools` does **not** copy it into the payload, so the readOnlyHint/destructiveHint half of this row cannot be *displayed*, let alone edited, from the browser today. **Shipped:** every row of the connected server's tool list now opens onto its parameters — name, type, required/optional, enum choices and the parameter's own description, required first — plus the qualified name the model actually calls (`createMcpToolRow`, `summariseSchema` in `static/js/settings/mcpFields.js`). The rows are built node by node rather than as an HTML string, which also closes a live escaping hole: `static/js/settings.js:5599` put the third-party description into `title="${esc(t.description)}"` using a **local `esc` that shadowed the canonical one** (`settings.js:5552` vs `static/js/ui.js:983`) and escaped `&` and `<` and not `"` — a description with a double quote in it closed the attribute. The shadow is deleted; there is one `esc` and it is two scopes up (`Law 14`). **Not done, and what each waits on:** the **schema editor** needs somewhere to put an override — `McpServer` (`core/database.py:576-590`) has `disabled_tools` and no per-tool column — and a route to write it; the **annotation UI** needs `annotations` on the `get_all_tools` payload before it can show anything and the same storage before it can edit. Both are `src/**` and `routes/mcp/**`, which `P8-35` is inside this hour; no route was invented here. `Verify:` (met, for the half that shipped) someone who has never read this tracker opens a connected MCP server, presses *"2 parameters, 1 required"* on a tool, and can see what that tool takes and what the model calls it — without opening devtools or the MCP server's own documentation. `CI:` `tests/test_the_mcp_form_names_the_field_js.py`, last six cases — including one that drives `McpManager.get_all_tools` and **asserts `annotations` is absent**, so it fails the day the backend half lands and this row can move. `Depends:` `P8-35`. — agent:`p8ui`
 
 # P9 · Feature surfaces
@@ -16600,19 +16823,9 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   constant is gone and the chips are stated as text-only on purpose. `Depends:` nothing. — found
   during `P8-22` — agent:`p8ui2`
 
-- [ ] **B611** **`static/js/tasks.js` has two HTML escapers that do not escape the same
-  characters, and every builder in the file picks one by habit.** Measured 2026-09-18: `_esc`
-  (`:1214`) is a DOM round-trip — `createElement('div')`, `textContent = s`, return `innerHTML` —
-  and `_escHtml` (`:3504`) is five `String.replace` calls. They differ: `_escHtml` escapes `'` to
-  `&#39;` and `_esc` does not, because the browser's serialiser leaves apostrophes alone. Both are
-  correct for a text node and only one is correct inside a single-quoted attribute, and the file
-  interpolates into both. `_showRunHistory` uses `_esc` throughout; `_renderActivityEntry` uses
-  `_escHtml` throughout; `P8-25`'s `_renderRunSteps` had to pick, and picked `_escHtml` because it
-  is the one that works without a DOM. Not merged here because the choice is not free — `_esc`'s
-  round-trip is what makes it safe against anything the serialiser knows and the replace list does
-  not — and `P8-22` and `P8-25` were already changing 400 lines of this file. `Verify:` one escaper
-  in this file, or two with a comment on each saying which contexts it is for and a test that
-  proves the difference. `Depends:` nothing. — found during `P8-25` — agent:`p8ui2`
+- [x] **B611** **`static/js/tasks.js` has two HTML escapers that do not escape the same characters, and every builder in the file picks one by habit.** Measured 2026-09-18: `_esc` (`:1214`) is a DOM round-trip — `createElement('div')`, `textContent = s`, return `innerHTML` — and `_escHtml` (`:3504`) is five `String.replace` calls. They differ: `_escHtml` escapes `'` to `&#39;` and `_esc` does not, because the browser's serialiser leaves apostrophes alone. Both are correct for a text node and only one is correct inside a single-quoted attribute, and the file interpolates into both. — **closed 2026-09-19 by `B866`'s sweep, and the row's own reasoning was half right.** The difference is not only `'`: the serialiser leaves `"` alone as well, which the row's sentence implies and does not say, and **all three of `_esc`'s attribute sites are double-quoted** — the task-name field (`:1384`) and the search box (`:3586`), both holding what the user typed, and `title="${_esc(run.status)}"` (`:2141`). So the one escaper that was wrong for an attribute was the one the form and the toolbar used. `_esc` is deleted, its 10 call sites are repointed, and the survivor is `uiModule.esc` with `String(…)` in front of it so a `0` still renders as `0` rather than as the empty string `esc`'s own `(s || '')` gives it — 54 call sites, one escaper. The row's alternative ending ("or two with a comment on each saying which contexts it is for") was not taken, because the round-trip's claimed advantage — "safe against anything the serialiser knows and the replace list does not" — is the opposite of true in an attribute, which is where this file's risk is.
+  **And the reason nothing had caught it is worth recording separately**: `tests/test_the_palette_moves_to_the_server_js.py`'s `ui.js` stub answered `esc` with `String(s)` — a pass-through — so `test_a_command_in_a_step_cannot_close_the_element_it_is_drawn_in` was green only because `tasks.js` kept its own five replaces. The moment `_escHtml` became a delegation the stub turned the escaping off underneath the test that asserts it and the test went red, which is the right way round. That stub now **lifts** `ESC_MAP` + `esc` out of the shipped file rather than restating them.
+  `Verify:` a task named `x" onfocus=… y="` opens in the edit form as a name in a box rather than as three extra attributes on the input. `CI:` `tests/test_one_html_escaper_js.py::test_a_quote_in_a_task_name_does_not_open_an_attribute_in_the_form` drives the real `_showForm` through the shared sandbox and parses what it emitted with `html.parser`. `Depends:` nothing. — found during `P8-25` — agent:`p8ui2` — closed by agent:`p8canvas`
 
 - [ ] **B612** **A tool's output is silently truncated on one of the two step-log paths and
   marked on the other.** `TaskScheduler._record_run_step` (`src/task_scheduler.py:796-799`) cuts
@@ -18114,53 +18327,113 @@ this is the same thing happening to the row that corrected the store.
   `tests/test_mcp_update_keeps_its_id.py::test_delete_then_add_mints_a_new_id_and_loses_the_disabled_list`.
   `Depends:` nothing. — found by `P8-35` — agent:`p8core`
 
-- [ ] **B865** **`env` and `args` entry types are never checked, and a pydantic traceback is what the
-  operator is shown.** Found 2026-09-19 while building `P8-46`.
-  `_parsed_json_field` (`routes/mcp/mcp_routes.py:206-216`) asserts the **container** type and
-  nothing about what is in it. Driven: `McpManager.connect_server(..., env={'PORT': 3000})` stores
-  the server and then fails with `status: error` and
-  `error: "1 validation error for StdioServerParameters\nenv.PORT\n  Input should be a valid string
-  [type=string_type, input_value=3000, input_type=int]\n  For further information visit
-  https://errors.pydantic.dev/..."` — a library's internal validation message, with a URL to that
-  library's documentation, presented to the operator as *this server's connection error*.
-  `P8-46` now catches it in the browser, which is where it is most likely to happen. The server
-  still accepts it from the CLI, the agent's `manage_mcp` and any other client, so the browser fix
-  is a courtesy and not the guard. **The check belongs beside the container check**, in one place.
-  `Verify:` `POST /api/mcp/servers` with a non-string env value is refused with a sentence naming
-  the key, before anything is stored; and no pydantic message reaches a response body.
-  `Depends:` nothing. — found by `P8-46` — agent:`p8ui`
+- [x] **B865** **`env` and `args` entry types are never checked, and a pydantic traceback
+  is what the operator is shown.** Found 2026-09-19 while building `P8-46`; **done
+  2026-09-19. One cite in the row had gone stale and the defect had not.**
+  `_parsed_json_field` is at `routes/mcp/mcp_routes.py:134-144` at `HEAD`, not
+  `:206-216` — `P8-35` lifted it out of `add_server`'s body an hour before this row was
+  written and the cite was not re-measured. The behaviour was exactly as recorded:
+  the function asserted the **container** type and nothing about what was in it, so
+  `POST /api/mcp/servers` with `env={"PORT": 3000}` stored the row and then failed the
+  connect with pydantic's internal message for `StdioServerParameters` —
+  `env.PORT / Input should be a valid string [type=string_type, input_value=3000,
+  input_type=int]`, ending in a link to pydantic's documentation — presented to the
+  operator as *this server's connection error*, after the form had said it worked.
+  **The check is now beside the container check, and it is one rule with three callers**
+  (`Law 13`). `validate_mcp_args` / `validate_mcp_env` / `validate_mcp_launch_fields`
+  live in `src/mcp_manager.py:244-284`, next to the code that actually spawns the
+  process. `_parsed_json_field` (`routes/mcp/mcp_routes.py:148`) calls them, so the
+  browser and any HTTP client are refused **before anything is stored and before
+  anything is spawned**; `McpManager.connect_server` calls them, so a row that predates
+  this — or arrives through a client that does not use the route — still gets a sentence
+  rather than a traceback; and `_validate_mcp_command`
+  (`src/agent_tools/admin_tools.py:196`, the `manage_mcp` path) calls them too, where
+  args entries were checked with a vaguer message and env **values were not checked at
+  all**. The sentence names the field by its own subscript and shows the fix:
+  `env["PORT"] must be a string, got number (3000). Environment variables are always
+  text — quote it: "3000".`
+  `FORBIDDEN.md` Part 2 held: nothing in the command allowlist, the code-execution-flag
+  list, the URL-scheme list, the shell-metacharacter rule, the path rule or
+  `_MCP_DANGEROUS_ENV` was relaxed to make room, the allowlist still runs **first**, and
+  a case asserts each of those seven still fires.
+  `Verify:` an operator pastes `{"PORT": 3000}` into the Env field and is told
+  *`env["PORT"] must be a string, got number (3000)`* with no server added and no
+  process started — instead of being told the server was added and then shown a pydantic
+  validation error with a link to pydantic's docs.
+  `CI:` `tests/test_mcp_registration_invariants.py` (40 cases; six bad-entry shapes
+  driven through the real `POST /api/mcp/servers` endpoint asserting the refusal, the
+  empty DB and the un-called manager; one asserting no pydantic string — `pydantic`,
+  `StdioServerParameters`, `validation error`, `type=string_type`, `https://errors.` —
+  reaches a response body; one asserting good values of every awkward shape still pass).
+  Mutation-checked: removing the entry check from the route fails 7, removing it from
+  `connect_server` fails 2. `Depends:` nothing. — found by `P8-46` — agent:`p8conn`
 
-- [x] **B866** **A local `esc` shadowed the canonical one, in the one function that put third-party
-  text into an HTML attribute.** Found and fixed 2026-09-19 while building `P8-48`'s read half.
-  `static/js/settings.js:5552` defined `s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')`
-  **inside `showMcpForm`**, shadowing the module's own import at `settings.js:74` of
-  `static/js/ui.js:983`, which escapes `& < > " '`. Sixty lines below, at `:5599`, the shadowed one
-  was used as `title="${esc(t.description)}"` — an **attribute**, holding a tool description that
-  comes from a third-party MCP server. A description containing `"` closed the attribute.
-  Two escapers, one of them worse, and the worse one winning in the single place the better one
-  was needed: `Law 14` in four lines. The shadow is deleted and the tool rows are built node by
-  node rather than as an HTML string, so there is nothing left to escape at that site.
-  `Verify:` a tool whose description contains `"` renders as text; `tests/test_the_mcp_form_names_the_field_js.py`
-  drives the real module under node with such a description. **The pattern is worth a sweep** — a
-  local `esc`/`escapeHtml` shadowing `ui.js`'s is invisible to every test that checks the canonical
-  one. `Depends:` nothing. — found by `P8-48` — agent:`p8ui`
+- [x] **B866** **A local `esc` shadowed the canonical one, in the one function that put third-party text into an HTML attribute.** Found and fixed 2026-09-19 while building `P8-48`'s read half. `static/js/settings.js:5552` defined `s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')` **inside `showMcpForm`**, shadowing the module's own import at `settings.js:74` of `static/js/ui.js:983`, which escapes `& < > " '`. Sixty lines below, at `:5599`, the shadowed one was used as `title="${esc(t.description)}"` — an **attribute**, holding a tool description that comes from a third-party MCP server. A description containing `"` closed the attribute. Two escapers, one of them worse, and the worse one winning in the single place the better one was needed: `Law 14` in four lines. The shadow is deleted and the tool rows are built node by node rather than as an HTML string, so there is nothing left to escape at that site. `Verify:` a tool whose description contains `"` renders as text; `tests/test_the_mcp_form_names_the_field_js.py` drives the real module under node with such a description. **The pattern is worth a sweep** — a local `esc`/`escapeHtml` shadowing `ui.js`'s is invisible to every test that checks the canonical one. `Depends:` nothing. — found by `P8-48` — agent:`p8ui`
+  — **the sweep ran 2026-09-19 and the pattern is bigger than the row guessed: 19 local definitions across 17 files, and the worst class of them was not a shadow at all.**
+  **Seven were the same DOM round-trip** — `createElement('div')`, `textContent = s`, `return innerHTML` — at `gallery.js:3141`, `tasks.js:1214`, `emailInbox.js:1137`, `research/panel.js:1207`, `emailLibrary/utils.js:28`, `emailLibrary/signatureFold.js:27` and `settings.js:3550`. `emailLibrary/utils.js`'s comment claimed it "handles all the entities that matter for innerHTML". **It does not.** The HTML fragment serialiser escapes `&`, `<`, `>` and U+00A0 in a **text node** and leaves `"` and `'` alone, because a text node does not need them. Measured against a real parser rather than read off the spec: `a"b'c<d>e&f` comes back `a"b'c&lt;d&gt;e&amp;f` from the round-trip and `a&quot;b&#39;c&lt;d&gt;e&amp;f` from `ui.js:esc`; and `x" onerror=BOOM y="` fed through each into `<img alt="…">` parses to **three attributes** (`alt`, `onerror`, `y`) from the round-trip and **one** from the canonical one.
+  **Where those seven reached an attribute, with counts.** `gallery.js` at **20** sites, including `alt="${_esc(img.prompt)}"` (`:1283`, `:1465`) and `value="${_esc(img.prompt || '')}"` (`:1477`) — the prompt the user typed, so a prompt with a `"` in it was a live attribute injection with no third party involved. `tasks.js` at **3**: the task-name field (`:1384`), the run-status title (`:2141`) and the search box (`:3586`). `emailInbox.js` at `:77`/`:79`: `data-calendar-event-uid="…"`, `data-email-filter-tag="…"` and `title="Show … emails"`, where the tag is derived from a third-party message. `research/panel.js` at `:960`: `src="…"`, a thumbnail URL that came back from a search result. The other three reach text nodes only.
+  **Four more were weaker for a different reason.** `document.js:10876`'s `_escHtml` escaped `& < >` and not `"`, and `:3434` interpolates it into `src="…"` for an email attachment thumbnail — same defect, different spelling. `document.js:9932` escaped `& < >` (text nodes only). `document.js:8914` escaped `& < > "` and not `'` — and is also handed to `documentLibrary.js` as `config.esc` (`document.js:163`), so it was two files' escaper. `emailLibrary.js` carried the **same** `& < "` lambda three times (`:3328`, `:3998`, `:4152`); its two attribute sites (`:3350`, `:3351`) are double-quoted and it does escape `"`, so it was not injectable where it stands. `runModePicker.js:47` escaped `& < > "` and not `'`, and `:85` builds `data-mode="…"`.
+  **Five were exact copies of the canonical five and are duplicates rather than defects**: `assistant.js:116` (11 attribute sites), `signature.js:18` (3), `slashAutocomplete.js:193` (1), `cookbookSchedule.js:27` (a classic `<script>` IIFE that cannot import) and `tasks.js:3504`.
+  **Two were neither, and the measurement contradicted the first reading.** `notes.js:516` and `emailLibrary/utils.js:54` are both called `_attrEsc`, both escape `" ' < > \`` and neither escapes `&` — which reads exactly like an attribute break-out and **is not one**: an attribute value is decoded *after* it is delimited, so a literal `&quot;` in the source stays inside the value. They are **second-stage** escapers: `notes.js:537` and `emailLibrary/utils.js:76` escape the whole string with `_esc` first and then call `_attrEsc` on a href cut out of the result, so escaping `&` again would turn `?a=1&amp;b=2` into `?a=1&amp;amp;b=2` — which `tests/test_email_linkify_security_js.py` asserts against by name. Changed, then changed back with the reason written into both files, which is the honest outcome of a measurement that disagreed with the hypothesis.
+  **What shipped.** Every escaper weaker than canonical now routes through the one implementation; the five exact copies and the two second-stage ones are left alone and documented. `static/js/util/escapeHtml.js` (new, 41 lines) is where the implementation lives, because "use the canonical one" and "stay a leaf" were in genuine conflict: `ui.js` imports six modules, and `emailLibrary/utils.js` says at the top of the file that it is safe to import anywhere — three test files import it directly and one loads it from a `data:` URL, which has no base to resolve a relative import against. `ui.js` imports the leaf and re-exports it under the name it has always had, so `uiModule.esc(…)` and `import { esc } from './ui.js'` are unchanged at every one of their call sites.
+  `Verify:` a photo whose prompt contains `"` renders as a caption instead of as an extra attribute on the `<img>`; and a new local escaper added tomorrow with four characters instead of five fails a test rather than waiting for somebody to grep for it. `CI:` `tests/test_one_html_escaper_js.py` (64 cases) **discovers** every escaper definition still in `static/js/**` and then **runs each one** under node against hostile input, puts the result in a real HTML attribute and parses it with `html.parser` — no case reads a file for a fix. It covers `static/js/skills.js:22` too, which this agent does not own and did not touch. Four mutations on `tasks.js` alone, all caught, including through the full-module drive of `_showForm`. — swept by agent:`p8canvas`
 
-- [ ] **B867** **`manage_mcp list_tools` gives the model no parameters and no callable name.** Found
-  2026-09-19 while re-measuring `P8-48`.
-  `src/agent_tools/admin_tools.py:360-367` projects each tool to `{name, server, description[:100]}`.
-  `input_schema` is carried the whole way to that point — `McpManager.get_all_tools`
-  (`src/mcp_manager.py:606-622`) copies it onto every entry — and is dropped here, so **the agent
-  cannot see what a tool takes through its own tool**, and cannot see the `mcp__<id>__<tool>` name
-  it would have to call either. It is the `P8-17`/`B66` shape once more: a register the model reads
-  that is narrower than the register the product holds.
-  `annotations` is a separate and worse case: it is captured at both connect sites
-  (`src/mcp_manager.py:217` stdio, `:286` SSE), read by `mcp_tool_is_readonly` (`:108-133`), and
-  **never copied into the `get_all_tools` payload at all** — so no consumer above the manager can
-  see a tool's `readOnlyHint` or `destructiveHint`. That one line is what `P8-48`'s annotation UI
-  waits on, and `tests/test_the_mcp_form_names_the_field_js.py` already asserts the absence so the
-  day it lands is visible.
-  `Verify:` `manage_mcp list_tools` returns the parameter list and the qualified name; a test drives
-  the tool rather than reading the projection. `Depends:` nothing. — found by `P8-48` — agent:`p8ui`
+- [x] **B867** **`manage_mcp list_tools` gives the model no parameters and no callable
+  name.** Found 2026-09-19 while re-measuring `P8-48`; **done 2026-09-19, premise
+  re-measured first and both halves held exactly.**
+  Measured by calling the tool, not by reading it. A manager holding one tool with a
+  two-property schema and `readOnlyHint: true`, asked
+  `do_manage_mcp('{"action":"list_tools"}')`, answered:
+  `{"response": "1 MCP tools available", "tools": [{"name": "read_file", "server":
+  "Files", "description": "Read a file from disk and return the conte"}]}` — three keys,
+  projected at `src/agent_tools/admin_tools.py:365-366` at `HEAD`, with the description
+  cut at 100 characters and **no marker**, so half a sentence read as a whole one.
+  Missing from it: `mcp__srv1__read_file`, the name the model has to emit to call the
+  thing; the parameters, which `McpManager.get_all_tools` had already copied onto the
+  entry and this line dropped; and any read/write signal at all.
+  The `annotations` half was measured the same way and is worse. `get_all_tools`
+  (`src/mcp_manager.py:757-773` at `HEAD`) returned entries whose keys were exactly
+  `description, input_schema, is_disabled, name, qualified_name, server_id, server_name`.
+  `annotations` is captured at `:308` (stdio) and `:377` (SSE) and read by
+  `mcp_tool_is_readonly`, and it stopped there: **no consumer above the manager could
+  see a tool's `readOnlyHint` or `destructiveHint`**, which is what `P8-48`'s annotation
+  UI was blocked on.
+  **What shipped.** `get_all_tools` (`src/mcp_manager.py:1108`) now carries
+  `annotations` — normalised to plain JSON by `_normalize_annotations` (`:322`), because
+  the SDK hands back a pydantic model and this value goes on the wire — and beside it
+  `is_readonly`, the manager's own plan-mode verdict. Shipping the verdict as well as the
+  evidence is deliberate: a consumer that re-derived read-only-ness from the annotation
+  alone would be a second, worse copy of `mcp_tool_is_readonly` that disagreed with the
+  actual gate for every server that advertises nothing (`Law 13`).
+  `list_tools` (`src/agent_tools/admin_tools.py:392`) now returns `qualified_name`,
+  `server_id`, `parameters`, `read_only`, `annotations` when the server gave any, and
+  `disabled` when it is. The parameter list comes from `summarize_tool_parameters`
+  (`src/mcp_manager.py:137`), and that is the `Law 14` part: `_format_mcp_params` (the
+  system prompt's `Args (JSON): {...}` hint) and `summarize_tool_parameters` are two
+  renderings of **one read**, `_read_schema_params` (`:73`), so the cap
+  (`_MCP_PARAM_MAX`), the `_sanitize_schema_token` hardening from issue #2660 and every
+  schema quirk are handled once and the model can never be told one thing about a tool
+  in its prompt and another in the answer to its own tool call. The structured form adds
+  the parameter's own `description` and its `enum` choices, which are the two fields
+  that decide a call. Descriptions are cut at 240 now, with a `…` so truncation is
+  visible. Because a stock install with the browser built-in is already ~25 tools,
+  `list_tools` also takes `server_id` (matched against the id or the server name) and
+  `tool`, and the unfiltered response **says so in its own text** — the tool teaches the
+  narrowing rather than relying on a schema file this agent does not own.
+  `Verify:` an operator asks the assistant *"what can my MCP servers actually do"*, and
+  the assistant can now name a tool's qualified name, list its parameters with types and
+  required-ness, and say whether plan mode will let it run — none of which it could see
+  through `manage_mcp` before, at any prompt.
+  `CI:` `tests/test_mcp_tool_register_for_the_model.py` (8 cases, driving
+  `do_manage_mcp` and `McpManager`; one feeds every returned `qualified_name` straight
+  back into `call_tool` and asserts the routing, so the two spellings cannot drift; one
+  pins a 40-property hostile schema to `_MCP_PARAM_MAX` with the omitted count reported),
+  and `tests/test_the_mcp_form_names_the_field_js.py::test_the_payload_carries_the_schema_and_now_the_annotations`
+  — the case that deliberately asserted the absence, **inverted rather than deleted**, so
+  the payload `P8-48`'s browser half is built on stays pinned. Mutation-checked: dropping
+  `qualified_name` from the projection fails 2 of 8; dropping `annotations` at capture
+  fails 6 of the 20 transport cases. `Depends:` nothing. — found by `P8-48`
+  — agent:`p8conn`
 
 - [ ] **B868** **On a stock install the model's skill catalogue is empty — all 286 bundled skills are
   invisible to `index_for`.** Found 2026-09-19 while re-measuring `P8-20`.
@@ -18191,3 +18464,163 @@ this is the same thing happening to the row that corrected the store.
   that does not move a threshold for everybody else's skills too.
   `Verify:` a stock install retrieves a bundled skill for a natural query at the shipped floor.
   `Depends:` `B590`, `B868`. — found by `P8-20` — agent:`p8skills`
+
+- [ ] **B870** **The same product mints two MCP server id shapes depending on which door you came
+  in.** Found 2026-09-19 while building `P8-44`.
+  Three sites mint an id and two of them disagree: `routes/mcp/mcp_routes.py:229` and
+  `src/agent_tools/admin_tools.py:267` use `str(uuid.uuid4())[:8]` — eight hex characters —
+  and `scripts/pantheon-mcp:150` uses the whole `str(uuid.uuid4())`, thirty-six. Both satisfy the
+  id rule `P8-44` just added, so nothing is broken **today**; that is the whole shape of `Law 13`.
+  Anything that assumes an eight-character id — a column width, a log-line format, a truncating
+  index, a test fixture — is right for two callers and wrong for the third, and it will be found
+  by whoever registers their first server from the CLI rather than by anyone reading this.
+  One place mints an id and the other two call it. `Verify:` a server added through the route, the
+  agent tool and the CLI comes back with the same id shape, asserted by driving all three.
+  `Depends:` nothing. — found by `P8-44` — agent:`p8conn`
+
+- [ ] **B871** **`manage_mcp`'s function schema does not mention the two filters the tool now
+  takes.** Found 2026-09-19 while building `B867`.
+  `B867` gave `manage_mcp list_tools` a `server_id` narrowing and a `tool` filter, and the schema
+  the model reads — `src/tool_schemas.py:826-833`, with the XML-path one-liner at
+  `src/agent_loop.py:1031` — describes neither. The capability exists and is undiscoverable, which
+  is `B66`'s shape exactly: the agent was ordered to use `manage_rag` while the parser dropped
+  every call. Here the calls work and nothing tells the model they are available, so `list_tools`'
+  own response text is teaching them instead — a workaround, and it should not be the register.
+  `check-tool-surface.py` already knows a tool name must be in every register; this is the same
+  rule one level down, at the argument.
+  `Verify:` the schema names both filters and a test drives `manage_mcp` rather than reading the
+  schema (`Law 20`). `Depends:` nothing. — found by `B867` — agent:`p8conn`
+
+- [ ] **B872** **Mermaid is initialised `theme: 'dark'` for all sixteen palettes, and four of them
+  are light.** Found 2026-09-19 while building `P8-34`.
+  `static/js/markdown.js:94`, called once by `ensureMermaid` (`:90`), pins the dark theme for every
+  diagram this product draws. Four shipped palettes are light — `light`, `paper`, `lavender`,
+  `cute` (`static/js/theme.js:15,18,25,30`) — so on those, every diagram in chat, in the document
+  preview and in the slash preview draws light strokes and light labels onto a near-white panel.
+  `P8-34`'s workflow diagram works around it per-diagram with a `%%{init:…}%%` directive chosen
+  from `color-scheme`, which `theme.js:292` already writes; the three older callers do not, and a
+  per-caller workaround is not the fix.
+  **Not fixed where it was found, and the reason is a second finding:**
+  `tests/harness/mermaid_diagram_parse.js` lifts that config out of the source with
+  `new Function('return ' + literal)`, so replacing the literal with a variable breaks the harness.
+  The harness has to learn to read a computed config before the config can be computed.
+  `Verify:` on each of the sixteen palettes a rendered diagram's strokes and labels meet contrast
+  against the panel they sit on. `Depends:` nothing. — found by `P8-34` — agent:`p8canvas`
+
+- [ ] **B873** **`P8-28`'s failure branch has no front end at all — nobody can create an `error`
+  edge.** Found 2026-09-19 while building `P8-34`.
+  `grep -rn "else_task_id" static/` returns **nothing**. `static/js/tasks.js:1853` reads only
+  `then_task_id` and `:1923` writes only `then_task_id`. The engine understands the failure edge,
+  the API accepts it, the `task_edges` table stores it, and `P8-34`'s diagram now **draws** it —
+  and the only ways to create one are the API and the agent. A person building a workflow in the
+  browser cannot express "if this step fails, do that", which is the branch that makes a chain
+  worth building.
+  It is `B582`'s shape: a complete backend with no caller, found the moment something rendered it.
+  `Verify:` a person adds a failure branch from the task card and the diagram draws the edge they
+  just made. `Depends:` nothing. — found by `P8-34` — agent:`p8canvas`
+
+- [ ] **B874** **Ten test files stub `ui.js:esc`, and three of the stubs do not escape.** Found
+  2026-09-19 by `B866`'s sweep.
+  `B866` found nineteen local escapers in the product. The same pattern is inside the suite, and
+  there it is worse, because a stub that does not escape makes a test asserting escaping pass.
+  Three answer `esc` as a **pass-through** — `test_context_meter_js.py:159`,
+  `test_trust_ladder_js.py:318`, `test_tasks_activity_sources_js.py:43` — and the last of those is
+  exactly why `B611` survived: the palette test's stub returned its input, so a test that asserted
+  escaping was green only because `tasks.js` happened to keep its own replaces. Seven more
+  hand-write the canonical five-character escaper (`test_a_refused_call_leaves_a_trace.py:43`,
+  `test_agent_thread_card_is_one_builder.py:52`, `test_the_approved_action_looks_approved.py:45`,
+  `test_the_command_is_copyable.py:37`, `test_the_error_stream_survives.py:42`,
+  `test_the_full_arguments_are_reachable.py:50`, `test_the_independent_check_is_visible.py:42`) —
+  correct today and a tenth copy to drift.
+  One was fixed in `B611`'s change. The rest want one helper that lifts the real implementation,
+  which is what that fix does and what the other nine should call.
+  `Verify:` no test file defines an `esc` that differs from `ui.js`'s, and a test proves the stub
+  escapes by driving it. `Depends:` nothing. — found by `B866` — agent:`p8canvas`
+
+- [ ] **B875** **`notes.js:_attrEsc` has two contracts and one implementation.** Found 2026-09-19 by
+  `B866`'s sweep.
+  `static/js/notes.js` calls `_attrEsc` from two places with different inputs. At `:537` it is
+  handed text that has already been escaped, where omitting `&` is **correct** — an attribute value
+  is decoded after it is delimited, so escaping `&` twice would render `&amp;quot;`. At `:1968` it
+  is handed raw text, where omitting `&` means a todo whose title contains the literal characters
+  `&quot;` draws as `"` in `title` and `data-agent-title`.
+  This is fidelity, not injection, and it is measured rather than assumed — `B866` changed both
+  second-stage escapers, watched the linkify test go red, and changed them back with the reasoning
+  written into both files. The fix is two named helpers, not one with a comment.
+  `Verify:` a note whose text contains `&quot;` renders those six characters. `Depends:` nothing.
+  — found by `B866` — agent:`p8canvas`
+
+- [ ] **B876** **`js_function` cannot extract a function whose body contains a regex holding a
+  quote — including `esc` itself.** Found 2026-09-19 by `B866`'s sweep.
+  `js_function(ui_src, "export function esc")` raises `unbalanced braces`. `_js_skip` has no
+  regex-literal state, so it reads the `'` inside `/[&<>"']/g` as the start of a string and never
+  finds the end. That helper is **the repository's own `Law 20` option two** — the recommended way
+  to scope a JavaScript assertion to one function — and it cannot open the one function this
+  fortnight's sweep is about. `B840`'s neighbour: a helper whose failure mode is a wrong scope
+  rather than an error is worse, and this one at least raises.
+  `Verify:` `js_function` extracts `esc` from `static/js/ui.js`, and a case pins a regex containing
+  each of `'`, `"`, `` ` `` and `/`. `Depends:` nothing. — found by `B866` — agent:`p8canvas`
+
+- [x] **B877** **A `.gitignore` rule meant for one directory was matching at every depth, and it
+  silently untracked a new module.** Found and fixed 2026-09-19 while building `P8-34`.
+  `.gitignore:90` read `tasks/`, unanchored, which git matches at any depth. `P8-34`'s new
+  `static/js/tasks/workflowDiagram.js` was therefore ignored — `git status --ignored` reported
+  `!! static/js/tasks/` — and the module would have been absent from the patch with nothing failing
+  locally, because every test imported it from disk. Anchored to `/tasks/`; it was the only
+  `tasks/` directory in the tree, so nothing else changed.
+  The general hazard is that this class is invisible to the suite and to the gate: a file that is
+  never added is a file no checker sees. `Verify:` `git check-ignore -v static/js/tasks/` reports
+  nothing, and the module is tracked. `Depends:` nothing. — found by `P8-34` — agent:`p8canvas`
+
+- [x] **B878** **The Mermaid harness had never parsed a diagram containing a node label.** Found and
+  fixed 2026-09-19 while building `P8-34`.
+  `tests/harness/mermaid_diagram_parse.js` stubs DOMPurify, and DOMPurify returns an object with no
+  `sanitize` method unless `document.nodeType === 9`. The shim had no `nodeType`, so
+  `flowchart TD\n n0[hi]` came back `ao.sanitize is not a function`. The harness's own three cases
+  passed because **not one of them has a label** — the valid ones are bare node ids and the invalid
+  one is meant to fail. So a harness for checking diagrams could not check a diagram anybody would
+  write, and its green run said otherwise. One line; the `broken` case still fails as it should.
+  `Verify:` the harness parses a labelled flowchart and still rejects `broken`. `Depends:` nothing.
+  — found by `P8-34` — agent:`p8canvas`
+
+- [ ] **B879** **Testing a skill twice destroys the first result — the second, unrecorded blocker on
+  `P8-09`.** Found 2026-09-19 while re-measuring `P8-09`.
+  There is **one job slot per `(owner, skill_name)`**: `_skill_test_jobs[key] = {…}` at
+  `routes/skills_routes.py:1599` is unconditional, and `:1591` hand-denies the previous job's
+  approval on the way past. Driven through the real route: post a test, park `appr-1` and a
+  `needs_work` verdict, post the same skill again — the second call consumed
+  `[('appr-1', 'deny')]`, `/test-status` then answered `verdict: None, approval: None`, and one job
+  slot remained. So even with `_run_skill_test_once`'s own destructive deny fixed
+  (`routes/skills_routes.py:744-749`, still present and re-measured today), the **before** half's
+  result is gone by the time the **after** half starts, which is the entire content of `P8-09`.
+  `P8-09`'s tracker entry named `P8-10` as its blocker and that was never right; the row now says
+  so. This is the other half.
+  `Verify:` two runs of the same skill coexist long enough to be compared, and neither denies the
+  other's approval. `Depends:` nothing. `Unblocks:` `P8-09`. — found by `P8-09` — agent:`p8scaffold`
+
+- [ ] **B880** **Every shutdown logs a failed close, and the stack's cleanups are skipped.** Found
+  2026-09-19 while building `P8-47`.
+  `connect_all_enabled` (`src/mcp_manager.py:524-529`) connects inside child tasks and
+  `disconnect_all` closes from the parent, so anyio refuses the `AsyncExitStack` exit: driven, a
+  child-task connect followed by a parent close logs
+  `WARNING … Error closing MCP server s1: Attempted to exit cancel scope in a different task than
+  it was entered in`, while a same-task control is silent. The impact is bounded and was measured
+  rather than assumed — the subprocess still dies (one process while connected, zero after) — but
+  every cleanup registered on that stack is skipped, and the warning fires on **every** shutdown,
+  which is how a real one would be missed.
+  The same defect appeared in the probe written for `P8-47` and was fixed there with
+  `asyncio.timeout` in place of `asyncio.wait_for`; the same fix applies here.
+  `Verify:` a shutdown after `connect_all_enabled` logs nothing, and a test asserts the stack's
+  cleanups ran. `Depends:` nothing. — found by `P8-47` — agent:`p8scaffold`
+
+- [ ] **B881** **The CLI dispatcher's help strips only single-segment subcommand names.** Found
+  2026-09-19 while building `P8-47`.
+  `scripts/pantheon:66` reduces each subcommand's first help line with
+  `re.sub(r"^pantheon-\w+\s*—\s*", "", first)`. `\w` does not include `-`, so a hyphenated name is
+  never stripped: `pantheon` lists `mcp-new    pantheon-mcp-new — make a working MCP server…`,
+  with the name printed twice, while every other row reads `mcp        shell wrapper for MCP…`.
+  One character — `\w+` → `[\w-]+`. `mcp-new` is this repository's first hyphenated subcommand,
+  which is why nobody has seen it, and which is why it is worth fixing before there is a second.
+  `Verify:` `pantheon` with no arguments prints one name per row for every subcommand, hyphenated
+  or not, asserted by driving the dispatcher. `Depends:` nothing. — found by `P8-47` —
+  agent:`p8scaffold`

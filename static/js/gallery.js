@@ -3138,11 +3138,15 @@ export function isGalleryOpen() {
 
 // ---- Utilities ----
 
+// `B866`'s sweep. This was a DOM round-trip — `textContent = str`, return
+// `innerHTML` — which the serialiser leaves `"` and `'` alone in, because a
+// text node does not need them escaped. Twenty of this file's call sites are
+// HTML attributes (`alt="${_esc(img.prompt)}"`, `:1283`/`:1465`, carries the
+// prompt the user typed), so a prompt with a `"` in it opened a new attribute.
+// One escaper now: `ui.js:esc`, which escapes `& < > " '`.
 function _esc(str) {
   if (!str) return '';
-  const d = document.createElement('div');
-  d.textContent = str;
-  return d.innerHTML;
+  return uiModule.esc(String(str));
 }
 
 function _humanSize(bytes) {

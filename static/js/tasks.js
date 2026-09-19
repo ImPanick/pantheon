@@ -10,6 +10,12 @@ import { makeWindowDraggable } from './windowDrag.js';
 import { topPortalZ } from './toolWindowZOrder.js';
 import { sortModelIds } from './modelSort.js';
 import { ordinalSuffix } from './util/ordinal.js';
+// `P8-34`. The graph-to-Mermaid half, kept out of this file because it is pure
+// and this file is not: the test drives it with no DOM and no stubs, and then
+// hands what it produced to the real vendored Mermaid to parse.
+import {
+  componentOf, longestChain, workflowMermaid, workflowSentence, SHAPE_WORDS,
+} from './tasks/workflowDiagram.js';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { getSettings, invalidateSettings } from './appConfig.js';
 import { PLAY_GLYPH, playIcon, stopIcon } from './icons.js';
@@ -29,6 +35,13 @@ const API_BASE = window.location.origin;
 let _open = false;
 let _tasksCascadeNext = false;   // play the domino-in entrance on the next render
 let _tasks = [];
+// `P8-34`. `GET /api/tasks` has answered `{ tasks, graph }` since `P8-26` and
+// this file read `data.tasks` and dropped the rest on the floor. The graph is
+// the nodes, the edges with a `when` on each, the condition vocabulary and the
+// engine's depth cap — everything the diagram draws, from the same query the
+// list is built from, so the two cannot disagree about what is chained.
+let _graph = { nodes: [], edges: [], conditions: [], max_depth: 0 };
+let _viewingWorkflow = null;     // task id when viewing the workflow diagram
 let _tasksFetched = false;   // first-fetch sentinel — `false` → show loading row instead of "No tasks yet"
 let _escHandler = null;
 let _viewingRuns = null; // task id when viewing run history
@@ -58,9 +71,11 @@ async function _fetchTasks() {
     const res = await fetch(`${API_BASE}/api/tasks`, { credentials: 'same-origin' });
     const data = await res.json();
     _tasks = data.tasks || [];
+    _graph = data.graph || { nodes: [], edges: [], conditions: [], max_depth: 0 };
   } catch (e) {
     console.error('Failed to fetch tasks:', e);
     _tasks = [];
+    _graph = { nodes: [], edges: [], conditions: [], max_depth: 0 };
   }
   _tasksFetched = true;
 }
@@ -1004,7 +1019,7 @@ function _renderList() {
     const builtinBadge = task.is_builtin
       ? `<span class="task-builtin-badge${task.is_modified ? ' modified' : ''}" title="${task.is_modified ? 'Built-in task — edited from its default' : 'Built-in task'}">built-in${task.is_modified ? ' · edited' : ''}</span>`
       : '';
-    titleRow.innerHTML = `${_taskIcon(task)}<span class="memory-item-title">${_esc(task.name)}</span>${_taskAiMark(task)}${builtinBadge}<span style="flex:1;"></span>${statusBadge}`;
+    titleRow.innerHTML = `${_taskIcon(task)}<span class="memory-item-title">${_escHtml(task.name)}</span>${_taskAiMark(task)}${builtinBadge}<span style="flex:1;"></span>${statusBadge}`;
 
     // ... menu button (hover to show)
     const actionsWrap = document.createElement('div');
@@ -1025,6 +1040,9 @@ function _renderList() {
       if (task.status === 'active') items.push({ label: 'Pause', icon: '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>', action: () => _doPause(task.id) });
       else if (task.status === 'paused') items.push({ label: 'Resume', icon: PLAY_GLYPH, action: () => _doResume(task.id) });
       items.push({ label: 'History', icon: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', action: () => _showRunHistory(task.id, task.name) });
+      // `P8-34`. Beside History because they are the same question asked two
+      // ways — History is what this task did, Workflow is what it is part of.
+      items.push({ label: 'Workflow', icon: '<rect x="4" y="3" width="7" height="5" rx="1"/><rect x="13" y="16" width="7" height="5" rx="1"/><rect x="2" y="16" width="7" height="5" rx="1"/><path d="M7.5 8v4h9v4"/><path d="M5.5 16v-4"/>', action: () => _showWorkflowDiagram(task.id, task.name) });
       if (task.is_builtin && task.is_modified) {
         items.push({ label: 'Revert to default', icon: '<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>', action: () => _doRevert(task.id) });
       }
@@ -1052,6 +1070,28 @@ function _renderList() {
     meta.style.cssText = 'font-size:10px;opacity:0.4;margin-top:-1px;';
     meta.textContent = metaParts.join(' · ');
     content.appendChild(meta);
+
+    // `P8-34` / `P8-00`. A chained task looked exactly like a lone one: `edges`
+    // has been on every task in this payload since `P8-26` and nothing drew it,
+    // so the only way to find out that finishing this task starts another was
+    // to open Edit and read the "Then run" dropdown. The chip says so on the
+    // card and opens the diagram; the kebab keeps the entry for anyone who
+    // goes looking there first.
+    if (_graph.edges && _graph.edges.length) {
+      const steps = componentOf(_graph, task.id).nodes.length;
+      if (steps > 1) {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'task-workflow-chip';
+        chip.title = 'Draw this workflow';
+        chip.textContent = `Part of a ${steps}-step workflow`;
+        chip.addEventListener('click', (e) => {
+          e.stopPropagation();
+          _showWorkflowDiagram(task.id, task.name);
+        });
+        content.appendChild(chip);
+      }
+    }
 
     const statusPill = titleRow.querySelector('[data-task-status-action]');
     if (statusPill) {
@@ -1127,7 +1167,7 @@ function _renderList() {
       const prev = result.length > 200 ? result.slice(0, 200) + '…' : result;
       const lr = document.createElement('div');
       lr.className = `task-lastrun task-lastrun-${variant}`;
-      lr.innerHTML = `<span class="task-lastrun-mark">${mark}</span> <span class="task-lastrun-text">${_esc(prev) || empty}</span>`;
+      lr.innerHTML = `<span class="task-lastrun-mark">${mark}</span> <span class="task-lastrun-text">${_escHtml(prev) || empty}</span>`;
       lr.title = 'Open full history';
       lr.addEventListener('click', (e) => { e.stopPropagation(); _showRunHistory(task.id, task.name); });
       detail.appendChild(lr);
@@ -1209,12 +1249,6 @@ function _btn(label, onClick) {
   b.textContent = label;
   b.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
   return b;
-}
-
-function _esc(s) {
-  const d = document.createElement('div');
-  d.textContent = s;
-  return d.innerHTML;
 }
 
 // Long-press a task card (mobile) to open its ⋮ actions menu. Hold 500ms;
@@ -1381,7 +1415,7 @@ function _showForm(existing, initTaskType, initTriggerType) {
       <p class="memory-desc">${existing?.id ? 'Update this task’s schedule, prompt, and output.' : 'Configure a prompt, research, or action to run automatically.'}</p>
     <div class="task-form" style="flex:1;overflow-y:auto;min-height:0;">
       <label class="task-form-label">Name</label>
-      <input type="text" id="task-form-name" class="task-form-input" value="${_esc(existing?.name || '')}" placeholder="${existing ? '' : 'Auto-generated if blank'}" />
+      <input type="text" id="task-form-name" class="task-form-input" value="${_escHtml(existing?.name || '')}" placeholder="${existing ? '' : 'Auto-generated if blank'}" />
 
       <label class="task-form-label">Type</label>
       <div class="task-form-toggle" id="task-form-type-toggle">
@@ -2111,7 +2145,7 @@ async function _showRunHistory(taskId, taskName) {
 
   let html = `<div class="task-history-header">
     <button id="task-history-back" class="task-btn">← Back</button>
-    <span style="font-size:13px;opacity:0.7;">${_esc(taskName)} — Run history</span>
+    <span style="font-size:13px;opacity:0.7;">${_escHtml(taskName)} — Run history</span>
   </div>`;
 
   if (runs.length === 0) {
@@ -2138,11 +2172,11 @@ async function _showRunHistory(taskId, taskName) {
       html += `<div class="task-run-item ${statusClass}">
         <div class="task-run-item-header">
           ${_statusDot(run.status)}
-          <span title="${_esc(run.status || '')}">${_esc(runStatusLabel(run.status, 'job'))}</span>
-          ${run.model ? `<span class="task-run-model" style="font-size:10px;opacity:0.5;">${_esc(run.model.split('/').pop())}</span>` : ''}
-          <span class="task-run-time" title="${run.started_at ? _esc(_relativeTime(run.started_at)) : ''}">${run.started_at ? _absoluteTime(run.started_at) : ''}</span>
+          <span title="${_escHtml(run.status || '')}">${_escHtml(runStatusLabel(run.status, 'job'))}</span>
+          ${run.model ? `<span class="task-run-model" style="font-size:10px;opacity:0.5;">${_escHtml(run.model.split('/').pop())}</span>` : ''}
+          <span class="task-run-time" title="${run.started_at ? _escHtml(_relativeTime(run.started_at)) : ''}">${run.started_at ? _absoluteTime(run.started_at) : ''}</span>
         </div>
-        <div class="task-run-result">${_esc(run.result ? (run.result.length > 300 ? run.result.slice(0, 300) + '…' : run.result) : run.error || '—')}</div>
+        <div class="task-run-result">${_escHtml(run.result ? (run.result.length > 300 ? run.result.slice(0, 300) + '…' : run.result) : run.error || '—')}</div>
         ${_renderRunSteps(run)}
       </div>`;
     }
@@ -2168,6 +2202,143 @@ async function _showRunHistory(taskId, taskName) {
       resultEl.textContent = expanded ? run.result : run.result.slice(0, 300) + '…';
     });
   });
+}
+
+// ---- Workflow diagram (`P8-34`) ----
+
+/** The words for a node's second line: what kind of step it is, and — for an
+ *  action — what that action actually does, read off `P8-22`'s palette rather
+ *  than off a table in this file. */
+function _workflowDetail(task) {
+  if (!task) return '';
+  const kind = task.task_type || 'llm';
+  if (kind === 'action') {
+    const node = _actionNode(task.action);
+    const said = (node && (node.description || node.name)) || task.action || 'Action';
+    return 'Action · ' + (said.length > 58 ? said.slice(0, 57) + '…' : said);
+  }
+  if (kind === 'research') return 'Research';
+  return 'Prompt';
+}
+
+/**
+ * `P8-34`. The view one task's workflow is drawn from.
+ *
+ * The component walk, the depth count and the Mermaid text are all in
+ * `tasks/workflowDiagram.js`, which is pure. What is here is the part that
+ * needs this file: the schedule wording (`_scheduleLabel`, one sentence for
+ * every trigger type the product has) and the action palette (`_actionNode`).
+ * Building the words here rather than there is what keeps them from existing
+ * twice — `Law 13` is the defect this phase has found most often.
+ */
+function _workflowView(taskId) {
+  const component = componentOf(_graph, taskId);
+  const byId = new Map(_tasks.map(t => [String(t.id), t]));
+  const targeted = new Set(component.edges.map(e => String(e.to)));
+  const nodes = component.nodes.map((node) => {
+    const id = String(node.id);
+    const task = byId.get(id) || null;
+    const title = node.name || (task && task.name) || 'Task ' + id;
+    // A node nothing points at is where the workflow starts, so it carries
+    // what starts it. Anything downstream is started by the arrow into it, and
+    // repeating a schedule there would say something untrue.
+    const trigger = !targeted.has(id) && task ? _scheduleLabel(task) : '';
+    const paused = task && task.status === 'paused';
+    return {
+      id,
+      title,
+      kind: (node.task_type || (task && task.task_type) || 'llm'),
+      trigger,
+      detail: node.missing
+        ? 'not in your list of tasks'
+        : (_workflowDetail(task) + (paused ? ' · paused' : '')),
+      missing: !!node.missing,
+      focus: id === String(taskId),
+    };
+  });
+  return {
+    nodes,
+    edges: component.edges,
+    depth: longestChain(component),
+    maxDepth: Number(_graph && _graph.max_depth) || 0,
+    // `theme.js:292` writes this on every palette change. Optional the whole
+    // way down because this function is also the diagram's only input, and a
+    // missing property is not a reason to refuse to draw a workflow — 'dark'
+    // is the shipped default theme (`theme.js:35`).
+    scheme: (document.documentElement?.style?.getPropertyValue?.('color-scheme') || '').trim() || 'dark',
+  };
+}
+
+/**
+ * The surface. Mirrors `_showRunHistory` exactly — set the module's viewing
+ * flag, replace the modal body, `← Back` returns to the list — because a
+ * second way of showing a per-task view would be the `Law 13` shape twice in
+ * one file.
+ *
+ * `Law 14` for the drawing itself: the `<div class="mermaid-container"><pre
+ * class="mermaid">` markup and the `markdownModule.renderMermaid(container)`
+ * call are `markdown.js`'s, the same pair a mermaid fence in a chat message
+ * goes through. Nothing here loads or initialises Mermaid.
+ */
+function _showWorkflowDiagram(taskId, taskName) {
+  _viewingWorkflow = taskId;
+  const modal = document.getElementById('tasks-modal');
+  if (!modal) return;
+  const body = modal.querySelector('.modal-body');
+  if (!body) return;
+
+  const view = _workflowView(taskId);
+  const source = workflowMermaid(view);
+  const sentence = workflowSentence(view);
+  const alone = view.nodes.length === 1;
+  const domId = 'task-workflow-' + String(taskId).replace(/[^A-Za-z0-9_-]/g, '');
+
+  // The cap is served (`build_task_graph` → `CHAIN_MAX_DEPTH`) and has never
+  // been shown to anybody, so a workflow one step from being refused looked
+  // exactly like one that was not.
+  const depthNote = (view.maxDepth && view.depth >= view.maxDepth - 1)
+    ? `<p class="memory-desc" style="margin:6px 0 0;">This chain is ${view.depth} steps long and Pantheon runs at most ${view.maxDepth}. A further step would be refused.</p>`
+    : '';
+
+  body.innerHTML = `
+    <div class="task-history-header">
+      <button id="task-workflow-back" class="task-btn">← Back</button>
+      <span style="font-size:13px;opacity:0.7;">${_escHtml(taskName || '')} — Workflow</span>
+    </div>
+    <div style="flex:1;overflow:auto;min-height:0;">
+      <p class="memory-desc" style="margin:0 0 8px;">${_escHtml(sentence)}</p>
+      <div class="mermaid-container"><pre class="mermaid" id="${_escHtml(domId)}">${_escHtml(source)}</pre></div>
+      <p class="memory-desc" style="margin:10px 0 0;font-size:11px;opacity:0.55;">
+        ${alone ? 'Nothing is chained to this task yet — open Edit and set “Then run” to add a step.'
+                : 'A solid arrow is what runs next when a step works. A dotted arrow is what runs when it fails.'}
+      </p>
+      <p class="memory-desc" style="margin:2px 0 0;font-size:11px;opacity:0.55;">${SHAPE_WORDS.map(_escHtml).join(' · ')}</p>
+      ${depthNote}
+    </div>
+  `;
+
+  document.getElementById('task-workflow-back')?.addEventListener('click', () => {
+    _viewingWorkflow = null;
+    _renderMainView();
+  });
+
+  // The vendored bundle is fetched on first use by `ensureMermaid`, so this is
+  // a promise and the `<pre>` above is what a person sees until it resolves —
+  // which is the diagram's own source text, and readable, rather than a blank
+  // box. If the render throws, `renderMermaid` warns and the text stays.
+  if (markdownModule && markdownModule.renderMermaid) {
+    markdownModule.renderMermaid(body);
+  }
+  // The palette is what turns `action` into a sentence; if it has not landed
+  // yet, fetch it and draw again rather than leaving an action node labelled
+  // with its own enum.
+  if (!_builtinActions && view.nodes.some(n => n.kind === 'action')) {
+    _fetchActions().then(() => {
+      if (_viewingWorkflow === taskId && document.getElementById('task-workflow-back')) {
+        _showWorkflowDiagram(taskId, taskName);
+      }
+    });
+  }
 }
 
 // ---- Actions ----
@@ -3501,10 +3672,16 @@ function _renderActivityEntry(entry, opts = {}) {
   `;
 }
 
+// `B611`, closed by `B866`'s sweep. This file had two escapers and every
+// builder in it picked one by habit: `_esc` (`:1214`) was a DOM round-trip,
+// which the serialiser leaves `"` and `'` alone in, and `_escHtml` was five
+// replaces. Three of `_esc`'s call sites were attributes — the task-name field
+// at `:1384` and the search box at `:3586`, both holding what the user typed,
+// and `title="${_esc(run.status)}"` at `:2141`. There is one now, and it is
+// `ui.js:esc` (`& < > " '`). `String(...)` first so a `0` still renders as `0`
+// rather than as the empty string `esc`'s own `(s || '')` would give it.
 function _escHtml(s) {
-  return String(s == null ? '' : s)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  return uiModule.esc(String(s == null ? '' : s));
 }
 
 // ---- Main view ----
@@ -3583,7 +3760,7 @@ function _renderMainView() {
           </select>
           <button class="memory-toolbar-btn" id="tasks-select-btn" title="Select tasks" style="position:relative;top:-7px;">Select</button>
         </div>
-        <input type="text" id="tasks-search" placeholder="Search tasks…" class="memory-search-input" value="${_esc(_taskSearch)}" style="position:relative;top:-4px;" />
+        <input type="text" id="tasks-search" placeholder="Search tasks…" class="memory-search-input" value="${_escHtml(_taskSearch)}" style="position:relative;top:-4px;" />
       </div>
       <div id="tasks-bulk-bar" class="memory-bulk-bar${_taskSelectMode ? '' : ' hidden'}" style="position:relative;top:-4px;">
         <label class="memory-bulk-check-all" style="position:relative;top:0px;"><input type="checkbox" id="tasks-select-all" /> All</label>

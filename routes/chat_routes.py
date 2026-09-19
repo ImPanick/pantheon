@@ -2045,7 +2045,8 @@ def setup_chat_routes(
 
         # Plan mode: investigate read-only, propose a plan, don't mutate. Block
         # every tool not on the read-only allowlist. (stream_agent_loop enforces
-        # this again + drops MCP, so this is belt-and-suspenders.)
+        # this again + filters MCP to read-only tools, so this is
+        # belt-and-suspenders.)
         if plan_mode:
             from src.tool_security import plan_mode_disabled_tools
             disabled_tools.update(plan_mode_disabled_tools())

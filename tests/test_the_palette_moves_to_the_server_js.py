@@ -62,11 +62,35 @@ pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node binary no
 # Anything else it imports is copied from `static/js/` for real by the shared
 # sandbox builder, so a dependency-free helper costs nothing.
 
+# `B866`. The stub used to answer `esc` with `String(s)` — a pass-through — so
+# `test_a_command_in_a_step_cannot_close_the_element_it_is_drawn_in` was green
+# only because `tasks.js` held its own five `String.replace` calls. The moment
+# `_escHtml` became a delegation to the one canonical escaper (`B611`), the stub
+# turned the escaping off underneath the test that asserts it and the test went
+# red — which is the right way round, and is why it is lifted now instead of
+# stubbed: `_ui_esc()` returns `static/js/ui.js`'s own two declarations, so a
+# regression in the canonical escaper reaches this file too.
+_UI_JS = ROOT / "static" / "js" / "util" / "escapeHtml.js"
+
+
+def _ui_esc() -> str:
+    """The canonical `ESC_MAP` and `esc`, lifted from the shipped file.
+
+    Not a copy: an escaper copied into a stub is the defect `B866` is about,
+    one directory over.
+    """
+    src = _UI_JS.read_text(encoding="utf-8")
+    table = re.search(r"^const ESC_MAP = \{.*?\};$", src, re.M | re.S)
+    fn = re.search(r"^export function esc\(s\) \{\n.*?\n\}$", src, re.M | re.S)
+    assert table and fn, "util/escapeHtml.js no longer declares ESC_MAP + esc as this expects"
+    return table.group(0) + "\n" + fn.group(0).replace("export function", "function")
+
+
 _STUBS = {
-    "ui.js": """
+    "ui.js": _ui_esc() + """
 export const calls = { toasts: [], errors: [] };
 export default {
-  esc: (s) => String(s == null ? '' : s),
+  esc,
   showToast: (m) => { calls.toasts.push(String(m)); },
   showError: (m) => { calls.errors.push(String(m)); },
   styledConfirm: async () => true,

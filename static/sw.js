@@ -142,7 +142,7 @@ const PRECACHE = [
   '/static/js/emailLibrary/signatureFold.js',
   '/static/js/emailLibrary/state.js',
   '/static/js/notes.js',
-  '/static/js/tasks.js?v=20260918palettesteps1',
+  '/static/js/tasks.js?v=20260919workflowdiagram1',
   '/static/js/calendar.js',
   '/static/js/calendar/utils.js',
   '/static/js/group.js',

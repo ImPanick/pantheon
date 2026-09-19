@@ -8911,8 +8911,10 @@ import { chevronIcon, playIcon } from './icons.js';
     }
   }
 
+  // `B866`'s sweep: escaped four characters, not five. Also handed to
+  // `documentLibrary.js` as `config.esc` (`:163`), so it was two files' escaper.
   function _esc(s) {
-    return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    return uiModule.esc(s || '');
   }
 
   /** Accept a suggestion — apply the edit */
@@ -9929,7 +9931,7 @@ import { chevronIcon, playIcon } from './icons.js';
         outputPanel.innerHTML = '<pre class="doc-run-error">No data — CSV is empty or unparseable.</pre>';
         return;
       } else {
-        const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const esc = s => uiModule.esc(String(s == null ? '' : s));  // `B866`: was `& < >` only
         const colCount = Math.max(...rows.map(r => r.length));
         let html = '<div class="csv-table-wrap"><table class="csv-table"><thead><tr>';
         for (let j = 0; j < colCount; j++) {
@@ -10873,8 +10875,10 @@ import { chevronIcon, playIcon } from './icons.js';
     if (extra > 0) parts.push(`<span>+${extra} more changes</span>`);
     return parts.join('<br>');
   }
+  // `B866`'s sweep: escaped `& < >` and not `"`, and `:3434` interpolates it
+  // into `src="…"` for an email attachment thumbnail.
   function _escHtml(s) {
-    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return uiModule.esc(String(s == null ? '' : s));
   }
 
   /** Load version history list */

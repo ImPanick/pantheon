@@ -26829,6 +26829,39 @@ select.task-form-input { text-overflow: ellipsis; }
   margin-bottom: 8px;
 }
 
+/* `P8-34`. The chip that says a task is part of a workflow, and opens it.
+   Deliberately NOT `var(--accent, var(--red))`: that token's site count is
+   quoted in four comments and pinned by two tests, and a chip does not need
+   the accent. `--fg` and `--border` are already every card's own colours, so
+   this reads in all sixteen palettes and moves no count. */
+.task-workflow-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 3px;
+  padding: 1px 7px;
+  font: inherit;
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--fg);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  opacity: 0.55;
+}
+.task-workflow-chip::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 1px;
+  border: 1px solid currentColor;
+}
+.task-workflow-chip:hover,
+.task-workflow-chip:focus-visible {
+  opacity: 0.95;
+}
+
 .task-runs-list { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; }
 .task-run-item {
   border: 1px solid var(--border);

@@ -166,6 +166,8 @@ The largest and most central subsystem. Chat submission → backend SSE → prog
 | **`dragSort.js`** | Drag-to-sort shared behavior. |
 | **`tourHints.js`** / **`tourAutoplay.js`** | Onboarding tour helpers. |
 | **`color/hex.js`**, **`colorPicker.js`**, **`langIcons.js`**, **`util/ordinal.js`** | Small utility modules for color, language icons, and formatting. |
+| **`util/escapeHtml.js`** | The canonical HTML escaper (`& < > " '`). `ui.js` re-exports it as `esc`, so `uiModule.esc()` is unchanged; a module that cannot afford `ui.js`'s import graph imports this leaf directly instead of keeping a weaker copy (`B866`). |
+| **`tasks/workflowDiagram.js`** | Turns `GET /api/tasks`'s `graph` document into Mermaid source and one plain sentence, for the Workflow view on a task card. Pure: no DOM, no fetch, no module state. Drawing is `markdown.js:renderMermaid` (`P8-34`). |
 
 ---
 

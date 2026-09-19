@@ -5,7 +5,7 @@
  */
 
 import spinnerModule from './spinner.js';
-import { styledConfirm, showToast, emptyStateIcon } from './ui.js';
+import { styledConfirm, showToast, emptyStateIcon, esc } from './ui.js';  // `B866`: three local `esc` lambdas escaped `& < "` and not `> '`
 import { folderDisplayName, sortedFolders } from './emailInbox.js?v=20260815approvalsave1';
 import settingsModule from './settings.js?v=20260918emptystates1';
 import * as Modals from './modalManager.js?v=20260919tidypreview1';
@@ -3325,7 +3325,6 @@ function _renderAccountsStrip() {
   const strip = document.getElementById('email-lib-accounts');
   if (!strip) return;
   strip.style.display = 'flex';
-  const esc = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
   // The 'Default' chip caused desync bugs (changing the server-side
   // default via the dot while still on the cached 'default' view would
   // open the wrong account's emails). Each account renders as its own
@@ -3995,7 +3994,6 @@ function _renderSearchPills() {
   const input = document.getElementById('email-lib-search');
   if (chipBar) chipBar.classList.toggle('has-email-lib-pills', pills.length > 0);
   if (input) input.placeholder = pills.length > 0 ? '' : 'Search by name or text';
-  const esc = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
   wrap.innerHTML = pills.map((p, i) => {
     // Filter pills render as icon-only (the icon is the affordance);
     // contact + text pills carry their label as text.
@@ -4149,7 +4147,6 @@ function _renderSearchSuggestions(items) {
   const menu = document.getElementById('email-lib-suggest');
   if (!menu) return;
   if (!items.length) { menu.style.display = 'none'; menu.innerHTML = ''; return; }
-  const esc = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
   menu.innerHTML = items.map((s, i) => {
     const highlight = i === _libSuggestionFocusIdx ? 'background:color-mix(in srgb, var(--fg) 8%, transparent);' : '';
     if (s.kind === 'filter') {

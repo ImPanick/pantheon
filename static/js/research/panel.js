@@ -8,6 +8,7 @@ import createResearchSynapse from '../researchSynapse.js';
 import spinnerModule from '../spinner.js';
 import { sortModelIds } from '../modelSort.js';
 import { chevronIcon, playIcon } from '../icons.js';
+import { esc } from '../util/escapeHtml.js';
 import { promptRunMode as openRunModePicker } from '../runModePicker.js?v=20260919chipramp1';
 
 // Rotating research textarea placeholders — pick one at random each
@@ -1204,10 +1205,11 @@ async function _chatAboutResearch(researchId, btn) {
   }
 }
 
+// `B866`'s sweep: was a DOM round-trip, which does not escape `"`. `:960`
+// interpolates into `src="…"` with a thumbnail URL that came back from a
+// third-party search result.
 function _esc(s) {
-  const d = document.createElement('div');
-  d.textContent = s || '';
-  return d.innerHTML;
+  return esc(String(s == null ? '' : s));
 }
 
 function _safeSourceHref(raw) {

@@ -513,6 +513,24 @@ async function _patchNote(id, patch) {
 // ---- Helpers ----
 
 function _esc(s) { return uiModule.esc ? uiModule.esc(s || '') : (s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+// `B866`'s sweep looked at this and left it alone, which is worth writing down
+// because it looks exactly like the defect and is not one.
+//
+// It escapes `" ' < > \`` and **not** `&`, and that is right for its main
+// caller: `_linkify` (`:537`) runs `_esc` over the whole string first and then
+// calls this on a href cut out of the already-escaped text, so escaping `&`
+// here would turn `?a=1&amp;b=2` into `?a=1&amp;amp;b=2`. Two stages, and the
+// second one must not repeat the first.
+//
+// It is not an attribute break-out either, measured rather than assumed: an
+// attribute value is decoded *after* it is delimited, so a literal `&quot;` in
+// the source stays inside the value instead of closing it.
+//
+// What it does cost is fidelity at the OTHER call sites — `:1968` passes raw
+// text (`agentMenuTitle`, `agentTitle`) rather than pre-escaped text, and there
+// a todo containing the characters `&quot;` is drawn as `"`. One function, two
+// contracts; filed rather than changed, because the two-stage caller is pinned
+// by `tests/test_email_linkify_security_js.py` and the one-stage one is not.
 function _attrEsc(s) {
   return String(s || '')
     .replace(/"/g, '&quot;')

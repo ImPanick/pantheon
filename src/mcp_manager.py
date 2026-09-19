@@ -58,6 +58,53 @@ def _sanitize_schema_token(value: Any, limit: int = _MCP_TOKEN_MAX) -> str:
     return text
 
 
+# ── One reader for a tool's input schema (`Law 14`) ────────────────────────
+#
+# Two renderings were wanted and there is exactly one read. `_format_mcp_params`
+# renders the compact prompt hint; `summarize_tool_parameters` renders the
+# structured list `manage_mcp list_tools` hands the model (`B867`). Both walk
+# `properties` / `required` through `_read_schema_params`, so the cap, the
+# sanitizer and every schema quirk are handled once and the two can never
+# disagree about what a tool takes.
+_MCP_PARAM_DESC_MAX = 160   # max chars of a parameter's own description
+_MCP_ENUM_MAX = 12          # max enum choices listed per parameter
+
+
+def _read_schema_params(input_schema: Any) -> Tuple[List[Dict[str, Any]], int]:
+    """Read an MCP tool's JSON-Schema inputs. Returns (params, omitted).
+
+    `params` preserves the schema's own property order — the prompt hint has
+    always rendered them that way and reordering here would change a prompt
+    that is already pinned. Every name, type and enum value comes from a
+    third-party server, so all of them go through `_sanitize_schema_token`.
+    """
+    if not isinstance(input_schema, dict):
+        return [], 0
+    props = input_schema.get("properties")
+    if not isinstance(props, dict) or not props:
+        return [], 0
+    required = set(input_schema.get("required") or [])
+    params: List[Dict[str, Any]] = []
+    for pname, pinfo in list(props.items())[:_MCP_PARAM_MAX]:
+        pinfo = pinfo if isinstance(pinfo, dict) else {}
+        ptype = pinfo.get("type") or "any"
+        if isinstance(ptype, list):
+            ptype = "|".join(str(x) for x in ptype)
+        entry: Dict[str, Any] = {
+            "name": _sanitize_schema_token(pname),
+            "type": _sanitize_schema_token(ptype),
+            "required": pname in required,
+        }
+        desc = pinfo.get("description")
+        if isinstance(desc, str) and desc.strip():
+            entry["description"] = _sanitize_schema_token(desc, _MCP_PARAM_DESC_MAX)
+        choices = pinfo.get("enum")
+        if isinstance(choices, list) and choices:
+            entry["enum"] = [_sanitize_schema_token(c) for c in choices[:_MCP_ENUM_MAX]]
+        params.append(entry)
+    return params, max(0, len(props) - len(params))
+
+
 def _format_mcp_params(input_schema: Any) -> str:
     """Render an MCP tool's JSON-Schema inputs as a compact prompt hint.
 
@@ -70,29 +117,300 @@ def _format_mcp_params(input_schema: Any) -> str:
     MCP servers are third-party, so names/types are sanitized and the parameter
     count + total length are capped (issue #2660); normal schemas are unaffected.
     """
-    if not isinstance(input_schema, dict):
+    params, omitted = _read_schema_params(input_schema)
+    if not params:
         return ""
-    props = input_schema.get("properties")
-    if not isinstance(props, dict) or not props:
-        return ""
-    required = set(input_schema.get("required") or [])
     parts = []
-    for pname, pinfo in list(props.items())[:_MCP_PARAM_MAX]:
-        pinfo = pinfo if isinstance(pinfo, dict) else {}
-        ptype = pinfo.get("type") or "any"
-        if isinstance(ptype, list):
-            ptype = "|".join(str(x) for x in ptype)
-        tag = f'"{_sanitize_schema_token(pname)}": {_sanitize_schema_token(ptype)}'
-        if pname in required:
+    for p in params:
+        tag = f'"{p["name"]}": {p["type"]}'
+        if p["required"]:
             tag += " (required)"
         parts.append(tag)
-    extra = len(props) - len(parts)
-    if extra > 0:
-        parts.append(f"…+{extra} more")
+    if omitted > 0:
+        parts.append(f"…+{omitted} more")
     hint = " Args (JSON): {" + ", ".join(parts) + "}"
     if len(hint) > _MCP_HINT_MAX:
         hint = hint[:_MCP_HINT_MAX - 1].rstrip() + "…"
     return hint
+
+
+def summarize_tool_parameters(input_schema: Any) -> Dict[str, Any]:
+    """Structured form of the same read, for callers that hand JSON to a model.
+
+    `{"parameters": [{name, type, required, description?, enum?}, ...],
+      "omitted": <count of properties past the cap>}`.
+    `B867`: `manage_mcp list_tools` used to project a tool to
+    `{name, server, description[:100]}`, so the model could not see what a tool
+    took through its own tool. This is what it sees instead — the same read the
+    prompt hint uses, with the parameter's own description and its enum choices
+    kept, because those are the two things that decide a call.
+    """
+    params, omitted = _read_schema_params(input_schema)
+    return {"parameters": params, "omitted": omitted}
+
+
+# ── The namespaced tool name (`P8-44`) ─────────────────────────────────────
+#
+# `mcp__<server_id>__<tool_name>` is parsed by ONE `split("__", 2)` in
+# `call_tool`, and nothing anywhere held the invariant that makes that parse
+# correct. A server id containing `__` does not fail — it ROUTES: id `a__b`
+# with tool `t` qualifies to `mcp__a__b__t`, which splits to server `a`, tool
+# `b__t`, and the call goes to a different server's session if one named `a`
+# exists. Unreachable while ids are uuid4-derived, which is exactly why it is
+# worth pinning now rather than after `P8-47` lets people name their servers.
+#
+# The invariant is held where the ids enter the manager (`connect_server`), so
+# every registration path — the admin route, `manage_mcp add`, `pantheon-mcp`,
+# the built-ins — gets the same rule without any of them restating it.
+MCP_NAME_SEPARATOR = "__"
+_MCP_SERVER_ID_MAX = 64
+_MCP_SERVER_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
+def validate_mcp_server_id(server_id: Any) -> Optional[str]:
+    """Return a sentence naming what is wrong with a server id, or None.
+
+    The hard rule is the separator; the character class is the readable form of
+    it (`_` alone is allowed, `__` is not, because one `_` cannot make two).
+    """
+    if not isinstance(server_id, str) or not server_id.strip():
+        return "server id must be a non-empty string"
+    if server_id != server_id.strip():
+        return f"server id {server_id!r} has leading or trailing whitespace"
+    if len(server_id) > _MCP_SERVER_ID_MAX:
+        return (
+            f"server id is {len(server_id)} characters; the limit is "
+            f"{_MCP_SERVER_ID_MAX}"
+        )
+    if MCP_NAME_SEPARATOR in server_id:
+        return (
+            f"server id {server_id!r} contains '{MCP_NAME_SEPARATOR}', which is "
+            "the separator in the tool name 'mcp__<server>__<tool>'. A call to "
+            "this server's tools would be parsed as a call to a different "
+            "server. Use a single underscore, a dash or a dot."
+        )
+    if not _MCP_SERVER_ID_RE.match(server_id):
+        return (
+            f"server id {server_id!r} must start with a letter or digit and "
+            "contain only letters, digits, '.', '-' and '_'"
+        )
+    return None
+
+
+def qualify_mcp_tool_name(server_id: str, tool_name: str) -> str:
+    """Build the namespaced name. One spelling, so it matches the one parse."""
+    return f"mcp{MCP_NAME_SEPARATOR}{server_id}{MCP_NAME_SEPARATOR}{tool_name}"
+
+
+def split_mcp_tool_name(qualified_name: Any) -> Optional[Tuple[str, str]]:
+    """Parse `mcp__<server_id>__<tool_name>`. Returns (server_id, tool) or None.
+
+    The sole parse, named so it can be tested and so the invariant above has
+    something to point at. `maxsplit=2` is correct **because** ids cannot hold
+    the separator; tool names still may, and the third field keeps them whole.
+    """
+    if not isinstance(qualified_name, str):
+        return None
+    parts = qualified_name.split(MCP_NAME_SEPARATOR, 2)
+    if len(parts) != 3 or parts[0] != "mcp" or not parts[1] or not parts[2]:
+        return None
+    return parts[1], parts[2]
+
+
+# ── args / env entry types (`B865`) ────────────────────────────────────────
+#
+# `StdioServerParameters` is a pydantic model with `env: dict[str, str] | None`
+# and `args: list[str]`, and it is constructed inside `_connect_stdio`'s try —
+# so a `{"PORT": 3000}` that got past the route was reported to the operator as
+# *this server's connection error*, in pydantic's own words, with a link to
+# pydantic's documentation:
+#
+#   1 validation error for StdioServerParameters
+#   env.PORT
+#     Input should be a valid string [type=string_type, input_value=3000, ...]
+#     For further information visit https://errors.pydantic.dev/...
+#
+# The rule lives here, beside the code that spawns the process, and the route
+# and the agent tool both call it — so the operator is refused before anything
+# is stored, and a row that somehow holds a bad value still gets a sentence
+# instead of a traceback.
+def _type_word(value: Any) -> str:
+    return {
+        bool: "boolean", int: "number", float: "number",
+        list: "array", dict: "object", type(None): "null",
+    }.get(type(value), type(value).__name__)
+
+
+def validate_mcp_args(args: Any) -> Optional[str]:
+    """Every argv entry must be a string. Returns a sentence, or None."""
+    if args is None:
+        return None
+    if not isinstance(args, list):
+        return f"args must be a JSON array, got {_type_word(args)}"
+    for i, entry in enumerate(args):
+        if not isinstance(entry, str):
+            return (
+                f"args[{i}] must be a string, got {_type_word(entry)} "
+                f"({json.dumps(entry, default=str)}). Arguments are handed to "
+                f"the command as text — quote it: "
+                f"{json.dumps(str(entry))}."
+            )
+    return None
+
+
+def validate_mcp_env(env: Any) -> Optional[str]:
+    """Every env key and value must be a string. Returns a sentence, or None."""
+    if env is None:
+        return None
+    if not isinstance(env, dict):
+        return f"env must be a JSON object, got {_type_word(env)}"
+    for key, value in env.items():
+        if not isinstance(key, str) or not key:
+            return f"env keys must be non-empty strings, got {_type_word(key)}"
+        if not isinstance(value, str):
+            return (
+                f'env["{key}"] must be a string, got {_type_word(value)} '
+                f"({json.dumps(value, default=str)}). Environment variables are "
+                f"always text — quote it: {json.dumps(str(value))}."
+            )
+    return None
+
+
+def validate_mcp_launch_fields(args: Any = None, env: Any = None) -> Optional[str]:
+    """Both of the above, in the order an operator reads the form."""
+    return validate_mcp_args(args) or validate_mcp_env(env)
+
+
+# ── What a server told us about itself ─────────────────────────────────────
+def _plain(value: Any) -> Any:
+    """Best-effort conversion of an SDK pydantic model to plain JSON data.
+
+    Nothing here is allowed to fail the connect. This runs on values a
+    third-party server sent us during the handshake, on whatever pydantic
+    version happens to be installed (the SDK has moved `dict` -> `model_dump`
+    and the keyword set with it), and the worst outcome of getting it wrong is
+    a status field we do not display. A raise here would instead cost the
+    operator a working MCP server, so each attempt falls through to the next
+    and the last resort is `str(value)`, which always works.
+    """
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    for attr, kwargs in (("model_dump", {"exclude_none": True, "mode": "json"}),
+                         ("dict", {"exclude_none": True})):
+        fn = getattr(value, attr, None)
+        if not callable(fn):
+            continue
+        try:
+            return fn(**kwargs)
+        except Exception:
+            # Wrong keywords for this pydantic version — try the bare call,
+            # and if that fails too, fall through to the next spelling and
+            # finally to `str()`. Deliberately silent: see the docstring.
+            pass
+        try:
+            return fn()
+        except Exception:
+            # Same reason. Not this object's serializer; keep looking.
+            pass
+    if isinstance(value, dict):
+        return {k: _plain(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_plain(v) for v in value]
+    return str(value)
+
+
+def _normalize_annotations(ann: Any) -> Optional[Dict[str, Any]]:
+    """An MCP `ToolAnnotations` as plain JSON, or None when absent/empty.
+
+    The SDK hands back a pydantic model; the tests and the built-ins hand back
+    a dict. `mcp_tool_is_readonly` has always accepted both, and now the value
+    that leaves the manager is one shape, because it goes on the wire
+    (`get_all_tools` → `GET /api/mcp/servers/{id}/tools` → the browser).
+    """
+    if ann is None:
+        return None
+    data = _plain(ann)
+    if not isinstance(data, dict):
+        return None
+    data = {k: v for k, v in data.items() if v is not None}
+    return data or None
+
+
+_MCP_INSTRUCTIONS_MAX = 2000
+# What of it goes into the system prompt. Shorter than what is kept, because
+# the prompt pays for every character on every turn and the full text stays
+# readable through `GET /api/mcp/servers` and `manage_mcp list`.
+_MCP_PROMPT_INSTRUCTIONS_MAX = 600
+
+
+def summarize_initialize_result(result: Any) -> Dict[str, Any]:
+    """Keep what `initialize` told us (`P8-38`).
+
+    The handshake was awaited and its return value dropped on the floor at all
+    three connect sites. It carries the server's OWN name and version (which is
+    not the label the operator typed into the form), the protocol version it
+    negotiated, the capabilities it advertises, and `instructions` — prose the
+    server wrote for whatever client connects, describing how its tools are
+    meant to be used. None of it was recorded anywhere, so nothing could show
+    it and the model never saw the one field written for it.
+    """
+    out: Dict[str, Any] = {}
+    if result is None:
+        return out
+    info = _plain(getattr(result, "serverInfo", None))
+    if isinstance(info, dict):
+        name = info.get("name")
+        version = info.get("version")
+        title = info.get("title")
+        if isinstance(name, str) and name.strip():
+            out["server_name"] = _sanitize_schema_token(name, 80)
+        if isinstance(version, str) and version.strip():
+            out["server_version"] = _sanitize_schema_token(version, 40)
+        if isinstance(title, str) and title.strip():
+            out["server_title"] = _sanitize_schema_token(title, 80)
+    proto = getattr(result, "protocolVersion", None)
+    if isinstance(proto, str) and proto.strip():
+        out["protocol_version"] = _sanitize_schema_token(proto, 40)
+    caps = _plain(getattr(result, "capabilities", None))
+    if isinstance(caps, dict) and caps:
+        # The advertised feature names, not their nested config — this is the
+        # line an operator reads to learn the server also serves prompts or
+        # resources, which nothing in Pantheon consumes yet.
+        out["capabilities"] = sorted(
+            _sanitize_schema_token(k) for k, v in caps.items() if v is not None
+        )
+    instructions = getattr(result, "instructions", None)
+    if isinstance(instructions, str) and instructions.strip():
+        text = instructions.strip()
+        if len(text) > _MCP_INSTRUCTIONS_MAX:
+            text = text[:_MCP_INSTRUCTIONS_MAX - 1].rstrip() + "…"
+        out["instructions"] = text
+    return out
+
+
+def _tool_entries(tools_result: Any) -> List[Dict[str, Any]]:
+    """Build the manager's per-tool records from one `tools/list` result.
+
+    `P8-40`. Three connect sites each built this dict inline and the HTTP one
+    was written without `annotations`, so a remote server's `readOnlyHint` was
+    honoured over stdio and SSE and silently dropped over HTTP — the same
+    server got plan-mode read-only credit on one transport and not on another,
+    however it advertised itself. Three spellings of one record is the `Law 13`
+    shape; there is one now, and the next transport gets it without anyone
+    remembering to.
+    """
+    entries: List[Dict[str, Any]] = []
+    for tool in getattr(tools_result, "tools", None) or []:
+        entries.append({
+            "name": tool.name,
+            "description": tool.description or "",
+            "input_schema": getattr(tool, "inputSchema", None) or {},
+            # MCP tool annotations (readOnlyHint / destructiveHint) drive
+            # plan-mode read-only gating. Absent on many servers, so we fall
+            # back to a name heuristic in mcp_tool_is_readonly().
+            "annotations": _normalize_annotations(getattr(tool, "annotations", None)),
+        })
+    return entries
 
 
 # ── Call deadlines (`P8-37`) ───────────────────────────────────────────────
@@ -252,6 +570,26 @@ class McpManager:
         url: Optional[str] = None,
     ) -> bool:
         """Connect to an MCP server via stdio, SSE, or Streamable HTTP transport."""
+        # Every registration path in the product funnels through here — the
+        # admin route, `manage_mcp add`, `pantheon-mcp`, `connect_all_enabled`
+        # on boot and the built-ins — so the two invariants that the rest of
+        # this module assumes are checked once, here, rather than in each of
+        # them (`Law 13`).
+        #
+        # `P8-44`: an id holding `__` does not fail, it MISROUTES — see
+        # `validate_mcp_server_id`. `B865`: a non-string args/env entry reaches
+        # `StdioServerParameters` and comes back as a pydantic traceback that
+        # is shown to the operator as this server's connection error.
+        bad = validate_mcp_server_id(server_id)
+        if bad is None and transport == "stdio":
+            bad = validate_mcp_launch_fields(args, env)
+        if bad is not None:
+            logger.error("Refusing MCP server %r: %s", name, bad)
+            self._connections[str(server_id)] = {
+                "status": "error", "error": bad, "name": name,
+            }
+            self._generation += 1
+            return False
         try:
             if transport == "stdio":
                 res = await self._connect_stdio(server_id, name, command, args or [], env or {})
@@ -279,10 +617,27 @@ class McpManager:
             from mcp.client.stdio import stdio_client
             from contextlib import AsyncExitStack
 
+            # `P8-42`. This read `{**os.environ, **env} if env else None`, and
+            # `None` is not "no overrides" to the SDK — it is a request for
+            # `get_default_environment()`, which inherits exactly
+            # `DEFAULT_INHERITED_ENV_VARS` = HOME, LOGNAME, PATH, SHELL, TERM,
+            # USER (`mcp/client/stdio/__init__.py`). So a server with an EMPTY
+            # env dict — the overwhelmingly common case, and the default the
+            # form produces — started with `PATH` and `HOME` intact and
+            # `PYTHONPATH`, `NODE_PATH`, `NPM_CONFIG_CACHE`, `HTTP_PROXY`,
+            # `HTTPS_PROXY` and `NO_PROXY` gone. That is the hard failure to
+            # read: the interpreter resolves, the server starts, and then it
+            # cannot import its own package or reach the network from behind a
+            # corporate proxy — while the same server with one unrelated
+            # variable set works, because one entry made the dict truthy.
+            #
+            # An empty dict now means what it says: no overrides. A server that
+            # sets nothing and a server that sets one key inherit the same
+            # parent environment.
             server_params = StdioServerParameters(
                 command=command,
                 args=args,
-                env={**os.environ, **env} if env else None,
+                env={**os.environ, **(env or {})},
             )
 
             stack = AsyncExitStack()
@@ -293,20 +648,11 @@ class McpManager:
                 read_stream, write_stream = transport
                 session = await stack.enter_async_context(ClientSession(read_stream, write_stream))
 
-                await session.initialize()
+                # `P8-38`: the handshake's return value used to be dropped here.
+                handshake = summarize_initialize_result(await session.initialize())
                 tools_result = await session.list_tools()
 
-                tools = []
-                for tool in tools_result.tools:
-                    tools.append({
-                        "name": tool.name,
-                        "description": tool.description or "",
-                        "input_schema": tool.inputSchema if hasattr(tool, "inputSchema") else {},
-                        # MCP tool annotations (readOnlyHint / destructiveHint) drive
-                        # plan-mode read-only gating. Absent on many servers, so we
-                        # fall back to a name heuristic in mcp_tool_is_readonly().
-                        "annotations": getattr(tool, "annotations", None),
-                    })
+                tools = _tool_entries(tools_result)
 
                 # Extract identity hints from env vars (e.g. email address, API name)
                 # so tool descriptions can distinguish between multiple instances of
@@ -327,6 +673,7 @@ class McpManager:
                     "transport": "stdio",
                     "tool_count": len(tools),
                     "identity": identity,
+                    **handshake,
                 }
 
                 registered = True
@@ -362,20 +709,10 @@ class McpManager:
                 read_stream, write_stream = transport
                 session = await stack.enter_async_context(ClientSession(read_stream, write_stream))
 
-                await session.initialize()
+                handshake = summarize_initialize_result(await session.initialize())
                 tools_result = await session.list_tools()
 
-                tools = []
-                for tool in tools_result.tools:
-                    tools.append({
-                        "name": tool.name,
-                        "description": tool.description or "",
-                        "input_schema": tool.inputSchema if hasattr(tool, 'inputSchema') else {},
-                        # MCP tool annotations (readOnlyHint / destructiveHint) drive
-                        # plan-mode read-only gating. Absent on many servers, so we
-                        # fall back to a name heuristic in mcp_tool_is_readonly().
-                        "annotations": getattr(tool, 'annotations', None),
-                    })
+                tools = _tool_entries(tools_result)
 
                 self._sessions[server_id] = session
                 self._stacks[server_id] = stack
@@ -385,6 +722,7 @@ class McpManager:
                     "name": name,
                     "transport": "sse",
                     "tool_count": len(tools),
+                    **handshake,
                 }
 
                 registered = True
@@ -449,16 +787,10 @@ class McpManager:
             transport = await stack.enter_async_context(streamablehttp_client(url, auth=provider))
             read_stream, write_stream, _get_session_id = transport
             session = await stack.enter_async_context(ClientSession(read_stream, write_stream))
-            await session.initialize()
+            handshake = summarize_initialize_result(await session.initialize())
 
             tools_result = await session.list_tools()
-            tools = []
-            for tool in tools_result.tools:
-                tools.append({
-                    "name": tool.name,
-                    "description": tool.description or "",
-                    "input_schema": tool.inputSchema if hasattr(tool, "inputSchema") else {},
-                })
+            tools = _tool_entries(tools_result)
 
             self._sessions[server_id] = session
             self._stacks[server_id] = stack
@@ -466,6 +798,7 @@ class McpManager:
             self._connections[server_id] = {
                 "status": "connected", "name": name, "transport": "http",
                 "tool_count": len(tools),
+                **handshake,
             }
             clear_auth_url(server_id)
             # Tools changed (this can complete after connect_server already
@@ -570,12 +903,11 @@ class McpManager:
         nothing and so inherits the default — which is the point: the hang was
         on the default path.
         """
-        parts = qualified_name.split("__", 2)
-        if len(parts) != 3 or parts[0] != "mcp":
+        parsed = split_mcp_tool_name(qualified_name)
+        if parsed is None:
             return {"error": f"Invalid MCP tool name: {qualified_name}", "exit_code": 1}
 
-        server_id = parts[1]
-        tool_name = parts[2]
+        server_id, tool_name = parsed
 
         session = self._sessions.get(server_id)
         if not session:
@@ -689,16 +1021,35 @@ class McpManager:
         return result_dict
 
     async def _reconnect_builtin(self, server_id: str) -> bool:
-        """Tear down and reconnect a crashed builtin MCP server."""
-        import sys
-        from src.builtin_mcp import _BUILTIN_SERVERS, builtin_python_env
+        """Tear down and reconnect a crashed builtin MCP server.
 
-        if server_id not in _BUILTIN_SERVERS:
+        `P8-43`. This used to consult `_BUILTIN_SERVERS` — the Python-script
+        map — and return False for anything else, while `is_builtin` (which
+        decides whether this function is even reached) says True for every id
+        starting `builtin_`. `builtin_browser` is exactly that gap: a crashed
+        Playwright subprocess turned every later call into "MCP server crashed
+        and reconnect failed" and stayed dead until a person reconnected it by
+        hand. `builtin_connect_spec` is now the one answer to "how does this
+        built-in start", and boot and restart both ask it (`Law 14`).
+
+        The npx cache gate that boot applies is deliberately NOT repeated here:
+        it exists so a fresh install does not reach the network uninvited
+        (`Law 16`), and a server that was running a second ago is by definition
+        already on disk.
+        """
+        from src.builtin_mcp import builtin_connect_spec
+
+        spec = builtin_connect_spec(server_id)
+        if spec is None:
             return False
 
-        script_rel, name = _BUILTIN_SERVERS[server_id]
-        base_dir = get_app_root()
-        script_path = os.path.join(base_dir, script_rel)
+        name = spec["name"]
+        if spec["script_path"] and not os.path.exists(spec["script_path"]):
+            logger.error(
+                f"Cannot reconnect builtin MCP server {name}: "
+                f"{spec['script_path']} is missing"
+            )
+            return False
 
         # Clean up old connection
         await self.disconnect_server(server_id)
@@ -708,9 +1059,9 @@ class McpManager:
                 server_id=server_id,
                 name=name,
                 transport="stdio",
-                command=sys.executable,
-                args=[script_path],
-                env=builtin_python_env(base_dir),
+                command=spec["command"],
+                args=spec["args"],
+                env=spec["env"],
             )
             if ok:
                 logger.info(f"Reconnected builtin MCP server: {name}")
@@ -741,7 +1092,7 @@ class McpManager:
             for tool in tools:
                 if tool["name"] in disabled:
                     continue
-                qualified = f"mcp__{server_id}__{tool['name']}"
+                qualified = qualify_mcp_tool_name(server_id, tool["name"])
                 schema = {
                     "type": "function",
                     "function": {
@@ -755,7 +1106,20 @@ class McpManager:
         return schemas
 
     def get_all_tools(self, disabled_map: Optional[Dict[str, set]] = None) -> List[Dict]:
-        """Return a flat list of all discovered tools with server info."""
+        """Return a flat list of all discovered tools with server info.
+
+        `B867`: `annotations` was captured at the connect sites and read by
+        `mcp_tool_is_readonly`, and it was never copied onto these entries — so
+        **nothing above this manager could see a tool's `readOnlyHint` or
+        `destructiveHint`**. Not the tools route, not the browser, not
+        `manage_mcp list_tools`. It is here now, beside `is_readonly`, which is
+        the manager's own answer to the question the annotation exists to
+        answer: is this tool callable in plan mode. Shipping the verdict as
+        well as the evidence is deliberate — a consumer that re-derived it from
+        the annotation alone would be a second, worse copy of
+        `mcp_tool_is_readonly` that disagreed with the gate for every server
+        that advertises nothing (`Law 13`).
+        """
         result = []
         for server_id, tools in self._tools.items():
             conn = self._connections.get(server_id, {})
@@ -765,9 +1129,11 @@ class McpManager:
                     "server_id": server_id,
                     "server_name": conn.get("name", server_id),
                     "name": tool["name"],
-                    "qualified_name": f"mcp__{server_id}__{tool['name']}",
+                    "qualified_name": qualify_mcp_tool_name(server_id, tool["name"]),
                     "description": tool.get("description", ""),
                     "input_schema": tool.get("input_schema") or {},
+                    "annotations": _normalize_annotations(tool.get("annotations")),
+                    "is_readonly": mcp_tool_is_readonly(tool),
                     "is_disabled": tool["name"] in disabled,
                 })
         return result
@@ -787,7 +1153,7 @@ class McpManager:
             for tool in tools:
                 if not mcp_tool_is_readonly(tool):
                     disabled_map.setdefault(server_id, set()).add(tool["name"])
-                    qualified.add(f"mcp__{server_id}__{tool['name']}")
+                    qualified.add(qualify_mcp_tool_name(server_id, tool["name"]))
         return disabled_map, qualified
 
     def is_builtin(self, server_id: str) -> bool:
@@ -860,6 +1226,17 @@ class McpManager:
             identity = self._connections.get(sid, {}).get("identity", "")
             label = f"{server_name} ({identity})" if identity else server_name
             lines.append(f"\n**{label}:**")
+            # `P8-38`. `instructions` is the one field of the initialize
+            # handshake the MCP spec writes for the model rather than for the
+            # client: the server's own prose on how its tools are meant to be
+            # used together. It was discarded at the connect site, so the model
+            # had the tool list and never the note that came with it.
+            server_instructions = self._connections.get(sid, {}).get("instructions")
+            if server_instructions:
+                one_line = re.sub(r"\s+", " ", server_instructions).strip()
+                if len(one_line) > _MCP_PROMPT_INSTRUCTIONS_MAX:
+                    one_line = one_line[:_MCP_PROMPT_INSTRUCTIONS_MAX - 1].rstrip() + "…"
+                lines.append(f"  (server instructions: {one_line})")
             for t in server_tools:
                 # Truncate long descriptions
                 desc = t['description'][:120] + '...' if len(t['description']) > 120 else t['description']

@@ -242,12 +242,16 @@ def test_the_focus_visible_rules_are_forty_two_not_thirty_five():
     """The row's other stale number, measured in both of its readings."""
     occurrences = len(re.findall(r":focus-visible", CSS))
     rules = sum(1 for sel, _b in _rules() if ":focus-visible" in sel)
-    assert (occurrences, rules) == (49, 46), (
-        f"expected 49 occurrences across 46 rules, found {occurrences} / {rules}. "
+    assert (occurrences, rules) == (50, 47), (
+        f"expected 50 occurrences across 47 rules, found {occurrences} / {rules}. "
         "The row says 35 rules; it said so on 2026-08-27, and it was 45 "
         "occurrences across 42 rules the morning this one landed — `P10-01` "
         "adds the armoured guard and `P10-03` adds `:focus-visible` to three "
-        "resize-handle selector lists, which is the whole of the difference."
+        "resize-handle selector lists, which is the whole of the difference. "
+        "49/46 → 50/47 on 2026-09-19: `P8-34`'s workflow chip "
+        "(`.task-workflow-chip:focus-visible`), which is a new focusable "
+        "control arriving WITH its ring rather than without one — this "
+        "number going up for that reason is the census working."
     )
 
 

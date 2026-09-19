@@ -1808,7 +1808,7 @@ document.addEventListener('click', function(e) {
       if (open) open(id);
     }).catch(() => {});
   } else if (kind === 'task') {
-    import('./tasks.js?v=20260918palettesteps1').then(mod => {
+    import('./tasks.js?v=20260919workflowdiagram1').then(mod => {
       const open = mod.openTasks || (mod.default && mod.default.openTasks);
       if (open) open(id);
       else { const b = document.getElementById('tool-tasks-btn'); if (b) b.click(); }

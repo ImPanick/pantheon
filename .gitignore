@@ -87,7 +87,11 @@ output.txt.txt
 
 # Reports and temp files
 reports/
-tasks/
+# `P8-34`: anchored. Unanchored, `tasks/` matches a directory of that
+# name at ANY depth, so `static/js/tasks/` — the module directory this
+# row adds, following `static/js/settings/`'s pattern — was silently
+# untracked. It is the scratch directory at the repo root that is meant.
+/tasks/
 scripts/compound/*.json
 research_data/
 **/search_analytics.json

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // static/js/runModePicker.js
 
+import { esc as escapeHtml } from './util/escapeHtml.js';
+
 /**
  * `P5-17`. One run-mode picker.
  *
@@ -44,10 +46,9 @@ const GLYPHS = { parallel: ICON_PARALLEL, sequential: ICON_SEQUENTIAL };
 /** Escape a caller's string before it goes through `innerHTML`.
  *  The queue's subtitle interpolates a count and a caller could one day
  *  interpolate a query, so the label path is not a place to trust input. */
+// `B866`'s sweep: was missing `'`. `:85` builds `data-mode="…"`.
 function esc(text) {
-  return String(text == null ? '' : text)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  return escapeHtml(String(text == null ? '' : text));
 }
 
 /**

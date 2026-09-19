@@ -40,8 +40,8 @@ click handler. What is left at the call site is `fd.append` and
 `textContent =`.
 
 **`P8-48` is NOT closed here** and this file says why in
-`test_the_payload_carries_the_schema_and_not_the_annotations`: `input_schema`
-is on the wire and now rendered, `annotations` is not on the wire at all, and
+`test_the_payload_carries_the_schema_and_now_the_annotations`: `input_schema`
+is on the wire and now rendered, `annotations` joined it with `B867`, and
 nothing anywhere can write either.
 """
 from __future__ import annotations
@@ -520,16 +520,16 @@ def test_the_command_line_preview_is_the_command_that_will_run(sandbox):
 # ---------------------------------------------------------------------------
 
 
-def test_the_payload_carries_the_schema_and_not_the_annotations():
-    """The row says *"the schema is already carried end-to-end"*. Half of it is.
+def test_the_payload_carries_the_schema_and_now_the_annotations():
+    """The row said *"the schema is already carried end-to-end"*. Now both are.
 
-    `get_all_tools` copies `input_schema` into every entry and **does not copy
-    `annotations`**, which is captured at both stdio and SSE connect sites and
-    read by `mcp_tool_is_readonly`. So the schema can be shown today and the
-    readOnlyHint/destructiveHint UI cannot be built at all — not the editor,
-    not even the display — without a payload change in a file this agent does
-    not own. Driven rather than grepped: the manager is constructed, given a
-    tool, and asked.
+    This case used to assert `"annotations" not in entry` — deliberately, as
+    the marker for the day `B867` landed and unblocked `P8-48`'s annotation UI.
+    It has landed: `McpManager.get_all_tools` copies `annotations` onto every
+    entry and reports `is_readonly`, the manager's own plan-mode verdict, beside
+    it. The assertion is inverted rather than deleted, so the payload the
+    browser half is built on stays pinned. Driven rather than grepped: the
+    manager is constructed, given a tool, and asked.
     """
     from src.mcp_manager import McpManager
 
@@ -539,15 +539,26 @@ def test_the_payload_carries_the_schema_and_not_the_annotations():
         "description": "Read a file",
         "input_schema": {"type": "object", "properties": {"path": {"type": "string"}}},
         "annotations": {"readOnlyHint": True},
+    }, {
+        "name": "delete_file",
+        "description": "Delete a file",
+        "input_schema": {"type": "object", "properties": {}},
+        "annotations": None,
     }]}
     manager._connections = {"srv": {"name": "Filesystem"}}
     payload = manager.get_all_tools()
-    assert len(payload) == 1
+    assert len(payload) == 2
     entry = payload[0]
     assert entry["input_schema"]["properties"]["path"]["type"] == "string"
-    assert "annotations" not in entry, (
-        "if this passes, the annotation half of P8-48 is unblocked on the read side"
+    assert entry["annotations"] == {"readOnlyHint": True}, (
+        "B867: the readOnlyHint the server advertised must reach the browser"
     )
+    assert entry["is_readonly"] is True
+
+    # A server that advertises nothing still gets a verdict, and it is the
+    # manager's, not one the UI would have to re-derive.
+    assert payload[1]["annotations"] is None
+    assert payload[1]["is_readonly"] is False
 
 
 def test_the_schema_becomes_a_parameter_list_a_person_can_read(sandbox):

@@ -4,6 +4,8 @@
 // Pure helpers extracted from emailLibrary.js. No DOM state, no fetch,
 // no shared mutable references — safe to import anywhere.
 
+import { esc } from '../util/escapeHtml.js';
+
 // ── Talon-inspired multilingual quote-detection regexes ───────────
 // Borrowed (loosely) from Mailgun's `talon` library. These are partial
 // regex source strings — combined with surrounding patterns by callers.
@@ -23,12 +25,11 @@ export const _TALON_ORIG_RE = /(?:^|\n)[\s>]*[-_=]{3,}\s*(?:Original\s+Message|F
 // a click for two bytes of saving.
 export const _SIG_BLOAT_MIN_CHARS = 200;
 
-// HTML-escape a string by round-tripping through a detached div. Cheap
-// and correct (handles all the entities that matter for innerHTML).
+// `B866`'s sweep: the round-trip was *not* "all the entities that matter" —
+// the serialiser leaves `"` and `'` in a text node alone, so this was weaker
+// than `ui.js:esc` the moment anything interpolated it into an attribute.
 export function _esc(text) {
-  const div = document.createElement('div');
-  div.textContent = text || '';
-  return div.innerHTML;
+  return esc(String(text == null ? '' : text));
 }
 
 const _EMAIL_SUMMARY_ERROR_MESSAGES = Object.freeze({
@@ -50,6 +51,14 @@ export function _renderEmailSummaryError(container, result) {
   container.replaceChildren(message);
 }
 
+// `B866`'s sweep looked at this and left it alone. It escapes `" ' < > \`` and
+// **not** `&`, and that is right here: `_escLinkify` (`:76`) escapes the whole
+// string with `_esc` first and then calls this on a href cut out of the result,
+// so escaping `&` again would turn `?a=1&amp;b=2` into `?a=1&amp;amp;b=2` —
+// which `tests/test_email_linkify_security_js.py` asserts against by name.
+// Two stages; the second must not repeat the first. It is not an attribute
+// break-out either: an attribute value is decoded after it is delimited, so a
+// literal `&quot;` in the source stays inside the value.
 function _attrEsc(text) {
   return String(text ?? '')
     .replace(/"/g, '&quot;')

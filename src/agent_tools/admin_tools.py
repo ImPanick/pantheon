@@ -145,6 +145,17 @@ def _mcp_allowed_commands() -> set:
     return {c.strip().lower() for c in raw.split(",") if c.strip()}
 
 
+def _validate_mcp_entry_types(args=None, env=None) -> Optional[str]:
+    """Defer to the manager's own args/env entry rule (`B865`, `Law 14`)."""
+    from src.mcp_manager import validate_mcp_launch_fields
+    return validate_mcp_launch_fields(args, env)
+
+
+# How much of a third-party tool description `manage_mcp list_tools` returns.
+# It was 100 with no marker, so a truncated sentence read as a complete one.
+_MCP_TOOL_DESC_MAX = 240
+
+
 def _validate_mcp_command(command, args, env) -> Optional[str]:
     """Validate a model-supplied stdio MCP registration. Returns an error string
     if it must be rejected, else None.
@@ -190,6 +201,13 @@ def _validate_mcp_command(command, args, env) -> Optional[str]:
                 return "args must be a JSON list"
         if not isinstance(args, list):
             return "args must be a list"
+        # `B865`. The entry-type rule is one function in `src/mcp_manager.py`,
+        # shared with the admin route and with `connect_server` itself, so all
+        # three refuse the same value with the same sentence. Strictly an
+        # addition: every security check below still runs, unchanged.
+        _bad_type = _validate_mcp_entry_types(args=args)
+        if _bad_type:
+            return _bad_type
         for a in args:
             if not isinstance(a, str):
                 return "args must all be strings"
@@ -212,6 +230,9 @@ def _validate_mcp_command(command, args, env) -> Optional[str]:
                 return "env must be a JSON object"
         if not isinstance(env, dict):
             return "env must be an object"
+        _bad_type = _validate_mcp_entry_types(env=env)
+        if _bad_type:
+            return _bad_type
         for k in env:
             if str(k).strip().upper() in _MCP_DANGEROUS_ENV:
                 return f"env var '{k}' can inject code into the child process and is not allowed"
@@ -241,9 +262,20 @@ async def do_manage_mcp(content: str, owner: Optional[str] = None) -> Dict:
                 st = mcp.get_server_status(s.id)
                 status = st.get("status", "disconnected")
                 tool_count = st.get("tool_count", 0)
-                items.append({"id": s.id, "name": s.name, "transport": s.transport,
-                              "is_enabled": s.is_enabled, "status": status,
-                              "tool_count": tool_count})
+                item = {"id": s.id, "name": s.name, "transport": s.transport,
+                        "is_enabled": s.is_enabled, "status": status,
+                        "tool_count": tool_count}
+                # `P8-38`. The initialize handshake is kept now, so this can
+                # report what the SERVER calls itself, which version answered,
+                # which protocol version was negotiated, what else it
+                # advertises, and the instructions it wrote for its client.
+                # `s.name` is the label the operator typed into the form; none
+                # of the rest existed anywhere in the app before.
+                for field in ("server_name", "server_version", "server_title",
+                              "protocol_version", "capabilities", "instructions"):
+                    if st.get(field):
+                        item[field] = st[field]
+                items.append(item)
             return {"response": f"{len(items)} MCP servers", "servers": items, "exit_code": 0}
         finally:
             db.close()
@@ -358,13 +390,64 @@ async def do_manage_mcp(content: str, owner: Optional[str] = None) -> Dict:
             db.close()
 
     elif action == "list_tools":
+        # `B867`. This projected every tool to
+        # `{name, server, description[:100]}` — a register the model reads that
+        # is narrower than the register the product holds. Three things were
+        # missing and each of them is the difference between listing a tool and
+        # being able to use it:
+        #   * `qualified_name` — `mcp__<server_id>__<tool>` is the name the
+        #     model must actually emit, and it was not in the answer at all, so
+        #     a model that found a tool here still could not call it.
+        #   * the parameters — `input_schema` is carried the whole way to this
+        #     line by `McpManager.get_all_tools` and was dropped here, so the
+        #     model could not see what a tool took through its own tool.
+        #   * `read_only` — whether plan mode will refuse the call, which is
+        #     the one thing worth knowing before proposing it.
+        # `summarize_tool_parameters` is the manager's own read of the schema,
+        # the same one the system prompt's hint is rendered from (`Law 14`), so
+        # this can never describe a tool differently from the prompt.
         mcp = get_mcp_manager()
         if not mcp:
             return {"response": "No MCP manager", "tools": [], "exit_code": 0}
+        from src.mcp_manager import summarize_tool_parameters
+        want_server = str(args.get("server_id") or "").strip()
+        want_tool = str(args.get("tool") or "").strip()
         tools = mcp.get_all_tools()
-        items = [{"name": t["name"], "server": t["server_name"],
-                  "description": t.get("description", "")[:100]} for t in tools]
-        return {"response": f"{len(items)} MCP tools available", "tools": items, "exit_code": 0}
+        total = len(tools)
+        if want_server:
+            tools = [t for t in tools if t["server_id"] == want_server
+                     or t["server_name"] == want_server]
+        if want_tool:
+            tools = [t for t in tools
+                     if want_tool in (t["name"], t["qualified_name"])]
+        items = []
+        for t in tools:
+            desc = t.get("description", "") or ""
+            schema = summarize_tool_parameters(t.get("input_schema"))
+            item = {
+                "name": t["name"],
+                "qualified_name": t["qualified_name"],
+                "server": t["server_name"],
+                "server_id": t["server_id"],
+                "description": desc[:_MCP_TOOL_DESC_MAX] + ("…" if len(desc) > _MCP_TOOL_DESC_MAX else ""),
+                "parameters": schema["parameters"],
+                "read_only": t.get("is_readonly", False),
+            }
+            if schema["omitted"]:
+                item["parameters_omitted"] = schema["omitted"]
+            if t.get("annotations"):
+                item["annotations"] = t["annotations"]
+            if t.get("is_disabled"):
+                item["disabled"] = True
+            items.append(item)
+        if want_server or want_tool:
+            summary = f"{len(items)} of {total} MCP tools match"
+        else:
+            summary = (
+                f"{len(items)} MCP tools available. Call one by its "
+                f"qualified_name; pass server_id or tool to narrow this list."
+            )
+        return {"response": summary, "tools": items, "exit_code": 0}
 
     else:
         return {"error": f"Unknown action: {action}", "exit_code": 1}

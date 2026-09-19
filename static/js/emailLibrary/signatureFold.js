@@ -16,18 +16,18 @@ import {
   _SIG_BLOAT_MIN_CHARS,
 } from './utils.js';
 import { chevronIcon } from '../icons.js';
+import { esc } from '../util/escapeHtml.js';
 
 // No leading icon on the signature fold — the user explicitly does not
 // want a star/emoji-style glyph in this header.
 export const _SIG_ICON = '';
 export const _QUOTE_ICON = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>';
 
-// HTML-escape used by `_extractQuoteMeta`. Inlined here (rather than
-// imported from utils) so this module remains free of cross-file links.
+// `B866`'s sweep. The old comment said this was inlined "so this module
+// remains free of cross-file links", which was already untrue — the file
+// imports `chevronIcon` from `../icons.js` two lines up.
 function _esc(text) {
-  const div = document.createElement('div');
-  div.textContent = text || '';
-  return div.innerHTML;
+  return esc(String(text == null ? '' : text));
 }
 
 // Looks like a signature / corporate disclaimer rather than a quoted email.

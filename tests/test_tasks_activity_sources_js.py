@@ -90,6 +90,13 @@ def sandbox(tmp_path_factory):
     # stop buttons take their glyphs from it, and a stub would let this file
     # pass while the two controls it draws side by side drifted apart again.
     shutil.copy(ROOT / "static" / "js" / "icons.js", d / "icons.js")
+    # `P8-34`: and the same argument again for the workflow diagram's
+    # graph-to-Mermaid half. It imports nothing, so the real one costs nothing
+    # here, and a stub would let the Activity view import a module whose shape
+    # had moved without this file noticing.
+    (d / "tasks").mkdir(exist_ok=True)
+    shutil.copy(ROOT / "static" / "js" / "tasks" / "workflowDiagram.js",
+                d / "tasks" / "workflowDiagram.js")
     return d
 
 

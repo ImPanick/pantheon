@@ -1,0 +1,43 @@
+#!/usr/bin/env python3
+"""pantheon-mcp-new — make a working MCP server and say how to register it.
+
+An MCP server is a small program that hands the assistant new tools. Writing
+the first one is the hard part: the file has a shape, the protocol owns stdout,
+and the registration is refused on the path most people try first. This makes
+one, starts it to prove it runs, and prints the fields to paste into Settings.
+
+    pantheon-mcp-new weather
+    pantheon-mcp-new weather --tool get_forecast --tool get_current
+    pantheon-mcp-new weather --check      # start it again after you edit it
+    pantheon-mcp-new --list               # what is on this data volume
+
+It writes to the **data volume**, not next to Pantheon's own `mcp_servers/`
+(`P8-47`): the source tree is baked into the image with no bind mount, so a
+file written there is gone at the next image update while the registration
+pointing at it survives.
+
+All of it is `src/mcp_scaffold.py`; this file is argv and an exit code.
+
+**Where this belongs.** `scripts/pantheon-mcp` is the MCP CLI, and `new`
+should be a subcommand of it rather than a sibling script — `Law 14`. That file
+was another agent's this hour, so the shim landed beside it instead of inside
+it. Folding it in is moving `_build_parser`'s arguments onto a `sub.add_parser("new")`
+and calling the same `main`.
+"""
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+try:
+    from src.mcp_scaffold import main
+except ModuleNotFoundError as exc:  # missing deps, not a missing scaffold
+    sys.stderr.write(f"error: {exc}\nhint: run from the repo root with the venv active.\n")
+    sys.exit(2)
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.stderr.write("interrupted\n")
+        sys.exit(130)

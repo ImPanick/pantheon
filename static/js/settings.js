@@ -3225,7 +3225,7 @@ async function initEmailAccountsSettings() {
     tasksBtn.dataset.bound = '1';
     tasksBtn.addEventListener('click', async () => {
       try {
-        const mod = await import('./tasks.js?v=20260918palettesteps1');
+        const mod = await import('./tasks.js?v=20260919workflowdiagram1');
         const openTasks = mod.openTasks || (mod.default && mod.default.openTasks);
         if (typeof openTasks === 'function') openTasks(null, { filter: 'Email' });
         else document.getElementById('tool-tasks-btn')?.click();
@@ -3533,8 +3533,8 @@ async function initIntegrations() {
       listEl.innerHTML = items.map(i => `
         <div class="admin-card" style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
           <div style="flex:1;min-width:0;">
-            <div style="font-size:13px;font-weight:600;">${_esc(i.name || i.id)}</div>
-            <div style="font-size:11px;opacity:0.5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_esc(i.base_url || '')}</div>
+            <div style="font-size:13px;font-weight:600;">${esc(i.name || i.id)}</div>
+            <div style="font-size:11px;opacity:0.5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(i.base_url || '')}</div>
           </div>
           <div style="display:flex;gap:4px;flex-shrink:0;">
             <button class="admin-btn-sm intg-edit-btn" data-id="${i.id}" style="font-size:11px;">Edit</button>
@@ -3546,8 +3546,6 @@ async function initIntegrations() {
       listEl.querySelectorAll('.intg-del-btn').forEach(b => b.addEventListener('click', () => doDelete(b.dataset.id)));
     } catch (e) { listEl.innerHTML = '<div style="padding:12px;color:var(--red);font-size:12px;">Failed to load</div>'; }
   }
-
-  function _esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
   // Start editing
   async function startEdit(id) {

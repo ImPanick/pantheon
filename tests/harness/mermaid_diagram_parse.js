@@ -31,7 +31,13 @@
 // so requiring the file throws on the last line. The browser's semantics are
 // the ones under test.
 //
-//     node tests/harness/mermaid_diagram_parse.js
+//     node tests/harness/mermaid_diagram_parse.js [extra-cases.json]
+//
+// `P8-34` added the optional argument: a JSON file of `{name: diagramText}`
+// whose entries are parsed **in addition to** the fixed cases below, never
+// instead of them. It exists so the Workflow diagram this product generates is
+// checked against the library that will actually draw it, rather than against
+// a second opinion about Mermaid's grammar written in a test.
 //
 // Prints one line of JSON.
 const fs = require('fs');
@@ -84,6 +90,14 @@ class El {
 }
 
 const doc = {
+  // `P8-34`. DOMPurify — which the bundle carries and mermaid runs every label
+  // through after the grammar accepts it — bails out with
+  // `isSupported = false` and returns an object with **no `sanitize`** unless
+  // `document.nodeType === 9`. Without this line every case with a label in it
+  // came back `ao.sanitize is not a function`, so this harness could only ever
+  // parse diagrams whose nodes had no text: `graph TD; A-->B;` passed and
+  // `flowchart TD\n n0[hi]` did not.
+  nodeType: 9,
   createElement: (t) => new El(t),
   createElementNS: (ns, t) => new El(t),
   createTextNode: (t) => ({ nodeType: 3, data: String(t) }),
@@ -185,6 +199,30 @@ out.api = {
     // Not a diagram at any version: has to be rejected, not accepted.
     broken: 'graph TD; A--%%>B ??? [',
   };
+  // `P8-34`. Extra cases from a file, merged after the fixed ones so a name
+  // collision cannot quietly replace one of them.
+  const extraPath = process.argv[2];
+  if (extraPath) {
+    let extra;
+    try {
+      extra = JSON.parse(fs.readFileSync(extraPath, 'utf8'));
+    } catch (e) {
+      out.ok = false;
+      out.error = 'could not read the extra cases at ' + extraPath + ': ' + String(e && e.message || e);
+      console.log(JSON.stringify(out));
+      return;
+    }
+    for (const [name, text] of Object.entries(extra)) {
+      if (name in CASES) {
+        out.ok = false;
+        out.error = 'extra case ' + name + ' collides with a fixed one';
+        console.log(JSON.stringify(out));
+        return;
+      }
+      CASES[name] = String(text);
+    }
+  }
+
   for (const [name, text] of Object.entries(CASES)) {
     try {
       const r = await mermaid.parse(text);

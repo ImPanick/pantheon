@@ -3032,7 +3032,7 @@ function _showEventForm(existing, defaultDate, defaultEndDate) {
     e.preventDefault();
     const taskId = e.currentTarget?.dataset?.taskId || '';
     try {
-      const m = await import('/static/js/tasks.js?v=20260918palettesteps1');
+      const m = await import('/static/js/tasks.js?v=20260919workflowdiagram1');
       const openTasks = m.openTasks || m.default?.openTasks;
       if (typeof openTasks === 'function') { openTasks(taskId); return; }
     } catch (_) {}

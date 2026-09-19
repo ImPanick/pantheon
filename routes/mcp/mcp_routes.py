@@ -131,6 +131,20 @@ def _load_disabled_map():
 # endpoint needs exactly the same rule on exactly the same three fields, and a
 # second copy of it is the shape `Law 13` names. One function, two callers, one
 # set of messages an operator can learn once.
+#
+# `B865`. This checked the CONTAINER and nothing inside it. Driven before the
+# fix: `POST /api/mcp/servers` with `env={"PORT": 3000}` stored the row, then
+# failed the connect, and what the operator was shown as *this server's
+# connection error* was pydantic's internal validation message for
+# `StdioServerParameters` — `env.PORT / Input should be a valid string
+# [type=string_type, input_value=3000, input_type=int]` — ending in a link to
+# pydantic's documentation. Three things wrong with that: it is a library's
+# words, not the product's; it names a class the operator has never heard of;
+# and it arrives *after* the row is saved, so the form appears to have worked.
+# The entry rule now runs beside the container rule, before anything is
+# stored, and it is `src/mcp_manager.validate_mcp_launch_fields` — the same
+# rule `McpManager.connect_server` enforces, so the route and the spawn cannot
+# disagree (`Law 13`).
 def _parsed_json_field(raw, label, kind, example):
     if not raw:
         return [] if kind is list else {}
@@ -141,6 +155,10 @@ def _parsed_json_field(raw, label, kind, example):
     if not isinstance(value, kind):
         word = "array" if kind is list else "object"
         raise HTTPException(400, f"{label} must be a JSON {word}, e.g. {example}")
+    from src.mcp_manager import validate_mcp_args, validate_mcp_env
+    bad = validate_mcp_args(value) if kind is list else validate_mcp_env(value)
+    if bad:
+        raise HTTPException(400, f"{bad} (e.g. {example})")
     return value
 
 
@@ -206,6 +224,20 @@ def setup_mcp_routes(mcp_manager: McpManager):
                     "auth_url": status.get("auth_url"),
                     "has_oauth": oauth_cfg is not None,
                     "needs_oauth": needs_oauth,
+                    # `P8-38`. What the server said about itself during the
+                    # initialize handshake, which used to be awaited and
+                    # thrown away at all three connect sites. `name` above is
+                    # the label the operator typed; `server_name` /
+                    # `server_version` are what the software on the other end
+                    # calls itself, and `instructions` is the prose it wrote
+                    # for whatever client connects. All absent when the server
+                    # is not connected, or when it advertised nothing.
+                    "server_name": status.get("server_name"),
+                    "server_version": status.get("server_version"),
+                    "server_title": status.get("server_title"),
+                    "protocol_version": status.get("protocol_version"),
+                    "capabilities": status.get("capabilities"),
+                    "instructions": status.get("instructions"),
                 })
             return result
         finally:

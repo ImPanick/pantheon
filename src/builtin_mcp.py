@@ -206,6 +206,73 @@ def builtin_python_env(base_dir: str) -> dict[str, str]:
     return {"PYTHONPATH": os.pathsep.join(parts)}
 
 
+def builtin_connect_spec(server_id: str, base_dir: str | None = None) -> dict | None:
+    """How one built-in MCP server is launched. Returns None for a stranger.
+
+    `P8-43`. There were two answers to this question and only one of them was
+    a function. Boot built the launch line inline inside
+    `register_builtin_servers._start_npx_servers` — the browser's
+    `_browser_mcp_args` rewrite, its `XDG_CACHE_HOME` /
+    `PLAYWRIGHT_BROWSERS_PATH` pair, the npx binary — while the reconnect path
+    (`McpManager._reconnect_builtin`) knew only `_BUILTIN_SERVERS`, the
+    **three**-entry Python map, and returned False for everything else. So
+    `builtin_browser`, which `McpManager.is_builtin` calls built-in by its own
+    prefix rule and which therefore takes the reconnect branch when a call
+    fails, could never be reconnected: a crashed Playwright server answered
+    every subsequent call with "MCP server crashed and reconnect failed" until
+    somebody opened Settings and pressed Reconnect by hand.
+
+    (The row said four entries. It is three: `memory` was removed from this map
+    by `B67` and the count was not re-measured.)
+
+    One definition, two callers, so a change to how the browser starts reaches
+    the restart as well as the start (`Law 14`).
+    """
+    base_dir = base_dir or get_app_root()
+
+    if server_id in _BUILTIN_SERVERS:
+        script, name = _BUILTIN_SERVERS[server_id]
+        script_path = os.path.join(base_dir, script)
+        return {
+            "kind": "python",
+            "name": name,
+            "command": sys.executable,
+            "args": [script_path],
+            "env": builtin_python_env(base_dir),
+            "script_path": script_path,
+            "package": None,
+        }
+
+    cfg = _BUILTIN_NPX_SERVERS.get(server_id)
+    if cfg is None:
+        return None
+
+    args = _browser_mcp_args(cfg["args"]) if server_id == "builtin_browser" else list(cfg["args"])
+    env = None
+    if server_id == "builtin_browser":
+        cache_home = os.environ.get(
+            "PANTHEON_BROWSER_MCP_CACHE",
+            os.path.join(base_dir, "data", "local", "playwright-mcp-cache"),
+        )
+        try:
+            os.makedirs(cache_home, exist_ok=True)
+        except OSError as e:
+            logger.warning(f"Could not create browser MCP cache dir {cache_home}: {e}")
+        env = {
+            "XDG_CACHE_HOME": cache_home,
+            "PLAYWRIGHT_BROWSERS_PATH": os.path.join(cache_home, "browsers"),
+        }
+    return {
+        "kind": "npx",
+        "name": cfg["name"],
+        "command": _find_npx(),
+        "args": args,
+        "env": env,
+        "script_path": None,
+        "package": _npx_package_from_args(args),
+    }
+
+
 async def register_builtin_servers(mcp_manager):
     """Connect all built-in MCP servers to the manager."""
     if MCP_DISABLED:
@@ -213,17 +280,17 @@ async def register_builtin_servers(mcp_manager):
         return
 
     base_dir = get_app_root()
-    python = sys.executable
 
-    async def _connect_python_server(server_id: str, script_path: str, name: str):
+    async def _connect_python_server(server_id: str, spec: dict):
+        name = spec["name"]
         try:
             ok = await mcp_manager.connect_server(
                 server_id=server_id,
                 name=name,
                 transport="stdio",
-                command=python,
-                args=[script_path],
-                env=builtin_python_env(base_dir),
+                command=spec["command"],
+                args=spec["args"],
+                env=spec["env"],
             )
             if ok:
                 logger.info(f"Built-in MCP server registered: {name}")
@@ -235,12 +302,12 @@ async def register_builtin_servers(mcp_manager):
         except BaseException as e:
             logger.warning(f"Built-in MCP server {name} error: {type(e).__name__}: {e}")
 
-    for server_id, (script, name) in _BUILTIN_SERVERS.items():
-        script_path = os.path.join(base_dir, script)
-        if not os.path.exists(script_path):
-            logger.warning(f"Built-in MCP server script not found: {script_path}")
+    for server_id in _BUILTIN_SERVERS:
+        spec = builtin_connect_spec(server_id, base_dir)
+        if not os.path.exists(spec["script_path"]):
+            logger.warning(f"Built-in MCP server script not found: {spec['script_path']}")
             continue
-        _spawn_bg(_connect_python_server(server_id, script_path, name))
+        _spawn_bg(_connect_python_server(server_id, spec))
 
     # Register NPX-based servers in the background (they take longer to start)
     npx_path = _find_npx()
@@ -254,8 +321,9 @@ async def register_builtin_servers(mcp_manager):
             # that wants Pantheon to download it can set
             # PANTHEON_BROWSER_MCP_REQUIRE_CACHE=0, which is a deliberate,
             # recorded choice rather than the silent default it used to be.
-            args = _browser_mcp_args(cfg["args"]) if server_id == "builtin_browser" else list(cfg["args"])
-            pkg_spec = _npx_package_from_args(args)
+            spec = builtin_connect_spec(server_id, base_dir)
+            args = spec["args"]
+            pkg_spec = spec["package"]
             if BROWSER_MCP_REQUIRE_CACHE and pkg_spec and not await _is_npx_package_cached(npx_path, pkg_spec):
                 logger.warning(
                     f"{cfg['name']} is not available.\n"
@@ -270,24 +338,13 @@ async def register_builtin_servers(mcp_manager):
 
             logger.info(f"Starting NPX server: {cfg['name']} ({npx_path} {' '.join(args)})")
             try:
-                env = None
-                if server_id == "builtin_browser":
-                    cache_home = os.environ.get(
-                        "PANTHEON_BROWSER_MCP_CACHE",
-                        os.path.join(base_dir, "data", "local", "playwright-mcp-cache"),
-                    )
-                    os.makedirs(cache_home, exist_ok=True)
-                    env = {
-                        "XDG_CACHE_HOME": cache_home,
-                        "PLAYWRIGHT_BROWSERS_PATH": os.path.join(cache_home, "browsers"),
-                    }
                 ok = await mcp_manager.connect_server(
                     server_id=server_id,
-                    name=cfg["name"],
+                    name=spec["name"],
                     transport="stdio",
-                    command=npx_path,
+                    command=spec["command"],
                     args=args,
-                    env=env,
+                    env=spec["env"],
                 )
                 if ok:
                     logger.info(f"Built-in NPX server registered: {cfg['name']}")

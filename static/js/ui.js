@@ -11,6 +11,7 @@ import spinnerModule from './spinner.js';
 import { registerMenuDismiss, dismissTopMenu, dismissOrRemove } from './escMenuStack.js';
 import { nextToolWindowZ, topToolWindowZ } from './toolWindowZOrder.js';
 import { prefersReducedMotion } from './motion.js';
+import { esc } from './util/escapeHtml.js';
 
 let toastEl = null;
 let autoScrollEnabled = true;
@@ -973,16 +974,13 @@ export function styledPrompt(message, {
   });
 }
 
-// Lookup table for esc(); hoisted out of the replace callback so it is
-// allocated once rather than per matched character.
-const _ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
-/**
- * HTML-escape a string to prevent XSS.
- * Canonical implementation — other modules should use uiModule.esc() instead of local copies.
- */
-export function esc(s) {
-  return (s || '').replace(/[&<>"']/g, (m) => _ESC_MAP[m]);
-}
+// `B866`. The implementation moved to `util/escapeHtml.js`, which imports
+// nothing, and is re-exported here under the name it has always had — so
+// `import { esc } from './ui.js'` and `uiModule.esc(...)` are untouched at
+// every one of their call sites. The move is what lets the two modules that
+// cannot import `ui.js` (it pulls six others) use the canonical escaper
+// instead of keeping a weaker copy; see that file's header.
+export { esc };
 
 // ── Mobile: suppress synthetic click/mousedown on backdrop ──
 // When a touch starts inside .modal-content, set a flag so that

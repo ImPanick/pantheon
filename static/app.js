@@ -30,7 +30,7 @@ import voiceRecorderModule from './js/voiceRecorder.js';
 import censorModule from './js/censor.js';
 import galleryModule from './js/gallery.js?v=20260708match1';
 import { UI_VIS_DEFAULT_OFF, resolveVisibility } from './js/ui_visibility.js';
-import tasksModule from './js/tasks.js?v=20260918palettesteps1';
+import tasksModule from './js/tasks.js?v=20260919workflowdiagram1';
 import calendarModule from './js/calendar.js';
 import notesModule from './js/notes.js';
 import adminModule from './js/admin.js?v=20260918p2admin1';

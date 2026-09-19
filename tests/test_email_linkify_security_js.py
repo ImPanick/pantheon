@@ -60,18 +60,29 @@ def test_plain_text_linkify_escapes_href_attribute_without_double_escaping():
 
 
 @pytest.mark.skipif(not _HAS_NODE, reason="node binary not on PATH")
-def test_email_url_scheme_checks_strip_embedded_controls():
+def test_email_url_scheme_checks_strip_embedded_controls(tmp_path):
+    # `B866`. This used to load the transformed source from a
+    # `data:text/javascript` URL, which has no base to resolve a relative
+    # import against — so the module could only be driven here for as long as
+    # it imported nothing at all. It imports the canonical escaper now
+    # (`util/escapeHtml.js`, a leaf added precisely so it could), so the copy is
+    # written to disk at the same depth as the real file with that one
+    # dependency beside it. Still the real source, still the real functions.
+    box = tmp_path / "emailLibrary"
+    box.mkdir()
+    (tmp_path / "util").mkdir()
+    shutil.copy(_REPO / "static" / "js" / "util" / "escapeHtml.js", tmp_path / "util")
+    copy = box / "utils.js"
+    copy.write_text(
+        _HELPER.read_text(encoding="utf-8")
+        .replace("function _compactUrlSchemeValue", "export function _compactUrlSchemeValue")
+        .replace("function _isDangerousUrl", "export function _isDangerousUrl")
+        .replace("function _isDangerousSrcset", "export function _isDangerousSrcset"),
+        encoding="utf-8",
+    )
     js = textwrap.dedent(
         f"""
-        import fs from 'node:fs';
-
-        let source = fs.readFileSync('{_HELPER.as_posix()}', 'utf8');
-        source = source
-          .replace('function _compactUrlSchemeValue', 'export function _compactUrlSchemeValue')
-          .replace('function _isDangerousUrl', 'export function _isDangerousUrl')
-          .replace('function _isDangerousSrcset', 'export function _isDangerousSrcset');
-
-        const mod = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
+        const mod = await import('{copy.as_posix()}');
         const checks = {{
           compact: mod._compactUrlSchemeValue('java\\n script:\\talert(1)'),
           jsUrl: mod._isDangerousUrl('java\\n script:\\talert(1)'),
