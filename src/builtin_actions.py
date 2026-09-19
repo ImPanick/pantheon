@@ -3606,6 +3606,93 @@ def _prompt_param(name, label, kind, description):
     }
 
 
+# ── `P8-33`. What a run of this action does, and what a dry run can say ────
+#
+# **The measurement that shaped this.** Every one of the eighteen actions is
+# `async def action_x(owner: str, **kwargs)`, and `**kwargs` swallows a keyword
+# it does not know. So the obvious dry run — pass `dry_run=True` down and let
+# each action honour it — is silently the REAL run for **eighteen of eighteen**
+# until eighteen functions have been edited, and for however many of them a
+# later edit forgets. That is the failure the row names, at its full size. It
+# is not a thing to be careful about; it is a thing not to build.
+#
+# So a dry run **does not call the action at all**. `dry_run_plan` below builds
+# a plan out of this registry and the task's own fields, `TaskScheduler`
+# refuses to dispatch, and the run is recorded `skipped` — which is the word
+# `core/database.py` already defines as *"deliberately did not run"*. No new
+# status, no new vocabulary, and nothing to honour (`Law 14`).
+#
+# `effects` is what the real run would do, declared once here beside the
+# description and the icon rather than in a second map (`P8-22`'s whole point).
+# It is derived from reading each action and its delegates, not from its name.
+EFFECT_READS_MAILBOX = "reads-mailbox"   # opens the user's mail over IMAP
+EFFECT_WRITES = "writes"                 # new rows/files in Pantheon's own data
+EFFECT_DELETES = "deletes"               # removes Pantheon's own data
+EFFECT_REWRITES = "rewrites"             # REPLACES text the person wrote
+EFFECT_TOUCHES_REMOTE = "touches-remote"  # changes state on a machine or service that is not this one
+EFFECT_NOTIFIES = "notifies"             # the person receives something
+EFFECT_RUNS_CODE = "runs-code"           # executes a command the operator supplied
+EFFECT_CALLS_MODEL = "calls-model"       # spends a model call
+ACTION_EFFECTS = (
+    EFFECT_READS_MAILBOX, EFFECT_WRITES, EFFECT_DELETES, EFFECT_REWRITES,
+    EFFECT_TOUCHES_REMOTE, EFFECT_NOTIFIES, EFFECT_RUNS_CODE,
+    EFFECT_CALLS_MODEL,
+)
+
+# One sentence per effect, in consequences rather than jargon — the plan a
+# person reads is assembled from these, so the English and the declaration
+# cannot drift (`Law 7`).
+EFFECT_SENTENCES = {
+    EFFECT_READS_MAILBOX: "opens your mailbox and reads recent messages",
+    EFFECT_WRITES: "writes new data inside Pantheon",
+    EFFECT_DELETES: "deletes data inside Pantheon",
+    EFFECT_REWRITES: "REPLACES text you wrote with text a model wrote",
+    EFFECT_TOUCHES_REMOTE: "changes something on a machine or service that is not this one",
+    EFFECT_NOTIFIES: "can send you a notification",
+    EFFECT_RUNS_CODE: "runs the command on this task, as the user Pantheon runs as",
+    EFFECT_CALLS_MODEL: "calls a model",
+}
+
+# `Law 10`: a verdict is an enum, because "can this be dry run" read as a
+# boolean answers a different question from the one anybody is asking. These
+# three say what the PLAN can tell you, which is the only thing a dry run
+# produces.
+#
+#   describes    the plan names everything the real run would touch. What it
+#                cannot name is scope — how many sessions, which emails —
+#                because scope is live data and fetching it is the run.
+#   shows-input  the effect is a command YOU supplied, so Pantheon cannot say
+#                what it does. The plan shows the exact command and the exact
+#                host, verbatim, and says it cannot say more. That is the whole
+#                of what is honest here, and it is also the most useful dry run
+#                in the set: it is the one that shows you the argv before it
+#                reaches a production box.
+#   cannot       the plan cannot characterise the effect at all. The real run
+#                REPLACES text the person wrote with text a model wrote, so the
+#                only report worth having — what the new text would say —
+#                requires making the model call that is the expensive and
+#                irreversible half of the real run. Two actions, named in the
+#                constant below.
+DRY_DESCRIBES = "describes"
+DRY_SHOWS_INPUT = "shows-input"
+DRY_CANNOT = "cannot"
+DRY_VERDICTS = (DRY_DESCRIBES, DRY_SHOWS_INPUT, DRY_CANNOT)
+
+# Derived from the registry, not typed a second time — so an action whose `dry`
+# verdict changes cannot leave this list saying the old thing (`Law 7`). Named
+# because "which ones can a dry run not cover" is the question this row exists
+# to answer out loud, and an answer nobody can reach from code is a comment.
+#
+# It is **two of eighteen**, measured 2026-09-19: `consolidate_memory`
+# (`src/builtin_actions.py` — `mem["text"] = cleaned["text"]`, a model's text
+# over yours) and `audit_skills` (`_apply_skill_md` puts a teacher model's
+# rewrite on disk over your SKILL.md; `P8-10` added `versions/` precisely
+# because that overwrite had no copy behind it). Nothing else in the eighteen
+# replaces authored text: `classify_events` sets metadata and leaves an event
+# it has already classified alone, `email_auto_translate` caches a translation
+# BESIDE the original, and `test_skills` is advisory by construction.
+
+
 # The order the palette shows categories in. `Forge` first so a just-saved
 # serve schedule is at the top rather than scrolled off the bottom; the rest is
 # the order people have already learned, moved across unchanged.
@@ -3618,61 +3705,85 @@ BUILTIN_ACTION_META = {
     "tidy_sessions": {
         "description": "Clean up empty chat sessions and auto-sort into folders",
         "category": "Chats", "icon": "chat", "model_backed": False,
+        "effects": (EFFECT_DELETES,),
+        "dry": DRY_DESCRIBES,
         "params": [],
     },
     "tidy_documents": {
         "description": "Remove junk/empty documents",
         "category": "Documents", "icon": "document", "model_backed": False,
+        "effects": (EFFECT_DELETES,),
+        "dry": DRY_DESCRIBES,
         "params": [],
     },
     "consolidate_memory": {
         "description": "Remove duplicate memories",
         "category": "Memory", "icon": "brain", "model_backed": True,
+        "effects": (EFFECT_DELETES, EFFECT_REWRITES, EFFECT_CALLS_MODEL),
+        "dry": DRY_CANNOT,
         "params": [],
     },
     "tidy_research": {
         "description": "Remove orphaned research files (sessions that were deleted)",
         "category": "Research", "icon": "search", "model_backed": False,
+        "effects": (EFFECT_DELETES,),
+        "dry": DRY_DESCRIBES,
         "params": [],
     },
     "summarize_emails": {
         "description": "Pre-generate AI summaries for new inbox emails",
         "category": "Email", "icon": "envelope", "model_backed": True,
+        "effects": (EFFECT_READS_MAILBOX, EFFECT_WRITES, EFFECT_CALLS_MODEL),
+        "dry": DRY_DESCRIBES,
         "params": [],
     },
     "draft_email_replies": {
         "description": "Pre-draft AI reply suggestions for new inbox emails",
         "category": "Email", "icon": "reply", "model_backed": True,
+        "effects": (EFFECT_READS_MAILBOX, EFFECT_WRITES, EFFECT_CALLS_MODEL),
+        "dry": DRY_DESCRIBES,
         "params": [],
     },
     "email_auto_translate": {
         "description": "Detect foreign-language emails and cache translated text for the email reader",
         "category": "Email", "icon": "translate", "model_backed": True,
+        "effects": (EFFECT_READS_MAILBOX, EFFECT_WRITES, EFFECT_CALLS_MODEL),
+        "dry": DRY_DESCRIBES,
         "params": [],
     },
     "extract_email_events": {
         "description": "Scan emails for booking/meeting confirmations and auto-add to calendar",
         "category": "Calendar", "icon": "calendar-plus", "model_backed": True,
+        "effects": (EFFECT_READS_MAILBOX, EFFECT_WRITES, EFFECT_CALLS_MODEL),
+        "dry": DRY_DESCRIBES,
         "params": [],
     },
     "classify_events": {
         "description": "Tag upcoming events with importance (low/normal/high/critical) and type (work/health/travel/etc.); colors them too",
         "category": "Calendar", "icon": "calendar-tags", "model_backed": True,
+        "effects": (EFFECT_WRITES, EFFECT_CALLS_MODEL),
+        "dry": DRY_DESCRIBES,
         "params": [],
     },
     "daily_brief": {
         "description": "Build a morning digest: today's calendar, unread email count + top senders, active todos",
         "category": "Assistant", "icon": "clock", "model_backed": False,
+        "effects": (EFFECT_READS_MAILBOX,),
+        "dry": DRY_DESCRIBES,
         "params": [],
     },
     "learn_sender_signatures": {
         "description": "LLM learns each sender's signature from 3+ of their recent emails; cached per address so future renders fold sigs reliably without heuristics",
         "category": "Email", "icon": "signature", "model_backed": True,
+        "effects": (EFFECT_READS_MAILBOX, EFFECT_WRITES, EFFECT_CALLS_MODEL),
+        "dry": DRY_DESCRIBES,
         "params": [],
     },
     "ssh_command": {
         "description": "Run a shell command on a local or remote host",
         "category": "System", "icon": "terminal", "model_backed": False,
+        "effects": (EFFECT_RUNS_CODE, EFFECT_TOUCHES_REMOTE),
+        "dry": DRY_SHOWS_INPUT,
         "params": [
             _prompt_param("command", "Command", "string",
                           'The shell command to run. Runs locally unless the task names a host.'),
@@ -3681,6 +3792,8 @@ BUILTIN_ACTION_META = {
     "run_script": {
         "description": "Run a script locally or on PANTHEON_SCRIPT_HOST",
         "category": "System", "icon": "terminal", "model_backed": False,
+        "effects": (EFFECT_RUNS_CODE, EFFECT_TOUCHES_REMOTE),
+        "dry": DRY_SHOWS_INPUT,
         "params": [
             _prompt_param("script", "Script", "text",
                           'The script body. Runs on PANTHEON_SCRIPT_HOST when that is set, otherwise locally.'),
@@ -3689,6 +3802,8 @@ BUILTIN_ACTION_META = {
     "run_local": {
         "description": "Run a script on this machine — never over SSH",
         "category": "System", "icon": "terminal", "model_backed": False,
+        "effects": (EFFECT_RUNS_CODE,),
+        "dry": DRY_SHOWS_INPUT,
         "params": [
             _prompt_param("script", "Script", "text",
                           'The script body. Always runs on the machine Pantheon is running on.'),
@@ -3697,21 +3812,29 @@ BUILTIN_ACTION_META = {
     "test_skills": {
         "description": "Run the per-skill Test on every skill: agent run + LLM judge → records verdict on the skill (pass/needs_work/fail/inconclusive). Advisory only — never rewrites or demotes anything.",
         "category": "Skills", "icon": "check-square", "model_backed": True,
+        "effects": (EFFECT_WRITES, EFFECT_CALLS_MODEL),
+        "dry": DRY_DESCRIBES,
         "params": [],
     },
     "audit_skills": {
         "description": "Audit unaudited skills after enough new skills are added: test, narrow metadata, self-edit/retry, optional teacher rewrite, tag duplicates/trivial skills, and publish/draft using the auto-approve threshold.",
         "category": "Skills", "icon": "check-book", "model_backed": True,
+        "effects": (EFFECT_WRITES, EFFECT_REWRITES, EFFECT_CALLS_MODEL),
+        "dry": DRY_CANNOT,
         "params": [],
     },
     "check_email_urgency": {
         "description": "Scan unread emails hourly, tag urgent/reply-soon/newsletter/marketing/spam, and send a reminder when a new email needs a fast reply.",
         "category": "Email", "icon": "bell", "model_backed": True,
+        "effects": (EFFECT_READS_MAILBOX, EFFECT_WRITES, EFFECT_TOUCHES_REMOTE, EFFECT_NOTIFIES, EFFECT_CALLS_MODEL),
+        "dry": DRY_DESCRIBES,
         "params": [],
     },
     "cookbook_serve": {
         "description": "Launch a Forge model serve on a schedule",
         "category": "Forge", "icon": "book", "model_backed": False,
+        "effects": (EFFECT_WRITES, EFFECT_RUNS_CODE, EFFECT_TOUCHES_REMOTE),
+        "dry": DRY_SHOWS_INPUT,
         "params": [
             _prompt_param("command", "Serve config", "json",
                           'JSON: {"preset": "name"} or {"repo_id": "...", "cmd": "...", "host": "..."}. Add "end_after_min": N to stop it N minutes after it starts.'),
@@ -3732,6 +3855,95 @@ BUILTIN_ACTION_INFO = {
 MODEL_BACKED_ACTIONS = frozenset(
     name for name, meta in BUILTIN_ACTION_META.items() if meta.get("model_backed")
 )
+
+# `P8-33`. The two a dry run cannot honestly characterise, derived rather than
+# listed, for the reason above. `tests/test_a_dry_run_is_dry.py` asserts both
+# the size and the membership, so a nineteenth action joining this set is a
+# thing somebody has to agree to in a diff.
+DRY_UNCOVERABLE_ACTIONS = frozenset(
+    name for name, meta in BUILTIN_ACTION_META.items()
+    if meta.get("dry") == DRY_CANNOT
+)
+
+
+def action_effect_sentences(action: str | None) -> list:
+    """What the real run of this action would do, in a person's words."""
+    meta = BUILTIN_ACTION_META.get(action or "") or {}
+    return [EFFECT_SENTENCES[e] for e in (meta.get("effects") or ())
+            if e in EFFECT_SENTENCES]
+
+
+def dry_run_plan(*, task_type: str | None, action: str | None,
+                 prompt: str | None = None, owner: str | None = None,
+                 model: str | None = None, endpoint_url: str | None = None,
+                 extra: "list | None" = None) -> list:
+    """What the real run would do, as lines. Executes nothing.
+
+    `P8-33`. The whole honesty of the dry run is that this function cannot run
+    anything: it reads a registry and the task's own columns. There is no
+    branch in here that could, on some input, reach an action — which is a
+    property you can check by reading it, and `tests/test_a_dry_run_is_dry.py`
+    checks it the other way too, by stubbing all eighteen actions and asserting
+    none was called.
+
+    Returns lines rather than a paragraph because they become the run's step
+    log, and `_renderRunSteps` already draws one row per step.
+    """
+    lines = []
+    kind = (task_type or "llm")
+    if kind == "action":
+        meta = BUILTIN_ACTION_META.get(action or "") or {}
+        if not meta:
+            return [f"Would run the action {action!r}, which this build does not "
+                    f"have. A real run would record 'Unknown action'."]
+        verdict = meta.get("dry") or DRY_DESCRIBES
+        lines.append(f"Would run: {action} — {meta.get('description') or ''}".rstrip(" —"))
+        if owner:
+            lines.append(f"As: {owner}")
+        for sentence in action_effect_sentences(action):
+            lines.append(f"It would: {sentence}")
+        if verdict == DRY_SHOWS_INPUT:
+            # The command verbatim, uninterpreted. `P8-22` already declares
+            # which parameter a given action's `prompt` carries, so the label
+            # is the one the palette shows rather than a second name for it.
+            label = "Command"
+            for param in (meta.get("params") or ()):
+                label = param.get("label") or label
+            body = (prompt or "").strip()
+            lines.append(
+                f"{label}, exactly as it would be sent: {body}" if body
+                else f"{label}: (empty — the real run would refuse with "
+                     f"'No command specified')")
+            lines.append(
+                "Pantheon cannot tell you what that does. It is your command; "
+                "this is the last look at it before it runs.")
+        elif verdict == DRY_CANNOT:
+            lines.append(
+                "A dry run cannot tell you what this would change. It replaces "
+                "text you wrote with text a model writes, and the only useful "
+                "report — what the new text would say — needs the model call "
+                "that is the expensive, irreversible half of the real run. Run "
+                "it for real when you are ready to keep or undo the result.")
+        else:
+            lines.append(
+                "A dry run cannot tell you how much it would find — that needs "
+                "the run. It tells you what would happen if it found any.")
+    elif kind == "research":
+        lines.append("Would run the deep-research pipeline on this task's question.")
+        lines.append("It would: call a model, repeatedly, and write a research report.")
+    else:
+        lines.append("Would send this task's prompt to a model, with tools.")
+        lines.append("It would: call a model, and whatever the tools it is "
+                     "allowed to call then do.")
+    if kind in ("llm", "research"):
+        if model or endpoint_url:
+            lines.append(f"Model: {model or '(resolved at run time)'} at "
+                         f"{endpoint_url or '(the default endpoint)'}")
+        else:
+            lines.append("Model: resolved at run time from Settings.")
+    for line in (extra or ()):
+        lines.append(line)
+    return lines
 
 
 def build_action_palette(*, include_admin_only: bool = True) -> list:

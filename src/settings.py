@@ -398,6 +398,16 @@ DEFAULT_SETTINGS = {
     "context_pdf_extract_chars": None,
     "context_office_inline_chars": None,
     "context_pdf_inline_chars": None,
+    # ── The prompt-assembly budget (`P8-21`) ──────────────────────────────
+    #
+    # The seventh thing that eats the window, and the first one that is not an
+    # attachment: the skills catalogue `render_skill_index_block` puts in the
+    # system prompt. Measured 2026-09-19 with the bundled library published —
+    # 286 entries, 80,610 characters, 24,187 tokens, four times the default
+    # `agent_input_token_budget` — against a row that estimated 15 tokens per
+    # skill. It participated in no budget at all; now it participates in this
+    # one. Settings-only, for the same reason the six above are.
+    "context_skill_index_chars": None,
     # How many files one `POST /api/upload` may carry (`P12-02`). It was
     # `MAX_FILES_PER_REQUEST = 25` in `src/upload_handler.py`, a constant the
     # route closed over — the "files per request" the row names. The constant
@@ -673,6 +683,11 @@ LIMIT_RANGES: dict[str, tuple[int, int]] = {
     "context_pdf_extract_chars": (1, 2_000_000),
     "context_office_inline_chars": (1, 2_000_000),
     "context_pdf_inline_chars": (1, 2_000_000),
+    # `P8-21`. The skills catalogue. The floor is 200 rather than 1 because the
+    # block's own heading and preamble are ~420 characters: a budget below that
+    # would render a header promising a catalogue with nothing under it, which
+    # tells the model the library is empty.
+    "context_skill_index_chars": (200, 2_000_000),
     # `P12-02`. Files per request. The top is starlette's own form-parser cap,
     # which is the real ceiling underneath this one.
     "upload_max_files_per_request": (1, 1000),

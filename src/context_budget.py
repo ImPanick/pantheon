@@ -252,6 +252,74 @@ def context_budget_report(owner=None, *, ceiling_default=None) -> dict:
     return {"budgets": budgets, "ceiling_key": CONTEXT_BUDGET_CEILING}
 
 
+# ── The prompt-assembly budgets (`P8-21`) ───────────────────────────────────
+#
+# A third family, and it is a family rather than a constant because the module
+# already resolves two others through one path and `Law 14` asks for that path
+# to be extended rather than copied. The attachment budgets above share a
+# **ceiling** because they are all one turn's attachments; these do not, because
+# a catalogue the model is shown and a PDF a person dropped in are not competing
+# for the same allowance — clamping the skills index to
+# `context_attachment_total_chars` would mean an operator who lowered their
+# attachment budget silently truncated their skills catalogue, and a clamp that
+# says "your number, reduced" for an unrelated reason is exactly the ambiguity
+# `Law 10` refuses.
+#
+# **Measured 2026-09-19, because the row's number was wrong in both directions.**
+# `P8-21` says the index "costs ~15 tokens per published skill on every single
+# request". Rendering the real block through `render_skill_index_block` with the
+# whole bundled library published: **286 entries, 80,610 characters, 24,187
+# tokens** by `model_context.estimate_tokens` — **84.6 tokens per entry**, median
+# entry line 275 characters, longest 1,001. That is 5.6× the row's figure, and
+# the block alone is four times the 6,000-token default
+# `agent_input_token_budget`.
+#
+# And it is not "every single request": all 286 bundled skills parse as drafts
+# (no `status:` in their frontmatter), and `index_for` admits only published
+# skills plus teacher-escalation drafts, so a **stock install renders 0
+# characters**. The cost arrives on the first publish click, and then grows with
+# no bound at all — which is what this budget is for.
+#
+# The default binds at roughly 43 entries of the measured median size. No
+# install in this repo's history reaches that, so the default changes nothing
+# today and exists to bound the growth rather than to cut anybody's library.
+SKILL_INDEX_BUDGET = "context_skill_index_chars"
+
+PROMPT_BUDGETS: dict[str, int] = {
+    SKILL_INDEX_BUDGET: 12000,
+}
+
+PROMPT_BUDGET_LABELS: dict[str, str] = {
+    SKILL_INDEX_BUDGET: "Skills catalogue listed in the system prompt",
+}
+
+MIN_PROMPT_BUDGET_CHARS = 200
+MAX_PROMPT_BUDGET_CHARS = 2_000_000
+
+
+def resolve_prompt_budget_detail(key: str, owner=None):
+    """One prompt-assembly budget and the layer that decided it.
+
+    Same resolver, same four layers, same `env_name=None` settings-only choice
+    the six character budgets above already document — the only difference is
+    that these are not clamped to the attachment ceiling, for the reason stated
+    above the registry.
+    """
+    from src.limit_policy import resolve_int_limit
+
+    if key not in PROMPT_BUDGETS:
+        raise KeyError(f"{key} is not a prompt budget")
+    return resolve_int_limit(
+        key, default=PROMPT_BUDGETS[key], env_name=None, owner=owner,
+        minimum=MIN_PROMPT_BUDGET_CHARS, maximum=MAX_PROMPT_BUDGET_CHARS,
+    )
+
+
+def resolve_prompt_budget(key: str, owner=None) -> int:
+    """The effective character budget. See `resolve_prompt_budget_detail`."""
+    return resolve_prompt_budget_detail(key, owner).value
+
+
 # ── What is consuming the window right now (`P12-09`) ───────────────────────
 #
 # `P12-09` asks for a live breakdown at the composer: system prompt, skills,
@@ -278,11 +346,18 @@ CONTEXT_SEGMENT_LABELS: dict[str, str] = {
 
 
 def context_window_report(owner=None, *, turn: dict | None = None,
+                          prompt: dict | None = None,
                           ceiling_default=None) -> dict:
     """The composer's payload: the budgets, and what is spending them.
 
     `turn` is `build_user_content`'s `budget_report` out-parameter — the real
     accounting from the real path, or `None` when nothing has been measured.
+
+    `prompt` is the same thing for the prompt assembler: `{"skill_index_chars":
+    N}` as `render_skill_index_block` actually rendered it. `P8-21` measures the
+    skills segment and nothing else — `system`, `memory` and `history` are still
+    assembled in `src/agent_loop.py` with nothing emitting their sizes, and they
+    stay `measured: false` rather than drawing a zero (`Law 10`).
 
     The token figures go through `model_context.estimate_tokens`, which is the
     product's one estimator. A second one would answer a slightly different
@@ -294,6 +369,16 @@ def context_window_report(owner=None, *, turn: dict | None = None,
     for key in CONTEXT_SEGMENTS:
         entry = {"key": key, "label": CONTEXT_SEGMENT_LABELS[key],
                  "measured": False}
+        if key == "skills" and prompt is not None and "skill_index_chars" in prompt:
+            chars = int(prompt.get("skill_index_chars") or 0)
+            entry.update({
+                "measured": True,
+                "chars": chars,
+                "tokens": _estimate_tokens_for_chars(chars),
+                "budget_chars": resolve_prompt_budget(SKILL_INDEX_BUDGET, owner),
+                "truncated": bool(prompt.get("skill_index_truncated")),
+                "omitted": int(prompt.get("skill_index_omitted") or 0),
+            })
         if key == "attachments" and turn is not None:
             chars = int(turn.get("used_chars") or 0)
             entry.update({
@@ -310,8 +395,10 @@ def context_window_report(owner=None, *, turn: dict | None = None,
     # Named rather than implied: a composer that draws four empty bars without
     # being told why has a `Law 15` problem, and so does the next agent.
     report["unmeasured_reason"] = (
-        "system, skills, memory and history are assembled in src/agent_loop.py "
-        "and are not yet emitted per turn — see P12-09, B750 and B751."
+        "system, memory and history are assembled in src/agent_loop.py and are "
+        "not yet emitted per turn — see P12-09, B750 and B751. skills is "
+        "measured when the caller hands in what render_skill_index_block "
+        "rendered (P8-21)."
     )
     return report
 

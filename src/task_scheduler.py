@@ -9,7 +9,7 @@ import re
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any, Awaitable, Callable, Dict, Tuple
+from typing import Any, Awaitable, Callable, Dict, NamedTuple, Tuple
 
 from core.auth import RESERVED_USERNAMES
 from src.event_bus import (
@@ -18,6 +18,7 @@ from src.event_bus import (
     EVENT_RESEARCH_COMPLETED,
     EVENT_SESSION_CREATED,
     EVENT_SKILL_ADDED,
+    build_task_handoff as _build_task_handoff,
     trigger_context_message as _trigger_context_message,
     trigger_summary as _trigger_summary,
 )
@@ -439,6 +440,96 @@ def failure_backoff_seconds(failures: int) -> float:
     return jittered(delay, fraction=0.2)
 
 
+# `P8-32`. A ceiling nobody can set is not a ceiling, and one that can be set
+# to three seconds is a task that can never finish. The floor is the smallest
+# number that leaves room for a model call to connect and answer; `0` and NULL
+# both mean "no ceiling", which is what every run has had until this row.
+MIN_TASK_TIMEOUT_SECONDS = 30
+MAX_TASK_TIMEOUT_SECONDS = 24 * 60 * 60
+
+
+def task_timeout_seconds(task) -> int:
+    """This task's wall-clock ceiling in seconds, or `0` for none."""
+    raw = getattr(task, "timeout_seconds", None)
+    try:
+        value = int(raw or 0)
+    except (TypeError, ValueError):
+        return 0
+    if value <= 0:
+        return 0
+    return max(MIN_TASK_TIMEOUT_SECONDS, min(MAX_TASK_TIMEOUT_SECONDS, value))
+
+
+class FailureSchedule(NamedTuple):
+    """Where a failed run puts `next_run`, and what to tell the person."""
+    next_run: datetime | None
+    is_retry: bool
+    attempt: int
+    delay_seconds: float
+    note: str
+
+
+def failure_next_run(db, task, *, run_id: str, now=None) -> FailureSchedule:
+    """When a task that just failed goes again. One decision, both failures.
+
+    `P8-32`. Three things meet here and none of them is new machinery.
+
+    **`P15-08`'s ladder is the only ladder.** `failure_backoff_seconds` is
+    `rate_limiter.penalise`'s shape and it is jittered, so this adds no second
+    idea of backing off and nothing new for `.pantheon/check-jitter.py` to
+    police. `apply_interval_floor` still holds the minimum gap on top, because
+    a retry is one more request to the provider that has just refused us and
+    `FORBIDDEN.md` Part 2 is about exactly that standing.
+
+    **`P8-24`'s vocabulary supplies the unit.** `delay_seconds` is the
+    `retry_after` a `NODE_STATUS_DEFERRED` result carries — the same number,
+    meaning the same thing. What is deliberately NOT reused is `deferred`
+    itself: `TaskDeferred` deletes the run row (`B675`), and a failure with
+    retries left is the one case where the row is the whole point. A retry is a
+    failure that is coming back, not a run that never happened.
+
+    **The attempt count is read, not stored.** `consecutive_failures` already
+    derives it from `task_runs`, and `P15-08` chose that over a column for the
+    reason this row would otherwise repeat: a counter beside a history that
+    already answers the question is a second copy that can disagree (`Law 14`).
+
+    With `max_retries` unset — every task in every existing install — the
+    result is byte-for-byte what this code computed before: the schedule,
+    pushed out if the backoff is later.
+    """
+    now = now or _utcnow()
+    scheduled = None
+    if (getattr(task, "trigger_type", None) or "schedule") == "schedule":
+        scheduled = compute_next_run(
+            task.schedule, task.scheduled_time,
+            task.scheduled_day, task.scheduled_date,
+            after=now,
+            cron_expression=task.cron_expression,
+            tz_name=_resolve_task_timezone(db, task),
+        )
+    attempt = consecutive_failures(db, task.id, before_run_id=run_id) + 1
+    delay = failure_backoff_seconds(attempt)
+    backed_off = apply_interval_floor(now + timedelta(seconds=delay), now)
+    budget = max(0, int(getattr(task, "max_retries", None) or 0))
+
+    if scheduled is None:
+        # An event- or webhook-triggered task waits for its trigger, and always
+        # has. Re-firing it on a clock would make it a different kind of task.
+        return FailureSchedule(None, False, attempt, delay, "")
+    if attempt <= budget:
+        return FailureSchedule(
+            backed_off, True, attempt, delay,
+            f"Failed — retrying (attempt {attempt} of {budget}) in "
+            f"{_human_gap(delay)}, at {backed_off.isoformat()}Z")
+    if backed_off > scheduled:
+        note = (f"Failed {attempt} time(s) in a row — next run held back to "
+                f"{backed_off.isoformat()}Z instead of its schedule")
+        if budget:
+            note = (f"Failed — {budget} retry attempt(s) used up. " + note)
+        return FailureSchedule(backed_off, False, attempt, delay, note)
+    return FailureSchedule(scheduled, False, attempt, delay, "")
+
+
 def _human_gap(seconds: float) -> str:
     seconds = int(seconds)
     if seconds % 3600 == 0 and seconds >= 3600:
@@ -590,8 +681,45 @@ def compute_next_run(schedule: str, scheduled_time: str,
     return None
 
 
+def valid_timezone(name: str | None) -> str | None:
+    """`name` if `zoneinfo` knows it, else `None`.
+
+    `P8-32`. A typo here is the worst possible failure mode, because it is
+    silent and it is wrong by hours: `compute_next_run` catches the lookup
+    error and falls back to naive UTC, so "Ameria/New_York" produces a task
+    that runs, every day, at the wrong time, with nothing anywhere saying so.
+    The API refuses the value instead, and this is the one function that
+    decides — so the route's validation and the executor's resolution cannot
+    disagree about which zones exist (`Law 7`).
+    """
+    name = (name or "").strip()
+    if not name:
+        return None
+    try:
+        from zoneinfo import ZoneInfo
+        ZoneInfo(name)
+    except Exception:
+        return None
+    return name
+
+
 def _resolve_task_timezone(db, task) -> str | None:
-    """Look up the IANA timezone name for a task via its linked CrewMember, if any."""
+    """The IANA zone this task's wall-clock time is in, or `None` for UTC.
+
+    `P8-32`. Order: the task's own `tz_name`, then its linked crew member's,
+    then none. The second is what this function used to be and is preserved
+    exactly (`Law 1`) — a task linked to a crew member and carrying no zone of
+    its own still fires in that crew member's local time.
+
+    The task's own value wins because it is the more specific statement: a
+    crew member is a persona that several tasks share, and "this report runs at
+    09:00 Sydney time" is a fact about the report. A stored value that
+    `zoneinfo` no longer knows falls through to the crew member rather than
+    silently meaning UTC, which is what an un-validated read would do.
+    """
+    own = valid_timezone(getattr(task, "tz_name", None))
+    if own:
+        return own
     if not getattr(task, "crew_member_id", None):
         return None
     try:
@@ -650,8 +778,17 @@ DISPATCH_JITTER_CAP_SECONDS = 45.0
 DISPATCH_JITTER_FALLBACK_SECONDS = 5.0
 
 
-def _task_period_seconds(task, *, now=None):
-    """Seconds between this task's runs, or None when it cannot be derived."""
+def _task_period_seconds(task, *, now=None, tz_name: str | None = None):
+    """Seconds between this task's runs, or None when it cannot be derived.
+
+    `P8-32` corrected the zone this reads. It was `getattr(task, "tz_name", None)`
+    — a column that did not exist, so it was `None` on every task ever, while
+    `_execute_task_locked` computed the same task's next run through
+    `_resolve_task_timezone` and got the crew member's zone. **Two answers to
+    one question**, and the one used to size the dispatch spread was the wrong
+    one. It is passed in now, resolved once by the caller that holds the
+    session, so there is one resolver (`Law 7`).
+    """
     now = now or _utcnow()
     try:
         nxt = compute_next_run(
@@ -661,7 +798,7 @@ def _task_period_seconds(task, *, now=None):
             scheduled_date=task.scheduled_date,
             after=now,
             cron_expression=task.cron_expression,
-            tz_name=getattr(task, "tz_name", None),
+            tz_name=tz_name,
         )
     except Exception:
         return None
@@ -671,10 +808,10 @@ def _task_period_seconds(task, *, now=None):
     return seconds if seconds > 0 else None
 
 
-def dispatch_hold(task, *, now=None) -> float:
+def dispatch_hold(task, *, now=None, tz_name: str | None = None) -> float:
     """The spread for one due task. Zero is a legitimate answer."""
     from src.jitter import spread
-    period = _task_period_seconds(task, now=now)
+    period = _task_period_seconds(task, now=now, tz_name=tz_name)
     if period is None:
         return spread(DISPATCH_JITTER_FALLBACK_SECONDS)
     return spread(min(DISPATCH_JITTER_CAP_SECONDS, period * DISPATCH_JITTER_FRACTION))
@@ -919,7 +1056,14 @@ class TaskScheduler:
         runs = self._runs()
         state = runs.get(run_id)
         if state is None:
-            state = {"model": None, "steps": [], "trigger": None}
+            # `P8-29` adds `payload`: what a node RETURNED, as opposed to the
+            # sentence about it. `TaskRun.result` is text and always has been,
+            # so a node that produced a dict had nowhere to keep it between
+            # `_execute_action` and the chain decision. It lives on the run's
+            # slot beside the model and the step log because it is a fact about
+            # the run, which is what `P8-27` made the slot for — and the slot is
+            # dropped when the run ends, so nothing accumulates.
+            state = {"model": None, "steps": [], "trigger": None, "payload": None}
             runs[run_id] = state
         return state
 
@@ -1030,7 +1174,14 @@ class TaskScheduler:
         if refusal is None:
             logger.info("Chaining on %s: %r → task %s", when, task.name, chain_id)
             self._record_chain_outcome(db, run_id, f"{lead} {label}")
-            asyncio.create_task(self._run_chained(chain_id))
+            # `P8-29`. What this run produced, handed to the step that follows
+            # it. A chain was a sequence: `_run_chained` took an id and nothing
+            # else, so "summarise this, then email the summary" could not be
+            # built — step two had no way to name what step one made. Built
+            # here, where the predecessor's row is already loaded, rather than
+            # re-read at the far end.
+            asyncio.create_task(self._run_chained(
+                chain_id, handoff=self._handoff_from(db, task, run_id, run_status)))
             return
         # `P8-26`. This said "cycle detected" for all three reasons, including
         # a chain that is simply longer than `CHAIN_MAX_DEPTH` and has no cycle
@@ -1046,6 +1197,37 @@ class TaskScheduler:
         self._record_chain_outcome(
             db, run_id,
             f"Did not continue to {label}: {CHAIN_REFUSAL_REASONS[refusal]}")
+
+    def _handoff_from(self, db, task, run_id: str, run_status: str):
+        """The envelope this run hands to its successor, or `None`.
+
+        `P8-29`. Read off the run row that has just been committed, so the
+        successor is given what the run actually recorded rather than a second
+        copy assembled from locals (`Law 7`). A run with nothing to say hands
+        `None`, and a successor given `None` builds a byte-identical message
+        list to the one it built before this row — which is every chain that
+        exists today (`Law 1`).
+        """
+        from core.database import TaskRun
+
+        try:
+            run = db.query(TaskRun).filter(TaskRun.id == run_id).first()
+            text = (run.result if run is not None else None) or ""
+            payload = self._runs().get(run_id, {}).get("payload")
+        except Exception:
+            logger.debug("Could not build the handoff for run %s", run_id,
+                         exc_info=True)
+            return None
+        if not text and not payload:
+            # `Law 1`. A predecessor that produced nothing hands on nothing, so
+            # a chain that ran ungated before this row still does: an envelope
+            # carrying only bookkeeping would arm the tool gate on every chained
+            # run in the product while saying nothing the successor can use.
+            return None
+        return _build_task_handoff(
+            task_name=task.name or task.id, task_id=task.id, run_id=run_id,
+            status=run_status, result=text, payload=payload,
+        )
 
     def _record_chain_outcome(self, db, run_id, detail: str) -> None:
         """Append one step about what happened AFTER this run finished.
@@ -1070,6 +1252,53 @@ class TaskScheduler:
             # its log must not turn a successful run into an error.
             logger.debug("Could not record the chain outcome for run %s",
                          run_id, exc_info=True)
+
+    def _record_dry_run(self, db, task, run_id: str) -> None:
+        """Write the plan onto the run row. Runs nothing, changes nothing else.
+
+        `P8-33`. The status is `skipped` because `core/database.py` already
+        defines that as *"deliberately did not run … Not a failure"*, and a
+        dry run is the purest case of it. A seventh status would have to be
+        taught to `check-run-statuses.py`, `static/js/runStatus.js`,
+        `TASK_RUN_NOTIFY` and every consumer of the six, to say a thing the
+        sixth already says (`Law 14`).
+
+        **What this deliberately does not touch.** `last_run`, `next_run` and
+        `run_count` stay exactly where they were, nothing is delivered,
+        nothing is notified, and no chain advances. A dry run that moved the
+        schedule would be a side effect on the one path whose entire promise is
+        that it has none — and `next_run` moving is precisely how `B675`
+        describes a run that left no trace.
+        """
+        from core.database import TaskRun
+        from src.builtin_actions import dry_run_plan
+
+        lines = dry_run_plan(
+            task_type=task.task_type,
+            action=task.action,
+            prompt=task.prompt,
+            owner=task.owner,
+            model=task.model,
+            endpoint_url=task.endpoint_url,
+            extra=[f"Where the result would go: {task.output_target or 'session'}"],
+        )
+        # `Law 15`. The first line is the one a person reads on a card that
+        # says `skipped`, and it has to answer "did my thing happen" before it
+        # answers anything else.
+        headline = "Dry run — nothing ran, nothing changed."
+        self._record_run_step(run_id, kind="dry-run", detail=headline)
+        for line in lines:
+            self._record_run_step(run_id, kind="dry-run", detail=line)
+        run = db.query(TaskRun).filter(TaskRun.id == run_id).first()
+        if run is None:
+            return
+        run.status = "skipped"
+        run.result = "\n".join([headline, *lines])
+        run.finished_at = _utcnow()
+        self._attach_run_steps(run_id, run)
+        db.commit()
+        logger.info("Dry run of task '%s' (run %s): planned %d line(s), executed nothing",
+                    task.name, run_id, len(lines))
 
     def _attach_run_steps(self, run_id, run) -> None:
         """Persist this run's step log onto its row, if anything recorded one."""
@@ -1496,7 +1725,11 @@ class TaskScheduler:
                         task.next_run = now + timedelta(minutes=15)
                         continue
                     self._executing.add(task.id)
-                    to_dispatch.append((task.id, dispatch_hold(task, now=now)))
+                    to_dispatch.append((
+                        task.id,
+                        dispatch_hold(task, now=now,
+                                      tz_name=_resolve_task_timezone(db, task)),
+                    ))
                 if foreground_active and due:
                     db.commit()
             for task_id, hold in to_dispatch:
@@ -1529,7 +1762,8 @@ class TaskScheduler:
         await self._execute_task(task_id)
 
     async def _execute_task(self, task_id: str, *, bypass_model_slot: bool = False,
-                            release_executing: bool = True, trigger: dict | None = None):
+                            release_executing: bool = True, trigger: dict | None = None,
+                            dry: bool = False):
         # Create the run record with status="queued" BEFORE waiting on the
         # semaphore so the UI can show that a manually-triggered task is in
         # line behind another. Once we acquire the slot, flip to "running"
@@ -1556,13 +1790,18 @@ class TaskScheduler:
             _q_db.close()
 
         try:
-            if bypass_model_slot or not self._task_needs_model_slot(task_id):
+            # `P8-33`. A dry run makes no model call and touches nothing, so it
+            # neither waits for the model slot nor waits for Pantheon to go
+            # idle. Queueing a plan behind a real run's semaphore would make the
+            # one button that is safe to press the slowest one.
+            if dry or bypass_model_slot or not self._task_needs_model_slot(task_id):
                 await self._execute_task_locked(
                     task_id,
                     run_id,
                     release_executing=release_executing,
-                    gate_foreground=not bypass_model_slot,
+                    gate_foreground=not (bypass_model_slot or dry),
                     trigger=trigger,
+                    dry=dry,
                 )
                 return
 
@@ -1618,6 +1857,7 @@ class TaskScheduler:
         release_executing: bool = True,
         gate_foreground: bool = True,
         trigger: dict | None = None,
+        dry: bool = False,
     ):
         from core.database import SessionLocal, ScheduledTask, TaskRun
 
@@ -1662,6 +1902,23 @@ class TaskScheduler:
                 # actually happened instead of finding a stopped task later.
                 self._notify_run_outcome(task, "skipped", body=_refusal,
                                          task_id=task_id)
+                return
+
+            if dry:
+                # `P8-33`. The dry run ends here, and this `return` is the whole
+                # guarantee. Every executor — the eighteen actions, the agent
+                # loop, the research pipeline — is below this line, and so is
+                # every delivery, notification and chain advance. There is no
+                # `dry_run=True` travelling down into anything, because the
+                # eighteen actions all take `**kwargs` and would swallow it
+                # (measured: 18 of 18), which would make the button labelled
+                # "test" the button that sends the email.
+                #
+                # The admin gate above still applies: an admin-only action is
+                # refused before this, not planned. A person without the
+                # privilege gets the same answer for a dry run as for a real
+                # one, which is the only answer that is not a privilege oracle.
+                self._record_dry_run(db, task, run_id)
                 return
 
             if gate_foreground:
@@ -1736,8 +1993,21 @@ class TaskScheduler:
 
                 foreground_monitor = asyncio.create_task(_cancel_if_foreground_active())
             try:
+                # `P8-32`. This task's own wall-clock ceiling, or no ceiling —
+                # which is what every run has had until now. `max_steps` bounds
+                # agent-loop ROUNDS on an llm task and nothing bounded an
+                # action at all, so a hung action held a scheduler slot until
+                # the process restarted. `_bounded` is applied at this one
+                # boundary rather than inside three executors (`Law 14`).
+                budget = task_timeout_seconds(task)
+
+                async def _bounded(coro, _budget=budget):
+                    if not _budget:
+                        return await coro
+                    return await asyncio.wait_for(coro, timeout=_budget)
+
                 if task_type == "action":
-                    node = await self._execute_action(task, run_id=run_id)
+                    node = await _bounded(self._execute_action(task, run_id=run_id))
                     # `P8-24`. `skipped` and `deferred` are raised here rather
                     # than branched on, so the two handlers below stay the only
                     # code that writes a no-op row or pushes `next_run` — one
@@ -1751,13 +2021,21 @@ class TaskScheduler:
                     run.result = result
                     if node.failed:
                         run.error = result
+                    # `P8-29`. Keep what the node RETURNED, not only the
+                    # sentence about it, so a successor can read a field out of
+                    # it instead of parsing English. `P8-24` widened the
+                    # contract for exactly this and said so in its own comment;
+                    # this is the first consumer.
+                    self._state_for(run_id)["payload"] = node.payload
                 elif task_type == "research":
-                    result = await self._execute_research_task(task, db, run_id=run_id)
+                    result = await _bounded(
+                        self._execute_research_task(task, db, run_id=run_id))
                     run.status = "success"
                     run.result = result
                 else:
                     # LLM task — use agent loop for tool access
-                    result = await self._execute_llm_task(task, db, run_id=run_id)
+                    result = await _bounded(
+                        self._execute_llm_task(task, db, run_id=run_id))
                     run.status = "success"
                     run.result = result
                 # Record which model actually ran (resolved inside the executor).
@@ -1766,6 +2044,34 @@ class TaskScheduler:
                 self._attach_run_steps(run_id, run)
                 if run.status == "success":
                     await self._deliver_task_result(task, result, db, model=self.run_model(run_id))
+            except asyncio.TimeoutError:
+                # `P8-32`. `error`, not `aborted`. `core/database.py`'s own
+                # definitions put a user stop, a foreground takeover and a
+                # restart under `aborted` and call them "not a failure" —
+                # because folding infrastructure events into the error rate
+                # corrupts it. A ceiling the OWNER set on THIS task is the
+                # opposite: exceeding it is the task failing to do its job on
+                # the terms the owner gave it, and it should count, back off
+                # and take the failure edge like any other failure. Caught here
+                # rather than left to `except Exception` so it cannot be read
+                # as "Stopped by user" the way the `CancelledError` branch
+                # below would report it.
+                budget = task_timeout_seconds(task)
+                if not budget:
+                    # Not ours. An executor can raise this from a `wait_for` of
+                    # its own, and claiming it as "this task's timeout" would
+                    # name a limit the task does not have. Let the generic error
+                    # path report it as what it is.
+                    raise
+                msg = (f"Timed out after {_human_gap(budget)} — this task's own "
+                       f"timeout. Nothing after that point ran.")
+                logger.warning("Task '%s' exceeded its %ss timeout", task.name, budget)
+                run.status = "error"
+                run.result = msg
+                run.error = msg
+                self._record_run_step(run_id, kind="progress", detail=msg)
+                self._attach_run_steps(run_id, run)
+                result = msg
             except TaskDeferred as defer:
                 count = self._task_defer_counts.get(task_id, 0) + 1
                 self._task_defer_counts[task_id] = count
@@ -1874,7 +2180,27 @@ class TaskScheduler:
             self._task_defer_counts.pop(task_id, None)
 
             # Compute next run only for schedule-triggered tasks
-            if (task.trigger_type or "schedule") == "schedule":
+            if run.status == "error":
+                # `P8-32`. **A run that RETURNED a failure got no backoff at
+                # all.** `P15-08` put the ladder in the `except Exception`
+                # handler below, so it covered a task that RAISED and not one
+                # whose action returned `(text, False)` — which is every
+                # built-in email action, which is the exact case `P15-08` was
+                # written for: the actions that get an owner soft-banned are
+                # the ones that report failure by returning it. `P8-28` fixed
+                # the same asymmetry for the failure EDGE and said so in those
+                # words; this is the other half of it, and `failure_next_run`
+                # is now the one place either shape is answered (`Law 14`).
+                plan = failure_next_run(db, task, run_id=run_id)
+                task.next_run = plan.next_run
+                if plan.note:
+                    logger.warning("Task %s: %s", task_id, plan.note)
+                    self._record_run_step(run_id, kind="progress", detail=plan.note)
+                    self._attach_run_steps(run_id, run)
+                if (task.next_run is None and task.schedule == "once"
+                        and (task.trigger_type or "schedule") == "schedule"):
+                    task.status = "completed"
+            elif (task.trigger_type or "schedule") == "schedule":
                 task.next_run = compute_next_run(
                     task.schedule, task.scheduled_time,
                     task.scheduled_day, task.scheduled_date,
@@ -1964,13 +2290,6 @@ class TaskScheduler:
                 if task_obj and (task_obj.trigger_type or "schedule") == "schedule":
                     task_obj.last_run = _utcnow()
                     try:
-                        task_obj.next_run = compute_next_run(
-                            task_obj.schedule, task_obj.scheduled_time,
-                            task_obj.scheduled_day, task_obj.scheduled_date,
-                            after=_utcnow(),
-                            cron_expression=task_obj.cron_expression,
-                            tz_name=_resolve_task_timezone(db, task_obj),
-                        )
                         # `P15-08`. Advancing to the next slot is what this line
                         # did and all it did: a task failing against a
                         # rate-limiting provider retried at full cadence, for
@@ -1979,17 +2298,21 @@ class TaskScheduler:
                         # this only ever pushes the next run LATER — and the
                         # first success clears the ladder, because the count is
                         # read from the run history rather than carried.
-                        if task_obj.next_run is not None:
-                            failures = consecutive_failures(
-                                db, task_id, before_run_id=run_id) + 1
-                            delay = failure_backoff_seconds(failures)
-                            backed_off = _utcnow() + timedelta(seconds=delay)
-                            if backed_off > task_obj.next_run:
-                                logger.warning(
-                                    "Task %s has failed %d time(s) in a row; next run "
-                                    "held back to %s (+%.0fs) instead of its schedule",
-                                    task_id, failures, backed_off, delay)
-                                task_obj.next_run = backed_off
+                        #
+                        # `P8-32` moved the arithmetic into `failure_next_run`
+                        # and changed nothing about it for a task with no retry
+                        # budget. It is one function now because the ordinary
+                        # path needed the same answer and did not have it: a
+                        # built-in action that RETURNED a failure got no backoff
+                        # at all, which is the half of `P15-08` that was never
+                        # wired.
+                        plan = failure_next_run(db, task_obj, run_id=run_id)
+                        task_obj.next_run = plan.next_run
+                        if plan.note:
+                            logger.warning("Task %s: %s", task_id, plan.note)
+                            self._record_run_step(run_id, kind="progress",
+                                                  detail=plan.note)
+                            self._attach_run_steps(run_id, run_obj)
                     except Exception as exc:
                         # `P3-17`. `last_run` was set on the line above, so
                         # swallowing this leaves `next_run` at a time that has
@@ -3135,15 +3458,22 @@ class TaskScheduler:
 
         return report
 
-    async def _run_chained(self, task_id: str):
+    async def _run_chained(self, task_id: str, *, handoff: dict | None = None):
         """Run a chained task. Acquires _executing membership the same way
         run_task_now does so an overlapping scheduler tick can't double-dispatch
-        the same task while the chain run is in flight."""
+        the same task while the chain run is in flight.
+
+        `P8-29`. `handoff` is what the step before produced, in the `P8-23`
+        envelope — so it arrives at the successor through the one channel a
+        trigger payload already travels on, and `trigger_context_message` wraps
+        it untrusted the way it wraps a webhook body. `None` is a chain with
+        nothing to hand on, which is what every chain did before this row.
+        """
         async with self._executing_lock:
             if task_id in self._executing:
                 return  # already in flight (manual trigger, scheduler tick, or another chain)
             self._executing.add(task_id)
-        await self._execute_task(task_id)
+        await self._execute_task(task_id, trigger=handoff)
 
     def _chain_refusal(self, db, start_id: str, max_depth: int = CHAIN_MAX_DEPTH,
                        owner: str | None = None) -> str | None:
@@ -3277,24 +3607,29 @@ class TaskScheduler:
             logger.error(f"Task {task.id} MCP delivery failed: {e}")
 
     async def run_task_now(self, task_id: str, *, force: bool = False,
-                           trigger: dict | None = None):
+                           trigger: dict | None = None, dry: bool = False):
         """Manually trigger a task execution.
 
         `P8-23`. `trigger` is what fired it — the event bus's envelope or the
         webhook's. `None` is a run nobody can name a cause for, which is every
         scheduled run and every button press, and those behave exactly as
         before.
+
+        `P8-33`. `dry` produces a plan and executes nothing. It still takes the
+        `_executing` claim, because a dry run and a real run of the same task
+        overlapping is the same confusion `B674` is about and a dry run is not
+        the place to decide that question.
         """
         if force:
             asyncio.create_task(self._execute_task(
                 task_id, bypass_model_slot=True, release_executing=False,
-                trigger=trigger))
+                trigger=trigger, dry=dry))
             return True
         async with self._executing_lock:
             if task_id in self._executing:
                 return False
             self._executing.add(task_id)
-        asyncio.create_task(self._execute_task(task_id, trigger=trigger))
+        asyncio.create_task(self._execute_task(task_id, trigger=trigger, dry=dry))
         return True
 
     async def stop_task(self, task_id: str) -> bool:

@@ -34,9 +34,19 @@ import functools
 import pathlib
 import re
 
+from tests.helpers.source_text import blank  # B290
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 INDEX = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
-CSS = (ROOT / "static" / "style.css").read_text(encoding="utf-8")
+# Comments blanked (`B290`). A stylesheet that documents its own
+# corrections in place mentions ids in prose — `P5-12`'s chip rule names
+# `#pinned-tools-bar` to say which row will build it — and a raw `#id`
+# scan counts that sentence as a selector. `Law 20`: a source file is code
+# and prose about code interleaved, and a substring search can tell you
+# neither which of the two it found nor what scope it landed in. That is
+# the wrong direction for this check: an id "reached" only by a comment is
+# an orphan this file would stop reporting.
+CSS = blank(ROOT / "static" / "style.css")
 SESSIONS = (ROOT / "static" / "js" / "sessions.js").read_text(encoding="utf-8")
 MEMORY = (ROOT / "static" / "js" / "memory.js").read_text(encoding="utf-8")
 

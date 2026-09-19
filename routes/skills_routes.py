@@ -1196,7 +1196,18 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
         """
         user = _owner(request)
         idx = skills_manager.index_for(owner=user)
-        block = render_skill_index_block(idx)
+        # `P8-21`. The block is rendered through the same budget the loop uses,
+        # and the measurement comes back out of the renderer rather than being
+        # recomputed here — a preview that re-derives its own numbers is a
+        # drawing of the prompt again (`P8-06`, `Law 7`).
+        measured: dict = {}
+        block = render_skill_index_block(idx, owner=user, report=measured)
+        from src.context_budget import context_window_report
+        segment = next(
+            (seg for seg in context_window_report(user, prompt=measured)["segments"]
+             if seg["key"] == "skills"),
+            {},
+        )
         return {
             "index": idx,
             "count": len(idx),
@@ -1204,6 +1215,18 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
             "prompt_chars": len(block),
             "injected_fields": list(INJECTED_FIELDS),
             "withheld_fields": list(WITHHELD_FIELDS),
+            # What it costs and what it is allowed to cost. `prompt_chars` was
+            # already here and answered neither question: 286 published skills
+            # render 80,610 characters (24,187 tokens, measured 2026-09-19) and
+            # nothing said whether that was a lot.
+            "budget": {
+                "chars": segment.get("chars", len(block)),
+                "tokens": segment.get("tokens"),
+                "budget_chars": segment.get("budget_chars"),
+                "truncated": bool(measured.get("skill_index_truncated")),
+                "omitted": int(measured.get("skill_index_omitted") or 0),
+                "listed": len(idx) - int(measured.get("skill_index_omitted") or 0),
+            },
         }
 
     @router.post("/lint")
@@ -1433,7 +1456,16 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
         )
         if not entry.get("_deduped"):
             _fire_skill_added(user, entry.get("name"))
-        return {"ok": True, "deduped": bool(entry.get("_deduped")), "skill": entry}
+        # `P8-15`. `SkillAddRequest.source` defaults to `"user"`, which is what
+        # exempts this path from `add_skill`'s dedup-at-creation — deliberately,
+        # because a person asked for it and `P9-12`'s undo restores through this
+        # endpoint. What was missing is the sentence: the skill is created, and
+        # the caller is told what it overlaps and by how much, on the same scale
+        # `POST /api/skills/lint` shows while they are still typing.
+        return {"ok": True, "deduped": bool(entry.get("_deduped")),
+                "overlaps": entry.get("_overlaps") or [],
+                "duplicate_score": entry.get("_duplicate_score"),
+                "skill": entry}
 
     @router.post("/{skill_id}/invoke")
     async def invoke_skill(request: Request, skill_id: str):

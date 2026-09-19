@@ -272,7 +272,12 @@ def _scheduler(chained):
     async def _deliver(*a, **k):
         return None
 
-    async def _run_chained(task_id):
+    async def _run_chained(task_id, *, handoff=None):
+        # `P8-29` gave the chain a payload to hand on, so the stub takes it.
+        # A stub that pins an internal signature is a test to update when that
+        # signature grows, which is what `B603` says about the one in
+        # `test_task_shell_tools.py`. This file asserts about WHICH edge is
+        # taken; what travels along it is `tests/test_a_chain_hands_on_what_it_made.py`.
         chained.append(task_id)
 
     s._deliver_task_result = _deliver

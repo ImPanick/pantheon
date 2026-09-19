@@ -1442,7 +1442,19 @@ body.bg-pattern-sparkles {
       flex: 1; cursor: pointer; user-select: none;
       display: flex; align-items: center; gap: 6px;
       margin: 0; padding: 0; border: none;
-      font-size: 10px; font-weight: 400; font-family: inherit;
+      /* P5-11. Was `10px / 400`, which the row called an inversion against
+         `.list-item`'s 13px. The 13px is real and reaches nothing: every
+         sidebar label is a `<span>` (`<span class="grow">` in the markup,
+         `span.className = 'grow'` in sessions.js's row builder) and
+         `.list-item span { font-size: 9.75px }` out-specifies it on every row.
+         So the rendered pair was 10px/400 over 9.75px/400 in the same --fg —
+         no hierarchy at all rather than a reversed one, on two elements that
+         are both clickable. 11px is P5-14's floor and 600 is the weight the
+         composer chip label already uses (`.tool-chip-label`, P5-12); the
+         rows are left where they are
+         because shrinking the smallest text in the product is the wrong
+         direction and `.list-item span`'s 9.75px belongs to P5-14. */
+      font-size: 11px; font-weight: 600; font-family: inherit;
       /* 1.3 (not 1) so Fira Code's tall glyph box isn't vertically clipped in
          Chromium/Edge — mirrors the .list-item fix. The title is flex-centred
          in a fixed-height (29px) header, so this adds headroom without reflow. */
@@ -2894,24 +2906,58 @@ body.bg-pattern-sparkles {
 	      color: var(--fg);
 	      background: color-mix(in srgb, var(--fg) 9%, transparent);
 	    }
-	    /* P6-12 — this rule and the `.active` one below were written for
-	       #plan-toggle-btn and sat dead because the element did not exist. The
-	       button now carries a visible "Plan" label (Law 15: no unlabelled
-	       icons), so the fixed 28px square becomes a fixed height plus padding.
-	       `--accent` gained its `var(--red)` fallback because P1-01 has not run
-	       yet: bare `var(--accent)` is undefined today, which made the whole
-	       declaration invalid and left the on-state visually indistinguishable
-	       from the off-state. */
-	    .plan-mode-btn {
+	    /* P6-12 — the geometry below and the `.active` rule at the end of this
+	       block were written for #plan-toggle-btn and sat dead because the
+	       element did not exist. The button now carries a visible "Plan" label
+	       (Law 15: no unlabelled icons), so the fixed 28px square became a
+	       fixed height plus padding — which is what P5-12 then lifted onto
+	       `.tool-chip` for all ten. `--accent` gained its `var(--red)` fallback
+	       because P1-01 has not run yet: bare `var(--accent)` is undefined
+	       today, which made the whole declaration invalid and left the on-state
+	       visually indistinguishable from the off-state. */
+	    /* P5-12 — the one composer chip.
+	       This geometry and this type ramp were `.plan-mode-btn` and
+	       `.plan-mode-btn-label`, written for P6-12, and they were the only
+	       chip in the strip that came out of a stylesheet. The other nine
+	       hand-rolled it: the seven `.tool-indicator` buttons each carried
+	       `style="font-size:11px;margin-left:2px…"` on their own label span —
+	       seven copies of one ramp, two with a differing max-width, none of
+	       them reachable by a theme — and Web and Shell carried no label at
+	       all. `Law 14` says extend the first implementation rather than add a
+	       tenth, so the plan chip's own declarations moved up here and the
+	       plan button now wears the shared class like everything else.
+	       Deliberately NOT unified: the `.active` colour. `.tool-indicator`
+	       paints `var(--red)` and `.plan-mode-btn` `var(--accent, var(--red))`;
+	       either move changes the --accent population that
+	       tests/test_accent_fallback_semantics_css.py pins at 814/553/562/181.
+	       `B781` carries it.
+	       `P5-15` builds #pinned-tools-bar out of these two classes — no id in
+	       the geometry, so a second strip needs no second rule. */
+	    .tool-chip {
 	      height: 28px;
 	      padding: 0 8px 0 6px;
 	      gap: 4px;
 	      flex-shrink: 0;
 	    }
-	    .plan-mode-btn-label {
+	    .tool-chip-label {
 	      font-size: 11px;
 	      font-weight: 600;
 	      line-height: 1;
+	    }
+	    /* One truncation width, not the 120px/80px the workspace and persona
+	       chips each picked for themselves. Both hold a name the user chose,
+	       so both get the same room for it. */
+	    .tool-chip-label.tool-chip-label-truncates {
+	      max-width: 120px;
+	      overflow: hidden;
+	      text-overflow: ellipsis;
+	      white-space: nowrap;
+	    }
+	    /* The chip's own `gap` sizes every slot, so the clear affordance stops
+	       adding a margin on top of it — a mix of gap and per-element margin is
+	       how the strip ended up with three different label offsets. */
+	    .tool-chip > .tool-indicator-x {
+	      margin-left: 0;
 	    }
 	    .plan-mode-btn.active {
 	      color: var(--accent, var(--red));
@@ -5887,8 +5933,12 @@ body.bg-pattern-sparkles {
         min-width: 44px;
         min-height: 44px;
       }
-      /* Tool indicators — icon only on mobile (hide text, keep x) */
-      .tool-indicator > span {
+      /* Chips — icon only on mobile (hide text, keep x).
+         P5-12: was `.tool-indicator > span`, which reached seven of the nine.
+         Web and Shell are toggles, not indicators, so once they gained labels
+         the old selector would have left exactly two of them on a phone. The
+         label class reaches all nine and nothing else. */
+      .tool-chip > .tool-chip-label {
         display: none !important;
       }
       .tool-indicator .tool-indicator-x {
@@ -9548,40 +9598,61 @@ button.hamburger {
   padding-bottom: 0;
 }
 
+/* P5-10 — this was a syntax-highlighting palette wearing a document outline.
+   h1..h6 mapped one-to-one onto keyword / function / string / builtin /
+   variable / number over a 1.21x size range, so a five-heading answer arrived
+   as five hues and effectively one size, and three consecutive levels
+   (1.05 / 1.02 / 1.00em) sat inside three per cent of each other — under half
+   a pixel apart at the 0.95em body. The six highlighter tokens are chosen to
+   be maximally UNLIKE each other because they mark six unrelated things; a
+   nesting hierarchy wants the opposite, and a reader already knows how to read
+   size and weight.
+   The row's instruction is kept exactly: the syntax hue stays on h1 and h2 and
+   nowhere else — that pairing is the tell that this is model-rendered markdown
+   — and the outline below them is carried by a 1.67x ramp instead. Nothing
+   here touches a theme: --hl-* are derived per palette by deriveSyntaxColors()
+   and --fg is the palette's own body colour, so the four levels that changed
+   went from six palette-derived hues to the one every theme already uses for
+   running text, which is also a contrast improvement on the light palettes. */
 .msg h1 {
-  font-size: 1.15em;
+  font-size: 1.5em;
   font-weight: 700;
   color: var(--hl-keyword, #c678dd);
 }
 
 .msg h2 {
-  font-size: 1.1em;
-  font-weight: 600;
+  font-size: 1.3em;
+  font-weight: 700;
   color: var(--hl-function, #5b8def);
 }
 
 .msg h3 {
-  font-size: 1.05em;
+  font-size: 1.2em;
   font-weight: 600;
-  color: var(--hl-string, #98c379);
+  color: var(--fg);
 }
 
 .msg h4 {
-  font-size: 1.02em;
+  font-size: 1.1em;
   font-weight: 600;
-  color: var(--hl-builtin, #e5c07b);
+  color: var(--fg);
 }
 
+/* h5 and h6 stop competing with the paragraph they introduce: at and below the
+   body size the separation is weight and letter-spacing, which is what a
+   reader reads at this end of a ramp anyway. */
 .msg h5 {
   font-size: 1em;
-  font-weight: 600;
-  color: var(--hl-variable, #61afef);
+  font-weight: 700;
+  color: var(--fg);
 }
 
 .msg h6 {
-  font-size: 0.95em;
-  font-weight: 600;
-  color: var(--hl-number, #d19a66);
+  font-size: 0.9em;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg);
 }
 
 /* Bold text — subtle accent color */

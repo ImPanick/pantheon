@@ -70,17 +70,31 @@ def _withheld_fields() -> tuple:
 WITHHELD_FIELDS: tuple = _withheld_fields()
 
 
-def render_skill_index_block(index: Optional[Sequence[Dict]]) -> str:
-    """The exact text injected as the skills catalogue, or `""` for none.
+#: What the model is told when the catalogue did not fit. `P8-21`. A truncated
+#: list with no note is worse than a long one: a model shown 40 of 300 skills
+#: concludes the other 260 do not exist, and stops asking.
+INDEX_TRUNCATION_NOTE = (
+    "\n_{omitted} more skills are installed and not listed here — the catalogue "
+    "is capped so it cannot crowd out the conversation. Ask for the rest with "
+    "`manage_skills` action=list, or search them with action=search._"
+)
 
-    `index` is what `SkillsManager.index_for()` returns. The leading blank line
-    is part of the block: the loop concatenates it straight onto a prompt, so
-    moving the separator out of here would move the bug out of reach of the
-    preview along with it.
+
+def _index_value(entry: Dict) -> tuple:
+    """Rank for deciding what survives a cut. `opens` first, then `uses`.
+
+    `P8-21`. `uses` is written by the retriever itself — every skill it shows
+    the model is counted, whether or not the model did anything with it — so
+    ranking by it keeps whatever keyword luck matched most often and calls that
+    evidence. `opens` is `manage_skills action=view`: the model reading the
+    whole procedure after seeing the line, which is a decision rather than a
+    side effect. Name last so a tie is stable rather than walk-order.
     """
-    entries = [s for s in (index or []) if isinstance(s, dict) and s.get("name")]
-    if not entries:
-        return ""
+    return (int(entry.get("opens") or 0), int(entry.get("uses") or 0),
+            str(entry.get("name") or ""))
+
+
+def _render(entries: Sequence[Dict], note: str = "") -> str:
     lines: List[str] = [INDEX_HEADING, INDEX_PREAMBLE]
     by_cat: Dict[str, list] = {}
     for s in entries:
@@ -90,4 +104,79 @@ def render_skill_index_block(index: Optional[Sequence[Dict]]) -> str:
         for s in by_cat[cat]:
             badge = " *(draft)*" if s.get("status") == "draft" else ""
             lines.append(f"- `{s['name']}` — {s.get('description') or ''}{badge}")
+    if note:
+        lines.append(note)
     return "\n\n" + "\n".join(lines)
+
+
+def render_skill_index_block(index: Optional[Sequence[Dict]],
+                             *, budget_chars: Optional[int] = None,
+                             owner=None, report: Optional[Dict] = None) -> str:
+    """The exact text injected as the skills catalogue, or `""` for none.
+
+    `index` is what `SkillsManager.index_for()` returns. The leading blank line
+    is part of the block: the loop concatenates it straight onto a prompt, so
+    moving the separator out of here would move the bug out of reach of the
+    preview along with it.
+
+    **`P8-21`.** The block used to be unbounded. Measured 2026-09-19 with the
+    bundled library published: 286 entries, 80,610 characters, 24,187 tokens —
+    four times the default `agent_input_token_budget`, on every request that
+    assembles a prompt, participating in no budget anywhere. `budget_chars`
+    resolves from `context_skill_index_chars` when it is not passed, so both
+    callers — the loop and `GET /api/skills/index` — are bounded by the same
+    number without either of them asking, and the preview stays a preview.
+
+    Entries are dropped **whole**, lowest-value first, and what is left renders
+    in the ordinary category order, so a truncated block has the same shape as a
+    full one. `report`, when a dict is passed, is filled in with
+    `skill_index_chars`, `skill_index_truncated` and `skill_index_omitted` —
+    an out-parameter rather than a second return value for the reason
+    `_build_base_prompt`'s own `skill_index_used` gives: the stubs in this suite
+    pin the return type.
+    """
+    entries = [s for s in (index or []) if isinstance(s, dict) and s.get("name")]
+    if not entries:
+        if isinstance(report, dict):
+            report.update({"skill_index_chars": 0, "skill_index_truncated": False,
+                           "skill_index_omitted": 0})
+        return ""
+
+    if budget_chars is None:
+        try:
+            from src.context_budget import SKILL_INDEX_BUDGET, resolve_prompt_budget
+            budget_chars = resolve_prompt_budget(SKILL_INDEX_BUDGET, owner)
+        except Exception:
+            budget_chars = None
+
+    block = _render(entries)
+    omitted = 0
+    if budget_chars and len(block) > int(budget_chars):
+        # Cheapest thing that is still correct: rank once, then bisect on how
+        # many survive. The note's own length depends on the count it reports,
+        # so it is re-rendered inside the test rather than added afterwards.
+        ranked = sorted(entries, key=_index_value, reverse=True)
+        lo, hi = 1, len(ranked)
+        keep = 0
+        while lo <= hi:
+            mid = (lo + hi) // 2
+            note = INDEX_TRUNCATION_NOTE.format(omitted=len(ranked) - mid)
+            if len(_render(ranked[:mid], note)) <= int(budget_chars):
+                keep, lo = mid, mid + 1
+            else:
+                hi = mid - 1
+        if keep == 0:
+            # The budget cannot hold the heading plus one entry. A heading with
+            # nothing under it states that the library is empty, which is a
+            # worse lie than an over-budget block, so one entry always survives.
+            keep = 1
+        omitted = len(ranked) - keep
+        survivors = {id(e) for e in ranked[:keep]}
+        block = _render([e for e in entries if id(e) in survivors],
+                        INDEX_TRUNCATION_NOTE.format(omitted=omitted) if omitted else "")
+
+    if isinstance(report, dict):
+        report.update({"skill_index_chars": len(block),
+                       "skill_index_truncated": bool(omitted),
+                       "skill_index_omitted": omitted})
+    return block

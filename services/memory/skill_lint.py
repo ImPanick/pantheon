@@ -46,9 +46,44 @@ from typing import Dict, List, Optional, Sequence
 
 from .skill_format import slugify
 
-# The audit's duplicate threshold. One constant, used by the nightly blocker and
-# by the author-facing lint, so "is this a duplicate?" has one answer.
+# ---------------------------------------------------------------------------
+# Two thresholds, one scale — `P8-15`, and `B731`'s repair
+# ---------------------------------------------------------------------------
+#
+# `B731` reads the UI's 0.38 and `add_skill`'s 0.82 as one question answered two
+# ways, "differing by more than a factor of two". They were not one question and
+# they were not one scale. `skills._tokenize` splits on whitespace, keeps
+# two-character words and keeps stopwords; `skill_tokens` below splits on
+# non-alphanumerics, drops six stopwords and strips a trailing `-<n>`. Measured
+# 2026-09-19 over the 36,654 bundled pairs scoring above zero on both, the first
+# runs **1.65×** the second (median; mean 1.75) — so the two numbers in use were
+# about 1.3 apart, not 2.2, and no amount of staring at them would have said so.
+#
+# `add_skill` compares through `skill_similarity` now, so both live on this
+# scale and the gap between them is the one `B731` believed it was measuring.
+#
+# What the two numbers mean, measured over all **40,755** pairs of the bundled
+# library (286 skills, 2026-09-19; corpus maximum **0.700**):
+#
+#   0.38  *worth a look.* 24 pairs reach it. Every one of the 24 is the same
+#         procedure for a different technology — `python-patterns |
+#         golang-patterns`, `django-security | laravel-security`,
+#         `csharp-testing | fsharp-testing`. **Precision on the shipped corpus
+#         is 0 of 24**, which is why what the author is shown is a score and a
+#         name rather than a verdict, and why it is an advisory.
+#   0.82  *the same skill.* Nothing in the shipped library reaches it — it is
+#         above the corpus maximum — so unifying the scale changed no decision
+#         `add_skill` has ever made, and a refusal at this number still means
+#         what it meant.
 DUPLICATE_SIMILARITY = 0.38
+
+#: The bar `add_skill` refuses an LLM-authored skill at. Not a second answer to
+#: `DUPLICATE_SIMILARITY`'s question — a different question on the same scale.
+DUPLICATE_REFUSAL = 0.82
+
+#: At most this many neighbours are named. A person cannot act on a list of
+#: fifteen, and the strongest is the one worth editing instead.
+MAX_OVERLAPS_REPORTED = 3
 
 # A description longer than this is truncated by `SkillAddRequest` (max_length=200)
 # and pushes every other entry down the index block.
@@ -103,6 +138,60 @@ def skill_similarity(a: Dict, b: Dict) -> float:
 def base_name(n) -> str:
     """`open-pr-2` → `open-pr`. The dedup suffix `add_skill` appends is not identity."""
     return _NAME_SUFFIX_RE.sub("", str(n or ""))
+
+
+def skill_overlaps(skill: Optional[Dict], siblings: Optional[Sequence[Dict]] = None,
+                   *, floor: float = DUPLICATE_SIMILARITY,
+                   limit: int = MAX_OVERLAPS_REPORTED) -> List[Dict]:
+    """Every sibling `skill` overlaps, strongest first. `P8-15`.
+
+    The one comparison loop in the product. The author-facing lint, the nightly
+    audit's blocker and `SkillsManager.add_skill` all call it, so "how close are
+    these two?" has one implementation and one scale (`Law 14`). Before this
+    there were three loops and two token sets; `B731` mistook that for one
+    question answered twice.
+
+    `same_base` is carried separately from `score` on purpose: a shared base
+    name is the `-<n>` suffix `add_skill` itself appends when a name is taken,
+    so it is *identity*, while a score is *topic*. Collapsing the two into one
+    number is what made `python-patterns` and `golang-patterns` duplicates of
+    each other on the shipped library.
+
+    `siblings` entries may be `Skill.to_dict()` rows, `/api/skills/add` bodies or
+    the half-filled thing an editor holds; anything without a name is skipped.
+    """
+    if not isinstance(skill, dict):
+        return []
+    name = str(skill.get("name") or skill.get("id") or "").strip()
+    rows: List[Dict] = []
+    for other in (siblings or []):
+        if not isinstance(other, dict):
+            continue
+        other_name = str(other.get("name") or other.get("id") or "").strip()
+        if not other_name or other_name == name:
+            continue
+        same_base = bool(name) and base_name(name) == base_name(other_name)
+        score = skill_similarity(skill, other)
+        if same_base or score >= floor:
+            rows.append({"name": other_name, "score": round(score, 3),
+                         "same_base": same_base})
+    # Identity first, then closeness. A `-2` sibling at a low score is still the
+    # thing the author meant to edit.
+    rows.sort(key=lambda r: (r["same_base"], r["score"]), reverse=True)
+    return rows[:max(0, int(limit))] if limit else rows
+
+
+def describe_overlaps(rows: Optional[Sequence[Dict]]) -> str:
+    """`` `a` (71%), `b` (44%) `` — the neighbours and the numbers, for a
+    message a person reads. Empty for no rows."""
+    parts = []
+    for r in (rows or []):
+        if not isinstance(r, dict):
+            continue
+        pct = int(round(float(r.get("score") or 0.0) * 100))
+        parts.append(f"`{r.get('name')}`"
+                     + (" (same base name)" if r.get("same_base") else f" ({pct}%)"))
+    return ", ".join(parts)
 
 
 def should_check_retrieval_precision(skill: Optional[Dict]) -> bool:
@@ -273,23 +362,49 @@ def lint_skill(skill: Optional[Dict], siblings: Optional[Sequence[Dict]] = None)
             "The nightly audit keeps skills flagged this way as drafts. Say what is "
             "specific and non-obvious about the procedure, or drop it."))
 
-    # --- duplicates, at the threshold the audit uses ------------------------
-    for other in (siblings or []):
-        if not isinstance(other, dict):
-            continue
-        other_name = str(other.get("name") or other.get("id") or "").strip()
-        if not other_name or other_name == name:
-            continue
-        same_base = bool(name) and base_name(name) == base_name(other_name)
-        score = skill_similarity(skill, other)
-        if same_base or score >= DUPLICATE_SIMILARITY:
-            findings.append(_finding(
-                "duplicate-of", PROBLEM, "name",
-                f"Overlaps `{other_name}`"
-                + (" (same base name)" if same_base else f" ({int(round(score * 100))}% token overlap)")
-                + ". The nightly audit demotes the lower-priority one of a pair to draft.",
-                f"Edit `{other_name}` instead, or narrow this one so the two do not compete."))
-            break
+    # --- what else in the library is close to this ---------------------------
+    #
+    # `P8-15`. The shipped check stopped at the **first** sibling it met and
+    # called it a duplicate. Which sibling that was is `load()` order, which is
+    # directory-walk order, so a person with three neighbours was shown an
+    # arbitrary one — and told, flatly, that it was a duplicate. Measured over
+    # the bundled library's 40,755 pairs, 24 reach 0.38 and **none of the 24 is
+    # a duplicate**; they are `django-security` and `laravel-security`. So the
+    # finding names the closest ones and the scores, and the author decides.
+    # The two lists are not a partition. A `-2` clone of a skill is both the
+    # same name *and* the same words, and a person needs to be told both — the
+    # first is why it exists, the second is what it costs. Splitting them into
+    # exclusive buckets would have hidden the score on exactly the pair where
+    # the score is least in doubt.
+    overlaps = skill_overlaps(skill, siblings)
+    same_base = [o for o in overlaps if o.get("same_base")]
+    by_score = [o for o in overlaps if o.get("score", 0.0) >= DUPLICATE_SIMILARITY]
+
+    if same_base:
+        findings.append(_finding(
+            "same-base-name", PROBLEM, "name",
+            f"{describe_overlaps(same_base)} differs from this name only by a "
+            "trailing number, which is the suffix a save appends when the name "
+            "is already taken — so this is almost certainly the same skill twice.",
+            f"Edit `{same_base[0]['name']}` instead, or give this one a name "
+            "that says how it differs."))
+
+    if by_score:
+        strongest = by_score[0]
+        # The code stays `duplicate-of`. It is the identifier two existing tests
+        # and any future consumer already know, and `Law 1` does not trade a
+        # working name for a better-reading one; what was wrong was the verdict
+        # and the severity, and both of those moved.
+        findings.append(_finding(
+            "duplicate-of", ADVISORY, "name",
+            f"Shares wording with {describe_overlaps(by_score)}. "
+            f"{int(round(strongest['score'] * 100))}% of the tokens in the name, "
+            "description, when-to-use, procedure and tags are shared with "
+            f"`{strongest['name']}` — which may mean the same procedure twice, or "
+            "may just be the same subject. The nightly audit flags a pair this "
+            "close and keeps the higher-priority one published.",
+            f"If the two answer the same request, edit `{strongest['name']}` "
+            "instead. If they do not, say in When to Use what picks this one."))
 
     counts = {
         PROBLEM: sum(1 for f in findings if f["severity"] == PROBLEM),

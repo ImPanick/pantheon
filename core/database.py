@@ -856,6 +856,29 @@ class ScheduledTask(TimestampMixin, Base):
     max_steps      = Column(Integer, nullable=True)       # max agent loop iterations (null=unlimited)
     email_results  = Column(Boolean, default=True)        # email results to character.email_to
     notifications_enabled = Column(Boolean, default=True) # per-task on/off for completion notifications
+    # `P8-32`. The three things a task could not say about its own execution.
+    #
+    # `tz_name` — the IANA zone this task's wall-clock time means. NULL keeps
+    # the behaviour every existing row has: the crew member's zone if it is
+    # linked to one, and naive UTC otherwise. `src.task_scheduler`'s
+    # `_resolve_task_timezone` is the single resolver and its order is
+    # task → crew member → none, so linking a crew member still works and a
+    # task can now disagree with it.
+    #
+    # `max_retries` — extra attempts at a FAILED occurrence before the task
+    # falls back to its own schedule. NULL/0 is every row that exists and is
+    # byte-for-byte today's behaviour. The spacing is `P15-08`'s ladder
+    # (`failure_backoff_seconds`), not a second one, and `apply_interval_floor`
+    # still holds the minimum gap — a retry is another request to the provider
+    # that just refused us, and `FORBIDDEN.md` Part 2 is about exactly that.
+    #
+    # `timeout_seconds` — wall clock for ONE run. NULL means unbounded, which
+    # is what every run has always been: `max_steps` caps agent-loop ROUNDS on
+    # an llm task and nothing at all bounds an action, so a hung action held a
+    # scheduler slot until the process restarted.
+    tz_name        = Column(String, nullable=True)
+    max_retries    = Column(Integer, nullable=True)
+    timeout_seconds = Column(Integer, nullable=True)
 
     session = relationship("Session", backref=backref("scheduled_tasks", cascade="save-update, merge"))
     then_task = relationship("ScheduledTask", remote_side=[id], foreign_keys=[then_task_id])
@@ -1552,6 +1575,56 @@ def _migrate_add_scheduled_task_else_column():
     except Exception as e:
         logging.getLogger(__name__).warning(
             f"scheduled_tasks else_task_id migration failed: {e}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            # Never opened, or already closed by the error path above.
+            pass
+
+
+def _migrate_add_scheduled_task_execution_columns():
+    """Add `tz_name`, `max_retries` and `timeout_seconds` to scheduled_tasks.
+
+    `P8-32`, modelled line for line on `_migrate_add_scheduled_task_else_column`
+    above — which was itself modelled on the two task-run migrations, for the
+    reason `P8-25` learned the hard way (`Law 20`): a column declared on the
+    model and not migrated exists on a fresh `create_all` box and on **no**
+    install that was created before the declaration, and the asymmetry is
+    invisible until a real deployment writes to it.
+
+    Three columns, one migration, one loop — rather than three functions that
+    would each have to be added to `init_db` and each be forgotten separately.
+    All three are nullable with no default, so every existing row satisfies
+    them and reads as "this task has no opinion", which is exactly what those
+    rows mean.
+    """
+    import sqlite3
+    db_path = DATABASE_URL.replace("sqlite:///", "")
+    if not os.path.exists(db_path):
+        return
+    wanted = (("tz_name", "TEXT"), ("max_retries", "INTEGER"),
+              ("timeout_seconds", "INTEGER"))
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.execute("PRAGMA table_info(scheduled_tasks)")
+        columns = [row[1] for row in cursor.fetchall()]
+        if not columns:
+            return
+        added = []
+        for name, sql_type in wanted:
+            if name in columns:
+                continue
+            conn.execute(f"ALTER TABLE scheduled_tasks ADD COLUMN {name} {sql_type}")
+            added.append(name)
+        if added:
+            conn.commit()
+            logging.getLogger(__name__).info(
+                "Migrated: added %s to scheduled_tasks", ", ".join(added))
+    except Exception as e:
+        logging.getLogger(__name__).warning(
+            f"scheduled_tasks execution-column migration failed: {e}")
     finally:
         try:
             conn.close()
@@ -2628,6 +2701,7 @@ def init_db():
     _migrate_add_task_run_model_column()
     _migrate_add_task_run_steps_column()
     _migrate_add_scheduled_task_else_column()
+    _migrate_add_scheduled_task_execution_columns()
     _migrate_add_owner_column()
     _migrate_add_document_archived_column()
     _migrate_add_last_message_at_column()

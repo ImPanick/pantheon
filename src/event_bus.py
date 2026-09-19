@@ -104,11 +104,30 @@ EVENT_PAYLOAD_FIELDS = {
     entry["name"]: tuple(entry.get("payload") or ()) for entry in EVENT_CATALOGUE
 }
 
-# Where a trigger came from. Two values, and they are not interchangeable: a
+# Where a trigger came from. Three values, and they are not interchangeable: a
 # webhook body arrives from outside the machine over an unauthenticated route,
-# an app event does not. `trigger_context_message` reads this.
+# an app event does not, and a task handoff carries whatever the step before it
+# produced. `trigger_context_message` reads this.
 TRIGGER_SOURCE_EVENT = "event"
 TRIGGER_SOURCE_WEBHOOK = "webhook"
+# `P8-29`. The step before this one. A chain was a sequence — `_advance_chain`
+# started the successor and handed it nothing — so "summarise this, then email
+# the summary" could not be built: step two had no way to name what step one
+# produced. This is that handoff, and it is the SAME envelope a webhook and an
+# event arrive in, because a task does not care what started it; it cares what
+# it can refer to (`Law 14`).
+TRIGGER_SOURCE_TASK = "task"
+
+# The keys a task handoff carries. Fixed here rather than in a catalogue for
+# the same reason the webhook's are: there is no catalogue entry for "the step
+# before this one", and the point of `build_trigger`'s `fields` is that a
+# producer with no catalogue still declares its shape once instead of building
+# a dict inline (`Law 10`).
+#
+# `result` is the human line, `data` is the structured payload when the node
+# produced one — `P8-24`'s `NodeResult` distinguishes the two and this is the
+# first consumer that needed the distinction.
+TASK_HANDOFF_FIELDS = ("task", "task_id", "run_id", "status", "result", "data")
 
 # The payload rides into a model prompt and into a run's step log, and both are
 # things a person loads to read a summary. One field, then the whole envelope.
@@ -188,6 +207,34 @@ def build_trigger(source: str, name: str, data: Optional[dict] = None,
     }
 
 
+def build_task_handoff(*, task_name: str, task_id: str, run_id: str,
+                       status: str, result: str, payload=None) -> dict:
+    """What the step before this one produced, as a trigger envelope.
+
+    `P8-29`. Built through `build_trigger` with explicit `fields`, exactly the
+    way the webhook route does — so the clipping, the field cap and the
+    envelope shape are one implementation and a chain payload cannot become a
+    second vocabulary of payload shapes (`Law 13`, and the warning `P8-24`
+    carries about adapters).
+
+    `data` is only set when the node produced something that is not just its
+    own text. `P8-24`'s `NodeResult` derives `text` from `payload` when a node
+    does not supply one, so for the eighteen shipped actions `payload IS text`
+    and repeating it under `data` would be the same string twice in a prompt.
+    """
+    data = {
+        "task": task_name,
+        "task_id": task_id,
+        "run_id": run_id,
+        "status": status,
+        "result": result,
+    }
+    if payload is not None and not isinstance(payload, str):
+        data["data"] = payload
+    return build_trigger(TRIGGER_SOURCE_TASK, task_name or task_id, data,
+                         fields=TASK_HANDOFF_FIELDS)
+
+
 def trigger_summary(trigger: Optional[dict]) -> str:
     """One line naming what fired a run, for the run's step log."""
     if not isinstance(trigger, dict):
@@ -195,7 +242,15 @@ def trigger_summary(trigger: Optional[dict]) -> str:
     source = trigger.get("source") or TRIGGER_SOURCE_EVENT
     name = trigger.get("event") or "?"
     data = trigger.get("data") if isinstance(trigger.get("data"), dict) else {}
-    lead = f"Triggered by {name}" if source == TRIGGER_SOURCE_EVENT else f"Triggered by {source}"
+    if source == TRIGGER_SOURCE_TASK:
+        # `P8-29`. "Triggered by <task>" would read as the task triggering
+        # itself. A chained run was continued from somewhere, and the first
+        # line of its step log is the only place that says where.
+        lead = f"Continued from {name}"
+    elif source == TRIGGER_SOURCE_EVENT:
+        lead = f"Triggered by {name}"
+    else:
+        lead = f"Triggered by {source}"
     if not data:
         # Said out loud rather than left blank: "no payload" and "the payload
         # did not survive" look identical in an empty string, and the first is
@@ -239,9 +294,27 @@ def trigger_context_message(trigger: Optional[dict]) -> Optional[dict]:
 
     source = trigger.get("source") or TRIGGER_SOURCE_EVENT
     name = trigger.get("event") or "?"
-    label = (f"webhook request that triggered this task"
-             if source == TRIGGER_SOURCE_WEBHOOK
-             else f"{name} event that triggered this task")
+    if source == TRIGGER_SOURCE_WEBHOOK:
+        label = "webhook request that triggered this task"
+    elif source == TRIGGER_SOURCE_TASK:
+        # `P8-29`. Wrapped the same way, and that is the decision in this row.
+        #
+        # A chain is wiring the OWNER built, so it is tempting to call its
+        # payload trusted. The wrapper is not about who built the wiring, it is
+        # about **who can choose the bytes** — and the step before this one can
+        # be `summarize_emails`, a web fetch, or a model repeating either. The
+        # first chain anybody builds is "summarise my inbox, then act on it",
+        # which is mail somebody else wrote arriving in a privileged run.
+        #
+        # So the payload is data the task can name, never instructions it
+        # follows, and the post-external blocked-effect gate arms
+        # (`FORBIDDEN.md` Part 2, kept rather than widened). Nothing is taken
+        # away: the chain runs, the successor reads the payload, and only a
+        # privileged EFFECT taken after reading it needs an approval the
+        # scheduled run cannot give — which it reports instead of taking.
+        label = f"output of the previous task in this chain ({name})"
+    else:
+        label = f"{name} event that triggered this task"
     return untrusted_context_message(
         label, body, provenance_origin="external", arm_tool_gate=True,
     )

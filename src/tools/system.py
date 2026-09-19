@@ -51,6 +51,13 @@ async def do_manage_skills(content: str, owner: Optional[str] = None) -> Dict:
                                    call. Pass a name to check a stored one, or
                                    the fields themselves to check a draft
                                    BEFORE it is saved (`P8-12`).
+      improve {name}             — Hand the lint's findings to the audit's own
+                                   rewriter and save what comes back. No test
+                                   run, no reviewer: the verdict is synthetic,
+                                   which is the trick `_audit_one_skill`
+                                   already uses to force a metadata-only fix
+                                   (`P8-13`). The copy it replaces is kept, so
+                                   `restore` undoes it.
       versions {name}            — Earlier copies kept in the skill's
                                    `versions/` sibling (`P8-10`).
       restore {name, version_id} — Put one of those back. The copy it replaces
@@ -67,7 +74,7 @@ async def do_manage_skills(content: str, owner: Optional[str] = None) -> Dict:
 
     action = (args.get("action") or "").strip().lower()
     if not action:
-        return {"error": "action is required (list|view|view_ref|add|edit|patch|publish|delete|search|lint|versions|restore|export)", "exit_code": 1}
+        return {"error": "action is required (list|view|view_ref|add|edit|patch|publish|delete|search|lint|improve|versions|restore|export)", "exit_code": 1}
     from services.memory.skills import SkillsManager
     from services.memory.skill_format import Skill, slugify
     from src.constants import DATA_DIR
@@ -99,6 +106,15 @@ async def do_manage_skills(content: str, owner: Optional[str] = None) -> Dict:
         md = sm.read_skill_md(name, owner=owner)
         if md is None:
             return {"error": f"Skill {name!r} not found", "exit_code": 1}
+        # `P8-21`. The open, recorded here and nowhere else: the index line
+        # carries three fields, so fetching the file is a second deliberate step
+        # and the only evidence this product has that a skill was consulted
+        # rather than merely matched. `record_use` counts the match; this counts
+        # the read, and it is this one that earns the retrieval boost.
+        try:
+            sm.record_open(name, owner=owner)
+        except Exception:
+            logger.debug("skill open not recorded", exc_info=True)
         return {"results": md}
 
     if action == "view_ref":
@@ -159,15 +175,31 @@ async def do_manage_skills(content: str, owner: Optional[str] = None) -> Dict:
             steps=args.get("steps") or [],
         )
         if entry.get("_deduped"):
+            _score = entry.get("_duplicate_score")
+            _at = f" ({int(round(float(_score) * 100))}% token overlap)" if _score else ""
             return {"results": (
-                f"A near-identical skill already exists: `{entry['name']}` — not creating "
-                f"a duplicate. View or edit it with action='view', name='{entry['name']}'."
+                f"A near-identical skill already exists: `{entry['name']}`{_at} — not "
+                f"creating a duplicate. View or edit it with action='view', "
+                f"name='{entry['name']}'."
             )}
         try:
             from src.event_bus import fire_event
             fire_event("skill_added", owner, {"name": entry.get("name")})
         except Exception:
             logger.debug("skill_added event dispatch failed", exc_info=True)
+        # `P8-15`. A skill written by hand (`source="user"`) is exempt from
+        # dedup-at-creation on purpose — a person asked for it. The exemption
+        # was silent, so an author could copy a procedure they already had and
+        # never be told. It is still created; this says what it sits on.
+        overlap_hint = ""
+        if entry.get("_overlaps"):
+            from services.memory.skill_lint import describe_overlaps
+            overlap_hint = (
+                "\n\nOverlaps existing skills: "
+                + describe_overlaps(entry["_overlaps"])
+                + ". Created anyway — this is a hand-authored skill. If one of "
+                "those answers the same request, edit it instead."
+            )
         verify_hint = ""
         if entry.get("status") == "draft":
             verify_hint = (
@@ -181,7 +213,8 @@ async def do_manage_skills(content: str, owner: Optional[str] = None) -> Dict:
         # loop turns into that event; the deduped branch above returns before
         # here, because nothing was saved.
         return {
-            "results": f"Created skill `{entry['name']}` — {entry.get('description','')}{verify_hint}",
+            "results": (f"Created skill `{entry['name']}` — "
+                        f"{entry.get('description','')}{overlap_hint}{verify_hint}"),
             "skill_saved": {
                 "name": entry.get("name") or "",
                 "category": entry.get("category") or "",
@@ -289,6 +322,104 @@ async def do_manage_skills(content: str, owner: Optional[str] = None) -> Dict:
         result = lint_skill(subject, siblings)
         label = subject.get("name") or "(unnamed draft)"
         return {"results": f"`{label}` — {result['verdict']}\n\n{format_lint(result)}"}
+
+    if action == "improve":
+        # `P8-13`. Everything here already existed; what did not exist was the
+        # path between the two halves.
+        #
+        # `_improve_skill_md` is the audit's rewriter. It takes a *reviewer
+        # verdict* — a dict with a summary and an issues list — plus a test
+        # transcript, and returns corrected SKILL.md text. `_audit_one_skill`
+        # already calls it with a verdict **it wrote itself** when the retrieval
+        # -precision judge complains: `{"verdict": "pass", "confidence": 1.0,
+        # …}` with a one-line transcript saying no functional test happened.
+        # That synthetic pass is what stops the rewriter touching a procedure it
+        # has no evidence against, and it is the whole trick this action reuses.
+        #
+        # The issues come from `lint_skill`, which costs nothing and answers on
+        # an install with no model at all — so the findings are printed even
+        # when the rewrite cannot run, rather than disappearing into "no model
+        # configured" (`Law 16`'s install is the common one, not the exotic one).
+        if not name:
+            return {"error": "name is required for improve", "exit_code": 1}
+        md = sm.read_skill_md(name, owner=owner)
+        if md is None:
+            return {"error": f"Skill {name!r} not found", "exit_code": 1}
+        from services.memory.skill_lint import format_lint, lint_skill
+
+        library = sm.load(owner=owner)
+        current = next((x for x in library if x.get("name") == name), None)
+        if current is None:
+            return {"error": f"Skill {name!r} not found", "exit_code": 1}
+        result = lint_skill(current, [x for x in library if x.get("name") != name])
+        findings = result.get("findings") or []
+        if not findings:
+            return {"results": (
+                f"`{name}` has nothing the lint can fix — no missing section, no "
+                "over-long description, no overlap with another skill. Nothing "
+                "was sent to a model and nothing was written."
+            )}
+
+        # `metadata:` is the prefix `_improve_skill_md`'s system prompt reads as
+        # permission to edit frontmatter. A finding about the category or the
+        # tags that arrives without it is a finding that prompt tells the model
+        # to leave alone, so the mapping is explicit rather than incidental.
+        _METADATA_FIELDS = {"name", "description", "category", "tags"}
+        issues = []
+        for f in findings:
+            field = f.get("field") or ""
+            prefix = "metadata: " if field in _METADATA_FIELDS else ""
+            issues.append(f"{prefix}{field}: {f.get('message', '')} "
+                          f"Fix: {f.get('fix', '')}".strip())
+
+        try:
+            from routes.skills_routes import _resolve_audit_models
+            url, model_id, headers, _teacher = _resolve_audit_models(owner)
+        except Exception as e:
+            return {"error": f"{e}\n\nThe lint costs nothing and ran anyway:\n"
+                             f"{format_lint(result)}", "exit_code": 1}
+
+        from routes.skills_routes import _apply_skill_md, _improve_skill_md
+        fixed = await _improve_skill_md(
+            md,
+            {
+                "verdict": "pass",
+                "confidence": 1.0,
+                "summary": ("Authoring lint only — the procedure has not been "
+                            "shown to be wrong. Fill in what is missing and "
+                            "tighten what is vague."),
+                "issues": issues,
+            },
+            ("Authoring lint only: no test was run and no reviewer judged this "
+             "procedure. Do not rewrite steps you have no evidence against."),
+            url, model_id, headers,
+        )
+        # `.strip()` on the left as well as the right: a model that answered
+        # with whitespace is truthy, and `_apply_skill_md` parses `"   "` into a
+        # nameless, descriptionless skill and writes it — measured while
+        # mutation-testing this handler, by parametrising the empty reply.
+        if not (fixed or "").strip() or fixed.strip() == md.strip():
+            return {"error": (f"The model returned no usable rewrite for `{name}`. "
+                              f"Nothing was written.\n\n{format_lint(result)}"),
+                    "exit_code": 1}
+        if not _apply_skill_md(sm, name, fixed, owner):
+            return {"error": f"Could not save the rewritten `{name}`. Nothing changed.",
+                    "exit_code": 1}
+
+        after = lint_skill(
+            next((x for x in sm.load(owner=owner) if x.get("name") == name), {}),
+            [x for x in sm.load(owner=owner) if x.get("name") != name])
+        before_counts = result.get("counts") or {}
+        after_counts = after.get("counts") or {}
+        return {"results": (
+            f"Rewrote `{name}` from {len(findings)} lint finding(s).\n"
+            f"Before: {before_counts.get('problem', 0)} problem(s), "
+            f"{before_counts.get('advisory', 0)} advisory(ies). "
+            f"After: {after_counts.get('problem', 0)} problem(s), "
+            f"{after_counts.get('advisory', 0)} advisory(ies).\n"
+            f"The previous text is kept — action='versions', name='{name}' lists "
+            f"it and action='restore' puts it back."
+        )}
 
     if action == "versions":
         if not name:

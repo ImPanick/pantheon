@@ -182,9 +182,21 @@ class TaskCreate(BaseModel):
     # `enabled_tools` allowlist (src/task_scheduler.py:1625-1636, :1685-1686,
     # :1719-1727); `_deliver_task_result` resolves the delivery session's
     # model/endpoint from it (:1817-1824); `_resolve_task_timezone` reads its
-    # IANA timezone so the schedule fires in the crew member's local time
-    # (:316-327). Empty string clears the link.
+    # IANA timezone so the schedule fires in the crew member's local time.
+    # Empty string clears the link.
+    #
+    # `P8-32`, 2026-09-19: **every line number in this block was stale** and
+    # one of them by three weeks — `_resolve_task_timezone` was cited at
+    # `:316-327` and measured at `:593`. Names are cited above and numbers are
+    # not, because a number copied into prose is a number that goes stale the
+    # next time anybody adds a function (`Law 6`).
     crew_member_id: Optional[str] = None
+    # `P8-32`. The three things a task could not say about its own execution.
+    # All three are optional and all three mean "no opinion" when omitted,
+    # which is what every task in every existing install means.
+    tz_name: Optional[str] = None                 # IANA zone, e.g. "Australia/Sydney"
+    max_retries: Optional[int] = None             # extra attempts at a FAILED occurrence
+    timeout_seconds: Optional[int] = None         # wall clock for one run; 0/None = none
 
 
 class TaskUpdate(BaseModel):
@@ -208,6 +220,9 @@ class TaskUpdate(BaseModel):
     notifications_enabled: Optional[bool] = None
     character_id: Optional[str] = None
     crew_member_id: Optional[str] = None          # see TaskCreate.crew_member_id
+    tz_name: Optional[str] = None                 # see TaskCreate.tz_name; "" clears it
+    max_retries: Optional[int] = None             # see TaskCreate.max_retries
+    timeout_seconds: Optional[int] = None         # see TaskCreate.timeout_seconds
 
 
 def _display_task_name(t: ScheduledTask) -> str:
@@ -240,6 +255,13 @@ def _task_to_dict(t: ScheduledTask, include_last_run_result: bool = False) -> di
         "output_target": t.output_target,
         "session_id": t.session_id,
         "crew_member_id": getattr(t, "crew_member_id", None),
+        # `P8-32`. On the wire so a surface can show them and so the agent's
+        # own listing can. `getattr` with a default for the same reason the two
+        # fields above use one: a row read through a model that predates the
+        # column must not take a list endpoint down.
+        "tz_name": getattr(t, "tz_name", None),
+        "max_retries": getattr(t, "max_retries", None),
+        "timeout_seconds": getattr(t, "timeout_seconds", None),
         "character_id": getattr(t, "character_id", None),
         "model": t.model,
         "endpoint_url": t.endpoint_url,
@@ -482,12 +504,16 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                         continue
                     task.status = "active"
                     if (task.trigger_type or "schedule") == "schedule":
+                        # `P8-32`. In the task's own zone. Resuming a
+                        # crew-member-linked daily task used to place its next
+                        # run in UTC.
                         task.next_run = compute_next_run(
                             task.schedule,
                             task.scheduled_time,
                             task.scheduled_day,
                             task.scheduled_date,
                             cron_expression=task.cron_expression,
+                            tz_name=_task_tz(db, task=task),
                         )
                     resumed += 1
                 db.commit()
@@ -528,6 +554,62 @@ def setup_task_routes(task_scheduler) -> APIRouter:
         if not target:
             raise HTTPException(404, "Chained task not found")
         return target.id
+
+    def _task_tz(db, *, crew_member_id=None, tz_name=None, task=None):
+        """The zone a task's wall-clock time means, before it exists as a row.
+
+        `P8-32`. Calls the executor's own `_resolve_task_timezone` with a stand-in
+        rather than re-deriving the order here — task's own zone, then its crew
+        member's — because a second implementation of that order is a second
+        answer to "when does this fire", and there were already three
+        (`Law 14`).
+        """
+        from types import SimpleNamespace
+        from src.task_scheduler import _resolve_task_timezone
+        if task is None:
+            task = SimpleNamespace(tz_name=tz_name, crew_member_id=crew_member_id)
+        return _resolve_task_timezone(db, task)
+
+    def _validate_execution_settings(req) -> dict:
+        """`tz_name`, `max_retries` and `timeout_seconds`, checked once.
+
+        `P8-32`. Shared by create and edit so the two cannot drift, which is
+        how `P15-08` was got round before it was closed on both: create hourly,
+        then PUT `* * * * *`.
+
+        A bad zone is refused rather than stored, because `compute_next_run`
+        swallows the `ZoneInfo` lookup error and falls back to naive UTC — so a
+        typo produces a task that runs every day at the wrong time with nothing
+        anywhere saying so. `valid_timezone` is the one function that decides
+        which zones exist, and the executor reads the same one (`Law 7`).
+        """
+        from src.task_scheduler import (
+            MAX_TASK_TIMEOUT_SECONDS, MIN_TASK_TIMEOUT_SECONDS, valid_timezone,
+        )
+        out = {}
+        if req.tz_name is not None:
+            raw = (req.tz_name or "").strip()
+            if not raw:
+                out["tz_name"] = None          # explicit clear
+            elif valid_timezone(raw) is None:
+                raise HTTPException(
+                    400, f"Not a timezone this machine knows: {raw!r}. Use an "
+                         f"IANA name such as 'Australia/Sydney' or 'UTC'.")
+            else:
+                out["tz_name"] = raw
+        if req.max_retries is not None:
+            value = int(req.max_retries)
+            if not 0 <= value <= 10:
+                raise HTTPException(400, "max_retries must be between 0 and 10")
+            out["max_retries"] = value or None
+        if req.timeout_seconds is not None:
+            value = int(req.timeout_seconds)
+            if value and not (MIN_TASK_TIMEOUT_SECONDS <= value <= MAX_TASK_TIMEOUT_SECONDS):
+                raise HTTPException(
+                    400, f"timeout_seconds must be 0 (no timeout) or between "
+                         f"{MIN_TASK_TIMEOUT_SECONDS} and {MAX_TASK_TIMEOUT_SECONDS}")
+            out["timeout_seconds"] = value or None
+        return out
 
     def _validate_crew_member_id(db, crew_member_id: Optional[str], user: Optional[str]) -> Optional[str]:
         """Resolve an assignee crew member, scoped to the caller.
@@ -614,11 +696,8 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                     sched_date = datetime.fromisoformat(req.scheduled_date.replace("Z", "+00:00")).replace(tzinfo=None)
                 except ValueError:
                     raise HTTPException(400, "Invalid scheduled_date format")
-            next_run = compute_next_run(
-                req.schedule, req.scheduled_time,
-                req.scheduled_day, sched_date,
-                cron_expression=req.cron_expression,
-            )
+        # `next_run` itself is computed inside the session below, because
+        # `P8-32` needs the zone and the zone needs the crew member resolved.
 
         # Generate webhook token if needed
         webhook_token = None
@@ -631,6 +710,22 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             then_task_id = _validate_then_task_id(db, req.then_task_id, user)
             else_task_id = _validate_then_task_id(db, req.else_task_id, user)
             crew_member_id = _validate_crew_member_id(db, req.crew_member_id, user)
+            execution = _validate_execution_settings(req)
+            # `P8-32`. In the task's own zone, from the moment it is created.
+            # This call passed no `tz_name` at all, so a task linked to a crew
+            # member in Sydney was created with a UTC `next_run` and only
+            # started firing in Sydney time once its FIRST run recomputed it
+            # through `_resolve_task_timezone`. The crew-member timezone this
+            # row's premise says "already exists" was wired at **one** of the
+            # six places that compute a next run, and the executor was the one.
+            if req.trigger_type == "schedule":
+                next_run = compute_next_run(
+                    req.schedule, req.scheduled_time,
+                    req.scheduled_day, sched_date,
+                    cron_expression=req.cron_expression,
+                    tz_name=_task_tz(db, crew_member_id=crew_member_id,
+                                     tz_name=execution.get("tz_name")),
+                )
             notifications_enabled = (
                 False if req.task_type == "action" and req.notifications_enabled is None
                 else bool(req.notifications_enabled) if req.notifications_enabled is not None
@@ -676,6 +771,7 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                 notifications_enabled=notifications_enabled,
                 character_id=(req.character_id or None),
                 crew_member_id=crew_member_id,
+                **execution,
             )
             db.add(task)
             db.commit()
@@ -840,6 +936,11 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                 # Empty string clears the assignment; non-empty must resolve to
                 # a crew member this caller owns.
                 task.crew_member_id = _validate_crew_member_id(db, req.crew_member_id, user)
+            # `P8-32`. Same validator as create, so an edit is not the way round
+            # it — which is exactly how `P15-08`'s cron floor was got round
+            # before both doors were closed.
+            for field, value in _validate_execution_settings(req).items():
+                setattr(task, field, value)
             if req.cron_expression is not None:
                 if req.cron_expression:
                     try:
@@ -879,10 +980,14 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                 schedule_changed = True
 
             if schedule_changed and task.status == "active" and (task.trigger_type or "schedule") == "schedule":
+                # `P8-32`. In the task's own zone — including one just set on
+                # this same request, because the loop above has already applied
+                # it to the row this reads.
                 task.next_run = compute_next_run(
                     task.schedule, task.scheduled_time,
                     task.scheduled_day, task.scheduled_date,
                     cron_expression=task.cron_expression,
+                    tz_name=_task_tz(db, task=task),
                 )
 
             db.commit()
@@ -942,10 +1047,12 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             _require_admin_for_task_action(user, task.task_type, task.action)
             task.status = "active"
             if (task.trigger_type or "schedule") == "schedule":
+                # `P8-32`. In the task's own zone.
                 task.next_run = compute_next_run(
                     task.schedule, task.scheduled_time,
                     task.scheduled_day, task.scheduled_date,
                     cron_expression=task.cron_expression,
+                    tz_name=_task_tz(db, task=task),
                 )
             db.commit()
             return {"ok": True, "status": "active", "next_run": task.next_run.isoformat() + "Z" if task.next_run else None}
@@ -982,9 +1089,13 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             task.status = "paused" if defs.get("ship_paused") else "active"
             task.next_run = None
             if task.trigger_type == "schedule":
+                # `P8-32`. The built-in's SCHEDULE comes back to its default;
+                # the zone the owner runs in is not part of that default and
+                # stays where it is.
                 task.next_run = compute_next_run(
                     defs["schedule"], defs["scheduled_time"], None, None,
                     cron_expression=defs["cron_expression"],
+                    tz_name=_task_tz(db, task=task),
                 )
             db.commit()
             db.refresh(task)
@@ -993,7 +1104,18 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             db.close()
 
     @router.post("/{task_id}/run")
-    async def run_task_now(request: Request, task_id: str, force: bool = False):
+    async def run_task_now(request: Request, task_id: str, force: bool = False,
+                           dry: bool = False):
+        """Run this task now. `dry=true` plans it instead of running it.
+
+        `P8-33`. A query parameter on the route that already exists, not a new
+        one. Two reasons and both are load-bearing: a dry run and a real run
+        are the same act with the same permissions and the same 409, so a
+        second route would be a second place to keep the owner check and the
+        admin gate in step (`Law 14`); and `check-unreachable` is at **90 of
+        90** (measured 2026-09-19), so a new route with no `static/` caller
+        fails the gate — and `static/` belongs to another agent this wave.
+        """
         user = _owner(request)
         db = SessionLocal()
         try:
@@ -1002,13 +1124,20 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                 raise HTTPException(404, "Task not found")
             if user and task.owner != user:
                 raise HTTPException(403, "Access denied")
+            # Unconditional, and a dry run is no exception: answering "you may
+            # not run this" only on the real path would turn the dry path into
+            # a way to read an admin-only task's configuration.
             _require_admin_for_task_action(user, task.task_type, task.action)
         finally:
             db.close()
-        started = await task_scheduler.run_task_now(task_id, force=force)
+        started = await task_scheduler.run_task_now(task_id, force=force, dry=dry)
         if not started:
             raise HTTPException(409, "Task is already running")
-        return {"ok": True, "message": "Task triggered" + (" in parallel" if force else "")}
+        if dry:
+            return {"ok": True, "dry": True,
+                    "message": "Dry run — planned, nothing executed"}
+        return {"ok": True, "dry": False,
+                "message": "Task triggered" + (" in parallel" if force else "")}
 
     @router.post("/{task_id}/stop")
     async def stop_task_now(request: Request, task_id: str):

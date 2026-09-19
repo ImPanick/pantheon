@@ -80,6 +80,7 @@ import { formatElapsed } from './research/jobs.js?v=20260630researchthumb';
 import dragSortModule from './dragSort.js';
 import { runStatusLabel, runStatusDotClass } from './runStatus.js';
 import { chevronIcon, playIcon, stopIcon } from './icons.js';
+import { promptRunMode as openRunModePicker } from './runModePicker.js?v=20260919chipramp1';
 
 /** Injected by chat.js at init. See the contract in `init()`. */
 let _driver = null;
@@ -107,10 +108,9 @@ const ICON_STOP = stopIcon({ size: 9 });
 const ICON_GRIP = '<svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor" aria-hidden="true"><circle cx="2.5" cy="2" r="1.1"/><circle cx="7.5" cy="2" r="1.1"/><circle cx="2.5" cy="6" r="1.1"/><circle cx="7.5" cy="6" r="1.1"/><circle cx="2.5" cy="10" r="1.1"/><circle cx="7.5" cy="10" r="1.1"/></svg>';
 const ICON_X = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>';
 
-// The two glyphs the research panel's run-mode popover already draws. Same
-// picker, same icons — `P6-06` says reuse it, and this is what "it" looks like.
-const ICON_PARALLEL = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>';
-const ICON_SEQUENTIAL = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="8" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1.5" fill="currentColor"/><circle cx="4" cy="12" r="1.5" fill="currentColor"/><circle cx="4" cy="18" r="1.5" fill="currentColor"/></svg>';
+// The run-mode popover's two glyphs used to be spelled out here as well, byte
+// for byte identical to `research/panel.js`'s pair. `P5-17` moved both, and the
+// picker itself, into `runModePicker.js`.
 
 // Rows are built with createElement/textContent, never innerHTML from user
 // text, so this module needs no escaper of its own — there is no second
@@ -686,83 +686,38 @@ function wire() {
 // ── Sequential vs parallel (P6-06) ─────────────────────────────────────────
 
 /**
- * The research panel's run-mode popover, generalised.
+ * The queue's run mode, in the queue's words.
  *
- * `static/js/research/panel.js:830` `_promptParallelOrSequential` is the
- * original and it is byte-for-byte the same control: same
- * `.research-run-mode-popover` / `.research-run-mode-row` / `.rrm-title`
- * classes, same two glyphs, same drop-down-or-flip-up positioning, same
- * outside-click and Escape dismissal. It takes callbacks here instead of
- * calling `jobs.startAllQueued()` directly, which is the only change needed to
- * make one picker serve both queues.
- *
- * The subtitles are new and are the `Law 15` half of `P6-06`: "Parallel" and
- * "Sequential" name a mechanism, not a consequence, and a first-time user
- * cannot tell from those two words that one of them opens new chats.
- * `.rrm-sub` is additive — the research panel emits no such element, so its
- * popover is unchanged.
+ * `P5-17` moved the mechanism to `runModePicker.js`; what stays here is the
+ * only part that was ever the queue's — its id, its row order (sequential
+ * first, which research reverses), its two titles and the subtitles that are
+ * the `Law 15` half of `P6-06`: "Parallel" and "Sequential" name a mechanism,
+ * not a consequence, and a first-time user cannot tell from those two words
+ * that one of them opens new chats. Those strings are deliberately not shared
+ * with the research panel, which opens none.
  */
 export function promptRunMode(count, anchorBtn, handlers) {
-  // Toggle-shut must run the *same* teardown the outside-click path runs.
-  // Removing the element alone leaves both capture-phase document listeners
-  // attached to a detached popover, and they accumulate one pair per toggle.
-  const existing = document.getElementById('queue-run-mode-popover');
-  if (existing) {
-    if (typeof existing._rrmClose === 'function') existing._rrmClose();
-    else existing.remove();
-    return;
-  }
-  if (!anchorBtn) return;
   const onParallel = (handlers && handlers.onParallel)
     || (() => { if (_driver && _driver.runParallel) _driver.runParallel(); });
   const onSequential = (handlers && handlers.onSequential)
     || (() => { if (_driver && _driver.runSequential) _driver.runSequential(); });
-
-  const rect = anchorBtn.getBoundingClientRect();
-  const pop = document.createElement('div');
-  pop.id = 'queue-run-mode-popover';
-  pop.className = 'research-run-mode-popover';
-  pop.innerHTML =
-    '<button class="research-run-mode-row" data-mode="sequential">' + ICON_SEQUENTIAL
-      + '<span class="rrm-label"><span class="rrm-title">One after another</span>'
-      + '<span class="rrm-sub">Here in this chat, in the order below</span></span></button>'
-    + '<button class="research-run-mode-row" data-mode="parallel">' + ICON_PARALLEL
-      + '<span class="rrm-label"><span class="rrm-title">All at once</span>'
-      + `<span class="rrm-sub">Opens ${count} new chats, one per message</span></span></button>`;
-  document.body.appendChild(pop);
-
-  const popHeight = pop.offsetHeight;
-  const margin = 6;
-  const spaceBelow = window.innerHeight - rect.bottom;
-  const goUp = spaceBelow < popHeight + margin && rect.top > popHeight + margin;
-  const top = goUp ? (rect.top - popHeight - margin) : (rect.bottom + margin);
-  const right = Math.max(8, window.innerWidth - rect.right);
-  pop.style.top = `${Math.round(top)}px`;
-  pop.style.right = `${Math.round(right)}px`;
-  pop.classList.add(goUp ? 'rrm-up' : 'rrm-down');
-
-  const close = () => {
-    pop.remove();
-    document.removeEventListener('click', onDocClick, true);
-    document.removeEventListener('keydown', onKey, true);
-  };
-  pop._rrmClose = close;
-  const onDocClick = (e) => {
-    if (pop.contains(e.target) || e.target === anchorBtn) return;
-    close();
-  };
-  const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } };
-  setTimeout(() => {
-    document.addEventListener('click', onDocClick, true);
-    document.addEventListener('keydown', onKey, true);
-  }, 0);
-
-  pop.querySelectorAll('.research-run-mode-row').forEach(b => {
-    b.addEventListener('click', () => {
-      const mode = b.dataset.mode;
-      close();
-      if (mode === 'parallel') onParallel(); else onSequential();
-    });
+  return openRunModePicker({
+    id: 'queue-run-mode-popover',
+    anchor: anchorBtn,
+    rows: [
+      {
+        mode: 'sequential',
+        title: 'One after another',
+        sub: 'Here in this chat, in the order below',
+        onSelect: onSequential,
+      },
+      {
+        mode: 'parallel',
+        title: 'All at once',
+        sub: `Opens ${count} new chats, one per message`,
+        onSelect: onParallel,
+      },
+    ],
   });
 }
 

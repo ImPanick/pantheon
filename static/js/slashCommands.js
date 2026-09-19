@@ -16,14 +16,14 @@ import Storage from './storage.js';
 import uiModule from './ui.js';
 import sessionModule from './sessions.js';
 import modelsModule from './models.js?v=20260715startupcalm2';
-import chatRenderer from './chatRenderer.js?v=20260918surfacehalves1';
+import chatRenderer from './chatRenderer.js?v=20260919chipramp1';
 import spinnerModule from './spinner.js';
 import themeModule from './theme.js';
 import documentModule from './document.js?v=20260815approvalsave1';
 import workspaceModule from './workspace.js';
 import settingsModule from './settings.js?v=20260918emptystates1';
 import cookbookModule from './cookbook.js';
-import { EVAL_PROMPTS } from './compare/index.js?v=20260918surfacehalves1';
+import { EVAL_PROMPTS } from './compare/index.js?v=20260919chipramp1';
 import { PROVIDER_DEVICE_FLOWS, formatDeviceFlowError, runProviderDeviceFlow } from './providerDeviceFlow.js';
 import { getSettings } from './appConfig.js';
 // H19: `/shortcuts` is generated from the one registry, not a third copy.
@@ -35,7 +35,7 @@ import { KEYBIND_DEFAULTS, KEYBIND_LABELS } from './keyboard-shortcuts.js';
 // uses it, and a bare specifier makes the browser load a SECOND copy with
 // its own state — which for a module that owns toggle state is exactly the
 // bug this import was meant to fix. `check-specifiers.py` caught it.
-import { TOGGLE_CHECKBOX_IDS } from './chatStream.js?v=20260918surfacehalves1';
+import { TOGGLE_CHECKBOX_IDS } from './chatStream.js?v=20260919chipramp1';
 
 // ── Module state ──────────────────────────────────────────────────────
 

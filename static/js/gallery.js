@@ -10,7 +10,7 @@ import { makeWindowDraggable } from './windowDrag.js';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { topPortalZ } from './toolWindowZOrder.js';
 import sessionModule from './sessions.js';
-import fileHandlerModule from './fileHandler.js?v=20260918surfacehalves1';
+import fileHandlerModule from './fileHandler.js?v=20260919chipramp1';
 
 const API_BASE = window.location.origin;
 let _open = false;

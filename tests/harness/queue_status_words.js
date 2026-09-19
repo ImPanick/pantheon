@@ -95,7 +95,11 @@ function textOf(node, cls) {
 // ── The docked panel ────────────────────────────────────────────────────────
 const panelBody = [
   slice(panelSrc, 'const ICON_PLAY =', 'const ICON_GRIP =', 'panel icons'),
-  slice(panelSrc, 'const ICON_GRIP =', 'const ICON_PARALLEL =', 'panel icons 2'),
+  // `P5-17` moved `ICON_PARALLEL` out of this module (the run-mode popover is
+  // shared now), so this slice ends at the next section banner instead — a
+  // heading the module has carried since it was written, rather than at a
+  // constant whose whole point was that it did not belong here.
+  slice(panelSrc, 'const ICON_GRIP =', '// ── Status vocabulary', 'panel icons 2'),
   slice(panelSrc, 'function statusClass(status) {', '// ── Element collection', 'status fns'),
   slice(panelSrc, 'function buildRow(entry) {', '// ── Reading the queue', 'buildRow'),
 ].join('\n');

@@ -8,6 +8,7 @@ import createResearchSynapse from '../researchSynapse.js';
 import spinnerModule from '../spinner.js';
 import { sortModelIds } from '../modelSort.js';
 import { chevronIcon, playIcon } from '../icons.js';
+import { promptRunMode as openRunModePicker } from '../runModePicker.js?v=20260919chipramp1';
 
 // Rotating research textarea placeholders — pick one at random each
 // time the panel is rendered so the example keeps feeling fresh.
@@ -826,72 +827,21 @@ function _renderJobs() {
   _addSection('past', 'Past research', recentDone.concat(past));
 }
 
-/** Pick parallel vs sequential as a small popover anchored to the
- *  Start-All button. Drops down by default; flips to drop-up if there
- *  isn't enough room below the button. Outside-click / Esc dismiss. */
+/** Pick parallel vs sequential, in the research panel's words.
+ *
+ *  `P5-17` moved the popover itself to `runModePicker.js` — it was cloned into
+ *  `queuePanel.js` by `P6-06` and the two were identical in every line of
+ *  mechanism. What is left here is the panel's own vocabulary: parallel first,
+ *  two bare nouns, and **no subtitle**, because the queue's subtitle says
+ *  "opens N new chats" and this panel opens none. */
 function _promptParallelOrSequential(count, anchorBtn) {
-  // Strip any prior instance so a second click closes-then-reopens cleanly.
-  // Toggle-shut must run the *same* teardown the outside-click path runs.
-  // Removing the element alone leaves both capture-phase document listeners
-  // attached to a detached popover, and they accumulate one pair per toggle.
-  const existing = document.getElementById('research-run-mode-popover');
-  if (existing) {
-    if (typeof existing._rrmClose === 'function') existing._rrmClose();
-    else existing.remove();
-    return;
-  }
-  if (!anchorBtn) return;
-
-  const rect = anchorBtn.getBoundingClientRect();
-  const pop = document.createElement('div');
-  pop.id = 'research-run-mode-popover';
-  pop.className = 'research-run-mode-popover';
-  // Same parallel / sequential glyphs the model-comparison picker uses.
-  const ICON_PARALLEL = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>';
-  const ICON_SEQUENTIAL = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="8" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1.5" fill="currentColor"/><circle cx="4" cy="12" r="1.5" fill="currentColor"/><circle cx="4" cy="18" r="1.5" fill="currentColor"/></svg>';
-  pop.innerHTML =
-    '<button class="research-run-mode-row" data-mode="parallel">' + ICON_PARALLEL + '<span class="rrm-title">Parallel</span></button>'
-    + '<button class="research-run-mode-row" data-mode="sequential">' + ICON_SEQUENTIAL + '<span class="rrm-title">Sequential</span></button>';
-  document.body.appendChild(pop);
-
-  // Position: prefer dropping down from the button's bottom-right corner.
-  // If there isn't enough room below the viewport, flip to drop-up above.
-  const popHeight = pop.offsetHeight;
-  const margin = 6;
-  const spaceBelow = window.innerHeight - rect.bottom;
-  const goUp = spaceBelow < popHeight + margin && rect.top > popHeight + margin;
-  const top = goUp ? (rect.top - popHeight - margin) : (rect.bottom + margin);
-  // Right-align to the button so the menu doesn't extend off-screen on the right
-  const right = Math.max(8, window.innerWidth - rect.right);
-  pop.style.top = `${Math.round(top)}px`;
-  pop.style.right = `${Math.round(right)}px`;
-  pop.classList.add(goUp ? 'rrm-up' : 'rrm-down');
-
-  const close = () => {
-    pop.remove();
-    document.removeEventListener('click', onDocClick, true);
-    document.removeEventListener('keydown', onKey, true);
-  };
-  pop._rrmClose = close;
-  const onDocClick = (e) => {
-    if (pop.contains(e.target) || e.target === anchorBtn) return;
-    close();
-  };
-  const onKey = (e) => {
-    if (e.key === 'Escape') { e.preventDefault(); close(); }
-  };
-  setTimeout(() => {
-    document.addEventListener('click', onDocClick, true);
-    document.addEventListener('keydown', onKey, true);
-  }, 0);
-
-  pop.querySelectorAll('.research-run-mode-row').forEach(b => {
-    b.addEventListener('click', () => {
-      const mode = b.dataset.mode;
-      close();
-      if (mode === 'parallel') jobs.startAllQueued();
-      else jobs.startAllQueuedSequential();
-    });
+  return openRunModePicker({
+    id: 'research-run-mode-popover',
+    anchor: anchorBtn,
+    rows: [
+      { mode: 'parallel', title: 'Parallel', onSelect: () => jobs.startAllQueued() },
+      { mode: 'sequential', title: 'Sequential', onSelect: () => jobs.startAllQueuedSequential() },
+    ],
   });
 }
 

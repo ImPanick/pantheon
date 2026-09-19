@@ -28,6 +28,7 @@ import time
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from .skill_format import Skill, slugify
+from .skill_lint import skill_similarity
 
 logger = logging.getLogger(__name__)
 
@@ -642,6 +643,8 @@ class SkillsManager:
             u = self._usage_entry(usage, name, owner_of)
             d["uses"] = int(u.get("uses", 0))
             d["last_used"] = u.get("last_used")
+            d["opens"] = int(u.get("opens", 0))
+            d["last_opened"] = u.get("last_opened")
             d["audit_verdict"] = u.get("audit_verdict")
             d["audit_by_teacher"] = bool(u.get("audit_by_teacher"))
             d["audit_worker_model"] = u.get("audit_worker_model")
@@ -661,6 +664,8 @@ class SkillsManager:
             u = self._usage_entry(usage, d.get("name"), None)
             d["uses"] = int(u.get("uses", 0))
             d["last_used"] = u.get("last_used")
+            d["opens"] = int(u.get("opens", 0))
+            d["last_opened"] = u.get("last_opened")
             d["source"] = "bundled"
             d["bundled"] = True
             d["editable"] = False
@@ -753,34 +758,49 @@ class SkillsManager:
         nm = slugify(name or title or description or "skill")
 
         # Free dedup-at-creation (always, no API): for LLM-authored skills,
-        # skip if a near-identical skill already exists (Jaccard over
-        # name+description+when_to_use+procedure). User-authored skills are
-        # never auto-skipped — a human asked for it. The every-X AI audit
-        # handles the fuzzier near-duplicates this cheap check won't catch.
+        # skip if a near-identical skill already exists. User-authored skills
+        # are never auto-skipped — a human asked for it, and `P9-12`'s undo
+        # depends on that exemption to restore a deleted member of a duplicate
+        # pair. The every-X AI audit handles the fuzzier near-duplicates this
+        # cheap check won't catch.
+        #
+        # `P8-15` / `B731`. The comparison is `skill_lint.skill_similarity`, the
+        # same function the author-facing lint and the nightly blocker use, so
+        # the 0.82 refused here and the 0.38 shown to the author are two points
+        # on **one** scale. It used to be `_tokenize`/`_jaccard` — a whitespace
+        # split that keeps stopwords and two-character words — which measured
+        # 1.65× higher than the lint's tokens on the same pair, so the two
+        # numbers were never comparable and `B731` compared them anyway.
+        # Measured over all 40,755 pairs of the bundled library on 2026-09-19:
+        # the corpus maximum is 0.700 on either scale, so nothing reaches 0.82
+        # and this unification changed no decision this branch has ever made.
+        #
+        # **And the exemption is no longer silent.** `SkillAddRequest.source`
+        # defaults to `"user"`, so every skill added from the Workshop form took
+        # the exempt branch and nothing anywhere said what it had just copied.
+        # The skill is still created; `_overlaps` says what it sits on top of.
+        from .skill_lint import DUPLICATE_REFUSAL, skill_overlaps
         _all = self.load_all()
         _dedup_pool = _all if owner is None else [s for s in _all if s.get("owner") == owner]
+        _candidate = {
+            "name": nm,
+            "description": (description or title or ""),
+            "when_to_use": (when_to_use if when_to_use is not None else (problem or "")),
+            "procedure": list(procedure if procedure is not None else (steps or [])),
+            "tags": list(tags or []),
+        }
         if source != "user":
-            cand = _tokenize(" ".join([
-                nm, (description or title or ""),
-                (when_to_use if when_to_use is not None else (problem or "")),
-                " ".join(procedure if procedure is not None else (steps or [])),
-            ]))
-            if cand:
-                for s in _dedup_pool:
-                    ex = _tokenize(" ".join([
-                        s.get("name", ""), s.get("description", ""),
-                        s.get("when_to_use", ""),
-                        " ".join(s.get("procedure", []) or []),
-                    ]))
-                    if _jaccard(cand, ex) >= 0.82:
-                        # Near-identical — don't grow the library; bump the
-                        # existing skill's usage and return it so the caller
-                        # knows it already exists.
-                        try:
-                            self.record_use(s["name"], owner=s.get("owner"))
-                        except Exception:
-                            pass
-                        return {**s, "_deduped": True, "_duplicate_of": s.get("name")}
+            for s in _dedup_pool:
+                if skill_similarity(_candidate, s) >= DUPLICATE_REFUSAL:
+                    # Near-identical — don't grow the library; bump the
+                    # existing skill's usage and return it so the caller
+                    # knows it already exists.
+                    try:
+                        self.record_use(s["name"], owner=s.get("owner"))
+                    except Exception:
+                        pass
+                    return {**s, "_deduped": True, "_duplicate_of": s.get("name"),
+                            "_duplicate_score": round(skill_similarity(_candidate, s), 3)}
 
         # Avoid clobbering an existing skill with the same name
         existing = {s["name"] for s in _all}
@@ -812,7 +832,17 @@ class SkillsManager:
         )
         self._write_skill(sk)
 
-        return sk.to_dict()
+        # `P8-15`. What the new skill sits on top of, on the scale the lint uses.
+        # Advisory and never a refusal: this is the branch a person asked for.
+        out = sk.to_dict()
+        try:
+            _cand = dict(_candidate, name=nm)
+            overlaps = skill_overlaps(_cand, _dedup_pool)
+            if overlaps:
+                out["_overlaps"] = overlaps
+        except Exception:
+            logger.debug("overlap report skipped", exc_info=True)
+        return out
 
     def import_bundle_from_files(
         self,
@@ -963,11 +993,45 @@ class SkillsManager:
         return False
 
     def record_use(self, skill_id: str, owner: Optional[str] = None) -> None:
+        """One retrieval. `uses` counts what was **shown** to the model.
+
+        `P8-21` re-measured what this number means and it is not what the card
+        says. Its only caller is `agent_loop._build_system_prompt`, which
+        increments it for every skill `get_relevant_skills` returned — before
+        the model has read a word of it. So "used 40 times" is "matched 40
+        times", and the matcher is Jaccard overlap against the last user
+        message.
+
+        `Law 1` and `Law 2` keep it exactly as it is: `uses` is on the wire, on
+        the card and in three sort orders. What changed is that it is no longer
+        the **only** number, and no longer the one that earns a retrieval boost.
+        See `record_open`.
+        """
         usage = self._load_usage()
         key = self._usage_key(skill_id, owner)
         entry = usage.setdefault(key, {"uses": 0, "last_used": None})
         entry["uses"] = int(entry.get("uses", 0)) + 1
         entry["last_used"] = int(time.time())
+        self._save_usage(usage)
+
+    def record_open(self, skill_id: str, owner: Optional[str] = None) -> None:
+        """One open. `opens` counts what the model **fetched**. `P8-21`.
+
+        A skill is opened when something calls `manage_skills action=view` and
+        reads the whole SKILL.md. The index line carries name, description and
+        category only (`skill_injection.INJECTED_FIELDS`), so fetching the file
+        is a deliberate second step taken after reading the line — which is the
+        nearest thing to evidence of use that exists anywhere on this path.
+
+        It is not "the skill worked": nothing in this product knows that. It is
+        "the model wanted the procedure", and that is a strictly better signal
+        than "the retriever emitted it", which is what `uses` records.
+        """
+        usage = self._load_usage()
+        key = self._usage_key(skill_id, owner)
+        entry = usage.setdefault(key, {"uses": 0, "last_used": None})
+        entry["opens"] = int(entry.get("opens", 0)) + 1
+        entry["last_opened"] = int(time.time())
         self._save_usage(usage)
 
     # ----------------------------------------------------------------------
@@ -1066,6 +1130,12 @@ class SkillsManager:
                 # `description` and `category` only.
                 "source": s.get("source") or "",
                 "teacher_model": s.get("teacher_model") or "",
+                # `P8-21`. Carried for `render_skill_index_block`'s decision
+                # about what survives the catalogue budget, and printed on no
+                # prompt line — the same arrangement `source` and
+                # `teacher_model` already have for `P4-16`'s receipt.
+                "uses": int(s.get("uses") or 0),
+                "opens": int(s.get("opens") or 0),
             })
         out.sort(key=lambda x: (x["category"], x["name"]))
         return out
@@ -1142,7 +1212,13 @@ class SkillsManager:
             if query.lower() in (sk.get("description") or "").lower():
                 score = max(score, 0.6)
             score *= 1.0 + _to_float(sk.get("confidence"), 0.5) * 0.1
-            if sk.get("uses", 0) > 0:
+            # `P8-21`. This boost used to key off `uses`, which is written by
+            # this very function's caller for every skill it returns — so one
+            # keyword coincidence bought a permanent 5% advantage in the next
+            # match, and the next, compounding luck into rank. `opens` is the
+            # model fetching the procedure through `manage_skills action=view`,
+            # which nothing in the retrieval path writes.
+            if sk.get("opens", 0) > 0:
                 score *= 1.05
             if score >= threshold:
                 scored.append((score, sk))

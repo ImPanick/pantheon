@@ -6,13 +6,13 @@
 import Storage from './js/storage.js';
 import uiModule from './js/ui.js';
 import workspaceModule from './js/workspace.js';
-import fileHandlerModule from './js/fileHandler.js?v=20260918surfacehalves1';
+import fileHandlerModule from './js/fileHandler.js?v=20260919chipramp1';
 import modelsModule from './js/models.js?v=20260715startupcalm2';
 import ragModule from './js/rag.js';
 import presetsModule from './js/presets.js';
 import searchModule from './js/search.js';
-import chatModule from './js/chat.js?v=20260918surfacehalves1';
-import compareModule from './js/compare/index.js?v=20260918surfacehalves1';
+import chatModule from './js/chat.js?v=20260919chipramp1';
+import compareModule from './js/compare/index.js?v=20260919chipramp1';
 import documentModule from './js/document.js?v=20260815approvalsave1';
 import searchChatModule from './js/search-chat.js';
 import { makeWindowDraggable } from './js/windowDrag.js';
@@ -23,7 +23,7 @@ import {
   settleSessionHydration
 } from './js/startupShell.js';
 import markdownModule from './js/markdown.js';
-import chatRenderer from './js/chatRenderer.js?v=20260918surfacehalves1';
+import chatRenderer from './js/chatRenderer.js?v=20260919chipramp1';
 import sessionModule from './js/sessions.js';
 import memoryModule from './js/memory.js?v=20260918workshop1';
 import voiceRecorderModule from './js/voiceRecorder.js';
@@ -47,7 +47,7 @@ import themeModule from './js/theme.js';
 // unversioned so this can't recur.
 import cookbookModule from './js/cookbook.js';
 import groupModule from './js/group.js';
-import * as researchPanelModule from './js/research/panel.js?v=20260630researchthumb';
+import * as researchPanelModule from './js/research/panel.js?v=20260919chipramp1';
 import ttsModule from './js/tts-ai.js';
 import spinnerModule from './js/spinner.js';
 import { initKeyboardShortcuts } from './js/keyboard-shortcuts.js';
