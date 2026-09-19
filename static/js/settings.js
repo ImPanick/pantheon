@@ -9,6 +9,13 @@ import {
   getSettingsRegistryIssues,
   isAdminManagedSettingsTab,
 } from './settings/registry.js';
+import {
+  collectMcpStdioFields,
+  createMcpFieldEditor,
+  createMcpToolRow,
+  describeServerRefusal,
+  formatCommandLine,
+} from './settings/mcpFields.js';
 import { bindSettingsSearch } from './settings/search.js';
 import { bindSettingsSidebar } from './settings/sidebar.js';
 import {
@@ -5549,7 +5556,13 @@ async function initUnifiedIntegrations() {
         const servers = await res.json();
         const srv = servers.find(s => (s.id || s.name) === editId);
         if (!srv) { formEl.innerHTML = '<div class="admin-card" style="margin-top:8px">Server not found</div>'; return; }
-        const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+        // `Law 14`. This line used to shadow the module's `esc` (`:74`, which
+        // forwards to the canonical `uiModule.esc` at `static/js/ui.js:983`)
+        // with a copy that escapes `&` and `<` and **not** `"`, `'` or `>` —
+        // inside the one function that put third-party text into an HTML
+        // attribute (`title="${esc(t.description)}"`, now gone with the
+        // node-built tool rows). Removed rather than fixed: there is one
+        // `esc` and it is two scopes up.
         const statusColor = srv.needs_oauth ? '#e5a33a' : srv.status === 'connected' ? 'var(--green,#50fa7b)' : srv.status === 'error' ? 'var(--red)' : 'var(--fg)';
         const toolInfo = srv.status === 'connected' ? `${srv.enabled_tool_count}/${srv.tool_count} tools` : '';
         const statusText = srv.needs_oauth ? 'Needs authorization' : srv.status === 'connected' ? `Connected (${toolInfo})` : srv.status === 'error' ? `Error: ${esc(srv.error || 'unknown')}` : 'Disconnected';
@@ -5596,7 +5609,15 @@ async function initUnifiedIntegrations() {
             const tools = await tr.json();
             if (tools.length) {
               const disabled = new Set(tools.filter(t => t.is_disabled).map(t => t.name));
-              panel.innerHTML = `<div class="mcp-tools-header"><span>Tools</span><span style="display:flex;gap:8px;align-items:center"><span class="mcp-tools-count">${tools.length - disabled.size}/${tools.length} enabled</span><a href="#" id="uf-mcp-all">All</a> <a href="#" id="uf-mcp-none">None</a></span></div><div class="mcp-tools-list">${tools.map(t => `<label title="${esc(t.description)}"><input type="checkbox" data-mcp-tool-name="${esc(t.name)}" ${!t.is_disabled ? 'checked' : ''}><span><strong>${esc(t.name)}</strong> <span style="opacity:0.5">— ${esc((t.description||'').slice(0,80))}</span></span></label>`).join('')}</div>`;
+              // `P8-48`, read half. The header carries no third-party text and
+              // stays a template; every row is built node by node, because the
+              // names and descriptions in it are written by the MCP server and
+              // because each row now opens onto the tool's `input_schema` —
+              // which this endpoint has always returned and no frontend file
+              // has ever read (`grep -c input_schema static/` was 0).
+              panel.innerHTML = `<div class="mcp-tools-header"><span>Tools</span><span style="display:flex;gap:8px;align-items:center"><span class="mcp-tools-count">${tools.length - disabled.size}/${tools.length} enabled</span><a href="#" id="uf-mcp-all">All</a> <a href="#" id="uf-mcp-none">None</a></span></div><div class="mcp-tools-list"></div>`;
+              const toolList = panel.querySelector('.mcp-tools-list');
+              tools.forEach(t => toolList.appendChild(createMcpToolRow(t)));
               const saveFn = async () => {
                 const dis = [];
                 panel.querySelectorAll('input[type=checkbox]').forEach(cb => { if (!cb.checked) dis.push(cb.dataset.mcpToolName); });
@@ -5621,8 +5642,16 @@ async function initUnifiedIntegrations() {
             <div class="settings-row"><label class="settings-label">Transport</label><select id="uf-mcp-transport" class="settings-input"><option value="stdio">stdio</option><option value="sse">SSE</option><option value="http">Streamable HTTP</option></select></div>
             <div id="uf-mcp-stdio-fields" style="display:flex;flex-direction:column;gap:6px;">
               <div class="settings-row"><label class="settings-label">Command</label><input id="uf-mcp-cmd" class="settings-input" placeholder="npx"></div>
-              <div class="settings-row"><label class="settings-label">Args</label><input id="uf-mcp-args" class="settings-input" placeholder='["-y", "@modelcontextprotocol/server-filesystem"]'></div>
-              <div class="settings-row"><label class="settings-label">Env</label><input id="uf-mcp-env" class="settings-input" placeholder='{"KEY": "value"}'></div>
+              <!-- P8-46. These two were single-line JSON text boxes a person
+                   had to fill with ["-y", "@scope/pkg"] by hand. They are now
+                   mount points for createMcpFieldEditor, which gives the field
+                   one box per argument and a KEY/value pair per variable, and
+                   keeps the JSON textarea behind "Paste JSON" as a second mode
+                   of the same field rather than a second field (Law 1 keeps
+                   the raw route, Law 14 keeps it one field). -->
+              <div id="uf-mcp-args-mount"></div>
+              <div id="uf-mcp-env-mount"></div>
+              <div id="uf-mcp-preview" style="font-size:11px;opacity:0.65;line-height:1.45;margin-top:2px;"></div>
             </div>
             <div id="uf-mcp-sse-fields" style="display:none;flex-direction:column;gap:6px;">
               <div class="settings-row"><label class="settings-label">URL</label><input id="uf-mcp-url" class="settings-input" placeholder="http://localhost:3001/sse"></div>
@@ -5634,6 +5663,40 @@ async function initUnifiedIntegrations() {
             </div>
           </div>
         </div>`;
+      // `P8-46`. One editor per field, and a live line saying exactly what
+      // will be run. The preview is the onboarding half (`P8-00`): a person
+      // who has never registered an MCP server cannot tell from "Command" and
+      // "Arguments" what the two add up to, and the one sentence that answers
+      // it is the command itself.
+      const argsField = createMcpFieldEditor({
+        kind: 'args',
+        hint: 'One box per argument — exactly what you would type after the command. '
+          + 'Most servers need two: -y and the package name.',
+      });
+      const envField = createMcpFieldEditor({
+        kind: 'env',
+        hint: 'Variables the server is started with. Tokens and API keys go here, '
+          + 'not in the arguments, where they would show up in the process list.',
+      });
+      el('uf-mcp-args-mount').replaceChildren(argsField.element);
+      el('uf-mcp-env-mount').replaceChildren(envField.element);
+      const _renderMcpPreview = () => {
+        const box = el('uf-mcp-preview');
+        if (!box) return;
+        const line = formatCommandLine(el('uf-mcp-cmd').value, argsField.peek() || []);
+        box.replaceChildren();
+        if (!line) return;
+        const lead = document.createElement('span');
+        lead.textContent = 'Pantheon will run: ';
+        const code = document.createElement('code');
+        code.textContent = line;
+        code.style.cssText = 'font-family:monospace;color:var(--fg);opacity:0.95;';
+        box.appendChild(lead);
+        box.appendChild(code);
+      };
+      argsField.onChange(_renderMcpPreview);
+      el('uf-mcp-cmd').addEventListener('input', _renderMcpPreview);
+      _renderMcpPreview();
       el('uf-mcp-transport').addEventListener('change', () => {
         const v = el('uf-mcp-transport').value;
         const isUrl = (v === 'sse' || v === 'http');
@@ -5658,13 +5721,27 @@ async function initUnifiedIntegrations() {
           // nobody reaches for. The server refuses these too (`Law 13` cuts
           // both ways: a rule in two places is one that can disagree), so this
           // is here to say *which field* before a round trip, not instead of it.
-          let args, env;
-          try { args = JSON.stringify(JSON.parse(el('uf-mcp-args').value || '[]')); }
-          catch (_) { el('uf-mcp-msg').textContent = 'Args must be valid JSON, e.g. ["-y", "pkg"]'; return; }
-          try { env  = JSON.stringify(JSON.parse(el('uf-mcp-env').value  || '{}')); }
-          catch (_) { el('uf-mcp-msg').textContent = 'Env must be valid JSON, e.g. {"API_KEY": "..."}'; return; }
-          fd.append('args', args);
-          fd.append('env', env);
+          //
+          // `P8-46` finishes the sentence the message started. It said which
+          // field and stopped there — the shared span at the bottom of the
+          // form, eleven pixels, a hundred and forty pixels from the box it
+          // was about, repeating the format name back at someone who had just
+          // failed to produce it. `read()` now returns the field's own reading
+          // of what is wrong, `showProblem` draws it **against that field**
+          // with a caret under the character, and nothing typed is cleared.
+          argsField.clearProblem(); envField.clearProblem();
+          el('uf-mcp-msg').textContent = '';
+          const collected = collectMcpStdioFields(argsField, envField);
+          if (!collected.ok) {
+            const field = collected.field === 'env' ? envField : argsField;
+            field.showProblem(collected.problem);
+            el('uf-mcp-msg').textContent = collected.field === 'env'
+              ? 'Nothing was sent — see Environment above.'
+              : 'Nothing was sent — see Arguments above.';
+            return;
+          }
+          fd.append('args', collected.args);
+          fd.append('env', collected.env);
         } else {
           fd.append('url', el('uf-mcp-url').value);
         }
@@ -5683,7 +5760,22 @@ async function initUnifiedIntegrations() {
           } else if (r.ok) {
             el('uf-mcp-msg').textContent = 'Saved'; formEl.style.display = 'none'; await renderList();
           } else {
-            el('uf-mcp-msg').textContent = `Failed (${r.status})`;
+            // `P8-46`. This branch read `r.status` and discarded `data`, so
+            // `add_server`'s own `detail` — *"args must be a JSON array, e.g.
+            // [\"-y\", \"pkg\"]"*, written to be read by a person — was
+            // rendered as **"Failed (400)"**. The server was explaining itself
+            // into a socket nobody was listening on. When the detail names a
+            // field, the sentence goes on that field rather than in the
+            // footer, so the fix and the thing to fix are in one place.
+            const refusal = describeServerRefusal(r.status, data);
+            const onField = refusal.field === 'args' ? argsField
+              : refusal.field === 'env' ? envField : null;
+            if (onField) {
+              onField.showProblem({ title: 'The server refused this', detail: refusal.text });
+              el('uf-mcp-msg').textContent = 'Not added — see above.';
+            } else {
+              el('uf-mcp-msg').textContent = refusal.text;
+            }
           }
         } catch (_) { el('uf-mcp-msg').textContent = 'Failed'; }
         finally { _setBtnLoading(saveBtn, false, _origLabel); if (cancelBtn) cancelBtn.disabled = false; }

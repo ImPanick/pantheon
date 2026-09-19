@@ -20,6 +20,11 @@ const REAL_MODULES = new Set([
   // rather than stubbed, because a stub would hand this smoke a glyph nobody
   // ships and the caret's `id` is what the settings page looks up to rotate it.
   path.join(JS, 'icons.js'),
+  // `P8-46`. The MCP form's Args and Env fields. Real rather than stubbed
+  // for the same reason as `icons.js` above: the module builds nodes the
+  // shell then mounts, and a stub would let the shell load while the
+  // field it mounts is a shape nobody ships.
+  path.join(JS, 'settings/mcpFields.js'),
   path.join(JS, 'settings/dom.js'),
   path.join(JS, 'settings/registry.js'),
   path.join(JS, 'settings/search.js'),

@@ -162,6 +162,122 @@ def _jaccard(a: set, b: set) -> float:
     return len(a & b) / len(a | b)
 
 
+# `P8-20` / `B792`. Everything from here to `_relevance` exists because the
+# union in `_jaccard`'s denominator made a skill harder to retrieve the more
+# it said, and the shipped library says a lot.
+#
+# Measured 2026-09-19 against the 286 bundled skills, by calling the code and
+# not by reading it: the indexed token set is median **40** tokens, p90 68,
+# max 150. A query whose every token appears in a median skill therefore
+# scores `n / 40`, so it needs **10** tokens to reach the agent loop's
+# threshold of 0.25 (`src/agent_loop.py:3153`, and again at `:5017`) and 17
+# against a p90 skill. Across 30 hand-labelled natural queries — "deploy to
+# kubernetes", "write pytest tests for my python module" — the best raw score
+# any of the 286 skills reached was **0.200**, **29 of 30 returned nothing at
+# all**, and the one that returned something returned the wrong skill
+# (`motion-foundations`, for a query about WCAG accessibility, off the
+# description-substring boost rather than off any token match). The one escape
+# hatch, the whole-token tag boost, is closed too: **3 of 286** bundled skills
+# carry any tags.
+#
+# (`B792` states the same measurement with the intersection counted twice in
+# the union — `n / (n + |S|)` rather than `n / |S|` — which is why it says 14
+# tokens and 0.128 where the arithmetic gives 10 and 0.15. The correction
+# makes the number less bad and changes no conclusion: 0.15 is still under
+# 0.25, and the observed ceiling of 0.107 is well under both.)
+
+# Words that tell you nothing about what a request is *aiming at*. Used ONLY
+# to size the coverage denominator below — never to drop a token from a
+# match, because "do" and "make" really are in some skills and a match on one
+# is still a match. A deliberately short list: every word here is a word no
+# skill in the library is *about*.
+_QUERY_STOPWORDS = frozenset("""
+an the and or but if then else of to in on at by for with from as
+is are was were be been being am
+this that these those it its
+we our you your he she his her they them their
+do does did done doing how what when where which who whom why whose
+can could should would will shall may might must
+not no nor so than too very just about into over under again further
+here there all any both each few more most other some such only own same
+now get got make made need want please help thanks
+hi hello hey ok okay let lets
+me my mine im ive ill id us
+""".split())
+
+
+def _subtokens(tokens: set) -> set:
+    """`tokens`, plus the parts of every hyphen- or underscore-joined one.
+
+    `_tokenize` splits on whitespace, so the skill named `golang-testing`
+    contributes the single token `golang-testing` and the perfectly aimed
+    query "golang testing" matched its name on **neither** word. 275 of the
+    286 bundled skill names are hyphenated, so this was not an edge case.
+
+    The whole token is kept as well as its parts. That is load-bearing rather
+    than tidy: the tag boost in `get_relevant_skills` tests
+    `tag_tokens <= query_tokens`, and a tag that stopped containing itself
+    would stop boosting.
+    """
+    out = set(tokens)
+    for t in tokens:
+        if "-" in t or "_" in t:
+            out.update(p for p in re.split(r"[-_]+", t) if len(p) > 1)
+    return out
+
+
+def _aim(query_tokens: set) -> set:
+    """What the query is asking about: its content words, hyphens split.
+
+    Empty when the query is nothing but stopwords — "what do I do now" aims
+    at no skill, and returning its stopwords here would score every skill
+    that happens to contain the word "do". An empty aim makes `_coverage`
+    return 0, which leaves `_relevance` reporting exactly today's Jaccard.
+    """
+    return {t for t in _subtokens(query_tokens) if t not in _QUERY_STOPWORDS}
+
+
+def _coverage(aim: set, skill_tokens: set) -> float:
+    """How much of what the query asked about this skill actually covers.
+
+    This is the denominator fix: `|aim & skill| / |aim|`. A skill is no longer
+    punished for being thorough, because its own length has left the
+    denominator entirely — the question asked is "does this skill cover what
+    was asked", and the length of the answer is not part of that question.
+    """
+    if not aim:
+        return 0.0
+    return len(aim & _subtokens(skill_tokens)) / len(aim)
+
+
+def _relevance(query_tokens: set, aim: set, skill_tokens: set) -> float:
+    """The retrieval score. **It can only ever be >= today's Jaccard.**
+
+    That `max` is not defensive padding, it is `Law 1` written as an
+    invariant: no query/skill pair that matched before this change scores
+    lower after it, so nothing that was retrievable stopped being
+    retrievable. There is a real case behind it — a query made mostly of
+    stopwords can out-score its own coverage on the union measure — and
+    `tests/test_skill_retrieval_normalises_by_the_query.py` pins the
+    invariant across the whole bundled library rather than trusting the
+    argument.
+
+    Jaccard is kept as a *tie-break* on top of coverage rather than
+    discarded. Coverage alone puts every skill that covers the query at 1.0,
+    including a 150-token skill that covers it incidentally; multiplying by
+    `1 + jaccard` breaks those ties toward the skill that is *about* the
+    query rather than the one that merely contains it. Measured through this
+    manager on the same 30 labelled queries: union Jaccard gives recall@5
+    0/30 and precision@1 0/30, coverage alone 26/30 and 15/30, and coverage
+    with this tie-break 26/30 and **20/30** — the tie-break buys no recall and
+    five places at rank 1, which is where it matters, because injection is
+    capped at 3-5 skills.
+    """
+    j = _jaccard(query_tokens, skill_tokens)
+    c = _coverage(aim, skill_tokens)
+    return max(j, c * (1.0 + j))
+
+
 def _to_float(x, default: float = 0.0) -> float:
     """Coerce a possibly hand-edited frontmatter value to float without
     raising — a blank or non-numeric `confidence:` in a SKILL.md must not
@@ -1193,6 +1309,11 @@ class SkillsManager:
             return []
 
         query_tokens = _tokenize(query)
+        # `P8-20`. Computed once for the whole sweep rather than per skill —
+        # `get_relevant_skills` runs over the user's store *plus* the 286
+        # bundled files on every turn that injects, which is the cost `P8-19`
+        # went to some trouble to bring down.
+        query_aim = _aim(query_tokens)
         scored = []
         for sk in skills:
             text = " ".join([
@@ -1202,7 +1323,11 @@ class SkillsManager:
                 " ".join(sk.get("tags", []) or []),
                 " ".join(sk.get("procedure", []) or []),
             ])
-            score = _jaccard(query_tokens, _tokenize(text))
+            # `P8-20` / `B792`. Was `_jaccard(query_tokens, _tokenize(text))`.
+            # `_relevance` returns that number or a larger one, never a
+            # smaller one — see its docstring for why that is the shape of
+            # the fix and not a hedge.
+            score = _relevance(query_tokens, query_aim, _tokenize(text))
             for tag in sk.get("tags", []) or []:
                 # Match tags as whole tokens, not substrings: `tag in query`
                 # boosted e.g. a "ai" tag for any query containing "email".

@@ -95,6 +95,97 @@ def _format_mcp_params(input_schema: Any) -> str:
     return hint
 
 
+# ── Call deadlines (`P8-37`) ───────────────────────────────────────────────
+#
+# Before this, `_do_call` awaited `session.call_tool(...)` with no bound of any
+# kind. The MCP SDK's own `read_timeout_seconds` defaults to `None`
+# (`mcp/shared/session.py:285-291`, `timeout = None` → `anyio.fail_after(None)`),
+# so a server that accepts a `tools/call` and never answers left the await
+# pending for as long as the process lived. That await is inside the agent's
+# turn (`src/tool_execution.py:1345/1360`) and inside the scheduler's delivery
+# path (`src/task_scheduler.py:2710/3588`), so one hung tool hung the turn and
+# the task with it — with nothing in the UI to say why, because no exception
+# was ever raised.
+#
+# The default is deliberately generous: real MCP tools drive browsers, index
+# repositories and call slow third-party APIs, and a bound that fires on honest
+# work is a bound operators raise until it is useless. What it must stop is
+# *forever*.
+MCP_CALL_TIMEOUT_SECONDS = 120.0
+
+# The ceiling a caller may ask for. A per-call override exists so the test-call
+# endpoint (`P8-36`) can use a short, interactive deadline, and so a genuinely
+# long tool can be given room — but not so that "no timeout" can be spelled as
+# a very large number, which is the state this replaces.
+MCP_CALL_TIMEOUT_MAX_SECONDS = 600.0
+
+# How much longer than the deadline the hard bound waits. The SDK's own timeout
+# is the graceful one — it stops waiting on the response stream and raises a
+# 408 — so it is given the deadline itself and should always fire first. The
+# outer `asyncio.wait_for` is the backstop for everything the SDK's timer does
+# not cover (a write that blocks, a session object that ignores the argument)
+# and is therefore the layer that makes the bound enforceable rather than
+# advisory.
+_MCP_CALL_TIMEOUT_GRACE = 2.0
+
+# The SDK spells its read timeout as an `McpError` carrying HTTP 408.
+_MCP_TIMEOUT_CODE = 408
+
+
+class McpCallTimeout(Exception):
+    """One MCP tool call passed its deadline.
+
+    A distinct type on purpose. `call_tool` reconnects a built-in server whose
+    subprocess died and retries the call once; a hung tool is not a dead
+    subprocess, and retrying it spends the deadline twice to learn the same
+    thing. Carries the deadline so the message can name it.
+    """
+
+    def __init__(self, tool_name: str, timeout: float):
+        self.tool_name = tool_name
+        self.timeout = timeout
+        super().__init__(
+            f"MCP tool '{tool_name}' did not answer within {timeout:g}s and was "
+            f"abandoned. The server may be hung, waiting on input it will never "
+            f"get, or doing work that outlasts the limit."
+        )
+
+
+def resolve_mcp_call_timeout(timeout: Any = None) -> float:
+    """Clamp a requested per-call deadline into the usable range.
+
+    `None`, a non-number, or anything <= 0 means the default — a caller cannot
+    switch the bound off, and a caller asking for a week gets the ceiling.
+    """
+    try:
+        value = float(timeout)
+    except (TypeError, ValueError):
+        return MCP_CALL_TIMEOUT_SECONDS
+    if not value > 0:
+        return MCP_CALL_TIMEOUT_SECONDS
+    return min(value, MCP_CALL_TIMEOUT_MAX_SECONDS)
+
+
+def _is_sdk_read_timeout(exc: BaseException) -> bool:
+    """True for the MCP SDK's own read-timeout error.
+
+    Duck-typed rather than imported: every other reference to `mcp` in this
+    module is a lazy, guarded import because the package is optional, and a
+    top-level `from mcp.shared.exceptions import McpError` here would undo
+    that for the one path that must work when a server misbehaves.
+    """
+    return getattr(getattr(exc, "error", None), "code", None) == _MCP_TIMEOUT_CODE
+
+
+def _session_takes_read_timeout(session: Any) -> bool:
+    """Whether this session's `call_tool` accepts the SDK's timeout argument."""
+    import inspect
+    try:
+        return "read_timeout_seconds" in inspect.signature(session.call_tool).parameters
+    except (TypeError, ValueError):
+        return False
+
+
 # Tool-name prefixes that denote a read-only/inspection operation. Used to
 # classify MCP tools for plan mode when the server provides no readOnlyHint.
 # These are PREFIXES, not whole words (matched via str.startswith below), so a
@@ -465,10 +556,19 @@ class McpManager:
                 "name": srv.name,
             }
 
-    async def call_tool(self, qualified_name: str, arguments: Dict) -> Dict:
+    async def call_tool(
+        self,
+        qualified_name: str,
+        arguments: Dict,
+        timeout: Optional[float] = None,
+    ) -> Dict:
         """Call an MCP tool by its qualified name (mcp__{server_id}__{tool_name}).
 
-        Returns a result dict compatible with agent_tools format.
+        Returns a result dict compatible with agent_tools format. `timeout` is
+        the deadline for this one call in seconds; `None` means
+        `MCP_CALL_TIMEOUT_SECONDS` (`P8-37`). Every existing caller passes
+        nothing and so inherits the default — which is the point: the hang was
+        on the default path.
         """
         parts = qualified_name.split("__", 2)
         if len(parts) != 3 or parts[0] != "mcp":
@@ -482,7 +582,13 @@ class McpManager:
             return {"error": f"MCP server not connected: {server_id}", "exit_code": 1}
 
         try:
-            result = await self._do_call(session, tool_name, arguments)
+            result = await self._do_call(session, tool_name, arguments, timeout)
+        except McpCallTimeout as e:
+            # NOT the reconnect path below. A deadline means the server is
+            # answering the socket and not the request; tearing it down and
+            # asking again costs a second full deadline for the same silence.
+            logger.warning("MCP tool call timed out: %s after %gs", qualified_name, e.timeout)
+            return {"error": str(e), "exit_code": 1, "timed_out": True}
         except Exception as e:
             # Auto-reconnect for builtin servers whose subprocess may have died
             if self.is_builtin(server_id):
@@ -492,7 +598,11 @@ class McpManager:
                     session = self._sessions.get(server_id)
                     if session:
                         try:
-                            result = await self._do_call(session, tool_name, arguments)
+                            result = await self._do_call(session, tool_name, arguments, timeout)
+                        except McpCallTimeout as e2:
+                            logger.warning("MCP tool call timed out after reconnect: %s after %gs",
+                                           qualified_name, e2.timeout)
+                            return {"error": str(e2), "exit_code": 1, "timed_out": True}
                         except Exception as e2:
                             logger.error(f"MCP tool call failed after reconnect: {qualified_name}: {e2}")
                             return {"error": str(e2), "exit_code": 1}
@@ -507,9 +617,50 @@ class McpManager:
 
         return result
 
-    async def _do_call(self, session, tool_name: str, arguments: Dict) -> Dict:
-        """Execute a single MCP tool call and return result dict."""
-        result = await session.call_tool(tool_name, arguments)
+    @staticmethod
+    async def _send_call(session, tool_name: str, arguments: Dict, deadline: float):
+        """Send one `tools/call`, asking the SDK to bound the response wait.
+
+        `read_timeout_seconds` is the SDK's own mechanism (`Law 14`): it stops
+        waiting on the response stream and raises `McpError(408)` rather than
+        cancelling the caller mid-await, which keeps the session usable for the
+        next call. A session object that does not take the argument — an older
+        SDK, a test double — still gets the hard bound in `_do_call`.
+        """
+        if _session_takes_read_timeout(session):
+            from datetime import timedelta
+            return await session.call_tool(
+                tool_name, arguments, read_timeout_seconds=timedelta(seconds=deadline)
+            )
+        return await session.call_tool(tool_name, arguments)
+
+    async def _do_call(
+        self,
+        session,
+        tool_name: str,
+        arguments: Dict,
+        timeout: Optional[float] = None,
+    ) -> Dict:
+        """Execute a single MCP tool call and return result dict.
+
+        Bounded in two layers (`P8-37`). The SDK's `read_timeout_seconds` gets
+        the deadline and should fire first; `asyncio.wait_for` gets the
+        deadline plus a small grace and is what makes the bound enforceable
+        when the SDK's timer cannot see the stall. Either way the caller gets
+        `McpCallTimeout`, never a pending await.
+        """
+        deadline = resolve_mcp_call_timeout(timeout)
+        try:
+            result = await asyncio.wait_for(
+                self._send_call(session, tool_name, arguments, deadline),
+                timeout=deadline + _MCP_CALL_TIMEOUT_GRACE,
+            )
+        except asyncio.TimeoutError:
+            raise McpCallTimeout(tool_name, deadline) from None
+        except Exception as exc:
+            if _is_sdk_read_timeout(exc):
+                raise McpCallTimeout(tool_name, deadline) from exc
+            raise
         output_parts = []
         images = []
         for content in result.content:

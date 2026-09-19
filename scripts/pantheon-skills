@@ -10,6 +10,13 @@ list, inspect, and prune them from the shell.
     pantheon-skills categories
     pantheon-skills delete SKILL_NAME
     pantheon-skills export SKILL_NAME --raw      # full SKILL.md to stdout
+    pantheon-skills draft "what you did, in your own words" [--save]
+
+`draft` is the one you want if you have never written a SKILL.md. Say what
+you did the way you would say it to a colleague and the configured model
+fills in the ten fields the format wants — the trigger phrase retrieval
+matches on, the steps, the pitfalls, how to check it worked. It prints the
+draft for you to read; `--save` writes it, and nothing is written without it.
 """
 
 from __future__ import annotations
@@ -129,6 +136,76 @@ def cmd_export(args):
     fail(f"no skill named {args.name!r}")
 
 
+# `P8-14` — "draft from my last session", from a sentence rather than a trace.
+#
+# The row's original framing was to retarget the teacher's skill-from-trace
+# prompt. That prompt cannot be retargeted: its slots are failure-shaped and
+# its body tells the model it is holding a tool trace that already worked. The
+# schema and the portability rules — the input-agnostic half — are now
+# `services/memory/skill_prompts`, and this is the third caller to compose
+# them under its own framing, beside the session extractor and the teacher.
+#
+# This is the door. The Workshop's own button needs `static/js/skills.js` and
+# a `POST /api/skills/draft` beside `POST /api/skills/lint`, which is the same
+# not-written, answer-a-question shape; both are named in the row.
+def cmd_draft(args):
+    import asyncio
+
+    from services.memory.skill_extractor import draft_skill_from_description
+    from services.memory.skill_lint import lint_skill
+    from src.endpoint_resolver import resolve_endpoint
+
+    text = (args.description or "").strip()
+    if not text:
+        fail("say what you did — `pantheon-skills draft \"I ...\"`")
+
+    # The same resolution the skill test uses: the configured Default/Utility
+    # model, not whatever a chat session happens to be on.
+    url, model, headers = resolve_endpoint("utility", owner=args.owner)
+    if not url or not model:
+        fail("no model configured — set a Default or Utility model in "
+             "Settings first; this command asks it to write the draft.", code=2)
+
+    draft = asyncio.run(draft_skill_from_description(
+        text, endpoint_url=url, model=model, headers=headers,
+    ))
+    if not draft:
+        fail("that does not read as a repeatable procedure yet. Say what you "
+             "actually ran and how you knew it had worked.", code=1)
+
+    mgr = _manager()
+    siblings = [s for s in _skill_entries(mgr.load(owner=args.owner))
+                if (s.get("name") or "") != (draft.get("name") or "")]
+    # The same lint the Workshop form and the nightly audit use, so a drafted
+    # skill and a typed one are judged on one scale (`Law 14`).
+    report = lint_skill(draft, siblings)
+
+    if not args.save:
+        emit({"saved": False, "model": model, "skill": draft, "lint": report,
+              "next": "re-run with --save to write it, or edit the fields first"},
+             args)
+        return
+
+    entry = mgr.add_skill(
+        name=draft.get("name") or "",
+        description=draft.get("description") or "",
+        category=draft.get("category") or "general",
+        tags=draft.get("tags") or [],
+        when_to_use=draft.get("when_to_use") or "",
+        procedure=draft.get("procedure") or [],
+        pitfalls=draft.get("pitfalls") or [],
+        verification=draft.get("verification") or [],
+        # `source="user"` for the same reason `POST /api/skills/add` uses it:
+        # a person asked for this one, so it is exempt from dedup-at-creation
+        # and from cap-eviction. The overlap is reported rather than enforced.
+        source="user",
+        owner=args.owner,
+    )
+    emit({"saved": True, "model": model, "name": entry.get("name"),
+          "status": entry.get("status"), "lint": report,
+          "overlaps": entry.get("_overlaps") or []}, args)
+
+
 def _build_parser():
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--pretty", action="store_true")
@@ -155,6 +232,34 @@ def _build_parser():
     pe.add_argument("name")
     pe.add_argument("--raw", action="store_true", help="write raw SKILL.md to stdout")
     pe.set_defaults(func=cmd_export)
+
+    pdr = sub.add_parser(
+        "draft", parents=[common],
+        help="write a SKILL.md from what you did, described in your own words",
+        description=(
+            "Write a SKILL.md from what you did, described in your own words. "
+            "You do not need to know the file format, or what a trigger phrase "
+            "or a verification step is — say what you did the way you would "
+            "say it to a colleague and the configured model fills the fields "
+            "in. The draft is printed for you to read; it is written only if "
+            "you pass --save."
+        ),
+        epilog=(
+            'example:\n  pantheon-skills draft "the print queue jammed so I '
+            "stopped the spooler, cleared the spool folder and started it "
+            'again; a test page proved it" --save'
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    pdr.add_argument(
+        "description",
+        help="what you did, the way you would say it to a colleague",
+    )
+    pdr.add_argument("--save", action="store_true",
+                     help="write the draft to the library (default: print it)")
+    pdr.add_argument("--owner", default=None,
+                     help="whose library to write to on a multi-user install")
+    pdr.set_defaults(func=cmd_draft)
 
     return p
 

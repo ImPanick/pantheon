@@ -12,7 +12,22 @@ in the manager process — query it via the web UI or `curl /api/mcp/servers`.
     pantheon-mcp disable SERVER_ID
     pantheon-mcp add --name "Filesystem" --transport stdio \\
                     --command npx --args '["@modelcontextprotocol/server-filesystem","/tmp"]'
+    pantheon-mcp update SERVER_ID --args '["@modelcontextprotocol/server-filesystem","/srv"]'
+    pantheon-mcp tools SERVER_ID           # what it offers, by connecting to it
+    pantheon-mcp call SERVER_ID TOOL --args '{"path": "/tmp"}'
     pantheon-mcp delete SERVER_ID
+
+`update` edits a row IN PLACE and keeps its id (`P8-35`), so every stored
+`mcp__<id>__<tool>` reference — a scheduled task's output target, the server's
+own disabled-tool list — keeps resolving. Deleting and re-adding does not: that
+mints a new id and drops the disabled list with the row. Fields you do not pass
+are left alone; pass an empty string to clear one.
+
+`tools` and `call` connect to the server from THIS process and disconnect
+again, so they work whether or not the web app is running and tell you nothing
+about its opinion. `call` is the same `McpManager.call_tool` the agent uses,
+with the same deadline (`P8-37`) — `--timeout` sets it; there is no way to
+switch it off.
 """
 
 from __future__ import annotations
@@ -22,7 +37,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "_lib"))
 from cli import quiet_logs, emit, fail, common_parser, run, REPO_ROOT as _REPO_ROOT
 quiet_logs()
 
-import argparse, json, logging, os, sys, uuid
+import argparse, json, logging, os, sys, time, uuid
 from pathlib import Path
 
 try:
@@ -149,6 +164,188 @@ def cmd_add(args):
         db.close()
 
 
+def _row_or_fail(db, server_id):
+    s = db.get(McpServer, server_id)
+    if not s:
+        fail(f"no MCP server with id {server_id!r}")
+    return s
+
+
+def cmd_update(args):
+    """Edit a server in place. The id does not change — that is the point.
+
+    `P8-35`. The web route `PUT /api/mcp/servers/{id}` makes the same decision
+    for the same reason and this is the shell spelling of it. What this cannot
+    do is relaunch a server in the running app's process: the manager lives
+    there. So it says so, rather than implying the change is live.
+    """
+    db = SessionLocal()
+    try:
+        s = _row_or_fail(db, args.id)
+        before = _serialize(s)
+
+        if args.name is not None:
+            if not args.name.strip():
+                fail("--name cannot be empty")
+            s.name = args.name.strip()
+        if args.transport is not None:
+            s.transport = args.transport
+        if args.command is not None:
+            s.command = args.command.strip() or None
+        if args.url is not None:
+            s.url = args.url.strip() or None
+        if args.args is not None:
+            try:
+                parsed = json.loads(args.args) if args.args.strip() else []
+                if not isinstance(parsed, list):
+                    raise ValueError("--args must be a JSON array")
+            except (json.JSONDecodeError, ValueError) as e:
+                fail(f"invalid --args: {e}")
+            s.args = json.dumps(parsed)
+        if args.env is not None:
+            try:
+                parsed = json.loads(args.env) if args.env.strip() else {}
+                if not isinstance(parsed, dict):
+                    raise ValueError("--env must be a JSON object")
+            except (json.JSONDecodeError, ValueError) as e:
+                fail(f"invalid --env: {e}")
+            s.env = json.dumps(parsed)
+
+        # Checked against the MERGED row, so switching transport without the
+        # field the new one needs is refused instead of saved.
+        if s.transport == "stdio" and not s.command:
+            fail("command is required for stdio transport")
+        if s.transport in ("sse", "http") and not s.url:
+            fail(f"url is required for {s.transport} transport")
+
+        db.commit()
+        db.refresh(s)
+        emit({
+            "ok": True,
+            "id": s.id,
+            "id_changed": False,
+            "before": before,
+            "after": _serialize(s),
+            "note": "the id is unchanged, so stored mcp__<id>__<tool> references "
+                    "still resolve. Reconnect the server in the app (Settings → MCP, "
+                    "or POST /api/mcp/servers/{id}/reconnect) to run the new config.",
+        }, args)
+    finally:
+        db.close()
+
+
+async def _connect_one(mgr, s):
+    ok = await mgr.connect_server(
+        server_id=s.id,
+        name=s.name,
+        transport=s.transport,
+        command=s.command,
+        args=_json_list(s.args),
+        env=_json_dict(s.env),
+        url=s.url,
+    )
+    if not ok:
+        status = mgr.get_server_status(s.id)
+        fail(f"could not connect to {s.name!r}: {status.get('error') or status.get('status')}")
+
+
+def cmd_tools(args):
+    """Connect and list what the server actually offers.
+
+    `list`/`show` read the stored config. This reads the server. They are
+    different questions and the second one is the one an operator is asking
+    when a tool does not appear in chat.
+    """
+    import asyncio
+    from src.mcp_manager import McpManager
+
+    db = SessionLocal()
+    try:
+        s = _row_or_fail(db, args.id)
+        disabled = set(_json_list(s.disabled_tools))
+        payload = {"id": s.id, "name": s.name}
+        mgr = McpManager()
+
+        async def go():
+            await _connect_one(mgr, s)
+            try:
+                return [
+                    {"name": t["name"],
+                     "description": (t.get("description") or "")[:160],
+                     "is_disabled": t["name"] in disabled}
+                    for t in mgr.get_all_tools() if t["server_id"] == s.id
+                ]
+            finally:
+                await mgr.disconnect_server(s.id)
+
+        payload["tools"] = asyncio.run(go())
+        payload["tool_count"] = len(payload["tools"])
+        emit(payload, args)
+    finally:
+        db.close()
+
+
+def cmd_call(args):
+    """Call one tool and print what it said.
+
+    `P8-36`/`P8-37`. This is `McpManager.call_tool` — the same method the agent
+    turn uses, with the same normalised envelope and the same deadline — so a
+    tool that answers here answers there. A connection is made and dropped for
+    this call, which is why it works with the app stopped.
+    """
+    import asyncio
+    from src.mcp_manager import McpManager, resolve_mcp_call_timeout
+
+    try:
+        call_args = json.loads(args.args) if args.args else {}
+        if not isinstance(call_args, dict):
+            raise ValueError("--args must be a JSON object")
+    except (json.JSONDecodeError, ValueError) as e:
+        fail(f"invalid --args: {e}")
+
+    deadline = resolve_mcp_call_timeout(args.timeout)
+
+    db = SessionLocal()
+    try:
+        s = _row_or_fail(db, args.id)
+        disabled = set(_json_list(s.disabled_tools))
+        mgr = McpManager()
+
+        async def go():
+            await _connect_one(mgr, s)
+            try:
+                offered = sorted(t["name"] for t in mgr.get_all_tools()
+                                 if t["server_id"] == s.id)
+                if args.tool not in offered:
+                    fail(f"{s.name!r} offers no tool called {args.tool!r}. "
+                         f"It offers: {', '.join(offered) or '(none)'}")
+                started = time.monotonic()
+                res = await mgr.call_tool(f"mcp__{s.id}__{args.tool}", call_args,
+                                          timeout=deadline)
+                return res, round((time.monotonic() - started) * 1000)
+            finally:
+                await mgr.disconnect_server(s.id)
+
+        result, duration_ms = asyncio.run(go())
+        emit({
+            "id": s.id,
+            "server": s.name,
+            "tool": args.tool,
+            "timeout": deadline,
+            "duration_ms": duration_ms,
+            "exit_code": result.get("exit_code", 0),
+            "ok": result.get("exit_code", 0) == 0,
+            "timed_out": bool(result.get("timed_out")),
+            "stdout": result.get("stdout", ""),
+            "stderr": result.get("stderr", ""),
+            "error": result.get("error"),
+            "image_count": len(result.get("images") or []),
+            "tool_is_disabled": args.tool in disabled,
+        }, args)
+    finally:
+        db.close()
+
+
 def cmd_delete(args):
     db = SessionLocal()
     try:
@@ -194,6 +391,31 @@ def _build_parser():
     pa.add_argument("--url", help="sse: server URL")
     pa.add_argument("--disabled", action="store_true", help="create disabled")
     pa.set_defaults(func=cmd_add)
+
+    pu = sub.add_parser("update", parents=[common],
+                        help="edit a server in place, keeping its id")
+    pu.add_argument("id")
+    pu.add_argument("--name")
+    pu.add_argument("--transport", choices=["stdio", "sse", "http"])
+    pu.add_argument("--command", help="stdio: executable to run ('' clears it)")
+    pu.add_argument("--args", help="JSON array of args ('' clears it)")
+    pu.add_argument("--env", help="JSON object of env vars ('' clears it)")
+    pu.add_argument("--url", help="sse/http: server URL ('' clears it)")
+    pu.set_defaults(func=cmd_update)
+
+    pt = sub.add_parser("tools", parents=[common],
+                        help="connect and list the tools the server offers")
+    pt.add_argument("id")
+    pt.set_defaults(func=cmd_tools)
+
+    pc = sub.add_parser("call", parents=[common],
+                        help="call one tool on one server and print the result")
+    pc.add_argument("id")
+    pc.add_argument("tool")
+    pc.add_argument("--args", help="JSON object of tool arguments, e.g. '{\"path\":\"/tmp\"}'")
+    pc.add_argument("--timeout", type=float,
+                    help="seconds to wait for an answer (default 120, max 600)")
+    pc.set_defaults(func=cmd_call)
 
     pd = sub.add_parser("delete", parents=[common])
     pd.add_argument("id")

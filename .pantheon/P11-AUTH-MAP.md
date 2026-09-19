@@ -74,18 +74,18 @@ The four tiers are `P11-02b`'s own question. A site is exactly one of them:
   ownership check or a privilege key that does not exist. The fix is a data model, not
   an auth change.
 
-derived: direct 93 · Depends 20 · total 113
+derived: direct 95 · Depends 20 · total 115
 
 ### tier summary
 
 | tier | sites |
 |---|---|
-| `superuser` | 41 |
+| `superuser` | 43 |
 | `operator` | 47 |
 | `power-user` | 4 |
 | `only-because-nothing-finer-existed` | 21 |
 
-### `superuser` — **41 superuser sites.** A credential, an execution surface, or the whole instance's data. These stay `is_admin` under any role model — `P11-02` says so in its own words: *"keep `is_admin` as the superuser role rather than replacing it"*.
+### `superuser` — **43 superuser sites.** A credential, an execution surface, or the whole instance's data. These stay `is_admin` under any role model — `P11-02` says so in its own words: *"keep `is_admin` as the superuser role rather than replacing it"*.
 
 | file | function | route | protects |
 |---|---|---|---|
@@ -118,6 +118,8 @@ derived: direct 93 · Depends 20 · total 113
 | `routes/mcp/mcp_routes.py` | `oauth_exchange` | `POST /api/mcp/oauth/exchange/{server_id}` | exchanges it for a stored token |
 | `routes/mcp/mcp_routes.py` | `add_server` | `POST /api/mcp/servers` | adds one. An MCP server is a command this box will execute; `FORBIDDEN.md` Part 2 calls the validation around it the RCE control |
 | `routes/mcp/mcp_routes.py` | `reconnect_server` | `POST /api/mcp/servers/{server_id}/reconnect` | re-launches one |
+| `routes/mcp/mcp_routes.py` | `update_server` | `PUT /api/mcp/servers/{server_id}` | edits one in place — including the command line it executes, so this is `add_server`'s surface on an existing row. `P8-35` |
+| `routes/mcp/mcp_routes.py` | `call_server_tool` | `POST /api/mcp/servers/{server_id}/call` | invokes one tool on one server. The reach is whatever the operator connected, which is the same argument `MCP_NAMESPACE_BLOCK_REASON` makes for refusing the namespace to non-admins. `P8-36` |
 | `routes/session_routes.py` | `delete_all_sessions` | `DELETE /api/sessions/all` | deletes every chat session and message on the instance, and their gallery images with them |
 | `routes/skills_routes.py` | `import_skill_from_url` | `POST /api/skills/import-from-url` | fetches a skill bundle over the network and installs it. A supply-chain decision; `FORBIDDEN.md` keeps the host allowlist and the IP-pinned transport under it |
 | `routes/vault/vault_routes.py` | `get_config` | `GET /api/vault/config` | the credential vault's configuration |
@@ -467,7 +469,7 @@ this file's hand-rolled pattern, so the population that this map covers grew by 
 the number of admin decisions added — which is the behaviour the map was built to give.
 The paragraph above is about the 107 that predate roles; the counts below are live.
 
-- **41 superuser sites do not move.** They are already right.
+- **43 superuser sites do not move.** They are already right.
 - **47 operator sites are the phase's return.** Today the only way to let someone keep
   the instance up is to make them the owner. An `operator` overlay on
   `DEFAULT_PRIVILEGES` retires 47 gates without touching a single one of the 37.

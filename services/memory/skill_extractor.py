@@ -11,9 +11,23 @@ import json
 import logging
 from typing import Optional
 
+from .skill_prompts import (
+    PORTABILITY_RULES, skill_field_guidance, skill_json_block,
+)
+
 logger = logging.getLogger(__name__)
 
-SKILL_EXTRACT_PROMPT = (
+# `P8-14`. The schema half of this prompt moved to `skill_prompts`, which is
+# now the one place that says what a SKILL.md answer looks like — the teacher's
+# trace prompt and the describe-it-yourself path compose the same block under
+# their own framing. `P8-17` had put this prompt on the teacher's field *names*
+# and the roadmap recorded them as one schema; they were not, because this one
+# asked for `tags` and the teacher's did not. Both do now.
+#
+# What stays here is the half that is about a session, and it is the half that
+# earns its keep: the "return null" list is what stops the extractor filing a
+# grocery run or a Q&A as a procedure, and it is written about conversations.
+SKILL_EXTRACT_FRAMING = (
     "You are analyzing an AI agent's work session. The agent took {rounds} rounds "
     "and {tool_count} tool calls to complete the task.\n\n"
     "Extract a reusable 'skill' ONLY IF the session contains a concrete, "
@@ -28,29 +42,157 @@ SKILL_EXTRACT_PROMPT = (
     "- A one-off, personal, or context-specific task that won't recur "
     "(personal errands, a specific person/place/date, casual conversation).\n"
     "- A pure question/answer or explanation with no transferable method.\n"
-    "- The agent failed, gave up, or the approach is not worth repeating.\n\n"
-    "When (and only when) a genuine reusable procedure exists, return a JSON "
-    "object matching the SKILL.md schema:\n"
-    '- "name": short kebab-case slug — the skill\'s id, e.g. "rotate-nginx-logs"\n'
-    '- "description": ONE line, under 200 characters. This is the only sentence '
-    "the assistant sees about this skill when deciding whether to open it.\n"
-    '- "category": one lowercase word grouping it — "dev", "email", "system", '
-    '"media", "research", etc.\n'
-    '- "when_to_use": the trigger, in the words a user would actually say. '
-    "Retrieval matches requests against this text, so a vague one means the "
-    "skill is never found.\n"
-    '- "procedure": array of 3-7 short steps, each naming the SPECIFIC tool and '
-    "argument shape to use, generalised away from this particular request\n"
-    '- "pitfalls": array of failure modes hit or narrowly avoided in this '
-    "session, each with how to recover. Use [] only if there genuinely were none.\n"
-    '- "verification": array of checks that confirm the procedure actually '
-    "worked — the commands or observations that prove it, not "
-    '"check it looks right"\n'
-    '- "tags": array of relevant keywords (3-5 tags)\n'
-    '- "confidence": 0.0-1.0 how reliable AND reusable this procedure is\n\n'
-    "Be conservative: if in doubt, return null.\n"
-    "Return ONLY valid JSON (or the bare word null), no markdown fences."
+    "- The agent failed, gave up, or the approach is not worth repeating."
 )
+
+# This path posts the parsed object straight to `add_skill`, which sets
+# `status` and `source` itself, so the model is asked for the nine content
+# fields and nothing else.
+SKILL_EXTRACT_CLOSING = (
+    "Be conservative: if in doubt, return null.\n"
+    "Return ONLY valid JSON (or the bare word null), no markdown fences — the "
+    "fenced form is accepted, but the bare object is what is wanted."
+)
+
+
+def skill_extract_prompt(rounds: int, tool_count: int) -> str:
+    """Framing, then the shared SKILL.md schema, then the closing rule.
+
+    Built rather than one `.format()`-ed blob because the shared schema block
+    is JSON and its braces would have to be doubled to survive `str.format` —
+    which is precisely the hand-maintenance that let the copies drift.
+    """
+    return "\n\n".join([
+        SKILL_EXTRACT_FRAMING.format(rounds=rounds, tool_count=tool_count),
+        "When (and only when) a genuine reusable procedure exists, return a "
+        "JSON object matching the SKILL.md schema:",
+        skill_json_block(fenced=False),
+        skill_field_guidance(),
+        PORTABILITY_RULES,
+        SKILL_EXTRACT_CLOSING,
+    ])
+
+
+# ---------------------------------------------------------------------------
+# `P8-14` — "draft from my last session", said in a person's own words.
+# ---------------------------------------------------------------------------
+#
+# The third caller of the shared schema, and the one the row exists for. The
+# other two read machine material: `skill_extract_prompt` gets a transcript
+# the agent produced, `_skill_from_trace_prompt` gets a tool trace. This one
+# gets a sentence somebody typed, and the framing has to say so — a person
+# describing what they did writes "I ssh'd in and restarted it", not a list of
+# tool calls with argument shapes, and a prompt that demands the second from
+# the first gets nothing back.
+#
+# **Nothing here writes.** The draft is returned to the caller to review, edit
+# and save through the ordinary add path, the same posture `POST
+# /api/skills/lint` takes: the question is answered, the library is not
+# touched.
+SKILL_FROM_DESCRIPTION_FRAMING = (
+    "A person is describing something they worked out how to do, in their own "
+    "words, so that the assistant can do it for them next time. Turn their "
+    "description into a reusable SKILL.md procedure.\n\n"
+    "They are not writing a specification and they have not seen the schema. "
+    "Expect prose, missing steps and tool names given as everyday words "
+    "(\"I looked it up\", \"I restarted the thing\"). Your job is to make the "
+    "procedure explicit:\n"
+    "- Name the actual tool for each step where you can tell which one they "
+    "mean, and say what it is called rather than what they called it.\n"
+    "- Where a step is genuinely missing, write the step you are confident "
+    "belongs there. Do NOT invent a step you are guessing at — a short correct "
+    "procedure beats a long speculative one.\n"
+    "- `pitfalls` and `verification` are usually the parts a person leaves "
+    "out. If they mentioned something going wrong, that is a pitfall. If they "
+    "said how they knew it worked, that is a verification. Empty arrays are "
+    "fine and are better than invented ones.\n\n"
+    "Return the bare word null, and nothing else, ONLY if the description "
+    "names no repeatable procedure at all — a question, an opinion, or one "
+    "thing that happened once and will not happen again. A description that "
+    "is thin is still a skill: draft it and keep `confidence` low."
+)
+
+
+def skill_from_description_prompt() -> str:
+    """Framing for a typed description, then the shared SKILL.md schema.
+
+    Deliberately takes no arguments: everything that varies is the person's
+    text, which goes in the user turn rather than being interpolated into the
+    system prompt. `P8-14` — the trace prompt's four `.format()` slots are what
+    made it look retargetable when it was not.
+    """
+    return "\n\n".join([
+        SKILL_FROM_DESCRIPTION_FRAMING,
+        "Output ONE fenced JSON code block matching this schema and nothing "
+        "else:",
+        skill_json_block(),
+        skill_field_guidance(),
+        PORTABILITY_RULES,
+    ])
+
+
+async def draft_skill_from_description(
+    description: str,
+    *,
+    endpoint_url: str,
+    model: str,
+    headers: Optional[dict] = None,
+    timeout: int = 60,
+) -> Optional[dict]:
+    """Draft a skill from what a person typed. Returns the nine content fields,
+    or None when the model declined or answered with nothing usable.
+
+    Parsing is `_extract_json_object` + `_normalise_extracted`, the same two
+    functions the session extractor uses (`Law 14`) — which is what buys this
+    path the four-field fallback `P8-17` found was load-bearing for small local
+    models, for free and without a second normaliser to keep in step.
+    """
+    text = (description or "").strip()
+    if not text:
+        return None
+    if not model:
+        logger.debug("[skill-draft] no model configured, skipping")
+        return None
+
+    from src.llm_core import llm_call_async
+
+    try:
+        response = await llm_call_async(
+            endpoint_url,
+            model,
+            [
+                {"role": "system", "content": skill_from_description_prompt()},
+                {"role": "user", "content": f"What they did:\n{text}"},
+            ],
+            headers=headers or {},
+            timeout=timeout,
+        )
+    except Exception as e:
+        logger.warning("[skill-draft] model call failed: %s", e)
+        return None
+
+    if not response or response.strip().lower() == "null":
+        return None
+
+    # Same reasoning-model preamble strip the session extractor needs: a
+    # thinking model emits its chain of thought before the JSON however firmly
+    # the prompt asks for raw JSON.
+    try:
+        from src.text_helpers import strip_think as _strip_think
+        response = _strip_think(response, prose=True, prompt_echo=True)
+    except Exception:
+        pass
+
+    data = _extract_json_object(response)
+    if not isinstance(data, dict):
+        return None
+    draft = _normalise_extracted(data)
+    if not draft.get("description") and not draft.get("procedure"):
+        # A shape with neither a sentence nor a step is not a draft a person
+        # can edit into a skill; say nothing rather than hand back a husk.
+        return None
+    return draft
+
 
 # Skills the model is unsure about (or that read as one-offs) add clutter —
 # drop anything below this confidence.
@@ -243,7 +385,7 @@ async def maybe_extract_skill(
 
         conversation = "\n".join(conv_lines)
 
-        prompt = SKILL_EXTRACT_PROMPT.format(rounds=round_count, tool_count=tool_count)
+        prompt = skill_extract_prompt(round_count, tool_count)
 
         import time as _time
         _t0 = _time.monotonic()

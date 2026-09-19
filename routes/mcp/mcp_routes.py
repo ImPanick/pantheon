@@ -3,6 +3,7 @@
 """MCP (Model Context Protocol) server management routes."""
 import json
 import os
+import time
 import uuid
 import urllib.parse
 import html
@@ -15,7 +16,11 @@ import httpx
 from core.database import McpServer, SessionLocal
 from core.middleware import require_admin
 from src.constants import DATA_DIR, MCP_OAUTH_DIR
-from src.mcp_manager import McpManager
+from src.mcp_manager import (
+    McpManager,
+    MCP_CALL_TIMEOUT_MAX_SECONDS,
+    resolve_mcp_call_timeout,
+)
 from src.env_flags import request_flag
 
 logger = logging.getLogger(__name__)
@@ -109,6 +114,47 @@ def _load_disabled_map():
         db.close()
 
 
+# Parse JSON fields. **None of these three is defaulted on a parse failure**,
+# and that is the whole point: an unparseable value here is discarded
+# downstream and the server is saved anyway, so what the operator gets back is
+# *added* and what they have is a server that cannot work. Each failure then
+# presents as something else — an empty argv reads as the package being broken,
+# an empty env reads as a bad token, a dropped OAuth config reads as the
+# provider refusing.
+#
+# `args` is upstream's `#6215` (`9d5c0319`), taken as a fix per
+# `D-2026-09-12-01`. **The other two are the same defect one and four lines
+# below it** — upstream fixed the one its issue named and left its neighbours,
+# which is `Law 13` in miniature.
+#
+# `P8-35` lifted this out of `add_server`'s body. It was a closure; the update
+# endpoint needs exactly the same rule on exactly the same three fields, and a
+# second copy of it is the shape `Law 13` names. One function, two callers, one
+# set of messages an operator can learn once.
+def _parsed_json_field(raw, label, kind, example):
+    if not raw:
+        return [] if kind is list else {}
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError:
+        raise HTTPException(400, f"{label} must be valid JSON, e.g. {example}")
+    if not isinstance(value, kind):
+        word = "array" if kind is list else "object"
+        raise HTTPException(400, f"{label} must be a JSON {word}, e.g. {example}")
+    return value
+
+
+def _safe_token(value) -> str:
+    """Bound an untrusted name before it goes into an error message.
+
+    Tool names come from a third-party server. `src/mcp_manager.py` already
+    owns this rule for the prompt hint, and reusing it keeps one definition of
+    "safe to splice" rather than a second, differently-shaped one (`Law 14`).
+    """
+    from src.mcp_manager import _sanitize_schema_token
+    return _sanitize_schema_token(value)
+
+
 def _mcp_oauth_redirect_uri() -> str:
     """Shared callback URL for legacy Google and generic MCP OAuth flows."""
     from src.mcp_oauth import REDIRECT_URI
@@ -190,30 +236,6 @@ def setup_mcp_routes(mcp_manager: McpManager):
             raise HTTPException(400, "url is required for SSE transport")
         if transport == "http" and not url:
             raise HTTPException(400, "url is required for HTTP transport")
-
-        # Parse JSON fields. **None of these three is defaulted on a parse
-        # failure**, and that is the whole change: an unparseable value here is
-        # discarded downstream and the server is saved anyway, so what the
-        # operator gets back is *added* and what they have is a server that
-        # cannot work. Each failure then presents as something else — an empty
-        # argv reads as the package being broken, an empty env reads as a bad
-        # token, a dropped OAuth config reads as the provider refusing.
-        #
-        # `args` is upstream's `#6215` (`9d5c0319`), taken as a fix per
-        # `D-2026-09-12-01`. **The other two are the same defect one and four
-        # lines below it** — upstream fixed the one its issue named and left
-        # its neighbours, which is `Law 13` in miniature.
-        def _parsed_json_field(raw, label, kind, example):
-            if not raw:
-                return [] if kind is list else {}
-            try:
-                value = json.loads(raw)
-            except json.JSONDecodeError:
-                raise HTTPException(400, f"{label} must be valid JSON, e.g. {example}")
-            if not isinstance(value, kind):
-                word = "array" if kind is list else "object"
-                raise HTTPException(400, f"{label} must be a JSON {word}, e.g. {example}")
-            return value
 
         # Valid JSON of the wrong shape is the case a client-side `JSON.parse`
         # guard cannot catch: `args=5` parses, reaches
@@ -316,6 +338,157 @@ def setup_mcp_routes(mcp_manager: McpManager):
             "needs_oauth": needs_oauth,
             "needs_auth": needs_auth,
             "auth_url": status.get("auth_url"),
+        }
+
+    @router.put("/servers/{server_id}")
+    async def update_server(
+        server_id: str,
+        request: Request,
+        name: str = Form(None),
+        transport: str = Form(None),
+        command: str = Form(None),
+        args: str = Form(None),
+        env: str = Form(None),
+        url: str = Form(None),
+        oauth_config: str = Form(None),
+    ):
+        """Edit an existing MCP server in place, **keeping its id**.
+
+        `P8-35`. Before this the only mutation on a configured server was the
+        enable/disable toggle (`PATCH`, four lines up), so changing a command,
+        an argument or a token meant `DELETE` + `POST`. That is not the same
+        act:
+
+        * `POST /servers` mints a fresh `uuid4()[:8]` (`add_server`, above), so
+          every stored `mcp__<old id>__<tool>` stops resolving. `call_tool`
+          splits the qualified name and looks the server id up in
+          `self._sessions` (`src/mcp_manager.py`), so a scheduled task whose
+          `output_target` is `mcp__<old id>__<tool>` — the scheduler dispatches
+          on exactly that prefix, `src/task_scheduler.py:2956` — silently
+          stops delivering.
+        * `disabled_tools` is a column on the row. Deleting the row deletes the
+          list, so every tool the operator had hidden from the agent comes back
+          **enabled** on the replacement. That is the worst of the two: it is a
+          privilege change disguised as an edit, and nothing reports it.
+
+        **The decision this route writes down: the id is an identity, not a
+        version.** An edit keeps it, so every stored reference keeps resolving,
+        and `disabled_tools` is carried across unchanged — a tool the operator
+        switched off stays off even if the command line under it changed
+        completely (fail closed; an edit must not re-enable anything).
+
+        The one thing an edit *can* invalidate is a tool NAME: point the
+        command at a different package and the names it offers change. Those
+        entries are kept — re-pointing back must not have lost them — and
+        returned as `stale_disabled_tools` so the operator can see what no
+        longer matches instead of discovering it later.
+
+        Fields left out are left alone. A field sent empty is set to empty —
+        that is how `args`, `env`, `url` and `oauth_config` get cleared.
+        Admin-only for the same reason `add_server` is: the command is executed
+        on this host.
+        """
+        require_admin(request)
+
+        db = SessionLocal()
+        try:
+            srv = db.query(McpServer).filter(McpServer.id == server_id).first()
+            if not srv:
+                raise HTTPException(404, "Server not found")
+
+            new_transport = srv.transport if transport is None else (transport or "").strip()
+            new_command = srv.command if command is None else (command or "").strip() or None
+            new_url = srv.url if url is None else (url or "").strip() or None
+            new_name = srv.name if name is None else (name or "").strip()
+
+            if not new_name:
+                raise HTTPException(400, "name cannot be empty")
+            if new_transport not in ("stdio", "sse", "http"):
+                raise HTTPException(400, "transport must be one of: stdio, sse, http")
+            # Validated against the MERGED row, not against what was sent.
+            # Switching transport without resending the field it needs is the
+            # edit that would otherwise save a row that cannot start.
+            if new_transport == "stdio" and not new_command:
+                raise HTTPException(400, "command is required for stdio transport")
+            if new_transport in ("sse", "http") and not new_url:
+                raise HTTPException(400, f"url is required for {new_transport.upper()} transport")
+
+            parsed_args = (
+                json.loads(srv.args) if args is None and srv.args
+                else [] if args is None
+                else _parsed_json_field(args, "args", list, '["-y", "pkg"]')
+            )
+            parsed_env = (
+                json.loads(srv.env) if env is None and srv.env
+                else {} if env is None
+                else _parsed_json_field(env, "env", dict, '{"API_KEY": "..."}')
+            )
+
+            if oauth_config is None:
+                parsed_oauth_config = json.loads(srv.oauth_config) if srv.oauth_config else None
+            elif not oauth_config.strip():
+                parsed_oauth_config = None
+            else:
+                try:
+                    parsed_oauth_config = _sanitize_mcp_oauth_config(json.loads(oauth_config))
+                except json.JSONDecodeError:
+                    raise HTTPException(400, "oauth_config must be valid JSON")
+            _apply_mcp_oauth_env(parsed_env, parsed_oauth_config)
+
+            disabled_before = json.loads(srv.disabled_tools) if srv.disabled_tools else []
+
+            srv.name = new_name
+            srv.transport = new_transport
+            srv.command = new_command
+            srv.args = json.dumps(parsed_args)
+            srv.env = json.dumps(parsed_env)
+            srv.url = new_url
+            srv.oauth_config = json.dumps(parsed_oauth_config) if parsed_oauth_config else None
+            # srv.id and srv.disabled_tools are deliberately NOT touched.
+            db.commit()
+            was_enabled = bool(srv.is_enabled)
+        finally:
+            db.close()
+
+        # Re-launch so the operator sees the result of the edit now, not on the
+        # next restart. A disabled server stays disabled and stays down: the
+        # edit is a config change, not an enable.
+        connected = False
+        if was_enabled:
+            await mcp_manager.disconnect_server(server_id)
+            connected = await mcp_manager.connect_server(
+                server_id=server_id,
+                name=new_name,
+                transport=new_transport,
+                command=new_command,
+                args=parsed_args,
+                env=parsed_env,
+                url=new_url,
+            )
+
+        offered = {
+            t["name"] for t in mcp_manager.get_all_tools()
+            if t["server_id"] == server_id
+        }
+        stale = sorted(n for n in disabled_before if n not in offered) if connected else []
+
+        status = mcp_manager.get_server_status(server_id)
+        return {
+            "id": server_id,
+            "name": new_name,
+            "transport": new_transport,
+            "is_enabled": was_enabled,
+            "connected": connected,
+            "status": status.get("status", "disconnected"),
+            "tool_count": status.get("tool_count", 0),
+            "error": status.get("error"),
+            "auth_url": status.get("auth_url"),
+            "needs_auth": status.get("status") == "needs_auth",
+            # The id-stability contract, restated in the response so a client
+            # never has to guess whether it is looking at a new server.
+            "id_changed": False,
+            "disabled_tools_kept": len(disabled_before),
+            "stale_disabled_tools": stale,
         }
 
     @router.post("/servers/{server_id}/reconnect")
@@ -431,6 +604,121 @@ def setup_mcp_routes(mcp_manager: McpManager):
         for t in server_tools:
             t["is_disabled"] = t["name"] in disabled_set
         return server_tools
+
+    # An interactive default. A person is waiting on this one, so it is much
+    # shorter than the agent-turn default in `src/mcp_manager.py`; the ceiling
+    # and the "you cannot switch it off" rule live there, in one place, and
+    # this only chooses a starting point (`Law 13`).
+    _TEST_CALL_DEFAULT_TIMEOUT = 30.0
+
+    @router.post("/servers/{server_id}/call")
+    async def call_server_tool(server_id: str, request: Request):
+        """Call one tool on one server and hand back exactly what it said.
+
+        `P8-36`. Nothing in the app invoked an MCP tool from a route: the only
+        way to find out whether a server you had just registered actually
+        worked was to open a chat and hope the model chose the tool. This is
+        the same call the agent makes — `McpManager.call_tool`, the public
+        method with the normalised `{stdout, stderr, exit_code}` envelope — so
+        there is one call path, not a test path and a real path (`Law 14`).
+
+        Body: `{"tool": "<name>", "arguments": {...}, "timeout": <seconds>}`.
+        Admin-only via `require_admin`, which is the gate `FORBIDDEN.md` Part 2
+        pins; this route adds no second one.
+        """
+        require_admin(request)
+
+        try:
+            body = await request.json()
+        except Exception:
+            raise HTTPException(
+                400,
+                'body must be JSON, e.g. {"tool": "list_directory", "arguments": {"path": "/tmp"}}',
+            )
+        if not isinstance(body, dict):
+            raise HTTPException(
+                400,
+                'body must be a JSON object, e.g. {"tool": "list_directory", "arguments": {}}',
+            )
+
+        tool_name = body.get("tool")
+        if not isinstance(tool_name, str) or not tool_name.strip():
+            raise HTTPException(400, "tool is required and must be a tool name")
+        tool_name = tool_name.strip()
+
+        arguments = body.get("arguments", {})
+        if arguments is None:
+            arguments = {}
+        if not isinstance(arguments, dict):
+            raise HTTPException(400, 'arguments must be a JSON object, e.g. {"path": "/tmp"}')
+
+        # `resolve_mcp_call_timeout` clamps: absent / unusable → this default,
+        # anything above `MCP_CALL_TIMEOUT_MAX_SECONDS` → the ceiling. A caller
+        # cannot ask for no deadline, which is the state `P8-37` removed.
+        requested = body.get("timeout", _TEST_CALL_DEFAULT_TIMEOUT)
+        deadline = resolve_mcp_call_timeout(
+            requested if requested is not None else _TEST_CALL_DEFAULT_TIMEOUT
+        )
+
+        db = SessionLocal()
+        try:
+            srv = db.query(McpServer).filter(McpServer.id == server_id).first()
+            if not srv:
+                raise HTTPException(404, "Server not found")
+            server_name = srv.name
+            disabled = set(json.loads(srv.disabled_tools) if srv.disabled_tools else [])
+        finally:
+            db.close()
+
+        # Say which of the three things is wrong, rather than returning a tool
+        # error for a server that was never up (`Law 15`).
+        status = mcp_manager.get_server_status(server_id)
+        state = status.get("status", "disconnected")
+        if state != "connected":
+            detail = f"'{server_name}' is {state}, so it has no tools to call"
+            if status.get("error"):
+                detail += f" — {status['error']}"
+            raise HTTPException(409, detail)
+
+        offered = sorted(
+            t["name"] for t in mcp_manager.get_all_tools()
+            if t["server_id"] == server_id
+        )
+        if tool_name not in offered:
+            shown = ", ".join(_safe_token(n) for n in offered[:20]) or "(none)"
+            more = f" …and {len(offered) - 20} more" if len(offered) > 20 else ""
+            raise HTTPException(
+                404,
+                f"'{server_name}' offers no tool called '{_safe_token(tool_name)}'. "
+                f"It offers: {shown}{more}",
+            )
+
+        started = time.monotonic()
+        result = await mcp_manager.call_tool(
+            f"mcp__{server_id}__{tool_name}", arguments, timeout=deadline
+        )
+        duration_ms = round((time.monotonic() - started) * 1000)
+
+        return {
+            "server_id": server_id,
+            "server_name": server_name,
+            "tool": tool_name,
+            "timeout": deadline,
+            "timeout_max": MCP_CALL_TIMEOUT_MAX_SECONDS,
+            "duration_ms": duration_ms,
+            "exit_code": result.get("exit_code", 0),
+            "ok": result.get("exit_code", 0) == 0,
+            "timed_out": bool(result.get("timed_out")),
+            "stdout": result.get("stdout", ""),
+            "stderr": result.get("stderr", ""),
+            "error": result.get("error"),
+            "image_count": len(result.get("images") or []),
+            # A tool hidden from the agent is still callable here — this route
+            # is the operator testing their own server, not the model reaching
+            # past a switch they set. Reported so a working test on a tool the
+            # agent never uses is not a mystery.
+            "tool_is_disabled": tool_name in disabled,
+        }
 
     @router.patch("/servers/{server_id}/tools")
     async def update_disabled_tools(server_id: str, request: Request):

@@ -198,12 +198,19 @@ def test_both_panels_check_args_before_posting():
     The Admin panel never validated Args, so the server's 400 fell into its
     generic failure branch and rendered as *"Added but connection failed:
     unknown"* — wrong in both halves of one sentence.
+
+    **Updated 2026-09-19 by `P8-46`.** The Settings form no longer carries
+    these two strings, because it no longer has the single-line JSON boxes
+    they were about: its Args and Env fields are built by
+    `static/js/settings/mcpFields.js`, which reads the text and says what is
+    wrong with it rather than naming the format. That side is driven — not
+    grepped — in `tests/test_the_mcp_form_names_the_field_js.py`; what is
+    asserted here is only that the check still happens **before** the post,
+    which is this file's subject. The Admin panel is unchanged and its string
+    assertion stands.
     """
     admin = ADMIN_JS.read_text(encoding="utf-8")
     assert "Args must be valid JSON" in admin
-    settings = SETTINGS_JS.read_text(encoding="utf-8")
-    assert "Args must be valid JSON" in settings
-    assert "Env must be valid JSON" in settings
 
 
 def test_the_admin_panel_reads_the_status_before_the_body():
@@ -229,9 +236,38 @@ def test_the_admin_panel_reads_the_status_before_the_body():
 
 
 def test_the_settings_form_does_not_swallow_the_parse_error():
-    """It read `catch (_) {}` — the empty catch is the defect, written out."""
+    """It read `catch (_) {}` — the empty catch is the defect, written out.
+
+    The block it slices changed shape in `P8-46`: the two inline `JSON.parse`
+    calls are now one `collectMcpStdioFields` call against the two field
+    editors, and the values appended are the ones that call returned. What
+    must not come back is a path from this handler to `fd.append` that does
+    not pass a refusal, so that is what is asserted — the reading itself is
+    driven in `tests/test_the_mcp_form_names_the_field_js.py`.
+    """
     settings = SETTINGS_JS.read_text(encoding="utf-8")
     block = settings[settings.index("fd.append('command', el('uf-mcp-cmd').value);"):]
-    block = block[: block.index("fd.append('env', env);")]
+    block = block[: block.index("fd.append('env', collected.env);")]
     assert "catch (_) {}" not in block
+    assert "collectMcpStdioFields(argsField, envField)" in block
+    assert "if (!collected.ok)" in block
+    assert block.index("if (!collected.ok)") < block.index("fd.append('args', collected.args)")
     assert "return;" in block
+
+
+def test_the_settings_form_no_longer_throws_away_the_reason_it_was_given():
+    """`P8-46`. The 400 branch read `r.status` and discarded the body.
+
+    `add_server` answers with a `detail` that names the field and the shape
+    that would have worked; `settings.js` rendered `Failed (${r.status})`.
+    The dead Admin form prints `data.detail` (asserted above), so the panel
+    nobody can reach explained itself and the live one did not — `Law 13`,
+    with the two copies disagreeing.
+    """
+    settings = SETTINGS_JS.read_text(encoding="utf-8")
+    handler = settings[settings.index(
+        "const r = await fetch('/api/mcp/servers', { method: 'POST'"
+    ):]
+    handler = handler[: handler.index("finally { _setBtnLoading(saveBtn, false")]
+    assert "`Failed (${r.status})`" not in handler
+    assert "describeServerRefusal(r.status, data)" in handler

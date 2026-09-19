@@ -31,6 +31,8 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
+from services.memory.skill_prompts import skill_schema_section
+
 logger = logging.getLogger(__name__)
 
 
@@ -394,7 +396,22 @@ async def _call_teacher(teacher_model_spec: str, prompt: str,
 # successful trace into a reusable SKILL.md. Different framing from the
 # original "you have to plan it" prompt because here the teacher has
 # already proven the steps work.
-_TEACHER_SKILL_FROM_TRACE_PROMPT = """\
+#
+# `P8-14`. This used to be one string holding both the framing and the whole
+# SKILL.md schema, and the roadmap's original plan was to retarget it at a
+# user's own description by swapping the `.format()` slots. It is not
+# retargetable that way: three of its four slots are failure-shaped
+# (`failure_reason`, `trace`, `untrusted_trace_guard`) and the sentences below
+# say "the steps that ACTUALLY worked in the trace" and "if the trace did NOT
+# genuinely solve the user's problem". Feeding a typed description into that
+# tells the model it is holding something it is not.
+#
+# So the schema and the portability rules — the input-agnostic half — moved to
+# `services/memory/skill_prompts`, and what is left here is only the part that
+# is genuinely about a trace. `skill_extractor` and the describe-it-yourself
+# path compose the same shared half under their own framing, which is why there
+# is one schema to keep current instead of three (`Law 13`).
+_TEACHER_SKILL_FROM_TRACE_FRAMING = """\
 You are distilling a successful tool-use trace into a permanent \
 SKILL.md procedure so a smaller student model can reproduce it.
 
@@ -407,54 +424,48 @@ WHY THE STUDENT FAILED (you, the teacher, just succeeded where it didn't)
 {untrusted_trace_guard}
 
 YOUR SUCCESSFUL TRACE (tool calls + your final reply, in order)
-{trace}
+{trace}"""
 
-Output ONE fenced JSON code block matching this schema and nothing else:
-
-```json
-{{
-  "action": "add",
-  "name": "<short-kebab-case-slug>",
-  "description": "<one-line summary of what this skill teaches>",
-  "when_to_use": "<the trigger pattern: 'When the user says X'>",
-  "procedure": [
-    "Step 1: <specific tool name and arg shape>",
-    "Step 2: ...",
-    "Step 3: ..."
-  ],
-  "pitfalls": ["..."],
-  "verification": ["..."],
-  "category": "<single category word>",
-  "status": "draft",
-  "confidence": 0.8,
-  "source": "teacher-escalation"
-}}
-```
-
+# The half that is about a trace and could not be shared with any other caller.
+_TEACHER_SKILL_FROM_TRACE_RULES = """\
 The procedure must be the steps that ACTUALLY worked in the trace, \
-generalised away from this specific request. Each step references a \
-SPECIFIC tool name and argument shape the student can copy.
-
-**PORTABILITY — CRITICAL.** Skills are shared across users. Strip every \
-user-specific token from your trace before writing the procedure:
-  - Replace hostnames/IPs with placeholders (`<gpu_host>` etc.) or \
-    instruct the student to discover them via `list_serve_presets` / \
-    `list_cached_models` at runtime.
-  - Replace user-specific paths (`/home/<user>/...`) with the wrapped \
-    tool that picks the right binary on whatever machine runs the skill.
-  - Don't bake in the specific model repo_id you happened to use unless \
-    the skill is about that exact model.
-  - Reference the high-level tools (`serve_model`, `stop_served_model`, \
-    `serve_preset`, `list_cached_models`, `search_hf_models`, etc.) \
-    rather than `ssh <host> 'tmux new-session ... vllm serve ...'` \
-    shell incantations — even if THAT'S what worked in the trace. Raw \
-    shell launches bypass the cookbook tracker and don't reproduce on \
-    another user's box.
+generalised away from this specific request.
 
 If the trace did NOT genuinely solve the user's problem (e.g. you also \
 gave up, or the underlying issue was external infrastructure that no \
-procedure can fix), output the single token NO_SKILL and nothing else.
-"""
+procedure can fix), output the single token NO_SKILL and nothing else."""
+
+# What the teacher path pins rather than asks for. `status` and `source` decide
+# whether the skill is catalogued and how the injection floor treats it, so a
+# model picking them would be picking a policy; `action` is what
+# `do_manage_skills` dispatches on.
+_TEACHER_SKILL_PINNED = {
+    "action": "add",
+    "status": "draft",
+    "source": "teacher-escalation",
+}
+
+
+def _skill_from_trace_prompt(
+    *, user_request: str, failure_reason: str,
+    untrusted_trace_guard: str, trace: str,
+) -> str:
+    """The trace framing, then the shared SKILL.md schema, then the trace rules.
+
+    Built rather than `.format()`-ed as one blob because the schema block is
+    JSON: doubling every brace in it so a `str.format` would survive is how the
+    two copies of this schema drifted apart in the first place.
+    """
+    return "\n\n".join([
+        _TEACHER_SKILL_FROM_TRACE_FRAMING.format(
+            user_request=user_request,
+            failure_reason=failure_reason,
+            untrusted_trace_guard=untrusted_trace_guard,
+            trace=trace,
+        ),
+        skill_schema_section(_TEACHER_SKILL_PINNED),
+        _TEACHER_SKILL_FROM_TRACE_RULES,
+    ])
 
 
 def _extract_skill_json(teacher_response: str) -> Optional[Dict[str, Any]]:
@@ -827,7 +838,7 @@ async def run_teacher_inline(
         return
 
     # Teacher succeeded — distill its successful trace into a skill
-    prompt = _TEACHER_SKILL_FROM_TRACE_PROMPT.format(
+    prompt = _skill_from_trace_prompt(
         user_request=user_request or "(no user request captured)",
         failure_reason=reason or "",
         untrusted_trace_guard=_UNTRUSTED_TRACE_GUARD,

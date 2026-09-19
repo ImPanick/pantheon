@@ -68,7 +68,7 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P5 | Trace & composer restyle | 17 | 5 | 0 | **12** |
 | P6 | Queue & Plan | 18 | 0 | 0 | **18** |
 | P7 | Trust ladder & control plane | 14 | 6 | **1** | **7** |
-| P8 | The Workshop | 49 | 17 | **2** | **30** |
+| P8 | The Workshop | 49 | 10 | **2** | **37** |
 | P9 | Feature surfaces | 18 | 9 | 0 | **9** |
 | P10 | Accessibility & release | 12 | 5 | 0 | **7** |
 | P11 | Identity & access | 14 | 6 | **1** | **7** |
@@ -80,8 +80,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P17 | The network the agent is hosted on | 14 | 0 | 0 | **14** |
 | P18 | One button, and it links | 9 | 0 | 0 | **9** |
 | P19 | The proof ledger | 8 | 0 | 0 | **8** |
-| Backlog | Bugs and hardening found in flight | 442 | 188 | 0 | **254** |
-| **Total** | | **824** | **269** | **9** | **546** |
+| Backlog | Bugs and hardening found in flight | 448 | 193 | 0 | **255** |
+| **Total** | | **830** | **267** | **9** | **554** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -243,6 +243,37 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### The Workshop, and a skills retriever that answered nothing
+`81ea48c..HEAD`. **830 tracked, 554 done. 0 new phase rows, 0 regressions. `P8-14`, `P8-20`,
+`P8-35`, `P8-36`, `P8-37`, `P8-39` and `P8-46` closed; `B864`, `B865`, `B866`, `B867`, `B868` and
+`B869` filed, one of them closed on the way past. `P8` goes 30 → 37 of 49.** Three agents with
+file ownership named in advance and no collisions between them.
+**The MCP call path had no timeout at all.** The SDK's `read_timeout_seconds` defaults to `None`,
+which is `anyio.fail_after(None)` — a scope that does nothing — so a hung tool hung the agent turn
+until somebody noticed. Driven at `HEAD` against a server that sleeps an hour: still pending when
+an external three-second bound gave up. It is bounded in two layers now, and there is no spelling
+of "forever" left (`P8-37`). `P8-36` is the endpoint that would have hung first, and `P8-39` put
+the one secret-bearing column that was encrypted at no layer behind the key its six neighbours
+already use. `P8-35`'s premise was understated: delete-and-recreate does not merely orphan tool
+references, **every tool the operator had hidden from the agent comes back enabled** — filed as
+`B864`, because `PUT` removes the reason to do it and not the ability.
+**And skill retrieval returned nothing, for every query, on a stock install.** Not "worse than
+embeddings" — nothing, at every confidence floor including zero. Measured over 30 hand-labelled
+queries: recall@5 **0/30**, precision@1 **0/30**, 29 of 30 empty, and the one non-empty answer
+wrong. `_jaccard` divides by the union, so the skill's own length is in the denominator and a long
+skill is structurally less retrievable however well it matches. Fixed by normalisation rather than
+by embeddings, and the reason is the good part: the embedding lane was priced **by calling it**,
+and `Law 16` correctly refuses the model download on a machine nobody has configured — an
+embedding-only fix ships a retriever that still returns nothing on a fresh install. Before → after
+at the loop's own threshold: recall@5 **0/30 → 26/30**, precision@1 **0/30 → 20/30**, empty
+**29/30 → 0/30**, with `_relevance ≥ _jaccard` pinned as an executable invariant over 10,296 pairs
+(`Law 1`). `P8-14` found the schema in **three** copies that disagreed — the teacher asked for
+eleven keys and no `tags`, the extractor for nine with `tags` — where `P8-17` had recorded them as
+one. And two rows away from the retriever, `B868` and `B869`: all 286 bundled skills parse as
+drafts at `confidence: 0.8` under a floor of `0.85`, so the library is excluded from the catalogue
+and from the scoring pool. Neither is fixed here, because `B590` means a bundled skill still
+cannot be opened, and offering the model a procedure it cannot read is the worse failure.
 
 ### The first CI run that ever completed, and what it found
 `c48294d..HEAD`. **824 tracked, 546 done. 0 new phase rows, 0 regressions. `B850`, `B851`, `B852`, `B853`,
@@ -5282,13 +5313,22 @@ SKILL.md frontmatter format. That is the pattern to avoid, found in the phase's 
   different text from the one the save sends is worse than no lint (`Law 14`).
   `Verify:` someone who has never authored a skill writes a bad one, and the screen tells them what is wrong and what to do about it **before** they save, without a model call and without a delay they notice. `CI:` `tests/test_the_lint_answers_before_the_save.py` (10 tests) · `tests/test_the_workshop_surfaces_js.py` (11 new cases). — agent:`p8core` (backend) / `p8ui2` (surface and the route it needed)
 - [x] **P8-13** "Improve this draft" — the existing rewrite prompt with a synthetic verdict, a trick the audit itself already uses to force a metadata-only fix. — **done 2026-09-19. The trick is real, it is at `routes/skills_routes.py:884-889`, and finding it first changed the shape of the row.** When `_eval_skill_retrieval_precision` comes back unhappy, `_audit_one_skill` calls `_improve_skill_md` with a verdict it **wrote by hand** — `{"verdict": "pass", "confidence": 1.0, "summary": …, "issues": [...]}` — and a one-sentence transcript reading *"Retrieval audit only: the procedure may work, but matching metadata is too broad."* The synthetic **pass** is the load-bearing part: it is what stops the rewriter touching a procedure nothing has produced evidence against, and it is why the audit can force a metadata-only fix without a test run. `manage_skills action=improve` is that same call with the issues coming from `P8-12`'s `lint_skill` instead of from a second model, so the rewrite is aimed by the same findings the author was already shown on blur — one issue list, not two (`Law 14`). **Three things came out of the reuse rather than being built.** `_improve_skill_md` already pins `name`, already strips `<think>` blocks and already keeps only the last complete frontmatter document, so a model that echoes its reasoning cannot persist it; `_apply_skill_md` writes through `update_skill` → `_write_skill`, which is where `P8-10` keeps the copy it replaced, so **an improvement somebody dislikes is one `action=restore` away** and the handler says both halves of that out loud rather than assuming it is known; and the lint is free, so on an install with no model configured the findings are **printed in the error** instead of disappearing into *"No model configured"* — which is `Law 16`'s install, and it is the common one. The `metadata:` prefix is applied deliberately and not incidentally: `_improve_skill_md`'s system prompt says it may correct frontmatter *"when the reviewer flagged them (issues prefixed 'metadata:')"*, so a finding about `category` or `tags` that arrives without the prefix is a finding that prompt instructs the model to leave alone — `name`/`description`/`category`/`tags` carry it and the body-level findings do not. Nothing is written when the lint is clean (no model call at all), when the reply is empty, or when the reply is the file back again. **One defect found while mutation-testing the handler and fixed in the same change:** the guard was `if not fixed or fixed.strip() == md.strip()`, and a model answering with `"   "` is truthy and does not equal the original — `_apply_skill_md` parses that into a nameless, descriptionless skill and writes it. Parametrising the empty reply over `None` / `""` / `"   "` is what caught it. **No new route**, deliberately: `check-unreachable` is at `routes 458 · no frontend caller 90` against a ceiling of 90, so a REST endpoint could not have landed in this wave at all (`B596`), and a chat-first product's authoring action belongs on the tool channel regardless. **What the merge still needs (`static/**`, not in this patch):** an **Improve** button on the skill card and beside the lint panel's findings, calling the same handler — the panel already holds the findings the rewrite will be aimed by, so the button's natural place is under them, labelled with the count (*"Fix these 4 with the model"*), with the result offering **Undo** through `versions`/`restore`. `Verify:` someone who has never authored a skill saves a thin draft, is shown four things wrong with it by the panel that is already there, says *"fix those"*, and gets a skill with a When to Use, Pitfalls and Verification in it — and can put the old one back without being told how. `CI:` `tests/test_improving_a_draft_needs_no_test_run.py` (13 tests). — agent:`p8c`
-- [ ] **P8-14** "Draft from my last session" — retarget the teacher's skill-from-trace prompt, which already emits the full modern schema, from a failure trace to a user description. — **not started; premise checked 2026-09-19 and it holds with one correction that changes the work.** `_TEACHER_SKILL_FROM_TRACE_PROMPT` (`src/teacher_escalation.py:397`) does emit the whole modern schema — nine fields, the same names `P8-17` moved the extractor onto — and `_extract_skill_json` already parses it. **But it is not retargetable by substitution.** Three of its four `.format()` slots are failure-shaped (`failure_reason`, `trace`, `untrusted_trace_guard`), and its body says *"the steps that ACTUALLY worked in the trace"* and *"if the trace did NOT genuinely solve the user's problem … output NO_SKILL"* — feed a user's description into that and the prompt is lying to the model about what it is holding. The work is therefore a **factoring**, not a retarget: the schema block plus the PORTABILITY rules (which are the valuable half and are entirely input-agnostic) become one constant, and each caller supplies its own framing above it. Doing it the other way produces a second nine-field schema to drift against the first, which is the outcome `P8-17` exists to have avoided once already.
+- [x] **P8-14** "Draft from my last session" — retarget the teacher's skill-from-trace prompt, which already emits the full modern schema, from a failure trace to a user description. — **done 2026-09-19. The premise correction held, and re-measuring it found the factoring was worth more than the row knew: there were three copies of the schema, not two, and they were not the same schema.** `_TEACHER_SKILL_FROM_TRACE_PROMPT` was indeed not retargetable — three of its four `.format()` slots are failure-shaped and its body says *"the steps that ACTUALLY worked in the trace"* and *"if the trace did NOT genuinely solve the user's problem … output NO_SKILL"*. **The part the row missed:** `P8-17` put `SKILL_EXTRACT_PROMPT` on "the same field names the teacher's skill-from-trace prompt already emits" and the tracker records them as one schema. They were never one schema. The teacher asked for eleven keys and **no `tags`**; the extractor asked for nine and had `tags` but no `status`/`source`. `tags` is the field `get_relevant_skills` gives its floor-and-multiplier boost to (`score = max(score, 0.3) * 1.3`, the only thing in the scorer that can lift a weak match over a threshold), so the path that writes most of a user's library could ask for it and the teacher's could not — `Law 13` in the two files `P8-17` was meant to have reconciled.
+  **The factoring.** `services/memory/skill_prompts.py` holds one ordered field list with each field's JSON placeholder and the one thing an author needs told about it, plus `PORTABILITY_RULES`, plus `skill_json_block` / `skill_field_guidance` / `skill_schema_section` to render them. Three callers compose it under their own framing: `_skill_from_trace_prompt` (teacher), `skill_extract_prompt` (session extractor), `skill_from_description_prompt` (new). Each is built rather than `.format()`-ed as one blob, because the schema block is JSON and doubling its braces to survive `str.format` is exactly the hand-maintenance that let the copies drift. A caller pins bookkeeping it already knows — the teacher pins `action`/`status`/`source` as literals — rather than inviting a model to choose a policy. **The field guidance taken forward is the extractor's**, which was the better-written copy: it says *why* each field matters, and "retrieval matches requests against this text, so a vague one means the skill is never found" is the sentence that stops a model writing a `when_to_use` nobody's request will match. One thing was fixed on the way through: `PORTABILITY_RULES` said *"instruct the student to discover them"*, which is teacher-loop vocabulary with no meaning in a skill drafted from a typed sentence — caught by the test asserting the shared half is input-agnostic, not by reading it.
+  **The new caller.** `skill_extractor.draft_skill_from_description(description, …)` takes what a person typed and returns the nine content fields, or `None`. Its framing says what it is actually holding — prose, missing steps, tool names given as everyday words ("I looked it up", "I restarted the thing") — and tells the model to name the real tool where it can tell which one is meant, to leave `pitfalls`/`verification` empty rather than invent them, and that a thin description is still a skill to be drafted with low confidence rather than refused. **The person's words go in the user turn, never interpolated into the framing**, which is the row's correction expressed as code: there is no slot to substitute a description into. Parsing is `_extract_json_object` + `_normalise_extracted`, the extractor's own (`Law 14`), which buys this path `P8-17`'s four-field fallback — measured there as load-bearing for 7B local models — with no second normaliser to keep in step. Nothing is written; a draft nobody saved is not a skill.
+  **The door, and the half of it that is not mine.** `pantheon-skills draft "…"` prints the draft with the same `lint_skill` report the Workshop form and the nightly blocker use, and `--save` writes it through `add_skill` with `source="user"` — the same dedup exemption `POST /api/skills/add` takes, for the same reason. Its `--help` says what it is for in the words a person who has never seen a SKILL.md would use, and with no model configured it names the setting rather than raising. **The Workshop's own button is not built and is not mine to build:** it needs `static/js/skills.js` plus a `POST /api/skills/draft` beside `POST /api/skills/lint` — same not-written, answer-a-question shape, `SkillDraftRequest` is one uncapped `description` field for the reason `SkillLintRequest` records, and the handler is six lines over `draft_skill_from_description` + `lint_skill`. **It was written and then backed out of this patch on purpose:** a route with no browser caller takes `check-unreachable` from 90 to 91, and that ceiling's own comment in `.github/workflows/ci.yml:260-263` says *"A ratchet only ever comes down."* Landing the route with the button that calls it keeps the count at 90; landing it alone would have been `B582`'s defect — a complete backend with no caller — committed deliberately.
+  `Verify:` a person who has never seen a SKILL.md types `pantheon-skills draft "the print queue jammed so I stopped the spooler, cleared the spool folder and started it again; a test page proved it"` and gets back a named skill with a trigger phrase, three steps, the pitfall and the verification filled in — without knowing the word "trace", the file format, or that fields called `when_to_use` and `verification` exist. `CI:` `tests/test_one_schema_for_every_skill_author.py` (19 tests) and `tests/cli/test_skills_cli_draft.py` (8 tests). **Mutation: 18 real mutations, 17 caught, 1 proved equivalent** — the equivalent one removes the bare-`null` early return, and `_extract_json_object("null")` returns `None` either way (driven, for `"null"`, `"NULL"` and `" null "`). The 17 include the teacher losing `tags` again, the schema check made non-self-referential by testing every field name against `SkillsManager.add_skill`'s signature rather than against the tuple the prompts render from, the description path reverting to trace framing, the person's words never reaching the model, `--save` not writing, and `draft` writing without it. — agent:`p8skills`
 - [x] **P8-15** Surface duplicate overlap at authoring time. Similarity is already computed client-side for a badge and server-side at audit — neither runs when you type. Note hand-written skills post a source value that **exempts them from creation-time dedup**. — **done 2026-09-19, and all three of the row's premises were re-measured: one is stale, one is arithmetically wrong, and the third is right and is not the interesting part.** **(1) "Neither runs when you type" stopped being true on 2026-09-18.** `P8-12` landed `POST /api/skills/lint` and a panel that runs on blur of all eleven fields, and the duplicate comparison is in it. What was still broken is what it *said*: it stopped at the **first** sibling it met in `load()` order — which is directory-walk order — and called that one a duplicate, as a `problem`. **(2) `B731`'s factor of two is not a measurement of anything.** It compares `static/js/skills.js`'s 0.38 with `services/memory/skills.py`'s 0.82 as though they were one scale. They were computed on two different token sets: `skills._tokenize` splits on whitespace, keeps two-character words and keeps all stopwords; `skill_lint.skill_tokens` splits on non-alphanumerics, drops six stopwords and strips a trailing `-<n>`. Measured over the 36,654 bundled pairs scoring above zero on both, the first runs **1.65×** the second (median; mean 1.75), so the two numbers in use were about **1.3** apart, not 2.2 — and there was a **third** implementation nobody counted, the client's, whose token set omits `procedure` and therefore agrees with the server's only for skills that have none. `add_skill` compares through `skill_similarity` now, so all the server-side numbers are on one scale and `B731`'s own arithmetic becomes true for the first time. **(3) The word was the defect, and the corpus says so.** Over all **40,755** pairs of the bundled library (286 skills, measured 2026-09-19), **24** reach 0.38 and **zero** reach 0.82 on either scale — the corpus maximum is **0.700**. Every one of the 24 is the same procedure for a different technology: `quarkus-verification | springboot-verification` (0.700), `python-patterns | golang-patterns` (0.593), `django-security | laravel-security` (0.519), `csharp-testing | fsharp-testing` (0.480). **Precision at 0.38 on the shipped corpus is 0 of 24.** So the author is handed a *score* and a *name* and decides: `duplicate-of` keeps its code (`Law 1` — two tests and any future consumer know it) and becomes an **advisory** that names every neighbour above the floor, strongest first, with the percentage; a shared **base name** — the `-<n>` suffix `add_skill` itself appends when a name is taken, which is identity rather than topic — is the new `same-base-name` **problem**. The two lists are deliberately **not** a partition: a `-2` clone is both the same name and the same words, and a person needs both sentences. One loop, `skill_overlaps` (`services/memory/skill_lint.py:143`), is what the lint, the nightly blocker and `add_skill` all call. **And the exemption the row points at is real and stays.** `SkillAddRequest.source` defaults to `"user"`, which is exactly what exempts the Workshop form from dedup-at-creation — deliberately, because a person asked for the skill and because `P9-12`'s undo restores through that same flag. The defect was never the exemption; it was that **nothing said a word**, so every hand-written skill in this product's history could be a near-copy of one the author already had with no sentence anywhere. It is still created, and `_overlaps` now rides back on the created dict, out through `POST /api/skills/add` and out through the tool channel's own reply. A refusal on the LLM path says how close it was, which it never did. Unifying the scale changed **no decision `add_skill` has ever made** — nothing in the shipped library reaches 0.82 — and a test pins the corpus maximum at 0.700 so that stays checkable rather than remembered. **What the merge still needs (`static/**`, not in this patch):** `_duplicateMeta`'s pill in `static/js/skills.js:309` still says *duplicate* at 0.38 and should say *overlaps N%* with the neighbour named, which is now the same word and the same number the server uses; and `addSkill()`'s success path should render the `overlaps` array the `/add` response carries, because the panel's blur-time advisory is easy to miss at the moment of saving. **Filed rather than fixed:** the nightly audit still **demotes to draft** at 0.38 (`_skill_duplicate_blocker` → `_audit_one_skill`), which is the 0-of-24 precision figure pointed at a destructive-ish action — `B790`. `Verify:` someone who has never authored a skill types one that overlaps something they already have, and before they save they are told which skill, by how much, and whether that means the same procedure twice or just the same subject — and if they save it anyway it is saved, with the same sentence in the reply. `CI:` `tests/test_the_author_is_told_what_it_overlaps.py` (15 tests). — agent:`p8c`
 - [x] **P8-16** Single-skill export — `read_skill_md` plus a directory walk, ~20 lines. Unlocks share, backup and rollback-by-hand. — **done 2026-09-18.** Premise right about the size and worth one correction about the gap: `/api/backup/export` already emits every skill, but as flat parsed JSON rows, so it is a backup of the *library* and has never been able to hand anyone a *skill* — the `references/` and `templates/` files an import brought with it are in no export anywhere. `SkillsManager.export_skill` returns `{relative path: text}`, which is the **exact** shape `import_bundle_from_files` accepts, and borrows the importer's own `MAX_FILES` / `MAX_FILE_BYTES` / `MAX_TOTAL_BYTES` rather than inventing three more, so an export can always be imported back (`Law 14`); a round trip through a second `SkillsManager` is pinned. `versions/` is excluded on purpose — it is this install's edit history, and shipping it would put the drafts somebody rejected into whatever they meant to share. A binary or unreadable extra file is skipped rather than failing the export of the procedure somebody actually wants. **A Workshop download button is still the better surface** and is `p8ui`'s to add: one control per card that saves the same JSON object as `<name>.json`. `Verify:` someone who has never read this tracker asks the assistant for a copy of one skill to send to a colleague, gets a JSON document containing the procedure and its reference files, and that colleague's install takes it back. `CI:` `tests/test_one_skill_leaves_the_machine.py` (6 tests). — agent:`p8core`
 - [x] **P8-17** Fix the extractor's output schema — it still writes the old shape and never populates pitfalls, verification, category or when-to-use. Everything it makes is structurally impoverished relative to what the schema supports. — **done 2026-09-18. Premise true in every particular, and understated in one.** `SKILL_EXTRACT_PROMPT` asked for `title` / `problem` / `solution` / `steps` / `tags` / `confidence`, and the `add_skill` call passed exactly those, so the words *pitfalls*, *verification* and *category* appeared nowhere on the path: **no auto-extracted skill has ever had a Pitfalls section, a Verification section, or a category other than `general`.** The understatement is `when_to_use`: it was populated, but only by accident of `add_skill`'s old-shape fallback from `problem`, and the prompt asked for "what was the challenge", not for a trigger — while `get_relevant_skills` scores a user's request against `when_to_use` more than against anything else. This is the path that produces most of a real user's library, because it fires after any run of two rounds or two tool calls with no click. The prompt now asks for the nine-field SKILL.md schema with the same field names the teacher's skill-from-trace prompt already emits, and `_normalise_extracted` maps whichever shape came back — the old four keys are still accepted, and that is load-bearing rather than polite: a 7B local model handed a nine-field schema answers in the four-field one often enough that dropping it would turn a partly-filled skill into no skill. One defect found while in here and fixed in the same change: the extractor fired `skill_added` **on the dedup branch**, where nothing was written — `do_manage_skills` returns before firing on exactly that branch and says why in a comment — so a `skill_added` automation could run for a skill that does not exist. `Verify:` someone who has never opened the Workshop finishes a multi-step task, opens Skills, and the skill that was written for them without being asked has a When to Use, Pitfalls and Verification filled in and is filed under something other than `general`. `CI:` `tests/test_the_extractor_writes_the_whole_schema.py` (7 tests). — agent:`p8core`
 - [x] **P8-18** Say that injecting a skill raises the security posture — skills arrive as untrusted context, which arms the approval gate. Correct behaviour, completely invisible, and the reason a skill test can pause mid-run. — **done 2026-09-18, premise confirmed by driving the whole chain.** `untrusted_context_message("skills", …)` (`src/agent_loop.py:3185`) defaults `arm_tool_gate=True`, which sets `metadata.tool_gate_untrusted`, which `messages_contain_external_untrusted_context` reads, which sets `external_untrusted_context_seen` on the run's `ToolRunSecurityContext` — after which `bash`, `write_file` and `send_email` are all refused pending a card, with the reason *"External untrusted context has already influenced this run."* The same wrapper covers the skill under test (`routes/skills_routes.py:112-127`), which is why a test can stop halfway. Said in three places a person actually is: under **Inject Skills** in settings, at the foot of the prompt preview, and in the test panel before the run starts. Nothing was weakened — this row is entirely words about a control that was already right. `Verify:` someone who has never read this tracker sees an approval prompt in a reply that used a skill, or a test that stops and waits, and can find the sentence that explains why without leaving the Workshop. — agent:`p8ui`
 - [x] **P8-19** Add an mtime-keyed cache to the skills manager before any live-preview UI. Every read is an `os.walk` parsing every file, on every request that injects skills. `Depends:` P8-06. — **done 2026-09-18. Premise true; the numbers, measured rather than carried.** Scope: `load_all()` on a default install, whose library root is `library/ecc/skills` — **286 `SKILL.md` files, 2,595,264 bytes** (`find … -name SKILL.md | wc -l`, `wc -c`, 2026-09-18). It is called at least **three times per agent request** — `_build_base_prompt` for the index, `_build_system_prompt` for the matched-skills block, and the tool-RAG pass that widens the tool set from a skill's `requires_toolsets` — and again by every route that lists, reads or saves one. Cold **75.8 ms** median, warm **5.7 ms** median (n=5 / n=20, this box), so one turn went from ~227 ms of markdown parsing to ~17 ms once warm: **13.4×**. The cache is module-level and that is the whole point — `SkillsManager(DATA_DIR)` is constructed fresh at every one of those call sites, so an instance cache would be a cache that is always cold. It is keyed on `(st_mtime_ns, st_size, st_ino)`, not mtime alone, because every write here goes through `atomic_write_text`, which `os.replace`s a new file into position: the inode moves even where a filesystem's mtime granularity would hide a fast rewrite, and a test rewrites the same skill six times in a loop to say so. **The walk still happens** — that is how a new or deleted skill is noticed — and what is skipped is re-parsing bytes already parsed, which is where the time was. Cached dicts are copied out with their lists duplicated, because `load_all` writes the usage counters straight onto what it returns and every route hands that to a caller; a test scribbles on a returned dict and requires the next read to be clean. `read_skill_md` and `read_skill_reference` now find their file through the same cache instead of parsing the whole store to locate one name. `invalidate_skill_cache()` is exported for tests and for anything that edits SKILL.md behind this module's back. **This is not a second cache**: `Law 14` check found one other mtime-keyed read cache in the tree, `_state_get_cache` in `routes/cookbook_routes.py`, which is one JSON file behind one route and shares no shape with a per-file parse cache. `Verify:` someone who has never read this tracker, on a stock install with the bundled library, opens the skills list and sends a message, and neither stalls — and edits a skill in another window and sees the change on the next read. `CI:` `tests/test_the_skill_store_stops_re_reading_itself.py` (9 tests). — agent:`p8core`
-- [ ] **P8-20** *(Stretch)* Vector-index skills. Retrieval is Jaccard overlap against the last user message only — no embeddings, no conversation context. **Memories are already vector-indexed; skills are not.** Same template, unapplied. — **not started; premise re-measured 2026-09-19 and it is understated to the point of changing the row.** The defect is not that keyword retrieval is *worse* than embeddings. It is that the shipped retriever **cannot fire at the shipped threshold for the shipped library**, and the reason is the denominator. `_jaccard` divides by the **union**, and the skill side of that union is the whole skill — name, description, when-to-use, every tag and every procedure step — so a long skill is structurally less retrievable than a short one no matter how well it matches. Measured against the bundled library: skill token-set size is median **40**, p90 **68**, max **150**; the **best achievable** score for a well-aimed six-token query across all 286 skills is **0.128**, against the agent loop's threshold of **0.25** (`src/agent_loop.py:3153`, and again at `:5017`). A query would need ≥14 tokens, every one of them present, to clear 0.25 against a median skill. The only escape is the whole-token tag boost, which forces the score to 0.3 × 1.3 — and **3 of 286 bundled skills have any tags at all**. So on a stock install `get_relevant_skills` returns `[]` for every query tried, at every confidence floor including 0. The row's fix is still the right one and the `Law 14` instruction still holds — reuse the memory lane, do not build a second index — but a reviewer should know that **a normalisation fix is available for a fraction of the cost**: dividing by the query's token count rather than the union would make the existing retriever fire today, and is worth pricing against the embedding work before committing to it. `Depends:` nothing. Whoever takes it should read `B591` first, because a nested `SKILL.md` becoming a second index entry is a second row in whatever index is built.
+- [x] **P8-20** *(Stretch)* Vector-index skills. Retrieval is Jaccard overlap against the last user message only — no embeddings, no conversation context. **Memories are already vector-indexed; skills are not.** Same template, unapplied. — **done 2026-09-19 by the normalisation route, not the embedding route, and the row's own re-measurement is what decided it — after being re-derived, corrected in three numbers, and made worse in one.** **What held.** Skill token-set size over the bundled library is median **40**, p90 **68**, max **150** (`services/memory/skills.py:155` `_tokenize` over name + description + when-to-use + tags + procedure, which is exactly what `get_relevant_skills` scores). **3 of 286** bundled skills carry any tags, so the whole-token boost is closed. The union denominator is the mechanism and it is as bad as the row says. **What was wrong.** The row (and `B792`) count the intersection twice in the union — `n / (n + |S|)` where `q ⊆ S` gives `n / |S|` — so "≥14 tokens against a median skill" is **≥10**, "≥23 against a p90 one" is **≥17**, and "best achievable 0.128 for a six-token query" is **0.15** against a median skill and **0.333** against the library's most focused one (`search-first`, 18 tokens). Every corrected number is *less* bad and none of them changes the conclusion, because 0.25 is still out of reach. **What was worse than the row says, and is the number to keep.** "Returns `[]` for every query tried" was tested against 30 hand-labelled natural queries and their obviously-correct bundled skill — "deploy to kubernetes" → `kubernetes-patterns`, "write pytest tests for my python module" → `python-testing`. Driving `get_relevant_skills` at the loop's threshold: **29 of 30 returned `[]`, recall@5 was 0/30, precision@1 was 0/30**, the best raw Jaccard any of the 286 reached was **0.200**, and the single non-empty answer was *wrong* — `motion-foundations` for a WCAG accessibility query, off the description-substring boost rather than any token match. A retriever that returns nothing 29 times and the wrong thing once is not a weak retriever.
+  **The pricing, since the row asked for it and `Law 14` binds either way.** The embedding lane was priced by calling it, not by reading it. `MemoryVectorStore(data_dir=…).healthy` is `False` here and `get_stats()` returns `{'healthy': False, 'count': 0, 'lanes': []}`, because ChromaDB is a **standalone HTTP service** (`src/chroma_client.py` probes the port with a 2 s timeout and `chromadb-client` is only the client), and because `ensure_fastembed_download_permitted()` raises `ModelDownloadNotPermitted` — `fastembed_model_is_cached()` is `False` and `model_download_allowed()` is `False`, which is `Law 16` working as designed. So an embedding-only fix ships a skills retriever that returns nothing on a stock install, which is the defect this row exists to remove. `.pantheon/retrieval_eval.py` already made the same call for memories and says so in its own header — *"both engines are scored over ONE corpus, with no vector service, because … the degraded path is the one a person actually meets."* **The keyword lane is the floor under any embedding lane, so it gets fixed first whatever is built on top; nothing here forecloses the vector route and `B591` is still unread by any index because none was built.**
+  **The change.** `_jaccard` is untouched and still has its one caller's number available; `_relevance` (`services/memory/skills.py`) returns `max(jaccard, coverage × (1 + jaccard))`, where coverage is `|aim ∩ skill| / |aim|` and `aim` is the query's content tokens. Three parts, each measured: **(1) the denominator** — the skill's own length leaves it entirely, because the question is "does this skill cover what was asked", and the length of the answer is not part of that question. **(2) hyphen splitting** (`_subtokens`) — `_tokenize` splits on whitespace, so `golang-testing` was one token and the query "golang testing" matched its name on neither word; **275 of 286** bundled names are hyphenated. The whole token is kept alongside its parts, because the tag boost tests `tag_tokens <= query_tokens` and a tag that stopped containing itself would stop boosting. **(3) a stopword list** (`_QUERY_STOPWORDS`), used only to size the coverage denominator and never to drop a token from a match; a query that is nothing but stopwords aims at nothing and coverage returns 0, leaving exactly today's Jaccard. **`Law 1` is an executable invariant here, not a claim:** `_relevance ≥ _jaccard` for every pair, pinned over 10,296 (query, skill) pairs — 36 queries × 286 skills — of which **0 scored lower** and 1,275 scored higher. Nothing that was retrievable stopped being retrievable.
+  **Measured through `get_relevant_skills` at the loop's own 0.25, before → after:** recall@5 **0/30 → 26/30**, precision@1 **0/30 → 20/30**, empty results **29/30 → 0/30**. The Jaccard tie-break is why precision@1 is 20 and not 15: coverage alone ties every skill that covers the query at 1.0, including a 150-token one that covers it incidentally, and multiplying by `1 + jaccard` breaks those ties toward the skill that is *about* the query. It buys no recall and five places at rank 1, which is where it matters because injection is capped at 3–5. Cost: `get_relevant_skills` over 286 skills goes **3.3 ms → 5.5 ms** per call, once or twice a turn.
+  **Two things found while in here, both separate from this row.** (a) **On a stock install `index_for` returns 0 entries** — all 286 bundled skills parse `status: draft` (no `status:` in the file; the parser's default) with `source: "bundled"`, and `index_for` admits a draft only when `source == "teacher-escalation"`. The model's skill catalogue on a fresh install is empty, and no row in the tracker says so. (b) **The same parse defaults put `confidence: 0.8` on all 286**, under a shipped floor of 0.85, so the whole library is filtered out of the retrieval pool *before* scoring — `B581`'s mechanism applied to the bundled library rather than to one hand-written draft. **Neither is fixed here and neither should be fixed here:** `read_skill_md("kotlin-exposed-patterns")` still returns `None` (`B590`, re-verified today), so letting a bundled skill through the gate would hand the model a procedure it cannot then open. Both are reported as `B`-rows. The consequence for this row is stated rather than hidden: the scorer is fixed for every skill a person has, and the bundled 286 stay out of reach until `B590` lands.
+  `Verify:` a person writes one skill — through the Workshop form, the teacher loop, or `pantheon-skills draft` — then asks for it the way they would ask a colleague, in five or six words. Before this change no phrasing shorter than ten tokens, every one of them present in the skill, could reach the model at all, and no setting anywhere would have changed that; now the natural question retrieves it. `CI:` `tests/test_skill_retrieval_normalises_by_the_query.py` (13 tests, including the labelled-set recall/precision floors and the `Law 1` invariant over the whole library). **Mutation: 12 real mutations, 12 caught, plus one no-op control that survived as designed** — reverting to union Jaccard, dropping the `max`, dropping the tie-break, dropping either side's hyphen split, raising the sub-token length floor, removing the stopword list, making a stopword-only query match everything, and reverting the call site. `Depends:` nothing. — agent:`p8skills`
 - [x] **P8-21** *(Stretch)* Budget the index. It costs ~15 tokens per published skill on **every single request** and participates in no budget. Also: the usage counter records *retrievals*, not successes, so "most-used" measures keyword luck. — **done 2026-09-19. Both halves of the first sentence were wrong, in opposite directions.** **The cost is 5.6× the row's figure.** Measured by publishing the whole bundled library into a fresh store and rendering the real block through `render_skill_index_block`: **286 entries, 80,610 characters, 24,187 tokens** by the product's own `model_context.estimate_tokens` — **84.6 tokens per entry**, median entry line 275 characters, longest 1,001. Not 15. The block alone is **four times** the 6,000-token default `agent_input_token_budget`, and nothing anywhere trimmed it. **And it is not "every single request".** All 286 bundled skills parse with `status: draft` — their frontmatter carries no `status:` and `Skill.from_markdown` defaults to draft — and `index_for` admits only published skills plus teacher-escalation drafts, so a **stock install renders 0 entries and 0 characters**. The cost arrives on the first publish click and then grows without bound, which is what the budget is for rather than against. `src/context_budget.py` is extended, not duplicated: the module already holds two families (the token budget at the top, `P12-04`'s six character budgets at the bottom) and this is a third, `PROMPT_BUDGETS`, resolved through the same `limit_policy.resolve_int_limit` and the same four layers, registered in `src/settings.py` beside the six. It is deliberately **not** clamped to `context_attachment_total_chars`: those six share a ceiling because they are one turn's attachments, and a catalogue the model is shown is not competing with a PDF somebody dropped in — clamping it there would mean lowering an attachment budget silently truncated a skills catalogue, which is the ambiguity `Law 10` refuses. The default is 12,000 characters, which binds at roughly 43 entries of the measured median and therefore **changes nothing for any install that exists today**. The cut is applied in `skill_injection.render_skill_index_block`, which is `P8-06`'s one renderer, so the agent loop and `GET /api/skills/index` are both bounded without either of them asking and the preview still shows the prompt rather than a drawing of it. Entries are dropped **whole**, lowest-value first, and what survives renders in the ordinary category order, so a truncated block has the same shape as a full one — and the model is **told**: a truncated catalogue with no note makes a model conclude the missing skills do not exist, so the block ends with how many are installed and unlisted and the two actions that reach them. Driven on the real library: **80,610 → 11,692 characters, 24,187 → 3,511 tokens, 39 listed and 247 named** (`Law 20`). **The counter is the second half and it was a feedback loop, not just a misnomer.** `record_use` is called from `agent_loop._build_system_prompt` for every skill the retriever *emitted*, before the model has read a word — and `get_relevant_skills` then multiplied a skill's score by **1.05 when `uses > 0`**, so one keyword coincidence bought a permanent advantage in the next match, compounding luck into rank. `uses` is untouched (`Law 1`, `Law 2`: it is on the wire, on the card and in three sort orders) and still counts retrievals, and now says so in its own docstring. `opens` is the new counter, written only by `manage_skills action=view` — the model fetching the whole SKILL.md after seeing an index line that carries three fields, which is a decision rather than a side effect. It is not "the skill worked"; nothing in this product knows that. It is the best signal that exists, it is the one the 1.05 boost is earned by now, and it is what decides who survives the catalogue cut. **What the merge still needs (`static/**`, not in this patch):** the prompt preview already fetches `GET /api/skills/index`, whose response now carries `budget: {chars, tokens, budget_chars, truncated, omitted, listed}` — it should draw *"3,511 of 12,000 characters · 39 of 286 skills listed"* with the omitted count beside it, because a person whose catalogue is being cut has no other way to find out; and the card's *"used N times"* should read *"matched N times · opened M times"* from the `uses`/`opens` pair `GET /api/skills` now returns, which is the whole point of having measured them separately. `Verify:` someone who has never read this tracker publishes forty skills, opens the prompt preview, and can see what their catalogue is costing the model against what it is allowed to cost — and the assistant, handed a shortened list, says there are more and fetches them instead of saying the skill does not exist. `CI:` `tests/test_the_catalogue_costs_what_it_costs.py` (18 tests). — agent:`p8c`
 ### Automations
 - [x] **P8-22** Node palette endpoint — merge the three `/meta/*` routes, move the client-side
@@ -5711,22 +5751,211 @@ SKILL.md frontmatter format. That is the pattern to avoid, found in the phase's 
 - [ ] **P8-34** The canvas, last, against a stable API. **Ship a Mermaid rendering of a workflow first** — it is already vendored and wired, works today, and needs no graph library. `Depends:` P8-22, P8-25, P8-26.
 
 ### MCP Creator
-- [ ] **P8-35** **An update endpoint — the structural blocker.** The only mutation is an enable/disable toggle; editing a command means delete-and-recreate, which mints a new id and **orphans every stored `mcp__<id>__<tool>` reference**, including the server's own disabled-tool list and any scheduled task pointing at one. Iterate-and-refine is impossible until this exists.
-- [ ] **P8-36** Test-call endpoint — no route invokes a tool; the manager's call method is public with a normalised envelope. ~15 lines behind an admin check.
-- [ ] **P8-37** **Add a timeout to the MCP call path — there is none.** A hung tool hangs the agent turn indefinitely. Do this in the same change as P8-36.
+- [x] **P8-35** **An update endpoint — the structural blocker. `PUT
+  /api/mcp/servers/{server_id}`.** Measured before: of the eleven routes
+  `setup_mcp_routes` registered, exactly one mutated a configured server —
+  `PATCH /api/mcp/servers/{id}` (`routes/mcp/mcp_routes.py:357` at `HEAD`), whose only
+  parameter is `is_enabled`. Changing a command, an argument, a URL or a token had no
+  route at all. Both halves of the row's claim were reproduced by driving the existing
+  routes (`tests/test_mcp_update_keeps_its_id.py::test_delete_then_add_mints_a_new_id_and_loses_the_disabled_list`):
+  `DELETE` then `POST` returns a **different** id, because `add_server` opens with
+  `str(uuid.uuid4())[:8]`, and the replacement row's `disabled_tools` is `NULL`. The
+  second is worse than "orphaned" and the row understates it: `disabled_tools` is a
+  column on the row, so deleting the row deletes the list, and **every tool the operator
+  had hidden from the agent comes back enabled on the replacement** — a privilege change
+  disguised as an edit, reported nowhere. The first is the orphaning the row names:
+  `call_tool` splits `mcp__<server_id>__<tool>` and looks the id up in `self._sessions`,
+  and `src/task_scheduler.py:2956` dispatches a scheduled task's `output_target` on
+  exactly that prefix, so a task pointing at the old id stops delivering in silence.
+  **The id-stability decision, written down: an id is an identity, not a version. An
+  edit keeps it.** `PUT` mutates the row in place and will not touch two fields — `id`,
+  so every stored `mcp__<id>__<tool>` keeps resolving, and `disabled_tools`, so a tool
+  switched off stays off even when the command line under it changed completely (fail
+  closed: an edit must not re-enable anything). The one thing an edit *can* invalidate is
+  a tool NAME — point the command at a different package and the names change. Those
+  entries are **kept** (pointing back must not have lost them) and returned as
+  `stale_disabled_tools` so the operator learns it now rather than later; the response
+  also carries `id_changed: false` so a client never has to guess.
+  Fields left out are left alone; a field sent empty clears it — which has to be sayable,
+  or a token can be rotated but never removed. Validation runs against the **merged** row,
+  not against what was sent, so switching transport without the field the new one needs
+  is refused instead of saved (`transport=http` with no stored `url` → 400, row
+  unchanged). `_parsed_json_field` was a closure inside `add_server`; it is now module
+  scope with two callers rather than two copies (`Law 13`), so both routes refuse
+  malformed `args`/`env`/`oauth_config` with the same messages. An enabled server is
+  disconnected and relaunched so the edit is visible now; a disabled one is edited and
+  stays down, because an edit is not an enable. `require_admin`, same as `add_server` —
+  the command runs on this host.
+  `pantheon-mcp update` is the same decision at the shell, including the merged-row
+  validation, and its output says in words that the running app has not reloaded and
+  names the two ways to reconnect.
+  `Verify:` an operator who typed the wrong path into a filesystem server fixes it with
+  one `pantheon-mcp update <id> --args '[...]'`, calls a tool on it immediately, and
+  finds their disabled-tool list and any scheduled task pointing at that server still
+  working — where before they had to delete and re-add, and silently lost both.
+  `CI:` `tests/test_mcp_update_keeps_its_id.py` (22 cases, drives the routes, including
+  the delete-then-add reproduction of the premise and the `Law 1` case that `PATCH` still
+  does only what it did), `tests/cli/test_mcp_cli_call_and_update.py` (edit-then-call
+  against a real server). — agent:`p8core`
+- [x] **P8-36** **Test-call endpoint — `POST /api/mcp/servers/{server_id}/call`.** Measured
+  before: `setup_mcp_routes` registered **eleven** routes (`@router` decorators at
+  `routes/mcp/mcp_routes.py:130, 168, 321, 357, 390, 408, 415, 435, 462, 516, 531` at
+  `HEAD`) and **not one of them invoked a tool**. An operator could add a server,
+  reconnect it, enable it, disable it, delete it and list what it offered, and the only
+  way to find out whether any of it *worked* was to open a chat and hope the model chose
+  the tool. The row's estimate was right about the shape: `McpManager.call_tool` was
+  already public with a normalised `{stdout, stderr, exit_code}` envelope, so the missing
+  piece was the door.
+  Body is `{"tool": "<name>", "arguments": {...}, "timeout": <seconds>}`; the response
+  carries the envelope plus `duration_ms`, `timed_out`, `image_count` and
+  `tool_is_disabled`. It calls `mcp_manager.call_tool` — the same method
+  `src/tool_execution.py:1345/1360` calls in an agent turn — so there is one call path,
+  not a test path and a real path (`Law 14`). Three refusals, each naming which of three
+  things is wrong rather than returning a tool error for a server that was never up: 404
+  unknown server, **409** naming the state and the connect error when the server is not
+  connected, 404 naming the tool and listing what the server does offer. `require_admin`
+  and nothing else — it is a `FORBIDDEN.md` Part 2 control and this route adds no second
+  gate. A tool on the server's `disabled_tools` list is still callable here (the list
+  hides tools from the *model*, it is not a lock on the operator's own server) and the
+  response says `tool_is_disabled: true` so a working test on a tool the agent never
+  picks is not a mystery.
+  **Reaching it unaided is `P8-00`, and the browser half is `static/**`, which this patch
+  does not own.** So the unaided surface shipped here is the shell one: `pantheon-mcp`
+  gains `call` and `tools`. Both connect to the server from the CLI's own process and
+  disconnect again, so they work with the app stopped and need no token.
+  Counts: `require_admin` sites 113 → **115** (direct 93 → 95), superuser 41 → **43**;
+  `.pantheon/P11-AUTH-MAP.md` updated and `check-auth-map` re-derives it at PROBLEMS 0.
+  `check-unreachable` is unaffected — `/api/mcp/` is an `ALLOWED` prefix
+  (`.pantheon/check-unreachable.py:62`), so a new MCP route does not count against the
+  90-route ceiling.
+  `Verify:` someone who has never read this tracker runs `pantheon-mcp --help`, sees
+  `call`, runs `pantheon-mcp tools <id>` to learn the tool names, then `pantheon-mcp call
+  <id> echo --args '{"text":"hi"}'` and gets `"stdout": "echo: hi"` back — from a server
+  they registered five minutes ago, without opening a chat and without reading any
+  source.
+  `CI:` `tests/test_mcp_test_call_endpoint.py` (28 cases, drives the endpoint function),
+  `tests/cli/test_mcp_cli_call_and_update.py` (14 cases, spawns a real FastMCP stdio
+  server and drives the CLI against it). `Depends:` P8-37, same change. — agent:`p8core`
+- [x] **P8-37** **Add a timeout to the MCP call path — there was none, at any layer.**
+  Measured before: `src/mcp_manager.py:510-512` at `HEAD` was
+  `result = await session.call_tool(tool_name, arguments)`, and the SDK's own
+  `read_timeout_seconds` defaults to `None`, which becomes `anyio.fail_after(None)` —
+  not a deadline, a no-op scope (`mcp/shared/session.py:285-291`, mcp 1.30.0). Driven:
+  `HEAD`'s real `McpManager` with a session whose `call_tool` awaits
+  `asyncio.sleep(3600)` was **still pending** when an external 3-second bound gave up.
+  There is no argument that makes it return. That await is the agent's turn
+  (`src/tool_execution.py:1345/1360`) and the scheduler's delivery path
+  (`src/task_scheduler.py:2710/3588`), so one hung tool hung both — silently, because no
+  exception was ever raised.
+  Two layers, and the second is the one that makes it enforceable. The SDK's own
+  `read_timeout_seconds` gets the deadline (`Law 14` — it already exists, and it stops
+  waiting on the response stream and raises `McpError(408)` instead of cancelling the
+  caller, which keeps the session usable afterwards); `asyncio.wait_for` gets deadline +
+  2s and covers what the SDK's timer cannot see — a session object that ignores the
+  argument, a stall before the response wait. Measured after, same hung session: **1.00s**
+  with an SDK-shaped session (graceful layer fires first), **3.00s** with one that ignores
+  the argument (backstop), against a 1s deadline. Against a real FastMCP server whose
+  tool calls `time.sleep(3600)`: `pantheon-mcp call ... hang --timeout 2` returns in
+  ~2.0s with `"timed_out": true`, and the connection still closes cleanly afterwards.
+  Default **120s** for the agent turn — every existing caller passes no timeout and so
+  inherits it, which is the point, the hang was on the default path. **30s** for the
+  interactive route (a person is waiting). Ceiling **600s**, and `0`, `-1`, `None`, `""`,
+  `"forever"` and `10**9` all resolve to a bound: *there is no spelling of "no timeout"*,
+  because that is the state this replaces.
+  One behavioural decision worth recording: a timeout raises a distinct `McpCallTimeout`
+  and **does not take the built-in reconnect-and-retry path**. That path exists for a
+  subprocess that died; a hung tool is not a dead subprocess, and retrying it spends a
+  second full deadline to learn the same thing — four minutes of silence on the default
+  instead of two. A genuinely crashed built-in is still reconnected and retried, pinned
+  by its own test.
+  `Verify:` an operator whose MCP server has stopped answering runs `pantheon-mcp call
+  <id> <tool>` and gets, within two minutes, a sentence naming the tool and the number of
+  seconds it was given — instead of a shell that never returns; and the same server
+  called from a chat turn no longer wedges the turn.
+  `CI:` `tests/test_mcp_call_has_a_deadline.py` (19 cases, drives `McpManager`, including
+  the `Law 1` cases: a normal call, a tool error, a crashed built-in),
+  `tests/cli/test_mcp_cli_call_and_update.py` (real hung server). — agent:`p8core`
 - [ ] **P8-38** Keep the handshake. The initialize result is discarded at exactly three connect sites; it carries server name and version, protocol version, advertised capabilities and the server's own instructions, and **nothing in the app records any of it.** One line each.
-- [ ] **P8-39** **Encrypt server env vars.** Every other secret in the schema is encrypted at rest; this one is plain text, and it is where the tokens live. The CLI already redacts on read behind a reveal flag. Storage migration only — no wire or JSON shape changes. **Do this before a Creator multiplies the rows holding them.**
+- [x] **P8-39** **Encrypt server env vars — storage only.** Measured before:
+  `core/database.py:585` at `HEAD` was `env = Column(Text, nullable=True)`, and it was
+  the **only secret-bearing column in the schema encrypted at no layer**. Six were
+  `EncryptedText` — `model_endpoints.api_key` (`:533`),
+  `provider_auth_sessions.access_token`/`.refresh_token` (`:571-572`),
+  `mcp_servers.oauth_tokens` (`:590`), `signatures.data_png`/`.svg` (`:655/:658`) — and
+  five more are `Column(String)` encrypted by hand at their call sites
+  (`email_accounts.imap_password`/`.smtp_password`/`.oauth_access_token`/
+  `.oauth_refresh_token`, `webhooks.secret`). Eleven covered; `env` was the twelfth and
+  it is where the tokens live: `GITHUB_TOKEN`, `BRAVE_API_KEY`, `GOOGLE_CLIENT_SECRET`.
+  Nothing wrote it through `encrypt()` on any path — not `add_server`, not
+  `manage_mcp add`, not `pantheon-mcp add` — so a stolen `app.db` handed over every MCP
+  credential in the clear while every credential beside it held. `pantheon-mcp show`
+  already redacted these values behind `--reveal`, so the product's own posture already
+  called them secrets.
+  Done with the encryption the schema already has (`Law 14`): the column becomes
+  `EncryptedText`, the same bind/result decorator the other six use, over the same
+  `src/secret_storage.py` Fernet key at `data/.app_key`. The SQL type stays TEXT, so
+  **no wire or JSON shape changes** — every consumer still reads and writes a plain JSON
+  string and still spells the read `json.loads(srv.env) if srv.env else {}`. Verified by
+  driving the paths rather than reasoning about them: `McpManager._connect_with_timeout`
+  still gets `{"GITHUB_TOKEN": ...}` as a dict, and `pantheon-mcp show` still redacts
+  and still reveals.
+  Existing rows are migrated, not orphaned. `decrypt()` passes an unprefixed value
+  straight through, so a legacy plaintext row is readable the instant the new code
+  starts and before any migration runs; `_migrate_encrypt_mcp_env()` (raw SQL, so the
+  decorator is not applied twice; idempotent on the `enc:` prefix; `NULL` left `NULL`)
+  rewrites them once, registered in `init_db` beside `_migrate_encrypt_endpoint_keys`. A
+  wrong or rotated key costs a server its env (`decrypt()` returns `""`, which every
+  consumer's `if srv.env` guard turns into `{}`), not the process.
+  `Verify:` an operator adds an MCP server with an API key in its env exactly as before —
+  same form, same CLI flag, same JSON — then runs `strings data/app.db | grep <their
+  token>` and finds nothing, while the server still starts and its tools still answer.
+  `CI:` `tests/test_mcp_env_encrypted_at_rest.py` (12 cases, including the token's bytes
+  absent from a real on-disk SQLite file, the legacy-row read, the migration, its
+  idempotence, its registration in `init_db`, and the rotated-key degradation).
+  — agent:`p8core`
 - [ ] **P8-40** Capture `annotations` on the HTTP transport — stdio and SSE both do, HTTP does not, so a remote server gets no plan-mode read-only credit however it advertises itself.
-- [ ] **P8-41** Fix the **two** stale comments claiming MCP is dropped in plan mode *(re-counted 2026-08-27 by multiline grep across `src/`, `routes/`, `core/`, `services/`, `static/` and `docs/`)*. It is not — read-only tools are kept via annotations with a fail-closed verb heuristic.
+- [ ] **P8-41** Fix the **two** stale comments claiming MCP is dropped in plan mode.
+  **Re-counted 2026-09-19** by the same multiline proximity scan across `src/`,
+  `routes/`, `core/`, `services/`, `static/` and `docs/` (23 `mcp`×`plan mode` proximity
+  hits, three of which make a drop claim). **The number is still two**, and they are:
+  (a) `src/tool_security.py:424-425` at `HEAD`, in `plan_mode_disabled_tools`' docstring —
+  *"MCP tools are handled separately — the loop drops the MCP manager entirely in plan
+  mode."* **Fixed.** It now says what the code does: the loop keeps the manager and
+  filters it, adding every not-clearly-read-only tool to the MCP disabled map and its
+  qualified `mcp__<server>__<tool>` name to the same denylist, so it is hidden from the
+  schemas *and* refused at call time, while read-only MCP tools stay callable — which is
+  the point, plan mode is for investigating. The classification is
+  `mcp_tool_is_readonly`: the server's own `readOnlyHint`/`destructiveHint` first, a
+  leading-verb heuristic second, failing closed on anything ambiguous
+  (`src/mcp_manager.py:99-113` at `HEAD`, live and unchanged by this patch).
+  (b) `routes/chat_routes.py:2046-2048` — *"(stream_agent_loop enforces this again +
+  drops MCP, so this is belt-and-suspenders.)"* **NOT fixed: `routes/chat_routes.py` is
+  outside this agent's file ownership.** The correction is one clause: `drops MCP` →
+  `filters MCP to read-only tools`. The row cannot be honestly ticked until it lands
+  (`Law 9`), so it stays `- [ ]`.
+  **A third hit reads the same and is accurate, so it is recorded rather than changed:**
+  `src/tool_security.py:213` says the advertisement path compensates *"by dropping the
+  MCP manager entirely (`agent_loop`)"*. That is the **non-admin** path, not plan mode —
+  `blocked_tools_for_owner(owner)` non-empty → `mcp_mgr = None` at
+  `src/agent_loop.py:4459`. Different question, different answer, and the answer there
+  really is "dropped". Anyone re-running this grep will hit it; it is not a fourth
+  defect.
+  `Verify:` a contributor reading `plan_mode_disabled_tools` before changing plan-mode
+  gating is told that MCP is filtered rather than dropped, and where the filter is — so
+  they do not "restore" a drop that would remove read-only MCP investigation from plan
+  mode.
+  `CI:` `tests/test_mcp_plan_mode_is_filtered_not_dropped.py` (5 cases, drives
+  `McpManager.plan_mode_blocked_mcp` — a read-only tool survives, a write tool is blocked
+  in both spellings, the server's annotation beats the verb, an ambiguous name fails
+  closed). A test that grepped the comment would be testing the file (`Law 20`), so it
+  pins the behaviour the comment now describes instead. — agent:`p8core`
 - [ ] **P8-42** Fix the empty-env trap: an empty env dict yields `None`, so the SDK substitutes a minimal environment. **Premise corrected 2026-08-27.** **`PATH` and `HOME` are not the casualties** — both are in `DEFAULT_INHERITED_ENV_VARS` and survive. What vanishes is `PYTHONPATH`, `NODE_PATH`, the npm cache location and every proxy variable, and **only when the env dict is empty**. That is a narrower trap and a much harder one to diagnose: a server that resolves its interpreter fine and then cannot find its own packages, or cannot reach the network from behind a corporate proxy. `Verify:` a generated server with an empty env dict inherits the parent's `PYTHONPATH` and proxy settings.
 - [ ] **P8-43** Let `builtin_browser` auto-reconnect — the reconnect helper hard-returns false for anything outside a four-entry map, despite the browser server counting as built-in. A crashed Playwright server stays dead until a manual reconnect.
 - [ ] **P8-44** Server-id validation. One `split("__", 2)` is the sole parse of the namespaced name; **an id containing `__` routes the call to the wrong server.** Unreachable today because ids are uuid4-derived — the moment a Creator lets people name servers, this field holds the invariant.
 - [~] **P8-45** Surface the **15**-entry preset catalogue (14 with setup walkthroughs) currently sitting in **420** lines of unreachable code. Its two entry points look up DOM ids no template has ever rendered. *(Re-measured 2026-08-27 by balanced-bracket parse: 15 top-level objects at `admin.js:1793-1859`. A naive `{ name:` regex returns 23 — that is exactly how the wrong figure was produced, and it is worth recording because the same regex habit produced several others in this pass.)* `Depends:` P2-20. **`Blocked:` `Law 14` — `settings.js:5000` already ships a working MCP form.** Decide whether these presets feed *that* form before building a second surface for them.
-- [ ] **P8-46** Replace the single-line JSON inputs — a parse failure is caught and **silently discarded**, posting empty args and env, after which the server fails to connect for a reason nothing explains.
+- [x] **P8-46** Replace the single-line JSON inputs — a parse failure is caught and **silently discarded**, posting empty args and env, after which the server fails to connect for a reason nothing explains. — **done 2026-09-19. Half the premise was already fixed and the half in the headline had never been touched.** The silent discard went on 2026-09-13 with `1dc03f5`: both catches in `settings.js` and the server's `_parsed_json_field` (`routes/mcp/mcp_routes.py:206-216`) got a `return`, pinned by `tests/test_a_server_you_could_not_start_is_not_added.py`. What survived is what the headline asks for — **the inputs were still single-line JSON**, `static/js/settings.js:5624-5625`, two `<input>` elements whose placeholders (`["-y", "@modelcontextprotocol/server-filesystem"]`, `{"KEY": "value"}`) are wider than the boxes that hold them, so a person with two arguments had to write a JSON array by hand and was answered with *"Args must be valid JSON, e.g. `["-y", "pkg"]`"* in an 11px span shared with every other message on the card, 140px below the box it was about. That names the field and then repeats the format's name at somebody who has just failed to produce it: no *where*, no *what*. **And a third defect in the same handler, not in the row:** `settings.js:5686` read `r.status` and threw `data` away, so `add_server`'s own 400 `detail` — written to be read, naming the field and the shape that would have worked — rendered as **`Failed (400)`**, while the *unreachable* Admin form in the other file printed `data.detail` (`static/js/admin.js:2460`, dead since `initMcpForm` returns at `admin.js:2269` on a DOM id no template renders). Two copies of one thing, disagreeing, with the live one worse — `Law 13`. **What shipped.** `static/js/settings/mcpFields.js` (new, 959 lines) holds the field: one box per argument, one KEY/value pair per variable, `+ Add` and `×`, nothing to quote or balance; the JSON textarea is kept behind a **Paste JSON** link as a second *mode of the same field* rather than a second field (`Law 1` keeps the raw route, `Law 14` keeps it one field). A paste that will not parse is read by `readJsonTypo`, which is independent of `JSON.parse`'s message on purpose — V8 says `Unexpected token '-', "[-y, pkg]" is not valid JSON`, SpiderMonkey says `expected property name or '}' at line 1 column 2`, JavaScriptCore says neither, so an engine's sentence can be neither shown nor asserted on. Seven readings, each with a caret under the offending character and a line/column: single quotes, curly quotes from a web page or a word processor, an unquoted word (named back), a trailing comma, an unclosed string, an unbalanced bracket with both counts, and `KEY=value` shell syntax in the Env field. Entry types are checked too, which the server does not do (see the new defect below). A refusal is drawn **inside the field it is about**, `role="alert"`, `aria-invalid` on the control, and **nothing typed is ever cleared** — the mode switch refuses rather than dropping back to empty boxes. `describeServerRefusal` puts the server's own sentence on the named field, verbatim. A line under the form says `Pantheon will run: npx -y @modelcontextprotocol/server-filesystem`, live, which is the one thing nobody could work out from "Command" plus "Arguments". `Law 14` held: this is `settings.js:5481`'s form getting better, not a second form — no new surface, no new route, one changed `innerHTML` block and one changed click handler. `Verify:` someone who has never registered an MCP server, and has never written JSON, opens Settings → Integrations → + → MCP Tool Server, types `npx`, then `-y` and a package name into two boxes, reads the command line that will be run back to themselves, and gets a working server; and if they paste a config with single quotes in it they are told *"Single quotes — JSON has no single-quoted strings"* with a `^` under the quote, on the Arguments field, with their paste still in the box. `CI:` `tests/test_the_mcp_form_names_the_field_js.py` (44 cases, driven under node against the real module — no case greps a file), plus `tests/test_a_server_you_could_not_start_is_not_added.py` (17, two rewritten to the new shape and one added for the discarded `detail`). `Depends:` nothing. — agent:`p8ui`
 - [ ] **P8-47** Scaffold generator, writing to the **data volume** — the source tree is baked into the image with no bind mount, so generated servers cannot be built-ins and must register as ordinary rows with an absolute path. **That path is denied on the agent's registration path by design.** Author here; register through the admin route. **Do not weaken the command validation** — it closes a reported RCE and is pinned by 10 tests.
-- [ ] **P8-48** Tool schema editor + `readOnlyHint` / `destructiveHint` annotation UI. The schema is already carried end-to-end and nothing edits it; `manage_mcp list_tools` drops it entirely, so the LLM cannot see a tool's parameters through its own tool.
-
----
+- [ ] **P8-48** Tool schema editor + `readOnlyHint` / `destructiveHint` annotation UI. The schema is already carried end-to-end and nothing edits it; `manage_mcp list_tools` drops it entirely, so the LLM cannot see a tool's parameters through its own tool. — **read half shipped 2026-09-19; the editor and the annotations are blocked on `src/**` and stay open.** **Premise re-measured and it is three claims, of which two hold and one does not.** `input_schema` *is* carried end to end: `McpManager.get_all_tools` (`src/mcp_manager.py:606-622`) copies it onto every entry and `GET /api/mcp/servers/{id}/tools` (`routes/mcp/mcp_routes.py:415-433`) returns those entries unchanged — and `grep -rc input_schema static/` returned **0**, so no frontend file had ever read it. `manage_mcp list_tools` does drop it: `src/agent_tools/admin_tools.py:360-367` projects `{name, server, description[:100]}` and nothing else, so the LLM cannot see a parameter list or even the `mcp__<id>__<tool>` name through its own tool. **`annotations` is not carried end to end at all** — it is captured at both connect sites (`src/mcp_manager.py:217` stdio, `:286` SSE) and read by `mcp_tool_is_readonly` (`:108-133`), and `get_all_tools` does **not** copy it into the payload, so the readOnlyHint/destructiveHint half of this row cannot be *displayed*, let alone edited, from the browser today. **Shipped:** every row of the connected server's tool list now opens onto its parameters — name, type, required/optional, enum choices and the parameter's own description, required first — plus the qualified name the model actually calls (`createMcpToolRow`, `summariseSchema` in `static/js/settings/mcpFields.js`). The rows are built node by node rather than as an HTML string, which also closes a live escaping hole: `static/js/settings.js:5599` put the third-party description into `title="${esc(t.description)}"` using a **local `esc` that shadowed the canonical one** (`settings.js:5552` vs `static/js/ui.js:983`) and escaped `&` and `<` and not `"` — a description with a double quote in it closed the attribute. The shadow is deleted; there is one `esc` and it is two scopes up (`Law 14`). **Not done, and what each waits on:** the **schema editor** needs somewhere to put an override — `McpServer` (`core/database.py:576-590`) has `disabled_tools` and no per-tool column — and a route to write it; the **annotation UI** needs `annotations` on the `get_all_tools` payload before it can show anything and the same storage before it can edit. Both are `src/**` and `routes/mcp/**`, which `P8-35` is inside this hour; no route was invented here. `Verify:` (met, for the half that shipped) someone who has never read this tracker opens a connected MCP server, presses *"2 parameters, 1 required"* on a tool, and can see what that tool takes and what the model calls it — without opening devtools or the MCP server's own documentation. `CI:` `tests/test_the_mcp_form_names_the_field_js.py`, last six cases — including one that drives `McpManager.get_all_tools` and **asserts `annotations` is absent**, so it fails the day the backend half lands and this row can move. `Depends:` `P8-35`. — agent:`p8ui`
 
 # P9 · Feature surfaces
 *Area: `surfaces` · Depends: P5*
@@ -17867,3 +18096,98 @@ this is the same thing happening to the row that corrected the store.
   allowlist is top-level — both of which fail on the shape that shipped; plus the twelve entry
   rules `B851` wrote. And 2,219 commits clean. `Depends:` `B851`. `Unblocks:` `Secret scan` going
   green. — found by the CI run that verified three other rows — agent:`integrator`
+
+- [ ] **B864** **Deleting and re-adding an MCP server silently re-enables every tool the operator had
+  hidden from the agent.** Found 2026-09-19 while re-measuring `P8-35`'s premise.
+  `mcp_servers.disabled_tools` is a column on the row. `DELETE /api/mcp/servers/{id}` drops the row
+  and the list with it, and `POST /api/mcp/servers` creates the replacement with
+  `disabled_tools = NULL`. Measured: a server carrying `disabled_tools='["wipe"]'`, deleted and
+  re-added with the same command, comes back with `disabled_tools IS NULL` — **a privilege change,
+  reported nowhere.** `P8-35`'s `PUT` removes the *reason* anyone had to do this (editing a command
+  no longer means delete-and-recreate) but it does not stop the sequence, and the CLI, the agent's
+  `manage_mcp` and the browser can all still perform it.
+  Two candidate fixes, and the row should pick one rather than both: warn on delete when
+  `disabled_tools` is non-empty, or echo the dropped list in the delete response so whatever
+  re-adds the server can put it back. The second is the one an automated caller can act on.
+  `Verify:` a server with a disabled tool, deleted and re-added, either refuses quietly or hands
+  back the list it dropped; reproduction is already in the tree at
+  `tests/test_mcp_update_keeps_its_id.py::test_delete_then_add_mints_a_new_id_and_loses_the_disabled_list`.
+  `Depends:` nothing. — found by `P8-35` — agent:`p8core`
+
+- [ ] **B865** **`env` and `args` entry types are never checked, and a pydantic traceback is what the
+  operator is shown.** Found 2026-09-19 while building `P8-46`.
+  `_parsed_json_field` (`routes/mcp/mcp_routes.py:206-216`) asserts the **container** type and
+  nothing about what is in it. Driven: `McpManager.connect_server(..., env={'PORT': 3000})` stores
+  the server and then fails with `status: error` and
+  `error: "1 validation error for StdioServerParameters\nenv.PORT\n  Input should be a valid string
+  [type=string_type, input_value=3000, input_type=int]\n  For further information visit
+  https://errors.pydantic.dev/..."` — a library's internal validation message, with a URL to that
+  library's documentation, presented to the operator as *this server's connection error*.
+  `P8-46` now catches it in the browser, which is where it is most likely to happen. The server
+  still accepts it from the CLI, the agent's `manage_mcp` and any other client, so the browser fix
+  is a courtesy and not the guard. **The check belongs beside the container check**, in one place.
+  `Verify:` `POST /api/mcp/servers` with a non-string env value is refused with a sentence naming
+  the key, before anything is stored; and no pydantic message reaches a response body.
+  `Depends:` nothing. — found by `P8-46` — agent:`p8ui`
+
+- [x] **B866** **A local `esc` shadowed the canonical one, in the one function that put third-party
+  text into an HTML attribute.** Found and fixed 2026-09-19 while building `P8-48`'s read half.
+  `static/js/settings.js:5552` defined `s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')`
+  **inside `showMcpForm`**, shadowing the module's own import at `settings.js:74` of
+  `static/js/ui.js:983`, which escapes `& < > " '`. Sixty lines below, at `:5599`, the shadowed one
+  was used as `title="${esc(t.description)}"` — an **attribute**, holding a tool description that
+  comes from a third-party MCP server. A description containing `"` closed the attribute.
+  Two escapers, one of them worse, and the worse one winning in the single place the better one
+  was needed: `Law 14` in four lines. The shadow is deleted and the tool rows are built node by
+  node rather than as an HTML string, so there is nothing left to escape at that site.
+  `Verify:` a tool whose description contains `"` renders as text; `tests/test_the_mcp_form_names_the_field_js.py`
+  drives the real module under node with such a description. **The pattern is worth a sweep** — a
+  local `esc`/`escapeHtml` shadowing `ui.js`'s is invisible to every test that checks the canonical
+  one. `Depends:` nothing. — found by `P8-48` — agent:`p8ui`
+
+- [ ] **B867** **`manage_mcp list_tools` gives the model no parameters and no callable name.** Found
+  2026-09-19 while re-measuring `P8-48`.
+  `src/agent_tools/admin_tools.py:360-367` projects each tool to `{name, server, description[:100]}`.
+  `input_schema` is carried the whole way to that point — `McpManager.get_all_tools`
+  (`src/mcp_manager.py:606-622`) copies it onto every entry — and is dropped here, so **the agent
+  cannot see what a tool takes through its own tool**, and cannot see the `mcp__<id>__<tool>` name
+  it would have to call either. It is the `P8-17`/`B66` shape once more: a register the model reads
+  that is narrower than the register the product holds.
+  `annotations` is a separate and worse case: it is captured at both connect sites
+  (`src/mcp_manager.py:217` stdio, `:286` SSE), read by `mcp_tool_is_readonly` (`:108-133`), and
+  **never copied into the `get_all_tools` payload at all** — so no consumer above the manager can
+  see a tool's `readOnlyHint` or `destructiveHint`. That one line is what `P8-48`'s annotation UI
+  waits on, and `tests/test_the_mcp_form_names_the_field_js.py` already asserts the absence so the
+  day it lands is visible.
+  `Verify:` `manage_mcp list_tools` returns the parameter list and the qualified name; a test drives
+  the tool rather than reading the projection. `Depends:` nothing. — found by `P8-48` — agent:`p8ui`
+
+- [ ] **B868** **On a stock install the model's skill catalogue is empty — all 286 bundled skills are
+  invisible to `index_for`.** Found 2026-09-19 while re-measuring `P8-20`.
+  No bundled `SKILL.md` carries a `status:` line, so the parser's default applies and all 286 parse
+  as `status: draft` with `source: "bundled"`. `index_for` admits a draft only when
+  `source == "teacher-escalation"`. Measured: `SkillsManager(tmpdir).index_for(owner=None)` returns
+  `[]` while `load_all()` returns **286**. The library ships, loads, and is then excluded from the
+  one list the model is shown.
+  **Not fixed where it was found, on purpose.** `read_skill_md("kotlin-exposed-patterns")` still
+  returns `None` (`B590`, re-verified 2026-09-19), so admitting a bundled skill to the catalogue
+  today would hand the model a procedure it cannot open — a worse failure than not offering it.
+  This row is the second half of `B590`: fix the read, then let the library in.
+  `Verify:` a fresh install with nothing authored offers the model a non-empty catalogue, and every
+  entry in it opens. `Depends:` `B590`. — found by `P8-20` — agent:`p8skills`
+
+- [ ] **B869** **The whole bundled library sits below the shipped confidence floor, and is filtered
+  out before it is ever scored.** Found 2026-09-19 while re-measuring `P8-20`.
+  The same parser defaults that make every bundled skill a draft (`B868`) also stamp
+  `confidence: 0.8` on all 286, and the shipped floor is **0.85**. So the library is removed from
+  the retrieval pool *before* any scorer sees it. Measured:
+  `get_relevant_skills("accessibility", threshold=0, min_confidence=0.85)` returns `[]`; the same
+  call at `min_confidence=0.0` returns **5**. That is `B581`'s mechanism — a default confidence
+  under a default floor — applied to the shipped library rather than to one hand-written draft.
+  It compounds with `B868` rather than duplicating it: one keeps the library out of the catalogue,
+  the other keeps it out of the scoring pool, and fixing either alone changes nothing.
+  Whether the answer is a `confidence:` line in each bundled file, a different default for
+  `source: "bundled"`, or a lower floor is the decision this row carries; the first is the only one
+  that does not move a threshold for everybody else's skills too.
+  `Verify:` a stock install retrieves a bundled skill for a natural query at the shipped floor.
+  `Depends:` `B590`, `B868`. — found by `P8-20` — agent:`p8skills`

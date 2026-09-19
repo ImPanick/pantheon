@@ -143,13 +143,28 @@ def test_a_skill_the_form_creates_does_not_clear_the_default_floor(tmp_path):
 
 def test_a_floor_of_zero_turns_the_gate_off_entirely(tmp_path):
     """What the old maximum position stored. A draft the audit trusted at 10%
-    is injected, which is the opposite of what "maximum" reads as."""
+    is injected, which is the opposite of what "maximum" reads as.
+
+    `P8-20` re-pointed this assertion at the gate instead of at the whole
+    result list. `sm.load()` includes the 286 bundled skills, which parse as
+    drafts at 0.8 and so are in the pool whenever the floor is 0; before
+    `P8-20` none of them could clear a 0.25 Jaccard against anything, so
+    "only tidy-logs came back" was true by accident of a broken retriever
+    rather than because of the gate this test is named after. The pair of
+    assertions below says the thing the name promises and nothing else: at a
+    floor of 0 the 10% draft is injected, and one notch above its confidence
+    it is not.
+    """
     _write_skill(tmp_path / "skills", "tidy-logs", status="draft", confidence=0.1)
     sm = SkillsManager(str(tmp_path))
     matched = sm.get_relevant_skills(
         QUERY, skills=sm.load(), threshold=0.25, max_items=3, min_confidence=0.0,
     )
-    assert [s["name"] for s in matched] == ["tidy-logs"]
+    assert "tidy-logs" in [s["name"] for s in matched]
+    gated = sm.get_relevant_skills(
+        QUERY, skills=sm.load(), threshold=0.25, max_items=3, min_confidence=0.2,
+    )
+    assert "tidy-logs" not in [s["name"] for s in gated]
 
 
 def test_a_floor_of_one_is_the_strictest_the_control_can_express(tmp_path):

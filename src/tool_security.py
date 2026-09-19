@@ -421,8 +421,23 @@ def plan_mode_disabled_tools() -> Set[str]:
     return the inverse: every known tool name minus the allowlist. Known names
     come from the function-tool schemas, backstopped by _PLAN_MODE_KNOWN_MUTATORS
     (see above) so XML-only tools and a failed schema import can't leave a mutator
-    enabled. MCP tools are handled separately — the loop drops the MCP manager
-    entirely in plan mode."""
+    enabled. MCP tools are handled separately, and **not** by dropping them.
+
+    `P8-41`. This used to read *"the loop drops the MCP manager entirely in
+    plan mode"*, and it has not been true for as long as
+    `McpManager.plan_mode_blocked_mcp` has existed. The loop KEEPS the manager
+    in plan mode and filters it: every tool that is not clearly read-only is
+    added to the MCP disabled map (hidden from the schemas and the prompt) and
+    its qualified `mcp__<server>__<tool>` name is added to this same denylist,
+    so it is refused again at call time. Read-only MCP tools stay callable,
+    which is the point — plan mode is for investigating.
+
+    What "clearly read-only" means is `mcp_tool_is_readonly`: the server's own
+    `readOnlyHint` / `destructiveHint` annotation where it gives one, and a
+    leading-verb heuristic where it does not, failing CLOSED on anything
+    ambiguous. The one place that still drops the manager outright is the
+    non-admin path — see `MCP_NAMESPACE_BLOCK_REASON` above, which is about a
+    different question and is accurate."""
     try:
         # agent_tools / tool_parsing / tool_schemas form a mutually-circular
         # cluster that only resolves cleanly when entered via agent_tools.

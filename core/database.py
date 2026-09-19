@@ -582,7 +582,21 @@ class McpServer(TimestampMixin, Base):
     transport = Column(String, nullable=False, default="stdio")  # "stdio" or "sse"
     command = Column(String, nullable=True)      # For stdio: executable path
     args = Column(Text, nullable=True)           # JSON array of command args
-    env = Column(Text, nullable=True)            # JSON object of env vars
+    # `P8-39`. JSON object of env vars — and this is where an MCP server's
+    # secrets live: API keys, bearer tokens, `GOOGLE_CLIENT_SECRET`, whatever
+    # the package reads out of its environment. It was the only plaintext
+    # secret column left in this schema (`api_key`, `access_token`,
+    # `refresh_token`, `oauth_tokens`, `data_png`, `svg`, the two mail
+    # passwords are all `EncryptedText`), so a stolen `app.db` handed over
+    # every MCP credential in the clear while the ones beside it held.
+    #
+    # `EncryptedText` is a bind/result decorator: the column's SQL type is
+    # still TEXT and every consumer keeps reading and writing a plain JSON
+    # string, so **nothing on the wire or in any JSON body changes**. Legacy
+    # plaintext rows pass straight through `decrypt()` (no `enc:` prefix →
+    # returned unchanged) and are rewritten once by
+    # `_migrate_encrypt_mcp_env()` at startup.
+    env = Column(EncryptedText, nullable=True)   # JSON object of env vars, encrypted at rest
     url = Column(String, nullable=True)          # For SSE: server URL
     is_enabled = Column(Boolean, default=True)
     oauth_config = Column(Text, nullable=True)   # JSON: provider, keys_file, token_file, scopes
@@ -2739,6 +2753,7 @@ def init_db():
     _migrate_encrypt_email_passwords()
     _migrate_encrypt_signatures()
     _migrate_encrypt_endpoint_keys()
+    _migrate_encrypt_mcp_env()
     _migrate_backfill_task_folders()
     _migrate_reclassify_admin_refusals()
 
@@ -2988,6 +3003,37 @@ def _migrate_encrypt_endpoint_keys():
                 logger.info(f"Encrypted plaintext API key on {migrated} endpoint row(s)")
     except Exception as e:
         logger.warning(f"Endpoint-key encryption migration skipped: {e}")
+
+
+def _migrate_encrypt_mcp_env():
+    """Encrypt any plaintext `mcp_servers.env` blobs still in the table.
+
+    `P8-39`. Same shape as the three migrations around it, for the same
+    reason: idempotent (a row already prefixed `enc:` is skipped), and raw SQL
+    so the `EncryptedText` decorator is not applied a second time on top of
+    the ciphertext it is reading back.
+
+    Existing rows are migrated, never orphaned — the value is re-read through
+    the model afterwards and comes back as the same JSON string it was."""
+    try:
+        from src.secret_storage import encrypt, is_encrypted
+    except Exception as e:
+        logger.warning(f"secret_storage import failed; skipping MCP env migration: {e}")
+        return
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(text("SELECT id, env FROM mcp_servers")).fetchall()
+            migrated = 0
+            for rid, env in rows:
+                if env and not is_encrypted(env):
+                    conn.execute(text("UPDATE mcp_servers SET env = :e WHERE id = :id"),
+                                 {"e": encrypt(env), "id": rid})
+                    migrated += 1
+            if migrated:
+                conn.commit()
+                logger.info(f"Encrypted plaintext env on {migrated} MCP server row(s)")
+    except Exception as e:
+        logger.warning(f"MCP env encryption migration skipped: {e}")
 
 
 def _migrate_encrypt_signatures():

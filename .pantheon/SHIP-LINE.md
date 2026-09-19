@@ -392,6 +392,7 @@ weakest one in this document: it means nobody adjudicated them individually.
 | `B741` | tracked | claim | one of two paths drops two usage fields; what it shows is true, what it omits is the gap |
 | `B742` | tracked | claim | a subtraction standing where a measurement should be — and `P4-14` just made it checkable |
 | `B790` | tracked | decision | a nightly job silently unpublishes a skill on a 0/24-precision signal; changing what it destroys is the owner's call |
+| `B864` | tracked | security | `disabled_tools` survives its own row and not the row's deletion — and `P8-35`, landing in the same commit, removed the only reason anyone had to delete it |
 | `P11-02d` | landed | security | six route files whose gating is unreconciled — an unknown on an auth surface |
 | `B71` | blocking | claim | upstream's artwork under this fork's filenames, and it is the macOS app icon |
 | `B411` | blocking | claim | four numbers in the published ledger do not print from their own repro |
