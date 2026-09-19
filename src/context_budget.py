@@ -320,6 +320,110 @@ def resolve_prompt_budget(key: str, owner=None) -> int:
     return resolve_prompt_budget_detail(key, owner).value
 
 
+# ── The seventh budget (`P2-09` / `B750`) ───────────────────────────────────
+#
+# `P12-04` brought six of seven under the policy and said plainly why it could
+# not bring the seventh: `skill_max_injected`'s only consumer is
+# `src/agent_loop.py`, which that row did not own, and a seventh key with no
+# consumer is `Law 13`'s unwired half. It is wired here, in the same commit as
+# its consumer.
+#
+# It is a COUNT, not a character budget, and it is deliberately **not** clamped
+# to `context_attachment_total_chars` — same reasoning as the prompt budgets
+# above: a person's attachments and the skills the model is shown are not
+# competing for one allowance, and a clamp that says *"your number, reduced"*
+# for an unrelated reason is the ambiguity `Law 10` refuses.
+#
+# **`B750` named three defects, and two of the three reproduce exactly.**
+# Measured 2026-09-19 at `src/agent_loop.py:3144-3156`:
+#
+#   1. `_prefs.get("skill_max_injected", get_setting(...))` — a **per-user pref
+#      silently beats everything**, so the role layer was never consulted.
+#      True, and it is what this fixes.
+#   2. `max(0, min(12, …))` — a **second clamp beside the resolver's**. True.
+#      The 12 now lives here, once, and `resolve_int_limit` applies it.
+#   3. *"`> 0` is its own off switch, which the other six budgets deliberately
+#      do not have."* — **CORRECTED 2026-09-19.** It is not undocumented drift:
+#      `static/index.html` ships the input as `min="0" max="12"` with the
+#      caption *"Set to 0 to disable skill injection"* right under it. `B750`'s
+#      prescribed `minimum=1` would silently turn a stored 0 into 1 for every
+#      person who used that affordance, which is a `Law 1` subtraction of a
+#      documented control. So **0 survives, as the USER's sentinel only.**
+#
+# The shape that keeps all of it: **the policy layers are a ceiling and the
+# preference chooses within it.** A role that says 1 gives that person 1 even
+# if their pref says 12; a person who typed 0 still gets none. The floor on the
+# policy layers stays 1, so `role_limit_ranges`'s *"the floor is 1 on every
+# key"* is still true and a role cannot switch somebody's skills off through a
+# limit — `skills_enabled` is the switch for that, and it already exists.
+SKILL_INJECTION_LIMIT = "skill_max_injected"
+
+#: The shipped default, and the number three places used to state separately.
+SKILL_INJECTION_DEFAULT = 3
+
+#: The hard ceiling. It was `max(0, min(12, …))` in `src/agent_loop.py` and
+#: `max="12"` in `static/index.html`, and raising the setting alone did nothing
+#: above 12 because neither knew about the other.
+MAX_SKILL_INJECTION = 12
+MIN_SKILL_INJECTION = 1
+
+#: What a user preference of 0 means. Not a limit — a switch, with its own
+#: caption in the UI. `Law 10`: it is named rather than left as a bare `> 0`
+#: test that reads as a guard against nonsense input.
+SKILL_INJECTION_OFF = 0
+
+
+def resolve_skill_injection_detail(owner=None, *, preference=None):
+    """How many skills this turn may inject, and the layer that decided it.
+
+    `preference` is the person's own `skill_max_injected` pref, or `None` when
+    they have not set one. It CHOOSES WITHIN the policy; it does not beat it.
+
+    * no preference          → the policy's number (role → setting → default)
+    * preference `0`         → none, the documented off switch
+    * preference `n > 0`     → `n`, capped at `MAX_SKILL_INJECTION`, and capped
+                               further by the policy **only when somebody
+                               actually set one**
+
+    **That last clause is the whole design and it is `Law 1`.** The built-in
+    default is not a ceiling anybody chose: before this, a person who typed 12
+    into the `max="12"` input got 12, and resolving their preference against an
+    unset default of 3 would have silently taken nine of them away. So the
+    preference is capped by the policy **only when the policy came from a role
+    profile or an instance setting** — an administrator's number — and not when
+    it came from the shipped default. `resolve_int_limit` already reports which
+    layer answered, so this is read off the verdict rather than guessed
+    (`Law 10`).
+    """
+    from src.limit_policy import ResolvedLimit, resolve_int_limit
+
+    policy = resolve_int_limit(
+        SKILL_INJECTION_LIMIT, default=SKILL_INJECTION_DEFAULT, env_name=None,
+        owner=owner, minimum=MIN_SKILL_INJECTION, maximum=MAX_SKILL_INJECTION,
+    )
+    if preference is None:
+        return policy
+    try:
+        wanted = int(preference)
+    except (TypeError, ValueError):
+        return policy
+    if wanted <= SKILL_INJECTION_OFF:
+        return ResolvedLimit(value=SKILL_INJECTION_OFF, source="user preference")
+    wanted = min(wanted, MAX_SKILL_INJECTION)
+    administered = policy.source != "default"
+    if not administered or wanted <= policy.value:
+        return ResolvedLimit(value=wanted, source="user preference")
+    # They asked for more than their administrator allows and got the
+    # administrator's number. Saying `clamped` is the difference between "your
+    # number" and "your number, reduced".
+    return ResolvedLimit(value=policy.value, source=policy.source, clamped=True)
+
+
+def resolve_skill_injection(owner=None, *, preference=None) -> int:
+    """The effective skill-injection count. See `resolve_skill_injection_detail`."""
+    return resolve_skill_injection_detail(owner, preference=preference).value
+
+
 # ── What is consuming the window right now (`P12-09`) ───────────────────────
 #
 # `P12-09` asks for a live breakdown at the composer: system prompt, skills,

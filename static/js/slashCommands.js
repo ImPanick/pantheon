@@ -1177,6 +1177,12 @@ async function _cmdSessionSwitch(args, ctx) {
 }
 
 async function _cmdSessionSort(args, ctx) {
+  // `P9-10`. The third caller of the same endpoint. It asked for no
+  // confirmation and counted `deleted_empty` only, so the throwaway chats — the
+  // ones deleted on a name or a single unanswered message, which is the half a
+  // person is most likely to disagree with — were removed without appearing in
+  // any number on any screen.
+  if (!await sessionModule.confirmChatTidy()) { slashReply('Tidy cancelled'); return true; }
   slashReply('Auto-sorting sessions...');
   const res = await fetch(`${API_BASE}/api/sessions/auto-sort`, { method: 'POST', credentials: 'same-origin' });
   if (res.ok) {
@@ -1186,8 +1192,7 @@ async function _cmdSessionSort(args, ctx) {
     if (data.status === 'skipped') {
       await typewriterReply(`Auto-sort skipped: ${data.reason || 'No sessions to sort'}`);
     } else {
-      const del_msg = data.deleted_empty ? ` (${data.deleted_empty} empty deleted)` : '';
-      await typewriterReply(`Sorted ${data.updated || 0} sessions into ${data.folders?.length || 0} folders${del_msg}`);
+      await typewriterReply(sessionModule.describeChatTidy(data));
     }
   } else { slashReply('Auto-sort failed'); }
   return true;

@@ -2,14 +2,15 @@
 
 import json
 import logging
+import math
 import os
 import time
 import uuid
 import re
-from typing import List, Dict, Tuple
+from typing import List, Dict, Optional, Tuple
 from datetime import datetime
 
-from src import memory_edges, memory_retrieval
+from src import memory_edges, memory_retrieval, memory_style
 # `P13-02`'s edge vocabulary is imported for ONE name — `status_of`, which
 # `P13-05` put beside `live()` because `live()` is the predicate it feeds — and
 # nothing from it is re-exported.
@@ -211,6 +212,162 @@ def new_provenance(producer: str, message_index: int = None, quote: str = None) 
     return row
 
 
+# ── Decay and archive, `P13-04` ───────────────────────────────────────────────
+
+# Six months in which nothing retrieved it, nobody restated it and nobody
+# edited it. One window, deliberately: the shape of this curve is not something
+# anybody here can calibrate — there is no golden set for *"should this memory
+# still be believed"* the way `P13-13` built one for retrieval — so the honest
+# design is the one a person can read off a page and argue with, not the one
+# with the best-looking maths. `Law 15` is this phase's acceptance criterion and
+# "fades in 12 days" is legible where a half-life is not.
+ARCHIVE_AFTER_DAYS = 180
+
+# The three verdicts, an enum rather than a boolean (`Law 10`). `held: true`
+# and `fades: false` are the same sentence read two ways, and this one gets
+# read by a panel, by the audit and by a person.
+#
+# **`due` is a verdict of its own because the alternative was a dead branch.**
+# It started as `fades` with `days == 0`, and a mutation proved the verdict half
+# of the due test could never change an answer — held rows report `days: None`,
+# so `days == 0` alone already decided it. That is `P13-14`'s `cutoff`,
+# `P13-15`'s `sessions <= 1`, `P13-09`'s parse-site id check and `P13-05`'s
+# redundant owner check, for the fifth time in this phase: a branch that cannot
+# distinguish itself from its own absence is not a control. Splitting the state
+# out makes one field load-bearing instead of two half-fields, and it is the
+# better surface anyway — *"due to fade"* and *"fades in 12 days"* are different
+# things to tell somebody.
+ARCHIVE_FADES = "fades"
+ARCHIVE_HELD = "held"
+ARCHIVE_DUE = "due"
+
+
+def last_evidence(memory: Dict) -> int:
+    """The most recent moment anything happened to this memory. `P13-04`.
+
+    Four dates, and the newest wins. Each is a different kind of evidence that
+    the fact is still live, and the store already records all four:
+
+    * `last_used` — the system reached for it (`increment_uses`);
+    * `last_mentioned` — the person stated it again (`P13-15`);
+    * `committed_at` — somebody performed the explicit act (`P13-05`);
+    * `timestamp` — it was written or edited (`PUT /{id}` moves this).
+
+    **A record from before any of the first three existed falls back to
+    `timestamp`**, which is `P13-15`'s `first_mentioned` call reapplied: *we
+    started recording late* is a worse answer than the one the record already
+    knows. What that fallback must not do is archive a memory the assistant has
+    been leaning on for a year, and `archive_forecast` is where that is handled
+    rather than here — this function answers one question and does not also
+    make the decision.
+    """
+    if not isinstance(memory, dict):
+        return 0
+    dates = [memory.get("last_used"), memory.get("last_mentioned"),
+             memory.get("committed_at"), memory.get("timestamp")]
+    best = 0
+    for value in dates:
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            continue
+        if number > best:
+            best = number
+    return best
+
+
+def archive_forecast(memory: Dict, now: float = None, superseded: bool = False) -> Dict:
+    """Whether this memory fades, and how long it has. `P13-04`.
+
+    Returns `{"verdict": ARCHIVE_HELD | ARCHIVE_FADES | ARCHIVE_DUE,
+    "reason": str, "days": int | None}` — `days` is whole days until archive on
+    a fading memory, `0` on a due one, and `None` on a held one.
+
+    **Four things are held, and the last is the migration guard.**
+
+    * **Pinned.** A person pinned it, and an inferred rule does not overrule a
+      typed one — `setting_is_explicit` (`H06`, `H08`, `D-2026-09-08-02`,
+      `D-2026-09-09-01`, `P13-05`) on its sixth application here.
+    * **Not committed.** A proposal is already invisible to every prompt, and
+      archiving one would hide it from the review queue `B710` still owes a
+      surface. An already-archived memory is held for the same reason: this is
+      idempotent, not a ratchet that keeps re-firing an event.
+    * **Superseded.** `P13-09` already stopped it surfacing and wrote
+      `superseded_by` saying which entry replaced it. A record carrying two
+      unrelated reasons for the same silence is one nobody can read.
+    * **Used, but before anybody recorded when.** `uses > 0` with no
+      `last_used` is every memory in every store that existed before this row.
+      The record knows the assistant reached for it and does not know the date;
+      falling back to `timestamp` there would archive the most-used memories on
+      an old install the first time somebody pressed Audit. It is held until it
+      is next injected, which stamps `last_used` and starts the clock honestly.
+
+    **No durability multiplier, and that is a decision rather than an
+    omission.** Extending the window by `mention_sessions` was the obvious next
+    move — `P13-15` already has that curve and `memory_retrieval` already
+    spends 5% of the score on it. It is not here because the dates above
+    already carry *"still alive"*: a fact the person keeps raising has a recent
+    `last_mentioned` and never reaches the window at all, and a fact nobody has
+    said or used in six months is exactly what this row exists for however
+    often it was said before. A second tuning surface on one signal is two
+    knobs for one idea (`Law 14`), and this one is recoverable in a click.
+    """
+    if not isinstance(memory, dict):
+        return {"verdict": ARCHIVE_HELD, "reason": "not a memory", "days": None}
+    if memory.get("pinned"):
+        return {"verdict": ARCHIVE_HELD, "reason": "pinned by you", "days": None}
+    if memory_edges.status_of(memory) != memory_edges.STATUS_COMMITTED:
+        return {"verdict": ARCHIVE_HELD,
+                "reason": f"not committed — {memory_edges.status_of(memory)}",
+                "days": None}
+    if superseded:
+        return {"verdict": ARCHIVE_HELD,
+                "reason": "superseded by another memory", "days": None}
+    if int(memory.get("uses", 0) or 0) > 0 and not memory.get("last_used"):
+        return {"verdict": ARCHIVE_HELD,
+                "reason": "used before this was recorded, so the date is unknown",
+                "days": None}
+
+    seen = last_evidence(memory)
+    if not seen:
+        # No date at all anywhere on the record. "Undated" is not "old", and
+        # guessing which would be the one mistake this row cannot make.
+        return {"verdict": ARCHIVE_HELD, "reason": "no date on the record", "days": None}
+    days_quiet = ((now if now is not None else time.time()) - seen) / 86400
+    left = ARCHIVE_AFTER_DAYS - days_quiet
+    quiet_for = f"nothing has used or restated it for {int(max(days_quiet, 0))} days"
+    if left <= 0:
+        return {"verdict": ARCHIVE_DUE, "reason": quiet_for, "days": 0}
+    # Rounded UP, and the direction is the whole point: `int()` on a window with
+    # half a day left reads `0`, and a reader who sees `0` beside `fades` will
+    # act on it. A memory must not be hurried toward archive by a rounding rule
+    # that was written to make a sentence read nicely.
+    return {"verdict": ARCHIVE_FADES, "reason": quiet_for,
+            "days": int(math.ceil(left))}
+
+
+def due_for_archive(memories: List[Dict], now: float = None) -> List[str]:
+    """The ids that have run out of window. `P13-04`.
+
+    Pure: it reads and decides, it does not write. The caller that writes is
+    `MemoryManager.archive`, and the caller that decides *when to ask* is the
+    audit — because the audit is the pass whose job is already "keep the store
+    from becoming noise", and a second maintenance sweep beside it would be
+    `Law 14` in the shape of a cron job.
+
+    Superseded ids come from the edge index rather than from a second walk of
+    the store: `memory_edges` owns the answer to *"has this been replaced"* and
+    two definitions of stale is how a memory disappears from search and keeps
+    being sent to a model anyway.
+    """
+    rows = [m for m in memories if isinstance(m, dict)]
+    stale = memory_edges.superseded_ids(rows)
+    return [m["id"] for m in rows
+            if m.get("id")
+            and archive_forecast(
+                m, now, superseded=m.get("id") in stale)["verdict"] == ARCHIVE_DUE]
+
+
 class MemoryManager:
     def __init__(self, data_dir: str):
         self.memory_file = os.path.join(data_dir, "memory.json")
@@ -393,6 +550,13 @@ class MemoryManager:
                 entry["source"] = "unknown"
             if "category" not in entry:
                 entry["category"] = "fact"
+            # `P13-17`. Normalised rather than defaulted-if-absent, for the same
+            # reason `status` is one line below its own comment: every record
+            # written before this row IS a memory — that is not a judgement
+            # nobody made, it is what the record already is — and a hand-edited
+            # typo must read as a memory rather than as a record of no known
+            # kind that nothing knows how to show.
+            entry["kind"] = memory_style.kind_of(entry)
             if "uses" not in entry:
                 entry["uses"] = 0
             # `P13-15`. Every memory predates this counter, so the honest
@@ -481,7 +645,7 @@ class MemoryManager:
     
     def add_entry(self, text: str, source: str = "user", category: str = "fact",
                   owner: str = None, confidence=None, provenance: Dict = None,
-                  status: str = None) -> Dict:
+                  status: str = None, kind: str = None) -> Dict:
         """Add a new memory entry.
 
         `confidence` (`P13-01`) is how sure the producer was, 0..1, or `None`
@@ -510,6 +674,13 @@ class MemoryManager:
             "timestamp": int(time.time()),
             "source": source,
             "category": category,
+            # `P13-17`. What this record IS, as opposed to what it says. A
+            # memory is a fact about the world the person told us; a style note
+            # is a disposition we observed, and filing the second as the first
+            # is how a Brain starts lying about its sources. Defaults to
+            # `memory` through `kind_of`, so every caller that does not know
+            # about this row keeps writing memories.
+            "kind": memory_style.kind_of({"kind": kind}),
             "uses": 0,
             # `P13-15`. Beside `uses` and initialised for the same reason it is:
             # a caller reading the returned dict should not have to know that
@@ -519,6 +690,12 @@ class MemoryManager:
             "mentions": 0,
             "mention_sessions": 0,
             "first_mentioned": int(time.time()),
+            # `P13-04`. `None` and not the creation time: a memory nobody has
+            # retrieved yet has not been retrieved, and stamping it with "now"
+            # would make every new memory look like it had already earned its
+            # place. `last_evidence` falls back to `timestamp` for exactly this
+            # case, so a fresh memory still gets its full window.
+            "last_used": None,
             # `P13-01` / `P13-02` / `P13-03`, initialised here for the same
             # reason `mentions` is: a caller reading the returned dict should
             # not have to know that `load` backfills them.
@@ -541,7 +718,23 @@ class MemoryManager:
 
     def increment_uses(self, ids: List[str]) -> None:
         """Bump the uses counter for each memory id. Called after a memory has
-        actually been injected into a chat's context (not just retrieved)."""
+        actually been injected into a chat's context (not just retrieved).
+
+        **`last_used` is recorded here, and its absence was `P13-04`'s real
+        defect.** The row's premise — *reinforcement already ships* — is true
+        and was half of one: this method knew a memory had just been reached
+        for and recorded only *how many times*, never *when*, so the store
+        could not answer the one question the row asks (*"has anything
+        retrieved this lately"*) about any record in it. Same shape as
+        `P13-15`, where the moment a fact was confirmed was the moment the
+        observation was discarded, and same shape as `P13-10` a layer up.
+
+        It is not a new concept either (`Law 14`): `services/memory/skills.py`
+        `record_use` has kept `{"uses": …, "last_used": …}` in its usage
+        sidecar since long before the Brain had a decay notion. This is that
+        pair, on the other half of the feature, exactly the way `P13-01` and
+        `P13-05` lifted the confidence floor and the draft state across.
+        """
         if not ids:
             return
         id_set = set(ids)
@@ -552,12 +745,55 @@ class MemoryManager:
             logger.error("Skipping uses bump, memory store unreadable: %s", e)
             return
         changed = False
+        now = int(time.time())
         for e in entries:
             if e.get("id") in id_set:
                 e["uses"] = int(e.get("uses", 0) or 0) + 1
+                e["last_used"] = now
                 changed = True
         if changed:
             self.save(entries)
+
+    def archive(self, ids: List[str], reason: str = None) -> List[Dict]:
+        """Move memories to `archived`. `P13-04`. Returns the entries changed.
+
+        The only writer of that status, for the reason `memory_edges.attach` is
+        the only writer of edges: the decision is made in one place
+        (`due_for_archive`), written in one place, and recorded in one place.
+
+        **Nothing is dropped and nothing is rewritten.** The text, the
+        confidence, the provenance, the mentions and the edges all stay exactly
+        as they were — the record simply stops being one of the things `live()`
+        returns. `archived_at` and `archived_reason` are added because a person
+        looking at a memory that went quiet deserves to be told when and why,
+        and because *"the store decided"* is not an answer anybody can act on.
+
+        Refuses to touch a memory that is not currently committed, so a second
+        call cannot re-stamp the date on something already archived and a
+        proposal cannot be archived out from under the review queue.
+        """
+        if not ids:
+            return []
+        id_set = set(ids)
+        try:
+            entries = self.load_all_for_update()
+        except MemoryStoreUnreadable as e:
+            logger.error("Skipping archive, memory store unreadable: %s", e)
+            return []
+        changed = []
+        now = int(time.time())
+        for entry in entries:
+            if entry.get("id") not in id_set:
+                continue
+            if memory_edges.status_of(entry) != memory_edges.STATUS_COMMITTED:
+                continue
+            entry["status"] = memory_edges.STATUS_ARCHIVED
+            entry["archived_at"] = now
+            entry["archived_reason"] = str(reason) if reason else None
+            changed.append(entry)
+        if changed:
+            self.save(entries)
+        return changed
     
     # `P13-15`. How many distinct conversations a restatement is remembered
     # from. Extraction runs after every response, so a fact repeated three times
@@ -611,6 +847,125 @@ class MemoryManager:
             self.save(entries)
             return entry
         return None
+
+    # ── the style profile, `P13-17` / `P13-20` ───────────────────────────────
+
+    def style_profile(self, owner: str = None) -> Optional[Dict]:
+        """This person's style record, or `None` if there is not one yet.
+
+        One record per owner, found by kind rather than by a stored id: the id
+        would be a second place the answer to *"which record is the profile"*
+        lives, and `P13-03` already declined to copy `session_id` into
+        `provenance` for that reason (`Law 7`).
+
+        **Ownerless records are visible to everybody and that is deliberate**,
+        because it is what the rest of this store already does — `load(owner)`
+        is an equality filter and `claim_ownerless` exists precisely because
+        single-user installs write no owner at all. A profile that vanished the
+        day auth was switched on would be the same defect from the other side.
+        """
+        for entry in self.load_all():
+            if memory_style.kind_of(entry) != memory_style.KIND_STYLE:
+                continue
+            if owner is None or entry.get("owner") in (owner, None):
+                return entry
+        return None
+
+    def record_style_observation(self, text: str, owner: str = None,
+                                 reading: Optional[Dict] = None) -> Optional[Dict]:
+        """Fold one user message into the style profile. `P13-17`, `P13-20`.
+
+        Returns the profile record, or `None` when the message carried nothing
+        and no record existed to update.
+
+        **What is stored is counters, and never the message.** The profile holds
+        sums — words, sentences, how many messages opened in lower case — and at
+        no point does the text that produced them reach the record. That is not
+        only a size argument: `D-2026-09-09-01` calls this the most intimate data
+        the product would ever hold, and a store of counters cannot be read back
+        as a transcript however it leaks.
+
+        **The sentences are re-rendered on every call and rewritten only when
+        they change.** `traits()` buckets, so the text moves when the person's
+        writing moves category and not when a number moves — which is what makes
+        it editable at all (a sentence that rewrites itself under somebody is a
+        sentence they cannot correct) and what keeps it out of the KV-cache
+        problem `src/user_time.py:216` documents.
+
+        **A profile the person has edited is not overwritten**, and that is the
+        row's error signal doing its job: *"edits are the only error signal this
+        feature can have"*. Once `style_edited` is set, the counters keep
+        accumulating — the observation is still true — and the sentences stay as
+        the person left them until they clear it. Overwriting their correction
+        with our own next bucket change is precisely how a system teaches people
+        that correcting it is pointless.
+        """
+        observation = memory_style.observe(text)
+        if not observation.get("messages"):
+            return None
+        try:
+            entries = self.load_all_for_update()
+        except MemoryStoreUnreadable as e:
+            logger.error("Skipping style observation, memory store unreadable: %s", e)
+            return None
+
+        record = None
+        for entry in entries:
+            if memory_style.kind_of(entry) != memory_style.KIND_STYLE:
+                continue
+            if owner is None or entry.get("owner") in (owner, None):
+                record = entry
+                break
+
+        if record is None:
+            # `add_entry` refuses empty text, and it is right to: a memory with
+            # no text is a bug everywhere else in this store. The profile record
+            # is built here instead, from the same field set, because its text
+            # is *derived* and does not exist until the first fold produces a
+            # bucket. Going through `add_entry` with a placeholder would have
+            # put a sentence nobody wrote in front of the person.
+            record = {
+                "id": str(uuid.uuid4()),
+                "text": "",
+                "timestamp": int(time.time()),
+                "source": "auto",
+                "category": "style",
+                "kind": memory_style.KIND_STYLE,
+                "uses": 0,
+                "mentions": 0,
+                "mention_sessions": 0,
+                "first_mentioned": int(time.time()),
+                "last_used": None,
+                "confidence": None,
+                "provenance": new_provenance("memory_style.observe"),
+                "status": memory_edges.STATUS_COMMITTED,
+                "committed_at": None,
+                "committed_by": None,
+                "edges": [],
+                "style": {},
+            }
+            if owner:
+                record["owner"] = owner
+            entries.append(record)
+
+        totals = memory_style.fold(record.get("style"), observation)
+        record["style"] = totals
+        record["timestamp"] = int(time.time())
+
+        # `P13-20`. The association is learned from what a joke co-occurs with,
+        # so the classification needs the reading that was computed for this same
+        # turn — which the caller already has, because it used it to pick a
+        # register. Recomputing it here would be a second answer to one question.
+        meaning = memory_style.classify_humour(observation, reading)
+        if meaning or record.get("humour"):
+            record["humour"] = memory_style.fold_humour(record.get("humour"), meaning)
+
+        if not record.get("style_edited"):
+            rendered = memory_style.profile_text(memory_style.traits(totals))
+            if rendered != record.get("text"):
+                record["text"] = rendered
+        self.save(entries)
+        return record
 
     def find_duplicates(self, text: str, entries: List[Dict] = None) -> List[Dict]:
         """Find duplicate memory entries based on text content."""

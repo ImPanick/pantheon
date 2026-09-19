@@ -24,6 +24,7 @@ from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
 
 from src.tool_security import (
     BUILTIN_EMAIL_TOOLS,
+    blocked_tool_reason,
     email_tool_policy_names,
     is_public_blocked_tool,
     owner_is_admin_or_single_user,
@@ -1100,10 +1101,19 @@ async def _execute_tool_block_impl(
 
     if is_public_blocked_tool(tool) and not _owner_is_admin(owner):
         desc = f"{tool}: BLOCKED"
+        # `P2-25`. The refusal used to say only *that* it was refused. The
+        # register in `tool_security` exists so nobody has to re-litigate an
+        # entry from the name alone, and the person who hit the wall is the
+        # reader who most needs it — a reason in a comment is documentation for
+        # maintainers, a reason in the refusal is documentation for the user
+        # (`Law 15`). It is also what stops the register going stale: a name
+        # whose reason nobody ever sees is a name whose reason nobody checks.
+        why = blocked_tool_reason(tool)
         result = {
             "error": (
                 f"Tool '{tool}' is restricted to admin users on this deployment. "
-                "Ask an admin to perform this action or grant the needed permission."
+                + (f"It {why}. " if why else "")
+                + "Ask an admin to perform this action or grant the needed permission."
             ),
             "exit_code": 1,
         }

@@ -5,7 +5,7 @@
 
 import uiModule from './ui.js';
 import spinnerModule from './spinner.js';
-import * as Modals from './modalManager.js?v=20260723compareicon2';
+import * as Modals from './modalManager.js?v=20260919tidypreview1';
 import { topPortalZ, nextToolWindowZ } from './toolWindowZOrder.js';
 import { makeWindowDraggable } from './windowDrag.js';
 import { attachColorPicker } from './colorPicker.js';
@@ -690,8 +690,23 @@ function _getModal() {
   _modal.querySelector('#cal-close').addEventListener('click', closeCalendar);
   _modal.addEventListener('click', (e) => { if (e.target === _modal) closeCalendar(); });
   // Make draggable — replaced ~50 lines of inline drag/dock plumbing with
-  // a single call to the shared helper. Calendar doesn't support fullscreen
-  // snap so no fsClass / enter/exit callbacks here.
+  // a single call to the shared helper.
+  //
+  // `P9-05`, and the comment that used to sit here was the row's whole premise:
+  // *"Calendar doesn't support fullscreen snap so no fsClass / enter/exit
+  // callbacks here."* Both halves of that are true and neither matters, because
+  // **`windowDrag.js`'s fullscreen machinery is dead in every window**:
+  // `enableFullscreen` is hard-coded `false` at `windowDrag.js:65`, three lines
+  // under a JSDoc that promises *"Default true when onEnterFullscreen is
+  // supplied"*, so `_enterFs` has no caller anywhere in the product. What
+  // actually maximises a window is `tileManager.js`, which listens on
+  // `document` for a header drag — `_findDragTarget` matches any
+  // `.modal-header` inside a `.modal`, which is this one — and returns a
+  // `fullscreen` zone the moment the cursor passes `y <= 0`. **Calendar has had
+  // a full view for as long as the tiling manager has existed.** Adding a
+  // callback here would have been a second way to do it, wired to the half that
+  // does not run (`Law 14`). The dead half is filed rather than deleted
+  // (`Law 1`).
   {
     const content = _modal.querySelector('.modal-content');
     const header = _modal.querySelector('.modal-header');
@@ -2004,6 +2019,61 @@ function _wireAll(body) {
     }
   } catch {}
 
+  /**
+   * `P9-09`. Say that a model filled this form in, and how sure it was.
+   *
+   * **Re-measured 2026-09-19. `POST /api/calendar/quick-parse` has answered
+   * with a `confidence` since it was written, and `static/js/calendar.js` read
+   * every other field out of that response and dropped this one.** So the form
+   * opened with a title, a date, a start time, an end time, a location and a
+   * description that a model had guessed from one line of prose, and the only
+   * thing separating it from a form the person had typed was that they had not
+   * typed it. That is the row's whole complaint, and the number that answers it
+   * was already on the wire — the same shape `P13-09`'s `superseded` was in.
+   *
+   * WHAT THIS CANNOT SAY, AND WHY IT IS NAMED ON THE ROW RATHER THAN GUESSED.
+   * It cannot name the model. `routes/calendar_routes.py` picks one and returns
+   * `{ok, event, confidence}` without it, and inventing a name here from a
+   * client-side setting would be a second resolution of a choice the server
+   * already made — wrong the first time the two disagree, and wrong in the
+   * direction of a confident lie about provenance, which is worse than no name.
+   *
+   * The note is removed on the next form open rather than left to accumulate:
+   * `_showEventForm` rewrites `body.innerHTML`, so a stale note cannot survive
+   * a rebuild — but the same form is also reopened for an EDIT of an event a
+   * person typed by hand, and a provenance line on that is a false statement.
+   */
+  function noteQuickParseProvenance(sourceText, confidence) {
+    const form = document.querySelector('.cal-form-bespoke');
+    if (!form) return null;
+    form.querySelector('.cal-form-provenance')?.remove();
+    const note = document.createElement('div');
+    note.className = 'cal-form-provenance';
+    const lead = document.createElement('span');
+    lead.className = 'cal-form-provenance-lead';
+    lead.textContent = 'Your model filled this in';
+    note.appendChild(lead);
+    const from = document.createElement('span');
+    from.className = 'cal-form-provenance-from';
+    // `textContent`: this is the line the person typed, echoed back.
+    from.textContent = `from “${sourceText}”`;
+    note.appendChild(from);
+    const pct = Math.round(Math.max(0, Math.min(1, Number(confidence) || 0)) * 100);
+    const sure = document.createElement('span');
+    sure.className = 'cal-form-provenance-sure';
+    // Under 60% is the band where the parser's own prompt says it is guessing,
+    // and a guess presented as a filled form is the thing to flag.
+    if (pct < 60) sure.classList.add('is-unsure');
+    sure.textContent = `${pct}% sure`;
+    sure.title = pct < 60
+      ? 'The model was not confident about this one — check the date and time before saving.'
+      : 'How confident the model was that it read your line correctly.';
+    note.appendChild(sure);
+    const anchor = form.querySelector('.cal-title-wrap');
+    if (anchor) form.insertBefore(note, anchor);
+    else form.appendChild(note);
+    return note;
+  }
   // ── Quick-add input ─────────────────────────────────────────────
   const _qaInput = document.getElementById('cal-quickadd');
   const _qaStatus = document.getElementById('cal-quickadd-status');
@@ -2075,6 +2145,9 @@ function _wireAll(body) {
           if (det) det.setAttribute('aria-hidden', 'false');
           // Trigger Apple-Maps link sync now that location is filled in.
           document.getElementById('cal-f-loc')?.dispatchEvent(new Event('input'));
+          // `P9-09`. The form has just filled itself in from one line of prose
+          // and, until this row, nothing on it said so.
+          noteQuickParseProvenance(text, data.confidence);
         });
         // Reset for next quick add.
         _qaInput.value = '';

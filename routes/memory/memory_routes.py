@@ -10,7 +10,7 @@ import time
 from datetime import datetime
 import logging
 # H11: the diagnostic reports how the retriever read the question.
-from src import memory_retrieval
+from src import memory_edges, memory_retrieval, memory_style
 
 # Leading list-marker like "1.", "12)", or "3:" plus surrounding whitespace.
 # Strips one prefix per call so import-from-LLM-output doesn't leave the
@@ -25,15 +25,17 @@ def _strip_list_prefix(text: str) -> str:
     return _LIST_PREFIX_RE.sub("", text, count=1).strip()
 
 from services.memory import MemoryManager, MemoryStoreUnreadable
-from src.memory import new_provenance
+from src.memory import archive_forecast, new_provenance
 from core.session_manager import SessionManager
 from src.request_models import MemoryAddRequest
 from core.database import SessionLocal
 from src.llm_core import llm_call_async
+from services.memory import provider_import
 from services.memory.memory_extractor import (
     COMMIT_COMMITTED,
     audit_memories,
     commit_memory,
+    store_imported,
 )
 from src.auth_helpers import get_current_user, require_user
 from src.endpoint_resolver import resolve_endpoint
@@ -41,6 +43,84 @@ from src.task_endpoint import resolve_task_endpoint
 from src.upload_limits import read_upload_limited, resolve_byte_limit
 
 logger = logging.getLogger(__name__)
+
+
+def _record_style_edit(memory_id: str, action: str, owner: str = None) -> None:
+    """The person corrected or removed what we wrote about them. `P13-17`.
+
+    In the table `P14-01` already built, beside `P13-05`'s commitments and for
+    the same reason that row gives: *"a commitment is the same kind of thing as
+    the tool calls, retrievals and approvals already in it"*, and so is somebody
+    telling us our description of them is wrong.
+
+    **This is the feature's only instrument.** `D-2026-09-09-01` is explicit
+    that there is no golden set for *did we describe you correctly* and there
+    cannot be one — so *"did the person change what we wrote about them"* is
+    the whole measurement, and a measurement nobody records is a measurement
+    that does not exist. `outcome` is an enum and not a boolean (`Law 10`):
+    `edited` and `deleted` are different verdicts on the same description and
+    a flag could only carry one of them.
+    """
+    try:
+        from src.events import record_event
+        record_event("memory", name="style_profile", owner=owner,
+                     outcome=action, detail={"memory_id": memory_id})
+    except Exception:
+        logging.getLogger(__name__).debug(
+            "style profile event not recorded", exc_info=True)
+
+
+def _style_block(memory_manager, owner: str = None) -> Dict[str, Any]:
+    """How this person writes, as the Brain reads it. `P13-17`, `P13-20`.
+
+    **A field on the payload that already reaches the Brain, and not a route of
+    its own.** It started as `GET /api/memory/style` and
+    `.pantheon/check-unreachable.py` was right to object: the count went 90 → 91
+    against a ceiling of 90, because `static/**` belongs to another agent this
+    wave and nothing would have called it. Raising a ratchet to admit an
+    endpoint with no caller is the exact drift `Law 13` names, and the fix was
+    not to raise it — the list payload is already fetched every time the Brain
+    opens, and this is one more key on it. That is `P13-01`'s call on the
+    confidence pill, applied one layer out: *the field and its one consumer,
+    together.*
+
+    `profile` is `None` until there is enough history, and `observed` /
+    `needed` are why that branch carries two numbers rather than a null:
+    **"18 of 20 messages seen"** is a sentence a cold reader understands
+    (`Law 15`), and a page that can only say nothing is one they file as broken.
+
+    **`humour.means` reads `null` for a long time and that is `P13-20` working.**
+    Detecting that somebody jokes is trivial; knowing what their humour means is
+    the whole problem, and until the evidence separates the three readings the
+    honest answer is that we do not know.
+    """
+    profile = None
+    try:
+        profile = memory_manager.style_profile(owner=owner)
+    except AttributeError:
+        # A manager that predates this row. The Brain still lists memories.
+        return {"profile": None, "observed": 0,
+                "needed": memory_style.PROFILE_MIN_MESSAGES}
+    totals = (profile or {}).get("style") or {}
+    observed = int(totals.get("messages", 0) or 0)
+    block = {"profile": None, "observed": observed,
+             "needed": memory_style.PROFILE_MIN_MESSAGES}
+    if not profile or observed < memory_style.PROFILE_MIN_MESSAGES:
+        return block
+    trait_values = memory_style.traits(totals)
+    block["profile"] = {
+        "id": profile.get("id"),
+        "text": profile.get("text") or "",
+        "sentences": memory_style.sentences(trait_values),
+        "traits": trait_values,
+        "edited": profile.get("style_edited"),
+        "humour": {
+            "means": memory_style.humour_means(
+                (profile.get("humour") or {}).get("observations")),
+            "observations": (profile.get("humour") or {}).get("observations") or {},
+        },
+    }
+    return block
 
 
 def _load_for_update(memory_manager) -> List[Dict[str, Any]]:
@@ -57,6 +137,49 @@ def _load_for_update(memory_manager) -> List[Dict[str, Any]]:
         raise HTTPException(
             503, "Memory store is temporarily unreadable — no changes were made."
         )
+
+
+def _import_result(suggestions, filename, export, memory_manager, owner):
+    """The import's answer, and on the provider path the memories themselves.
+
+    `P13-06`. A generic upload keeps the shape it has always had — suggestions
+    to review, persisted nowhere — because changing that would change a flow
+    this row is not about (`Law 1`).
+
+    A **provider export** is written to the store as proposals before the
+    answer is returned, because the row's word is *every*: an origin and a
+    confidence that ride back through the browser to `POST /add` are an origin
+    and a confidence a client can drop, and `P13-05` already recorded that a
+    suggestion nobody clicked in that browser session is gone. The review step
+    is unchanged from the person's side — the same list, the same save button —
+    and saving one now **commits the proposal** rather than writing a second
+    copy, which is the one branch `POST /add` had that could never be reached.
+    """
+    if export is None:
+        return {"suggestions": suggestions, "filename": filename}
+    written = store_imported(memory_manager, suggestions, export["provider"],
+                             owner=owner, filename=filename)
+    return {
+        # The ids are on the wire so a reviewer can commit the record rather
+        # than re-send its text. Nothing else about the shape changes, so the
+        # panel that reads `text` and `category` keeps working untouched.
+        "suggestions": [{"id": e["id"], "text": e["text"],
+                         "category": e.get("category", "fact"),
+                         "confidence": e.get("confidence"),
+                         "status": e.get("status")}
+                        for e in written["stored"]],
+        "filename": filename,
+        # Counts of what happened, never of what was in the file. An importer
+        # that reports the size of the upload tells somebody 4,000 messages
+        # were imported when 60 were read.
+        "provider": export["provider"],
+        "conversations": export["conversations"],
+        "messages": export["messages"],
+        "dropped_assistant": export["dropped_assistant"],
+        "truncated": export["truncated"],
+        "already_known": written["duplicates"],
+        "below_floor": written["below_floor"],
+    }
 
 
 def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionManager, memory_vector=None):
@@ -171,7 +294,33 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
         if not text:
             raise HTTPException(400, "empty memory")
         user_mem = memory_manager.load(owner=user)
-        if memory_manager.find_duplicates(text, user_mem):
+        existing = memory_manager.find_duplicates(text, user_mem)
+        if existing:
+            # `P13-06`. A save on a text the Brain already holds **as a
+            # proposal** is the explicit act, not a no-op. This branch was
+            # unreachable before anything wrote proposals through a surface a
+            # person reviews, and it is the whole seam between an import and
+            # the memories it produces: the review list sends the same text the
+            # proposal carries, so without this a person clicking *save* on an
+            # imported fact would get "Memory already exists" and the proposal
+            # would sit unbound forever — the least visible failure this
+            # product can have (`P0-05`).
+            #
+            # `commit_memory` and not a status write here: that gate already
+            # refuses an empty text, an unknown id, something already committed
+            # and a restatement of something live, and records the verdict in
+            # `P14-01`'s table. A second promotion path would be a second set
+            # of those checks (`Law 14`).
+            proposal = next((m for m in existing
+                             if not memory_edges.is_committed(m)), None)
+            if proposal is not None:
+                verdict = commit_memory(memory_manager, proposal["id"], by=user,
+                                        owner=user, memory_vector=memory_vector)
+                return {"ok": verdict["verdict"] == COMMIT_COMMITTED,
+                        "count": len(user_mem),
+                        "memory_id": proposal["id"],
+                        "verdict": verdict["verdict"],
+                        "message": verdict["reason"]}
             return {"ok": True, "count": len(user_mem), "message": "Memory already exists"}
 
         if memory_data.session_id:
@@ -213,9 +362,24 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
 
     @router.get("")
     def api_get_memory(request: Request):
-        """Return all memory entries with their metadata."""
+        """Return all memory entries with their metadata.
+
+        `P13-04` adds `archive` to each row: `{"verdict": "fades"|"held",
+        "reason": str, "days": int|None}`. **Computed here and never stored**
+        — it is derived from four dates that are already on the record, and a
+        copy of a derived value is a copy that is wrong by tomorrow (`Law 7`,
+        `Law 8`). The whole point of surfacing it is that fading is visible
+        before it happens rather than reported after: *"fades in 12 days"* is a
+        sentence a person can act on, and an archive that arrives unannounced
+        is the silent drop this row exists to prevent.
+        """
         user = _owner(request)
-        return {"memory": memory_manager.load(owner=user)}
+        rows = memory_manager.load(owner=user)
+        stale = memory_edges.superseded_ids(rows)
+        for row in rows:
+            row["archive"] = archive_forecast(
+                row, superseded=row.get("id") in stale)
+        return {"memory": rows, "style": _style_block(memory_manager, user)}
 
     @router.post("/search")
     def search_memories(request: Request, query: str = Form(...), session_id: str = Form(None), category: str = Form(None)):
@@ -235,9 +399,19 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
 
     @router.get("/timeline")
     def memory_timeline(request: Request):
-        """Get memories in chronological order with source session information."""
+        """Get memories in chronological order with source session information.
+
+        **`P13-17` records are excluded, and leaving them in would have broken
+        this surface rather than decorated it.** The style profile's
+        `timestamp` moves on *every* user message, so a timeline that included
+        it would show the same single row at the top of every view, for ever,
+        pushing the thing the timeline is for off the screen. It is not a
+        memory, it does not belong in a chronology of what was learned, and
+        `GET /api/memory/style` is where it is read.
+        """
         user = _owner(request)
-        memories = memory_manager.load(owner=user)
+        memories = [m for m in memory_manager.load(owner=user)
+                    if memory_style.kind_of(m) == memory_style.KIND_MEMORY]
         sorted_memories = sorted(memories, key=lambda x: x.get("timestamp", 0), reverse=True)
 
         results = []
@@ -405,6 +579,13 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
             # pass recorded instead of resolving.
             "superseded": result.get("superseded", 0),
             "contradictions": result.get("contradictions", 0),
+            # `P13-04`. Its own number, outside `removed`'s arithmetic. The
+            # fade runs before `before` is counted, so these are not part of
+            # `before - after` — and they should not be: "stopped surfacing
+            # because nothing has reached for it in six months" is a different
+            # event from "merged into another entry", and both are recoverable
+            # in a click while `removed` historically was not.
+            "archived": result.get("archived", 0),
             # True when the audit skipped the LLM because nothing changed
             # since the last tidy. Frontend already says "Already clean"
             # for removed==0, so this is here for future use / debugging.
@@ -481,19 +662,58 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
         if not text.strip():
             return {"suggestions": [], "message": "No readable content found"}
 
-        # Fast path: a .json upload that already looks like a memories export
-        # (list of {text, category, ...} dicts, or list of strings) round-trips
-        # directly without spending an LLM call to re-extract its own output.
-        # Without this, re-importing a memories.json from another account
-        # ran the file through the extractor, which often re-emitted the
-        # entries as a numbered list (and the numbering leaked into the
-        # `text` field).
+        # `P13-06`. A conversation export from ChatGPT, Claude or Gemini,
+        # recognised by its own structure rather than by its filename — all
+        # three are called some variant of `conversations.json` and the person
+        # may have renamed it.
+        #
+        # **Measured before it was written:** every one of those files already
+        # reached this endpoint and was handled by the generic path below, so
+        # the first 15,000 characters of raw export JSON — braces, node ids,
+        # `create_time` floats — went to the model as "a document", and the
+        # memories-export fast path underneath found no `text` key and passed
+        # it through. The pipe was right and nothing read the file.
+        #
+        # This sits ABOVE that fast path, and the two are one `if`/`elif` over
+        # **one** parse rather than two conditions over two. A file can satisfy
+        # both shapes — a conversation export beside a row that happens to
+        # carry a `text` key — and the fast path returns early, so a person
+        # would get one stray suggestion and none of their conversations. An
+        # exclusion written as a second condition over a re-parse of a string
+        # this branch has already replaced is one a mutation deletes for free:
+        # it reads like a control and cannot change an answer.
+        export = None
         if ext == ".json":
             try:
                 parsed = json.loads(text)
             except json.JSONDecodeError:
                 parsed = None
             if isinstance(parsed, list) and parsed:
+                export = provider_import.read_export(parsed)
+            if export is not None:
+                if not export["text"].strip():
+                    # A recognised export we could read nothing out of. Said
+                    # plainly rather than handed to the model as an empty
+                    # document: "no facts found" and "nothing of yours was in
+                    # the file" are different answers.
+                    return {"suggestions": [], "provider": export["provider"],
+                            "conversations": export["conversations"],
+                            "messages": 0, "filename": filename,
+                            "message": f"No messages of yours found in this "
+                                       f"{export['provider']} export"}
+                text = export["text"]
+            # Fast path: a .json upload that already looks like a memories
+            # export (list of {text, category, ...} dicts, or list of strings)
+            # round-trips directly without spending an LLM call to re-extract
+            # its own output. Without this, re-importing a memories.json from
+            # another account ran the file through the extractor, which often
+            # re-emitted the entries as a numbered list (and the numbering
+            # leaked into the `text` field).
+            #
+            # `else` on the sniff, over the SAME parse (`P13-06`): a recognised
+            # export is read as an export and this never gets first refusal on
+            # one.
+            elif isinstance(parsed, list) and parsed:
                 direct = []
                 for item in parsed:
                     if isinstance(item, dict) and item.get("text"):
@@ -564,13 +784,15 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
             else:
                 suggestions = []
 
-            return {"suggestions": suggestions, "filename": filename}
+            return _import_result(suggestions, filename, export,
+                                  memory_manager, user)
 
         except json.JSONDecodeError:
             # Fallback: split by lines, stripping any "1.", "2)" markdown-list
             # numbering the model added so saved memories don't keep the prefix.
             lines = [_strip_list_prefix(l.strip()) for l in raw.splitlines() if l.strip() and len(l.strip()) > 5]
-            return {"suggestions": [{"text": l, "category": "fact"} for l in lines[:20]], "filename": filename}
+            return _import_result([{"text": l, "category": "fact"} for l in lines[:20]],
+                                  filename, export, memory_manager, user)
         except Exception as e:
             logger.error(f"Memory import extraction failed: {e}")
             raise HTTPException(502, f"LLM extraction failed: {str(e)}")
@@ -665,6 +887,17 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
                 if category:
                     all_mem[i]["category"] = category
                 all_mem[i]["timestamp"] = int(time.time())
+                # `P13-17`. **Editing the style profile is the only error signal
+                # this feature can have**, and it is recorded in the route that
+                # already edits records rather than in a second one (`Law 14`):
+                # *"there is no golden set for did-we-describe-you-correctly and
+                # there cannot be; did you change what we wrote is real and it
+                # is the one to keep."* The flag also stops the observer
+                # overwriting the correction on the next bucket change, which
+                # is how a system teaches people that correcting it is pointless.
+                if memory_style.kind_of(all_mem[i]) == memory_style.KIND_STYLE:
+                    all_mem[i]["style_edited"] = int(time.time())
+                    _record_style_edit(memory_id, "edited", user)
 
                 memory_manager.save(all_mem)
                 # Sync vector index (remove old, add updated)
@@ -687,6 +920,14 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
             raise HTTPException(404, f"Memory item {memory_id} not found")
         _verify_memory_owner(target, user)
 
+        if memory_style.kind_of(target) == memory_style.KIND_STYLE:
+            # `P13-17`'s `Verify:` asks for *"deletable in one action"*, and
+            # this route already is that action — no second endpoint, and no
+            # tombstone either. Deleting the profile deletes the counters with
+            # it, so the next observation starts a new one from nothing rather
+            # than re-deriving the same sentences from history the person just
+            # asked us to forget. That is what makes the delete meaningful.
+            _record_style_edit(memory_id, "deleted", user)
         all_mem = [m for m in all_mem if m["id"] != memory_id]
         memory_manager.save(all_mem)
         # Sync vector index

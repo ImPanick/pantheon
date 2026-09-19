@@ -40,7 +40,12 @@ from src.tool_security import (
     plan_mode_disabled_tools,
     feature_disabled_tools,
 )
-from src.tool_policy import GUIDE_ONLY_DIRECTIVE, WEB_TOOL_NAMES, ToolPolicy
+from src.tool_policy import (
+    CONFIRM_TOOLS_DIRECTIVE,
+    GUIDE_ONLY_DIRECTIVE,
+    WEB_TOOL_NAMES,
+    ToolPolicy,
+)
 from src.tool_capabilities import (
     DEFAULT_TRUST_RUNG,
     ResultIntegrity,
@@ -3140,13 +3145,22 @@ def _build_system_prompt(
                             get_setting("skill_autosave_min_confidence", 0.85)))
                     except (TypeError, ValueError):
                         _skill_min_conf = 0.85
-                try:
-                    _skill_max_injected = int(_prefs.get(
-                        "skill_max_injected",
-                        get_setting("skill_max_injected", 3)))
-                except (TypeError, ValueError):
-                    _skill_max_injected = 3
-                _skill_max_injected = max(0, min(12, _skill_max_injected))
+                # `P2-09` / `B750`. This read `_prefs.get("skill_max_injected",
+                # get_setting(...))` and then clamped it with a second
+                # `max(0, min(12, …))` of its own. Two defects in one
+                # expression: **a per-user pref beat every other layer**, so a
+                # role profile could never lower it; and the ceiling of 12 was
+                # written here AND as `max="12"` in the markup, so raising the
+                # setting alone silently did nothing.
+                #
+                # One resolver now, in `src/context_budget.py` beside the other
+                # six budgets (`Law 14`), with the preference choosing WITHIN
+                # the policy instead of over it. A pref of 0 still means off —
+                # the input ships `min="0"` and says so in its own caption, and
+                # removing that would be `Law 1`.
+                from src.context_budget import resolve_skill_injection
+                _skill_max_injected = resolve_skill_injection(
+                    owner, preference=_prefs.get("skill_max_injected"))
                 relevant_skills = sm.get_relevant_skills(
                     last_user,
                     skills=sm.load(owner=owner),
@@ -4363,6 +4377,21 @@ async def stream_agent_loop(
     # run: re-reading per tool call would let a settings save land between two
     # blocks of one model turn and answer them under two different policies.
     _run_rung = resolve_trust_rung()
+    # `P2-14`. *"Ask me before using tools"* used to strip all 82 tools and MCP
+    # for the turn. It is a request for confirmation, and confirmation is what
+    # `P7-03`'s ladder already does — so the turn is raised to the rung that
+    # mints an approval card for every action, and keeps its tools.
+    #
+    # It only ever RAISES. `ASK_EVERY_TIME` is the strictest rung, so a person
+    # asking to be consulted cannot, by asking, end up consulted less often
+    # than their stored setting already had them.
+    _confirm_tools = bool(tool_policy and tool_policy.require_tool_confirmation)
+    if _confirm_tools and _run_rung is not TrustRung.ASK_EVERY_TIME:
+        logger.info(
+            "[agent] turn asked for confirmation before tools; rung %s -> %s",
+            _run_rung.value, TrustRung.ASK_EVERY_TIME.value,
+        )
+        _run_rung = TrustRung.ASK_EVERY_TIME
     run_security = ToolRunSecurityContext(
         external_untrusted_context_seen=(
             bool(external_untrusted_context_seen)
@@ -5351,6 +5380,12 @@ async def stream_agent_loop(
             _prepend_agent_directive(route_messages, build_active_plan_note(approved_plan))
         if guide_only:
             _prepend_agent_directive(route_messages, GUIDE_ONLY_DIRECTIVE)
+        elif _confirm_tools:
+            # `P2-14`. Said out loud, because the gate alone is invisible until
+            # the first card appears and a model that was not told will read
+            # its own blocked call as a failure rather than as the user's
+            # choice.
+            _prepend_agent_directive(route_messages, CONFIRM_TOOLS_DIRECTIVE)
         return {
             "messages": route_messages,
             "mcp_schemas": route_mcp_schemas,

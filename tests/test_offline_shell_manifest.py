@@ -328,16 +328,37 @@ def test_a_seed_nothing_imports_still_gets_its_own_graph_walked():
     ]
 
 
+def _modal_manager_url() -> str:
+    """`/static/js/modalManager.js` with whatever `?v=` its importers request.
+
+    One specifier, read from `static/app.js` — `check-specifiers.py` already
+    fails the build if any importer disagrees, so one site is the whole answer.
+    """
+    src = (_REPO / "static" / "app.js").read_text(encoding="utf-8")
+    m = re.search(r"['\"]\./js/(modalManager\.js(?:\?v=[0-9a-zA-Z]+)?)['\"]", src)
+    assert m, "app.js no longer imports modalManager.js — re-read this test"
+    return "/static/js/" + m.group(1)
+
+
 @_needs_node
 def test_the_modules_no_list_names_are_there_by_derivation(installed):
     """The four the row named. They are cached, and their URLs appear nowhere in
     `sw.js` — which is the point: adding them to a list would have fixed these
-    four and left the next one to be found by hand."""
+    four and left the next one to be found by hand.
+
+    **`modalManager.js`'s version is READ, not written down** (`Law 6`). This
+    assertion carried the literal `?v=20260723compareicon2` and went red the
+    next time the module's cache-buster moved — which is `B772`'s failure
+    exactly, a test pinned to a wave string, in a test whose subject is that
+    these URLs are derived. The version is incidental to what is being proved;
+    what matters is that the walk reaches the module at whatever URL the
+    importers actually request."""
+    modals = _modal_manager_url()
     derived = {
         "/static/js/toolWindowZOrder.js",
         "/static/js/escMenuStack.js",
         "/static/js/windowDrag.js",
-        "/static/js/modalManager.js?v=20260723compareicon2",
+        modals,
     }
     cached = set(installed["cached"])
     assert derived <= cached, sorted(derived - cached)

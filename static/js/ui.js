@@ -6,7 +6,7 @@
  */
 
 import themeModule from './theme.js';
-import * as Modals from './modalManager.js?v=20260723compareicon2';
+import * as Modals from './modalManager.js?v=20260919tidypreview1';
 import spinnerModule from './spinner.js';
 import { registerMenuDismiss, dismissTopMenu, dismissOrRemove } from './escMenuStack.js';
 import { nextToolWindowZ, topToolWindowZ } from './toolWindowZOrder.js';
@@ -694,12 +694,90 @@ export function el(id) {
 }
 
 /**
+ * The `details` list under a confirm's message. `P9-10`.
+ *
+ * Split out of `styledConfirm` because of the one property that is easy to get
+ * wrong and invisible when you do: **the overlay is reused across calls.** A
+ * list appended and not removed would be shown above the *next* confirm's
+ * message — a person deleting one thing, reading the previous operation's
+ * inventory. So this always removes first and only then decides whether to
+ * draw, and it is the first statement rather than a branch inside an `if`.
+ */
+function _renderConfirmDetails(overlay, msgEl, details) {
+  const prev = overlay.querySelector('.styled-confirm-details');
+  if (prev) prev.remove();
+  const items = (details && Array.isArray(details.items)) ? details.items.filter(Boolean) : [];
+  if (!details || (!items.length && !details.heading)) return null;
+
+  const box = document.createElement('div');
+  box.className = 'styled-confirm-details';
+  if (details.heading) {
+    const head = document.createElement('div');
+    head.className = 'styled-confirm-details-heading';
+    head.textContent = details.heading;
+    box.appendChild(head);
+  }
+  if (items.length) {
+    const list = document.createElement('ul');
+    list.className = 'styled-confirm-details-list';
+    for (const item of items) {
+      const row = document.createElement('li');
+      row.className = 'styled-confirm-detail';
+      const label = document.createElement('span');
+      label.className = 'styled-confirm-detail-label';
+      label.textContent = String(item.label == null ? '' : item.label);
+      row.appendChild(label);
+      if (item.note) {
+        const note = document.createElement('span');
+        note.className = 'styled-confirm-detail-note';
+        note.textContent = String(item.note);
+        row.appendChild(note);
+      }
+      list.appendChild(row);
+    }
+    box.appendChild(list);
+  }
+  if (details.footnote) {
+    const foot = document.createElement('div');
+    foot.className = 'styled-confirm-details-foot';
+    foot.textContent = details.footnote;
+    box.appendChild(foot);
+  }
+  msgEl.parentNode.insertBefore(box, msgEl.nextSibling);
+  return box;
+}
+
+/**
  * Styled confirm dialog — replaces native browser confirm().
  * Returns a Promise<boolean|'alternate'>. Existing two-button callers only
  * receive true/false; callers that pass alternateText can detect the third
  * action via the string 'alternate'.
+ *
+ * `P9-10` adds `details`, and it is an extension of this dialog rather than a
+ * second one (`Law 14`). A destructive AI operation has to be able to say what
+ * it is about to do *before* it does it, and one sentence cannot carry a list
+ * of seven reports with a reason each. The shape is deliberately the same one
+ * `P8-33` settled on for the task dry run — **lines saying what would happen** —
+ * so the preview a person reads before pressing Tidy and the plan a dry-run
+ * task writes into its step log are the same kind of answer.
+ *
+ * @param {object}  details
+ * @param {string}  details.heading  one line above the list.
+ * @param {Array}   details.items    `[{ label, note }]`. `label` is the thing,
+ *                                   `note` is why it is in the list.
+ * @param {string}  details.footnote one line below, for what is NOT included.
+ *
+ * Every string goes through `textContent`. The labels here are chat titles,
+ * document names and research questions — user-supplied text on its way into a
+ * dialog, which is exactly where `innerHTML` would be an injection hole with a
+ * chat title as the payload.
+ *
+ * The return value does not change. A dialog that resolved `true` for a plain
+ * confirm and an object for a detailed one would be two contracts wearing one
+ * name, which is the shape `Law 10` is about — so the list is what a person
+ * reads, and the answer is still yes or no.
  */
-export function styledConfirm(message, { confirmText = 'Confirm', cancelText = 'Cancel', alternateText = '', title = 'Confirm', danger = false } = {}) {
+export function styledConfirm(message, { confirmText = 'Confirm', cancelText = 'Cancel', alternateText = '', title = 'Confirm', danger = false, details = null } = {}) {
   return new Promise(resolve => {
     // Reuse or create the modal
     let overlay = document.getElementById('styled-confirm-overlay');
@@ -733,6 +811,7 @@ export function styledConfirm(message, { confirmText = 'Confirm', cancelText = '
 
     if (titleEl) titleEl.textContent = title || 'Confirm';
     msgEl.textContent = message;
+    _renderConfirmDetails(overlay, msgEl, details);
     okBtn.textContent = confirmText;
     cancelBtn.textContent = cancelText;
     altBtn.textContent = alternateText || '';

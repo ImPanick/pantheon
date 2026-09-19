@@ -3699,8 +3699,102 @@ export function setSessionHasDocs(sessionId, hasDocs) {
   }
 }
 
+// ── `P9-10` — what chat Tidy does, said once ────────────────────────────────
+//
+// **`POST /api/sessions/auto-sort` has three callers in `static/`, and they
+// reported three different operations.** The sidebar sort dropdown
+// (`app.js:_runTidy`) printed `unfiled_remaining`; the Library's Chats tab
+// printed `updated` and the folder count; `/session sort` in `slashCommands.js`
+// printed `deleted_empty` and not `deleted_throwaway`. Between them the one
+// number nobody was shown on the path that produces it is **how many chats were
+// permanently deleted** — the endpoint returns `deleted_empty` and
+// `deleted_throwaway` on every response, and on the AI path all three callers
+// dropped both. A person pressed a button labelled Tidy, nine chats were
+// deleted with no confirmation, and the toast said *"Sorted 5 into 2 folders"*.
+//
+// So this file — which owns chat sessions — owns both halves of the sentence,
+// and the three callers say the same thing because there is only one thing to
+// say (`Law 7`).
+//
+// A dry run is the half that is NOT here, and it cannot be: Phase 1's rules run
+// in `routes/session_routes.py` against message counts this browser does not
+// have, and Phase 2's folders come out of a model. Re-deriving either here
+// would be a second implementation of a rule that can change on the server
+// without this file hearing about it (`Law 14`), and it would be wrong the
+// first time the two drifted. What a person can be told without the server's
+// help is what the operation DOES and what it will not touch, which is what the
+// dialog below says — the same answer shape `P8-33` settled on for the task dry
+// run, for the same reason.
+
+/**
+ * The chat-tidy pre-flight. Resolves true when the person said go ahead.
+ *
+ * @param {object} opts
+ * @param {boolean} opts.skipLlm true for the "no AI" entry point, which runs
+ *        Phase 1 only. It still deletes, so it still asks — what changes is
+ *        that no model is called and nothing is filed.
+ */
+export function confirmChatTidy({ skipLlm = false } = {}) {
+  const items = [
+    { label: 'Deletes chats with no messages in them', note: 'permanent' },
+    { label: 'Deletes throwaways — a test name, or one message the model never answered',
+      note: 'permanent' },
+  ];
+  if (!skipLlm) {
+    items.push({ label: 'Sends the titles of up to 15 unfiled chats to your model', note: 'one call' });
+    items.push({ label: 'Files those chats into folders the model names', note: 'reversible' });
+  }
+  return uiModule.styledConfirm(
+    skipLlm
+      ? 'Tidy will delete empty and throwaway chats. No model is called and nothing is filed.'
+      : 'Tidy deletes chats before it files anything, and the deletions are permanent.',
+    {
+      title: 'Tidy chats',
+      confirmText: 'Tidy chats',
+      danger: true,
+      details: {
+        heading: 'What Tidy does',
+        items,
+        footnote: 'Chats you marked Important, chats you have opened recently, '
+                + 'and archived chats are never deleted. There is no undo for the '
+                + 'ones that are.',
+      },
+    },
+  );
+}
+
+/**
+ * One sentence for an `/api/sessions/auto-sort` response, deletions first.
+ *
+ * Deletions lead because they are the irreversible half: a report that opens
+ * with the filing and mentions the deleting afterwards — or not at all — is the
+ * defect this replaces. `unfiled_remaining` is on every response and says
+ * whether pressing the button again would do anything, which is the question a
+ * person has immediately after reading the rest.
+ *
+ * Returns `''` for a response that is not a completed run, so callers keep
+ * their own handling of `status: 'skipped'`.
+ */
+export function describeChatTidy(data) {
+  if (!data || data.status !== 'ok') return '';
+  const deleted = (Number(data.deleted_empty) || 0) + (Number(data.deleted_throwaway) || 0);
+  const updated = Number(data.updated) || 0;
+  const folders = Array.isArray(data.folders) ? data.folders.length : 0;
+  const remaining = Number(data.unfiled_remaining) || 0;
+  const parts = [];
+  if (deleted) parts.push(`Deleted ${deleted} chat${deleted === 1 ? '' : 's'}`);
+  if (updated) parts.push(`filed ${updated} into ${folders} folder${folders === 1 ? '' : 's'}`);
+  if (!parts.length) return remaining ? `Nothing to delete — ${remaining} still unfiled` : 'Already tidy';
+  let msg = parts.join(', ');
+  msg = msg.charAt(0).toUpperCase() + msg.slice(1);
+  if (remaining) msg += ` — ${remaining} still unfiled, press Tidy again`;
+  return msg;
+}
+
 // Export all functions to window for use in main app
 const sessionModule = {
+  confirmChatTidy,
+  describeChatTidy,
   initDependencies,
   renderSessionList,
   loadSessions,

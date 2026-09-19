@@ -54,6 +54,7 @@ function decl(src, name) {
 }
 
 const el = { textContent: '', title: '', style: { visibility: '' } };
+const CHIP = [];
 let CLOCK = Date.parse('2026-09-18T12:00:00Z');
 class FakeDate extends Date {
   constructor(...args) {
@@ -71,6 +72,13 @@ const sandbox = {
   String,
   document: { getElementById: (id) => (id === 'email-lib-sync-status' ? el : null) },
   state: { _libEmails: [{ uid: 1 }], _libOpen: true },
+  // `P9-11`. The poll now also puts the throttle on the minimized dock, because
+  // the window this line lives in is usually closed when a mailbox goes quiet.
+  // Recorded rather than stubbed away: `chip` is read by the `poll` mode below,
+  // so the same harness answers both "what does the line say" and "what does
+  // the dock say" from one run of the real code.
+  Modals: { setBackgroundWork: (id, work) => { CHIP.push({ id, work }); return true; } },
+  openEmailLibrary: () => { CHIP.push({ opened: true }); },
 };
 vm.createContext(sandbox);
 vm.runInContext(
@@ -81,6 +89,7 @@ vm.runInContext(
   + fn(librarySrc, '_libThrottleRemaining') + '\n'
   + fn(librarySrc, '_renderEmailSyncStatus') + '\n'
   + fn(librarySrc, '_setEmailSyncStatus') + '\n'
+  + fn(librarySrc, '_syncMailboxWorkChip') + '\n'
   + fn(librarySrc, 'noteMailboxSync') + '\n',
   sandbox);
 
@@ -106,7 +115,7 @@ if (mode === 'line') {
   // What the 60-second unread poll does, through the door `emailInbox.js` calls.
   sandbox._setEmailSyncStatus({ updatedAt: payload.updated_at || '', loading: false });
   for (const sync of payload.polls || []) sandbox.noteMailboxSync(sync);
-  console.log(JSON.stringify(read()));
+  console.log(JSON.stringify({ ...read(), chip: CHIP[CHIP.length - 1] || null }));
 } else if (mode === 'seq') {
   const lines = [];
   for (const step of payload.steps || []) {

@@ -36,6 +36,15 @@ from __future__ import annotations
 import time
 from typing import Dict, List
 
+# `P13-17`. The one project import in this file, and it is a vocabulary rather
+# than a subsystem — `src/memory_style.py` imports nothing at all, for the same
+# reason this module was carved out in the first place. `live()` below has to
+# know that a style note is not a memory, and the alternative was to re-derive
+# `kind_of`'s normalisation here, which is the second copy of one rule that
+# `Law 7` is about. The property the docstring claims is unchanged in substance:
+# nothing here depends on the subsystem that stores a record.
+from src.memory_style import KIND_MEMORY, kind_of
+
 # A supersedes B: B is stale and stops surfacing. Directional. This is what the
 # audit writes instead of deleting the entry it merged away.
 EDGE_SUPERSEDES = "supersedes"
@@ -74,7 +83,25 @@ STATUS_COMMITTED = "committed"
 # event, so there was nothing between a sentence and a policy.
 STATUS_PROPOSED = "proposed"
 
-MEMORY_STATUSES = (STATUS_COMMITTED, STATUS_PROPOSED)
+# `P13-04`. Nothing has retrieved, restated or edited it for long enough that
+# the store is carrying it rather than using it. **On the record, readable,
+# restorable, and out of every prompt** — the row's own wording is *"fades
+# toward archive rather than deletion. Nothing is ever silently dropped."*
+#
+# It is a third value on the field `P13-05` added rather than a second
+# predicate, for the reason that row already gives about proposals: two
+# answers to *"does this memory surface"* is how a record ends up hidden from
+# search and sent to a model anyway. Adding it here means retrieval, the
+# audit and the boot-time index rebuild all honour it without a line changing
+# in any of them, because they all ask `live()`.
+#
+# **Restoring one is `commit_memory`, not a second act** (`Law 14`): an
+# archived memory is not committed, so the gate `P13-05` already built —
+# text check, duplicate check, event, vector add — is exactly the act of
+# binding it again, down to refusing when something live already says it.
+STATUS_ARCHIVED = "archived"
+
+MEMORY_STATUSES = (STATUS_COMMITTED, STATUS_PROPOSED, STATUS_ARCHIVED)
 
 
 def status_of(memory) -> str:
@@ -195,14 +222,16 @@ def superseded_ids(memories) -> set:
 def live(memories, index: Dict = None) -> List[Dict]:
     """The memories that still surface. One predicate, four callers.
 
-    Two reasons a record stays in the store and out of every prompt, and they
-    arrived a row apart:
+    Three reasons a record stays in the store and out of every prompt, and no
+    two of them arrived together:
 
     * `P13-09` archives rather than deletes what an audit merged away, so the
       store holds entries that are kept on purpose and must not be shown,
       re-audited, re-indexed or counted;
     * `P13-05` lets extraction propose without binding, so the store holds
-      entries nobody has agreed to yet.
+      entries nobody has agreed to yet;
+    * `P13-04` fades a memory nothing has reached for toward archive, so the
+      store holds entries that were binding and stopped earning it.
 
     Both are here because the alternative is two predicates that disagree, and
     the way that fails is a memory hidden from search and sent to a model
@@ -214,10 +243,21 @@ def live(memories, index: Dict = None) -> List[Dict]:
     matters as much as the sharing: the caller in `_rank` used to skip this
     entirely when nothing was superseded, which on a corpus with no edges at
     all — which is almost every corpus — would have let a proposal through.
+
+    **`P13-17` adds a fourth reason and it is not a status**: a style note is
+    not a memory that is being withheld, it is a record of a different kind that
+    was never a memory. It is filtered here anyway, and putting it anywhere else
+    would have been the mistake this docstring already describes twice — the
+    style profile would have been hidden from the Brain's notion of "surfacing"
+    and ranked into the prompt as a fact the person had stated about themselves,
+    which is exactly the *"lying about its sources"* failure the row exists to
+    prevent. One predicate, now four inputs.
     """
     stale = set((index or build_edge_index(memories))["superseded"])
     return [m for m in memories
-            if is_committed(m) and not (isinstance(m, dict) and m.get("id") in stale)]
+            if kind_of(m) == KIND_MEMORY
+            and is_committed(m)
+            and not (isinstance(m, dict) and m.get("id") in stale)]
 
 
 def attach(entry: Dict, edge_type: str, target_id: str, by_id: Dict,

@@ -82,6 +82,20 @@ export default { createWhirlpool: () => ({ element: { style: {} }, destroy(){} }
     "sessions.js": "export default { getCurrentModel: () => 'm', getCurrentEndpointUrl: () => 'u' };\n",
     "windowDrag.js": "export function makeWindowDraggable(){}\n",
     "tileManager.js": "export function snapModalToZone(){}\n",
+    # `P9-11` gave `skills.js` and `memory.js` a `setBackgroundWork` import, and
+    # without a stub here `_copy_unstubbed_imports` pulls in the REAL
+    # `modalManager.js` — which imports three names from `tileManager.js` while
+    # the stub above exports one, so every case in this file died on a module
+    # resolution error rather than on an assertion. The Workshop has no opinion
+    # about the dock; it needs the call to be answerable and nothing more.
+    "modalManager.js": (
+        "export function setBackgroundWork(){ return false; }\n"
+        "export function getBackgroundWork(){ return null; }\n"
+        "export function register(){}\nexport function unregister(){}\n"
+        "export function minimize(){}\nexport function restore(){}\n"
+        "export function close(){}\nexport function toggle(){ return false; }\n"
+        "export default { setBackgroundWork, register, minimize, restore, close, toggle };\n"
+    ),
 }
 
 _SHIM = r"""

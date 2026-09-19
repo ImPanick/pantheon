@@ -20,8 +20,10 @@ import time
 from typing import Optional
 
 from src.memory import (
+    ARCHIVE_AFTER_DAYS,
     MemoryManager,
     MemoryStoreUnreadable,
+    due_for_archive,
     new_provenance,
     normalise_confidence,
 )
@@ -414,6 +416,127 @@ _REFUSE_EMPTY = "there is nothing here to commit"
 # smallest scale — the alternative is one length rule with two values the day
 # somebody tunes either.
 MIN_TEXT_CHARS = 5
+
+
+# ── provider import, `P13-06` ─────────────────────────────────────────────────
+
+PRODUCER_IMPORT = "provider_import"
+
+# **The ceiling, and its value is a relation rather than a number.** The row
+# says an imported memory *"enters at a lower confidence than something learned
+# first-hand, because it was"*, and what makes that true is that this sits
+# strictly between the floor and the first-hand default:
+#
+#   MIN_CONFIDENCE (0.6) < IMPORT_CONFIDENCE_CEILING < DEFAULT_CONFIDENCE (0.7)
+#
+# Below the floor and every import would be silently discarded; at or above the
+# default and "lower than first-hand" would be false. A test asserts both
+# inequalities rather than the literal, so moving either end of the range
+# breaks loudly instead of quietly inverting the row (`Law 6`: the relation is
+# the fact, the number is a copy of it).
+#
+# It is a **ceiling** and not a fixed value: a model that volunteers a lower
+# number is believed, because the only thing this row claims is that an import
+# cannot be trusted *more* than first-hand.
+IMPORT_CONFIDENCE_CEILING = 0.65
+
+
+def store_imported(memory_manager, facts, provider: str, *, owner: str = None,
+                   filename: str = None) -> dict:
+    """Write extracted facts from a provider export. `P13-06`.
+
+    Returns `{"stored": [entry, …], "duplicates": int, "below_floor": int}`.
+
+    **They are stored, and they are stored as proposals.** `P13-05` named the
+    defect this closes in its own premise re-measure: *"`POST /memory/extract`
+    and `POST /memory/import` return `suggestions` that are persisted nowhere,
+    so a suggestion nobody clicked in that browser session is gone."* An export
+    is thousands of messages nobody has read, so it is the clearest case the
+    proposal state was ever built for — on the record, visible, gathering
+    mentions, and reaching no model until a person says so. Nothing here binds
+    anything, which is why it does not need the `auto_approve_memories` gate
+    that the live extractor reads: that preference decides whether *listening
+    to you* binds, and an import is not that.
+
+    **The origin is written here rather than carried through the browser**, and
+    that is the reason this function exists at all instead of the route
+    returning richer suggestions. A field the client has to forward is a field
+    the client can drop, and the row's word is *every*.
+
+    Both dedupe gates the extractor already uses are applied (`Law 14`) — exact
+    text and `_text_duplicate_of` — and a duplicate is **recorded as a
+    restatement rather than dropped**, because somebody who said a thing in
+    ChatGPT last year and says it here is the same evidence `P13-15` exists to
+    stop discarding.
+    """
+    try:
+        entries = memory_manager.load_all_for_update()
+    except MemoryStoreUnreadable as e:
+        # The same strictness `commit_memory` uses, for the same reason: a
+        # read-modify-write that degrades to `[]` writes the import over
+        # everything the person had, atomically and durably.
+        logger.error("Refusing to store an import, memory store unreadable: %s", e)
+        return {"stored": [], "duplicates": 0, "below_floor": 0,
+                "error": "store_unreadable"}
+
+    mine = [e for e in entries
+            if owner is None or e.get("owner") == owner or e.get("owner") is None]
+    stored, duplicates, below_floor = [], 0, 0
+    producer = f"{PRODUCER_IMPORT}:{provider}"
+    for fact in facts or []:
+        if isinstance(fact, dict):
+            text = str(fact.get("text") or "").strip()
+            category = fact.get("category") or "fact"
+            raw_confidence = fact.get("confidence")
+        else:
+            text = str(fact or "").strip()
+            category, raw_confidence = "fact", None
+        if len(text) < MIN_TEXT_CHARS:
+            continue
+
+        confidence = min(
+            normalise_confidence(raw_confidence, DEFAULT_CONFIDENCE),
+            IMPORT_CONFIDENCE_CEILING)
+        if confidence < MIN_CONFIDENCE:
+            # The same floor, imported from the same place as everywhere else
+            # (`P13-01`), and counted rather than swallowed: zero-added-after-
+            # twelve-extracted and zero-added-after-nothing-extracted are
+            # opposite problems that look identical in a log that only reports
+            # the total.
+            below_floor += 1
+            continue
+
+        match = next(iter(memory_manager.find_duplicates(text, mine)), None)             or _text_duplicate_of(text, mine)
+        if match is not None:
+            _note_restatement(memory_manager, match, None, text)
+            duplicates += 1
+            continue
+
+        entry = memory_manager.add_entry(
+            text, source="import", category=category, owner=owner,
+            confidence=confidence,
+            provenance=new_provenance(producer, quote=None),
+            status=STATUS_PROPOSED,
+        )
+        # `quote` is left unrecorded on purpose. `P13-03` verifies a citation
+        # against the transcript before storing it because a model asked to
+        # cite its source will produce a plausible sentence the person never
+        # typed — and the import prompt does not ask for one, so there is
+        # nothing to verify. An unverified quote on the one field somebody
+        # would read to decide whether to believe a memory is worse than no
+        # quote, and `producer` already says which export this came out of.
+        if filename:
+            entry["import_file"] = str(filename)[:200]
+        entries.append(entry)
+        mine.append(entry)
+        stored.append(entry)
+
+    if stored:
+        memory_manager.save(entries)
+        logger.info("Provider import: %d proposals stored from a %s export "
+                    "(%d already known, %d under the confidence floor)",
+                    len(stored), provider, duplicates, below_floor)
+    return {"stored": stored, "duplicates": duplicates, "below_floor": below_floor}
 
 
 def commit_memory(memory_manager, memory_id: str, *, by: str = None,
@@ -928,6 +1051,77 @@ def _absorb(survivor: dict, merged: dict) -> None:
         survivor["first_mentioned"] = min(int(t) for t in first)
 
 
+def _sweep_faded(memory_manager, owner: Optional[str] = None,
+                 memory_vector=None) -> list:
+    """Archive what has run out of window, and say so. `P13-04`.
+
+    Returns the entries archived. Never raises: a tidy pass that dies because
+    the decay half failed would take the consolidation half with it, and the
+    consolidation half is the one that has shipped since before this row.
+
+    **The vector index is the trap, and it is the third time this phase has met
+    it.** `P13-09` found that a superseded memory left in the index is still
+    returned by `MemoryVectorStore.find_similar`, which is the extractor's
+    first dedupe gate and does not go through the scorer — so the next time the
+    person stated the fact, the restatement would be credited to a copy nothing
+    can retrieve. `P13-05` found the same hole in `app_initializer`'s boot-time
+    rebuild. Here it is again with a twist: the audit *does* rebuild from
+    `live_memories` at the end, but the **`already_tidy` short-circuit returns
+    before it ever gets there** — and an untouched store is exactly the one
+    this sweep fires on. So each faded id is removed from the index here, in
+    the same call that archived it, rather than relying on a rebuild that the
+    most common path skips.
+    """
+    try:
+        due = due_for_archive(memory_manager.load(owner=owner))
+        if not due:
+            return []
+        archived = memory_manager.archive(
+            due, reason=f"nothing used or restated it for {ARCHIVE_AFTER_DAYS} days")
+    except Exception as e:
+        # The whole sweep, not just the read. The consolidation half of this
+        # pass has shipped since long before this row, and a tidy that dies
+        # because the arithmetic beside it threw is a regression in a feature
+        # that was working — `Law 1`, enforced at the call rather than asserted
+        # in a comment.
+        logger.error("Memory decay sweep skipped: %s", e)
+        return []
+    for entry in archived:
+        if memory_vector is not None and getattr(memory_vector, "healthy", False):
+            try:
+                memory_vector.remove(entry["id"])
+            except Exception as e:
+                logger.warning("Memory vector remove failed for %s: %s",
+                               entry.get("id"), e)
+        _record_archive(entry, owner)
+    if archived:
+        logger.info("Memory decay: %d entries archived rather than deleted, "
+                    "each restorable", len(archived))
+    return archived
+
+
+def _record_archive(entry: dict, owner: Optional[str] = None) -> None:
+    """One archive, in the table `P14-01` already built. `P13-04`.
+
+    *"Nothing is ever silently dropped"* is the row's own sentence, and a
+    status change nobody can find afterwards is silent however reversible it
+    is. `_record_commit` writes the other direction of the same lifecycle into
+    the same table with the same `kind`, so *"what happened to this memory"* is
+    one query rather than two (`Law 7`).
+    """
+    try:
+        from src.events import record_event
+        record_event("memory", name="archive", owner=owner,
+                     outcome="archived",
+                     detail={"memory_id": entry.get("id"),
+                             "text": entry.get("text"),
+                             "reason": entry.get("archived_reason"),
+                             "uses": entry.get("uses"),
+                             "mention_sessions": entry.get("mention_sessions")})
+    except Exception:
+        logger.debug("archive event not recorded", exc_info=True)
+
+
 async def audit_memories(
     memory_manager,
     memory_vector,
@@ -946,8 +1140,28 @@ async def audit_memories(
     Safe to call manually or from the automatic trigger in extract_and_store.
     Errors are logged, never raised.
     """
+    # `P13-04`. Bound before the `try`, and written on **every** return below,
+    # for the reason `B61` gives about `engine`: a field present on some paths
+    # and absent on others makes every reader invent a default, and the default
+    # is the answer nobody measured. A run that faded nine memories and then
+    # failed to parse the model's reply still faded nine memories.
+    faded = []
     try:
         from src.llm_core import llm_call_async
+
+        # `P13-04`. The decay sweep, first, and deliberately not in a pass of
+        # its own. The audit is already the pass whose job is "keep the store
+        # from becoming noise" — the phase preamble's own words for why `P13`
+        # exists — it is already owner-scoped, it is already the button a
+        # person presses, and a second maintenance sweep beside it would be
+        # `Law 14` wearing a cron job. It runs BEFORE the tidy fingerprint
+        # below, because a store that is "already tidy" is precisely the one
+        # nothing has touched in months and it must still be able to fade.
+        #
+        # No LLM is involved: this is arithmetic over dates, so it still works
+        # on the run where the model is down and the tidy half returns an
+        # error.
+        faded = _sweep_faded(memory_manager, owner, memory_vector)
 
         owned = memory_manager.load(owner=owner)
         # `P13-09`. The audit reads the LIVE set only. What a previous pass
@@ -960,7 +1174,7 @@ async def audit_memories(
         existing = live_memories(owned)
         if not existing:
             logger.info("Memory audit: nothing to audit")
-            return {"before": 0, "after": 0}
+            return {"before": 0, "after": 0, "archived": len(faded)}
 
         before_count = len(existing)
 
@@ -978,6 +1192,11 @@ async def audit_memories(
                 "before": before_count,
                 "after": before_count,
                 "already_tidy": True,
+                # `P13-04`. Reported on the short-circuit too. A pass that
+                # faded nine memories and skipped the LLM did something, and
+                # returning `already_tidy` alone would tell the person nothing
+                # happened on the run where the most happened.
+                "archived": len(faded),
             }
 
         # Build payload: list of {id, text, category} for the LLM
@@ -1035,7 +1254,8 @@ async def audit_memories(
                 cleaned = _loads_list(text[_a:_b + 1])
         if cleaned is None:
             logger.error(f"Memory audit returned non-JSON: {text[:300]}")
-            return {"before": before_count, "after": before_count, "error": "bad_json"}
+            return {"before": before_count, "after": before_count,
+                    "archived": len(faded), "error": "bad_json"}
 
         # Build lookup of original entries by ID so we can preserve metadata
         originals = {m["id"]: m for m in existing}
@@ -1106,13 +1326,14 @@ async def audit_memories(
                 "Memory audit returned nothing usable for %d entries — refusing "
                 "as unsafe, keeping originals", before_count)
             return {"before": before_count, "after": before_count,
-                    "error": "unsafe_removal"}
+                    "archived": len(faded), "error": "unsafe_removal"}
         if before_count >= 8 and after_count < before_count * 0.5:
             logger.warning(
                 f"Memory audit would cut {before_count} -> {after_count} "
                 f"(>50% removed) — refusing as unsafe, keeping originals"
             )
-            return {"before": before_count, "after": before_count, "error": "unsafe_removal"}
+            return {"before": before_count, "after": before_count,
+                    "archived": len(faded), "error": "unsafe_removal"}
 
         # ── `P13-09`: record the consolidation instead of performing it quietly ──
         #
@@ -1182,6 +1403,7 @@ async def audit_memories(
                 return {
                     "before": before_count,
                     "after": before_count,
+                    "archived": len(faded),
                     "error": "store_unreadable",
                 }
             audited_ids = {e["id"] for e in final_entries}
@@ -1230,8 +1452,16 @@ async def audit_memories(
             # frightening and false.
             "superseded": len(superseded),
             "contradictions": conflicts,
+            # `P13-04`. Its own number and never folded into `removed`, for the
+            # reason `superseded` is its own number: `before - after` has one
+            # meaning and "stopped surfacing because a person's attention moved
+            # on" is a different event from "merged into another entry". The
+            # fade happened before `before_count` was taken, so it is not in
+            # that arithmetic at all — which is the honest place for it, since
+            # an archived memory is one click from being back.
+            "archived": len(faded),
         }
 
     except Exception as e:
         logger.error(f"Memory audit failed: {e}")
-        return {"error": str(e)}
+        return {"error": str(e), "archived": len(faded)}

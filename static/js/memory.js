@@ -8,6 +8,7 @@ import spinnerModule from './spinner.js';
 import { makeWindowDraggable } from './windowDrag.js';
 import { snapModalToZone } from './tileManager.js';
 import { topPortalZ } from './toolWindowZOrder.js';
+import { setBackgroundWork } from './modalManager.js?v=20260919tidypreview1';
 
 var escapeHtml = uiModule.esc;
 
@@ -629,7 +630,87 @@ async function bulkDelete() {
 
 // ---- Tidy (audit) ----
 
+/**
+ * What the audit did, from its own response. `P9-10`.
+ *
+ * `superseded` and `contradictions` have been on `POST /api/memory/audit` since
+ * `P13-09` and nothing read them, so the toast said `Tidied: 9 removed` about
+ * nine memories of which eight were still on the record with a `supersedes`
+ * edge naming what replaced them. *"9 removed"* is true and frightening;
+ * *"9 removed \u2014 8 superseded, still on the record"* is the same fact and the
+ * one a person can act on.
+ *
+ * Named and at module scope so a test can call it with a real response shape
+ * rather than grep the toast out of a 70-line function (`Law 20`).
+ */
+export function describeMemoryTidy(data) {
+  const d = data || {};
+  const superseded = Number(d.superseded) || 0;
+  const conflicts = Number(d.contradictions) || 0;
+  let msg = `Tidied: ${Number(d.removed) || 0} removed (${Number(d.before) || 0} \u2192 ${Number(d.after) || 0})`;
+  if (superseded) msg += ` \u2014 ${superseded} superseded, still on the record`;
+  if (conflicts) msg += `, ${conflicts} conflict${conflicts === 1 ? '' : 's'} left for you`;
+  return msg;
+}
+
+/**
+ * `P9-10`. The memory tidy asks before it runs, and says what it found after.
+ *
+ * The row's premise about this surface is right and understated: the animation
+ * is a diff of a change that has **already been committed**. `POST
+ * /api/memory/audit` runs the model, writes the result, and only then does this
+ * function fetch `/api/memory` again and animate the difference between the
+ * list it snapshotted and the list that now exists. Nothing between the click
+ * and the write can be reviewed, and there is no dry run to ask for — that is
+ * the half named on the row.
+ *
+ * What was wrong on this side of the wire is the report. `routes/memory/
+ * memory_routes.py` answers with `superseded` and `contradictions` beside
+ * `removed`, added by `P13-09` with a comment saying exactly why: *"a person
+ * reading '9 removed' can be told that 8 of them are recoverable and only one
+ * was genuinely junk."* This file read neither. The toast said `Tidied: 9
+ * removed` about nine memories of which eight were still on the record with a
+ * `supersedes` edge naming what replaced them — the most alarming possible
+ * reading of the friendliest possible outcome, and the reassurance that fixes
+ * it had been on the wire, unread, since `P13-09`.
+ */
 export async function tidyMemories() {
+  const ok = await uiModule.styledConfirm(
+    'Tidy sends your memories to your model and rewrites the list it sends back.',
+    {
+      title: 'Tidy memories',
+      confirmText: 'Tidy memories',
+      danger: true,
+      details: {
+        heading: 'What Tidy does',
+        items: [
+          { label: 'Sends your stored memories to your model', note: 'one call' },
+          { label: 'Merges duplicates and rewrites the text of the survivor', note: 'rewrites' },
+          { label: 'Stops the merged ones surfacing', note: 'mostly recoverable' },
+          { label: 'Records conflicts it could not settle', note: 'nothing deleted' },
+        ],
+        footnote: 'Most of what disappears is superseded rather than destroyed \u2014 it '
+                + 'stays on the record pointing at the entry that replaced it, and the '
+                + 'count afterwards says how many. There is no preview of the rewrite '
+                + 'before it happens.',
+      },
+    },
+  );
+  if (!ok) return;
+  // `P9-11`. The one call below runs the whole audit — a model reading every
+  // memory — and it is the longest thing this modal does. Closing the Brain
+  // does not cancel it; `await` keeps going and the list is rewritten on the
+  // server whether or not this window is still on screen. The spinner lives on
+  // a button inside that window, so before this row the only way to know it was
+  // still running was to leave the Brain open and watch it.
+  //
+  // `key` because the Brain also hosts the skills audit (`skills.js`), and the
+  // two can run at once.
+  setBackgroundWork('memory-modal', {
+    key: 'memory-tidy',
+    label: 'Tidying memories',
+    detail: 'Brain: tidying memories — your model is reading the list and rewriting it',
+  });
   const tidyBtn = document.getElementById('memory-tidy-btn');
   let tidySpinner = null;
   if (tidyBtn) {
@@ -696,11 +777,14 @@ export async function tidyMemories() {
     renderMemoryList();
     updateMemoryCount();
 
-    showToast(`Tidied: ${data.removed} removed (${data.before} \u2192 ${data.after})`);
+    showToast(describeMemoryTidy(data));
   } catch (error) {
     console.error('Tidy failed:', error);
     showError('Tidy failed — check console');
   } finally {
+    // The chip goes when the job goes, on every exit — including the early
+    // `return` above for "Already clean", which leaves through here too.
+    setBackgroundWork('memory-modal', { key: 'memory-tidy' });
     if (tidySpinner) tidySpinner.destroy();
     if (tidyBtn) {
       tidyBtn.disabled = false;
@@ -1789,6 +1873,7 @@ const memoryModule = {
   extractMemory,
   buildCategoryChips,
   tidyMemories,
+  describeMemoryTidy,
   importMemories,
   exportMemories
 };

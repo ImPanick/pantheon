@@ -475,6 +475,82 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
     return detail ? `${status} — ${detail}` : (status || 'the server did not answer');
   }
 
+  // ── `P9-10` — the Research tidy, in three named pieces ────────────────────
+  //
+  // Named and at module scope so a test can CALL them rather than grep for a
+  // string in a click handler (`Law 20`, first preference). The rules that
+  // decide what gets deleted, the record of what the server actually did, and
+  // the sentence a person reads are each a separate answerable question, and
+  // each was wrong in a different way when they were one anonymous listener.
+
+  /**
+   * Which reports Tidy would delete, and why each one. Deletes nothing.
+   *
+   * This is the whole of the rule, and it lives in the browser — the server has
+   * no matching endpoint. That is why this is the one Tidy that can show a real
+   * preview without a server-side dry run.
+   */
+  async function _researchTidyCandidates(items) {
+    const candidates = [];
+    const needFetch = [];
+    for (const r of (items || [])) {
+      if ((r.source_count || 0) === 0) candidates.push({ item: r, why: 'no sources' });
+      else needFetch.push(r);
+    }
+    const results = await Promise.all(needFetch.map(async r => {
+      try {
+        const res = await fetch('/api/research/detail/' + r.id, { credentials: 'same-origin' });
+        if (!res.ok) return null;
+        const d = await res.json();
+        // Backend JSON uses `result` (rendered) or `raw_report` (raw md).
+        // If neither exists or both are tiny, treat as empty.
+        const body = (d.result || d.raw_report || '').trim();
+        return body.length < 200
+          ? { item: r, why: body.length ? `report is ${body.length} characters` : 'empty report' }
+          : null;
+      } catch { return null; }
+    }));
+    for (const r of results) if (r) candidates.push(r);
+    return candidates;
+  }
+
+  /**
+   * What the server actually did, per report — not what was asked for.
+   *
+   * Every `DELETE` used to carry `.catch(() => {})`, so a refusal was
+   * indistinguishable from a success and the count that followed came from the
+   * candidate list. A person could be told seven reports were deleted, watch
+   * them leave the grid, and find all seven back on the next load.
+   */
+  async function _researchTidyOutcomes(candidates) {
+    return Promise.all((candidates || []).map(async (c) => {
+      try {
+        const res = await fetch('/api/research/' + c.item.id, { method: 'DELETE', credentials: 'same-origin' });
+        if (!res.ok) return { id: c.item.id, ok: false, why: await _readError(res) };
+        return { id: c.item.id, ok: true };
+      } catch (err) {
+        return { id: c.item.id, ok: false, why: (err && err.message) || 'the request did not complete' };
+      }
+    }));
+  }
+
+  /**
+   * The sentence, from the outcomes. `kind` is an enum rather than an `isError`
+   * boolean (`Law 10`) — partial success is a real third answer and a boolean
+   * forces it into one of the other two.
+   */
+  function _researchTidyReport(outcomes) {
+    const done = (outcomes || []).filter(o => o.ok).length;
+    const failed = (outcomes || []).filter(o => !o.ok);
+    if (failed.length && !done) {
+      return { kind: 'error', text: `Could not delete any of the ${failed.length} — ${failed[0].why}` };
+    }
+    if (failed.length) {
+      return { kind: 'error', text: `Deleted ${done}; ${failed.length} could not be deleted — ${failed[0].why}` };
+    }
+    return { kind: 'toast', text: `Deleted ${done} report${done === 1 ? '' : 's'}` };
+  }
+
   /**
    * `P9-07`. The way out of a "nothing matches" state, per tab.
    *
@@ -2453,8 +2529,16 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
       _renderLibChats();
     });
 
-    // Tidy button — AI cleanup + organize into folders
+    // Tidy button — AI cleanup + organize into folders.
+    //
+    // `P9-10`. The confirmation and the sentence afterwards both come from
+    // `sessions.js`, because this is one of three buttons that POST the same
+    // endpoint and they used to describe three different operations. This one
+    // reported `updated` and the folder count and never mentioned that chats
+    // had been deleted, which is what the tooltip on the button has always
+    // promised it would do.
     document.getElementById('doclib-chats-tidy-btn').addEventListener('click', async () => {
+      if (!await sessionModule.confirmChatTidy()) return;
       const tidyBtn = document.getElementById('doclib-chats-tidy-btn');
       const origHTML = tidyBtn.innerHTML;
       tidyBtn.disabled = true;
@@ -2475,7 +2559,7 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Tidy failed');
         if (data.status === 'ok') {
-          if (window.uiModule) window.uiModule.showToast('Sorted ' + data.updated + ' sessions into ' + data.folders.length + ' folders');
+          if (window.uiModule) window.uiModule.showToast(sessionModule.describeChatTidy(data));
           if (window.sessionModule) await window.sessionModule.loadSessions();
           _renderLibChats();
         } else {
@@ -3308,8 +3392,33 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
     });
 
     // Research tidy — delete reports that came back empty (no sources, or
-    // empty report body). Matches the Chats tidy whirlpool/borderless pattern
-    // and skips confirmation per user request.
+    // empty report body). Matches the Chats tidy whirlpool/borderless pattern.
+    //
+    // This comment used to end *"and skips confirmation per user request"*, and
+    // that clause is inherited: `git log -S` puts it in the fork baseline
+    // commit, so the request was upstream's and its subject was *match the
+    // Chats tidy*, which at the time had no confirmation either. `P9-10` puts
+    // one on the Chats tidy, so honouring the request now means gaining the
+    // dialog rather than keeping it away. Nothing in `DECISIONS.md` covers it.
+    // `P9-10`. The Research tidy is the one destructive AI operation in this
+    // product whose candidate set is decided **in the browser** — the two rules
+    // below are the whole of it, and nothing on the server repeats them. So a
+    // real preview costs nothing but showing the list, which is why this is the
+    // surface the row is proved on: every other Tidy would need the server to
+    // offer a dry run before it could say anything this specific.
+    //
+    // Two defects went with the missing preview, and both were reports that
+    // were not true:
+    //
+    //   * there was no confirmation at all. The button one row below it —
+    //     bulk delete — asks before deleting the reports a person picked by
+    //     hand, and this one deleted reports the browser picked, permanently,
+    //     on a single click;
+    //   * every `DELETE` carried `.catch(() => {})` and the toast then said
+    //     *"Deleted N"* counting the candidates rather than the deletions. With
+    //     the server refusing every one of them a person was told seven reports
+    //     were deleted, watched them disappear from the grid, and had them all
+    //     come back on the next load.
     document.getElementById('doclib-research-tidy-btn')?.addEventListener('click', async (e) => {
       const btn = e.currentTarget;
       const origHTML = btn.innerHTML;
@@ -3322,40 +3431,52 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
       el.style.top = '1px';
       btn.appendChild(el);
       sp.start();
+      let candidates = [];
       try {
-        const candidates = [];
-        const needFetch = [];
-        for (const r of _researchItems) {
-          if ((r.source_count || 0) === 0) candidates.push(r);
-          else needFetch.push(r);
-        }
-        const results = await Promise.all(needFetch.map(async r => {
-          try {
-            const res = await fetch('/api/research/detail/' + r.id, { credentials: 'same-origin' });
-            if (!res.ok) return null;
-            const d = await res.json();
-            // Backend JSON uses `result` (rendered) or `raw_report` (raw md).
-            // If neither exists or both are tiny, treat as empty.
-            const body = (d.result || d.raw_report || '').trim();
-            return body.length < 200 ? r : null;
-          } catch { return null; }
-        }));
-        for (const r of results) if (r) candidates.push(r);
-        if (candidates.length === 0) {
-          if (uiModule) uiModule.showToast('Nothing to tidy');
-          return;
-        }
-        await Promise.all(candidates.map(r => fetch('/api/research/' + r.id, { method: 'DELETE', credentials: 'same-origin' }).catch(() => {})));
-        const ids = new Set(candidates.map(r => r.id));
-        _researchItems = _researchItems.filter(r => !ids.has(r.id));
-        _renderResearchGrid();
-        if (uiModule) uiModule.showToast('Deleted ' + candidates.length);
+        candidates = await _researchTidyCandidates(_researchItems);
       } finally {
         sp.stop();
         btn.disabled = false;
         btn.classList.remove('spinning');
         btn.innerHTML = origHTML;
       }
+      if (candidates.length === 0) {
+        if (uiModule) uiModule.showToast('Nothing to tidy');
+        return;
+      }
+
+      // The preview. Every row names the report and why it is in the list, so
+      // the answer to "why is that one here?" is on the screen rather than in
+      // this file.
+      const n = candidates.length;
+      const ok = await uiModule.styledConfirm(
+        `Tidy found ${n} research report${n === 1 ? '' : 's'} with nothing in ${n === 1 ? 'it' : 'them'}.`,
+        {
+          title: 'Delete these reports?',
+          confirmText: `Delete ${n}`,
+          danger: true,
+          details: {
+            heading: n === 1 ? 'This report will be deleted' : 'These reports will be deleted',
+            items: candidates.map(c => ({ label: c.item.query || '(no question)', note: c.why })),
+            footnote: 'Permanent — a deleted report cannot be restored. '
+                    + 'Everything not listed here is left alone.',
+          },
+        },
+      );
+      if (!ok) return;
+
+      btn.disabled = true;
+      const outcomes = await _researchTidyOutcomes(candidates);
+      btn.disabled = false;
+      const gone = new Set(outcomes.filter(o => o.ok).map(o => o.id));
+      // Only the rows the server actually removed leave the grid. Removing a
+      // row the server still holds is the phantom deletion this replaces.
+      _researchItems = _researchItems.filter(r => !gone.has(r.id));
+      _renderResearchGrid();
+      if (!uiModule) return;
+      const report = _researchTidyReport(outcomes);
+      if (report.kind === 'error') uiModule.showError(report.text);
+      else uiModule.showToast(report.text);
     });
     document.getElementById('doclib-research-archived-btn')?.addEventListener('click', (e) => {
       _researchArchivedView = !_researchArchivedView;
@@ -3542,9 +3663,37 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
       libraryFetch(false);
     });
 
-    // Tidy button — remove empty/broken documents
+    // Tidy button — remove empty/broken documents.
+    //
+    // `P9-10`. Two destructive requests behind one unconfirmed click, and the
+    // second one is a model deciding what is junk. `POST /api/documents/tidy`
+    // deletes on rules; `POST /api/documents/ai-tidy` sends up to 30 documents'
+    // titles and first 300 characters to your model and deletes whatever comes
+    // back marked junk. Neither offers a dry run, so what the dialog can say is
+    // what will happen and what is protected — not which documents. The missing
+    // half is named on the row.
     const tidyBtn = document.getElementById('doclib-tidy-btn');
     if (tidyBtn) tidyBtn.addEventListener('click', async () => {
+      const okTidy = await uiModule.styledConfirm(
+        'Tidy deletes documents in two passes, and both are permanent.',
+        {
+          title: 'Tidy documents',
+          confirmText: 'Tidy documents',
+          danger: true,
+          details: {
+            heading: 'What Tidy does',
+            items: [
+              { label: 'Deletes empty documents and email drafts with nothing typed in', note: 'permanent' },
+              { label: 'Sends up to 30 documents\u2019 titles and openings to your model', note: 'one call' },
+              { label: 'Deletes the ones it calls junk', note: 'permanent' },
+              { label: 'Fixes blank titles on the rest', note: 'reversible' },
+            ],
+            footnote: 'Documents created in the last 15 minutes are skipped, and archived '
+                    + 'documents are not touched. Everything deleted here is gone \u2014 there is no undo.',
+          },
+        },
+      );
+      if (!okTidy) return;
       tidyBtn.disabled = true;
       tidyBtn.classList.add('spinning');
       const origHTML = tidyBtn.innerHTML;
@@ -3560,6 +3709,12 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
       let totalDeleted = 0;
       let totalFixed = 0;
       let aiMessage = '';
+      // `P9-08`'s lane, on `P9-10`'s operation. Both passes used to fail
+      // silently: `if (res1.ok)` had no else, and the second pass was wrapped
+      // in `catch (_) {}` with the comment "AI tidy is optional". A tidy where
+      // the model half never ran reported "Already tidy" — which is a
+      // statement about the library, not about the request that did not happen.
+      const failures = [];
       try {
         // Phase 1: regex tidy (empty/broken docs)
         const [res1] = await Promise.all([
@@ -3570,6 +3725,8 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
           const d1 = await res1.json();
           totalDeleted += d1.deleted || 0;
           totalFixed += d1.fixed_titles || 0;
+        } else {
+          failures.push(`empty/broken pass: ${await _readError(res1)}`);
         }
 
         // Phase 2: AI tidy (junk/test detection)
@@ -3579,12 +3736,21 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
             const d2 = await res2.json();
             totalDeleted += d2.deleted || 0;
             if (d2.message) aiMessage = d2.message;
+          } else {
+            failures.push(`model pass: ${await _readError(res2)}`);
           }
-        } catch (_) { /* AI tidy is optional */ }
+        } catch (err) {
+          failures.push(`model pass: ${(err && err.message) || 'the request did not complete'}`);
+        }
 
         spinner.destroy();
 
-        if (totalDeleted === 0 && totalFixed === 0) {
+        if (failures.length && !totalDeleted && !totalFixed) {
+          if (uiModule) uiModule.showError(`Tidy did not run \u2014 ${failures.join('; ')}`);
+        } else if (failures.length) {
+          if (uiModule) uiModule.showError(`Removed ${totalDeleted}, but ${failures.join('; ')}`);
+          libraryFetch(false);
+        } else if (totalDeleted === 0 && totalFixed === 0) {
           tidyBtn.innerHTML = '<span style="opacity:0.7">Already tidy</span>';
         } else {
           const msg = aiMessage || `Removed ${totalDeleted} document${totalDeleted !== 1 ? 's' : ''}`;

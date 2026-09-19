@@ -46,8 +46,18 @@ def _patch_loop_basics(monkeypatch):
 def test_detects_strong_guide_only_turns():
     assert detect_guide_only_turn("GUIDE-ONLY MODE. DO NOT USE TOOLS.")
     assert detect_guide_only_turn("NO-TOOLS MODE.")
-    assert detect_guide_only_turn("Ask me before using tools.")
     assert detect_guide_only_turn("You are not allowed to:\n- use tools\n- execute commands")
+
+
+def test_asking_to_be_asked_is_no_longer_a_disarm():
+    """`P2-14`. This line used to assert the opposite, and that was the row's
+    sharpest case: *"ask me before using tools"* is a request for confirmation
+    and the response was a fully disarmed agent. It is a rung now, not a
+    denylist — see `tests/test_the_guide_only_trigger_stopped_overfiring.py`."""
+    from src.tool_policy import detect_tool_confirmation_turn
+
+    assert detect_guide_only_turn("Ask me before using tools.") is None
+    assert detect_tool_confirmation_turn("Ask me before using tools.")
 
 
 def test_does_not_treat_ordinary_guidance_as_no_tools():

@@ -8,7 +8,7 @@ import spinnerModule from './spinner.js';
 import { styledConfirm, showToast, emptyStateIcon } from './ui.js';
 import { folderDisplayName, sortedFolders } from './emailInbox.js?v=20260815approvalsave1';
 import settingsModule from './settings.js?v=20260918emptystates1';
-import * as Modals from './modalManager.js?v=20260723compareicon2';
+import * as Modals from './modalManager.js?v=20260919tidypreview1';
 import { topPortalZ } from './toolWindowZOrder.js';
 import { makeWindowDraggable } from './windowDrag.js';
 import {
@@ -31,7 +31,7 @@ import { emailApiUrl } from './emailShared.js';
 // the one vocabulary module, never from this renderer — six places in the
 // product already know what a throttle is and a seventh is the defect
 // (`Law 13`).
-import { isThrottledSource, throttleNotice } from './runStatus.js';
+import { isThrottledSource, throttleNotice, clearsInLabel } from './runStatus.js';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { chevronIcon } from './icons.js';
 
@@ -2587,6 +2587,49 @@ export function noteMailboxSync(sync) {
     source: sync.source || '',
     retryIn: sync.retry_in || 0,
     throttleDetail: sync.detail || '',
+  });
+  _syncMailboxWorkChip(sync);
+}
+
+/**
+ * `P9-11`. The mailbox poll, on the dock, when the mailbox window is closed.
+ *
+ * **This is the case in the row where the silence is not merely unhelpful but
+ * wrong.** The poll in `emailInbox.js` runs every 60 seconds whether or not
+ * this window exists. When the server answers `sync.source: "unavailable"` it
+ * is saying *we have stopped calling this mailbox* — a password the provider
+ * rejected, an account it locked — and the unread count that comes back with
+ * it is `0`. `_refreshUnreadCount` then hides `#email-unread-dot`, so a mailbox
+ * Pantheon can no longer read looks **exactly** like a mailbox with no new
+ * mail. `P15-11` put the true answer on the library's status line; the library
+ * is the window a person in this state has no reason to open.
+ *
+ * A healthy mailbox gets no chip. A chip that is always there is furniture and
+ * stops being read, and "we are talking to your mail server normally" is not
+ * news. The short prewarm at startup gets none either — one first-page fetch
+ * that resolves in well under a second would be a chip that flickers.
+ *
+ * The words come from `runStatus.js`, which is where this product keeps its one
+ * vocabulary for a paused destination (`Law 7`), including the clause that says
+ * the pause is deliberate — without it a pause reads as a fault, and what
+ * people do about a fault is press the button again.
+ */
+function _syncMailboxWorkChip(sync) {
+  const source = (sync && sync.source) || '';
+  if (!isThrottledSource(source)) {
+    Modals.setBackgroundWork('email-lib-modal', { key: 'mailbox-sync' });
+    return;
+  }
+  const when = clearsInLabel(sync && sync.retry_in);
+  const notice = throttleNotice({ source, retryIn: sync && sync.retry_in, what: 'This mailbox' });
+  Modals.setBackgroundWork('email-lib-modal', {
+    key: 'mailbox-sync',
+    label: when ? `Mail paused ${when}` : 'Mail paused',
+    detail: sync && sync.detail ? `${notice} \u2014 ${sync.detail}` : notice,
+    // `_AUTO_WIRE` deliberately gives this modal no rail or sidebar button, and
+    // `openEmailLibrary` removes the element and rebuilds it, so there is
+    // nothing for the dock to un-hide either. The opener is the door.
+    open: () => { try { openEmailLibrary(); } catch (_) {} },
   });
 }
 

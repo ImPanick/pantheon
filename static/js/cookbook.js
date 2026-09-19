@@ -3222,7 +3222,7 @@ function _renderRecipes() {
 
 // ── Public API ──
 
-import * as Modals from './modalManager.js?v=20260723compareicon2';
+import * as Modals from './modalManager.js?v=20260919tidypreview1';
 import { chevronIcon, playIcon } from './icons.js';
 
 let _rendered = false;

@@ -25,7 +25,7 @@ import {
 import markdownModule from './js/markdown.js';
 import chatRenderer from './js/chatRenderer.js?v=20260919chipramp1';
 import sessionModule from './js/sessions.js';
-import memoryModule from './js/memory.js?v=20260918workshop1';
+import memoryModule from './js/memory.js?v=20260919tidypreview1';
 import voiceRecorderModule from './js/voiceRecorder.js';
 import censorModule from './js/censor.js';
 import galleryModule from './js/gallery.js?v=20260708match1';
@@ -36,7 +36,7 @@ import notesModule from './js/notes.js';
 import adminModule from './js/admin.js?v=20260918p2admin1';
 import settingsModule from './js/settings.js?v=20260918emptystates1';
 // Eagerly bind unified minimize/restore behavior across all tool modals.
-import './js/modalManager.js?v=20260723compareicon2';
+import './js/modalManager.js?v=20260919tidypreview1';
 // Desktop window tiling — drag a modal near an edge/corner to snap.
 import './js/tileManager.js';
 import themeModule from './js/theme.js';
@@ -1024,7 +1024,7 @@ function initializeEventListeners() {
     toolCookbookBtn.addEventListener('click', async () => {
       if (!cookbookModule) return;
       // Try minimized→restore or open→minimize via the manager first
-      const Modals = await import('./js/modalManager.js?v=20260723compareicon2');
+      const Modals = await import('./js/modalManager.js?v=20260919tidypreview1');
       if (!Modals.toggle('cookbook-modal')) {
         // Not registered yet → fresh open
         cookbookModule.open();
@@ -1052,7 +1052,7 @@ function initializeEventListeners() {
   if (toolGalleryBtn) {
     toolGalleryBtn.addEventListener('click', async () => {
       if (!galleryModule) return;
-      const Modals = await import('./js/modalManager.js?v=20260723compareicon2');
+      const Modals = await import('./js/modalManager.js?v=20260919tidypreview1');
       if (!Modals.toggle('gallery-modal')) {
         if (galleryModule.isGalleryOpen()) galleryModule.closeGallery();
         else galleryModule.openGallery();
@@ -1081,7 +1081,7 @@ function initializeEventListeners() {
   if (toolCalendarBtn) {
     toolCalendarBtn.addEventListener('click', async () => {
       if (!calendarModule) return;
-      const Modals = await import('./js/modalManager.js?v=20260723compareicon2');
+      const Modals = await import('./js/modalManager.js?v=20260919tidypreview1');
       // toggle returns true when a registered modal was minimized/restored;
       // returns false when nothing is registered → open fresh.
       if (!Modals.toggle('calendar-modal')) {
@@ -1437,6 +1437,11 @@ function initializeEventListeners() {
     // the main "★ Tidy" button (AI) and the sub-row "Tidy" button
     // (no AI, Phase 1 cleanup only) via the skipLlm flag.
     async function _runTidy(skipLlm) {
+      // `P9-10`. Both entry points delete, so both ask first, and both report
+      // the deletions. This branch used to print `unfiled_remaining` and the
+      // folder count on the AI path and say nothing at all about the chats it
+      // had just removed.
+      if (!await sessionModule.confirmChatTidy({ skipLlm })) return;
       const btnIcon = sortBtn.querySelector('.sort-icon');
       if (btnIcon) btnIcon.style.display = 'none';
       const wp = spinnerModule.create('', 'clean', 'whirlpool');
@@ -1453,27 +1458,11 @@ function initializeEventListeners() {
         if (data.status === 'ok') {
           sessionModule.setSortMode(null); // clear sort — tidy creates manual folder order
           _syncSortChecks();
-          if (skipLlm) {
-            // No-AI path: just report what got cleaned. No "unfiled
-            // remaining" prompt because we never tried to file anything.
-            const cleaned = (data.deleted_empty || 0) + (data.deleted_throwaway || 0);
-            uiModule.showToast(cleaned ? `Cleaned ${cleaned} empty/throwaway chat${cleaned === 1 ? '' : 's'}` : 'Already clean');
-          } else {
-            // Tidy now works in batches (15 most-recent unfiled per click)
-            // so the user gets fast feedback and a manageable LLM call
-            // even with hundreds of chats. Tell them what's left.
-            const remaining = data.unfiled_remaining || 0;
-            let msg;
-            if (data.updated > 0) {
-              msg = `Sorted ${data.updated} into ${data.folders.length} folder${data.folders.length === 1 ? '' : 's'}`;
-              if (remaining > 0) msg += ` — ${remaining} unfiled left, hit Group again`;
-            } else if (remaining > 0) {
-              msg = `${remaining} unfiled chats — hit Group again`;
-            } else {
-              msg = 'All sorted';
-            }
-            uiModule.showToast(msg);
-          }
+          // Tidy works in batches (15 most-recent unfiled per click) so the
+          // user gets fast feedback and a manageable LLM call even with
+          // hundreds of chats; `describeChatTidy` says what is left, and says
+          // what was deleted first because that is the half with no undo.
+          uiModule.showToast(sessionModule.describeChatTidy(data));
           if (sessionModule) await sessionModule.loadSessions();
         } else {
           uiModule.showToast(data.reason || 'Nothing to sort');

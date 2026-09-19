@@ -1989,7 +1989,7 @@ function _makeGalleryDraggable(content) {
 // ---- Open / Close ----
 
 // Re-export the manager for the rail click handler
-import * as Modals from './modalManager.js?v=20260723compareicon2';
+import * as Modals from './modalManager.js?v=20260919tidypreview1';
 import { chevronIcon } from './icons.js';
 
 export function openGallery() {

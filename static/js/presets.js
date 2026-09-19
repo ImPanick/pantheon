@@ -933,7 +933,7 @@ async function _mergeUserMemories(charName) {
 }
 
 function _reloadMemoryList() {
-  import('./memory.js?v=20260918workshop1').then(m => {
+  import('./memory.js?v=20260919tidypreview1').then(m => {
     if (m.renderMemoryList) m.renderMemoryList();
     if (m.updateMemoryCount) m.updateMemoryCount();
   }).catch(() => {});

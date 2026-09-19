@@ -8,7 +8,7 @@
 //   - Other static assets (images/fonts/libs): cache-first with bg refresh.
 //   - API / non-GET: never cached.
 // Bump CACHE_NAME whenever the precache list or SW logic changes.
-const CACHE_NAME = 'pantheon-v428-chip-ramp';
+const CACHE_NAME = 'pantheon-v429-tidy-preview';
 
 // KaTeX resolves these from its own stylesheet, so caching the CSS without them
 // gives offline math fallback glyphs instead of proper typesetting.
@@ -81,8 +81,8 @@ const PRECACHE = [
   // browser error page with no way back, and the same form works the moment
   // the network returns.
   '/login',
-  '/static/style.css?v=20260919chipramp1',
-  '/static/app.js?v=20260919chipramp1',
+  '/static/style.css?v=20260919tidypreview1',
+  '/static/app.js?v=20260919tidypreview1',
   '/static/js/storage.js',
   '/static/js/appConfig.js',
   '/static/js/ui.js',
@@ -94,7 +94,7 @@ const PRECACHE = [
   '/static/js/langIcons.js',
   '/static/js/dragSort.js',
   '/static/js/sessions.js',
-  '/static/js/memory.js?v=20260918workshop1',
+  '/static/js/memory.js?v=20260919tidypreview1',
   '/static/js/skills.js',
   '/static/js/tourHints.js',
   '/static/js/fileHandler.js?v=20260919chipramp1',

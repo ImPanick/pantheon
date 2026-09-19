@@ -600,6 +600,15 @@ DEFAULT_SETTINGS = {
     "skill_autosave_min_confidence": 0.85,
     # Max relevant skills injected into the prompt for one request. The skills
     # library can grow beyond this; cleanup/retirement is an explicit review flow.
+    #
+    # `P2-09` / `B750`. **The seventh context budget, and now policy like the
+    # other six.** It resolves role profile → instance setting → this default
+    # through `context_budget.resolve_skill_injection`, whose ceiling of 12 used
+    # to be written twice — `max(0, min(12, …))` in `src/agent_loop.py` and
+    # `max="12"` in `static/index.html` — so raising this alone did nothing
+    # above 12. The per-user pref of the same name now chooses WITHIN the
+    # resolved number rather than beating it, and a pref of `0` is still the
+    # documented off switch its own caption promises.
     "skill_max_injected": 3,
     # Reminders
     "reminder_channel": "browser",   # "browser" | "email" | "ntfy" | "webhook"
@@ -737,6 +746,15 @@ def role_limit_ranges() -> dict[str, tuple[int, int]]:
         UPLOAD_BURST_LIMIT_SETTING,
         UPLOAD_BURST_WINDOW_SETTING,
     )
+    # `P2-09` / `B750`. The seventh context budget, and the fifth limit that
+    # ships a real default and resolves with an `owner` — so it belongs in this
+    # derivation for the same reason the four above it do. Bounds imported from
+    # the module that owns it, never restated (`Law 7`).
+    from src.context_budget import (
+        MAX_SKILL_INJECTION,
+        MIN_SKILL_INJECTION,
+        SKILL_INJECTION_LIMIT,
+    )
 
     ranges = dict(LIMIT_RANGES)
     ranges[TASK_CONCURRENCY_CAP_SETTING] = (1, TASK_CONCURRENCY_CAP_MAX)
@@ -746,6 +764,7 @@ def role_limit_ranges() -> dict[str, tuple[int, int]]:
         MIN_UPLOAD_BURST_LIMIT, MAX_UPLOAD_BURST_LIMIT)
     ranges[UPLOAD_BURST_WINDOW_SETTING] = (
         MIN_UPLOAD_BURST_WINDOW_SECONDS, MAX_UPLOAD_BURST_WINDOW_SECONDS)
+    ranges[SKILL_INJECTION_LIMIT] = (MIN_SKILL_INJECTION, MAX_SKILL_INJECTION)
     return ranges
 
 
@@ -759,10 +778,31 @@ def without_retired_settings(settings: dict) -> dict:
         if key not in RETIRED_SETTING_KEYS
     }
 
+# `P2-18`. Every switch ships ON, and `deep_research` was the one that did not.
+#
+# **Flipped 2026-09-19, and it means something now that it did not mean when
+# the row was written.** `P2-CORRECTED` measured the old default as costing
+# nothing — the frontend hid the buttons and un-hid them one line later, and no
+# server route read any flag — so `deep_research: False` was a label. `H05`
+# then made all eight flags real in three layers: the agent's denylist
+# (`tool_security.feature_disabled_tools` removes `trigger_research` and
+# `manage_research`), the HTTP surface (`require_feature` as a router
+# dependency), and the UI precedence fix. From that commit onward the shipped
+# default genuinely took Deep Research away from every fresh install, and
+# `tests/test_feature_flags_real.py` recorded it as *"the one flag that ships
+# off"* without asking why.
+#
+# Nothing chose it. `DEFAULT_PRIVILEGES["can_use_research"]` is `True`
+# (`core/auth.py`), so the product shipped a per-user privilege granting
+# research to everybody and an instance flag taking it from everybody — and the
+# instance flag won. `Law 16` is satisfied either way: `search_fallback_chain`
+# ships `[]`, so a fresh install with no provider configured reaches nobody
+# when this is on; what it reaches is the admin panel `P2-20` built, where an
+# operator can switch it off on purpose.
 DEFAULT_FEATURES = {
     "web_search": True,
     "web_fetch": True,
-    "deep_research": False,
+    "deep_research": True,
     "memory": True,
     "document_editor": True,
     "rag": True,

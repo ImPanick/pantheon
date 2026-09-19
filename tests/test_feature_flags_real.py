@@ -95,15 +95,22 @@ def test_the_denylist_is_empty_when_everything_is_on():
     assert feature_disabled_tools({k: True for k in DEFAULT_FEATURES}) == set()
 
 
-def test_the_shipped_defaults_only_deny_what_they_ship_off():
-    """`deep_research` is the one flag that ships off. Nothing else should be
-    denied on a fresh install, or the product arrives with capability missing
-    that nobody chose to remove."""
+def test_the_shipped_defaults_deny_nothing():
+    """`P2-18`, 2026-09-19. This test used to assert `deep_research is False`
+    and justify it in a docstring that argued the opposite case: *"the product
+    arrives with capability missing that nobody chose to remove."* That was
+    exactly what the one `False` did — and once `H05` made the flags real it
+    stopped being a label and started taking Deep Research off every fresh
+    install. `DEFAULT_PRIVILEGES["can_use_research"]` is `True`, so the two
+    defaults disagreed and the flag won.
+
+    Now every switch ships on and the denylist a fresh install computes is
+    empty. An operator turns one off in the admin panel; nothing arrives
+    off."""
     from src.settings import DEFAULT_FEATURES
     from src.tool_security import feature_disabled_tools
-    assert DEFAULT_FEATURES["deep_research"] is False
-    assert feature_disabled_tools(dict(DEFAULT_FEATURES)) == {
-        "trigger_research", "manage_research"}
+    assert all(DEFAULT_FEATURES.values()), DEFAULT_FEATURES
+    assert feature_disabled_tools(dict(DEFAULT_FEATURES)) == set()
 
 
 def test_an_unreadable_features_file_leaves_everything_ON(monkeypatch):

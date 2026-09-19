@@ -395,10 +395,14 @@ def _injected_keyframes() -> dict:
 def test_the_keyframe_census_is_not_the_number_on_the_row():
     """`Law 6`. Every figure here is measured at read time; none is carried."""
     in_css = _KEYFRAMES.findall(blank_text(CSS, "css"))
-    assert len(in_css) == 139, (
-        f"expected 139 `@keyframes` in static/style.css, found {len(in_css)}. "
+    assert len(in_css) == 140, (
+        f"expected 140 `@keyframes` in static/style.css, found {len(in_css)}. "
         "The row says 160 (148 + 12) and `P1-12` says 149; both were measured "
-        "on an older file and neither is today's number."
+        "on an older file and neither is today's number. 139 until 2026-09-19, "
+        "when `P9-11` added `dock-work-pulse` \u2014 the dock chip that says a job "
+        "is still running in a window you closed. It is guarded: the rule below "
+        "finds its `prefers-reduced-motion` companion, which stops the pulse and "
+        "leaves the chip and its text, because a running job is information."
     )
     assert len(set(in_css)) == len(in_css), (
         "two @keyframes share a name — they are global, so the last one wins "

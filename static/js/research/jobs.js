@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { setBackgroundWork } from '../modalManager.js?v=20260919tidypreview1';
 /**
  * Research job queue — add, start, monitor, cancel research jobs.
  */
@@ -380,4 +381,32 @@ async function _fetchResult(job) {
   } catch {}
 }
 
-function _notify() { if (_renderCb) _renderCb(); }
+/**
+ * `P9-11`. Every job-state change in this module already funnels through here,
+ * which is why the dock chip is written here and not in `panel.js`: the panel
+ * is what a person sees **when the overlay is open**, and the whole complaint
+ * the row makes is about the other case.
+ *
+ * Research is the one background job that can be running several at once, so
+ * the chip counts them and names the question only when there is exactly one —
+ * two truncated questions on a 16ch chip is less legible than a number.
+ */
+function _syncResearchChip() {
+  const live = _jobs.filter(j => j && (j.status === 'running' || j.status === 'queued'));
+  const running = live.filter(j => j.status === 'running');
+  if (!live.length) { setBackgroundWork('research-overlay', null); return; }
+  const queued = live.length - running.length;
+  const label = live.length === 1
+    ? (running.length ? 'Researching' : 'Queued')
+    : `${running.length} running`;
+  const one = live[0];
+  setBackgroundWork('research-overlay', {
+    label: live.length === 1 ? label : label + (queued ? ` · ${queued} queued` : ''),
+    detail: live.length === 1
+      ? `${running.length ? 'Researching' : 'Queued'}: ${one.query || 'untitled question'}`
+      : `${running.length} research job${running.length === 1 ? '' : 's'} running`
+        + (queued ? `, ${queued} queued` : ''),
+  });
+}
+
+function _notify() { _syncResearchChip(); if (_renderCb) _renderCb(); }

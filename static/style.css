@@ -1179,6 +1179,44 @@ body.bg-pattern-sparkles {
     .minimized-dock-chip svg { opacity: 0.7; flex-shrink: 0; }
     .minimized-dock-label { white-space: nowrap; }
 
+    /* `P9-11` — what this window is doing while you are not looking at it.
+       A real child rather than a `::after`: the two `::after` slots on a chip
+       are already taken (`data-tab-num` on email readers, the unread label on
+       the mailbox), and the text here can carry a skill name or a research
+       question, so it is written with `textContent`.
+
+       `currentColor` and a left rule again — `--accent` is never defined in
+       `:root` and `tests/test_accent_fallback_semantics_css.py` pins the count,
+       so a progress badge is not the place to spend a new one. */
+    .minimized-dock-work {
+      white-space: nowrap;
+      font-size: 10px;
+      font-variant-numeric: tabular-nums;
+      padding-left: 6px;
+      margin-left: 2px;
+      border-left: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+      opacity: 0.72;
+      max-width: 16ch;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .minimized-dock-chip.chip-working {
+      border-color: color-mix(in srgb, currentColor 34%, transparent);
+    }
+    .minimized-dock-chip.chip-working svg {
+      opacity: 1;
+      animation: dock-work-pulse 2.4s ease-in-out infinite;
+    }
+    @keyframes dock-work-pulse {
+      0%, 100% { opacity: 1; }
+      50%      { opacity: 0.45; }
+    }
+    /* A running job is information, not decoration, so the chip keeps saying
+       so when animation is switched off — only the pulse goes. */
+    @media (prefers-reduced-motion: reduce) {
+      .minimized-dock-chip.chip-working svg { animation: none; }
+    }
+
     /* Mobile: chips are icon-only round pills. Tap to restore, drag toward
        the trash zone at top-center to close. touch-action:none lets the
        pointermove listener claim the gesture instead of the page scroll. */
@@ -1195,6 +1233,21 @@ body.bg-pattern-sparkles {
       .minimized-dock-chip svg { width: 18px; height: 18px; opacity: 0.9; }
       .minimized-dock-label,
       .minimized-dock-x { display: none !important; }
+      /* `P9-11`. The mobile chip is an icon-only circle, so the words do not
+         fit — but "something is running here" still has to. The text is
+         collapsed to a dot on the rim; the full sentence is the chip's title. */
+      .minimized-dock-work {
+        position: absolute;
+        bottom: -2px; right: -2px;
+        width: 9px; height: 9px;
+        padding: 0; margin: 0; border: none; border-radius: 50%;
+        max-width: none;
+        overflow: hidden;
+        text-indent: -999px;
+        opacity: 1;
+        background: currentColor;
+        box-shadow: 0 0 0 2px var(--bg);
+      }
       .minimized-dock-chip.chip-free-drag {
         box-shadow: 0 8px 22px rgba(0,0,0,0.55),
                     0 0 0 2px color-mix(in srgb, var(--accent, var(--red)) 50%, transparent) !important;
@@ -6995,6 +7048,46 @@ body.bg-pattern-sparkles {
     .styled-confirm-box .modal-footer {
       display:flex; justify-content:flex-end; gap:8px; padding-top:6px;
       border-top:1px solid var(--border); margin-top:4px;
+    }
+    /* `P9-10` — what a destructive operation is about to do, listed before it
+       does it. A left rule and `currentColor` carry the emphasis: `--accent` is
+       never defined in `:root` (see tests/test_accent_fallback_semantics_css.py,
+       which pins static/style.css at 814 `var(--accent…)` uses), so a new accent
+       site here would be a decision rather than a habit, and full-strength
+       accent text misses 4.5:1 against `--panel` on seven of the sixteen
+       palettes. */
+    .styled-confirm-details {
+      margin:-4px 0 12px;
+      border-left:2px solid color-mix(in srgb, currentColor 30%, transparent);
+      padding:2px 0 2px 10px;
+      text-align:left;
+    }
+    .styled-confirm-details-heading {
+      font-size:0.76rem; font-weight:600; letter-spacing:0.02em;
+      color:color-mix(in srgb, var(--fg) 62%, transparent);
+      margin-bottom:4px;
+    }
+    .styled-confirm-details-list {
+      list-style:none; margin:0; padding:0;
+      max-height:190px; overflow-y:auto;
+      font-size:0.8rem; line-height:1.45;
+    }
+    .styled-confirm-detail {
+      display:flex; gap:8px; align-items:baseline;
+      padding:1px 0;
+    }
+    .styled-confirm-detail-label {
+      flex:1; min-width:0;
+      overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+      color:var(--fg);
+    }
+    .styled-confirm-detail-note {
+      flex-shrink:0; font-size:0.72rem;
+      color:color-mix(in srgb, var(--fg) 48%, transparent);
+    }
+    .styled-confirm-details-foot {
+      margin-top:5px; font-size:0.74rem; line-height:1.4;
+      color:color-mix(in srgb, var(--fg) 52%, transparent);
     }
     @media (max-width:768px) {
       .styled-confirm-box {
@@ -40935,6 +41028,40 @@ button.cal-event-more:hover { opacity:1 !important; }
   margin-bottom: 0;
 }
 .cal-form-today span { letter-spacing: 0.04em; text-transform: none; opacity: 0.85; font-weight: 500; }
+
+/* `P9-09` — the quick-add form says a model filled it in, and how sure it was.
+
+   A left rule in `currentColor` again, not an accent: `--accent` is never
+   defined in `:root`, `tests/test_accent_fallback_semantics_css.py` pins this
+   sheet at 814 `var(--accent…)` uses and 181 full-strength accent `color:`
+   sites — each of which misses 4.5:1 on seven of the sixteen palettes — and a
+   provenance line has to be legible on all sixteen. The one place a colour is
+   spent is the low-confidence state, and it is `--color-warning`, which is a
+   semantic token rather than the theme's accent. */
+.cal-form-provenance {
+  display: flex; flex-wrap: wrap; align-items: baseline;
+  justify-content: center; gap: 6px;
+  margin: 0 auto 10px; padding: 3px 0 3px 9px;
+  max-width: 92%;
+  border-left: 2px solid color-mix(in srgb, currentColor 26%, transparent);
+  font-size: 11px; line-height: 1.4; text-align: left;
+}
+.cal-form-provenance-lead { font-weight: 600; opacity: 0.7; }
+.cal-form-provenance-from {
+  flex: 1 1 auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  opacity: 0.55; font-style: italic;
+}
+.cal-form-provenance-sure {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.6;
+}
+.cal-form-provenance-sure.is-unsure {
+  opacity: 1;
+  font-weight: 600;
+  color: var(--color-warning, #f0ad4e);
+}
 
 /* Hero — clock face + date label. Spacing between the two lives entirely
    on the clock's bottom margin so it's predictable. */

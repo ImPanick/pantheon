@@ -10,6 +10,7 @@ import uiModule from './ui.js';
 import * as spinnerModule from './spinner.js';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { topPortalZ } from './toolWindowZOrder.js';
+import { setBackgroundWork } from './modalManager.js?v=20260919tidypreview1';
 import { PLAY_GLYPH, chevronIcon } from './icons.js';
 
 const API = window.location.origin;
@@ -1726,7 +1727,59 @@ async function _fetchAuditStatus() {
   } catch { return { status: 'none' }; }
 }
 
+/**
+ * The Brain's dock chip, from the audit's own status. `P9-11`.
+ *
+ * Running work gets a chip; a finished audit does not, because a chip that
+ * lingers after the job is over becomes furniture and stops meaning "look at
+ * this". The outcome is said once, through the toast the product already uses
+ * for "that finished" (`Law 14`), and `_auditSaid` is what keeps a 1.5s poll
+ * from saying it forty times.
+ */
+let _auditSaid = null;
+function _syncAuditChip(st) {
+  const status = st && st.status;
+  if (status === 'running') {
+    const done = st.done || 0, total = st.total || 0;
+    _auditSaid = 'running';
+    setBackgroundWork('memory-modal', {
+      // The Brain holds two jobs that can run at once — this audit and the
+      // memory tidy — so the key is not optional here. Without it whichever
+      // started second would erase the first from the dock and whichever
+      // finished first would clear the survivor.
+      key: 'skills-audit',
+      label: total ? `Auditing ${done}/${total}` : 'Auditing skills',
+      detail: st.current
+        ? `Skills audit: ${done} of ${total} done, now testing ${st.current}`
+        : `Skills audit: ${done} of ${total} done`,
+    });
+    return;
+  }
+  setBackgroundWork('memory-modal', { key: 'skills-audit' });
+  if (_auditSaid !== 'running') { _auditSaid = status || null; return; }
+  _auditSaid = status || null;
+  const total = st && st.total ? st.total : 0;
+  const bad = ((st && st.results) || []).filter(
+    r => r && (r.result === 'fail' || r.result === 'needs_work')).length;
+  if (status === 'cancelled') {
+    uiModule.showToast(`Skills audit cancelled after ${st.done || 0} of ${total}`);
+  } else {
+    uiModule.showToast(bad
+      ? `Skills audit finished — ${bad} of ${total} need work`
+      : `Skills audit finished — all ${total} passed`);
+  }
+}
+
 function _renderAuditPanel(panel, st) {
+  // `P9-11`. Every path that updates this panel comes through here — the
+  // re-attach on load, the first render, and the 1.5s poll — so this is the one
+  // place that can keep the dock chip honest without a second timer.
+  //
+  // The audit is the sharpest case the row names: `_auditPoll` keeps running at
+  // 1.5s whether or not the Brain is on screen, writing into a panel inside a
+  // modal the person may have closed minutes ago. Nothing stopped; only the
+  // telling stopped.
+  _syncAuditChip(st);
   if (st.status === 'none') { panel.classList.add('hidden'); panel.innerHTML = ''; return; }
   const done = st.done || 0, total = st.total || 0;
   const pct = total ? Math.round((done / total) * 100) : 0;

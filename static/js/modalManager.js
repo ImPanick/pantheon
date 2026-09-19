@@ -10,7 +10,7 @@
  *
  * Usage from a tool module:
  *
- *   import * as Modals from './modalManager.js?v=20260723compareicon2';
+ *   import * as Modals from './modalManager.js?v=20260919tidypreview1';
  *
  *   // After building the modal element and adding it to the body:
  *   Modals.register('gallery-modal', {
@@ -152,6 +152,130 @@ const _LABELS = {
   'doc-panel':         { label: 'Document', icon: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8' },
 };
 
+// ── `P9-11` — background work, on the dock, whether or not its window is open ──
+//
+// **The row names five jobs and says all five are invisible. Re-measured
+// 2026-09-19: two of the five already had an indicator, and each had built its
+// own.** `cookbookRunning.js:_showCookbookNotif` writes live text onto the
+// Forge's sidebar button (`#cookbook-bg-status`, `"downloading 62%"`) plus a
+// dot and a rail highlight; `research/panel.js:_syncResearchRail` writes a
+// pulsing `R2` onto the research button, under a comment that says
+// *"panel-independent so it works with the modal closed"*. So the honest
+// version of the row is not *nothing reports* — it is **three report nothing
+// and the two that do wrote two separate implementations of it** (`Law 14`).
+//
+// The three with nothing were the skills audit (drawn into `#skills-audit-panel`
+// inside the Brain, while `_auditPoll` keeps polling every 1.5s whether or not
+// the Brain is on screen), the memory tidy (a spinner on a button in the same
+// modal), and the mailbox poll — which is the one where silence actively lies:
+// `emailInbox.js` polls every 60s, the server answers `sync.source:
+// "unavailable"` with a `retry_in`, and a mailbox Pantheon has stopped being
+// able to read shows the same **nothing** as a mailbox with no new mail.
+//
+// This is the shared one, with a name, so the next job does not write a sixth.
+// The dock is where it goes because the dock is already the answer to *"what is
+// running that I am not looking at"*: a chip per window, with per-chip state
+// that `emailLibrary.js` already writes to (`data-email-unread-label`).
+//
+// **The one thing this changes about the dock**: a chip may now exist for a
+// window that is CLOSED, not merely minimized. That is the row, stated as a
+// data structure — the whole complaint is that closing the window hides the
+// work. A work chip carries no `×`, because dismissing an indicator while the
+// job runs on is the same defect wearing the fix's clothes; it leaves when the
+// job does.
+//
+// **Two jobs, one window, and that is not a corner case — it is the Brain.**
+// `#skills-audit-panel` and `#memory-tidy-btn` are both inside `#memory-modal`
+// (`static/index.html:622` and `:452`), so an audit running while somebody
+// presses Tidy is one window with two jobs. A `Map` keyed by modal id alone
+// would have let the second silently overwrite the first and the first's
+// completion then clear the second — a progress indicator that lies about what
+// is running, which is worse than the blank it replaced. So the store is keyed
+// by **modal id and job key**, and the chip summarises when there is more than
+// one.
+const _work = new Map(); // modalId -> Map(jobKey -> { label, detail })
+
+/**
+ * Say that this window has work running, or clear it.
+ *
+ * @param {string} id     the modal id, as `register`/`_AUTO_WIRE` know it.
+ * @param {object|null} work `{ key, label, detail }`.
+ *        `key` names the job within the window and defaults to `'default'` —
+ *        two jobs in one window need two keys or they overwrite each other.
+ *        `label` is the short state ("Auditing 4/19"); **a missing or empty
+ *        `label` is how a job says it is over**, and `null` clears `'default'`.
+ *        `detail` is the tooltip. Both are drawn with `textContent` — a label
+ *        can carry a skill name or a research question, which is user-written
+ *        text.
+ *        `open` is an optional function that opens this window, for a tool
+ *        `_AUTO_WIRE` cannot open — see `openClosedWindow`. Without a door a
+ *        work chip is a button that does nothing, which is `Law 13` in
+ *        miniature.
+ * @returns {boolean} whether the dock changed, so a caller polling on a timer
+ *        does not have to care about repeats.
+ */
+export function setBackgroundWork(id, work) {
+  if (!id) return false;
+  const key = String((work && work.key) || 'default');
+  const jobs = _work.get(id) || null;
+  const prev = jobs ? jobs.get(key) || null : null;
+  if (!work || !work.label) {
+    if (!prev) return false;
+    jobs.delete(key);
+    if (!jobs.size) _work.delete(id);
+    _renderDock();
+    return true;
+  }
+  const next = {
+    label: String(work.label),
+    detail: String(work.detail || work.label),
+    // A poll that re-states the same job every tick passes no `open` after the
+    // first call, so the opener is kept rather than dropped on the second tick.
+    open: typeof work.open === 'function' ? work.open : (prev && prev.open) || null,
+  };
+  if (prev && prev.label === next.label && prev.detail === next.detail && prev.open === next.open) return false;
+  if (jobs) jobs.set(key, next);
+  else _work.set(id, new Map([[key, next]]));
+  _renderDock();
+  return true;
+}
+
+/** The first opener any job in this window supplied, or null. */
+function _workOpener(id) {
+  const jobs = _work.get(id);
+  if (!jobs) return null;
+  for (const w of jobs.values()) if (w.open) return w.open;
+  return null;
+}
+
+/**
+ * What this window is doing, as the chip says it — or null.
+ *
+ * With two jobs running the label is a count rather than either job's own
+ * words: "Auditing 4/19" beside "Tidying memories" on a 16ch chip is two
+ * truncated sentences, and neither is then readable. The detail keeps both,
+ * one per line, because the tooltip has the room.
+ */
+export function getBackgroundWork(id) {
+  const jobs = _work.get(id);
+  if (!jobs || !jobs.size) return null;
+  const all = [...jobs.values()];
+  if (all.length === 1) return { label: all[0].label, detail: all[0].detail };
+  return {
+    label: `${all.length} jobs`,
+    detail: all.map(w => w.detail).join('\n'),
+  };
+}
+
+/** Everything running, for a surface that wants to list it rather than dock it. */
+export function listBackgroundWork() {
+  const out = [];
+  for (const [id, jobs] of _work.entries()) {
+    for (const [key, w] of jobs.entries()) out.push({ id, key, label: w.label, detail: w.detail });
+  }
+  return out;
+}
+
 function _ensureDock() {
   let dock = document.getElementById('minimized-dock');
   if (dock) return dock;
@@ -263,7 +387,16 @@ function _nearDock(chipRect, dock) {
 }
 
 function _renderDock() {
-  const dock = document.getElementById('minimized-dock');
+  // `P9-11`. The dock element is built lazily, and until this row the only
+  // thing that built it was `minimize()`. So on a session where nobody had
+  // minimized a window there was no `#minimized-dock` at all, this function
+  // returned on its first line, and a work chip was drawn nowhere — the
+  // feature would have shipped looking finished and doing nothing for exactly
+  // the people it is for (`Law 13`). Work builds the dock; nothing else here
+  // does, so an idle session still gets no empty bar.
+  const dock = _work.size
+    ? _ensureDock()
+    : document.getElementById('minimized-dock');
   if (!dock) return;
   const minimizedIds = [..._state.entries()].filter(([_, s]) => s.isMinimized).map(([id]) => id);
   // On mobile we ALSO keep chips around for any modal that's been
@@ -273,13 +406,17 @@ function _renderDock() {
   const persistentIds = isMobile
     ? [..._state.entries()].filter(([id, _]) => _chipPositions.has(id)).map(([id]) => id)
     : [];
-  const allIds = Array.from(new Set([...minimizedIds, ...persistentIds]));
+  // `P9-11`. A window with work running gets a chip whether it is minimized,
+  // open, or closed — the row's whole complaint is that closing the window is
+  // what hides the job. An id here that is not in `_state` is a closed window,
+  // and the chip's click opens it through `_AUTO_WIRE` rather than `restore`.
+  const allIds = Array.from(new Set([...minimizedIds, ...persistentIds, ..._work.keys()]));
   // Keep _dockOrder for every modal still alive in _state — even when it's
   // currently restored (not in allIds). That way re-minimizing a chip lands
   // back in its original slot instead of being pushed to the right edge.
   // Ids only fall out of _dockOrder once the modal is fully closed
-  // (close() → _state.delete()).
-  _dockOrder = _dockOrder.filter(id => _state.has(id));
+  // (close() → _state.delete()) AND nothing is running in it.
+  _dockOrder = _dockOrder.filter(id => _state.has(id) || _work.has(id));
   for (const id of allIds) {
     if (!_dockOrder.includes(id)) _dockOrder.push(id);
   }
@@ -352,7 +489,8 @@ function _renderDock() {
     chip.type = 'button';
     chip.className = 'minimized-dock-chip';
     chip.dataset.modalId = id;
-    chip.title = `Restore ${meta.label}`;
+    const work = getBackgroundWork(id);
+    chip.title = work ? work.detail : `Restore ${meta.label}`;
     // Restore any external data-* attributes the previous chip carried
     // (e.g. emailLibrary's data-tab-num slot-number badge).
     const prevAttrs = oldData.get(id);
@@ -366,11 +504,25 @@ function _renderDock() {
     const iconHtml = (typeof meta.icon === 'string' && meta.icon.includes('<'))
       ? meta.icon
       : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${meta.icon}"/></svg>`;
+    // `P9-11`. A chip that exists only because a job is running carries no
+    // close control: dismissing the indicator while the job runs on would put
+    // the work back out of sight, which is the defect, not the fix. It leaves
+    // when `setBackgroundWork(id, null)` is called.
+    const workOnly = !!work && !_state.has(id);
     chip.innerHTML = `
       ${iconHtml}
       <span class="minimized-dock-label">${meta.label}</span>
-      <span class="minimized-dock-x" title="Close">×</span>
+      ${workOnly ? '' : '<span class="minimized-dock-x" title="Close">×</span>'}
     `;
+    if (work) {
+      chip.classList.add('chip-working');
+      // `textContent`: a label can carry a skill name or a research question,
+      // which is text the person or a model wrote.
+      const state = document.createElement('span');
+      state.className = 'minimized-dock-work';
+      state.textContent = work.label;
+      chip.appendChild(state);
+    }
     chip.addEventListener('click', (e) => {
       if (chip._wasDragging) { chip._wasDragging = false; return; }
       if (e.target.classList.contains('minimized-dock-x')) {
@@ -384,8 +536,13 @@ function _renderDock() {
       const s = _state.get(id);
       if (s && !s.isMinimized) {
         minimize(id);
-      } else {
+      } else if (s) {
         restore(id);
+      } else {
+        // `P9-11`. A work chip for a CLOSED window. There is nothing to
+        // restore — the tool has to be opened the way a person would open it,
+        // which is the rail or sidebar button `_AUTO_WIRE` already names.
+        openClosedWindow(id);
       }
     });
     _wireChipDrag(chip, dock);
@@ -1290,6 +1447,43 @@ export function restore(id) {
 }
 
 /**
+ * Open a tool whose window is closed, the way a person would. `P9-11`.
+ *
+ * `restore` cannot do this: it needs `_state`, and `close()` deletes the entry.
+ * So a work chip for a closed window clicks the rail or sidebar button that
+ * `_AUTO_WIRE` already names for that id — the same control the person would
+ * have used, which means the tool opens through its own path and nothing here
+ * has to know how any of the twelve tools open.
+ *
+ * Returns whether something was clicked, so a caller can tell "opened" from
+ * "this id has no door" rather than guessing from the screen.
+ */
+export function openClosedWindow(id) {
+  // A job that declared its own opener wins: `email-lib-modal` is deliberately
+  // `{ rail: null, sidebar: null }` below — it has its own unread dot and a
+  // second badge was rejected — and `openEmailLibrary` removes and rebuilds the
+  // element, so there is nothing to un-hide either. Without this branch its
+  // work chip would be a button that does nothing.
+  const own = _workOpener(id);
+  if (own) { try { own(); return true; } catch (_) { /* fall through to the wire */ } }
+  const wire = _AUTO_WIRE[id];
+  for (const btnId of [wire && wire.rail, wire && wire.sidebar]) {
+    const btn = btnId && document.getElementById(btnId);
+    if (btn) { btn.click(); return true; }
+  }
+  // No rail or sidebar button — the tool opens from an overflow menu or from
+  // another window. Un-hiding it is the honest fallback and it is what
+  // `_autoRegister`'s own close path assumes in reverse.
+  const modal = document.getElementById(id);
+  if (!modal) return false;
+  modal.classList.remove('hidden');
+  modal.style.display = '';
+  _bringToFront(modal);
+  _emitModalOpened(id, modal);
+  return true;
+}
+
+/**
  * If the modal is currently MINIMIZED, restore it and return true.
  * Otherwise return false so the caller falls through to its own
  * open/close handling. We deliberately do NOT minimize on toggle —
@@ -1558,4 +1752,5 @@ document.addEventListener('click', (e) => {
   }
 }, true);
 
-export default { register, unregister, isRegistered, isMinimized, minimize, restore, toggle, close, injectMinimizeButton };
+export default { register, unregister, isRegistered, isMinimized, minimize, restore, toggle, close,
+  injectMinimizeButton, setBackgroundWork, getBackgroundWork, listBackgroundWork, openClosedWindow };

@@ -8,7 +8,7 @@ import re
 import time
 from collections import Counter
 from typing import List, Dict, Any, Optional, Tuple
-from src import memory_retrieval, retrieval_engine
+from src import memory_retrieval, memory_style, retrieval_engine
 from src.chat_helpers import extract_urls
 from src.youtube_handler import is_youtube_url
 from src.search import comprehensive_web_search, fetch_webpage_content
@@ -483,4 +483,124 @@ class ChatProcessor:
         # to `stream_agent_loop`. Nothing was lost; the suppressions started
         # working.
 
+        # ── how this person writes, and how to pitch the reply ───────────
+        #
+        # `P13-17` / `P13-18` / `P13-19` / `P13-20`, one design under
+        # `D-2026-09-09-01`. Three layers with three lifetimes, in the order
+        # they have to happen: read the slow profile, compute the volatile
+        # reading from this session's window, decide a register, and only then
+        # fold this turn back into the profile — the fold needs the reading,
+        # because `P13-20` learns what a joke means from what it co-occurs with.
+        self._last_style_reading = None
+        self._last_register = dict(memory_style.REGISTER_NEUTRAL)
+        style_message = self._style_and_register(
+            message, session, owner=owner, incognito=incognito,
+            use_memory=use_memory, preset_system_prompt=preset_system_prompt)
+        if style_message:
+            preface.append(style_message)
+
         return preface, rag_sources, web_sources
+
+    def _style_and_register(self, message, session, *, owner=None,
+                            incognito=False, use_memory=True,
+                            preset_system_prompt=None):
+        """Observe style, read the turn, and return the register message or None.
+
+        **Returns `None` far more often than it returns a message, and that is
+        the design rather than a shortcut.** `D-2026-09-09-01`: *"low confidence
+        means behave normally — not 'behave gently'. Softening everything for
+        someone who is not upset is patronising, and it is the failure people
+        actually notice and resent."* A neutral register puts nothing on the
+        wire at all, so on an ordinary turn this feature is not merely quiet, it
+        is absent.
+
+        **That absence is also what makes the placement affordable.** The
+        message is a `user`-role one appended to the end of the preface, never
+        folded into a `system` message — `src/user_time.py:216` documents why in
+        full (issue #2927: local llama.cpp / LM Studio backends key their
+        KV-cache prefix off the system block byte-for-byte, so per-turn text in
+        there invalidates the cache on every single request). Everything above
+        it in this method that varies per turn — pinned memory, recalled memory,
+        RAG, web — already arrives the same way through
+        `untrusted_context_message`, which returns `role: "user"`. So this adds
+        no new break on a turn where memory or RAG fired, and on a turn where
+        nothing else fired it adds nothing at all, because there is no reading
+        to report.
+
+        **Two gates, and neither is about the feature working.** `incognito`
+        means leave no trace, and a profile silently thickened by a private
+        conversation is exactly the trace it promises not to leave. `use_memory`
+        off means the person turned the Brain off, and observing how they write
+        anyway — into the store they just switched off — would be the
+        surveillance reading of this feature that `D-2026-09-09-01` draws a line
+        against. Both skip the write *and* the read: with nothing observed there
+        is nothing to be a deviation from.
+        """
+        if incognito or not use_memory:
+            return None
+        # The same capability check `increment_uses` above already uses, and for
+        # the same reason: a memory manager that predates this row is a valid
+        # manager, and a feature that reports "style pass skipped" through an
+        # exception handler on every turn of a test double is a log nobody can
+        # read. An `except` below still guards the work; this guards the
+        # *absence* of the work, which is not an error.
+        if not hasattr(self.memory_manager, "style_profile"):
+            return None
+        try:
+            profile = self.memory_manager.style_profile(owner=owner)
+            totals = (profile or {}).get("style") or {}
+
+            window = [message]
+            try:
+                history = session.get_context_messages() or []
+                window = [self._message_text(m) for m in history
+                          if (m or {}).get("role") == "user"] + [message]
+            except Exception:
+                # A session that cannot produce a window still gets a reading
+                # from the current message. Degrading to "no reading at all"
+                # here would make the feature depend on a transcript shape it
+                # does not otherwise need.
+                pass
+
+            reading = memory_style.read(totals, window)
+            observation = memory_style.observe(message)
+            learned = memory_style.humour_means(
+                ((profile or {}).get("humour") or {}).get("observations"))
+
+            reg = memory_style.register(
+                reading,
+                humour=learned,
+                joking=bool(observation.get("laugh_messages")),
+                # `setting_is_explicit`, sixth application in this phase
+                # (`H06`, `H08`, `D-2026-09-08-02`, `P13-05`, `P13-04`). A
+                # preset carries a system prompt the person chose; a reading is
+                # something we inferred. *"Someone running Razor asked for blunt
+                # and minimal; a reading that they seem playful today does not
+                # get to soften it."*
+                persona_is_explicit=bool(preset_system_prompt),
+            )
+            self._last_style_reading = reading
+            self._last_register = reg
+
+            self.memory_manager.record_style_observation(
+                message, owner=owner, reading=reading)
+
+            text = memory_style.register_text(reg)
+            if not text:
+                return None
+            return {"role": "user", "content": text}
+        except Exception as e:
+            # Never fails a turn. This is a delivery hint; a chat that dies
+            # because we could not work out how someone types is a worse
+            # product than one that answers in the default register.
+            logger.warning("Style/register pass skipped: %s", e)
+            return None
+
+    @staticmethod
+    def _message_text(message) -> str:
+        """The text of one chat message, flattening multimodal content."""
+        content = (message or {}).get("content", "")
+        if isinstance(content, list):
+            return " ".join(block.get("text", "") for block in content
+                            if isinstance(block, dict) and block.get("type") == "text")
+        return str(content or "")

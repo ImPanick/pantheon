@@ -40,6 +40,36 @@ BUILTIN_EMAIL_TOOLS = frozenset({
 # state changes, or generic loopback/integration surfaces. All email tools are
 # included (SECURITY.md: email/MCP capabilities are privileged admin
 # functionality).
+#
+# ── `P2-25`: the list stays, and now it says why ────────────────────────────
+#
+# The row was retitled from *"Prune…"* to *"Document… prune nothing"* because
+# an agent that stopped at the title would have pruned, and the safe prune
+# count is **zero**. `NON_ADMIN_BLOCKED_REASONS` below carries one sentence per
+# name saying **what the tool reaches**, not that it is dangerous — the reader
+# who wants to re-litigate an entry needs the reach, because that is the thing
+# they have to argue is harmless.
+#
+# **Why a prune cannot be validated by trying it.** Eleven of these names are
+# ALSO in `tool_execution._ADMIN_ONLY_TOOLS`, which is checked **first** and
+# refuses with a different sentence. Remove one of those eleven from this set
+# and a manual test still shows a refusal — from the other gate — so the change
+# looks harmless and is not: what actually moved is what the model is
+# *advertised*, because `blocked_tools_for_owner` (this module) and the prompt
+# and schema filters read THIS set and not that one. `B533` put both gates and
+# their order into `THREAT_MODEL.md` for exactly this reason. The pairing is
+# asserted in `tests/test_the_blocklist_says_why.py`, so a prune of either is
+# visibly a change to a pair.
+#
+# `adopt_served_model` is the counter-example that makes the point concrete: it
+# is the one model tool this set blocks alone, so pruning it is the one prune in
+# that family that really does open something.
+#
+# The register and the set are held equal by a test rather than by care. The set
+# below is untouched (`Law 1`) and remains the gate; the register is documentation
+# with a completeness check, and `blocked_tool_reason()` puts it in front of the
+# person who hit the wall instead of in a comment only maintainers read
+# (`Law 15`).
 NON_ADMIN_BLOCKED_TOOLS = BUILTIN_EMAIL_TOOLS | {
     "bash",
     "host_shell",  # `P17-11`: runs on the operator's own machine
@@ -78,6 +108,138 @@ NON_ADMIN_BLOCKED_TOOLS = BUILTIN_EMAIL_TOOLS | {
     "cancel_download",
     "adopt_served_model",
 }
+
+
+# One sentence per blocked name: **what it reaches**, in the words someone
+# arguing for a prune would have to answer. Grouped the way the set is grouped.
+#
+# Held equal to `NON_ADMIN_BLOCKED_TOOLS` by
+# `tests/test_the_blocklist_says_why.py` — a name added to the set without a
+# reason is a red test, not a silent gap.
+_EMAIL_TOOL_REASON = (
+    "reads or sends the operator's real mail through their configured accounts; "
+    "SECURITY.md names email a privileged admin capability"
+)
+
+NON_ADMIN_BLOCKED_REASONS: dict = {
+    # ── Server and runtime access ──
+    "bash": "runs arbitrary commands as the app user on the host",
+    "host_shell": "runs commands on the operator's own machine (`P17-11`)",
+    "python": "executes arbitrary Python in the app process's environment",
+    "manage_bg_jobs": "lists and kills the shell processes `bash` started",
+
+    # ── The filesystem family. All eight, including the read-only ones: a
+    # non-admin who cannot run the shell must not be able to map the host
+    # either, which is the same sentence `routes/workspace_routes.py` gives
+    # for `GET /api/workspace/browse`.
+    "read_file": "reads any file the app user can read, inside the workspace",
+    "write_file": "creates or overwrites files on the host filesystem",
+    "edit_file": "rewrites existing files on the host filesystem",
+    "apply_patch": "applies multi-file diffs to the host filesystem",
+    "grep": "searches file CONTENTS across the workspace",
+    "glob": "enumerates paths across the workspace",
+    "ls": "enumerates directory contents on the host",
+    "get_workspace": (
+        "discloses the absolute host path of the workspace — the same "
+        "disclosure `require_admin` refuses on `GET /api/workspace/browse`"
+    ),
+
+    # ── Other people's data ──
+    "search_chats": (
+        "searches stored chat transcripts. Owner-scoped, but the filter is "
+        "`owner = X OR owner IS NULL` and a null owner means legacy/shared "
+        "(`core/database.py`), so this reads the pre-auth and shared "
+        "transcripts of an instance that predates its users"
+    ),
+    "resolve_contact": (
+        "**the trap on this list.** It takes an `owner` argument and never "
+        "reads it: it searches the server-wide CardDAV address book and the "
+        "operator's sent mail. It looks owner-scoped and is not"
+    ),
+    "manage_contact": "writes to the server-wide CardDAV address book",
+    "manage_calendar": "writes to the operator's calendar",
+    "vault_search": "searches the credential vault's entry names",
+    "vault_get": "returns a stored secret's value",
+    "vault_unlock": "unlocks the credential vault for the process",
+
+    # ── Persistent state and configuration ──
+    "manage_memory": "writes the long-term memory every later turn is fed",
+    "manage_skills": "writes skill files that are injected into later prompts",
+    "manage_tasks": "creates and runs scheduled work under the operator's identity",
+    "manage_documents": "creates, edits and deletes stored documents",
+    "manage_settings": "writes instance settings, including every limit in `P12`",
+    "manage_endpoints": "adds inference endpoints the whole instance then uses",
+    "manage_mcp": (
+        "registers MCP servers, whose command/arg/env validation is the RCE "
+        "control in `FORBIDDEN.md` Part 2"
+    ),
+    "manage_webhooks": "registers outbound webhook destinations",
+    "manage_tokens": "mints API tokens, which are long-lived credentials",
+
+    # ── Generic reach: one tool that can become any of the above ──
+    "api_call": "makes arbitrary outbound HTTP requests from the server",
+    "app_api": (
+        "calls this app's own HTTP API in-process. It carries its own "
+        "blocklist (`src/tools/system.py`) because it can otherwise reach "
+        "every route the agent is not meant to reach"
+    ),
+
+    # ── Model serving: each of these starts or rewires a host process ──
+    "download_model": "fetches model weights to the host disk",
+    "serve_model": "spawns an inference server process on the host",
+    "serve_preset": "spawns an inference server process from a stored preset",
+    "stop_served_model": "kills a running inference server process",
+    "cancel_download": "aborts another caller's in-flight download",
+    "adopt_served_model": (
+        "registers an already-running server in `cookbook_state.json` AND adds "
+        "it as a chat endpoint. **The one model tool this set blocks alone** — "
+        "`_ADMIN_ONLY_TOOLS` does not name it, so unlike its five siblings a "
+        "prune here really does open something"
+    ),
+}
+
+# The sixteen email tools share one reason, and they derive from
+# `BUILTIN_EMAIL_TOOLS` rather than being retyped: a tool added to the email
+# server is blocked automatically today, and it must acquire a reason
+# automatically too, or the register becomes the place the next name goes
+# missing.
+NON_ADMIN_BLOCKED_REASONS.update(
+    {name: _EMAIL_TOOL_REASON for name in sorted(BUILTIN_EMAIL_TOOLS)}
+)
+
+#: Why the `mcp__` namespace is refused wholesale. This rule lives in
+#: `is_public_blocked_tool` and NOT in the set, so `blocked_tools_for_owner`
+#: does not carry it — the advertisement path compensates out of band by
+#: dropping the MCP manager entirely (`agent_loop`). Two enforcement paths,
+#: different rules; any refactor touches both.
+MCP_NAMESPACE_BLOCK_REASON = (
+    "every `mcp__*` tool comes from a server the operator configured, so its "
+    "reach is whatever they connected — unknowable from the name, and refused "
+    "for non-admins as a namespace rather than one entry at a time"
+)
+
+
+def blocked_tool_reason(tool_name) -> str:
+    """Why this tool is refused to a non-admin, in one sentence.
+
+    The register above, resolved for the spellings policy actually sees:
+    a bare name, an `mcp__email__*` alias of a built-in email tool, or anything
+    else under the `mcp__` prefix. Returns `""` for a name this policy does not
+    block, so a caller can tell *"no reason recorded"* from *"not blocked"*
+    (`Law 10`).
+    """
+    if not isinstance(tool_name, str) or not tool_name:
+        return ""
+    reason = NON_ADMIN_BLOCKED_REASONS.get(tool_name)
+    if reason:
+        return reason
+    if tool_name.startswith("mcp__email__"):
+        bare = tool_name[len("mcp__email__"):]
+        if bare in BUILTIN_EMAIL_TOOLS:
+            return _EMAIL_TOOL_REASON
+    if tool_name.startswith("mcp__"):
+        return MCP_NAMESPACE_BLOCK_REASON
+    return ""
 
 
 # Plan mode: the agent may investigate but must not mutate anything. Only these
