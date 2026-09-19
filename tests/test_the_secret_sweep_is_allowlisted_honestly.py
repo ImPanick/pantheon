@@ -120,3 +120,54 @@ def test_no_allowlisted_literal_looks_like_a_real_credential(literal):
         f"{literal!r} does not carry any of the markers that make the existing "
         "entries obviously fake — say in this test why it is safe, or do not "
         "allowlist it")
+
+
+def test_the_config_does_not_redefine_a_rule_gitleaks_already_ships():
+    """`B863`. `useDefault = true` REPLACES a rule of the same id; it does not
+    merge into it.
+
+    The first version of this file put the allowlist inside a `[[rules]]` block
+    with `id = "generic-api-key"`, which is the id of a rule gitleaks ships. The
+    default rule's own allowlist and stopwords went with it, its regex had to be
+    hand-copied here — a second copy of something upstream maintains (`Law 13`)
+    — and the next CI run reported a finding the original four had never
+    included, because the stopword that had been suppressing it was gone.
+
+    The allowlist belongs at the top level, where it applies to every rule and
+    replaces none of them. This is asserted structurally rather than by reading
+    the prose: a `[[rules]]` table is either absent, or it declares an id that is
+    not one of gitleaks' own.
+    """
+    lines = _uncommented_lines()
+    rule_ids = []
+    in_rule = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped == "[[rules]]":
+            in_rule = True
+            continue
+        if stripped.startswith("[") and stripped != "[[rules]]":
+            in_rule = False
+        if in_rule:
+            match = re.match(r'id\s*=\s*["\']([^"\']+)["\']', stripped)
+            if match:
+                rule_ids.append(match.group(1))
+
+    shipped = {"generic-api-key", "github-pat", "github-fine-grained-pat",
+               "openai-api-key", "stripe-access-token", "private-key",
+               "aws-access-token", "slack-bot-token"}
+    overridden = sorted(set(rule_ids) & shipped)
+    assert not overridden, (
+        f"this config redefines {overridden}, which `useDefault = true` "
+        "replaces rather than extends — the shipped rule's own allowlist, "
+        "stopwords and regex are all lost. Put the exception in the top-level "
+        "[allowlist] instead (`B863`)")
+
+
+def test_the_allowlist_is_global_and_not_bolted_to_one_rule():
+    """The positive half: there IS a top-level allowlist, and it is where the
+    literals live."""
+    lines = _uncommented_lines()
+    assert any(ln.strip() == "[allowlist]" for ln in lines), (
+        "the literals are excused somewhere other than the top-level allowlist")
+    assert _allowlisted_literals(), "the allowlist is empty"

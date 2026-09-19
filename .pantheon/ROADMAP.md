@@ -80,8 +80,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P17 | The network the agent is hosted on | 14 | 0 | 0 | **14** |
 | P18 | One button, and it links | 9 | 0 | 0 | **9** |
 | P19 | The proof ledger | 8 | 0 | 0 | **8** |
-| Backlog | Bugs and hardening found in flight | 441 | 188 | 0 | **253** |
-| **Total** | | **823** | **269** | **9** | **545** |
+| Backlog | Bugs and hardening found in flight | 442 | 188 | 0 | **254** |
+| **Total** | | **824** | **269** | **9** | **546** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -245,10 +245,10 @@ they are for.*
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
 
 ### The first CI run that ever completed, and what it found
-`c48294d..HEAD`. **823 tracked, 545 done. 0 new phase rows, 0 regressions. `B850`, `B851`, `B852`, `B853`,
-`B854`, `B855`, `B856`, `B857`, `B858`, `B859`, `B860`, `B861` and `B862` closed; thirteen
-defects in two days of pipeline, every one of them invisible to a local gate that had been
-passing all along.** The repository went public, the billing block lifted
+`c48294d..HEAD`. **824 tracked, 546 done. 0 new phase rows, 0 regressions. `B850`, `B851`, `B852`, `B853`,
+`B854`, `B855`, `B856`, `B857`, `B858`, `B859`, `B860`, `B861`, `B862` and `B863` closed;
+fourteen defects in two days of pipeline, every one of them invisible to a local gate that had
+been passing all along.** The repository went public, the billing block lifted
 (`B526`), and CI executed a step for the first time. `pip-audit` had been auditing nothing
 because three pins in the set cannot build on this interpreter (`B850`); `gitleaks` found four
 fake secrets, three of them inside the tests that prove this product redacts secrets (`B851`);
@@ -272,6 +272,12 @@ fixtures needing an optional dependency nothing installs (`B858`), seven encodin
 fork point is unreachable — which failed by finding it, and closed half of `B349` with the
 commit's own timestamps (`B860`). The tree is now green in a clean venv holding exactly
 `requirements.txt` and in this container with its 19 of 31.
+**The push found two more.** `B850`'s `--no-deps` did nothing on its own and pip-audit still
+built the sdist that cannot build (`B862`); and `B851`'s allowlist had been written as a rule
+with a shipped rule's id, which `useDefault = true` REPLACES rather than extends, taking the
+default's stopwords with it and surfacing a fifth fixture (`B863`). Both were verified by
+running the thing — the audit end to end, and gitleaks over the deployment host's full 2,219
+commits rather than the container's 188.
 
 ### Five phases finished, and the day stopped counting the wrong population
 `c2d8669..HEAD`. **814 tracked, 536 done. 0 new phase rows, 0 regressions. `P0-17`, `P3-20`,
@@ -17837,3 +17843,27 @@ this is the same thing happening to the row that corrected the store.
   pins down the no-pip path; and the audit run end to end reports the pins instead of erroring.
   `Depends:` `B850`. `Unblocks:` the `Dependency review` workflow going green. — found by running
   the thing — agent:`integrator`
+
+- [x] **B863** **`useDefault = true` does not extend a rule of the same id — it replaces it.** Found
+  2026-09-19 by the CI run that verified `B850`, `B854` and `B855`.
+  `B851` allowlisted four fake secrets by writing a `[[rules]]` block with `id = "generic-api-key"`
+  and hanging a `[rules.allowlist]` off it. That is the id of a rule gitleaks ships, and
+  `[extend] useDefault = true` **replaces** a rule of the same id rather than merging into it. Three
+  things went at once: the shipped rule's own allowlist and stopwords; the shipped regex, which had
+  to be hand-copied into this repository and is now a second copy of something upstream maintains
+  (`Law 13`); and the suppression of a fifth fixture nobody had seen, because gitleaks' own
+  stopwords had been quietly excusing it. The next run reported `abc123def456` in
+  `tests/test_diagnostic_bundle.py` — a literal that was **never among the original four**, made
+  visible by the fix for the original four.
+  The allowlist is global now. `[extend] useDefault = true` and a top-level `[allowlist]` with
+  `regexTarget = "match"` and five literals: every default rule is exactly what gitleaks ships, and
+  the exceptions sit on top of all of them. The repository keeps no copy of anybody's regex.
+  **Verified the way `B852` says to verify this.** Not on the container's clone, which begins at a
+  snapshot import and holds 188 commits, but on the deployment host's full clone of the published
+  repository: `gitleaks 8.30.1`, the pinned version CI runs, `2,219 commits scanned`, **no leaks
+  found**. A measurement taken on the artefact in front of me would have said the same thing for
+  the wrong reason.
+  `Verify:` two structural tests — the config declares no rule id gitleaks already ships, and the
+  allowlist is top-level — both of which fail on the shape that shipped; plus the twelve entry
+  rules `B851` wrote. And 2,219 commits clean. `Depends:` `B851`. `Unblocks:` `Secret scan` going
+  green. — found by the CI run that verified three other rows — agent:`integrator`

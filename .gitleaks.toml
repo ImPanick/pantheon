@@ -1,12 +1,21 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# gitleaks configuration — `B851`.
+# gitleaks configuration — `B851`, corrected by `B863`.
 #
 # The first CI run this repository ever completed scanned 2,202 commits and
 # reported four findings. All four are **fake secrets on purpose**, and three of
 # them are inside the tests that prove this product redacts secrets. A scanner
 # flagging the redaction tests as a leak is the scanner working and the
 # allowlist being absent.
+#
+# `B863`: the first attempt at this file put the allowlist inside a `[[rules]]`
+# block whose `id` was `generic-api-key`. `useDefault = true` does not MERGE a
+# rule of the same id — it REPLACES it. So the default rule's own allowlist and
+# stopwords went with it, the hand-copied regex became a second copy of
+# something upstream maintains, and the run came back with a finding the
+# original four had never included. The allowlist is global now: every default
+# rule is exactly what gitleaks ships, and these five literals are excused on
+# top of all of them.
 #
 # The rule for this file, and it is the only rule: **an entry names one exact
 # literal and says why that literal is not a credential.** No path allowlists —
@@ -23,25 +32,26 @@
 [extend]
 useDefault = true
 
-[[rules]]
-id = "generic-api-key"
-description = "generic api key"
-regex = '''(?i)(?:key|api|token|secret|client|passwd|password|auth|access)(?:[0-9a-z\-_\t .]{0,20})(?:[\s|']|[\s|"]){0,3}(?:=|>|:{1,3}=|\|\||:|<=|=>|:=)(?:'|\"|\s|=|\x60){0,5}([0-9a-z\-_.=]{10,150})(?:['|\"|\n|\r|\s|\x60|;]|$)'''
-keywords = ["key", "api", "token", "secret", "client", "passwd", "password", "auth", "access"]
-
-  [rules.allowlist]
-  regexTarget = "match"
-  regexes = [
-    # `tests/test_diagnostic_bundle.py` — the redaction table. Every string in it
-    # is an input the bundle redactor must remove, and the test asserts it is
-    # gone. A sequential alphabet after the prefix; no service ever issued one.
-    '''ghp_ABCDEFGHIJKLMNOP1234''',
-    '''sk-proj-AAAABBBBCCCCDDDDEEEEFFFF''',
-    # `tests/test_a_failure_that_does_not_say_why.py` — the same shape for a
-    # different redactor. The test's assertion is `secret not in blob`.
-    '''PATIENT-RECORD-8891-Jane-Doe''',
-    # `library/ecc/skills/api-design/SKILL.md` — a bundled skill's worked example
-    # of an API-key header, inside a fenced code block, teaching the reader what
-    # the header looks like. `sk_live_abc123` is six characters of `abc123`.
-    '''sk_live_abc123''',
-  ]
+[allowlist]
+description = "fake secrets that exist in order to be redacted, one literal at a time"
+regexTarget = "match"
+regexes = [
+  # `tests/test_diagnostic_bundle.py` — the redaction table. Every string in it
+  # is an input the bundle redactor must remove, and the test asserts it is
+  # gone. A sequential alphabet after the prefix; no service ever issued one.
+  '''ghp_ABCDEFGHIJKLMNOP1234''',
+  '''sk-proj-AAAABBBBCCCCDDDDEEEEFFFF''',
+  # The same table's generic case: `("api_key=abc123def456", "abc123def456")`.
+  # Twelve characters of the first two rows of a keyboard, asserted absent from
+  # the redactor's output on the next line. `B863` — this one is why the
+  # allowlist had to stop replacing the default rule: it was suppressed by
+  # gitleaks' own stopwords until this file overrode them.
+  '''abc123def456''',
+  # `tests/test_a_failure_that_does_not_say_why.py` — the same shape for a
+  # different redactor. The test's assertion is `secret not in blob`.
+  '''PATIENT-RECORD-8891-Jane-Doe''',
+  # `library/ecc/skills/api-design/SKILL.md` — a bundled skill's worked example
+  # of an API-key header, inside a fenced code block, teaching the reader what
+  # the header looks like. `sk_live_abc123` is six characters of `abc123`.
+  '''sk_live_abc123''',
+]
