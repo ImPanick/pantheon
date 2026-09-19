@@ -9,7 +9,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/licence-AGPL--3.0--or--later-blue" alt="AGPL-3.0-or-later">
   <img src="https://img.shields.io/badge/status-early-orange" alt="Early">
-  <img src="https://img.shields.io/badge/tests-9%2C580%20passing-brightgreen" alt="12,618 tests passing">
+  <img src="https://img.shields.io/badge/tests-12%2C618%20passing-brightgreen" alt="12,618 tests passing">
   <img src="https://img.shields.io/badge/docker-compose-2496ED?logo=docker&logoColor=white" alt="Docker Compose">
   <img src="https://img.shields.io/badge/python-FastAPI-009688?logo=fastapi&logoColor=white" alt="FastAPI">
   <img src="https://img.shields.io/badge/forked%20from-Odysseus-6E5494?logo=github&logoColor=white" alt="Forked from Odysseus">
