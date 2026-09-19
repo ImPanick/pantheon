@@ -267,25 +267,43 @@ def test_the_depth_cap_the_server_serves_can_be_reached(tmp_path):
     assert out["one"] == 1
 
 
-def test_the_theme_directive_follows_the_palette_the_app_already_computed(tmp_path):
-    """`markdown.js:94` initialises Mermaid with `theme: 'dark'` written in, and
-    four of the sixteen shipped palettes are light. `theme.js:292` already
-    computes `_isLightBackground(colors.bg)` and writes `color-scheme` onto
-    `<html>`, so this reads that answer instead of deriving a second one."""
+def test_this_module_no_longer_has_an_opinion_about_the_theme(tmp_path):
+    """**Changed by `B872`, and the change is that row's whole point.**
+
+    `P8-34` shipped `themeDirective(scheme)` and prepended
+    `%%{init: {"theme": …}}%%` to every diagram it generated, because
+    `markdown.js:94` pinned `theme: 'dark'` for all sixteen palettes and four
+    of them are light. `B872` moved the decision to
+    `markdown/mermaidTheme.js`, where `ensureMermaid` applies it for all four
+    callers of `renderMermaid` — so this module has nothing left to say.
+
+    Leaving the directive in would be worse than redundant. It is applied per
+    diagram and re-derives the theme from that one key, which would drop the
+    `nodeBorder` `applyMermaidTheme` sets from the theme's own `lineColor` and
+    give this one surface a fainter outline (2.23-2.46:1 on a light panel,
+    against 4.50-4.96:1 everywhere else) than every other diagram in the
+    product.
+
+    So: the source starts at `flowchart TD` whatever the view carries, and a
+    stray `scheme` key changes nothing.
+    """
     out = _diagram(tmp_path, """
+        const withScheme = wd.workflowMermaid(Object.assign({ scheme: 'light' }, %s));
+        const plain = wd.workflowMermaid(%s);
         console.log(JSON.stringify({
-          light: wd.themeDirective('light'),
-          dark: wd.themeDirective('dark'),
-          unset: wd.themeDirective(''),
-          inSource: wd.workflowMermaid(Object.assign({ scheme: 'light' }, %s)).split('\\n')[0],
-          noScheme: wd.workflowMermaid(%s).split('\\n')[0],
+          first: plain.split('\\n')[0],
+          identical: withScheme === plain,
+          anyDirective: /%%\\{init/.test(withScheme) || /%%\\{init/.test(plain),
+          stillExported: typeof wd.themeDirective,
         }));
     """ % (json.dumps(_VIEW), json.dumps(_VIEW)))
-    assert out["light"] == '%%{init: {"theme": "neutral"}}%%'
-    assert out["dark"] == '%%{init: {"theme": "dark"}}%%'
-    assert out["unset"] == '%%{init: {"theme": "dark"}}%%'
-    assert out["inSource"] == out["light"]
-    assert out["noScheme"] == "flowchart TD"
+    assert out["first"] == "flowchart TD", out
+    assert out["identical"] is True, out
+    assert out["anyDirective"] is False, out
+    assert out["stillExported"] == "undefined", (
+        "themeDirective is back. The theme belongs to markdown/mermaidTheme.js "
+        "now; a second one here is the Law 13 shape B872 closed."
+    )
 
 
 # ── (2) the real vendored Mermaid parses what this product emits ────────────

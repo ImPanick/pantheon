@@ -154,26 +154,24 @@ export function longestChain(component) {
   return best;
 }
 
-/**
- * The per-diagram theme directive.
- *
- * `markdown.js:94` initialises Mermaid once, with `theme: 'dark'` written in.
- * Sixteen palettes ship and four of them are light — `light`, `paper`,
- * `lavender`, `cute` (`theme.js:13-33`) — so on those four every Mermaid
- * diagram in the product draws light-grey strokes and light text on a
- * near-white panel. That is a defect older and wider than this row (it is
- * every diagram in chat, in a document preview and in a slash-command
- * preview), so it is reported rather than fixed here; what this does is stop
- * *this* surface inheriting it, with a directive Mermaid honours per diagram.
- *
- * `scheme` is the app's own answer, not a second one: `theme.js:292` already
- * computes `_isLightBackground(colors.bg)` and writes the result to
- * `color-scheme` on `<html>` every time a palette is applied, so the caller
- * reads that property rather than deriving luminance again (`Law 14`).
- */
-export function themeDirective(scheme) {
-  return '%%{init: {"theme": "' + (scheme === 'light' ? 'neutral' : 'dark') + '"}}%%';
-}
+// **The theme directive that used to live here is gone, and that is the fix.**
+//
+// `P8-34` shipped a `themeDirective(scheme)` that this module prepended to
+// every diagram it generated, because `markdown.js:94` pinned `theme: 'dark'`
+// for all sixteen palettes and four of them are light. It said in its own
+// comment that a per-surface workaround was not the fix, and reported the rest
+// as `B872`.
+//
+// `B872` is now closed: `markdown/mermaidTheme.js` decides, `ensureMermaid`
+// applies it, and all four callers of `renderMermaid` get it — so this module
+// has nothing to say about colour at all any more. Leaving the directive in
+// would be worse than redundant: a `%%{init: {"theme": …}}%%` line is applied
+// per diagram and re-derives the whole theme from that one key, which would
+// discard the stroke colour `applyMermaidTheme` puts on `nodeBorder` and hand
+// this one surface a fainter outline than every other diagram in the product.
+// One place decides (`Law 13`), and this is not it.
+//
+// What this module still owns is unchanged: shapes, words and arrows.
 
 /**
  * The Mermaid source for one workflow.
@@ -194,9 +192,7 @@ export function workflowMermaid(view) {
   const idFor = new Map();
   nodes.forEach((n, i) => idFor.set(String(n.id), 'n' + i));
 
-  const lines = [];
-  if (view && view.scheme) lines.push(themeDirective(view.scheme));
-  lines.push('flowchart TD');
+  const lines = ['flowchart TD'];
   for (const node of nodes) {
     const [open, close] = SHAPES[node.kind] || SHAPES.llm;
     const label = [node.title, node.trigger, node.detail]
@@ -262,6 +258,6 @@ export function workflowSentence(view) {
 }
 
 export default {
-  mermaidText, componentOf, longestChain, themeDirective, workflowMermaid,
+  mermaidText, componentOf, longestChain, workflowMermaid,
   workflowSentence, EDGE_WORDS, SHAPE_WORDS,
 };

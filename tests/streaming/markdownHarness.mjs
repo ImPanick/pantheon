@@ -61,6 +61,25 @@ export async function loadMarkdown() {
     /import \{[^}]*\} from ['"]\.\/langIcons\.js['"];/,
     () => langIcons,
   );
+  // `B882`. The fifth import, and the fourth copy of this trick. `B872` moved
+  // Mermaid's theme decision into `markdown/mermaidTheme.js` and inlined it into
+  // the three loaders written in Python; this one is `.mjs` under node's own
+  // test runner and was missed, so the whole streaming suite failed to import
+  // with `ERR_UNSUPPORTED_RESOLVE_REQUEST` — the same sentence `B250` and
+  // `P5-06` above already wrote twice. Four copies of one thirteen-line trick is
+  // the row; this is the fourth, and it is the one that was broken.
+  //
+  // The module is import-free by construction (the Mermaid harness needs to
+  // load it directly), so a verbatim inline works. `export default` is stripped
+  // because two in one module is a syntax error; the named `export`s are left,
+  // for the reason `B250` gives above.
+  const mermaidTheme = fs
+    .readFileSync(path.join(REPO, 'static/js/markdown/mermaidTheme.js'), 'utf8')
+    .replace(/^export default [\s\S]*?^\};$/m, '');
+  src = src.replace(
+    /import \{[^}]*\} from ['"]\.\/markdown\/mermaidTheme\.js['"];/,
+    () => mermaidTheme,
+  );
   const emoji = fs
     .readFileSync(path.join(REPO, 'static/js/emojiShortcodes.js'), 'utf8')
     .replace(/^export default .*$/m, '')

@@ -819,12 +819,17 @@ FUNCTION_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "manage_mcp",
-            "description": "Manage MCP (Model Context Protocol) tool servers: list servers and their tools, add new servers, delete, enable/disable, reconnect, or list all available tools.",
+            "description": "Manage MCP (Model Context Protocol) tool servers: list servers and their tools, add new servers, delete, enable/disable, reconnect, or list all available tools. list_tools takes server_id and/or tool to narrow a long listing, and returns each tool's qualified_name, parameters and read_only verdict.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "action": {"type": "string", "enum": ["list", "add", "delete", "enable", "disable", "reconnect", "list_tools"]},
-                    "server_id": {"type": "string", "description": "Server ID (for delete/enable/disable/reconnect)"},
+                    # `B871`. `list_tools` has honoured `server_id` and `tool`
+                    # since `B867` and this schema named neither, so the only
+                    # thing teaching the narrowing was `list_tools`' own
+                    # response text — a workaround standing in for the register.
+                    "server_id": {"type": "string", "description": "Server ID (for delete/enable/disable/reconnect). For list_tools, narrows the listing to one server — its id or its display name."},
+                    "tool": {"type": "string", "description": "Tool filter (for list_tools): a bare tool name or a full mcp__<server_id>__<tool> qualified name. Returns just that tool."},
                     "name": {"type": "string", "description": "Server name (for add)"},
                     "command": {"type": "string", "description": "Command to run e.g. npx (for add)"},
                     "args": {"type": "array", "items": {"type": "string"}, "description": "Command arguments (for add)"},

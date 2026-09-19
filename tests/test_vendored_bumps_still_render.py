@@ -174,10 +174,21 @@ def test_mermaid_still_loads_and_publishes_its_api(mermaid):
 def test_the_mermaid_config_is_understood_and_not_merely_stored(mermaid):
     """`Law 13` plus the `B334` trick: read the option back.
 
-    The config object is lifted out of `markdown.js`, and then
-    `mermaidAPI.getConfig()` is asked what mermaid did with it. All three keys
-    coming back unchanged is what proves they were honoured; a key a major
-    quietly stopped reading comes back as its default instead of as an error.
+    The config is produced by the module that produces it —
+    `markdown/mermaidTheme.js:applyMermaidTheme`, the function `ensureMermaid`
+    calls — and then `mermaidAPI.getConfig()` is asked what mermaid did with
+    it. The keys coming back unchanged is what proves they were honoured; a key
+    a major quietly stopped reading comes back as its default instead of as an
+    error.
+
+    `B872` changed the shape of `callSiteConfig` here: it was
+    `{startOnLoad, theme: 'dark', securityLevel}` and the theme name was
+    written into `markdown.js`, which is the bug that row fixed. It is now the
+    dark scheme's computed config, and it carries a `themeVariables.nodeBorder`
+    read back out of mermaid's own answer for that theme. The per-palette
+    legibility claim is asserted where it belongs, in
+    `tests/test_every_palette_gets_a_legible_diagram_js.py`; this file's job is
+    still whether the vendored bundle honours what it is handed.
 
     `layout` and `look` are asserted too, and neither is set by Pantheon. They
     are mermaid's own defaults, and they are here because **Mermaid 12.0.0
@@ -187,9 +198,15 @@ def test_the_mermaid_config_is_understood_and_not_merely_stored(mermaid):
     a changelog sentence into something this repository measures, and it is the
     evidence behind `B423`.
     """
-    assert mermaid["callSiteConfig"] == {
-        "startOnLoad": False, "theme": "dark", "securityLevel": "loose",
-    }, mermaid["callSiteConfig"]
+    assert mermaid["callSiteConfig"]["startOnLoad"] is False, mermaid["callSiteConfig"]
+    assert mermaid["callSiteConfig"]["theme"] == "dark", mermaid["callSiteConfig"]
+    assert mermaid["callSiteConfig"]["securityLevel"] == "loose", mermaid["callSiteConfig"]
+    # The stroke override is not decoration: the node outline is the only thing
+    # that says where a box is (`mainBkg` measures 1.00-1.10:1 against the
+    # panel), and `strokeOverrides` sets it to the theme's own `lineColor`.
+    assert mermaid["callSiteConfig"]["themeVariables"]["nodeBorder"] == (
+        mermaid["schemes"]["dark"]["ink"]["lineColor"]
+    ), mermaid["callSiteConfig"]
     cfg = mermaid["config"]
     assert cfg["theme"] == "dark", cfg
     assert cfg["securityLevel"] == "loose", cfg

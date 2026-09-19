@@ -15,6 +15,7 @@ import { ordinalSuffix } from './util/ordinal.js';
 // hands what it produced to the real vendored Mermaid to parse.
 import {
   componentOf, longestChain, workflowMermaid, workflowSentence, SHAPE_WORDS,
+  EDGE_WORDS,
 } from './tasks/workflowDiagram.js';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { getSettings, invalidateSettings } from './appConfig.js';
@@ -51,6 +52,33 @@ let _taskCompletionPending = false;
 let _taskBulkDeleting = false;
 
 const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+// `B873`. The two branches a task can have, as the form's `<select>` id, the
+// payload field, and the condition the wire calls it.
+//
+// `src/task_scheduler.py:112` is the server's own table —
+// `{success: "then_task_id", error: "else_task_id"}` — and this is the browser
+// half of it. The served graph carries the condition words (`graph.conditions`)
+// but not the column they live in, so the pairing has to be written here; one
+// table, read by the markup, the populate loop and the save, so a third branch
+// added server-side is one line here rather than three edits that can disagree.
+const CHAIN_FIELDS = [
+  ['task-form-chain', 'then_task_id', 'success'],
+  ['task-form-chain-else', 'else_task_id', 'error'],
+];
+
+/**
+ * What a branch is called in front of a person: the diagram's own words.
+ *
+ * `workflowDiagram.js:EDGE_WORDS` maps the wire's `success`/`error` onto
+ * `if it works` / `if it fails`, and `P8-34` already draws those on the
+ * arrows. The form says the same two things, capitalised, so the control that
+ * makes an edge and the arrow it draws are not two vocabularies (`Law 14`).
+ */
+function _edgeWhenLabel(when) {
+  const word = EDGE_WORDS[when] || String(when || '');
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
 
 function _setTaskFailurePending(active) {
   _taskFailurePending = !!active;
@@ -1446,10 +1474,21 @@ function _showForm(existing, initTaskType, initTriggerType) {
         <option value="">Use session default</option>
       </select>
 
-      <label class="task-form-label">Chain</label>
-      <select id="task-form-chain" class="task-form-input">
-        <option value="">None</option>
-      </select>
+      <label class="task-form-label">Chain <span style="opacity:0.5;font-weight:normal;font-size:10px;">(optional — what runs after this one)</span></label>
+      <div class="task-form-chain">
+        <label class="task-form-chain-row">
+          <span class="task-form-chain-when">${_escHtml(_edgeWhenLabel('success'))}</span>
+          <select id="task-form-chain" class="task-form-input">
+            <option value="">None</option>
+          </select>
+        </label>
+        <label class="task-form-chain-row">
+          <span class="task-form-chain-when">${_escHtml(_edgeWhenLabel('error'))}</span>
+          <select id="task-form-chain-else" class="task-form-input">
+            <option value="">None</option>
+          </select>
+        </label>
+      </div>
 
       <label class="task-form-notif-toggle">
         <input type="checkbox" id="task-form-notif" ${existing && existing.notifications_enabled === false ? '' : 'checked'}>
@@ -1882,16 +1921,24 @@ function _showForm(existing, initTaskType, initTriggerType) {
     })
     .catch(() => {});
 
-  // Populate chain dropdown
-  const chainSel = document.getElementById('task-form-chain');
-  if (chainSel) {
+  // Populate both chain dropdowns.
+  //
+  // `B873`. There was one, and it was `then_task_id`. `P8-28` gave the engine
+  // the failure edge, `task_edges` stores it, `_task_to_dict` puts it on every
+  // row and `P8-34`'s diagram draws it as the dotted arrow — and the only ways
+  // to create one were the API and the agent. One loop over the two, rather
+  // than a copy of the block with the other field name in it: two copies is
+  // how the first one ended up with no second (`Law 13`).
+  for (const [selectId, field] of CHAIN_FIELDS) {
+    const sel = document.getElementById(selectId);
+    if (!sel) continue;
     const otherTasks = _tasks.filter(t => !existing || t.id !== existing.id);
     for (const t of otherTasks) {
       const opt = document.createElement('option');
       opt.value = t.id;
       opt.textContent = t.name;
-      if (existing?.then_task_id === t.id) opt.selected = true;
-      chainSel.appendChild(opt);
+      if (existing?.[field] === t.id) opt.selected = true;
+      sel.appendChild(opt);
     }
   }
 
@@ -1958,9 +2005,15 @@ function _showForm(existing, initTaskType, initTriggerType) {
       payload.model = '';
     }
 
-    // Chain
-    const chainVal = document.getElementById('task-form-chain')?.value;
-    payload.then_task_id = chainVal || '';
+    // Chain — both branches. `B873`.
+    //
+    // Sent unconditionally, including empty: `''` is how the API clears an
+    // edge (`task_routes.py:927-929` — `is not None` is the guard, so an
+    // omitted key leaves the stored edge alone), and a person who sets a
+    // failure branch and then changes their mind has to be able to remove it.
+    for (const [selectId, field] of CHAIN_FIELDS) {
+      payload[field] = document.getElementById(selectId)?.value || '';
+    }
 
     // Notifications toggle — defaults to true if absent.
     const notifEl = document.getElementById('task-form-notif');
@@ -2261,11 +2314,11 @@ function _workflowView(taskId) {
     edges: component.edges,
     depth: longestChain(component),
     maxDepth: Number(_graph && _graph.max_depth) || 0,
-    // `theme.js:292` writes this on every palette change. Optional the whole
-    // way down because this function is also the diagram's only input, and a
-    // missing property is not a reason to refuse to draw a workflow — 'dark'
-    // is the shipped default theme (`theme.js:35`).
-    scheme: (document.documentElement?.style?.getPropertyValue?.('color-scheme') || '').trim() || 'dark',
+    // `B872`. This used to carry `scheme`, read off `<html>`'s `color-scheme`,
+    // so `workflowMermaid` could prepend a per-diagram theme directive and
+    // stop this one surface inheriting `markdown.js`'s pinned `theme: 'dark'`.
+    // The pin is gone: `markdown/mermaidTheme.js` decides for every caller of
+    // `renderMermaid`, so there is nothing for this view to say about colour.
   };
 }
 
@@ -2300,6 +2353,17 @@ function _showWorkflowDiagram(taskId, taskName) {
     ? `<p class="memory-desc" style="margin:6px 0 0;">This chain is ${view.depth} steps long and Pantheon runs at most ${view.maxDepth}. A further step would be refused.</p>`
     : '';
 
+  // `B873` / `P8-00`. A chain that says only what happens when a step works
+  // looks finished, and it is the half that matters least: the branch worth
+  // building is the one that fires when something breaks. Said here because
+  // this is where a person is looking at the arrow that is missing, and it
+  // names the control that adds it rather than describing the idea.
+  const failureBranch = view.edges.some(
+    (e) => String(e.from) === String(taskId) && e.when === 'error');
+  const branchNote = (!alone && !failureBranch)
+    ? `<p class="memory-desc" style="margin:6px 0 0;">Nothing runs if this step fails. Open Edit and set “${_escHtml(_edgeWhenLabel('error'))}” under Chain to add that branch.</p>`
+    : '';
+
   body.innerHTML = `
     <div class="task-history-header">
       <button id="task-workflow-back" class="task-btn">← Back</button>
@@ -2309,10 +2373,11 @@ function _showWorkflowDiagram(taskId, taskName) {
       <p class="memory-desc" style="margin:0 0 8px;">${_escHtml(sentence)}</p>
       <div class="mermaid-container"><pre class="mermaid" id="${_escHtml(domId)}">${_escHtml(source)}</pre></div>
       <p class="memory-desc" style="margin:10px 0 0;font-size:11px;opacity:0.55;">
-        ${alone ? 'Nothing is chained to this task yet — open Edit and set “Then run” to add a step.'
+        ${alone ? `Nothing is chained to this task yet — open Edit and set “${_escHtml(_edgeWhenLabel('success'))}” or “${_escHtml(_edgeWhenLabel('error'))}” under Chain to add a step.`
                 : 'A solid arrow is what runs next when a step works. A dotted arrow is what runs when it fails.'}
       </p>
       <p class="memory-desc" style="margin:2px 0 0;font-size:11px;opacity:0.55;">${SHAPE_WORDS.map(_escHtml).join(' · ')}</p>
+      ${branchNote}
       ${depthNote}
     </div>
   `;

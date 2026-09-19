@@ -462,6 +462,9 @@ function _openSkillMenu(btn, card, sk, name, isPublished) {
     _toggleSkillEdit(card, name);
   });
   mk(_ICON.test, 'Test', {}, () => _testSkill(card, name));
+  // `P8-09`. Beside Test because it IS the test, run twice — once on the
+  // copy your last save replaced and once on what is there now.
+  mk(_ICON.test, 'Compare with previous', {}, () => _compareSkill(card, name));
   // Audit kicks off the bulk audit-all loop (test → judge → fix → retry → demote).
   mk(_ICON.test, 'Audit', {}, () => _auditAllSkills());
   mk(_ICON.del, 'Delete', { danger: true }, () => _deleteSkill(name, card));
@@ -1136,7 +1139,16 @@ async function _saveSkillEdit(card, name) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     // Refresh the cached markdown so the preload/expand show the new text.
     _mdCache.set(name, ta.value);
-    uiModule.showToast('Saved');
+    // `P8-09` / `P8-00`. The moment a person has just changed a skill is the
+    // only moment "what did that change?" is a live question, and it is the
+    // moment they are furthest from the card menu. `P8-10` has already kept
+    // the copy this save replaced, so the offer is real rather than a promise.
+    uiModule.showToast('Saved', {
+      action: 'See what changed',
+      actionHint: 'runs the old and new text against one task',
+      onAction: () => _compareSkill(null, name),
+      duration: 7000,
+    });
     await loadSkills();  // re-render (frontmatter changes like name/status may have changed)
   } catch (e) {
     uiModule.showError('Save failed: ' + e.message);
@@ -1188,6 +1200,70 @@ async function _fetchTestStatus(name) {
   } catch { return { status: 'none' }; }
 }
 
+/** The gate card for one paused skill-test run.
+ *
+ * Lifted out of `_renderTestLog` when `P8-09` gave a comparison two runs that
+ * can each stop at a gate: the second copy would have been a second set of
+ * buttons that could drift from the first (`Law 14`). Nothing about the gate
+ * moved — same endpoint, same sealed id, same two decisions, same "Allow once"
+ * wording, and the server still re-checks owner and match before consuming.
+ */
+function _skillApprovalBox(approval, name, { onAnswered, onError } = {}) {
+  const box = document.createElement('div');
+  box.className = 'skill-test-approval';
+  const question = document.createElement('div');
+  question.className = 'skill-test-meta';
+  question.textContent = approval.question || 'Allow this exact action once?';
+  box.appendChild(question);
+  if (approval.action) {
+    const action = document.createElement('pre');
+    action.className = 'skill-test-out';
+    action.textContent = [
+      approval.action.tool || 'tool',
+      approval.action.content || '',
+      Array.isArray(approval.action.effects)
+        ? `Effects: ${approval.action.effects.join(', ')}`
+        : '',
+      approval.action.workspace ? `Workspace: ${approval.action.workspace}` : '',
+      approval.action.digest ? `Approval fingerprint: ${approval.action.digest}` : '',
+    ].filter(Boolean).join('\n');
+    box.appendChild(action);
+  }
+  const actions = document.createElement('div');
+  actions.className = 'modal-footer';
+  const decide = async (decision) => {
+    actions.querySelectorAll('button').forEach(btn => { btn.disabled = true; });
+    try {
+      const response = await fetch(
+        `${API}/api/skills/${encodeURIComponent(name)}/test-approval`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ approval_id: approval.approval_id, decision }),
+        },
+      );
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (onAnswered) await onAnswered(decision);
+    } catch (error) {
+      if (onError) onError(`Approval failed: ${error.message || error}`);
+      actions.querySelectorAll('button').forEach(btn => { btn.disabled = false; });
+    }
+  };
+  for (const [decision, label, cls] of [
+    ['deny', 'Deny', 'confirm-btn confirm-btn-secondary'],
+    ['approve', 'Allow once', 'confirm-btn confirm-btn-primary'],
+  ]) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = cls;
+    button.textContent = label;
+    button.addEventListener('click', () => decide(decision));
+    actions.appendChild(button);
+  }
+  box.appendChild(actions);
+  return box;
+}
+
 function _renderTestLog(logEl, verdictEl, job, card, name) {
   if (!logEl) return;
   logEl.innerHTML = '';
@@ -1203,60 +1279,10 @@ function _renderTestLog(logEl, verdictEl, job, card, name) {
     else if (ev.type === 'error') add('Error: ' + (ev.error || 'run failed'), 'skill-test-err');
   }
   if (job.status === 'awaiting_approval' && job.approval) {
-    const approval = job.approval;
-    const box = document.createElement('div');
-    box.className = 'skill-test-approval';
-    const question = document.createElement('div');
-    question.className = 'skill-test-meta';
-    question.textContent = approval.question || 'Allow this exact action once?';
-    box.appendChild(question);
-    if (approval.action) {
-      const action = document.createElement('pre');
-      action.className = 'skill-test-out';
-      action.textContent = [
-        approval.action.tool || 'tool',
-        approval.action.content || '',
-        Array.isArray(approval.action.effects)
-          ? `Effects: ${approval.action.effects.join(', ')}`
-          : '',
-        approval.action.workspace ? `Workspace: ${approval.action.workspace}` : '',
-        approval.action.digest ? `Approval fingerprint: ${approval.action.digest}` : '',
-      ].filter(Boolean).join('\n');
-      box.appendChild(action);
-    }
-    const actions = document.createElement('div');
-    actions.className = 'modal-footer';
-    const decide = async (decision) => {
-      actions.querySelectorAll('button').forEach(btn => { btn.disabled = true; });
-      try {
-        const response = await fetch(
-          `${API}/api/skills/${encodeURIComponent(name)}/test-approval`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ approval_id: approval.approval_id, decision }),
-          },
-        );
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        await _testSkill(card, name, false);
-      } catch (error) {
-        add(`Approval failed: ${error.message || error}`, 'skill-test-err');
-        actions.querySelectorAll('button').forEach(btn => { btn.disabled = false; });
-      }
-    };
-    for (const [decision, label, cls] of [
-      ['deny', 'Deny', 'confirm-btn confirm-btn-secondary'],
-      ['approve', 'Allow once', 'confirm-btn confirm-btn-primary'],
-    ]) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = cls;
-      button.textContent = label;
-      button.addEventListener('click', () => decide(decision));
-      actions.appendChild(button);
-    }
-    box.appendChild(actions);
-    logEl.appendChild(box);
+    logEl.appendChild(_skillApprovalBox(job.approval, name, {
+      onAnswered: () => _testSkill(card, name, false),
+      onError: (msg) => add(msg, 'skill-test-err'),
+    }));
   }
   if (job.status === 'running') add('…running (you can close this — it keeps going)', 'skill-test-meta');
   logEl.scrollTop = logEl.scrollHeight;
@@ -1283,6 +1309,7 @@ async function _testSkill(card, name, force = false) {
         '</label>' +
         '<div class="skill-test-gate-note">A skill is untrusted text, so this run asks you before anything that writes, runs, sends or deletes — it can stop halfway and wait.</div>' +
         '<div class="skill-test-ask-actions">' +
+          '<button type="button" class="doclib-card-text-btn doclib-card-action-btn skill-test-compare">Compare with previous</button>' +
           '<button type="button" class="doclib-card-text-btn doclib-card-action-btn skill-test-run">Run test</button>' +
         '</div>' +
       '</div>' +
@@ -1314,6 +1341,13 @@ async function _testSkill(card, name, force = false) {
       runBtn.disabled = true;
       askEl?.classList.add('hidden');
       await _startSkillTest(card, name, (taskEl && taskEl.value.trim()) || '', logEl, verdictEl);
+    });
+    // `P8-09`. The same task box, the other question: not "does it work" but
+    // "did my edit change what it does". Carrying the typed task across is the
+    // whole point — a comparison against a different task compares nothing.
+    preview.querySelector('.skill-test-compare')?.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await _compareSkill(card, name, (taskEl && taskEl.value.trim()) || '');
     });
     return;
   }
@@ -1394,6 +1428,292 @@ function _setCardRunning(card, on) {
     }
     card._testSpinner = null;
   }
+}
+
+
+// ── `P8-09` · before/after behaviour diff ────────────────────────────────────
+//
+// The row: *"the runner is parameterised on arbitrary markdown and an arbitrary
+// task and never reads from disk — call it twice with old and new against the
+// same task."* Two things had to be true on the server first and neither was:
+// `_run_skill_test_once` denied the pending approval on its way out (`B592`),
+// and the endpoint kept one job slot per skill so the second run destroyed the
+// first result (`B879`). Both are fixed in `routes/skills_routes.py`; this is
+// the half a person actually touches.
+
+/** The comparison in sentences, from the served diff. Pure — no DOM, no fetch,
+ *  no module state — so it is driven directly under node and the words in the
+ *  panel are the words under test (`Law 20`).
+ *
+ *  The order matters: the honesty line comes FIRST when the two texts are the
+ *  same, because everything under it is then sampling noise and a reader who
+ *  meets that fact last has already believed the rest.
+ */
+function _skillDiffLines(diff) {
+  const d = diff || {};
+  const out = [];
+  if (d.same_text) {
+    out.push('These two runs used the SAME skill text. Anything different below is '
+      + 'the model answering twice, not your edit.');
+  }
+  if (!d.both_finished) {
+    const waiting = [];
+    if (d.before_status !== 'done') waiting.push(`the ${d.before_source || 'earlier copy'}`);
+    if (d.after_status !== 'done') waiting.push(`the ${d.after_source || 'current version'}`);
+    out.push(`Not finished yet: ${waiting.join(' and ')} ${waiting.length > 1 ? 'have' : 'has'} not produced a verdict.`);
+    return out;
+  }
+  if (d.verdict_changed) {
+    out.push(`The verdict changed: ${d.before_verdict} before your edit, ${d.after_verdict} after.`);
+  } else if (d.before_verdict) {
+    out.push(`The verdict did not change — ${d.before_verdict} both times.`);
+  }
+  if (d.tools_changed) {
+    const bits = [];
+    if ((d.tools_added || []).length) bits.push(`now uses ${d.tools_added.join(', ')}`);
+    if ((d.tools_removed || []).length) bits.push(`no longer uses ${d.tools_removed.join(', ')}`);
+    if (!bits.length) bits.push('used the same tools in a different order or a different number of times');
+    out.push(`Different work: it ${bits.join('; ')}.`);
+  } else if ((d.after_tools || []).length) {
+    out.push(`Same tools both times: ${(d.after_tools || []).join(', ')}.`);
+  } else {
+    out.push('Neither run used a tool.');
+  }
+  if (d.before_rounds !== d.after_rounds) {
+    out.push(`It took ${d.after_rounds} round(s) after the edit and ${d.before_rounds} before.`);
+  }
+  for (const gone of (d.issues_resolved || [])) out.push(`Fixed: ${gone}`);
+  for (const added of (d.issues_introduced || [])) out.push(`New problem: ${added}`);
+  if (!d.same_text) {
+    out.push('The run is sampled, so wording differs between runs on its own. '
+      + 'The verdict, the tools and the round count are what to read.');
+  }
+  return out;
+}
+
+/** One half of the comparison: heading, log, verdict, and its own gate card. */
+function _renderDiffHalf(title, source, log, approval, verdict, card, name, refresh) {
+  const col = document.createElement('div');
+  col.style.cssText = 'display:flex;flex-direction:column;gap:4px;min-width:0;';
+  const head = document.createElement('div');
+  head.className = 'skill-test-task';
+  head.textContent = `${title} — ${source}`;
+  col.appendChild(head);
+  const logEl = document.createElement('div');
+  logEl.className = 'skill-test-log';
+  for (const ev of (log || [])) {
+    const d = document.createElement('div');
+    if (ev.type === 'skill_test_start') { d.className = 'skill-test-meta'; d.textContent = 'Task: ' + (ev.task || ''); }
+    else if (ev.type === 'agent_step') { d.className = 'skill-test-round'; d.textContent = '— round ' + ev.round + ' —'; }
+    else if (ev.type === 'tool_start') { d.className = 'skill-test-tool'; d.textContent = '▸ ' + ev.tool + '  ' + String(ev.command || '').slice(0, 160); }
+    else if (ev.type === 'tool_output') { d.className = 'skill-test-out'; d.textContent = String(ev.output || '').slice(0, 400); }
+    else if (ev.type === 'say') { d.className = 'skill-test-say'; d.textContent = ev.text || ''; }
+    else if (ev.type === 'error') { d.className = 'skill-test-err'; d.textContent = 'Error: ' + (ev.error || 'run failed'); }
+    else { d.className = 'skill-test-meta'; d.textContent = ev.text || ev.type || ''; }
+    logEl.appendChild(d);
+  }
+  col.appendChild(logEl);
+  if (approval && approval.approval_id) {
+    col.appendChild(_skillApprovalBox(approval, name, {
+      onAnswered: refresh,
+      onError: (msg) => { const e = document.createElement('div'); e.className = 'skill-test-err'; e.textContent = msg; col.appendChild(e); },
+    }));
+  }
+  const v = document.createElement('div');
+  v.className = 'skill-test-meta';
+  v.textContent = verdict && verdict.verdict
+    ? `${verdict.verdict} — ${verdict.summary || ''}`
+    : 'no verdict yet';
+  col.appendChild(v);
+  return col;
+}
+
+/** Draw the whole comparison from one `/test-status` payload. */
+function _renderSkillDiff(host, status, card, name, refresh) {
+  const diff = status && status.diff;
+  host.innerHTML = '';
+  if (!diff) {
+    const d = document.createElement('div');
+    d.className = 'skill-test-meta';
+    d.textContent = 'Starting comparison…';
+    host.appendChild(d);
+    return;
+  }
+  const head = document.createElement('div');
+  head.className = 'skill-test-meta';
+  head.textContent = `Same task, same model (${diff.model || ''}): ${diff.task || ''}`;
+  host.appendChild(head);
+  for (const line of _skillDiffLines(diff)) {
+    const d = document.createElement('div');
+    d.className = diff.same_text ? 'skill-test-err' : 'skill-test-say';
+    d.textContent = line;
+    host.appendChild(d);
+  }
+  const cols = document.createElement('div');
+  cols.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:10px;min-width:0;margin-top:6px;';
+  cols.appendChild(_renderDiffHalf('Before', diff.before_source, diff.before_log,
+    diff.before_approval,
+    diff.before_verdict ? { verdict: diff.before_verdict, summary: diff.before_summary } : null,
+    card, name, refresh));
+  cols.appendChild(_renderDiffHalf('After', diff.after_source, diff.after_log,
+    diff.after_approval,
+    diff.after_verdict ? { verdict: diff.after_verdict, summary: diff.after_summary } : null,
+    card, name, refresh));
+  host.appendChild(cols);
+}
+
+async function _fetchSkillVersions(name) {
+  try {
+    const r = await fetch(`${API}/api/skills/${encodeURIComponent(name)}/versions`);
+    if (!r.ok) return [];
+    const d = await r.json();
+    return Array.isArray(d.versions) ? d.versions : [];
+  } catch { return []; }
+}
+
+/** Ask for a task and an earlier copy, then run both halves and watch them.
+ *
+ * `P8-00`: what a first-time user does is press **Compare with previous** — in
+ * the test panel they are already in, or from the card menu beside Test, or
+ * from the Saved toast the moment they finish an edit. What they see is two
+ * columns against one task and a sentence saying what changed. If the skill has
+ * never been edited there is nothing to compare, and the panel says that in
+ * those words instead of offering a button that 400s.
+ */
+async function _compareSkill(card, name, presetTask = '') {
+  if (!card) card = _findSkillCard(name);
+  if (!card) return;
+  if (!card.classList.contains('doclib-card-expanded')) await _expandSkillCard(card, name);
+  const preview = card.querySelector('.skill-card-preview');
+  if (!preview) return;
+  if (card._testPoll) { clearInterval(card._testPoll); card._testPoll = null; }
+  preview.innerHTML = '';
+
+  const wrap = document.createElement('div');
+  wrap.className = 'skill-test';
+  preview.appendChild(wrap);
+
+  const versions = await _fetchSkillVersions(name);
+  if (!versions.length) {
+    const d = document.createElement('div');
+    d.className = 'skill-test-meta';
+    d.textContent = 'There is no earlier copy of this skill yet, so there is nothing to '
+      + 'compare it with. Edit and save it once — the copy it replaces is kept '
+      + 'automatically, and this button then runs both against the same task.';
+    wrap.appendChild(d);
+    return;
+  }
+
+  const ask = document.createElement('div');
+  ask.className = 'skill-test-ask';
+  const label = document.createElement('label');
+  label.className = 'skill-test-ask-label';
+  label.textContent = 'What should both versions try?';
+  const ta = document.createElement('textarea');
+  ta.className = 'skill-test-task-input';
+  ta.rows = 2;
+  ta.spellcheck = false;
+  ta.placeholder = 'Leave blank and the AI invents a realistic example — both halves get the same one.';
+  ta.value = presetTask || '';
+  ta.addEventListener('click', (e) => e.stopPropagation());
+  label.appendChild(ta);
+  ask.appendChild(label);
+
+  const pick = document.createElement('label');
+  pick.className = 'skill-test-ask-label';
+  pick.textContent = 'Compare against';
+  const sel = document.createElement('select');
+  sel.className = 'skill-test-version-select';
+  for (const v of versions) {
+    const o = document.createElement('option');
+    o.value = v.id;
+    const when = v.saved_at ? new Date(v.saved_at * 1000).toLocaleString() : '';
+    o.textContent = `${v.id}${when ? ' — saved ' + when : ''}`;
+    sel.appendChild(o);
+  }
+  sel.addEventListener('click', (e) => e.stopPropagation());
+  pick.appendChild(sel);
+  ask.appendChild(pick);
+
+  const note = document.createElement('div');
+  note.className = 'skill-test-gate-note';
+  note.textContent = 'Two runs, one after the other, same task and same model. Either can '
+    + 'stop and ask you before anything that writes, runs, sends or deletes — and until you '
+    + 'answer, neither run has changed anything.';
+  ask.appendChild(note);
+
+  const actions = document.createElement('div');
+  actions.className = 'skill-test-ask-actions';
+  const go = document.createElement('button');
+  go.type = 'button';
+  go.className = 'doclib-card-text-btn doclib-card-action-btn skill-diff-run';
+  go.textContent = 'Compare';
+  actions.appendChild(go);
+  ask.appendChild(actions);
+  wrap.appendChild(ask);
+
+  const host = document.createElement('div');
+  host.className = 'skill-diff';
+  wrap.appendChild(host);
+
+  const refresh = async () => {
+    const st = await _fetchTestStatus(name);
+    _renderSkillDiff(host, st, card, name, refresh);
+    _setCardRunning(card, !(st.diff && st.diff.both_finished));
+    _pollSkillDiff(card, name, host, st, refresh);
+  };
+
+  go.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    go.disabled = true;
+    ask.classList.add('hidden');
+    host.innerHTML = '<div class="skill-test-meta">Running the earlier copy first…</div>';
+    try {
+      const res = await fetch(`${API}/api/skills/${encodeURIComponent(name)}/test-diff`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task: ta.value.trim(), version: sel.value }),
+      });
+      if (!res.ok) {
+        let why = `HTTP ${res.status}`;
+        try { const j = await res.json(); if (j && j.detail) why = j.detail; } catch (_) {}
+        host.innerHTML = '';
+        const d = document.createElement('div');
+        d.className = 'skill-test-err';
+        d.textContent = why;
+        host.appendChild(d);
+        return;
+      }
+    } catch (err) {
+      host.innerHTML = '';
+      const d = document.createElement('div');
+      d.className = 'skill-test-err';
+      d.textContent = 'Comparison failed: ' + (err.message || err);
+      host.appendChild(d);
+      return;
+    }
+    await refresh();
+  });
+}
+
+function _pollSkillDiff(card, name, host, status, refresh) {
+  const d = status && status.diff;
+  const waiting = d && !d.both_finished
+    && d.before_status !== 'awaiting_approval'
+    && d.after_status !== 'awaiting_approval';
+  if (!waiting) { _setCardRunning(card, false); return; }
+  if (card._testPoll) { clearInterval(card._testPoll); card._testPoll = null; }
+  card._testPoll = setInterval(async () => {
+    if (!document.body.contains(card)) { clearInterval(card._testPoll); card._testPoll = null; _setCardRunning(card, false); return; }
+    const st = await _fetchTestStatus(name);
+    if (document.body.contains(host)) _renderSkillDiff(host, st, card, name, refresh);
+    const nd = st && st.diff;
+    if (!nd || nd.both_finished || nd.before_status === 'awaiting_approval' || nd.after_status === 'awaiting_approval') {
+      clearInterval(card._testPoll); card._testPoll = null;
+      _setCardRunning(card, false);
+      if (nd && nd.after_verdict) _applyVerdictToHeader(card, nd.after_verdict);
+    }
+  }, 1300);
 }
 
 // Reflect a test/audit verdict on the (possibly collapsed) card header without

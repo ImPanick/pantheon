@@ -68,7 +68,7 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P5 | Trace & composer restyle | 17 | 5 | 0 | **12** |
 | P6 | Queue & Plan | 18 | 0 | 0 | **18** |
 | P7 | Trust ladder & control plane | 14 | 6 | **1** | **7** |
-| P8 | The Workshop | 49 | 2 | **2** | **45** |
+| P8 | The Workshop | 49 | 2 | **1** | **46** |
 | P9 | Feature surfaces | 18 | 9 | 0 | **9** |
 | P10 | Accessibility & release | 12 | 5 | 0 | **7** |
 | P11 | Identity & access | 14 | 6 | **1** | **7** |
@@ -80,8 +80,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P17 | The network the agent is hosted on | 14 | 0 | 0 | **14** |
 | P18 | One button, and it links | 9 | 0 | 0 | **9** |
 | P19 | The proof ledger | 8 | 0 | 0 | **8** |
-| Backlog | Bugs and hardening found in flight | 460 | 200 | 0 | **260** |
-| **Total** | | **842** | **266** | **9** | **567** |
+| Backlog | Bugs and hardening found in flight | 467 | 199 | 0 | **268** |
+| **Total** | | **849** | **265** | **8** | **576** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -243,6 +243,39 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### Every diagram on a light palette was drawn light-on-white, and a close was cancelling its caller
+`b8b7368..HEAD`. **849 tracked, 576 done. 0 new phase rows, 0 regressions. `P8-09`, `B870`, `B871`,
+`B872`, `B873`, `B879`, `B880`, `B881` and `B887` closed; `B882`–`B888` filed. `P8` goes 45 → 46 of
+49 and its last non-owner blocker is gone.** Three agents, no collisions, and two of the three rows
+that carried a suggested fix had the wrong one.
+**`B872` was worse than a theme setting.** Mermaid was initialised `theme: 'dark'` once, for all
+sixteen palettes. Measured against the panel a diagram sits on, arrows on the four light palettes
+came out at **1.17–1.29:1** and node outlines at 1.26–1.39:1 — not "hard to read", invisible. They
+are **4.50–4.96:1** now, from one module that decides the theme for every caller, holding no colour
+of its own: the stroke override is read back out of the theme's own `lineColor`. The harness had to
+learn to read a computed config before the config could be computed, which was the row's own
+precondition and it cost one `require`.
+**`B873` is `B582`'s shape and it had been shipped for months.** The failure branch — *if this step
+fails, do that* — is on `TaskCreate`, on `TaskUpdate`, validated by the same function as the success
+edge, served by the API, stored in `task_edges`, and drawn by `P8-34`'s diagram the day before. It
+had **no control anywhere in the browser**, so only the API and the agent could make one. Nothing
+backend changed to close it.
+**`P8-09` is closed, and the tracker's account of why it was blocked was half wrong.** `P8-10` was
+never the blocker; two destructive denies were, and the second (`B879`) was only found yesterday.
+The fix `B592` named — a parameter on `_run_skill_test_once` — was **deliberately not taken**: that
+function breaks out of the stream and keeps no continuation state, so an approval it declined to
+deny would be a card nobody could ever answer. The runner a comparison needs is the one that already
+pauses. **And a third thing nobody had recorded:** two runs of one skill are not two measurements of
+one quantity — `temperature=0.3` in both runners and no seed anywhere — so the diff compares verdict,
+tool sequence, round count and completion, never prose, and says so on its own face.
+**`B880`'s suggested fix does not work, measured.** `asyncio.timeout` in place of `asyncio.wait_for`
+logs the identical warning, because `create_task` is the task that matters and not the wrapper. The
+stack had to be owned. And the row understated the defect: three of the four task pairings warn and
+**one cancels the entering task** — which in this product is the startup connect against any request
+that disconnects a server (`B887`). `B881` understated its own too: `scripts/pantheon-mcp-new` was
+tracked at mode `100644`, so `P8-47`'s front door was not merely mislabelled in the listing, it was
+unreachable from the dispatcher.
 
 ### The Workshop finishes, and the escaper sweep found nineteen of them
 `6524083..HEAD`. **842 tracked, 567 done. 0 new phase rows, 0 regressions. `P8-34`, `P8-38`,
@@ -5308,7 +5341,7 @@ SKILL.md frontmatter format. That is the pattern to avoid, found in the phase's 
   `p8core`, reconciled at the merge — agent:`integrator` / `p8ui2` (the text)
 - [x] **P8-07** Show what the preview reveals: **verification and body text are never injected.** They surface only through an on-demand view action. — **done 2026-09-18, premise confirmed field by field.** The catalogue block carries `name`, `description` and `category` only (`src/agent_loop.py:3424-3438`); the matched-skill block adds `when_to_use`, `procedure` and `pitfalls` (`:3142-3165`); `verification` appears in neither, and neither does anything below the frontmatter. The preview says all three in those terms — what is in the list, what a match adds, what is never sent — and says where the missing half lives: open the card, or the model asks for the whole file itself. The Add-Skill form says the same thing at the point where a person types a verification step and would otherwise assume it is being sent. `Verify:` someone who has never read this tracker writes a verification step, opens the preview, and can tell that the AI will not be given it — and where it went. — agent:`p8ui`
 - [x] **P8-08** Wire the test's `task` field — the endpoint has accepted a user task all along and the UI has never sent one. One textarea. — **done 2026-09-18, premise exact.** `POST /api/skills/{id}/test` reads `body.task` at `routes/skills_routes.py:1499` and falls back to `_skill_test_task(skill)` (`:95`) when it is blank; `_testSkill` sent `{model, endpoint_url}` and nothing else, so **every skill test in this product's history ran an invented scenario and nothing said so**. Test now opens the panel with the box and a **Run test** button rather than starting immediately — one more click, and it is the click that makes the feature legible, because a blank box that states its own consequence ("leave blank and the AI invents a realistic example") is the only way a person learns the fallback exists. Retry pre-fills from `/test-status`, which has always echoed `task`, so re-running the same task is one click and changing it is one edit — which is also the shape `P8-09` needs when its own blocker clears. `_testSkill` split into ask / start / poll so the three are not one function. `Verify:` someone who has never read this tracker tests a skill against a case they choose, and can tell from the panel what happens if they choose nothing. — agent:`p8ui`
-- [~] **P8-09** **Before/after behaviour diff.** The runner is parameterised on arbitrary markdown *and* an arbitrary task and never reads from disk — call it twice with old and new against the same task. — **STILL BLOCKED. Re-measured 2026-09-19 by driving it, and the re-measurement found a second blocker the tracker does not have.** `B592`'s finding is unchanged: `_run_skill_test_once` still ends a gated run with `tool_approval_store.consume(..., decision="deny", owner=owner, session_id=None)` at `routes/skills_routes.py:744-749`, under the comment at `:739-741` explaining why an unattended audit has no authority to leave the record pending. Driven twice against a stubbed `stream_agent_loop` emitting one `tool_approval`: `consume` was called `[('appr-1', 'deny'), ('appr-1', 'deny')]` and both halves returned `approval_required: True` — the same numbers `P8-10` measured on 2026-09-18, so nothing has moved. The function's signature is still `(md, task, url, model, headers, owner)`: the parameter `B592` names as the unblocking change — a way to *leave* the approval alone when the caller is a diff, with the deny staying the default — does not exist. **`src/builtin_actions.py:2137` is the only other caller** and passes the same six arguments, so the change has exactly one call site to update. **The second blocker is at the endpoint and is not in `B592`.** `POST /api/skills/{id}/test` keys its job store by `(owner, skill_name)` and **overwrites it**: `_skill_test_jobs[key] = {...}` at `routes/skills_routes.py:1599` is unconditional, and immediately above it `:1591` denies the *previous* job's pending approval by hand. Driven 2026-09-19 through the real route with a stubbed manager and endpoint resolver — post a test, park `appr-1` and a `needs_work` verdict on it, post the same skill again: the second call consumed `[('appr-1', 'deny')]`, `GET /test-status` then answered `verdict: None, approval: None`, and there was still exactly one job slot for the skill. So even with `_run_skill_test_once` made non-destructive, **the before half's result is destroyed the moment the after half starts**, and a diff has nowhere to keep two answers. `P8-10` and `P8-11` are both `[x]` and neither touches either site, because both are about SKILL.md bytes and these two destructions are an approval record and an in-memory job slot. **What this row needs, in order:** the parameter in `_run_skill_test_once` (one call site), then somewhere for two runs of one skill to coexist — a second key, or a job that holds an ordered list of runs rather than one — then the diff itself. **Left `[~]` deliberately:** the honest re-measurement is the whole of this pass, and the unblocking change is `B592`'s row to close, not this one's to smuggle. `Depends:` P8-08. **`Blocked:` `B592`** (the deny in `_run_skill_test_once`) **and the single job slot at `routes/skills_routes.py:1599`** — *not* `P8-10`, which the tracker still names and which has never been the obstacle. — agent:`p8scaffold`
+- [x] **P8-09** **Before/after behaviour diff.** The runner is parameterised on arbitrary markdown *and* an arbitrary task and never reads from disk — call it twice with old and new against the same task. — **done 2026-09-19, and one of the two recorded blockers turned out not to be one.** **Measured first, on the tree as it stood.** `_run_skill_test_once` (`routes/skills_routes.py:744-749`) still ended a gated run with `tool_approval_store.consume(..., decision="deny", owner=owner, session_id=None)`; driven twice against a stubbed `stream_agent_loop` emitting one `tool_approval`, `consume` was called `[('appr-1', 'deny'), ('appr-1', 'deny')]` — `B592`'s numbers, unmoved. `POST /{skill_id}/test` assigned `_skill_test_jobs[(owner, name)]` unconditionally at `:1599` and hand-denied the previous run's approval at `:1591`; driven, a second test of one skill consumed `[('appr-1', 'deny')]` and left `verdict: None, approval: None`. **`B879` was the blocker. `B592` was not, and this row now says why.** `B592` says the fix is a parameter on `_run_skill_test_once` that leaves the approval alone. Building the comparison showed that function cannot host one: it *breaks out* of the stream and returns, keeping no continuation state, so an approval it declined to deny would be a card nobody could ever answer — strictly worse than the deny. The runner a comparison needs is `_run_skill_test_job`, which already pauses (`status: awaiting_approval`), already retains `_transcript` and `_run`, and already has an endpoint that answers the card with the owner check. Writing a second pausing runner beside it would have been `Law 14` exactly. So **`_run_skill_test_once` is byte-for-byte unchanged in behaviour and both of its callers — `_audit_one_skill` and `action_test_skills` (`src/builtin_actions.py:2137`) — still get the deny**, because both are unattended and neither has a surface that could answer. The parameter was deliberately not added: a parameter with no caller is the "capability that exists and nobody can reach" `P8-00` is a gate against. **What shipped.** `POST /{skill_id}/test-diff` (`routes/skills_routes.py:1942`) reads the current `SKILL.md` and one earlier copy — `P8-10`'s `versions/`, served to the browser for the first time by `GET /{skill_id}/versions` (`:1924`) rather than a second history being invented — and appends **two** runs to the skill's list, `before` and `after`, sharing one task and one endpoint. `_resolve_skill_test_model` (`:978`) is the resolution both halves use, lifted verbatim out of `POST /test`, because a comparison whose halves can resolve to different models is not a comparison. They run **in order**, not at once: `_advance_skill_test_chain` (`:717`) starts the second when the first reaches `done`, whether it got there straight through, after an approval, after a denial, or after its card lapsed. The **before** half carries `record: False` and writes no `set_audit` and no confidence, because its verdict is the old text's and not the skill's — measured: with the halves judged `fail` and `pass`, `set_audit` was called once, with `pass`. `_skill_run_diff` (`:787`) is pure — two run dicts in, one dict out, no store and no model — so the comparison is driven directly in the tests. **The third thing, which nobody had recorded, is the honesty of the comparison itself.** Two runs of one skill are not two measurements of one quantity: `temperature=0.3` in both runners, and `grep -n seed src/llm_core.py` returns nothing, so no endpoint in this repo takes a seed and two runs of *identical* markdown differ. So the diff compares the **verdict**, the **tool sequence** (repeats kept — "ran `bash` three times" against "ran it once" is a behaviour difference), the **round count** and **whether each half finished**, and never the prose; and it carries `same_text`, so comparing a skill against a byte-identical earlier copy leads with *"These two runs used the SAME skill text. Anything different below is the model answering twice, not your edit."* and a comparison of genuinely different text ends with what not to read. That line is a test, not a comment. **The gate was not touched.** The skill under test is `untrusted_context_message(..., arm_tool_gate=True)`, so both halves are tainted from round one and nothing that writes, runs, sends or deletes happens in either without an approval — which is also what makes the second half's world the same world the first half started in, and the panel says so. Either half can pause; each draws its own card; `_skillApprovalBox` (`static/js/skills.js:1211`) is the **one** builder both the plain test panel and the comparison use, and `static/js/skills.js` contains exactly one `'Allow once'` and one `/test-approval`. **`P8-00`, in the terms it asks for.** A person edits a skill in the card editor and presses Save. The toast says *Saved* with a **See what changed** button — *"runs the old and new text against one task"*. Pressing it opens the card, names the copy their save replaced, takes a task (or says in the box that leaving it blank means the AI invents one, both halves getting the same one), and draws two columns with a sentence at the top: *"The verdict changed: needs_work before your edit, pass after."* The same button is in the test panel beside **Run test**, carrying whatever task they already typed, and in the card menu beside Test. A skill that has never been edited has nothing to compare against, and the panel says that in those words and how to get one, rather than offering a button that 400s. `Verify:` someone who has never read this tracker edits a skill, saves it, presses one button in the toast, and is told in a sentence whether their edit changed what the skill does — and, when it did not change the text at all, is told that first. `CI:` `tests/test_what_my_edit_changed.py` (13 cases: the corrected `B592` control, the pure diff, and the route driven end to end through both halves), `tests/test_the_comparison_says_what_it_can_tell_you_js.py` (18 cases — the panel's words executed under node, and the panel itself built under the DOM shim and read back). 8 of 8 targeted mutations caught, 0 survived. `Depends:` P8-08, P8-10 (the `versions/` copy is what "before" is). `Blocked:` nothing. — agent:`skillrun`
 - [x] **P8-10** **Versioning.** Every write overwrites in place and the audit rewrites destructively with no copy kept; the version field is decorative and never bumped. A skill is a *directory* — a `versions/` sibling costs one line in the writer, and the rewrite path still holds the old markdown in a local when it writes the new one. — **done 2026-09-18.** Premise confirmed in full, and the audit is the worst case exactly as written: `_improve_skill_md` hands a model the current markdown, `_apply_skill_md` puts the rewrite on disk, and the old text's only remaining copy is the caller's `md` local, which goes out of scope. **The row's "one line in the writer" was the right instinct and the wrong count, for a reason worth keeping.** `SkillsManager._write_skill` is indeed the single writer every path funnels through — `add_skill`, `update_skill`, `backfill_owner`, and the audit and editor by way of `update_skill` — but a snapshot on *every* write is unusable: `_set_conf` and `_audit_finalize_status` each call `update_skill` with a bookkeeping field, so one nightly audit of one skill produces two to four writes and none of them is an edit. So the writer compares a **content fingerprint** — name, description, category, tags, the three toolset lists, when-to-use, procedure, pitfalls, verification, body — and keeps a copy only when one of those moved. `status` and `confidence` changes leave no version and no bump, which is what makes the history readable. The patch number moves on the same test, **unless the caller set the version itself**, because a person who typed `2.0.0` meant it — and that is precisely the case no caller in this repo exercises, which is why the field had never left `1.0.0`. Snapshots are `versions/NNNN-<version>.md`, never `SKILL.md`, so `_iter_skill_files` cannot mistake one for a skill; they travel with the directory through a rename (one `os.rename`) and are deleted with it; the sequence caps at 20. **`P8-09` is NOT unblocked by this, and the tracker says it is.** Measured: `_run_skill_test_once` calls `tool_approval_store.consume(..., decision="deny")` on every run that hits a gate — driven twice with a stubbed loop, it denied `appr-1` twice — and that path is untouched by anything here, because versioning is about SKILL.md bytes and the destruction `P8-09` trips over is an approval record. `B592` carries the correction. `Verify:` a person who has never read this tracker asks the assistant what their skill said before last night's audit rewrote it, and is handed the previous text — `manage_skills action=versions` lists it, `action=view_ref path=versions/<id>.md` reads it. `CI:` `tests/test_a_skill_edit_keeps_the_old_one.py` (16 tests). — agent:`p8core`
 - [x] **P8-11** Rollback from a version. `Depends:` P8-10. — **done 2026-09-18.** `restore_version` goes back through the ordinary writer, so **the copy it replaces is itself kept** and a rollback made by mistake costs one more sentence rather than the work it undid. Identity does not travel with the body: `name`, `category` and `owner` are pinned to the live skill's, because a snapshot is a file a person can hand-edit and those three decide which directory the skill lives in and which id the UI holds — letting a restore carry them would be the rename that `_apply_skill_md` and the markdown-save endpoint each already refuse, arriving by a third door. A test plants a tampered snapshot claiming `name: somewhere-else`, `owner: mallory`, `category: elsewhere` and asserts none of the three moves. A version id is matched against `^\d{4}-[A-Za-z0-9._-]{0,40}$` **and** realpath-contained inside the skill's own `versions/`; five traversal shapes are pinned. **Still missing, and it is `p8ui`'s file:** the Workshop card has no history affordance at all, so a person looking at the card cannot tell that earlier copies exist. What it needs is one row per entry from `GET /api/skills/{name}/versions`-equivalent data — currently only the tool channel serves it, deliberately, for the reason `B596` records — with the id, the version it held and when it was replaced, a "view" that shows the old markdown and a "restore" that names what it will replace. `Verify:` someone who has never read this tracker says "put that skill back the way it was" and it is back, and is told that undoing the undo is available. `CI:` `tests/test_a_skill_edit_keeps_the_old_one.py`. — agent:`p8core`
 - [x] **P8-12** Pre-save lint — the necessity and retrieval-precision judges are pure functions of `(skill, siblings)`, already run nightly, callable with no refactor. — **premise corrected 2026-09-18, and the correction changes the deliverable.** They are not pure functions and they are not callable from a save handler. `_eval_skill_necessity` and `_eval_skill_retrieval_precision` are both `async def`, both take `(skill_md, others, url, model, headers)`, and both make an `llm_call_async` — with `timeout=120` and `timeout=90` respectively. A save that waited on either would hang for up to two minutes, and on an install with no model configured it would never answer at all. What **is** pure is the cheap half the audit runs *around* those two calls and has never shown an author: `_should_check_retrieval_precision`, `_audit_generic_blocker`, and the token-overlap comparison inside `_skill_duplicate_blocker`. All three lived in `routes/skills_routes.py`, which is the wrong layer for something a manager, a route and a tool handler all want; they are now `services/memory/skill_lint.py` and `skills_routes` imports them back under their existing private names, so `_skill_duplicate_blocker` and the author-facing lint share **one** comparison rather than two that drift (`Law 14`). On top of those, the structural checks nothing was making at all — the `P8-17` gap seen from the author's side. `verdict` is an enum (`clean` · `advisories` · `problems`) and every finding carries `severity` plus a `fix` (`Law 10`).
@@ -18465,59 +18498,177 @@ this is the same thing happening to the row that corrected the store.
   `Verify:` a stock install retrieves a bundled skill for a natural query at the shipped floor.
   `Depends:` `B590`, `B868`. — found by `P8-20` — agent:`p8skills`
 
-- [ ] **B870** **The same product mints two MCP server id shapes depending on which door you came
-  in.** Found 2026-09-19 while building `P8-44`.
-  Three sites mint an id and two of them disagree: `routes/mcp/mcp_routes.py:229` and
-  `src/agent_tools/admin_tools.py:267` use `str(uuid.uuid4())[:8]` — eight hex characters —
-  and `scripts/pantheon-mcp:150` uses the whole `str(uuid.uuid4())`, thirty-six. Both satisfy the
-  id rule `P8-44` just added, so nothing is broken **today**; that is the whole shape of `Law 13`.
-  Anything that assumes an eight-character id — a column width, a log-line format, a truncating
-  index, a test fixture — is right for two callers and wrong for the third, and it will be found
-  by whoever registers their first server from the CLI rather than by anyone reading this.
-  One place mints an id and the other two call it. `Verify:` a server added through the route, the
-  agent tool and the CLI comes back with the same id shape, asserted by driving all three.
-  `Depends:` nothing. — found by `P8-44` — agent:`p8conn`
+- [x] **B870** **The same product minted two MCP server id shapes depending on which door you came
+  in.** Found 2026-09-19 while building `P8-44`. Closed 2026-09-19.
+  Three sites minted an id and two of them disagreed: `routes/mcp/mcp_routes.py:262` and
+  `src/agent_tools/admin_tools.py:299` used `str(uuid.uuid4())[:8]` — eight hex characters — and
+  `scripts/pantheon-mcp:150` used the whole `str(uuid.uuid4())`, thirty-six. Driven, the three
+  doors returned lengths `{8, 8, 36}`. All three passed `validate_mcp_server_id`, so nothing was
+  broken on the day; that is the whole shape of `Law 13`.
+  **Eight wins**, and the reasoning is now in `src/mcp_manager.new_mcp_server_id` beside
+  `validate_mcp_server_id`, so the rule that says what a legal id is and the mint that produces one
+  live in one place (`Law 14`): eight is what two of the three already minted, so almost every
+  stored row already has that shape and nothing migrates; the id is carried inside
+  `mcp__<server_id>__<tool_name>`, the name the model must emit verbatim on every MCP tool call
+  (`P8-44`), and thirty-six makes every qualified name 28 characters longer in every prompt on every
+  turn; eight is what a person types (`pantheon-mcp show <id>`) and reads in a log line. The one
+  thing thirty-six bought was "cannot collide" — and asking the table buys that better: none of the
+  three sites checked uniqueness at all, so a collision was an unhandled `IntegrityError` on
+  `POST /servers` rather than a second draw. `new_mcp_server_id` draws up to eight times against the
+  `mcp_servers` table, falls back to a full uuid if that somehow exhausts, and returns a legal id
+  when the table does not exist yet (first boot).
+  The three call sites are now one line each; the three now-dead `uuid` imports went with them.
+  **No stored id changed.** A thirty-six-character id is still legal by `validate_mcp_server_id`,
+  still qualifies, still splits, and still routes through `call_tool` — driven, not asserted about.
+  `Verify:` register a server from the UI, from `manage_mcp add` and from `pantheon-mcp add` and all
+  three ids are eight hex characters; a server registered from the CLI last week still answers its
+  tools. `tests/test_mcp_one_id_shape.py` (6 cases: drives `POST /api/mcp/servers`, `do_manage_mcp`
+  and `cmd_add` against one real SQLite table, then the collision draw, the missing table, and both
+  shapes coexisting). Reverting only the CLI mint fails it with `assert {8, 36} == {8}`.
+  `Depends:` nothing. — found by `P8-44` — agent:`p8conn` — closed by agent:`mcptidy`
 
-- [ ] **B871** **`manage_mcp`'s function schema does not mention the two filters the tool now
-  takes.** Found 2026-09-19 while building `B867`.
-  `B867` gave `manage_mcp list_tools` a `server_id` narrowing and a `tool` filter, and the schema
-  the model reads — `src/tool_schemas.py:826-833`, with the XML-path one-liner at
-  `src/agent_loop.py:1031` — describes neither. The capability exists and is undiscoverable, which
-  is `B66`'s shape exactly: the agent was ordered to use `manage_rag` while the parser dropped
-  every call. Here the calls work and nothing tells the model they are available, so `list_tools`'
-  own response text is teaching them instead — a workaround, and it should not be the register.
-  `check-tool-surface.py` already knows a tool name must be in every register; this is the same
-  rule one level down, at the argument.
-  `Verify:` the schema names both filters and a test drives `manage_mcp` rather than reading the
-  schema (`Law 20`). `Depends:` nothing. — found by `B867` — agent:`p8conn`
+- [x] **B871** **`manage_mcp`'s function schema did not mention the two filters the tool takes.**
+  Found 2026-09-19 while building `B867`. Closed 2026-09-19.
+  `B867` gave `manage_mcp list_tools` a `server_id` narrowing and a `tool` filter. Measured by
+  driving the tool with each candidate argument and keeping the ones that changed the answer:
+  `{server_id, tool}` are honoured, and of the two registers that describe arguments,
+  `src/tool_schemas.py:826-831` listed `action, server_id, name, command, args, env` — no `tool` at
+  all, and `server_id` described as "Server ID (for delete/enable/disable/reconnect)", naming four
+  actions and not the one `B867` gave it — while the XML path's one-liner at `src/agent_loop.py:1031`
+  read `{"action": "list|add|delete|reconnect|list_tools", ...}` with no filters and, separately,
+  with `enable` and `disable` missing from an action list the tool has always honoured. So the
+  capability existed and was undiscoverable, and `list_tools`' own response text was the only thing
+  teaching it — a workaround standing in for the register, which is `B66`'s shape at the argument.
+  Both registers now name both filters, `server_id`'s description names `list_tools`, the action
+  lists agree, and the schema's description says what `list_tools` returns.
+  `Verify:` a model that has only ever read the function schema can narrow a 200-tool listing to one
+  server without being told by a previous answer. `tests/test_mcp_manage_mcp_schema_names_its_arguments.py`
+  (11 cases). It DISCOVERS what the tool honours by calling it and then holds the registers to that
+  (`Law 20`) — a probe case proves it can tell an honoured argument from an ignored one, so the
+  parity assertions are not vacuous, and a second pins both registers to the exact action set the
+  tool answers, driven. Four of the eleven fail on the tree before this row.
+  `check-tool-surface.py` pins the same rule one level up, at the tool name; nothing in
+  `src/tool_index.py` needed changing — its entry is retrieval prose and names no arguments.
+  `Depends:` nothing. — found by `B867` — agent:`p8conn` — closed by agent:`mcptidy`
 
-- [ ] **B872** **Mermaid is initialised `theme: 'dark'` for all sixteen palettes, and four of them
-  are light.** Found 2026-09-19 while building `P8-34`.
-  `static/js/markdown.js:94`, called once by `ensureMermaid` (`:90`), pins the dark theme for every
-  diagram this product draws. Four shipped palettes are light — `light`, `paper`, `lavender`,
-  `cute` (`static/js/theme.js:15,18,25,30`) — so on those, every diagram in chat, in the document
-  preview and in the slash preview draws light strokes and light labels onto a near-white panel.
-  `P8-34`'s workflow diagram works around it per-diagram with a `%%{init:…}%%` directive chosen
-  from `color-scheme`, which `theme.js:292` already writes; the three older callers do not, and a
-  per-caller workaround is not the fix.
-  **Not fixed where it was found, and the reason is a second finding:**
-  `tests/harness/mermaid_diagram_parse.js` lifts that config out of the source with
-  `new Function('return ' + literal)`, so replacing the literal with a variable breaks the harness.
-  The harness has to learn to read a computed config before the config can be computed.
-  `Verify:` on each of the sixteen palettes a rendered diagram's strokes and labels meet contrast
-  against the panel they sit on. `Depends:` nothing. — found by `P8-34` — agent:`p8canvas`
+- [x] **B872** **Mermaid was initialised `theme: 'dark'` for all sixteen palettes, and four of them
+  are light.** Found 2026-09-19 while building `P8-34`; **done 2026-09-19, and the harness half cost
+  one import.**
+  **What was there.** `static/js/markdown.js:94` was
+  `window.mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose' })`, called
+  once by `ensureMermaid` (`:90`), which is the only place this product initialises Mermaid — so
+  that one literal was the theme of every diagram it draws: chat (`chatRenderer.js:3939`, `:4271`),
+  the document preview (`document.js:9831`), the slash preview (`slashCommands.js:476`) and
+  `P8-34`'s workflow card (`tasks.js:2329`). Measured against `.mermaid-container`'s own backdrop
+  (`style.css:10592`, `color-mix(in srgb, var(--bg) 95%, var(--fg))`), on the four light palettes
+  the arrows (`lineColor: lightgrey`) came in at **1.17 / 1.29 / 1.21 / 1.29 : 1** on
+  `light` / `paper` / `lavender` / `cute`, and the node outlines (`nodeBorder: #ccc`) at
+  **1.26 / 1.39 / 1.30 / 1.38 : 1**, against a 3:1 floor. That is not hard to read, it is the same
+  colour.
+  **The harness half first, because it decided what the rest cost.**
+  `tests/harness/mermaid_diagram_parse.js` lifted the config with
+  `/window\.mermaid\.initialize\(\s*(\{[^}]*\})\s*\)/` and `new Function('return ' + literal)`,
+  which reads a literal and nothing else — computing the config would have made it bail
+  `ANCHOR-MISSING`. It now `await import()`s `static/js/markdown/mermaidTheme.js` and **calls**
+  `applyMermaidTheme(mermaid, scheme)`, the same function `ensureMermaid` calls, against the same
+  vendored bundle, for `dark`, `light` and `''`. **The whole cost was `require('node:url')` and the
+  new module having no imports** — node 22 loads a dependency-free ESM `.js` from a CJS harness
+  directly. `markdown.js` itself still cannot be imported there: it reaches `HTMLInputElement`
+  through `ui.js` before its first statement, which no shim in that file would fix, so *that*
+  `ensureMermaid` really calls this function is driven in
+  `tests/test_markdown_lazy_lib_loading_js.py` instead, where the module is loaded for real and
+  `initialize` is watched. The result is strictly stronger than the regex: it proves the shipped
+  decision function produces a config this Mermaid honours, not that a literal parses.
+  **What shipped.** `static/js/markdown/mermaidTheme.js` (new, 148 lines, no imports, no DOM, no
+  module state) is the one place: `SCHEME_THEMES` (`light: 'neutral'`, `dark: 'dark'`),
+  `documentScheme()` — the read `tasks.js:2268` used to do privately, off the inline `color-scheme`
+  all three palette writers set — `mermaidConfig()`, `strokeOverrides()` and `applyMermaidTheme()`.
+  `ensureMermaid` applies it on load and `renderMermaid` re-applies before each run, guarded by the
+  scheme it last used, so a palette switched hours after the bundle landed reaches the next diagram
+  and the steady state is no `initialize` at all. **Nothing in this file is a colour.** `neutral`
+  and `dark` are Mermaid's own names, and the one stroke override is read back out of
+  `getConfig().themeVariables.lineColor` — because Mermaid's flowchart stylesheet is
+  `.node rect, … { fill: ${mainBkg}; stroke: ${nodeBorder} }` and `neutral`'s `nodeBorder` (`#999`)
+  measures **2.23–2.46:1** on those panels while its node fill measures **1.00–1.10:1**, so the
+  outline is the only thing saying where a box is, and `P8-34` encodes what a node *is* purely as
+  its shape. After: arrows and outlines **4.50 / 4.96 / 4.64 / 4.95 : 1**, node text 16.28:1 on the
+  node fill, arrow words 21:1. The twelve dark palettes keep `dark`; their outlines move from `#ccc`
+  (7.71–12.35:1) to `lightgrey` (8.28–13.25:1).
+  **`default` was rejected on measurement, not taste**: its purple node outline comes in at
+  2.95–3.25:1 and fails the 3:1 line on `light`.
+  **Two things the read-back found that no changelog says.** (1) `initialize({theme: 'light'})` is
+  accepted in silence — `getConfig().theme` echoes `light` and the variables come back as
+  `default`'s — so asserting the theme name alone asserts an echo; the harness now reports the ink
+  with it. (2) Re-`initialize` does **not** accumulate `themeVariables`: `neutral` with an override
+  followed by plain `dark` comes back `#ccc`, which is what makes re-theming on a palette switch
+  safe.
+  **`P8-34`'s per-diagram workaround is gone, and that is the fix.** `workflowDiagram.js` no longer
+  has `themeDirective` and `workflowMermaid` no longer prepends `%%{init:…}%%`. A directive is
+  applied per diagram and re-derives the whole theme from that one key, which would have discarded
+  the `nodeBorder` and handed that one surface a fainter outline than every other diagram in the
+  product — and an export with no caller is `B582`'s shape. One place decides (`Law 13`), and it is
+  `markdown/mermaidTheme.js`.
+  **Themes untouched:** no palette edited, `--accent` still undefined in `:root`, `theme.js`
+  unchanged. This chose which theme Mermaid is told about.
+  `Verify:` on each of the sixteen palettes a rendered diagram's arrows, node outlines and labels
+  clear WCAG 1.4.11 (3:1) and 1.4.3 (4.5:1) against what is actually behind them, asserted by
+  **calling** the shipped decision function and reading the real vendored bundle's answer back —
+  `tests/test_every_palette_gets_a_legible_diagram_js.py` (35 cases), whose `test_the_old_pin_would_still_fail_this`
+  re-runs the same measurement with the pinned `dark` put back and requires it red on exactly the
+  four light palettes. `tests/test_markdown_lazy_lib_loading_js.py` gains three cases driving
+  `ensureMermaid`/`renderMermaid` for real (palette → theme, first paint → shipped default, palette
+  switched after load → next diagram re-themed, same palette → no re-initialise).
+  `CI:` `tests/test_every_palette_gets_a_legible_diagram_js.py`,
+  `tests/test_markdown_lazy_lib_loading_js.py` (18), `tests/test_vendored_bumps_still_render.py`
+  (12, its Mermaid config assertions updated), `tests/test_a_workflow_you_did_not_write_js.py` (14).
+  Four mutations, all caught: mapping both schemes to `dark` (5 red), `strokeOverrides` returning
+  `{}` (6 red), `renderMermaid` not re-theming (3 red), the per-diagram directive coming back
+  (1 red). `Depends:` nothing. — found by `P8-34`, closed by `p8taskui`
 
-- [ ] **B873** **`P8-28`'s failure branch has no front end at all — nobody can create an `error`
-  edge.** Found 2026-09-19 while building `P8-34`.
-  `grep -rn "else_task_id" static/` returns **nothing**. `static/js/tasks.js:1853` reads only
-  `then_task_id` and `:1923` writes only `then_task_id`. The engine understands the failure edge,
-  the API accepts it, the `task_edges` table stores it, and `P8-34`'s diagram now **draws** it —
-  and the only ways to create one are the API and the agent. A person building a workflow in the
-  browser cannot express "if this step fails, do that", which is the branch that makes a chain
-  worth building.
-  It is `B582`'s shape: a complete backend with no caller, found the moment something rendered it.
-  `Verify:` a person adds a failure branch from the task card and the diagram draws the edge they
-  just made. `Depends:` nothing. — found by `P8-34` — agent:`p8canvas`
+- [x] **B873** **`P8-28`'s failure branch had no front end at all — nobody could create an `error`
+  edge.** Found 2026-09-19 while building `P8-34`; **done 2026-09-19.**
+  **What was there.** `grep -rn "else_task_id" static/` returned **nothing**. The browser's entire
+  knowledge of chaining was two lines: `tasks.js:1853` filled one `<select>` from
+  `existing.then_task_id`, and `:1923` posted `payload.then_task_id` back.
+  **Re-measured the write path before designing the control, as this row asked.** Nothing under it
+  needed changing and nothing under it was changed: `else_task_id` is on `TaskCreate`
+  (`routes/task/task_routes.py:175`) **and** `TaskUpdate` (`:219`); create runs it through
+  `_validate_then_task_id` at `:711` and edit at `:929`, the same validator as the success edge, so
+  the two branches cannot fall under different rules — unknown target 404, self-chain 400;
+  `_task_to_dict` (`:270`) serves it on every row; `src/task_scheduler.py:112` is the column table
+  and `task_edges` projects both. The one thing that shaped the control: PUT guards with
+  `if req.else_task_id is not None`, so an omitted key leaves a stored edge alone and `""` is the
+  only thing that clears it — which is why the form sends **both** fields on every save.
+  **What shipped.** The form's Chain section is two labelled rows instead of one field:
+  *If it works* → `task-form-chain` (`then_task_id`) and *If it fails* → `task-form-chain-else`
+  (`else_task_id`). The two labels are `workflowDiagram.js:EDGE_WORDS` capitalised, so the control
+  that makes an edge and the arrow `P8-34` draws for it are one vocabulary rather than two
+  (`Law 14`). One `CHAIN_FIELDS` table (`tasks.js:56`) pairs select id, payload field and the
+  wire's condition, and the markup, the populate loop and the save all read it — a second copy of
+  the block with the other field name in it is how the first one ended up with no second
+  (`Law 13`). Four CSS rules (`.task-form-chain*`), no colour of their own and **no media query**:
+  a `@media (max-width: 320px)` broke `tests/test_breakpoints_agree_on_mobile.py`, which holds that
+  exactly one width claims to be where mobile ends, so the row wraps with `flex-wrap` instead.
+  **Two doors, because a control nobody finds is not a feature (`P8-00`).** The workflow card now
+  says *"Nothing runs if this step fails. Open Edit and set “If it fails” under Chain to add that
+  branch."* on any chain whose focused step has no error edge — and stops saying it once the branch
+  exists. The lone-task empty state named a control called "Then run" that has never been a label in
+  this form; it now names both real ones.
+  `Verify:` a person who has never read this tracker opens Edit on a task, sets *If it fails*,
+  saves, opens Workflow and sees the dotted arrow to the task they picked. Driven end to end in
+  `tests/test_a_failure_branch_you_can_build_js.py` (7 cases) through the shared `tasks.js`
+  sandbox — the real `_showForm` writes the form, the real populate loop fills both selects, the
+  real save handler assembles the payload and calls `fetch` — and the payload that comes off that
+  wire is then handed to **the server's own `build_task_graph`**, whose graph is served back to
+  `_fetchTasks` and drawn. Nothing between the two halves is a fixture, so a front end that sent the
+  right field into the wrong column fails here instead of agreeing with itself.
+  `CI:` `tests/test_a_failure_branch_you_can_build_js.py`,
+  `tests/test_a_workflow_you_did_not_write_js.py` (14),
+  `tests/test_the_palette_moves_to_the_server_js.py`, `tests/test_task_graph_document.py`,
+  `tests/test_breakpoints_agree_on_mobile.py`. Four mutations, all caught: saving only
+  `then_task_id` (3 red), swapping the two columns (7 red), populating only the first select
+  (7 red), labels written here instead of taken from `EDGE_WORDS` (7 red).
+  `Depends:` nothing. — found by `P8-34`, closed by `p8taskui`
 
 - [ ] **B874** **Ten test files stub `ui.js:esc`, and three of the stubs do not escape.** Found
   2026-09-19 by `B866`'s sweep.
@@ -18583,7 +18734,7 @@ this is the same thing happening to the row that corrected the store.
   `Verify:` the harness parses a labelled flowchart and still rejects `broken`. `Depends:` nothing.
   — found by `P8-34` — agent:`p8canvas`
 
-- [ ] **B879** **Testing a skill twice destroys the first result — the second, unrecorded blocker on
+- [x] **B879** **Testing a skill twice destroys the first result — the second, unrecorded blocker on
   `P8-09`.** Found 2026-09-19 while re-measuring `P8-09`.
   There is **one job slot per `(owner, skill_name)`**: `_skill_test_jobs[key] = {…}` at
   `routes/skills_routes.py:1599` is unconditional, and `:1591` hand-denies the previous job's
@@ -18593,34 +18744,204 @@ this is the same thing happening to the row that corrected the store.
   slot remained. So even with `_run_skill_test_once`'s own destructive deny fixed
   (`routes/skills_routes.py:744-749`, still present and re-measured today), the **before** half's
   result is gone by the time the **after** half starts, which is the entire content of `P8-09`.
-  `P8-09`'s tracker entry named `P8-10` as its blocker and that was never right; the row now says
-  so. This is the other half.
-  `Verify:` two runs of the same skill coexist long enough to be compared, and neither denies the
-  other's approval. `Depends:` nothing. `Unblocks:` `P8-09`. — found by `P8-09` — agent:`p8scaffold`
+  — **done 2026-09-19, premise exact, re-driven before anything was written.** The value of
+  `_skill_test_jobs[key]` is now **a list of runs, oldest first** (`routes/skills_routes.py:455`,
+  cap `MAX_SKILL_TEST_RUNS = 4` at `:458`), reached only through five helpers — `_skill_test_runs`
+  (`:484`), `_latest_skill_test_run`, `_skill_test_run`, `_skill_test_run_for_approval` (`:508`)
+  and `_append_skill_test_run` (`:525`) — so no route pokes the dict directly any more.
+  **The deny did not disappear and it was not weakened; it moved to the one place a card really
+  does stop being answerable.** The endpoint's copy fired on every *second* test of a skill, for a
+  reason that was true then and is not true now: the slot was about to be overwritten, so the
+  previous run's card would have had no job to answer it through. With a list, a second test
+  leaves the first card reachable, so there is nothing to retire — what still makes a card
+  unreachable is **eviction past the cap**, and `_append_skill_test_run` denies exactly there. The
+  two hand-written `consume(..., decision="deny")` blocks in this file became one
+  `_retire_skill_approval` (`:461`), because a third was about to be needed (`Law 14`).
+  `POST /{skill_id}/test-approval` now finds the run by the **sealed approval id**
+  (`_skill_test_run_for_approval`) instead of assuming there is one job to look in — with two runs
+  in flight the older half's card could not be answered at all. Both checks that were there are
+  still there and still in that order: the run must be `awaiting_approval`, and the id must be that
+  run's; an id belonging to no run is still a 409 and still consumes nothing.
+  `GET /test-status` answers about **one** run and, with no `run=` parameter, that run is the
+  newest — which is what every existing caller meant — and carries `runs: [...]` beside it.
+  **One defect found on the way and fixed here because it is the same dead end:** an approval that
+  lapsed on its TTL (`P12-10` records it as `denied_timeout`) left its run `awaiting_approval` for
+  the life of the process, and `POST /test-approval` answered 409 and changed nothing. It now ends
+  that run as `inconclusive` — "not approved in time" — and releases whatever was queued behind it.
+  `Verify:` a person tests a skill, leaves the run waiting on its approval card, and tests the same
+  skill again — the first run's verdict and its card are both still there, readable from the panel,
+  and answering either one does not touch the other.
+  `CI:` `tests/test_testing_a_skill_twice_keeps_both.py` (6 cases, all driving the real route
+  functions). `Depends:` nothing. `Unblocks:` `P8-09`. — found by `P8-09` — agent:`skillrun`
 
-- [ ] **B880** **Every shutdown logs a failed close, and the stack's cleanups are skipped.** Found
-  2026-09-19 while building `P8-47`.
-  `connect_all_enabled` (`src/mcp_manager.py:524-529`) connects inside child tasks and
-  `disconnect_all` closes from the parent, so anyio refuses the `AsyncExitStack` exit: driven, a
-  child-task connect followed by a parent close logs
-  `WARNING … Error closing MCP server s1: Attempted to exit cancel scope in a different task than
-  it was entered in`, while a same-task control is silent. The impact is bounded and was measured
-  rather than assumed — the subprocess still dies (one process while connected, zero after) — but
-  every cleanup registered on that stack is skipped, and the warning fires on **every** shutdown,
-  which is how a real one would be missed.
-  The same defect appeared in the probe written for `P8-47` and was fixed there with
-  `asyncio.timeout` in place of `asyncio.wait_for`; the same fix applies here.
-  `Verify:` a shutdown after `connect_all_enabled` logs nothing, and a test asserts the stack's
-  cleanups ran. `Depends:` nothing. — found by `P8-47` — agent:`p8scaffold`
+- [x] **B880** **Every shutdown logged a failed close, and the stack's cleanups were skipped.**
+  Found 2026-09-19 while building `P8-47`. Closed 2026-09-19.
+  Driven against a real stdio MCP server subprocess — anyio's cancel scopes are the subject and a
+  stub transport does not have one — `connect_all_enabled` (connects inside `asyncio.create_task`
+  children) followed by `disconnect_all` (closes from the parent) logged
+  `WARNING Error closing MCP server s1: Attempted to exit cancel scope in a different task than it
+  was entered in`, while a same-task control was silent. Instrumenting the two exit callbacks on
+  that `AsyncExitStack` showed what the warning cost: same task
+  `['done#1:ClientSession', 'done#0:_AsyncGeneratorContextManager']`, child task
+  `['raise#1:RuntimeError', 'raise#0:RuntimeError']` — **both** cleanups aborted, so
+  `stdio_client`'s ordered terminate → wait → kill teardown never finished. The subprocess still
+  died (1 process while connected, 0 after), which is why this was a warning rather than a leak —
+  and it fired on every shutdown, which is how a real one gets missed.
+  **A worse shape of the same defect was found while fixing it and is now pinned.** When the stack
+  was entered in a task that is still RUNNING and closed from a child task, anyio delivered the
+  cancel scope's cancellation to the ENTERING task and the caller died with
+  `CancelledError: Cancelled via cancel scope ...`. That is exactly `app.py`: the lifespan task
+  connects at startup (`app.py:1462` runs the whole connect in its own `create_task`) and
+  `routes/mcp/mcp_routes.py:490,536,589,605` disconnects from a request task. Measured across all
+  four task pairings, three of the four warned.
+  **`asyncio.timeout` in place of `asyncio.wait_for` was measured and does not fix this.**
+  It is the right fix for `src/mcp_scaffold.py:643`, where `P8-47` used it, because that probe
+  `await`s a connect inline and `wait_for`'s wrapper Task was the only task in the way. Here
+  child-task + `asyncio.timeout` logged the identical warning: `create_task` is the task that
+  matters. The stack had to be **owned**. `McpManager._open_owned` now runs a connection's whole
+  enter → hold → exit lifetime inside one task the manager keeps, and `_close_owned` asks that task
+  to finish; all three transports (stdio, SSE, Streamable HTTP) go through it and callers are
+  unchanged. `disconnect_all` sweeps `_owners` as well as `_sessions`, because a connect whose
+  handshake failed after the transport came up would otherwise leave a task parked forever; a
+  failed connect is now waited for before its error reaches the caller, so `connect_server` never
+  returns with a half-open transport behind it (that case was found by this row's own test).
+  `_connect_with_timeout` deliberately keeps `asyncio.wait_for` — see the boundary note below.
+  `Verify:` stop the app with MCP servers connected and the log is clean; delete a server from the
+  UI and the lifespan task survives it. `tests/test_mcp_shutdown_closes_cleanly.py` (10 cases,
+  real subprocess): shutdown logs nothing, both stack callbacks run to completion, a cross-task
+  close does not cancel the caller, all four task pairings are silent, the owner task ends and is
+  forgotten, a failed connect parks nothing — plus a control that installs an exploding close and
+  asserts the capture still sees it, so the silence assertions are not vacuous. Eight of the ten
+  fail on the tree before this row.
+  `Depends:` nothing. — found by `P8-47` — agent:`p8scaffold` — closed by agent:`mcptidy`
 
-- [ ] **B881** **The CLI dispatcher's help strips only single-segment subcommand names.** Found
-  2026-09-19 while building `P8-47`.
-  `scripts/pantheon:66` reduces each subcommand's first help line with
-  `re.sub(r"^pantheon-\w+\s*—\s*", "", first)`. `\w` does not include `-`, so a hyphenated name is
-  never stripped: `pantheon` lists `mcp-new    pantheon-mcp-new — make a working MCP server…`,
-  with the name printed twice, while every other row reads `mcp        shell wrapper for MCP…`.
-  One character — `\w+` → `[\w-]+`. `mcp-new` is this repository's first hyphenated subcommand,
-  which is why nobody has seen it, and which is why it is worth fixing before there is a second.
-  `Verify:` `pantheon` with no arguments prints one name per row for every subcommand, hyphenated
-  or not, asserted by driving the dispatcher. `Depends:` nothing. — found by `P8-47` —
-  agent:`p8scaffold`
+- [x] **B881** **The CLI dispatcher's help stripped only single-segment subcommand names — and the
+  one hyphenated subcommand was not executable, so it was not there at all.** Found 2026-09-19
+  while building `P8-47`. Closed 2026-09-19.
+  `scripts/pantheon:66` reduced each subcommand's first help line with
+  `re.sub(r"^pantheon-\w+\s*—\s*", "", first)`, and `\w` does not include `-`, so a hyphenated name
+  was never stripped. Driven, `_short_help(scripts/pantheon-mcp-new)` returned
+  `'pantheon-mcp-new — make a working MCP server and say how to register it.'` against
+  `'shell wrapper for MCP (Model Context Protocol) servers.'` for every other row.
+  **The row understated it.** `scripts/pantheon-mcp-new` was tracked at mode `100644`, and
+  `_list_subcommands` filters on `os.access(p, os.X_OK)`, so `pantheon` did not list `mcp-new` at
+  all and `pantheon mcp-new --list` answered `pantheon: unknown subcommand 'mcp-new'` with exit 1.
+  `P8-47`'s whole front door was unreachable from the dispatcher. `core.fileMode` is `false` in this
+  repository, so the bit had to be set with `git update-index --chmod=+x`, not `chmod`.
+  Both halves are fixed. The strip is anchored on the file's OWN name (`re.escape(path.name)`)
+  rather than a wider generic pattern: it cannot mis-strip a lookalike, and it handles any hyphen
+  depth. `pantheon` now prints `mcp-new    make a working MCP server and say how to register it.`
+  and `pantheon help mcp-new` reaches the tool's own `--help`.
+  `Verify:` type `pantheon` and every subcommand, hyphenated or not, is one name and one
+  description; type `pantheon mcp-new` and it runs. `tests/cli/test_pantheon_dispatcher_listing.py`
+  (6 cases) drives `main([])` and parses what it printed — no row repeats its own name, `mcp-new`
+  is listed and dispatchable, every shipped `pantheon-*` is executable (the check that would have
+  caught the mode), the strip handles `pantheon-a-b-c`, it leaves a lookalike name alone, and an
+  unknown hyphenated name is still refused. Reverting either half fails three of the six.
+  `Depends:` nothing. — found by `P8-47` — agent:`p8scaffold` — closed by agent:`mcptidy`
+
+- [ ] **B882** **Four copies of the `markdown.js` import-rewriting harness, and the fourth was
+  broken when it was counted.** Found 2026-09-19 while building `B872`; the count corrected the
+  same day by the suite.
+  `tests/test_markdown_lazy_lib_loading_js.py`, `tests/test_markdown_rendering_js.py` and
+  `tests/test_copy_message_strips_thinking_js.py` each read `static/js/markdown.js`, strip and
+  inline the same five imports, base64 the result into a `data:` URL and `import()` it. They are
+  three copies of one thirteen-line trick. Adding **one** import line to `markdown.js` turned
+  **fourteen tests red across two files that have nothing to do with Mermaid**, and each needed the
+  same thirteen lines pasted in again.
+  **And the count was three because the fourth copy is not a Python file.**
+  `tests/streaming/markdownHarness.mjs` does the same thing under node's own test runner, and it
+  was **left broken by the same change** — the whole streaming suite failed to import with
+  `ERR_UNSUPPORTED_RESOLVE_REQUEST: Failed to resolve module specifier
+  "./markdown/mermaidTheme.js" from "data:text/javascript;base64,…"`. That file's own comments
+  already record this defect **twice**, under `B250` and `P5-06`, each time as *"a relative
+  specifier cannot resolve from a `data:` URL"*, each time fixed by pasting in one more inline.
+  The fifth import made it three. Fixed there by a fourth paste, which is the row rather than the
+  answer to it.
+  That is `Law 13` with a measured cost, and the cost falls on whoever next adds an import to a
+  module four tests happen to inline. One helper, called by all four — and it has to be reachable
+  from both a Python loader and an `.mjs` one, which is the part that makes this a row and not a
+  refactor.
+  `Verify:` adding an import to `static/js/markdown.js` requires no edit to any test file, proved by
+  doing it in a throwaway worktree. `Depends:` nothing. — found by `B872`, count corrected by the
+  suite — agent:`taskui`
+
+- [ ] **B883** **The vendored Mermaid accepts an unknown theme name in silence.** Found 2026-09-19
+  while building `B872`.
+  `initialize({theme: 'light'})` → `getConfig().theme` echoes back `"light"` while
+  `getConfig().themeVariables` come back **byte-identical to `default`'s**. So the config object
+  reports a theme it did not apply, and any assertion on `getConfig().theme` alone is asserting an
+  echo rather than an effect — which is `Law 20` at one remove, inside a vendored library.
+  `B872`'s tests read `themeVariables` for exactly this reason and say so. This row is the general
+  guard: anything in this repository that sets a Mermaid theme should be checked against what the
+  library did, not against what it repeated back.
+  `Verify:` a test asserts that a deliberately wrong theme name is caught by comparing
+  `themeVariables`, not `theme`. `Depends:` nothing. — found by `B872` — agent:`taskui`
+
+- [ ] **B884** **Mermaid's own dark theme draws edge labels below the contrast floor, on all twelve
+  dark palettes.** Found 2026-09-19 while building `B872`.
+  `textColor #ccc` on `edgeLabelBackground hsl(0, 0%, 34.4%)` measures **4.43:1**, under WCAG
+  1.4.3's 4.5:1 at Mermaid's 16px default. `B872` fixed the four light palettes — arrows went from
+  1.17–1.29:1 to 4.50–4.96:1 — and this is what is left, on the other twelve. It is upstream's
+  default rather than anything this repository chose, which is why it is a row and not a line in
+  `B872`: overriding it is a decision about how far we restyle a vendored renderer.
+  Fixable in one line beside `strokeOverrides` in `static/js/markdown/mermaidTheme.js`.
+  `Verify:` an edge label meets 4.5:1 on each of the twelve dark palettes, measured by the same
+  harness `B872` added. `Depends:` `B872`. — found by `B872` — agent:`taskui`
+
+- [ ] **B885** **A diagram already on screen keeps the old theme when the palette changes.** Found
+  2026-09-19 while building `B872`.
+  `mermaid.run` skips anything carrying `[data-processed]`, so a palette switch re-themes only the
+  diagrams drawn after it. A person switching from a dark palette to a light one keeps every
+  diagram already in the conversation at the dark theme.
+  Deliberately not fixed in `B872`: re-rendering every diagram in the document on a palette change
+  is a larger claim than that row makes, and the naive version re-runs Mermaid over an entire long
+  conversation on a settings toggle. The row is the decision — re-render, restyle in place, or say
+  in the UI that it applies to new diagrams.
+  `Verify:` switching palettes leaves no diagram drawing light-on-light or dark-on-dark.
+  `Depends:` `B872`. — found by `B872` — agent:`taskui`
+
+- [ ] **B886** **The unattended audit says it routes an action to the manual test UI, and no browser
+  file reads the field it routes with.** Found 2026-09-19 while building `P8-09`.
+  `_audit_one_skill` returns `{"result": "approval_required", …}` at `routes/skills_routes.py:1249`,
+  under a comment at `:1236` saying it routes the action to the manual test UI. `grep -rn
+  "approval_required" static/` returns **0**. `_applyAuditResults` (`static/js/skills.js:2015`)
+  falls through to `r.verdict.verdict`, so such a skill renders identically to any other
+  `inconclusive` and the only thing distinguishing it is free text in the audit log line.
+  **And the routing cannot work as described even if it were read:** the sealed action has already
+  been consumed with `decision="deny"` by the time the result is returned, so *"review the sealed
+  action"* can only mean *"start a fresh run and get a fresh card"*. Both halves want fixing
+  together — a comment that describes a flow nobody can follow is `B790`'s neighbourhood.
+  `Verify:` a skill the nightly audit could not judge without approval is visibly distinguishable in
+  the list, and the thing it tells you to do is a thing you can do. `Depends:` nothing.
+  — found by `P8-09` — agent:`skillrun`
+
+- [x] **B887** **A cross-task close does not merely log — it cancels the caller.** Found and fixed
+  2026-09-19 while building `B880`.
+  `B880` described a warning. Measured across all four task pairings, three warn and **one raises**:
+  connecting inline in a long-lived task and closing from a child task raises
+  `CancelledError: Cancelled via cancel scope … by <Task … McpManager.disconnect_server>` **into the
+  entering task**. In this product that pairing is real and shipped — `app.py:1462` connects at
+  startup inside its own `create_task`, and `routes/mcp/mcp_routes.py:490, 536, 589, 605` disconnect
+  from a request — so a request that disconnects a server could cancel work in an unrelated task.
+  The fix is `B880`'s and it covers both: `_open_owned` runs enter → hold → exit inside one
+  manager-held task for all three transports, and `_close_owned` asks that task to finish. The row
+  is separate because the failure mode is, and because the previous row would have been closed on a
+  log line while a cancellation went on happening.
+  `Verify:` all four task pairings close silently and none cancels the caller;
+  `tests/test_mcp_shutdown_closes_cleanly.py` drives each. `Depends:` `B880`. — found by `B880` —
+  agent:`mcptidy`
+
+- [ ] **B888** **A test pins an implementation detail and holds a better one out.** Found 2026-09-19
+  while building `B880`.
+  `tests/test_multiple_mcp_servers_timeout.py` shortens the startup deadline by monkeypatching
+  **`asyncio.wait_for` itself**, so `src/mcp_manager._connect_with_timeout` cannot move to
+  `asyncio.timeout` without editing that test. `asyncio.timeout` is the better deadline — no wrapper
+  Task, and none of 3.11's `wait_for` completion race — and `src/mcp_scaffold.py:643` already uses
+  it. Measurement: swapping the implementation makes that test's `assert elapsed < 1` fail at
+  **20.02**.
+  This is `Law 20`'s cousin: the test is not reading a file, it is reaching into the standard
+  library to reach the code, and the grip it takes is the thing it stops anyone changing. A deadline
+  belongs in a constant or a parameter the test can set.
+  `Verify:` `_connect_with_timeout` can be written either way and the test passes both times.
+  `Depends:` nothing. — found by `B880` — agent:`mcptidy`

@@ -97,6 +97,19 @@ def _run_markdown_case(markdown: str, render_expr: str = "mod.mdToHtml(input)", 
           /import \{ replaceEmojiShortcodes, hasEmojiShortcode \} from ['"]\.\/emojiShortcodes\.js['"];/,
           () => emojiSource
         );
+        // `B872`. `markdown.js` no longer writes `theme: 'dark'` into its
+        // `initialize()` call — `markdown/mermaidTheme.js` decides from the
+        // palette's `color-scheme` so all four callers of `renderMermaid` get
+        // one answer. Inlined for real on the same terms as the icon table
+        // above; it has no imports and no DOM, so this is three lines.
+        const mermaidThemeSource = fs.readFileSync('./static/js/markdown/mermaidTheme.js', 'utf8')
+          .replace(/^export const /gm, 'const ')
+          .replace(/^export function /gm, 'function ')
+          .replace(/^export default \{[\s\S]*?\};$/m, '');
+        source = source.replace(
+          /import \{ applyMermaidTheme, documentScheme \} from ['"]\.\/markdown\/mermaidTheme\.js['"];/,
+          () => mermaidThemeSource
+        );
         source = source.replace(
           /var escapeHtml = uiModule\.esc;/,
           `var escapeHtml = (value) => String(value ?? '')

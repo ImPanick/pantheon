@@ -2134,6 +2134,11 @@ async def action_test_skills(owner: str, **kwargs) -> Tuple[str, bool]:
                 continue
             task = _skill_test_task(skill)
             try:
+                # `B592` proposed letting this call leave a pending approval
+                # alone. `P8-09` measured that and left it alone: this caller
+                # is a scheduled task with nobody watching, so a card it did
+                # not deny is a card nobody can ever answer. The deny in
+                # `_run_skill_test_once` is correct here and stays.
                 transcript, verdict = await _run_skill_test_once(md, task, url, model, headers, owner)
                 v = (verdict or {}).get("verdict") or "unknown"
                 tally[v] += 1

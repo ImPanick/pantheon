@@ -120,6 +120,44 @@ globalThis.document = {
 };
 globalThis.MutationObserver = class { observe() {} };
 
+// `B872`. All three palette writers set `color-scheme` as an INLINE
+// declaration on <html> (`theme.js:292` plus the two first-paint scripts), and
+// `documentScheme()` reads it back off `.style`. This is the smallest thing
+// that answers that read; `setScheme(null)` puts the document back to having
+// never been told, which is what a first paint looks like.
+globalThis.document.documentElement = {
+  style: {
+    _v: {},
+    setProperty(k, v) { this._v[k] = String(v); },
+    getPropertyValue(k) { return this._v[k] === undefined ? '' : this._v[k]; },
+  },
+};
+function setScheme(value) {
+  const st = globalThis.document.documentElement.style;
+  if (value === null) delete st._v['color-scheme'];
+  else st.setProperty('color-scheme', value);
+}
+
+// A mermaid stand-in that answers `getConfig()` the way the real bundle does:
+// whatever theme it was last handed, with that theme's own ink. Without
+// `mermaidAPI` there is nothing to read back and `applyMermaidTheme` stops at
+// one call, which is the shape the older tests in this file exercise.
+const THEME_INK = { dark: 'lightgrey', neutral: '#666' };
+function fakeMermaid(record) {
+  let current = {};
+  return {
+    initialize(cfg) { current = cfg; record.push(JSON.parse(JSON.stringify(cfg))); },
+    run() {},
+    mermaidAPI: {
+      getConfig: () => ({
+        theme: current.theme,
+        themeVariables: Object.assign(
+          { lineColor: THEME_INK[current.theme] || null }, current.themeVariables || {}),
+      }),
+    },
+  };
+}
+
 let source = fs.readFileSync('./static/js/markdown.js', 'utf8');
 source = source.replace(/import uiModule from ['"]\.\/ui\.js['"];/, '');
 source = source.replace(
@@ -149,6 +187,20 @@ const langIconsSource = fs.readFileSync('./static/js/langIcons.js', 'utf8')
 source = source.replace(
   /import \{ langIcon \} from ['"]\.\/langIcons\.js['"];/,
   () => langIconsSource
+);
+// `B872`. `markdown.js` no longer writes `theme: 'dark'` into its
+// `initialize()` call — `markdown/mermaidTheme.js` decides from the palette's
+// `color-scheme`, so all four callers of `renderMermaid` get one answer.
+// Inlined for real on the same terms as the icon table above: a stub would let
+// this file assert a theme nobody ships. The module has no imports and no DOM,
+// which is why inlining it is three lines.
+const mermaidThemeSource = fs.readFileSync('./static/js/markdown/mermaidTheme.js', 'utf8')
+  .replace(/^export const /gm, 'const ')
+  .replace(/^export function /gm, 'function ')
+  .replace(/^export default \{[\s\S]*?\};$/m, '');
+source = source.replace(
+  /import \{ applyMermaidTheme, documentScheme \} from ['"]\.\/markdown\/mermaidTheme\.js['"];/,
+  () => mermaidThemeSource
 );
 const emojiSource = fs.readFileSync('./static/js/emojiShortcodes.js', 'utf8')
   .replace(/^export default .*$/m, '')
@@ -554,3 +606,83 @@ def test_vendored_assets_exist_and_index_html_has_no_cdn_reference():
     sw = (_REPO / "static/sw.js").read_text(encoding="utf-8")
     assert KATEX_SRC in sw
     assert KATEX_CSS in sw
+
+
+def test_ensure_mermaid_themes_from_the_palette_rather_than_a_pinned_literal(node_available):
+    """`B872`. `markdown.js:94` was
+    `initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose' })`
+    — one theme for all sixteen palettes, four of which are light.
+
+    Driven, not read (`Law 20`): the module is loaded for real and the object
+    it hands `initialize` is captured. Two calls, and the second is the point —
+    it carries the node outline read back out of the theme's own `lineColor`,
+    because on a light panel `neutral`'s default `#999` outline measures
+    2.23-2.46:1 and the node fill measures 1.00-1.10:1, so nothing would say
+    where a box ends.
+    """
+    out = _run_node(
+        """
+        setScheme('light');
+        const seen = [];
+        const pending = mod.ensureMermaid();
+        globalThis.window.mermaid = fakeMermaid(seen);
+        injected.scripts[0].fire('load');
+        await pending;
+        emit({ seen });
+        """
+    )
+    assert [c["theme"] for c in out["seen"]] == ["neutral", "neutral"], out["seen"]
+    assert out["seen"][0].get("themeVariables") is None, out["seen"][0]
+    assert out["seen"][1]["themeVariables"] == {"nodeBorder": "#666"}, out["seen"][1]
+    assert out["seen"][1]["securityLevel"] == "loose", out["seen"][1]
+    assert out["seen"][1]["startOnLoad"] is False, out["seen"][1]
+
+
+def test_a_document_that_has_not_said_still_gets_the_shipped_default(node_available):
+    """First paint, before any palette has been applied. `theme.js:35` ships
+    `dark`, so a diagram drawn in that window has to come out dark rather than
+    fall through to mermaid's own default, which is light."""
+    out = _run_node(
+        """
+        setScheme(null);
+        const seen = [];
+        const pending = mod.ensureMermaid();
+        globalThis.window.mermaid = fakeMermaid(seen);
+        injected.scripts[0].fire('load');
+        await pending;
+        emit({ themes: seen.map((c) => c.theme) });
+        """
+    )
+    assert out["themes"] == ["dark", "dark"], out["themes"]
+
+
+def test_a_palette_switched_after_the_load_reaches_the_next_diagram(node_available):
+    """The library is loaded and initialised once, and a person changes palette
+    hours later. `renderMermaid` re-applies before it runs — but only when the
+    scheme actually moved, so the steady state is no `initialize` at all."""
+    out = _run_node(
+        """
+        setScheme('dark');
+        const seen = [];
+        const node = makeEl('pre');
+        node.isConnected = true;
+        const container = makeContainer({ 'pre.mermaid:not([data-processed])': [node] });
+
+        const first = mod.renderMermaid(container);
+        globalThis.window.mermaid = fakeMermaid(seen);
+        injected.scripts[0].fire('load');
+        await first;
+        const afterLoad = seen.map((c) => c.theme);
+
+        await mod.renderMermaid(container);
+        const afterSameScheme = seen.map((c) => c.theme);
+
+        setScheme('light');
+        await mod.renderMermaid(container);
+        emit({ afterLoad, afterSameScheme, afterSwitch: seen.map((c) => c.theme) });
+        """
+    )
+    assert out["afterLoad"] == ["dark", "dark"], out["afterLoad"]
+    # Same palette, second diagram: nothing re-initialises.
+    assert out["afterSameScheme"] == out["afterLoad"], out["afterSameScheme"]
+    assert out["afterSwitch"] == ["dark", "dark", "neutral", "neutral"], out["afterSwitch"]

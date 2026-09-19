@@ -167,7 +167,9 @@ async def test_manual_skill_test_approval_resumes_only_its_sealed_action(
         capabilities=capabilities_for_action("bash", "printf approved"),
     )
     key = ("alice", "approval-skill")
-    skills_routes._skill_test_jobs[key] = {
+    # `B879`: a list of runs, so a comparison's two halves can both be pending.
+    skills_routes._skill_test_jobs[key] = [{
+        "run_id": "run-1",
         "status": "awaiting_approval",
         "task": "test task",
         "log": [],
@@ -180,7 +182,7 @@ async def test_manual_skill_test_approval_resumes_only_its_sealed_action(
             "headers": None,
             "owner": "alice",
         },
-    }
+    }]
     captured = {}
 
     async def fake_resume(*args, **kwargs):
@@ -198,7 +200,8 @@ async def test_manual_skill_test_approval_resumes_only_its_sealed_action(
         )
         await asyncio.sleep(0)
 
-        assert result == {"ok": True, "status": "running", "decision": "approve"}
+        assert result == {"ok": True, "status": "running",
+                          "decision": "approve", "run_id": "run-1"}
         assert captured["approval"].pending == pending
         assert "Approved the exact bash action" in captured["messages"][-1]["content"]
         assert captured["messages"][-3]["metadata"]["tool_gate_untrusted"] is True

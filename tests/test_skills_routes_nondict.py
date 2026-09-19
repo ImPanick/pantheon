@@ -88,11 +88,14 @@ def test_manual_skill_test_pauses_with_resumable_exact_approval(monkeypatch):
 
     monkeypatch.setattr("src.agent_loop.stream_agent_loop", fake_loop)
     key = ("owner", "skill")
-    _skill_test_jobs[key] = {
+    # `B879`: the value is a list of runs, newest last. One run here is the
+    # same single job this case always drove.
+    _skill_test_jobs[key] = [{
+        "run_id": "run-1",
         "status": "running",
         "log": [],
         "verdict": None,
-    }
+    }]
     try:
         asyncio.run(_run_skill_test_job(
             key,
@@ -105,7 +108,7 @@ def test_manual_skill_test_pauses_with_resumable_exact_approval(monkeypatch):
             "owner",
         ))
 
-        job = _skill_test_jobs[key]
+        job = _skill_test_jobs[key][-1]
         assert job["status"] == "awaiting_approval"
         assert job["approval"] == approval
         assert "Waiting for an exact user approval" in "".join(job["_transcript"])

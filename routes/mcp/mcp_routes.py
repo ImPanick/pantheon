@@ -4,7 +4,6 @@
 import json
 import os
 import time
-import uuid
 import urllib.parse
 import html
 from pathlib import Path
@@ -19,6 +18,7 @@ from src.constants import DATA_DIR, MCP_OAUTH_DIR
 from src.mcp_manager import (
     McpManager,
     MCP_CALL_TIMEOUT_MAX_SECONDS,
+    new_mcp_server_id,
     resolve_mcp_call_timeout,
 )
 from src.env_flags import request_flag
@@ -259,7 +259,8 @@ def setup_mcp_routes(mcp_manager: McpManager):
         registering a stdio server is equivalent to executing arbitrary
         binaries on the host."""
         require_admin(request)
-        server_id = str(uuid.uuid4())[:8]
+        # `B870` — one mint, in `src/mcp_manager.py` beside the id rule.
+        server_id = new_mcp_server_id()
 
         # Validate
         if transport == "stdio" and not command:

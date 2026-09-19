@@ -62,9 +62,12 @@ def _short_help(path: Path) -> str:
     body = m.group(1).strip()
     if not body:
         return ""
-    # First non-blank line, strip the leading "name — " noise.
+    # First non-blank line, strip the leading "name — " noise. Anchor the
+    # strip on this file's OWN name rather than a generic `pantheon-\w+`:
+    # `\w` excludes `-`, so the generic pattern left every hyphenated
+    # subcommand (`pantheon-mcp-new`) printing its name twice (`B881`).
     first = next((ln for ln in body.splitlines() if ln.strip()), "")
-    first = re.sub(r"^pantheon-\w+\s*—\s*", "", first).strip()
+    first = re.sub(rf"^{re.escape(path.name)}\s*[—–]\s*", "", first).strip()
     return first
 
 

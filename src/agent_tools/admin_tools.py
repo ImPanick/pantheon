@@ -282,7 +282,6 @@ async def do_manage_mcp(content: str, owner: Optional[str] = None) -> Dict:
 
     elif action == "add":
         from core.database import SessionLocal, McpServer
-        import uuid as _uuid
         from datetime import datetime
         name = args.get("name", "")
         command = args.get("command", "")
@@ -296,7 +295,9 @@ async def do_manage_mcp(content: str, owner: Optional[str] = None) -> Dict:
         _mcp_err = _validate_mcp_command(command, cmd_args, env)
         if _mcp_err:
             return {"error": f"manage_mcp: refused unsafe server registration: {_mcp_err}", "exit_code": 1}
-        sid = str(_uuid.uuid4())[:8]
+        # `B870` — one mint, in `src/mcp_manager.py` beside the id rule.
+        from src.mcp_manager import new_mcp_server_id
+        sid = new_mcp_server_id()
         db = SessionLocal()
         try:
             srv = McpServer(id=sid, name=name, transport="stdio", command=command,

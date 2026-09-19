@@ -436,10 +436,153 @@ async def _eval_skill_retrieval_precision(skill_md: str, others: list,
     }
 
 
-# In-memory skill-test jobs, keyed by (owner, skill_name). Runs server-side so
+# In-memory skill-test runs, keyed by (owner, skill_name). Runs server-side so
 # the test survives the modal being closed; the UI polls /test-status. (Not
 # persisted across restart — it's a "come back in a bit" convenience.)
+#
+# ── `B879` · the value is a LIST, oldest first ───────────────────────────────
+#
+# It was one dict — one job slot per `(owner, skill_name)`, assigned
+# unconditionally by `POST /{skill_id}/test`. Testing the same skill twice
+# therefore destroyed the first result, which is the whole of `P8-09`: a
+# before/after comparison is two runs of ONE skill and there was nowhere to
+# keep the second answer. The list is that somewhere.
+#
+# Newest last, so `runs[-1]` is "the current test" and every existing reader
+# keeps the answer it used to get. Capped, because this is process memory: the
+# cap is what the deny that used to sit at the top of `POST /test` was really
+# protecting against, and it moves there — see `_append_skill_test_run`.
 _skill_test_jobs: dict = {}
+
+# Two for a comparison, plus room to re-run one side without losing the pair.
+MAX_SKILL_TEST_RUNS = 4
+
+
+def _retire_skill_approval(approval_id, owner, why: str) -> None:
+    """Destructively deny one pending skill-test approval.
+
+    One function because there were two hand-written copies of this in this
+    file and a third was about to be needed (`Law 14`). It is never a
+    convenience: every call site is a place where the record has become
+    unanswerable, and an unanswerable grant left pending is a live single-use
+    authorisation waiting on a TTL.
+    """
+    if not approval_id:
+        return
+    try:
+        from src.tool_approvals import tool_approval_store
+        tool_approval_store.consume(
+            approval_id,
+            decision="deny",
+            owner=owner,
+            session_id=None,
+        )
+    except Exception:
+        logger.debug(why, exc_info=True)
+
+
+def _skill_test_runs(key) -> list:
+    """The ordered run list for one skill, oldest first. Never None."""
+    runs = _skill_test_jobs.get(key)
+    if isinstance(runs, list):
+        return runs
+    return []
+
+
+def _latest_skill_test_run(key):
+    """The run `/test-status` answers about when nobody names one."""
+    runs = _skill_test_runs(key)
+    return runs[-1] if runs else None
+
+
+def _skill_test_run(key, run_id):
+    """One run by id, or None. Used by the approval route and the poller."""
+    if not run_id:
+        return None
+    for run in _skill_test_runs(key):
+        if run.get("run_id") == run_id:
+            return run
+    return None
+
+
+def _skill_test_run_for_approval(key, approval_id: str):
+    """The run holding this exact pending approval.
+
+    `POST /{skill_id}/test-approval` used to look only at the one job slot, so
+    with two runs in flight the card belonging to the *other* half could not be
+    answered at all. Resolving by the sealed id keeps the owner check and the
+    match check exactly where they were and stops the lookup being a guess
+    about which run the person is looking at.
+    """
+    if not approval_id:
+        return None
+    for run in _skill_test_runs(key):
+        if str((run.get("approval") or {}).get("approval_id") or "") == str(approval_id):
+            return run
+    return None
+
+
+def _append_skill_test_run(key, run: dict) -> dict:
+    """Add a run to the skill's list, evicting the oldest past the cap.
+
+    **This is where `POST /{skill_id}/test`'s hand-written deny went**, and the
+    move is the point of `B879`. That deny fired on every second test of a
+    skill, because the job slot was about to be overwritten and the record
+    would have become unreachable. With a list, a second test does not make the
+    first one's card unreachable — so there is nothing to deny. What still
+    makes a card unreachable is eviction, and that is exactly here.
+    """
+    runs = _skill_test_jobs.setdefault(key, [])
+    if not isinstance(runs, list):  # pragma: no cover - defensive
+        runs = []
+        _skill_test_jobs[key] = runs
+    runs.append(run)
+    while len(runs) > MAX_SKILL_TEST_RUNS:
+        dropped = runs.pop(0)
+        _retire_skill_approval(
+            (dropped.get("approval") or {}).get("approval_id"),
+            dropped.get("owner") or (key[0] if key else None),
+            "Could not retire evicted skill approval",
+        )
+    return run
+
+
+def _new_skill_test_run(*, name, task, model, owner, md, url, headers,
+                        label: str = "", source: str = "current",
+                        source_label: str = "", status: str = "running",
+                        pair: str = "") -> dict:
+    """One run record. Same shape the single job slot had, plus its identity.
+
+    `label`/`source`/`source_label` are what make a comparison readable on the
+    wire and in the panel: which half this is, which text it ran, and how to
+    say that in English to somebody who has never read this tracker.
+    """
+    import secrets as _secrets
+    import time as _time
+
+    return {
+        "run_id": _secrets.token_urlsafe(8),
+        "label": label,
+        "pair": pair,
+        "source": source,
+        "source_label": source_label,
+        "status": status,
+        "task": task,
+        "model": model,
+        "skill": name,
+        "owner": owner,
+        "started": _time.time(),
+        "log": [{"type": "skill_test_start", "task": task, "skill": name,
+                 "model": model, "source": source_label or "current version"}],
+        "verdict": None,
+        "_run": {
+            "md": md,
+            "url": url,
+            "model": model,
+            "headers": headers,
+            "owner": owner,
+        },
+    }
 
 
 async def _run_skill_test_job(
@@ -456,13 +599,19 @@ async def _run_skill_test_job(
     messages=None,
     transcript=None,
     exact_approval=None,
+    run_id=None,
 ):
     """Background coroutine: run the skill in an agent loop, capture a condensed
-    log + transcript, then have the judge grade it. Writes into _skill_test_jobs."""
+    log + transcript, then have the judge grade it. Writes into _skill_test_jobs.
+
+    `run_id` names which run in the skill's list this coroutine owns (`B879`).
+    Omitted, it takes the newest, which is what every caller meant when the
+    list was a single slot.
+    """
     import json as _json
     from src.agent_loop import stream_agent_loop
 
-    job = _skill_test_jobs.get(key)
+    job = _skill_test_run(key, run_id) if run_id else _latest_skill_test_run(key)
     if job is None:
         return
     log = job["log"]
@@ -545,7 +694,11 @@ async def _run_skill_test_job(
     # never involves the teacher) and nudge the confidence score to match the
     # verdict — same scale as Audit-all's pass=0.95. inconclusive/unknown leave
     # the score alone (missing-fixture or parse failures shouldn't punish it).
-    if skills_manager is not None:
+    # `P8-09`. The **before** half of a comparison runs text that is no longer
+    # on disk, so its verdict is not this skill's verdict and its confidence is
+    # not this skill's confidence. `record: False` is that half saying so; the
+    # after half records exactly as a plain test always has.
+    if skills_manager is not None and job.get("record", True):
         v = (job["verdict"] or {}).get("verdict") or "unknown"
         try:
             skills_manager.set_audit(name, v, by_teacher=False, worker_model=model, owner=owner)
@@ -558,6 +711,131 @@ async def _run_skill_test_job(
             except Exception:
                 pass
     job["status"] = "done"
+    _advance_skill_test_chain(key, job, skills_manager)
+
+
+def _advance_skill_test_chain(key, job, skills_manager) -> None:
+    """Start the run this one was queued in front of, if there is one.
+
+    `P8-09` runs the two halves **in order** rather than at once, and this is
+    the hand-off. It is a data link (`_next` holds the queued run's id) and not
+    a stored callable, so a half that paused for an approval and was resumed
+    minutes later still knows what it owes — the resume path re-enters
+    `_run_skill_test_job` and ends here like any other run.
+
+    Sequential and not concurrent for a reason worth stating: two agent loops
+    against one workspace would interleave, and the comparison is only readable
+    if the second half starts from the state the first half left. The gate is
+    what makes that state the *same* state — nothing with a write, exec or
+    network effect runs without an approval, so an unapproved pair of runs
+    changes nothing outside its own transcript.
+    """
+    import asyncio as _asyncio
+
+    nxt = job.pop("_next", None)
+    if not nxt:
+        return
+    queued = _skill_test_run(key, nxt)
+    if queued is None or queued.get("status") != "queued":
+        return
+    run = queued.get("_run") or {}
+    queued["status"] = "running"
+    _asyncio.create_task(_run_skill_test_job(
+        key,
+        queued.get("skill"),
+        run.get("md", ""),
+        queued.get("task", ""),
+        run.get("url"),
+        run.get("model"),
+        run.get("headers"),
+        run.get("owner"),
+        skills_manager,
+        run_id=queued.get("run_id"),
+    ))
+
+
+def _skill_test_run_summary(run: dict) -> dict:
+    """The public shape of one run: what it was, and how it ended."""
+    return {
+        "run_id": run.get("run_id"),
+        "label": run.get("label") or "",
+        "pair": run.get("pair") or "",
+        "source": run.get("source") or "current",
+        "source_label": run.get("source_label") or "",
+        "status": run.get("status"),
+        "task": run.get("task"),
+        "model": run.get("model"),
+        "started": run.get("started"),
+        "verdict": run.get("verdict"),
+    }
+
+
+def _run_tool_sequence(run: dict) -> list:
+    """The tools one run actually reached, in order, with repeats kept.
+
+    Repeats are kept because "ran `bash` three times" and "ran `bash` once" is
+    a behaviour difference and collapsing it would hide the commonest one.
+    """
+    return [str(ev.get("tool") or "") for ev in (run.get("log") or [])
+            if ev.get("type") == "tool_start" and ev.get("tool")]
+
+
+def _run_round_count(run: dict) -> int:
+    return sum(1 for ev in (run.get("log") or []) if ev.get("type") == "agent_step")
+
+
+def _skill_run_diff(before: dict, after: dict) -> dict:
+    """What changed between two runs of one skill against one task.
+
+    Pure: two run dicts in, one dict out, no store and no model — so it is
+    driven directly in the tests rather than inferred from a screenshot
+    (`Law 20`).
+
+    **What this compares and what it refuses to compare.** Verdict, the tool
+    sequence, the number of rounds and whether each half finished. Not the
+    prose: the run is sampled (`temperature=0.3`, and no endpoint in this repo
+    takes a seed — `grep -n seed src/llm_core.py` returns nothing), so two runs
+    of the *same* text differ in wording, and a word-level diff of two
+    transcripts would report that as a change the edit caused. `same_text` is
+    carried for exactly that reason: it is the control, and when it is true
+    every difference below is the noise floor and not the edit.
+    """
+    before = before or {}
+    after = after or {}
+    bv = (before.get("verdict") or {}).get("verdict")
+    av = (after.get("verdict") or {}).get("verdict")
+    btools = _run_tool_sequence(before)
+    atools = _run_tool_sequence(after)
+    bset, aset = set(btools), set(atools)
+    bissues = [str(i) for i in ((before.get("verdict") or {}).get("issues") or [])]
+    aissues = [str(i) for i in ((after.get("verdict") or {}).get("issues") or [])]
+    return {
+        "before_run": before.get("run_id"),
+        "after_run": after.get("run_id"),
+        "task": after.get("task") or before.get("task"),
+        "model": after.get("model") or before.get("model"),
+        "same_text": bool(before.get("_same_text_as_after")),
+        "before_source": before.get("source_label") or before.get("source") or "",
+        "after_source": after.get("source_label") or after.get("source") or "",
+        "before_status": before.get("status"),
+        "after_status": after.get("status"),
+        "both_finished": (before.get("status") == "done"
+                          and after.get("status") == "done"),
+        "before_verdict": bv,
+        "after_verdict": av,
+        "before_summary": (before.get("verdict") or {}).get("summary") or "",
+        "after_summary": (after.get("verdict") or {}).get("summary") or "",
+        "verdict_changed": bool(bv and av and bv != av),
+        "before_tools": btools,
+        "after_tools": atools,
+        "tools_added": sorted(aset - bset),
+        "tools_removed": sorted(bset - aset),
+        "tools_changed": btools != atools,
+        "before_rounds": _run_round_count(before),
+        "after_rounds": _run_round_count(after),
+        "issues_resolved": [i for i in bissues if i not in aissues],
+        "issues_introduced": [i for i in aissues if i not in bissues],
+    }
 
 
 # ── Autonomous skill audit: test → judge → self-edit → retry → teacher → flag ──
@@ -697,8 +975,65 @@ def _apply_skill_md(skills_manager, name: str, md: str, owner) -> bool:
         return False
 
 
+def _resolve_skill_test_model(user, body: dict) -> tuple:
+    """The endpoint a skill test runs against: Default/Utility, then the caller's.
+
+    Lifted verbatim out of `POST /{skill_id}/test` when `P8-09` needed the same
+    resolution for the comparison. A second copy would be two answers to "which
+    model tested this skill?", and a comparison whose halves could resolve
+    differently is not a comparison (`Law 14`).
+    """
+    from src.endpoint_resolver import resolve_endpoint
+
+    body = body if isinstance(body, dict) else {}
+    # Prefer the configured DEFAULT (→ Utility) model — not the current chat
+    # session's model. Fall back to the caller's session model only if unset.
+    url, model, headers = resolve_endpoint("utility", owner=user)
+    if not url or not model:
+        url = url or ((body.get("endpoint_url") or "").strip() or None)
+        model = model or ((body.get("model") or "").strip() or None)
+        if headers is None and isinstance(body.get("headers"), dict):
+            headers = body.get("headers")
+    if not url or not model:
+        raise HTTPException(400, "No model configured — set a Default or Utility model in Settings.")
+
+    # Normalize against the endpoint's served models (avoids 404 model drift).
+    try:
+        from src.llm_core import list_model_ids
+        _avail = list_model_ids(url, headers=headers)
+        if _avail and model not in _avail:
+            import os as _os
+            _base = _os.path.basename((model or "").rstrip("/"))
+            _match = next((a for a in _avail if _os.path.basename(a.rstrip("/")) == _base), None)
+            model = _match or _avail[0]
+    except Exception as _e:
+        logger.warning(f"Skill-test model resolve failed: {_e}")
+    return url, model, headers
+
+
 async def _run_skill_test_once(md: str, task: str, url, model, headers, owner) -> tuple:
-    """Run the skill once in the agent loop; return (transcript, verdict)."""
+    """Run the skill once in the agent loop; return (transcript, verdict).
+
+    ── `B592`'s parameter is NOT here, and that is the finding ───────────────
+
+    `B592` says `P8-09` is unblocked by giving this function a way to leave a
+    pending approval alone. Building `P8-09` showed that is the wrong function.
+    This one *cannot* pause: it breaks out of the stream and returns, and it
+    keeps no continuation state, so an approval it declined to deny would be a
+    card nobody could ever answer — strictly worse than the deny.
+
+    The runner a comparison needs is `_run_skill_test_job`, which already has
+    the pause (`status: awaiting_approval`), the retained `_transcript` and
+    `_run`, and an endpoint that answers the card with the owner check
+    (`POST /{skill_id}/test-approval`). Building a second pausing runner here
+    would have been `Law 14` exactly. So this function keeps the deny it has
+    always had, unchanged, and both of its callers — `_audit_one_skill` below
+    and `action_test_skills` in `src/builtin_actions.py` — still get it,
+    because both are unattended and neither has a surface that could answer.
+
+    What was really blocking `P8-09` was `B879`: one job slot per
+    `(owner, skill_name)`, so the two halves of a comparison could not coexist.
+    """
     import json as _json
     from src.agent_loop import stream_agent_loop
     transcript = []
@@ -739,16 +1074,11 @@ async def _run_skill_test_once(md: str, task: str, url, model, headers, owner) -
         # Unattended audits have no authority to approve and no UI that could
         # resume this record. Destructively deny it now instead of leaving a
         # reusable opaque grant pending until TTL/cap eviction.
-        try:
-            from src.tool_approvals import tool_approval_store
-            tool_approval_store.consume(
-                approval_required.get("approval_id"),
-                decision="deny",
-                owner=owner,
-                session_id=None,
-            )
-        except Exception:
-            logger.debug("Could not retire unattended skill approval", exc_info=True)
+        _retire_skill_approval(
+            approval_required.get("approval_id"),
+            owner,
+            "Could not retire unattended skill approval",
+        )
         return text, {
             "verdict": "inconclusive",
             "confidence": 1.0,
@@ -1158,6 +1488,24 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
         if skill.get("owner") != user:
             raise HTTPException(404, "Skill not found")
 
+    def _require_own_skill(manager, skill_id: str, user: Optional[str]) -> dict:
+        """Resolve a skill id to the caller's own record, or 404.
+
+        Four routes had this same six-line block copied out; `P8-09` and
+        `B879` were about to make it six. One resolution rule means the
+        ownership check cannot be present in five of them (`Law 13`).
+        """
+        skills = manager.load(owner=user)
+        match = next(
+            (sk for sk in skills
+             if sk.get("name") == skill_id or sk.get("id") == skill_id),
+            None,
+        )
+        if not match:
+            raise HTTPException(404, "Skill not found")
+        _verify_owner(match, user)
+        return match
+
     def _fire_skill_added(user: Optional[str], name: Optional[str] = None):
         try:
             from src.event_bus import fire_event
@@ -1540,80 +1888,145 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
         On completion it records the verdict and nudges the skill's confidence
         to match (pass→0.95, needs_work→0.6, fail→0.4; inconclusive/unknown leave
         it untouched). It never changes the skill's published/draft STATUS."""
-        import time as _time
         import asyncio as _asyncio
-        from src.endpoint_resolver import resolve_endpoint
 
         user = _owner(request)
         body = await request.json()
         task = (body.get("task") or "").strip()
 
-        skills = skills_manager.load(owner=user)
-        match = next((s for s in skills if s.get("name") == skill_id or s.get("id") == skill_id), None)
-        if not match:
-            raise HTTPException(404, "Skill not found")
-        _verify_owner(match, user)
+        match = _require_own_skill(skills_manager, skill_id, user)
         name = match.get("name")
         md = skills_manager.read_skill_md(name, owner=user) or ""
 
         if not task:
             task = _skill_test_task(match)
+        url, model, headers = _resolve_skill_test_model(user, body)
 
-        # Prefer the configured DEFAULT (→ Utility) model — not the current chat
-        # session's model. Fall back to the caller's session model only if unset.
-        url, model, headers = resolve_endpoint("utility", owner=user)
-        if not url or not model:
-            url = url or ((body.get("endpoint_url") or "").strip() or None)
-            model = model or ((body.get("model") or "").strip() or None)
-            if headers is None and isinstance(body.get("headers"), dict):
-                headers = body.get("headers")
-        if not url or not model:
-            raise HTTPException(400, "No model configured — set a Default or Utility model in Settings.")
+        # `B879`. This used to assign the skill's one job slot and deny the
+        # previous run's approval on the way past — so testing a skill twice
+        # destroyed the first result and a comparison had nowhere to put the
+        # second. The run is appended instead; the deny it replaced now fires
+        # only on eviction, in `_append_skill_test_run`, which is the one place
+        # a card really does become unanswerable.
+        key = (user or "", name)
+        run = _append_skill_test_run(key, _new_skill_test_run(
+            name=name, task=task, model=model, owner=user,
+            md=md, url=url, headers=headers,
+            source="current", source_label="current version",
+        ))
+        _asyncio.create_task(_run_skill_test_job(
+            key, name, md, task, url, model, headers, user, skills_manager,
+            run_id=run["run_id"],
+        ))
+        return {"ok": True, "status": "running", "skill": name, "model": model,
+                "run_id": run["run_id"]}
 
-        # Normalize against the endpoint's served models (avoids 404 model drift).
+    @router.get("/{skill_id}/versions")
+    async def list_skill_versions(request: Request, skill_id: str):
+        """The earlier copies `P8-10` keeps, newest first.
+
+        `P8-10` gave every content-changing write a snapshot under
+        `versions/` and reached it only through `manage_skills action=versions`
+        — a tool call. The Workshop is a browser, and `P8-09`'s comparison has
+        to name the text it is comparing against, so the same list is served
+        here rather than a second history being invented (`Law 14`).
+        """
+        user = _owner(request)
+        match = _require_own_skill(skills_manager, skill_id, user)
+        name = match.get("name")
+        versions = skills_manager.list_versions(name, owner=user)
+        if versions is None:
+            raise HTTPException(404, "Skill not found")
+        return {"ok": True, "name": name, "versions": versions}
+
+    @router.post("/{skill_id}/test-diff")
+    async def diff_skill_test(request: Request, skill_id: str):
+        """`P8-09`. Run an earlier copy and the current one against ONE task.
+
+        Two runs, in order, both kept (`B879` is what makes "both kept"
+        possible), both answerable if either stops at an approval. The judge
+        grades each half exactly as a plain test is graded; only the **after**
+        half records a verdict against the skill, because the before half is
+        running text that is no longer on disk.
+        """
+        import asyncio as _asyncio
+
+        user = _owner(request)
         try:
-            from src.llm_core import list_model_ids
-            _avail = list_model_ids(url, headers=headers)
-            if _avail and model not in _avail:
-                import os as _os
-                _base = _os.path.basename((model or "").rstrip("/"))
-                _match = next((a for a in _avail if _os.path.basename(a.rstrip("/")) == _base), None)
-                model = _match or _avail[0]
-        except Exception as _e:
-            logger.warning(f"Skill-test model resolve failed: {_e}")
+            body = await request.json()
+        except Exception:
+            body = {}
+        if not isinstance(body, dict):
+            body = {}
+        task = (body.get("task") or "").strip()
+
+        match = _require_own_skill(skills_manager, skill_id, user)
+        name = match.get("name")
+        after_md = skills_manager.read_skill_md(name, owner=user) or ""
+        if not after_md.strip():
+            raise HTTPException(404, "Skill source unavailable (legacy entry?)")
+
+        versions = skills_manager.list_versions(name, owner=user) or []
+        wanted = str(body.get("version") or "").strip()
+        if wanted:
+            chosen = next((v for v in versions if v.get("id") == wanted), None)
+            if chosen is None:
+                raise HTTPException(404, "No such earlier copy of this skill.")
+        elif versions:
+            chosen = versions[0]
+        else:
+            raise HTTPException(
+                400,
+                "This skill has no earlier copy yet, so there is nothing to "
+                "compare it with. Edit and save it once and the copy it "
+                "replaces is kept automatically.",
+            )
+        before_md = skills_manager.read_version(name, chosen["id"], owner=user)
+        if before_md is None:
+            raise HTTPException(404, "That earlier copy could not be read.")
+
+        if not task:
+            task = _skill_test_task(match)
+        url, model, headers = _resolve_skill_test_model(user, body)
 
         key = (user or "", name)
-        previous_job = _skill_test_jobs.get(key) or {}
-        previous_approval = previous_job.get("approval") or {}
-        if previous_approval.get("approval_id"):
-            try:
-                from src.tool_approvals import tool_approval_store
-                tool_approval_store.consume(
-                    previous_approval["approval_id"],
-                    decision="deny",
-                    owner=user,
-                    session_id=None,
-                )
-            except Exception:
-                logger.debug("Could not retire replaced skill approval", exc_info=True)
-        _skill_test_jobs[key] = {
-            "status": "running",
+        import secrets as _secrets
+        pair = _secrets.token_urlsafe(6)
+        before = _new_skill_test_run(
+            name=name, task=task, model=model, owner=user,
+            md=before_md, url=url, headers=headers,
+            label="before", pair=pair, source=chosen["id"],
+            source_label=f"earlier copy {chosen['id']}",
+            status="running",
+        )
+        # Not this skill's verdict: it is the old text's. See `_run_skill_test_job`.
+        before["record"] = False
+        # The control, carried rather than inferred: when the two texts are
+        # byte-identical every difference the panel shows is sampling noise,
+        # and the panel has to be able to say so.
+        before["_same_text_as_after"] = (before_md.strip() == after_md.strip())
+        after = _new_skill_test_run(
+            name=name, task=task, model=model, owner=user,
+            md=after_md, url=url, headers=headers,
+            label="after", pair=pair, source="current",
+            source_label="current version",
+            status="queued",
+        )
+        _append_skill_test_run(key, before)
+        _append_skill_test_run(key, after)
+        before["_next"] = after["run_id"]
+        _asyncio.create_task(_run_skill_test_job(
+            key, name, before_md, task, url, model, headers, user, skills_manager,
+            run_id=before["run_id"],
+        ))
+        return {
+            "ok": True, "status": "running", "skill": name, "model": model,
+            "pair": pair, "before_run": before["run_id"],
+            "after_run": after["run_id"],
+            "before_source": before["source_label"],
+            "same_text": before["_same_text_as_after"],
             "task": task,
-            "model": model,
-            "skill": name,
-            "started": _time.time(),
-            "log": [{"type": "skill_test_start", "task": task, "skill": name, "model": model}],
-            "verdict": None,
-            "_run": {
-                "md": md,
-                "url": url,
-                "model": model,
-                "headers": headers,
-                "owner": user,
-            },
         }
-        _asyncio.create_task(_run_skill_test_job(key, name, md, task, url, model, headers, user, skills_manager))
-        return {"ok": True, "status": "running", "skill": name, "model": model}
 
     @router.post("/{skill_id}/test-approval")
     async def approve_skill_test_action(request: Request, skill_id: str):
@@ -1622,25 +2035,29 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
         from src.tool_approvals import tool_approval_store
 
         user = _owner(request)
-        skills = skills_manager.load(owner=user)
-        match = next(
-            (s for s in skills if s.get("name") == skill_id or s.get("id") == skill_id),
-            None,
-        )
-        if not match:
-            raise HTTPException(404, "Skill not found")
-        _verify_owner(match, user)
+        match = _require_own_skill(skills_manager, skill_id, user)
         name = match.get("name")
         key = (user or "", name)
-        job = _skill_test_jobs.get(key)
-        if not job or job.get("status") != "awaiting_approval":
-            raise HTTPException(409, "This skill test is not awaiting an approval.")
 
         body = await request.json()
         if not isinstance(body, dict):
             raise HTTPException(400, "Tool approval body must be a JSON object.")
         approval_id = str(body.get("approval_id") or "")
         decision = str(body.get("decision") or "").strip().lower()
+        # `B879`. The run is found by the sealed id rather than by "the" job,
+        # because a comparison has two runs in the list and either half can be
+        # the one waiting. Both checks that were here are still here and still
+        # in this order: the run must be awaiting an approval, and the id must
+        # be that run's. What is gone is the assumption that there is only ever
+        # one run to look in.
+        job = _skill_test_run_for_approval(key, approval_id)
+        if job is None:
+            latest = _latest_skill_test_run(key)
+            if latest is None or latest.get("status") != "awaiting_approval":
+                raise HTTPException(409, "This skill test is not awaiting an approval.")
+            raise HTTPException(409, "This approval does not match the pending skill test action.")
+        if job.get("status") != "awaiting_approval":
+            raise HTTPException(409, "This skill test is not awaiting an approval.")
         expected = job.get("approval") or {}
         if approval_id != str(expected.get("approval_id") or ""):
             raise HTTPException(409, "This approval does not match the pending skill test action.")
@@ -1654,6 +2071,30 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
             or pending.owner != normalized_owner
             or pending.session_id != ""
         ):
+            # A card that lapsed is a decision — `P12-10` records it as
+            # `denied_timeout` and the action did not run — so the run it
+            # belongs to is finished, not still waiting. Before this, the run
+            # stayed `awaiting_approval` for the life of the process and a
+            # comparison whose first half lapsed left its second half queued
+            # forever with nothing on screen saying why.
+            if pending is None and job.get("status") == "awaiting_approval":
+                job.pop("approval", None)
+                job.pop("_transcript", None)
+                job.pop("_run", None)
+                job["log"].append({
+                    "type": "approval_denied",
+                    "text": ("The approval window closed before this was "
+                             "answered; the action was not executed."),
+                })
+                job["verdict"] = {
+                    "verdict": "inconclusive",
+                    "confidence": 1.0,
+                    "summary": ("The test stopped because its exact action was "
+                                "not approved in time."),
+                    "issues": [],
+                }
+                job["status"] = "done"
+                _advance_skill_test_chain(key, job, skills_manager)
             raise HTTPException(409, "This tool approval is invalid or expired.")
         exact_approval = tool_approval_store.consume(
             approval_id,
@@ -1682,7 +2123,12 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
                 "issues": [],
             }
             job["status"] = "done"
-            return {"ok": True, "status": "done", "decision": "deny"}
+            # A denied half still ends its half. The other half of a comparison
+            # is queued behind this one, and leaving it queued forever would
+            # make "deny" mean "abandon the comparison" without saying so.
+            _advance_skill_test_chain(key, job, skills_manager)
+            return {"ok": True, "status": "done", "decision": "deny",
+                    "run_id": job.get("run_id")}
 
         run = job.get("_run") or {}
         transcript = job.pop("_transcript", [])
@@ -1733,27 +2179,56 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
             messages=messages,
             transcript=transcript,
             exact_approval=exact_approval,
+            run_id=job.get("run_id"),
         ))
-        return {"ok": True, "status": "running", "decision": "approve"}
+        return {"ok": True, "status": "running", "decision": "approve",
+                "run_id": job.get("run_id")}
 
     @router.get("/{skill_id}/test-status")
-    async def test_skill_status(request: Request, skill_id: str):
-        """Current background-test state for a skill (status / log / verdict)."""
+    async def test_skill_status(request: Request, skill_id: str, run: str = ""):
+        """Current background-test state for a skill (status / log / verdict).
+
+        `B879` made the skill's runs a list; the six keys this has always
+        answered with still describe **one** run, and with no `run` parameter
+        that run is the newest — which is what every existing caller meant.
+        `runs` is the list beside them, and `diff` is filled in when the two
+        most recent runs are the two halves of one comparison (`P8-09`).
+        """
         user = _owner(request)
         skills = skills_manager.load(owner=user)
         match = next((s for s in skills if s.get("name") == skill_id or s.get("id") == skill_id), None)
         name = (match or {}).get("name", skill_id)
-        job = _skill_test_jobs.get((user or "", name))
-        if not job:
+        key = (user or "", name)
+        runs = _skill_test_runs(key)
+        if not runs:
             return {"status": "none"}
-        return {
+        job = _skill_test_run(key, run) if run else runs[-1]
+        if job is None:
+            raise HTTPException(404, "No such test run for this skill.")
+        payload = {
             "status": job["status"],
             "task": job.get("task"),
             "model": job.get("model"),
             "log": job.get("log", []),
             "verdict": job.get("verdict"),
             "approval": job.get("approval"),
+            "run_id": job.get("run_id"),
+            "label": job.get("label") or "",
+            "source_label": job.get("source_label") or "",
+            "runs": [_skill_test_run_summary(r) for r in runs],
         }
+        pair = job.get("pair") or ""
+        if pair:
+            halves = [r for r in runs if r.get("pair") == pair]
+            before = next((r for r in halves if r.get("label") == "before"), None)
+            after = next((r for r in halves if r.get("label") == "after"), None)
+            if before is not None and after is not None:
+                payload["diff"] = _skill_run_diff(before, after)
+                payload["diff"]["before_log"] = before.get("log", [])
+                payload["diff"]["after_log"] = after.get("log", [])
+                payload["diff"]["before_approval"] = before.get("approval")
+                payload["diff"]["after_approval"] = after.get("approval")
+        return payload
 
     @router.post("/audit-all")
     async def audit_all_skills(request: Request):

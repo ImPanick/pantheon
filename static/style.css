@@ -26738,6 +26738,42 @@ select.task-form-input { text-overflow: ellipsis; }
   outline: none;
   border-color: var(--red);
 }
+/* `B873`. The two branches of a chain, side by side.
+
+   `P8-28` gave the engine `then_task_id` and `else_task_id`; the form only
+   ever had the first, so nobody could say what to do when a step fails. Two
+   labelled rows rather than one field with a mode switch: both branches are
+   readable at a glance, which is the point — a person opening Edit finds out
+   the failure branch exists by seeing it.
+
+   The label column is sized in `ch` off the longer of the two words ("If it
+   works" / "If it fails", `workflowDiagram.js:EDGE_WORDS`) so the two selects
+   line up without a fixed pixel width that a longer word in another language
+   would break. Wraps to stacked rows under 320px, where a 12ch column plus a
+   select leaves the select unusable. No colour of its own: `--fg` at the same
+   opacity as `.task-form-label`, so this reads in all sixteen palettes. */
+.task-form-chain { display: flex; flex-direction: column; gap: 4px; }
+.task-form-chain-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+  cursor: pointer;
+}
+.task-form-chain-when {
+  flex: 0 0 12ch;
+  font-size: 11px;
+  opacity: 0.55;
+  font-weight: 500;
+  color: var(--fg);
+}
+/* `.task-form-input` is `width: 100%`, which in a row would push the select
+   onto its own line at every width. `flex: 1 1 12ch` lets it share the line
+   and wrap under the label only when 12ch of label plus 12ch of field will not
+   fit — no media query, so this does not add a second answer to "where does
+   mobile start" (`tests/test_breakpoints_agree_on_mobile.py`). */
+.task-form-chain-row .task-form-input { flex: 1 1 12ch; width: auto; }
+
 .task-form-textarea { resize: vertical; min-height: 60px; }
 .task-form-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px; }
 

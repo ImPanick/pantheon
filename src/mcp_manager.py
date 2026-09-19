@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import re
+import uuid
 import asyncio 
 from typing import Any, Dict, List, Optional, Set, Tuple
 from src.database import McpServer, SessionLocal
@@ -195,6 +196,73 @@ def validate_mcp_server_id(server_id: Any) -> Optional[str]:
             "contain only letters, digits, '.', '-' and '_'"
         )
     return None
+
+
+# ── Minting one (`B870`) ───────────────────────────────────────────────────
+#
+# Three sites minted a server id and two of them disagreed:
+# `routes/mcp/mcp_routes.py:262` and `src/agent_tools/admin_tools.py:299` used
+# `str(uuid.uuid4())[:8]` — eight hex characters — and `scripts/pantheon-mcp:150`
+# used the whole `str(uuid.uuid4())`, thirty-six. Both pass
+# `validate_mcp_server_id`, so nothing was broken; that is the shape of
+# `Law 13`. Anything that assumes eight characters — a column width, a log
+# format, a truncating index, a fixture — is right for two callers and wrong
+# for the third, and it would have been found by whoever registered their first
+# server from the CLI.
+#
+# EIGHT WINS, and the id RULE and the id MINT now live in the same place
+# (`Law 14`):
+#
+#   * it is what two of the three already minted, so it is the shape almost
+#     every stored row already has and nothing has to migrate;
+#   * the id is carried inside `mcp__<server_id>__<tool_name>`, the name the
+#     model must emit VERBATIM on every MCP tool call (`P8-44`). A 36-character
+#     id makes every qualified name 28 characters longer, in every prompt, on
+#     every turn;
+#   * it is what a person types: `pantheon-mcp show <id>`, `enable <id>`, and
+#     what they read in a log line;
+#   * the one thing thirty-six bought was "cannot collide", and asking the
+#     table buys that better — `str(uuid.uuid4())[:8]` had no uniqueness check
+#     at any of the three sites, so a collision was an unhandled
+#     `IntegrityError` on `POST /servers` rather than a second draw.
+#
+# EXISTING IDS ARE UNTOUCHED. This mints; it does not migrate. A stored
+# thirty-six-character id is still a valid id by `validate_mcp_server_id` and
+# still routes, which `tests/test_mcp_one_id_shape.py` drives.
+_MCP_SERVER_ID_LENGTH = 8
+_MCP_SERVER_ID_ATTEMPTS = 8
+
+
+def new_mcp_server_id(db: Any = None) -> str:
+    """Mint the id a newly registered MCP server gets.
+
+    THE one place that decides the shape. `db` is an open session to check for
+    collisions against; without one a session is opened and closed here.
+    """
+    own_session = db is None
+    if own_session:
+        db = SessionLocal()
+    try:
+        for _ in range(_MCP_SERVER_ID_ATTEMPTS):
+            candidate = uuid.uuid4().hex[:_MCP_SERVER_ID_LENGTH]
+            if validate_mcp_server_id(candidate) is not None:
+                continue  # unreachable for hex; the rule still gets the last word
+            try:
+                taken = db.query(McpServer).filter(McpServer.id == candidate).first()
+            except Exception:
+                # No table yet (first boot, a test with no schema). The draw is
+                # still a legal id; uniqueness is the database's to enforce.
+                return candidate
+            if taken is None:
+                return candidate
+        # Eight collisions in a row is not a thing that happens; if it somehow
+        # did, a full uuid is still a legal id and cannot collide in practice.
+        logger.warning("MCP server id: %d collisions in a row, falling back to a full uuid",
+                       _MCP_SERVER_ID_ATTEMPTS)
+        return uuid.uuid4().hex
+    finally:
+        if own_session:
+            db.close()
 
 
 def qualify_mcp_tool_name(server_id: str, tool_name: str) -> str:
@@ -554,10 +622,135 @@ class McpManager:
         self._sessions: Dict[str, Any] = {}
         # server_id -> exit stack (for cleanup)
         self._stacks: Dict[str, Any] = {}
+        # server_id -> (closing Event, owner Task) — see `_open_owned`. `B880`.
+        self._owners: Dict[str, Any] = {}
         # server_id -> background connect task (HTTP transport / OAuth)
         self._connect_tasks: Dict[str, Any] = {}
         # Tracking updates to tools/connections for RAG indexing / prompt cache
         self._generation = 0
+
+    # ------------------------------------------------------------------
+    # `B880` — one task owns a connection's AsyncExitStack, start to finish.
+    #
+    # Every MCP transport the SDK ships (`stdio_client`, `sse_client`,
+    # `streamablehttp_client`) and `ClientSession` itself open an anyio task
+    # group, and an anyio cancel scope may only be exited by the task that
+    # entered it. This manager used to enter the stack in whatever task
+    # happened to call `connect_server` and close it from whatever task
+    # happened to call `disconnect_server`, and those are never the same task
+    # in this product:
+    #
+    #   * `connect_all_enabled` connects inside `asyncio.create_task` children
+    #     while `disconnect_all` closes from the parent;
+    #   * `app.py:1462` runs the whole startup connect in its own task, which
+    #     has finished long before shutdown reaches `disconnect_all`;
+    #   * `routes/mcp/mcp_routes.py` disconnects from a request task, and the
+    #     connection it is closing was opened by a different request.
+    #
+    # Measured 2026-09-19 against a real stdio server: the parent-close case
+    # logged `Error closing MCP server s1: Attempted to exit cancel scope in a
+    # different task than it was entered in` on EVERY shutdown, and both exit
+    # callbacks on the stack — `ClientSession.__aexit__` and `stdio_client`'s
+    # generator — raised `RuntimeError` instead of running to completion, so
+    # the transport's ordered `terminate` → wait → `kill` teardown never
+    # finished. Worse, when the stack was entered in a task that is still
+    # running (the lifespan task) and closed from a child, anyio delivered the
+    # scope's cancellation to the ENTERING task: the probe's caller died with
+    # `CancelledError: Cancelled via cancel scope ...`.
+    #
+    # The fix is not a timeout flavour. `asyncio.timeout` in place of
+    # `asyncio.wait_for` removes ONE of the tasks between the caller and the
+    # stack (`wait_for` wraps its coroutine in a Task), which is why it was
+    # enough for `mcp_scaffold`'s single inline probe in `P8-47` — but measured
+    # here it left `connect_all_enabled`'s warning exactly where it was,
+    # because `create_task` is the task that matters. The stack has to be owned.
+    #
+    # So `_open_owned` runs the whole enter/hold/exit lifetime inside one task
+    # the manager keeps, and `_close_owned` asks that task to finish. Callers
+    # are unchanged: `connect_server` still awaits a result and
+    # `disconnect_server` still awaits a close.
+    # ------------------------------------------------------------------
+
+    async def _open_owned(self, server_id: str, setup):
+        """Enter a connection's contexts in a task that will also exit them.
+
+        `setup(stack)` is awaited INSIDE the owner task and returns whatever
+        the caller needs (session, handshake, tools). Its exception, if any, is
+        re-raised in the caller's task exactly as a direct `await` would, so
+        every existing `except` around a connect still sees the same error.
+        """
+        from contextlib import AsyncExitStack
+
+        loop = asyncio.get_running_loop()
+        ready: "asyncio.Future" = loop.create_future()
+        closing = asyncio.Event()
+
+        async def _owner():
+            stack = AsyncExitStack()
+            self._stacks[server_id] = stack
+            try:
+                try:
+                    payload = await setup(stack)
+                except BaseException as exc:  # noqa: BLE001 — relayed below
+                    if not ready.done():
+                        ready.set_exception(exc)
+                    return
+                if ready.cancelled():
+                    # The caller gave up (timeout, shutdown). Nothing will ever
+                    # read this connection, so close it here where it is legal.
+                    return
+                ready.set_result(payload)
+                await closing.wait()
+            finally:
+                try:
+                    await stack.aclose()
+                except BaseException as exc:  # noqa: BLE001
+                    logger.warning(
+                        "Error closing MCP server %s: %s", server_id, exc
+                    )
+                if self._stacks.get(server_id) is stack:
+                    self._stacks.pop(server_id, None)
+                self._owners.pop(server_id, None)
+
+        task = asyncio.ensure_future(_owner())
+        self._owners[server_id] = (closing, task)
+        try:
+            return await ready
+        except BaseException:
+            # A failed or abandoned connect must not leave the owner parked on
+            # `closing.wait()`, and must not return to its caller with a
+            # half-open transport still being torn down behind it: the owner is
+            # released and WAITED FOR before the error reaches `connect_server`.
+            closing.set()
+            try:
+                if not task.done():
+                    await asyncio.wait({task}, timeout=10)
+            except BaseException:  # noqa: BLE001 — the original error wins
+                pass
+            if self._owners.get(server_id) == (closing, task):
+                self._owners.pop(server_id, None)
+            raise
+
+    async def _close_owned(self, server_id: str, timeout: float = 10.0) -> bool:
+        """Ask the owner task to exit its stack. True when there was one."""
+        owner = self._owners.pop(server_id, None)
+        if owner is None:
+            return False
+        closing, task = owner
+        closing.set()
+        if not task.done():
+            done, _ = await asyncio.wait({task}, timeout=timeout)
+            if task not in done:
+                logger.warning(
+                    "MCP server %s did not close within %gs; cancelling its "
+                    "connection task", server_id, timeout,
+                )
+                task.cancel()
+                return True
+        exc = task.exception() if task.done() and not task.cancelled() else None
+        if exc is not None:
+            logger.warning("Error closing MCP server %s: %s", server_id, exc)
+        return True
 
     async def connect_server(
         self,
@@ -640,10 +833,11 @@ class McpManager:
                 env={**os.environ, **(env or {})},
             )
 
-            stack = AsyncExitStack()
-            registered = False
-
-            try:
+            # `B880`: entered and exited by ONE task. See `_open_owned`. A
+            # failed setup closes there too, which is what the old
+            # `finally: if not registered: await stack.aclose()` did — in the
+            # wrong task.
+            async def _setup(stack):
                 transport = await stack.enter_async_context(stdio_client(server_params))
                 read_stream, write_stream = transport
                 session = await stack.enter_async_context(ClientSession(read_stream, write_stream))
@@ -651,36 +845,30 @@ class McpManager:
                 # `P8-38`: the handshake's return value used to be dropped here.
                 handshake = summarize_initialize_result(await session.initialize())
                 tools_result = await session.list_tools()
+                return session, handshake, _tool_entries(tools_result)
 
-                tools = _tool_entries(tools_result)
+            session, handshake, tools = await self._open_owned(server_id, _setup)
 
-                # Extract identity hints from env vars (e.g. email address, API name)
-                # so tool descriptions can distinguish between multiple instances of
-                # the same MCP server (e.g. two email accounts).
-                identity_hints = []
-                for k, v in (env or {}).items():
-                    k_lower = k.lower()
-                    if any(x in k_lower for x in ["email_address", "account", "user", "username"]):
-                        identity_hints.append(v)
-                identity = ", ".join(identity_hints) if identity_hints else ""
+            # Extract identity hints from env vars (e.g. email address, API name)
+            # so tool descriptions can distinguish between multiple instances of
+            # the same MCP server (e.g. two email accounts).
+            identity_hints = []
+            for k, v in (env or {}).items():
+                k_lower = k.lower()
+                if any(x in k_lower for x in ["email_address", "account", "user", "username"]):
+                    identity_hints.append(v)
+            identity = ", ".join(identity_hints) if identity_hints else ""
 
-                self._sessions[server_id] = session
-                self._stacks[server_id] = stack
-                self._tools[server_id] = tools
-                self._connections[server_id] = {
-                    "status": "connected",
-                    "name": name,
-                    "transport": "stdio",
-                    "tool_count": len(tools),
-                    "identity": identity,
-                    **handshake,
-                }
-
-                registered = True
-
-            finally:
-                if not registered:
-                    await stack.aclose()
+            self._sessions[server_id] = session
+            self._tools[server_id] = tools
+            self._connections[server_id] = {
+                "status": "connected",
+                "name": name,
+                "transport": "stdio",
+                "tool_count": len(tools),
+                "identity": identity,
+                **handshake,
+            }
 
             logger.info(f"MCP server connected: {name} ({server_id}) - {len(tools)} tools via stdio")
             return True
@@ -701,38 +889,29 @@ class McpManager:
             from mcp.client.sse import sse_client
             from contextlib import AsyncExitStack
 
-            stack = AsyncExitStack()
-            registered = False
-
-            try:
+            async def _setup(stack):  # `B880` — owned by one task
                 transport = await stack.enter_async_context(sse_client(url))
                 read_stream, write_stream = transport
                 session = await stack.enter_async_context(ClientSession(read_stream, write_stream))
 
                 handshake = summarize_initialize_result(await session.initialize())
                 tools_result = await session.list_tools()
+                return session, handshake, _tool_entries(tools_result)
 
-                tools = _tool_entries(tools_result)
+            session, handshake, tools = await self._open_owned(server_id, _setup)
 
-                self._sessions[server_id] = session
-                self._stacks[server_id] = stack
-                self._tools[server_id] = tools
-                self._connections[server_id] = {
-                    "status": "connected",
-                    "name": name,
-                    "transport": "sse",
-                    "tool_count": len(tools),
-                    **handshake,
-                }
+            self._sessions[server_id] = session
+            self._tools[server_id] = tools
+            self._connections[server_id] = {
+                "status": "connected",
+                "name": name,
+                "transport": "sse",
+                "tool_count": len(tools),
+                **handshake,
+            }
 
-                registered = True
-
-                logger.info(f"MCP server connected: {name} ({server_id}) - {len(tools)} tools via SSE")
-                return True
-
-            finally:
-                if not registered:
-                    await stack.aclose()
+            logger.info(f"MCP server connected: {name} ({server_id}) - {len(tools)} tools via SSE")
+            return True
 
         except ImportError:
             logger.warning("MCP package not installed. Install with: pip install mcp")
@@ -783,17 +962,18 @@ class McpManager:
                 }
 
             provider = build_provider(server_id, url, on_redirect=_on_redirect)
-            stack = AsyncExitStack()
-            transport = await stack.enter_async_context(streamablehttp_client(url, auth=provider))
-            read_stream, write_stream, _get_session_id = transport
-            session = await stack.enter_async_context(ClientSession(read_stream, write_stream))
-            handshake = summarize_initialize_result(await session.initialize())
 
-            tools_result = await session.list_tools()
-            tools = _tool_entries(tools_result)
+            async def _setup(stack):  # `B880` — owned by one task
+                transport = await stack.enter_async_context(streamablehttp_client(url, auth=provider))
+                read_stream, write_stream, _get_session_id = transport
+                session = await stack.enter_async_context(ClientSession(read_stream, write_stream))
+                handshake = summarize_initialize_result(await session.initialize())
+                tools_result = await session.list_tools()
+                return session, handshake, _tool_entries(tools_result)
+
+            session, handshake, tools = await self._open_owned(server_id, _setup)
 
             self._sessions[server_id] = session
-            self._stacks[server_id] = stack
             self._tools[server_id] = tools
             self._connections[server_id] = {
                 "status": "connected", "name": name, "transport": "http",
@@ -829,8 +1009,13 @@ class McpManager:
         except Exception:
             pass
 
+        # `B880`. The owner task entered this connection's contexts and is the
+        # only task allowed to exit them, so ask it to rather than reaching in.
+        closed = await self._close_owned(server_id)
         stack = self._stacks.pop(server_id, None)
-        if stack:
+        if stack and not closed:
+            # A stack with no owner: nothing in the product makes one, but a
+            # caller that installed one directly still gets it closed.
             try:
                 await stack.aclose()
             except Exception as e:
@@ -844,7 +1029,11 @@ class McpManager:
 
     async def disconnect_all(self):
         """Disconnect from all MCP servers."""
+        # `B880`: an owner task can outlive its session entry (a connect whose
+        # handshake failed after the transport came up), so shutdown sweeps
+        # both maps or that task stays parked on `closing.wait()` forever.
         ids = list(self._sessions.keys())
+        ids += [sid for sid in self._owners if sid not in ids]
         for sid in ids:
             await self.disconnect_server(sid)
 
@@ -869,6 +1058,17 @@ class McpManager:
         env = json.loads(srv.env) if srv.env else {}
 
         try:
+            # `B880` left this as `asyncio.wait_for` DELIBERATELY. `wait_for`
+            # wraps its coroutine in a Task, and that extra task is what made
+            # `P8-47` reach for `asyncio.timeout` in `src/mcp_scaffold.py:643`
+            # — but measured here, swapping it changed nothing on its own
+            # (child-task connect + `asyncio.timeout` still logged the failed
+            # close). `_open_owned` is the fix: the stack no longer cares which
+            # task called this. `asyncio.timeout` would still be the better
+            # deadline, and `tests/test_multiple_mcp_servers_timeout.py` pins
+            # this spelling by monkeypatching `asyncio.wait_for` itself to
+            # shorten the wait, so the swap is a change to that test as much as
+            # to this line.
             await asyncio.wait_for(
                 self.connect_server(
                     server_id=srv.id,

@@ -37,11 +37,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "_lib"))
 from cli import quiet_logs, emit, fail, common_parser, run, REPO_ROOT as _REPO_ROOT
 quiet_logs()
 
-import argparse, json, logging, os, sys, time, uuid
+import argparse, json, logging, os, sys, time
 from pathlib import Path
 
 try:
     from core.database import SessionLocal, McpServer
+    from src.mcp_manager import new_mcp_server_id
     quiet_logs()
 except ModuleNotFoundError as e:
     sys.stderr.write(f"error: {e}\nhint: run from repo root with venv active.\n")
@@ -147,7 +148,12 @@ def cmd_add(args):
     db = SessionLocal()
     try:
         s = McpServer(
-            id=str(uuid.uuid4()),
+            # `B870`. This minted the WHOLE uuid — thirty-six characters —
+            # while the admin route and `manage_mcp add` minted eight, so the
+            # same product handed out two id shapes depending on the door you
+            # came in. One mint now, in `src/mcp_manager.py` beside the rule
+            # that says what a legal id is.
+            id=new_mcp_server_id(db),
             name=args.name,
             transport=args.transport,
             command=args.command or None,

@@ -7,6 +7,7 @@
 
 import uiModule from './ui.js';
 import { splitTableRow } from './markdown/tableRow.js';
+import { applyMermaidTheme, documentScheme } from './markdown/mermaidTheme.js';
 import { replaceEmojiShortcodes, hasEmojiShortcode } from './emojiShortcodes.js';
 import { playIcon } from './icons.js';
 import { langIcon } from './langIcons.js';
@@ -58,6 +59,8 @@ function decodeMathSource(text) {
 }
 
 let _mermaidPromise = null;
+// The `color-scheme` the loaded Mermaid was last themed for (`B872`).
+let _mermaidScheme = null;
 let _katexPromise = null;
 let _mathFlushScheduled = false;
 
@@ -85,19 +88,49 @@ function _loadStylesheet(href) {
 }
 
 /**
- * Load Mermaid on first use and initialize it once.
+ * Load Mermaid on first use and theme it for the palette that is up.
+ *
+ * `B872`. This call used to be `initialize({ startOnLoad: false, theme:
+ * 'dark', securityLevel: 'loose' })` with the theme name written in, once, for
+ * every diagram this product draws. Four of the sixteen shipped palettes are
+ * light, and on those the dark theme drew light-grey arrows onto a near-white
+ * panel at 1.17-1.29:1. The decision moved to `markdown/mermaidTheme.js` so
+ * that all four callers get it from one place (`Law 13`) rather than each
+ * working around it with a per-diagram directive.
  */
 export function ensureMermaid() {
   return (_mermaidPromise ??= _loadScript(MERMAID_SRC)
     .then(() => {
       if (!window.mermaid) throw new Error('mermaid global missing after load');
-      window.mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose' });
+      _themeMermaid(window.mermaid);
       return window.mermaid;
     })
     .catch((err) => {
       _mermaidPromise = null;
       throw err;
     }));
+}
+
+/**
+ * Apply the current palette's Mermaid theme, at most once per palette.
+ *
+ * Called on load and again before every render, because a person can change
+ * palette long after the bundle landed and the next diagram they draw should
+ * come out in the theme they are looking at. Guarded by the scheme it last
+ * applied so the steady state is no work at all: `applyMermaidTheme` costs two
+ * `initialize` calls (the second carries the stroke colour read back out of
+ * the first), and doing that per diagram would be two per render forever.
+ *
+ * Diagrams already on the page keep the theme they were drawn in until
+ * something re-renders them — `mermaid.run` skips anything already marked
+ * `data-processed`, and re-drawing the whole document on a palette change is a
+ * bigger claim than this row makes.
+ */
+function _themeMermaid(mermaid) {
+  const scheme = documentScheme();
+  if (scheme === _mermaidScheme) return;
+  applyMermaidTheme(mermaid, scheme);
+  _mermaidScheme = scheme;
 }
 
 /**
@@ -1044,6 +1077,9 @@ export function renderMermaid(container) {
       const nodes = [...target.querySelectorAll('pre.mermaid:not([data-processed])')]
         .filter((node) => node.isConnected);
       if (nodes.length === 0) return;
+      // `B872`. A palette switched after the bundle loaded still gets the
+      // right theme on the next diagram. No-op unless the scheme moved.
+      _themeMermaid(mermaid);
       return mermaid.run({ nodes });
     })
     .catch((e) => { console.warn('Mermaid render error:', e); });
