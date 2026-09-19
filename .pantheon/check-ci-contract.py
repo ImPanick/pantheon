@@ -91,6 +91,7 @@ Exits 0 when every rule holds, 1 otherwise.
 from __future__ import annotations
 
 import argparse
+import ast
 import importlib.util
 import re
 import subprocess
@@ -602,6 +603,92 @@ def rule_skip_proves_itself() -> list[str]:
     return problems
 
 
+# `B855`. Rule eight, and the one that cost twenty-two checkers. A job step can
+# run a script that imports this product; if the job installed no dependencies
+# that step dies on the first `import httpx` four modules down, and the job
+# fails at step three with twenty-two steps that never ran. It had been that way
+# since the workflow was written and nothing could see it, because every one of
+# those steps passes on a developer's machine, where the dependencies exist.
+#
+# The question is asked of the SCRIPT, not of a list kept here: parse it and
+# look for an import whose root is one of this repository's own packages.
+FIRST_PARTY_ROOTS = ("src", "core", "routes", "integrations", "netagent", "services")
+
+# What "install the dependencies" looks like. Not a spelling preference: a job
+# that pins its own subset is the `Law 13` shape this rule exists to stop.
+DEPENDENCY_INSTALL = "pip install -r requirements.txt"
+
+
+def _imports_first_party(path: Path) -> list[str]:
+    """Roots of this repository's own packages that `path` imports.
+
+    Anywhere in the file, including inside a function: `check-tool-surface.py`
+    does its `import src.agent_tools` inside `main()` on purpose, to break a
+    circular import, and an import that runs is an import that needs its
+    dependencies.
+    """
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError):
+        return []
+    roots: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            roots.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            roots.add(node.module.split(".")[0])
+    return sorted(roots & set(FIRST_PARTY_ROOTS))
+
+
+PY_INTERPRETER = re.compile(r"(?:^|[\s;&|(])python[0-9.]*(?:\s|$)")
+
+
+def _scripts_a_step_runs(run_text: str) -> list[Path]:
+    """Repository Python files a `run:` block hands to a Python interpreter.
+
+    Scoped to blocks that actually invoke one. `docker-publish.yml` reads
+    `APP_VERSION` out of `src/constants.py` with `grep`, and a step that greps a
+    file neither imports it nor needs its dependencies.
+    """
+    if not PY_INTERPRETER.search(run_text):
+        return []
+    found: list[Path] = []
+    for token in re.findall(r"[\w./-]+\.py", run_text):
+        candidate = ROOT / token
+        if candidate.is_file() and candidate not in found:
+            found.append(candidate)
+    return found
+
+
+def rule_job_installs_what_it_imports() -> list[str]:
+    problems: list[str] = []
+    for path in workflow_files():
+        doc = load_workflow(path)
+        for key, spec in jobs(doc).items():
+            steps = spec.get("steps") if isinstance(spec, dict) else None
+            steps = steps if isinstance(steps, list) else []
+            runs = [str(step.get("run", "")) for step in steps
+                    if isinstance(step, dict) and step.get("run")]
+            installs = any(DEPENDENCY_INSTALL in text for text in runs)
+            if installs:
+                continue
+            needy: list[str] = []
+            for text in runs:
+                for script in _scripts_a_step_runs(text):
+                    if _imports_first_party(script):
+                        rel = script.relative_to(ROOT).as_posix()
+                        if rel not in needy:
+                            needy.append(rel)
+            if needy:
+                problems.append(
+                    f"{path.name}:{key} runs {', '.join(needy)}, which "
+                    f"import{'s' if len(needy) == 1 else ''} this product, and "
+                    f"the job never runs `{DEPENDENCY_INSTALL}`. That step dies "
+                    f"on a missing dependency and every step after it never "
+                    f"runs (`B855`)")
+    return problems
+
+
 # ── run ───────────────────────────────────────────────────────────────────────
 
 
@@ -638,6 +725,7 @@ def main() -> int:
         ("the gate reads CI rather than copying it", rule_gate_reads_ci()),
         ("one list of which files are ours", rule_one_file_list()),
         ("a skip proves itself", rule_skip_proves_itself()),
+        ("a job installs what it imports", rule_job_installs_what_it_imports()),
     ]
 
     problems = [(title, p) for title, ps in rules for p in ps]

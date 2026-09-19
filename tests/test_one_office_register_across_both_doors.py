@@ -23,6 +23,7 @@ shipped code.
 """
 import builtins
 import contextlib
+import importlib.util
 import socket
 
 import pytest
@@ -41,6 +42,43 @@ from tests.helpers.office_fixtures import (
     OFFICE_SENTINEL,
     office_fixture,
 )
+
+# `B858`. markitdown and `python-docx` live in `requirements-optional.txt`,
+# which nothing installs by default — and every assertion below about what they
+# RENDER was written on a machine that happened to have them. Twelve of them
+# went red in the first CI run that ever completed, where only
+# `requirements.txt` is installed, and the message they printed was the
+# product's own correct banner: *"Office/EPUB document extraction requires
+# markitdown."* The suite was failing a machine for the configuration the suite
+# itself documents as supported.
+#
+# Asked of the interpreter, not of a list of environments: `find_spec` is the
+# same question the product asks. The absent-dependency branch keeps running
+# either way — it is the half that needs no dependency to prove, and it is the
+# half this file exists for.
+HAVE_MARKITDOWN = importlib.util.find_spec("markitdown") is not None
+HAVE_DOCX = importlib.util.find_spec("docx") is not None
+
+MARKITDOWN_REASON = (
+    "markitdown is in requirements-optional.txt and is not installed here; "
+    "this assertion is about what markitdown renders. The refusal branch is "
+    "covered by test_a_format_whose_extractor_is_not_installed_is_refused_"
+    "with_the_reason, which runs in every environment."
+)
+DOCX_REASON = (
+    "python-docx is in requirements-optional.txt and is not installed here; "
+    "this assertion is about the rendering it produces."
+)
+
+needs_markitdown = pytest.mark.skipif(not HAVE_MARKITDOWN, reason=MARKITDOWN_REASON)
+needs_docx = pytest.mark.skipif(not HAVE_DOCX, reason=DOCX_REASON)
+
+
+def _skip_if_that_format_needs_an_absent_extractor(ext: str) -> None:
+    """Skip one parameter, not the sweep: `.doc` and `.odt` read without it."""
+    if ext in MARKITDOWN_EXTS and not HAVE_MARKITDOWN:
+        pytest.skip(f"{ext}: {MARKITDOWN_REASON}")
+
 
 RAW_EMAIL = b"Subject: t\r\nMessage-ID: <m@x>\r\n\r\nbody\r\n"
 
@@ -133,6 +171,7 @@ def test_the_six_formats_the_composer_reads_now_open_in_the_mailbox(
     this row, which is what makes this the `Law 9` test: it fails on the tree as
     it stood, six times, for six different reasons that are all the same reason.
     """
+    _skip_if_that_format_needs_an_absent_extractor(ext)
     result = _drive_mailbox(tmp_path, monkeypatch, "report" + ext,
                             office_fixture(ext))
     assert "error" not in result, result
@@ -149,6 +188,7 @@ def test_both_doors_put_the_same_document_s_prose_in_front_of_the_user(
     mailbox cannot must be a deliberate, written difference or must not exist.
     Driven over one real file of every office format there is.
     """
+    _skip_if_that_format_needs_an_absent_extractor(ext)
     body = office_fixture(ext)
     mailbox = _document_body(
         _drive_mailbox(tmp_path / "m", monkeypatch, "report" + ext, body))
@@ -157,6 +197,7 @@ def test_both_doors_put_the_same_document_s_prose_in_front_of_the_user(
     assert OFFICE_SENTINEL in composer, ext
 
 
+@needs_markitdown
 def test_one_docx_renders_identically_whichever_door_it_came_through(
         tmp_path, monkeypatch):
     """The row's second `Verify` clause.
@@ -229,6 +270,7 @@ def test_the_bundled_formats_open_with_markitdown_absent(
     assert OFFICE_SENTINEL in _document_body(result), ext
 
 
+@needs_docx
 def test_the_docx_reader_the_mailbox_owned_now_answers_for_every_consumer(
         tmp_path, monkeypatch):
     """`Law 1`: the hand-rolled reader was moved, not deleted — and it moved *up*.
@@ -320,7 +362,11 @@ def test_the_gap_function_names_the_dependency_only_when_it_is_missing(monkeypat
         office_extraction_gap,
     )
 
-    assert office_extraction_gap("/tmp/sheet.xlsx") == NO_EXTRACTABLE_TEXT
+    if HAVE_MARKITDOWN:
+        # `B858`. The "installed" half of "both sides of the one condition" can
+        # only be asserted where it is installed. The half below cannot be
+        # faked away and runs everywhere.
+        assert office_extraction_gap("/tmp/sheet.xlsx") == NO_EXTRACTABLE_TEXT
     _without_markitdown(monkeypatch)
     assert office_extraction_gap("/tmp/sheet.xlsx") == MARKITDOWN_MISSING
     # And `B102`'s distinction, which only shows with the dependency gone: the
@@ -348,10 +394,15 @@ def test_no_extractor_opens_a_socket_to_read_a_local_file(tmp_path, monkeypatch)
     monkeypatch.setattr(socket, "create_connection", refuse)
     monkeypatch.setattr(socket, "getaddrinfo", refuse)
 
+    driven = []
     for ext in sorted(OFFICE_FIXTURE_EXTS):
+        if ext in MARKITDOWN_EXTS and not HAVE_MARKITDOWN:
+            continue  # `B858`: the format is skipped, the law is not
         result = _drive_mailbox(tmp_path / ext.lstrip("."), monkeypatch,
                                 "report" + ext, office_fixture(ext))
         assert OFFICE_SENTINEL in _document_body(result), ext
+        driven.append(ext)
+    assert driven, "no office format was driven — the law was not tested at all"
 
 
 # ── the fourth reader the office branch was hiding ──────────────────────────

@@ -120,10 +120,27 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: "3.11"
+          cache: pip
+      # `B855`. This job installed nothing until 2026-09-19, and twenty-two of
+      # its twenty-five steps had therefore never run — not once, in the whole
+      # life of the repository. It died at step three: `check-tool-surface.py`
+      # imports `src.agent_tools` on purpose, because a register you read with
+      # a regex is a register you are guessing about (`Law 20`), and that
+      # import reaches `httpx` four modules down. `check-mcp-schemas.py` and
+      # the retrieval eval are the same shape. Every one of them passed
+      # locally, where the dependencies exist, which is exactly how this stayed
+      # invisible: the local gate is not evidence about CI's environment, and
+      # for twenty-two checkers CI was not evidence about anything at all.
+      #
+      # The alternative — teaching those three to fail soft when an import is
+      # missing — buys a fast job that proves less than it claims. The whole
+      # point of them is that they CALL the thing.
+      - run: pip install -r requirements.txt
       # Law 13 — nothing ships half-wired. Counts getElementById targets that
       # resolve to no markup and no runtime creation. The ceiling may fall and
       # may never rise; a PR that adds an unresolved lookup fails here.
-      # No dependencies: the checker is stdlib plus `git ls-files`.
+      # The checker itself is stdlib plus `git ls-files`; three of the
+      # steps below this one are not, which is `B855` above.
       #
       # 2 -> 9 on 2026-09-07, and NOT because anything regressed: P3-15 closed
       # three blind spots the checker had, so it now sees defects that were
@@ -429,8 +446,21 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: "3.11"
+          cache: pip
+      # `B854`. This said `pip install pytest`, and that single line meant the
+      # job had never run. Two ways, both fatal. `tests/conftest.py` stubs an
+      # absent dependency from a hand-written list of dotted names, and
+      # `starlette.routing` — which `core/middleware.py` imports — was not on
+      # it, so collection died before a test existed. And had it collected, the
+      # guard watches `socket.connect` and `getaddrinfo` underneath a `httpx`
+      # that would itself have been a `MagicMock`: it could not have observed
+      # the thing it exists to observe.
+      #
+      # A fresh install is not an install with no dependencies. It is
+      # `pip install -r requirements.txt` and nobody having linked anything
+      # yet, which is precisely the state `Law 16` makes a claim about.
       - name: Install test dependencies
-        run: pip install pytest
+        run: pip install -r requirements.txt
       # Law 16 — a fresh install reaches nothing until someone links something.
       #
       # Every finding in P16 was found by a person reading code. That works once

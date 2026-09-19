@@ -58,6 +58,85 @@ def _has_module(mod_name: str) -> bool:
 
 # Stub optional dependencies only when they are not installed. Do not replace
 # real FastAPI/Starlette/Pydantic modules: route tests import their subpackages.
+_STUB_ROOTS = ("sqlalchemy", "bcrypt", "pyotp", "httpx", "fastapi", "starlette", "pydantic")
+
+# `B854`. Which of those roots is genuinely missing, decided BEFORE anything is
+# stubbed — once a `MagicMock` is sitting in `sys.modules` the question can no
+# longer be asked honestly (`find_spec` reads `__spec__` off the object it
+# finds there, and a mock has none).
+_ABSENT_ROOTS = {
+    root for root in _STUB_ROOTS
+    if root not in sys.modules and not _has_module(root)
+}
+
+# `B854`. The list below is nineteen dotted names maintained by hand, which is
+# the defect class `Law 13` names: the twentieth submodule is not on it.
+# `core/middleware.py` imports `starlette.routing`, which was not, and so CI's
+# "Law 16 — no egress on a fresh install" job — the one that installs pytest
+# and nothing else, on purpose, because that IS the fresh install — died in
+# conftest before collecting a single test. It had never once run. The gate
+# that proves a fresh install reaches nothing had never tested anything, and
+# said so only as a red X nobody could read until the repository went public
+# and CI completed a run for the first time.
+#
+# Two things are needed, and a `MagicMock` alone gives neither. `unittest.mock`
+# raises `AttributeError` for every dunder it does not implement, so a mock has
+# no `__path__` and no `__spec__` — and the import machinery reads BOTH off the
+# PARENT before it consults any finder. That is why a missing submodule
+# reported "'starlette' is not a package" rather than "starlette is missing".
+# So each stub is given a real `ModuleSpec` and an empty `__path__`, and the
+# finder below manufactures whatever is asked for beneath it.
+_STUBBED_SUBMODULES: set = set()
+
+
+class _AbsentDependencyLoader:
+    """Loader for a submodule of a dependency that is genuinely not installed."""
+
+    def create_module(self, spec):
+        module = MagicMock(name=spec.name)
+        module.__name__ = spec.name
+        module.__path__ = []
+        return module
+
+    def exec_module(self, module):
+        return None
+
+
+class _AbsentDependencyFinder:
+    """Manufacture any submodule beneath a root this file found missing.
+
+    It answers only for the roots `_ABSENT_ROOTS` found missing, and it is
+    appended LAST on `sys.meta_path`, so a dependency that is actually
+    installed is found by the real machinery and never reaches here.
+    """
+
+    def __init__(self, roots):
+        self._roots = set(roots)
+
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname.split(".", 1)[0] not in self._roots:
+            return None
+        _STUBBED_SUBMODULES.add(fullname)
+        return importlib.util.spec_from_loader(
+            fullname, _AbsentDependencyLoader(), is_package=True
+        )
+
+
+def _stub_module(mod_name: str):
+    """A stub that behaves like an importable package, not just like a mock."""
+    stub = MagicMock(name=mod_name)
+    stub.__name__ = mod_name
+    stub.__spec__ = importlib.util.spec_from_loader(
+        mod_name, _AbsentDependencyLoader(), is_package=True
+    )
+    stub.__path__ = []
+    stub.__loader__ = stub.__spec__.loader
+    stub.__package__ = mod_name
+    return stub
+
+
+# The explicit list stays: it is the set that must exist EAGERLY, before a test
+# module's own module-scope stub can win the race. The finder covers the rest.
 for mod_name in [
     "sqlalchemy", "sqlalchemy.orm", "sqlalchemy.types", "sqlalchemy.ext", "sqlalchemy.ext.declarative",
     "sqlalchemy.ext.hybrid", "sqlalchemy.sql", "sqlalchemy.sql.expression",
@@ -67,7 +146,10 @@ for mod_name in [
     "pydantic",
 ]:
     if mod_name not in sys.modules and not _has_module(mod_name):
-        sys.modules[mod_name] = MagicMock()
+        sys.modules[mod_name] = _stub_module(mod_name)
+
+if _ABSENT_ROOTS:
+    sys.meta_path.append(_AbsentDependencyFinder(_ABSENT_ROOTS))
 
 # Stubs THIS FILE installs on purpose, recorded rather than remembered. The
 # `B271` sweep below asks "is any production module a stub?" and the honest
@@ -476,6 +558,21 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
             "Every test that would exercise one of these is skipping, stubbed, "
             "or passing through the import guard written for 'dependency "
             "absent' — a green run is evidence about a smaller product.")
+    elif _DECLARED_COUNT[0]:
+        # `B857`. A footer that speaks only when something is missing cannot be
+        # told apart from a footer that is broken, and for the whole life of
+        # this repository nobody had a run to compare against: the container
+        # holds 19 of 31 and CI had never completed one. It completed on
+        # 2026-09-19 with all 31 installed, and three tests here went red for
+        # the environment being CORRECT. The run that covers the whole product
+        # is the one most worth saying so about.
+        terminalreporter.write_sep(
+            "=", "B325: this environment satisfies requirements.txt",
+            green=True)
+        terminalreporter.write_line(
+            f"All {_DECLARED_COUNT[0]} declared core dependencies are installed "
+            "at their declared versions — this run is evidence about the whole "
+            "product.")
 
 
 # ---------------------------------------------------------------------------

@@ -20,11 +20,26 @@ import pytest
 SECURITY = pathlib.Path(__file__).resolve().parents[1] / "SECURITY.md"
 
 
+def _checklist_block() -> str:
+    """The fenced block that *is* the fork checklist.
+
+    Anchored on the commands rather than on the sentence above them. The first
+    version split on the literal `"Before pushing a public fork, run:"` and went
+    red the day `B852` rewrote that sentence to say the checklist must run
+    against a full clone — a correction to the prose breaking a test about the
+    commands. `Law 20` again: the block is identified by what it does.
+    """
+    text = SECURITY.read_text(encoding="utf-8")
+    blocks = text.split("```")
+    for i in range(1, len(blocks), 2):
+        if "git check-ignore" in blocks[i]:
+            return blocks[i]
+    raise AssertionError("no fenced block in SECURITY.md runs the fork checklist")
+
+
 def _patterns():
     """Every `-E '...'` regex in the fork checklist, as the shell would see it."""
-    text = SECURITY.read_text(encoding="utf-8")
-    block = text.split("Before pushing a public fork, run:")[1].split("```")[1]
-    found = re.findall(r"-[aoE]*E\s+'([^']+)'", block)
+    found = re.findall(r"-[aoE]*E\s+'([^']+)'", _checklist_block())
     assert found, "the checklist no longer carries an -E pattern"
     return found
 
@@ -72,8 +87,7 @@ def test_the_checklist_looks_at_history_and_not_only_the_working_tree():
     """A public repository exposes every commit, and a rewrite afterwards does
     not un-publish one. Checking `git grep` alone answers a smaller question
     than the one being asked."""
-    block = SECURITY.read_text(encoding="utf-8").split(
-        "Before pushing a public fork, run:")[1].split("```")[1]
+    block = _checklist_block()
     assert "git log --all" in block, (
         "the sweep only reads the working tree; a secret removed in a later "
         "commit is still published")
@@ -82,7 +96,19 @@ def test_the_checklist_looks_at_history_and_not_only_the_working_tree():
 def test_the_checklist_looks_for_credential_files_too():
     """A committed `auth.json` or `.pem` carries no `sk-` string and is worse
     than one that does."""
-    block = SECURITY.read_text(encoding="utf-8").split(
-        "Before pushing a public fork, run:")[1].split("```")[1]
+    block = _checklist_block()
     assert "--diff-filter=A" in block, (
         "nothing in the sweep would notice a credential *file* being added")
+
+
+
+def test_the_checklist_says_where_to_run_it():
+    """`B852`. The sweep answers a question about the history being published,
+    so it has to run where that history is. A working copy seeded from a
+    snapshot answers a smaller question in the same words — which is exactly
+    what happened: 186 commits scanned against a repository that has 2,202."""
+    text = SECURITY.read_text(encoding="utf-8")
+    intro = text.split("```")[0].rsplit("## ", 1)[-1] if "```" in text else text
+    assert "full clone" in text, (
+        "nothing in the checklist says to run it against the repository being "
+        "published; a snapshot-seeded clone gives a true-sounding false answer")

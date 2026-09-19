@@ -480,12 +480,35 @@ def test_the_rule_catches_a_syntax_job_that_lists_files_by_hand(contract,
 # ── the checker as a command ─────────────────────────────────────────────────
 
 
+def _rules_the_checker_runs() -> int:
+    """How many rules `main()` actually puts in its list.
+
+    `B861`. This was the literal `7`, and rule eight (`B855`) turned it red —
+    the same shape `B651` names: a test may assert that two numbers agree, it
+    may not carry one of them. The count is read out of the checker's own
+    `rules = [...]`, so adding rule nine needs no edit here and REMOVING one
+    still fails the header comparison below.
+    """
+    import ast
+
+    tree = ast.parse(CHECKER.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Assign)
+                and any(getattr(t, "id", None) == "rules" for t in node.targets)
+                and isinstance(node.value, ast.List)):
+            return len(node.value.elts)
+    raise AssertionError("check-ci-contract.py no longer builds a `rules` list")
+
+
 def test_the_checker_passes_on_this_tree_and_says_what_it_looked_at():
     proc = subprocess.run([sys.executable, str(CHECKER)], cwd=str(ROOT),
                           capture_output=True, text=True, timeout=300)
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "PROBLEMS 0" in proc.stdout
-    assert "7 rules" in proc.stdout
+    rules = _rules_the_checker_runs()
+    assert rules >= 7, "a rule was deleted, not added"
+    assert f"{rules} rules" in proc.stdout, (
+        f"the header does not count the rules it runs ({rules}): {proc.stdout}")
 
 
 def test_list_mode_prints_the_inventory_and_changes_nothing():

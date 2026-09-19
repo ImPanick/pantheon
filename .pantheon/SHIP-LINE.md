@@ -172,6 +172,16 @@ a commit, one is a defect a first-time user hits, and one is the release artefac
   header. Two attribution surfaces, one event, two dates. The row's later note
   makes the resolution likely (they are two different facts) and that is exactly
   why it is cheap and why it needs the owner.
+  **Narrowed 2026-09-19 (`B860`).** One of the two dates is no longer a reading
+  taken elsewhere. `b4d1293` was unreachable in the container this project is
+  developed in — a clone that begins at a snapshot import — and CI checks out
+  with `fetch-depth: 0`, so the first completed run reached it:
+  `b4d12932a953b3cdfc745b3525c7ecd5dffd8b3c`, authored `2026-08-20T05:06:22-06:00`
+  and committed `2026-08-20T13:06:22+02:00`, subject matching `FORK_POINT_SUBJECT`
+  to the character. **`2026-08-20` is confirmed.** What is still the owner's is
+  the §5(a) wording — *cloned* versus *forked* on `NOTICE`, `CREDITS.md` and
+  `CHANGELOG.md`, and whether the commit date belongs on that surface at all.
+  Cheaper than it was: a wording decision, not a choice between two numbers.
 
 ### A documented claim is false (3)
 

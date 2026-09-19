@@ -24,6 +24,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -614,12 +615,92 @@ def test_collapsing_the_two_dates_into_one_is_caught(checker, claims, monkeypatc
     assert any("two different events" in p for p in problems), problems
 
 
-def test_the_fork_point_is_still_unreachable_from_here(claims):
-    """The reason this row cannot be settled in a worktree, asserted rather
-    than remembered. If this ever starts passing, `git show` the commit and
-    give the owner a date instead of a choice."""
+def test_the_fork_point_confirms_its_own_date_where_the_history_reaches_it(claims):
+    """`B860`. This used to assert `b4d1293` is **un**reachable, and it said so
+    with instructions: *"if this ever starts passing, `git show` the commit and
+    give the owner a date instead of a choice."*
+
+    It started passing. The container's clone begins at `fff72ec baseline:
+    cybertooth c3b2120`, a snapshot import with no upstream history in it, and
+    that is the only machine this test had ever run on. CI checks out with
+    `fetch-depth: 0` — 2,285 commits, the fork point among them — and on the
+    first run that ever completed, this test went red **for finding the
+    evidence it was written to wait for**.
+
+    So it does what its own instructions said. Where the history reaches the
+    commit, the claimed date is checked against the commit; where it does not,
+    the label stands and the other four tests in this section hold it honest.
+    A test that asserts the absence of evidence can only pass where the
+    evidence is absent, and that is not a property of this repository — it is a
+    property of one clone.
+    """
     proc = subprocess.run(["git", "cat-file", "-t", claims.FORK_POINT],
                           cwd=str(ROOT), capture_output=True, text=True)
-    assert proc.returncode != 0, (
-        f"{claims.FORK_POINT} is reachable now — read its committer date and "
-        f"close B349 with evidence instead of a label")
+    if proc.returncode != 0:
+        # Shallow clone, or a snapshot import: nothing to confirm against, and
+        # `FORK_POINT_DATE` remains what it has always been — a reading taken
+        # elsewhere and labelled as such.
+        assert claims.FORK_POINT_DATE and claims.MEASURED_ON
+        return
+
+    shown = subprocess.run(
+        ["git", "show", "-s", "--format=%aI%n%cI%n%s", claims.FORK_POINT],
+        cwd=str(ROOT), capture_output=True, text=True, check=True)
+    authored, committed, subject = shown.stdout.strip().split("\n", 2)
+    assert subject.strip() == claims.FORK_POINT_SUBJECT, (
+        f"{claims.FORK_POINT} is reachable and is a different commit than the "
+        f"one the ledger names:\n  ledger: {claims.FORK_POINT_SUBJECT}\n"
+        f"  commit: {subject.strip()}")
+    assert authored[:10] == claims.FORK_POINT_DATE, (
+        f"FORK_POINT_DATE says {claims.FORK_POINT_DATE}; the commit was "
+        f"authored {authored}")
+    assert committed[:10] == claims.FORK_POINT_DATE, (
+        f"FORK_POINT_DATE says {claims.FORK_POINT_DATE}; the commit was "
+        f"committed {committed}")
+    # And the other date is still a different fact about a different event.
+    assert claims.FORK_CLONE_DATE != claims.FORK_POINT_DATE
+
+
+def _claims_pointing_at(rev: str, **overrides):
+    """A stand-in ledger aimed at a commit THIS clone can reach.
+
+    `B860`. The branch above only runs where the fork point is present, which is
+    CI and not this container, and a branch nobody can drive here is a branch
+    nobody can be sure of. So it is driven against a commit that is always
+    reachable — this repository's own `HEAD` — with the ledger's constants
+    replaced by what that commit actually says. Same function, same assertions,
+    no network and no upstream history required (`Law 20`).
+    """
+    shown = subprocess.run(
+        ["git", "show", "-s", "--format=%aI%n%cI%n%s", rev],
+        cwd=str(ROOT), capture_output=True, text=True, check=True)
+    authored, _committed, subject = shown.stdout.strip().split("\n", 2)
+    values = dict(
+        FORK_POINT=rev,
+        FORK_POINT_SUBJECT=subject.strip(),
+        FORK_POINT_DATE=authored[:10],
+        FORK_CLONE_DATE="1970-01-01",
+        MEASURED_ON="1970-01-01",
+    )
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+def test_a_reachable_fork_point_is_confirmed_against_the_commit():
+    """The `then` branch, driven."""
+    test_the_fork_point_confirms_its_own_date_where_the_history_reaches_it(
+        _claims_pointing_at("HEAD"))
+
+
+def test_a_reachable_fork_point_with_the_wrong_date_fails():
+    """And it is a check, not a formality."""
+    with pytest.raises(AssertionError, match="FORK_POINT_DATE says"):
+        test_the_fork_point_confirms_its_own_date_where_the_history_reaches_it(
+            _claims_pointing_at("HEAD", FORK_POINT_DATE="1999-12-31"))
+
+
+def test_a_reachable_fork_point_that_is_a_different_commit_fails():
+    """The subject is checked too: a ref that moved is not the fork point."""
+    with pytest.raises(AssertionError, match="different commit"):
+        test_the_fork_point_confirms_its_own_date_where_the_history_reaches_it(
+            _claims_pointing_at("HEAD", FORK_POINT_SUBJECT="not this commit"))

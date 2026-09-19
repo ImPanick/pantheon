@@ -79,16 +79,29 @@ def test_a_full_length_cp1250_file_keeps_its_polish_letters(tmp_path):
     """`B280`'s `Verify:`, first clause, driven end to end.
 
     The detector is left real on purpose — this is the measurement the row was
-    filed on and it has to keep being the measurement. Its own answer is still
-    `Windows-1252`; what changed is that the product now looks at what that
-    answer produces.
+    filed on and it has to keep being the measurement.
+
+    **`B859`.** It used to *require* the detector to answer `Windows-1252`
+    before checking anything, and that assertion was about `charset-normalizer`,
+    not about this product. On **3.4.7** — what the container happened to hold —
+    the answer is `Windows-1252` and the correction fires. On **3.5.1**, which
+    is what `requirements.txt` actually pins, the library answers
+    `windows-1250` and is simply right. The first CI run that ever completed
+    ran the pinned version, and this test failed **because the upstream bug it
+    works around had been fixed.**
+
+    A test that goes red when its dependency improves is pinning the
+    dependency. The property is the file's letters, and it holds either way:
+    where the detector is wrong the correction fixes it, and where the detector
+    is right the correction is a no-op. Both are asserted below, whichever one
+    this environment is in.
     """
     body = POLISH.encode("cp1250")
     assert len(body) == 58, "the fixture changed; re-measure the row"
 
     from charset_normalizer import detect
-    assert (detect(body) or {}).get("encoding") == "Windows-1252", (
-        "the detector no longer answers Windows-1252 here; re-measure the row")
+    proposed = (detect(body) or {}).get("encoding")
+    assert proposed, "the detector proposed nothing at all for 58 bytes"
 
     decoded = decode_text_file(_write(tmp_path, "pangram.txt", body))
     assert decoded == POLISH
@@ -96,6 +109,16 @@ def test_a_full_length_cp1250_file_keeps_its_polish_letters(tmp_path):
         assert letter in decoded
     # The exact mojibake the row records, gone.
     assert "Za¿ó³æ" not in decoded
+
+    # And the row's lever, asserted against whichever side of it we are on.
+    if dp._canonical_codec(proposed) == dp._canonical_codec("cp1250"):
+        # The library is right here: the correction must not move a right answer.
+        assert dp._more_plausible_alternative(body, proposed) is None
+    else:
+        # The library is wrong here: the correction is what saved the letters.
+        assert dp._canonical_codec(
+            dp._more_plausible_alternative(body, proposed)
+        ) == dp._canonical_codec("cp1250")
 
 
 def test_the_signal_is_the_shape_of_the_output_and_not_the_codec():
@@ -126,9 +149,28 @@ def test_only_a_candidate_the_detector_proposed_can_be_chosen():
     """
     body = POLISH.encode("cp1250")
     ranking = dp._rank_encodings(body)
-    assert dp._canonical_codec("cp1250") in [dp._canonical_codec(n) for n in ranking]
+    canonical = [dp._canonical_codec(n) for n in ranking]
+    assert dp._canonical_codec("cp1250") in canonical
     assert dp._more_plausible_alternative(body, "cp1250") is None  # already best
-    assert dp._more_plausible_alternative(body, "Windows-1252") == "cp1250"
+
+    # `B859`. The concrete `Windows-1252 -> cp1250` correction can only be
+    # asserted where the library still proposes `Windows-1252`: on 3.4.7 the
+    # ranking is `['cp1252', 'cp1250']` and on 3.5.1 it is `['cp1250']`, because
+    # the upstream bug was fixed. The PROPERTY — never an invention — holds on
+    # both, and it is the property this test is named after.
+    if dp._canonical_codec("Windows-1252") in canonical:
+        assert dp._canonical_codec(
+            dp._more_plausible_alternative(body, "Windows-1252")
+        ) == dp._canonical_codec("cp1250")
+    else:
+        assert dp._more_plausible_alternative(body, "Windows-1252") is None
+
+    for codec in ranking:
+        alternative = dp._more_plausible_alternative(body, codec)
+        assert alternative is None or dp._canonical_codec(alternative) in canonical, (
+            f"{codec!r} was corrected to {alternative!r}, which the detector "
+            "never proposed — that is an invention, not a reordering")
+
     # A codec the ranking does not contain: no comparison is possible.
     assert dp._more_plausible_alternative(body, "koi8-r") is None
     assert dp._more_plausible_alternative(body, "not-a-codec") is None
@@ -231,7 +273,12 @@ def test_a_declaration_that_makes_things_worse_is_not_taken(named, label):
     """
     lying = ('<?xml version="1.0" encoding="%s"?><t>' % named).encode() \
         + POLISH.encode("cp1250")
-    assert sniff_text_encoding(lying) == "cp1250", label
+    # `B859`: compared as a CODEC, not as a spelling. `charset-normalizer` 3.5.1
+    # names this codec `windows-1250` and 3.4.7 names it `cp1250`; they are one
+    # codec, `_canonical_codec` is the module's own answer to that, and a test
+    # that compares the label is testing the label (`Law 20`).
+    assert dp._canonical_codec(sniff_text_encoding(lying)) \
+        == dp._canonical_codec("cp1250"), label
 
 
 # ── `Law 1`, swept ──────────────────────────────────────────────────────────
@@ -340,9 +387,18 @@ def test_the_big5_case_is_still_wrong_and_the_margin_is_why():
     ranked = [(m.encoding, float(m.chaos)) for m in from_bytes(body)]
     names = [n for n, _ in ranked]
     assert names[:2] == ["johab", "big5"]
-    # The number the rejected rule would have had to threshold on.
+    # `B859`. This used to assert `0.06 <= margin <= 0.08`, which is a pin on
+    # `charset-normalizer`'s internal score: measured **0.071 on 3.4.7** and
+    # **0.141 on 3.5.1**, the version `requirements.txt` pins. The band is the
+    # `B651` shape — a test may assert that the numbers relate, it may not
+    # assert which one. What the row actually claims is stated instead, and it
+    # is the stronger statement: **the wrong winner scores a perfect zero**, so
+    # no threshold on cleanliness can reach this case at all.
+    assert ranked[0][1] == 0.0, (
+        f"the wrong winner is no longer perfectly clean ({ranked[0][1]}); "
+        "re-measure B402 before ticking it")
     margin = abs(ranked[1][1] - ranked[0][1])
-    assert 0.06 <= margin <= 0.08, margin
+    assert margin > 0.0, margin
 
 
 def test_the_same_big5_text_with_more_bytes_is_still_identified():

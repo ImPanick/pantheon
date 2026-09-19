@@ -87,10 +87,26 @@ def realesrgan_pins() -> list[str]:
     return [s for s in m.group(1).split() if "==" in s]
 
 
-def audit(paths: list[pathlib.Path]) -> dict:
-    """Run pip-audit over the given requirements files and return its report."""
+def audit(paths: list[pathlib.Path], *, no_deps: bool = False) -> dict:
+    """Run pip-audit over the given requirements files and return its report.
+
+    `no_deps` skips dependency resolution, which pip-audit allows only when
+    every requirement is pinned exactly. It exists for the Real-ESRGAN pins —
+    see `audit_all` below for why they cannot be resolved at all.
+
+    **`B862`: `--no-deps` alone does not do it.** Measured with pip-audit
+    2.10.1: `--no-deps -r <file>` still shells out to `pip install --dry-run`,
+    which still builds each sdist's metadata and still resolves the closure —
+    58 packages for one pin, including a 554 MB torch wheel and 553 MB of cuDNN.
+    The flag that actually stops pip being used is `--disable-pip`, and its own
+    help says it "can only be used with hashed requirements files or if the
+    `--no-deps` flag has been provided". The two go together or neither works.
+    With both, the same file audits to exactly its three pins and no download.
+    """
     argv = [sys.executable, "-m", "pip_audit", "--format", "json",
             "--progress-spinner", "off"]
+    if no_deps:
+        argv += ["--no-deps", "--disable-pip"]
     for path in paths:
         argv += ["-r", str(path)]
     proc = subprocess.run(argv, cwd=str(ROOT), capture_output=True, text=True)
@@ -98,6 +114,47 @@ def audit(paths: list[pathlib.Path]) -> dict:
         print(proc.stderr.strip()[-4000:])
         raise SystemExit(f"pip-audit produced no report (exit {proc.returncode})")
     return json.loads(proc.stdout)
+
+
+def audit_all(paths: list[pathlib.Path],
+              realesrgan: pathlib.Path | None) -> dict:
+    """Audit the requirements files, then the Real-ESRGAN pins separately.
+
+    **`B850`, and the project already knew this in another file.**
+    `docker/build-realesrgan-wheels.sh` opens by explaining that `basicsr`,
+    `gfpgan` and `facexlib` — xinntao, last released 2022 — read their version in
+    `setup.py` with `exec(...)` followed by `locals()['__version__']`, and that
+    **PEP 667** makes `locals()` inside a function an independent snapshot on
+    Python 3.13+, so `exec` can no longer mutate it and the read raises
+    `KeyError: '__version__'`. That is why the wheel builder exists.
+
+    pip-audit resolves by asking pip for a dry-run install report, which builds
+    each sdist's metadata — the very step that bug breaks. So handing these
+    three pins to the same resolution as everything else does not produce a
+    finding, it produces `ERROR: Failed to build 'basicsr'` and an audit of
+    **nothing at all**. The first CI run this repository has ever completed
+    failed on exactly that.
+
+    The pins are exact, which is the one condition `--no-deps` requires, and
+    there is nothing to resolve for them anyway: the wheel builder pins the
+    closure by hand. So they are audited by name and version against the
+    advisory database, which is the question being asked, and the other files
+    keep full resolution.
+
+    `B862`: this needs `--disable-pip` as well as `--no-deps`, or pip resolves
+    anyway and the build that cannot happen happens. See `audit` above.
+    """
+    report = audit(paths)
+    if realesrgan is None:
+        return report
+    extra = audit([realesrgan], no_deps=True)
+    merged = dict(report)
+    merged["dependencies"] = (list(report.get("dependencies") or [])
+                              + list(extra.get("dependencies") or []))
+    if report.get("fixes") or extra.get("fixes"):
+        merged["fixes"] = (list(report.get("fixes") or [])
+                           + list(extra.get("fixes") or []))
+    return merged
 
 
 def _ids(vuln: dict) -> set[str]:
@@ -189,6 +246,7 @@ def main() -> int:
         paths = sorted(ROOT.glob("requirements*.txt"))
         pins = realesrgan_pins()
         with tempfile.TemporaryDirectory() as tmp:
+            extra = None
             if pins:
                 extra = pathlib.Path(tmp) / "requirements-realesrgan.txt"
                 extra.write_text(
@@ -196,10 +254,10 @@ def main() -> int:
                     f"{WHEEL_SCRIPT}. Not a file to edit.\n" + "\n".join(pins) + "\n",
                     encoding="utf-8",
                 )
-                paths.append(extra)
             print("auditing: " + ", ".join(
-                p.name if p.is_relative_to(ROOT) else p.name for p in paths))
-            report = audit(paths)
+                [p.name for p in paths]
+                + ([f"{extra.name} (--no-deps)"] if extra else [])))
+            report = audit_all(paths, extra)
 
     failures, suppressed, stale = partition(report, register)
 

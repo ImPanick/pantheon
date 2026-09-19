@@ -110,7 +110,9 @@ Stated here rather than left for you to find in a scan.
 
 ## Publishing A Fork
 
-Before pushing a public fork, run:
+Before pushing a public fork, run these **against a full clone of the repository you are about to
+publish** — not against a working copy seeded from a snapshot. A shallow or re-based clone answers
+a smaller question than the one you are asking, and it answers it in the same words (`B852`):
 
 ```bash
 git status --short

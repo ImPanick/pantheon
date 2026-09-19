@@ -374,6 +374,70 @@ def test_the_reason_basicsr_does_not_fail_is_printed_where_the_failure_is_read(c
     assert "what would change this" in printed
 
 
+def test_the_unresolvable_pins_are_audited_without_pip(monkeypatch, tmp_path):
+    """`B862`. `--no-deps` alone does not stop pip.
+
+    The Real-ESRGAN pins exist because `basicsr`'s `setup.py` cannot run on
+    Python 3.13+ (PEP 667 — `docker/build-realesrgan-wheels.sh` explains it),
+    so handing them to pip-audit's resolver produces `Failed to build 'basicsr'`
+    and an audit of nothing. `B850` added `--no-deps` for that, and measured
+    with pip-audit 2.10.1 it changes nothing on its own: pip still runs
+    `install --dry-run`, still builds the sdist, and still resolves the closure
+    — 58 packages for one pin, a 554 MB torch wheel and 553 MB of cuDNN among
+    them, which is how this was found (the container ran out of disk).
+    `--disable-pip` is the flag that stops pip, and it is only accepted
+    alongside `--no-deps`.
+
+    Asserted on the argv the code builds, not on the file it is written in
+    (`Law 20`).
+    """
+    audit = _load(_AUDIT, "audit_argv")
+    seen = {}
+
+    class _Proc:
+        returncode = 0
+        stdout = '{"dependencies": []}'
+        stderr = ""
+
+    def fake_run(argv, **kwargs):
+        seen["argv"] = argv
+        return _Proc()
+
+    monkeypatch.setattr(audit.subprocess, "run", fake_run)
+
+    req = tmp_path / "requirements-realesrgan.txt"
+    req.write_text("basicsr==1.4.2\n", encoding="utf-8")
+
+    audit.audit([req], no_deps=True)
+    assert "--no-deps" in seen["argv"]
+    assert "--disable-pip" in seen["argv"], (
+        "pip-audit will resolve — and build — anything `--no-deps` alone is "
+        "given; `--disable-pip` is what stops it")
+
+    # And the files that CAN be resolved keep full resolution.
+    audit.audit([req])
+    assert "--no-deps" not in seen["argv"]
+    assert "--disable-pip" not in seen["argv"]
+
+
+def test_the_realesrgan_pins_go_through_the_no_pip_path(monkeypatch, tmp_path):
+    """`audit_all` is what CI calls, and it is where the two paths are chosen."""
+    audit = _load(_AUDIT, "audit_all_argv")
+    calls = []
+
+    def fake_audit(paths, *, no_deps=False):
+        calls.append((sorted(p.name for p in paths), no_deps))
+        return {"dependencies": []}
+
+    monkeypatch.setattr(audit, "audit", fake_audit)
+    extra = tmp_path / "requirements-realesrgan.txt"
+    extra.write_text("basicsr==1.4.2\n", encoding="utf-8")
+    audit.audit_all([tmp_path / "requirements.txt"], extra)
+
+    assert calls == [(["requirements.txt"], False),
+                     (["requirements-realesrgan.txt"], True)]
+
+
 def test_the_realesrgan_pins_are_read_from_the_build_script_not_copied():
     """basicsr/gfpgan/facexlib are installed into every image and named in no
     requirements file. The audit reads them where they are actually pinned, so

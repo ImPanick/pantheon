@@ -51,6 +51,18 @@ jobs:
             arch: arm64
             runner: ubuntu-24.04-arm
     steps:
+      - name: Lowercase the image name
+        # `B853`. GHCR refuses a reference whose repository part has a capital
+        # in it — `failed to parse ref "ghcr.io/ImPanick/pantheon": repository
+        # name must be lowercase` — and `github.repository` carries the owner's
+        # capitalisation exactly as they typed it. Actions expressions have no
+        # `lower()`, so the only place this can happen is a shell step writing
+        # to `$GITHUB_ENV`, which overrides the workflow-level `env:` for every
+        # step after it in this job.
+        #
+        # Derived rather than hardcoded: a fork of this fork has a different
+        # owner, and a literal here would send its images to ours.
+        run: echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
@@ -92,6 +104,18 @@ jobs:
       contents: read
       packages: write
     steps:
+      - name: Lowercase the image name
+        # `B853`. GHCR refuses a reference whose repository part has a capital
+        # in it — `failed to parse ref "ghcr.io/ImPanick/pantheon": repository
+        # name must be lowercase` — and `github.repository` carries the owner's
+        # capitalisation exactly as they typed it. Actions expressions have no
+        # `lower()`, so the only place this can happen is a shell step writing
+        # to `$GITHUB_ENV`, which overrides the workflow-level `env:` for every
+        # step after it in this job.
+        #
+        # Derived rather than hardcoded: a fork of this fork has a different
+        # owner, and a literal here would send its images to ours.
+        run: echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false

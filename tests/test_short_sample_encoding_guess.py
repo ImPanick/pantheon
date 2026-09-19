@@ -128,13 +128,26 @@ def test_a_two_word_cp1251_file_is_never_decoded_as_big5():
     assert len(head) == 11
 
     from charset_normalizer import detect
-    assert (detect(head) or {}).get("encoding") == "Big5", (
-        "the detector no longer answers Big5 here; re-measure the row"
-    )
+    proposed = (detect(head) or {}).get("encoding")
+    # `B859`. This used to REQUIRE the detector to answer `Big5` before checking
+    # anything, which is an assertion about `charset-normalizer` and not about
+    # this product. Measured: `Big5` on 3.4.7, `johab` on 3.5.1 — the version
+    # `requirements.txt` pins — and the first CI run that ever completed went
+    # red on the precondition while the rule underneath it worked perfectly.
+    #
+    # The rule is `B201`'s floor: eleven bytes is below it, so whatever
+    # multi-byte codec the detector proposed is not taken. Which one it proposed
+    # is the library's business. What is asserted is that the product never
+    # hands back a decoding that is not the text.
+    assert proposed is None or len(head) < dp._MIN_MULTIBYTE_SAMPLE
 
     answer = sniff_text_encoding(head)
     assert answer is None or head.decode(answer, errors="replace") == SHORT_RUSSIAN
     assert answer != "Big5"
+    if proposed is not None:
+        assert answer is None or dp._canonical_codec(answer) != dp._canonical_codec(proposed), (
+            "a sub-floor multi-byte guess was taken after all"
+        )
 
 
 def test_the_refusal_says_which_kind_of_refusal_it_is():

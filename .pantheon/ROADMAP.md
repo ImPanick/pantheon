@@ -80,8 +80,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P17 | The network the agent is hosted on | 14 | 0 | 0 | **14** |
 | P18 | One button, and it links | 9 | 0 | 0 | **9** |
 | P19 | The proof ledger | 8 | 0 | 0 | **8** |
-| Backlog | Bugs and hardening found in flight | 428 | 188 | 0 | **240** |
-| **Total** | | **810** | **269** | **9** | **532** |
+| Backlog | Bugs and hardening found in flight | 441 | 188 | 0 | **253** |
+| **Total** | | **823** | **269** | **9** | **545** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -244,8 +244,37 @@ they are for.*
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
 
+### The first CI run that ever completed, and what it found
+`c48294d..HEAD`. **823 tracked, 545 done. 0 new phase rows, 0 regressions. `B850`, `B851`, `B852`, `B853`,
+`B854`, `B855`, `B856`, `B857`, `B858`, `B859`, `B860`, `B861` and `B862` closed; thirteen
+defects in two days of pipeline, every one of them invisible to a local gate that had been
+passing all along.** The repository went public, the billing block lifted
+(`B526`), and CI executed a step for the first time. `pip-audit` had been auditing nothing
+because three pins in the set cannot build on this interpreter (`B850`); `gitleaks` found four
+fake secrets, three of them inside the tests that prove this product redacts secrets (`B851`);
+my own secret sweep had covered 186 commits of a 2,202-commit published history, because it ran
+on a snapshot import rather than a clone (`B852`); and the container image had **never once been
+pushed**, because GHCR refuses the capital in the owner's name — which was also what kept
+`B461`'s CRLF finding undiagnosable (`B853`).
+**Then the two that were about CI itself.** The `Law 16 — no egress on a fresh install` job had
+never run a test: collection died in `conftest.py` on a hand-maintained stub list missing
+`starlette.routing`, and had it collected, the socket guard would have been watching a `MagicMock`
+(`B854`). The `wiring-ratchet` job installed nothing, died at step three on `import httpx`, and
+**twenty-two of its twenty-five checkers had therefore never run in CI at all** (`B855`) — so
+every ratchet in this repository had exactly two CI observations behind it, and the rest was a
+developer's machine. Rule eight of `check-ci-contract.py` is the general form, and the gate's own
+footer had been saying the true thing all along: *this run is not evidence about CI's*.
+**And then the suite ran, for eighteen minutes, and failed twenty-three times without finding a
+single defect in the product** (`B856`). Every one was a test that had become a measurement of the
+container: the dependency-gap footer asserting the environment is incomplete (`B857`), office
+fixtures needing an optional dependency nothing installs (`B858`), seven encoding tests pinning
+`charset-normalizer`'s bugs and going red when 3.5.1 fixed them (`B859`), and a test asserting the
+fork point is unreachable — which failed by finding it, and closed half of `B349` with the
+commit's own timestamps (`B860`). The tree is now green in a clean venv holding exactly
+`requirements.txt` and in this container with its 19 of 31.
+
 ### Five phases finished, and the day stopped counting the wrong population
-`c2d8669..HEAD`. **810 tracked, 532 done. 0 new phase rows, 0 regressions. `P0-17`, `P3-20`,
+`c2d8669..HEAD`. **814 tracked, 536 done. 0 new phase rows, 0 regressions. `P0-17`, `P3-20`,
 `P3-21`, `P6-08`, `P14-06`–`P14-08`, `P15-08`, `P15-11` and all three `P17` rows closed;
 `P16-20` parked under a standing ruling; `B510` disclosed AI use across three surfaces at the
 owner's request; twenty-two backlog rows filed, and `B413` closed by one of them.**
@@ -320,6 +349,21 @@ bare `except` that its two sibling legs log from. Every `DELETE` on the research
 `.catch(() => {})`, so its toast counted candidates rather than deletions and seven "deleted"
 reports came back on reload. And `_is_casual_low_signal` exists as **two byte-identical copies**,
 AST-hash proven, in two files.
+**And then the repository went public and CI ran for the first time in the project's history.**
+`B526` was the account, not the workflows: nine jobs that had refused to start for months began
+executing steps. Two passed, two failed for real reasons, and both real reasons were worth having.
+`pip-audit` had been unable to audit **anything** because three Real-ESRGAN pins cannot be built on
+Python 3.13+ — a bug this repository documents carefully in `docker/build-realesrgan-wheels.sh` and
+which its other consumer did not know (`B850`). `gitleaks` scanned 2,202 commits and found four
+fake secrets, three of them inside the tests that prove this product redacts secrets (`B851`).
+**And it caught me**: `P10-11`'s sweep said *"all 186 commits"*, which is true of this container's
+clone and false of the published repository, because the clone begins at a snapshot import rather
+than a root. The conclusion held; the method did not (`B852`). Four things in two days that CI
+caught and a local run could not — which is the entire argument for having it. The fourth was the
+one that pairs: **the container image has never once been pushed**, because GHCR refuses
+`ghcr.io/ImPanick/pantheon` for its capital letters — and `B461` found that every image ever built
+carried CRLF Python source. Each defect made the other undiagnosable, and only a run that got as
+far as the push could tell them apart (`B853`).
 **The owner said the tracked items kept growing while progress made no dent, and they were
 right for a reason the counts hid.** The tracker holds two populations: **phase rows are the
 project**, backlog rows are defects found while building it. Six waves had closed roughly a
@@ -5767,9 +5811,21 @@ the only lane through which the theme file gets touched.
   among them. Anchored, widened to the shapes a 2026 leak actually takes (`ghp_`, `github_pat_`,
   `AKIA`, PEM headers), and pinned by `tests/test_the_secret_sweep_can_be_read.py`, which runs the
   document's own regexes against strings that are secrets and strings that are not.
-  `Verify:` the sweep, run as written, produces output a person can read, and a fork owner who
-  runs it before publishing gets a true answer about their history rather than their checkout.
-  — run at the owner's word that the repository was going public — agent:`integrator`
+  **CORRECTION 2026-09-19, and it is the important line in this row.** *"All 186 commits"* is a
+  true statement about **this container's clone and not about the published repository.** The
+  clone's first commit is `fff72ec baseline: cybertooth c3b2120` — a snapshot import, not the
+  root — so it carries 186 commits of this fork's own work and none of the upstream history
+  underneath. The repository on GitHub has **2,202**. The first CI run the project ever completed
+  scanned all of them with `gitleaks` and reported **four** findings, every one of them a fixture
+  (`B851`), so the conclusion survived — but it survived by luck, not by the measurement. The
+  sweep was taken on the artefact in front of me rather than the artefact being asked about, which
+  is the defect class this tracker exists for, and it was reported to the owner as coverage of the
+  published history. `B852`.
+  `Verify:` the sweep, run as written, produces output a person can read; a fork owner who runs it
+  before publishing gets a true answer about **the history they are about to publish**, which
+  means it must be run where that history is; and the number of commits it says it scanned is the
+  number the published repository has. — run at the owner's word that the repository was going
+  public, corrected the next morning by CI — agent:`integrator`
 - [ ] **P10-12** Write the release notes. Lead with the Odysseus credit. Enumerate the breaking renames: env vars, storage keys, vector collections, cookie, CLI scripts, systemd unit, bundle id.
 
 ---
@@ -17462,3 +17518,322 @@ this is the same thing happening to the row that corrected the store.
   `Verify:` `grep -c '^```' .pantheon/ROADMAP.md` is even, and a direct count of `B`/`H` rows
   matches what `check-tracker.py` reports. — found at the `P2`/`P9`/`P13` merge —
   agent:`integrator`
+
+- [x] **B850** **`pip-audit` could not audit anything, because three pins in the set cannot be
+  built — and this repository already knew why, in another file.** Found 2026-09-19 by the first CI
+  run that ever executed a step.
+  `docker/build-realesrgan-wheels.sh` opens by explaining it: `basicsr`, `gfpgan` and `facexlib`
+  (xinntao, last released 2022) read their version in `setup.py` with `exec(...)` and then
+  `locals()['__version__']`, and **PEP 667** makes `locals()` inside a function an independent
+  snapshot on Python 3.13+, so `exec` can no longer mutate it and the read raises
+  `KeyError: '__version__'`. The whole script exists to patch that and build wheels from the
+  patched source.
+  `.pantheon/audit-dependencies.py` hands those same three pins to `pip-audit`, which resolves by
+  asking pip for a dry-run install report — the step that builds each sdist's metadata, which is
+  the step the bug breaks. So the job did not report a vulnerability; it reported
+  `ERROR: Failed to build 'basicsr'` and audited **nothing at all**, including the four
+  requirements files that resolve perfectly well. A blocking security job that fails to run is
+  indistinguishable from one that runs and finds nothing, and for months nobody could tell,
+  because no job started.
+  **`Law 13` in its plainest form**: one fact, written down carefully in one file, and the other
+  consumer of the same three pins did not know it. The pins are exact, which is the one condition
+  `--no-deps` requires, and there is nothing to resolve for them anyway — the wheel builder pins
+  the closure by hand. They are audited by name and version against the advisory database, which
+  is the question being asked, and the other four files keep full resolution.
+  `Verify:` the dependency-review job completes and reports findings rather than a build error,
+  and `PYSEC-2026-1215` against `basicsr` 1.4.2 — the accepted risk `SECURITY.md` already
+  documents — still appears in its output. — found by the first completed CI run —
+  agent:`integrator`
+
+- [x] **B851** **The secret scanner's four findings were all fake secrets on purpose, and three of
+  them live inside the tests that prove this product redacts secrets.** Found 2026-09-19 by the
+  same run.
+  `gitleaks` scanned 2,202 commits in 6.25 seconds and flagged
+  `tests/test_diagnostic_bundle.py:37` and `:39` (`ghp_ABCDEFGHIJKLMNOP1234`,
+  `sk-proj-AAAABBBBCCCCDDDDEEEEFFFF` — two rows of a table whose every entry is an input the
+  bundle redactor must remove), `tests/test_a_failure_that_does_not_say_why.py:230`
+  (`PATIENT-RECORD-8891-Jane-Doe`, asserted absent from the output), and
+  `library/ecc/skills/api-design/SKILL.md:307` (`X-API-Key: sk_live_abc123`, a worked example
+  inside a fenced code block in a bundled skill). **The scanner was working. The allowlist was
+  absent.**
+  An allowlist is also the easiest place in a repository to hide a real credential, so the shape
+  of this one is the deliverable. Two rules, both driven off the file by
+  `tests/test_the_secret_sweep_is_allowlisted_honestly.py`: **no path allowlists**, because
+  silencing `tests/` means a real key pasted into a test while debugging is never reported again
+  and a test is exactly where somebody pastes one; and **no commit fingerprints**, because the
+  transfer procedure re-authors commits, so a fingerprint changes for reasons unrelated to what it
+  pins — the ninth-instance shape `B520` names. Each entry is one exact literal, must carry a
+  comment saying why it is not a credential, must still appear somewhere in the tree (an entry for
+  a string nobody writes is a hole kept open for nothing), and must carry one of the markers that
+  make the current four obviously fake — a sequential alphabet, a run of repeated letters, a test
+  persona, or `abc123`.
+  *The first version of that test read the whole config and asserted the word `paths` was absent —
+  and went red on its own explanatory comment, which says "no path allowlists". A predicate about
+  prose is not a predicate about configuration (`Law 20`), fixed before it shipped, and recorded
+  because it is the smallest instance of that law anybody has found.*
+  `Verify:` the secret scan passes; adding a `paths` or `commits` allowlist to `.gitleaks.toml`
+  fails the suite; and an allowlisted literal that stops appearing in the tree fails it too.
+  — found by the first completed CI run — agent:`integrator`
+
+- [x] **B852** **A measurement taken on the artefact in front of me rather than the artefact being
+  asked about — mine, reported to the owner as fact.** Found 2026-09-19 when `gitleaks` said it had
+  scanned **2,202 commits** and `P10-11`'s row said 186.
+  Both numbers are right about different repositories. This container's clone begins at
+  `fff72ec baseline: cybertooth c3b2120`, a snapshot import rather than a root, so `git rev-list`
+  here returns 186 — this fork's own work and nothing underneath it. The published repository
+  carries the full upstream history and has 2,202. `P10-11` is the row that says *run the fork
+  checklist before the first public push*, and its whole point is the history somebody is about to
+  publish. I ran it against a clone that does not contain that history, and said so to the owner in
+  those words.
+  **The conclusion held and that is not the same as the method holding.** CI's scan of all 2,202
+  found four, every one a fixture (`B851`), so nothing leaked either way. But the row would have
+  read as green on a repository where the upstream history did contain something, and nobody
+  reading it would have known which question had been answered.
+  **The general rule, since this is the fourth thing in two days that CI caught and local runs
+  could not**: a check about a *published* artefact has to run where the artefact is published.
+  Everything the gate says is about this container, and the gate's own footer has said so all
+  along — this is the first time the gap was load-bearing rather than conservative.
+  `Verify:` `P10-11`'s row states the commit count of the published repository and names where the
+  sweep was run; and the checklist in `SECURITY.md` says to run it against a full clone, because a
+  fork owner reading it has the same trap available.
+  — found by the first completed CI run — agent:`integrator`
+
+- [x] **B853** **The container image has never once been pushed, and it was hiding `B461`.** Found
+  2026-09-19 by the first CI run that ever executed a step.
+  The arm64 build succeeded — 31.7 seconds of layers exported, manifest and config written — and
+  died at the push: `failed to parse ref "ghcr.io/ImPanick/pantheon": invalid reference format:
+  repository name (ImPanick/pantheon) must be lowercase`. `github.repository` carries the owner's
+  capitalisation exactly as they typed it, GHCR refuses a capital in the repository part, and
+  Actions expressions have no `lower()` — so the workflow-level `env:` could never have fixed it.
+  Only a shell step writing to `$GITHUB_ENV` can, and `$GITHUB_ENV` affects only the steps after
+  the one that writes it, which is why both jobs get the step first rather than one job getting
+  it at all.
+  **The pairing is the interesting part.** `B461` found that every image ever built on the Windows
+  deployment host contained CRLF Python source, because `docker build` copies the working tree
+  rather than the index. That defect was real and shipped in every image — and **no image had ever
+  reached a registry**, because this one stopped it. Two defects, each of which made the other
+  undiagnosable: an unpublished image cannot be found to be broken, and a broken image nobody
+  publishes raises no alarm. It took a CI run that actually completed to separate them.
+  Derived, not hardcoded: `${GITHUB_REPOSITORY,,}` rather than a literal, because a fork of this
+  fork has a different owner and a literal would send its images here.
+  `Verify:` the docker-publish workflow completes and an image appears at
+  `ghcr.io/<owner-lowercased>/pantheon`; and a job that reads `IMAGE_NAME` before lowercasing it
+  fails the suite. `Depends:` nothing. `Unblocks:` the first honest test of `B461`'s fix, which is
+  an image somebody can pull and check. — found by the first completed CI run —
+  agent:`integrator`
+
+- [x] **B854** **The Law 16 egress gate had never run a test, and could not have observed the
+  thing it exists to observe.** Found 2026-09-19 by the first CI run that ever completed.
+  CI's `Law 16 — no egress on a fresh install` job ran `pip install pytest` and then
+  `pytest tests/test_no_egress_on_boot.py tests/test_self_hosted_defaults.py`. It failed in eight
+  seconds, every time, since the day it was written, and the failure was not in a test: collection
+  died in `tests/conftest.py`, on `import core.models`, on `core/middleware.py`'s
+  `from starlette.routing import get_route_path`, with **`'starlette' is not a package`**.
+  `conftest.py` stands in for an absent dependency by putting a `MagicMock` into `sys.modules`
+  under each of nineteen dotted names **written out by hand**. `starlette.routing` is the
+  twentieth. That is `Law 13` in its purest form — but the mechanism is worse than the omission:
+  `unittest.mock` raises `AttributeError` for every dunder it does not implement, so such a stub
+  has no `__path__` and no `__spec__`, and the import machinery reads **both off the parent**
+  before it consults any finder. The error message was therefore a sentence about the stub, not
+  about the missing dependency — "starlette is not a package" when what is true is "starlette is
+  not installed".
+  **And had it collected, it would still have proved nothing.** The guard sits at `socket.connect`
+  and `getaddrinfo`, underneath an `httpx` that in that environment would itself have been a
+  `MagicMock`. A mock does not open sockets. The job could have passed green while reaching the
+  network, or failed red while reaching nothing, and neither outcome would have been evidence.
+  Two fixes, and they are different fixes. The stubs became real packages — a `ModuleSpec`, an
+  empty `__path__` — and a `sys.meta_path` finder, appended last and armed only for roots this
+  file already found missing, manufactures whatever is asked for beneath them; the hand list stays,
+  because those names must exist **eagerly**, before a test module's own module-scope stub can win
+  the race, and the finder closes the class the list opens. Separately the job now installs
+  `requirements.txt`: **a fresh install is not an install with no dependencies.** It is what
+  `pip install -r requirements.txt` produces with nobody having linked anything yet, which is
+  exactly the state `Law 16` makes a claim about.
+  `Verify:` `tests/test_an_absent_dependency_is_a_package.py` — eight tests that drive the finder
+  rather than read conftest (`Law 20`), including the old shape failing the old way and the
+  no-op property when the dependency is really installed; and the CI job runs 24 tests instead of
+  0. `Depends:` nothing. `Unblocks:` `Law 16` having any CI evidence at all.
+  — found by the first completed CI run — agent:`integrator`
+
+- [x] **B855** **Twenty-two of CI's twenty-five checker steps had never run.** Found 2026-09-19 by
+  the first CI run that ever completed.
+  The `wiring-ratchet` job installs nothing and runs twenty-five steps. Step three is
+  `check-tool-surface.py`, which does `import src.agent_tools` inside `main()` — deliberately, to
+  break a circular import, and deliberately an import rather than a regex, because a register you
+  read with a regex is a register you are guessing about (`Law 20`). That import reaches `httpx`
+  four modules down. `ModuleNotFoundError`, seven seconds, job over. `check-mcp-schemas.py` and
+  the retrieval eval are the same shape; the other twenty-two steps are stdlib-only and were
+  simply never reached.
+  So the checker suite this project measures itself with — the wiring ratchet, the auth map, the
+  silent-failure count, the outbound census, every ratchet whose number has been moved this month
+  — had CI evidence for exactly **two** of its members, `check-tracker` and `check-ci-contract`.
+  Everything else was evidence from `release-gate.py` on a developer's machine, which is precisely
+  what the gate's own footer has been printing all along: *this run is not evidence about CI's*.
+  The job is named `Wiring ratchet (check-wiring.py --max 25)` after the one checker that was
+  never the problem.
+  The fix is `pip install -r requirements.txt`, and the rule is rule eight of
+  `check-ci-contract.py`: **a job whose steps hand a script to Python that imports this product
+  must install this product's dependencies.** Asked of the script by parsing it, not of a list
+  kept in the checker; scoped to run-blocks that actually invoke an interpreter, because
+  `docker-publish.yml` reads `APP_VERSION` out of `src/constants.py` with `grep` and a rule that
+  cannot tell grepping from running gets turned off. The alternative — teaching the three
+  importing checkers to fail soft — buys a fast job that proves less than it claims; the whole
+  point of them is that they **call** the thing.
+  `Verify:` `tests/test_a_ci_job_installs_what_it_imports.py` — nine tests, including the shipped
+  workflow rebuilt in `tmp_path` and measured to fail the rule, and the same workflow with the
+  install line passing it; and all 25 steps run green against a clean venv holding exactly
+  `requirements.txt`. `Depends:` nothing. `Unblocks:` every ratchet in this repository having a
+  CI observation behind it for the first time. — found by the first completed CI run —
+  agent:`integrator`
+
+- [x] **B856** **Twenty-three tests assert properties of the machine they were written on.** Found
+  2026-09-19 by the first CI run that ever completed.
+  `Python tests (pytest)` ran for eighteen minutes and failed with twenty-three failures, and not
+  one of them was a defect in the product. Every one was a test that had quietly become a
+  measurement of **this container**: 19 of 31 declared dependencies, `charset-normalizer` 3.4.7
+  against a pinned 3.5.1, `markitdown` present though nothing declares it core, and a clone that
+  begins at a snapshot import with no upstream history in it. Four different shapes of the same
+  mistake, and all four passed here every single day.
+  The class is not "the tests are wrong". It is that **a test whose subject is the environment
+  cannot fail in the environment it describes**, so it never fails until somebody runs it
+  somewhere else — and until 2026-09-19 nobody ever had. `B857`–`B860` are the four instances, each
+  fixed in the direction of the property rather than the reading:
+  a footer that speaks whether or not something is missing; an optional dependency that skips
+  rather than fails; a codec compared as a codec rather than as a spelling; and a claim confirmed
+  against the commit wherever the commit can be reached.
+  `Verify:` the same tree, run in a clean venv holding exactly `requirements.txt` **and** in this
+  container with its 19 of 31, green in both. `Depends:` nothing. `Unblocks:` a suite result that
+  means the same thing on two machines. — found by the first completed CI run — agent:`integrator`
+
+- [x] **B857** **The run that covered the whole product was the only run that failed.** Found
+  2026-09-19 by the first CI run that ever completed.
+  `B325` prints a footer naming every declared dependency this environment does not satisfy, so a
+  reader of a green run knows which product it is evidence about. Three of its tests asserted that
+  the footer **had something to say** — `assert named`, `assert len(gaps) >= 10`, `assert "B325:
+  this environment does not satisfy requirements.txt" in stdout`. In CI, which installs
+  `requirements.txt` exactly, there are no gaps, the footer correctly says nothing, and all three
+  went red **for the environment being correct**.
+  Two fixes. The absence is now **crafted** — the reporter is driven against a requirement naming a
+  distribution that cannot exist, which tests the reporter in every environment (`Law 20`) — and
+  the real installed set is still measured, as *agreement* rather than as a quota: every name the
+  report calls NOT INSTALLED genuinely has no distribution, which holds at 19 of 31 and at 31 of
+  31. And the footer now **speaks when the environment is complete**: *"All 31 declared core
+  dependencies are installed at their declared versions — this run is evidence about the whole
+  product."* A footer that only appears on a shortfall cannot be told apart from a footer that is
+  broken, and the run worth saying so about is precisely the complete one.
+  `Verify:` the file is green in a clean venv holding exactly `requirements.txt` and in a container
+  holding 19 of 31, and the end-to-end subprocess test asserts whichever sentence is correct for
+  the machine it is on. `Depends:` nothing. `Unblocks:` `B856`. — found by the first completed CI
+  run — agent:`integrator`
+
+- [x] **B858** **The suite failed a machine for the configuration the suite documents as
+  supported.** Found 2026-09-19 by the first CI run that ever completed.
+  Twelve tests in `test_one_office_register_across_both_doors.py` drive real LibreOffice-produced
+  `.epub`, `.pptx`, `.xls` and `.xlsx` fixtures through the mailbox and the composer, and they
+  need `markitdown` and `python-docx` — both of which live in `requirements-optional.txt`, which
+  nothing installs by default. The message they printed on failure was the product's own correct
+  banner: *"Office/EPUB document extraction requires markitdown."* The file already contains a
+  `_without_markitdown` helper and a whole section testing the absent-dependency branch; what it
+  did not have was a way to notice that the dependency really was absent.
+  Asked of the interpreter rather than of a list of environments — `find_spec`, the same question
+  the product asks. The skip is **per format, not per sweep**: `.doc` and `.odt` have bundled
+  pure-Python readers (`B102`) and keep running, and the `Law 16` socket test now drives whichever
+  formats this machine can open and asserts it drove at least one, so the law is never silently
+  untested. The `both sides of one condition` gap test keeps its absent half unconditionally — that
+  half needs no dependency to prove, and it is the half the file exists for.
+  Not fixed by installing `requirements-optional.txt` in CI: it carries `faster-whisper` and
+  `kokoro`, which is a torch-scale install for four file formats. A contributor who installed only
+  `requirements.txt` must get a green suite, which is the whole reason those imports are guarded.
+  `Verify:` 35 passed with the optional dependencies present; 24 passed and 11 skipped with a
+  reason without them. `Depends:` nothing. `Unblocks:` `B856`. — found by the first completed CI
+  run — agent:`integrator`
+
+- [x] **B859** **Seven tests pinned a third-party library's bugs, and went red when it fixed
+  them.** Found 2026-09-19 by the first CI run that ever completed.
+  `B280`'s premise is a measurement: *the 58-byte cp1250 Polish pangram is answered **Windows-1252**
+  and arrives as `Za¿ó³æ gêœl¹ jaŸñ`*. On `charset-normalizer` **3.5.1** — the version
+  `requirements.txt` pins — the detector answers `windows-1250` and is simply right. The bug the
+  row works around **has been fixed upstream**, and seven tests failed for it, six of them on a
+  precondition asserting the library still misbehaves. This container holds 3.4.7, which is how the
+  premise stayed true here for a month while the product shipped a pin it had never been measured
+  against.
+  Four shapes, four corrections. A precondition that required the library to be wrong became a
+  branch that asserts the product is right either way — where the detector errs the correction
+  fixes it, where the detector is right the correction is a no-op, and both are asserted. A
+  `sniff_text_encoding(...) == "cp1250"` comparison became `_canonical_codec(...)` on both sides,
+  because 3.5.1 names that codec `windows-1250`, 3.4.7 names it `cp1250`, **they are one codec**,
+  and the module already owns that answer — a test that compares the label is testing the label
+  (`Law 20`). A concrete `Windows-1252 -> cp1250` correction became conditional on the library
+  still ranking `Windows-1252` at all, with the property it is named for — *a reordering, never an
+  invention* — asserted over every codec in the ranking instead. And `assert 0.06 <= margin <=
+  0.08` on `charset-normalizer`'s internal chaos score (0.071 on 3.4.7, **0.141** on 3.5.1) became
+  the stronger statement the row was actually making: **the wrong winner scores a perfect zero**,
+  so no threshold on cleanliness reaches the Big5/johab case at all. That is `B651`'s rule applied
+  to a dependency: a test may assert that the numbers relate, it may not assert which one.
+  `Verify:` 70 passed on 3.5.1 in a clean venv and 70 on 3.4.7 here — the same file, the same
+  assertions, two versions of the library it is about. `Depends:` nothing. `Unblocks:` `B856`; and
+  `B402` now has a second data point for the Big5 margin. — found by the first completed CI run —
+  agent:`integrator`
+
+- [x] **B860** **A test asserted the absence of evidence, and failed the day the evidence
+  appeared.** Found 2026-09-19 by the first CI run that ever completed.
+  `B349` has been open on the owner since 2026-09-16 because the fork date is stated two ways and
+  `b4d1293` *"is not reachable in this worktree"*. A test held that line honestly —
+  `test_the_fork_point_is_still_unreachable_from_here`, with instructions in its own docstring:
+  *"If this ever starts passing, `git show` the commit and give the owner a date instead of a
+  choice."* CI checks out with `fetch-depth: 0`, all 2,285 commits, and the commit was there.
+  **So the instructions were followed.** `b4d12932a953b3cdfc745b3525c7ecd5dffd8b3c`, authored
+  `2026-08-20T05:06:22-06:00`, committed `2026-08-20T13:06:22+02:00` — the same calendar day by
+  both timestamps, in both timezones and in UTC — with the subject `fix(agent): drop the empty
+  assistant turn from an approved-action replay (#6124)`, matching `FORK_POINT_SUBJECT` to the
+  character. **`FORK_POINT_DATE = "2026-08-20"` is confirmed**, and `claims.py` now carries the
+  commit's own timestamps beside it instead of a note saying neither date can be checked.
+  The test became the check it promised to be: where the history reaches the commit it compares
+  the claimed date and subject against it, and where it does not — a shallow clone, or this
+  container, whose history begins at a snapshot import — the label stands. Three companion tests
+  drive the reachable branch against this repository's own `HEAD` so the branch CI runs is a branch
+  this container can be sure of (`Law 20`), including a wrong date and a wrong subject both failing.
+  **`B349` stays open**, and what it is open *for* has narrowed: not the date, which is now evidence,
+  but the §5(a) wording — *cloned* versus *forked* on `NOTICE`, `CREDITS.md` and `CHANGELOG.md`, and
+  whether the commit date belongs on that surface at all.
+  `Verify:` `test_a_reachable_fork_point_is_confirmed_against_the_commit` and its two negatives run
+  everywhere; the real branch runs on CI. `Depends:` nothing. `Unblocks:` half of `B349`.
+  — found by the first completed CI run — agent:`integrator`
+
+- [x] **B861** **The test for "CI does not lie about itself" carried a literal `7`.** Found
+  2026-09-19 by the suite run that verified `B855`.
+  `test_the_checker_passes_on_this_tree_and_says_what_it_looked_at` asserted `"7 rules" in
+  stdout`. Adding rule eight — the one that found twenty-two checkers had never run — turned it
+  red, and the red said nothing about the rule: it said the header now prints a different number.
+  That is the `B651` shape, eleventh instance: **a test may assert that two numbers agree; it may
+  not carry one of them.** The count is now read out of the checker's own `rules = [...]` by AST,
+  so rule nine needs no edit here, and a rule DELETED still fails — both the header comparison and
+  a floor that says seven were there before this.
+  `Verify:` 42 tests green with eight rules and with the count derived; the floor fails if a rule
+  is removed. `Depends:` `B855`. `Unblocks:` nothing. — found while verifying `B855` —
+  agent:`integrator`
+
+- [x] **B862** **`B850`'s fix did not work, and it took running it to find that out.** Found
+  2026-09-19 by running the audit rather than reading it.
+  `B850` found that `pip-audit` was auditing **nothing** — `basicsr`'s `setup.py` reads its version
+  through `exec` plus `locals()`, PEP 667 broke that on Python 3.13+, the sdist metadata build
+  fails, and pip-audit resolves nothing and reports nothing. The fix was `--no-deps` for the
+  Real-ESRGAN pins, and `--no-deps` is exactly the right idea. **It does nothing on its own.**
+  Measured with pip-audit 2.10.1: `--no-deps -r <file>` still shells out to
+  `pip install --dry-run`, still builds each sdist's metadata, and still resolves the whole
+  closure — **58 packages for one pin**, including a 554 MB torch wheel and 553 MB of cuDNN. This
+  container ran out of disk fetching them, which is the only reason it was caught before the push;
+  on CI it would have failed again with the same `KeyError: '__version__'` and I would have called
+  `B850` closed on a run nobody had taken.
+  `--disable-pip` is the flag that stops pip, and its own help says it *"can only be used with
+  hashed requirements files or if the `--no-deps` flag has been provided"* — the two go together or
+  neither does anything. With both, the same file audits to exactly its three pins, finds
+  `PYSEC-2026-1215` against `basicsr==1.4.2`, and downloads nothing.
+  **The lesson is `Law 20` at one remove.** `B850` was verified by reading the flag's documentation
+  and by the gate going green — and the gate does not run this job. A fix for a CI-only failure is
+  not verified until it is run.
+  `Verify:` two tests assert the argv the code builds — `--no-deps` and `--disable-pip` together on
+  the unresolvable file, neither on the resolvable ones — and `audit_all` routes the Real-ESRGAN
+  pins down the no-pip path; and the audit run end to end reports the pins instead of erroring.
+  `Depends:` `B850`. `Unblocks:` the `Dependency review` workflow going green. — found by running
+  the thing — agent:`integrator`

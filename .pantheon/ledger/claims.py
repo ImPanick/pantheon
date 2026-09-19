@@ -65,13 +65,32 @@ FORK_POINT = "b4d1293"
 # **2026-08-27** (`fff72ec baseline: cybertooth c3b2120`) — three days after the
 # clone and seven after the commit.
 #
-# **Neither can be confirmed from a worktree**: `b4d1293` is not reachable here
-# (`git cat-file -t b4d1293` -> *Not a valid object name*), so this records what
-# each date is evidence *of* rather than choosing between them. The row stays
-# open for the owner; what is fixed is that the two no longer look like one
-# number that disagrees with itself. `check-ledger.py` compares `FORK_CLONE_DATE`
-# with `NOTICE`'s *Date of fork* so the §5(a) surface and the ledger cannot part
-# company again.
+# **`FORK_POINT_DATE` is now confirmed against the commit itself** (`B860`).
+# Until 2026-09-19 this block said neither date could be checked from a worktree,
+# because `git cat-file -t b4d1293` answers *Not a valid object name* in the
+# container this project is developed in — a clone that begins at
+# `fff72ec baseline: cybertooth c3b2120`, a snapshot import with no upstream
+# history in it. That was a fact about one clone. The repository went public, CI
+# checked out with `fetch-depth: 0`, and the fork point was there all along:
+#
+#     b4d12932a953b3cdfc745b3525c7ecd5dffd8b3c
+#     author    2026-08-20T05:06:22-06:00
+#     committer 2026-08-20T13:06:22+02:00
+#     fix(agent): drop the empty assistant turn from an approved-action replay (#6124)
+#
+# Authored and committed on **2026-08-20** — the same day in both timezones, in
+# UTC, and by both timestamps — and the subject is `FORK_POINT_SUBJECT` to the
+# character. `test_the_fork_point_confirms_its_own_date_where_the_history_
+# reaches_it` now makes that comparison wherever the history reaches the commit,
+# and falls back to the label where it does not.
+#
+# `FORK_CLONE_DATE` still cannot be read off anything — no commit records the day
+# a clone was taken — so it stays what `NOTICE`, `CHANGELOG.md`, `CREDITS.md` and
+# the README say it is, and `check-ledger.py` compares it with `NOTICE`'s *Date
+# of fork* so the §5(a) surface and the ledger cannot part company again. What
+# `B349` still needs from the owner is the §5(a) WORDING — *cloned* versus
+# *forked*, and whether the commit date belongs on that surface at all — not the
+# date, which is now evidence rather than a choice.
 FORK_POINT_DATE = "2026-08-20"      # the date `b4d1293` was committed upstream
 FORK_CLONE_DATE = "2026-08-24"      # the date Pantheon was cloned from it
 FORK_POINT_SUBJECT = (

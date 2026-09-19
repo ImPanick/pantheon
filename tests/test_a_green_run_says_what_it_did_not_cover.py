@@ -25,6 +25,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 import conftest as suite_conftest
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -44,23 +46,46 @@ def test_the_report_reads_requirements_txt_and_not_a_second_list():
             f"the report named {name}, which is not in requirements.txt")
 
 
-def test_it_reports_a_package_that_is_genuinely_absent():
-    """Driven against the real installed set, not a fixture: whichever of the
-    declared dependencies is missing here must be named."""
-    import importlib.util
+def test_it_reports_a_package_that_is_genuinely_absent(monkeypatch, tmp_path):
+    """`B857`. This used to read the REAL installed set and assert something was
+    missing from it — which is an assertion about the machine, not about the
+    reporter. It passed for months in a container holding 19 of 31, and went red
+    on 2026-09-19 in the first CI run that ever completed, where all 31 are
+    installed and the correct answer is "nothing is missing".
 
+    A test that fails because the environment is complete is measuring the wrong
+    thing (`Law 20`). The absence is crafted instead, so the reporter is driven
+    in every environment.
+    """
+    gaps = _gaps_for(monkeypatch, tmp_path, "pantheon-no-such-distribution==1.0")
+    assert gaps == [
+        "pantheon-no-such-distribution: declared ==1.0, NOT INSTALLED"
+    ], gaps
+
+
+def test_the_report_agrees_with_the_installed_set():
+    """And the real environment is still measured — as agreement, not as a
+    quota. Every name the report calls NOT INSTALLED genuinely has no
+    distribution, in a container missing twelve and in CI missing none."""
+    for gap in suite_conftest._declared_dependency_gaps():
+        if "NOT INSTALLED" not in gap:
+            continue
+        name = gap.split(":")[0]
+        with pytest.raises(importlib.metadata.PackageNotFoundError):
+            importlib.metadata.version(name)
+
+
+def test_the_count_is_whatever_this_environment_makes_it():
+    """`B325`'s row said "not zero here today" and pinned the number at ten.
+
+    Ten was true of one container on one afternoon. The property that holds
+    anywhere is that the report names a subset of what is declared, and names
+    each thing once.
+    """
     gaps = suite_conftest._declared_dependency_gaps()
-    named = {gap.split(":")[0] for gap in gaps if "NOT INSTALLED" in gap}
-    assert named, (
-        "nothing is reported missing. If this environment now installs all 31, "
-        "that is worth writing into B325 rather than deleting this test.")
-    for name in named:
-        assert importlib.util.find_spec(name.replace("-", "_")) is None or True
-
-
-def test_the_count_is_not_zero_here_today():
-    """The row's own `Verify` line, asserted rather than asserted-about."""
-    assert len(suite_conftest._declared_dependency_gaps()) >= 10
+    names = [gap.split(":")[0] for gap in gaps]
+    assert len(names) == len(set(names))
+    assert len(names) <= suite_conftest._DECLARED_COUNT[0]
 
 
 def _gaps_for(monkeypatch, tmp_path, requirement: str) -> list:
@@ -136,6 +161,14 @@ def test_a_run_says_so_in_its_output_and_still_passes():
     finally:
         probe.unlink()
     assert proc.returncode == 0, proc.stdout
-    assert "B325: this environment does not satisfy requirements.txt" in proc.stdout
-    assert "NOT INSTALLED" in proc.stdout
-    assert "evidence about a smaller product" in proc.stdout
+    # `B857`. Which sentence is correct depends on the machine; that one of
+    # them is printed does not. A footer that speaks only about a shortfall
+    # cannot be told apart from a footer that is broken, so the complete
+    # environment gets a sentence too.
+    if suite_conftest._declared_dependency_gaps():
+        assert "B325: this environment does not satisfy requirements.txt" in proc.stdout
+        assert "declared" in proc.stdout
+        assert "evidence about a smaller product" in proc.stdout
+    else:
+        assert "B325: this environment satisfies requirements.txt" in proc.stdout
+        assert "evidence about the whole product" in proc.stdout
