@@ -24,9 +24,10 @@ three places a newcomer meets the project first: cloning, contributing, and hard
 
 ## AI assistance, and what that means for your pull request
 
-Large language models help build this project — CI/CD orchestration, DevOps, and some of the
-code. An engineer is in the loop at every stage of the development lifecycle. The README says
-this too; it is repeated here because it has a practical consequence for contributors.
+Large language models help build this project — CI/CD orchestration, DevOps, some of the code,
+and in particular reading diffs and writing the commit messages for them, which they are very good
+at. An engineer is in the loop at every stage of the development lifecycle. The README says this
+too; it is repeated here because it has a practical consequence for contributors.
 
 **You are welcome to use AI assistance on a pull request, and it changes none of the bar below.**
 A row still needs a `Verify:` line somebody can run, a test still has to fail on the tree as it

@@ -5,9 +5,10 @@ Pantheon is a self-hosted AI workspace with privileged local capabilities. Pleas
 ## AI assistance
 
 Large language models help build this project, including some of the code that implements the
-controls described above. An engineer is in the loop at every stage of the development lifecycle.
-This is stated in the [README](README.md) and repeated here because a security policy is the
-wrong place to leave it implicit.
+controls described above, and including the reading of diffs and the writing of the commit
+messages that describe them — which is the thing they are best at here. An engineer is in the loop
+at every stage of the development lifecycle. This is stated in the [README](README.md) and
+repeated here because a security policy is the wrong place to leave it implicit.
 
 No control on this page is trusted because of who or what wrote it. Each one is enforced by a
 checker that runs in CI or by a test that fails when the control is removed — that is what

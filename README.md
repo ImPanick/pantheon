@@ -185,7 +185,7 @@ proved it dead.
 
 ## Status
 
-**849 tracked tasks, 576 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
+**854 tracked tasks, 584 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
 it is the only place work is tracked — one list, one progress area, validated by a script that
 recounts every phase row against its own ticks. It exists because the summary line was once wrong
 by nineteen and carried forward unread from entry to entry, because each author copied the line
@@ -261,6 +261,13 @@ task.
 Large language models help build this. They orchestrate CI/CD, organise the DevOps work, and
 write some of the code. It is stated here rather than left to be inferred, because a self-hosted
 AI workspace should be plain about its own provenance.
+
+**And they are very good at two things in particular: reading a diff, and writing the commit
+message for it.** Both are jobs of reading something dense and saying what it actually does, and
+neither is a job of deciding what should be done. If you find the commit messages in this
+repository unusually specific — what was measured before, what the number was, what moved — that
+is where the help is most visible, and it is the part of the work with a human reading every line
+of the output before it lands.
 
 **An engineer is in the loop at every stage of the development lifecycle.** The decisions are
 made by a person, and the work is theirs to accept.
