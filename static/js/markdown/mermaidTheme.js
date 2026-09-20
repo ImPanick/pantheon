@@ -22,9 +22,11 @@
 // instead of lifting a literal out of the source with a regex.
 //
 // **Nothing here invents a colour.** `mermaidTheme()` picks between two names
-// Mermaid already ships, and the one stroke override is read back out of
-// Mermaid's own answer (see `applyMermaidTheme`) rather than typed in. Sixteen
-// palettes ship; a hex in this file would be right in one of them.
+// Mermaid already ships, and both overrides — the node outline
+// (`strokeOverrides`, `B872`) and the edge-label chip (`labelOverrides`,
+// `B884`) — are read back out of Mermaid's own answer (see
+// `applyMermaidTheme`) rather than typed in. Sixteen palettes ship; a hex in
+// this file would be right in one of them.
 
 /**
  * Which of Mermaid's own themes each `color-scheme` gets.
@@ -112,6 +114,52 @@ export function strokeOverrides(themeVariables) {
 }
 
 /**
+ * The backing the words on an arrow are read against.
+ *
+ * `B884`. Mermaid's flowchart stylesheet is `.edgeLabel { background-color:
+ * ${edgeLabelBackground} } .edgeLabel .label text { fill: ${textColor} }`, so
+ * those two are the whole of an edge label: the words on an arrow ("if it
+ * works" / "if it fails") and the chip they sit on. In the `dark` theme they
+ * measure **4.43:1** — `textColor #ccc` on `edgeLabelBackground hsl(0, 0%,
+ * 34.4117647059%)` — under WCAG 1.4.3's 4.5:1 at mermaid's own 16px default
+ * (`fontSize` comes back `"16px"`). That is every edge label on all twelve
+ * dark palettes, and it is upstream's number rather than anything this
+ * repository chose: `B872` fixed the four light palettes and this is what was
+ * left.
+ *
+ * **Why the chip moves and not the text.** The `dark` theme is the only one
+ * that computes `edgeLabelBackground` from something other than its own label
+ * colour — `theme-dark` sets `edgeLabelBackground = lighten(secondaryColor,
+ * 30)` while `theme-default` sets `edgeLabelBackground = this.labelBackground`
+ * outright and `theme-base` sets it to `darken(this.labelBackground, 25)`.
+ * `dark` still HAS a `labelBackground` (`#181818`) — it just does not use it
+ * here, and the lightening is what walks the chip up to 34.4% and the contrast
+ * down to 4.43:1. So this takes mermaid's own answer for "what colour backs a
+ * label in this theme" and uses it where mermaid's own `default` theme already
+ * uses it. `textColor` is left alone: it is the node text, the cluster text
+ * and the sequence text as well as this, and it measures 10.17:1 on the node
+ * fill where it is doing its main job.
+ *
+ * Measured on the vendored 11.17.2 bundle, `textColor` against the chip:
+ *
+ *     dark     hsl(0, 0%, 34.4117647059%)  4.43:1  ->  #181818  11.06:1
+ *     neutral  white                      21.00:1  ->  white    21.00:1
+ *
+ * `neutral` has no `labelBackground` at all, so the light scheme is untouched
+ * and `B872`'s four light palettes keep the numbers it measured. Nothing here
+ * invents a colour, same as `strokeOverrides`: both read a value back out of
+ * `mermaid.mermaidAPI.getConfig()` and hand it to a second `initialize`, so a
+ * theme that repaints itself upstream carries this with it. `background`
+ * (`#333`) was the other candidate and reaches only 7.87:1; it is also the
+ * colour `edgeLabelBackground` is *derived* from, which is the derivation this
+ * is stepping around.
+ */
+export function labelOverrides(themeVariables) {
+  const backing = themeVariables && themeVariables.labelBackground;
+  return backing ? { edgeLabelBackground: backing } : {};
+}
+
+/**
  * Tell a loaded Mermaid which theme to draw in, and answer what it decided.
  *
  * Takes the library rather than reaching for a global, so the test harness
@@ -119,11 +167,14 @@ export function strokeOverrides(themeVariables) {
  * bundle, with no DOM at all.
  *
  * Two `initialize` calls on purpose, and the second one is the measurement:
- * the first loads the theme, `getConfig()` is then asked what that theme's
- * own `lineColor` is, and the second applies it to `nodeBorder`. Reading the
- * answer back is the same trick `B334` established — a key Mermaid stopped
- * honouring comes back as a different value rather than as an error — and it
- * is what keeps a hex out of this file. Re-initialising does not accumulate:
+ * the first loads the theme, `getConfig()` is then asked what that theme's own
+ * `lineColor` and `labelBackground` are, and the second puts them on
+ * `nodeBorder` and `edgeLabelBackground`. Reading the answer back is the same
+ * trick `B334` established — a key Mermaid stopped honouring comes back as a
+ * different value rather than as an error — and it is what keeps a hex out of
+ * this file. It stays two calls however many overrides there are, because they
+ * are all read out of the one `getConfig()` in between.
+ * Re-initialising does not accumulate:
  * measured on the vendored 11.x bundle, `initialize({theme:'neutral',
  * themeVariables:{nodeBorder:'#666'}})` followed by `initialize({theme:'dark'})`
  * comes back with `nodeBorder: '#ccc'`, not the override.
@@ -135,7 +186,7 @@ export function applyMermaidTheme(mermaid, scheme) {
   mermaid.initialize(first);
   const api = mermaid.mermaidAPI;
   const vars = (api && typeof api.getConfig === 'function' && api.getConfig().themeVariables) || null;
-  const overrides = strokeOverrides(vars);
+  const overrides = { ...strokeOverrides(vars), ...labelOverrides(vars) };
   if (!Object.keys(overrides).length) return first;
   const final = mermaidConfig(scheme, overrides);
   mermaid.initialize(final);
@@ -144,5 +195,5 @@ export function applyMermaidTheme(mermaid, scheme) {
 
 export default {
   SCHEME_THEMES, DEFAULT_SCHEME, mermaidTheme, documentScheme, mermaidConfig,
-  strokeOverrides, applyMermaidTheme,
+  strokeOverrides, labelOverrides, applyMermaidTheme,
 };

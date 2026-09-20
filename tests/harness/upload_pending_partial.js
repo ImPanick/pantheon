@@ -54,6 +54,17 @@ const showToast = slice('function _showToast(msg) {', '\n}\n', '_showToast') + '
 // the server never saw — so it is extracted rather than modelled.
 const pendingInfo = slice('export function getPendingInfo() {', '\n}\n', 'getPendingInfo')
   .replace(/^export\s+/gm, '') + '\n}\n';
+// `B893`. `uploadPending` now asks which chat the working set belongs to before
+// it posts anything, so the bucket machinery comes with it — extracted rather
+// than stubbed, for the same reason `_showToast` is: a stand-in would prove the
+// harness agrees with itself. This harness drives one chat, so the key stays
+// `''` and the swap never fires; what it does exercise is that the ordinary
+// send is untouched by the guard.
+const bucket = slice(
+  'const _buckets = new Map();',
+  '/** Register how this module learns which chat is current.',
+  'bucket machinery',
+);
 
 const mode = process.argv[2] || 'partial';
 
@@ -184,6 +195,9 @@ const build = new Function(
   `
   let pendingFiles = INITIAL.slice();
   let uploaded = [];
+  let _contextBudget = null;
+  let _contextMeasuredIds = [];
+  ${bucket}
   let _lastUploadedMeta = [];
   let _lastUploadRejected = [];
   let _lastUploadOutcome = [];

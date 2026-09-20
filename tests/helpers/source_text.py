@@ -44,6 +44,15 @@ _impl = _load()
 strip_comments = _impl.strip_comments
 mode_for = _impl.mode_for
 
+#: The loaded `.pantheon/check-specifiers.py` module object itself.
+#:
+#: `B876`. `tests/helpers/js_source.py` needs the checker's *rules* about
+#: where a regex literal may begin, not just its blanked output, and loading
+#: the file a second time would give a second module object with a second
+#: copy of those tables — `Law 14` in the fix for a `Law 13` row. One load,
+#: one module, both helpers reading the same frozensets.
+checker = _impl
+
 
 def blank_text(text: str, mode: str = "js", *, embedded: bool = True) -> str:
     """`text` with its comments replaced by spaces, newlines kept.

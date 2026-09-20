@@ -393,6 +393,8 @@ weakest one in this document: it means nobody adjudicated them individually.
 | `B742` | tracked | claim | a subtraction standing where a measurement should be — and `P4-14` just made it checkable |
 | `B790` | tracked | decision | a nightly job silently unpublishes a skill on a 0/24-precision signal; changing what it destroys is the owner's call |
 | `B864` | tracked | security | `disabled_tools` survives its own row and not the row's deletion — and `P8-35`, landing in the same commit, removed the only reason anyone had to delete it |
+| `B892` | tracked | first-ten | a context bar larger than the fact it states — the sentence that was FALSE on it was `B893`, and that is fixed |
+| `P8-48` | tracked | security | the read-only verdict shipped and is read by the panel and the plan-mode gate alike; the schema editor did not, on a recommendation the owner has to rule on |
 | `P11-02d` | landed | security | six route files whose gating is unreconciled — an unknown on an auth surface |
 | `B71` | blocking | claim | upstream's artwork under this fork's filenames, and it is the macOS app icon |
 | `B411` | blocking | claim | four numbers in the published ledger do not print from their own repro |

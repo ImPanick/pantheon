@@ -10,7 +10,7 @@ import { makeWindowDraggable } from './windowDrag.js';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { topPortalZ } from './toolWindowZOrder.js';
 import sessionModule from './sessions.js';
-import fileHandlerModule from './fileHandler.js?v=20260919chipramp1';
+import fileHandlerModule from './fileHandler.js?v=20260920attachbucket1';
 
 const API_BASE = window.location.origin;
 let _open = false;
@@ -1989,7 +1989,7 @@ function _makeGalleryDraggable(content) {
 // ---- Open / Close ----
 
 // Re-export the manager for the rail click handler
-import * as Modals from './modalManager.js?v=20260919tidypreview1';
+import * as Modals from './modalManager.js?v=20260920attachbucket1';
 import { chevronIcon } from './icons.js';
 
 export function openGallery() {

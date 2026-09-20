@@ -80,8 +80,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P17 | The network the agent is hosted on | 14 | 0 | 0 | **14** |
 | P18 | One button, and it links | 9 | 0 | 0 | **9** |
 | P19 | The proof ledger | 8 | 0 | 0 | **8** |
-| Backlog | Bugs and hardening found in flight | 467 | 199 | 0 | **268** |
-| **Total** | | **849** | **265** | **8** | **576** |
+| Backlog | Bugs and hardening found in flight | 472 | 196 | 0 | **276** |
+| **Total** | | **854** | **262** | **8** | **584** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -243,6 +243,43 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### The suite's own escapers, and two attachment bugs the owner found in ten seconds
+`13b95f9..HEAD`. **854 tracked, 584 done. 0 new phase rows, 0 regressions. `B874`, `B875`, `B876`,
+`B882`, `B883`, `B884` and `B885` closed; `B889`–`B893` filed, two of them by the owner, and `B893` closed the same day.** `P8-48`
+stays open on a recommendation rather than a blocker — see below.
+**The suite was carrying the defects it exists to catch.** Nineteen JavaScript `esc` definitions
+across the tracked tests, three of which returned their input — and the third is the reason `B611`
+survived a month: a test asserting escaping was green only because the module under test happened
+to keep its own replaces (`B874`). `js_function`, **this repository's own `Law 20` recommendation**
+for scoping a JavaScript assertion, could not open `esc` itself: `_js_skip` had no regex-literal
+state and read the `'` inside `/[&<>"']/g` as a string start, so every sweep that reached for it
+fell back to a file-wide grep wearing a scope's clothes (`B876`). And `B882`'s count was four
+copies of the markdown harness, not three — the fourth being `.mjs` rather than Python, and broken.
+`B890` makes it **five**: `tests/markdown_codefence_placeholder_regression.mjs` has failed at HEAD
+since `P5-06`, and nothing runs it.
+**`B884` and `B883` finish what `B872` started.** Edge labels were `#ccc` on
+`hsl(0,0%,34.4%)` — **4.43:1**, under the floor, on all twelve dark palettes; they are **11.06:1**
+now. And the vendored Mermaid **echoes a theme name it did not apply**: `default`, `light` and
+`pantheon-not-a-theme` all produce a byte-identical 271-key variable set, so any assertion on
+`getConfig().theme` is asserting an echo. `B885` priced re-draw against restyle-in-place — 575 CSS
+declarations over 183 theme variables — and took re-draw.
+**`P8-48` stops at a recommendation, and it is the right kind of stop.** The annotation half shipped
+with per-tool storage, one `readonly_verdict` read by both the panel and the plan-mode gate so the
+panel cannot show a correction the gate ignores. The **schema editor** did not, because
+`call_tool` passes arguments straight through and the server enforces its own schema: an edited
+schema is advisory to the model only, so narrowing changes nothing and widening produces an error
+the operator cannot trace. Either way the product would be telling the model something false about
+a third party's tool. The recommendation on the row is to re-cut it as a per-tool *description*
+override; that is the owner's call.
+**And the owner opened the app and found two things in ten seconds.** A file picked in one chat is
+still attached, still counted, and still **sent** in the next — `fileHandler.js` holds every piece
+of attachment state at module scope, `sessions.js` does not import it, and `selectSession` resets a
+character preset and nothing else, so `uploadPending({sessionId: getCurrentSessionId()})` uploads
+yesterday's file into today's conversation (`B893`). The visible tell is the context bar reading
+*"No attachments in this message"* directly above *"One text or code attachment was reduced to fit
+it"* — two sentences about two different messages, on a full-width strip that never goes away
+(`B892`).
 
 ### Every diagram on a light palette was drawn light-on-white, and a close was cancelling its caller
 `b8b7368..HEAD`. **849 tracked, 576 done. 0 new phase rows, 0 regressions. `P8-09`, `B870`, `B871`,
@@ -6211,7 +6248,14 @@ SKILL.md frontmatter format. That is the pattern to avoid, found in the phase's 
   `Verify:` **someone who has never written an MCP server types one line and gets one that runs.** `pantheon mcp-new weather --tool get_forecast` (or `scripts/pantheon-mcp-new …`) writes `<DATA_DIR>/mcp_servers/weather/server.py` and a `README.md` beside it, starts the server, completes the MCP handshake, and prints `"self_test": {"started": true, "tools": ["get_forecast"]}` above `"next"`: *Register it: Settings → Integrations → + → MCP Tool Server — Command `/usr/local/bin/python`, Arguments `/app/data/mcp_servers/weather/server.py`, Environment empty.* Those are the three boxes on the form `P8-46` rebuilt, and the form's own live line then reads back `Pantheon will run: /usr/local/bin/python /app/data/mcp_servers/weather/server.py` before they save. The generated file is three numbered sections — what it offers, what they do, and wiring labelled *"you should not need to change anything below this line"* — and every tool answers with its own argument repeated back, so the whole chain is visible before a line of their own code exists. When they ask the assistant to register it instead, it refuses, and the README they were handed already contains that exact refusal and two paragraphs on why it is deliberate. After an edit, `pantheon mcp-new weather --check` starts the file again and exits non-zero with the reason if it broke — a syntax error comes back as *"Connection closed — anything the server printed while failing went to this process's standard error, above this"*, with the interpreter's own traceback above it, because "Connection closed" alone reads like a network fault. **The shell half of that was driven end to end on 2026-09-19**, not described: the exact `pantheon-mcp add --name weather --transport stdio --command /usr/bin/python3 --args '["…/server.py"]'` line the README prints was pasted back in, and `pantheon-mcp tools <id>` then answered with `get_forecast` and its description — scaffold, register, connect, one tool, through two CLIs neither of which knows about the other.
   `CI:` `tests/test_a_generated_mcp_server_runs.py` — **66 tests**, of which six spawn a real server. Two of them are the row's load-bearing pair and they pin the same rule from opposite sides: `_validate_mcp_command` must **refuse** the registration this scaffold produces (that test goes red the day the reported-RCE fix is weakened to make a Creator convenient), and `POST /api/mcp/servers` behind `require_admin` must **accept** it, store the absolute path and hand the manager exactly that argv. **Mutation: 16 real mutations, 16 caught** — naive quoting in place of `json.dumps`, dropping the `__` guard, dropping the reserved-name guard, dropping the realpath containment, allowing an overwrite, `0o755` on the generated file, a hardcoded refusal in place of asking the validator, a relative path in the registration, `verify_server` claiming success regardless, dropping the tool cap, dropping the duplicate check, scaffolding into the source tree instead of the volume, dropping the description cap, `wait_for` for `asyncio.timeout`, telling you to register a server that did not start, and dropping the hint about where the failure was printed.
   **Two things the merge still needs, both in files that were not mine this hour.** (a) **The door belongs on `scripts/pantheon-mcp` as a `new` subcommand, not beside it** (`Law 14`): `scripts/pantheon-mcp-new` is 43 lines of argv and an exit code over `mcp_scaffold.main`, so folding it in is moving `_build_parser`'s arguments onto a `sub.add_parser("new")`. (b) `scripts/pantheon:66` reads `re.sub(r"^pantheon-\w+\s*—\s*", "", first)`, and `\w` excludes `-`, so the dispatcher's listing prints `mcp-new    pantheon-mcp-new — make a working MCP server…` with the name twice. One character (`\w+` → `[\w-]+`) fixes it for every hyphenated subcommand; `mcp-new` is the first one this repo has had, which is why nobody has seen it. Filed as `B`-rows rather than edited. `Depends:` nothing. — agent:`p8scaffold`
-- [ ] **P8-48** Tool schema editor + `readOnlyHint` / `destructiveHint` annotation UI. The schema is already carried end-to-end and nothing edits it; `manage_mcp list_tools` drops it entirely, so the LLM cannot see a tool's parameters through its own tool. — **read half shipped 2026-09-19; the editor and the annotations are blocked on `src/**` and stay open.** **Premise re-measured and it is three claims, of which two hold and one does not.** `input_schema` *is* carried end to end: `McpManager.get_all_tools` (`src/mcp_manager.py:606-622`) copies it onto every entry and `GET /api/mcp/servers/{id}/tools` (`routes/mcp/mcp_routes.py:415-433`) returns those entries unchanged — and `grep -rc input_schema static/` returned **0**, so no frontend file had ever read it. `manage_mcp list_tools` does drop it: `src/agent_tools/admin_tools.py:360-367` projects `{name, server, description[:100]}` and nothing else, so the LLM cannot see a parameter list or even the `mcp__<id>__<tool>` name through its own tool. **`annotations` is not carried end to end at all** — it is captured at both connect sites (`src/mcp_manager.py:217` stdio, `:286` SSE) and read by `mcp_tool_is_readonly` (`:108-133`), and `get_all_tools` does **not** copy it into the payload, so the readOnlyHint/destructiveHint half of this row cannot be *displayed*, let alone edited, from the browser today. **Shipped:** every row of the connected server's tool list now opens onto its parameters — name, type, required/optional, enum choices and the parameter's own description, required first — plus the qualified name the model actually calls (`createMcpToolRow`, `summariseSchema` in `static/js/settings/mcpFields.js`). The rows are built node by node rather than as an HTML string, which also closes a live escaping hole: `static/js/settings.js:5599` put the third-party description into `title="${esc(t.description)}"` using a **local `esc` that shadowed the canonical one** (`settings.js:5552` vs `static/js/ui.js:983`) and escaped `&` and `<` and not `"` — a description with a double quote in it closed the attribute. The shadow is deleted; there is one `esc` and it is two scopes up (`Law 14`). **Not done, and what each waits on:** the **schema editor** needs somewhere to put an override — `McpServer` (`core/database.py:576-590`) has `disabled_tools` and no per-tool column — and a route to write it; the **annotation UI** needs `annotations` on the `get_all_tools` payload before it can show anything and the same storage before it can edit. Both are `src/**` and `routes/mcp/**`, which `P8-35` is inside this hour; no route was invented here. `Verify:` (met, for the half that shipped) someone who has never read this tracker opens a connected MCP server, presses *"2 parameters, 1 required"* on a tool, and can see what that tool takes and what the model calls it — without opening devtools or the MCP server's own documentation. `CI:` `tests/test_the_mcp_form_names_the_field_js.py`, last six cases — including one that drives `McpManager.get_all_tools` and **asserts `annotations` is absent**, so it fails the day the backend half lands and this row can move. `Depends:` `P8-35`. — agent:`p8ui`
+- [ ] **P8-48** **Tool schema editor + `readOnlyHint` / `destructiveHint` annotation UI.** — **read half shipped 2026-09-19; annotation half and the per-tool storage shipped 2026-09-19; the schema editor is NOT shipped and the reason is a measurement, not a shortage of time.** **The row's own prose is three claims and two of them expired the day `B867` landed; corrected here.** (1) *"`annotations` is not carried end to end at all"* — **false since `B867`**: `McpManager.get_all_tools` (`src/mcp_manager.py:1437`) carries `annotations` and `is_readonly`, and `manage_mcp list_tools` (`src/agent_tools/admin_tools.py:392`) returns the qualified name, structured parameters, `read_only` and `annotations`. (2) *"`CI:` … asserts `annotations` is absent, so it fails the day the backend half lands"* — that assertion was **inverted rather than deleted** when `B867` landed (`tests/test_the_mcp_form_names_the_field_js.py::test_the_payload_carries_the_schema_and_now_the_annotations`) and now pins the payload. (3) *"needs somewhere to put an override"* — **held, and it was the blocker**: `McpServer` had `disabled_tools` and no per-tool column. **Measured on the tree before this patch.** `grep -rl 'annotations\|is_readonly\|readOnlyHint\|destructiveHint' static/js/` matched exactly **one** file for the MCP sense of the words — `static/js/settings/mcpFields.js`, and only inside a comment block at `:432-437` saying `annotations` was *not* on the wire, which `B867` had already made false. **No frontend file read the field**, so a connected server's tool list drew a checkbox, a name and a description, with nothing anywhere distinguishing `read_file` from `wipe_volume`. And the verdict itself was mostly a guess: `mcp_tool_is_readonly` (`src/mcp_manager.py:585` at `HEAD`) took one argument, preferred the server's `annotations` and otherwise fell back to `name.startswith(_MCP_READONLY_VERBS)` — sixteen leading words. The MCP spec makes `annotations` optional and most servers ship none, so on a real install that verb list **is** the answer, and it is wrong in both directions: `list_and_purge_orphans` starts with `list`, so plan mode ran a purge; `tail_log` starts with nothing in the list, so plan mode refused a read. Both reproduced by driving `mcp_tool_is_readonly` and `plan_mode_blocked_mcp` before the fix (`tests/test_mcp_tool_readonly_override.py`, first two cases). The operator's only lever was `disabled_tools`, which hides the tool from the model entirely — not the same act, and it costs them the tool.
+  **Storage: `McpServer.tool_overrides` (`core/database.py:625`), JSON `{"<tool>": {"read_only": true|false}}`, migrated by `_migrate_add_mcp_tool_overrides_column` (`:2315`) and wired into `init_db`.** A second column rather than a key inside `disabled_tools` because the two answer different questions in different places — one hides a tool from the model, the other changes the verdict plan mode gates on — and because keeping them apart is what lets `PUT` carry both across an edit without re-encoding either. Per-server rather than global because a tool name is only unique inside a server. **`P8-35`'s ruling extends to it unchanged: an id is an identity, not a version**, so `PUT /api/mcp/servers/{id}` does not touch it (`routes/mcp/mcp_routes.py:486`, beside `disabled_tools`), a tool the operator marked as writing keeps that mark when the command line under it changes, and names the new command no longer offers come back as `stale_tool_overrides` beside `stale_disabled_tools` (`:545`).
+  **One verdict, one place, two values out.** `readonly_verdict(tool, override)` (`src/mcp_manager.py:682`) returns `(is_readonly, source)` where source is `override` > `annotation` > `heuristic`; `mcp_tool_is_readonly` (`:726`) is the same call with the provenance dropped, so its seven existing call sites are unchanged. **The source is returned rather than re-derived, and that is the reason this row could not close on `is_readonly` alone**: most servers declare nothing, so most verdicts are a guess at a verb, and a badge that renders a guess identically to a declaration is not information — it is a claim the product cannot support. `get_all_tools` (`:1437`) and `plan_mode_blocked_mcp` (`:1495`) both read the same overrides, because a panel showing an override the gate did not honour is the worst outcome available here. `get_tool_descriptions_for_prompt` passes `overrides={}` and pays for no query: it reads none of the three new fields, asserted by driving it with `SessionLocal` replaced by something that raises.
+  **Route: the existing `PATCH /api/mcp/servers/{id}/tools` gains an `overrides` key** (`routes/mcp/mcp_routes.py:778`) rather than a second endpoint — the disabled list and the read/write answer are the two things a person says about one tool from one panel, stored on one row (`Law 13`/`Law 14`), and the new key inherits the `require_admin` the route already had rather than re-spelling a `FORBIDDEN.md` Part 2 control. **A key that is absent is left alone**, so the existing checkbox save path, which has never heard of overrides, cannot erase one (`Law 1`); `{"tool": null}` or `{}` is the erase; entries are merged, not replaced; names the connected server does not offer are kept and reported as `unknown_tools`, the same honesty as `stale_disabled_tools`.
+  **Browser: `describeReadonly` (`static/js/settings/mcpFields.js:517`) and a badge on the collapsed row** — `Read-only` / `Writes` / `Destructive`, each followed by *(the server says so)*, *(guessed from the name)* or *(you set this)*, with a guess drawn dashed and at 60% so a guess and a declaration never read as the same statement. It is on the **closed** row because "which of these can change something" is asked about the whole list at once. Nothing is re-derived: a JavaScript copy of the precedence rule could not be kept in step with the Python one the gate runs (`Law 14`). Expanding gives the sentence and three buttons — `Read-only`, `It writes`, `Server's answer` — because "take my answer back" is a real third state a checkbox cannot hold, plus the consequence in words. **An override that contradicts the server names what it overrode** (*"You marked "wipe" read-only on this install. Plan mode will run it. The server itself declares it destructive."*) and never attributes the word *destructive* to an operator who said *writes*. Nothing repaints optimistically, so a refusal has nothing to roll back and cannot leave a button pressed for a state the server never accepted. `static/js/settings.js:5626` wires it: PATCH, then read the verdict back from the one endpoint that computes it — clearing an override on an annotated server must fall back to *the server's word*, and a browser that assumed "cleared means guessed" would be wrong on every annotated server. `manage_mcp list_tools` gained `read_only_source` (`src/agent_tools/admin_tools.py:445`) so the model and the operator cannot be told different things about one tool.
+  **NOT SHIPPED: the tool schema editor, and this is a recommendation, not a pause.** The storage it was blocked on now exists and would take one key beside `read_only`; the remaining work is `get_all_openai_schemas` (`src/mcp_manager.py:1397`), which hands the model `tool.get("input_schema")` verbatim. **What stops it is a measurement:** `McpManager.call_tool` (`:1221`) passes `arguments` straight to `session.call_tool` with no client-side validation, and the MCP server enforces its own schema. So an edited schema is advisory to the model only — narrowing one changes nothing the server will refuse, widening one produces a server-side error whose cause the operator cannot see, and either way the product has told the model something false about a third party's tool. Two fields on that entry *are* worth overriding and both are about how a tool is described rather than what it accepts: the annotation (shipped here) and the description. **I recommend the row be re-cut as "per-tool description override" and the `input_schema` editor be dropped with this reason recorded.** That is the owner's call, so the row stays open.
+  `Verify:` an operator opens **Settings → MCP**, clicks a connected server, and the tool list now reads `list_and_purge_orphans  Read-only (guessed from the name)`, `tail_log  Read-only (you set this)`, `wipe  Destructive (the server says so)` — measured end to end through the real route and the real module. They press the parameter disclosure on `tail_log` and read *"This server does not say whether its tools write … so Pantheon assumes it writes. Plan mode will refuse it."*, press **Read-only**, and the badge changes to `Read-only (you set this)` — after which `plan_mode_blocked_mcp` stops blocking it, on the same call. No devtools, no MCP server documentation, nothing read out of `src/`.
+  `CI:` `tests/test_mcp_tool_readonly_override.py` (new, **46 cases**, all driving the code: the two premise misreadings reproduced first, the migration run against a table built without the column and run twice for idempotence, twelve normalisation cases, ten precedence cases, the gate and the payload asked independently and required to agree tool for tool, per-server scoping, both routes, the admin gate, and `manage_mcp`), plus **12 new cases** in `tests/test_the_mcp_form_names_the_field_js.py` (56 total) driving the real module under node — including one that asks Python for every source it can emit and requires the badge to read each of the three differently, which is the `Law 13` pin across a boundary that cannot share a constant. **Mutation-checked: 24 mutations run, 21 caught, and the three survivors are each reported rather than rounded off.** Caught: dropping the override branch from the verdict; the gate not loading overrides; the payload always claiming `annotation`; `PUT` wiping the column; `PATCH` replacing instead of merging; `PATCH` ignoring the key; `PATCH` accepting a non-boolean `read_only`; clearing an override becoming a no-op; the migration not adding the column; the model losing `read_only_source`; the badge always claiming the server declared it; the badge forgetting `annotation` or `override`; drawing a guess exactly like a declaration; calling a guess a declaration in words; a synchronous `onOverride` throw swallowed as success; the refusal path not reporting; putting *destructive* in the operator's mouth; hiding what an override contradicted; renaming a source in Python. Survivors: (1) `verdictEntry = previous` in the refusal path — **dead, and deleted**, because nothing repaints before the server answers, so a refusal has nothing to roll back; the reason is written at the site. (2) removing `'heuristic'` from the badge's recognised-source list — a **genuine no-op**, since an unrecognised source already falls back to `heuristic`; left alone. (3) claiming *destructive* without the server having said so — **a real gap the tests did not cover**, fixed by requiring `source === 'annotation'` and by naming the contradiction an override makes, and caught on the re-run. `.pantheon/release-gate.py --fast` passes, 26 steps, no ratchet moved (`silent-failures` held at 402 after the one new `except: pass`, a session teardown, was explained in place). `Depends:` `P8-35`, `B867`. — agent:`p8final`
 
 # P9 · Feature surfaces
 *Area: `surfaces` · Depends: P5*
@@ -18670,47 +18714,63 @@ this is the same thing happening to the row that corrected the store.
   (7 red), labels written here instead of taken from `EDGE_WORDS` (7 red).
   `Depends:` nothing. — found by `P8-34`, closed by `p8taskui`
 
-- [ ] **B874** **Ten test files stub `ui.js:esc`, and three of the stubs do not escape.** Found
-  2026-09-19 by `B866`'s sweep.
-  `B866` found nineteen local escapers in the product. The same pattern is inside the suite, and
-  there it is worse, because a stub that does not escape makes a test asserting escaping pass.
-  Three answer `esc` as a **pass-through** — `test_context_meter_js.py:159`,
-  `test_trust_ladder_js.py:318`, `test_tasks_activity_sources_js.py:43` — and the last of those is
-  exactly why `B611` survived: the palette test's stub returned its input, so a test that asserted
-  escaping was green only because `tasks.js` happened to keep its own replaces. Seven more
-  hand-write the canonical five-character escaper (`test_a_refused_call_leaves_a_trace.py:43`,
-  `test_agent_thread_card_is_one_builder.py:52`, `test_the_approved_action_looks_approved.py:45`,
-  `test_the_command_is_copyable.py:37`, `test_the_error_stream_survives.py:42`,
-  `test_the_full_arguments_are_reachable.py:50`, `test_the_independent_check_is_visible.py:42`) —
-  correct today and a tenth copy to drift.
-  One was fixed in `B611`'s change. The rest want one helper that lifts the real implementation,
-  which is what that fix does and what the other nine should call.
-  `Verify:` no test file defines an `esc` that differs from `ui.js`'s, and a test proves the stub
-  escapes by driving it. `Depends:` nothing. — found by `B866` — agent:`p8canvas`
+- [x] **B874** **Ten test files stubbed `ui.js:esc`, and three of the stubs did not escape.** —
+  **done 2026-09-19.** Measured before: nineteen JavaScript-string `esc` definitions across the
+  tracked tests, read with `ast` over the string constants rather than by text search, because this
+  rule's own prose quotes four of the shapes it looks for. Three returned their input —
+  `test_context_meter_js.py:159`, `test_trust_ladder_js.py:318`,
+  `test_tasks_activity_sources_js.py:43` — and the last of those is **why `B611` survived**: the
+  palette test's stub returned its argument, so a test asserting escaping was green only because
+  `tasks.js` happened to keep its own replaces. Seven more hand-wrote the canonical five characters.
+  `tests/helpers/esc_stub.py` is the one stub now, lifting `static/js/ui.js`'s implementation rather
+  than restating it, and the converted files import it.
+  **The rule that stops an eleventh copy** is `tests/test_one_esc_stub_js.py`: a test file may not
+  define an `esc` in a JavaScript string unless it is on `STILL_WRITE_THEIR_OWN`, and a second test
+  fails if an entry on that list no longer matches the tree, so the allowlist cannot become a
+  description of a tree that has moved on. Nine entries remain, each with its reason and its
+  character count — two pass-throughs kept on purpose (an assertion about escaping there is an
+  assertion about the module not delegating), four three-character escapers, one four, two correct
+  copies.
+  **Two false positives the detector had to learn**, and both are the shape this fortnight keeps
+  finding: a docstring is an `ast.Constant` like any other, so `tests/helpers/js_source.py`'s own
+  explanation of the two shapes read as a definition of one; and a stub that *calls* the canonical
+  `esc` is delegation, which is the thing being asked for. A detector that reads a mention as a
+  definition is measuring the file, not the code (`Law 20`).
+  `Verify:` 11 tests in `test_one_esc_stub_js.py`, including one that fails if the allowlist goes
+  stale and one that proves the rule is not a tautology. `Depends:` nothing. — agent:`suite`
 
-- [ ] **B875** **`notes.js:_attrEsc` has two contracts and one implementation.** Found 2026-09-19 by
-  `B866`'s sweep.
-  `static/js/notes.js` calls `_attrEsc` from two places with different inputs. At `:537` it is
-  handed text that has already been escaped, where omitting `&` is **correct** — an attribute value
-  is decoded after it is delimited, so escaping `&` twice would render `&amp;quot;`. At `:1968` it
-  is handed raw text, where omitting `&` means a todo whose title contains the literal characters
-  `&quot;` draws as `"` in `title` and `data-agent-title`.
-  This is fidelity, not injection, and it is measured rather than assumed — `B866` changed both
-  second-stage escapers, watched the linkify test go red, and changed them back with the reasoning
-  written into both files. The fix is two named helpers, not one with a comment.
-  `Verify:` a note whose text contains `&quot;` renders those six characters. `Depends:` nothing.
-  — found by `B866` — agent:`p8canvas`
+- [x] **B875** **`notes.js:_attrEsc` had two contracts and one implementation.** — **done
+  2026-09-19, and the subtlety is why `B866` filed it rather than fixing it.** At `:537` it is
+  handed text `_esc` has already been through, where omitting `&` is **correct**: `_linkify`
+  escapes the whole string and then cuts a href out of the result, so escaping `&` again turns
+  `?a=1&amp;b=2` into `?a=1&amp;amp;b=2` — pinned by
+  `tests/test_email_linkify_security_js.py`, and `emailLibrary/utils.js:_attrEsc` is the same
+  contract under the same name. At the todo row it was handed **raw** text, where omitting `&`
+  meant a todo containing the six characters `&quot;` drew as a single `"`, because the browser
+  decoded an entity the note never meant as one. Fidelity, not injection: `B866` measured that an
+  attribute value is decoded *after* it is delimited, so a literal `&quot;` in the source stays
+  inside the value.
+  Two named helpers now. `_attrEscRaw` is **built from** `_attrEsc` with one extra replace in
+  front, rather than as a second list of six, so the two can never disagree about the five they
+  share — `B611` in one line. Six call sites moved.
+  `Verify:` `tests/test_a_note_keeps_the_characters_you_typed_js.py` — 12 cases driving the real
+  functions under node, including the old single helper losing the entity, a bare ampersand
+  surviving, a quote still making one attribute, and a sweep asserting every raw attribute in the
+  todo row uses the raw helper. `Depends:` nothing. — agent:`suite`
 
-- [ ] **B876** **`js_function` cannot extract a function whose body contains a regex holding a
-  quote — including `esc` itself.** Found 2026-09-19 by `B866`'s sweep.
-  `js_function(ui_src, "export function esc")` raises `unbalanced braces`. `_js_skip` has no
-  regex-literal state, so it reads the `'` inside `/[&<>"']/g` as the start of a string and never
-  finds the end. That helper is **the repository's own `Law 20` option two** — the recommended way
-  to scope a JavaScript assertion to one function — and it cannot open the one function this
-  fortnight's sweep is about. `B840`'s neighbour: a helper whose failure mode is a wrong scope
-  rather than an error is worse, and this one at least raises.
-  `Verify:` `js_function` extracts `esc` from `static/js/ui.js`, and a case pins a regex containing
-  each of `'`, `"`, `` ` `` and `/`. `Depends:` nothing. — found by `B866` — agent:`p8canvas`
+- [x] **B876** **`js_function` could not extract a function whose body holds a regex containing a
+  quote — including `esc` itself.** — **done 2026-09-19.** `js_function(ui_src, "export function
+  esc")` raised `unbalanced braces`: `_js_skip` had no regex-literal state and read the `'` inside
+  `/[&<>"']/g` as the start of a string. That helper is **this repository's own `Law 20`
+  recommendation** for scoping a JavaScript assertion to one function, and it could not open the
+  one function this fortnight's sweep was about — so every sweep that reached for it silently fell
+  back to a file-wide grep wearing a scope's clothes, which is `B650`'s lesson repeating.
+  `_js_skip` now tracks regex literals, distinguishing division from a regex start by the previous
+  significant token, and `js_definition` was added beside it because an escaper in this tree is as
+  often `const _esc = (s) => …` — an arrow with no braces at all — as it is a `function`.
+  `Verify:` `tests/test_one_js_function_extractor.py` pins a regex containing each of `'`, `"`,
+  a backtick and `/`, plus division-versus-regex disambiguation, and extracts `esc` from
+  `static/js/ui.js`. `Depends:` nothing. — agent:`suite`
 
 - [x] **B877** **A `.gitignore` rule meant for one directory was matching at every depth, and it
   silently untracked a new module.** Found and fixed 2026-09-19 while building `P8-34`.
@@ -18840,66 +18900,159 @@ this is the same thing happening to the row that corrected the store.
   unknown hyphenated name is still refused. Reverting either half fails three of the six.
   `Depends:` nothing. — found by `P8-47` — agent:`p8scaffold` — closed by agent:`mcptidy`
 
-- [ ] **B882** **Four copies of the `markdown.js` import-rewriting harness, and the fourth was
-  broken when it was counted.** Found 2026-09-19 while building `B872`; the count corrected the
-  same day by the suite.
-  `tests/test_markdown_lazy_lib_loading_js.py`, `tests/test_markdown_rendering_js.py` and
-  `tests/test_copy_message_strips_thinking_js.py` each read `static/js/markdown.js`, strip and
-  inline the same five imports, base64 the result into a `data:` URL and `import()` it. They are
-  three copies of one thirteen-line trick. Adding **one** import line to `markdown.js` turned
-  **fourteen tests red across two files that have nothing to do with Mermaid**, and each needed the
-  same thirteen lines pasted in again.
-  **And the count was three because the fourth copy is not a Python file.**
-  `tests/streaming/markdownHarness.mjs` does the same thing under node's own test runner, and it
-  was **left broken by the same change** — the whole streaming suite failed to import with
-  `ERR_UNSUPPORTED_RESOLVE_REQUEST: Failed to resolve module specifier
-  "./markdown/mermaidTheme.js" from "data:text/javascript;base64,…"`. That file's own comments
-  already record this defect **twice**, under `B250` and `P5-06`, each time as *"a relative
-  specifier cannot resolve from a `data:` URL"*, each time fixed by pasting in one more inline.
-  The fifth import made it three. Fixed there by a fourth paste, which is the row rather than the
-  answer to it.
-  That is `Law 13` with a measured cost, and the cost falls on whoever next adds an import to a
-  module four tests happen to inline. One helper, called by all four — and it has to be reachable
-  from both a Python loader and an `.mjs` one, which is the part that makes this a row and not a
-  refactor.
-  `Verify:` adding an import to `static/js/markdown.js` requires no edit to any test file, proved by
-  doing it in a throwaway worktree. `Depends:` nothing. — found by `B872`, count corrected by the
-  suite — agent:`taskui`
+- [x] **B882** **Four copies of the `markdown.js` import-rewriting harness, and the fourth was
+  broken when it was counted.** — **done 2026-09-19.** Three were Python
+  (`test_markdown_lazy_lib_loading_js.py`, `test_markdown_rendering_js.py`,
+  `test_copy_message_strips_thinking_js.py`) and the fourth was `tests/streaming/markdownHarness.mjs`
+  under node's own test runner — which `B872`'s new import left broken with
+  `ERR_UNSUPPORTED_RESOLVE_REQUEST`, unnoticed until a full suite ran. That file's own comments
+  already recorded the defect twice, under `B250` and `P5-06`, each time as *"a relative specifier
+  cannot resolve from a `data:` URL"*, each time answered by pasting in one more inline.
+  **The hard part was that the helper has to be reachable from both a Python loader and an `.mjs`
+  one**, and the two cannot import each other. `tests/helpers/markdownHarness.mjs` holds the
+  rewriting; `tests/helpers/markdown_harness.py` is the Python door onto the same file rather than a
+  second implementation of it, so the inline list exists once and both runners read it.
+  `Verify:` `tests/test_one_markdown_harness.py` — adding an import to `static/js/markdown.js`
+  requires no edit to any test file, driven by doing exactly that against a temporary copy.
+  `Depends:` nothing. — agent:`suite`
 
-- [ ] **B883** **The vendored Mermaid accepts an unknown theme name in silence.** Found 2026-09-19
-  while building `B872`.
+- [x] **B883** **The vendored Mermaid accepts an unknown theme name in silence.** Found 2026-09-19
+  while building `B872`, fixed the same day.
   `initialize({theme: 'light'})` → `getConfig().theme` echoes back `"light"` while
-  `getConfig().themeVariables` come back **byte-identical to `default`'s**. So the config object
-  reports a theme it did not apply, and any assertion on `getConfig().theme` alone is asserting an
-  echo rather than an effect — which is `Law 20` at one remove, inside a vendored library.
-  `B872`'s tests read `themeVariables` for exactly this reason and say so. This row is the general
-  guard: anything in this repository that sets a Mermaid theme should be checked against what the
-  library did, not against what it repeated back.
-  `Verify:` a test asserts that a deliberately wrong theme name is caught by comparing
-  `themeVariables`, not `theme`. `Depends:` nothing. — found by `B872` — agent:`taskui`
+  `getConfig().themeVariables` come back **byte-identical to `default`'s**. Measured on the
+  vendored 11.17.2 bundle by fingerprinting the whole variable set — a sorted, recursive
+  canonicalisation of all 271 keys including the five nested objects (`cynefin`, `packet`,
+  `radar`, `wardley`, `xyChart`), hashed in `tests/harness/mermaid_diagram_parse.js:varsHash`:
+  `default` `0b7768f674c76518`, `light` `0b7768f674c76518`, `pantheon-not-a-theme`
+  `0b7768f674c76518`, against `base` `4aa75816a8a57a45`, `dark` `0b92806f45c90401`, `forest`
+  `5363cb7b0ee9a78f`, `neutral` `57023d3fc590bed7`. So the config object reports a theme it did
+  not apply, and any assertion on `getConfig().theme` alone is asserting an echo — `Law 20` one
+  level down, inside a vendored library.
+  **The guard is one importable function.** `theme_really_loaded(report, scheme, expected)` in
+  `tests/test_a_mermaid_theme_name_proves_nothing_js.py:83` compares what
+  `applyMermaidTheme(mermaid, scheme)` computed against what `initialize({theme: expected})`
+  computes on the same bundle, over everything the theme decided rather than over the name it
+  repeated back. `tests/test_every_palette_gets_a_legible_diagram_js.py` now calls it instead of
+  keeping a second reading of the same trick (`Law 14`). The exclusion set — the keys Pantheon
+  itself overrides — is learned from what `applyMermaidTheme` returned, not listed anywhere, so
+  `B884` adding `edgeLabelBackground` to it needed no edit.
+  **It catches what the legibility measurement cannot.** Measured: setting
+  `SCHEME_THEMES.light = 'light'` in `static/js/markdown/mermaidTheme.js:39` leaves **all 32
+  per-palette legibility assertions green** — `strokeOverrides` replaces `default`'s 2.95–3.25:1
+  purple node outline with its own `lineColor` before anything measures it, so the contrast
+  floors never see the substitution. What goes red is four tests, and every one of them is a
+  comparison against what the library did rather than against what it echoed:
+  `test_every_theme_this_product_asks_for_is_one_mermaid_has`,
+  `test_every_palette_gets_a_theme_mermaid_actually_has` (which now calls the guard),
+  `test_the_override_moved_only_the_dark_scheme` and
+  `test_a_diagram_left_in_the_other_scheme_would_still_fail_this`. Without this reading that
+  mistake ships.
+  `Verify:` a first-time user does not reach this one; the next person to set a Mermaid theme
+  does, and what they can now do unaided is get it wrong and be told. Point either scheme at a
+  name Mermaid does not have and the suite names the theme that was actually drawn, with both
+  fingerprints, instead of agreeing with the config object.
+  `tests/test_a_mermaid_theme_name_proves_nothing_js.py` (6 cases) drives the real bundle
+  through `tests/harness/mermaid_diagram_parse.js`: the echo, the byte-identical fall-through,
+  the control that runs the name check and the ink check side by side on the same wrong answer,
+  the five shipped themes being five different themes (without which every comparison here
+  passes by accident), and `SCHEME_THEMES`'s own values read out of the module rather than
+  retyped. `Depends:` nothing. — found by `B872` — agent:`diagrams`
 
-- [ ] **B884** **Mermaid's own dark theme draws edge labels below the contrast floor, on all twelve
-  dark palettes.** Found 2026-09-19 while building `B872`.
-  `textColor #ccc` on `edgeLabelBackground hsl(0, 0%, 34.4%)` measures **4.43:1**, under WCAG
-  1.4.3's 4.5:1 at Mermaid's 16px default. `B872` fixed the four light palettes — arrows went from
-  1.17–1.29:1 to 4.50–4.96:1 — and this is what is left, on the other twelve. It is upstream's
-  default rather than anything this repository chose, which is why it is a row and not a line in
-  `B872`: overriding it is a decision about how far we restyle a vendored renderer.
-  Fixable in one line beside `strokeOverrides` in `static/js/markdown/mermaidTheme.js`.
-  `Verify:` an edge label meets 4.5:1 on each of the twelve dark palettes, measured by the same
-  harness `B872` added. `Depends:` `B872`. — found by `B872` — agent:`taskui`
+- [x] **B884** **Mermaid's own dark theme draws edge labels below the contrast floor, on all
+  twelve dark palettes.** Found 2026-09-19 while building `B872`, fixed the same day.
+  **Before.** `static/js/markdown/mermaidTheme.js` overrode one variable (`nodeBorder`), and the
+  edge label came through untouched: `textColor #ccc` on `edgeLabelBackground
+  hsl(0, 0%, 34.4117647059%)` measures **4.43:1**, under WCAG 1.4.3's 4.5:1 at Mermaid's own
+  16px default (`fontSize` comes back `"16px"`). Mermaid's flowchart stylesheet is
+  `.edgeLabel { background-color: ${edgeLabelBackground} }` with
+  `.edgeLabel .label text { fill: ${textColor} }`, so those two are the whole of the words on an
+  arrow. `B872` shipped `tests/test_every_palette_gets_a_legible_diagram_js.py:258` asserting
+  `>= 4.0` for exactly this reason; that fudge is what this row removes.
+  **After.** `labelOverrides(themeVariables)` (`mermaidTheme.js:114`) hands `edgeLabelBackground`
+  the theme's own `labelBackground`, `#181818`, and it measures **11.06:1**. One line beside
+  `strokeOverrides`, read back out of `mermaid.mermaidAPI.getConfig()` like the stroke override
+  is, so this file still holds no colour of its own. The choice is not arbitrary: `theme-default`
+  sets `edgeLabelBackground = this.labelBackground` outright and `theme-base` sets it to
+  `darken(this.labelBackground, 25)`; `theme-dark` is the one theme that computes it from
+  something else (`lighten(secondaryColor, 30)`) while still defining a `labelBackground` it does
+  not use here, and that lightening is the whole of the 4.43. `background` (`#333`) was the other
+  candidate and reaches only 7.87:1 — and it is the colour the 34.4% chip is derived from.
+  **Confined to the twelve.** `neutral` has no `labelBackground`, so `labelOverrides` returns
+  `{}` for the light scheme and the four light palettes keep `B872`'s numbers exactly
+  (`#000000` on `white`, 21.00:1). Asserted, not assumed, by
+  `test_the_override_moved_only_the_dark_scheme`.
+  `Verify:` open a diagram with a labelled arrow on any of the twelve dark palettes — `claude`,
+  `copper`, `cyberpunk`, `dark`, `forest`, `gpt`, `midnight`, `ocean`, `organs`, `retrowave`,
+  `terminal`, `ume` — and the words on the arrow meet 4.5:1 instead of 4.43:1, with nothing to
+  configure and nothing to read. Measured by the same harness `B872` added, through the real
+  vendored bundle. `tests/test_every_palette_gets_a_legible_diagram_js.py` now asserts `TEXT_MIN`
+  (4.5) rather than 4.0 on every one of the sixteen, and carries the control:
+  `test_the_unoverridden_edge_label_would_still_fail_this` re-runs the measurement against
+  mermaid's untouched answer and requires 4.43:1 on exactly the twelve dark palettes and 21.00:1
+  on exactly the four light ones. Removing `labelOverrides` from `applyMermaidTheme` turns 14
+  tests red — the twelve dark palettes, the confinement check and `B885`'s control — and
+  nothing else.
+  `Depends:` `B872`. — found by `B872` — agent:`diagrams`
 
-- [ ] **B885** **A diagram already on screen keeps the old theme when the palette changes.** Found
-  2026-09-19 while building `B872`.
-  `mermaid.run` skips anything carrying `[data-processed]`, so a palette switch re-themes only the
-  diagrams drawn after it. A person switching from a dark palette to a light one keeps every
-  diagram already in the conversation at the dark theme.
-  Deliberately not fixed in `B872`: re-rendering every diagram in the document on a palette change
-  is a larger claim than that row makes, and the naive version re-runs Mermaid over an entire long
-  conversation on a settings toggle. The row is the decision — re-render, restyle in place, or say
-  in the UI that it applies to new diagrams.
-  `Verify:` switching palettes leaves no diagram drawing light-on-light or dark-on-dark.
-  `Depends:` `B872`. — found by `B872` — agent:`taskui`
+- [x] **B885** **A diagram already on screen keeps the old theme when the palette changes.**
+  Found 2026-09-19 while building `B872`, fixed the same day.
+  **What it was worth, measured.** `mermaid.run` skips anything carrying `data-processed`
+  (`static/lib/mermaid.min.js`: `if (u.getAttribute("data-processed")) continue`), so a palette
+  switch re-themed only the diagrams drawn after it. Each palette's `.mermaid-container` panel
+  against the ink of the scheme it is no longer in: a `dark`-drawn diagram on the four light
+  palettes draws arrows and node outlines at **1.17, 1.21, 1.29, 1.29 : 1** — the same colour —
+  and a `neutral`-drawn diagram on the twelve dark palettes at **2.16–3.45:1**, eight of them
+  under the 3:1 floor (`dark` 2.16, `claude` 2.30, `forest` 2.34, `gpt` 2.47, `ume` 2.53,
+  `ocean` 2.78, `retrowave` 2.85, `copper` 2.88). In both directions the text is untouched —
+  node label on the node fill 10.17:1 and 18.10:1, edge label on its own chip 11.06:1 and
+  21.00:1 — because that ink sits on ink the same theme chose. **The damage is exactly the
+  strokes that are drawn onto the panel**, which is what decided the fix.
+  **The three, priced.** *Re-draw:* N diagrams re-run through Mermaid, and only when the
+  `color-scheme` moves. Twelve of the sixteen palettes are dark and four are light, so 60% of
+  the 240 ordered palette switches cost nothing at all — `midnight` → `terminal` re-draws
+  nothing. For the rest, measured under node on the vendored 11.17.2 bundle, `mermaid.parse`
+  alone (the grammar half of a draw, no layout, no DOM) costs 5.68 ms for a 4-node flowchart,
+  8.57 ms for 12 and 15.67 ms for 30; a conversation holding thirty diagrams therefore pays at
+  least ~0.2 s on an explicit settings action. *Restyle in place:* Mermaid emits its theme as a
+  `<style>` block inside each SVG, and **575 CSS declarations across its diagram stylesheets take
+  their value from a theme variable**, drawing on 183 of them — this repository would own a
+  second copy of all of it, keyed to upstream's selectors and re-checked at every bump. That is
+  `Law 13` with a 575-declaration price tag, against milliseconds. *Say it in the UI:* costs a
+  sentence and fixes nothing; `P8-00` asks what a person can do unaided, and reading a label
+  that says the diagrams are stale is not it. Re-draw wins on both numbers and owns nothing
+  upstream can move.
+  **What landed.** `renderMermaid` stashes each diagram's own source and the scheme it was drawn
+  in before handing it to `mermaid.run` (`markdown.js:_stashDiagramSource`) — Mermaid reads the
+  `<pre>`'s `innerHTML` and then overwrites it with the SVG, so without that the source exists
+  nowhere on the page. One `MutationObserver` on `<html>`'s `style` attribute
+  (`markdown.js:_watchScheme`) notices the switch, because `theme.js:292` and both first-paint
+  scripts write `color-scheme` as an inline declaration there and `documentScheme()` already
+  reads it back — no new event and no second list of palette writers (`Law 14`). The sweep is
+  folded into the ordinary draw: `renderMermaid` concatenates `_undrawStale(...)` onto the nodes
+  it was going to run anyway, so there is one path through Mermaid and not two. Installed on the
+  first draw, so a page with no diagram on it observes nothing and still downloads nothing.
+  **One trap, and it is driven.** The watcher keeps its own `_watchedScheme` instead of comparing
+  against `_mermaidScheme`: an ordinary draw moves `_mermaidScheme` as a side effect of theming a
+  NEW diagram, so a watcher that trusted it would look at a page where a message had just
+  arrived, decide the switch was handled, and strand every older diagram permanently. The flag is
+  also read and cleared at call time rather than when the pass lands, so a second palette click
+  during a sweep gets its own pass. Both are mutation-tested: comparing `_mermaidScheme` fails
+  `test_a_new_diagram_arriving_after_the_switch_does_not_strand_the_old_ones`; dropping the sweep
+  fails three.
+  `Verify:` switch from a dark palette to a light one (or back) with diagrams already in the
+  conversation and every one of them is re-drawn in the palette you are now looking at — no
+  reload, nothing to click, and no diagram left drawing light-on-light or dark-on-dark.
+  `tests/test_a_palette_switch_redraws_the_diagrams_js.py` (8 cases) drives the shipped
+  `static/js/markdown.js` for real against a Mermaid stand-in that marks `data-processed` and
+  overwrites the element the way the vendored bundle does: the source surviving the round trip,
+  the re-draw itself, a within-scheme palette change re-drawing nothing, a new diagram not
+  stranding the old ones, two clicks settling on the last one, two clicks that cancel out
+  re-drawing nothing, no diagram meaning no observer, and the observer being on the one element
+  every palette writer writes. It loads the module through the loader in
+  `tests/test_markdown_lazy_lib_loading_js.py` rather than adding a copy of it —
+  `B882` is about there being four already. `tests/test_every_palette_gets_a_legible_diagram_js.py`
+  carries the control that fixes the numbers above in a test rather than in prose.
+  `Depends:` `B872`. — found by `B872` — agent:`diagrams`
 
 - [ ] **B886** **The unattended audit says it routes an action to the manual test UI, and no browser
   file reads the field it routes with.** Found 2026-09-19 while building `P8-09`.
@@ -18945,3 +19098,119 @@ this is the same thing happening to the row that corrected the store.
   belongs in a constant or a parameter the test can set.
   `Verify:` `_connect_with_timeout` can be written either way and the test passes both times.
   `Depends:` nothing. — found by `B880` — agent:`mcptidy`
+
+- [ ] **B889** **The list that decides which MCP tools the model may see is loaded by two
+  implementations.** Found 2026-09-19 while building `P8-48`.
+  `routes/mcp/mcp_routes.py:100` (`_load_disabled_map`) and `src/agent_loop.py:620`
+  (`_load_mcp_disabled_map`) are the same eighteen-line function — same query, same JSON decode,
+  same `except (json.JSONDecodeError, TypeError): pass`, same `finally: db.close()` — differing only
+  in statement order and in where `McpServer, SessionLocal` is imported. Normalised line by line
+  they diverge on 13 of 15 lines by ordering alone and agree on the rest.
+  `Law 13`, on a gate: the two can drift, and if they do, the tools the browser says are hidden and
+  the tools the agent is actually denied stop being the same set. Nothing compares them.
+  `P8-48` extended the same shape once more — `get_all_tools` and `plan_mode_blocked_mcp` now read
+  one `readonly_verdict` **precisely so the panel cannot show a correction the gate ignores** — and
+  this is the older instance underneath it.
+  `Verify:` one loader, called from both, and a test that drives the route and the agent loop and
+  asserts they were handed the same map. `Depends:` nothing. — found by `P8-48` — agent:`p8final`
+
+- [ ] **B890** **A fifth copy of the `markdown.js` harness, unrun and broken since `P5-06`.** Found
+  2026-09-19 while building `B885`.
+  `tests/markdown_codefence_placeholder_regression.mjs` strips **3** of `markdown.js`'s **6**
+  imports and `vm.runInContext`s the result. It fails at `HEAD` — before any of this wave's changes
+  — with `SyntaxError: Cannot use import statement outside a module` at `markdown.js:10`. **Nothing
+  runs it**: `grep -rn markdown_codefence_placeholder_regression` outside `.git` returns exactly one
+  hit, and it is in `ROADMAP.md`.
+  So `B882`'s count of four was short, and this one has been silently dead since `B83` and `P5-06`
+  added `icons.js` and `langIcons.js` to the module it loads. A regression test nobody runs is a
+  file, not a test — and the reason it stayed dead is the reason `B882` exists: five copies of one
+  trick, and only the copies somebody runs get repaired.
+  `B882` has landed one harness that both a Python loader and an `.mjs` one read. This row is that
+  file either adopting it and being wired into the suite, or being deleted with its reason recorded.
+  `Verify:` whichever way it goes, no `.mjs` file under `tests/` loads `markdown.js` by a private
+  copy of the rewriting, and nothing under `tests/` is unreferenced by the suite. `Depends:` `B882`.
+  — found by `B885` — agent:`diagrams`
+
+- [ ] **B891** **A caller count written into a comment yesterday was already wrong.** Found
+  2026-09-19 while building `B885`.
+  `B872` recorded that `markdown.js:renderMermaid` has *"four callers"*. Counted from the tree it is
+  **seven call sites in six files**: `chat.js:5299`, `chatRenderer.js:3939`, `chatRenderer.js:4272`,
+  `document.js:9832`, `group.js:954`, `slashCommands.js:476`, `tasks.js:2395`. The two missed are the
+  round holder and group chat — both surfaces where a diagram is drawn for a person.
+  It matters because the count is load-bearing prose: `B885` had to price re-drawing every diagram on
+  a palette change, and that price is per call site. The wording in `markdown.js` is corrected;
+  `static/js/tasks/workflowDiagram.js:166` still carries the old number and was outside that agent's
+  ownership.
+  The general form is the one this repository keeps meeting: **a number in a comment is a
+  measurement with no checker behind it.** `check-wiring.py` and friends exist for exactly this, and
+  a caller census is the kind of thing one of them could hold.
+  `Verify:` the count in the tree is derived rather than written, or no comment states it.
+  `Depends:` nothing. — found by `B885` — agent:`diagrams`
+
+- [ ] **B892** **The attachment context bar spans the whole composer, never goes away, and says two
+  things that cannot both be true.** Reported by the owner 2026-09-20 with a screenshot.
+  `#context-meter` (`static/index.html:1364`, drawn by `renderContextMeter` at
+  `static/js/fileHandler.js:334`) is a full-width block sitting directly above the message box. On a
+  **new chat with nothing attached** the owner's screenshot shows it reading `ATTACHMENT CONTEXT`,
+  `0 of 24,000 characters`, `No attachments in this message` — and, on the next line,
+  *"One text or code attachment was reduced to fit it."* Those two sentences describe different
+  messages. The second is `B893`'s stale report; this row is the surface.
+  **What is wrong with the surface, separately from the staleness.** It is permanent furniture for
+  an occasional fact: it occupies a full row of the composer whether or not this message has
+  attachments, it states a denominator nobody asked about, and it has no resting state — there is no
+  collapsed form and no way to dismiss it. `P12-09` put it *"where the message is being written
+  rather than in a settings tab"*, which is right; what it did not give it is a size proportional to
+  how often it matters.
+  **The shape the owner asked for**, and the second screenshot is the reference: a **compact
+  indicator** that expands into a breakdown — a proportional fill showing what has been spent and by
+  what, several segments rather than one bar, each named with its share. *"Do not exact copy. But
+  make a similar system using the circle fill graph that the chat context uses."* So: this product's
+  own chat-context control is the pattern to follow, not the reference's.
+  `Law 14` binds hard here — find what already draws the chat context and use it; a second context
+  widget beside the first is the defect. **Themes are protected**: the segments must read on all
+  sixteen palettes, which `B872` and `B884` have just finished proving is not free.
+  `P8-00`'s standard applies even outside `P8`: the collapsed state has to tell a first-time user
+  whether anything is wrong, and the expanded state has to tell them what to do about it.
+  `Verify:` a new chat with nothing attached shows no full-width bar; the indicator opens onto a
+  segmented breakdown whose segments sum to what was measured; contrast holds on all sixteen
+  palettes. `Depends:` `B893` (the numbers have to be right before they are drawn better).
+  — reported by the owner — agent:`unassigned`
+
+- [x] **B893** **Attachments were not scoped to a chat: a file picked in one conversation was still
+  attached, still counted, and still sent in the next.** Reported by the owner 2026-09-20; fixed the
+  same day.
+  **Measured by reading the state and its resets.** `static/js/fileHandler.js` held `pendingFiles`
+  (`:11`), `uploaded` (`:12`), `_lastUploadedMeta` (`:16`), `_contextBudget` (`:221`) and
+  `_contextMeasuredIds` (`:222`) as **module-level** variables. The only function that cleared any
+  of them was `clearPending` (`:773`), whose only caller was the strip's own `x` button (`:486`).
+  `static/js/sessions.js` does not import `fileHandler.js` at all, and `selectSession` (`:1869`)
+  restores a character preset and nothing else. So switching chats reset nothing — and at send time
+  `chat.js:2574` calls `uploadPending({ sessionId: getCurrentSessionId() })`, which means **the file
+  was uploaded into whichever session was current when you pressed send**, not the one it was picked
+  in. Three costs, all three named in the report: the attachment rides into the wrong conversation;
+  its characters are spent out of that conversation's budget, displacing what the message actually
+  needed; and the model is handed a document from a conversation it is not having.
+  **A binding, not a clear.** Emptying the list on a switch would silently bin a file somebody had
+  picked on purpose. The working set is a per-session bucket now: `_syncBucket()` stashes what
+  belongs to the key being left and restores the key being entered, so a new chat has no
+  attachments because it has **its own empty set**, and returning to the first chat brings its file
+  back. `""` is the bucket for the composer before a session exists.
+  **The key is read, never pushed, and that is the part worth keeping.** `currentSessionId` is
+  assigned at **six** sites in `sessions.js` and only one of them is the setter, so a hook per site
+  is the `Law 13` shape this row is an instance of. A resolver is registered once in `static/app.js`
+  beside `init`, and every public entry point asks it — sixteen of them — so a switch path nobody
+  wired still cannot send the wrong file. The worst an unwired path costs is a redraw that waits for
+  the next interaction, and `syncSession()` is called from the two switch paths so it does not.
+  **And the send is refused rather than guessed.** `uploadPending` compares the `sessionId` it was
+  handed against the bucket the files belong to and returns `[]` on a mismatch, keeping the files on
+  the strip. An attachment that does not arrive is recoverable; an attachment in the wrong
+  conversation is not. A caller that passes no `sessionId` is unaffected — an absent key is not a
+  mismatch.
+  `Verify:` `tests/test_an_attachment_belongs_to_its_chat.py` — 9 cases driving the real module
+  under node, none of which reads the source: a file picked in chat A is absent in chat B, comes
+  back when chat A does, two chats hold their own sets, a new chat starts empty without anything
+  being wiped, the context report does not follow you, the meter is redrawn, a send naming another
+  chat uploads nothing and keeps the file, the ordinary send is untouched, and a send naming no chat
+  is left alone. **Mutation: neutering the bucket swap reddens 7 of 9; neutering the send guard
+  reddens the one that is about it.** `Depends:` nothing. `Unblocks:` `B892` — the numbers are right
+  now, so they can be drawn better. — reported by the owner — agent:`integrator`

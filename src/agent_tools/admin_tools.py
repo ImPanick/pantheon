@@ -433,11 +433,23 @@ async def do_manage_mcp(content: str, owner: Optional[str] = None) -> Dict:
                 "description": desc[:_MCP_TOOL_DESC_MAX] + ("…" if len(desc) > _MCP_TOOL_DESC_MAX else ""),
                 "parameters": schema["parameters"],
                 "read_only": t.get("is_readonly", False),
+                # `P8-48`. Which of the three said so — `override` (this
+                # install's operator), `annotation` (the server), `heuristic`
+                # (the leading verb of the name). `read_only: true` from a
+                # guess and `read_only: true` from a declaration are different
+                # facts, and a model proposing a plan-mode call should be able
+                # to tell them apart. It is the same field the settings panel
+                # renders, from the same `readonly_verdict` call, so the model
+                # and the operator can never be told different things about one
+                # tool (`Law 13`).
+                "read_only_source": t.get("readonly_source", "heuristic"),
             }
             if schema["omitted"]:
                 item["parameters_omitted"] = schema["omitted"]
             if t.get("annotations"):
                 item["annotations"] = t["annotations"]
+            if t.get("override"):
+                item["override"] = t["override"]
             if t.get("is_disabled"):
                 item["disabled"] = True
             items.append(item)

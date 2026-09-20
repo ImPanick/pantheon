@@ -81,8 +81,8 @@ const PRECACHE = [
   // browser error page with no way back, and the same form works the moment
   // the network returns.
   '/login',
-  '/static/style.css?v=20260919tidypreview1',
-  '/static/app.js?v=20260919tidypreview1',
+  '/static/style.css?v=20260920attachbucket1',
+  '/static/app.js?v=20260920attachbucket1',
   '/static/js/storage.js',
   '/static/js/appConfig.js',
   '/static/js/ui.js',
@@ -94,10 +94,10 @@ const PRECACHE = [
   '/static/js/langIcons.js',
   '/static/js/dragSort.js',
   '/static/js/sessions.js',
-  '/static/js/memory.js?v=20260919tidypreview1',
+  '/static/js/memory.js?v=20260920attachbucket1',
   '/static/js/skills.js',
   '/static/js/tourHints.js',
-  '/static/js/fileHandler.js?v=20260919chipramp1',
+  '/static/js/fileHandler.js?v=20260920attachbucket1',
   '/static/js/voiceRecorder.js',
   '/static/js/models.js?v=20260715startupcalm2',
   '/static/js/rag.js',
@@ -107,14 +107,14 @@ const PRECACHE = [
   '/static/js/tts-ai.js',
   '/static/js/document.js?v=20260815approvalsave1',
   '/static/js/gallery.js?v=20260708match1',
-  '/static/js/chatRenderer.js?v=20260919chipramp1',
+  '/static/js/chatRenderer.js?v=20260920attachbucket1',
   // `P4-01`: the one builder for a tool card in the agent thread. On the
   // critical path via chat.js and chatRenderer.js.
   '/static/js/agentThread.js',
   '/static/js/trustLadder.js',
   '/static/js/codeRunner.js',
-  '/static/js/chatStream.js?v=20260919chipramp1',
-  '/static/js/chat.js?v=20260919chipramp1',
+  '/static/js/chatStream.js?v=20260920attachbucket1',
+  '/static/js/chat.js?v=20260920attachbucket1',
   '/static/js/planWindow.js',
   // `B11`/`B13`. Two leaf tables on the critical path: what the plan window and
   // the todo card call themselves, and the word the six run statuses are shown
@@ -125,7 +125,7 @@ const PRECACHE = [
   '/static/js/runStatus.js',
   '/static/js/cookbook.js',
   '/static/js/search-chat.js',
-  '/static/js/compare/index.js?v=20260919chipramp1',
+  '/static/js/compare/index.js?v=20260920attachbucket1',
   '/static/js/theme.js',
   '/static/js/censor.js',
   // `B58`. The three entries below carried no query while every importer used

@@ -48,9 +48,22 @@ are the graphical objects the diagram is read by, and `P8-34` encodes what a
 node *is* purely as its shape) and **4.5:1** for label text (1.4.3, at
 Mermaid's 16px default).
 
-`test_the_old_pin_would_still_fail_this` is the control: the same measurement
-run against the literal that used to be in `markdown.js` has to come out red,
-or this file is asserting nothing.
+`B884` added the second half of the same claim and raised this file's
+edge-label floor from `4.0` to the real `4.5`. Mermaid's own `dark` theme draws
+`textColor #ccc` on `edgeLabelBackground hsl(0, 0%, 34.4117647059%)`, which
+measures **4.43:1** — under `1.4.3` at mermaid's 16px default, on all twelve
+dark palettes, and upstream's number rather than one this repository chose.
+`labelOverrides` (`mermaidTheme.js`) hands `edgeLabelBackground` the theme's
+own `labelBackground` (`#181818`), which is the value mermaid's `default` theme
+already uses for that key, and it measures **11.06:1**. `neutral` has no
+`labelBackground`, so the four light palettes are untouched at 21.00:1.
+
+Two controls, because a threshold with nothing behind it is not a measurement.
+`test_the_old_pin_would_still_fail_this` re-runs the stroke measurement with
+the literal that used to be in `markdown.js` put back and requires it red on
+the four light palettes. `test_the_unoverridden_edge_label_would_still_fail_this`
+re-runs the edge-label measurement against mermaid's untouched answer and
+requires it red on the twelve dark ones.
 
 The one thing this cannot reach is the rasteriser: `mermaid.render()` needs
 `getBBox`, a real stylesheet and a live SVG tree, and there is no browser and
@@ -80,6 +93,11 @@ from test_color_scheme_follows_the_palette import (  # noqa: E402
     THRESHOLD, _luminance, _theme_backgrounds,
 )
 from test_vendored_bumps_still_render import run_harness  # noqa: E402
+# `B883`. The one check that a theme NAME was actually applied. `getConfig()`
+# echoes any name it is handed — `initialize({theme: 'light'})` reports `light`
+# and draws `default` — so the name is compared against the 270 variables the
+# theme computed, not against itself. Imported rather than repeated (`Law 14`).
+from test_a_mermaid_theme_name_proves_nothing_js import theme_really_loaded  # noqa: E402
 
 # WCAG 2.2. 1.4.11 for anything the diagram is read by that is not text;
 # 1.4.3 for the text, at Mermaid's 16px default (`fontSize` comes back "16px").
@@ -167,11 +185,17 @@ def _palette_colours():
 
 
 @pytest.fixture(scope="module")
-def mermaid_schemes():
-    """What the real bundle says it will draw with, per `color-scheme`."""
+def mermaid_report():
+    """One run of the harness: what the real bundle says it will draw with."""
     report = run_harness("mermaid_diagram_parse.js")
     assert report["ok"], report
-    return report["schemes"]
+    return report
+
+
+@pytest.fixture(scope="module")
+def mermaid_schemes(mermaid_report):
+    """The per-`color-scheme` half of it, which is what most of this file reads."""
+    return mermaid_report["schemes"]
 
 
 @pytest.fixture(scope="module")
@@ -207,11 +231,18 @@ def test_the_measurement_still_has_all_sixteen_palettes_and_both_schemes(palette
         assert got["securityLevel"] == "loose", (name, got)
 
 
-def test_every_palette_gets_a_theme_mermaid_actually_has(mermaid_schemes):
+def test_every_palette_gets_a_theme_mermaid_actually_has(mermaid_report, mermaid_schemes):
     """`initialize({theme: 'light'})` is accepted in silence and draws
     `default` — measured on this bundle: the name comes back as asked and the
     variables come back as another theme's. So the theme name alone proves
-    nothing and the ink is read back with it."""
+    nothing and the ink is read back with it.
+
+    `B883` turned that reading into one importable check and this calls it:
+    each scheme's whole computed variable set is compared with what
+    `initialize({theme: <name>})` produces on the same bundle."""
+    theme_really_loaded(mermaid_report, "dark", "dark")
+    theme_really_loaded(mermaid_report, "light", "neutral")
+    theme_really_loaded(mermaid_report, "unset", "dark")
     assert mermaid_schemes["dark"]["theme"] == "dark", mermaid_schemes["dark"]
     assert mermaid_schemes["light"]["theme"] == "neutral", mermaid_schemes["light"]
     # Two themes, two different sets of ink. Identical ink would mean one of
@@ -253,10 +284,16 @@ def test_the_labels_are_readable_on_this_palette(palette, palettes, mermaid_sche
         f"{palette}: node label {node_text} on node fill {ink['mainBkg']} is "
         f"{on_node:.2f}:1, under {TEXT_MIN}:1"
     )
+    # `B884`. This was `>= 4.0` when `B872` shipped, because mermaid's own
+    # `dark` theme draws `textColor #ccc` on `edgeLabelBackground hsl(0, 0%,
+    # 34.4117647059%)` and that measures 4.43:1 — under the line, on all
+    # twelve dark palettes. `labelOverrides` moves the chip to the theme's own
+    # `labelBackground` and it now measures 11.06:1, so the floor is the real
+    # one.
     on_edge = contrast(ink["textColor"], ink["edgeLabelBackground"])
-    assert on_edge >= 4.0, (
+    assert on_edge >= TEXT_MIN, (
         f"{palette}: edge label {ink['textColor']} on {ink['edgeLabelBackground']} "
-        f"is {on_edge:.2f}:1"
+        f"is {on_edge:.2f}:1, under {TEXT_MIN}:1"
     )
 
 
@@ -278,3 +315,100 @@ def test_the_old_pin_would_still_fail_this(palettes, mermaid_schemes):
     assert set(failures) == {"light", "paper", "lavender", "cute"}, failures
     # Not marginal: every one of the four is at or near 1:1 — the same colour.
     assert max(failures.values()) < 1.5, failures
+
+
+def test_the_unoverridden_edge_label_would_still_fail_this(palettes, mermaid_report):
+    """`B884`'s control. The same measurement with the override taken back out.
+
+    `mermaid_report["themes"]` is each theme probed with a bare
+    `initialize({theme: <name>})` and nothing else — no `themeVariables`, so no
+    `labelOverrides` — which is mermaid's untouched answer. Re-measuring the
+    edge label against that has to come out red on the twelve dark palettes and
+    green on the four light ones, or `labelOverrides` is doing nothing and the
+    assertion above passes for some other reason.
+
+    The numbers it pins are upstream's: 4.43:1 everywhere the `dark` theme is
+    used, 21.00:1 everywhere `neutral` is.
+    """
+    raw = {
+        "dark": mermaid_report["themes"]["dark"]["ink"],
+        "light": mermaid_report["themes"]["neutral"]["ink"],
+    }
+    measured = {}
+    for name, colours in palettes.items():
+        ink = raw[_scheme_for(colours["bg"])]
+        measured[name] = contrast(ink["textColor"], ink["edgeLabelBackground"])
+    failing = {n: round(v, 2) for n, v in measured.items() if v < TEXT_MIN}
+    assert set(failing) == set(palettes) - {"light", "paper", "lavender", "cute"}, failing
+    assert len(failing) == 12, failing
+    # Not a rounding argument in either direction: 4.43 under, 21.00 over.
+    assert set(failing.values()) == {4.43}, failing
+    passing = {n: round(v, 2) for n, v in measured.items() if n not in failing}
+    assert set(passing.values()) == {21.0}, passing
+
+
+def test_the_override_moved_only_the_dark_scheme(mermaid_report, mermaid_schemes):
+    """`B884` is confined to the twelve dark palettes, and this is what says so.
+
+    `neutral` has no `labelBackground`, so `labelOverrides` returns `{}` for the
+    light scheme and the four light palettes keep exactly the ink `B872`
+    measured. If a vendored bump gives `neutral` a `labelBackground`, the
+    override starts applying there too and this goes red — which is the moment
+    to re-measure the light palettes rather than to assume.
+    """
+    light_applied = mermaid_schemes["light"]["applied"].get("themeVariables") or {}
+    assert "edgeLabelBackground" not in light_applied, light_applied
+    assert mermaid_schemes["light"]["ink"]["edgeLabelBackground"] == (
+        mermaid_report["themes"]["neutral"]["ink"]["edgeLabelBackground"]
+    ), mermaid_schemes["light"]
+
+    dark_applied = mermaid_schemes["dark"]["applied"].get("themeVariables") or {}
+    assert dark_applied.get("edgeLabelBackground") == "#181818", dark_applied
+    assert mermaid_schemes["dark"]["ink"]["edgeLabelBackground"] == "#181818"
+    assert contrast(mermaid_schemes["dark"]["ink"]["textColor"], "#181818") >= TEXT_MIN
+
+
+def test_a_diagram_left_in_the_other_scheme_would_still_fail_this(palettes, mermaid_schemes):
+    """`B885`'s control, and the numbers that row is worth.
+
+    `mermaid.run` skips anything carrying `data-processed`, so before `B885` a
+    palette switch re-themed only the diagrams drawn after it. This measures
+    what that left on the page: each palette's panel against the ink of the
+    OTHER scheme — a `dark`-drawn diagram sitting on a light palette, and a
+    `neutral`-drawn one sitting on a dark palette.
+
+    The strokes fail in both directions and the text does not, which is the
+    whole shape of the defect: the arrows and the outlines are drawn onto the
+    panel, and everything else sits on ink its own theme chose.
+
+    `markdown.js` re-draws them now (`_undrawStale`, driven in
+    `tests/test_a_palette_switch_redraws_the_diagrams_js.py`); this file is
+    where the cost of not doing it is written down.
+    """
+    strokes = {}
+    for name, colours in palettes.items():
+        scheme = _scheme_for(colours["bg"])
+        stale = mermaid_schemes["light" if scheme == "dark" else "dark"]["ink"]
+        panel = _panel(colours)
+        strokes[name] = min(contrast(stale[k], panel) for k in ("lineColor", "nodeBorder"))
+
+    light = {n: round(v, 2) for n, v in strokes.items()
+             if n in {"light", "paper", "lavender", "cute"}}
+    assert set(light.values()) == {1.17, 1.21, 1.29}, light   # the same colour
+    assert max(light.values()) < 1.5, light
+
+    dark = {n: round(v, 2) for n, v in strokes.items() if n not in light}
+    assert len(dark) == 12, dark
+    assert 2.16 <= min(dark.values()) and max(dark.values()) <= 3.45, dark
+    under = {n: v for n, v in dark.items() if v < GRAPHIC_MIN}
+    assert set(under) == {"claude", "copper", "dark", "forest", "gpt", "ocean",
+                          "retrowave", "ume"}, under
+
+    # And the text is fine in both directions, which is why the fix is to draw
+    # the strokes again rather than to repaint the panel under them.
+    for name, colours in palettes.items():
+        scheme = _scheme_for(colours["bg"])
+        stale = mermaid_schemes["light" if scheme == "dark" else "dark"]["ink"]
+        node_text = stale["nodeTextColor"] or stale["textColor"]
+        assert contrast(node_text, stale["mainBkg"]) >= TEXT_MIN, name
+        assert contrast(stale["textColor"], stale["edgeLabelBackground"]) >= TEXT_MIN, name

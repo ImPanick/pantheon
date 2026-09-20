@@ -5615,7 +5615,37 @@ async function initUnifiedIntegrations() {
               // has ever read (`grep -c input_schema static/` was 0).
               panel.innerHTML = `<div class="mcp-tools-header"><span>Tools</span><span style="display:flex;gap:8px;align-items:center"><span class="mcp-tools-count">${tools.length - disabled.size}/${tools.length} enabled</span><a href="#" id="uf-mcp-all">All</a> <a href="#" id="uf-mcp-none">None</a></span></div><div class="mcp-tools-list"></div>`;
               const toolList = panel.querySelector('.mcp-tools-list');
-              tools.forEach(t => toolList.appendChild(createMcpToolRow(t)));
+              // `P8-48`. Save the operator's own read/write answer for one
+              // tool, then read the verdict back from the one endpoint that
+              // computes it. The read-back is not optional and not a second
+              // computation: clearing an override on a tool whose server
+              // declares `readOnlyHint` must fall back to *the server's word*,
+              // and only `McpManager.readonly_verdict` knows that — a browser
+              // that assumed "cleared means guessed" would be wrong on every
+              // annotated server (`Law 14`).
+              const onOverride = async (toolName, value) => {
+                const body = { overrides: { [toolName]: value === null ? null : { read_only: value } } };
+                const r = await fetch(`/api/mcp/servers/${srv.id}/tools`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  credentials: 'same-origin',
+                  body: JSON.stringify(body),
+                });
+                if (!r.ok) {
+                  let payload = {};
+                  try { payload = await r.json(); } catch (_) { payload = {}; }
+                  throw new Error(describeServerRefusal(r.status, payload).text);
+                }
+                // A failed read-back is not a failed save: the row falls back
+                // to what it knows rather than telling the operator their
+                // answer was refused when it was stored.
+                try {
+                  const back = await fetch(`/api/mcp/servers/${srv.id}/tools`, { credentials: 'same-origin' });
+                  const fresh = await back.json();
+                  return Array.isArray(fresh) ? fresh.find(t => t.name === toolName) : undefined;
+                } catch (_) { return undefined; }
+              };
+              tools.forEach(t => toolList.appendChild(createMcpToolRow(t, { onOverride })));
               const saveFn = async () => {
                 const dis = [];
                 panel.querySelectorAll('input[type=checkbox]').forEach(cb => { if (!cb.checked) dis.push(cb.dataset.mcpToolName); });

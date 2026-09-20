@@ -28,6 +28,101 @@ let _uploading = false;
 let _lastUploadCancelled = false;
 const _previewUrls = new WeakMap();
 
+// `B893`. Every variable above this line used to be the whole story: one set of
+// pending files, one upload result and one context report for the entire app.
+// Nothing reset them when the chat changed — `sessions.js` does not import this
+// module, and `selectSession` restores a character preset and nothing else — so
+// a file picked in one conversation was still on the strip in the next, still
+// spent out of that conversation's budget, and still UPLOADED into it, because
+// `chat.js` passes `getCurrentSessionId()` at send time rather than the id the
+// file was picked under. The stale report is what put "One text or code
+// attachment was reduced to fit it" under "No attachments in this message".
+//
+// They are a per-session bucket now. The variables above stay the working set
+// for whichever chat is current, and `_syncBucket()` stashes them under the key
+// being left and restores the key being entered — so a new chat has no
+// attachments because it has its own empty set, not because anything was wiped,
+// and going back to the first chat brings its file back.
+//
+// The key is READ, never pushed. `currentSessionId` is assigned at six sites in
+// `sessions.js` and only one of them is the setter, so a hook per site is the
+// `Law 13` shape this row is an instance of. Instead the resolver is registered
+// once and every public entry point asks it, which means a site nobody wired
+// still cannot send the wrong file — the worst it can cost is a redraw that
+// waits for the next interaction, and `syncSession()` exists for the two paths
+// that want it immediate.
+const _buckets = new Map();
+let _activeKey = '';
+let _sessionKeyFn = null;
+
+function _sessionKey() {
+  if (typeof _sessionKeyFn !== 'function') return '';
+  try { return String(_sessionKeyFn() || ''); } catch (_) { return ''; }
+}
+
+function _snapshot() {
+  return {
+    pendingFiles, uploaded,
+    lastUploadedMeta: _lastUploadedMeta,
+    lastUploadRejected: _lastUploadRejected,
+    lastUploadOutcome: _lastUploadOutcome,
+    lastUploadCancelled: _lastUploadCancelled,
+    contextBudget: _contextBudget,
+    contextMeasuredIds: _contextMeasuredIds,
+  };
+}
+
+function _restore(b) {
+  pendingFiles = b.pendingFiles || [];
+  uploaded = b.uploaded || [];
+  _lastUploadedMeta = b.lastUploadedMeta || [];
+  _lastUploadRejected = b.lastUploadRejected || [];
+  _lastUploadOutcome = b.lastUploadOutcome || [];
+  _lastUploadCancelled = !!b.lastUploadCancelled;
+  _contextBudget = b.contextBudget || null;
+  _contextMeasuredIds = b.contextMeasuredIds || [];
+}
+
+/**
+ * Move the working set to whichever chat is current. Returns true when the key
+ * changed, so a caller that draws can decide whether it has to.
+ *
+ * An upload in flight is deliberately NOT carried across: it belongs to the
+ * chat it was started in, and its own `finally` writes back into that bucket
+ * because the closure captured nothing — it reads the module variables, which
+ * is why `_syncBucket` is never called from inside `uploadPending`'s await.
+ */
+function _syncBucket() {
+  const key = _sessionKey();
+  if (key === _activeKey) return false;
+  _buckets.set(_activeKey, _snapshot());
+  _restore(_buckets.get(key) || {});
+  _activeKey = key;
+  return true;
+}
+
+/** Register how this module learns which chat is current. Called once, at wiring. */
+export function setSessionResolver(fn) {
+  _sessionKeyFn = typeof fn === 'function' ? fn : null;
+  _activeKey = _sessionKey();
+  const held = _buckets.get(_activeKey);
+  if (held) _restore(held);
+}
+
+/** Force the swap and redraw now, for the paths that switch chats. */
+export function syncSession() {
+  if (!_syncBucket()) return false;
+  renderAttachStrip();
+  renderContextMeter();
+  return true;
+}
+
+/** Which chat the working set belongs to. Empty string is "no chat yet". */
+export function getAttachmentSessionKey() {
+  _syncBucket();
+  return _activeKey;
+}
+
 const MAX_FILES = 10;
 const MAX_VISIBLE = 3;
 let _expanded = false;
@@ -248,6 +343,7 @@ function _chars(n) {
  * one. It is deliberately not a toast — nothing the person did failed.
  */
 export async function refreshContextMeter(ids) {
+  _syncBucket();
   if (_contextFetching) return _contextBudget;
   const wanted = (Array.isArray(ids) ? ids : []).filter(Boolean).map(String);
   _contextFetching = true;
@@ -283,6 +379,7 @@ export async function refreshContextMeter(ids) {
 
 /** Record a report that arrived on some other response, and redraw. */
 export function noteContextBudget(report, ids) {
+  _syncBucket();
   if (!report || typeof report !== 'object') return;
   _contextBudget = report;
   _contextMeasuredIds = (Array.isArray(ids) ? ids : []).filter(Boolean).map(String);
@@ -291,11 +388,13 @@ export function noteContextBudget(report, ids) {
 
 /** The ids the report on screen was measured over. */
 export function getContextMeasuredIds() {
+  _syncBucket();
   return _contextMeasuredIds.slice();
 }
 
 /** The report on screen, or null before one has been read. */
 export function getContextBudget() {
+  _syncBucket();
   return _contextBudget;
 }
 
@@ -332,6 +431,7 @@ function _contextChip(item, limit) {
  * Draw the meter from the last report. Idempotent; safe to call on any change.
  */
 export function renderContextMeter() {
+  _syncBucket();
   const host = document.getElementById('context-meter');
   if (!host) return;
   while (host.firstChild) host.removeChild(host.firstChild);
@@ -448,6 +548,7 @@ export function openPicker() {
  * 4+  files: collapse into a single "N files" badge (click to expand).
  */
 export function renderAttachStrip() {
+  _syncBucket();
   const strip = document.getElementById('attach-strip');
 
   while (strip.firstChild) strip.removeChild(strip.firstChild);
@@ -523,6 +624,7 @@ function _createChip(f, idx) {
  * Remove a pending file by index
  */
 export function removePending(idx) {
+  _syncBucket();
   if (_uploading) cancelUpload();
   _revokePreviewUrl(pendingFiles[idx]);
   pendingFiles.splice(idx, 1);
@@ -533,6 +635,21 @@ export function removePending(idx) {
  * Upload all pending files to server
  */
 export async function uploadPending(opts = {}) {
+  _syncBucket();
+  // `B893`, the half a binding alone does not give. `chat.js` passes the id it
+  // is sending to; if that is not the chat these files were picked under, the
+  // upload would put them somewhere nobody chose. Refuse rather than guess —
+  // an attachment that does not arrive is recoverable, an attachment in the
+  // wrong conversation is not.
+  if (opts && Object.prototype.hasOwnProperty.call(opts, 'sessionId')) {
+    const asked = String(opts.sessionId || '');
+    if (asked !== _activeKey) {
+      console.warn(
+        `attachment upload refused: files belong to session "${_activeKey}", ` +
+        `send is for "${asked}"`);
+      return [];
+    }
+  }
   if (pendingFiles.length === 0) return [];
   _lastUploadCancelled = false;
   // Stale results from the previous batch must not be readable as if they
@@ -689,6 +806,7 @@ export async function uploadPending(opts = {}) {
  * Add files to pending list (capped at MAX_FILES)
  */
 export async function addFiles(files, opts = {}) {
+  _syncBucket();
   for (const f of files) {
     if (pendingFiles.length >= MAX_FILES) {
       _showToast(`Max ${MAX_FILES} files allowed`);
@@ -737,6 +855,7 @@ function _showToast(msg) {
  * Get pending files count
  */
 export function getPendingCount() {
+  _syncBucket();
   return pendingFiles.length;
 }
 
@@ -744,6 +863,7 @@ export function getPendingCount() {
  * Get raw pending File objects (for reading content before upload clears them)
  */
 export function getPendingRaw() {
+  _syncBucket();
   return [...pendingFiles];
 }
 
@@ -751,6 +871,7 @@ export function getPendingRaw() {
  * Get pending file metadata (name, size, type) for display
  */
 export function getPendingInfo() {
+  _syncBucket();
   return pendingFiles.map(f => {
     const isImage = f.type?.startsWith('image/') || /\.(png|jpg|jpeg|gif|webp|svg|bmp)$/i.test(f.name || '');
     return {
@@ -771,6 +892,7 @@ export function getPendingInfo() {
  * Clear all pending files
  */
 export function clearPending() {
+  _syncBucket();
   if (_uploading) cancelUpload();
   pendingFiles.forEach(_revokePreviewUrl);
   pendingFiles = [];
@@ -779,6 +901,7 @@ export function clearPending() {
 
 /** Full meta (incl. width/height for images) from the most recent uploadPending(). */
 export function getLastUploadedMeta() {
+  _syncBucket();
   return _lastUploadedMeta;
 }
 
@@ -788,6 +911,7 @@ export function getLastUploadedMeta() {
  * body. `B03`.
  */
 export function getLastUploadRejections() {
+  _syncBucket();
   return _lastUploadRejected.slice();
 }
 
@@ -803,6 +927,7 @@ export function getLastUploadRejections() {
  * position of the file the user attached. `B03`.
  */
 export function getLastUploadOutcome() {
+  _syncBucket();
   return _lastUploadOutcome.map(o => ({ ...o }));
 }
 
@@ -846,6 +971,9 @@ const fileHandlerModule = {
   noteContextBudget,
   getContextBudget,
   getContextMeasuredIds,
+  setSessionResolver,
+  syncSession,
+  getAttachmentSessionKey,
 };
 
 export default fileHandlerModule;

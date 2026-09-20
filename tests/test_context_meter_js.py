@@ -50,6 +50,7 @@ import pytest
 
 from test_tool_effect_surfaces_js import _make_sandbox, _run  # noqa: E402
 from tests.helpers.source_text import blank  # B290
+from tests.helpers.esc_stub import ui_default_stub  # B874
 
 ROOT = Path(__file__).resolve().parents[1]
 FILE_HANDLER = ROOT / "static" / "js" / "fileHandler.js"
@@ -154,12 +155,15 @@ export function readMeter() {
 """
 
 _STUBS = {
-    "ui.js": """
-export default {
-  esc: (s) => String(s == null ? '' : s), showToast: () => {}, showError: () => {},
-  showUploadRejections: () => {}, el: (id) => document.getElementById(id),
-};
-""",
+    # `B874`. This stub answered `esc` with its own input. Every case below
+    # that asserts a filename is escaped was green on the module's own
+    # `.replace` calls, and would have stayed green the day one of them started
+    # leaning on `uiModule.esc` instead. The shipped escaper is read out of
+    # `static/js/util/escapeHtml.js` at test time now.
+    "ui.js": ui_default_stub(
+        "showToast: () => {}, showError: () => {},\n"
+        "  showUploadRejections: () => {}, el: (id) => document.getElementById(id),"
+    ),
     "spinner.js": """
 export function createWhirlpool(){ return { element: { style: {} }, destroy(){} }; }
 export default {

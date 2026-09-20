@@ -601,6 +601,28 @@ class McpServer(TimestampMixin, Base):
     is_enabled = Column(Boolean, default=True)
     oauth_config = Column(Text, nullable=True)   # JSON: provider, keys_file, token_file, scopes
     disabled_tools = Column(Text, nullable=True)  # JSON array of tool names to hide from LLM
+    # `P8-48`. What the OPERATOR says about one tool, as against what the server
+    # said about it. JSON object keyed by tool name:
+    # `{"<tool>": {"read_only": true|false}}`.
+    #
+    # It is a second column rather than a key inside `disabled_tools` because
+    # the two answer different questions and are consumed in different places:
+    # `disabled_tools` hides a tool from the model entirely, this one changes
+    # the *verdict* `mcp_tool_is_readonly` reaches about a tool the model can
+    # still see — which is the thing plan mode gates on. Keeping them apart is
+    # also what lets `PUT /api/mcp/servers/{id}` carry both across an edit
+    # without either one having to be re-encoded.
+    #
+    # It is per-server rather than global because a tool name is only unique
+    # inside a server: `read_file` on a filesystem server and `read_file` on a
+    # database server are different tools and may deserve different answers.
+    #
+    # `P8-35`'s ruling extends here unchanged: an id is an identity, not a
+    # version, so `PUT` does not touch this column either — an operator who
+    # marked a tool destructive keeps that mark when the command line under it
+    # changes, and names the new command no longer offers come back as
+    # `stale_tool_overrides` rather than being deleted.
+    tool_overrides = Column(Text, nullable=True)
     oauth_tokens = Column(EncryptedText, nullable=True)  # JSON {tokens, client_info} for generic MCP OAuth, encrypted at rest
 
 
@@ -2290,6 +2312,30 @@ def _migrate_add_disabled_tools():
     except Exception as e:
         logging.getLogger(__name__).warning(f"disabled_tools migration: {e}")
 
+def _migrate_add_mcp_tool_overrides_column():
+    """Add `tool_overrides` to mcp_servers if missing. `P8-48`.
+
+    Modelled line for line on `_migrate_add_disabled_tools` above, which is the
+    sibling column on the same table. A column declared on the model and not
+    migrated exists on a fresh `create_all` box and on **no** install created
+    before the declaration, and the asymmetry is invisible until a real
+    deployment writes to it — which is what `P8-25` learned and
+    `_migrate_add_scheduled_task_execution_columns` writes down.
+
+    Nullable with no default: an existing row reads as "this operator has said
+    nothing about any of these tools", which is exactly what those rows mean.
+    """
+    try:
+        with engine.connect() as conn:
+            cols = [r[1] for r in conn.execute(text("PRAGMA table_info(mcp_servers)"))]
+            if "tool_overrides" not in cols:
+                conn.execute(text("ALTER TABLE mcp_servers ADD COLUMN tool_overrides TEXT"))
+                conn.commit()
+                logging.getLogger(__name__).info("Added tool_overrides column to mcp_servers")
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"tool_overrides migration: {e}")
+
+
 def _migrate_add_mcp_oauth_tokens_column():
     """Add oauth_tokens column to mcp_servers table if missing.
 
@@ -2734,6 +2780,7 @@ def init_db():
     _migrate_add_email_oauth_columns()
     _migrate_add_task_automation_columns()
     _migrate_add_disabled_tools()
+    _migrate_add_mcp_tool_overrides_column()
     _migrate_add_mcp_oauth_tokens_column()
     _migrate_add_task_v2_columns()
     _migrate_add_notifications_enabled()

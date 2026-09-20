@@ -43,14 +43,16 @@ import pytest
 from test_a_draft_skill_is_uncatalogued_not_inactive import js_function  # noqa: E402
 from test_tool_effect_surfaces_js import _copy_unstubbed_imports  # noqa: E402
 
+from tests.helpers.esc_stub import ui_default_stub  # B874
+
 _REPO = Path(__file__).resolve().parent.parent
 _MODULE = _REPO / "static" / "js" / "agentThread.js"
 pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
 
-_UI_STUB = """
-const MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
-export default { esc: (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => MAP[c]) };
-"""
+# `B874`. The shipped escaper, read out of `static/js/util/escapeHtml.js`
+# at test time rather than restated here. Seven files held this same
+# five-character copy and three more held one that escaped nothing.
+_UI_STUB = ui_default_stub()
 
 
 @pytest.fixture(scope="module")

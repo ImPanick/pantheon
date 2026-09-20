@@ -4,7 +4,7 @@
 
 import Storage from './storage.js';
 import uiModule, { autoResize, styledPrompt } from './ui.js';
-import chatRenderer from './chatRenderer.js?v=20260919chipramp1';
+import chatRenderer from './chatRenderer.js?v=20260920attachbucket1';
 import { providerLogo } from './providers.js';
 import { initModelPicker, updateModelPicker } from './modelPicker.js?v=20260722ctxheader1';
 import themeModule from './theme.js';
@@ -283,6 +283,19 @@ let _researchPollTimer = null;
 
 // Session list keyboard navigation state
 let _sessionListFocused = false;
+
+// `B893`. The file handler reads the current session id for itself, so nothing
+// here can send an attachment into the wrong chat whether or not this runs.
+// What this buys is the REDRAW: without it the strip and the context meter keep
+// the previous chat's contents on screen until the next thing that happens to
+// draw them. Called from the switch paths rather than from all six assignment
+// sites, deliberately — a site nobody wired is a late redraw, not a wrong send.
+function _syncAttachmentsToSession() {
+  try {
+    const fh = window.fileHandlerModule;
+    if (fh && typeof fh.syncSession === 'function') fh.syncSession();
+  } catch (_) {}
+}
 
 /** Clear current session from UI (after delete/archive). */
 function _deselectCurrentSession(sid) {
@@ -1890,6 +1903,7 @@ export async function selectSession(id, { keepSidebar = false, showLoading = tru
       try { window.documentModule.clearSelection(); } catch {}
     }
     currentSessionId = id;
+    _syncAttachmentsToSession();
     try { window.__pantheonLastSelectedSessionId = id; } catch (_) {}
     // Identify Assistant / task-output sessions so we don't "trap" the user
     // there on return. Skipped from both `lastSessionId` persistence and the
@@ -2454,6 +2468,7 @@ export function getCurrentEndpointUrl() {
 export function setCurrentSessionId(id) {
   _sessionNavToken++;
   currentSessionId = id;
+  _syncAttachmentsToSession();
   try { window.__pantheonLastSelectedSessionId = id || ''; } catch (_) {}
   if (!id) {
     _suppressNextSessionLoading = true;

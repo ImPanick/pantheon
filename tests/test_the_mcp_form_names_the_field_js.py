@@ -669,3 +669,385 @@ def test_a_description_with_a_quote_in_it_is_text_and_never_markup(sandbox):
     assert '"hi"' in out["text"]
     assert out["childTags"] == 0
     assert out["html"] == "", "nothing was ever assigned as markup"
+
+
+# ---------------------------------------------------------------------------
+# `P8-48`, annotation half — does it write, and who said so
+#
+# Measured on the tree before this: `grep -rl 'annotations\|is_readonly\|
+# readOnlyHint' static/js/` matched **one** file, `settings/mcpFields.js`, and
+# only inside a comment block explaining that `annotations` was not on the wire
+# — which `B867` had already made false. No frontend file read the field, and
+# the tool list drew a checkbox, a name and a description with no indication
+# anywhere that `wipe_volume` and `read_file` are different kinds of thing.
+#
+# Every case below reads the payload and asserts that nothing is re-derived:
+# the verdict and its provenance are computed once, in
+# `McpManager.readonly_verdict`, which is what plan mode gates on.
+# ---------------------------------------------------------------------------
+
+
+_SETTLE = "await new Promise((r) => setTimeout(r, 0));"
+
+
+def test_the_badge_says_whether_a_tool_writes_and_who_said_so(sandbox):
+    """Three tools, three sources, on the collapsed row.
+
+    The badge is on the closed row and not behind the disclosure because
+    "which of these can change something" is asked about the whole list at
+    once, and answering it should not cost one click per tool.
+    """
+    out = run(sandbox, """
+        const rows = [
+          { name: 'read_file', is_readonly: true, readonly_source: 'annotation',
+            annotations: { readOnlyHint: true }, input_schema: {} },
+          { name: 'wipe_volume', is_readonly: false, readonly_source: 'annotation',
+            annotations: { readOnlyHint: false, destructiveHint: true }, input_schema: {} },
+          { name: 'tail_log', is_readonly: false, readonly_source: 'heuristic',
+            input_schema: {} },
+          { name: 'purge_old', is_readonly: true, readonly_source: 'override',
+            input_schema: {} },
+        ].map((t) => F.createMcpToolRow(t));
+        console.log(JSON.stringify(rows.map((row) => {
+          const badge = row.querySelector('[data-mcp-readonly-badge]');
+          return { text: badge.textContent, title: badge.title,
+                   readOnly: badge.getAttribute('data-mcp-readonly'),
+                   source: badge.getAttribute('data-mcp-readonly-source'),
+                   style: badge.style.cssText, rowText: row.readable };
+        })));
+    """)
+    declared_read, destructive, guessed, overridden = out
+
+    assert declared_read["text"] == "Read-only (the server says so)"
+    assert declared_read["readOnly"] == "true"
+    assert "var(--green)" in declared_read["style"]
+
+    # `destructiveHint` is a stronger word than "writes" and only a server can
+    # say it — there is no destructive override and no guessing it from a name.
+    assert destructive["text"] == "Destructive (the server says so)"
+    assert destructive["readOnly"] == "false"
+    assert "var(--red)" in destructive["style"]
+
+    assert guessed["text"] == "Writes (guessed from the name)"
+    assert guessed["source"] == "heuristic"
+
+    assert overridden["text"] == "Read-only (you set this)"
+    assert overridden["source"] == "override"
+
+    # And it reads as part of the row, not as a tooltip somebody has to find.
+    assert "Destructive" in destructive["rowText"]
+
+
+def test_a_guess_is_never_drawn_as_a_declaration(sandbox):
+    """The reason `readonly_source` had to exist before this row could close.
+
+    Most MCP servers ship no annotations, so for most tools `is_readonly` is a
+    guess at a leading verb. A badge that renders a guess identically to a
+    declaration is not information, it is a claim the product cannot support.
+    """
+    out = run(sandbox, """
+        const mk = (source) => F.createMcpToolRow(
+          { name: 'list_things', is_readonly: true, readonly_source: source, input_schema: {} }
+        ).querySelector('[data-mcp-readonly-badge]');
+        const guessed = mk('heuristic'), declared = mk('annotation');
+        console.log(JSON.stringify({
+          guessedText: guessed.textContent, declaredText: declared.textContent,
+          guessedStyle: guessed.style.cssText, declaredStyle: declared.style.cssText,
+          missingSource: F.createMcpToolRow({ name: 'list_things', is_readonly: true, input_schema: {} })
+            .querySelector('[data-mcp-readonly-badge]').getAttribute('data-mcp-readonly-source'),
+        }));
+    """)
+    assert out["guessedText"] != out["declaredText"]
+    assert "guessed from the name" in out["guessedText"]
+    assert "dashed" in out["guessedStyle"] and "dashed" not in out["declaredStyle"]
+    # An entry from a server that predates the field reads as a guess, which is
+    # the truthful fallback: nothing is telling us, so assume we inferred it.
+    assert out["missingSource"] == "heuristic"
+
+
+def test_the_verdict_is_read_and_never_re_derived(sandbox):
+    """`Law 14`. A second copy of the precedence rule, in JavaScript, could not
+    be kept in step with the Python one the gate actually runs.
+
+    Driven with a payload that contradicts the name heuristic in both
+    directions: if this module were deciding for itself, both badges would come
+    out the other way round.
+    """
+    out = run(sandbox, """
+        const mk = (name, is_readonly) => F.describeReadonly(
+          { name, is_readonly, readonly_source: 'annotation',
+            annotations: { readOnlyHint: is_readonly } });
+        console.log(JSON.stringify({
+          listWrites: mk('list_everything', false).label,
+          wipeReads: mk('wipe_everything', true).label,
+        }));
+    """)
+    assert out["listWrites"] == "Writes"
+    assert out["wipeReads"] == "Read-only"
+
+
+def test_the_panel_explains_the_verdict_and_what_plan_mode_will_do(sandbox):
+    out = run(sandbox, """
+        const open = (tool) => {
+          const row = F.createMcpToolRow(tool);
+          row.querySelector('.mcp-tool-more').dispatchEvent(
+            { type: 'click', preventDefault() {} });
+          return row.querySelector('.mcp-tool-verdict-detail').readable;
+        };
+        console.log(JSON.stringify({
+          guessedWrite: open({ name: 'tail_log', is_readonly: false,
+                               readonly_source: 'heuristic', input_schema: {} }),
+          guessedRead: open({ name: 'list_and_purge', is_readonly: true,
+                              readonly_source: 'heuristic', input_schema: {} }),
+          declared: open({ name: 'wipe', is_readonly: false, readonly_source: 'annotation',
+                           annotations: { destructiveHint: true }, input_schema: {} }),
+        }));
+    """)
+    assert "does not say whether its tools write" in out["guessedWrite"]
+    assert "Plan mode will refuse it." in out["guessedWrite"]
+    assert "“tail_log”" in out["guessedWrite"]
+    assert "Plan mode will run it." in out["guessedRead"]
+    assert "declares this tool destructive" in out["declared"]
+
+
+def test_an_override_that_contradicts_the_server_says_what_it_overrode(sandbox):
+    """The sharpest case this row has, and the one the badge must not hide.
+
+    A server declares `destructiveHint: true`; an operator marks the tool
+    read-only anyway, which lets plan mode run it. The panel must not present
+    that as a plain "Read-only" — and it must not attribute the word
+    *destructive* to the operator either, because they never said it. It says
+    what they said, and then what the server says.
+
+    An override that merely agrees with the server gets no warning, because a
+    warning that fires on agreement is a warning people learn to ignore.
+    """
+    out = run(sandbox, """
+        const ann = { readOnlyHint: false, destructiveHint: true };
+        const say = (is_readonly, source, annotations) => F.describeReadonly(
+          { name: 'wipe', is_readonly, readonly_source: source, annotations });
+        console.log(JSON.stringify({
+          overrodeToRead: say(true, 'override', ann),
+          overrodeToWrite: say(false, 'override', ann),
+          overrodeReadOnlyServer: say(false, 'override', { readOnlyHint: true }),
+          agreesWithSilentServer: say(true, 'override', null),
+        }));
+    """)
+    danger = out["overrodeToRead"]
+    assert danger["label"] == "Read-only", "the operator said read-only, not the server"
+    assert danger["destructive"] is False, (
+        "'destructive' is the server's word and must not be attributed to the operator"
+    )
+    assert "You marked “wipe” read-only" in danger["sentence"]
+    assert "The server itself declares it destructive." in danger["sentence"]
+    assert "Plan mode will run it." in danger["sentence"]
+
+    # Agreeing with the server is not a contradiction and is not warned about.
+    assert "The server itself declares" not in out["overrodeToWrite"]["sentence"]
+    assert out["overrodeToWrite"]["label"] == "Writes"
+    assert "declares it read-only" in out["overrodeReadOnlyServer"]["sentence"]
+    assert "The server itself declares" not in out["agreesWithSilentServer"]["sentence"]
+
+
+def test_a_person_can_say_this_one_is_read_only_about_a_server_that_declared_nothing(sandbox):
+    """`P8-00`, and the whole point of the row.
+
+    Somebody who has never read this tracker opens a connected server, sees
+    `tail_log` marked *Writes (guessed from the name)*, presses **Read-only**,
+    and the row says so — without devtools and without the server's docs.
+    """
+    out = run(sandbox, """
+        const saved = [];
+        const row = F.createMcpToolRow(
+          { name: 'tail_log', is_readonly: false, readonly_source: 'heuristic',
+            qualified_name: 'mcp__srv1__tail_log', input_schema: {} },
+          { onOverride: (name, value) => {
+              saved.push([name, value]);
+              return Promise.resolve(
+                { name, is_readonly: value === true, readonly_source: 'override' });
+            } });
+        const badge = row.querySelector('[data-mcp-readonly-badge]');
+        const before = badge.textContent;
+        row.querySelector('.mcp-tool-more').dispatchEvent({ type: 'click', preventDefault() {} });
+        const offer = row.querySelector('.mcp-tool-verdict-detail').readable;
+        const buttons = row.querySelector('.mcp-tool-override').readable;
+        row.querySelector('[data-mcp-override="read"]').dispatchEvent(
+          { type: 'click', preventDefault() {} });
+        """ + _SETTLE + """
+        console.log(JSON.stringify({
+          before, saved, after: badge.textContent, offer, buttons,
+          detail: row.querySelector('.mcp-tool-verdict-detail').readable,
+          pressed: Array.from(row.querySelectorAll('[data-mcp-override]'))
+            .map((b) => [b.getAttribute('data-mcp-override'), b.getAttribute('aria-pressed')]),
+        }));
+    """)
+    assert out["before"] == "Writes (guessed from the name)"
+    assert out["saved"] == [["tail_log", True]]
+    assert out["after"] == "Read-only (you set this)"
+    assert "You marked “tail_log” read-only" in out["detail"]
+    assert dict(out["pressed"]) == {"read": "true", "write": "false", "server": "false"}
+    # The three answers, including taking it back — which a two-state control
+    # cannot express and an operator who mis-clicked needs immediately.
+    assert out["buttons"] == "Say what it really does: Read-only It writes Server's answer"
+    # The consequence is stated beside the control, not left to be discovered.
+    assert "lets plan mode call it without asking you first" in out["offer"]
+
+
+def test_taking_the_answer_back_uses_what_the_server_said_and_not_a_fresh_guess(sandbox):
+    """Why the row waits for the server's answer instead of assuming.
+
+    Clearing an override on a tool whose server declares `readOnlyHint` must
+    fall back to **the server's word**. A browser that assumed "cleared means
+    guessed" would be wrong on every annotated server.
+    """
+    out = run(sandbox, """
+        const row = F.createMcpToolRow(
+          { name: 'wipe', is_readonly: true, readonly_source: 'override', input_schema: {},
+            annotations: { readOnlyHint: false, destructiveHint: true } },
+          { onOverride: (name, value) => Promise.resolve({
+              name, is_readonly: false, readonly_source: 'annotation',
+              annotations: { readOnlyHint: false, destructiveHint: true } }) });
+        row.querySelector('.mcp-tool-more').dispatchEvent({ type: 'click', preventDefault() {} });
+        const badge = row.querySelector('[data-mcp-readonly-badge]');
+        const before = badge.textContent;
+        row.querySelector('[data-mcp-override="server"]').dispatchEvent(
+          { type: 'click', preventDefault() {} });
+        """ + _SETTLE + """
+        console.log(JSON.stringify({ before, after: badge.textContent,
+          source: badge.getAttribute('data-mcp-readonly-source') }));
+    """)
+    assert out["before"] == "Read-only (you set this)"
+    assert out["after"] == "Destructive (the server says so)"
+    assert out["source"] == "annotation"
+
+
+def test_a_refused_save_does_not_leave_a_button_pressed(sandbox):
+    """The worst outcome available here is a row that says it was recorded.
+
+    A button left pressed for a state the server never accepted tells the
+    operator plan mode has been told something it has not.
+    """
+    out = run(sandbox, """
+        const row = F.createMcpToolRow(
+          { name: 'tail_log', is_readonly: false, readonly_source: 'heuristic', input_schema: {} },
+          { onOverride: () => Promise.reject(
+              new Error('you are not signed in as an administrator')) });
+        row.querySelector('.mcp-tool-more').dispatchEvent({ type: 'click', preventDefault() {} });
+        const badge = row.querySelector('[data-mcp-readonly-badge]');
+        row.querySelector('[data-mcp-override="read"]').dispatchEvent(
+          { type: 'click', preventDefault() {} });
+        """ + _SETTLE + """
+        console.log(JSON.stringify({
+          badge: badge.textContent,
+          status: row.querySelector('.mcp-tool-override-status').textContent,
+          pressed: Array.from(row.querySelectorAll('[data-mcp-override]'))
+            .map((b) => b.getAttribute('aria-pressed')),
+          reEnabled: Array.from(row.querySelectorAll('[data-mcp-override]'))
+            .every((b) => b.disabled === false),
+        }));
+    """)
+    assert out["badge"] == "Writes (guessed from the name)", "the verdict was restored"
+    assert "not signed in as an administrator" in out["status"]
+    assert out["pressed"] == ["false", "false", "true"], "still on the server's answer"
+    assert out["reEnabled"] is True, "a refusal must not leave the row unusable"
+
+
+def test_a_throw_is_a_refusal_and_not_an_unhandled_rejection(sandbox):
+    """`onOverride` is somebody else's function; it may throw synchronously."""
+    out = run(sandbox, """
+        const row = F.createMcpToolRow(
+          { name: 'tail_log', is_readonly: false, readonly_source: 'heuristic', input_schema: {} },
+          { onOverride: () => { throw new Error('offline'); } });
+        row.querySelector('.mcp-tool-more').dispatchEvent({ type: 'click', preventDefault() {} });
+        row.querySelector('[data-mcp-override="read"]').dispatchEvent(
+          { type: 'click', preventDefault() {} });
+        """ + _SETTLE + """
+        console.log(JSON.stringify({
+          status: row.querySelector('.mcp-tool-override-status').textContent,
+          badge: row.querySelector('[data-mcp-readonly-badge]').textContent }));
+    """)
+    assert "offline" in out["status"]
+    assert out["badge"] == "Writes (guessed from the name)"
+
+
+def test_without_somewhere_to_save_the_row_still_says_what_the_tool_does(sandbox):
+    """`Law 1`. The existing single-argument call keeps working, plus the badge.
+
+    A caller with nowhere to write gets the reading half and no control — not a
+    control that silently does nothing.
+    """
+    out = run(sandbox, """
+        const row = F.createMcpToolRow(
+          { name: 'tail_log', is_readonly: false, readonly_source: 'heuristic',
+            qualified_name: 'mcp__s__tail_log',
+            input_schema: { properties: { n: { type: 'integer' } }, required: ['n'] } });
+        row.querySelector('.mcp-tool-more').dispatchEvent({ type: 'click', preventDefault() {} });
+        console.log(JSON.stringify({
+          badge: !!row.querySelector('[data-mcp-readonly-badge]'),
+          control: !!row.querySelector('.mcp-tool-override'),
+          detail: row.querySelector('.mcp-tool-schema').readable,
+          checkbox: row.querySelector('input').getAttribute('data-mcp-tool-name'),
+        }));
+    """)
+    assert out["badge"] is True and out["control"] is False
+    # Everything the read half shipped is still in the panel.
+    assert "mcp__s__tail_log" in out["detail"] and "integer" in out["detail"]
+    assert out["checkbox"] == "tail_log"
+
+
+def test_a_hostile_payload_cannot_reach_the_badge_as_markup(sandbox):
+    """`H01`. `annotations` and the verdict come from a third-party server too."""
+    out = run(sandbox, """
+        const row = F.createMcpToolRow({
+          name: 'x" onerror=alert(1) y="', is_readonly: false,
+          readonly_source: '<img src=x>', annotations: '<script>', input_schema: {} });
+        const badge = row.querySelector('[data-mcp-readonly-badge]');
+        console.log(JSON.stringify({
+          text: badge.textContent, html: badge.innerHTML,
+          source: badge.getAttribute('data-mcp-readonly-source'),
+          imgs: row.querySelectorAll('img').length,
+        }));
+    """)
+    # An unknown source falls back to the honest one rather than being rendered.
+    assert out["source"] == "heuristic"
+    assert out["html"] == "", "nothing was ever assigned as markup"
+    assert out["imgs"] == 0
+
+
+def test_every_source_python_can_emit_is_a_source_the_badge_recognises(sandbox):
+    """The `Law 13` pin across the language boundary, driven on both sides.
+
+    `readonly_verdict` decides the verdict and names who reached it; this
+    module renders that name. The two are in different languages and cannot
+    share a constant, so the failure mode is a fourth source added in Python
+    that the badge silently renders as *"guessed from the name"* — a
+    declaration shown as a guess, which is exactly the confusion this row
+    exists to remove.
+
+    So: ask Python for every source it can produce by **driving it**, hand each
+    one to the browser module, and require three distinct readings back.
+    """
+    from src.mcp_manager import readonly_verdict
+
+    emitted = sorted({
+        readonly_verdict({"name": "list_rows"})[1],
+        readonly_verdict({"name": "x", "annotations": {"readOnlyHint": True}})[1],
+        readonly_verdict({"name": "x"}, {"read_only": True})[1],
+    })
+    assert emitted == ["annotation", "heuristic", "override"], (
+        "a source was added or renamed in Python; the badge has to learn it"
+    )
+
+    out = run(sandbox, f"""
+        const sources = {json.dumps(emitted)};
+        console.log(JSON.stringify(sources.map((s) => F.describeReadonly(
+          {{ name: 't', is_readonly: true, readonly_source: s }}).note)));
+    """)
+    assert len(set(out)) == 3, f"two sources read the same to a person: {out}"
+    # And the fallback is not one of them, so an unknown source is visibly the
+    # honest reading rather than one of the three confident ones.
+    unknown = run(sandbox, """
+        console.log(JSON.stringify(F.describeReadonly(
+          { name: 't', is_readonly: true, readonly_source: 'something_new' }).source));
+    """)
+    assert unknown == "heuristic"

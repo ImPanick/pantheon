@@ -6,7 +6,7 @@
 
 import uiModule from './ui.js';
 import { spawnConfetti } from './compare/vote.js';
-import * as Modals from './modalManager.js?v=20260919tidypreview1';
+import * as Modals from './modalManager.js?v=20260920attachbucket1';
 import { attachColorPicker } from './colorPicker.js';
 import { makeWindowDraggable } from './windowDrag.js';
 import { snapModalToZone } from './tileManager.js';
@@ -513,24 +513,20 @@ async function _patchNote(id, patch) {
 // ---- Helpers ----
 
 function _esc(s) { return uiModule.esc ? uiModule.esc(s || '') : (s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
-// `B866`'s sweep looked at this and left it alone, which is worth writing down
-// because it looks exactly like the defect and is not one.
+// `B875`. One function had two contracts here; it is two functions now, and
+// which one a call site wants is decided by what it is handed, not by a comment
+// it has to find.
 //
-// It escapes `" ' < > \`` and **not** `&`, and that is right for its main
-// caller: `_linkify` (`:537`) runs `_esc` over the whole string first and then
-// calls this on a href cut out of the already-escaped text, so escaping `&`
-// here would turn `?a=1&amp;b=2` into `?a=1&amp;amp;b=2`. Two stages, and the
-// second one must not repeat the first.
+// `_attrEsc` is the SECOND stage. Its input has already been through `_esc`.
+// `_linkify` escapes the whole string and then cuts a href out of the result,
+// so escaping `&` again here would turn `?a=1&amp;b=2` into `?a=1&amp;amp;b=2`
+// — `tests/test_email_linkify_security_js.py` pins that, and
+// `emailLibrary/utils.js:_attrEsc` is the same contract under the same name.
 //
-// It is not an attribute break-out either, measured rather than assumed: an
-// attribute value is decoded *after* it is delimited, so a literal `&quot;` in
-// the source stays inside the value instead of closing it.
-//
-// What it does cost is fidelity at the OTHER call sites — `:1968` passes raw
-// text (`agentMenuTitle`, `agentTitle`) rather than pre-escaped text, and there
-// a todo containing the characters `&quot;` is drawn as `"`. One function, two
-// contracts; filed rather than changed, because the two-stage caller is pinned
-// by `tests/test_email_linkify_security_js.py` and the one-stage one is not.
+// Leaving `&` alone is not an attribute break-out, which `B866` measured rather
+// than assumed: an attribute value is decoded *after* it is delimited, so a
+// literal `&quot;` already in the source stays inside the value instead of
+// closing it.
 function _attrEsc(s) {
   return String(s || '')
     .replace(/"/g, '&quot;')
@@ -538,6 +534,19 @@ function _attrEsc(s) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/`/g, '&#96;');
+}
+// `_attrEscRaw` is the FIRST stage, for text nothing has escaped yet — the todo
+// row's `data-agent-title` and `title`, which carry what the person typed. Here
+// omitting `&` is a fidelity bug and not a safety one: a todo whose text
+// contains the six characters `&quot;` was drawn as a single `"`, because the
+// browser decoded an entity the note never meant as one.
+//
+// `&` first, then the other five, or `<` would become `&amp;lt;`. Written as
+// the one extra replace in front of `_attrEsc` rather than as a second list of
+// six, so the two can never disagree about the five they share — which is the
+// whole of `B611` in one line.
+function _attrEscRaw(s) {
+  return _attrEsc(String(s || '').replace(/&/g, '&amp;'));
 }
 // Image src guard — reject anything that isn't a relative path, http(s), or
 // raster data URL so an AI-saved note can't slip script-capable media into the
@@ -1977,13 +1986,13 @@ function _renderNotes() {
               : (agentStatus === 'error' ? 'The last agent run for this todo failed'
                 : (agentStatus === 'aborted' ? 'The last agent run for this todo was stopped'
                   : 'Solve this todo with the agent'))));
-        const agentSessionAttr = item.agent_session_id ? ` data-session-id="${_attrEsc(item.agent_session_id)}"` : '';
+        const agentSessionAttr = item.agent_session_id ? ` data-session-id="${_attrEscRaw(item.agent_session_id)}"` : '';
         const agentMenuTitle = item.agent_session_title || `Agent: ${(item.text || '').slice(0, 40)}`;
         const indent = Math.min(item.indent || 0, 3);
         contentHtml += `<div class="note-checkbox${doneClass}" data-note-id="${note.id}" data-idx="${i}" style="padding-left:${indent * 16}px">
           <span class="note-check-dot" title="Mark done"></span>
           <span class="note-check-text">${_linkify(item.text)}</span>
-          <button class="note-checkbox-agent${agentDoneClass}" data-note-id="${_attrEsc(note.id)}" data-idx="${i}"${agentSessionAttr} data-agent-title="${_attrEsc(agentMenuTitle)}" title="${_attrEsc(agentTitle)}"${agentStyleAttr}>
+          <button class="note-checkbox-agent${agentDoneClass}" data-note-id="${_attrEscRaw(note.id)}" data-idx="${i}"${agentSessionAttr} data-agent-title="${_attrEscRaw(agentMenuTitle)}" title="${_attrEscRaw(agentTitle)}"${agentStyleAttr}>
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M2 14h2M20 14h2M15 13v2M9 13v2"/></svg>${agentBadge}
           </button>
           <button class="note-checkbox-edit" data-note-id="${note.id}" data-idx="${i}" title="Edit item">

@@ -10,7 +10,7 @@
  *
  * Usage from a tool module:
  *
- *   import * as Modals from './modalManager.js?v=20260919tidypreview1';
+ *   import * as Modals from './modalManager.js?v=20260920attachbucket1';
  *
  *   // After building the modal element and adding it to the body:
  *   Modals.register('gallery-modal', {

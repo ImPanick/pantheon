@@ -66,6 +66,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const url = require('node:url');
+const crypto = require('node:crypto');
 
 const ROOT = path.join(__dirname, '..', '..');
 const LIB = path.join(ROOT, 'static', 'lib', 'mermaid.min.js');
@@ -184,7 +185,49 @@ const INK = [
   'edgeLabelBackground', 'background', 'primaryTextColor',
 ];
 
-const out = { ok: true, callSiteConfig: null, api: {}, config: null, schemes: {}, parse: {} };
+// `B883`. A fingerprint of everything the theme decided, not of the name it
+// was called by.
+//
+// `initialize({theme: 'light'})` comes back from `getConfig()` as
+// `theme: 'light'` with `themeVariables` byte-identical to `default`'s: the
+// name is stored and echoed, and nothing checks that mermaid has a theme by
+// that name. So `getConfig().theme` is an echo of the argument, and a test
+// that asserts it is asserting its own input (`Law 20`, one level down, inside
+// a vendored library). The only observable difference between a theme that
+// loaded and a name that fell through is the 270-odd variables it computed, so
+// this hashes all of them and the tests compare hashes.
+//
+// Sorted, recursive, and over the WHOLE variable set rather than over `INK`:
+// five of mermaid's theme variables are nested objects (`cynefin`, `wardley`,
+// `packet`, `radar`, `xyChart`) and two themes can agree on all eight inks
+// while differing elsewhere. `exclude` is for the keys Pantheon overrides —
+// they are the same in every scheme by construction and would make two
+// different themes look closer than they are.
+function canonical(value) {
+  if (value === null || value === undefined) return 'null';
+  if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']';
+  if (typeof value === 'object') {
+    return '{' + Object.keys(value).sort()
+      .map((k) => JSON.stringify(k) + ':' + canonical(value[k])).join(',') + '}';
+  }
+  return JSON.stringify(String(value));
+}
+
+function varsHash(vars, exclude) {
+  const skip = exclude instanceof Set ? exclude : new Set(exclude || []);
+  const kept = {};
+  for (const k of Object.keys(vars || {})) if (!skip.has(k)) kept[k] = vars[k];
+  return {
+    count: Object.keys(kept).length,
+    hash: crypto.createHash('sha256').update(canonical(kept)).digest('hex').slice(0, 16),
+  };
+}
+
+const out = {
+  ok: true, callSiteConfig: null, api: {}, config: null, schemes: {},
+  // `B883`. One entry per theme NAME probed directly against the library.
+  themes: {}, overriddenKeys: [], parse: {},
+};
 out.api = {
   initialize: typeof mermaid.initialize,
   run: typeof mermaid.run,
@@ -207,6 +250,11 @@ out.api = {
   // `''` is the fourth case on purpose: `documentScheme()` answers it before
   // any palette has been applied, and a first-paint diagram must still get a
   // theme rather than Mermaid's default.
+  const schemeVars = {};
+  // The keys `applyMermaidTheme` writes, learned from what it returned rather
+  // than listed here, so `B883`'s comparisons keep excluding exactly the ones
+  // Pantheon overrides as that set grows.
+  const overridden = new Set();
   for (const scheme of ['dark', 'light', 'unset']) {
     const asked = scheme === 'unset' ? '' : scheme;
     let applied;
@@ -219,6 +267,7 @@ out.api = {
       console.log(JSON.stringify(out));
       return;
     }
+    for (const k of Object.keys((applied && applied.themeVariables) || {})) overridden.add(k);
     // Read back, don't assume. A key that stopped being honoured comes back
     // different; a default that moved under us comes back different too; and
     // a theme NAME that stopped existing comes back with another theme's ink.
@@ -226,6 +275,7 @@ out.api = {
     const vars = cfg.themeVariables || {};
     const ink = {};
     for (const k of INK) ink[k] = vars[k] === undefined ? null : vars[k];
+    schemeVars[scheme] = vars;
     out.schemes[scheme] = {
       applied,
       theme: cfg.theme,
@@ -236,6 +286,45 @@ out.api = {
       ink,
     };
   }
+  out.overriddenKeys = [...overridden].sort();
+  for (const scheme of Object.keys(schemeVars)) {
+    out.schemes[scheme].vars = varsHash(schemeVars[scheme], overridden);
+  }
+
+  // ── `B883`. Theme NAMES, probed straight at the library ─────────────────
+  //
+  // Five names mermaid ships, every name the shipped decision can produce
+  // (read out of `SCHEME_THEMES` rather than retyped), and two that do not
+  // exist. `light` is the interesting wrong one: it is the obvious name for
+  // the light scheme, it is what `B872` would have written if it had trusted
+  // `getConfig().theme`, and mermaid takes it without a word.
+  //
+  // Nothing is asserted here — this file reports what the library did, and the
+  // 4.5:1 and "is this theme real" judgements live in the tests. Probed AFTER
+  // the scheme loop and with the product's own config re-applied afterwards,
+  // so the parse cases below still run under exactly the configuration
+  // `ensureMermaid` leaves behind.
+  const shipped = ['default', 'base', 'dark', 'forest', 'neutral'];
+  const fromProduct = Object.values(theme.SCHEME_THEMES || {});
+  const nonsense = ['light', 'pantheon-not-a-theme'];
+  for (const name of [...new Set([...shipped, ...fromProduct, ...nonsense])]) {
+    mermaid.initialize({ startOnLoad: false, theme: name, securityLevel: 'loose' });
+    const cfg = mermaid.mermaidAPI.getConfig();
+    const vars = cfg.themeVariables || {};
+    const ink = {};
+    for (const k of INK) ink[k] = vars[k] === undefined ? null : vars[k];
+    out.themes[name] = {
+      asked: name,
+      reported: cfg.theme,
+      vars: varsHash(vars, overridden),
+      all: varsHash(vars, []),
+      ink,
+      shipped: shipped.includes(name),
+      askedByProduct: fromProduct.includes(name),
+    };
+  }
+  // Back to what `ensureMermaid` leaves loaded.
+  theme.applyMermaidTheme(mermaid, '');
 
   // The two keys this file has always answered, kept pointing at the dark
   // scheme — the one the pinned literal used to hold — so a caller that only

@@ -354,88 +354,22 @@ def test_the_pill_explains_the_state_rather_than_naming_it():
     assert "Publish it" in titles
 
 
-# ── helper, shared with tests/test_the_workshop_surfaces_js.py ─────────────
+# ── helper, moved to tests/helpers/js_source.py by `B876` ─────────────
 
-def _js_skip(source: str, i: int, n: int) -> int:
-    """Step `i` past one string, template literal or comment, or leave it alone.
+# `js_function` and its scanner lived here, at the bottom of a file about the
+# Workshop's four wrong words, and eight other test files imported it from this
+# module by name. `B876` measured what it could not open: across
+# `static/js/**`, 3,744 extractions, **34 raised `unbalanced braces`** and
+# **31 more returned the wrong body in silence** — 21 of those more than twice
+# the real length, the worst returning 145,664 characters for a 1,261-character
+# function. The cause was a scanner with no regex-literal state, so
+# `/[&<>"']/g` opened a string that never closed.
+#
+# It now lives in `tests/helpers/js_source.py`, beside the comment blanker it
+# depends on, and it decides nothing about JavaScript syntax that
+# `.pantheon/check-specifiers.py` has not already decided. Re-exported here
+# under the name every caller already uses, so no import in any of those eight
+# files changed (`Law 1`: this is a door, not a deletion).
+from tests.helpers.js_source import js_function, js_skip  # noqa: E402,F401
 
-    **Added 2026-09-18 by `P8-25`, and the bug it fixes was silent.** The scan
-    below used to treat every `'` as a string delimiter, including the ones in
-    `// the app's whirlpool` and `// poll's next render` — this repo's comments
-    are English prose and English prose is full of apostrophes. From such a
-    comment the scanner ran to the next apostrophe *in code*, swallowing
-    whatever braces lay between.
-
-    Measured on `static/js/tasks.js`: `js_function(src, "function _wireActivityRows")`
-    raised `unbalanced braces` (loud, and the only reason this was noticed), and
-    `js_function(src, "function renderTriggerOpts")` returned a **1,434-line**
-    body for a 190-line function — balanced, plausible, and silently file-wide.
-    A `Law 20` option-2 assertion made inside that scope is a file-wide grep
-    wearing a scope's clothes, which is the exact failure `Law 20` exists to
-    stop.
-    """
-    c = source[i]
-    if c == "/" and i + 1 < n:
-        nxt = source[i + 1]
-        if nxt == "/":
-            j = source.find("\n", i)
-            return n if j < 0 else j
-        if nxt == "*":
-            j = source.find("*/", i + 2)
-            return n if j < 0 else j + 2
-    if c in "'\"`":
-        j = i + 1
-        while j < n and source[j] != c:
-            j += 2 if source[j] == "\\" else 1
-        return j + 1
-    return i
-
-
-def js_function(source: str, signature: str) -> str:
-    """The body of one JS function, resolved by brace balance from its
-    signature, with strings, template literals and comments skipped.
-
-    `Law 20` option 2. `skills.js` is 2,000 lines of code interleaved with
-    prose about code and `memory.js` is 1,700 more; three separate defects in
-    this repo's history were tests matching the right string in the wrong
-    function, and `B41` was green while the handler it described raised on
-    every call.
-
-    The parameter list is stepped over before the body's `{` is looked for —
-    `skillGateHints({ autoApprove = true })` destructures, so the first `{`
-    after the signature is an argument and not a body. That was this helper's
-    own first bug, found by it returning the parameter object. Comments were
-    its second; `_js_skip` above records what that cost and how it showed.
-    """
-    n = len(source)
-    i = source.index("(", source.index(signature))
-    depth = 0
-    while i < n:
-        j = _js_skip(source, i, n)
-        if j != i:
-            i = j
-            continue
-        c = source[i]
-        if c == "(":
-            depth += 1
-        elif c == ")":
-            depth -= 1
-            if depth == 0:
-                break
-        i += 1
-    open_at = source.index("{", i)
-    depth, i = 0, open_at
-    while i < n:
-        j = _js_skip(source, i, n)
-        if j != i:
-            i = j
-            continue
-        c = source[i]
-        if c == "{":
-            depth += 1
-        elif c == "}":
-            depth -= 1
-            if depth == 0:
-                return source[open_at:i + 1]
-        i += 1
-    raise AssertionError(f"unbalanced braces after {signature!r}")
+_js_skip = js_skip  # the private name this module used before `B876`

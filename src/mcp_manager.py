@@ -582,14 +582,127 @@ _MCP_READONLY_VERBS = (
 )
 
 
-def mcp_tool_is_readonly(tool: Dict) -> bool:
-    """Classify an MCP tool as safe (non-mutating) for plan mode.
+# ── Operator overrides (`P8-48`) ───────────────────────────────────────────
+#
+# What the operator says about one tool, as against what the server said. The
+# stored shape is `{"<tool name>": {"read_only": true|false}}` on
+# `McpServer.tool_overrides`, and the reason it exists is the gap the verdict
+# function below leaves: an MCP server is not required to ship `annotations`,
+# and most do not, so for most tools the read-only answer comes from a leading
+# verb. `query_rows` reads and `emit_metric` writes, and the heuristic says the
+# opposite about both. The person who registered the server knows; before this
+# there was nowhere for them to say so.
+#
+# The keys are closed on purpose. This value is written through a route by an
+# admin and read on the plan-mode path, so an unrecognised key is dropped
+# rather than stored — a typo cannot become a silent no-op that looks saved.
+_TOOL_OVERRIDE_BOOL_KEYS = ("read_only",)
 
-    Prefer the server's own annotations (readOnlyHint / destructiveHint). When
-    absent, fall back to a tool-name verb heuristic, and FAIL CLOSED (treat as
-    write) for anything that doesn't clearly read — plan mode must not run a
-    write tool just because its intent is ambiguous.
+
+def normalize_tool_overrides(raw: Any) -> Dict[str, Dict[str, Any]]:
+    """Read `McpServer.tool_overrides` into the shape everything else expects.
+
+    Accepts the JSON string as stored, an already-decoded dict, or None, and
+    answers `{}` for anything it cannot use. Tool names are bounded with the
+    same `_sanitize_schema_token` the prompt hint uses, because a name here
+    comes back out in a route response and in the browser.
+
+    An entry that ends up saying nothing (`{}` after filtering) is dropped, so
+    "no opinion" has exactly one spelling and a round trip through the route
+    cannot grow empty objects.
     """
+    if isinstance(raw, str):
+        if not raw.strip():
+            return {}
+        try:
+            raw = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return {}
+    if not isinstance(raw, dict):
+        return {}
+    out: Dict[str, Dict[str, Any]] = {}
+    for name, value in raw.items():
+        if not isinstance(name, str) or not name.strip():
+            continue
+        if not isinstance(value, dict):
+            continue
+        entry = {
+            key: value[key]
+            for key in _TOOL_OVERRIDE_BOOL_KEYS
+            if isinstance(value.get(key), bool)
+        }
+        if entry:
+            out[_sanitize_schema_token(name, _MCP_TOKEN_MAX)] = entry
+    return out
+
+
+def load_tool_overrides(server_id: Optional[str] = None) -> Dict[str, Dict[str, Dict[str, Any]]]:
+    """`{server_id: {tool_name: {...}}}` straight from the database.
+
+    THE one read of this column, for the same reason `_load_disabled_map`
+    exists: the verdict the browser is shown and the verdict plan mode enforces
+    must come from one place or they will disagree (`Law 13`).
+
+    Failure is `{}` and not an exception. This runs inside `get_all_tools`,
+    which is called from the agent loop, four routes and the scheduler, and on
+    a box whose schema predates the column (or in a unit test with no database
+    at all) the honest answer is "the operator has said nothing" — which is
+    also the fail-closed answer, because an absent override leaves the server's
+    own annotation and the heuristic in charge.
+    """
+    try:
+        db = SessionLocal()
+    except Exception:
+        return {}
+    try:
+        query = db.query(McpServer)
+        if server_id is not None:
+            query = query.filter(McpServer.id == server_id)
+        out: Dict[str, Dict[str, Dict[str, Any]]] = {}
+        for srv in query.all():
+            parsed = normalize_tool_overrides(getattr(srv, "tool_overrides", None))
+            if parsed:
+                out[srv.id] = parsed
+        return out
+    except Exception as e:
+        logger.debug("MCP tool overrides unreadable (%s); treating as none", e)
+        return {}
+    finally:
+        try:
+            db.close()
+        except Exception:
+            # Teardown of a session whose query already failed (or a factory
+            # that handed back something without `close`). The answer is
+            # already decided above; a close that will not close changes
+            # nothing a caller can see, and raising here would turn a
+            # degraded read into a broken plan-mode turn.
+            pass
+
+
+def readonly_verdict(tool: Dict, override: Optional[Dict[str, Any]] = None) -> Tuple[bool, str]:
+    """Is this tool safe for plan mode, and **who said so**.
+
+    Returns `(is_readonly, source)` where `source` is one of:
+
+    * `"override"`  — the operator answered it on this install;
+    * `"annotation"`— the server advertised `readOnlyHint`/`destructiveHint`;
+    * `"heuristic"` — nobody said, so the leading verb of the name decided.
+
+    The source is returned rather than re-derived by each consumer, and that is
+    the whole point of this function existing beside `mcp_tool_is_readonly`
+    instead of inside three callers: the browser has to be able to say *"the
+    server told us"* as against *"we guessed from the name"*, and a second
+    implementation of that distinction in JavaScript could not be kept in step
+    with this one (`Law 14`). One decision, one place, two values out.
+
+    Precedence is override > annotation > heuristic. The operator wins over the
+    server because they are the one who chose to run it and can see what it
+    actually does; the server wins over the verb because a declaration beats a
+    guess.
+    """
+    if isinstance(override, dict) and isinstance(override.get("read_only"), bool):
+        return override["read_only"], "override"
+
     ann = tool.get("annotations")
     # annotations may be a dict or a pydantic model
     read_hint = None
@@ -602,12 +715,28 @@ def mcp_tool_is_readonly(tool: Dict) -> bool:
             read_hint = getattr(ann, "readOnlyHint", None)
             destructive = getattr(ann, "destructiveHint", None)
     if read_hint is True:
-        return True
+        return True, "annotation"
     if read_hint is False or destructive is True:
-        return False
+        return False, "annotation"
     # No usable hint — heuristic on the tool name's leading verb.
     name = (tool.get("name") or "").lower()
-    return name.startswith(_MCP_READONLY_VERBS)
+    return name.startswith(_MCP_READONLY_VERBS), "heuristic"
+
+
+def mcp_tool_is_readonly(tool: Dict, override: Optional[Dict[str, Any]] = None) -> bool:
+    """Classify an MCP tool as safe (non-mutating) for plan mode.
+
+    Prefer the operator's own override, then the server's annotations
+    (readOnlyHint / destructiveHint). When neither says, fall back to a
+    tool-name verb heuristic, and FAIL CLOSED (treat as write) for anything
+    that doesn't clearly read — plan mode must not run a write tool just
+    because its intent is ambiguous.
+
+    The verdict itself lives in `readonly_verdict`, which also says where the
+    answer came from; this is the same call with the provenance dropped, kept
+    because seven call sites want only the boolean.
+    """
+    return readonly_verdict(tool, override)[0]
 
 
 class McpManager:
@@ -1305,7 +1434,11 @@ class McpManager:
 
         return schemas
 
-    def get_all_tools(self, disabled_map: Optional[Dict[str, set]] = None) -> List[Dict]:
+    def get_all_tools(
+        self,
+        disabled_map: Optional[Dict[str, set]] = None,
+        overrides: Optional[Dict[str, Dict[str, Dict[str, Any]]]] = None,
+    ) -> List[Dict]:
         """Return a flat list of all discovered tools with server info.
 
         `B867`: `annotations` was captured at the connect sites and read by
@@ -1319,12 +1452,31 @@ class McpManager:
         the annotation alone would be a second, worse copy of
         `mcp_tool_is_readonly` that disagreed with the gate for every server
         that advertises nothing (`Law 13`).
+
+        `P8-48` adds the third thing a consumer needs and could not get:
+        `readonly_source`, naming which of the three answered — the operator's
+        `override`, the server's `annotation`, or the name `heuristic` — and
+        `override`, the operator's stored entry for this tool. Without the
+        source, a panel showing "read-only" is telling a person the server
+        declared something it may never have mentioned, and they cannot tell
+        the two apart without reading the source of this file.
+
+        `overrides` is the same shape as `disabled_map`'s per-server dict and
+        is loaded from the database when not supplied, exactly as the disabled
+        list is. A caller that has already loaded it passes it to avoid the
+        second query; a unit test with no database gets `{}` and the behaviour
+        this method had before the column existed.
         """
         result = []
+        if overrides is None:
+            overrides = load_tool_overrides()
         for server_id, tools in self._tools.items():
             conn = self._connections.get(server_id, {})
             disabled = (disabled_map or {}).get(server_id, set())
+            server_overrides = (overrides or {}).get(server_id, {})
             for tool in tools:
+                override = server_overrides.get(tool["name"])
+                is_readonly, source = readonly_verdict(tool, override)
                 result.append({
                     "server_id": server_id,
                     "server_name": conn.get("name", server_id),
@@ -1333,7 +1485,9 @@ class McpManager:
                     "description": tool.get("description", ""),
                     "input_schema": tool.get("input_schema") or {},
                     "annotations": _normalize_annotations(tool.get("annotations")),
-                    "is_readonly": mcp_tool_is_readonly(tool),
+                    "is_readonly": is_readonly,
+                    "readonly_source": source,
+                    "override": override or None,
                     "is_disabled": tool["name"] in disabled,
                 })
         return result
@@ -1349,9 +1503,17 @@ class McpManager:
         """
         disabled_map: Dict[str, Set[str]] = {}
         qualified: Set[str] = set()
+        # `P8-48`. The operator's overrides are read here and not only in
+        # `get_all_tools`, because this is the gate and that one is the
+        # display. A panel that showed an override the gate did not honour
+        # would be the worst possible outcome of this row: a person told their
+        # correction had been recorded, and plan mode still running on the
+        # verb heuristic.
+        overrides = load_tool_overrides()
         for server_id, tools in self._tools.items():
+            server_overrides = overrides.get(server_id, {})
             for tool in tools:
-                if not mcp_tool_is_readonly(tool):
+                if not mcp_tool_is_readonly(tool, server_overrides.get(tool["name"])):
                     disabled_map.setdefault(server_id, set()).add(tool["name"])
                     qualified.add(qualify_mcp_tool_name(server_id, tool["name"]))
         return disabled_map, qualified
@@ -1399,7 +1561,12 @@ class McpManager:
         )
         if self._cached_prompt_desc is not None and self._cached_prompt_desc_key == cache_key:
             return self._cached_prompt_desc
-        tools = self.get_all_tools(disabled_map)
+        # `overrides={}` and not a load: this prompt text uses `name`,
+        # `description`, `input_schema` and `is_disabled`, and none of the three
+        # fields an override touches. Paying for the query on every cache miss
+        # of the prompt-assembly path to compute a verdict nothing here reads
+        # would be a cost with no reader.
+        tools = self.get_all_tools(disabled_map, overrides={})
         if not tools:
             return ""
 

@@ -429,14 +429,26 @@ export function formatCommandLine(command, args) {
 // the schema on the floor: `grep -c input_schema static/` returned **0** over
 // the whole of `static/` before this.
 //
-// What is **not** on the wire is `annotations`. It is captured at connect
-// (`src/mcp_manager.py:217` stdio, `:286` SSE) and `mcp_tool_is_readonly`
-// reads it, and `get_all_tools` does not copy it into the payload — so the
-// readOnlyHint/destructiveHint half of the row cannot be shown, let alone
-// edited, without a backend change. Deriving the verdict here from the tool
-// name would be a second copy of `mcp_tool_is_readonly` in a language that
-// cannot be kept in step with it (`Law 14`), so this side shows what the
-// server sent and says nothing it was not told.
+// `annotations` was **not** on the wire when that was written. `B867` put it
+// there, beside `is_readonly` — the manager's own plan-mode verdict — and
+// `P8-48` added `readonly_source`, which says which of three things reached
+// that verdict: the operator's `override`, the server's `annotation`, or a
+// `heuristic` on the leading verb of the tool name.
+//
+// All three fields are read here and **none of them is re-derived**. That is
+// the `Law 14` line this module holds: a second copy of `mcp_tool_is_readonly`
+// written in JavaScript could not be kept in step with the Python one, and the
+// Python one is what plan mode actually gates on — so a panel that guessed
+// would eventually tell a person their tool was safe while the gate refused
+// it, or worse, the other way round. Everything below renders what the payload
+// says and nothing it was not told.
+//
+// The source matters as much as the verdict, and this is why the row could not
+// be closed on `is_readonly` alone. Most MCP servers ship no annotations at
+// all, so for most tools `is_readonly` is a guess at a word — and a badge that
+// renders a guess identically to a declaration is not information, it is a
+// claim the product cannot support. Every badge here says where its answer
+// came from, in words, before it offers to let the operator correct it.
 
 /**
  * Flatten a tool's JSON Schema into the rows a parameter table needs.
@@ -484,6 +496,89 @@ function readSchemaType(field) {
   return null;
 }
 
+/**
+ * What the payload says about whether one tool writes, in words a person can
+ * act on — plus **who said so**, which is the half that makes the badge
+ * honest.
+ *
+ * Reads `is_readonly`, `readonly_source` and `annotations` off the entry and
+ * derives nothing. `readonly_source` is one of `override` (this install's
+ * operator answered it), `annotation` (the server advertised
+ * `readOnlyHint`/`destructiveHint`) or `heuristic` (nobody said, so the
+ * leading verb of the name decided). An entry from a server that predates
+ * `P8-48` carries no source; that reads as `heuristic`, which is the truthful
+ * fallback — "we are not being told, so assume we guessed".
+ *
+ * Returns `{readOnly, destructive, source, label, note, sentence, tone}`.
+ * `label` is the badge; `note` is the parenthetical that stops a guess reading
+ * as a fact; `sentence` is the full explanation, including what plan mode will
+ * do about it, for the expanded panel.
+ */
+export function describeReadonly(tool) {
+  const data = tool && typeof tool === 'object' ? tool : {};
+  const ann = data.annotations && typeof data.annotations === 'object' && !Array.isArray(data.annotations)
+    ? data.annotations : {};
+  const readOnly = data.is_readonly === true;
+  const source = READONLY_SOURCES.indexOf(data.readonly_source) >= 0
+    ? data.readonly_source : 'heuristic';
+  // Destructive is a stronger statement than "writes" and only the server can
+  // make it: there is no destructive override and no way to guess it from a
+  // name. It is shown only when the server said so AND the verdict is the
+  // server's. Attributing the word to an operator who said "it writes" — or to
+  // one who overrode the server the other way — would put a claim in their
+  // mouth they never made.
+  const destructive = !readOnly && source === 'annotation' && ann.destructiveHint === true;
+  // What the server said, in the same words, so an override can be told that
+  // it is contradicting something rather than filling a silence.
+  const declared = ann.destructiveHint === true ? 'destructive'
+    : ann.readOnlyHint === true ? 'read-only'
+    : ann.readOnlyHint === false ? 'a tool that writes' : null;
+
+  const label = readOnly ? 'Read-only' : destructive ? 'Destructive' : 'Writes';
+  const tone = readOnly ? 'var(--green)' : destructive ? 'var(--red)' : 'var(--warn)';
+  const planMode = readOnly
+    ? 'Plan mode will run it.'
+    : 'Plan mode will refuse it.';
+
+  let note;
+  let sentence;
+  if (source === 'override') {
+    note = 'you set this';
+    sentence = readOnly
+      ? `You marked ${quoteName(data.name)} read-only on this install. ${planMode}`
+      : `You marked ${quoteName(data.name)} as writing on this install. ${planMode}`;
+    // An operator who has overridden a tool the server itself calls
+    // destructive is the one person who most needs to be told what they
+    // overrode — and an override that merely agrees with the server needs no
+    // warning, so only a contradiction is named.
+    const contradicts = readOnly ? declared !== 'read-only' : declared === 'read-only';
+    if (declared && contradicts) {
+      sentence += ` The server itself declares it ${declared}.`;
+    }
+  } else if (source === 'annotation') {
+    note = 'the server says so';
+    sentence = destructive
+      ? `The server declares this tool destructive (destructiveHint). ${planMode}`
+      : readOnly
+        ? `The server declares this tool read-only (readOnlyHint). ${planMode}`
+        : `The server declares that this tool writes (readOnlyHint is false). ${planMode}`;
+  } else {
+    note = 'guessed from the name';
+    sentence = readOnly
+      ? `This server does not say whether its tools write. ${quoteName(data.name)} starts with a word that usually means reading, so Pantheon treats it as read-only. ${planMode}`
+      : `This server does not say whether its tools write, and ${quoteName(data.name)} does not start with a word that clearly means reading — so Pantheon assumes it writes. ${planMode}`;
+  }
+  return { readOnly, destructive, source, label, note, sentence, tone };
+}
+
+const READONLY_SOURCES = ['override', 'annotation', 'heuristic'];
+
+function quoteName(name) {
+  const text = String(name == null ? '' : name);
+  return text ? `“${text}”` : 'this tool';
+}
+
+
 /** One line saying what the tool takes, for the collapsed row. */
 export function describeParameters(summary) {
   if (!summary || !summary.count) return 'Takes no parameters';
@@ -510,6 +605,26 @@ const DROP_STYLE = 'background:transparent;border:1px solid var(--border);color:
 const LINK_STYLE = 'background:none;border:none;padding:0;font-size:11px;cursor:pointer;'
   + 'color:var(--accent, var(--red));text-decoration:underline;';
 const HINT_STYLE = 'font-size:11px;opacity:0.6;line-height:1.4;margin-bottom:5px;';
+const OVERRIDE_BUTTON_STYLE = 'background:transparent;border:1px solid var(--border);'
+  + 'color:var(--fg);opacity:0.7;border-radius:3px;padding:1px 6px;font-size:10px;'
+  + 'cursor:pointer;line-height:1.4;';
+
+/**
+ * The three things an operator can say about one tool, in the order a person
+ * reads them: the two answers, then taking the answer back.
+ *
+ * `value` is what goes to `onOverride`, and `null` is the erase — which is why
+ * this is three buttons and not a checkbox. "The server has not been
+ * contradicted" is a real third state and a two-state control cannot hold it.
+ */
+const OVERRIDE_CHOICES = [
+  { key: 'read', value: true, label: 'Read-only',
+    title: 'This tool only reads. Plan mode may run it.' },
+  { key: 'write', value: false, label: 'It writes',
+    title: 'This tool changes something. Plan mode must refuse it.' },
+  { key: 'server', value: null, label: "Server's answer",
+    title: 'Drop my correction and go back to what the server says, or to the guess from the name.' },
+];
 
 /**
  * One field of the MCP form, in two modes over one value.
@@ -795,8 +910,8 @@ export function createMcpFieldEditor(spec) {
 }
 
 /**
- * One row of the connected server's tool list, with its parameters behind a
- * disclosure.
+ * One row of the connected server's tool list: does it write, what does it
+ * take, and what does this install say about it.
  *
  * Built node by node rather than as an HTML string. That is `H01` — every
  * string here is written by a third-party MCP server — and it also closes a
@@ -806,15 +921,38 @@ export function createMcpFieldEditor(spec) {
  * description containing a double quote closed the attribute early. Measured
  * 2026-09-19.
  *
+ * `P8-48` puts the read/write badge on the **collapsed** row, because the
+ * question "which of these tools can change something" is asked about the
+ * whole list at once and answering it should not cost one click per tool. The
+ * explanation and the correction are behind the same disclosure the
+ * parameters are behind, because those are asked about one tool at a time.
+ *
+ * `options.onOverride(toolName, value)` — `true`, `false` or `null` to clear —
+ * is what makes the badge editable; without it the row renders exactly as
+ * before plus the badge, which is what a caller that has nowhere to save to
+ * should get. It may return a promise; while it is pending the buttons are
+ * disabled and the row says so, and a rejection restores the previous answer
+ * rather than leaving a button pressed for a state that was never stored.
+ *
  * The checkbox keeps `data-mcp-tool-name` and its `checked` state, because the
  * save path (`panel.querySelectorAll('input[type=checkbox]')`) reads exactly
  * that and this row is not the place to reorganise it.
  */
-export function createMcpToolRow(tool) {
+export function createMcpToolRow(tool, options) {
   const data = tool && typeof tool === 'object' ? tool : {};
+  const opts = options && typeof options === 'object' ? options : {};
   const name = String(data.name || '');
   const description = String(data.description || '');
   const summary = summariseSchema(data.input_schema);
+  // The entry is copied, not aliased: pressing a button rewrites the verdict
+  // for this row and must not reach back into the caller's array, which is
+  // re-read on the next render from the server's answer.
+  let verdictEntry = {
+    name,
+    is_readonly: data.is_readonly === true,
+    readonly_source: data.readonly_source,
+    annotations: data.annotations,
+  };
 
   const entry = elem('div', { className: 'mcp-tool-entry' });
   entry.setAttribute('data-mcp-tool-entry', name);
@@ -828,12 +966,40 @@ export function createMcpToolRow(tool) {
   const text = elem('span');
   const strong = elem('strong', { textContent: name });
   text.appendChild(strong);
+
+  // The badge, on the collapsed row. `data-mcp-readonly` carries the verdict
+  // and `data-mcp-readonly-source` who reached it, so a test — and anybody
+  // reading the DOM — can tell a declaration from a guess without parsing the
+  // label.
+  const badge = elem('span');
+  badge.className = 'mcp-tool-verdict';
+  badge.setAttribute('data-mcp-readonly-badge', name);
+  text.appendChild(elem('span', { textContent: ' ' }));
+  text.appendChild(badge);
+
   if (description) {
     const dim = elem('span', { textContent: ` \u2014 ${description}` });
     dim.style.cssText = 'opacity:0.5;';
     text.appendChild(dim);
   }
   label.appendChild(text);
+
+  /** Paint the badge from `verdictEntry`. The only place the badge is written. */
+  function paintBadge() {
+    const v = describeReadonly(verdictEntry);
+    badge.textContent = `${v.label} (${v.note})`;
+    badge.title = v.sentence;
+    badge.style.cssText = `color:${v.tone};border:1px solid ${v.tone};border-radius:3px;`
+      + 'padding:0 4px;font-size:10px;white-space:nowrap;flex-shrink:0;'
+      // A guess is drawn at less than full strength on purpose: the badge that
+      // the server stood behind and the badge Pantheon inferred from a verb
+      // must not read as the same statement at a glance.
+      + (v.source === 'heuristic' ? 'opacity:0.6;border-style:dashed;' : '');
+    badge.setAttribute('data-mcp-readonly', String(v.readOnly));
+    badge.setAttribute('data-mcp-readonly-source', v.source);
+    return v;
+  }
+  paintBadge();
 
   const toggle = elem('button', { type: 'button' });
   toggle.className = 'mcp-tool-more';
@@ -856,10 +1022,122 @@ export function createMcpToolRow(tool) {
   toggle.textContent = closedLabel;
   toggle.title = `Show what ${name} takes and how the model names it`;
 
+  let paintVerdictDetail = () => {};
+
   let built = false;
   function build() {
     if (built) return;
     built = true;
+
+    // ── Does it write, and who said so (`P8-48`) ──────────────────────────
+    //
+    // First in the panel, above the calling convention, because it is the
+    // question that decides whether the operator wants this tool reachable at
+    // all. The sentence is `describeReadonly`'s, so the badge and the
+    // explanation cannot disagree.
+    const verdict = elem('div');
+    verdict.className = 'mcp-tool-verdict-detail';
+    verdict.style.cssText = 'margin-bottom:5px;';
+    const verdictText = elem('div');
+    verdict.appendChild(verdictText);
+    detail.appendChild(verdict);
+
+    const setter = typeof opts.onOverride === 'function' ? opts.onOverride : null;
+    const choices = [];
+    let status = null;
+    if (setter) {
+      const controls = elem('div');
+      controls.className = 'mcp-tool-override';
+      controls.style.cssText = 'margin-top:4px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;';
+      const lead = elem('span', { textContent: 'Say what it really does:' });
+      lead.style.cssText = 'opacity:0.6;';
+      controls.appendChild(lead);
+      // Three buttons and not a dropdown: the third option is "take my answer
+      // back", which a two-state control cannot express and which an operator
+      // who mis-clicked needs immediately.
+      for (const choice of OVERRIDE_CHOICES) {
+        const button = elem('button', { type: 'button', textContent: choice.label });
+        button.className = 'mcp-tool-override-choice';
+        button.setAttribute('data-mcp-override', choice.key);
+        button.title = choice.title;
+        button.style.cssText = OVERRIDE_BUTTON_STYLE;
+        button.addEventListener('click', (event) => {
+          if (event && event.preventDefault) event.preventDefault();
+          apply(choice.value);
+        });
+        controls.appendChild(button);
+        choices.push({ choice, button });
+      }
+      status = elem('span');
+      status.className = 'mcp-tool-override-status';
+      status.style.cssText = 'opacity:0.7;';
+      controls.appendChild(status);
+      verdict.appendChild(controls);
+
+      const consequence = elem('div', {
+        textContent: 'Marking a tool read-only lets plan mode call it without asking you first. '
+          + 'Marking it as writing keeps plan mode away from it.',
+      });
+      consequence.style.cssText = 'opacity:0.55;margin-top:3px;';
+      verdict.appendChild(consequence);
+    }
+
+    paintVerdictDetail = () => {
+      const v = describeReadonly(verdictEntry);
+      verdictText.textContent = v.sentence;
+      verdictText.style.cssText = `color:${v.tone};`;
+      for (const { choice, button } of choices) {
+        const active = choice.key === (v.source === 'override' ? (v.readOnly ? 'read' : 'write') : 'server');
+        button.setAttribute('aria-pressed', String(active));
+        button.style.cssText = OVERRIDE_BUTTON_STYLE
+          + (active ? `border-color:${v.tone};color:${v.tone};opacity:1;font-weight:600;` : '');
+      }
+    };
+    paintVerdictDetail();
+
+    function apply(value) {
+      if (!setter) return;
+      const previous = verdictEntry;
+      for (const { button } of choices) button.disabled = true;
+      // Disabled for the whole round trip, which is also why `previous` cannot
+      // go stale: a second answer cannot be sent while the first is in flight.
+      if (status) status.textContent = 'Saving…';
+      let outcome;
+      try {
+        outcome = setter(name, value);
+      } catch (err) {
+        outcome = Promise.reject(err);
+      }
+      Promise.resolve(outcome).then((answer) => {
+        // The server's answer wins over the button that was pressed. It is the
+        // side that ran `readonly_verdict`, and on a tool whose server
+        // declares `readOnlyHint` the cleared state is the server's word and
+        // not the one this row last drew.
+        verdictEntry = (answer && typeof answer === 'object')
+          ? { name, is_readonly: answer.is_readonly === true,
+              readonly_source: answer.readonly_source, annotations: answer.annotations }
+          : { ...previous,
+              is_readonly: value === null ? previous.is_readonly : value === true,
+              readonly_source: value === null ? 'heuristic' : 'override' };
+        if (status) status.textContent = '';
+      }).catch((err) => {
+        // Nothing is repainted optimistically — the badge keeps saying what is
+        // actually stored and the row says "Saving…" until the server answers
+        // — so a refusal has nothing to roll back and `verdictEntry` is still
+        // `previous` here. That is deliberate and it is the whole rule at this
+        // site: a button left pressed for a state the server never accepted
+        // tells the operator plan mode has been told something it has not.
+        if (status) {
+          status.textContent = `Not saved — ${String((err && err.message) || err || 'the server refused it')}`;
+          status.style.cssText = 'opacity:0.9;color:var(--red);';
+        }
+      }).then(() => {
+        for (const { button } of choices) button.disabled = false;
+        paintBadge();
+        paintVerdictDetail();
+      });
+    }
+
     const called = elem('div');
     const lead = elem('span', { textContent: 'The model calls this ' });
     lead.style.cssText = 'opacity:0.6;';
@@ -955,5 +1233,6 @@ export function collectMcpStdioFields(argsField, envField) {
 
 export default {
   createMcpFieldEditor, parseJsonField, describeServerRefusal, formatCommandLine,
-  summariseSchema, describeParameters, createMcpToolRow, collectMcpStdioFields,
+  summariseSchema, describeParameters, describeReadonly, createMcpToolRow,
+  collectMcpStdioFields,
 };

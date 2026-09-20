@@ -6,13 +6,13 @@
 import Storage from './js/storage.js';
 import uiModule from './js/ui.js';
 import workspaceModule from './js/workspace.js';
-import fileHandlerModule from './js/fileHandler.js?v=20260919chipramp1';
+import fileHandlerModule from './js/fileHandler.js?v=20260920attachbucket1';
 import modelsModule from './js/models.js?v=20260715startupcalm2';
 import ragModule from './js/rag.js';
 import presetsModule from './js/presets.js';
 import searchModule from './js/search.js';
-import chatModule from './js/chat.js?v=20260919chipramp1';
-import compareModule from './js/compare/index.js?v=20260919chipramp1';
+import chatModule from './js/chat.js?v=20260920attachbucket1';
+import compareModule from './js/compare/index.js?v=20260920attachbucket1';
 import documentModule from './js/document.js?v=20260815approvalsave1';
 import searchChatModule from './js/search-chat.js';
 import { makeWindowDraggable } from './js/windowDrag.js';
@@ -23,9 +23,9 @@ import {
   settleSessionHydration
 } from './js/startupShell.js';
 import markdownModule from './js/markdown.js';
-import chatRenderer from './js/chatRenderer.js?v=20260919chipramp1';
+import chatRenderer from './js/chatRenderer.js?v=20260920attachbucket1';
 import sessionModule from './js/sessions.js';
-import memoryModule from './js/memory.js?v=20260919tidypreview1';
+import memoryModule from './js/memory.js?v=20260920attachbucket1';
 import voiceRecorderModule from './js/voiceRecorder.js';
 import censorModule from './js/censor.js';
 import galleryModule from './js/gallery.js?v=20260708match1';
@@ -36,7 +36,7 @@ import notesModule from './js/notes.js';
 import adminModule from './js/admin.js?v=20260918p2admin1';
 import settingsModule from './js/settings.js?v=20260918emptystates1';
 // Eagerly bind unified minimize/restore behavior across all tool modals.
-import './js/modalManager.js?v=20260919tidypreview1';
+import './js/modalManager.js?v=20260920attachbucket1';
 // Desktop window tiling — drag a modal near an edge/corner to snap.
 import './js/tileManager.js';
 import themeModule from './js/theme.js';
@@ -47,7 +47,7 @@ import themeModule from './js/theme.js';
 // unversioned so this can't recur.
 import cookbookModule from './js/cookbook.js';
 import groupModule from './js/group.js';
-import * as researchPanelModule from './js/research/panel.js?v=20260919chipramp1';
+import * as researchPanelModule from './js/research/panel.js?v=20260920attachbucket1';
 import ttsModule from './js/tts-ai.js';
 import spinnerModule from './js/spinner.js';
 import { initKeyboardShortcuts } from './js/keyboard-shortcuts.js';
@@ -63,6 +63,10 @@ const API_BASE = window.location.origin;
 window.themeModule = themeModule;
 window.sessionModule = sessionModule;
 window.uiModule = uiModule;
+// `B893`. `sessions.js` reaches the file handler through this to redraw the
+// attachment strip and the context meter when the chat changes; importing it
+// there would make a cycle, and the correctness half does not depend on it.
+window.fileHandlerModule = fileHandlerModule;
 window.adminModule = adminModule;
 window.cookbookModule = cookbookModule;
 
@@ -1024,7 +1028,7 @@ function initializeEventListeners() {
     toolCookbookBtn.addEventListener('click', async () => {
       if (!cookbookModule) return;
       // Try minimized→restore or open→minimize via the manager first
-      const Modals = await import('./js/modalManager.js?v=20260919tidypreview1');
+      const Modals = await import('./js/modalManager.js?v=20260920attachbucket1');
       if (!Modals.toggle('cookbook-modal')) {
         // Not registered yet → fresh open
         cookbookModule.open();
@@ -1052,7 +1056,7 @@ function initializeEventListeners() {
   if (toolGalleryBtn) {
     toolGalleryBtn.addEventListener('click', async () => {
       if (!galleryModule) return;
-      const Modals = await import('./js/modalManager.js?v=20260919tidypreview1');
+      const Modals = await import('./js/modalManager.js?v=20260920attachbucket1');
       if (!Modals.toggle('gallery-modal')) {
         if (galleryModule.isGalleryOpen()) galleryModule.closeGallery();
         else galleryModule.openGallery();
@@ -1081,7 +1085,7 @@ function initializeEventListeners() {
   if (toolCalendarBtn) {
     toolCalendarBtn.addEventListener('click', async () => {
       if (!calendarModule) return;
-      const Modals = await import('./js/modalManager.js?v=20260919tidypreview1');
+      const Modals = await import('./js/modalManager.js?v=20260920attachbucket1');
       // toggle returns true when a registered modal was minimized/restored;
       // returns false when nothing is registered → open fresh.
       if (!Modals.toggle('calendar-modal')) {
@@ -3760,6 +3764,16 @@ function startPantheonApp() {
   if (_inputBottom) _inputBottom.style.visibility = '';
 
   fileHandlerModule.init(API_BASE);
+  // `B893`. Attachments belong to the chat they were picked in. This is the one
+  // place the file handler is told how to find out which chat that is; it reads
+  // the id rather than being pushed one, because `currentSessionId` is assigned
+  // at six sites in `sessions.js` and a hook per site is the defect this fixes.
+  if (fileHandlerModule.setSessionResolver) {
+    fileHandlerModule.setSessionResolver(
+      () => (sessionModule && sessionModule.getCurrentSessionId
+        ? sessionModule.getCurrentSessionId()
+        : null));
+  }
   modelsModule.init(API_BASE);
   ragModule.init(API_BASE);
   presetsModule.init(API_BASE);

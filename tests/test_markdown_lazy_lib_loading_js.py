@@ -17,6 +17,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.helpers.markdown_harness import harness_import  # B882
+
 _REPO = Path(__file__).resolve().parent.parent
 _HAS_NODE = shutil.which("node") is not None
 
@@ -59,7 +61,7 @@ def _katex_fonts_block(sw_source: str) -> str:
 # A DOM stub small enough to reason about: it records every <script>/<link> the
 # module injects and lets the test decide when each one "loads", which is the
 # only way to observe that a second call reuses the first fetch.
-_HARNESS = r"""
+_HARNESS = harness_import("importMarkdown") + r"""
 import fs from 'node:fs';
 import vm from 'node:vm';
 
@@ -158,70 +160,7 @@ function fakeMermaid(record) {
   };
 }
 
-let source = fs.readFileSync('./static/js/markdown.js', 'utf8');
-source = source.replace(/import uiModule from ['"]\.\/ui\.js['"];/, '');
-source = source.replace(
-  /import \{ splitTableRow \} from ['"]\.\/markdown\/tableRow\.js['"];/,
-  `function splitTableRow(row) {
-    return (row || '').replace(/^\s*\|/, '').replace(/\|\s*$/, '').split('|').map(c => c.trim());
-  }`
-);
-// `B83`. `markdown.js` takes its run-code play triangle from the shared icon
-// table. Inlined rather than stubbed, on the same terms as the emoji module
-// above: a stub would give this test a glyph nobody ships.
-const iconsSource = fs.readFileSync('./static/js/icons.js', 'utf8')
-  .replace(/^export const /gm, 'const ')
-  .replace(/^export function /gm, 'function ');
-source = source.replace(
-  /import \{ playIcon \} from ['"]\.\/icons\.js['"];/,
-  () => iconsSource
-);
-// `P5-06`. `markdown.js` draws the code block's language icon with
-// `langIcons.js`, the module the document surfaces already used and chat never
-// did. Inlined for real on the same terms as the icon table above: a stub
-// would give this test a glyph nobody ships.
-const langIconsSource = fs.readFileSync('./static/js/langIcons.js', 'utf8')
-  .replace(/^export const /gm, 'const ')
-  .replace(/^export function /gm, 'function ')
-  .replace(/^export default .*$/m, '');
-source = source.replace(
-  /import \{ langIcon \} from ['"]\.\/langIcons\.js['"];/,
-  () => langIconsSource
-);
-// `B872`. `markdown.js` no longer writes `theme: 'dark'` into its
-// `initialize()` call — `markdown/mermaidTheme.js` decides from the palette's
-// `color-scheme`, so all four callers of `renderMermaid` get one answer.
-// Inlined for real on the same terms as the icon table above: a stub would let
-// this file assert a theme nobody ships. The module has no imports and no DOM,
-// which is why inlining it is three lines.
-const mermaidThemeSource = fs.readFileSync('./static/js/markdown/mermaidTheme.js', 'utf8')
-  .replace(/^export const /gm, 'const ')
-  .replace(/^export function /gm, 'function ')
-  .replace(/^export default \{[\s\S]*?\};$/m, '');
-source = source.replace(
-  /import \{ applyMermaidTheme, documentScheme \} from ['"]\.\/markdown\/mermaidTheme\.js['"];/,
-  () => mermaidThemeSource
-);
-const emojiSource = fs.readFileSync('./static/js/emojiShortcodes.js', 'utf8')
-  .replace(/^export default .*$/m, '')
-  .replace(/export const /g, 'const ')
-  .replace(/export function /g, 'function ');
-source = source.replace(
-  /import \{ replaceEmojiShortcodes, hasEmojiShortcode \} from ['"]\.\/emojiShortcodes\.js['"];/,
-  () => emojiSource
-);
-source = source.replace(
-  /var escapeHtml = uiModule\.esc;/,
-  `var escapeHtml = (value) => String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');`
-);
-
-const moduleUrl = 'data:text/javascript;base64,' + Buffer.from(source).toString('base64');
-const mod = await import(moduleUrl);
+const mod = await importMarkdown();
 
 // A container whose querySelectorAll answers from a fixed element list, so a
 // test can hand the renderer exactly the nodes it wants it to see.

@@ -70,6 +70,7 @@ from test_tool_effect_surfaces_js import (  # noqa: E402
     _themes,
 )
 from tests.helpers.source_text import blank, blank_text  # B290
+from tests.helpers.esc_stub import ui_default_stub  # B874
 
 ROOT = Path(__file__).resolve().parents[1]
 TRUST_LADDER = ROOT / "static" / "js" / "trustLadder.js"
@@ -311,15 +312,12 @@ export function getTools() { return Promise.resolve({ tools: [] }); }
 # `trustLadder.js` reports a failed rule write through the app's own toast and
 # error channels, because the card it was chosen on is gone by then. The ladder
 # never uses them; the stub exists so the import resolves.
-_LADDER_UI = """
-export const toasts = [];
-export const errors = [];
-export default {
-  esc: (s) => String(s == null ? '' : s),
-  showToast: (m) => { toasts.push(String(m)); },
-  showError: (m) => { errors.push(String(m)); },
-};
-"""
+# `B874`: `esc` here used to return its input.
+_LADDER_UI = ui_default_stub(
+    "showToast: (m) => { toasts.push(String(m)); },\n"
+    "  showError: (m) => { errors.push(String(m)); },",
+    exports="export const toasts = [];\nexport const errors = [];",
+)
 
 
 @pytest.fixture(scope="module")
@@ -805,20 +803,18 @@ export function getTools() { return Promise.resolve({ tools: [] }); }
 # The card's `ui.js`, with the two report channels recorded. A rule that failed
 # to save has to say so somewhere, and the card it was chosen on is gone by
 # then.
-_ALLOW_UI = """
-const esc = (s) => String(s == null ? '' : s)
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-export const toasts = [];
-export const errors = [];
-export default {
-  esc,
-  showToast: (m) => { toasts.push(String(m)); },
-  showError: (m) => { errors.push(String(m)); },
-  copyToClipboard: () => {}, el: (id) => document.getElementById(id),
-  debounce: (f) => f, autoResize: () => {}, scrollHistory: () => {},
-  formatBytes: (n) => String(n),
-};
-"""
+# `B874`, and this one is not in the row's count of three: it escaped `&`,
+# `<` and `>` and left `"` and `'` — the same three-character escaper `B866`
+# found inside `showMcpForm`, in a sandbox for the card that prints a tool
+# name and an argument value into an attribute.
+_ALLOW_UI = ui_default_stub(
+    "showToast: (m) => { toasts.push(String(m)); },\n"
+    "  showError: (m) => { errors.push(String(m)); },\n"
+    "  copyToClipboard: () => {}, el: (id) => document.getElementById(id),\n"
+    "  debounce: (f) => f, autoResize: () => {}, scrollHistory: () => {},\n"
+    "  formatBytes: (n) => String(n),",
+    exports="export const toasts = [];\nexport const errors = [];",
+)
 
 _ALLOW_SHIM = _CARD_SHIM + r"""
 import { toasts, errors } from './ui.js';

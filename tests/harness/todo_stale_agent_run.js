@@ -36,6 +36,14 @@ const SLICES = [
   ['/** Terminal status for one checklist item', 'function _agentSolveNote(id)'],
   ['function _openTodoAgentMenu(btn) {', '// Build the prompt the agent gets from a note:'],
   ['        const item = note.items[i];', '        const indent = Math.min(item.indent || 0, 3);'],
+  // `B875`. The render calls two attribute escapers with two contracts, and
+  // this harness used to hand-write a third that matched neither — `& " <`
+  // against the product's `" ' < > \``. `_attrEscRaw` arriving broke every
+  // case here with `ReferenceError`, which is the honest signal that a
+  // stand-in had drifted. Both are lifted from the source now, so the harness
+  // cannot disagree with what ships (`Law 20`, `B874`).
+  ['function _attrEsc(s) {', '// `_attrEscRaw` is the FIRST stage'],
+  ['function _attrEscRaw(s) {', '// Image src guard'],
 ];
 
 const parts = [];
@@ -50,7 +58,11 @@ for (const [start, end] of SLICES) {
 }
 // The last slice is a bare block, not a function; wrap it so it can be called
 // once per item with the loop variables the render supplies.
+// The two escapers are appended after the render block, so the block is no
+// longer last: take it by index rather than by `pop()`.
+const escaperParts = parts.splice(-2, 2);
 const renderBlock = parts.pop();
+parts.push(...escaperParts);
 parts.push(`function __renderItem(note, i) {\n${renderBlock}\n  return { agentLive, agentStatus, agentDoneClass, agentBadge, agentStyleAttr, agentTitle, agentSessionAttr, agentStopKind };\n}`);
 
 const mode = process.argv[2] || 'render';
@@ -101,7 +113,6 @@ const API_BASE = 'http://test.local';
 let _renderCount = 0;
 const _renderNotes = () => { _renderCount++; };
 const _patchNote = (id, body) => { patched.push({ id, body }); return Promise.resolve(); };
-const _attrEsc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 const _linkify = (s) => String(s == null ? '' : s);
 const _positionNoteMenu = (menu) => { document.body.appendChild(menu); };
 const bindMenuDismiss = (menu, fn) => fn;
@@ -153,14 +164,14 @@ if (mode === 'menu' && arg === 'live') {
 const make = new Function(
   'document', 'window', 'uiModule', 'API_BASE', 'fetch', 'AbortController',
   '_notes', '_agentSolveRuns', '_agentSolveQueue', '_renderNotes', '_patchNote',
-  '_attrEsc', '_linkify', '_positionNoteMenu', 'bindMenuDismiss', 'topPortalZ',
+  '_linkify', '_positionNoteMenu', 'bindMenuDismiss', 'topPortalZ',
   'closePanel', 'dismissOrRemove', '_agentSolveTodoItem',
   iconsSource() + '\n' + parts.join('\n\n') + '\n return { _agentRunStopKind, _agentSolveState, _openTodoAgentMenu, _stopDetachedAgentRun, _markTodoAgentStatus, __renderItem };',
 );
 const api = make(
   document, window, uiModule, API_BASE, fetchStub, AbortController,
   _notes, _agentSolveRuns, _agentSolveQueue, _renderNotes, _patchNote,
-  _attrEsc, _linkify, _positionNoteMenu, bindMenuDismiss, topPortalZ,
+  _linkify, _positionNoteMenu, bindMenuDismiss, topPortalZ,
   closePanel, dismissOrRemove, () => {},
 );
 

@@ -32,19 +32,26 @@ from pathlib import Path
 
 import pytest
 
+from tests.helpers.esc_stub import ui_default_stub  # B874
+
 ROOT = Path(__file__).resolve().parents[1]
 TASKS_JS = ROOT / "static" / "js" / "tasks.js"
 pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
 
 _STUBS = {
-    "ui.js": """
-export const errors = [];
-export default {
-  esc: (s) => String(s == null ? '' : s),
-  showToast: () => {}, showError: (m) => errors.push(String(m)),
-  copyToClipboard: () => {}, el: () => null, debounce: (f) => f,
-};
-""",
+    # `B874`, and this is the stub that let `B611` live. `tasks.js` had two
+    # escapers that disagreed about `'` and `"`, and this file was green
+    # throughout — because `esc` here returned its input, so every assertion
+    # about escaping was really an assertion about `tasks.js` keeping its own
+    # `.replace` calls. The shipped escaper is read out of
+    # `static/js/util/escapeHtml.js` at test time now, and a builder that drops
+    # its local replaces in favour of `uiModule.esc` still passes, which is the
+    # whole point of `B611`'s fix.
+    "ui.js": ui_default_stub(
+        "showToast: () => {}, showError: (m) => errors.push(String(m)),\n"
+        "  copyToClipboard: () => {}, el: () => null, debounce: (f) => f,",
+        exports="export const errors = [];",
+    ),
     "markdown.js": "export default { mdToHtml: (s) => s, processWithThinking: (s) => s, squashOutsideCode: (s) => s };\n",
     "spinner.js": "export function createLoadingRow(){return{};}\nexport function createWhirlpool(){return{element:{style:{}}};}\n",
     "windowDrag.js": "export function makeWindowDraggable(){}\n",

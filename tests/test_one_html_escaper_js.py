@@ -63,6 +63,9 @@ from pathlib import Path
 
 import pytest
 
+from tests.helpers.esc_stub import esc_source  # B874
+from tests.helpers.js_source import js_definition  # B876
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -77,13 +80,13 @@ def _canonical_source() -> str:
     """The canonical `ESC_MAP` + `esc`, as shipped (`util/escapeHtml.js`).
 
     Copying it here would be the defect this file is about, one directory over.
+
+    `B874` moved the lifting itself into `tests/helpers/esc_stub.py`, because
+    eleven sandbox stubs needed the same text and four of them had written a
+    weaker `esc` instead. Two regexes that had to know the module's exact
+    layout became one call that does not.
     """
-    src = UI_JS.read_text(encoding="utf-8")
-    table = re.search(r"^const ESC_MAP = \{.*?\};$", src, re.M | re.S)
-    fn = re.search(r"^export function esc\(s\) \{\n.*?\n\}$", src, re.M | re.S)
-    assert table and fn, "util/escapeHtml.js no longer declares ESC_MAP + esc as this file expects"
-    return (table.group(0) + "\n"
-            + fn.group(0).replace("export function esc(", "function __canonEsc("))
+    return esc_source("__canonEsc")
 
 
 # ── discovery ───────────────────────────────────────────────────────────────
@@ -91,7 +94,12 @@ def _canonical_source() -> str:
 # Names that have ever been an HTML escaper in this tree. `cookbookServe.js`'s
 # `_esc` is `CSS.escape` — a selector escaper, a different job with the same
 # name — and is excluded by the body check below rather than by a name list.
-_NAMES = r"(?:_?esc|_?escHtml|_?escHTML|escapeHtml|escapeHTML|htmlEscape|_attrEsc)"
+# `_attrEscRaw` before `_attrEsc`: a regex alternation is ordered, and the
+# shorter name would match first and leave `Raw` unconsumed, so `B875`'s new
+# first-stage helper would be invisible to this sweep — which is the failure
+# mode of every discovery in this file.
+_NAMES = (r"(?:_?esc|_?escHtml|_?escHTML|escapeHtml|escapeHTML|htmlEscape"
+          r"|_attrEscRaw|_attrEsc)")
 _DEF = re.compile(
     r"^(?P<indent>[ \t]*)(?:export\s+)?"
     r"(?:function\s+(?P<fname>%s)\s*\(|"
@@ -100,90 +108,21 @@ _DEF = re.compile(
 )
 
 
-def _skip(src: str, i: int) -> int:
-    """Step over a string, template, comment or regex literal starting at `i`."""
-    c = src[i]
-    if c in "\"'":
-        j = i + 1
-        while j < len(src):
-            if src[j] == "\\":
-                j += 2
-                continue
-            if src[j] == c:
-                return j + 1
-            j += 1
-        return len(src)
-    if c == "`":
-        j = i + 1
-        while j < len(src):
-            if src[j] == "\\":
-                j += 2
-                continue
-            if src[j] == "`":
-                return j + 1
-            j += 1
-        return len(src)
-    if src.startswith("//", i):
-        nl = src.find("\n", i)
-        return len(src) if nl < 0 else nl
-    if src.startswith("/*", i):
-        end = src.find("*/", i)
-        return len(src) if end < 0 else end + 2
-    if c == "/":
-        # A regex literal only where a value is expected. Every regex in an
-        # escaper in this tree sits directly after `(` or `,` in `.replace(`.
-        k = i - 1
-        while k >= 0 and src[k] in " \t":
-            k -= 1
-        if k >= 0 and src[k] in "(,=:[!&|?{;\n":
-            j = i + 1
-            in_class = False
-            while j < len(src):
-                if src[j] == "\\":
-                    j += 2
-                    continue
-                if src[j] == "[":
-                    in_class = True
-                elif src[j] == "]":
-                    in_class = False
-                elif src[j] == "/" and not in_class:
-                    j += 1
-                    while j < len(src) and src[j].isalpha():
-                        j += 1
-                    return j
-                elif src[j] == "\n":
-                    break
-                j += 1
-    return i
-
-
 def _definition(src: str, start: int) -> str:
     """The whole definition beginning at `start`, by brace balance.
 
     Handles both a `{ … }` body and a single-expression arrow, which ends at
     the first `;` or newline outside any bracket.
+
+    **`B876`.** This used to be forty lines here, with their own string,
+    template, comment and regex-literal rules — a sixth scanner in a suite that
+    already had one, in the file whose whole subject is "there is one escaper
+    and everybody uses it". It is now `tests/helpers/js_source.py`, which gets
+    its regex-start rule from `.pantheon/check-specifiers.py` rather than
+    guessing that "every regex in an escaper in this tree sits directly after
+    `(` or `,`", which is what the comment here used to say.
     """
-    i, n = start, len(src)
-    depth = 0
-    seen_body = False
-    while i < n:
-        j = _skip(src, i)
-        if j != i:
-            i = j
-            continue
-        c = src[i]
-        if c in "{([":
-            depth += 1
-            if c == "{":
-                seen_body = True
-        elif c in "})]":
-            depth -= 1
-            if depth == 0 and seen_body and c == "}":
-                return src[start:i + 1]
-        elif depth == 0 and c in ";\n" and i > start:
-            return src[start:i]
-        i += 1
-    raise AssertionError("unbalanced definition at offset %d" % start)
+    return js_definition(src, start)
 
 
 class Escaper:
@@ -255,8 +194,28 @@ console.log(JSON.stringify(probes.map((p) => String(%(name)s(p)))));
 """
 
 
+def _subject_with_its_dependencies(esc: Escaper) -> str:
+    """The escaper, plus any escaper in ITS OWN file that it calls.
+
+    `B875` split `notes.js:_attrEsc` into two — `_attrEsc` for text `_esc` has
+    already been through and `_attrEscRaw` for text nothing has escaped yet —
+    and wrote the second in terms of the first, so the five characters they
+    share cannot drift apart. Lifting the second alone into the probe would
+    leave that call unresolved, so its neighbour comes with it. Aliasing it to
+    the canonical escaper instead would be wrong in a way that passes: the
+    canonical one escapes `&`, and the whole point of the pair is which of them
+    does.
+    """
+    extra = [other for other in ESCAPERS
+             if other.path == esc.path and other.name != esc.name
+             and re.search(r"\b%s\s*\(" % re.escape(other.name), esc.source)]
+    names = {esc.name} | {other.name for other in extra}
+    return "\n".join([other.source for other in extra] + [esc.source]), names
+
+
 def _run_escaper(tmp_path: Path, esc: Escaper, probes: list) -> list:
     entry = tmp_path / "case.mjs"
+    subject, declared = _subject_with_its_dependencies(esc)
     entry.write_text(_PROBE_JS % {
         "canonical": _canonical_source(),
         # Several of these delegate through a bare name imported from the leaf
@@ -264,8 +223,8 @@ def _run_escaper(tmp_path: Path, esc: Escaper, probes: list) -> list:
         # function the bindings it has in its own file. The subject's own name
         # is never aliased, which would redeclare it.
         "alias": "\n".join("const %s = __canonEsc;" % n
-                           for n in ("esc", "escapeHtml") if n != esc.name),
-        "subject": textwrap.dedent(esc.source),
+                           for n in ("esc", "escapeHtml") if n not in declared),
+        "subject": textwrap.dedent(subject),
         "probes": json.dumps(probes),
         "name": esc.name,
     }, encoding="utf-8")
@@ -322,7 +281,10 @@ _SINGLE_STAGE = [e for e in ESCAPERS if e.name != "_attrEsc"]
 
 def test_the_sweep_found_both_kinds():
     assert len(_SECOND_STAGE) == 2, [repr(e) for e in _SECOND_STAGE]
-    assert len(_SINGLE_STAGE) >= 10, len(_SINGLE_STAGE)
+    assert len(_SINGLE_STAGE) >= 11, len(_SINGLE_STAGE)
+    assert "static/js/notes.js:548 _attrEscRaw" in [repr(e) for e in _SINGLE_STAGE], (
+        "`B875`'s first-stage helper must be swept as a single-stage escaper: "
+        "it is handed raw text and has to escape `&`")
 
 
 @pytest.mark.parametrize("esc", _SECOND_STAGE, ids=repr)
@@ -347,11 +309,22 @@ def test_every_escaper_agrees_with_the_canonical_one(tmp_path, esc):
     Falsy handling is deliberately left out of the comparison — `gallery.js`'s
     returns `''` for `0` and always has — so this is about the five characters
     and nothing else.
+
+    **The `_attrEsc*` family escapes a sixth, and that is allowed here rather
+    than waved through.** A backtick is nothing in a text node and is a template
+    delimiter in an attribute an inline handler later reads, so `notes.js` has
+    escaped it since before `B866`. The rule this test enforces is therefore:
+    an escaper may escape MORE than the canonical five, and may never escape
+    fewer or escape one of the five differently. `B875`'s `_attrEscRaw` is the
+    first escaper to exercise that clause, and it inherits the backtick from the
+    `_attrEsc` it delegates to.
     """
     probe = "a\"b'c<d>e&f`g"
     got, = _run_escaper(tmp_path, esc, [probe])
     canonical = (probe.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
                  .replace('"', "&quot;").replace("'", "&#39;"))
+    if esc.name.startswith("_attrEsc"):
+        canonical = canonical.replace("`", "&#96;")
     assert got == canonical, (repr(esc), got, canonical)
 
 

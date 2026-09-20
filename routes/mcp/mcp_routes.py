@@ -19,6 +19,7 @@ from src.mcp_manager import (
     McpManager,
     MCP_CALL_TIMEOUT_MAX_SECONDS,
     new_mcp_server_id,
+    normalize_tool_overrides,
     resolve_mcp_call_timeout,
 )
 from src.env_flags import request_flag
@@ -409,12 +410,17 @@ def setup_mcp_routes(mcp_manager: McpManager):
         and `disabled_tools` is carried across unchanged — a tool the operator
         switched off stays off even if the command line under it changed
         completely (fail closed; an edit must not re-enable anything).
+        `P8-48`'s `tool_overrides` joins it under the same rule for the same
+        reason: a tool the operator marked as writing must not quietly revert
+        to the server's word, or to a guess at its name, because somebody fixed
+        a path in the command line.
 
         The one thing an edit *can* invalidate is a tool NAME: point the
         command at a different package and the names it offers change. Those
         entries are kept — re-pointing back must not have lost them — and
-        returned as `stale_disabled_tools` so the operator can see what no
-        longer matches instead of discovering it later.
+        returned as `stale_disabled_tools` — and the override entries the same
+        way as `stale_tool_overrides` — so the operator can see what no longer
+        matches instead of discovering it later.
 
         Fields left out are left alone. A field sent empty is set to empty —
         that is how `args`, `env`, `url` and `oauth_config` get cleared.
@@ -469,6 +475,15 @@ def setup_mcp_routes(mcp_manager: McpManager):
             _apply_mcp_oauth_env(parsed_env, parsed_oauth_config)
 
             disabled_before = json.loads(srv.disabled_tools) if srv.disabled_tools else []
+            # `P8-48`, under `P8-35`'s ruling and for the same reason: an id is
+            # an identity, not a version. A tool the operator marked read-only
+            # (or marked as writing, against a server that claimed otherwise)
+            # keeps that mark when the command line under it changes, because
+            # the mark is about the tool and the edit is about how it is
+            # started. Kept rather than dropped for names the new command no
+            # longer offers — re-pointing back must not have lost the answer —
+            # and reported as `stale_tool_overrides`.
+            overrides_before = normalize_tool_overrides(srv.tool_overrides)
 
             srv.name = new_name
             srv.transport = new_transport
@@ -477,7 +492,8 @@ def setup_mcp_routes(mcp_manager: McpManager):
             srv.env = json.dumps(parsed_env)
             srv.url = new_url
             srv.oauth_config = json.dumps(parsed_oauth_config) if parsed_oauth_config else None
-            # srv.id and srv.disabled_tools are deliberately NOT touched.
+            # srv.id, srv.disabled_tools and srv.tool_overrides are
+            # deliberately NOT touched.
             db.commit()
             was_enabled = bool(srv.is_enabled)
         finally:
@@ -504,6 +520,9 @@ def setup_mcp_routes(mcp_manager: McpManager):
             if t["server_id"] == server_id
         }
         stale = sorted(n for n in disabled_before if n not in offered) if connected else []
+        stale_overrides = (
+            sorted(n for n in overrides_before if n not in offered) if connected else []
+        )
 
         status = mcp_manager.get_server_status(server_id)
         return {
@@ -522,6 +541,8 @@ def setup_mcp_routes(mcp_manager: McpManager):
             "id_changed": False,
             "disabled_tools_kept": len(disabled_before),
             "stale_disabled_tools": stale,
+            "tool_overrides_kept": len(overrides_before),
+            "stale_tool_overrides": stale_overrides,
         }
 
     @router.post("/servers/{server_id}/reconnect")
@@ -755,9 +776,38 @@ def setup_mcp_routes(mcp_manager: McpManager):
 
     @router.patch("/servers/{server_id}/tools")
     async def update_disabled_tools(server_id: str, request: Request):
-        """Bulk update disabled tools list for a server.
+        """What the operator says about this server's tools.
 
-        Expects JSON body: {"disabled": ["tool_name_1", "tool_name_2"]}
+        Two keys, both optional, and a key that is absent is **left alone** —
+        so the existing caller that sends only `{"disabled": [...]}` keeps its
+        exact old behaviour and cannot wipe an override by not mentioning it
+        (`Law 1`).
+
+        * `{"disabled": ["name", ...]}` — hide these from the model. Unchanged.
+        * `{"overrides": {"name": {"read_only": true}}}` — `P8-48`. The
+          operator's own answer to *is this tool safe in plan mode*, for the
+          large majority of tools where the server ships no `readOnlyHint` and
+          the verdict is otherwise a guess at the leading verb of the name.
+          `{"name": null}` or `{"name": {}}` removes an entry, which is how an
+          operator takes a correction back and returns the tool to whatever the
+          server and the heuristic say.
+
+        **Both keys on one route rather than a second route, because they are
+        one act**: they are the two things a person can say about one tool from
+        one panel, they are stored on one row, and `PUT /servers/{id}` has to
+        carry both across an edit. A second endpoint would be the `Law 13`
+        shape — and this one already had `require_admin`, which is the control
+        `FORBIDDEN.md` Part 2 pins and which the new key inherits rather than
+        re-spelling.
+
+        **The override can widen what plan mode runs, and that is deliberate
+        and reported.** Marking a tool read-only lets plan mode call it. The
+        person doing it is an admin who registered the server, the response
+        names every tool the connected server does not offer
+        (`unknown_tools`), and the browser states the consequence in words
+        beside the control. What it cannot do is re-enable a tool: `disabled`
+        and `overrides` are separate keys on separate columns, and an override
+        on a disabled tool leaves it disabled.
         """
         require_admin(request)
         db = SessionLocal()
@@ -767,14 +817,85 @@ def setup_mcp_routes(mcp_manager: McpManager):
                 raise HTTPException(404, "Server not found")
 
             body = await request.json()
-            disabled = body.get("disabled", [])
-            if not isinstance(disabled, list):
-                raise HTTPException(400, "disabled must be a list of tool names")
+            if not isinstance(body, dict):
+                raise HTTPException(
+                    400, 'body must be a JSON object, e.g. {"disabled": ["write_file"]}'
+                )
 
-            srv.disabled_tools = json.dumps(disabled) if disabled else None
+            if "disabled" in body:
+                disabled = body.get("disabled", [])
+                if not isinstance(disabled, list):
+                    raise HTTPException(400, "disabled must be a list of tool names")
+                srv.disabled_tools = json.dumps(disabled) if disabled else None
+            else:
+                disabled = json.loads(srv.disabled_tools) if srv.disabled_tools else []
+
+            if "overrides" in body:
+                sent = body.get("overrides")
+                if sent is None:
+                    sent = {}
+                if not isinstance(sent, dict):
+                    raise HTTPException(
+                        400,
+                        'overrides must be an object keyed by tool name, '
+                        'e.g. {"query_rows": {"read_only": true}}',
+                    )
+                # Merge rather than replace: a panel sends the one tool the
+                # person just answered, not the whole server. `null` / `{}`
+                # against a name is the erase, and `normalize_tool_overrides`
+                # drops empty entries so "no opinion" has one spelling.
+                merged = normalize_tool_overrides(srv.tool_overrides)
+                for name, value in sent.items():
+                    if not isinstance(name, str) or not name.strip():
+                        raise HTTPException(400, "override keys must be tool names")
+                    if value is None or value == {}:
+                        merged.pop(name, None)
+                        continue
+                    if not isinstance(value, dict):
+                        raise HTTPException(
+                            400,
+                            f"override for '{_safe_token(name)}' must be an object, "
+                            'e.g. {"read_only": true}',
+                        )
+                    unknown = [k for k in value if k not in ("read_only",)]
+                    if unknown:
+                        raise HTTPException(
+                            400,
+                            f"override for '{_safe_token(name)}' has no key "
+                            f"'{_safe_token(unknown[0])}'. The only key is read_only "
+                            "(true or false).",
+                        )
+                    if not isinstance(value.get("read_only"), bool):
+                        raise HTTPException(
+                            400,
+                            f"read_only for '{_safe_token(name)}' must be true or false",
+                        )
+                    merged[name] = {"read_only": value["read_only"]}
+                overrides = normalize_tool_overrides(merged)
+                srv.tool_overrides = json.dumps(overrides) if overrides else None
+            else:
+                overrides = normalize_tool_overrides(srv.tool_overrides)
+
             db.commit()
 
-            return {"id": server_id, "disabled_count": len(disabled)}
+            # Same honesty as `PUT`'s `stale_disabled_tools`: a name that no
+            # longer matches anything the server offers is kept (a typo today
+            # may be a tool tomorrow, and re-pointing the command back must not
+            # have lost the answer) and reported now rather than discovered
+            # later.
+            offered = {
+                t["name"] for t in mcp_manager.get_all_tools()
+                if t["server_id"] == server_id
+            }
+            unknown_tools = sorted(n for n in overrides if n not in offered) if offered else []
+
+            return {
+                "id": server_id,
+                "disabled_count": len(disabled),
+                "override_count": len(overrides),
+                "overrides": overrides,
+                "unknown_tools": unknown_tools,
+            }
         finally:
             db.close()
 

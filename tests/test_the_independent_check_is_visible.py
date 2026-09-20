@@ -34,13 +34,15 @@ from test_tool_effect_surfaces_js import _copy_unstubbed_imports  # noqa: E402
 import src.agent_loop as agent_loop
 from src.agent_loop import VerifierVerdict, _run_verifier_subagent
 
+from tests.helpers.esc_stub import ui_default_stub  # B874
+
 _REPO = Path(__file__).resolve().parent.parent
 _MODULE = _REPO / "static" / "js" / "agentThread.js"
 
-_UI_STUB = """
-const MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
-export default { esc: (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => MAP[c]) };
-"""
+# `B874`. The shipped escaper, read out of `static/js/util/escapeHtml.js`
+# at test time rather than restated here. Seven files held this same
+# five-character copy and three more held one that escaped nothing.
+_UI_STUB = ui_default_stub()
 
 
 # ── the verdict ───────────────────────────────────────────────────────────────

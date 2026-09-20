@@ -61,6 +61,17 @@ function decodeMathSource(text) {
 let _mermaidPromise = null;
 // The `color-scheme` the loaded Mermaid was last themed for (`B872`).
 let _mermaidScheme = null;
+// `B885`. The observer that notices a palette change, the scheme it last saw,
+// and the note it leaves for the next draw.
+let _schemeWatcher = null;
+let _watchedScheme = null;
+let _schemeMoved = false;
+// What a drawn diagram carries: its own source, because `mermaid.run` replaces
+// the <pre>'s content with the SVG and the text is gone otherwise, and the
+// scheme it was drawn in, so a re-draw touches only the diagrams that are
+// actually out of date.
+const MERMAID_SRC_ATTR = 'data-mermaid-src';
+const MERMAID_SCHEME_ATTR = 'data-mermaid-scheme';
 let _katexPromise = null;
 let _mathFlushScheduled = false;
 
@@ -95,8 +106,11 @@ function _loadStylesheet(href) {
  * every diagram this product draws. Four of the sixteen shipped palettes are
  * light, and on those the dark theme drew light-grey arrows onto a near-white
  * panel at 1.17-1.29:1. The decision moved to `markdown/mermaidTheme.js` so
- * that all four callers get it from one place (`Law 13`) rather than each
- * working around it with a per-diagram directive.
+ * that every caller gets it from one place (`Law 13`) rather than each working
+ * around it with a per-diagram directive. `B872` said "four callers"; counted
+ * on the tree it is seven call sites in six files — see `_stashDiagramSource`
+ * for the list. The claim it was making holds either way, but the number was
+ * wrong.
  */
 export function ensureMermaid() {
   return (_mermaidPromise ??= _loadScript(MERMAID_SRC)
@@ -121,16 +135,150 @@ export function ensureMermaid() {
  * `initialize` calls (the second carries the stroke colour read back out of
  * the first), and doing that per diagram would be two per render forever.
  *
- * Diagrams already on the page keep the theme they were drawn in until
- * something re-renders them — `mermaid.run` skips anything already marked
- * `data-processed`, and re-drawing the whole document on a palette change is a
- * bigger claim than this row makes.
+ * `B885` made the second half of this true as well: a diagram already on the
+ * page is re-drawn when the scheme moves. See `_undrawStale` and `_watchScheme`.
  */
 function _themeMermaid(mermaid) {
   const scheme = documentScheme();
   if (scheme === _mermaidScheme) return;
   applyMermaidTheme(mermaid, scheme);
   _mermaidScheme = scheme;
+}
+
+/**
+ * Remember what a diagram was drawn from, and which scheme it was drawn in.
+ *
+ * `B885`. `mermaid.run` reads the <pre>'s `innerHTML`, entity-decodes it and
+ * then overwrites it with the SVG, so after the first draw the diagram's own
+ * source no longer exists anywhere on the page: nothing can re-draw it. This
+ * puts it back within reach for one attribute per diagram — measured on the
+ * diagrams this product generates, 202 to 1685 bytes each.
+ *
+ * It runs here, inside `renderMermaid`, and not where the markup is built,
+ * because the markup is built in two places — `mdToHtml` below (`:866`) and
+ * `tasks.js:2374` for `P8-34`'s workflow card — and drawn from seven call
+ * sites across six files (`chat.js:5299`, `chatRenderer.js:3939` and `:4272`,
+ * `document.js:9832`, `group.js:954`, `slashCommands.js:476`,
+ * `tasks.js:2395`). All of them draw through this one function (`Law 13`), so
+ * this is the only place that sees every diagram exactly once.
+ *
+ * Defensive about `setAttribute` on purpose: `renderMermaid` is handed
+ * whatever a caller's `querySelectorAll` returned, and the older tests in
+ * `tests/test_markdown_lazy_lib_loading_js.py` hand it element stubs with no
+ * attribute API at all. A diagram that cannot carry its source simply does not
+ * get re-drawn later, which is the behaviour before this row.
+ */
+function _stashDiagramSource(nodes, scheme) {
+  nodes.forEach((node) => {
+    if (!node || typeof node.setAttribute !== 'function'
+        || typeof node.getAttribute !== 'function') return;
+    const held = node.getAttribute(MERMAID_SRC_ATTR);
+    if (held === null || held === undefined) {
+      node.setAttribute(MERMAID_SRC_ATTR, node.textContent || '');
+    }
+    node.setAttribute(MERMAID_SCHEME_ATTR, scheme || '');
+  });
+}
+
+/**
+ * The diagrams on the page that were drawn in a scheme that is no longer up.
+ *
+ * Filtered in JavaScript rather than folded into the selector: the scheme is
+ * whatever `color-scheme` the palette wrote onto `<html>`, and interpolating
+ * that into a selector string would be a selector built from a value this
+ * module does not control.
+ */
+function _staleDiagrams(scheme) {
+  const doc = typeof document !== 'undefined' ? document : null;
+  if (!doc || typeof doc.querySelectorAll !== 'function') return [];
+  const marked = doc.querySelectorAll(
+    'pre.mermaid[data-processed][' + MERMAID_SRC_ATTR + ']'
+  );
+  return [...marked].filter((node) => (
+    node && typeof node.getAttribute === 'function'
+    && typeof node.removeAttribute === 'function'
+    && node.getAttribute(MERMAID_SCHEME_ATTR) !== scheme
+  ));
+}
+
+/**
+ * Un-draw every diagram that is in a scheme that is no longer up.
+ *
+ * `B885`. `mermaid.run` skips anything carrying `data-processed`, so before
+ * this a palette switch re-themed only the diagrams drawn after it: switching
+ * from a dark palette to a light one left every diagram already in the
+ * conversation drawing `lightgrey` arrows onto a near-white panel at
+ * **1.17-1.29:1**, and switching the other way left `#666` arrows on a dark
+ * panel at **2.16-3.45:1**, eight of the twelve dark palettes under the 3:1
+ * floor. The text inside the boxes survives both directions (10.17:1 and
+ * 18.10:1 on the node fill, 11.06:1 and 21.00:1 on an edge label's own chip)
+ * because that ink sits on ink the same theme chose. The damage is exactly the
+ * strokes drawn onto the panel — which is why the fix is to draw them again
+ * and not to patch the panel underneath them.
+ *
+ * Putting the source back and clearing the mark is the whole of it: the next
+ * `mermaid.run` then treats them as diagrams it has not seen.
+ *
+ * **What this costs, and when.** Only when the `color-scheme` moves. Twelve of
+ * the sixteen palettes are dark and four are light, so 60% of the 240 ordered
+ * palette switches cost nothing here at all; a cross-scheme switch re-draws N
+ * diagrams. Measured on the vendored 11.17.2 bundle under node, `mermaid.parse`
+ * alone — the grammar half of a draw, without layout or DOM — costs 5.68 ms for
+ * a 4-node flowchart, 8.57 ms for 12 nodes and 15.67 ms for 30, so a
+ * conversation holding thirty diagrams pays at least a fifth of a second on an
+ * explicit settings action, and nothing at all while somebody drags a colour
+ * picker within one scheme.
+ *
+ * The alternative was restyling the drawn SVGs in place. Mermaid emits its
+ * theme as a `<style>` block inside each SVG: **575 CSS declarations across its
+ * diagram stylesheets take their value from a theme variable**, drawing on 183
+ * of them. Restyling in place means this repository owning a second copy of
+ * that, keyed to upstream's selectors and re-checked at every bump — the ink
+ * set in two places, `Law 13` with a 575-declaration price tag. Re-drawing
+ * costs milliseconds and owns nothing.
+ */
+function _undrawStale(scheme) {
+  const stale = _staleDiagrams(scheme);
+  stale.forEach((node) => {
+    node.textContent = node.getAttribute(MERMAID_SRC_ATTR) || '';
+    node.removeAttribute('data-processed');
+  });
+  return stale;
+}
+
+/**
+ * Notice the palette changing.
+ *
+ * `theme.js:292` and the two first-paint scripts all write `color-scheme` as
+ * an INLINE declaration on `<html>` — the same fact `documentScheme()` reads,
+ * which is why this watches the `style` attribute of one element rather than
+ * asking every palette writer to announce itself. No new event and no second
+ * list of palette writers to keep in step (`Law 14`).
+ *
+ * It keeps its own `_watchedScheme` rather than comparing against
+ * `_mermaidScheme`: an ordinary render moves `_mermaidScheme` as a side effect
+ * of drawing a NEW diagram, and a watcher that trusted it would decide the
+ * switch had already been dealt with and leave every older diagram stale.
+ *
+ * Installed on the first draw rather than at module load: a page with no
+ * diagram on it observes nothing. The callback's first act is a string compare,
+ * so the inline-style writes that are not palette changes — `applyUiScale`,
+ * `applyFontDensity` and `applyBgPattern` all write to the same element — cost
+ * one comparison each.
+ */
+function _watchScheme() {
+  if (_schemeWatcher || typeof MutationObserver !== 'function') return;
+  const root = typeof document !== 'undefined' && document.documentElement;
+  if (!root) return;
+  _watchedScheme = documentScheme();
+  _schemeWatcher = new MutationObserver(() => {
+    const scheme = documentScheme();
+    if (scheme === _watchedScheme) return;
+    _watchedScheme = scheme;
+    _schemeMoved = true;
+    renderMermaid();
+  });
+  _schemeWatcher.observe(root, { attributes: true, attributeFilter: ['style'] });
 }
 
 /**
@@ -1068,18 +1216,37 @@ export function renderContent(content) {
 export function renderMermaid(container) {
   const target = container || document;
   if (!target || typeof target.querySelectorAll !== 'function') return Promise.resolve();
-  // Cheap pre-check: no fence on the page means Mermaid is never fetched.
-  if (target.querySelectorAll('pre.mermaid:not([data-processed])').length === 0) return Promise.resolve();
+  // `B885`. Read the watcher's note once, here, and clear it: two palette
+  // clicks in a row start two passes and both must sweep, or the second one
+  // finds the flag already cleared and leaves the page drawn in the palette
+  // that was up when the first one started.
+  const sweep = _schemeMoved;
+  _schemeMoved = false;
+  // Cheap pre-check: no fence on the page means Mermaid is never fetched. A
+  // pending sweep is the other reason to go on — by then every diagram on the
+  // page is `data-processed` and this query answers nothing.
+  if (!sweep
+      && target.querySelectorAll('pre.mermaid:not([data-processed])').length === 0) {
+    return Promise.resolve();
+  }
   return ensureMermaid()
     .then((mermaid) => {
-      // Re-query after the load: during streaming the renderer replaces the
-      // message body repeatedly, so the nodes seen before the fetch are stale.
-      const nodes = [...target.querySelectorAll('pre.mermaid:not([data-processed])')]
-        .filter((node) => node.isConnected);
-      if (nodes.length === 0) return;
       // `B872`. A palette switched after the bundle loaded still gets the
       // right theme on the next diagram. No-op unless the scheme moved.
       _themeMermaid(mermaid);
+      // Re-query after the load: during streaming the renderer replaces the
+      // message body repeatedly, so the nodes seen before the fetch are stale.
+      // `B885` puts the out-of-date diagrams back into that same list, so a
+      // sweep is an ordinary draw rather than a second path through mermaid.
+      const nodes = [...target.querySelectorAll('pre.mermaid:not([data-processed])')]
+        .filter((node) => node.isConnected)
+        .concat(sweep ? _undrawStale(_mermaidScheme) : []);
+      if (nodes.length === 0) return;
+      // `B885`. Each diagram carries its own source and the scheme it was
+      // drawn in, so a later palette switch can draw it again; and once there
+      // is a diagram on the page, watch for that switch.
+      _stashDiagramSource(nodes, _mermaidScheme);
+      _watchScheme();
       return mermaid.run({ nodes });
     })
     .catch((e) => { console.warn('Mermaid render error:', e); });

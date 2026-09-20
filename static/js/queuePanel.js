@@ -80,7 +80,7 @@ import { formatElapsed } from './research/jobs.js?v=20260630researchthumb';
 import dragSortModule from './dragSort.js';
 import { runStatusLabel, runStatusDotClass } from './runStatus.js';
 import { chevronIcon, playIcon, stopIcon } from './icons.js';
-import { promptRunMode as openRunModePicker } from './runModePicker.js?v=20260919chipramp1';
+import { promptRunMode as openRunModePicker } from './runModePicker.js?v=20260920attachbucket1';
 
 /** Injected by chat.js at init. See the contract in `init()`. */
 let _driver = null;
