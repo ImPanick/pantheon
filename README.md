@@ -9,7 +9,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/licence-AGPL--3.0--or--later-blue" alt="AGPL-3.0-or-later">
   <img src="https://img.shields.io/badge/status-early-orange" alt="Early">
-  <img src="https://img.shields.io/badge/tests-12%2C618%20passing-brightgreen" alt="12,618 tests passing">
+  <img src="https://img.shields.io/badge/tests-13%2C112%20passing-brightgreen" alt="13,112 tests passing">
   <img src="https://img.shields.io/badge/docker-compose-2496ED?logo=docker&logoColor=white" alt="Docker Compose">
   <img src="https://img.shields.io/badge/python-FastAPI-009688?logo=fastapi&logoColor=white" alt="FastAPI">
   <img src="https://img.shields.io/badge/forked%20from-Odysseus-6E5494?logo=github&logoColor=white" alt="Forked from Odysseus">
@@ -203,7 +203,7 @@ this repository public. The series, the classification and what counts as blocki
 [`.pantheon/SHIP-LINE.md`](.pantheon/SHIP-LINE.md), and every figure in it is recomputed by
 `.pantheon/ship-line.py --trend` rather than copied from the line above.
 
-Test suite: **9,580 passing**, nothing red. The fourteen standing failures this fork
+Test suite: **13,112 passing**, nothing red. The fourteen standing failures this fork
 inherited and carried were cleared on 2026-09-12 — eight were a container missing dependencies
 the project already declares, three were stale test stubs hiding behind broad `except` blocks,
 and three were rules pinned to upstream's shape rather than this fork's.
