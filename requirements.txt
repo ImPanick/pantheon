@@ -107,7 +107,7 @@ bcrypt==5.0.0
 # (PyPI, read 2026-09-18), and installed here on the same day it gives 1283
 # passed and nothing failing across the same tests. It is current for the line
 # the product is written against.
-mcp==1.30.0
+mcp==2.2.0
 pyotp==2.10.0
 qrcode[pil]==8.2
 croniter==6.2.4
