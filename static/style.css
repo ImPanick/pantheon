@@ -4201,6 +4201,212 @@ body.bg-pattern-sparkles {
     .chat-context-compact-btn:hover {
       background: color-mix(in srgb, var(--accent) 18%, transparent);
     }
+
+    /* `B892`. The context wheel, in the composer, and the panel it opens.
+       One colour per category, shared by the wheel's arcs, the bar's segments
+       and the list's swatches. Each is a `light-dark()` pair so every palette
+       gets the arm that reads on its background; none of them is `--accent`,
+       which stays the palette's own (D-2026-09-14-03). */
+    .chat-context-pill,
+    .ctx-usage {
+      --ctx-seg-system: light-dark(#5b6676, #a3adbb);
+      --ctx-seg-tools: light-dark(#2c64c4, #74a9ff);
+      --ctx-seg-skills: light-dark(#7446bd, #bb95f5);
+      --ctx-seg-memory: light-dark(#0f766e, #4fd1c5);
+      --ctx-seg-retrieved: light-dark(#8a5a00, #e9b949);
+      --ctx-seg-attachments: light-dark(#b4461f, #f4935f);
+      --ctx-seg-conversation: light-dark(#a8326a, #f28bb8);
+    }
+    .chat-input-right .chat-context-pill {
+      margin-left: 0;
+      gap: 4px;
+      padding: 4px 2px;
+      font-size: 0.72rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .chat-context-pill .ctx-ring-track {
+      stroke: color-mix(in srgb, var(--fg) 20%, transparent);
+    }
+    .chat-context-pill.has-pending .ctx-ring-track {
+      stroke: color-mix(in srgb, var(--ctx-seg-attachments) 55%, transparent);
+    }
+    .chat-context-popup.ctx-usage {
+      width: min(320px, calc(100vw - 16px));
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      color: var(--fg);
+    }
+    .ctx-usage-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 10px;
+    }
+    .ctx-usage-title { font-weight: 650; }
+    .ctx-usage-pct {
+      font-variant-numeric: tabular-nums;
+      color: color-mix(in srgb, var(--fg) 75%, transparent);
+    }
+    .chat-context-popup.warn .ctx-usage-pct { color: var(--warn); }
+    .chat-context-popup.danger .ctx-usage-pct { color: var(--red); }
+    .ctx-usage-sub {
+      margin-top: 2px;
+      color: var(--color-muted-alt);
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+    }
+    .ctx-usage-bar {
+      display: flex;
+      height: 8px;
+      margin: 8px 0 6px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--fg) 10%, transparent);
+    }
+    .ctx-usage-seg {
+      display: block;
+      height: 100%;
+      min-width: 2px;
+      background: var(--ctx-stroke, var(--color-muted));
+    }
+    .ctx-usage-seg + .ctx-usage-seg { box-shadow: -1px 0 0 var(--panel); }
+    .ctx-usage-seg[data-key="system"], .ctx-usage-swatch[data-key="system"] { background: var(--ctx-seg-system); }
+    .ctx-usage-seg[data-key="tools"], .ctx-usage-swatch[data-key="tools"] { background: var(--ctx-seg-tools); }
+    .ctx-usage-seg[data-key="skills"], .ctx-usage-swatch[data-key="skills"] { background: var(--ctx-seg-skills); }
+    .ctx-usage-seg[data-key="memory"], .ctx-usage-swatch[data-key="memory"] { background: var(--ctx-seg-memory); }
+    .ctx-usage-seg[data-key="retrieved"], .ctx-usage-swatch[data-key="retrieved"] { background: var(--ctx-seg-retrieved); }
+    .ctx-usage-seg[data-key="attachments"], .ctx-usage-swatch[data-key="attachments"] { background: var(--ctx-seg-attachments); }
+    .ctx-usage-seg[data-key="conversation"], .ctx-usage-swatch[data-key="conversation"] { background: var(--ctx-seg-conversation); }
+    .ctx-usage-list { display: flex; flex-direction: column; gap: 1px; }
+    /* Five columns: swatch, label, tokens, share, and the product's one
+       disclosure chevron (`P5-05`, `summary::after`), which a row that opens
+       inherits rather than drawing its own. Rows that do not open keep the
+       column empty so every figure lines up. */
+    .ctx-usage-cat-head {
+      display: grid;
+      grid-template-columns: 10px minmax(0, 1fr) auto 3.4em 10px;
+      align-items: center;
+      gap: 8px;
+      padding: 3px 4px;
+      border-radius: 5px;
+      list-style: none;
+      color: color-mix(in srgb, var(--fg) 85%, transparent);
+    }
+    details.ctx-usage-cat,
+    details.ctx-usage-cat[open] {
+      margin: 0;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: none;
+      overflow: visible;
+    }
+    summary.ctx-usage-cat-head {
+      display: grid;
+      padding: 3px 4px;
+      border-bottom: 0;
+      background: none;
+      color: color-mix(in srgb, var(--fg) 85%, transparent);
+      font-size: inherit;
+      font-weight: inherit;
+    }
+    summary.ctx-usage-cat-head::-webkit-details-marker { display: none; }
+    summary.ctx-usage-cat-head::after {
+      margin-left: 0;
+      justify-self: end;
+      font-size: 0.6em;
+      opacity: 0.55;
+    }
+    summary.ctx-usage-cat-head:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+    .ctx-usage-swatch {
+      width: 10px;
+      height: 10px;
+      border-radius: 3px;
+    }
+    .ctx-usage-swatch-free {
+      background: transparent;
+      border: 1px dashed color-mix(in srgb, var(--fg) 35%, transparent);
+    }
+    .ctx-usage-cat-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ctx-usage-cat-tokens,
+    .ctx-usage-cat-share,
+    .ctx-usage-item-tokens {
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+      white-space: nowrap;
+    }
+    .ctx-usage-cat-share { color: var(--color-muted-alt); font-size: 11px; }
+    .ctx-usage-cat.unmeasured .ctx-usage-cat-head { opacity: 0.6; }
+    .ctx-usage-cat.unmeasured .ctx-usage-swatch {
+      background: repeating-linear-gradient(135deg,
+        color-mix(in srgb, var(--fg) 30%, transparent) 0 2px, transparent 2px 4px);
+    }
+    .ctx-usage-items {
+      margin: 2px 0 6px 22px;
+      padding: 0;
+      list-style: none;
+      max-height: 180px;
+      overflow-y: auto;
+    }
+    .ctx-usage-item {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      align-items: baseline;
+      gap: 6px;
+      padding: 1px 22px 1px 4px;
+      font-size: 11px;
+      color: color-mix(in srgb, var(--fg) 85%, transparent);
+    }
+    .ctx-usage-item-tokens { color: var(--color-muted-alt); }
+    .ctx-usage-item-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-family: var(--font-mono, ui-monospace, monospace);
+      font-size: 10.5px;
+    }
+    .ctx-usage-item-count { color: var(--color-muted-alt); font-size: 10px; }
+    .ctx-usage-kind,
+    .context-chip-kind {
+      padding: 0 5px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 9.5px;
+      line-height: 1.5;
+      white-space: nowrap;
+      color: var(--color-muted-alt);
+    }
+    .ctx-usage-note {
+      margin-top: 6px;
+      font-size: 10.5px;
+      color: var(--color-muted-alt);
+    }
+    .ctx-usage-attach {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+    }
+    .ctx-usage-section-title {
+      margin-bottom: 4px;
+      font-size: 9.5px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      opacity: 0.6;
+    }
+    .ctx-usage-pending { margin-left: 0; }
+    .ctx-usage .context-meter { margin: 6px 0 0; }
+    /* Inside the panel the whole window is measured beside it, so the
+       meter's own "not measured yet" remainder would contradict the list
+       above it. It still draws in full wherever else it is shown. */
+    .ctx-usage .context-meter-unmeasured,
+    .ctx-usage .context-meter-unmeasured-note { display: none; }
+    .chat-context-popup-facts {
+      margin-top: 8px;
+      padding-top: 6px;
+      border-top: 1px solid var(--border);
+    }
+    .context-meter-home[hidden] { display: none; }
     /* Model picker — input bar drop-up */
     .model-picker-wrap {
       position: relative;

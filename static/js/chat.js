@@ -9,14 +9,14 @@
 import Storage from './storage.js';
 import uiModule from './ui.js';
 import sessionModule from './sessions.js';
-import chatRenderer, { buildDiffHtml } from './chatRenderer.js?v=20260920attachbucket1';
-import chatStream from './chatStream.js?v=20260920attachbucket1';
+import chatRenderer, { buildDiffHtml } from './chatRenderer.js?v=20260927contextwheel1';
+import chatStream from './chatStream.js?v=20260927contextwheel1';
 import { addAITTSButton } from './tts-ai.js';
 import { prefersReducedMotion } from './motion.js';
 import markdownModule from './markdown.js';
 import spinnerModule from './spinner.js';
 import presetsModule from './presets.js';
-import fileHandlerModule from './fileHandler.js?v=20260920attachbucket1';
+import fileHandlerModule from './fileHandler.js?v=20260927contextwheel1';
 import searchModule from './search.js';
 import documentModule from './document.js?v=20260815approvalsave1';
 import * as emailInbox from './emailInbox.js?v=20260815approvalsave1';
@@ -42,7 +42,8 @@ import {
 import { createTerminalStreamError, isRecoverableStreamError } from './chatStreamErrors.js';
 import { loadPanel } from './panels.js';
 import planWindow from './planWindow.js';
-import queuePanel from './queuePanel.js?v=20260920attachbucket1';
+import * as contextUsage from './contextUsage.js';
+import queuePanel from './queuePanel.js?v=20260927contextwheel1';
 import { runStatusLabel } from './runStatus.js';
 import { playIcon, stopIcon } from './icons.js';
 import {
@@ -108,11 +109,6 @@ import agentDrafts from './agentDrafts.js';   // H01
     _submitToolApprovalWhenIdle(_pendingToolApproval.approval_id);
   });
 
-  function _fmtContextNumber(n) {
-    const v = Number(n || 0);
-    return v ? v.toLocaleString() : '?';
-  }
-
   function _contextColorClass(pct) {
     const n = Number(pct || 0);
     if (n >= 85) return 'danger';
@@ -143,10 +139,16 @@ import agentDrafts from './agentDrafts.js';   // H01
       </svg>${includeLabel ? `<span class="ctx-ring-pct"${idAttr}>${label}%</span>` : ''}`;
   }
 
-  function _renderContextHeaderRing(pill, pct) {
-    const value = Math.max(0, Math.min(100, Number(pct || 0)));
-    pill.style.setProperty('--ctx-color', _contextRingColor(value));
-    pill.innerHTML = _contextRingMarkup(value, { includeLabel: true, labelId: 'chat-context-pill-label' });
+  // `B892`. The wheel draws each category as its own arc; `contextUsage.js`
+  // owns the drawing so the panel and the wheel read one payload one way.
+  function _renderContextHeaderRing(pill, data) {
+    const pct = contextUsage.usageFigures(data).pct;
+    pill.style.setProperty('--ctx-color', _contextRingColor(pct));
+    contextUsage.renderPill(pill, data, { pendingCount: _pendingAttachmentCount() });
+  }
+
+  function _pendingAttachmentCount() {
+    try { return Number(fileHandlerModule.getPendingCount()) || 0; } catch (_) { return 0; }
   }
 
   function _renderCompactMenuContextIcon(pct) {
@@ -166,70 +168,97 @@ import agentDrafts from './agentDrafts.js';   // H01
       : sessionModule;
   }
 
-  function _closeContextHeaderPopup() {
-    document.querySelectorAll('.chat-context-popup').forEach(el => el.remove());
-    const pill = document.getElementById('chat-context-pill');
-    if (pill) pill.classList.remove('open');
+  // `B892`. The allowance meter's home while the panel is shut: a hidden
+  // wrapper in the composer. The panel adopts `#context-meter` when it opens
+  // and hands it back here when it closes.
+  function _returnContextMeterHome() {
+    const meter = document.getElementById('context-meter');
+    const home = document.getElementById('context-meter-home');
+    if (meter && home && meter.parentNode !== home) {
+      if (meter.parentNode) meter.parentNode.removeChild(meter);
+      home.appendChild(meter);
+    }
   }
 
+  function _closeContextHeaderPopup() {
+    document.querySelectorAll('.chat-context-popup').forEach(el => el.remove());
+    _returnContextMeterHome();
+    const pill = document.getElementById('chat-context-pill');
+    if (pill) {
+      pill.classList.remove('open');
+      pill.setAttribute('aria-expanded', 'false');
+    }
+  }
+
+  // The wheel sits at the bottom of the screen, so the panel opens upward and
+  // right-aligned to it, and only drops below when there is no room above.
   function _positionContextHeaderPopup(popup, pill) {
     const rect = pill.getBoundingClientRect();
-    popup.style.top = `${Math.round(rect.bottom + 8)}px`;
-    popup.style.left = `${Math.round(rect.left + (rect.width / 2) - 119)}px`;
     document.body.appendChild(popup);
     const pRect = popup.getBoundingClientRect();
-    if (pRect.left < 8) popup.style.left = '8px';
-    if (pRect.right > window.innerWidth - 8) popup.style.left = `${Math.max(8, window.innerWidth - pRect.width - 8)}px`;
-    if (pRect.bottom > window.innerHeight - 8) popup.style.top = `${Math.max(8, rect.top - pRect.height - 8)}px`;
+    const above = rect.top - 8;
+    const below = window.innerHeight - rect.bottom - 8;
+    const openUp = above >= pRect.height || above >= below;
+    const room = Math.max(160, (openUp ? above : below) - 8);
+    popup.style.maxHeight = `${Math.round(room)}px`;
+    const height = Math.min(pRect.height, room);
+    popup.style.top = openUp
+      ? `${Math.round(Math.max(8, rect.top - height - 8))}px`
+      : `${Math.round(rect.bottom + 8)}px`;
+    let left = rect.right - pRect.width;
+    left = Math.max(8, Math.min(left, window.innerWidth - pRect.width - 8));
+    popup.style.left = `${Math.round(left)}px`;
   }
 
   function _showContextHeaderPopup() {
     const pill = document.getElementById('chat-context-pill');
-    if (!pill || pill.hidden || !_contextHeaderData) return;
+    if (!pill || pill.hidden) return;
     const wasOpen = pill.classList.contains('open');
     _closeContextHeaderPopup();
     if (wasOpen) return;
+    _openContextPanel(pill);
+  }
 
+  function _openContextPanel(pill) {
     const d = _contextHeaderData;
-    const pct = Number(d.context_percent || 0);
-    const colorClass = _contextColorClass(pct);
-    const modelShort = String(d.model || 'Unknown').split('/').pop();
-    const popup = document.createElement('div');
-    popup.className = `chat-context-popup ${colorClass}`.trim();
-
-    const title = document.createElement('div');
-    title.className = 'chat-context-popup-title';
-    title.textContent = 'Chat Context';
-    popup.appendChild(title);
-
-    const bar = document.createElement('div');
-    bar.className = 'chat-context-popup-bar';
-    const fill = document.createElement('div');
-    fill.className = 'chat-context-popup-fill';
-    fill.style.width = `${Math.min(100, Math.max(0, pct))}%`;
-    bar.appendChild(fill);
-    popup.appendChild(bar);
-
-    const rows = [
-      ['Used', `${_fmtContextNumber(d.used_tokens)} / ${_fmtContextNumber(d.context_length)}`],
-      ['Usage', `${pct}%`],
-      ['Window model', modelShort],
-      ['Messages', `${Number(d.messages || 0).toLocaleString()}`],
-      ['Auto compact', `${Number(d.auto_compact_threshold || 85)}%`],
-    ];
-    rows.forEach(([label, value]) => {
-      const row = document.createElement('div');
-      row.className = 'chat-context-popup-row';
-      const a = document.createElement('span');
-      a.textContent = label;
-      const b = document.createElement('span');
-      b.textContent = value;
-      row.appendChild(a);
-      row.appendChild(b);
-      popup.appendChild(row);
+    const pct = Number(contextUsage.usageFigures(d).pct || 0);
+    const colorClass = d ? _contextColorClass(pct) : '';
+    let pending = [];
+    try { pending = fileHandlerModule.getPendingInfo() || []; } catch (_) { pending = []; }
+    const popup = contextUsage.buildUsagePanel(document, d, {
+      pending,
+      meterHost: document.getElementById('context-meter'),
     });
+    popup.classList.add('chat-context-popup');
+    if (colorClass) popup.classList.add(colorClass);
 
-    if (d.can_compact) {
+    if (d) {
+      // What the header popup always said, kept (`Law 1`): the model the
+      // window belongs to, how many messages it holds, and where compaction
+      // starts on its own.
+      const modelShort = String(d.model || 'Unknown').split('/').pop();
+      const rows = [
+        ['Window model', modelShort],
+        ['Messages', `${Number(d.messages || 0).toLocaleString()}`],
+        ['Auto compact', `at ${Number(d.auto_compact_threshold || 85)}%`],
+      ];
+      const facts = document.createElement('div');
+      facts.className = 'chat-context-popup-facts';
+      rows.forEach(([label, value]) => {
+        const row = document.createElement('div');
+        row.className = 'chat-context-popup-row';
+        const a = document.createElement('span');
+        a.textContent = label;
+        const b = document.createElement('span');
+        b.textContent = value;
+        row.appendChild(a);
+        row.appendChild(b);
+        facts.appendChild(row);
+      });
+      popup.appendChild(facts);
+    }
+
+    if (d && d.can_compact) {
       const compactBtn = document.createElement('button');
       compactBtn.type = 'button';
       compactBtn.className = 'chat-context-compact-btn';
@@ -254,16 +283,49 @@ import agentDrafts from './agentDrafts.js';   // H01
     }
 
     pill.classList.add('open');
+    pill.setAttribute('aria-expanded', 'true');
     _positionContextHeaderPopup(popup, pill);
     setTimeout(() => {
       const close = (ev) => {
-        if (popup.contains(ev.target) || pill.contains(ev.target)) return;
+        if (ev.type === 'keydown' && ev.key !== 'Escape') return;
+        if (ev.type !== 'keydown' && (popup.contains(ev.target) || pill.contains(ev.target))) return;
         document.removeEventListener('pointerdown', close, true);
+        document.removeEventListener('keydown', close, true);
+        const wasOurs = popup.isConnected;
         _closeContextHeaderPopup();
+        if (ev.type === 'keydown' && wasOurs) { try { pill.focus(); } catch (_) {} }
       };
       document.addEventListener('pointerdown', close, true);
+      document.addEventListener('keydown', close, true);
     }, 0);
   }
+
+  // `B892`. The attachments section of an open panel follows the composer: a
+  // file added or removed while it is open is listed or dropped at once, and
+  // the wheel itself appears for a new chat as soon as something is attached.
+  function _syncContextPillToAttachments() {
+    const pill = document.getElementById('chat-context-pill');
+    if (!pill) return;
+    const pending = _pendingAttachmentCount();
+    const sm = _liveSessionModule();
+    const sid = sm && sm.getCurrentSessionId && sm.getCurrentSessionId();
+    pill.hidden = !sid && !pending;
+    if (!sid) _contextHeaderData = null;
+    _renderContextHeaderRing(pill, _contextHeaderData);
+    if (pill.hidden) { _closeContextHeaderPopup(); return; }
+    if (pill.classList.contains('open')) {
+      _closeContextHeaderPopup();
+      _openContextPanel(pill);
+    }
+  }
+  let _attachSyncQueued = false;
+  try {
+    window.addEventListener('pantheon:attachments-changed', () => {
+      if (_attachSyncQueued) return;
+      _attachSyncQueued = true;
+      setTimeout(() => { _attachSyncQueued = false; _syncContextPillToAttachments(); }, 0);
+    });
+  } catch (_) {}
 
   function _bindContextHeaderPill() {
     if (_contextHeaderBound) return;
@@ -307,9 +369,12 @@ import agentDrafts from './agentDrafts.js';   // H01
     const sid = sm && sm.getCurrentSessionId && sm.getCurrentSessionId();
     const seq = ++_contextHeaderSeq;
     if (!sid) {
+      // `B892`. A new chat has no window yet, but a file attached to its
+      // first message still has somewhere to be seen.
       _contextHeaderData = null;
-      pill.hidden = true;
-      _closeContextHeaderPopup();
+      pill.hidden = !_pendingAttachmentCount();
+      _renderContextHeaderRing(pill, null);
+      if (pill.hidden) _closeContextHeaderPopup();
       return;
     }
     pill.hidden = false;
@@ -322,13 +387,9 @@ import agentDrafts from './agentDrafts.js';   // H01
       const latestSm = _liveSessionModule();
       if (!latestSm.getCurrentSessionId || latestSm.getCurrentSessionId() !== sid) return;
       _contextHeaderData = data;
-      const pct = Number(data.context_percent || 0);
-      _renderContextHeaderRing(pill, pct);
+      const pct = Number(contextUsage.usageFigures(data).pct || 0);
+      _renderContextHeaderRing(pill, data);
       _renderCompactMenuContextIcon(pct);
-      pill.title = `${_fmtContextNumber(data.used_tokens)} / ${_fmtContextNumber(data.context_length)} tokens · ${String(data.model || '').split('/').pop()}`;
-      pill.classList.remove('warn', 'danger');
-      const colorClass = _contextColorClass(pct);
-      if (colorClass) pill.classList.add(colorClass);
       pill.classList.remove('loading');
       if (pill.classList.contains('open')) {
         _closeContextHeaderPopup();
@@ -337,8 +398,9 @@ import agentDrafts from './agentDrafts.js';   // H01
     } catch (err) {
       if (seq !== _contextHeaderSeq) return;
       _contextHeaderData = null;
-      pill.hidden = true;
+      pill.hidden = !_pendingAttachmentCount();
       pill.classList.remove('loading', 'warn', 'danger');
+      _renderContextHeaderRing(pill, null);
       _closeContextHeaderPopup();
       console.warn('context header refresh failed:', reason, err);
     }
@@ -1031,8 +1093,10 @@ import agentDrafts from './agentDrafts.js';   // H01
     return planWindow.getPlan();
   }
 
-  function _setStoredPlan(plan) {
-    planWindow.setPlan(plan);
+  // `B894`. `sessionId` is the chat whose stream produced the plan. Without it
+  // the plan went to whichever chat was on screen when the event arrived.
+  function _setStoredPlan(plan, sessionId) {
+    planWindow.setPlan(plan, sessionId ? { sessionId: String(sessionId) } : {});
   }
 
   function _clearStoredPlan() {
@@ -4561,6 +4625,9 @@ import agentDrafts from './agentDrafts.js';   // H01
                 // can be edited/deleted immediately, without reloading the chat.
                 if (_isBg) continue;
                 if (holder && json.id) holder.dataset.dbId = json.id;
+                // `B892`. The reply is stored now, and with it what its
+                // request was spent on — the wheel reads that back.
+                refreshChatContextHeader('saved');
 
               } else if (json.type === 'tool_start') {
                 _closeOpenThinkingMarkup(_isBg);
@@ -4956,7 +5023,7 @@ import agentDrafts from './agentDrafts.js';   // H01
                 // to planWindow.js, which owns both. This comment used to claim a
                 // live refresh that had never been built (P6-11).
                 const _pu = (json.data && json.data.plan) ? json.data.plan : '';
-                if (_pu) _setStoredPlan(_pu);
+                if (_pu) _setStoredPlan(_pu, _streamSessionId);
 
               } else if (json.type === 'agent_step') {
                 _closeOpenThinkingMarkup(_isBg);
@@ -5340,7 +5407,7 @@ import agentDrafts from './agentDrafts.js';   // H01
 		        try {
 		          const _endToggles = Storage.loadToggleState();
 		          if (_endToggles.plan_mode && accumulated) {
-		            _setStoredPlan(accumulated);
+		            _setStoredPlan(accumulated, streamSessionId);
 		            _attachPlanActions(footerTarget, accumulated);
 		          }
 		        } catch (_) {}

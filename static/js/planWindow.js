@@ -208,7 +208,8 @@ export function extractPlanText(text) {
 
 /** The stored plan markdown, or '' — the exact contract `chat.js` relied on. */
 export function getPlan() {
-  try { return localStorage.getItem(PLAN_STORAGE_KEY) || ''; } catch (_) { return ''; }
+  _syncPlanSession();
+  return _readPlanText(_loadedSid);
 }
 
 // ── Metadata blob ───────────────────────────────────────────────────────────
@@ -217,8 +218,8 @@ function blankMeta() {
   return { v: 1, folded: false, approvedAt: 0, sessionId: '', updatedAt: 0, steps: {} };
 }
 
-function loadMeta() {
-  const raw = Storage.getJSON(PLAN_META_KEY, null);
+function loadMeta(sid = _loadedSid) {
+  const raw = Storage.getJSON(_metaKey(sid), null);
   const meta = blankMeta();
   if (raw && typeof raw === 'object') {
     meta.folded = !!raw.folded;
@@ -235,7 +236,73 @@ function loadMeta() {
 }
 
 function saveMeta() {
-  Storage.setJSON(PLAN_META_KEY, _meta);
+  Storage.setJSON(_metaKey(_loadedSid), _meta);
+}
+
+// ── One plan per chat (`B894`) ──────────────────────────────────────────────
+//
+// The plan and its metadata used to live under ONE `localStorage` key each, for
+// the whole browser. `_meta.sessionId` was only written on Execute, so a draft
+// plan belonged to nobody and was drawn in every chat; an approved one was
+// still drawn everywhere, with a small "from another chat" tag; and a new chat's
+// Execute button called `_executeStoredPlan`, whose `getPlan()` returned the
+// previous chat's plan — so pressing it ran someone else's steps in a
+// conversation that had never seen them. The owner found it by opening a new
+// chat and watching his coding chat's plan follow him in.
+//
+// Each chat has its own pair of keys now. `''` is the composer before a chat
+// exists. Which pair is live is decided by asking for the current session id —
+// the same reader `onSessionId` already registers — every time the plan is read,
+// written or drawn, so a switch path nobody wired still cannot show, send or
+// execute the wrong plan (`B893`'s lesson: read the key, never push it).
+let _loadedSid = null;
+
+function _planKey(sid) { return `${PLAN_STORAGE_KEY}::${sid || ''}`; }
+function _metaKey(sid) { return `${PLAN_META_KEY}::${sid || ''}`; }
+
+function _readPlanText(sid) {
+  try { return localStorage.getItem(_planKey(sid)) || ''; } catch (_) { return ''; }
+}
+
+/**
+ * Move a plan stored under the old, browser-wide keys to the chat it belongs to.
+ * Runs once. An approved plan says which chat it was approved in; a draft does
+ * not, and the likeliest owner is the chat this browser last had open. With
+ * neither, it is parked under a key nothing draws — a plan with no chat is
+ * exactly the thing that was drifting, and re-showing it everywhere would keep
+ * the defect alive for everyone who already had one.
+ */
+function _migrateLegacyPlan() {
+  let legacy = '';
+  try { legacy = localStorage.getItem(PLAN_STORAGE_KEY) || ''; } catch (_) { return; }
+  const legacyMeta = Storage.getJSON(PLAN_META_KEY, null);
+  if (!legacy && !legacyMeta) return;
+  let target = (legacyMeta && typeof legacyMeta.sessionId === 'string' && legacyMeta.sessionId) || '';
+  if (!target) {
+    try { target = String(Storage.get('lastSessionId') || ''); } catch (_) { target = ''; }
+  }
+  const dest = target || '__unassigned__';
+  try {
+    if (legacy && !localStorage.getItem(_planKey(dest))) localStorage.setItem(_planKey(dest), legacy);
+    localStorage.removeItem(PLAN_STORAGE_KEY);
+  } catch (_) {}
+  if (legacyMeta && !Storage.getJSON(_metaKey(dest), null)) Storage.setJSON(_metaKey(dest), legacyMeta);
+  Storage.remove(PLAN_META_KEY);
+}
+
+/**
+ * Make the in-memory plan the current chat's. Returns true when it changed.
+ */
+function _syncPlanSession() {
+  const sid = currentSessionId();
+  if (sid === _loadedSid) return false;
+  _loadedSid = sid;
+  _planText = _readPlanText(sid);
+  _steps = parsePlan(_planText);
+  _meta = loadMeta(sid);
+  _activeStartedAt = 0;
+  _renderedActive = activeIndex();
+  return true;
 }
 
 // ── Module state ────────────────────────────────────────────────────────────
@@ -419,6 +486,7 @@ const STATE_HINT = {
 
 function render() {
   if (!_els) return;
+  _syncPlanSession();
   const total = _steps.length;
   if (!total) {
     _els.root.hidden = true;
@@ -517,10 +585,16 @@ function stopTicker() {
  * Keeps `chat.js`'s original contract: an empty extraction is a no-op, never a
  * clear, so a stray turn cannot wipe an approved plan.
  */
-export function setPlan(plan) {
+export function setPlan(plan, opts = {}) {
   const text = extractPlanText(plan);
   if (!text) return;
-  try { localStorage.setItem(PLAN_STORAGE_KEY, text); } catch (_) {}
+  _syncPlanSession();
+  // `B894`. A plan belongs to the chat whose stream produced it. When the
+  // caller knows that id and it is not the chat on screen, the plan is filed
+  // there and nothing here is repainted — it will be drawn when that chat is.
+  const owner = (opts && typeof opts.sessionId === 'string' && opts.sessionId) ? opts.sessionId : _loadedSid;
+  try { localStorage.setItem(_planKey(owner), text); } catch (_) {}
+  if (owner !== _loadedSid) return;
   adoptPlanText(text);
 }
 
@@ -572,18 +646,20 @@ function adoptPlanText(text) {
 
 /** Forget the plan and take the window down. */
 export function clearPlan() {
-  try { localStorage.removeItem(PLAN_STORAGE_KEY); } catch (_) {}
+  _syncPlanSession();
+  try { localStorage.removeItem(_planKey(_loadedSid)); } catch (_) {}
   _planText = '';
   _steps = [];
   _activeStartedAt = 0;
   _renderedActive = -2;
   _meta = blankMeta();
-  Storage.remove(PLAN_META_KEY);
+  Storage.remove(_metaKey(_loadedSid));
   render();
 }
 
 /** The user pressed Execute (in the window or on the inline plan actions). */
 export function markApproved() {
+  _syncPlanSession();
   _meta.approvedAt = Date.now();
   _meta.sessionId = currentSessionId();
   if (!_activeStartedAt && activeIndex() >= 0) _activeStartedAt = Date.now();
@@ -633,6 +709,7 @@ function bindingAllowed() {
  *   · the plan belongs to the chat we are looking at (the `P6-01` lesson).
  */
 export function isExecuting() {
+  _syncPlanSession();
   if (!_steps.length || activeIndex() < 0) return false;
   if (!_meta.approvedAt || isPlanModeOn()) return false;
   const sid = currentSessionId();
@@ -757,8 +834,12 @@ export function onSessionId(fn) {
  * everything else already repaints through its own event.
  */
 export function refresh() {
-  if (!_els || _els.root.hidden) return;
-  if (currentSessionId() !== _renderedSession) render();
+  if (!_els) return;
+  // `B894`. This used to return when the window was hidden, which was right
+  // while there was one plan: nothing to show stayed nothing to show. With a
+  // plan per chat, switching INTO a chat that has one must bring it up, and
+  // switching out must take it down.
+  if (_syncPlanSession() || currentSessionId() !== _renderedSession) render();
 }
 
 function wire() {
@@ -790,7 +871,8 @@ function wire() {
 export function init() {
   _els = collectEls();
   if (!_els || !_els.root) return false;
-  _meta = loadMeta();
+  _migrateLegacyPlan();
+  _syncPlanSession();
   if (_meta.updatedAt && Date.now() - _meta.updatedAt > STALE_MS) {
     // Old run: keep the plan and its ticks, but do not claim it is executing.
     _meta.approvedAt = 0;
@@ -806,9 +888,6 @@ export function init() {
   _els.root.setAttribute('aria-label', CHECKLIST_SURFACES.plan.ariaLabel);
   _els.blurb.textContent = CHECKLIST_SURFACES.plan.blurb;
   wire();
-  const stored = getPlan();
-  _planText = stored;
-  _steps = parsePlan(stored);
   // Seed the "which step was drawn last" marker so the first paint of a
   // restored plan never scrolls anything: following the agent is for when the
   // step moves, not for page load.

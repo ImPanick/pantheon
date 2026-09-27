@@ -80,8 +80,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P17 | The network the agent is hosted on | 14 | 0 | 0 | **14** |
 | P18 | One button, and it links | 9 | 0 | 0 | **9** |
 | P19 | The proof ledger | 8 | 0 | 0 | **8** |
-| Backlog | Bugs and hardening found in flight | 472 | 196 | 0 | **276** |
-| **Total** | | **854** | **262** | **8** | **584** |
+| Backlog | Bugs and hardening found in flight | 473 | 195 | 0 | **278** |
+| **Total** | | **855** | **261** | **8** | **586** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -243,6 +243,23 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### The context window, drawn part by part, and a plan that stays in its chat
+`36f16eb..HEAD`. **855 tracked, 586 done. 0 new phase rows, 0 regressions. `B892` and `B894`
+closed; `B894` filed and closed the same day, by the owner.** Both were the owner opening the app.
+**`B892` is what the owner asked for twice.** The attachment bar that spanned the composer is gone
+from it; the chat-context ring moved to the bottom where the message is written, and it opens onto
+the whole window — system prompt, tool definitions, skills, memory, retrieved context, attachments
+and conversation, each with its tokens and share, each opening onto what it is made of. It needed a
+measurement before it could have a drawing: four of `P12-09`'s five segments had said *not measured*
+since they shipped. Now one request is split by the product's own estimator and the parts sum to
+it; a part no reply has measured says *next reply* rather than zero, and a picture is listed as
+*not counted* rather than given a number. Attachments are named for what they are — code, a
+document, a spreadsheet, an image — on both sides of the wire, from one list held equal by a test.
+**`B894` is `B893` again, in plan mode.** One plan per browser meant the plan from a coding chat
+was drawn in a chat created a minute later, and an approved one made the new chat think it was
+executing. Per-chat keys, a plan filed under the chat that produced it, and a one-time migration of
+the old record to where it belongs.
 
 ### The suite's own escapers, and two attachment bugs the owner found in ten seconds
 `13b95f9..HEAD`. **854 tracked, 584 done. 0 new phase rows, 0 regressions. `B874`, `B875`, `B876`,
@@ -19147,7 +19164,7 @@ this is the same thing happening to the row that corrected the store.
   `Verify:` the count in the tree is derived rather than written, or no comment states it.
   `Depends:` nothing. — found by `B885` — agent:`diagrams`
 
-- [ ] **B892** **The attachment context bar spans the whole composer, never goes away, and says two
+- [x] **B892** **The attachment context bar spans the whole composer, never goes away, and says two
   things that cannot both be true.** Reported by the owner 2026-09-20 with a screenshot.
   `#context-meter` (`static/index.html:1364`, drawn by `renderContextMeter` at
   `static/js/fileHandler.js:334`) is a full-width block sitting directly above the message box. On a
@@ -19174,7 +19191,38 @@ this is the same thing happening to the row that corrected the store.
   `Verify:` a new chat with nothing attached shows no full-width bar; the indicator opens onto a
   segmented breakdown whose segments sum to what was measured; contrast holds on all sixteen
   palettes. `Depends:` `B893` (the numbers have to be right before they are drawn better).
-  — reported by the owner — agent:`unassigned`
+  **Closed 2026-09-27**, after the owner reported it still there and sharpened the ask: *"has the
+  overall context usage in a wheel at the bottom.. When interacted with, sections it out to the
+  line... then you can drop down to elaborate even further by tokens of what is precisely using up
+  the context window"*, with the allowance meter moving into it and attachments named for what
+  they are, *"because attachments aren't always documents.. Sometimes its code, and sometimes its
+  photos"*. **The measurement came first**, because `P12-09`'s segments had said `measured: false`
+  for four of five parts since the day they shipped. `measure_request_segments`
+  (`src/context_budget.py`) splits one assembled request into seven parts — system prompt, tool
+  definitions, skills, memory, retrieved context, attachments, conversation — using nothing but
+  `model_context.estimate_tokens` on each message or slice, so the parts sum to exactly what the
+  compaction gate measures; the one addition is the tool schemas, which that estimator never saw.
+  `src/agent_loop.py` emits it as `metrics["context_breakdown"]` on the list it actually sent; it is
+  persisted with the reply, and `GET /api/session/{id}/context` recombines the last reply's
+  overhead with history as it stands now (`session_context_breakdown`). A part no reply has
+  measured yet says `measured: false` and draws *"next reply"*, not a zero. Pictures and audio are
+  listed and marked *not counted*, because the estimator reads text and an invented figure would
+  be `Law 10`'s defect. **The surface** is `static/js/contextUsage.js`: the chat-context pill moved
+  from the header into the composer (same id — `Law 14`, it is the control the owner pointed at),
+  its ring now one arc per part; clicking it opens *Context window · N% full · ~used / total
+  tokens*, one segmented bar, a row per part with tokens and share, and each row with parts opens
+  (the product's one chevron, `P5-05`) onto its tools, skills or attachments with their tokens.
+  `#context-meter` no longer sits across the composer: it lives in a hidden home and the panel
+  **adopts the element** while open, so the allowance is drawn by `renderContextMeter` and nothing
+  else. Files waiting to be sent are listed by kind; the meter's title is now *"Attachment text
+  allowance"* and a picture is told it does not spend it. One `attachment_kind` on each side of the
+  wire, from the same lists, with a test holding them equal. Segment colours are `light-dark()`
+  pairs scoped to the pill and panel, never `--accent`. `Verify:`
+  `tests/test_the_context_wheel_says_what_fills_the_window.py` — 34 cases: the parts, their sum
+  against the estimator, kinds, the unmeasured state, the route reading a stored reply back, the
+  panel's rows, items, pending files, meter adoption and escaping driven under node, and the kind
+  lists held equal across the wire. Screenshotted on a dark and a light palette before closing.
+  — reported by the owner — agent:`integrator`
 
 - [x] **B893** **Attachments were not scoped to a chat: a file picked in one conversation was still
   attached, still counted, and still sent in the next.** Reported by the owner 2026-09-20; fixed the
@@ -19214,3 +19262,20 @@ this is the same thing happening to the row that corrected the store.
   is left alone. **Mutation: neutering the bucket swap reddens 7 of 9; neutering the send guard
   reddens the one that is about it.** `Depends:` nothing. `Unblocks:` `B892` — the numbers are right
   now, so they can be drawn better. — reported by the owner — agent:`integrator`
+
+- [x] **B894** **A plan made in one chat followed you into every other chat.** Reported by the owner
+  2026-09-27: *"the plan there transfers into a new chat I just made.. It should stay with that
+  prior chat."* `B893`'s shape in the other composer surface. `planWindow.js` kept one plan per
+  browser — `localStorage['pantheon-active-plan']` and one `pantheon-plan-window` meta record — so
+  whichever chat was open drew the last plan anyone made, and an approved plan made
+  `isExecuting()` true in chats that had never seen it. **Both keys are per chat now**
+  (`<key>::<session id>`), resolved on every read through the one function that syncs the window
+  to the open chat; `setPlan` files a plan under the chat whose stream produced it
+  (`chat.js` passes the stream's own session id), so a reply that lands after you switch chats
+  cannot paint itself into the one you switched to. A browser carrying the old single record is
+  migrated once: to the chat the plan was approved in, or, for a draft, the chat the browser last
+  had open. `Verify:` `tests/test_a_plan_belongs_to_its_chat.py` — 8 cases under node: absent in the
+  next chat, back in its own, two chats two plans, filed under the producing chat, clearing clears
+  one, an approved plan is not executing elsewhere, and both migrations. **Six of the eight fail on
+  the previous `planWindow.js`**; the plan suites that already existed (67 cases) pass unchanged.
+  `Depends:` nothing. — reported by the owner — agent:`integrator`

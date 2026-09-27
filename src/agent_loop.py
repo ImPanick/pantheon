@@ -5509,6 +5509,9 @@ async def stream_agent_loop(
     _pinned_fallback_route = None
     _last_route_request_messages = _initial_route_request_messages
     _last_route_context_length = _initial_route_context_length
+    # `B892`. The tool schemas the last round actually sent, so the context
+    # breakdown below can say what they cost. `None` until a round is built.
+    _last_sent_tool_schemas = None
 
     # Loop-breaker state. Small models (e.g. deepseek-v4-flash) can get
     # stuck firing the same tool call over and over with no text — burns
@@ -5984,6 +5987,7 @@ async def stream_agent_loop(
         if round_num == 1 and not _approved_result_injected and not _steers_applied:
             _active_route_state["request_messages"] = _initial_route_request_messages
         all_tool_schemas = _tool_schemas_for_route(_active_route_state)
+        _last_sent_tool_schemas = all_tool_schemas
         agent_stream_timeout = int(get_setting("agent_stream_timeout_seconds", 300) or 300)
         # cybertooth: ~no per-round timeout for local inference, unless the
         # operator set one (`H08`)
@@ -7775,6 +7779,16 @@ async def stream_agent_loop(
         injected_skills=_injected_skills_seen,
         verifier_findings=_verifier_findings,
     )
+    # `B892`. What the request was spent on, category by category, measured on
+    # the list that was actually sent. The composer's context wheel draws it;
+    # it is persisted with the reply, which is where `GET
+    # /api/session/{id}/context` reads the last request's overhead back from.
+    try:
+        from src.context_budget import measure_request_segments
+        metrics["context_breakdown"] = measure_request_segments(
+            _last_route_request_messages or messages, _last_sent_tool_schemas)
+    except Exception as _breakdown_err:  # a meter never fails a turn
+        logger.debug("context breakdown not measured: %s", _breakdown_err)
     metrics["requested_model"] = requested_model
     metrics["endpoint_id"] = actual_endpoint_id
     metrics["endpoint_label"] = actual_endpoint_label

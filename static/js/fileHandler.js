@@ -7,6 +7,7 @@
 
 import uiModule from './ui.js';
 import spinnerModule from './spinner.js';
+import { attachmentKind, KIND_LABELS } from './contextUsage.js';
 
 let pendingFiles = [];
 let uploaded = [];
@@ -403,6 +404,15 @@ function _contextChip(item, limit) {
   const state = String((item && item.state) || 'full');
   chip.className = `context-chip context-chip-${state}`;
 
+  // `B892`. What the file is — code, a document, a spreadsheet — in words,
+  // ahead of its name. The server says when it knows (`item.kind`); a report
+  // from before it did is classified here from the name, by the same lists.
+  const kind = String((item && item.kind) || attachmentKind(item && item.name));
+  const kindTag = document.createElement('span');
+  kindTag.className = `context-chip-kind context-chip-kind-${KIND_LABELS[kind] ? kind : 'file'}`;
+  kindTag.textContent = KIND_LABELS[kind] || KIND_LABELS.file;
+  chip.appendChild(kindTag);
+
   const name = document.createElement('span');
   name.className = 'context-chip-name';
   name.textContent = String((item && item.name) || 'attachment');
@@ -432,6 +442,16 @@ function _contextChip(item, limit) {
  */
 export function renderContextMeter() {
   _syncBucket();
+  _drawContextMeter();
+  // `B892`. The context wheel listens: it shows for a new chat as soon as a
+  // file is attached, and an open panel re-lists what is waiting to be sent.
+  try {
+    window.dispatchEvent(new CustomEvent('pantheon:attachments-changed',
+      { detail: { pending: pendingFiles.length } }));
+  } catch (_) { /* no window to tell */ }
+}
+
+function _drawContextMeter() {
   const host = document.getElementById('context-meter');
   if (!host) return;
   while (host.firstChild) host.removeChild(host.firstChild);
@@ -458,7 +478,9 @@ export function renderContextMeter() {
   head.className = 'context-meter-head';
   const title = document.createElement('span');
   title.className = 'context-meter-title';
-  title.textContent = 'Attachment context';
+  // `B892`. Named for what the characters are: text read out of attachments.
+  // A picture spends none of it, which the context panel says beside it.
+  title.textContent = 'Attachment text allowance';
   head.appendChild(title);
   const figure = document.createElement('span');
   figure.className = 'context-meter-figure';

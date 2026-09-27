@@ -511,3 +511,368 @@ def _estimate_tokens_for_chars(chars: int) -> int:
     """The product's own estimator, asked about a block of this many chars."""
     from src.model_context import estimate_tokens
     return estimate_tokens([{"role": "user", "content": "x" * max(0, int(chars))}])
+
+
+# ── `B892`. What the whole window is spent on ─────────────────────────────────
+#
+# The meter above answers one question: how much of the attachment allowance a
+# message spends, in characters. The person asks a bigger one — "what is using
+# my context window?" — and the answer has to name every part of the request:
+# the system prompt, the tool definitions sent with it, the skill index, saved
+# memory, retrieved context, attachments and the conversation itself.
+# `measure_request_segments` answers it for a request as it was actually
+# assembled (`src/agent_loop.py` emits it as `metrics["context_breakdown"]`),
+# and `session_context_breakdown` recombines that with the chat's history as it
+# stands now, which is what `GET /api/session/{id}/context` serves.
+#
+# One estimator. Every figure below is `model_context.estimate_tokens` asked
+# about the message or the slice of text it came from, so the categories add
+# up to what the compaction gate and the trimmer measure (`Law 7`). Pictures
+# and audio are not counted by that estimator, so they are listed as uncounted
+# rather than given an invented number (`Law 10`).
+
+import json as _json
+import os as _os
+import re as _re
+
+CONTEXT_BREAKDOWN_CATEGORIES: tuple[tuple[str, str], ...] = (
+    ("system", "System prompt"),
+    ("tools", "Tool definitions"),
+    ("skills", "Skills"),
+    ("memory", "Memory"),
+    ("retrieved", "Retrieved context"),
+    ("attachments", "Attachments"),
+    ("conversation", "Conversation"),
+)
+
+#: The parts a request carries besides the chat itself, measured on the last
+#: request that was actually sent. The other two are re-measured from history.
+REQUEST_OVERHEAD_CATEGORIES = ("system", "tools", "skills", "memory", "retrieved")
+
+#: Items listed under one category before the rest are folded into one line.
+BREAKDOWN_ITEM_LIMIT = 24
+
+#: What an attachment *is*. Attachments are not all documents: a person attaches
+#: code, photos, spreadsheets and logs, and the composer names each for what it
+#: is instead of describing everything as text.
+ATTACHMENT_KIND_LABELS: dict[str, str] = {
+    "image": "Image",
+    "code": "Code",
+    "text": "Text",
+    "document": "Document",
+    "spreadsheet": "Spreadsheet",
+    "audio": "Audio",
+    "file": "File",
+}
+
+_IMAGE_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg", ".heic",
+              ".heif", ".tif", ".tiff", ".avif", ".ico"}
+_AUDIO_EXT = {".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aac", ".opus"}
+_SHEET_EXT = {".csv", ".tsv", ".xlsx", ".xls", ".ods", ".numbers"}
+_DOCUMENT_EXT = {".pdf", ".docx", ".doc", ".odt", ".rtf", ".epub", ".pptx", ".ppt",
+                 ".odp", ".pages"}
+_TEXT_EXT = {".txt", ".md", ".markdown", ".rst", ".log", ".text", ".adoc"}
+_CODE_EXT = {
+    ".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".java", ".kt", ".kts",
+    ".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hh", ".cs", ".go", ".rs", ".rb",
+    ".php", ".swift", ".m", ".mm", ".scala", ".lua", ".pl", ".pm", ".r", ".jl",
+    ".sh", ".bash", ".zsh", ".fish", ".ps1", ".bat", ".cmd", ".sql", ".html",
+    ".htm", ".css", ".scss", ".sass", ".less", ".vue", ".svelte", ".json",
+    ".jsonc", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf", ".xml", ".proto",
+    ".graphql", ".gql", ".dart", ".ex", ".exs", ".erl", ".hs", ".clj", ".elm",
+    ".zig", ".nim", ".tf", ".gradle", ".cmake", ".mk", ".dockerfile", ".ipynb",
+}
+_CODE_NAMES = {"dockerfile", "makefile", "cmakelists.txt", "gemfile", "rakefile",
+               "procfile", "jenkinsfile", "vagrantfile"}
+
+
+def attachment_kind(name: str | None, mime: str | None = "") -> str:
+    """One of `ATTACHMENT_KIND_LABELS`, from the file's name and type.
+
+    The name wins over the type for code: browsers report most source files as
+    `text/plain` or nothing at all, and "Text" is the wrong word for a `.py`.
+    `static/js/contextUsage.js` (`attachmentKind`) answers the same question
+    for a file that has not been sent yet, from the same lists.
+    """
+    base = _os.path.basename(str(name or "")).lower()
+    ext = _os.path.splitext(base)[1]
+    mime = str(mime or "").lower()
+    if ext in _IMAGE_EXT or mime.startswith("image/"):
+        return "image"
+    if ext in _AUDIO_EXT or mime.startswith("audio/"):
+        return "audio"
+    if ext in _SHEET_EXT or "spreadsheet" in mime or mime in {
+            "text/csv", "text/tab-separated-values", "application/vnd.ms-excel"}:
+        return "spreadsheet"
+    if ext in _DOCUMENT_EXT or mime == "application/pdf" or "wordprocessing" in mime \
+            or "presentation" in mime or mime == "application/epub+zip":
+        return "document"
+    if ext in _CODE_EXT or base in _CODE_NAMES:
+        return "code"
+    if ext in _TEXT_EXT or mime.startswith("text/"):
+        return "text"
+    return "file"
+
+
+# The blocks `src/document_processor.py` appends to a user message, one per
+# attachment. The typed message is everything before the first of them.
+_ATTACHMENT_BLOCK = _re.compile(
+    r"(?m)^=== File: (?P<file>[^\n]+?) ===$"
+    r"|\[(?P<tag>PDF content|Document content|Attached document|Attached file|"
+    r"Form attached|PDF attached|Attachment omitted from inline context|"
+    r"Attachment content truncated|Image attached but could not be processed|"
+    r"Audio attached but could not be processed)"
+    r"(?:(?: — |: )(?P<title>[^\]\n]+?))?(?=\]| —|\. )"
+)
+_TAG_KIND = {
+    "PDF content": "document", "PDF attached": "document", "Form attached": "document",
+    "Document content": "document", "Attached document": "document",
+    "Image attached but could not be processed": "image",
+    "Audio attached but could not be processed": "audio",
+}
+_SKILL_ENTRY = _re.compile(r"^- `([^`]+)`")
+
+
+def _estimator():
+    from src.model_context import estimate_tokens
+    return estimate_tokens
+
+
+def _text_tokens(text: str) -> int:
+    """`estimate_tokens` on a slice of text, less the per-message overhead."""
+    est = _estimator()
+    empty = est([{"role": "user", "content": ""}])
+    return max(0, est([{"role": "user", "content": str(text or "")}]) - empty)
+
+
+def _split_attachments(text: str) -> tuple[str, list[dict]]:
+    """The typed part of a user message, and one entry per attachment block."""
+    text = str(text or "")
+    matches = list(_ATTACHMENT_BLOCK.finditer(text))
+    if not matches:
+        return text, []
+    blocks = []
+    for i, m in enumerate(matches):
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        body = text[m.start():end]
+        if m.group("file"):
+            name = m.group("file").strip()
+            kind = attachment_kind(name)
+            if kind == "file":
+                kind = "text"
+        else:
+            tag = m.group("tag")
+            title = (m.group("title") or "").strip()
+            name = title or tag
+            kind = attachment_kind(title) if title else "file"
+            if kind == "file":
+                kind = _TAG_KIND.get(tag, "file")
+        blocks.append({"name": name, "kind": kind, "chars": len(body),
+                       "tokens": _text_tokens(body)})
+    return text[:matches[0].start()], blocks
+
+
+def _meta(msg: dict) -> dict:
+    meta = msg.get("metadata")
+    return meta if isinstance(meta, dict) else {}
+
+
+def _is_memory_message(msg: dict) -> bool:
+    source = str(_meta(msg).get("source") or "").lower()
+    if source.startswith("saved memory") or source.startswith("memory"):
+        return True
+    content = msg.get("content")
+    return isinstance(content, str) and (
+        "Core facts about the user:" in content
+        or "Saved user memory facts" in content
+        or "Memory context. Do not reference unless" in content
+    )
+
+
+def _skill_index_slice(text: str) -> str:
+    """The skill index inside a system prompt, exactly as it was rendered."""
+    try:
+        from services.memory.skill_injection import INDEX_HEADING, INDEX_PREAMBLE
+    except Exception:  # pragma: no cover - both are literals
+        return ""
+    start = text.find(INDEX_HEADING)
+    if start < 0:
+        return ""
+    lines = text[start:].split("\n")
+    kept = [lines[0]]
+    for line in lines[1:]:
+        s = line.strip()
+        if (not s or s == INDEX_PREAMBLE or s.startswith("- `")
+                or (s.startswith("**") and s.endswith("**"))):
+            kept.append(line)
+            continue
+        break
+    return "\n".join(kept)
+
+
+def _fold(items: list[dict], limit: int = BREAKDOWN_ITEM_LIMIT) -> list[dict]:
+    """The largest `limit` items, and one line saying what the rest add up to."""
+    counted = sorted(items, key=lambda it: -(it.get("tokens") or 0))
+    if len(counted) <= limit:
+        return counted
+    head, rest = counted[:limit], counted[limit:]
+    head.append({"name": f"{len(rest)} more",
+                 "tokens": sum(int(it.get("tokens") or 0) for it in rest),
+                 "folded": len(rest)})
+    return head
+
+
+def _classify(msg: dict, index: int, history: bool) -> tuple[str, str]:
+    """Which category one whole message belongs to, and what to call it."""
+    role = str(msg.get("role") or "")
+    meta = _meta(msg)
+    source = str(meta.get("source") or "")
+    injected = str(msg.get("_agent_injected") or "")
+    if _is_memory_message(msg):
+        return "memory", source or "Saved memory"
+    if meta.get("trusted") is False or injected == "context":
+        if "skill" in source.lower():
+            return "skills", source
+        return "retrieved", source or "Retrieved context"
+    if role == "system":
+        if not history and (injected in {"prompt", "merged_prompt"} or index == 0):
+            return "system", "Instructions"
+        return "conversation", "Summaries and notes"
+    return "conversation", role or "user"
+
+
+def measure_request_segments(messages, tools=None, *, history: bool = False) -> dict:
+    """Split one request into the categories above, in tokens.
+
+    `messages` is the list as it went to the model; `tools` is the tool schema
+    list sent with it. `history=True` measures a chat's stored history instead,
+    where no message is the system prompt. Returns `{"categories": [...],
+    "total_tokens": N, "uncounted": [...]}`; each category carries `key`,
+    `label`, `tokens` and `items`.
+    """
+    est = _estimator()
+    totals = {key: 0 for key, _ in CONTEXT_BREAKDOWN_CATEGORIES}
+    items: dict[str, list[dict]] = {key: [] for key, _ in CONTEXT_BREAKDOWN_CATEGORIES}
+    convo: dict[str, list[int]] = {}
+    uncounted: list[dict] = []
+    role_names = {"user": "Your messages", "assistant": "Replies and tool calls",
+                  "tool": "Tool results"}
+
+    for index, msg in enumerate(messages or []):
+        if not isinstance(msg, dict):
+            continue
+        whole = est([msg])
+        category, name = _classify(msg, index, history)
+        content = msg.get("content")
+        if category == "system":
+            skills = _skill_index_slice(content if isinstance(content, str) else "")
+            skill_tokens = min(whole, _text_tokens(skills)) if skills else 0
+            totals["skills"] += skill_tokens
+            totals["system"] += whole - skill_tokens
+            items["system"].append({"name": name, "tokens": whole - skill_tokens})
+            for line in skills.split("\n"):
+                m = _SKILL_ENTRY.match(line.strip())
+                if m:
+                    items["skills"].append({"name": m.group(1),
+                                            "tokens": _text_tokens(line)})
+            continue
+        if category != "conversation":
+            totals[category] += whole
+            items[category].append({"name": name, "tokens": whole})
+            continue
+
+        texts: list[str] = []
+        if isinstance(content, str):
+            texts = [content]
+        elif isinstance(content, list):
+            for part in content:
+                if not isinstance(part, dict):
+                    continue
+                kind = part.get("type")
+                if kind == "text":
+                    texts.append(str(part.get("text") or ""))
+                elif kind in {"image_url", "input_image", "image", "audio", "input_audio"}:
+                    what = "image" if "image" in kind else "audio"
+                    entry = {"name": ATTACHMENT_KIND_LABELS[what], "kind": what,
+                             "tokens": None, "uncounted": True}
+                    uncounted.append(dict(entry))
+                    items["attachments"].append(entry)
+        attach_tokens = 0
+        if str(msg.get("role") or "") == "user":
+            for text in texts:
+                _typed, blocks = _split_attachments(text)
+                for block in blocks:
+                    attach_tokens += block["tokens"]
+                    items["attachments"].append(block)
+        attach_tokens = min(attach_tokens, whole)
+        totals["attachments"] += attach_tokens
+        totals["conversation"] += whole - attach_tokens
+        label = role_names.get(name, name)
+        row = convo.setdefault(label, [0, 0])
+        row[0] += 1
+        row[1] += whole - attach_tokens
+
+    items["conversation"] = [{"name": label, "count": count, "tokens": tokens}
+                             for label, (count, tokens) in convo.items()]
+
+    for schema in tools or []:
+        if not isinstance(schema, dict):
+            continue
+        fn = schema.get("function") if isinstance(schema.get("function"), dict) else schema
+        tokens = _text_tokens(_json.dumps(schema, ensure_ascii=False, sort_keys=True))
+        totals["tools"] += tokens
+        items["tools"].append({"name": str((fn or {}).get("name") or "tool"),
+                               "tokens": tokens})
+
+    categories = []
+    for key, label in CONTEXT_BREAKDOWN_CATEGORIES:
+        entry = {"key": key, "label": label, "tokens": int(totals[key]),
+                 "items": items[key] if key == "conversation" else _fold(items[key])}
+        if key == "tools":
+            entry["count"] = len(items["tools"])
+        categories.append(entry)
+    return {
+        "categories": categories,
+        "total_tokens": int(sum(totals.values())),
+        "uncounted": uncounted,
+    }
+
+
+def session_context_breakdown(history_messages, last_request: dict | None) -> dict:
+    """The window as it stands: overhead from the last request, history now.
+
+    `last_request` is the `context_breakdown` the most recent reply was sent
+    with, or `None` for a chat that has not had one since this shipped. The
+    overhead categories it cannot answer say `measured: False` — a chat that
+    has not been answered yet has not sent a system prompt, and drawing a zero
+    there would read as "costs nothing".
+    """
+    live = measure_request_segments(history_messages, history=True)
+    by_key = {c["key"]: c for c in live["categories"]}
+    last_by_key = {}
+    if isinstance(last_request, dict):
+        for cat in last_request.get("categories") or []:
+            if isinstance(cat, dict) and cat.get("key"):
+                last_by_key[cat["key"]] = cat
+    categories = []
+    for key, label in CONTEXT_BREAKDOWN_CATEGORIES:
+        prior = last_by_key.get(key) if key in REQUEST_OVERHEAD_CATEGORIES else None
+        if prior is not None:
+            entry = {"key": key, "label": label,
+                     "tokens": int(prior.get("tokens") or 0) + by_key[key]["tokens"],
+                     "items": list(prior.get("items") or []) + by_key[key]["items"],
+                     "measured": True, "source": "last_request"}
+            if "count" in prior:
+                entry["count"] = prior["count"]
+        elif key in REQUEST_OVERHEAD_CATEGORIES and not by_key[key]["tokens"]:
+            entry = {"key": key, "label": label, "tokens": 0, "items": [],
+                     "measured": False, "source": None}
+        else:
+            entry = dict(by_key[key], measured=True, source="history")
+        categories.append(entry)
+    return {
+        "categories": categories,
+        "total_tokens": int(sum(c["tokens"] for c in categories if c.get("measured"))),
+        "uncounted": live["uncounted"],
+        "source": "last_request" if last_by_key else "history",
+    }

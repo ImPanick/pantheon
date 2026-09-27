@@ -25,6 +25,7 @@ from src.markitdown_runtime import (  # noqa: F401
 from src.pdf_runtime import PDF_EXTS
 from src.context_budget import (
     CONTEXT_BUDGETS,
+    attachment_kind as _attachment_kind,
     fit_to_context_budget,
     resolve_context_budget,
 )
@@ -1601,6 +1602,10 @@ def build_user_content(
                     "name": os.path.basename(display_name or "attachment"),
                     "chars": _before - inline_attachment_remaining,
                     "state": _state,
+                    # `B892`. What the file is — code, a document, a
+                    # spreadsheet — so the composer can say so instead of
+                    # calling every attachment text.
+                    "kind": _attachment_kind(display_name, mime),
                 })
                 budget_report["remaining_chars"] = inline_attachment_remaining
                 budget_report["used_chars"] = (

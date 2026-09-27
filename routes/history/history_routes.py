@@ -690,6 +690,26 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
                 if (getattr(m, "metadata", None) or {}).get("compacted")
             )
             can_compact = used > 0
+            # `B892`. What the window is spent on. The system prompt, tools,
+            # skills, memory and retrieved context are read back from the last
+            # reply's own measurement (they are assembled per request and never
+            # stored in history); attachments and the conversation are measured
+            # from history as it stands now, so a compaction shows at once.
+            from src.context_budget import session_context_breakdown
+            last_request = None
+            for m in reversed(session.history):
+                md = getattr(m, "metadata", None) or {}
+                if getattr(m, "role", "") == "assistant" and isinstance(
+                        md.get("context_breakdown"), dict):
+                    last_request = md["context_breakdown"]
+                    break
+            breakdown = session_context_breakdown(messages, last_request)
+            window_used = max(used, int(breakdown.get("total_tokens") or 0))
+            breakdown["used_tokens"] = window_used
+            breakdown["context_percent"] = (
+                max(0.0, min(100.0, round((window_used / ctx_len) * 100, 1)))
+                if ctx_len else 0.0
+            )
             return {
                 "session_id": session_id,
                 "model": session.model,
@@ -703,6 +723,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
                 "can_compact": can_compact,
                 "should_compact": pct >= 70,
                 "auto_compact_threshold": 85,
+                "breakdown": breakdown,
             }
         except Exception as e:
             logger.error(f"Context usage error {session_id}: {e}")
