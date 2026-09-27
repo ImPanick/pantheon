@@ -1340,6 +1340,8 @@ export function createMcpToolRow(tool, options) {
     count.className = 'mcp-tool-description-count';
     const status = elem('span');
     status.className = 'mcp-tool-description-status';
+    // "Saved." / "Not saved — …" is the only answer a keyboard user gets.
+    status.setAttribute('role', 'status');
     controls.appendChild(save);
     controls.appendChild(reset);
     controls.appendChild(count);

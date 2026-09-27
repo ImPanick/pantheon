@@ -82,6 +82,7 @@ function look(row) {
     resetShown: reset ? reset.style.display !== 'none' : null,
     count: box ? row.querySelector('.mcp-tool-description-count').textContent : null,
     status: box ? row.querySelector('.mcp-tool-description-status').textContent : null,
+    statusRole: box ? row.querySelector('.mcp-tool-description-status').getAttribute('role') : null,
     readable: row.readable,
   };
 }
@@ -167,6 +168,7 @@ def test_a_person_rewrites_it_and_the_row_says_so_everywhere(sandbox):
     assert after["theirs"] == "Run a query" and after["theirsShown"] is True
     assert after["resetShown"] is True
     assert after["status"] == "Saved."
+    assert after["statusRole"] == "status", "the answer is announced, not only drawn"
     assert after["saveDisabled"] is True, "what is saved is not a change"
 
 
