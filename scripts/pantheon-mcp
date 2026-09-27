@@ -16,6 +16,7 @@ in the manager process — query it via the web UI or `curl /api/mcp/servers`.
     pantheon-mcp tools SERVER_ID           # what it offers, by connecting to it
     pantheon-mcp call SERVER_ID TOOL --args '{"path": "/tmp"}'
     pantheon-mcp delete SERVER_ID
+    pantheon-mcp new weather --tool get_forecast   # write one that runs (P8-47)
 
 `update` edits a row IN PLACE and keeps its id (`P8-35`), so every stored
 `mcp__<id>__<tool>` reference — a scheduled task's output target, the server's
@@ -366,6 +367,14 @@ def cmd_delete(args):
         db.close()
 
 
+def cmd_new(args):
+    """`pantheon-mcp new` — the same body as `pantheon-mcp-new`, run once."""
+    from src.mcp_scaffold import run_parsed
+    code = run_parsed(args, args.new_parser)
+    if code:
+        sys.exit(code)
+
+
 def _build_parser():
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--pretty", action="store_true")
@@ -426,6 +435,21 @@ def _build_parser():
     pd = sub.add_parser("delete", parents=[common])
     pd.add_argument("id")
     pd.set_defaults(func=cmd_delete)
+
+    # `P8-47`'s scaffold, folded in as a subcommand (`Law 14`: one MCP CLI,
+    # not a sibling beside it). Its arguments are the scaffold's own parser,
+    # taken as the parent, so `new --list` and `new --help` parse exactly as
+    # `pantheon-mcp-new` does — which stays, for anything already typing it.
+    from src.mcp_scaffold import _build_parser as _scaffold_parser
+    scaffold = _scaffold_parser(prog="pantheon-mcp new")
+    pn = sub.add_parser(
+        "new", parents=[scaffold], add_help=False,
+        help="make a working MCP server on the data volume and say how to register it",
+        description=scaffold.description,
+        epilog=(scaffold.epilog or "").replace("pantheon-mcp-new", "pantheon-mcp new"),
+        formatter_class=scaffold.formatter_class,
+    )
+    pn.set_defaults(func=cmd_new, new_parser=pn)
 
     return p
 

@@ -39,6 +39,7 @@ Public surface:
     refusal_on_the_agent_path(reg)  why the assistant cannot register it
     list_servers()                  what has been generated here
     main(argv)                      the CLI behind `scripts/pantheon-mcp-new`
+    run_parsed(args, parser)        the same, for `pantheon-mcp new`, which parsed already
 """
 
 from __future__ import annotations
@@ -62,6 +63,7 @@ __all__ = [
     "refusal_on_the_agent_path",
     "verify_server",
     "main",
+    "run_parsed",
 ]
 
 
@@ -728,11 +730,11 @@ def _next_steps(record: Dict[str, Any], self_test: Optional[Dict[str, Any]]) -> 
     return steps
 
 
-def _build_parser():
+def _build_parser(prog: str = "pantheon-mcp-new"):
     import argparse
 
     parser = argparse.ArgumentParser(
-        prog="pantheon-mcp-new",
+        prog=prog,
         description=(
             "Make a working MCP server and tell you how to register it. An MCP "
             "server is a small program that gives the assistant new tools. This "
@@ -797,10 +799,20 @@ def _print(payload: Dict[str, Any], pretty: bool) -> None:
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     """`scripts/pantheon-mcp-new`'s whole body. Returns an exit code."""
-    import asyncio
-
     parser = _build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
+    return run_parsed(args, parser)
+
+
+def run_parsed(args: Any, parser: Any) -> int:
+    """Everything `main` does after parsing, for a caller that parsed already.
+
+    `scripts/pantheon-mcp new` is that caller: it takes `_build_parser`'s
+    arguments as a parent of its own `new` subcommand (the fold `P8-47`'s row
+    asked for, `Law 14`), so both doors parse the same flags and run this one
+    body. `parser` is only used to print help when no name was given.
+    """
+    import asyncio
 
     try:
         if args.list_all:

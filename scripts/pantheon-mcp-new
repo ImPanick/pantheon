@@ -19,10 +19,10 @@ pointing at it survives.
 All of it is `src/mcp_scaffold.py`; this file is argv and an exit code.
 
 **Where this belongs.** `scripts/pantheon-mcp` is the MCP CLI, and `new`
-should be a subcommand of it rather than a sibling script — `Law 14`. That file
-was another agent's this hour, so the shim landed beside it instead of inside
-it. Folding it in is moving `_build_parser`'s arguments onto a `sub.add_parser("new")`
-and calling the same `main`.
+is now a subcommand of it — `pantheon-mcp new weather` — taking this same
+parser as its parent and running the same body (`mcp_scaffold.run_parsed`),
+which is the fold `P8-47`'s row asked for (`Law 14`). This script stays, so
+nothing already typing `pantheon-mcp-new` or `pantheon mcp-new` breaks (`Law 1`).
 """
 import os
 import sys
