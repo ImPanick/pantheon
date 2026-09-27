@@ -6088,6 +6088,17 @@ async def stream_agent_loop(
             tool_call_limit=max_tool_calls,
         )
 
+    def _next_step_frame(current_round: int) -> Optional[str]:
+        """`B906`. The `agent_step` that announces step `current_round + 1`, or
+        `None` when the `for` below will not run that step. Every site that
+        announces the next step was yielding it on the last step too — it could
+        not know the loop was about to end — so a run stopped at its limit sent
+        `agent_step` for a step past it, and the browser opened a bubble with a
+        spinner for a step that never ran, above the Continue box."""
+        if current_round >= max_rounds:
+            return None
+        return f'data: {json.dumps({"type": "agent_step", "round": current_round + 1})}\n\n'
+
     for round_num in range(1, max_rounds + 1):
         yield _budget_frame(round_num)   # `P4-23`: a round only starts here
         round_response = ""
@@ -6718,7 +6729,9 @@ async def stream_agent_loop(
                             "saved memory facts already provided. Do not call manage_memory or any tool."
                         ),
                     })
-                    yield f'data: {json.dumps({"type": "agent_step", "round": round_num + 1})}\n\n'
+                    _step = _next_step_frame(round_num)   # `B906`
+                    if _step:
+                        yield _step
                     continue
 
         # Force-answer round: we told the model to STOP calling tools and
@@ -6945,7 +6958,9 @@ async def stream_agent_loop(
                     ),
                 })
                 # Visible signal in the stream so the user knows we caught it.
-                yield f'data: {json.dumps({"type": "agent_step", "round": round_num + 1})}\n\n'
+                _step = _next_step_frame(round_num)   # `B906`
+                if _step:
+                    yield _step
                 continue
             if _looks_like_promise:
                 _matched_phrase = _intent_match.group(0).strip()
@@ -7042,7 +7057,9 @@ async def stream_agent_loop(
                 ),
             })
             full_response += "\n\n"
-            yield f'data: {json.dumps({"type": "agent_step", "round": round_num + 1})}\n\n'
+            _step = _next_step_frame(round_num)   # `B906`
+            if _step:
+                yield _step
             continue
 
         # Execute each tool block
@@ -7824,10 +7841,10 @@ async def stream_agent_loop(
                              round_reasoning=round_reasoning,
                              tool_result_records=tool_result_records)
 
-        # Emit agent_step event
-        yield (
-            f'data: {json.dumps({"type": "agent_step", "round": round_num + 1})}\n\n'
-        )
+        # Emit agent_step event — only when there is a next step (`B906`)
+        _step = _next_step_frame(round_num)
+        if _step:
+            yield _step
 
         # Separator in accumulated response
         full_response += "\n\n"

@@ -4436,6 +4436,14 @@ import agentDrafts from './agentDrafts.js';   // H01
                 // finalize, which would wipe a note placed inside it.
                 const _chatBox = document.getElementById('chat-history');
                 if (!_isBg && _chatBox) {
+                  // `B906`. Nothing is coming after this step, so nothing is
+                  // shown waiting for one. The last tool result schedules a
+                  // "Thinking" spinner for the step after it; that step used
+                  // to be announced (and a bubble opened for it) even when it
+                  // was past the limit. The loop no longer announces it, and
+                  // the pending spinner is called off here.
+                  _cancelThinkingTimer();
+                  _removeThinkingSpinner();
                   // Drop any prior box so repeated cap-hits each get a fresh
                   // Continue at the bottom (multiple continues in a row).
                   const _old = _chatBox.querySelector('.rounds-exhausted');

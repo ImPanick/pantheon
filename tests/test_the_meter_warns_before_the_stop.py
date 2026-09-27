@@ -115,7 +115,7 @@ def test_every_step_starts_by_saying_which_step_of_how_many(monkeypatch):
     assert [(f["round"], f["round_limit"]) for f in tops] == [(1, 3), (2, 3), (3, 3)]
     assert {f["round_limit_source"] for f in tops} == {"configured"}
     # The stop the meter was counting toward, after its last frame — and no
-    # frame names a step past the limit, though `agent_step` announces one.
+    # frame names a step past the limit (nor, since `B906`, does `agent_step`).
     stop = next(i for i, f in enumerate(frames) if f.get("type") == "rounds_exhausted")
     assert frames[stop]["rounds"] == 3
     assert max(i for i, f in enumerate(frames) if f.get("type") == "agent_budget") < stop
