@@ -1646,22 +1646,69 @@ def _list_attachments_from_msg(msg):
 
 
 def _is_likely_signature_image_attachment(att: dict) -> bool:
-    """Match the reader's inline signature/logo image filter."""
+    """Match the reader's inline signature/logo image filter — by name only.
+
+    `P2-12`. This used to end ``return 0 < size < 30 * 1024``, so **any** image
+    under 30 KB was a "signature": measured, a 640×400 screenshot PNG is
+    15.9 KB and a 320×240 JPEG 17.3 KB, and both were demoted into the reader's
+    collapsed "Hidden inline attachments" section and left out of the
+    download-all ZIP. The two filename shapes below are what mail clients
+    actually stamp on the images they inline (Outlook's ``image001.png``, a
+    ``logo``/``signature`` part), and they stay (`D-2026-08-26-06`). Size was
+    never evidence of anything.
+
+    The same predicate lives in ``static/js/emailLibrary.js``
+    (``_isLikelySignatureImage``) and the two must agree: the reader decides
+    which chips count toward the ZIP button and this decides what the ZIP holds.
+
+    Not a security control. A demoted chip was still a chip, still clickable
+    and downloadable; every route that serves one sends it as an attachment.
+    The one route that serves sender bytes inline, ``/inline-image``, has its
+    own ``image/`` check and does not read this.
+    """
     filename = str((att or {}).get("filename") or "").lower()
     if not re.search(r"\.(png|jpe?g|gif|bmp|svg|webp)$", filename):
         return False
-    size = int((att or {}).get("size") or 0)
     if re.search(r"^image\d{3,}\.(png|jpe?g|gif)$", filename):
         return True
     if re.search(r"^(signature|logo|sig|footer|banner)[-_\d]*\.(png|jpe?g|gif|svg)$", filename):
         return True
+    return False
+
+
+def _is_signature_or_small_image_attachment(att: dict) -> bool:
+    """The filter exactly as it stood before `P2-12`: a signature name, or any image under 30 KB.
+
+    Kept for the related-thread lookup and nothing else. `D-2026-08-26-06`
+    dropped the size clause from what the reader shows and the ZIP carries,
+    and ruled the lookup out of scope: *"pin `_has_visible_attachments` to the
+    old predicate … the related-thread lookup is out of scope and stays out."*
+    Two things in that lookup read this, and both keep their old answer —
+    whether the reader goes searching earlier messages in the thread at all
+    (``_has_visible_attachments``), and which of their attachments it brings
+    back (``routes/email_routes._related_thread_attachments_sync``).
+    """
+    if _is_likely_signature_image_attachment(att):
+        return True
+    filename = str((att or {}).get("filename") or "").lower()
+    if not re.search(r"\.(png|jpe?g|gif|bmp|svg|webp)$", filename):
+        return False
+    size = int((att or {}).get("size") or 0)
     return 0 < size < 30 * 1024
 
 
 def _has_visible_attachments(msg) -> bool:
-    """Return True only for attachments the reader will render as chips."""
+    """True when the message has an attachment the related-thread lookup counts.
+
+    It said *"only for attachments the reader will render as chips"* until
+    `P2-12`, and that stopped being its question: the reader now shows an
+    image under 30 KB as an attachment, and this still answers with the
+    pre-`P2-12` predicate so a reply carrying only a small screenshot keeps
+    sending the reader to look for the thread's earlier attachments. The name
+    is kept because ``routes/email_routes.py`` imports it by that name.
+    """
     return any(
-        not _is_likely_signature_image_attachment(att)
+        not _is_signature_or_small_image_attachment(att)
         for att in _list_attachments_from_msg(msg)
     )
 

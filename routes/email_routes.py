@@ -57,6 +57,7 @@ from routes.email_helpers import (
     EmailNotConfiguredError,
     _imap_connect, _imap, _decode_header, _detect_sent_folder, _detect_drafts_folder,
     _extract_attachment_text, _list_attachments_from_msg, _has_visible_attachments, _is_likely_signature_image_attachment,
+    _is_signature_or_small_image_attachment,
     _extract_attachment_to_disk, _extract_html, _extract_text,
     _fetch_sender_thread_context, _pre_retrieve_context,
     _EMAIL_REPLY_SYS_PROMPT_BASE, _POOL_HOOKS,
@@ -2480,7 +2481,11 @@ def setup_email_routes():
                         source_subject = _decode_header(msg.get("Subject", ""))
                         source_date = msg.get("Date", "")
                         for att in _list_attachments_from_msg(msg):
-                            if _is_likely_signature_image_attachment(att):
+                            # `P2-12`: the pre-change predicate, on purpose.
+                            # `D-2026-08-26-06` keeps this lookup out of scope,
+                            # so an earlier message's small images stay out of
+                            # "From earlier in this thread" exactly as before.
+                            if _is_signature_or_small_image_attachment(att):
                                 continue
                             enriched = dict(att)
                             enriched.update({

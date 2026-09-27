@@ -6919,22 +6919,26 @@ function _wireAttachmentHandlers(reader, folder) {
 }
 
 // Heuristic: skip "attachments" that are clearly inline images used by
-// signatures / quoted-reply headers (small image files, Outlook-style
-// image001.png placeholders, logo*.png, etc.). They aren't real user-
-// shared attachments and adding them to the chips makes every email look
-// like it has content the user needs to act on.
+// signatures / quoted-reply headers (Outlook-style image001.png placeholders,
+// logo*.png, signature*.jpg, etc.). They aren't real user-shared attachments
+// and adding them to the chips makes every email look like it has content the
+// user needs to act on.
+//
+// `P2-12`: by name only. This also hid every image under 30 KB, on the theory
+// that real screenshots are "typically 50 KB+" — measured, a 640×400
+// screenshot PNG is 15.9 KB and a 320×240 JPEG 17.3 KB, so they landed in the
+// collapsed hidden section and did not count toward the download-all button.
+// The same predicate is `_is_likely_signature_image_attachment` in
+// `routes/email_helpers.py`, which decides what that ZIP holds; the two move
+// together or the button's count and the ZIP's contents disagree.
 function _isLikelySignatureImage(a) {
   if (!a || !a.filename) return false;
   const name = String(a.filename).toLowerCase();
   const isImage = /\.(png|jpe?g|gif|bmp|svg|webp)$/i.test(name);
   if (!isImage) return false;
-  const size = Number(a.size) || 0;
   // Outlook / Gmail inline image placeholders always look like this.
   if (/^image\d{3,}\.(png|jpe?g|gif)$/i.test(name)) return true;
   if (/^(signature|logo|sig|footer|banner)[-_\d]*\.(png|jpe?g|gif|svg)$/i.test(name)) return true;
-  // Most signature logos / inline thumbnails are < 30 KB. Real user-
-  // shared images (screenshots, photos) are typically 50 KB+.
-  if (size > 0 && size < 30 * 1024) return true;
   return false;
 }
 
