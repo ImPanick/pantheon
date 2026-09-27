@@ -395,8 +395,10 @@ def _calls(text: str) -> list[str]:
 _OPTIONS_BUILDER = re.compile(r"\b\w+CardOptions\(")
 
 
+# `P4-24`: chat.js's sixth is the refusal and verifier card a resumed stream
+# draws, through the same `*CardOptions` builders the live arms use.
 @pytest.mark.parametrize("rel, expected", [
-    ("static/js/chat.js", 5),
+    ("static/js/chat.js", 6),
     ("static/js/chatRenderer.js", 2),
     ("static/js/compare/stream.js", 2),
 ])

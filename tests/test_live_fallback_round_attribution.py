@@ -8,6 +8,9 @@ import subprocess
 
 import pytest
 
+from tests.helpers.js_source import js_definition, js_function  # B876
+from tests.helpers.source_text import blank_text  # B290
+
 
 CHAT_JS = Path("static/js/chat.js").read_text(encoding="utf-8")
 _HAS_NODE = shutil.which("node") is not None
@@ -18,6 +21,15 @@ def _resume_function_source():
         "export function checkBackgroundStream", 1
     )[0]
     return "async function resumeStream" + body.rstrip()
+
+
+def _shared_view_source():
+    """`P4-24`: a resumed stream draws through functions it shares with the
+    live one. These cases run the real ones its fallback and error paths
+    reach, cut out of chat.js by the suite's one scanner."""
+    code = blank_text(CHAT_JS, "js")
+    names = ("_createWaitSpinners", "_stopCardTickers", "_removeViewFrom")
+    return "\n".join(js_definition(CHAT_JS, code.index(f"function {name}(")) for name in names)
 
 
 def _run_node(source):
@@ -62,7 +74,13 @@ def test_new_round_and_final_metrics_target_the_active_round():
         "holder.dataset.raw", 1
     )[0]
 
-    assert "inheritModelRouteState(holder, roundHolder, newWrap" in agent_step_block
+    # `P4-24`: the new step's bubble is built by `_newRoundBubble`, which a
+    # resumed stream calls too. The route state still comes from the active
+    # round: the arm hands it `holder, roundHolder`, and the builder inherits
+    # from exactly those.
+    assert "_newRoundBubble(box, holder, roundHolder" in agent_step_block
+    builder = js_function(CHAT_JS, "function _newRoundBubble")
+    assert "inheritModelRouteState(prevHolder, roundHolder, newWrap" in builder
     assert "applyModelMetricsState(metrics, holder, roundHolder, modelName)" in metrics_block
     assert "_finalModelHolder.querySelector('.role')" in final_block
     assert "holder.querySelector('.role')" not in final_block
@@ -115,8 +133,9 @@ def test_detached_resume_reloads_canonical_terminal_failures():
 def test_detached_resume_surfaces_fallback_then_provider_alias_before_reload():
     source = "\n".join([
         "import { applyModelRouteEventState } from './static/js/chatModelProvenance.js';",
+        "import { createAgentMeter, presentMeterEvent, METER_EVENT_TYPES } from './static/js/agentMeter.js';",
         "class Element {",
-        "  constructor(tag = 'div') { this.tag = tag; this.children = []; this.parentNode = null; this.style = {}; this.textContent = ''; this._html = ''; }",
+        "  constructor(tag = 'div') { this.tag = tag; this.children = []; this.parentNode = null; this.style = {}; this.dataset = {}; this.textContent = ''; this._html = ''; }",
         "  appendChild(child) { child.parentNode = this; this.children.push(child); return child; }",
         "  remove() { if (!this.parentNode) return; this.parentNode.children = this.parentNode.children.filter(c => c !== this); this.parentNode = null; }",
         "  set innerHTML(value) {",
@@ -131,18 +150,20 @@ def test_detached_resume_surfaces_fallback_then_provider_alias_before_reload():
         "  querySelector(selector) { if (selector === '.role') return this._role || null; if (selector === '.body') return this._body || null; if (selector === '.stream-content') return this._content || null; return null; }",
         "}",
         "const box = new Element('main');",
-        "const document = { getElementById(id) { return id === 'chat-history' ? box : null; }, createElement(tag) { return new Element(tag); } };",
+        "const document = { getElementById(id) { return id === 'chat-history' ? box : null; }, createElement(tag) { return new Element(tag); }, querySelector() { return null; } };",
         "const window = {};",
         "let selectCalls = 0; const labels = []; const toasts = [];",
         "const sessionModule = { getSessions() { return [{id: 's1', model: 'selected-model'}]; }, getCurrentSessionId() { return 's1'; }, selectSession() { selectCalls += 1; }, loadSessions() {} };",
         "const uiModule = { esc(value) { return String(value); }, scrollHistory() {}, showToast(value) { toasts.push(value); } };",
         "const spinnerModule = { create() { return { element: null, createElement() { this.element = new Element('spinner'); return this.element; }, start() {}, destroy() { if (this.element) this.element.remove(); } }; } };",
-        "const markdownModule = { normalizeThinkingMarkup(v) { return v; }, mdToHtml(v) { return v; }, squashOutsideCode(v) { return v; } };",
+        "const markdownModule = { normalizeThinkingMarkup(v) { return v; }, mdToHtml(v) { return v; }, processWithThinking(v) { return v; }, squashOutsideCode(v) { return v; } };",
         "const documentModule = null; const chatRenderer = { recordSessionMetricsCost() {}, addMessage() {} };",
         "const _resumingStreams = new Set(); const _streamRunIds = new Map(); const API_BASE = '';",
         "function hasActiveStream() { return false; } function _shortModel(v) { return v; } function _applyModelColor() {}",
         "function _setRoleModelLabel(role, requested, actual) { labels.push({requested, actual}); role.textContent = requested + ' -> ' + actual; }",
         "function _streamDisplayText(v) { return v; } function _showDocumentWritingStatus() {} function _finishDocumentWritingStatus() {} function _metricsCostRecordId() { return 'run'; }",
+        "const TOOL_LABELS = {};",
+        _shared_view_source(),
         "const events = [",
         "  'data: {\"type\":\"fallback\",\"selected_model\":\"selected-model\",\"answered_by\":\"fallback-model\",\"reason\":\"429\"}\\n\\n',",
         "  'data: {\"type\":\"model_actual\",\"model\":\"provider/fallback-alias\"}\\n\\n',",
@@ -172,8 +193,9 @@ def test_detached_resume_surfaces_fallback_then_provider_alias_before_reload():
 def test_detached_resume_renders_preoutput_error_without_empty_reload():
     source = "\n".join([
         "import { createTerminalStreamError } from './static/js/chatStreamErrors.js';",
+        "import { createAgentMeter, presentMeterEvent, METER_EVENT_TYPES } from './static/js/agentMeter.js';",
         "class Element {",
-        "  constructor(tag = 'div') { this.tag = tag; this.children = []; this.parentNode = null; this.style = {}; this.textContent = ''; this._html = ''; }",
+        "  constructor(tag = 'div') { this.tag = tag; this.children = []; this.parentNode = null; this.style = {}; this.dataset = {}; this.textContent = ''; this._html = ''; }",
         "  appendChild(child) { child.parentNode = this; this.children.push(child); return child; }",
         "  remove() { if (!this.parentNode) return; this.parentNode.children = this.parentNode.children.filter(c => c !== this); this.parentNode = null; }",
         "  set innerHTML(value) {",
@@ -188,18 +210,20 @@ def test_detached_resume_renders_preoutput_error_without_empty_reload():
         "  querySelector(selector) { if (selector === '.role') return this._role || null; if (selector === '.body') return this._body || null; if (selector === '.stream-content') return this._content || null; return null; }",
         "}",
         "const box = new Element('main');",
-        "const document = { getElementById(id) { return id === 'chat-history' ? box : null; }, createElement(tag) { return new Element(tag); } };",
+        "const document = { getElementById(id) { return id === 'chat-history' ? box : null; }, createElement(tag) { return new Element(tag); }, querySelector() { return null; } };",
         "const window = {};",
         "let selectCalls = 0;",
         "const sessionModule = { getSessions() { return [{id: 's1', model: 'selected'}]; }, getCurrentSessionId() { return 's1'; }, selectSession() { selectCalls += 1; }, loadSessions() {} };",
         "const uiModule = { esc(value) { return String(value); }, scrollHistory() {} };",
         "const spinnerModule = { create() { return { element: null, createElement() { this.element = new Element('spinner'); return this.element; }, start() {}, destroy() { if (this.element) this.element.remove(); } }; } };",
-        "const markdownModule = { normalizeThinkingMarkup(v) { return v; }, mdToHtml(v) { return v; }, squashOutsideCode(v) { return v; } };",
+        "const markdownModule = { normalizeThinkingMarkup(v) { return v; }, mdToHtml(v) { return v; }, processWithThinking(v) { return v; }, squashOutsideCode(v) { return v; } };",
         "const documentModule = null;",
         "const chatRenderer = { recordSessionMetricsCost() {}, addMessage() {} };",
         "const _resumingStreams = new Set(); const _streamRunIds = new Map(); const API_BASE = '';",
         "function hasActiveStream() { return false; } function _shortModel(v) { return v; } function _applyModelColor() {}",
         "function _streamDisplayText(v) { return v; } function _showDocumentWritingStatus() {} function _finishDocumentWritingStatus() {} function _metricsCostRecordId() { return 'run'; }",
+        "const TOOL_LABELS = {};",
+        _shared_view_source(),
         "const encoded = new TextEncoder().encode('event: error\\ndata: {\"status\":401,\"error\":\"invalid key <img src=x>\"}\\n\\n');",
         "let reads = 0; const reader = { async read() { return reads++ === 0 ? {done:false, value:encoded} : {done:true}; }, async cancel() {} };",
         "async function fetch() { return { ok:true, body:{getReader(){return reader;}}, headers:{get(){return 'run-1';}} }; }",

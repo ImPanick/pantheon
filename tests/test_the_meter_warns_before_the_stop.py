@@ -508,10 +508,16 @@ def _function(name: str) -> str:
 @node_only
 def test_every_new_wait_spinner_carries_the_meter():
     """The spinner between tools and the one a new step opens with are where a
-    person waits, so both take the meter the moment they are made."""
+    person waits, so both take the meter the moment they are made.
+
+    `P4-24` moved both spinners into functions a resumed stream shares with
+    the live one — `_createWaitSpinners` and `_openRoundSpinner` — and left the
+    live handler's own names (`_showThinkingSpinner`, `_waitSpinner`) as the
+    way it calls them. So what runs here is those names, over the shared
+    functions, cut out of the file together."""
     src = blank(CHAT_JS)
-    show = _function("_showThinkingSpinner")
-    wait = _function("_waitSpinner")
+    wiring = src[src.index("const _wait = _createWaitSpinners({"):]
+    wiring = wiring[:wiring.index("_cancelThinkingTimer = () => { _wait.cancel(); };")]
     script = textwrap.dedent("""
         const attached = [];
         const _meter = { attachTo: (s) => attached.push(s.label) };
@@ -527,28 +533,33 @@ def test_every_new_wait_spinner_carries_the_meter():
           getElementById: () => ({ appendChild(n) { nodes.push(n); } }),
         };
         const uiModule = { scrollHistory() {} };
+        const TOOL_LABELS = {};
+        const isStreaming = true;
+        let _lastToolName = '';
+        let _removeThinkingSpinner = () => {};
         let spinner = { element: {}, label: 'Generating response' };
+        %s
         %s
         %s
         const before = _waitSpinner().label;
         _showThinkingSpinner('Thinking');
         const after = _waitSpinner().label;
+        const round = _openRoundSpinner({ appendChild() {} }, _meter).label;
         spinner = null; nodes.length = 0;
-        console.log(JSON.stringify({ attached, before, after, none: _waitSpinner() }));
-    """) % (show, wait)
+        console.log(JSON.stringify({ attached, before, after, round, none: _waitSpinner() }));
+    """) % (_function("_createWaitSpinners"), _function("_openRoundSpinner"), wiring)
     proc = subprocess.run(["node", "--input-type=module", "-e", script],
                           capture_output=True, text=True, timeout=30)
     assert proc.returncode == 0, proc.stderr
     out = json.loads(proc.stdout.strip().splitlines()[-1])
-    assert out["attached"] == ["Thinking"]
+    assert out["attached"] == ["Thinking", "Generating response"]
     assert out["before"] == "Generating response" and out["after"] == "Thinking"
+    assert out["round"] == "Generating response"
     assert out["none"] is None
 
     step_arm = src[src.index("} else if (json.type === 'agent_step') {"):]
     step_arm = step_arm[:step_arm.index("} else if (json.type === 'budget_exceeded') {")]
-    made = step_arm[step_arm.index("spinner = spinnerModule.create('Generating response'"):]
-    made = made[:made.index("spinner.start();")]
-    assert "_meter.attachTo(spinner);" in made, (
+    assert "spinner = _openRoundSpinner(newBody, _meter);" in step_arm, (
         "the spinner a new step opens with no longer takes the meter")
 
 

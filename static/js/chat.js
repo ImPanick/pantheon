@@ -42,7 +42,7 @@ import {
   inheritModelRouteState,
 } from './chatModelProvenance.js';
 import { createTerminalStreamError, isRecoverableStreamError } from './chatStreamErrors.js';
-import { createAgentMeter, presentMeterEvent } from './agentMeter.js';   // P4-08 / P4-23
+import { createAgentMeter, presentMeterEvent, METER_EVENT_TYPES } from './agentMeter.js';   // P4-08 / P4-23 / P4-24
 import { loadPanel } from './panels.js';
 import planWindow from './planWindow.js';
 import * as contextUsage from './contextUsage.js';
@@ -3214,6 +3214,12 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       const _chatLog = document.getElementById('chat-history');
       if (_chatLog) _chatLog.setAttribute('aria-busy', 'true');
 
+      // `P4-24`. Where this run's view starts. If the connection drops and the
+      // run is picked up again (`_tryAutoRecover` → `resumeStream`), the replay
+      // draws the whole turn from its first event and replaces this view from
+      // here on, rather than drawing a second copy of it underneath.
+      if (streamRunId && holder) holder.dataset.agentRun = streamRunId;
+
       const reader = res.body.getReader();
       _sendPerf.mark('reader_ready');
       _sendPerf.report('reader_ready');
@@ -3286,28 +3292,9 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       function _openRoundBubble() {
         const box = document.getElementById('chat-history');
         if (!box) return null;
-        const newWrap = document.createElement('div');
-        newWrap.className = 'msg msg-ai msg-continuation streaming';
-        const newRole = document.createElement('div');
-        newRole.className = 'role';
-        const metaS = sessionModule.getSessions().find(s => s.id === streamSessionId);
-        inheritModelRouteState(holder, roundHolder, newWrap, metaS?.model || modelName);
-        const requested = newWrap._requestedModel;
-        const actual = newWrap._actualModel;
-        newRole.textContent = _modelRouteLabel(
-          requested,
-          actual,
-          newWrap._requestedEndpointLabel,
-          newWrap._actualEndpointLabel,
-          newWrap._requestedEndpointId,
-          newWrap._actualEndpointId,
-        ) || '';
-        _applyModelColor(newRole, actual);
-        newWrap.appendChild(newRole);
-        const newBody = document.createElement('div');
-        newBody.className = 'body';
-        newWrap.appendChild(newBody);
-        box.appendChild(newWrap);
+        // `P4-24`: the bubble builder `agent_step` and a resumed stream use.
+        const newWrap = _newRoundBubble(box, holder, roundHolder, streamSessionId, modelName);
+        const newBody = newWrap.querySelector('.body');
         if (lastToolThread && lastToolThread.isConnected) lastToolThread.classList.add('has-bottom');
         roundHolder = newWrap;
         roundText = '';
@@ -3335,115 +3322,34 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       // and only a `.msg` bubble ended the search, so the teacher's first card
       // joined the student's thread, above the banner that separates them.
       function _cardThread() {
-        const chatBox = document.getElementById('chat-history');
-        // Find existing thread to append to — check last few children
-        // (agent_step may insert an empty msg-ai between tool rounds)
-        let threadWrap = null;
-        for (let ci = chatBox.children.length - 1; ci >= Math.max(0, chatBox.children.length - 5); ci--) {
-          const child = chatBox.children[ci];
-          if (child.classList.contains('agent-thread')) {
-            threadWrap = child;
-            break;
-          }
-          // Skip hidden (empty) bubbles and thinking spinners
-          if (child.style.display === 'none' || child.classList.contains('agent-thinking-dots')) continue;
-          // Anything else that is visible sits between that thread and this card.
-          break;
-        }
-        if (threadWrap) {
-          // Continuing an existing thread — remove has-bottom (agent_step may have set it
-          // expecting text, but we got more tools instead)
-          threadWrap.classList.remove('has-bottom');
-        } else {
-          threadWrap = document.createElement('div');
-          threadWrap.className = 'agent-thread';
-          // Extend line up to connect to chat bubble above (if there is one)
-          const _prevSib = chatBox.lastElementChild;
-          const _hasBubbleAbove = _prevSib && (_prevSib.classList.contains('msg') && _prevSib.style.display !== 'none');
-          const _hasThreadAbove = _prevSib && _prevSib.classList.contains('agent-thread');
-          if (_hasBubbleAbove || _hasThreadAbove || (roundText.trim() && roundHolder && roundHolder.style.display !== 'none')) {
-            threadWrap.classList.add('has-top');
-          }
-          chatBox.appendChild(threadWrap);
-        }
-        threadWrap.classList.add('streaming');
+        // `P4-24`: the search lives at module scope so a resumed stream
+        // follows the same rule; this is the live handler's view of it.
+        const threadWrap = _threadForNextCard(document.getElementById('chat-history'),
+          !!(roundText.trim() && roundHolder && roundHolder.style.display !== 'none'));
         lastToolThread = threadWrap;
         return threadWrap;
       }
       const esc = uiModule.esc;
-      // Remove thinking spinner helper
-      _removeThinkingSpinner = () => {
-        const el = document.querySelector('.agent-thinking-dots');
-        if (el) {
-          if (el._spinner) el._spinner.destroy();
-          el.remove();
-        }
-      };
-
       // Tool-aware thinking spinner
       let _lastToolName = '';
-      // `P4-01`: the 21-entry label map, the icon map and the search glyph all
-      // lived here as locals. They are in `./agentThread.js` now, shared with
-      // the card that shows the same tool — the spinner between tools and the
-      // running card beside it were two copies of one vocabulary, and drifting
-      // apart would have read as a rename nobody made.
-      function _thinkingLabel() {
-        if (!_lastToolName) {
-          return 'Thinking';
-        }
-        // Check exact match first, then prefix match
-        const lower = _lastToolName.toLowerCase();
-        if (TOOL_LABELS[lower]) return TOOL_LABELS[lower].running;
-        for (const [key, forms] of Object.entries(TOOL_LABELS)) {
-          if (lower.includes(key) || key.includes(lower)) return forms.running;
-        }
-        return 'Thinking';
-      }
-
-      function _showThinkingSpinner(label) {
-        if (document.querySelector('.agent-thinking-dots')) return;
-        const _thinkMsg = document.createElement('div');
-        _thinkMsg.className = 'msg msg-ai agent-thinking-dots';
-        const _thinkBody = document.createElement('div');
-        _thinkBody.className = 'body';
-        const _ts = spinnerModule.create(label || 'Thinking', 'right', 'wave');
-        _thinkBody.appendChild(_ts.createElement());
-        _meter.attachTo(_ts);   // `P4-23`: the meter rides the wait between steps
-        _ts.start(120);
-        _thinkMsg._spinner = _ts;
-        _thinkMsg.appendChild(_thinkBody);
-        document.getElementById('chat-history').appendChild(_thinkMsg);
-        uiModule.scrollHistory();
-      }
-
-      // `P4-08` / `P4-23`. The spinner on screen right now, for the meter to
-      // hang under: the "Thinking" one between tools if it is up, otherwise
-      // the reply's or the round's own. `null` while a tool card or text owns
-      // the bottom of the turn — the meter waits for the next spinner then.
-      function _waitSpinner() {
-        const dots = document.querySelector('.agent-thinking-dots');
-        if (dots && dots._spinner && dots._spinner.element) return dots._spinner;
-        return (spinner && spinner.element) ? spinner : null;
-      }
-
-      function _replaceThinkingSpinner(label) {
-        _removeThinkingSpinner();
-        _showThinkingSpinner(label);
-      }
-
+      // `P4-24`. The spinner a person waits at — the "Thinking" one between
+      // tools, the 400ms pause before it, and which spinner the meter hangs
+      // under — is `_createWaitSpinners`, shared with a resumed stream. The
+      // names below are how the rest of this handler has always called it.
+      const _wait = _createWaitSpinners({
+        meter: _meter,
+        roundSpinner: () => spinner,
+        streaming: () => isStreaming,
+        toolName: () => _lastToolName,
+      });
+      // Remove thinking spinner helper
+      _removeThinkingSpinner = () => { _wait.remove(); };
+      function _showThinkingSpinner(label) { _wait.show(label); }
+      function _waitSpinner() { return _wait.host(); }
+      function _replaceThinkingSpinner(label) { _wait.replace(label); }
       // Auto-show thinking spinner after text stops streaming
-      let _textPauseTimer = null;
-      function _scheduleThinkingSpinner() {
-        if (_textPauseTimer) clearTimeout(_textPauseTimer);
-        _textPauseTimer = setTimeout(() => {
-          if (!document.querySelector('.agent-thinking-dots') && isStreaming) {
-            _showThinkingSpinner(_thinkingLabel());
-          }
-        }, 400);
-      }
-      _cancelThinkingTimer = () => {
-        if (_textPauseTimer) { clearTimeout(_textPauseTimer); _textPauseTimer = null; }
-      };
+      function _scheduleThinkingSpinner() { _wait.schedule(); }
+      _cancelThinkingTimer = () => { _wait.cancel(); };
 
       // Document streaming state (text-fence detection)
       let _docFenceOpened = false;
@@ -3894,7 +3800,16 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
             // (thinking spinner removal is handled in agent_step / tool_start / content handlers)
 
             // Background detection: are we on a different session?
-            const _isBg = (sessionModule.getCurrentSessionId() !== streamSessionId);
+            // `P4-24`: or has a resumed view taken this chat's drawing over?
+            // Coming back to a chat whose run this reader is still reading,
+            // `checkBackgroundStream` has `resumeStream` draw the whole turn
+            // from the run's replayed buffer, through the same drawing
+            // functions as this handler. This reader missed everything that
+            // happened while it was away, so from then on it keeps to its
+            // background bookkeeping instead of drawing a partial second copy.
+            const _bgView = _backgroundStreams.get(streamSessionId);
+            const _isBg = (sessionModule.getCurrentSessionId() !== streamSessionId)
+              || !!(_bgView && _bgView.resumedView && _bgView.abortCtrl === abortCtrl);
 
             // On first transition to background, store state in map
             if (_isBg && !_backgroundStreams.has(streamSessionId)) {
@@ -3929,7 +3844,11 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 if (_isBg) {
                   try {
                     _notifyStreamComplete(streamSessionId, streamQuery);
-                    _insertStreamDoneToast(streamSessionId, streamQuery);
+                    // `P4-24`: not into the chat a resumed view is showing —
+                    // "Response ready in" this very chat is noise there.
+                    if (sessionModule.getCurrentSessionId() !== streamSessionId) {
+                      _insertStreamDoneToast(streamSessionId, streamQuery);
+                    }
                   } catch (toastErr) {
                     console.warn('[bg-stream] Toast/notification error:', toastErr);
                   }
@@ -4627,13 +4546,9 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 // logic above — the has-top / has-bottom connectors describe a
                 // thread that continues into text, and a lone verdict does not.
                 if (_isBg) continue;
-                let vThread = lastToolThread;
-                if (!vThread || !vThread.isConnected) {
-                  vThread = document.createElement('div');
-                  vThread.className = 'agent-thread';
-                  document.getElementById('chat-history')?.appendChild(vThread);
-                  lastToolThread = vThread;
-                }
+                // `P4-24`: that rule is `_threadOrBare`, shared with a resumed stream.
+                const vThread = _threadOrBare(lastToolThread, document.getElementById('chat-history'));
+                lastToolThread = vThread;
                 const vNode = document.createElement('div');
                 applyAgentThreadNode(vNode, verifierCardOptions(json));
                 vThread.appendChild(vNode);
@@ -4782,55 +4697,10 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 });
 
                 // --- Thread timeline: group tools in a thread container ---
-                const cmd = json.command || '';
                 const threadWrap = _cardThread();   // `B904`: shared with `tool_blocked`
-                const node = document.createElement('div')
-                applyAgentThreadNode(node, { tool: json.tool, state: 'running', command: cmd, fullCommand: json.full_command,
-                  round: json.round, approved: json.approved });
-                // Expand/collapse via delegated click handler (init at module bottom).
-                threadWrap.appendChild(node);
-                currentToolBubble = node;
-                // Animate the wave
-                const waveEl = node.querySelector('.agent-thread-wave');
-                if (waveEl) {
-                  const waveFrames = ['▁▂▃', '▂▃▄', '▃▄▅', '▄▅▆', '▅▆▇', '▆▅▄', '▅▄▃', '▄▃▂'];
-                  let waveIdx = 0;
-                  node._waveInterval = setInterval(() => {
-                    waveIdx = (waveIdx + 1) % waveFrames.length;
-                    waveEl.textContent = waveFrames[waveIdx];
-                  }, 100);
-                }
-                // Smooth per-second "cooking" timer — ticks every 50ms (not
-                // just on the 2s backend heartbeat) so a long-running tool
-                // always shows visible motion and never reads as frozen.
-                //
-                // `P4-02`: the anchor is corrected from the server on every
-                // `tool_progress`. Starting the clock here means starting it
-                // when this event was *rendered* — after the dispatch, the
-                // network, and for an approved tool after however long the
-                // person took to press the button — so the number shown was a
-                // client-side guess that could be seconds short. Worse on a
-                // resumed background stream, where `tool_start` replays and
-                // restarts the clock at zero on a tool that has been running
-                // for a minute.
-                node._startTime = Date.now();
-                node._elapsedTicker = setInterval(() => {
-                  const hdr2 = node.querySelector('.agent-thread-header');
-                  if (!hdr2) return;
-                  let el2 = hdr2.querySelector('.agent-thread-elapsed');
-                  if (!el2) {
-                    el2 = document.createElement('span');
-                    el2.className = 'agent-thread-elapsed';
-                    // Sits on the LEFT, right after the icon.
-                    const icon = hdr2.querySelector('.agent-thread-icon');
-                    if (icon && icon.nextSibling) hdr2.insertBefore(el2, icon.nextSibling);
-                    else hdr2.appendChild(el2);
-                  }
-                  const s = (Date.now() - node._startTime) / 1000;
-                  // Hundredths so it visibly counts sub-second (1.00, 1.05, …).
-                  el2.textContent = s < 60 ? `${s.toFixed(2)}s` : `${Math.floor(s / 60)}m ${(s % 60).toFixed(2).padStart(5, '0')}s`;
-                }, 50);
-                uiModule.scrollHistory();
+                // `P4-24`: the running card is drawn by the function a resumed
+                // stream calls for the same event.
+                currentToolBubble = _startToolCard(threadWrap, json);
 
               } else if (json.type === 'tool_progress') {
                 // Long-running subprocess (bash, python) is still in
@@ -4839,61 +4709,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 // user doesn't stare at a blind "Running…" spinner.
                 if (_isBg) continue;
                 if (!currentToolBubble) continue;
-                const isImageProgress = /image/i.test(String(json.tool || '')) || /image/i.test(String(json.message || ''));
-                if (json.total || json.percent != null || isImageProgress) {
-                  // `P5-02`: the fold animates on one grid item, so anything
-                  // added after the card was built goes inside the wrapper.
-                  const content = agentThreadContent(currentToolBubble);
-                  if (content) {
-                    let progressEl = currentToolBubble.querySelector('.agent-image-progress');
-	                    if (!progressEl) {
-	                      progressEl = document.createElement('div');
-	                      progressEl.className = 'agent-image-progress';
-	                      progressEl.innerHTML = '<div class="agent-image-progress-row"><span class="agent-image-progress-label"></span><span class="agent-image-progress-value"></span></div>';
-	                      content.appendChild(progressEl);
-	                    }
-                    const step = Number(json.step || 0);
-                    const total = Number(json.total || 0);
-                    const hasExactProgress = total > 0 || json.percent != null;
-                    progressEl.classList.toggle('is-indeterminate', !hasExactProgress);
-                    const pct = Number(json.percent != null ? json.percent : (total ? (step / total) * 100 : 0));
-	                    const bounded = Math.max(0, Math.min(100, Number.isFinite(pct) ? pct : 0));
-	                    const label = progressEl.querySelector('.agent-image-progress-label');
-	                    const value = progressEl.querySelector('.agent-image-progress-value');
-	                    if (label) label.textContent = json.message || 'Editing image…';
-	                    // `P4-02`: `elapsed_s`. The server has always sent that key
-                    // and this read `json.elapsed`, so the indeterminate case
-                    // showed an empty string rather than a number.
-                    if (value) value.textContent = hasExactProgress ? (total ? `${step}/${total}` : `${Math.round(bounded)}%`) : (json.elapsed_s != null ? `${json.elapsed_s}s` : '');
-	                  }
-	                }
-                // `P4-02`. The ticker owns the *display* — 50ms so the number
-                // moves — but the server owns the *time*. Re-anchor on every
-                // progress event so the smooth count is a correction of server
-                // truth rather than a local stopwatch that started late and
-                // drifts. `elapsed_s` has been on the wire all along; nothing
-                // read it.
-                if (currentToolBubble && json.elapsed_s != null) {
-                  const _serverElapsed = Number(json.elapsed_s);
-                  if (Number.isFinite(_serverElapsed) && _serverElapsed >= 0) {
-                    currentToolBubble._startTime = Date.now() - _serverElapsed * 1000;
-                  }
-                }
-                // Below: the live output tail.
-                const tailStr = (json.tail || '').trim();
-                if (tailStr) {
-                  let tailEl = currentToolBubble.querySelector('.agent-thread-tail');
-                  if (!tailEl) {
-                    tailEl = document.createElement('pre');
-                    tailEl.className = 'agent-thread-tail';
-                    tailEl.style.cssText = 'margin:4px 0 0;padding:6px 8px;font-size:11px;background:rgba(0,0,0,0.18);border-radius:4px;max-height:140px;overflow:auto;white-space:pre-wrap;opacity:0.85;';
-                    const content = agentThreadContent(currentToolBubble);   // `P5-02`
-                    if (content) content.appendChild(tailEl);
-                  }
-                  tailEl.textContent = tailStr;
-                  tailEl.scrollTop = tailEl.scrollHeight;
-                }
-                uiModule.scrollHistory();
+                _drawToolProgress(currentToolBubble, json);   // `P4-24`: shared with a resumed stream
 
               } else if (json.type === 'tool_output') {
                 if (_isBg) continue;
@@ -4910,72 +4726,16 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 });
                 // --- Update the current thread node ---
                 if (currentToolBubble) {
-                  // Stop wave animation + the per-second cooking ticker
-                  if (currentToolBubble._waveInterval) {
-                    clearInterval(currentToolBubble._waveInterval);
-                    currentToolBubble._waveInterval = null;
-                  }
-                  if (currentToolBubble._elapsedTicker) {
-                    clearInterval(currentToolBubble._elapsedTicker);
-                    currentToolBubble._elapsedTicker = null;
-                  }
-                  const ok = (json.exit_code === 0 || json.exit_code == null);
-                  const cmd = json.command || '';
-                  // `P4-19`: one builder for the panes. There were two copies
-                  // of this markup and both merged stdout and stderr into one
-                  // pane, which is how a failing command with chatty output
-                  // came to lose its error message.
-                  const outHtml = toolOutputPanesHtml(json);
-                  // File-write diff (write_file). `P4-01`: one renderer, shared
-                  // with history replay and compare mode.
-                  const diffHtml = buildDiffHtml(json.diff);
-                  // The agent's own todo list (P6-17). `todowrite` keeps a
-                  // structured task list and the prompt tells the model to use
-                  // it for multi-step work; until now it surfaced only as the
-                  // raw args JSON plus a text listing, both behind the fold.
-                  // The card goes BETWEEN the header and .agent-thread-content
-                  // so it needs no click (Law 15) — the raw output keeps its
-                  // <details> inside the fold, so nothing is taken away.
-                  const todoHtml = chatRenderer.buildTodoCard(json);
-                  // `P4-01`: hiding the raw-JSON command next to a diff or a
-                  // todo card, and preserving the user's `.open` choice across
-                  // the rewrite, both moved into `applyAgentThreadNode` — they
-                  // were right here and absent from the other five copies.
-                  // Click handling is delegated (see init at bottom of file),
-                  // so no per-node listener is added anywhere.
-                  applyAgentThreadNode(currentToolBubble, {
-                    tool: json.tool, state: 'done', ok, round: json.round, approved: json.approved,
-                    command: cmd, fullCommand: json.full_command,
-                    output: outHtml, diff: diffHtml, todo: todoHtml,
-                  });
+                  // `P4-24`: the result, diff, todo list and screenshot are
+                  // drawn by the function a resumed stream calls too.
+                  _finishToolCard(currentToolBubble, json);
                   // Reset so thinking spinner between tools says "Thinking" not the old tool's label
                   _lastToolName = '';
-                  if (todoHtml) chatRenderer.demoteSupersededTodoCards();
-                  uiModule.scrollHistory();
                 }
                 // --- Render generated images inline ---
                 if (json.image_url) {
                   _rememberGeneratedImage(json);
                   _appendGeneratedImageBubble(json);
-                }
-                // --- Render browser screenshots in tool output ---
-                if (json.screenshot && currentToolBubble) {
-                  const contentEl = agentThreadContent(currentToolBubble);   // `P5-02`
-                  if (contentEl) {
-                    const screenshotSrc = chatRenderer.safeToolScreenshotSrc(json.screenshot);
-                    if (screenshotSrc) {
-                      const details = document.createElement('details');
-                      details.className = 'agent-tool-output';
-                      const summary = document.createElement('summary');
-                      summary.textContent = 'Screenshot';
-                      const img = document.createElement('img');
-                      img.src = screenshotSrc;
-                      img.style.cssText = 'max-width:100%;border-radius:6px;margin-top:6px;border:1px solid var(--border)';
-                      details.appendChild(summary);
-                      details.appendChild(img);
-                      contentEl.appendChild(details);
-                    }
-                  }
                 }
                 // --- Reload sessions after manage_session tool (delete, rename, etc.) ---
                 // Debounce so bulk deletes don't fire loadSessions per call
@@ -5142,39 +4902,17 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 _replyDisplayProjector.reset();
                 _docFenceOpened = false;
                 const box = document.getElementById('chat-history');
-                const newWrap = document.createElement('div');
-                newWrap.className = 'msg msg-ai msg-continuation streaming';
-                // Add model name label
-                const newRole = document.createElement('div');
-                newRole.className = 'role';
-                const metaS = sessionModule.getSessions().find(s => s.id === streamSessionId);
-                inheritModelRouteState(holder, roundHolder, newWrap, metaS?.model || modelName);
-                const _roundRequested = newWrap._requestedModel;
-                const _roundActual = newWrap._actualModel;
-                newRole.textContent = _modelRouteLabel(
-                  _roundRequested,
-                  _roundActual,
-                  newWrap._requestedEndpointLabel,
-                  newWrap._actualEndpointLabel,
-                  newWrap._requestedEndpointId,
-                  newWrap._actualEndpointId,
-                ) || '';
-                _applyModelColor(newRole, _roundActual);
-                newWrap.appendChild(newRole);
-                const newBody = document.createElement('div');
-                newBody.className = 'body';
-                newWrap.appendChild(newBody);
-                box.appendChild(newWrap);
+                // `P4-24`: the bubble and its spinner are drawn by the
+                // functions a resumed stream calls for the same event.
+                const newWrap = _newRoundBubble(box, holder, roundHolder, streamSessionId, modelName);
+                const newBody = newWrap.querySelector('.body');
                 roundHolder = newWrap;
                 roundText = '';
                 // Destroy any previous spinner before creating new one
                 if (spinner && spinner.element) spinner.destroy();
                 // Show spinner while waiting for text (skip for research — has its own progress)
                 if (!_researchingStreamIds.has(streamSessionId)) {
-                  spinner = spinnerModule.create('Generating response', 'right', 'wave');
-                  newBody.appendChild(spinner.createElement());
-                  _meter.attachTo(spinner);   // `P4-23`
-                  spinner.start();
+                  spinner = _openRoundSpinner(newBody, _meter);   // `P4-23`: it carries the meter
                 }
                 if (streamingTTS) window.aiTTSManager._streamSentencesSent = 0;
                 uiModule.scrollHistory();
@@ -6216,6 +5954,12 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     if (active.cancelViewWork) active.cancelViewWork();
 
     const terminalSaved = _terminalSavedStreams.has(sessionId);
+    // `P4-24`. Once a resumed view has taken this reader's drawing over, it
+    // keeps it: the reader missed what happened while it was away, and
+    // re-selecting the chat (the resumed view's own reload does) must not hand
+    // the drawing back to it for the instant before `checkBackgroundStream`.
+    const priorBg = _backgroundStreams.get(sessionId);
+    const resumedView = !!(priorBg && priorBg.resumedView && priorBg.abortCtrl === active.abortCtrl);
     // Store background stream state. A canonical terminal event can precede
     // its SSE error event; preserve completion if the user switches sessions
     // during that gap instead of creating a fresh running/error marker.
@@ -6227,6 +5971,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       abortCtrl: active.abortCtrl,
       query: active.query || (active.holder ? (active.holder._researchQuery || '') : ''),
       metrics: null,
+      resumedView,
     });
     // Mark session with pulsing dot in sidebar
     if (!terminalSaved && sessionModule && sessionModule.markStreaming) {
@@ -6249,6 +5994,393 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
   var _notifyStreamComplete = chatStream.notifyStreamComplete;
   var _insertStreamDoneToast = chatStream.insertStreamDoneToast;
 
+  // ── `P4-24` · What an agent turn draws besides its text ────────────────────
+  //
+  // A turn draws more than its reply: a thread of tool cards, the "Thinking"
+  // spinner between them with the meter (`P4-23`) under it, the prep line
+  // (`P4-08`) under the first spinner, a bubble per step, and the stop line
+  // (`P4-10`) when a guard ends it. The live stream (`sendMessage`) drew all of
+  // that inline. A stream picked up after navigating away (`resumeStream`) drew
+  // none of it: a second, much poorer dispatch chain turned every one of those
+  // events into `rich = true`, so for as long as the resumed stream ran, a
+  // person watched a rich run through a one-bit window.
+  //
+  // What follows is the drawing both streams now share. Each function takes
+  // what it needs and returns what it made. The state — which card is running,
+  // which thread is current, which bubble a step writes into — stays with the
+  // stream that owns it. A resumed stream draws what the live one draws because
+  // it calls the same code, not because a copy was kept in step (`Law 14`).
+
+  /**
+   * The spinner a person waits at, for one stream: the "Thinking" spinner
+   * between tools (`.agent-thinking-dots`), which comes back 400ms after output
+   * pauses, and the answer every meter event needs — which spinner is on screen
+   * for the meter to hang under.
+   *
+   *   meter         this stream's `createAgentMeter()`
+   *   roundSpinner  () => the step's own spinner, or null
+   *   streaming     () => whether the stream is still being read
+   *   toolName      () => the last tool started, for the spinner's words
+   */
+  function _createWaitSpinners({ meter = null, roundSpinner = () => null,
+                                 streaming = () => true, toolName = () => '' } = {}) {
+    let pauseTimer = null;
+    const wait = {
+      // `P4-01`: the running form of the last tool's label, from the map the
+      // card beside it reads, so the spinner and the card cannot drift apart.
+      label() {
+        const name = String(toolName() || '');
+        if (!name) return 'Thinking';
+        // Check exact match first, then prefix match
+        const lower = name.toLowerCase();
+        if (TOOL_LABELS[lower]) return TOOL_LABELS[lower].running;
+        for (const [key, forms] of Object.entries(TOOL_LABELS)) {
+          if (lower.includes(key) || key.includes(lower)) return forms.running;
+        }
+        return 'Thinking';
+      },
+      show(label) {
+        if (document.querySelector('.agent-thinking-dots')) return;
+        const _thinkMsg = document.createElement('div');
+        _thinkMsg.className = 'msg msg-ai agent-thinking-dots';
+        const _thinkBody = document.createElement('div');
+        _thinkBody.className = 'body';
+        const _ts = spinnerModule.create(label || 'Thinking', 'right', 'wave');
+        _thinkBody.appendChild(_ts.createElement());
+        if (meter) meter.attachTo(_ts);   // `P4-23`: the meter rides the wait between steps
+        _ts.start(120);
+        _thinkMsg._spinner = _ts;
+        _thinkMsg.appendChild(_thinkBody);
+        document.getElementById('chat-history').appendChild(_thinkMsg);
+        uiModule.scrollHistory();
+      },
+      remove() {
+        const el = document.querySelector('.agent-thinking-dots');
+        if (el) {
+          if (el._spinner) el._spinner.destroy();
+          el.remove();
+        }
+      },
+      replace(label) {
+        wait.remove();
+        wait.show(label);
+      },
+      // Auto-show the spinner once output stops.
+      schedule() {
+        if (pauseTimer) clearTimeout(pauseTimer);
+        pauseTimer = setTimeout(() => {
+          if (!document.querySelector('.agent-thinking-dots') && streaming()) {
+            wait.show(wait.label());
+          }
+        }, 400);
+      },
+      cancel() {
+        if (pauseTimer) { clearTimeout(pauseTimer); pauseTimer = null; }
+      },
+      // `P4-08` / `P4-23`. The spinner on screen right now, for the meter to
+      // hang under: the "Thinking" one between tools if it is up, otherwise
+      // the step's own. `null` while a tool card or text owns the bottom of
+      // the turn — the meter waits for the next spinner then.
+      host() {
+        const dots = document.querySelector('.agent-thinking-dots');
+        if (dots && dots._spinner && dots._spinner.element) return dots._spinner;
+        const own = roundSpinner();
+        return (own && own.element) ? own : null;
+      },
+    };
+    return wait;
+  }
+
+  /** The spinner a new step opens with, carrying the meter (`P4-23`). */
+  function _openRoundSpinner(body, meter) {
+    const roundSpinner = spinnerModule.create('Generating response', 'right', 'wave');
+    body.appendChild(roundSpinner.createElement());
+    if (meter) meter.attachTo(roundSpinner);
+    roundSpinner.start();
+    return roundSpinner;
+  }
+
+  /**
+   * A new step's bubble at the bottom of `box`, labelled with the model the step
+   * runs on — the route state it inherits from the turn's first bubble and the
+   * step before it. Returns the bubble, whose `.body` is empty.
+   */
+  function _newRoundBubble(box, prevHolder, roundHolder, sessionId, fallbackModel) {
+    const newWrap = document.createElement('div');
+    newWrap.className = 'msg msg-ai msg-continuation streaming';
+    // Add model name label
+    const newRole = document.createElement('div');
+    newRole.className = 'role';
+    const metaS = sessionModule.getSessions().find(s => s.id === sessionId);
+    inheritModelRouteState(prevHolder, roundHolder, newWrap, metaS?.model || fallbackModel);
+    const requested = newWrap._requestedModel;
+    const actual = newWrap._actualModel;
+    newRole.textContent = _modelRouteLabel(
+      requested,
+      actual,
+      newWrap._requestedEndpointLabel,
+      newWrap._actualEndpointLabel,
+      newWrap._requestedEndpointId,
+      newWrap._actualEndpointId,
+    ) || '';
+    _applyModelColor(newRole, actual);
+    newWrap.appendChild(newRole);
+    const newBody = document.createElement('div');
+    newBody.className = 'body';
+    newWrap.appendChild(newBody);
+    box.appendChild(newWrap);
+    return newWrap;
+  }
+
+  /**
+   * The thread the next tool card goes in: the one at the bottom of `box` when
+   * only hidden bubbles and the wait spinner sit below it, else a new one.
+   * `textAbove` says whether the step's own bubble has text, which the new
+   * thread's line reaches up to. Marks the thread as the one being written.
+   */
+  function _threadForNextCard(box, textAbove) {
+    // Find existing thread to append to — check last few children
+    // (agent_step may insert an empty msg-ai between tool rounds)
+    let threadWrap = null;
+    for (let ci = box.children.length - 1; ci >= Math.max(0, box.children.length - 5); ci--) {
+      const child = box.children[ci];
+      if (child.classList.contains('agent-thread')) {
+        threadWrap = child;
+        break;
+      }
+      // Skip hidden (empty) bubbles and thinking spinners
+      if (child.style.display === 'none' || child.classList.contains('agent-thinking-dots')) continue;
+      // `B904`: anything else that is visible — a bubble with text, a takeover
+      // banner, a note — sits between that thread and this card.
+      break;
+    }
+    if (threadWrap) {
+      // Continuing an existing thread — remove has-bottom (agent_step may have set it
+      // expecting text, but we got more tools instead)
+      threadWrap.classList.remove('has-bottom');
+    } else {
+      threadWrap = document.createElement('div');
+      threadWrap.className = 'agent-thread';
+      // Extend line up to connect to chat bubble above (if there is one)
+      const _prevSib = box.lastElementChild;
+      const _hasBubbleAbove = _prevSib && (_prevSib.classList.contains('msg') && _prevSib.style.display !== 'none');
+      const _hasThreadAbove = _prevSib && _prevSib.classList.contains('agent-thread');
+      if (_hasBubbleAbove || _hasThreadAbove || textAbove) {
+        threadWrap.classList.add('has-top');
+      }
+      box.appendChild(threadWrap);
+    }
+    threadWrap.classList.add('streaming');
+    return threadWrap;
+  }
+
+  /**
+   * The thread a card about the step's work goes in — the refused call
+   * (`P4-20`) and the verifier's verdict (`P4-17`): the thread the step's cards
+   * went into, or a bare one if that is gone. A bare one, not a copy of
+   * `_threadForNextCard`: its connectors describe a thread that continues into
+   * text, and a lone card like these does not.
+   */
+  function _threadOrBare(thread, box) {
+    if (thread && thread.isConnected) return thread;
+    const bare = document.createElement('div');
+    bare.className = 'agent-thread';
+    if (box) box.appendChild(bare);
+    return bare;
+  }
+
+  /** Stop a card's wave and clock. A card still running when its stream ends
+   *  would otherwise tick forever on a node nobody can see. */
+  function _stopCardTickers(node) {
+    if (!node) return;
+    if (node._waveInterval) { clearInterval(node._waveInterval); node._waveInterval = null; }
+    if (node._elapsedTicker) { clearInterval(node._elapsedTicker); node._elapsedTicker = null; }
+  }
+
+  /** The running card for a `tool_start`, appended to `threadWrap`, with its
+   *  wave and its clock going. Returns the card. */
+  function _startToolCard(threadWrap, json) {
+    const cmd = json.command || '';
+    const node = document.createElement('div');
+    applyAgentThreadNode(node, { tool: json.tool, state: 'running', command: cmd, fullCommand: json.full_command,
+      round: json.round, approved: json.approved });
+    // Expand/collapse via delegated click handler (init at module bottom).
+    threadWrap.appendChild(node);
+    // Animate the wave
+    const waveEl = node.querySelector('.agent-thread-wave');
+    if (waveEl) {
+      const waveFrames = ['▁▂▃', '▂▃▄', '▃▄▅', '▄▅▆', '▅▆▇', '▆▅▄', '▅▄▃', '▄▃▂'];
+      let waveIdx = 0;
+      node._waveInterval = setInterval(() => {
+        waveIdx = (waveIdx + 1) % waveFrames.length;
+        waveEl.textContent = waveFrames[waveIdx];
+      }, 100);
+    }
+    // Smooth per-second "cooking" timer — ticks every 50ms (not
+    // just on the 2s backend heartbeat) so a long-running tool
+    // always shows visible motion and never reads as frozen.
+    //
+    // `P4-02`: the anchor is corrected from the server on every
+    // `tool_progress`. Starting the clock here means starting it
+    // when this event was *rendered* — after the dispatch, the
+    // network, and for an approved tool after however long the
+    // person took to press the button — so the number shown was a
+    // client-side guess that could be seconds short. Worse on a
+    // resumed background stream, where `tool_start` replays and
+    // restarts the clock at zero on a tool that has been running
+    // for a minute.
+    node._startTime = Date.now();
+    node._elapsedTicker = setInterval(() => {
+      const hdr2 = node.querySelector('.agent-thread-header');
+      if (!hdr2) return;
+      let el2 = hdr2.querySelector('.agent-thread-elapsed');
+      if (!el2) {
+        el2 = document.createElement('span');
+        el2.className = 'agent-thread-elapsed';
+        // Sits on the LEFT, right after the icon.
+        const icon = hdr2.querySelector('.agent-thread-icon');
+        if (icon && icon.nextSibling) hdr2.insertBefore(el2, icon.nextSibling);
+        else hdr2.appendChild(el2);
+      }
+      const s = (Date.now() - node._startTime) / 1000;
+      // Hundredths so it visibly counts sub-second (1.00, 1.05, …).
+      el2.textContent = s < 60 ? `${s.toFixed(2)}s` : `${Math.floor(s / 60)}m ${(s % 60).toFixed(2).padStart(5, '0')}s`;
+    }, 50);
+    uiModule.scrollHistory();
+    return node;
+  }
+
+  /** A long-running tool's `tool_progress` on its running card: the image
+   *  progress row, the server's clock, and the tail of its output. */
+  function _drawToolProgress(currentToolBubble, json) {
+    const isImageProgress = /image/i.test(String(json.tool || '')) || /image/i.test(String(json.message || ''));
+    if (json.total || json.percent != null || isImageProgress) {
+      // `P5-02`: the fold animates on one grid item, so anything
+      // added after the card was built goes inside the wrapper.
+      const content = agentThreadContent(currentToolBubble);
+      if (content) {
+        let progressEl = currentToolBubble.querySelector('.agent-image-progress');
+        if (!progressEl) {
+          progressEl = document.createElement('div');
+          progressEl.className = 'agent-image-progress';
+          progressEl.innerHTML = '<div class="agent-image-progress-row"><span class="agent-image-progress-label"></span><span class="agent-image-progress-value"></span></div>';
+          content.appendChild(progressEl);
+        }
+        const step = Number(json.step || 0);
+        const total = Number(json.total || 0);
+        const hasExactProgress = total > 0 || json.percent != null;
+        progressEl.classList.toggle('is-indeterminate', !hasExactProgress);
+        const pct = Number(json.percent != null ? json.percent : (total ? (step / total) * 100 : 0));
+        const bounded = Math.max(0, Math.min(100, Number.isFinite(pct) ? pct : 0));
+        const label = progressEl.querySelector('.agent-image-progress-label');
+        const value = progressEl.querySelector('.agent-image-progress-value');
+        if (label) label.textContent = json.message || 'Editing image…';
+        // `P4-02`: `elapsed_s`. The server has always sent that key
+        // and this read `json.elapsed`, so the indeterminate case
+        // showed an empty string rather than a number.
+        if (value) value.textContent = hasExactProgress ? (total ? `${step}/${total}` : `${Math.round(bounded)}%`) : (json.elapsed_s != null ? `${json.elapsed_s}s` : '');
+      }
+    }
+    // `P4-02`. The ticker owns the *display* — 50ms so the number
+    // moves — but the server owns the *time*. Re-anchor on every
+    // progress event so the smooth count is a correction of server
+    // truth rather than a local stopwatch that started late and
+    // drifts. `elapsed_s` has been on the wire all along; nothing
+    // read it.
+    if (currentToolBubble && json.elapsed_s != null) {
+      const _serverElapsed = Number(json.elapsed_s);
+      if (Number.isFinite(_serverElapsed) && _serverElapsed >= 0) {
+        currentToolBubble._startTime = Date.now() - _serverElapsed * 1000;
+      }
+    }
+    // Below: the live output tail.
+    const tailStr = (json.tail || '').trim();
+    if (tailStr) {
+      let tailEl = currentToolBubble.querySelector('.agent-thread-tail');
+      if (!tailEl) {
+        tailEl = document.createElement('pre');
+        tailEl.className = 'agent-thread-tail';
+        tailEl.style.cssText = 'margin:4px 0 0;padding:6px 8px;font-size:11px;background:rgba(0,0,0,0.18);border-radius:4px;max-height:140px;overflow:auto;white-space:pre-wrap;opacity:0.85;';
+        const content = agentThreadContent(currentToolBubble);   // `P5-02`
+        if (content) content.appendChild(tailEl);
+      }
+      tailEl.textContent = tailStr;
+      tailEl.scrollTop = tailEl.scrollHeight;
+    }
+    uiModule.scrollHistory();
+  }
+
+  /** The finished card for a `tool_output`: its clock stopped, its result, its
+   *  diff and its todo list drawn, and the browser screenshot if it took one. */
+  function _finishToolCard(currentToolBubble, json) {
+    // Stop wave animation + the per-second cooking ticker
+    _stopCardTickers(currentToolBubble);
+    const ok = (json.exit_code === 0 || json.exit_code == null);
+    const cmd = json.command || '';
+    // `P4-19`: one builder for the panes. There were two copies
+    // of this markup and both merged stdout and stderr into one
+    // pane, which is how a failing command with chatty output
+    // came to lose its error message.
+    const outHtml = toolOutputPanesHtml(json);
+    // File-write diff (write_file). `P4-01`: one renderer, shared
+    // with history replay and compare mode.
+    const diffHtml = buildDiffHtml(json.diff);
+    // The agent's own todo list (P6-17). `todowrite` keeps a
+    // structured task list and the prompt tells the model to use
+    // it for multi-step work; until now it surfaced only as the
+    // raw args JSON plus a text listing, both behind the fold.
+    // The card goes BETWEEN the header and .agent-thread-content
+    // so it needs no click (Law 15) — the raw output keeps its
+    // <details> inside the fold, so nothing is taken away.
+    const todoHtml = chatRenderer.buildTodoCard(json);
+    // `P4-01`: hiding the raw-JSON command next to a diff or a
+    // todo card, and preserving the user's `.open` choice across
+    // the rewrite, both moved into `applyAgentThreadNode` — they
+    // were right here and absent from the other five copies.
+    // Click handling is delegated (see init at bottom of file),
+    // so no per-node listener is added anywhere.
+    applyAgentThreadNode(currentToolBubble, {
+      tool: json.tool, state: 'done', ok, round: json.round, approved: json.approved,
+      command: cmd, fullCommand: json.full_command,
+      output: outHtml, diff: diffHtml, todo: todoHtml,
+    });
+    if (todoHtml) chatRenderer.demoteSupersededTodoCards();
+    // --- Render browser screenshots in tool output ---
+    if (json.screenshot) {
+      const contentEl = agentThreadContent(currentToolBubble);   // `P5-02`
+      if (contentEl) {
+        const screenshotSrc = chatRenderer.safeToolScreenshotSrc(json.screenshot);
+        if (screenshotSrc) {
+          const details = document.createElement('details');
+          details.className = 'agent-tool-output';
+          const summary = document.createElement('summary');
+          summary.textContent = 'Screenshot';
+          const img = document.createElement('img');
+          img.src = screenshotSrc;
+          img.style.cssText = 'max-width:100%;border-radius:6px;margin-top:6px;border:1px solid var(--border)';
+          details.appendChild(summary);
+          details.appendChild(img);
+          contentEl.appendChild(details);
+        }
+      }
+    }
+    uiModule.scrollHistory();
+  }
+
+  /** Take `node` and everything drawn after it off the history, stopping the
+   *  clocks of any cards among them. */
+  function _removeViewFrom(node) {
+    const parent = node && node.parentNode;
+    if (!parent) return;
+    const kids = Array.from(parent.children);
+    const at = kids.indexOf(node);
+    if (at < 0) return;
+    for (const gone of kids.slice(at)) {
+      if (gone.querySelectorAll) gone.querySelectorAll('.agent-thread-node').forEach(_stopCardTickers);
+      gone.remove();
+    }
+  }
+
   /**
    * Live-resume a chat run still streaming detached on the server (#2539).
    *
@@ -6258,10 +6390,31 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
    * reload); a "rich" reply (tool calls, sources, doc streaming, multi-round) is
    * reloaded from the DB so its full render stays faithful. Returns true if it
    * attached, false to let the caller fall back to spinner+poll.
+   *
+   * `P4-24`. While it streams it draws what the live stream draws, through the
+   * same functions (the section above): a bubble per step, the thread of tool
+   * cards as they run, report progress, finish, are refused or are checked,
+   * the "Thinking" spinner between them, the prep line and the step / tool-call
+   * meter under whichever spinner is showing, the stop line, and generated
+   * images. What it still leaves to the reload is `_RESUME_RELOAD_TYPES`.
+   *
+   * The run's buffer is replayed from its first event, so the turn is drawn
+   * from its start. Meter frames are whole state, so the replayed meter lands
+   * where the live one was. A view of the same run already on the page — the
+   * live one a dropped connection left behind — is replaced, not doubled
+   * (`dataset.agentRun` marks where it starts). The stop line drawn here is not
+   * doubled by the reload's own copy from `metadata.agent_stops` either: the
+   * reload clears the history before it draws.
+   *
+   * `opts.besideBackgroundReader`: this tab is still reading the run through
+   * the POST that started it, moved to the background when the person left the
+   * chat (`checkBackgroundStream`). That reader stops drawing once this view is
+   * up (`_isBg` in `sendMessage`).
    */
-  export async function resumeStream(sessionId, replaceHolder = null) {
+  export async function resumeStream(sessionId, replaceHolder = null, opts = {}) {
     if (!sessionId) return false;
-    if (hasActiveStream(sessionId)) return false;
+    if (_resumingStreams.has(sessionId)) return false;
+    if (!(opts && opts.besideBackgroundReader) && hasActiveStream(sessionId)) return false;
 
     let res;
     try {
@@ -6275,7 +6428,14 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
 
     const box = document.getElementById('chat-history');
     if (!box) return false;
-    if (replaceHolder && replaceHolder.parentNode) replaceHolder.remove();
+    // `P4-24`. The replay draws this run from its first event, so a view of it
+    // already on the page is replaced from where it starts: the bubble the live
+    // stream marked with the run's id, or the one `_tryAutoRecover` hands over.
+    const priorView = resumeRunId
+      ? Array.from(box.children).find((n) => n.dataset && n.dataset.agentRun === resumeRunId)
+      : null;
+    _removeViewFrom(priorView);
+    if (replaceHolder && replaceHolder.parentNode) _removeViewFrom(replaceHolder);
 
     // Block duplicate re-attach attempts while this reader is live. A dedicated
     // set (not _backgroundStreams) so checkBackgroundStream doesn't mistake this
@@ -6284,6 +6444,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
 
     const holder = document.createElement('div');
     holder.className = 'msg msg-ai';
+    if (resumeRunId) holder.dataset.agentRun = resumeRunId;
     const meta = sessionModule.getSessions().find(s => s.id === sessionId);
     const roleLabel = _shortModel(meta && meta.model);
     const roleTs = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -6293,10 +6454,10 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     holder._requestedModel = meta && meta.model;
     holder._actualModel = holder._requestedModel;
     _applyModelColor(holder.querySelector('.role'), meta && meta.model);
-    const contentDiv = holder.querySelector('.stream-content');
+    let contentDiv = holder.querySelector('.stream-content');
     box.appendChild(holder);
 
-    const spinner = spinnerModule.create('Generating response...', 'right');
+    let spinner = spinnerModule.create('Generating response...', 'right');
     holder.querySelector('.body').appendChild(spinner.createElement());
     spinner.start();
     uiModule.scrollHistory();
@@ -6305,8 +6466,6 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     const decoder = new TextDecoder();
     let buffer = '';
     let roundText = '';
-    let docFenceOpened = false;
-    let gotDelta = false;
     let leftSession = false;
     let metricsData = null;
     let replayError = null;
@@ -6316,18 +6475,88 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     // Plain text replies can be finalized in place without a reload.
     let rich = false;
 
+    // `P4-24`. This stream's turn: the pieces the live stream keeps, drawn by
+    // the same functions — the meter, the spinner a person waits at, the bubble
+    // each step writes into, and the card that is running and its thread.
+    const meter = createAgentMeter();
+    let reading = true;
+    let roundHolder = holder;
+    let roundClosed = false;
+    let thinkOpen = false;       // inside a run of reasoning tokens
+    let docRound = null;         // the step whose text opened a document fence
+    let toolNode = null;         // the running card (`currentToolBubble` live)
+    let toolThread = null;       // the thread the last card went into (`lastToolThread`)
+    let toolName = '';           // the last tool started, for the wait spinner's words
+    const cards = [];
+    const wait = _createWaitSpinners({
+      meter,
+      roundSpinner: () => spinner,
+      streaming: () => reading,
+      toolName: () => toolName,
+    });
+
     const cleanup = () => {
+      reading = false;
+      wait.cancel();
+      wait.remove();
       try { spinner.destroy(); } catch (_) {}
+      // A card still running when the stream ends never gets its result. Its
+      // clock stops, and it stops saying it is running — as the live stream's
+      // catch path leaves an orphaned card. Matters where the view stays on
+      // screen: a replay that ends on an error.
+      cards.forEach((card) => {
+        _stopCardTickers(card);
+        card.classList.remove('running');
+      });
+      meter.dispose();
       _resumingStreams.delete(sessionId);
     };
 
     const renderDelta = () => {
-      const dt = markdownModule.normalizeThinkingMarkup(_streamDisplayText(roundText, { final: docFenceOpened }));
-      if (docFenceOpened && !dt.trim()) {
+      // The live stream wraps each run of reasoning tokens in <think>…</think>.
+      // An open run is closed here for drawing only, so a step that is still
+      // reasoning shows the thinking block rather than printing it as the reply.
+      const text = thinkOpen ? roundText + '</think>' : roundText;
+      const dt = markdownModule.normalizeThinkingMarkup(_streamDisplayText(text));
+      if (docRound === roundHolder && !dt.trim()) {
         _showDocumentWritingStatus(contentDiv);
       } else {
-        contentDiv.innerHTML = markdownModule.mdToHtml(markdownModule.squashOutsideCode(dt));
+        contentDiv.innerHTML = markdownModule.processWithThinking(markdownModule.squashOutsideCode(dt));
       }
+      uiModule.scrollHistory();
+    };
+
+    // What the live stream does before a card or a new step: the spinners go,
+    // and the step's text is drawn final — a step that wrote nothing is hidden,
+    // as `_finalizeRoundRender` hides it.
+    const closeRound = () => {
+      wait.cancel();
+      wait.remove();
+      if (spinner && spinner.element) spinner.destroy();
+      if (thinkOpen) { roundText += '</think>'; thinkOpen = false; }
+      if (roundClosed) return;
+      roundClosed = true;
+      const dt = markdownModule.normalizeThinkingMarkup(_streamDisplayText(roundText));
+      if (!dt.trim()) {
+        roundHolder.style.display = 'none';
+        return;
+      }
+      contentDiv.innerHTML = markdownModule.processWithThinking(markdownModule.squashOutsideCode(dt));
+      if (window.hljs) roundHolder.querySelectorAll('pre code').forEach((block) => window.hljs.highlightElement(block));
+    };
+
+    // A new step's bubble, opened as `agent_step` opens it live — with its
+    // spinner and the meter under it — or, without a spinner, when text arrives
+    // for a step whose bubble was hidden (`_ensureVisibleRoundForDelta`).
+    const openRound = (withSpinner) => {
+      roundHolder = _newRoundBubble(box, holder, roundHolder, sessionId, meta && meta.model);
+      const body = roundHolder.querySelector('.body');
+      if (withSpinner) spinner = _openRoundSpinner(body, meter);
+      contentDiv = document.createElement('div');
+      contentDiv.className = 'stream-content';
+      body.appendChild(contentDiv);
+      roundText = '';
+      roundClosed = false;
       uiModule.scrollHistory();
     };
 
@@ -6347,6 +6576,15 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         const parts = buffer.split('\n\n');
         buffer = parts.pop();
         for (const part of parts) {
+          // `P4-24`. This view draws into the history, so it stops the moment
+          // the person moves on — not one read later, when a card would already
+          // have landed in the chat they moved to.
+          if (sessionModule.getCurrentSessionId &&
+              sessionModule.getCurrentSessionId() !== sessionId) {
+            leftSession = true;
+            try { await reader.cancel(); } catch (_) {}
+            break readLoop;
+          }
           const eventIsError = part.split('\n').some(l => l.trim() === 'event: error');
           if (eventIsError) rich = true;
           const line = part.split('\n').find(l => l.startsWith('data: '));
@@ -6361,13 +6599,113 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
           if (eventIsError) {
             replayError = createTerminalStreamError(json);
           } else if (json.delta) {
-            roundText += json.delta;
-            if (!docFenceOpened && (roundText.includes('```create_document\n') || roundText.includes('```document\n') || roundText.includes('```documen\n'))) {
-              docFenceOpened = true;
+            // Reasoning tokens arrive flagged `thinking`; each run of them is
+            // wrapped in <think>…</think>, as the live stream wraps it.
+            let delta = json.delta;
+            if (json.thinking) {
+              if (!thinkOpen) { delta = '<think>' + delta; thinkOpen = true; }
+            } else if (thinkOpen) {
+              delta = '</think>' + delta;
+              thinkOpen = false;
+            }
+            if (roundHolder.style.display === 'none') {
+              // Text after the tools: the thread's line reaches down to it.
+              if (toolThread && toolThread.isConnected) toolThread.classList.add('has-bottom');
+              openRound(false);
+            }
+            roundText += delta;
+            roundClosed = false;
+            if (!docRound && /```(?:create_document|documen(?:t)?)\s*\n/i.test(roundText)) {
+              docRound = roundHolder;
               rich = true;
             }
-            if (!gotDelta) { gotDelta = true; try { spinner.destroy(); } catch (_) {} }
+            wait.cancel();
+            wait.remove();
+            if (spinner && spinner.element) spinner.destroy();
             renderDelta();
+            wait.schedule();
+          } else if (METER_EVENT_TYPES.has(json.type)) {
+            // `P4-08` / `P4-23`, through the call the live stream makes. Every
+            // frame is whole state, so replaying the run from its first event
+            // lands the meter exactly where the live one was.
+            switch (json.type) {
+              case 'agent_prep': {
+                wait.cancel();
+                const host = wait.host();
+                presentMeterEvent(meter, json, host);
+                if (!host && meter.spinnerLabel()) wait.replace(meter.spinnerLabel());
+                break;
+              }
+              case 'agent_budget':
+                presentMeterEvent(meter, json, wait.host());
+                break;
+              default:
+                // The stop the meter was counting toward, recorded. The live
+                // stream also draws the Continue offer or the tool-budget
+                // note beside it. Neither is saved with the reply, so the
+                // reload this stream ends in would take either away again;
+                // they are not drawn here.
+                presentMeterEvent(meter, json, null);
+                rich = true;
+            }
+          } else if (json.type === 'tool_start') {
+            rich = true;
+            closeRound();
+            toolName = json.tool || '';
+            toolThread = _threadForNextCard(box, !!(roundText.trim() && roundHolder.style.display !== 'none'));
+            toolNode = _startToolCard(toolThread, json);
+            cards.push(toolNode);
+          } else if (json.type === 'tool_progress') {
+            rich = true;
+            if (toolNode) _drawToolProgress(toolNode, json);
+          } else if (json.type === 'tool_output') {
+            rich = true;
+            if (toolNode) {
+              _finishToolCard(toolNode, json);
+              toolName = '';
+            }
+            if (json.image_url) _appendGeneratedImageBubble(json);
+            // The card is finished; a later event with no card of its own
+            // must not be handed this one (`P4-20`).
+            toolNode = null;
+            wait.schedule();
+          } else if (json.type === 'tool_blocked' || json.type === 'verifier') {
+            // `P4-20`'s refusal card and `P4-17`'s verdict. A refused call is
+            // the model's action, so it closes the step and takes the thread
+            // `tool_start` would — the live arm's rule since `B904`. The
+            // verdict stays with the thread of the step's own work
+            // (`_threadOrBare`).
+            rich = true;
+            const node = document.createElement('div');
+            applyAgentThreadNode(node, json.type === 'verifier' ? verifierCardOptions(json) : blockedCardOptions(json));
+            if (json.type === 'tool_blocked') {
+              closeRound();
+              toolThread = _threadForNextCard(box, !!(roundText.trim() && roundHolder && roundHolder.style.display !== 'none'));
+            } else {
+              toolThread = _threadOrBare(toolThread, box);
+            }
+            toolThread.appendChild(node);
+            if (json.type === 'tool_blocked') toolNode = null;
+            uiModule.scrollHistory();
+          } else if (json.type === 'loop_breaker_triggered' || json.type === 'intent_nudge_exhausted') {
+            // `P4-10`'s line, by its one drawer. The reload draws it again from
+            // `metadata.agent_stops` into a history it has just cleared, so it
+            // is replaced there, not doubled.
+            rich = true;
+            wait.cancel();
+            wait.remove();
+            if (renderAgentStop(box, json)) uiModule.scrollHistory();
+          } else if (json.type === 'agent_step') {
+            rich = true;
+            closeRound();
+            // Mark thread as connected to bubble below
+            const activeThread = box.querySelector('.agent-thread.streaming');
+            if (activeThread) activeThread.classList.add('has-bottom');
+            toolNode = null;
+            openRound(true);
+          } else if (json.type === 'generated_image') {
+            rich = true;
+            _appendGeneratedImageBubble(json);
           } else if (json.type === 'doc_stream_open') {
             rich = true;
             if (documentModule) documentModule.streamDocOpen(json.title || '', json.lang || '');
@@ -6387,7 +6725,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
             // Reflect the fallback immediately, then reload the canonical
             // multi-round record when the detached run completes.
             rich = true;
-            const fallbackHolder = applyModelRouteEventState(json, holder, null, meta && meta.model);
+            const fallbackHolder = applyModelRouteEventState(json, holder, roundHolder, meta && meta.model);
             if (fallbackHolder) {
               _setRoleModelLabel(
                 fallbackHolder.querySelector('.role'),
@@ -6409,7 +6747,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
             );
           } else if (json.type === 'model_actual') {
             rich = true;
-            const modelHolder = applyModelRouteEventState(json, holder, null, meta && meta.model);
+            const modelHolder = applyModelRouteEventState(json, holder, roundHolder, meta && meta.model);
             if (modelHolder) {
               _setRoleModelLabel(
                 modelHolder.querySelector('.role'),
@@ -6434,11 +6772,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
               metricsData._costRecordId = _metricsCostRecordId(resumeRunId, json);
             }
             if (metricsData) displayMetrics(holder, metricsData);
-          } else if (json.type === 'tool_start' || json.type === 'tool_output' ||
-                     json.type === 'tool_progress' || json.type === 'agent_step' ||
-                     json.type === 'web_sources' || json.type === 'rag_sources' ||
-                     json.type === 'research_progress' || json.type === 'research_sources' ||
-                     json.type === 'research_findings' || json.type === 'research_done') {
+          } else if (_RESUME_RELOAD_TYPES.has(json.type)) {
             rich = true;
           }
         }
@@ -6448,9 +6782,10 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       rich = true;
     }
 
+    if (thinkOpen) { roundText += '</think>'; thinkOpen = false; }
     cleanup();
-    if (docFenceOpened) _finishDocumentWritingStatus(holder, true);
-    if (leftSession) { if (holder.parentNode) holder.remove(); return true; }
+    if (docRound) _finishDocumentWritingStatus(docRound, true);
+    if (leftSession) { _removeViewFrom(holder); return true; }
 
     const onThisSession = sessionModule.getCurrentSessionId &&
                           sessionModule.getCurrentSessionId() === sessionId;
@@ -6462,6 +6797,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       const errorDiv = document.createElement('div');
       errorDiv.style.cssText = 'color: var(--color-error); font-style: italic; padding: 4px 0;';
       errorDiv.textContent = `[Error: ${replayError.message}]`;
+      roundHolder.style.display = '';
       contentDiv.appendChild(errorDiv);
       uiModule.scrollHistory();
       return true;
@@ -6482,7 +6818,8 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     // Rich response (tools, sources, docs, multi-round) or user moved on:
     // reload from the DB for the full canonical render.
     if (holder._docWritingThread && holder._docWritingThread.parentNode) holder._docWritingThread.remove();
-    if (holder.parentNode) holder.remove();
+    // `P4-24`: the whole turn this view drew, not only its first bubble.
+    _removeViewFrom(holder);
     if (metricsData) {
       chatRenderer.recordSessionMetricsCost(metricsData, sessionId);
     }
@@ -6490,6 +6827,26 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     else sessionModule.loadSessions();
     return true;
   }
+
+  // `P4-24`. What a resumed stream leaves to the reload it ends in. Each is
+  // drawn live by the main stream; here each only marks the reply "rich", so
+  // the reload draws its saved form (or, for the few with none, nothing):
+  //   web_sources, rag_sources, memories_used, skills_injected, auto_escalated
+  //       — the footer pills, from the saved reply;
+  //   research_* — research keeps its own progress view, and a resumed stream
+  //       is never attached to a research run (`_checkServerStream`);
+  //   ask_user — the question or approval card, from the saved tool event;
+  //   teacher_takeover, skill_saved, escalation_failed, skill_save_failed —
+  //       notes the live stream draws and nothing saves;
+  //   plan_update, doc_update, doc_suggestions, ui_control — these act on the
+  //       plan, the document editor and the page. A replay from the run's
+  //       first event would act again on something already done.
+  const _RESUME_RELOAD_TYPES = new Set([
+    'web_sources', 'rag_sources', 'memories_used', 'skills_injected', 'auto_escalated',
+    'research_progress', 'research_sources', 'research_findings', 'research_done',
+    'ask_user', 'teacher_takeover', 'skill_saved', 'escalation_failed', 'skill_save_failed',
+    'plan_update', 'doc_update', 'doc_suggestions', 'ui_control',
+  ]);
 
   /**
    * Check for background streams when switching to a session.
@@ -6507,6 +6864,9 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
 
     if (entry.status === 'error') {
       _backgroundStreams.delete(sessionId);
+      // `P4-24`: this tab's reader lost its connection, but a resumed view was
+      // showing the run over its own, and that view's reload is the record.
+      if (entry.resumedView) return;
       var box = document.getElementById('chat-history');
       if (box) {
         var errHolder = document.createElement('div');
@@ -6518,63 +6878,87 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     }
 
     if (entry.status === 'running') {
-      // Stream is still active — show a clean spinner, poll until done,
-      // then reload history to show the final saved response.
-      var box = document.getElementById('chat-history');
-      if (!box) return;
+      // `P4-24`. A run this tab went on reading in the background is drawn the
+      // way a run picked up after a reload is: replayed from the server's buffer,
+      // from its first event, through the same drawing as the live stream. It
+      // used to be one spinner saying "Response streaming in background", with
+      // this tab's reader drawing whatever arrived after the return underneath
+      // it, into state the history reload had already thrown away. Research
+      // keeps its own progress view, so it keeps the spinner; so does a return
+      // the replay cannot attach to (the run ended a moment ago, or the request
+      // failed).
+      if (_researchingStreamIds.has(sessionId)) {
+        _showBackgroundStreamSpinner(sessionId);
+        return;
+      }
+      entry.resumedView = true;
+      resumeStream(sessionId, null, { besideBackgroundReader: true }).then((attached) => {
+        if (!attached && !_resumingStreams.has(sessionId)) _showBackgroundStreamSpinner(sessionId);
+      }, () => _showBackgroundStreamSpinner(sessionId));
+    }
+  }
 
-      // Replay any doc content that was streamed in the background
-      if (entry._docTitle != null && documentModule) {
-        documentModule.streamDocOpen(entry._docTitle, entry._docLang || '');
-        if (entry._docContent) {
-          documentModule.streamDocDelta(entry._docContent);
+  // Stream is still active — show a clean spinner, poll until done, then
+  // reload history to show the final saved response. `P4-24`: the fallback for
+  // a background run `resumeStream` could not replay.
+  function _showBackgroundStreamSpinner(sessionId) {
+    var entry = _backgroundStreams.get(sessionId);
+    if (!entry) return;
+    if (sessionModule.getCurrentSessionId && sessionModule.getCurrentSessionId() !== sessionId) return;
+    var box = document.getElementById('chat-history');
+    if (!box) return;
+
+    // Replay any doc content that was streamed in the background
+    if (entry._docTitle != null && documentModule) {
+      documentModule.streamDocOpen(entry._docTitle, entry._docLang || '');
+      if (entry._docContent) {
+        documentModule.streamDocDelta(entry._docContent);
+      }
+    }
+
+    var holder = document.createElement('div');
+    holder.className = 'msg msg-ai';
+    var meta = sessionModule.getSessions().find(function(s) { return s.id === sessionId; });
+    var roleLabel = _shortModel(meta && meta.model);
+    var roleTs = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    holder.innerHTML = '<div class="role">' + uiModule.esc(roleLabel) + ' <span class="role-timestamp">' + roleTs + '</span></div><div class="body"></div>';
+    _applyModelColor(holder.querySelector('.role'), meta && meta.model);
+
+    var bodyDiv = holder.querySelector('.body');
+    var spinner = spinnerModule.create('Response streaming in background', 'right');
+    bodyDiv.appendChild(spinner.createElement());
+    spinner.start();
+
+    box.appendChild(holder);
+    uiModule.scrollHistory();
+
+    // Poll map until stream finishes, then reload history
+    var pollId = setInterval(function() {
+      if (sessionModule.getCurrentSessionId() !== sessionId) {
+        clearInterval(pollId);
+        spinner.destroy();
+        if (holder.parentNode) holder.remove();
+        return;
+      }
+      // Update doc content while polling
+      var curPoll = _backgroundStreams.get(sessionId);
+      if (curPoll && curPoll._docContent && documentModule) {
+        documentModule.streamDocDelta(curPoll._docContent);
+      }
+      if (!curPoll || curPoll.status !== 'running') {
+        clearInterval(pollId);
+        spinner.destroy();
+        if (holder.parentNode) holder.remove(); // Remove entire holder, not just spinner
+        _backgroundStreams.delete(sessionId);
+        // Reload session to show the completed response — but only if the user
+        // is still on it; don't yank them back from a new chat they opened.
+        if (sessionModule.getCurrentSessionId && sessionModule.getCurrentSessionId() === sessionId) {
+          sessionModule.selectSession(sessionId);
+        } else {
+          sessionModule.loadSessions();
         }
       }
-
-      var holder = document.createElement('div');
-      holder.className = 'msg msg-ai';
-      var meta = sessionModule.getSessions().find(function(s) { return s.id === sessionId; });
-      var roleLabel = _shortModel(meta && meta.model);
-      var roleTs = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-      holder.innerHTML = '<div class="role">' + uiModule.esc(roleLabel) + ' <span class="role-timestamp">' + roleTs + '</span></div><div class="body"></div>';
-      _applyModelColor(holder.querySelector('.role'), meta && meta.model);
-
-      var bodyDiv = holder.querySelector('.body');
-      var spinner = spinnerModule.create('Response streaming in background', 'right');
-      bodyDiv.appendChild(spinner.createElement());
-      spinner.start();
-
-      box.appendChild(holder);
-      uiModule.scrollHistory();
-
-      // Poll map until stream finishes, then reload history
-      var pollId = setInterval(function() {
-        if (sessionModule.getCurrentSessionId() !== sessionId) {
-          clearInterval(pollId);
-          spinner.destroy();
-          if (holder.parentNode) holder.remove();
-          return;
-        }
-        // Update doc content while polling
-        var curPoll = _backgroundStreams.get(sessionId);
-        if (curPoll && curPoll._docContent && documentModule) {
-          documentModule.streamDocDelta(curPoll._docContent);
-        }
-        if (!curPoll || curPoll.status !== 'running') {
-          clearInterval(pollId);
-          spinner.destroy();
-          if (holder.parentNode) holder.remove(); // Remove entire holder, not just spinner
-          _backgroundStreams.delete(sessionId);
-          // Reload session to show the completed response — but only if the user
-          // is still on it; don't yank them back from a new chat they opened.
-          if (sessionModule.getCurrentSessionId && sessionModule.getCurrentSessionId() === sessionId) {
-            sessionModule.selectSession(sessionId);
-          } else {
-            sessionModule.loadSessions();
-          }
-        }
-      }, 500);
-    }
+    }, 500);
   }
 
   // Tag short single-line code blocks with .pre-compact so the CSS can
