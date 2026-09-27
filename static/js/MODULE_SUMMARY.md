@@ -193,6 +193,9 @@ JSON events are dispatched by "type":
   agent_budget       → agentMeter.js: step / tool-call meter under the spinner, and
                        what happens at each limit, before it happens (P4-23)
   tool_start         → finalize text bubble; create agent-thread node with wave animation
+                       (the thread it joins: `_cardThread`, shared with tool_blocked)
+  tool_blocked       → refusal card where a tool card would go; closes the step the
+                       way tool_start does (P4-20, B904)
   tool_progress      → append/update live stdout/stderr tail
   tool_output        → mark node done/failed, render output, diffs, screenshots
   agent_step         → finalize tool thread; create new msg-continuation bubble
@@ -207,10 +210,19 @@ JSON events are dispatched by "type":
   metrics            → collect/display token/cost metrics
   message_saved      → store database id on the message element
   budget_exceeded    → show budget banner
-  rounds_exhausted   → show Continue button for step-limit hits
-  teacher_takeover   → insert escalation banner, reset round state
+  rounds_exhausted   → show Continue button for step-limit hits; call off the pending
+                       "Thinking" spinner — no step comes after it (B906)
+  teacher_takeover   → finish the student's last step, insert escalation banner, open
+                       the teacher's own bubble below it (B904)
   skill_saved        → show skill-learned banner
 ```
+
+The route forwards every agent event it does not handle itself (`B904`), so a
+type added to the loop reaches this table's dispatcher without a route change.
+
+Until the model's first output (a token, thinking included, or a tool call —
+`agentMeter.js` `endsFirstTokenWait`), the reply's spinner says how long it has
+waited from 20s on (`firstTokenWaitText`, `B907`).
 
 Foreground vs background streams:
 - If the user switches sessions while a stream is running, `chat.js` pauses DOM
