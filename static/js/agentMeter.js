@@ -18,6 +18,11 @@
 // at the top of every round and after every counted tool call. The meter under
 // the spinner is drawn from nothing else, so it cannot disagree with the stop.
 //
+// `B907`. And the wait after preparation: what the reply's spinner says when
+// the model's first token is slow, which reads what the prep line knows rather
+// than guessing why (`firstTokenWaitText`), and which events end that wait
+// (`endsFirstTokenWait`).
+//
 // ── Measured, estimated, unknown (`Law 10`) ────────────────────────────────
 // A figure printed plainly was measured on the server. A figure with `~` is the
 // browser counting up while a step is still running, and it is replaced by the
@@ -264,6 +269,68 @@ export function prepLineText(state, nowMs = Date.now()) {
     return parts.length ? `${lead} · ${parts.join(' · ')}` : lead;
   }
   return parts.length ? `Preparing · ${parts.join(' · ')}` : 'Preparing';
+}
+
+// ── the wait for a first token (`B907`) ──────────────────────────────────
+
+/** How long after sending, with nothing back from the model, before the reply's
+ *  spinner starts saying the wait is long. */
+export const FIRST_TOKEN_WAIT_FROM_MS = 20000;
+
+/** Events that end the wait for a first token: the model's own output — a token,
+ *  thinking included, or a tool call and what only follows one — plus the two
+ *  that replace the spinner's words themselves (research progress, an approval
+ *  resolved). Not `stream_steerable`, not a prep or budget frame, not metadata:
+ *  every stream opens with those, and the wait messages used to be called off by
+ *  the first `data:` line of any kind, before they could say anything. */
+const FIRST_OUTPUT_TYPES = Object.freeze(new Set([
+  'tool_start', 'tool_blocked', 'tool_output', 'tool_progress', 'ask_user',
+  'doc_stream_open', 'doc_stream_delta', 'generated_image',
+  'agent_step', 'loop_breaker_triggered', 'intent_nudge_exhausted',
+  'research_progress', 'tool_approval_resolved',
+]));
+
+/** True when `event` is the model answering (or something that replaces the
+ *  wait on screen), so there is no longer a first token to wait for. */
+export function endsFirstTokenWait(event) {
+  if (!event || typeof event !== 'object') return false;
+  if (typeof event.delta === 'string' && event.delta) return true;
+  return FIRST_OUTPUT_TYPES.has(event.type);
+}
+
+function countText(s) {
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
+}
+
+/**
+ * `B907`. What the reply's spinner says once the first token is slow in coming:
+ * `waitedMs` after sending, with nothing back from the model yet. Only what the
+ * page knows, never a guess about why:
+ *
+ *   - a prep step is running: `''`, which leaves the step's own label up — it,
+ *     and the `~` count on the line under it, already say more;
+ *   - preparation has finished: *Waiting for the model*, and how long it has
+ *     had the prompt — counted in the browser from the frame that said prep was
+ *     done, so marked `~` like every figure the browser counts (`Law 10`);
+ *   - no prep frames at all (a chat turn, or an agent run whose first frame has
+ *     not arrived): the plain fact that nothing has come back, and roughly for
+ *     how long, in words that stay true while the spinner shows them.
+ *
+ * The 60s line used to say *Large local model is pre-filling context* — about
+ * every model, local or not, whatever it was actually doing.
+ */
+export function firstTokenWaitText(state, waitedMs, nowMs = Date.now()) {
+  const p = state && state.prep;
+  if (p && p.status === 'running') return '';
+  if (p) {
+    const s = Math.floor(Math.max(0, nowMs - p.phaseSince) / 1000);
+    return s >= 1 ? `${WAITING_FOR_MODEL} · ~${countText(s)}` : WAITING_FOR_MODEL;
+  }
+  const w = Number(waitedMs);
+  if (!(w >= FIRST_TOKEN_WAIT_FROM_MS)) return '';
+  if (w >= 120000) return 'Still working - no tokens yet from the model';
+  if (w >= 60000) return 'Still waiting for first token - over a minute';
+  return 'Still waiting for first token';
 }
 
 function nearThreshold(limit) {
@@ -563,4 +630,5 @@ export default {
   createMeterState, reduceMeter, meterHasContent, prepIsRunning,
   prepSpinnerLabel, prepLineVisible, prepLineText, budgetView,
   buildMeterNode, renderMeterNode, createAgentMeter, presentMeterEvent,
+  FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText,
 };

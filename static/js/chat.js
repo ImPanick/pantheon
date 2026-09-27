@@ -57,6 +57,7 @@ import {
   INGEST_KIND_DOCUMENT,
 } from './attachmentLanguage.js';
 import agentDrafts from './agentDrafts.js';   // H01
+import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from './agentMeter.js';   // B907
 
   const RESEARCH_TIMEOUT_MS = 360000;
   const DEFAULT_TIMEOUT_MS = 120000;
@@ -2482,22 +2483,35 @@ import agentDrafts from './agentDrafts.js';   // H01
     let responseTimeoutCleared = false;
     let clearResponseTimeout = () => {};
     let firstTokenWaitTimers = [];
+    // `B907`. The turn's meter, for the wait messages to read what preparation
+    // has reported; set once the meter exists, after the POST returns.
+    let firstTokenWaitMeter = null;
     const clearFirstTokenWaitTimers = () => {
-      firstTokenWaitTimers.forEach(t => { try { clearTimeout(t); } catch (_) {} });
+      firstTokenWaitTimers.forEach(t => { try { clearTimeout(t); clearInterval(t); } catch (_) {} });
       firstTokenWaitTimers = [];
     };
+    // `B907`. What the reply's spinner says while the model's first token is
+    // slow in coming. These were three fixed sentences at 20s, 60s and 120s,
+    // and the middle one stated a guess as a fact ("Large local model is
+    // pre-filling context"). They were also never seen: the first `data:` line
+    // of any kind called them off, and every stream opens with
+    // `stream_steerable`. Now the model's first output calls them off
+    // (`markFirstVisibleOutput`), and the words are `firstTokenWaitText`'s —
+    // only what the page knows. From 20s they are re-read every second, so a
+    // count on the spinner is never a stale one.
     const scheduleFirstTokenWaitMessages = () => {
       clearFirstTokenWaitTimers();
-      const steps = [
-        [20000, 'Still waiting for first token'],
-        [60000, 'Large local model is pre-filling context'],
-        [120000, 'Still working - no tokens yet from the model'],
-      ];
-      firstTokenWaitTimers = steps.map(([ms, text]) => setTimeout(() => {
-        if (!accumulated && spinner && spinner.element && !(abortCtrl && abortCtrl.signal.aborted)) {
-          spinner.updateMessage(text);
-        }
-      }, ms));
+      const sentAt = Date.now();
+      const say = () => {
+        if (accumulated || !spinner || !spinner.element || (abortCtrl && abortCtrl.signal.aborted)) return;
+        const text = firstTokenWaitText(firstTokenWaitMeter ? firstTokenWaitMeter.state : null,
+          Date.now() - sentAt, Date.now());
+        if (text && text !== spinner.message) spinner.updateMessage(text);
+      };
+      firstTokenWaitTimers.push(setTimeout(() => {
+        say();
+        firstTokenWaitTimers.push(setInterval(say, 1000));
+      }, FIRST_TOKEN_WAIT_FROM_MS));
     };
     const clearProcessingProbe = () => {
       if (processingProbeTimer) {
@@ -3228,6 +3242,7 @@ import agentDrafts from './agentDrafts.js';   // H01
       // `P4-08` / `P4-23`. This turn's prep breakdown and step / tool-call
       // meter: one node, hung under whichever spinner is on screen.
       const _meter = createAgentMeter();
+      firstTokenWaitMeter = _meter;   // `B907`
       const _generatedImagesForTurn = [];
       function _rememberGeneratedImage(data) {
         const imageUrl = data?.image_url || data?.url || '';
@@ -3846,8 +3861,13 @@ import agentDrafts from './agentDrafts.js';   // H01
       let _streamSawDone = false;
       let _streamTerminalError = null;
       let _firstVisibleOutputSeen = false;
-      const markFirstVisibleOutput = () => {
-        if (_firstVisibleOutputSeen) return;
+      // `B907`. The model's first output — a token, thinking included, or a
+      // tool call and what only follows one — ends the wait for a first token.
+      // This ran on the first `data:` line of any kind, and every stream opens
+      // with `stream_steerable`, so the wait messages were called off within
+      // milliseconds of being set.
+      const markFirstVisibleOutput = (json) => {
+        if (_firstVisibleOutputSeen || !endsFirstTokenWait(json)) return;
         _firstVisibleOutputSeen = true;
         clearFirstTokenWaitTimers();
       };
@@ -3870,7 +3890,6 @@ import agentDrafts from './agentDrafts.js';   // H01
           }
           if (line.startsWith('data: ')) {
             const data = line.slice(6);
-            if (data && data !== '[DONE]') markFirstVisibleOutput();
 
             // (thinking spinner removal is handled in agent_step / tool_start / content handlers)
 
@@ -3974,10 +3993,10 @@ import agentDrafts from './agentDrafts.js';   // H01
                 if (spinner && spinner.element) spinner.destroy();
                 break;
               }
+              markFirstVisibleOutput(json);   // `B907`
               if (json.delta || json.type === 'agent_prep' || json.type === 'tool_approval_resolved' || json.type === 'generated_image' || json.type === 'tool_start' || json.type === 'tool_output' || json.type === 'tool_progress' || json.type === 'agent_step' || json.type === 'loop_breaker_triggered' || json.type === 'intent_nudge_exhausted' || json.type === 'doc_stream_open' || json.type === 'doc_stream_delta' || json.type === 'research_progress') {
                 clearResponseTimeout();
                 clearProcessingProbe();
-                clearFirstTokenWaitTimers();
               }
               if (json.type === 'generated_image') {
                 _rememberGeneratedImage(json);
