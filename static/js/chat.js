@@ -4937,11 +4937,9 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                   _cancelLiveThinkingWork();
                 }
                 _finalizeRoundRender();
-                // Mark thread as connected to bubble below
-                const _activeThread = document.querySelector('.agent-thread.streaming');
-                if (_activeThread) {
-                  _activeThread.classList.add('has-bottom');
-                }
+                // Mark thread as connected to bubble below — the one directly
+                // above it (`B919`), by the rule a resumed stream follows too.
+                _threadIntoNextStep(document.getElementById('chat-history'));
                 // --- New round: create fresh AI bubble with spinner ---
                 currentToolBubble = null;
                 roundFinalized = false;
@@ -6228,6 +6226,36 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
   }
 
   /**
+   * `B919`. At a new step, the thread directly above its bubble runs its line
+   * on down into it (`has-bottom`). Both streams gave that connector to the
+   * first `.agent-thread.streaming` on the page — and every thread a turn draws
+   * keeps `streaming` until the turn ends, so in a turn of two threads the
+   * first got it and the one directly above the new step got none (measured in
+   * `test_refusals_and_text_after_a_tool_draw_the_same_in_both_streams`: after
+   * `agent_step`, the second thread had `bottom: false`). After a takeover it
+   * was worse: the student's thread, above the banner, took a line that ran
+   * down through it. The thread is the one at the bottom of `box`, past bubbles
+   * hidden for writing nothing and the wait spinner — the walk
+   * `_threadForNextCard` makes — and there is none when anything else visible
+   * sits between: the step's own text, a stop line, a note, a banner. A thread
+   * of an earlier turn is not `streaming`, and is not this step's. Returns it.
+   */
+  function _threadIntoNextStep(box) {
+    if (!box) return null;
+    const kids = box.children;
+    for (let ci = kids.length - 1; ci >= 0; ci--) {
+      const child = kids[ci];
+      if (child.style.display === 'none' || child.classList.contains('agent-thinking-dots')) continue;
+      if (child.classList.contains('agent-thread') && child.classList.contains('streaming')) {
+        child.classList.add('has-bottom');
+        return child;
+      }
+      return null;
+    }
+    return null;
+  }
+
+  /**
    * The thread a card about the step's work goes in — the refused call
    * (`P4-20`) and the verifier's verdict (`P4-17`): the thread the step's cards
    * went into, or a bare one if that is gone. A bare one, not a copy of
@@ -6751,9 +6779,9 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
           } else if (json.type === 'agent_step') {
             rich = true;
             closeRound();
-            // Mark thread as connected to bubble below
-            const activeThread = box.querySelector('.agent-thread.streaming');
-            if (activeThread) activeThread.classList.add('has-bottom');
+            // Mark thread as connected to bubble below (`B919`: the one
+            // directly above it, as the live arm marks it).
+            _threadIntoNextStep(box);
             toolNode = null;
             openRound(true);
           } else if (json.type === 'generated_image') {

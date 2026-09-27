@@ -272,6 +272,7 @@ _MODULE_LEVEL = (
     "_showDocumentWritingStatus", "_finishDocumentWritingStatus", "hasActiveStream",
     "_metricsCostRecordId", "_appendGeneratedImageBubble",
     "_createWaitSpinners", "_openRoundSpinner", "_newRoundBubble", "_threadForNextCard",
+    "_threadIntoNextStep",   # `B919`
     "_threadOrBare", "_stopCardTickers", "_startToolCard", "_drawToolProgress",
     "_finishToolCard", "_removeViewFrom",
     "checkBackgroundStream", "_showBackgroundStreamSpinner",
@@ -671,6 +672,55 @@ def test_refusals_and_text_after_a_tool_draw_the_same_in_both_streams(sandbox):
     assert [next(iter(e)) for e in final] == ["bubble", "thread", "bubble", "thread", "bubble"], final
     assert final[3]["top"] and [c["state"] for c in final[3]["thread"]] == ["failed"]
     assert final[4]["text"] == "I can't delete it from here."
+    # `B919`. At step 2 the thread directly above its bubble — the second one,
+    # the refusal after the text — runs its line on down into it. Both streams
+    # gave the connector to the turn's *first* thread, which already had one
+    # (the text below it), and the second was left with `bottom: false`.
+    at_step_2 = resumed[REFUSALS.index({"type": "agent_step", "round": 2})]
+    assert [next(iter(e)) for e in at_step_2] == ["bubble", "thread", "bubble", "thread", "bubble"], at_step_2
+    assert at_step_2[3]["bottom"], "the thread directly above step 2 does not run on into it"
+    assert at_step_2[1]["bottom"], "the first thread lost the line down to the text below it"
+
+
+def test_a_new_step_continues_the_thread_directly_above_it_and_no_other(sandbox):
+    """`B919`, the rule both `agent_step` arms now call (`_threadIntoNextStep`),
+    over the shapes a turn's bottom can have when a step begins. The connector
+    goes to the thread directly above the new step, past bubbles hidden for
+    writing nothing and the wait spinner — and to nothing when something else
+    that is visible sits between, or when the thread is an earlier turn's."""
+    out = _page(sandbox, """
+        const el = (cls, { hidden = false, text = '' } = {}) => {
+          const n = document.createElement('div');
+          n.className = cls;
+          if (hidden) n.style.display = 'none';
+          if (text) n.textContent = text;
+          return history.appendChild(n);
+        };
+        const cases = {};
+        const run = (name, build) => {
+          clear();
+          const made = build();
+          const got = _threadIntoNextStep(history);
+          cases[name] = { marked: made.indexOf(got),
+                          bottoms: made.map((n) => n.classList.contains('has-bottom')) };
+        };
+        run('two threads', () => [el('agent-thread streaming'), el('msg msg-ai', { text: 'Found it.' }),
+                                  el('agent-thread streaming')]);
+        run('past a hidden step and the wait spinner', () => [el('agent-thread streaming'),
+          el('msg msg-ai msg-continuation', { hidden: true }), el('msg msg-ai agent-thinking-dots')]);
+        run('text below the thread', () => [el('agent-thread streaming'),
+          el('msg msg-ai msg-continuation', { text: 'Here it is.' })]);
+        run('a stop line below the thread', () => [el('agent-thread streaming'), el('agent-stop')]);
+        run('a banner below the thread', () => [el('agent-thread streaming'),
+          el('teacher-takeover-banner'), el('msg msg-ai msg-continuation', { hidden: true })]);
+        run("an earlier turn's thread", () => [el('agent-thread'), el('msg msg-ai', { hidden: true })]);
+        console.log(JSON.stringify(cases));
+    """)
+    assert out["two threads"] == {"marked": 2, "bottoms": [False, False, True]}, out
+    assert out["past a hidden step and the wait spinner"]["marked"] == 0, out
+    for shape in ("text below the thread", "a stop line below the thread",
+                  "a banner below the thread", "an earlier turn's thread"):
+        assert out[shape]["marked"] == -1 and not any(out[shape]["bottoms"]), (shape, out[shape])
 
 
 def test_the_replay_ends_in_the_reload_with_nothing_of_its_own_left(sandbox):
