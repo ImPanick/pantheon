@@ -25,6 +25,10 @@ const REAL_MODULES = new Set([
   // shell then mounts, and a stub would let the shell load while the
   // field it mounts is a shape nobody ships.
   path.join(JS, 'settings/mcpFields.js'),
+  // `P8-45`. The preset catalogue and the form's "Start from" picker, real
+  // for the same reason: `settings.js` imports it at load, and the shell
+  // mounts the picker the module builds.
+  path.join(JS, 'settings/mcpPresets.js'),
   path.join(JS, 'settings/dom.js'),
   path.join(JS, 'settings/registry.js'),
   path.join(JS, 'settings/search.js'),

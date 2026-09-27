@@ -80,8 +80,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P17 | The network the agent is hosted on | 14 | 0 | 0 | **14** |
 | P18 | One button, and it links | 9 | 0 | 0 | **9** |
 | P19 | The proof ledger | 8 | 0 | 0 | **8** |
-| Backlog | Bugs and hardening found in flight | 489 | 208 | 0 | **281** |
-| **Total** | | **871** | **268** | **8** | **595** |
+| Backlog | Bugs and hardening found in flight | 490 | 208 | 0 | **282** |
+| **Total** | | **872** | **268** | **8** | **596** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -245,8 +245,8 @@ they are for.*
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
 
 ### Four agents at once: the assistant can't hand itself tools, the Workshop's last build rows, and a turn you can watch
-`2e9acbe..HEAD`. **871 tracked, 595 done. 0 new phase rows, 0 regressions. `P7-02`, `P8-45`, `P8-48`,
-`P4-08`, `P4-23`, `P4-10`, `B901` and `B903` closed; `B896`–`B910` filed; `P4-15` blocked on the owner.**
+`2e9acbe..HEAD`. **872 tracked, 596 done. 0 new phase rows, 0 regressions. `P7-02`, `P8-45`, `P8-48`,
+`P4-08`, `P4-23`, `P4-10`, `B901`, `B903` and `B911` closed; `B896`–`B911` filed; `P4-15` blocked on the owner.**
 `P8` is 48 of 49 — the one left is `P8-00`, which is the owner walking the Workshop unaided — and `P4`
 is 26 of 28. Four agents in four worktrees, merged by cherry-pick with no conflicts.
 **`P7-02` was wider than its row.** Not only the mode toggle: `ui_control` could turn on the shell, web,
@@ -19380,3 +19380,5 @@ this is the same thing happening to the row that corrected the store.
 - [ ] **B909** **The Cookbook's "Copy tmux" command cannot attach on the shipped Docker install.** Found by `p4-breaker` 2026-09-27 working out what `P4-15`'s affordance must say. `static/js/cookbookRunning.js:2710` copies `tmux attach -t <session>`. On a Docker install the session lives inside the container, so on the host the command names nothing; inside the container it still fails, because tmux sockets are per user, the image has no `USER` so `docker exec` is root, and the app runs as `PUID` via `gosu` (`docker/entrypoint.sh`) — root's `tmux attach` answers *"no server running on /tmp/tmux-0/default"* (reproduced here with two users). The copyable command has to be `docker compose exec -u <uid> pantheon tmux attach -t <session>` when the server is containerised — `running_in_container()` (`src/host_docker_access.py:22`) already answers that, and the server knows its own uid — and bare `tmux attach -t <session>` on a native install, run as the user Pantheon runs as. Build the command once on the server (session name through `shlex.quote`) and let this menu and `P4-15` both read it (`Law 14`). Remote tasks (`task.remoteHost`) are a different case: their session is on the remote host under the SSH user, where the bare command is right once you are logged in there. — agent:`p4-breaker`
 
 - [ ] **B910** **Compare mode drops both guard stops.** Found by `p4-breaker` 2026-09-27. `static/js/compare/stream.js` has no arm for `loop_breaker_triggered` or `intent_nudge_exhausted` — neither name appears anywhere under `static/js/compare/` — so a compare pane whose model loops or keeps promising shows nothing about why it stopped. `renderAgentStop(container, event)` in `static/js/agentStops.js` draws the line into any container it is handed; the pane's own history element is the container. Same family as `P4-24`'s second dispatch chain — a third one. — agent:`p4-breaker`
+
+- [x] **B911** **The settings shell's real-module smoke did not know `P8-45`'s new module, and the suite said so before anyone else did.** `tests/helpers/test_settings_shell_coordinator.mjs` loads the settings shell's module graph for real and stubs the rest; `settings.js` now imports `settings/mcpPresets.js` at load, which was in neither list, so `tests/test_settings_shell_js_behavior.py::test_settings_shell_real_esm_coordinator` failed on the merged tree — the one failure in 13,456 on the first full run after the four-agent merge, and found the same hour by the `b909-tmux-copy` agent on its own base. The P8-45 agent's targeted run grepped for tests that *name* `settings.js`; this one names the helper, which names the files. Fixed by loading the module for real beside `settings/mcpFields.js`, for the same reason that one is real. `Verify:` the test passes; the full suite on the merged tree is green. `Depends:` nothing. — found by the suite — agent:`integrator`
