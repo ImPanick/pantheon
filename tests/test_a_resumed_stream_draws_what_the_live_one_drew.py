@@ -21,6 +21,8 @@ shared drawing functions, `resumeStream` itself:
     spinners, the meter's words, the stop line;
   * and what that is, said outright, so a change that broke both paths the
     same way is caught too;
+  * a refused call as a step's first act and after its text, and text after a
+    tool — the live arms `B904` changed — drawn the same by both;
   * a replay over a view of the same run already on the page — the live one a
     dropped connection left behind — replaces it rather than doubling it;
   * the stop line is never on the page twice: the resumed view takes its own
@@ -356,8 +358,10 @@ function clear() { for (const c of history.childNodes.slice()) c.remove(); }
 
 
 def _live_driver() -> str:
-    """The live stream's arms, cut out of `sendMessage` and run in the order
-    the recorded run delivers them, over the state `sendMessage` keeps."""
+    """The live stream's arms, cut out of `handleChatSubmit` and run in the
+    order the recorded run delivers them, over the state `handleChatSubmit`
+    keeps — with the closures those arms call (`_cardThread`, `_openRoundBubble`
+    since `B904`), cut out with them."""
     chat = _chat()
     code = blank_text(chat, "js")
     meter_arms = code[code.index("if (json.type === 'agent_prep') {"):
@@ -417,6 +421,8 @@ function runLive(events, snaps, { runId = 'run-1', stopAfter = Infinity } = {}) 
   let _lastToolName = '';
   __ENSURE_LAYOUT__
   __ENSURE_VISIBLE__
+  __OPEN_ROUND__
+  __CARD_THREAD__
   const _finalizeRoundRender = () => __FINALIZE__;
   __WAIT__
   let n = 0;
@@ -451,6 +457,8 @@ __DISPATCH__
 """
             .replace("__ENSURE_LAYOUT__", _defn("_ensureStreamLayout"))
             .replace("__ENSURE_VISIBLE__", _defn("_ensureVisibleRoundForDelta"))
+            .replace("__OPEN_ROUND__", _defn("_openRoundBubble"))
+            .replace("__CARD_THREAD__", _defn("_cardThread"))
             .replace("__FINALIZE__", _assigned("_finalizeRoundRender",
                                                "if (roundFinalized) return roundFinalization;"))
             .replace("__WAIT__", _between("const _wait = _createWaitSpinners({",
@@ -616,6 +624,55 @@ def test_what_both_draw_is_the_run(sandbox):
     assert kinds.index("stop") < len(kinds) - 1
     # Steps that wrote nothing are hidden, as the live stream hides them.
     assert [e["bubble"] for e in final if "bubble" in e] == ["shown", "hidden", "hidden", "shown"]
+
+
+# ── P4-24 × B904: what the merge rewired, through both streams ──────────────
+# `B904` gave the live stream two rules the resumed one follows too: a refused
+# call closes the step and goes where a card would go, and a card after anything
+# visible — the step's own text among it — starts a thread below that. Text after
+# a tool, in a step that wrote nothing before it, opens a bubble below the thread
+# (`_openRoundBubble` live, `openRound` resumed, both through `_newRoundBubble`).
+# The recorded run above reaches none of the three.
+
+REFUSALS = [
+    {"type": "tool_blocked", "tool": "write_file", "command": "notes.txt", "round": 1,
+     "reason": "refused by the current tool policy"},
+    {"type": "tool_start", "tool": "read_file", "command": "notes.txt", "round": 1},
+    {"type": "tool_output", "tool": "read_file", "command": "notes.txt", "round": 1,
+     "exit_code": 0, "output": "old copy"},
+    {"delta": "Found it. Now I'll delete the old copy."},
+    {"type": "tool_blocked", "tool": "bash", "command": "rm notes.txt", "round": 1,
+     "reason": "refused by the current tool policy"},
+    {"type": "agent_step", "round": 2},
+    {"delta": "I can't delete it from here."},
+    "[DONE]",
+]
+
+
+def test_refusals_and_text_after_a_tool_draw_the_same_in_both_streams(sandbox):
+    out = _both(sandbox, REFUSALS)
+    live, resumed = out["live"], out["resumed"]
+    assert len(live) == len(resumed) == len(REFUSALS) - 1
+    for i, (a, b) in enumerate(zip(live, resumed)):
+        event = REFUSALS[i].get("type", "delta")
+        assert b == a, f"after event {i} ({event}) the resumed view differs from the live one"
+    # And what that is. A refusal as the step's first act ends its wait: no
+    # spinner is left, and the step, having written nothing, is hidden.
+    first = resumed[0]
+    assert [next(iter(e)) for e in first] == ["bubble", "thread"], first
+    assert first[0]["bubble"] == "hidden" and first[0]["spinner"] is None
+    assert [c["state"] for c in first[1]["thread"]] == ["failed"]
+    # The read joins the refusal's thread; the text after it gets a bubble of
+    # its own below the thread; the refusal after that text goes below the text,
+    # in a thread of its own.
+    after_text = resumed[3]
+    assert [next(iter(e)) for e in after_text] == ["bubble", "thread", "bubble"], after_text
+    assert [c["state"] for c in after_text[1]["thread"]] == ["failed", "done"]
+    assert after_text[2]["text"] == "Found it. Now I'll delete the old copy."
+    final = resumed[-1]
+    assert [next(iter(e)) for e in final] == ["bubble", "thread", "bubble", "thread", "bubble"], final
+    assert final[3]["top"] and [c["state"] for c in final[3]["thread"]] == ["failed"]
+    assert final[4]["text"] == "I can't delete it from here."
 
 
 def test_the_replay_ends_in_the_reload_with_nothing_of_its_own_left(sandbox):

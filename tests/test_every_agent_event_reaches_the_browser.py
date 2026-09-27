@@ -42,6 +42,7 @@ import pytest
 
 import routes.chat_routes as chat_routes
 from src.agent_tools.web_tools import WebSearchTool
+from tests.helpers.esc_stub import esc_source  # B874
 from tests.helpers.js_source import js_definition  # B876
 from tests.helpers.source_text import blank  # B290
 from test_foreground_model_routing import _RouteRequest, _chat_stream_endpoint  # noqa: E402
@@ -315,11 +316,20 @@ def sandbox(tmp_path_factory):
     return d
 
 
+def _live_handler() -> str:
+    """Comment-blanked `handleChatSubmit`, the function the live stream runs
+    in. Its arms are cut from here rather than from the whole file: a resumed
+    stream (`resumeStream`, `P4-24`) has arms of its own that open the same way."""
+    code = blank(CHAT_JS)
+    start = code.index("export async function handleChatSubmit(")
+    return code[start:start + len(js_definition(CHAT_JS.read_text(encoding="utf-8"), start))]
+
+
 def _arm(opening: str, closing: str) -> str:
     """One arm of the live dispatcher, cut out by its own delimiters in
     comment-blanked text, so a delimiter quoted in prose cannot be taken for
     code. Returns the body between the braces."""
-    code = blank(CHAT_JS)
+    code = _live_handler()
     assert code.count(opening) == 1, f"{opening!r} is no longer a unique anchor"
     start = code.index(opening) + len(opening)
     return code[start:code.index(closing, start)]
@@ -345,8 +355,8 @@ const markdownModule = {
 };
 const _streamDisplayText = (t) => String(t || '');
 const window = { hljs: null };
-const uiModule = { scrollHistory() {}, esc: (s) => String(s) };
-const esc = uiModule.esc;
+// `B874`: the shipped `esc` (declared above this block by `esc_source`).
+const uiModule = { scrollHistory() {}, esc };
 const sessionModule = { getSessions: () => [] };
 const streamSessionId = 's1';
 const modelName = 'student-model';
@@ -397,6 +407,7 @@ def _script(body: str) -> str:
     parts = [
         "import { document, Node, box, bubble, thread, history } from './shim.js';",
         "import { inheritModelRouteState } from './chatModelProvenance.js';",
+        esc_source(),
         _STUBS,
         "let holder = null; let roundHolder = null;",
         _definition("function _ensureStreamLayout("),
@@ -406,6 +417,11 @@ def _script(body: str) -> str:
         _definition("function _ensureVisibleRoundForDelta("),
         _definition("function _openRoundBubble("),
         _definition("function _cardThread("),
+        # `P4-24`: what those closures and the arms below draw through, at
+        # module scope so a resumed stream draws the same way.
+        _definition("function _newRoundBubble("),
+        _definition("function _threadForNextCard("),
+        _definition("function _startToolCard("),
         "function toolBlocked(json, _isBg = false) { for (const _ of [0]) {"
         + _arm("} else if (json.type === 'tool_blocked') {",
                "} else if (json.type === 'auto_escalated') {") + "} }",

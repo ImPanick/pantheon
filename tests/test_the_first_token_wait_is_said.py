@@ -137,12 +137,21 @@ def _declaration(anchor: str) -> str:
     return js_definition(CHAT_JS.read_text(encoding="utf-8"), code.index(anchor))
 
 
+def _live_handler() -> str:
+    """Comment-blanked `handleChatSubmit`, the function the live stream runs
+    in. The dispatcher is cut from here rather than from the whole file: a
+    resumed stream (`resumeStream`, `P4-24`) has arms that open the same way."""
+    code = blank(CHAT_JS)
+    start = code.index("export async function handleChatSubmit(")
+    return code[start:start + len(js_definition(CHAT_JS.read_text(encoding="utf-8"), start))]
+
+
 def _dispatch_head() -> str:
     """The live dispatcher from the moment a `data:` line is read up to its
     first event arm: background detection, `[DONE]`, the parse, the error check
     and whatever marks the first output. Cut from comment-blanked text by its
     own delimiters; it opens a `try` that the harness closes."""
-    code = blank(CHAT_JS)
+    code = _live_handler()
     opening = "const data = line.slice(6);"
     closing = "if (json.type === 'generated_image') {"
     assert code.count(opening) == 1 and code.count(closing) == 1
