@@ -372,10 +372,33 @@ html {
    (a catch-22 — you can't reach the control to turn the size back down). Divide
    each max-height by the same factor to keep the original on-screen footprint.
    Desktop only — the mobile `!important` full-sheet rules win on small screens
-   and stay top-anchored, so their headers are already visible. */
+   and stay top-anchored, so their headers are already visible.
+
+   `P10-08`. The FIRST line below does this for every modal, and a new modal
+   needs no line of its own: at (0,3,0) it outranks a cap written on any class
+   of the modal's, and it divides `.modal-content`'s own 85vh. The lines after
+   it are exceptions, each kept for a reason measured 2026-09-27 (headless
+   Chromium, 1400x900, the modal filled past its cap, 1.25x, the line deleted
+   from the live sheet and the modal measured again):
+     calendar — its cap is 88vh; without its line the first rule holds it to
+                85% of the screen instead of 88%;
+     theme    — `#theme-popup` is capped on an id, (1,0,0), which the first
+                rule cannot outrank; without its line it stands 750px tall on
+                a 900px screen instead of 600. The px arm is divided too;
+     cookbook — an id-scoped height and cap (below); without its line it is
+                117% of the screen with its header 65px above the top;
+     PDF      — its cap is 86vh (below); without its line, 85% instead of 86%.
+   A fifth line, for `.settings-modal-content`, was folded back: its cap is
+   85vh on one class, and it measured 612px with the line and without it.
+   `tests/test_one_zoom_rule_covers_the_modals_css.py` recomputes both kinds
+   of reason from this sheet and fails on a line that has neither.
+   What the first rule does NOT reach, measured the same day at 1400x800 and
+   filed rather than given lines here: Compare (an id-scoped cap, header 50px
+   above the top), Deep Research (an inline 85vh, 25px above), Brain's Browse
+   tab (a `:has()` rule at 78vh, 97.5% of the screen) and every edge-docked
+   window (inline `100vh` from `modalSnap.js`, 125% tall). */
 :root.ui-scale-125 .modal-content          { max-height: calc(85dvh / 1.25); }
 :root.ui-scale-125 .cal-modal-content      { max-height: calc(88dvh / 1.25); }
-:root.ui-scale-125 .settings-modal-content { max-height: calc(85dvh / 1.25); }
 :root.ui-scale-125 #theme-popup            { max-height: min(calc(85dvh / 1.25), 480px); }
 /* Cookbook is the one modal that set its height inline (94vh), which beat the
    .modal-content compensation above and overflowed the viewport at 1.25x
