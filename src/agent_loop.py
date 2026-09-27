@@ -3753,6 +3753,7 @@ def _compute_final_metrics(
     backend_decode_tokens: int = 0,
     injected_skills: Optional[list] = None,
     verifier_findings: Optional[list] = None,
+    model_wait_time: Optional[float] = None,
 ) -> dict:
     """Compute token counts, TPS, and build the final metrics dict."""
     if has_real_usage:
@@ -3831,7 +3832,18 @@ def _compute_final_metrics(
     if prep_timings:
         prep_total = round(sum(prep_timings.values()), 3)
         metrics["agent_prep_time"] = prep_total
-        metrics["agent_model_wait_time"] = round(max((time_to_first_token or 0) - prep_total, 0), 3)
+        # `B905`. Measured, once, from the end of preparation to the model's
+        # first token or tool call. It was `time_to_first_token - prep_total`,
+        # and `time_to_first_token` is counted from `total_start`, which the
+        # loop sets *after* preparation — so preparation came off a figure that
+        # never contained it (0.81s of prep and a 0.5s wait read as `0s`,
+        # clamped from −0.31). A turn with no token at all came out as a
+        # measured-looking `0`, and a turn that went straight to a tool counted
+        # its first *token* — a step later, with the tool's own run inside it
+        # (`Law 10`). Absent when the model sent nothing back.
+        if (isinstance(model_wait_time, (int, float)) and not isinstance(model_wait_time, bool)
+                and model_wait_time >= 0):
+            metrics["agent_model_wait_time"] = round(model_wait_time, 3)
         metrics["agent_prep_breakdown"] = {
             key: round(value, 3) for key, value in prep_timings.items()
         }
@@ -5560,6 +5572,12 @@ async def stream_agent_loop(
     total_start = time.time()
     time_to_first_token = None
     first_token_received = False
+    # `B905`. How long the model took to send anything back, from the moment
+    # the prompt was ready: its first token (thinking included) or its first
+    # tool call, whichever came first. `time_to_first_token` above is the first
+    # *token* of the turn, which on a turn that goes straight to a tool arrives
+    # a step or more later and has the tool's own time inside it.
+    model_wait_time = None
     tool_events = []   # Persist tool executions for history reload
     round_texts = []   # Cleaned text per round for history reload
     round_models = []  # Actual model for each corresponding round
@@ -6394,6 +6412,11 @@ async def stream_agent_loop(
             if chunk.startswith("data: ") and not chunk.startswith("data: [DONE]"):
                 try:
                     data = json.loads(chunk[6:])
+                    if model_wait_time is None and (
+                        "delta" in data
+                        or data.get("type") in ("tool_calls", "tool_call_delta")
+                    ):
+                        model_wait_time = time.time() - total_start   # `B905`
                     # IMPORTANT: check type-based events BEFORE "delta" key,
                     # because tool_call_delta also has an "arg_delta" field.
                     if data.get("type") == "tool_call_delta":
@@ -7912,6 +7935,7 @@ async def stream_agent_loop(
         backend_decode_tokens=backend_decode_tokens,
         injected_skills=_injected_skills_seen,
         verifier_findings=_verifier_findings,
+        model_wait_time=model_wait_time,
     )
     # `B892`. What the request was spent on, category by category, measured on
     # the list that was actually sent. The composer's context wheel draws it;

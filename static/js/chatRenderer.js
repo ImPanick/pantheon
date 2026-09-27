@@ -2760,6 +2760,47 @@ export function speedRows(metrics) {
   return out.join('\n');
 }
 
+/** A server-measured duration as the popup prints it, or '' for anything that
+ *  is not one. */
+function _secondsStr(value) {
+  if (value === null || value === undefined || value === '' || typeof value === 'boolean') return '';
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return '';
+  return `${Math.round(n * 100) / 100}s`;
+}
+
+/**
+ * `B905`. *Time*, *Prep* and *Model wait*, each saying which clock it is on.
+ *
+ * The three were printed as bare figures, Time first, as though Time contained
+ * the other two. It does not. The agent loop starts `total_start` — the clock
+ * `response_time` and the model's wait are read on — *after* the four prep steps
+ * have finished, so Prep and Time are two windows side by side, and Model wait
+ * is the first stretch of Time. On a turn with no prep figure (a chat turn) Time
+ * is the only one of the three, and it stands alone as it always has.
+ *
+ * Model wait is drawn only when the loop measured it (`B905`: absent when the
+ * model sent nothing back), never as a `0` that would read as instant. Returns
+ * markup built from numbers only.
+ */
+export function timingRows(metrics) {
+  const m = metrics || {};
+  const line = (label, value) => `<div><span class="ctx-label">${label}</span> ${value}</div>`;
+  const sub = (text) => `<div class="ctx-sub">${text}</div>`;
+  const time = _secondsStr(m.response_time);
+  const prep = _secondsStr(m.agent_prep_time);
+  const wait = _secondsStr(m.agent_model_wait_time);
+  const out = [];
+  if (!prep) {
+    if (time) out.push(line('Time', time));
+    return out.join('\n');
+  }
+  out.push(line('Prep', prep), sub('getting the request ready, before the model was asked'));
+  if (wait) out.push(line('Model wait', wait), sub("from the end of prep to the model's first token or tool call"));
+  if (time) out.push(line('Time', time), sub('from the end of prep to the end of the reply'));
+  return out.join('\n');
+}
+
 /**
  * `P4-07`. One line per Agent round: which model answered it, what it spent,
  * how fast it was and what it cost.
@@ -2932,8 +2973,6 @@ export function displayMetrics(messageElement, metrics) {
     const costRows = costStr ? `<div><span class="ctx-label">Cost</span> ${costStr}</div>` : '';
     const totalTok = inputTokens + outputTokens;
     const ctxColor = ctxPct >= 85 ? 'var(--red, #e06c75)' : ctxPct >= 70 ? '#ff9900' : 'var(--color-muted-alt, #6b7280)';
-    const prepTime = metrics.agent_prep_time;
-    const modelWaitTime = metrics.agent_model_wait_time;
     const prepBreakdown = metrics.agent_prep_breakdown || null;
     // `P4-08`. The breakdown in the words the live prep line used while it
     // ran, from the one table — this printed the raw keys (`tool_selection:
@@ -2971,9 +3010,7 @@ export function displayMetrics(messageElement, metrics) {
       <div><span class="ctx-label">Total</span> ${totalTok.toLocaleString()} tokens</div>
       ${promptCacheRows(metrics)}
       ${speedRows(metrics)}
-      <div><span class="ctx-label">Time</span> ${responseTime}s</div>
-      ${prepTime != null ? `<div><span class="ctx-label">Prep</span> ${prepTime}s</div>` : ''}
-      ${modelWaitTime != null ? `<div><span class="ctx-label">Model wait</span> ${modelWaitTime}s</div>` : ''}
+      ${timingRows(metrics)}
       ${costRows}
       ${sessionCostStr}
       ${prepDetails ? `<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);font-size:0.85em;opacity:0.8;">

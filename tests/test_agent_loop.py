@@ -300,12 +300,16 @@ class TestComputeFinalMetrics:
         assert m["model"] == "gpt-4o"
 
     def test_prep_timings_included(self):
+        # `B905`: the model's wait is measured by the loop and passed in. It
+        # was `time_to_first_token - prep_total` (here 1.25 - 0.65 = 0.6), and
+        # `time_to_first_token` never contained the prep it took away.
         m = _compute_final_metrics(**self._base_args(
             time_to_first_token=1.25,
+            model_wait_time=1.25,
             prep_timings={"request_setup": 0.2, "tool_selection": 0.3, "prompt_build": 0.15},
         ))
         assert m["agent_prep_time"] == 0.65
-        assert m["agent_model_wait_time"] == 0.6
+        assert m["agent_model_wait_time"] == 1.25
         assert m["agent_prep_breakdown"] == {
             "request_setup": 0.2,
             "tool_selection": 0.3,
