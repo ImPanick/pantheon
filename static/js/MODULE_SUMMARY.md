@@ -187,7 +187,11 @@ Server responds with SSE stream
 
 JSON events are dispatched by "type":
   delta              → streamingRenderer → markdown → live reply text
-  agent_prep         → update spinner label
+  agent_prep         → agentMeter.js: the spinner names the prep step running; the
+                       line under it lists the finished ones with measured times
+                       (P4-08)
+  agent_budget       → agentMeter.js: step / tool-call meter under the spinner, and
+                       what happens at each limit, before it happens (P4-23)
   tool_start         → finalize text bubble; create agent-thread node with wave animation
   tool_progress      → append/update live stdout/stderr tail
   tool_output        → mark node done/failed, render output, diffs, screenshots

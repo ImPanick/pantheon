@@ -42,6 +42,7 @@ import {
   inheritModelRouteState,
 } from './chatModelProvenance.js';
 import { createTerminalStreamError, isRecoverableStreamError } from './chatStreamErrors.js';
+import { createAgentMeter, presentMeterEvent } from './agentMeter.js';   // P4-08 / P4-23
 import { loadPanel } from './panels.js';
 import planWindow from './planWindow.js';
 import * as contextUsage from './contextUsage.js';
@@ -3224,6 +3225,9 @@ import agentDrafts from './agentDrafts.js';   // H01
       let _sourcesData = null;        // Raw sources data for rebuilding
       let _sourcesType = '';          // 'web' or 'research'
       let _findingsData = null;      // Raw findings data for collapsible box
+      // `P4-08` / `P4-23`. This turn's prep breakdown and step / tool-call
+      // meter: one node, hung under whichever spinner is on screen.
+      const _meter = createAgentMeter();
       const _generatedImagesForTurn = [];
       function _rememberGeneratedImage(data) {
         const imageUrl = data?.image_url || data?.url || '';
@@ -3336,11 +3340,22 @@ import agentDrafts from './agentDrafts.js';   // H01
         _thinkBody.className = 'body';
         const _ts = spinnerModule.create(label || 'Thinking', 'right', 'wave');
         _thinkBody.appendChild(_ts.createElement());
+        _meter.attachTo(_ts);   // `P4-23`: the meter rides the wait between steps
         _ts.start(120);
         _thinkMsg._spinner = _ts;
         _thinkMsg.appendChild(_thinkBody);
         document.getElementById('chat-history').appendChild(_thinkMsg);
         uiModule.scrollHistory();
+      }
+
+      // `P4-08` / `P4-23`. The spinner on screen right now, for the meter to
+      // hang under: the "Thinking" one between tools if it is up, otherwise
+      // the reply's or the round's own. `null` while a tool card or text owns
+      // the bottom of the turn — the meter waits for the next spinner then.
+      function _waitSpinner() {
+        const dots = document.querySelector('.agent-thinking-dots');
+        if (dots && dots._spinner && dots._spinner.element) return dots._spinner;
+        return (spinner && spinner.element) ? spinner : null;
       }
 
       function _replaceThinkingSpinner(label) {
@@ -3917,11 +3932,28 @@ import agentDrafts from './agentDrafts.js';   // H01
                 continue;
               }
               if (json.type === 'agent_prep') {
-                if (!_isBg) {
-                  _cancelThinkingTimer();
-                  _replaceThinkingSpinner('Preparing agent');
+                // `P4-08`. The four prep steps, live: the spinner says which is
+                // running and the line under it what each finished one took.
+                // This arm used to swap in a static "Preparing agent" — for the
+                // one frame the loop sent, after preparing was already over.
+                if (!_isBg) _cancelThinkingTimer();
+                const _prepHost = _isBg ? null : _waitSpinner();
+                presentMeterEvent(_meter, json, _prepHost);
+                if (!_isBg && !_prepHost && _meter.spinnerLabel()) {
+                  _replaceThinkingSpinner(_meter.spinnerLabel());
                 }
                 continue;
+              }
+              if (json.type === 'agent_budget') {
+                // `P4-23`. The step and tool-call limits this run is held to,
+                // and how much of each is spent — before either is reached.
+                presentMeterEvent(_meter, json, _isBg ? null : _waitSpinner());
+                continue;
+              }
+              if (json.type === 'rounds_exhausted' || json.type === 'budget_exceeded') {
+                // `P4-23`. The stop the meter was counting toward. Recorded and
+                // not consumed: the arms below still draw the note and Continue.
+                presentMeterEvent(_meter, json, null);
               }
               if (json.type === 'tool_approval_resolved') {
                 _cancelThinkingTimer();
@@ -5087,6 +5119,7 @@ import agentDrafts from './agentDrafts.js';   // H01
                 if (!_researchingStreamIds.has(streamSessionId)) {
                   spinner = spinnerModule.create('Generating response', 'right', 'wave');
                   newBody.appendChild(spinner.createElement());
+                  _meter.attachTo(spinner);   // `P4-23`
                   spinner.start();
                 }
                 if (streamingTTS) window.aiTTSManager._streamSentencesSent = 0;

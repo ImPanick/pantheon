@@ -2752,6 +2752,9 @@ def test_direct_low_signal_configuration_error_surfaces_without_fake_success(mon
         fallback_on_empty=False,
         _is_teacher_run=True,
     ))
+    # `P4-08`. The loop announces its first prep step before it can know this
+    # turn is a direct reply. That frame is progress, not an answer.
+    chunks = [c for c in chunks if '"type": "agent_prep"' not in c]
 
     assert len(chunks) == 1
     assert chunks[0].startswith("event: error")
@@ -2794,6 +2797,8 @@ def test_direct_low_signal_empty_completion_surfaces_without_fake_success(monkey
         fallback_on_empty=False,
         _is_teacher_run=True,
     ))
+    # `P4-08`. As above: the first prep frame precedes the direct reply's error.
+    chunks = [c for c in chunks if '"type": "agent_prep"' not in c]
 
     assert len(chunks) == 1
     payload = json.loads(chunks[0].split("data: ", 1)[1])

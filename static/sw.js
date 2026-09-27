@@ -111,6 +111,9 @@ const PRECACHE = [
   // `P4-01`: the one builder for a tool card in the agent thread. On the
   // critical path via chat.js and chatRenderer.js.
   '/static/js/agentThread.js',
+  // `P4-08`/`P4-23`: the live prep line and step / tool-call meter. Imported
+  // by chat.js and chatRenderer.js, so it is on the same critical path.
+  '/static/js/agentMeter.js',
   '/static/js/trustLadder.js',
   // `P4-10`: the line that says why the agent stopped itself. Imported by
   // chat.js and chatRenderer.js, so it is on the same critical path.

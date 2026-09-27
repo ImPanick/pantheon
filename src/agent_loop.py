@@ -4309,6 +4309,92 @@ def _resolve_local_lifts(max_rounds: int, max_tokens: int, *, unlimited: bool):
     )
 
 
+# `P4-08` / `P4-23`. The two events the live meter is drawn from. The chat
+# route forwards an agent event only if it is on a list, and it reads this one
+# rather than keeping a copy, so an event added here cannot be dropped there.
+AGENT_METER_EVENT_TYPES = ("agent_prep", "agent_budget")
+
+
+def _agent_prep_frame(prep_timings: Dict[str, float], running: Optional[str] = None) -> str:
+    """One `agent_prep` SSE frame. `P4-08`.
+
+    The loop has timed its four preparation steps all along and said so once,
+    after the last of them had finished, so the one live signal there was could
+    only arrive when there was nothing left to report. A frame now goes out as
+    each step **starts**: `status: "running"` with the step's `phase`, and
+    `data` holding what the steps before it measured. The last frame is
+    `status: "done"` with all four and their `total`.
+
+    `data` is the dict the single frame always carried, and `total` is the
+    expression `_compute_final_metrics` writes as `agent_prep_time`, so the live
+    figure and the one in Message Stats cannot disagree (`Law 7`). Every figure
+    is a server wall clock around a step that has finished; the step still
+    running has no figure rather than a guess (`Law 10`).
+    """
+    frame: Dict[str, Any] = {
+        "type": "agent_prep",
+        "data": {key: round(value, 3) for key, value in prep_timings.items()},
+    }
+    if running is None:
+        frame["status"] = "done"
+        frame["total"] = round(sum(prep_timings.values()), 3)
+    else:
+        frame["status"] = "running"
+        frame["phase"] = running
+    return f"data: {json.dumps(frame)}\n\n"
+
+
+def _round_limit_source(configured: int, enforced: int, endpoint_url: str) -> str:
+    """Why the round cap this run enforces is the number it is. `P4-23`.
+
+    An enum, not a flag (`Law 10`). `configured` is the number the caller
+    passed — the chat route's `agent_max_rounds`, a task's own cap. The two
+    lifts are `H08`'s: on local inference a cap nobody pinned is raised to
+    100,000, and `PANTHEON_FORCE_UNLIMITED` does the same for every endpoint.
+    They are told apart because "local model" is the sentence a person can act
+    on, and saying it about a cloud endpoint would be false.
+    """
+    if enforced == configured:
+        return "configured"
+    return "local_lift" if _is_local_openai_compat_url(endpoint_url) else "forced_lift"
+
+
+def _agent_budget_frame(
+    *,
+    round_num: int,
+    round_limit: int,
+    round_limit_source: str,
+    round_limit_configured: int,
+    tool_calls: int,
+    tool_call_limit: int,
+) -> str:
+    """One `agent_budget` SSE frame. `P4-23`.
+
+    The limits a run is held to were on the wire exactly once, inside the event
+    that announced the run had hit one — `rounds_exhausted`, `budget_exceeded`
+    — so the first a person learned of a limit was the stop. This frame is the
+    loop's own counters and caps, the variables the `for` and the budget check
+    read, sent at the top of every round and after every counted tool call. A
+    meter drawn from it cannot disagree with the enforcement it is metering.
+
+    `tool_call_limit` is `None` when there is none: the setting's `0` means
+    unlimited, and a `0` on the wire would read as "none allowed" (`Law 10`).
+    Every frame carries the whole state, never a delta, so a stream replayed
+    from its start — `/api/chat/resume` — rebuilds the meter by applying them
+    in order, and a frame that goes missing costs nothing once the next lands.
+    """
+    frame = {
+        "type": "agent_budget",
+        "round": round_num,
+        "round_limit": round_limit,
+        "round_limit_source": round_limit_source,
+        "round_limit_configured": round_limit_configured,
+        "tool_calls": tool_calls,
+        "tool_call_limit": tool_call_limit if tool_call_limit and tool_call_limit > 0 else None,
+    }
+    return f"data: {json.dumps(frame)}\n\n"
+
+
 async def stream_agent_loop(
     endpoint_url: str,
     model: str,
@@ -4358,6 +4444,14 @@ async def stream_agent_loop(
       - data: {"type": "steer_applied", "round": N, ...}    (P6-18: a mid-run
                                                              steer reached the
                                                              model at round N)
+      - data: {"type": "agent_prep", "status": ..., ...}    (P4-08: as each prep
+                                                             step starts, then
+                                                             once when all four
+                                                             are done)
+      - data: {"type": "agent_budget", "round": N, ...}     (P4-23: the caps in
+                                                             force and what is
+                                                             used, per round and
+                                                             per tool call)
       - data: {"type": "metrics", "data": {...}}            (final metrics)
       - data: [DONE]                                        (end)
 
@@ -4485,6 +4579,9 @@ async def stream_agent_loop(
     if _upload_msg:
         messages = _insert_before_latest_user(messages, _upload_msg)
 
+    # `P4-08`. Each step announces itself before its clock starts, so the frame
+    # is live and the yield is never inside the window it would be timing.
+    yield _agent_prep_frame(prep_timings, running="request_setup")
     _t0 = time.time()
     _needs_admin = _detect_admin_intent(messages)
     _last_user = _extract_last_user_message(messages)
@@ -4842,6 +4939,7 @@ async def stream_agent_loop(
     # RAG-based tool selection: retrieve relevant tools for this query.
     # If caller provided a pre-computed set (e.g. task_scheduler), use that.
     _relevant_tools = relevant_tools
+    yield _agent_prep_frame(prep_timings, running="tool_selection")   # `P4-08`
     _t1 = time.time()
     if _relevant_tools:
         logger.info(f"[tool-rag] Using caller-provided relevant_tools ({len(_relevant_tools)} tools)")
@@ -5191,6 +5289,7 @@ async def stream_agent_loop(
 
     prep_timings["tool_selection"] = time.time() - _t1
 
+    yield _agent_prep_frame(prep_timings, running="prompt_build")   # `P4-08`
     _t2 = time.time()
     _route_context_lengths = {}
     # `P4-16`. Filled by `_build_route_request_state` (a coroutine, which cannot
@@ -5431,6 +5530,7 @@ async def stream_agent_loop(
         logger.info("[plan] pinned approved plan (%d chars) for execution turn", len(approved_plan))
     prep_timings["prompt_build"] = time.time() - _t2
 
+    yield _agent_prep_frame(prep_timings, running="context_trim")   # `P4-08`
     _t3 = time.time()
     _initial_route_request_messages = _trim_route_request_messages(
         endpoint_url,
@@ -5452,7 +5552,9 @@ async def stream_agent_loop(
         context_length,
         {k: round(v, 3) for k, v in prep_timings.items()},
     )
-    yield f"data: {json.dumps({'type': 'agent_prep', 'data': {k: round(v, 3) for k, v in prep_timings.items()}})}\n\n"
+    # `P4-08`. The frame this loop always sent here, now saying it is the last
+    # one and carrying the total, so the live line and Message Stats agree.
+    yield _agent_prep_frame(prep_timings)
 
     full_response = ""
     total_start = time.time()
@@ -5949,10 +6051,27 @@ async def stream_agent_loop(
     # round and `setting_is_explicit` opens `settings.json`; whether an
     # operator pinned it cannot change mid-request, so reading it per round
     # would buy nothing but file handles.
+    _configured_max_rounds = max_rounds   # `P4-23`: what the caller asked for
     max_rounds, max_tokens, _timeout_pinned = _resolve_local_lifts(
         max_rounds, max_tokens, unlimited=_cyber_unlimited())
     # --- end cybertooth custom ---
+    # `P4-23`. The meter reads the same two caps the loop enforces, after the
+    # lift, and the counter the budget check reads — never a second copy of any
+    # of them, which is the only way a progress bar cannot lie about a stop.
+    _max_rounds_source = _round_limit_source(_configured_max_rounds, max_rounds, endpoint_url)
+
+    def _budget_frame(current_round: int) -> str:
+        return _agent_budget_frame(
+            round_num=current_round,
+            round_limit=max_rounds,
+            round_limit_source=_max_rounds_source,
+            round_limit_configured=_configured_max_rounds,
+            tool_calls=total_tool_calls,
+            tool_call_limit=max_tool_calls,
+        )
+
     for round_num in range(1, max_rounds + 1):
+        yield _budget_frame(round_num)   # `P4-23`: a round only starts here
         round_response = ""
         round_reasoning = ""  # reasoning_content deltas (DeepSeek-thinking, vLLM --reasoning-parser)
         native_tool_calls = []  # populated if model uses function calling
@@ -6916,6 +7035,10 @@ async def stream_agent_loop(
                 break
 
             total_tool_calls += 1
+            # `P4-23`. Counted here, so it is counted before the card exists —
+            # including a call the policy then refuses, which the budget check
+            # above counts too and a meter that followed `tool_start` would not.
+            yield _budget_frame(round_num)
             # Build a short display string for the frontend tool bubble.
             # Document tools show a brief summary instead of dumping full content.
             is_doc_tool = block.tool_type in ("create_document", "update_document", "edit_document", "suggest_document")

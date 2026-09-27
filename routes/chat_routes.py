@@ -2852,6 +2852,7 @@ def setup_chat_routes(
                 try:
                     from src.settings import get_setting
                     from src.agent_tools import MAX_AGENT_ROUNDS as _DEFAULT_ROUNDS
+                    from src.agent_loop import AGENT_METER_EVENT_TYPES   # `P4-08`/`P4-23`
                     # Per-message tool budget from settings; guard defensively in
                     # case settings.json was hand-edited to a non-numeric value
                     # (the HTTP admin endpoint validates, but direct edits bypass
@@ -3065,6 +3066,14 @@ def setup_chat_routes(
                                     if data.get("teacher") is True:
                                         _metrics_event["teacher"] = True
                                     yield f'data: {json.dumps(_metrics_event)}\n\n'
+                                elif data.get("type") in AGENT_METER_EVENT_TYPES:
+                                    # `P4-08` / `P4-23`. This chain forwards only
+                                    # the types it names and drops the rest
+                                    # without a word. `agent_prep` was never
+                                    # named, so the one live prep signal the loop
+                                    # sent died here; the meter's events are
+                                    # read from the loop's own list instead.
+                                    yield chunk
                             except json.JSONDecodeError:
                                 yield chunk
                         elif chunk.startswith("event: "):

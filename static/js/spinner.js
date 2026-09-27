@@ -403,6 +403,37 @@ class Spinner {
   }
 
   /**
+   * `P4-08` / `P4-23`. A line of detail under the label, which leaves with the
+   * spinner.
+   *
+   * The agent meter (`agentMeter.js`) is drawn under whichever spinner is on
+   * screen, and chat.js destroys spinners from twenty-odd places — so the
+   * detail is the spinner's to remove, rather than something every one of
+   * those sites would have to remember. One node moves from spinner to
+   * spinner through a turn; a spinner only removes it while it is still the
+   * node's host, so destroying the previous spinner late cannot pull the line
+   * out from under the current one.
+   *
+   * Placed right after the spinner's own element, which therefore has to be in
+   * the page (or at least in its parent) first. Returns the node, or `null`.
+   */
+  attachDetail(node) {
+    if (!node) return null;
+    // The one rule, checked in `destroy`: a spinner removes the node only while
+    // it is still the host. The spinner it came from keeps a stale `detail`
+    // until it goes, and that is harmless — a second guard here, clearing it,
+    // was mutation-tested and found to hide the first one.
+    node._spinnerHost = this;
+    this.detail = node;
+    const anchor = this.element;
+    const parent = anchor && anchor.parentNode;
+    if (parent && anchor.nextSibling !== node) {
+      parent.insertBefore(node, anchor.nextSibling || null);
+    }
+    return node;
+  }
+
+  /**
    * Destroy the spinner and clean up
    */
   destroy() {
@@ -411,6 +442,13 @@ class Spinner {
       this.element.parentNode.removeChild(this.element);
     }
     this.element = null;
+    // `P4-08` / `P4-23`. The detail goes with it — see `attachDetail`.
+    const detail = this.detail;
+    this.detail = null;
+    if (detail && detail._spinnerHost === this) {
+      detail._spinnerHost = null;
+      if (detail.parentNode) detail.parentNode.removeChild(detail);
+    }
   }
 }
 

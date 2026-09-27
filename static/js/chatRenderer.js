@@ -24,6 +24,7 @@ import { buildAllowRuleChooser } from './trustLadder.js';
 import { renderAgentStop } from './agentStops.js';
 import { applyAgentThreadNode, verifierCardOptions,
          blockedCardOptions, toolOutputPanesHtml } from './agentThread.js';
+import { prepBreakdownRows } from './agentMeter.js';   // P4-08
 
 // The decisions that mean yes, and the whole of that set.
 //
@@ -2934,9 +2935,13 @@ export function displayMetrics(messageElement, metrics) {
     const prepTime = metrics.agent_prep_time;
     const modelWaitTime = metrics.agent_model_wait_time;
     const prepBreakdown = metrics.agent_prep_breakdown || null;
-    const prepDetails = prepBreakdown
-      ? Object.entries(prepBreakdown).map(([k, v]) => `${k}: ${v}s`).join('<br>')
-      : '';
+    // `P4-08`. The breakdown in the words the live prep line used while it
+    // ran, from the one table — this printed the raw keys (`tool_selection:
+    // 0.84s`), so the same four figures had two names depending on when you
+    // looked. Escaped: the keys and values come out of stored metadata.
+    const prepDetails = prepBreakdownRows(prepBreakdown)
+      .map((row) => `${uiModule.esc(row.label)} ${uiModule.esc(row.value)}`)
+      .join('<br>');
 
     // Session total cost
     let sessionCostStr = '';

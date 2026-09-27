@@ -1,0 +1,566 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// agentMeter.js — the live prep breakdown and the step / tool-call meter.
+//
+// `P4-08`. The agent loop has always timed four preparation steps — request
+// setup, tool selection, prompt build, context trim — and until this row it
+// said so once, after the last of them had finished, in an event the chat route
+// then dropped. What a person saw was a static spinner label: *Processing
+// request*, for as long as preparation plus the model's first token took. The
+// loop now sends a frame as each step starts (`agent_prep`, `status: running`)
+// and one when all four are done; the label under the spinner is the step that
+// is running, and the line beneath it is the ones that have finished, each with
+// the time the server measured.
+//
+// `P4-23`. A run is held to a step limit and, optionally, a tool-call limit, and
+// the first either of them reached the screen was the event announcing the run
+// had hit one. `agent_budget` carries the loop's own counters and caps — the
+// numbers the `for` and the budget check read, after the local-inference lift —
+// at the top of every round and after every counted tool call. The meter under
+// the spinner is drawn from nothing else, so it cannot disagree with the stop.
+//
+// ── Measured, estimated, unknown (`Law 10`) ────────────────────────────────
+// A figure printed plainly was measured on the server. A figure with `~` is the
+// browser counting up while a step is still running, and it is replaced by the
+// measured one when the step finishes — the same `~` the Message Stats popup
+// already uses for an estimated token count. A step that has not run has no
+// figure at all, and a limit that does not exist says "no limit", never `0`.
+//
+// ── One render path (`Law 14`) ─────────────────────────────────────────────
+// The meter is not a widget of its own. It is a line of detail under whichever
+// spinner is showing — the reply's first spinner while the agent prepares, the
+// "Thinking" spinner between tools, the spinner a new round opens with — and it
+// goes when that spinner goes (`Spinner.attachDetail`). Every stream handler
+// hands it events through `presentMeterEvent`, which is the call a resumed
+// background stream (`P4-24`) makes to draw the same thing the same way.
+//
+// This module imports nothing, so a test can load it without the app.
+
+/** The four preparation steps, in the order the loop runs them. `running` is
+ *  what the spinner says while the step is under way; `done` names it once it
+ *  has a measured time — the two label forms `P4-01` settled for tool cards. */
+export const PREP_PHASES = Object.freeze([
+  Object.freeze({ key: 'request_setup', running: 'Reading the request', done: 'Request setup' }),
+  Object.freeze({ key: 'tool_selection', running: 'Choosing tools', done: 'Tool selection' }),
+  Object.freeze({ key: 'prompt_build', running: 'Building the prompt', done: 'Prompt build' }),
+  Object.freeze({ key: 'context_trim', running: 'Fitting the context window', done: 'Context trim' }),
+]);
+
+const PREP_KEYS = PREP_PHASES.map((p) => p.key);
+
+/** What the spinner says once preparation is over and the model has the prompt. */
+export const WAITING_FOR_MODEL = 'Waiting for the model';
+
+/** Every event the meter reads. The first two exist for it; the last two are
+ *  the stops it predicts, recorded so the meter ends on what actually happened. */
+export const METER_EVENT_TYPES = Object.freeze(
+  new Set(['agent_prep', 'agent_budget', 'rounds_exhausted', 'budget_exceeded']));
+
+const ROUND_LIMIT_SOURCES = ['configured', 'local_lift', 'forced_lift'];
+
+/** Where a person changes the two limits. Admin-only, and said so. */
+const SETTINGS_PATH = 'Settings › Agent Tools';
+
+// ── small readers ─────────────────────────────────────────────────────────
+
+function positiveInt(v) {
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 1 ? n : null;
+}
+
+function countOf(v) {
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 0 ? n : null;
+}
+
+function seconds(v) {
+  if (v === null || v === undefined || typeof v === 'boolean' || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+function num(n) {
+  return Number(n).toLocaleString('en-US');
+}
+
+/** A measured duration, as the prep line prints it. Never `0.00s`: a step the
+ *  server timed at under ten milliseconds took *some* time, and a zero would
+ *  read as a step that did not happen. */
+export function formatPrepSeconds(v) {
+  const s = seconds(v);
+  if (s === null) return '';
+  if (s < 0.01) return '<0.01s';
+  if (s < 10) return `${s.toFixed(2)}s`;
+  if (s < 60) return `${s.toFixed(1)}s`;
+  const whole = Math.round(s);
+  return `${Math.floor(whole / 60)}m ${String(whole % 60).padStart(2, '0')}s`;
+}
+
+/** The name of a prep step in `form` ('running' | 'done'). A key this module
+ *  does not know keeps its own name rather than being given a wrong one. */
+export function prepPhaseLabel(key, form = 'done') {
+  const phase = PREP_PHASES.find((p) => p.key === key);
+  if (!phase) return String(key == null ? '' : key);
+  return form === 'running' ? phase.running : phase.done;
+}
+
+/** `[{ key, label, value }]` for a finished breakdown, in step order — what the
+ *  Message Stats popup prints, so the popup and the live line use one set of
+ *  words for the same four figures. Unknown keys follow, under their own name. */
+export function prepBreakdownRows(breakdown) {
+  if (!breakdown || typeof breakdown !== 'object') return [];
+  const rows = [];
+  for (const phase of PREP_PHASES) {
+    if (Object.prototype.hasOwnProperty.call(breakdown, phase.key) && seconds(breakdown[phase.key]) !== null) {
+      rows.push({ key: phase.key, label: phase.done, value: formatPrepSeconds(breakdown[phase.key]) });
+    }
+  }
+  for (const [key, value] of Object.entries(breakdown)) {
+    if (PREP_KEYS.includes(key) || seconds(value) === null) continue;
+    rows.push({ key, label: String(key), value: formatPrepSeconds(value) });
+  }
+  return rows;
+}
+
+// ── state ─────────────────────────────────────────────────────────────────
+
+/** An empty meter. `teacher` marks the run a takeover started (`teacher_takeover`
+ *  stamps every event it relays), because that run has limits of its own. */
+export function createMeterState() {
+  return { teacher: false, prep: null, budget: null, stop: null };
+}
+
+function timingsFrom(data) {
+  const out = {};
+  if (!data || typeof data !== 'object') return out;
+  for (const key of PREP_KEYS) {
+    const s = seconds(data[key]);
+    if (s !== null) out[key] = s;
+  }
+  return out;
+}
+
+/**
+ * The meter's next state after `event`. Pure: the same events in the same order
+ * give the same state, which is what lets a stream replayed from its start —
+ * `/api/chat/resume` replays the whole run buffer — rebuild the meter exactly.
+ * Returns `state` itself (the same object) when the event changes nothing.
+ *
+ * `nowMs` is the browser's clock, used for one thing only: when the running
+ * prep step started, so its `~` counter can count. It never touches a measured
+ * figure.
+ */
+export function reduceMeter(state, event, nowMs = Date.now()) {
+  const s0 = state || createMeterState();
+  if (!event || typeof event !== 'object' || !METER_EVENT_TYPES.has(event.type)) return s0;
+  const teacher = event.teacher === true;
+  // A takeover is a new run with limits of its own: start it clean rather than
+  // letting the student's step count bleed into the teacher's.
+  const s = teacher !== s0.teacher ? { ...createMeterState(), teacher } : s0;
+
+  if (event.type === 'agent_prep') {
+    // A frame with no `status` is the one the loop sent before `P4-08`, which
+    // only ever went out once everything was done.
+    const status = event.status === 'running' ? 'running' : 'done';
+    const phase = status === 'running' && PREP_KEYS.includes(event.phase) ? event.phase : null;
+    if (status === 'running' && !phase) return s0;
+    const prev = s.prep;
+    const timings = timingsFrom(event.data);
+    return {
+      ...s,
+      prep: {
+        status,
+        phase,
+        // The same step announced twice keeps its first start time, so a
+        // replayed frame does not reset the counter to zero.
+        phaseSince: phase && prev && prev.phase === phase && prev.status === 'running'
+          ? prev.phaseSince : nowMs,
+        timings,
+        total: status === 'done' ? seconds(event.total) : null,
+      },
+    };
+  }
+
+  if (event.type === 'agent_budget') {
+    const round = positiveInt(event.round);
+    if (round === null) return s0;
+    const roundLimit = positiveInt(event.round_limit);
+    const source = ROUND_LIMIT_SOURCES.includes(event.round_limit_source)
+      ? event.round_limit_source : 'configured';
+    const hasToolLimitKey = Object.prototype.hasOwnProperty.call(event, 'tool_call_limit');
+    return {
+      ...s,
+      budget: {
+        round,
+        roundLimit,
+        source,
+        configured: positiveInt(event.round_limit_configured) || roundLimit,
+        toolCalls: countOf(event.tool_calls),
+        // Three states, not two: a number, `null` for "no limit", and
+        // `undefined` for a frame that did not say — which is not the same as
+        // saying there is none.
+        toolLimit: hasToolLimitKey
+          ? (event.tool_call_limit === null ? null : positiveInt(event.tool_call_limit))
+          : undefined,
+      },
+    };
+  }
+
+  if (event.type === 'rounds_exhausted') {
+    const limit = positiveInt(event.rounds) || (s.budget && s.budget.roundLimit) || null;
+    return { ...s, stop: { kind: 'rounds', limit } };
+  }
+
+  // budget_exceeded
+  const limit = positiveInt(event.limit) || (s.budget && s.budget.toolLimit) || null;
+  return { ...s, stop: { kind: 'tool_calls', limit, used: countOf(event.used) } };
+}
+
+/** True once there is anything to draw. */
+export function meterHasContent(state) {
+  return !!(state && (state.prep || state.budget || state.stop));
+}
+
+/** True while a prep step is running — the only time the `~` counter moves. */
+export function prepIsRunning(state) {
+  return !!(state && state.prep && state.prep.status === 'running');
+}
+
+// ── words ─────────────────────────────────────────────────────────────────
+
+/** What the spinner should say, from the prep state alone. `''` when prep has
+ *  not started, so a caller leaves the label it already has. */
+export function prepSpinnerLabel(state) {
+  const p = state && state.prep;
+  if (!p) return '';
+  if (p.status === 'running') return prepPhaseLabel(p.phase, 'running');
+  return WAITING_FOR_MODEL;
+}
+
+/** Whether the prep line still belongs on screen. It is about the wait before
+ *  the run gets going, so it gives way once a tool call has been counted or a
+ *  second step has started — otherwise it would ride every spinner for the
+ *  rest of the turn, saying the same finished thing. */
+export function prepLineVisible(state) {
+  const b = state && state.budget;
+  return !b || (b.round <= 1 && !b.toolCalls);
+}
+
+/** The prep line: finished steps with their measured times, the running one
+ *  with the browser's `~` count (or an ellipsis in its first second). */
+export function prepLineText(state, nowMs = Date.now()) {
+  const p = state && state.prep;
+  if (!p || !prepLineVisible(state)) return '';
+  const parts = [];
+  for (const phase of PREP_PHASES) {
+    if (Object.prototype.hasOwnProperty.call(p.timings, phase.key)) {
+      parts.push(`${phase.done} ${formatPrepSeconds(p.timings[phase.key])}`);
+    } else if (p.status === 'running' && p.phase === phase.key) {
+      const counted = Math.floor(Math.max(0, nowMs - p.phaseSince) / 1000);
+      parts.push(counted >= 1 ? `${phase.done} ~${counted}s` : `${phase.done}…`);
+    }
+  }
+  if (p.status === 'done') {
+    const lead = p.total !== null ? `Prepared in ${formatPrepSeconds(p.total)}` : 'Prepared';
+    return parts.length ? `${lead} · ${parts.join(' · ')}` : lead;
+  }
+  return parts.length ? `Preparing · ${parts.join(' · ')}` : 'Preparing';
+}
+
+function nearThreshold(limit) {
+  return Math.max(2, Math.ceil(limit * 0.2));
+}
+
+/** `'at'`, `'near'` or `''` for `used` of `limit`. */
+function toneFor(used, limit) {
+  if (!limit || used === null) return '';
+  if (used >= limit) return 'at';
+  return limit - used <= nearThreshold(limit) ? 'near' : '';
+}
+
+/**
+ * Everything the budget line and its note say, as data. `null` before the
+ * first `agent_budget` frame.
+ *
+ *   steps  { text, value, max, tone }   `max` is null when there is no bar
+ *   tools  { text, value, max, tone } | null
+ *   note   { text, tone }               what happens at the limit, in words
+ *   title  string                       the whole rule, and where it is set
+ */
+export function budgetView(state) {
+  const b = state && state.budget;
+  if (!b) return null;
+  const who = state.teacher ? 'Teacher · ' : '';
+  const lifted = b.source !== 'configured';
+  const liftedWhere = b.source === 'local_lift' ? 'local model' : 'this server';
+
+  let steps;
+  if (b.roundLimit && !lifted) {
+    steps = {
+      text: `${who}Step ${num(b.round)} of ${num(b.roundLimit)}`,
+      value: Math.min(b.round, b.roundLimit),
+      max: b.roundLimit,
+      tone: toneFor(b.round, b.roundLimit),
+    };
+  } else if (b.roundLimit) {
+    steps = { text: `${who}Step ${num(b.round)} · limit lifted (${liftedWhere})`, value: b.round, max: null, tone: '' };
+  } else {
+    steps = { text: `${who}Step ${num(b.round)}`, value: b.round, max: null, tone: '' };
+  }
+
+  let tools = null;
+  if (b.toolCalls !== null) {
+    if (b.toolLimit) {
+      tools = {
+        text: `Tool calls ${num(b.toolCalls)} of ${num(b.toolLimit)}`,
+        value: Math.min(b.toolCalls, b.toolLimit),
+        max: b.toolLimit,
+        tone: toneFor(b.toolCalls, b.toolLimit),
+      };
+    } else if (b.toolLimit === null) {
+      tools = { text: `Tool calls ${num(b.toolCalls)} · no limit`, value: b.toolCalls, max: null, tone: '' };
+    } else {
+      tools = { text: `Tool calls ${num(b.toolCalls)}`, value: b.toolCalls, max: null, tone: '' };
+    }
+  }
+
+  // What happens at each limit, said before it happens: at the start of the
+  // run (step 1), and again once either limit is close.
+  const start = b.round <= 1;
+  const clauses = [];
+  if (b.roundLimit && !lifted) {
+    if (steps.tone === 'at') clauses.push('Last step — if it needs more, it stops here and offers Continue');
+    else if (steps.tone === 'near' || start) clauses.push(`Stops after step ${num(b.roundLimit)} and offers Continue`);
+  } else if (b.roundLimit && start) {
+    clauses.push(`Step limit lifted to ${num(b.roundLimit)} on this ${liftedWhere}`);
+  }
+  if (tools && b.toolLimit) {
+    const left = b.toolLimit - b.toolCalls;
+    if (tools.tone === 'at') clauses.push('Tool-call limit reached — one more call stops it');
+    else if (tools.tone === 'near') clauses.push(`${num(left)} tool call${left === 1 ? '' : 's'} left, then it stops`);
+    else if (start) clauses.push(`Stops outright after ${num(b.toolLimit)} tool calls`);
+  } else if (tools && b.toolLimit === null && start) {
+    clauses.push('No tool-call limit');
+  }
+  let note = {
+    text: clauses.join(' · '),
+    tone: [steps.tone, tools ? tools.tone : ''].includes('at') ? 'at'
+      : ([steps.tone, tools ? tools.tone : ''].includes('near') ? 'near' : ''),
+  };
+  if (state.stop) {
+    note = state.stop.kind === 'rounds'
+      ? { text: state.stop.limit ? `Stopped at the ${num(state.stop.limit)}-step limit` : 'Stopped at the step limit', tone: 'at' }
+      : { text: state.stop.limit ? `Stopped at the ${num(state.stop.limit)}-tool-call limit` : 'Stopped at the tool-call limit', tone: 'at' };
+  }
+
+  let stepRule;
+  if (b.roundLimit && !lifted) stepRule = `This run stops after step ${num(b.roundLimit)} and offers Continue.`;
+  else if (b.roundLimit && b.source === 'local_lift') {
+    stepRule = `On a local model the ${num(b.configured)}-step limit is lifted to ${num(b.roundLimit)}; `
+      + 'saving "Max steps per message" keeps it.';
+  } else if (b.roundLimit) stepRule = `This server lifts the ${num(b.configured)}-step limit to ${num(b.roundLimit)}.`;
+  else stepRule = 'The step limit for this run was not reported.';
+  let toolRule;
+  if (b.toolLimit) toolRule = `It stops outright after ${num(b.toolLimit)} tool calls.`;
+  else if (b.toolLimit === null) toolRule = 'There is no tool-call limit.';
+  else toolRule = 'The tool-call limit for this run was not reported.';
+
+  return {
+    steps, tools, note,
+    title: `${stepRule} ${toolRule} Both are set in ${SETTINGS_PATH}.`,
+  };
+}
+
+// ── DOM ───────────────────────────────────────────────────────────────────
+
+function el(doc, tag, className) {
+  const n = doc.createElement(tag);
+  n.className = className;
+  return n;
+}
+
+function bar(doc, kind, label) {
+  const track = el(doc, 'span', 'agent-meter-bar');
+  track.dataset.kind = kind;
+  track.setAttribute('role', 'progressbar');
+  track.setAttribute('aria-label', label);
+  track.setAttribute('aria-valuemin', '0');
+  track.appendChild(el(doc, 'span', 'agent-meter-fill'));
+  return track;
+}
+
+/** The meter's node, empty. Built once per turn and moved between spinners. */
+export function buildMeterNode(doc) {
+  const root = el(doc, 'div', 'agent-meter');
+  root.appendChild(el(doc, 'div', 'agent-meter-prep'));
+  const budget = el(doc, 'div', 'agent-meter-budget');
+  budget.appendChild(el(doc, 'span', 'agent-meter-steps'));
+  budget.appendChild(bar(doc, 'steps', 'Steps used'));
+  budget.appendChild(el(doc, 'span', 'agent-meter-tools'));
+  budget.appendChild(bar(doc, 'tools', 'Tool calls used'));
+  root.appendChild(budget);
+  root.appendChild(el(doc, 'div', 'agent-meter-note'));
+  return root;
+}
+
+function part(node, cls) {
+  return node.querySelector('.' + cls);
+}
+
+function paintBar(track, seg) {
+  const fill = track && part(track, 'agent-meter-fill');
+  if (!track || !fill) return;
+  const show = !!(seg && seg.max);
+  track.hidden = !show;
+  if (!show) return;
+  const frac = Math.max(0, Math.min(1, seg.value / seg.max));
+  fill.style.width = `${Math.round(frac * 1000) / 10}%`;
+  track.setAttribute('aria-valuemax', String(seg.max));
+  track.setAttribute('aria-valuenow', String(seg.value));
+  if (seg.tone) track.dataset.tone = seg.tone; else delete track.dataset.tone;
+}
+
+function paintText(n, text, tone) {
+  if (!n) return;
+  n.textContent = text || '';
+  n.hidden = !text;
+  if (tone) n.dataset.tone = tone; else delete n.dataset.tone;
+}
+
+/** Draw `state` into a node from `buildMeterNode`. Text only, never markup: the
+ *  words are this module's, but the numbers come off the wire. */
+export function renderMeterNode(node, state, nowMs = Date.now()) {
+  if (!node) return node;
+  const prepText = prepLineText(state, nowMs);
+  const prep = part(node, 'agent-meter-prep');
+  paintText(prep, prepText, '');
+  if (prep) {
+    prep.title = prepText
+      ? 'Times were measured on the server as each step finished. A figure with ~ '
+        + 'is still counting in your browser.'
+      : '';
+  }
+
+  const view = budgetView(state);
+  const budget = part(node, 'agent-meter-budget');
+  if (budget) budget.hidden = !view;
+  if (view) {
+    budget.title = view.title;
+    paintText(part(node, 'agent-meter-steps'), view.steps.text, view.steps.tone);
+    // `Array.from`: a browser answers with a NodeList, which has no `find`.
+    const bars = Array.from(node.querySelectorAll('.agent-meter-bar'));
+    paintBar(bars.find((b) => b.dataset.kind === 'steps'), view.steps);
+    paintText(part(node, 'agent-meter-tools'), view.tools ? view.tools.text : '', view.tools ? view.tools.tone : '');
+    paintBar(bars.find((b) => b.dataset.kind === 'tools'), view.tools);
+  }
+  const note = view ? view.note : { text: '', tone: '' };
+  paintText(part(node, 'agent-meter-note'), note.text, note.tone);
+  node.hidden = !meterHasContent(state);
+  return node;
+}
+
+/**
+ * The per-turn meter: its state, its one node, and the `~` counter's ticker.
+ *
+ * `opts.document`, `opts.now`, `opts.setInterval` and `opts.clearInterval` exist
+ * so a test can drive it without a browser; the defaults are the page's own.
+ * The ticker runs only while a prep step is running and the node is on the
+ * page, and stops itself otherwise, so a turn that ends mid-prep leaves nothing
+ * behind to clean up.
+ */
+export function createAgentMeter(opts = {}) {
+  const doc = opts.document || (typeof document !== 'undefined' ? document : null);
+  const now = typeof opts.now === 'function' ? opts.now : () => Date.now();
+  const every = opts.setInterval || ((fn, ms) => setInterval(fn, ms));
+  const stopEvery = opts.clearInterval || ((id) => clearInterval(id));
+  let state = createMeterState();
+  let node = null;
+  let ticker = null;
+
+  const ensureNode = () => {
+    if (!node && doc) node = buildMeterNode(doc);
+    return node;
+  };
+  const paint = () => {
+    if (node) renderMeterNode(node, state, now());
+  };
+  const stopTicker = () => {
+    if (ticker !== null) {
+      stopEvery(ticker);
+      ticker = null;
+    }
+  };
+  const tick = () => {
+    if (!node || !node.isConnected || !prepIsRunning(state)) {
+      stopTicker();
+      return;
+    }
+    paint();
+  };
+  const startTicker = () => {
+    if (ticker === null && prepIsRunning(state)) ticker = every(tick, 1000);
+  };
+
+  return {
+    get state() { return state; },
+    get node() { return node; },
+    /** Apply one stream event. True when it changed anything. */
+    update(event) {
+      const next = reduceMeter(state, event, now());
+      if (next === state) return false;
+      state = next;
+      if (meterHasContent(state)) {
+        ensureNode();
+        paint();
+      }
+      if (!prepIsRunning(state)) stopTicker();
+      return true;
+    },
+    /** The spinner label the prep state implies, or `''`. */
+    spinnerLabel() { return prepSpinnerLabel(state); },
+    /** Put the meter under `host` (a `Spinner`). A spinner that cannot hold a
+     *  detail line, or a meter with nothing to say, attaches nothing. */
+    attachTo(host) {
+      if (!host || typeof host.attachDetail !== 'function' || !host.element) return false;
+      if (!meterHasContent(state) || !ensureNode()) return false;
+      paint();
+      host.attachDetail(node);
+      startTicker();
+      return true;
+    },
+    /** Redraw now — the `~` counter, after a pause the ticker did not see. */
+    refresh() { paint(); },
+    dispose() { stopTicker(); },
+  };
+}
+
+/**
+ * The one call a stream handler makes for a meter event. `P4-08` / `P4-23`.
+ *
+ * Applies the event, and when there is a spinner on screen (`host`) points its
+ * label at the running prep step and hangs the meter under it. `host` is `null`
+ * for a background stream: the state still advances, nothing is drawn.
+ *
+ * `chat.js` calls this from its live stream handler. `P4-24` — a stream resumed
+ * after navigating away — calls it from `resumeStream` with that path's own
+ * spinner, which is the whole of what makes the two render the meter alike.
+ */
+export function presentMeterEvent(meter, event, host) {
+  if (!meter || !event) return false;
+  const changed = meter.update(event);
+  if (host && host.element) {
+    if (event.type === 'agent_prep') {
+      const label = meter.spinnerLabel();
+      if (label && typeof host.updateMessage === 'function') host.updateMessage(label);
+    }
+    meter.attachTo(host);
+  }
+  return changed;
+}
+
+export default {
+  PREP_PHASES, WAITING_FOR_MODEL, METER_EVENT_TYPES,
+  formatPrepSeconds, prepPhaseLabel, prepBreakdownRows,
+  createMeterState, reduceMeter, meterHasContent, prepIsRunning,
+  prepSpinnerLabel, prepLineVisible, prepLineText, budgetView,
+  buildMeterNode, renderMeterNode, createAgentMeter, presentMeterEvent,
+};
