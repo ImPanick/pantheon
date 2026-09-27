@@ -241,10 +241,15 @@ def test_the_streams_cannot_be_written_by_the_command(sandbox):
 
 def test_both_surfaces_use_the_one_builder():
     # `Law 14`. There were two copies of the merged-pane markup and both had
-    # the same defect, which is what a second copy is for.
-    for rel in ("static/js/chat.js", "static/js/chatRenderer.js"):
+    # the same defect, which is what a second copy is for. `B918` found a
+    # third, in compare mode, and moved the live card — chat.js's caller — into
+    # `agentTurn.js`, which the chat and a compare pane both draw through.
+    for rel in ("static/js/agentTurn.js", "static/js/chatRenderer.js"):
         text = (_REPO / rel).read_text(encoding="utf-8")
         assert "toolOutputPanesHtml(" in text, rel
+    for rel in ("static/js/agentTurn.js", "static/js/chatRenderer.js",
+                "static/js/chat.js", "static/js/compare/stream.js"):
+        text = (_REPO / rel).read_text(encoding="utf-8")
         # The literal a hand-built copy would carry. It is not the builder's
         # own string any more (`P5-08` put a copy button between the label and
         # the `</summary>`), which is the point: a caller still emitting the

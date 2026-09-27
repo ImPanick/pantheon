@@ -254,6 +254,9 @@ _CALLERS = [
     "static/js/chat.js",
     "static/js/chatRenderer.js",
     "static/js/compare/stream.js",
+    # `B918`. The running and the finished card, which the live chat, a resumed
+    # stream and a compare pane all draw through.
+    "static/js/agentTurn.js",
 ]
 
 
@@ -277,10 +280,11 @@ def test_every_caller_goes_through_the_builder(rel):
     assert "agentThread.js" in text
 
 
+# `B918`: the live chat's finished card and compare mode's are one function
+# now, in `agentTurn.js`, so the two live callers are that one file.
 @pytest.mark.parametrize("rel, source", [
-    ("static/js/chat.js", "json.diff"),
+    ("static/js/agentTurn.js", "json.diff"),
     ("static/js/chatRenderer.js", "ev.diff"),
-    ("static/js/compare/stream.js", "json.diff"),
 ])
 def test_every_caller_passes_its_diff_through(rel, source):
     # Extracting the renderer is worth nothing if a caller stops handing it the

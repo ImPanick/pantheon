@@ -35,13 +35,16 @@ import pytest
 
 _REPO = Path(__file__).resolve().parent.parent
 _CHAT = _REPO / "static" / "js" / "chat.js"
+# `B918`. The running card's drawing — its ticker, and the re-anchoring below —
+# moved out of chat.js into the module a compare pane shares with the chat.
+_CARD = _REPO / "static" / "js" / "agentTurn.js"
 _SUBPROCESS_TOOLS = _REPO / "src" / "agent_tools" / "subprocess_tools.py"
 pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
 
 
 def _reanchor_source() -> str:
-    """The re-anchoring branch, lifted from chat.js."""
-    text = _CHAT.read_text(encoding="utf-8")
+    """The re-anchoring branch, lifted from the running card's module."""
+    text = _CARD.read_text(encoding="utf-8")
     start = text.index("if (currentToolBubble && json.elapsed_s != null) {")
     depth, i = 0, start
     while i < len(text):
@@ -116,7 +119,7 @@ def test_the_server_sends_the_key_the_client_reads():
     # either one fails here rather than silently emptying the display.
     server = _SUBPROCESS_TOOLS.read_text(encoding="utf-8")
     assert '"elapsed_s": round(time.time() - started, 1)' in server
-    client = _CHAT.read_text(encoding="utf-8")
+    client = _CARD.read_text(encoding="utf-8")
     assert "json.elapsed_s" in client
     # Whole-line comments are cut first. The comment explaining this fix quotes
     # the wrong key by name, and matching prose would fail on the sentence that
@@ -130,8 +133,9 @@ def test_the_server_sends_the_key_the_client_reads():
 
 
 def _ticker_intervals() -> list:
-    """Every `_elapsedTicker = setInterval(…, N)` and its N."""
-    text = _CHAT.read_text(encoding="utf-8")
+    """Every `_elapsedTicker = setInterval(…, N)` and its N — the tool card's
+    and the document writer's, in the two files that hold them."""
+    text = _CHAT.read_text(encoding="utf-8") + "\n" + _CARD.read_text(encoding="utf-8")
     found = []
     for match in re.finditer(r"_elapsedTicker = setInterval\(", text):
         depth, i = 0, match.end() - 1
@@ -165,7 +169,7 @@ def test_the_image_progress_reads_the_server_figure_too():
     # M5: the re-anchor branch and this one read the same key, and fixing only
     # one leaves the indeterminate image tick showing an empty string — which
     # is the exact symptom the row was filed for.
-    client = _CHAT.read_text(encoding="utf-8")
+    client = _CARD.read_text(encoding="utf-8")
     code = "\n".join(
         line for line in client.splitlines() if not line.lstrip().startswith("//")
     )

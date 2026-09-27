@@ -48,6 +48,8 @@ export function renderAskUserCard() { return null; }
 export function safeDisplayImageSrc(s) { return s; }
 export function buildTodoCard() { return ''; }
 export function buildDiffHtml() { return ''; }
+export function demoteSupersededTodoCards() {}
+export function safeToolScreenshotSrc(s) { return String(s || ''); }
 """,
     # `B874`: the shipped `esc`, not a copy of it.
     "markdown.js": esc_source() + """
@@ -70,7 +72,9 @@ def compare_sandbox(tmp_path_factory):
         (d / name).write_text(src, encoding="utf-8")
     (d / "compare").mkdir(exist_ok=True)
     shutil.copy(COMPARE_STREAM, d / "compare" / "stream.js")
-    for name in ("agentThread.js", "agentStops.js", "spinner.js", "langIcons.js"):
+    # `B918`: the card's life, which a pane shares with the main chat.
+    for name in ("agentThread.js", "agentStops.js", "spinner.js", "langIcons.js",
+                 "agentTurn.js"):
         shutil.copy(JS / name, d / name)
     return d
 

@@ -397,10 +397,14 @@ _OPTIONS_BUILDER = re.compile(r"\b\w+CardOptions\(")
 
 # `P4-24`: chat.js's sixth is the refusal and verifier card a resumed stream
 # draws, through the same `*CardOptions` builders the live arms use.
+# `B918`: chat.js's running and finished card moved to `agentTurn.js`, which a
+# compare pane draws through too, so chat.js keeps four; compare mode's two are
+# now its refusal and its verdict, through the same `*CardOptions` builders.
 @pytest.mark.parametrize("rel, expected", [
-    ("static/js/chat.js", 6),
+    ("static/js/chat.js", 4),
     ("static/js/chatRenderer.js", 2),
     ("static/js/compare/stream.js", 2),
+    ("static/js/agentTurn.js", 2),
 ])
 def test_every_card_built_from_an_event_is_handed_that_event_s_round(rel, expected):
     # The builder can only draw a badge it is given. `P4-01` left six call

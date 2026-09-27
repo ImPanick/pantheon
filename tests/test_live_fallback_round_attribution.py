@@ -13,6 +13,7 @@ from tests.helpers.source_text import blank_text  # B290
 
 
 CHAT_JS = Path("static/js/chat.js").read_text(encoding="utf-8")
+AGENT_TURN_JS = Path("static/js/agentTurn.js").read_text(encoding="utf-8")   # `B918`
 _HAS_NODE = shutil.which("node") is not None
 
 
@@ -26,10 +27,16 @@ def _resume_function_source():
 def _shared_view_source():
     """`P4-24`: a resumed stream draws through functions it shares with the
     live one. These cases run the real ones its fallback and error paths
-    reach, cut out of chat.js by the suite's one scanner."""
+    reach, cut out of chat.js by the suite's one scanner — and, since `B918`
+    moved the card's life into a module a compare pane imports too, out of
+    `agentTurn.js`, bound to the name chat.js imports it as."""
     code = blank_text(CHAT_JS, "js")
-    names = ("_createWaitSpinners", "_stopCardTickers", "_removeViewFrom")
-    return "\n".join(js_definition(CHAT_JS, code.index(f"function {name}(")) for name in names)
+    names = ("_createWaitSpinners", "_removeViewFrom")
+    parts = [js_definition(CHAT_JS, code.index(f"function {name}(")) for name in names]
+    turn_code = blank_text(AGENT_TURN_JS, "js")
+    parts.append(js_definition(AGENT_TURN_JS, turn_code.index("function stopCardTickers(")))
+    parts.append("const _stopCardTickers = stopCardTickers;")
+    return "\n".join(parts)
 
 
 def _run_node(source):

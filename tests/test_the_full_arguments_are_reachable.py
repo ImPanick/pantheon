@@ -338,6 +338,8 @@ def _calls(text: str) -> list[str]:
     ("static/js/chat.js", "json.full_command"),
     ("static/js/chatRenderer.js", "ev.full_command"),
     ("static/js/compare/stream.js", "json.full_command"),
+    # `B918`: where the live chat's and compare mode's tool cards are built.
+    ("static/js/agentTurn.js", "json.full_command"),
 ])
 def test_every_card_that_shows_a_command_is_handed_the_whole_one(rel, source):
     for call in _calls((_REPO / rel).read_text(encoding="utf-8")):

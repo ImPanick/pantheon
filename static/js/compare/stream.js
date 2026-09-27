@@ -2,18 +2,19 @@
 // compare/stream.js — SSE streaming to panes
 import state from './state.js';
 import { addFinishBadge } from './vote.js';
-import { getModelCost, renderAskUserCard, safeDisplayImageSrc, buildTodoCard, buildDiffHtml } from '../chatRenderer.js?v=20260930wavethree1';
-import { applyAgentThreadNode } from '../agentThread.js';
+import { getModelCost, renderAskUserCard, safeDisplayImageSrc } from '../chatRenderer.js?v=20260930wavethree1';
+import { applyAgentThreadNode, blockedCardOptions, verifierCardOptions } from '../agentThread.js';
 // `B910`. The line that says why the agent stopped itself (`P4-10`).
 import { renderAgentStop } from '../agentStops.js';
+// `B918`. A tool card's life on screen — the functions the main chat and a
+// resumed stream draw theirs with.
+import { startToolCard, drawToolProgress, finishToolCard, stopCardTickers } from '../agentTurn.js';
 import markdownModule from '../markdown.js';
 import spinnerModule from '../spinner.js';
 import uiModule from '../ui.js';
 import presetsModule from '../presets.js';
 
 var escapeHtml = uiModule.esc;
-
-const WAVE_FRAMES = ['▁▂▃', '▂▃▄', '▃▄▅', '▄▅▆', '▅▆▇', '▆▅▄', '▅▄▃', '▄▃▂'];
 
 function _safeHttpHref(raw) {
   try {
@@ -316,6 +317,13 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
   let streamOk = false;
   let awaitingChoice = false;
   let currentToolBlock = null;  // track active agent tool block
+  // `B918`. The last card drawn — a tool's, or a refused call's — which is where
+  // the verifier's verdict on that work goes.
+  let lastCard = null;
+  // `B918`. What the shared card functions scroll (this pane, not the chat
+  // behind it) and where an older todo card is greyed out (this pane's history,
+  // not the other models').
+  const paneCard = { scroll: () => { if (hist) hist.scrollTop = hist.scrollHeight; }, todoScope: hist };
   // Idle timeout — abort only if no data is received for this many seconds.
   // Long generations (SVG, big code) are fine as long as the stream stays
   // active. opts.timeout may still tighten this for specific paths.
@@ -368,6 +376,16 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
       }
       if (hist) hist.scrollTop = hist.scrollHeight;
     }, delay);
+  }
+
+  // The text so far, drawn final — before a card, or a refused call's card, is
+  // drawn under it.
+  function _drawTextFinal() {
+    if (accumulated.trim() && aiMsgEl._textEl && markdownModule) {
+      aiMsgEl._textEl.innerHTML = markdownModule.processWithThinking(
+        markdownModule.squashOutsideCode(accumulated));
+      if (window.hljs) aiMsgEl._textEl.querySelectorAll('pre code:not(.hljs)').forEach(b => window.hljs.highlightElement(b));
+    }
   }
 
   try {
@@ -514,13 +532,7 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
           // ── Tool start (bash, web search agent tool) ──
           } else if (json.type === 'tool_start') {
             // Finalize any accumulated text before the tool block
-            if (accumulated.trim() && aiMsgEl._textEl) {
-              if (markdownModule) {
-                aiMsgEl._textEl.innerHTML = markdownModule.processWithThinking(
-                  markdownModule.squashOutsideCode(accumulated));
-                if (window.hljs) aiMsgEl._textEl.querySelectorAll('pre code:not(.hljs)').forEach(b => window.hljs.highlightElement(b));
-              }
-            }
+            _drawTextFinal();
             // Destroy spinner if still present
             if (aiMsgEl._spinner && aiMsgEl._spinner.element) {
               aiMsgEl._spinner.destroy();
@@ -530,7 +542,6 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
               if (spinnerEl) spinnerEl.remove();
             }
             const toolName = json.tool || 'tool';
-            const cmd = json.command || '';
             // Image generation: show ASCII spinner instead of compact tool block
             if (toolName === 'generate_image' && spinnerModule) {
               aiBody.innerHTML = '';
@@ -544,25 +555,28 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
               // its own five-entry label map and a hardcoded `▶`, so a web
               // search here could never show the magnifier the same event
               // shows in chat.
-              const node = document.createElement('div');
-              applyAgentThreadNode(node, { tool: toolName, state: 'running', command: cmd, fullCommand: json.full_command,
-                round: json.round, approved: json.approved });
+              //
+              // `B918`: and the same card life. This arm drew the card and ran
+              // a wave of its own and nothing else, so a command here had no
+              // clock; the main chat's function draws it now, clock included.
+              //
               // `B56`: no per-node click listener. `chat.js` binds one
               // delegated handler on document.body that covers these nodes
               // too, so a second one here fired alongside it and the card
               // toggled twice — clicking a tool card in compare mode did
               // nothing at all.
-              // Animate wave
-              const waveEl = node.querySelector('.agent-thread-wave');
-              if (waveEl) {
-                const waveFrames = WAVE_FRAMES;
-                let waveIdx = 0;
-                node._waveInterval = setInterval(() => { waveIdx = (waveIdx + 1) % waveFrames.length; waveEl.textContent = waveFrames[waveIdx]; }, 100);
-              }
-              aiBody.appendChild(node);
-              currentToolBlock = node;
+              currentToolBlock = startToolCard(aiBody, json, paneCard);
+              lastCard = currentToolBlock;
             }
             if (hist) hist.scrollTop = hist.scrollHeight;
+
+          // ── A running tool's progress (`B918`) ──
+          } else if (json.type === 'tool_progress') {
+            // The running card's clock, set from the server's `elapsed_s`, and
+            // the tail of the command's own output. This pane had no arm for
+            // it, so a long command sat on a wave with no sign of life until
+            // it finished.
+            if (currentToolBlock) drawToolProgress(currentToolBlock, json, paneCard);
 
           // ── Tool output (image or non-image) ──
           } else if (json.type === 'tool_output') {
@@ -597,34 +611,53 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
                 aiMsgEl._imageData = { url: safeImageUrl, prompt: json.image_prompt, model: json.image_model, size: json.image_size, quality: json.image_quality };
               }
             } else if (currentToolBlock) {
-              // Stop wave animation
-              if (currentToolBlock._waveInterval) { clearInterval(currentToolBlock._waveInterval); currentToolBlock._waveInterval = null; }
-              const ok = (json.exit_code === 0 || json.exit_code == null);
-              const cmd = json.command || '';
-              let outHtml = '';
-              if (json.output && json.output.trim()) {
-                outHtml = `<details class="agent-tool-output"><summary>Output</summary><pre>${escapeHtml(json.output)}</pre></details>`;
-              }
-              // Compare mode reaches the same /api/chat endpoint in agent mode
-              // and todowrite is not stripped, so without this the agent's task
-              // list surfaces here as the raw JSON <pre> that P6-17 replaces
-              // everywhere else. Same card, same builder — not a second one.
-              const todoHtml = buildTodoCard(json);
-              // `P4-01`: `diff` is passed through now. Compare mode's card had
-              // no slot for one, so a file edit here could never show what
-              // changed even when the event carried it. `B56`: no per-node
-              // listener — see the running branch above.
-              const _diff = buildDiffHtml(json.diff);
-              applyAgentThreadNode(currentToolBlock, {
-                tool: json.tool, state: 'done', ok, round: json.round, approved: json.approved,
-                command: cmd, fullCommand: json.full_command,
-                output: outHtml, diff: _diff, todo: todoHtml,
-              });
+              // `B918`: finished by the function the main chat finishes its
+              // cards with. The todo list (`P6-17`) and the diff (`P4-01`) this
+              // arm already drew through the shared builders; what it drew by
+              // hand was the output — one pane with stdout and stderr merged,
+              // which `P4-19` split in the main chat — and a browser tool's
+              // screenshot it did not draw at all. `B56`: no per-node listener.
+              finishToolCard(currentToolBlock, json, paneCard);
               currentToolBlock = null;
               // Reset text element so next deltas create a fresh container
               aiMsgEl._textEl = null;
               accumulated = '';
             }
+            if (hist) hist.scrollTop = hist.scrollHeight;
+
+          // ── A refused call (`B918`) ──
+          } else if (json.type === 'tool_blocked') {
+            // `P4-20`'s card. A call the policy refused never runs, so it has
+            // no `tool_start`, and this pane drew nothing: the call vanished.
+            // It is still the model's action, so it ends the text before it
+            // and takes the bottom, as a card does, and later text starts under
+            // it. It is never the running card — the `tool_output` that follows
+            // for the same call must not rewrite a card that ran.
+            _drawTextFinal();
+            if (aiMsgEl._spinner) {
+              if (aiMsgEl._spinner.element) aiMsgEl._spinner.destroy();
+              aiMsgEl._spinner = null;
+            }
+            const refused = document.createElement('div');
+            applyAgentThreadNode(refused, blockedCardOptions(json));
+            aiBody.appendChild(refused);
+            lastCard = refused;
+            currentToolBlock = null;
+            aiMsgEl._textEl = null;
+            accumulated = '';
+            if (hist) hist.scrollTop = hist.scrollHeight;
+
+          // ── The verifier's verdict (`B918`) ──
+          } else if (json.type === 'verifier') {
+            // `P4-17`'s card. The main chat puts it in the thread of the work
+            // it judged, above the answer. Here that is right after the last
+            // card, above any text written since — which also keeps the answer
+            // the pane's last text, where grading and the HTML preview read it.
+            const verdict = document.createElement('div');
+            applyAgentThreadNode(verdict, verifierCardOptions(json));
+            aiBody.insertBefore(verdict,
+              lastCard && lastCard.parentNode === aiBody ? lastCard.nextSibling : null);
+            lastCard = verdict;
             if (hist) hist.scrollTop = hist.scrollHeight;
 
           // ── The agent's guard stops (`B910`) ──
@@ -860,6 +893,13 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
     clearTimeout(timeoutId);
     _timerDone = true;
     cancelAnimationFrame(_rafId);
+    // `B918`. A card still running when the stream ends — a cancel, a timeout,
+    // an error — never gets its result. Its wave and clock stop and it stops
+    // saying it is running, as a resumed stream leaves one (`P4-24`).
+    if (currentToolBlock) {
+      stopCardTickers(currentToolBlock);
+      currentToolBlock.classList.remove('running');
+    }
     // Show final time with TTFT
     const _totalMs = performance.now() - _timerStart;
     if (_timerEl) {

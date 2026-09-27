@@ -8,11 +8,15 @@ _REPO = Path(__file__).resolve().parent.parent
 
 
 def test_live_tool_screenshot_does_not_template_raw_sse_value():
-    chat = (_REPO / "static" / "js" / "chat.js").read_text(encoding="utf-8")
+    # `B918` moved the live card's screenshot out of chat.js into the module a
+    # compare pane shares (`agentTurn.js`); chat.js must not have grown a copy.
+    live = (_REPO / "static" / "js" / "agentTurn.js").read_text(encoding="utf-8")
 
-    assert "safeToolScreenshotSrc(json.screenshot)" in chat
-    assert 'img.src = screenshotSrc' in chat
-    assert 'details.innerHTML = `<summary>Screenshot</summary><img src="${json.screenshot}"' not in chat
+    assert "safeToolScreenshotSrc(json.screenshot)" in live
+    assert 'img.src = screenshotSrc' in live
+    for name in ("agentTurn.js", "chat.js", "compare/stream.js"):
+        text = (_REPO / "static" / "js" / name).read_text(encoding="utf-8")
+        assert 'details.innerHTML = `<summary>Screenshot</summary><img src="${json.screenshot}"' not in text
 
 
 def test_restored_tool_screenshot_uses_raster_data_url_whitelist():

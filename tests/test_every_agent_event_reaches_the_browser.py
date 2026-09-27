@@ -53,6 +53,8 @@ CHAT_JS = ROOT / "static" / "js" / "chat.js"
 AGENT_METER = ROOT / "static" / "js" / "agentMeter.js"
 PROVENANCE = ROOT / "static" / "js" / "chatModelProvenance.js"
 AGENT_STOPS = ROOT / "static" / "js" / "agentStops.js"
+# `B918`: where the card's life went when a compare pane had to share it.
+AGENT_TURN = ROOT / "static" / "js" / "agentTurn.js"
 
 #: The modules whose events go out through the route's agent branch: the loop,
 #: the two guard stops it yields, and the teacher, which relays a recursive
@@ -349,6 +351,14 @@ def _definition(anchor: str) -> str:
     return js_definition(CHAT_JS.read_text(encoding="utf-8"), code.index(anchor))
 
 
+def _turn_definition(anchor: str) -> str:
+    """The same, out of `agentTurn.js`: `B918` moved the running card's drawing
+    there from chat.js, under the name chat.js still imports it as."""
+    code = blank(AGENT_TURN)
+    assert code.count(anchor) == 1, f"{anchor!r} is no longer a unique anchor"
+    return js_definition(AGENT_TURN.read_text(encoding="utf-8"), code.index(anchor))
+
+
 _STUBS = r"""
 const calls = [];
 // The round's final render marks what it wrote, so a test can tell a step
@@ -426,7 +436,11 @@ def _script(body: str) -> str:
         # module scope so a resumed stream draws the same way.
         _definition("function _newRoundBubble("),
         _definition("function _threadForNextCard("),
-        _definition("function _startToolCard("),
+        # `B918`: the running card, from the module both chat.js and a
+        # compare pane import it from, bound to the name chat.js uses.
+        _turn_definition("function scrollAfter("),
+        _turn_definition("function startToolCard("),
+        "const _startToolCard = startToolCard;",
         # `B917`: the teacher's spinner is the one a step opens with.
         _definition("function _openRoundSpinner("),
         # `B922`: and its bubble is headed with the teacher's model.

@@ -27,6 +27,9 @@ import { createStreamRenderer } from './streamingRenderer.js';
 import { applyAgentThreadNode, verifierCardOptions, blockedCardOptions,
          toolOutputPanesHtml, agentThreadContent, ensureThreadToggleAll,
          toggleThreadAll, syncThreadToggleAll, TOOL_LABELS } from './agentThread.js';
+// `B918`. A tool card's life on screen, shared with a compare pane.
+import { startToolCard as _startToolCard, drawToolProgress as _drawToolProgress,
+         finishToolCard as _finishToolCard, stopCardTickers as _stopCardTickers } from './agentTurn.js';
 // `P4-10`. The line that says why the agent stopped itself — and (`B915`) the
 // turn's other notes, drawn by the same module for the reload.
 import { renderAgentStop, renderAgentNote } from './agentStops.js';
@@ -6312,183 +6315,10 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     return bare;
   }
 
-  /** Stop a card's wave and clock. A card still running when its stream ends
-   *  would otherwise tick forever on a node nobody can see. */
-  function _stopCardTickers(node) {
-    if (!node) return;
-    if (node._waveInterval) { clearInterval(node._waveInterval); node._waveInterval = null; }
-    if (node._elapsedTicker) { clearInterval(node._elapsedTicker); node._elapsedTicker = null; }
-  }
-
-  /** The running card for a `tool_start`, appended to `threadWrap`, with its
-   *  wave and its clock going. Returns the card. */
-  function _startToolCard(threadWrap, json) {
-    const cmd = json.command || '';
-    const node = document.createElement('div');
-    applyAgentThreadNode(node, { tool: json.tool, state: 'running', command: cmd, fullCommand: json.full_command,
-      round: json.round, approved: json.approved });
-    // Expand/collapse via delegated click handler (init at module bottom).
-    threadWrap.appendChild(node);
-    // Animate the wave
-    const waveEl = node.querySelector('.agent-thread-wave');
-    if (waveEl) {
-      const waveFrames = ['▁▂▃', '▂▃▄', '▃▄▅', '▄▅▆', '▅▆▇', '▆▅▄', '▅▄▃', '▄▃▂'];
-      let waveIdx = 0;
-      node._waveInterval = setInterval(() => {
-        waveIdx = (waveIdx + 1) % waveFrames.length;
-        waveEl.textContent = waveFrames[waveIdx];
-      }, 100);
-    }
-    // Smooth per-second "cooking" timer — ticks every 50ms (not
-    // just on the 2s backend heartbeat) so a long-running tool
-    // always shows visible motion and never reads as frozen.
-    //
-    // `P4-02`: the anchor is corrected from the server on every
-    // `tool_progress`. Starting the clock here means starting it
-    // when this event was *rendered* — after the dispatch, the
-    // network, and for an approved tool after however long the
-    // person took to press the button — so the number shown was a
-    // client-side guess that could be seconds short. Worse on a
-    // resumed background stream, where `tool_start` replays and
-    // restarts the clock at zero on a tool that has been running
-    // for a minute.
-    node._startTime = Date.now();
-    node._elapsedTicker = setInterval(() => {
-      const hdr2 = node.querySelector('.agent-thread-header');
-      if (!hdr2) return;
-      let el2 = hdr2.querySelector('.agent-thread-elapsed');
-      if (!el2) {
-        el2 = document.createElement('span');
-        el2.className = 'agent-thread-elapsed';
-        // Sits on the LEFT, right after the icon.
-        const icon = hdr2.querySelector('.agent-thread-icon');
-        if (icon && icon.nextSibling) hdr2.insertBefore(el2, icon.nextSibling);
-        else hdr2.appendChild(el2);
-      }
-      const s = (Date.now() - node._startTime) / 1000;
-      // Hundredths so it visibly counts sub-second (1.00, 1.05, …).
-      el2.textContent = s < 60 ? `${s.toFixed(2)}s` : `${Math.floor(s / 60)}m ${(s % 60).toFixed(2).padStart(5, '0')}s`;
-    }, 50);
-    uiModule.scrollHistory();
-    return node;
-  }
-
-  /** A long-running tool's `tool_progress` on its running card: the image
-   *  progress row, the server's clock, and the tail of its output. */
-  function _drawToolProgress(currentToolBubble, json) {
-    const isImageProgress = /image/i.test(String(json.tool || '')) || /image/i.test(String(json.message || ''));
-    if (json.total || json.percent != null || isImageProgress) {
-      // `P5-02`: the fold animates on one grid item, so anything
-      // added after the card was built goes inside the wrapper.
-      const content = agentThreadContent(currentToolBubble);
-      if (content) {
-        let progressEl = currentToolBubble.querySelector('.agent-image-progress');
-        if (!progressEl) {
-          progressEl = document.createElement('div');
-          progressEl.className = 'agent-image-progress';
-          progressEl.innerHTML = '<div class="agent-image-progress-row"><span class="agent-image-progress-label"></span><span class="agent-image-progress-value"></span></div>';
-          content.appendChild(progressEl);
-        }
-        const step = Number(json.step || 0);
-        const total = Number(json.total || 0);
-        const hasExactProgress = total > 0 || json.percent != null;
-        progressEl.classList.toggle('is-indeterminate', !hasExactProgress);
-        const pct = Number(json.percent != null ? json.percent : (total ? (step / total) * 100 : 0));
-        const bounded = Math.max(0, Math.min(100, Number.isFinite(pct) ? pct : 0));
-        const label = progressEl.querySelector('.agent-image-progress-label');
-        const value = progressEl.querySelector('.agent-image-progress-value');
-        if (label) label.textContent = json.message || 'Editing image…';
-        // `P4-02`: `elapsed_s`. The server has always sent that key
-        // and this read `json.elapsed`, so the indeterminate case
-        // showed an empty string rather than a number.
-        if (value) value.textContent = hasExactProgress ? (total ? `${step}/${total}` : `${Math.round(bounded)}%`) : (json.elapsed_s != null ? `${json.elapsed_s}s` : '');
-      }
-    }
-    // `P4-02`. The ticker owns the *display* — 50ms so the number
-    // moves — but the server owns the *time*. Re-anchor on every
-    // progress event so the smooth count is a correction of server
-    // truth rather than a local stopwatch that started late and
-    // drifts. `elapsed_s` has been on the wire all along; nothing
-    // read it.
-    if (currentToolBubble && json.elapsed_s != null) {
-      const _serverElapsed = Number(json.elapsed_s);
-      if (Number.isFinite(_serverElapsed) && _serverElapsed >= 0) {
-        currentToolBubble._startTime = Date.now() - _serverElapsed * 1000;
-      }
-    }
-    // Below: the live output tail.
-    const tailStr = (json.tail || '').trim();
-    if (tailStr) {
-      let tailEl = currentToolBubble.querySelector('.agent-thread-tail');
-      if (!tailEl) {
-        tailEl = document.createElement('pre');
-        tailEl.className = 'agent-thread-tail';
-        tailEl.style.cssText = 'margin:4px 0 0;padding:6px 8px;font-size:11px;background:rgba(0,0,0,0.18);border-radius:4px;max-height:140px;overflow:auto;white-space:pre-wrap;opacity:0.85;';
-        const content = agentThreadContent(currentToolBubble);   // `P5-02`
-        if (content) content.appendChild(tailEl);
-      }
-      tailEl.textContent = tailStr;
-      tailEl.scrollTop = tailEl.scrollHeight;
-    }
-    uiModule.scrollHistory();
-  }
-
-  /** The finished card for a `tool_output`: its clock stopped, its result, its
-   *  diff and its todo list drawn, and the browser screenshot if it took one. */
-  function _finishToolCard(currentToolBubble, json) {
-    // Stop wave animation + the per-second cooking ticker
-    _stopCardTickers(currentToolBubble);
-    const ok = (json.exit_code === 0 || json.exit_code == null);
-    const cmd = json.command || '';
-    // `P4-19`: one builder for the panes. There were two copies
-    // of this markup and both merged stdout and stderr into one
-    // pane, which is how a failing command with chatty output
-    // came to lose its error message.
-    const outHtml = toolOutputPanesHtml(json);
-    // File-write diff (write_file). `P4-01`: one renderer, shared
-    // with history replay and compare mode.
-    const diffHtml = buildDiffHtml(json.diff);
-    // The agent's own todo list (P6-17). `todowrite` keeps a
-    // structured task list and the prompt tells the model to use
-    // it for multi-step work; until now it surfaced only as the
-    // raw args JSON plus a text listing, both behind the fold.
-    // The card goes BETWEEN the header and .agent-thread-content
-    // so it needs no click (Law 15) — the raw output keeps its
-    // <details> inside the fold, so nothing is taken away.
-    const todoHtml = chatRenderer.buildTodoCard(json);
-    // `P4-01`: hiding the raw-JSON command next to a diff or a
-    // todo card, and preserving the user's `.open` choice across
-    // the rewrite, both moved into `applyAgentThreadNode` — they
-    // were right here and absent from the other five copies.
-    // Click handling is delegated (see init at bottom of file),
-    // so no per-node listener is added anywhere.
-    applyAgentThreadNode(currentToolBubble, {
-      tool: json.tool, state: 'done', ok, round: json.round, approved: json.approved,
-      command: cmd, fullCommand: json.full_command,
-      output: outHtml, diff: diffHtml, todo: todoHtml,
-    });
-    if (todoHtml) chatRenderer.demoteSupersededTodoCards();
-    // --- Render browser screenshots in tool output ---
-    if (json.screenshot) {
-      const contentEl = agentThreadContent(currentToolBubble);   // `P5-02`
-      if (contentEl) {
-        const screenshotSrc = chatRenderer.safeToolScreenshotSrc(json.screenshot);
-        if (screenshotSrc) {
-          const details = document.createElement('details');
-          details.className = 'agent-tool-output';
-          const summary = document.createElement('summary');
-          summary.textContent = 'Screenshot';
-          const img = document.createElement('img');
-          img.src = screenshotSrc;
-          img.style.cssText = 'max-width:100%;border-radius:6px;margin-top:6px;border:1px solid var(--border)';
-          details.appendChild(summary);
-          details.appendChild(img);
-          contentEl.appendChild(details);
-        }
-      }
-    }
-    uiModule.scrollHistory();
-  }
+  // `B918`. The running card, its progress and the finished card —
+  // `_startToolCard`, `_drawToolProgress`, `_finishToolCard` and
+  // `_stopCardTickers` — live in `agentTurn.js` (imported at the top under
+  // these names), so a compare pane draws a card the way both streams here do.
 
   /** Take `node` and everything drawn after it off the history, stopping the
    *  clocks of any cards among them. */

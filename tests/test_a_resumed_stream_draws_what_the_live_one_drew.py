@@ -12,9 +12,10 @@ it. A chat reopened in the same tab (`checkBackgroundStream`) got less: one
 spinner saying "Response streaming in background".
 
 **What is pinned here.** Driven under node against the real modules
-(`agentThread.js`, `agentMeter.js`, `agentStops.js`, `spinner.js`) and against
-the real functions cut out of `chat.js` — the live stream's own arms, the
-shared drawing functions, `resumeStream` itself:
+(`agentThread.js`, `agentMeter.js`, `agentStops.js`, `spinner.js`, and
+`agentTurn.js`, where `B918` moved the card's life so a compare pane shares it)
+and against the real functions cut out of `chat.js` — the live stream's own
+arms, the shared drawing functions, `resumeStream` itself:
 
   * one recorded agent run, fed through the live arms and through the resumed
     stream, draws the same thing after every event — threads, cards, steps,
@@ -225,6 +226,15 @@ _STUBS = {
     # `B874`: the shipped `esc`, not a copy of it.
     "ui.js": ui_default_stub("showToast() {}, showError() {}, scrollHistory() {},\n"
                              "el: (id) => document.getElementById(id),"),
+    # `B918`: what `agentTurn.js` — the card's life, moved out of `chat.js` so a
+    # compare pane can draw it too — reads from the renderer. The same answers
+    # the `chatRenderer` object in `_PREAMBLE` gives the code cut out of chat.js.
+    "chatRenderer.js": """
+export const buildTodoCard = () => '';
+export function demoteSupersededTodoCards() {}
+export const safeToolScreenshotSrc = (s) => String(s || '');
+export const buildDiffHtml = (d) => (d ? '<div class="agent-diff">changed</div>' : '');
+""",
 }
 
 
@@ -232,7 +242,7 @@ _STUBS = {
 def sandbox(tmp_path_factory):
     d = _make_sandbox(tmp_path_factory.mktemp("resumedview"), JS / "agentThread.js",
                       _SHIM, _STUBS)
-    for name in ("agentMeter.js", "agentStops.js", "spinner.js",
+    for name in ("agentMeter.js", "agentStops.js", "spinner.js", "agentTurn.js",
                  "chatModelProvenance.js", "chatStreamErrors.js"):
         shutil.copy(JS / name, d / name)
     return d
@@ -289,8 +299,7 @@ _MODULE_LEVEL = (
     "_createWaitSpinners", "_openRoundSpinner", "_newRoundBubble", "_threadForNextCard",
     "_threadIntoNextStep",   # `B919`
     "_headWithTeacher",      # `B922`
-    "_threadOrBare", "_stopCardTickers", "_startToolCard", "_drawToolProgress",
-    "_finishToolCard", "_removeViewFrom",
+    "_threadOrBare", "_removeViewFrom",
     "checkBackgroundStream", "_showBackgroundStreamSpinner",
 )
 
@@ -308,6 +317,9 @@ import { applyAgentThreadNode, verifierCardOptions, blockedCardOptions, toolOutp
          agentThreadContent, TOOL_LABELS } from './agentThread.js';
 import { renderAgentStop, renderAgentNote } from './agentStops.js';
 import { createAgentMeter, presentMeterEvent, METER_EVENT_TYPES } from './agentMeter.js';
+// `B918`: the card's life, the real module, under the names chat.js imports it as.
+import { startToolCard as _startToolCard, drawToolProgress as _drawToolProgress,
+         finishToolCard as _finishToolCard, stopCardTickers as _stopCardTickers } from './agentTurn.js';
 import spinnerModule from './spinner.js';
 import uiModule from './ui.js';
 import { inheritModelRouteState, applyModelRouteEventState } from './chatModelProvenance.js';

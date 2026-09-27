@@ -350,6 +350,8 @@ def _calls(text: str) -> list[str]:
 
 @pytest.mark.parametrize("rel", [
     "static/js/chat.js", "static/js/chatRenderer.js", "static/js/compare/stream.js",
+    # `B918`: the live and compare cards, drawn by one module since.
+    "static/js/agentTurn.js",
 ])
 def test_every_card_built_from_an_event_is_handed_its_approval(rel):
     for call in _calls((_REPO / rel).read_text(encoding="utf-8")):
