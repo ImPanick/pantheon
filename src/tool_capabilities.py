@@ -17,6 +17,7 @@ from typing import Any, Iterable, Mapping
 
 from src.tool_approval_scopes import CHAT_SESSION_APPROVAL_CONTEXT_MARKER
 from src.tool_security import BUILTIN_EMAIL_TOOLS, is_public_blocked_tool
+from src.ui_switches import switch_request
 
 
 class ToolEffect(str, Enum):
@@ -333,6 +334,126 @@ def capabilities_for_tool(tool_name: Any) -> ToolCapabilities:
     return _UNKNOWN_CAPABILITIES
 
 
+# ── The assistant may take its own reach away, never give itself more (P7-02) ─
+#
+# `ui_control` moves the chat's own switches — the shell, web search, Deep
+# Research, the RAG knowledge base, the document editor, Nobody mode, Agent mode
+# — and the browser applies whatever comes back without asking anyone
+# (`static/js/chatStream.js`, `handleUIControl`). Registered as a UI side effect
+# and nothing more, it went through this gate the way a theme change does:
+# unasked in every clean run at the default rung, and unasked in a tainted run
+# too once the person had pressed "allow for this task" for something else. So
+# the assistant could switch the shell back on after being told it was off —
+# on its own reading of a request, or on a page's say-so once any blanket yes
+# was in hand — and the next message the person sent carried `allow_bash=true`
+# without them touching anything.
+#
+# **The rule is one-directional on purpose.** Switching something *off* — or
+# Nobody mode *on*, or back to Chat — only narrows what the assistant can do and
+# stays exactly as unasked as it was: an assistant that can stand itself down is
+# one a person can ask to. Switching something *on* widens it, and that asks
+# every time: at every rung, tainted or clean, and under no blanket approval.
+# "Allow for this task" and "allow for this chat session" answer the
+# untrusted-content gate; neither is a person choosing to hand the assistant a
+# tool. The sealed exact grant still authorises the one action it was minted
+# for, through `PendingToolApproval` unchanged (`Law 14`).
+#
+# Everything else `ui_control` does — panels, themes, a model switch, an email
+# draft — does not move the assistant's own reach and is untouched.
+
+
+@dataclass(frozen=True)
+class SelfEscalation:
+    """One `ui_control` request that would widen what the assistant may do."""
+
+    # The switch after aliasing: a toggle name, or `agent` for `set_mode agent`.
+    switch: str
+    # What the card says the assistant wants to do, in the words on the switch.
+    words: str
+    # What switching it hands over, as `ToolEffect`s, so the card ranks and
+    # phrases it through `describe_effects` like every other action (`P7-06`) —
+    # not a second vocabulary for "this one is serious".
+    grants: frozenset[ToolEffect]
+
+
+def _effects_of(*tool_names: str) -> frozenset[ToolEffect]:
+    """The registered effects of the tools a switch hands over. Derived, so a
+    tool reclassified above reclassifies every switch that governs it."""
+    return frozenset().union(*(TOOL_CAPABILITIES[name].effects for name in tool_names))
+
+
+# Each switch, the words for moving it the widening way, and what that hands
+# over. A switch that governs registered tools grants *their* effects; the two
+# that govern no tool say what they do instead of borrowing one.
+_REACH_SWITCHES: Mapping[str, tuple[str, frozenset[ToolEffect]]] = MappingProxyType({
+    # `allow_bash` is the container shell and the host shell together (`P17-11`,
+    # `routes/chat_routes.py`), so the host shell's `destructive` comes with it.
+    "bash": ("turn on Shell access", _effects_of("bash", "host_shell")),
+    # `src/tool_policy.WEB_TOOL_NAMES`.
+    "web": ("turn on Web search", _effects_of("web_search", "web_fetch")),
+    # The next message runs a Deep Research job, which is `trigger_research`.
+    "research": ("turn on Deep Research", _effects_of("trigger_research")),
+    # Retrieval is not a tool (`src/tool_security._FEATURE_NOTES["rag"]`): the
+    # person's indexed documents are put into the prompt.
+    "rag": ("turn on the RAG knowledge base", frozenset({ToolEffect.READ_PRIVATE})),
+    "document_editor": (
+        "turn on the Document Editor",
+        _effects_of("create_document", "edit_document", "update_document", "suggest_document"),
+    ),
+    # *Off* is the widening direction here: the chat is saved again and memory
+    # is read and written again — `routes/chat_routes.py` withholds the memory
+    # and history tools while Nobody mode is on.
+    "incognito": (
+        "turn off Nobody mode",
+        frozenset({ToolEffect.READ_PRIVATE, ToolEffect.WRITE_PRIVATE}),
+    ),
+    # Agent mode is the tool loop itself, so it hands over what the tools do.
+    "agent": ("switch to Agent mode", _effects_of(*KNOWN_CAPABILITY_TOOLS)),
+})
+
+# The one toggle whose *on* narrows: Nobody mode takes memory and history away.
+_TOGGLES_THAT_NARROW_WHEN_ON = frozenset({"incognito"})
+
+
+def self_escalation_for(tool_name: Any, content: Any) -> SelfEscalation | None:
+    """`P7-02`. Would this action widen the assistant's own reach? `None` if not.
+
+    The command is read by `src/ui_switches.switch_request`, which is the
+    executor's own reading of it — so an alias, a capital letter, a tab or a
+    trailing word means exactly here what it means when the command runs, and
+    there is no spelling that one of them understands and the other does not.
+
+    A toggle this table has not heard of fails *high*: its "on" is treated as a
+    widening with every effect an unknown tool is assumed to have, the rule this
+    module already applies to unknown tools. A new switch should be added to
+    `_REACH_SWITCHES` with its own words — the test for that is what stops this
+    fallback being the one a person ever reads.
+    """
+    if tool_name != "ui_control":
+        return None
+    request = switch_request(content)
+    if not request:
+        return None
+    event = request.get("ui_event")
+    if event == "toggle":
+        switch = str(request.get("toggle_name") or "")
+        state = bool(request.get("state"))
+        widens = (not state) if switch in _TOGGLES_THAT_NARROW_WHEN_ON else state
+    elif event == "set_mode":
+        switch = str(request.get("mode") or "")
+        widens = switch == "agent"
+    else:
+        # An error dict: the executor refuses the command, so it moves nothing.
+        return None
+    if not widens:
+        return None
+    words, grants = _REACH_SWITCHES.get(
+        switch,
+        (f"turn on {switch}", _UNKNOWN_CAPABILITIES.effects),
+    )
+    return SelfEscalation(switch=switch, words=words, grants=grants)
+
+
 _PRIVATE_ACTION_READS: Mapping[str, frozenset[str]] = MappingProxyType(
     {
         "manage_calendar": frozenset({"list_calendars", "list_events"}),
@@ -552,6 +673,20 @@ def capabilities_for_action(tool_name: Any, content: Any) -> ToolCapabilities:
     base = capabilities_for_tool(tool_name)
     if not isinstance(tool_name, str):
         return base
+
+    # `P7-02`. A switch the assistant would turn on for itself carries what the
+    # switch hands over, so the card ranks it by that and not as a theme change:
+    # registered as `ui_side_effect` alone, "turn on Shell access" drew the
+    # lowest band on the card, below the `bash` command it exists to enable —
+    # the inversion `P7-06` was written to end. The seal follows, because
+    # `ExactToolApproval.claim` re-derives the effects from this function.
+    escalation = self_escalation_for(tool_name, content)
+    if escalation is not None:
+        return ToolCapabilities(
+            frozenset(base.effects | escalation.grants),
+            base.result_integrity,
+            known=base.known,
+        )
 
     # Every table below is keyed on the bare tool name, but the model can call an
     # email tool under its MCP alias — `capabilities_for_tool` already strips
@@ -1154,6 +1289,17 @@ class ToolRunSecurityContext:
             or self.rung in _RUNGS_THAT_ASK_UNTAINTED
         )
 
+    def asks_for(self, tool_name: Any, content: Any = None) -> bool:
+        """Whether this run's gate stops and asks before *this* action.
+
+        `P7-02`. `gate_is_armed` answers for the whole run and keeps meaning
+        exactly that. A self-escalation asks in every run, armed or not — so its
+        approval has to be replayable into a run whose gate is otherwise quiet,
+        or the card it mints is one nobody can answer: `P7-03`'s incident a
+        second time, at the same line of `src/tool_execution.py`.
+        """
+        return self.gate_is_armed or self_escalation_for(tool_name, content) is not None
+
     def decision_for(self, tool_name: Any, content: Any = None) -> ToolGateDecision:
         # B70. Checked before the bypasses below, because neither may lift it,
         # and kept independent of `external_untrusted_context_seen` so it holds
@@ -1167,6 +1313,13 @@ class ToolRunSecurityContext:
                 ),
                 classification=TOOL_CLASSIFICATION_UNAVAILABLE,
             )
+        # `P7-02`. Before the bypass and before the untainted exit, because
+        # both exist to let the assistant *act* without asking, and neither is
+        # a person choosing to give it more to act with. Below B70, whose
+        # refusal no approval lifts — this one an approval does, once.
+        escalation = self_escalation_for(tool_name, content)
+        if escalation is not None:
+            return self._self_escalation_decision(escalation)
         # The bypass does not outrank a rung that asks. **Refutation proved the
         # ladder inverted without this line**, and the reproduction is worth
         # keeping: on `ask_every_time`, approving one harmless `bash` in a clean
@@ -1288,6 +1441,44 @@ class ToolRunSecurityContext:
             ),
             tripped_effects=tripped,
             classification=classification,
+        )
+
+    def _self_escalation_decision(self, escalation: SelfEscalation) -> ToolGateDecision:
+        """`P7-02`. The refusal, in the words on the switch.
+
+        The sentence reaches the card through the same door every refusal does
+        — `decision.reason` becomes the payload's `description`, which
+        `static/js/chatRenderer.js` draws under the question (`P4-04`) — and the
+        grant rides beside it as `tripped_effects`, ranked by `describe_effects`.
+
+        It says "every time" and "even after you have allowed other actions"
+        because the card's own buttons say "allow for this task" and "allow for
+        this chat session", and a person who pressed one of those earlier is
+        owed the reason they are being asked again.
+
+        Taint is named when it is true and never when it is not: the card's
+        `gate.tainted` sits beside this sentence, and a sentence blaming
+        untrusted content over `tainted: false` is two statements contradicting
+        each other on one surface (`Law 10`, `P4-04`).
+        """
+        why = (
+            "External untrusted context has already influenced this run. "
+            if self.external_untrusted_context_seen
+            else ""
+        )
+        # `P7-07`'s meaning of "tripped": the part of the grant the gate treats
+        # as consequential, not every effect it includes — "Asks you a question"
+        # is part of Agent mode and is not why anybody is being asked.
+        tripped = (escalation.grants & POST_EXTERNAL_BLOCKED_EFFECTS) or escalation.grants
+        return ToolGateDecision(
+            False,
+            (
+                f"{why}The assistant wants to {escalation.words}. Only you can "
+                "give it more access, so it asks every time — even after you "
+                "have allowed other actions."
+            ),
+            tripped_effects=tuple(describe_effects(tripped).get("effects", ())),
+            classification=TOOL_CLASSIFICATION_RECOGNISED,
         )
 
     def _allow_rule_matches(self, tool_name: Any, content: Any) -> bool:

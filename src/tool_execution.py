@@ -807,9 +807,21 @@ async def execute_tool_block(
         # question, and it lives in `tool_capabilities.py` beside the gate so
         # there is one answer rather than a copy here that goes stale the next
         # time a rung is added.
+        #
+        # `P7-02` asked it about *this action*, and it had to. A request by the
+        # assistant to widen its own reach — `ui_control toggle bash on` — asks
+        # in every run, including a clean one at the default rung where
+        # `gate_is_armed` is false. Asked of the run alone, approving that card
+        # answered "requires an armed run security context" and the switch
+        # never moved: the question nobody could answer from the first paragraph
+        # above, minted by a different door. `asks_for` is `gate_is_armed` plus
+        # that one case, and it lives beside the gate too.
         if (
             not isinstance(security_context, ToolRunSecurityContext)
-            or not security_context.gate_is_armed
+            or not security_context.asks_for(
+                getattr(block, "tool_type", None),
+                getattr(block, "content", None),
+            )
         ):
             return _refused(
                 block,

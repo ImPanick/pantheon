@@ -26,6 +26,7 @@ from src.constants import GENERATED_IMAGES_DIR
 from src.env_flags import env_flag, tool_arg_truthy
 from src.memory import MemoryStoreUnreadable
 from src.theme_advanced_keys import advanced_keys_prose, is_advanced_key
+from src.ui_switches import SWITCH_ACTIONS, command_parts, switch_request
 
 logger = logging.getLogger(__name__)
 
@@ -643,53 +644,16 @@ async def do_ui_control(content: str, session_id: Optional[str] = None, owner: O
     if not lines:
         return {"error": "No action specified"}
 
-    parts = lines[0].strip().split(None, 2)
+    parts = command_parts(content)
     action = parts[0].lower()
 
-    if action == "toggle":
-        if len(parts) < 3:
-            return {"error": "toggle needs: toggle <name> <on|off>"}
-        toggle_name = parts[1].lower()
-        # `B97`. One of three vocabularies this file and `builtin_actions`
-        # used for "what did the model mean by yes"; the shared rule is the
-        # union of all three, so no spelling any of them took is lost.
-        state = tool_arg_truthy(parts[2])
-        # Friendly aliases — users say "shell" / "search" naturally.
-        _toggle_aliases = {
-            "shell": "bash",
-            "terminal": "bash",
-            "search": "web",
-            "websearch": "web",
-            "web_search": "web",
-            "deepresearch": "research",
-            "deep_research": "research",
-            "documents": "document_editor",
-            "doc": "document_editor",
-            "docs": "document_editor",
-            "private": "incognito",
-        }
-        toggle_name = _toggle_aliases.get(toggle_name, toggle_name)
-        valid_toggles = {"web", "bash", "rag", "research", "incognito", "document_editor"}
-        if toggle_name not in valid_toggles:
-            return {"error": f"Unknown toggle '{toggle_name}'. Valid: {', '.join(sorted(valid_toggles))}"}
-        return {
-            "ui_event": "toggle",
-            "toggle_name": toggle_name,
-            "state": state,
-            "results": f"Toggle '{toggle_name}' set to {'on' if state else 'off'}",
-        }
-
-    elif action == "set_mode":
-        if len(parts) < 2:
-            return {"error": "set_mode needs: set_mode <agent|chat>"}
-        mode = parts[1].lower()
-        if mode not in ("agent", "chat"):
-            return {"error": f"Invalid mode '{mode}'. Use: agent, chat"}
-        return {
-            "ui_event": "set_mode",
-            "mode": mode,
-            "results": f"Mode changed to '{mode}'",
-        }
+    if action in SWITCH_ACTIONS:
+        # `P7-02`. `toggle` and `set_mode` are read in `src/ui_switches.py`, and
+        # the approval gate reads them there too, before this runs. The alias
+        # map and the on/off rule used to live in this branch, where the gate
+        # could not see them — so a spelling only this branch understood would
+        # have been a way to switch a tool on that the gate never recognised.
+        return switch_request(content)
 
     elif action == "switch_model":
         model_spec = " ".join(parts[1:]) if len(parts) > 1 else ""

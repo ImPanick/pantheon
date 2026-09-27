@@ -187,6 +187,14 @@ def list_rules(owner: Any) -> List[Dict[str, Any]]:
         db.close()
 
 
+def _widens_own_reach(tool_name: str, pattern: str) -> bool:
+    """`P7-02`. Asked of the gate's own module, so this store and the gate
+    cannot disagree about which actions no rule may cover."""
+    from src.tool_capabilities import self_escalation_for
+
+    return self_escalation_for(tool_name, pattern) is not None
+
+
 def create_rule(
     owner: Any,
     tool_name: Any,
@@ -232,6 +240,18 @@ def create_rule(
         )
     elif len(stored_pattern) > MAX_PATTERN_LEN:
         raise AllowRuleError(f"Pattern is longer than {MAX_PATTERN_LEN} characters.")
+    elif kind == MATCH_EXACT and _widens_own_reach(tool, stored_pattern):
+        # `P7-02`. The gate asks before every one of these and consults no rule
+        # first, so an exact rule for one could never be used — and the card's
+        # chooser would still have said "Saved. Pantheon will stop asking before
+        # it does this." That is the control-that-reports-success-and-does-
+        # nothing `P7-04` already had to come back for once. The chooser shows
+        # this sentence verbatim in place of the toast. `prefix` and `any` rules
+        # still cover the rest of what the tool does, so they are not refused.
+        raise AllowRuleError(
+            "Pantheon asks every time the assistant wants more access, so this "
+            "cannot be saved as a rule. Your approval still covers this one action."
+        )
 
     cdb = _database()
     db = cdb.SessionLocal()
