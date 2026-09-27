@@ -38,6 +38,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests.helpers.esc_stub import ui_default_stub  # B874
+
 from test_tool_effect_surfaces_js import _make_sandbox, _run  # noqa: E402
 from tests.helpers.js_source import js_definition
 from tests.helpers.source_text import blank_text
@@ -317,19 +319,17 @@ def test_the_route_is_behind_the_real_admin_gate(monkeypatch):
 
 # ── the browser ──────────────────────────────────────────────────────────────
 
-_UI_STUB = """
-const esc = (s) => String(s == null ? '' : s)
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-// The real copyToClipboard reaches the clipboard before its first await
-// (`B59`); recording the call as it is made is what that property looks like.
-export default {
-  esc,
-  copyToClipboard(text) { globalThis.__copies.push(String(text)); return Promise.resolve(true); },
-  copyText(text) { globalThis.__copies.push(String(text)); return Promise.resolve(true); },
-  showToast(msg) { globalThis.__toasts.push(String(msg)); },
-  showError(msg) { globalThis.__toasts.push('error: ' + String(msg)); },
-};
-"""
+# `B874`: the stub carries the shipped escaper, read out of
+# `static/js/util/escapeHtml.js` by the suite's one helper, rather than a
+# local `esc` that escapes less than the real one does.
+# The real copyToClipboard reaches the clipboard before its first await
+# (`B59`); recording the call as it is made is what that property looks like.
+_UI_STUB = ui_default_stub(
+    "copyToClipboard(text) { globalThis.__copies.push(String(text)); return Promise.resolve(true); },\n"
+    "  copyText(text) { globalThis.__copies.push(String(text)); return Promise.resolve(true); },\n"
+    "  showToast(msg) { globalThis.__toasts.push(String(msg)); },\n"
+    "  showError(msg) { globalThis.__toasts.push('error: ' + String(msg)); },"
+)
 
 _SHIM = r"""
 import { installDom, Node } from './dom.js';

@@ -9,14 +9,14 @@
 import Storage from './storage.js';
 import uiModule from './ui.js';
 import sessionModule from './sessions.js';
-import chatRenderer, { buildDiffHtml } from './chatRenderer.js?v=20260927agentwire1';
-import chatStream from './chatStream.js?v=20260927agentwire1';
+import chatRenderer, { buildDiffHtml } from './chatRenderer.js?v=20260927wavetwo1';
+import chatStream from './chatStream.js?v=20260927wavetwo1';
 import { addAITTSButton } from './tts-ai.js';
 import { prefersReducedMotion } from './motion.js';
 import markdownModule from './markdown.js';
 import spinnerModule from './spinner.js';
 import presetsModule from './presets.js';
-import fileHandlerModule from './fileHandler.js?v=20260927agentwire1';
+import fileHandlerModule from './fileHandler.js?v=20260927wavetwo1';
 import searchModule from './search.js';
 import documentModule from './document.js?v=20260815approvalsave1';
 import * as emailInbox from './emailInbox.js?v=20260815approvalsave1';
@@ -46,7 +46,7 @@ import { createAgentMeter, presentMeterEvent, METER_EVENT_TYPES } from './agentM
 import { loadPanel } from './panels.js';
 import planWindow from './planWindow.js';
 import * as contextUsage from './contextUsage.js';
-import queuePanel from './queuePanel.js?v=20260927agentwire1';
+import queuePanel from './queuePanel.js?v=20260927wavetwo1';
 import { runStatusLabel } from './runStatus.js';
 import { playIcon, stopIcon } from './icons.js';
 import {
@@ -5999,7 +5999,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
   // A turn draws more than its reply: a thread of tool cards, the "Thinking"
   // spinner between them with the meter (`P4-23`) under it, the prep line
   // (`P4-08`) under the first spinner, a bubble per step, and the stop line
-  // (`P4-10`) when a guard ends it. The live stream (`sendMessage`) drew all of
+  // (`P4-10`) when a guard ends it. The live stream (`handleChatSubmit`) drew all of
   // that inline. A stream picked up after navigating away (`resumeStream`) drew
   // none of it: a second, much poorer dispatch chain turned every one of those
   // events into `rich = true`, so for as long as the resumed stream ran, a
@@ -6409,7 +6409,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
    * `opts.besideBackgroundReader`: this tab is still reading the run through
    * the POST that started it, moved to the background when the person left the
    * chat (`checkBackgroundStream`). That reader stops drawing once this view is
-   * up (`_isBg` in `sendMessage`).
+   * up (`_isBg` in `handleChatSubmit`).
    */
   export async function resumeStream(sessionId, replaceHolder = null, opts = {}) {
     if (!sessionId) return false;

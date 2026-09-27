@@ -98,7 +98,7 @@ rows are marked `second-line` in the register.
 
 ---
 
-## 3. The blocking set — nineteen rows, of which seven are now met
+## 3. The blocking set — nineteen rows, of which eight are now met
 
 Fifteen of 234 open rows when this was written; **seven have since been met and three
 have been added, and the met ones are marked `landed` in the register rather than deleted,
@@ -127,18 +127,13 @@ public repository exposes every one of them. The checklist's own grep turned out
 `task-` and is fixed (`B770`) — the check a fork owner runs once, under time pressure, before
 doing something they cannot undo, returned a hundred false lines.
 **`B896` was added on 2026-09-27**, by the agent working `P7-02`: the assistant's own `app_api` bridge
-is the owner on `POST /api/import`, a door the blocklists do not name.
-Twelve stand. One line of reasoning each; the row carries the measurement. Five are security,
+was the owner on `POST /api/import`, a door the blocklists did not name. **It was met the same day**:
+the bridge lost the owner's whole trust surface, audited route by route on its row.
+Eleven stand. One line of reasoning each; the row carries the measurement. Four are security,
 three are a false documented claim, two are a licence obligation, two are an action rather than
 a commit, one is a defect a first-time user hits, and one is the release artefact.
 
-### Security — the control does not hold (5)
-
-- **`B896`** — the agent's `app_api` loopback carries the internal tool token, which `require_admin`
-  accepts as the owner, and `POST /api/import` is on neither blocklist: measured, it turned
-  `agent_email_confirm` off — `B42`'s self-restraint key, refused through `manage_settings` — and
-  switched an admin-disabled feature back on. An assistant that can undo its own restraints in
-  the owner's name is not a line to publish over.
+### Security — the control does not hold (4)
 
 - **`B370`** — `/static/wave-variants.html` and `/static/whirlpool-variants.html`
   answer **200 to a client with no cookie** under `AUTH_ENABLED=true`, while `/`,
@@ -402,8 +397,10 @@ weakest one in this document: it means nobody adjudicated them individually.
 | `B790` | tracked | decision | a nightly job silently unpublishes a skill on a 0/24-precision signal; changing what it destroys is the owner's call |
 | `B864` | tracked | security | `disabled_tools` survives its own row and not the row's deletion — and `P8-35`, landing in the same commit, removed the only reason anyone had to delete it |
 | `B892` | tracked | first-ten | a context bar larger than the fact it states — the sentence that was FALSE on it was `B893`, and that is fixed |
-| `B896` | blocking | security | the agent's `app_api` bridge is the owner on `POST /api/import` — it turned a `B42` self-restraint key off and a disabled feature on, in its own name |
+| `B896` | landed | security | the agent's `app_api` bridge is the owner on `POST /api/import` — it turned a `B42` self-restraint key off and a disabled feature on, in its own name |
 | `B907` | tracked | claim | a wait message that says the model is "pre-filling context" is a guess, and it never fires anyway — nothing false reaches a screen today |
+| `B912` | tracked | security | `manage_settings enable_tool` re-enables an admin-disabled tool unasked in a clean run; a tainted run's gate already stops it, and which switches may move is the owner's call with `B897` |
+| `B921` | tracked | claim | an agent turn's own compaction is announced with no figures and not saved — a notice that says less than happened, not one that says something false |
 | `P8-48` | tracked | security | the read-only verdict shipped and is read by the panel and the plan-mode gate alike; the schema editor did not, on a recommendation the owner has to rule on |
 | `P11-02d` | landed | security | six route files whose gating is unreconciled — an unknown on an auth surface |
 | `B71` | blocking | claim | upstream's artwork under this fork's filenames, and it is the macOS app icon |
