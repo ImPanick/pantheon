@@ -10,6 +10,7 @@ constant read through the validated ``read_byte_limit_env``. These tests pin:
   it locally (no scattered raw getenv / hardcoded literal).
 """
 
+import ast
 import importlib
 from pathlib import Path
 
@@ -115,5 +116,17 @@ def test_routes_import_from_upload_limits_not_local_defs():
         text = (REPO / path).read_text(encoding="utf-8")
         assert "from src.upload_limits import" in text
         assert key in upload_limits.BYTE_LIMITS, f"{key!r} left the registry"
-        assert f'resolve_byte_limit("{key}")' in text, (
-            f"{path} no longer resolves {key} through src.upload_limits")
+        # `P2-05`: a call, found by parsing, rather than a literal. The memory
+        # route passes the caller — `resolve_byte_limit("memory_import_max_bytes",
+        # user)` — so the role layer can answer for them, and the string this
+        # used to search for is no longer spelled that way while the property
+        # it protects still holds (`Law 20`). Any extra argument is allowed;
+        # the key has to be the first one, and a literal.
+        calls = [
+            node for node in ast.walk(ast.parse(text))
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name) and node.func.id == "resolve_byte_limit"
+            and node.args and isinstance(node.args[0], ast.Constant)
+            and node.args[0].value == key
+        ]
+        assert calls, f"{path} no longer resolves {key} through src.upload_limits"

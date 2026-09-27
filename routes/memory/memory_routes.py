@@ -139,6 +139,92 @@ def _load_for_update(memory_manager) -> List[Dict[str, Any]]:
         )
 
 
+def _read_import_text(content: bytes, filename: str, ext: str,
+                      owner: Optional[str]) -> str:
+    """The text of an uploaded memory-import file, or a 400 saying why not.
+
+    `P2-05`. This route used to accept nine suffixes and refuse the rest with
+    *"Unsupported file type"* — `.txt .md .pdf .csv .log .json .py .js .html` —
+    so a `.yaml`, a `.go` or a `.docx` never got as far as being read.
+    `D-2026-08-26-06`: *"drop the allowlist entirely. Decode; reject only what
+    fails. Keep the PDF extractor and the `.json` fast path as branches."*
+
+    **What the list protected: nothing that is ever executed or rendered.** The
+    bytes are decoded here, truncated, and put in a prompt; the answer is a
+    list of ``{text, category}`` suggestions the browser draws with
+    ``textContent``. The file is never stored and never served back — the one
+    temporary copy below exists so the extractors can open it by path, and it
+    is deleted before this returns, refusal or not. The controls that are real
+    are the ones that stay: the ``can_manage_memory`` privilege, and the byte
+    cap, which the caller resolves for its owner.
+
+    **Why no list of new suffixes instead.** The row's own list excluded
+    `.scss .toml .ini .vue .svelte` as *"unreachable code"* because
+    ``is_document_file`` does not name them — measured, this route never calls
+    ``is_document_file``: the browser posts the file straight here. Any list
+    is a guess about the next format; whether the bytes decode is not.
+
+    One reader, not a fourth (`Law 14`) — the same three chat ingest and the
+    mailbox already use, chosen the same way:
+
+    * ``PDF_EXTS`` → ``_process_pdf``, unchanged.
+    * ``OFFICE_EXTS`` → ``convert_to_markdown``: `.docx` through the bundled
+      reader when markitdown is absent, `.pptx .xlsx .xls .epub` through
+      markitdown, `.odt .doc` through theirs. A file none of them could read is
+      refused with ``office_extraction_gap``'s reason, not a guess.
+    * a registered text suffix (``TEXT_EXTS``) → ``decode_text_file``, which
+      never refuses — every suffix the old list accepted is in it, so none of
+      them can start failing (`Law 1`), and each is now read in the encoding
+      the probe finds instead of UTF-8-or-replace.
+    * anything else is read exactly when ``looks_like_text`` says its bytes
+      are text, and refused with ``text_refusal_reason`` when they are not.
+    """
+    from src.document_processor import (
+        ENCODING_UNIDENTIFIED,
+        TEXT_EXTS,
+        _process_pdf,
+        decode_text_file,
+        looks_like_text,
+        text_refusal_reason,
+    )
+    from src.markitdown_runtime import (
+        OFFICE_EXTS,
+        convert_to_markdown,
+        office_extraction_gap,
+    )
+    from src.pdf_runtime import PDF_EXTS
+
+    # The suffix is only kept where an extractor dispatches on it; the name the
+    # person chose never reaches the filesystem otherwise.
+    suffix = ext if ext in PDF_EXTS | OFFICE_EXTS else ""
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
+    try:
+        if ext in PDF_EXTS:
+            return _process_pdf(tmp_path, owner=owner)
+        if ext in OFFICE_EXTS:
+            text = convert_to_markdown(tmp_path) or ""
+            if not text.strip():
+                raise HTTPException(
+                    400, f"Could not read {filename}: {office_extraction_gap(tmp_path)}")
+            return text
+        if ext in TEXT_EXTS or looks_like_text(tmp_path):
+            return decode_text_file(tmp_path)
+        if text_refusal_reason(tmp_path) == ENCODING_UNIDENTIFIED:
+            raise HTTPException(
+                400, f"{filename} looks like text, but its encoding could not be "
+                     "identified from so few bytes.")
+        raise HTTPException(
+            400, f"{filename} isn't text, a PDF or an Office document, so there "
+                 "is nothing in it to read.")
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            logger.warning("Memory import: could not remove %s", tmp_path)
+
+
 def _import_result(suggestions, filename, export, memory_manager, owner):
     """The import's answer, and on the provider path the memories themselves.
 
@@ -598,7 +684,12 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
         session: str | None = Form(None),
         file: UploadFile = File(...)
     ):
-        """Extract memory suggestions from an uploaded file (PDF, TXT, MD, etc.)."""
+        """Extract memory suggestions from an uploaded file.
+
+        Any file whose bytes read as text, a PDF, or an Office/EPUB document —
+        `P2-05`; ``_read_import_text`` says how each is read and why nothing
+        else is refused by its name.
+        """
         from src.auth_helpers import require_privilege
         require_privilege(request, "can_manage_memory")
 
@@ -632,32 +723,17 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
         if not endpoint_url or not model:
             raise HTTPException(400, "No LLM model configured. Set a default model in Settings.")
 
+        # `P2-05`. The cap is resolved for the person importing, not for
+        # nobody. `D-2026-08-26-06` makes size — not the file's name — the real
+        # control on this route, per role under `P12-01`, and a call with no
+        # owner never reaches the role layer: `settings.role_limit` asks the
+        # provider about `None`, and no role belongs to `None`.
         content = await read_upload_limited(
-            file, resolve_byte_limit("memory_import_max_bytes"), "Memory import")
+            file, resolve_byte_limit("memory_import_max_bytes", user),
+            "Memory import")
         filename = file.filename or "upload"
         _, ext = os.path.splitext(filename.lower())
-
-        allowed = {".txt", ".md", ".pdf", ".csv", ".log", ".json", ".py", ".js", ".html"}
-        if ext not in allowed:
-            raise HTTPException(400, f"Unsupported file type: {ext}")
-
-        # Extract text based on file type
-        if ext == ".pdf":
-            from src.document_processor import _process_pdf
-            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-                tmp.write(content)
-                tmp_path = tmp.name
-            try:
-                text = _process_pdf(tmp_path, owner=_owner(request))
-            finally:
-                os.unlink(tmp_path)
-        else:
-            try:
-                text = content.decode("utf-8")
-            except UnicodeDecodeError:
-                from charset_normalizer import detect
-                encoding = (detect(content) or {}).get("encoding") or "utf-8"
-                text = content.decode(encoding, errors="replace")
+        text = _read_import_text(content, filename, ext, user)
 
         if not text.strip():
             return {"suggestions": [], "message": "No readable content found"}
