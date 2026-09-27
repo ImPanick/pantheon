@@ -80,8 +80,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P17 | The network the agent is hosted on | 14 | 0 | 0 | **14** |
 | P18 | One button, and it links | 9 | 0 | 0 | **9** |
 | P19 | The proof ledger | 8 | 0 | 0 | **8** |
-| Backlog | Bugs and hardening found in flight | 473 | 195 | 0 | **278** |
-| **Total** | | **855** | **261** | **8** | **586** |
+| Backlog | Bugs and hardening found in flight | 474 | 195 | 0 | **279** |
+| **Total** | | **856** | **261** | **8** | **587** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -245,8 +245,9 @@ they are for.*
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
 
 ### The context window, drawn part by part, and a plan that stays in its chat
-`36f16eb..HEAD`. **855 tracked, 586 done. 0 new phase rows, 0 regressions. `B892` and `B894`
-closed; `B894` filed and closed the same day, by the owner.** Both were the owner opening the app.
+`36f16eb..HEAD`. **856 tracked, 587 done. 0 new phase rows, 0 regressions. `B892`, `B894` and
+`B895` closed; `B894` and `B895` filed and closed the same day, `B894` by the owner.** Two were the
+owner opening the app; the third was the suite, on the first full run since the compose file moved.
 **`B892` is what the owner asked for twice.** The attachment bar that spanned the composer is gone
 from it; the chat-context ring moved to the bottom where the message is written, and it opens onto
 the whole window — system prompt, tool definitions, skills, memory, retrieved context, attachments
@@ -260,6 +261,10 @@ document, a spreadsheet, an image — on both sides of the wire, from one list h
 was drawn in a chat created a minute later, and an approved one made the new chat think it was
 executing. Per-chat keys, a plan filed under the chat that produced it, and a one-time migration of
 the old record to where it belongs.
+**`B895` is `Law 13` in a compose file.** The published image went into `docker-compose.yml`
+(`image:` + `pull_policy: always`) and not into the two standalone GPU files that exist to equal it
+plus an overlay — so a Portainer user on NVIDIA or AMD built from source while everyone else pulled.
+`tests/test_gpu_compose_standalone.py` was red at `36f16eb` and said exactly that.
 
 ### The suite's own escapers, and two attachment bugs the owner found in ten seconds
 `13b95f9..HEAD`. **854 tracked, 584 done. 0 new phase rows, 0 regressions. `B874`, `B875`, `B876`,
@@ -19279,3 +19284,16 @@ this is the same thing happening to the row that corrected the store.
   one, an approved plan is not executing elsewhere, and both migrations. **Six of the eight fail on
   the previous `planWindow.js`**; the plan suites that already existed (67 cases) pass unchanged.
   `Depends:` nothing. — reported by the owner — agent:`integrator`
+
+- [x] **B895** **The two standalone GPU compose files stopped equalling the base plus their
+  overlay.** The published image landed in `docker-compose.yml` — `image:
+  ghcr.io/impanick/pantheon:latest` and `pull_policy: always` on `pantheon` — and not in
+  `docker-compose.gpu-nvidia.yml` or `docker-compose.gpu-amd.yml`, whose own header says they are
+  *"equivalent to: docker-compose.yml + docker/gpu.nvidia.yml ... Keep this file in sync with both
+  when either changes."* So a stack-management UI that takes one compose file (Portainer, Coolify,
+  Dockhand) built from source on a GPU host while the CLI pulled the image — the same product
+  installed two ways. `Law 13`'s shape exactly: a setting in one of N places. Found by
+  `tests/test_gpu_compose_standalone.py::test_nvidia_standalone_equals_base_plus_overlay`, red at
+  `36f16eb`. Both files carry the two keys now; the GPU overlays only add device reservations and
+  environment, so the published image is the right image for both. `Verify:` the same file, 12
+  cases, green. `Depends:` nothing. — found by the suite — agent:`integrator`

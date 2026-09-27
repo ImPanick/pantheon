@@ -12,6 +12,8 @@
 # host's numeric render group id when needed. See docker/gpu.amd.yml for details.
 services:
   pantheon:
+    image: ghcr.io/impanick/pantheon:latest
+    pull_policy: always
     build: .
     ports:
       - "${APP_BIND:-127.0.0.1}:${APP_PORT:-7000}:7000"
