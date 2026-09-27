@@ -2272,7 +2272,8 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         // Add footer with copy/regen if not already present
         if (!_stoppedViewHolder.querySelector('.msg-footer')) {
           _stoppedViewHolder.dataset.raw = stoppedContent;
-          _stoppedViewHolder.appendChild(createMsgFooter(_stoppedViewHolder));
+          // `B920`: the reply may end in a later step's bubble than the one the pills are on.
+          _stoppedViewHolder.appendChild(createMsgFooter(_withTurnPills(_stoppedViewHolder, currentHolder)));
         }
 
         uiModule.scrollHistory();
@@ -3314,10 +3315,11 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       function _metricsTargetForTurn() {
         const visibleRound = (roundHolder && roundHolder.style.display !== 'none') ? roundHolder : null;
         const visibleText = visibleRound ? (visibleRound.querySelector('.body')?.textContent || '').trim() : '';
+        // `B920`: the footer made here carries the turn's pills.
         if (lastToolThread && lastToolThread.isConnected && (!visibleRound || !visibleText || visibleText === 'Done.')) {
-          return lastToolThread;
+          return _withTurnPills(lastToolThread, holder);
         }
-        return visibleRound || holder;
+        return _withTurnPills(visibleRound || holder, holder);
       }
       // Insert sources box as a stable DOM node that won't be replaced during streaming.
       // Returns the content container to use for innerHTML updates.
@@ -5289,8 +5291,11 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
           if (!_hText) holder.style.display = 'none';
         }
 
-        // Attach footer to the last visible bubble (roundHolder for multi-round agent, holder for single)
-        const footerTarget = (roundHolder && roundHolder !== holder && roundHolder.style.display !== 'none') ? roundHolder : holder;
+        // Attach footer to the last visible bubble (roundHolder for multi-round agent, holder for single),
+        // with the turn's pills handed to it (`B920`).
+        const footerTarget = _withTurnPills(
+          (roundHolder && roundHolder !== holder && roundHolder.style.display !== 'none') ? roundHolder : holder,
+          holder);
         if (!footerTarget.querySelector('.msg-footer')) {
           footerTarget.appendChild(createMsgFooter(footerTarget));
         }
@@ -5569,7 +5574,8 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
             if (_sid2) fetch(`${API_BASE}/api/session/${_sid2}/mark-stopped`, { method: 'POST' }).catch(e => console.warn('mark-stopped failed:', e));
 
             if (!_catchViewHolder.querySelector('.msg-footer')) {
-              _catchViewHolder.appendChild(createMsgFooter(_catchViewHolder));
+              // `B920`: as at the end of a stream, the pills go where the footer does.
+              _catchViewHolder.appendChild(createMsgFooter(_withTurnPills(_catchViewHolder, holder)));
             }
 
             uiModule.scrollHistory();
@@ -6044,6 +6050,24 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
   // _notifyStreamComplete and _insertStreamDoneToast now in chatStream.js
   var _notifyStreamComplete = chatStream.notifyStreamComplete;
   var _insertStreamDoneToast = chatStream.insertStreamDoneToast;
+
+  // `B920`. The footer's pills — the memories recalled, the skills shown, the
+  // promotion to agent mode, the fallback chain — are drawn by `createMsgFooter`
+  // from properties of the element it is handed. The live stream keeps them on
+  // the turn's first bubble (`holder`), where they arrive before the reply, and
+  // makes the footer on its last: the last visible step's bubble, or the last
+  // thread on a turn that only ran tools. Those are one element only when the
+  // reply is one bubble, so an agent turn that went round a tool drew none of
+  // its pills until a reload, where the history renderer puts the saved ones on
+  // the last bubble. The element a footer is made on is handed them first.
+  const _TURN_PILL_KEYS = ['_memoriesUsed', '_skillsInjected', '_autoEscalated', '_fallbackChain'];
+  function _withTurnPills(target, turnHolder) {
+    if (!target || !turnHolder || target === turnHolder) return target;
+    for (const key of _TURN_PILL_KEYS) {
+      if (turnHolder[key] != null) target[key] = turnHolder[key];
+    }
+    return target;
+  }
 
   // ── `P4-24` · What an agent turn draws besides its text ────────────────────
   //

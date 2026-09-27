@@ -2128,6 +2128,16 @@ function _trackAction(id) {
  * Create a footer row for an AI message with timestamp and action buttons.
  */
 export function createMsgFooter(msgElement) {
+  // `B920`. The skills, promotion and fallback pills below write their labels
+  // through `esc`, and this module binds no `esc` at its top — each function
+  // that needs it takes `uiModule.esc` for itself, and this one never did. So
+  // drawing any of the three threw `ReferenceError: esc is not defined`:
+  // measured under node on the real module, a saved reply carrying
+  // `skills_injected`, `fallback_chain` or `auto_escalated` was not drawn at
+  // all on reload (one bubble) or lost its footer (several), each with a
+  // "Failed to add message" toast, and live the footer threw on the bubble
+  // that held them. Their tests read the source for `esc(` and never ran it.
+  const esc = uiModule.esc;
   const footer = document.createElement('div');
   footer.className = 'msg-footer';
 
