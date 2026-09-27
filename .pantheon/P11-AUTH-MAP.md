@@ -74,14 +74,14 @@ The four tiers are `P11-02b`'s own question. A site is exactly one of them:
   ownership check or a privilege key that does not exist. The fix is a data model, not
   an auth change.
 
-derived: direct 96 · Depends 20 · total 116
+derived: direct 97 · Depends 20 · total 117
 
 ### tier summary
 
 | tier | sites |
 |---|---|
 | `superuser` | 44 |
-| `operator` | 47 |
+| `operator` | 48 |
 | `power-user` | 4 |
 | `only-because-nothing-finer-existed` | 21 |
 
@@ -134,7 +134,7 @@ derived: direct 96 · Depends 20 · total 116
 | `routes/auth_routes.py` | `remove_role` | `DELETE /api/auth/roles/{name}` | removes a role and revokes it from every user holding it. `P11-02` |
 | `routes/auth_routes.py` | `set_user_role` | `PUT /api/auth/users/{username}/role` | grants somebody else a role. `P11-02` |
 
-### `operator` — **47 operator sites.** Running the box: endpoints, models, probes, logs, webhooks, storage. A person who keeps the instance up needs all of it and needs none of the tier above. This is the tier that makes a role model worth building, because today the only way to hand someone the operator's job is to hand them the owner's.
+### `operator` — **48 operator sites.** Running the box: endpoints, models, probes, logs, webhooks, storage. A person who keeps the instance up needs all of it and needs none of the tier above. This is the tier that makes a role model worth building, because today the only way to hand someone the operator's job is to hand them the owner's.
 
 | file | function | route | protects |
 |---|---|---|---|
@@ -174,6 +174,7 @@ derived: direct 96 · Depends 20 · total 116
 | `routes/personal_routes.py` | `remove_directory_from_rag` | `DELETE /api/personal/remove_directory` | un-points it |
 | `routes/personal_routes.py` | `add_directory_to_rag` | `POST /api/personal/add_directory` | points the indexer at a host directory — filesystem reach, not document management |
 | `routes/personal_routes.py` | `api_personal_reload` | `POST /api/personal/reload` | re-indexes the whole corpus |
+| `routes/shell_routes.py` | `tmux_attach` | `GET /api/shell/tmux-attach` | the command that opens one of the instance's tmux sessions in a terminal: whether the server runs in a container, the uid its sessions belong to, the login name on a native install. It runs nothing — `B909`; the Forge's tasks are operator work and this is how they are reached. The one site in this file on the real gate: the file's own `_require_admin` is `B543`'s |
 | `routes/skills_routes.py` | `list_builtin_skills` | `GET /api/skills/builtin` | the inventory of every built-in tool the agent has, with the first 240 characters of the instruction block each one is given. Gated by `P2-21` on 2026-09-18; until then it made no auth call at all, beside the PUT and DELETE below it |
 | `routes/skills_routes.py` | `get_builtin_skill` | `GET /api/skills/builtin/{name}` | the whole instruction block, override included — the same text the model is given. The read half of the pair below, gated at the same height for the same reason |
 | `routes/skills_routes.py` | `reset_builtin_override` | `DELETE /api/skills/builtin/{name}` | puts it back |
@@ -471,9 +472,9 @@ the number of admin decisions added — which is the behaviour the map was built
 The paragraph above is about the 107 that predate roles; the counts below are live.
 
 - **44 superuser sites do not move.** They are already right.
-- **47 operator sites are the phase's return.** Today the only way to let someone keep
+- **48 operator sites are the phase's return.** Today the only way to let someone keep
   the instance up is to make them the owner. An `operator` overlay on
-  `DEFAULT_PRIVILEGES` retires 47 gates without touching a single one of the 37.
+  `DEFAULT_PRIVILEGES` retires 48 gates without touching a single one of the 37.
 - **4 power-user sites are one privilege key.** `allowed_models` already exists in
   `DEFAULT_PRIVILEGES`; a user who has it still cannot list the endpoints it names.
 - **21 only-because-nothing-finer-existed sites are not an auth job at all.** Contacts,

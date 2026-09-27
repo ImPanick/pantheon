@@ -16,7 +16,8 @@ from collections import namedtuple
 from pathlib import Path
 from typing import Dict, Any
 from core.platform_compat import IS_APPLE_SILICON, which_tool
-from core.middleware import INTERNAL_TOOL_USER
+from core.middleware import INTERNAL_TOOL_USER, require_admin
+from src.tmux_attach import attach_command
 from src.host_docker_access import (
     HOST_DOCKER_ACCESS_HINT,
     host_docker_access_enabled as _host_docker_access_enabled,
@@ -957,6 +958,28 @@ async def _generate_win_detached(cmd: str, request: Request):
 
 def setup_shell_routes() -> APIRouter:
     router = APIRouter(tags=["shell"])
+
+    @router.get("/api/shell/tmux-attach")
+    async def tmux_attach(request: Request, session: str = "", host: str = "") -> Dict[str, Any]:
+        """`B909`. How a person opens one of these tmux sessions in their own
+        terminal: `src/tmux_attach.attach_command`, the one builder, over HTTP.
+        It runs nothing — it only says what to type, because the answer depends
+        on two things only the server knows (whether it is in a container, and
+        the uid its sessions belong to). `host` is the task's SSH target, for a
+        session that lives on another machine. `P4-15` reads the same endpoint
+        for the agent's shell.
+
+        Gated by `core.middleware.require_admin`, not this file's own
+        `_require_admin`. That copy exists for the routes here that *execute*
+        (its docstring: "RCE-after-signup"), and whether those should open with
+        auth off is the owner's question (`B543`). This route executes nothing,
+        so it takes the one gate `Law 14` points at — the one the Forge's
+        state and status routes already use."""
+        require_admin(request)
+        try:
+            return attach_command(session, remote_host=host)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from None
 
     @router.post("/api/shell/exec")
     async def shell_exec(request: Request, req: ShellExecRequest) -> Dict[str, Any]:

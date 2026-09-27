@@ -12,6 +12,7 @@ import { computeProgressSignal } from './cookbookProgressSignal.js';
 import { portOf, nextFreePort } from './cookbookPorts.js';
 import { topPortalZ } from './toolWindowZOrder.js';
 import { PLAY_GLYPH, STOP_GLYPH, chevronIcon, stopIcon } from './icons.js';
+import { prefetchTmuxAttach, copyTmuxAttach, renderTmuxAttach } from './tmuxAttach.js';
 
 // Human-friendly badge label for a task's internal status. Avoids surfacing
 // the word "error" in the sidebar — a server the user stopped or one that
@@ -1126,6 +1127,39 @@ export function _tmuxIsAliveCheck(task) {
 
 function _shQuote(value) {
   return "'" + String(value ?? '').replace(/'/g, "'\\''") + "'";
+}
+
+// `B909`. The Copy section's tmux item. It used to copy `tmux attach -t <id>`,
+// built right here — which on the shipped Docker install names nothing on the
+// host and, inside the container, finds nothing either: tmux keeps a socket
+// per user, `docker exec` is root, and the sessions belong to the app's uid.
+// The right command depends on facts only the server has, so the server
+// builds it (`src/tmux_attach.py`). It is asked for when the menu opens, so
+// the click can copy inside its own gesture (`B59`); the panel then says where
+// to run it, and shows the plain-docker form when there is one.
+function _tmuxAttachMenuItem(task, el) {
+  const attach = prefetchTmuxAttach(task.sessionId, { host: _taskRemoteHost(task) });
+  return {
+    group: 'copy',
+    label: 'Copy tmux',
+    action: 'copy-tmux',
+    tooltip: 'Copy the command that opens this session in your own terminal',
+    custom: () => {
+      const copied = copyTmuxAttach(attach);
+      _showTaskAttach(el, attach);
+      if (!copied && !attach.error) uiModule.showToast('Not copied yet. Use Copy under the task name.');
+    },
+  };
+}
+
+// Under the task's name and above its output, so it shows while the output is
+// folded. One per card: opening it again replaces the last one.
+function _showTaskAttach(el, attach) {
+  el.querySelectorAll('.tmux-attach').forEach((old) => old.remove());
+  const panel = renderTmuxAttach(attach);
+  const wrap = el.querySelector('.cookbook-output-wrap');
+  el.insertBefore(panel, wrap && wrap.parentNode === el ? wrap : null);
+  return panel;
 }
 
 function _taskLooksOllama(task, outputText = '') {
@@ -2593,7 +2627,8 @@ export function _renderRunningTab() {
       el.addEventListener('touchstart', (e) => {
         // Skip if the user is starting touch on a button / link inside the
         // card — those already have their own tap handlers.
-        if (e.target.closest('button, a, input, textarea, .cookbook-task-dropdown')) return;
+        // `.tmux-attach` (`B909`): a long press there is selecting a command.
+        if (e.target.closest('button, a, input, textarea, .cookbook-task-dropdown, .tmux-attach')) return;
         _lpStart(e);
       }, { passive: true });
       el.addEventListener('touchmove', _lpMove, { passive: true });
@@ -2706,11 +2741,10 @@ export function _renderRunningTab() {
             _copyText(logCmd);
           }});
         } else {
-          // Just the tmux command itself — no ssh wrapper.
-          const tmuxAttach = `tmux attach -t ${task.sessionId}`;
-          items.push({ group: 'copy', label: 'Copy tmux', action: 'copy-tmux', custom: () => {
-            _copyText(tmuxAttach);
-          }});
+          // `B909`: built by the server, which knows whether it is in a
+          // container and whose uid the session belongs to. A remote task's
+          // session belongs to the SSH user there; the panel says so.
+          items.push(_tmuxAttachMenuItem(task, el));
         }
         if (_shouldOfferCrashReport(task)) {
           items.push({ group: 'copy', label: 'Copy crash report', action: 'copy-crash-report', custom: () => {

@@ -24602,6 +24602,79 @@ body.gallery-selecting .gallery-dl-btn,
   opacity: 0.9;
 }
 
+/* `B909` — "Open this session in a terminal" (`static/js/tmuxAttach.js`),
+   under a Forge task's name. The command and its notes come from the server;
+   this only lays them out. Notes stay at body strength: they are the
+   instructions, not decoration. */
+.tmux-attach {
+  margin: 2px 10px 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  color: var(--fg);
+  font-size: 11px;
+  line-height: 1.4;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.tmux-attach-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+.tmux-attach-head > span {
+  flex: 1;
+  min-width: 0;
+}
+.tmux-attach-close {
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  padding: 0 4px;
+  min-height: 20px;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.7;
+}
+.tmux-attach-close:hover {
+  background: transparent;
+  opacity: 1;
+}
+.tmux-attach-note {
+  margin-top: 6px;
+}
+.tmux-attach-error {
+  color: var(--color-error);
+}
+.tmux-attach-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 3px;
+}
+.tmux-attach-cmd {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: 'Fira Code', monospace;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: all;
+}
+.tmux-attach-copy {
+  flex-shrink: 0;
+  font-size: 11px;
+  padding: 3px 10px;
+  min-height: 24px;
+}
+
 /* ── What Fits? (hardware model fitting tab in cookbook) ── */
 .cookbook-group.hidden { display: none !important; }
 
