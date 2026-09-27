@@ -3261,11 +3261,16 @@ import agentDrafts from './agentDrafts.js';   // H01
       }
       function _ensureVisibleRoundForDelta() {
         if (!roundHolder || roundHolder.style.display !== 'none') return;
+        if (!_openRoundBubble()) roundHolder.style.display = '';
+      }
+      // A fresh reply bubble at the bottom of the history, made the round's
+      // own, with the round's text state reset. Returns its body, or `null`
+      // when there is no history to put it in. `B904`: split out of
+      // `_ensureVisibleRoundForDelta` so a teacher takeover can open the
+      // teacher's first bubble the same way.
+      function _openRoundBubble() {
         const box = document.getElementById('chat-history');
-        if (!box) {
-          roundHolder.style.display = '';
-          return;
-        }
+        if (!box) return null;
         const newWrap = document.createElement('div');
         newWrap.className = 'msg msg-ai msg-continuation streaming';
         const newRole = document.createElement('div');
@@ -3301,6 +3306,54 @@ import agentDrafts from './agentDrafts.js';   // H01
         _roundDisplayProjector.reset();
         _replyDisplayProjector.reset();
         _docFenceOpened = false;
+        return newBody;
+      }
+      // `B904`. The thread the next tool card goes in, for `tool_start` and
+      // `tool_blocked` alike: the thread at the bottom of the history, unless
+      // something visible has been drawn below it since — a bubble with text, a
+      // takeover banner, a note — in which case a new thread starts under that.
+      // Hidden (empty) bubbles and the thinking spinner are passed over, as
+      // `tool_start` always did. Two things changed when the refusal card and
+      // the takeover banner started arriving live: the refusal card took
+      // `lastToolThread` whatever had been drawn since, so a call refused in a
+      // later step landed in an earlier step's thread, above that step's text;
+      // and only a `.msg` bubble ended the search, so the teacher's first card
+      // joined the student's thread, above the banner that separates them.
+      function _cardThread() {
+        const chatBox = document.getElementById('chat-history');
+        // Find existing thread to append to — check last few children
+        // (agent_step may insert an empty msg-ai between tool rounds)
+        let threadWrap = null;
+        for (let ci = chatBox.children.length - 1; ci >= Math.max(0, chatBox.children.length - 5); ci--) {
+          const child = chatBox.children[ci];
+          if (child.classList.contains('agent-thread')) {
+            threadWrap = child;
+            break;
+          }
+          // Skip hidden (empty) bubbles and thinking spinners
+          if (child.style.display === 'none' || child.classList.contains('agent-thinking-dots')) continue;
+          // Anything else that is visible sits between that thread and this card.
+          break;
+        }
+        if (threadWrap) {
+          // Continuing an existing thread — remove has-bottom (agent_step may have set it
+          // expecting text, but we got more tools instead)
+          threadWrap.classList.remove('has-bottom');
+        } else {
+          threadWrap = document.createElement('div');
+          threadWrap.className = 'agent-thread';
+          // Extend line up to connect to chat bubble above (if there is one)
+          const _prevSib = chatBox.lastElementChild;
+          const _hasBubbleAbove = _prevSib && (_prevSib.classList.contains('msg') && _prevSib.style.display !== 'none');
+          const _hasThreadAbove = _prevSib && _prevSib.classList.contains('agent-thread');
+          if (_hasBubbleAbove || _hasThreadAbove || (roundText.trim() && roundHolder && roundHolder.style.display !== 'none')) {
+            threadWrap.classList.add('has-top');
+          }
+          chatBox.appendChild(threadWrap);
+        }
+        threadWrap.classList.add('streaming');
+        lastToolThread = threadWrap;
+        return threadWrap;
       }
       const esc = uiModule.esc;
       // Remove thinking spinner helper
@@ -4507,14 +4560,20 @@ import agentDrafts from './agentDrafts.js';   // H01
                 // `currentToolBubble` points at whatever card is open and a
                 // refusal that borrows it silently rewrites a call that
                 // actually happened.
+                _closeOpenThinkingMarkup(_isBg);
                 if (_isBg) continue;
-                let bThread = lastToolThread;
-                if (!bThread || !bThread.isConnected) {
-                  bThread = document.createElement('div');
-                  bThread.className = 'agent-thread';
-                  document.getElementById('chat-history')?.appendChild(bThread);
-                  lastToolThread = bThread;
-                }
+                // `B904`. First drawn live by this row — the route dropped the
+                // event before — and a refused call is still the model's
+                // action, so the step is closed the way `tool_start` closes it:
+                // the reply's own spinner kept saying "Waiting for the model"
+                // above the refusal, with a second "Thinking" spinner below it.
+                // The card goes where `tool_start` would put a card.
+                _cancelThinkingTimer();
+                _removeThinkingSpinner();
+                if (isThinking) _endLiveThinkingSection({ rich: false });
+                if (spinner && spinner.element) spinner.destroy();
+                _finalizeRoundRender();
+                const bThread = _cardThread();
                 const bNode = document.createElement('div');
                 applyAgentThreadNode(bNode, blockedCardOptions(json));
                 bThread.appendChild(bNode);
@@ -4697,39 +4756,7 @@ import agentDrafts from './agentDrafts.js';   // H01
 
                 // --- Thread timeline: group tools in a thread container ---
                 const cmd = json.command || '';
-                const chatBox = document.getElementById('chat-history');
-                // Find existing thread to append to — check last few children
-                // (agent_step may insert an empty msg-ai between tool rounds)
-                let threadWrap = null;
-                for (let ci = chatBox.children.length - 1; ci >= Math.max(0, chatBox.children.length - 5); ci--) {
-                  const child = chatBox.children[ci];
-                  if (child.classList.contains('agent-thread')) {
-                    threadWrap = child;
-                    break;
-                  }
-                  // Skip hidden (empty) bubbles and thinking spinners
-                  if (child.style.display === 'none' || child.classList.contains('agent-thinking-dots')) continue;
-                  // Stop if we hit a visible message bubble (has real content between tools)
-                  if (child.classList.contains('msg')) break;
-                }
-                if (threadWrap) {
-                  // Continuing an existing thread — remove has-bottom (agent_step may have set it
-                  // expecting text, but we got more tools instead)
-                  threadWrap.classList.remove('has-bottom');
-                } else {
-                  threadWrap = document.createElement('div');
-                  threadWrap.className = 'agent-thread';
-                  // Extend line up to connect to chat bubble above (if there is one)
-                  const _prevSib = chatBox.lastElementChild;
-                  const _hasBubbleAbove = _prevSib && (_prevSib.classList.contains('msg') && _prevSib.style.display !== 'none');
-                  const _hasThreadAbove = _prevSib && _prevSib.classList.contains('agent-thread');
-                  if (_hasBubbleAbove || _hasThreadAbove || (roundText.trim() && roundHolder && roundHolder.style.display !== 'none')) {
-                    threadWrap.classList.add('has-top');
-                  }
-                  chatBox.appendChild(threadWrap);
-                }
-                threadWrap.classList.add('streaming');
-                lastToolThread = threadWrap;
+                const threadWrap = _cardThread();   // `B904`: shared with `tool_blocked`
                 const node = document.createElement('div')
                 applyAgentThreadNode(node, { tool: json.tool, state: 'running', command: cmd, fullCommand: json.full_command,
                   round: json.round, approved: json.approved });
@@ -5152,11 +5179,25 @@ import agentDrafts from './agentDrafts.js';   // H01
                 }
 
               } else if (json.type === 'teacher_takeover') {
+                _closeOpenThinkingMarkup(_isBg);
                 if (_isBg) continue;
                 _cancelThinkingTimer();
                 _removeThinkingSpinner();
                 // Finalize any in-flight bubble so the takeover banner
                 // separates student attempt from teacher attempt.
+                //
+                // `B904`. This arm had never run: the route dropped the event,
+                // so the teacher's run was drawn as more of the student's. It
+                // used to end by setting `roundHolder = null`, which nothing
+                // after it expects — the teacher's first token threw in
+                // `_renderStream`, and its first tool call finalized the
+                // *first* bubble with an empty round text and hid the student's
+                // answer. The student's last step is finished where it is now,
+                // and the teacher's run opens a bubble of its own below the
+                // banner (end of this arm).
+                if (isThinking) _endLiveThinkingSection({ rich: false });
+                else _cancelLiveThinkingWork();
+                _finalizeRoundRender();
                 if (spinner && spinner.element) { try { spinner.destroy(); } catch(_){} spinner = null; }
                 const chatBox = document.getElementById('chat-history');
                 const banner = document.createElement('div');
@@ -5166,12 +5207,18 @@ import agentDrafts from './agentDrafts.js';   // H01
                 const why = json.student_failure ? ` &mdash; <span style="opacity:0.7">${esc(json.student_failure)}</span>` : '';
                 banner.innerHTML = `<strong>Teacher takeover:</strong> escalating to <code>${esc(teacherName)}</code>${why}`;
                 chatBox.appendChild(banner);
-                // Reset round bubble state so the teacher's first text starts a new bubble
-                roundHolder = null;
-                roundText = '';
-                roundFinalized = false;
-                roundFinalization = null;
+                // The teacher's first text starts a new bubble, below the
+                // banner, with a spinner of its own for the teacher's
+                // preparation and meter to hang under. Its cards start a new
+                // thread, not the student's (`_cardThread` stops at the banner).
                 currentToolBubble = null;
+                lastToolThread = null;
+                const _teacherBody = _openRoundBubble();
+                if (_teacherBody) {
+                  spinner = spinnerModule.create('Generating response', 'right', 'wave');
+                  _teacherBody.appendChild(spinner.createElement());
+                  spinner.start();
+                }
                 uiModule.scrollHistory();
 
               } else if (json.type === 'skill_saved') {

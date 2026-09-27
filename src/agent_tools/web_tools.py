@@ -2,6 +2,7 @@
 import asyncio
 import inspect
 import json
+import time
 from typing import Dict, Any
 
 from src.constants import MAX_OUTPUT_CHARS
@@ -40,6 +41,7 @@ class WebSearchTool:
             elif " news" in q_lc or q_lc.startswith("news ") or q_lc.endswith(" news"):
                 time_filter = "week"
         loop = asyncio.get_running_loop()
+        started = time.monotonic()
         if progress_cb:
             await progress_cb({
                 "elapsed_s": 0,
@@ -70,8 +72,13 @@ class WebSearchTool:
                 "untrusted_content": True,
             }
         if progress_cb:
+            # `B904`. The time the search took, measured. This said `30` — the
+            # timeout above, not a measurement — on every search, and nothing
+            # noticed because the route dropped `tool_progress` in agent mode.
+            # Once it arrives, `P4-02` re-anchors the card's clock on
+            # `elapsed_s`, and a two-second search would read as thirty.
             await progress_cb({
-                "elapsed_s": 30,
+                "elapsed_s": round(time.monotonic() - started, 1),
                 "tail": "Search completed; preparing sources.",
             })
         try:

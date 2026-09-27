@@ -3074,6 +3074,27 @@ def setup_chat_routes(
                                     # sent died here; the meter's events are
                                     # read from the loop's own list instead.
                                     yield chunk
+                                else:
+                                    # `B904`. Everything the arms above do not
+                                    # handle goes out as it came in. This chain
+                                    # had no `else`, so a frame whose type it did
+                                    # not name was dropped without a word: eleven
+                                    # types the loop sends (`tool_progress`,
+                                    # `tool_blocked`, `verifier`,
+                                    # `skills_injected`, `steer_applied`,
+                                    # `skill_saved`, `generated_image`,
+                                    # `compacted`, `teacher_takeover`,
+                                    # `escalation_failed`, `skill_save_failed`)
+                                    # never reached a browser while the run was
+                                    # live. A route that keeps its own list drops
+                                    # the next new type the same way. The arms
+                                    # above are for what this route must *do*
+                                    # with a frame — accumulate it, save on it,
+                                    # rewrite it — never for deciding what the
+                                    # browser may see. Nothing the loop sends is
+                                    # withheld (`B904`'s audit, type by type): it
+                                    # is this user's own run.
+                                    yield chunk
                             except json.JSONDecodeError:
                                 yield chunk
                         elif chunk.startswith("event: "):
