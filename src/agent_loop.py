@@ -2760,6 +2760,24 @@ def _pan_qwen_temperature_cap(temperature):
         return 0.2
 
 
+def _pan_qwen_route_temperature(temperature, model, explicit_params=frozenset()):
+    """The temperature one route candidate is sent. `P2-13`.
+
+    The cap above, applied per candidate exactly as before — a ``pantheon-qwen3``
+    candidate gets it and any other candidate gets the caller's value, so a
+    mixed fallback chain leaks the cap in neither direction — **unless the
+    person chose the temperature**. Then every candidate gets that choice,
+    qwen or not: it is the person's number, not the primary's, so sending it to
+    a fallback is not a leak. `D-2026-08-26-06`: the clamp is the default for
+    everything nobody chose, never an override of a choice.
+    """
+    if "temperature" in (explicit_params or ()):
+        return temperature
+    if _is_pantheon_qwen_model(model):
+        return _pan_qwen_temperature_cap(temperature)
+    return temperature
+
+
 def _build_system_prompt(
     messages: List[Dict],
     model: str,
@@ -4578,8 +4596,15 @@ async def stream_agent_loop(
     defer_context_shaping: bool = False,
     suppress_skills: bool = False,
     loop_caps_source: str = CAPS_FROM_CALLER,
+    explicit_params=frozenset(),
 ) -> AsyncGenerator[str, None]:
     """Streaming agent loop generator.
+
+    ``explicit_params`` names the sampling parameters the person chose
+    (`P2-13`); the chat route passes its preset's. With ``"temperature"`` in it
+    neither local clamp — ``pantheon-qwen3`` here, MiniMax in
+    ``llm_core._apply_local_generation_stability`` — touches the temperature;
+    without it, both behave exactly as before.
 
     Yields SSE events:
       - data: {"delta": "text"}                             (text chunks)
@@ -4745,8 +4770,7 @@ async def stream_agent_loop(
     # factories for fallbacks), so neither direction of a mixed qwen/non-qwen
     # fallback chain inherits the other's value.
     _requested_temperature = temperature
-    if _pan_qwen_finetune_model:
-        temperature = _pan_qwen_temperature_cap(temperature)
+    temperature = _pan_qwen_route_temperature(temperature, model, explicit_params)
     _pan_memory_identity_turn = _looks_like_memory_identity_turn(_last_user)
     _intent = _classify_agent_request(messages, _last_user)
     _low_signal_turn = bool(_intent.get("low_signal"))
@@ -4853,11 +4877,8 @@ async def stream_agent_loop(
             return {
                 "messages": candidate_messages,
                 "kwargs": {
-                    "temperature": (
-                        _pan_qwen_temperature_cap(_requested_temperature)
-                        if candidate_is_qwen
-                        else _requested_temperature
-                    ),
+                    "temperature": _pan_qwen_route_temperature(
+                        _requested_temperature, candidate_model, explicit_params),
                 },
             }
 
@@ -4923,6 +4944,7 @@ async def stream_agent_loop(
                 max_tokens=min(max_tokens or 128, 128),
                 prompt_type=None,
                 tools=None,
+                explicit_params=explicit_params,
                 timeout=int(get_setting("agent_stream_timeout_seconds", 300) or 300),
                 session_id=session_id,
                 workload=workload,
@@ -6416,11 +6438,8 @@ async def stream_agent_loop(
                 "kwargs": {
                     "tools": candidate_tools or None,
                     "tool_choice_none": state["pan_doc_finetune_mode"],
-                    "temperature": (
-                        _pan_qwen_temperature_cap(_requested_temperature)
-                        if _is_pantheon_qwen_model(candidate_model)
-                        else _requested_temperature
-                    ),
+                    "temperature": _pan_qwen_route_temperature(
+                        _requested_temperature, candidate_model, explicit_params),
                 },
             }
 
@@ -6514,6 +6533,7 @@ async def stream_agent_loop(
             temperature=temperature,
             max_tokens=max_tokens,
             prompt_type=prompt_type if round_num == 1 else None,
+            explicit_params=explicit_params,
             tools=all_tool_schemas if all_tool_schemas else None,
             tool_choice_none=_pan_doc_finetune_mode,
             timeout=agent_stream_timeout,

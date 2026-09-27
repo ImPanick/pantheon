@@ -225,16 +225,17 @@ def _cache_header_identity(headers) -> str:
 
 
 def _get_cache_key(url: str, model: str, messages: List[Dict],
-                   temperature: float, max_tokens: int, headers=None) -> str:
+                   temperature: float, max_tokens: int, headers=None,
+                   explicit_params=frozenset()) -> str:
     """Generate a cache key partitioned by endpoint and credential identity."""
     hashable_messages = []
     for msg in messages:
         sorted_items = tuple(sorted(msg.items()))
         hashable_messages.append(sorted_items)
-    
-    content = json.dumps({
+
+    key = {
         'url': url,
-        'model': model, 
+        'model': model,
         'messages': hashable_messages,
         'temp': temperature,
         'max_tokens': max_tokens,
@@ -242,7 +243,15 @@ def _get_cache_key(url: str, model: str, messages: List[Dict],
         # digest only prevents responses from one configured account/route
         # being returned under another route with the same URL and model.
         'header_identity': _cache_header_identity(headers),
-    }, sort_keys=True)
+    }
+    # `P2-13`. A temperature a person chose and the same number defaulted can
+    # reach a local MiniMax endpoint as two different payloads — the default is
+    # clamped, the choice is not — so they may not share an answer. Added only
+    # when non-empty, so every key a caller without a choice computes is the
+    # key it computed before.
+    if explicit_params:
+        key['explicit'] = sorted(explicit_params)
+    content = json.dumps(key, sort_keys=True)
     return hashlib.sha256(content.encode()).hexdigest()
 
 _response_cache = {}
@@ -1150,15 +1159,41 @@ def _is_local_minimax_mlx_request(url: str, model: str) -> bool:
         return False
 
 
-def _apply_local_generation_stability(payload: Dict, url: str, model: str) -> None:
+def _apply_local_generation_stability(payload: Dict, url: str, model: str,
+                                      explicit_params=frozenset()) -> None:
+    """The local-MiniMax sampling profile, as defaults under a person's choice.
+
+    `P2-13`. MiniMax MLX quantized ports fall into visible reasoning and
+    repetition loops above 0.2, so this profile exists and stays. What changed
+    is who it overrides. It used to overwrite ``temperature`` unconditionally —
+    ``min(t, 0.2)`` — because a payload dict cannot say whether *0.9* was
+    somebody's choice or a default, and so a person who picked a warmer
+    character and pointed it at their own MiniMax box silently got 0.2.
+
+    ``explicit_params`` is that missing fact (`D-2026-08-26-06`: *"thread an
+    explicit_params set from the payload builder; the clamp becomes a
+    setdefault for everything else"*). A parameter named in it is the person's
+    and is left exactly as sent; everything else gets this profile. For
+    ``temperature`` that is the clamp as it was, byte for byte, so every caller
+    that names nothing — every background job, every internal call, and chat
+    with no preset — gets the same payload as before. The other keys were
+    ``setdefault`` already and keep that; ``max_tokens`` is only ever filled
+    where the payload has none, which is `D-2026-09-08-02`'s rule too: a number
+    on local inference belongs to the machine, so a preset never names it here.
+
+    Only the chat routes pass a non-empty set today, from the preset the person
+    chose (``routes/chat_helpers.extract_preset``). The Anthropic ceiling in
+    ``_build_anthropic_payload`` does not read this and must not: that API
+    refuses anything above 1.0, which is a provider's rule, not a default.
+    """
     if not _is_local_minimax_mlx_request(url, model):
         return
-    if "temperature" in payload:
+    if "temperature" in payload and "temperature" not in (explicit_params or ()):
         try:
             # MiniMax MLX quantized ports are very sensitive to chat/agent
-            # harness size. Character presets can ask for a warmer voice, but
-            # local MiniMax needs a final compatibility clamp or trivial
-            # prompts can fall into visible reasoning/repetition loops.
+            # harness size. Without a choice from the person, local MiniMax
+            # gets a compatibility clamp or trivial prompts can fall into
+            # visible reasoning/repetition loops.
             payload["temperature"] = min(float(payload.get("temperature") or 0.2), 0.2)
         except (TypeError, ValueError):
             payload["temperature"] = 0.2
@@ -2051,8 +2086,14 @@ def normalize_model_id(
 
 def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LLMConfig.DEFAULT_TEMPERATURE,
              max_tokens: int = LLMConfig.DEFAULT_MAX_TOKENS, headers: Optional[Dict] = None,
-             timeout: int = LLMConfig.DEFAULT_TIMEOUT, prompt_type: Optional[str] = None) -> str:
-    """Synchronous LLM call with optional prompt type enhancement."""
+             timeout: int = LLMConfig.DEFAULT_TIMEOUT, prompt_type: Optional[str] = None,
+             explicit_params=frozenset()) -> str:
+    """Synchronous LLM call with optional prompt type enhancement.
+
+    ``explicit_params`` names the sampling parameters a person chose (`P2-13`,
+    see ``_apply_local_generation_stability``); empty for every caller that
+    chose nothing on anyone's behalf, which is all of them today.
+    """
     h = _provider_headers(_detect_provider(url))
     # Tolerate headers that arrive as a JSON string (some sessions stored them
     # double-encoded) — otherwise h.update() throws "dictionary update sequence
@@ -2093,6 +2134,7 @@ def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LL
 
     cache_key = _get_cache_key(
         url, model, messages_copy, temperature, max_tokens, headers=headers,
+        explicit_params=explicit_params,
     )
     cached_response = _get_cached_response(cache_key)
     if cached_response:
@@ -2124,7 +2166,7 @@ def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LL
         if max_tokens and max_tokens > 0:
             tok_key = "max_completion_tokens" if _uses_max_completion_tokens(model) else "max_tokens"
             payload[tok_key] = max_tokens
-        _apply_local_generation_stability(payload, target_url, model)
+        _apply_local_generation_stability(payload, target_url, model, explicit_params)
         if provider == "mistral" and _supports_thinking(model):
             payload["reasoning_effort"] = _MISTRAL_REASONING_EFFORT
     try:
@@ -2366,8 +2408,14 @@ async def llm_call_async(
     workload: str = "foreground",
     availability_only_transport: bool = False,
     return_model_metadata: bool = False,
+    explicit_params=frozenset(),
 ) -> str | tuple[str, str]:
-    """Asynchronous LLM call using httpx with connection pooling, timeout, retry logic, and performance logging."""
+    """Asynchronous LLM call using httpx with connection pooling, timeout, retry logic, and performance logging.
+
+    ``explicit_params`` names the sampling parameters a person chose (`P2-13`,
+    see ``_apply_local_generation_stability``). `/api/chat` passes its preset's
+    through ``llm_call_async_with_route_fallback``'s kwargs.
+    """
     # `P4-25` — the non-streaming path. `/api/chat` reaches the model through
     # `llm_call_async_with_route_fallback` → here and never touches
     # `stream_llm`, so the first version of this recorded nothing for half
@@ -2396,6 +2444,7 @@ async def llm_call_async(
 
     cache_key = _get_cache_key(
         url, model, messages_copy, temperature, max_tokens, headers=headers,
+        explicit_params=explicit_params,
     )
     cached_response = _get_cached_response(cache_key)
     if cached_response:
@@ -2501,7 +2550,7 @@ async def llm_call_async(
         if provider == "mistral" and _supports_thinking(model):
             payload["reasoning_effort"] = _MISTRAL_REASONING_EFFORT
         _apply_local_cache_affinity(payload, url, session_id)
-        _apply_local_generation_stability(payload, target_url, model)
+        _apply_local_generation_stability(payload, target_url, model, explicit_params)
 
     if _is_host_dead(target_url):
         raise HTTPException(503, f"Upstream {_host_key(target_url)} marked unreachable (cooldown active)")
@@ -2765,7 +2814,8 @@ async def stream_llm(url: str, model: str, messages: List[Dict], temperature: fl
                      max_tokens: int = LLMConfig.DEFAULT_MAX_TOKENS, headers: Optional[Dict] = None,
                      timeout: int = LLMConfig.STREAM_TIMEOUT, prompt_type: Optional[str] = None,
                      tools: Optional[List[Dict]] = None, session_id: Optional[str] = None,
-                     tool_choice_none: bool = False, workload: str = "foreground"):
+                     tool_choice_none: bool = False, workload: str = "foreground",
+                     explicit_params=frozenset()):
     target_url = _stream_target_url(url)
     _capture_run_config(temperature, max_tokens, session_id, tools=tools)
 
@@ -2782,6 +2832,7 @@ async def stream_llm(url: str, model: str, messages: List[Dict], temperature: fl
             tools=tools,
             session_id=session_id,
             tool_choice_none=tool_choice_none,
+            explicit_params=explicit_params,
         ):
             yield chunk
 
@@ -2790,7 +2841,7 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                             max_tokens: int = LLMConfig.DEFAULT_MAX_TOKENS, headers: Optional[Dict] = None,
                             timeout: int = LLMConfig.STREAM_TIMEOUT, prompt_type: Optional[str] = None,
                             tools: Optional[List[Dict]] = None, session_id: Optional[str] = None,
-                            tool_choice_none: bool = False):
+                            tool_choice_none: bool = False, explicit_params=frozenset()):
     """Stream LLM responses with improved error handling.
 
     Yields SSE chunks:
@@ -2864,7 +2915,7 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
         if _is_ollama_openai_compat_url(url) and _supports_thinking(model):
             payload["think"] = False
         _apply_local_cache_affinity(payload, url, session_id)
-        _apply_local_generation_stability(payload, target_url, model)
+        _apply_local_generation_stability(payload, target_url, model, explicit_params)
         _scrub_openai_chat_tool_reasoning(payload, target_url, model)
         h = _provider_headers(provider, headers)
         if provider == "copilot":

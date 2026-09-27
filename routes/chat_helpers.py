@@ -114,6 +114,11 @@ class PresetInfo:
     max_tokens: Optional[int]
     system_prompt: Optional[str]
     character_name: Optional[str]
+    # `P2-13`. Which of the sampling parameters above the person chose, as
+    # opposed to the product defaulting them — see `explicit_sampling_params`.
+    # Empty by default, so a `PresetInfo` built without it asks for nothing
+    # and the local sampling clamps behave exactly as they did before.
+    explicit_params: frozenset = frozenset()
 
 
 @dataclass
@@ -356,6 +361,43 @@ async def auto_name_session(session_manager, sess):
         logger.error(f"Auto-name failed for {sess.id}: {e}\n{traceback.format_exc()}")
 
 
+def explicit_sampling_params(temperature) -> frozenset:
+    """``{"temperature"}`` when the preset's temperature is the person's choice.
+
+    `P2-13`, and the signal `D-2026-08-26-06` asked for: *"thread an
+    explicit_params set from the payload builder"*. Two local sampling clamps —
+    MiniMax on a local endpoint (``llm_core._apply_local_generation_stability``)
+    and the ``pantheon-qwen3`` finetune (``agent_loop._pan_qwen_temperature_cap``)
+    — hold temperature at 0.2 because those families loop above it, and until
+    this row they did it whatever the person had asked for.
+
+    **Presence and a non-default value, the two signals `setting_is_explicit`
+    uses, for the same reason.** ``validate_and_extract_preset`` answers
+    ``DEFAULT_TEMPERATURE`` when no preset is chosen, when it is disabled, and
+    when it carries no ``temperature``; and every preset carries one, because the
+    slider always has a value. So presence alone is every preset, and "differs
+    from what no choice resolves to" is what separates a person who dialled in
+    0.9 — or picked a character whose card says 1.2 — from one who never
+    touched the slider. It is also the rule the preset panel already applies to
+    decide the person has *"dialed in non-default tuning"*
+    (``static/js/presets.js``, ``_hasTuning``).
+
+    **The cost, stated as `setting_is_explicit` states it:** a person who wants
+    exactly 1.0 on one of those two model families gets the family's 0.2, because
+    1.0 is indistinguishable from never having chosen. Anywhere else a
+    temperature of 1.0 reaches the model as 1.0 either way.
+
+    ``max_tokens`` is never in this set. `D-2026-09-08-02`: on local inference
+    it belongs to the machine, not the preset.
+    """
+    from src.constants import DEFAULT_TEMPERATURE
+    try:
+        chosen = float(temperature)
+    except (TypeError, ValueError):
+        return frozenset()
+    return frozenset({"temperature"}) if chosen != float(DEFAULT_TEMPERATURE) else frozenset()
+
+
 def extract_preset(chat_handler, preset_id) -> PresetInfo:
     """Extract preset parameters via chat_handler."""
     temperature, max_tokens, system_prompt, char_name = (
@@ -366,6 +408,7 @@ def extract_preset(chat_handler, preset_id) -> PresetInfo:
         max_tokens=max_tokens,
         system_prompt=system_prompt,
         character_name=char_name,
+        explicit_params=explicit_sampling_params(temperature),
     )
 
 

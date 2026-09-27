@@ -1313,6 +1313,11 @@ def setup_chat_routes(
             max_tokens=ctx.preset.max_tokens,
             prompt_type=preset_id,
             session_id=session,
+            # `P2-13`. Whether that temperature is the person's, so a local
+            # MiniMax endpoint honours it rather than clamping it to 0.2. Read
+            # through `getattr` like the `P4-13` shaping figures, so a context
+            # double without the field asks for nothing rather than raising.
+            explicit_params=getattr(ctx.preset, "explicit_params", frozenset()),
         )
         actual_index = _candidate_index(foreground_candidates, actual_candidate)
         apply_compaction_state(
@@ -2510,6 +2515,8 @@ def setup_chat_routes(
                         prompt_type=preset_id,
                         tools=None,
                         session_id=session,
+                        # `P2-13`, as on `/api/chat` above.
+                        explicit_params=getattr(ctx.preset, "explicit_params", frozenset()),
                         fallback_statuses=_foreground_policy.eligible_statuses,
                         fallback_on_empty=_foreground_policy.fallback_on_empty,
                         candidate_request_factory=_chat_request_factory,
@@ -2911,6 +2918,9 @@ def setup_chat_routes(
                         temperature=ctx.preset.temperature,
                         max_tokens=ctx.preset.max_tokens,
                         prompt_type=preset_id,
+                        # `P2-13`. Both local clamps — pantheon-qwen3 here and
+                        # MiniMax under it — leave a chosen temperature alone.
+                        explicit_params=getattr(ctx.preset, "explicit_params", frozenset()),
                         # `B60`. Four of the six conditions that decide whether
                         # the skills index may ship are known only here — the
                         # user's preference, `incognito`,
