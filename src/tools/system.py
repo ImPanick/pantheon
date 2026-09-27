@@ -840,13 +840,47 @@ async def do_api_call(content: str) -> Dict:
 # agent surface even when the agent is admin-context; accidental account or
 # command mistakes have permanent blast radius.
 _APP_API_BLOCKLIST_PREFIXES = (
-    "/api/auth",           # login/logout/password
+    "/api/auth",           # login/logout/password + user/role/privilege/feature/settings CRUD
     "/api/users",          # user CRUD (bare /api/users list+create+delete must also block)
     "/api/tokens",         # api token mgmt (bare /api/tokens list+create must also block)
     "/api/admin",          # admin one-shots (wipe etc.)
     "/api/shell",          # host shell execution must stay behind named command tooling
     "/api/backup/restore", # destructive restore
 )
+
+
+def _effective_app_api_path(path: str) -> str:
+    """The application path `path` will actually reach, normalised the way the
+    transport and Starlette read it.
+
+    `B896`. The blocklists below are a plain ``startswith`` on the tool's own
+    ``path`` argument, but that string is not the path the request lands on:
+    httpx collapses ``.``/``..`` and percent-decodes before it sends, and
+    uvicorn percent-decodes again before Starlette matches a route. So
+    ``/api/x/../import`` and ``/api/imp%6frt`` both reach ``POST /api/import``
+    while ``"/api/x/../import".startswith("/api/import")`` is ``False`` — the
+    door is named on the blocklist and walked around at the same time. The same
+    hole let ``/api/x/../shell/exec`` past the ``/api/shell`` prefix that
+    ``FORBIDDEN.md`` Part 2 relies on.
+
+    Decode once (uvicorn decodes once), fold backslashes to ``/``, then collapse
+    ``.``/``..``/duplicate slashes with :func:`posixpath.normpath`. This is at
+    least as aggressive as any normaliser downstream — a spelling that would
+    404 at Starlette (a literal ``..`` it does not collapse) is over-matched
+    here, which only ever turns a 404 into an explicit refusal and never lets a
+    routable spelling through. The value is used for the blocklist decision
+    only; the request itself still carries the caller's original ``path``.
+    """
+    import posixpath
+    from urllib.parse import unquote
+
+    p = unquote(path or "").replace("\\", "/")
+    if not p.startswith("/"):
+        p = "/" + p
+    collapsed = posixpath.normpath(p)
+    if not collapsed.startswith("/"):
+        collapsed = "/" + collapsed
+    return collapsed
 
 # (method, prefix) pairs to refuse specifically. Used for endpoints
 # where GET is fine but writes are destructive or host-control shaped.
@@ -855,6 +889,54 @@ _APP_API_BLOCKLIST_PREFIXES = (
 # Use dedicated tools or UI flows instead.
 _APP_API_BLOCKLIST_METHOD_PATH = (
     ("GET",    "/api/email/accounts"),  # owner-filtered in tool context; use list_email_accounts MCP tool
+    # `B896`. The trust surface — every route through which the assistant could
+    # raise its own reach or lower a restraint the owner set. The agent's
+    # loopback carries the internal-tool token, `app.py` attributes it to the
+    # owner, and `require_admin` accepts the token outright, so on any route the
+    # blocklist does not name the generic bridge IS the owner. These are the
+    # ones it did not name, each measured on this tree through the real router.
+    # The person keeps every one through the UI; the assistant loses the door.
+    # Refusals for these are minted below and say plainly this is a person-only,
+    # from-the-UI action (`Law 10`/`Law 15`).
+    #
+    # Backup import writes arbitrary settings (`agent_email_confirm` and the
+    # other `_SELF_RESTRAINT_KEYS` `manage_settings` refuses — `B42`, the auth
+    # throttles, `approval_timeout_seconds` — plus credential keys) and feature
+    # flags (an admin-disabled feature back on for the agent, `H05`). It is the
+    # door `B42`'s self-restraint refusal was bypassed through. Its read twin
+    # `GET /api/export` is blocked with it: it returns `load_settings()` raw —
+    # the credential keys `manage_settings` masks so "API keys never flow
+    # through chat" (`_SECRET_KEYS`) — so the loopback is a way to read the
+    # secrets the agent tool path hides. The person downloads a backup from the
+    # UI; the agent has no business pulling one (secrets and every tenant's
+    # data) through the bridge.
+    ("GET",    "/api/export"),
+    ("POST",   "/api/import"),
+    # A standing allow rule the assistant plants for its own owner answers its
+    # own untrusted-content gate next run (`P7-04`/`P7-02`). Creating one is the
+    # owner's, from the UI; revoking (`DELETE`) is a narrowing and stays open.
+    ("POST",   "/api/tool-allow-rules"),
+    # `disabled_tools` is the server-side enforcement of which tools the agent
+    # may call (`H05`). Rewriting it here re-enables shell/web/etc. for the
+    # agent by the agent — `P7-02`'s defect (the assistant handing itself a
+    # tool) through the settings store. Use the Settings panel.
+    ("POST",   "/api/tools"),
+    # The MCP registry. `add_server`/`update_server` reach `connect_server`,
+    # which spawns the stdio command through `validate_mcp_launch_fields`
+    # (args/env types) but NOT through `_validate_mcp_command` — the
+    # command/denied-flag/allowlist gate that `FORBIDDEN.md` Part 2 lists as the
+    # RCE-via-prompt-injection control. That gate lives ONLY on the agent's
+    # `manage_mcp` path, deliberately (the admin route is for a human at the
+    # form). So the loopback is a way round it: register `command:"bash",
+    # args:["-c","…"]` and it runs as the app uid. `PATCH` toggles a disabled
+    # server back on (reach); `.../call` executes a tool past the agent's own
+    # gating; `DELETE` destroys the owner's registry (the cookbook-state
+    # precedent). One `startswith` prefix per method covers add, update, toggle,
+    # delete, reconnect and call. The agent keeps the validated `manage_mcp`.
+    ("POST",   "/api/mcp/servers"),
+    ("PUT",    "/api/mcp/servers"),
+    ("PATCH",  "/api/mcp/servers"),
+    ("DELETE", "/api/mcp/servers"),
     ("POST",   "/api/cookbook/state"),   # whole-file overwrite — agent must use serve_preset/serve_model instead
     ("DELETE", "/api/cookbook/state"),
     # Host-control routes: package install, engine rebuild, and process
@@ -971,32 +1053,53 @@ async def do_app_api(content: str, owner: Optional[str] = None) -> Dict:
         return {"error": "path is required (e.g. '/api/cookbook/gpus')", "exit_code": 1}
     if not path.startswith("/"):
         path = "/" + path
-    if any(path.startswith(p) for p in _APP_API_BLOCKLIST_PREFIXES):
+    # `B896`. Match the blocklists against the path the request will actually
+    # reach, not the caller's raw string — `.`/`..`/`%xx` in `path` collapse
+    # before the request lands, so a raw `startswith` names a door and lets it
+    # be walked around at once. The original `path` is still what the request
+    # carries; `_match_path` decides only whether it is refused.
+    _match_path = _effective_app_api_path(path)
+    if any(_match_path.startswith(p) for p in _APP_API_BLOCKLIST_PREFIXES):
         return {"error": f"Path blocked for safety: {path}. Sensitive endpoints are off-limits via app_api.", "exit_code": 1}
 
     method = (args.get("method") or "GET").upper()
     if method not in ("GET", "POST", "PUT", "PATCH", "DELETE"):
         return {"error": f"Unsupported method: {method}", "exit_code": 1}
-    if any(method == m and path.startswith(p) for m, p in _APP_API_BLOCKLIST_METHOD_PATH):
-        if "/api/email/accounts" in path:
+    if any(method == m and _match_path.startswith(p) for m, p in _APP_API_BLOCKLIST_METHOD_PATH):
+        # `B896`. The trust-surface refusals name the person as the only one who
+        # can do this and point at the UI — a tool result the model reads, so it
+        # stops trying doors instead of hunting the next unnamed one
+        # (`Law 10`/`Law 15`). Keyed on `_match_path` so the right sentence
+        # shows whatever spelling reached here.
+        if _match_path.startswith("/api/export"):
+            return {"error": "A backup export hands back the raw settings file, including the API keys I'm otherwise kept from seeing in chat. Only the person can download it, from Settings → Backup. Ask me for a specific setting instead and I'll read the ones that aren't secrets.", "exit_code": 1}
+        if _match_path.startswith("/api/import"):
+            return {"error": "Importing a backup writes settings and feature flags — including the gates that keep a person in the loop (email confirmation, approval timeout) and features an admin turned off. Only the person can do this, from Settings → Backup. I can't run an import for myself, even if asked, because that request looks the same whether it came from you or from something I was reading.", "exit_code": 1}
+        if _match_path.startswith("/api/tool-allow-rules"):
+            return {"error": "A standing allow rule stops me asking before an action next time — it lowers the confirmation you set. Only the person can add one, from the trust settings in the UI. I can't create one for my own owner from here.", "exit_code": 1}
+        if _match_path.startswith("/api/tools"):
+            return {"error": "Turning a tool on or off is the person's switch, not mine — enabling one here would hand me more reach in my own name. Only you can change it, from Settings → Tools. Tell me which tool and I'll explain what it does, but I can't flip it.", "exit_code": 1}
+        if _match_path.startswith("/api/mcp/servers"):
+            return {"error": "Registering, editing, toggling, deleting or calling an MCP server this way skips the command check that keeps a stdio server from running arbitrary code — it is the person's action, from Settings → MCP. Use the `manage_mcp` tool for a server the agent may add (it enforces that check), or ask the person to add it in the UI.", "exit_code": 1}
+        if "/api/email/accounts" in _match_path:
             return {"error": "Don't use /api/email/accounts via app_api — it is owner-filtered in tool context and may return empty. Use the `list_email_accounts` email tool, then pass `account` to list_emails/read_email.", "exit_code": 1}
-        if "/api/cookbook/packages/install" in path:
+        if "/api/cookbook/packages/install" in _match_path:
             return {"error": "Don't POST /api/cookbook/packages/install via app_api — package installation is host code execution. Use the dedicated Forge dependency UI/flow instead.", "exit_code": 1}
-        if "/api/cookbook/rebuild-engine" in path:
+        if "/api/cookbook/rebuild-engine" in _match_path:
             return {"error": "Don't POST /api/cookbook/rebuild-engine via app_api — engine rebuild mutates local or remote host state. Use the dedicated Forge UI/flow instead.", "exit_code": 1}
-        if "/api/cookbook/kill-pid" in path:
+        if "/api/cookbook/kill-pid" in _match_path:
             return {"error": "Don't POST /api/cookbook/kill-pid via app_api — process signalling is host control. Use the dedicated Forge stop/diagnostic flow instead.", "exit_code": 1}
-        if "/api/model/download" in path:
+        if "/api/model/download" in _match_path:
             return {"error": "Don't POST /api/model/download directly — use the `download_model` tool (it resolves the server name, sets the venv env_prefix, and registers the task so it shows in the UI).", "exit_code": 1}
-        if "/api/model/serve" in path:
+        if "/api/model/serve" in _match_path:
             return {"error": "Don't POST /api/model/serve directly — use the `serve_model` or `serve_preset` tool (handles host resolution, env_prefix, and cookbook tracking).", "exit_code": 1}
-        if "/api/research/start" in path:
+        if "/api/research/start" in _match_path:
             return {"error": "Don't POST /api/research/start directly — use the `trigger_research` tool (it surfaces the session in the Deep Research sidebar).", "exit_code": 1}
-        if "/api/search" in path:
+        if "/api/search" in _match_path:
             return {"error": "Don't hit /api/search via app_api — use the `web_search` tool for online lookups, or `web_fetch` for a specific URL.", "exit_code": 1}
-        if "/api/notes" in path:
+        if "/api/notes" in _match_path:
             return {"error": "Don't hit /api/notes via app_api — use the `manage_notes` tool. It accepts natural-language due_date ('11pm today', 'tomorrow at 9am'), fires reminders from the due_date itself (no separate calendar event), and uses the caller's timezone. The raw endpoint requires ISO-UTC + a separate calendar event, both of which the agent tends to get wrong.", "exit_code": 1}
-        if "/api/calendar/events" in path:
+        if "/api/calendar/events" in _match_path:
             return {"error": "Don't hit /api/calendar/events via app_api — use the `manage_calendar` tool. It handles tz-aware natural-language datetimes and reminder_minutes correctly. If the user wants a note + reminder, prefer `manage_notes` with due_date — it bundles both.", "exit_code": 1}
         return {"error": f"{method} {path} is blocked — it overwrites the whole cookbook state file. Use list_serve_presets / serve_preset / serve_model instead.", "exit_code": 1}
 
