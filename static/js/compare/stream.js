@@ -4,6 +4,8 @@ import state from './state.js';
 import { addFinishBadge } from './vote.js';
 import { getModelCost, renderAskUserCard, safeDisplayImageSrc, buildTodoCard, buildDiffHtml } from '../chatRenderer.js?v=20260927agentwire1';
 import { applyAgentThreadNode } from '../agentThread.js';
+// `B910`. The line that says why the agent stopped itself (`P4-10`).
+import { renderAgentStop } from '../agentStops.js';
 import markdownModule from '../markdown.js';
 import spinnerModule from '../spinner.js';
 import uiModule from '../ui.js';
@@ -353,6 +355,10 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
     setTimeout(() => {
       _renderPending = false;
       _renderLastAt = performance.now();
+      // `B910`. A text block closed while this render waited (a guard stop
+      // starts the answer in a fresh block below its line) was drawn final
+      // when it closed; drawing it again now would draw the next block's text.
+      if (target !== (aiMsgEl._textEl || aiBody)) return;
       if (markdownModule && accumulated.trim()) {
         target.innerHTML = markdownModule.processWithThinking(
           markdownModule.squashOutsideCode(accumulated)
@@ -619,6 +625,30 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
               aiMsgEl._textEl = null;
               accumulated = '';
             }
+            if (hist) hist.scrollTop = hist.scrollHeight;
+
+          // ── The agent's guard stops (`B910`) ──
+          } else if (json.type === 'loop_breaker_triggered' || json.type === 'intent_nudge_exhausted') {
+            // `P4-10`'s line, drawn by its one drawer. It goes in the pane's own
+            // message, after the work it stopped: compare draws a whole turn as
+            // one message, and its tool cards are already in there.
+            if (aiMsgEl._spinner) {
+              if (aiMsgEl._spinner.element) aiMsgEl._spinner.destroy();
+              aiMsgEl._spinner = null;
+            }
+            if (json.type === 'loop_breaker_triggered') {
+              // The reply goes on after this stop — tools off, an answer from
+              // what it already found — and the line says "the answer below".
+              // So the text so far is drawn final and the answer starts in a
+              // fresh block under the line, as it does after a tool card.
+              if (aiMsgEl._textEl && accumulated.trim() && markdownModule) {
+                aiMsgEl._textEl.innerHTML = markdownModule.processWithThinking(
+                  markdownModule.squashOutsideCode(accumulated));
+              }
+              aiMsgEl._textEl = null;
+              accumulated = '';
+            }
+            renderAgentStop(aiBody, json);
             if (hist) hist.scrollTop = hist.scrollHeight;
           } else if (json.delta) {
             // Skip text deltas if we already rendered an image
