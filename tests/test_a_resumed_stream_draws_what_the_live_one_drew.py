@@ -46,7 +46,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.helpers.js_source import js_binding, js_definition, js_function  # B876
+from tests.helpers.js_source import js_assignment, js_binding, js_definition, js_function  # B876, B914
 from tests.helpers.source_text import blank_text  # B290
 from tests.helpers.esc_stub import ui_default_stub  # B874
 from test_tool_effect_surfaces_js import _make_sandbox, _run  # noqa: E402
@@ -254,11 +254,9 @@ def _assigned(name: str, marker: str) -> str:
     """The body of the arrow function the live handler assigns to `name` —
     the one holding `marker`. The handler declares every such name first as a
     no-op (`let _finalizeRoundRender = () => {};`, so the catch path can see
-    it), and cutting by the name alone returns that `{}`."""
-    chat = _chat()
-    code = blank_text(chat, "js")
-    at = code.rindex(f"{name} = () =>", 0, code.index(marker))
-    return js_function(chat[at:], f"{name} = () =>")
+    it), and cutting by the name alone returns that `{}`. `B914`: the cutter
+    is shared with `P4-10`'s file, which cut by the name alone."""
+    return js_assignment(_chat(), name, marker)
 
 
 def _between(start: str, end: str) -> str:

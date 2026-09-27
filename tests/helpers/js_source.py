@@ -53,6 +53,9 @@ Public names:
       `source` with every non-code span blanked to spaces, newlines kept. For
       the assertions that want "does this word appear in code anywhere",
       `blank_text` only removes comments and this also removes string bodies.
+  ``js_assignment(source, name, marker)``
+      The body of the arrow function assigned to `name` whose body holds
+      `marker` — for a name that is assigned more than once (`B914`).
 """
 import bisect
 import functools
@@ -339,6 +342,28 @@ def js_function(source: str, signature: str) -> str:
                 return source[open_at:i + 1]
         i += 1
     raise AssertionError(f"unbalanced braces after {signature!r}")
+
+
+def js_assignment(source: str, name: str, marker: str) -> str:
+    """The body of the arrow function assigned to `name` — the assignment whose
+    body holds `marker` — braces and all.
+
+    `B914`. `handleChatSubmit` (`static/js/chat.js`) declares each of its
+    stream helpers first as a no-op, `let _finalizeRoundRender = () => {};`, so
+    its catch path can see the name, and assigns the real body a thousand lines
+    later. `js_function(chat, "_finalizeRoundRender = () =>")` opens the first
+    one in code, and returns `{}`: `P4-10`'s two live cases ran an empty round
+    finalizer for as long as they existed, and the case about the next step
+    hiding an empty round never hid one. The marker names the body wanted, and
+    the assignment is the last one before it.
+
+    Lifted from `_assigned` in
+    `tests/test_a_resumed_stream_draws_what_the_live_one_drew.py`, which cut the
+    same finalizer correctly — one cutter for both (`Law 14`).
+    """
+    code = blank_text(source, "js")
+    at = code.rindex(f"{name} = () =>", 0, code.index(marker))
+    return js_function(source[at:], f"{name} = () =>")
 
 
 def js_definition(source: str, start: int) -> str:

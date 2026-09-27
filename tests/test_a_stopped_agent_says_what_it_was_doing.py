@@ -44,7 +44,7 @@ import pytest
 from test_tool_effect_surfaces_js import (  # noqa: E402
     _CARD_SHIM, _CARD_STUBS, _DOM, _make_sandbox, _run,
 )
-from tests.helpers.js_source import js_function
+from tests.helpers.js_source import js_assignment, js_function  # B914
 
 import src.agent_loop as agent_loop
 from src import agent_stops
@@ -432,6 +432,15 @@ def test_anything_else_draws_nothing(stop_sandbox):
 # by brace balance (`Law 20` option 2) and run against the real `agentStops.js`
 # in the DOM shim, in the order the stream delivers them: the stop event, then
 # the next round's `agent_step`, whose first act is `_finalizeRoundRender()`.
+#
+# `B914`. The finalizer is assigned twice in `handleChatSubmit`: first as a
+# no-op the catch path can see (`let _finalizeRoundRender = () => {};`), then
+# for real a thousand lines later. These cases cut it by the name alone, which
+# opens the first, so for as long as they existed they ran `{}` — and the first
+# one, about the next step hiding a round that wrote nothing, never hid one.
+# The cut is now the assignment that holds the finalizer's own first line, and
+# the script reports whether the round was hidden, so an empty finalizer cannot
+# pass for a real one again.
 
 _LIVE_SCRIPT = r"""
 import { installDom, Node } from './dom.js';
@@ -474,8 +483,19 @@ console.log(JSON.stringify({
   found: lines.length,
   visible: lines.filter((n) => !hidden(n)).map((n) => n.textContent),
   insideABubble: lines.some(inBubble),
+  roundHidden: roundHolder.style.display === 'none',
 }));
 """
+
+#: The real finalizer's first line. `B914`: a cut that does not hold it is the
+#: no-op placeholder, and the cases below would run nothing.
+_FINALIZER_MARKER = "if (roundFinalized) return roundFinalization;"
+
+
+def _finalizer(chat: str) -> str:
+    body = js_assignment(chat, "_finalizeRoundRender", _FINALIZER_MARKER)
+    assert "roundFinalized" in body, f"the round finalizer cut is not the real one: {body[:80]!r}"
+    return body
 
 
 def _live(sandbox: Path, event: dict, *, round_text: str, after: str) -> dict:
@@ -483,7 +503,7 @@ def _live(sandbox: Path, event: dict, *, round_text: str, after: str) -> dict:
     branch = js_function(chat, "} else if (json.type === 'loop_breaker_triggered'")
     script = (_LIVE_SCRIPT
               .replace("__ENSURE__", js_function(chat, "function _ensureStreamLayout"))
-              .replace("__FINALIZE__", js_function(chat, "_finalizeRoundRender = () =>"))
+              .replace("__FINALIZE__", _finalizer(chat))
               .replace("__ROUND_TEXT__", json.dumps(round_text))
               .replace("__EVENT__", json.dumps(event))
               .replace("__BRANCH__", branch)
@@ -505,9 +525,11 @@ def test_the_live_line_outlasts_the_next_round(live_sandbox):
     # next `agent_step` hides a round that wrote nothing. The old line lived in
     # that round's body and went with it.
     out = _live(live_sandbox, _RUNAWAY, round_text="", after="_finalizeRoundRender();")
+    # `B914`: the finalizer really ran, and did what the case is about.
+    assert out["roundHidden"], "the round that wrote nothing was not hidden"
     assert out["found"] == 1
-    assert out["visible"] and out["visible"][0].startswith(
-        "Stopped: called bash with identical arguments 15 times.")
+    assert len(out["visible"]) == 1, "the next step hid the line along with its round"
+    assert out["visible"][0].startswith("Stopped: called bash with identical arguments 15 times.")
     assert not out["insideABubble"]
 
 
