@@ -418,20 +418,38 @@ def test_an_override_for_one_server_does_not_reach_a_tool_of_the_same_name_elsew
     assert payload[("srv2", "tail_log")]["readonly_source"] == "heuristic"
 
 
-def test_the_prompt_text_is_unchanged_and_pays_for_no_query():
-    """`Law 1`. The system-prompt rendering reads none of the three new fields.
+def test_the_prompt_text_pays_for_one_query_on_a_miss_and_none_on_a_hit():
+    """The prompt block's cost, counted.
 
-    Asserted by driving it with `SessionLocal` replaced by something that
-    raises: if the prompt path loaded overrides it would blow up here.
+    **CORRECTED 2026-09-27 (`P8-48`, re-cut).** This case was
+    `test_the_prompt_text_is_unchanged_and_pays_for_no_query` and replaced
+    `SessionLocal` with a function raising `AssertionError` — which
+    `load_tool_overrides` catches with `except Exception` and answers `{}`, so
+    the case passed whether the prompt path queried or not. It could not fail.
+    It was also about to be untrue: the re-cut row lets an operator rewrite a
+    tool's description, the prompt block prints descriptions, and a block that
+    kept the server's words while the function schema carried the operator's
+    would tell the model two things about one tool. So the block now reads the
+    overrides on a cache MISS. A counter replaces the raise, because a counter
+    cannot be swallowed: one session on the miss, none on the hit.
     """
     import unittest.mock as mock
 
-    def _boom():
-        raise AssertionError("the prompt path loaded overrides it does not read")
+    Factory = _db()
+    _seed(Factory)
+    opened = []
+
+    def _counting():
+        opened.append(1)
+        return Factory()
 
     mgr = _manager()
-    with mock.patch("src.mcp_manager.SessionLocal", _boom):
+    with mock.patch("src.mcp_manager.SessionLocal", _counting):
         text = mgr.get_tool_descriptions_for_prompt()
+        assert len(opened) == 1, "a cache miss reads the overrides once"
+        again = mgr.get_tool_descriptions_for_prompt()
+    assert again == text
+    assert len(opened) == 1, "a cache hit opened a database session"
     assert "tail_log" in text and "wipe" in text
 
 

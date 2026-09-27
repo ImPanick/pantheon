@@ -598,14 +598,75 @@ _MCP_READONLY_VERBS = (
 # rather than stored — a typo cannot become a silent no-op that looks saved.
 _TOOL_OVERRIDE_BOOL_KEYS = ("read_only",)
 
+# `P8-48`, re-cut 2026-09-27 (`D-2026-09-27-02`): the second thing an operator
+# can say about a tool is what the model is TOLD it does. A third-party
+# server's description is often one word, or wrong about this install, and it
+# is the only thing the model reads when deciding whether to call the tool.
+# Plain text, and bounded: it goes into the function schema and the prompt on
+# every turn the tool is offered, so an unbounded one is a cost on every turn.
+# 1024 is the usual ceiling providers put on a function description.
+MCP_TOOL_DESCRIPTION_MAX = 1024
+
+# What the key of an override may be. It must be the tool's name EXACTLY,
+# because it is looked up by equality: this used to go through
+# `_sanitize_schema_token(name, 40)`, which stored a 46-character name as
+# `list_repository_collaborators_with_permi…` — a key no tool is called — so
+# the operator's answer was accepted and then ignored, by plan mode too.
+# 128 is the longest tool name the MCP spec's naming guidance allows.
+MCP_TOOL_OVERRIDE_NAME_MAX = 128
+
+# Control characters other than tab and newline. A description is prose a
+# person typed; a NUL or a BEL in it is damage, not content.
+_DESCRIPTION_CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
+
+
+def clean_tool_description(value: Any) -> Optional[str]:
+    """The one reading of a description override, before the length cap.
+
+    Text or None. Line endings become `\\n`, control characters other than tab
+    and newline are removed, the ends are trimmed, and blank means "no
+    override" — there is exactly one spelling of "use the server's words".
+    Markup is left as the characters it is: the browser draws this with
+    `textContent` and the model reads it as text, so escaping it here would
+    store something other than what the operator typed.
+
+    The route calls this and refuses a result over `MCP_TOOL_DESCRIPTION_MAX`
+    with a sentence; `normalize_tool_overrides` calls it and cuts at the cap,
+    as a backstop for a row written some other way.
+    """
+    if not isinstance(value, str):
+        return None
+    text = value.replace("\r\n", "\n").replace("\r", "\n")
+    text = _DESCRIPTION_CONTROL.sub("", text).strip()
+    return text or None
+
+
+def tool_override_name(name: Any) -> Optional[str]:
+    """The key an override is stored under: the tool's own name, or None.
+
+    None for anything that cannot be a tool name this manager could match —
+    not a string, blank, padded, past `MCP_TOOL_OVERRIDE_NAME_MAX`, or holding
+    a control character. Dropping it beats storing it under a different key,
+    which is what the old truncation did.
+    """
+    if not isinstance(name, str) or not name.strip() or name != name.strip():
+        return None
+    if len(name) > MCP_TOOL_OVERRIDE_NAME_MAX or re.search(r"[\x00-\x1f\x7f]", name):
+        return None
+    return name
+
 
 def normalize_tool_overrides(raw: Any) -> Dict[str, Dict[str, Any]]:
     """Read `McpServer.tool_overrides` into the shape everything else expects.
 
     Accepts the JSON string as stored, an already-decoded dict, or None, and
-    answers `{}` for anything it cannot use. Tool names are bounded with the
-    same `_sanitize_schema_token` the prompt hint uses, because a name here
-    comes back out in a route response and in the browser.
+    answers `{}` for anything it cannot use. Tool names are kept exactly as
+    the server spells them (`tool_override_name`), because they are matched
+    by equality against `tools/list`.
+
+    Two keys: `read_only` (a boolean — `P8-48`'s first half) and
+    `description` (text — its re-cut second half, read by
+    `clean_tool_description` and cut at `MCP_TOOL_DESCRIPTION_MAX`).
 
     An entry that ends up saying nothing (`{}` after filtering) is dropped, so
     "no opinion" has exactly one spelling and a round trip through the route
@@ -622,17 +683,19 @@ def normalize_tool_overrides(raw: Any) -> Dict[str, Dict[str, Any]]:
         return {}
     out: Dict[str, Dict[str, Any]] = {}
     for name, value in raw.items():
-        if not isinstance(name, str) or not name.strip():
-            continue
-        if not isinstance(value, dict):
+        key = tool_override_name(name)
+        if key is None or not isinstance(value, dict):
             continue
         entry = {
-            key: value[key]
-            for key in _TOOL_OVERRIDE_BOOL_KEYS
-            if isinstance(value.get(key), bool)
+            k: value[k]
+            for k in _TOOL_OVERRIDE_BOOL_KEYS
+            if isinstance(value.get(k), bool)
         }
+        description = clean_tool_description(value.get("description"))
+        if description is not None:
+            entry["description"] = description[:MCP_TOOL_DESCRIPTION_MAX]
         if entry:
-            out[_sanitize_schema_token(name, _MCP_TOKEN_MAX)] = entry
+            out[key] = entry
     return out
 
 
@@ -737,6 +800,24 @@ def mcp_tool_is_readonly(tool: Dict, override: Optional[Dict[str, Any]] = None) 
     because seven call sites want only the boolean.
     """
     return readonly_verdict(tool, override)[0]
+
+
+def description_verdict(tool: Dict, override: Optional[Dict[str, Any]] = None) -> Tuple[str, str]:
+    """What the model is told this tool does, and **whose words** they are.
+
+    Returns `(text, source)`, source `"override"` (the operator rewrote it on
+    this install) or `"server"` (the server's own `description`). The same
+    shape as `readonly_verdict` for the same reason: every channel the model
+    reads a tool through — the function schema, the prompt block, `manage_mcp
+    list_tools` — asks this one function, so they cannot tell the model two
+    different things about one tool (`Law 13`), and the panel can say which of
+    the two it is showing without re-deriving it (`Law 14`).
+    """
+    if isinstance(override, dict):
+        text = clean_tool_description(override.get("description"))
+        if text is not None:
+            return text[:MCP_TOOL_DESCRIPTION_MAX], "override"
+    return str(tool.get("description") or ""), "server"
 
 
 class McpManager:
@@ -1399,12 +1480,25 @@ class McpManager:
             logger.error(f"Failed to reconnect builtin MCP server {name}: {e}")
             return False
 
-    def get_all_openai_schemas(self, disabled_map: Optional[Dict[str, set]] = None) -> List[Dict]:
+    def get_all_openai_schemas(
+        self,
+        disabled_map: Optional[Dict[str, set]] = None,
+        overrides: Optional[Dict[str, Dict[str, Dict[str, Any]]]] = None,
+    ) -> List[Dict]:
         """Return all MCP tools in OpenAI function-calling format.
 
         Tool names are namespaced as mcp__{server_id}__{tool_name}.
         disabled_map: optional {server_id: set_of_disabled_tool_names} to filter out.
+
+        `P8-48` (re-cut): the description is `description_verdict`'s — the
+        operator's words where they rewrote it, the server's otherwise — so
+        this channel and the prompt block say the same thing. `overrides` is
+        loaded when not supplied, exactly as `get_all_tools` does it. The
+        `parameters` are the server's own and are never overridden: the server
+        enforces its schema whatever the model is told (see the row).
         """
+        if overrides is None:
+            overrides = load_tool_overrides()
         schemas = []
         for server_id, tools in self._tools.items():
             # Skip builtin Python servers — they use the code-block tool format
@@ -1414,6 +1508,7 @@ class McpManager:
             conn = self._connections.get(server_id, {})
             server_name = conn.get("name", server_id)
             disabled = (disabled_map or {}).get(server_id, set())
+            server_overrides = (overrides or {}).get(server_id, {})
 
             identity = conn.get("identity", "")
             label = f"{server_name} ({identity})" if identity else server_name
@@ -1422,11 +1517,14 @@ class McpManager:
                 if tool["name"] in disabled:
                     continue
                 qualified = qualify_mcp_tool_name(server_id, tool["name"])
+                description, _source = description_verdict(
+                    tool, server_overrides.get(tool["name"])
+                )
                 schema = {
                     "type": "function",
                     "function": {
                         "name": qualified,
-                        "description": f"[MCP:{label}] {tool['description']}",
+                        "description": f"[MCP:{label}] {description}",
                         "parameters": tool.get("input_schema", {"type": "object", "properties": {}}),
                     },
                 }
@@ -1477,12 +1575,24 @@ class McpManager:
             for tool in tools:
                 override = server_overrides.get(tool["name"])
                 is_readonly, source = readonly_verdict(tool, override)
+                # `P8-48` (re-cut). `description` is what the MODEL is told —
+                # the operator's words where they rewrote it — because every
+                # consumer of this payload that shows a description shows the
+                # one the model reads. `server_description` is the server's own
+                # and `description_source` says which of the two `description`
+                # is, so the panel can offer "go back to the server's" without
+                # re-deriving anything. `description_max` is the cap the route
+                # enforces, handed over rather than restated in JavaScript.
+                description, description_source = description_verdict(tool, override)
                 result.append({
                     "server_id": server_id,
                     "server_name": conn.get("name", server_id),
                     "name": tool["name"],
                     "qualified_name": qualify_mcp_tool_name(server_id, tool["name"]),
-                    "description": tool.get("description", ""),
+                    "description": description,
+                    "server_description": tool.get("description", "") or "",
+                    "description_source": description_source,
+                    "description_max": MCP_TOOL_DESCRIPTION_MAX,
                     "input_schema": tool.get("input_schema") or {},
                     "annotations": _normalize_annotations(tool.get("annotations")),
                     "is_readonly": is_readonly,
@@ -1541,6 +1651,19 @@ class McpManager:
         from src.builtin_mcp import _BUILTIN_SERVERS
         return server_id in _BUILTIN_SERVERS
 
+    def tool_descriptions_changed(self) -> None:
+        """An operator rewrote what the model is told about a tool (`P8-48`).
+
+        Moves `_generation`, which two caches key on: the prompt block
+        (`get_tool_descriptions_for_prompt`) and the tool index, which
+        re-embeds the MCP tools when it sees the counter move
+        (`src/tool_index.py`). Without this a saved description would sit
+        behind both until something unrelated reconnected a server. Called only
+        when a description changed — a read-only answer alters no text the
+        model reads, and a re-embed of every tool is not free.
+        """
+        self._generation += 1
+
     def get_server_status(self, server_id: str) -> Dict:
         """Get connection status for a server."""
         return self._connections.get(server_id, {"status": "disconnected"})
@@ -1561,12 +1684,17 @@ class McpManager:
         )
         if self._cached_prompt_desc is not None and self._cached_prompt_desc_key == cache_key:
             return self._cached_prompt_desc
-        # `overrides={}` and not a load: this prompt text uses `name`,
-        # `description`, `input_schema` and `is_disabled`, and none of the three
-        # fields an override touches. Paying for the query on every cache miss
-        # of the prompt-assembly path to compute a verdict nothing here reads
-        # would be a cost with no reader.
-        tools = self.get_all_tools(disabled_map, overrides={})
+        # `P8-48` (re-cut). This passed `overrides={}` — "a cost with no
+        # reader" while an override could only say read/write, which this text
+        # does not print. It now has a reader: `description` here is
+        # `description_verdict`'s, and a prompt block still carrying the
+        # server's words while the function schema carries the operator's would
+        # tell the model two things about one tool in one turn. So the
+        # overrides are loaded — on a cache MISS only; a hit returns above
+        # without opening a session. The cache stays correct because the route
+        # that writes a description moves `_generation`
+        # (`tool_descriptions_changed`), which is in the key.
+        tools = self.get_all_tools(disabled_map)
         if not tools:
             return ""
 

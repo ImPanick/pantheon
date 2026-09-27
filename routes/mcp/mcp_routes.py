@@ -18,9 +18,13 @@ from src.constants import DATA_DIR, MCP_OAUTH_DIR
 from src.mcp_manager import (
     McpManager,
     MCP_CALL_TIMEOUT_MAX_SECONDS,
+    MCP_TOOL_DESCRIPTION_MAX,
+    MCP_TOOL_OVERRIDE_NAME_MAX,
+    clean_tool_description,
     new_mcp_server_id,
     normalize_tool_overrides,
     resolve_mcp_call_timeout,
+    tool_override_name,
 )
 from src.env_flags import request_flag
 
@@ -791,6 +795,13 @@ def setup_mcp_routes(mcp_manager: McpManager):
           `{"name": null}` or `{"name": {}}` removes an entry, which is how an
           operator takes a correction back and returns the tool to whatever the
           server and the heuristic say.
+        * `{"overrides": {"name": {"description": "..."}}}` — `P8-48`, re-cut
+          (`D-2026-09-27-02`). What the model is told the tool does, in place
+          of the server's own description, in every channel the model reads
+          (`description_verdict`). Plain text, at most
+          `MCP_TOOL_DESCRIPTION_MAX` characters — refused past that, never
+          cut. The two keys merge independently, and `null` for one of them
+          takes back that one and leaves the other.
 
         **Both keys on one route rather than a second route, because they are
         one act**: they are the two things a person can say about one tool from
@@ -830,6 +841,10 @@ def setup_mcp_routes(mcp_manager: McpManager):
             else:
                 disabled = json.loads(srv.disabled_tools) if srv.disabled_tools else []
 
+            descriptions_before = {
+                n: e.get("description")
+                for n, e in normalize_tool_overrides(srv.tool_overrides).items()
+            }
             if "overrides" in body:
                 sent = body.get("overrides")
                 if sent is None:
@@ -844,10 +859,27 @@ def setup_mcp_routes(mcp_manager: McpManager):
                 # person just answered, not the whole server. `null` / `{}`
                 # against a name is the erase, and `normalize_tool_overrides`
                 # drops empty entries so "no opinion" has one spelling.
+                #
+                # `P8-48` (re-cut): an entry now holds two answers, so the
+                # merge goes one level down — `{"read_only": true}` must not
+                # take the operator's wording with it, and `Server's answer`
+                # on the read-only buttons sends `{"read_only": null}`, which
+                # takes back that one key and nothing else. `null` or `{}` for
+                # the whole entry still takes back both, as it always did.
                 merged = normalize_tool_overrides(srv.tool_overrides)
                 for name, value in sent.items():
                     if not isinstance(name, str) or not name.strip():
                         raise HTTPException(400, "override keys must be tool names")
+                    if tool_override_name(name) is None:
+                        # Stored under any other key it would never match
+                        # the tool — the defect this replaced truncated long
+                        # names and then ignored the answer.
+                        raise HTTPException(
+                            400,
+                            f"'{_safe_token(name)}' cannot be stored as a tool name: "
+                            f"a name is at most {MCP_TOOL_OVERRIDE_NAME_MAX} characters, "
+                            "with no spaces at either end and no control characters.",
+                        )
                     if value is None or value == {}:
                         merged.pop(name, None)
                         continue
@@ -857,26 +889,74 @@ def setup_mcp_routes(mcp_manager: McpManager):
                             f"override for '{_safe_token(name)}' must be an object, "
                             'e.g. {"read_only": true}',
                         )
-                    unknown = [k for k in value if k not in ("read_only",)]
+                    unknown = [k for k in value if k not in ("read_only", "description")]
                     if unknown:
                         raise HTTPException(
                             400,
                             f"override for '{_safe_token(name)}' has no key "
-                            f"'{_safe_token(unknown[0])}'. The only key is read_only "
-                            "(true or false).",
+                            f"'{_safe_token(unknown[0])}'. The keys are read_only "
+                            "(true or false) and description (text), and null for "
+                            "either takes that answer back.",
                         )
-                    if not isinstance(value.get("read_only"), bool):
-                        raise HTTPException(
-                            400,
-                            f"read_only for '{_safe_token(name)}' must be true or false",
-                        )
-                    merged[name] = {"read_only": value["read_only"]}
+                    entry = dict(merged.get(name, {}))
+                    if "read_only" in value:
+                        read_only = value["read_only"]
+                        if read_only is None:
+                            entry.pop("read_only", None)
+                        elif isinstance(read_only, bool):
+                            entry["read_only"] = read_only
+                        else:
+                            raise HTTPException(
+                                400,
+                                f"read_only for '{_safe_token(name)}' must be true or false",
+                            )
+                    if "description" in value:
+                        sent_text = value["description"]
+                        if sent_text is None:
+                            entry.pop("description", None)
+                        elif not isinstance(sent_text, str):
+                            raise HTTPException(
+                                400,
+                                f"description for '{_safe_token(name)}' must be text, "
+                                "or null to go back to the server's own.",
+                            )
+                        else:
+                            text = clean_tool_description(sent_text)
+                            if text is None:
+                                raise HTTPException(
+                                    400,
+                                    f"description for '{_safe_token(name)}' is empty. "
+                                    "To go back to the server's own description, send null.",
+                                )
+                            # Refused, not cut: storing less than was typed,
+                            # with a 200, is the silent kind of wrong.
+                            if len(text) > MCP_TOOL_DESCRIPTION_MAX:
+                                raise HTTPException(
+                                    400,
+                                    f"description for '{_safe_token(name)}' is "
+                                    f"{len(text)} characters; the limit is "
+                                    f"{MCP_TOOL_DESCRIPTION_MAX}.",
+                                )
+                            entry["description"] = text
+                    if entry:
+                        merged[name] = entry
+                    else:
+                        merged.pop(name, None)
                 overrides = normalize_tool_overrides(merged)
                 srv.tool_overrides = json.dumps(overrides) if overrides else None
             else:
                 overrides = normalize_tool_overrides(srv.tool_overrides)
 
             db.commit()
+
+            # `P8-48` (re-cut). A description is text the model reads, and the
+            # prompt block and the tool index both cache on the manager's
+            # generation. Moved only when a description actually changed: a
+            # read-only answer alters nothing the model reads.
+            descriptions_after = {n: e.get("description") for n, e in overrides.items()}
+            if {n: d for n, d in descriptions_before.items() if d} != \
+                    {n: d for n, d in descriptions_after.items() if d}:
+                mcp_manager.tool_descriptions_changed()
 
             # Same honesty as `PUT`'s `stale_disabled_tools`: a name that no
             # longer matches anything the server offers is kept (a typo today

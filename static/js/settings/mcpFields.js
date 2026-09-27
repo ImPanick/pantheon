@@ -942,7 +942,12 @@ export function createMcpToolRow(tool, options) {
   const data = tool && typeof tool === 'object' ? tool : {};
   const opts = options && typeof options === 'object' ? options : {};
   const name = String(data.name || '');
-  const description = String(data.description || '');
+  // `P8-48`, re-cut (`D-2026-09-27-02`). `description` is what the MODEL is
+  // told — the operator's wording where they rewrote it — and
+  // `description_source` says whose words those are. Read, never re-derived:
+  // `description_verdict` in `src/mcp_manager.py` decides, for the function
+  // schema, the prompt block and this row alike.
+  let descEntry = readDescription(data, null);
   const summary = summariseSchema(data.input_schema);
   // The entry is copied, not aliased: pressing a button rewrites the verdict
   // for this row and must not reach back into the caller's array, which is
@@ -977,11 +982,24 @@ export function createMcpToolRow(tool, options) {
   text.appendChild(elem('span', { textContent: ' ' }));
   text.appendChild(badge);
 
-  if (description) {
-    const dim = elem('span', { textContent: ` \u2014 ${description}` });
-    dim.style.cssText = 'opacity:0.5;';
-    text.appendChild(dim);
+  // The description on the closed row is the one the model reads, and when
+  // the operator wrote it the row says so — a list that showed rewritten
+  // wording as if the server had written it would be the badge's mistake
+  // again, one field over.
+  const dim = elem('span');
+  dim.className = 'mcp-tool-description-text';
+  dim.style.cssText = 'opacity:0.5;';
+  text.appendChild(dim);
+  const mine = elem('span');
+  mine.className = 'mcp-tool-description-mine';
+  mine.style.cssText = 'opacity:0.7;font-style:italic;';
+  text.appendChild(mine);
+  function paintDescriptionLine() {
+    dim.textContent = descEntry.description ? ` \u2014 ${descEntry.description}` : '';
+    mine.textContent = descEntry.source === 'override' ? ' (your wording)' : '';
+    dim.setAttribute('data-mcp-description-source', descEntry.source);
   }
+  paintDescriptionLine();
   label.appendChild(text);
 
   /** Paint the badge from `verdictEntry`. The only place the badge is written. */
@@ -1149,8 +1167,11 @@ export function createMcpToolRow(tool, options) {
     called.appendChild(qualified);
     detail.appendChild(called);
 
-    if (description && description.length > 80) {
-      const full = elem('div', { textContent: description });
+    const describer = typeof opts.onDescription === 'function' ? opts.onDescription : null;
+    if (describer) {
+      detail.appendChild(buildDescriptionEditor(describer));
+    } else if (descEntry.description && descEntry.description.length > 80) {
+      const full = elem('div', { textContent: descEntry.description });
       full.style.cssText = 'opacity:0.75;margin-top:3px;';
       detail.appendChild(full);
     }
@@ -1191,6 +1212,164 @@ export function createMcpToolRow(tool, options) {
     detail.appendChild(list);
   }
 
+  /**
+   * `P8-48`, re-cut: the wording the model reads, which an admin may rewrite.
+   *
+   * Shows the server's own words beside the operator's, so rewriting one is
+   * never a guess at what it replaced; "Use the server's" takes the rewrite
+   * back. Same discipline as the read-only buttons above: nothing repaints
+   * until the server has answered, the answer is read back rather than
+   * assumed, and a refusal leaves what was typed in the box. The text only
+   * ever reaches the page as a textarea's `value` or a node's `textContent`.
+   */
+  function buildDescriptionEditor(setter) {
+    const box = elem('div');
+    box.className = 'mcp-tool-description';
+    box.style.cssText = 'margin:6px 0 4px;';
+
+    const head = elem('div', { textContent: 'What the model is told' });
+    head.style.cssText = 'font-weight:600;';
+    box.appendChild(head);
+
+    const whose = elem('div');
+    whose.className = 'mcp-tool-description-whose';
+    whose.style.cssText = 'opacity:0.7;margin-top:1px;';
+    box.appendChild(whose);
+
+    const theirs = elem('div');
+    theirs.className = 'mcp-tool-description-server';
+    theirs.style.cssText = 'opacity:0.6;margin:2px 0 0 2px;padding-left:6px;'
+      + 'border-left:2px solid var(--border);white-space:pre-wrap;';
+    box.appendChild(theirs);
+
+    const input = elem('textarea', { className: 'settings-input', rows: 3 });
+    input.setAttribute('data-mcp-description-input', name);
+    input.setAttribute('aria-label', `What the model is told about ${name}`);
+    input.style.cssText = 'width:100%;box-sizing:border-box;font-size:11px;'
+      + 'resize:vertical;margin-top:4px;';
+    input.value = descEntry.description;
+    box.appendChild(input);
+
+    const controls = elem('div');
+    controls.style.cssText = 'display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:3px;';
+    const save = elem('button', { type: 'button', textContent: 'Save wording' });
+    save.setAttribute('data-mcp-description', 'save');
+    save.style.cssText = OVERRIDE_BUTTON_STYLE;
+    const reset = elem('button', { type: 'button', textContent: "Use the server's" });
+    reset.setAttribute('data-mcp-description', 'reset');
+    reset.title = 'Drop your wording and give the model the server’s own description again.';
+    reset.style.cssText = OVERRIDE_BUTTON_STYLE;
+    const count = elem('span');
+    count.className = 'mcp-tool-description-count';
+    const status = elem('span');
+    status.className = 'mcp-tool-description-status';
+    controls.appendChild(save);
+    controls.appendChild(reset);
+    controls.appendChild(count);
+    controls.appendChild(status);
+    box.appendChild(controls);
+
+    const hint = elem('div', {
+      textContent: 'Plain text. The model reads this to decide when to use the tool. '
+        + 'It does not change what the tool accepts.',
+    });
+    hint.style.cssText = 'opacity:0.55;margin-top:3px;';
+    box.appendChild(hint);
+
+    let busy = false;
+    const typed = () => String(input.value == null ? '' : input.value).trim();
+
+    function say(message, bad) {
+      status.textContent = message;
+      status.style.cssText = bad ? 'color:var(--red);opacity:0.95;' : 'opacity:0.7;';
+    }
+
+    function paintCount() {
+      const length = typed().length;
+      const max = descEntry.max;
+      const over = max != null && length > max;
+      count.textContent = max == null ? ''
+        : over ? `${length - max} characters over the limit of ${max}`
+          : `${length} of ${max} characters`;
+      count.style.cssText = over ? 'color:var(--red);' : 'opacity:0.55;';
+      // Nothing to save is not a button to press: empty, over the limit, or
+      // exactly what the model is already told.
+      save.disabled = busy || !length || over || typed() === descEntry.description;
+    }
+
+    function paint() {
+      const rewritten = descEntry.source === 'override';
+      whose.textContent = rewritten
+        ? 'You rewrote this on this install. The server’s own words:'
+        : descEntry.server
+          ? 'These are the server’s own words.'
+          : 'The server gives this tool no description.';
+      theirs.textContent = rewritten ? (descEntry.server || '(none)') : '';
+      theirs.style.display = rewritten ? 'block' : 'none';
+      // Only offered when there is something to take back.
+      reset.style.display = rewritten ? 'inline-block' : 'none';
+      reset.disabled = busy;
+      paintCount();
+    }
+
+    function apply(value) {
+      busy = true;
+      paint();
+      say('Saving…', false);
+      let outcome;
+      try {
+        outcome = setter(name, value);
+      } catch (err) {
+        outcome = Promise.reject(err);
+      }
+      Promise.resolve(outcome).then((answer) => {
+        // The server's answer wins, as for the read-only buttons: it cleaned
+        // the text (line endings, control characters) and it is the side that
+        // knows what the model will now be told.
+        descEntry = (answer && typeof answer === 'object')
+          ? readDescription(answer, descEntry)
+          : value === null
+            ? { ...descEntry, description: descEntry.server, source: 'server' }
+            : { ...descEntry, description: value, source: 'override' };
+        input.value = descEntry.description;
+        say(value === null ? 'Back to the server’s words.' : 'Saved.', false);
+      }).catch((err) => {
+        // Nothing was repainted, so there is nothing to roll back — and the
+        // box keeps what was typed, which a person would otherwise have to
+        // type again.
+        say(`Not saved — ${String((err && err.message) || err || 'the server refused it')}`, true);
+      }).then(() => {
+        busy = false;
+        paint();
+        paintDescriptionLine();
+      });
+    }
+
+    input.addEventListener('input', () => { say('', false); paintCount(); });
+    save.addEventListener('click', (event) => {
+      if (event && event.preventDefault) event.preventDefault();
+      const text = typed();
+      if (!text) {
+        say('Empty. Type what the model should be told, or keep the server’s words.', true);
+        return;
+      }
+      if (descEntry.max != null && text.length > descEntry.max) {
+        say(`${text.length} characters; the limit is ${descEntry.max}.`, true);
+        return;
+      }
+      // The server's own words typed back are not a rewrite. Stored as one,
+      // they would pin today's wording and hide the server's next change.
+      apply(text === descEntry.server ? null : text);
+    });
+    reset.addEventListener('click', (event) => {
+      if (event && event.preventDefault) event.preventDefault();
+      apply(null);
+    });
+
+    paint();
+    return box;
+  }
+
   toggle.addEventListener('click', (event) => {
     if (event && event.preventDefault) event.preventDefault();
     const open = detail.style.display !== 'none';
@@ -1201,6 +1380,28 @@ export function createMcpToolRow(tool, options) {
   });
 
   return entry;
+}
+
+/**
+ * The description half of one tool entry: what the model is told, the
+ * server's own words, whose words the first are, and the length cap.
+ *
+ * An entry from before the re-cut has no `server_description`; its
+ * `description` was the server's, so that is what it reads as. An unknown
+ * `description_source` reads as the server's — the claim that needs no
+ * evidence — rather than as the operator's.
+ */
+function readDescription(entry, fallback) {
+  const data = entry && typeof entry === 'object' ? entry : {};
+  const told = typeof data.description === 'string' ? data.description : '';
+  const server = typeof data.server_description === 'string' ? data.server_description : told;
+  const max = Number(data.description_max);
+  return {
+    description: told,
+    server,
+    source: data.description_source === 'override' ? 'override' : 'server',
+    max: Number.isFinite(max) && max > 0 ? max : (fallback ? fallback.max : null),
+  };
 }
 
 /**

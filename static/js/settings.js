@@ -5623,8 +5623,15 @@ async function initUnifiedIntegrations() {
               // and only `McpManager.readonly_verdict` knows that — a browser
               // that assumed "cleared means guessed" would be wrong on every
               // annotated server (`Law 14`).
-              const onOverride = async (toolName, value) => {
-                const body = { overrides: { [toolName]: value === null ? null : { read_only: value } } };
+              //
+              // `P8-48`, re-cut: the same save carries the operator's wording
+              // for the model (`onDescription`). One entry now holds both
+              // answers, so each button sends only its own key and `null`
+              // takes back that key alone — `Server's answer` used to send
+              // `null` for the whole entry, which would now take the wording
+              // with it.
+              const saveToolOverride = async (toolName, patch) => {
+                const body = { overrides: { [toolName]: patch } };
                 const r = await fetch(`/api/mcp/servers/${srv.id}/tools`, {
                   method: 'PATCH',
                   headers: { 'Content-Type': 'application/json' },
@@ -5645,7 +5652,9 @@ async function initUnifiedIntegrations() {
                   return Array.isArray(fresh) ? fresh.find(t => t.name === toolName) : undefined;
                 } catch (_) { return undefined; }
               };
-              tools.forEach(t => toolList.appendChild(createMcpToolRow(t, { onOverride })));
+              const onOverride = (toolName, value) => saveToolOverride(toolName, { read_only: value });
+              const onDescription = (toolName, text) => saveToolOverride(toolName, { description: text });
+              tools.forEach(t => toolList.appendChild(createMcpToolRow(t, { onOverride, onDescription })));
               const saveFn = async () => {
                 const dis = [];
                 panel.querySelectorAll('input[type=checkbox]').forEach(cb => { if (!cb.checked) dis.push(cb.dataset.mcpToolName); });

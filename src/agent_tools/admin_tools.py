@@ -446,6 +446,13 @@ async def do_manage_mcp(content: str, owner: Optional[str] = None) -> Dict:
             }
             if schema["omitted"]:
                 item["parameters_omitted"] = schema["omitted"]
+            # `P8-48` (re-cut). `description` above is already the one the
+            # function schema and the prompt block carry
+            # (`description_verdict`); this says the words are the operator's,
+            # and is absent for a tool nobody rewrote, the same convention as
+            # `annotations`, `override` and `disabled` beside it.
+            if t.get("description_source") == "override":
+                item["description_source"] = "override"
             if t.get("annotations"):
                 item["annotations"] = t["annotations"]
             if t.get("override"):
