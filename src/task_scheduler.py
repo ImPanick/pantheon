@@ -3260,6 +3260,20 @@ class TaskScheduler:
                             approval_pause = {
                                 "tool": data.get("tool") or "tool",
                                 "approval_id": approval.get("approval_id"),
+                                # `B899`. Why the card exists, in the card's own
+                                # words. `public_payload`'s `description` is
+                                # `reason or default_reason()` (`P4-04`), already
+                                # derived from the card's own state — so it says
+                                # "Untrusted context influenced this run" only
+                                # when the run was tainted, and says something
+                                # else (a strict-rung confirm, `P7-03`; a
+                                # self-escalation the assistant asked for,
+                                # `P7-02`) when it was not. Reused here rather
+                                # than re-asserting "after untrusted context" for
+                                # every card (`Law 7`/`Law 14`), which blamed
+                                # untrusted content on cards that never saw any
+                                # (`Law 10`).
+                                "reason": (approval.get("description") or "").strip(),
                             }
                             # Scheduled tasks have no interactive surface that
                             # can safely resume a one-use grant. Retire the
@@ -3283,10 +3297,16 @@ class TaskScheduler:
                     pass
 
         if approval_pause is not None:
+            # The card's own sentence carries whether untrusted content was
+            # involved; the fallback (a card with no description) claims nothing
+            # about taint, because on a clean-run pause there is nothing to claim.
+            detail = approval_pause.get("reason") or (
+                "It asked for an action that needs a person to approve it."
+            )
             return (
                 "Scheduled task paused safely: "
-                f"{approval_pause['tool']} requested an exact action after "
-                "untrusted context. That action was not executed. Run this task "
+                f"{approval_pause['tool']} needs a person to approve its next "
+                f"action. {detail} That action was not executed. Run this task "
                 "interactively to inspect and approve the action."
             )
 
