@@ -167,6 +167,24 @@ def _parsed_json_field(raw, label, kind, example):
     return value
 
 
+def _launcher_verdict(command: str) -> str:
+    """`found` or `missing`: can this machine start `command` at all? `P8-45`.
+
+    A bare name is looked up the way the spawn will look it up — on `PATH`,
+    through `which_tool`, which also tries Windows' `.cmd`/`.exe` shims (`npx`
+    is `npx.cmd` there). A command with a path in it is checked where it
+    points. Reads the filesystem and nothing else; nothing is run.
+    """
+    from core.platform_compat import which_tool
+
+    cmd = (command or "").strip()
+    if not cmd:
+        return "missing"
+    if os.sep in cmd or (os.altsep and os.altsep in cmd):
+        return "found" if os.path.isfile(cmd) and os.access(cmd, os.X_OK) else "missing"
+    return "found" if which_tool(cmd) else "missing"
+
+
 def _safe_token(value) -> str:
     """Bound an untrusted name before it goes into an error message.
 
@@ -376,6 +394,63 @@ def setup_mcp_routes(mcp_manager: McpManager):
             "needs_oauth": needs_oauth,
             "needs_auth": needs_auth,
             "auth_url": status.get("auth_url"),
+        }
+
+    @router.post("/check")
+    async def check_registration(request: Request):
+        """What this install would make of a stdio registration, before one is made.
+
+        `P8-45`. The Settings form's "Start from" picker asks this the moment a
+        preset is chosen, so a person learns before typing a token whether the
+        server can start here at all. Body: `{"command", "args", "env"}`.
+        Registers nothing, starts nothing, stores nothing.
+
+        Two answers, each an enum and never a boolean (`Law 10`):
+
+        * `launcher` — `found` / `missing`: is `command` on this machine? The
+          refusal that actually bites on the form's path is a spawn that
+          cannot find `npx`, and it used to arrive as a connection error after
+          the row was saved.
+        * `assistant` — `accepted` / `refused`, with the rule's own `reason`:
+          would `manage_mcp` register this? Asked of `_validate_mcp_command`
+          itself, the one rule, as `P8-47`'s `refusal_on_the_agent_path` asks
+          it — not a copy (`Law 13`), so an operator's
+          `PANTHEON_MCP_ALLOWED_COMMANDS` moves this answer with it.
+          `FORBIDDEN.md` Part 2's command/arg/env validation is read here and
+          not touched.
+
+        What it deliberately does not answer is whether `POST /servers` would
+        take it: that route has no command rule — it is the administrator's
+        door, and `P8-47` pins that it accepts what the agent path refuses —
+        and its own refusals (argument and variable types) reach the form on
+        Save, on the field they are about. `require_admin`, like every route
+        here: whether a binary exists on the host is the host's business.
+        """
+        require_admin(request)
+        try:
+            body = await request.json()
+        except Exception:
+            raise HTTPException(
+                400, 'body must be JSON, e.g. {"command": "npx", "args": ["-y", "pkg"], "env": {}}'
+            )
+        if not isinstance(body, dict):
+            raise HTTPException(400, 'body must be a JSON object, e.g. {"command": "npx"}')
+        command = body.get("command")
+        if not isinstance(command, str) or not command.strip():
+            raise HTTPException(400, "command is required and must be text")
+        command = command.strip()
+        args = body.get("args", [])
+        env = body.get("env", {})
+
+        from src.agent_tools.admin_tools import _validate_mcp_command
+        reason = _validate_mcp_command(command, args if args is not None else [], env or {})
+        return {
+            "command": command,
+            "launcher": {"verdict": _launcher_verdict(command)},
+            "assistant": {
+                "verdict": "refused" if reason else "accepted",
+                "reason": reason,
+            },
         }
 
     @router.put("/servers/{server_id}")

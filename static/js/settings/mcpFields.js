@@ -692,6 +692,23 @@ export function createMcpFieldEditor(spec) {
 
   let mode = 'fields';
 
+  // `P8-45`. Values only the person has — a token, a password, a connection
+  // URL — which a preset leaves empty and marks rather than faking. Env needs
+  // are kept by variable NAME, so they hold in both modes and survive a switch
+  // to JSON and back; an argument's need is kept on its ROW, because an empty
+  // argument has no name to find it by. `setValue` without `needs` clears
+  // both: a value from anywhere else carries no marks.
+  let needKeys = {};
+
+  function markNeeded(row, hint) {
+    row.setAttribute('data-mcp-needs', String(hint));
+    const cells = row.querySelectorAll('input');
+    const cell = kind === 'env' ? cells[1] : cells[0];
+    if (!cell) return;
+    cell.placeholder = String(hint);
+    cell.setAttribute('aria-required', 'true');
+  }
+
   function fire() { listeners.forEach((fn) => { try { fn(); } catch (_) {} }); }
 
   function makeRow(first, second) {
@@ -768,18 +785,61 @@ export function createMcpFieldEditor(spec) {
     return { ok: true, value: out };
   }
 
-  function setRows(value) {
+  function setRows(value, argNeeds) {
     rowsBox.replaceChildren();
     if (kind === 'args') {
       const list = Array.isArray(value) ? value : [];
       if (!list.length) makeRow('', '');
-      else list.forEach((v) => makeRow(String(v), ''));
+      else {
+        list.forEach((v, i) => {
+          const row = makeRow(String(v), '');
+          if (argNeeds && argNeeds[i] != null) markNeeded(row, argNeeds[i]);
+        });
+      }
       return;
     }
     const pairs = value && typeof value === 'object' && !Array.isArray(value)
       ? Object.keys(value) : [];
     if (!pairs.length) makeRow('', '');
-    else pairs.forEach((k) => makeRow(k, String(value[k])));
+    else {
+      pairs.forEach((k) => {
+        const row = makeRow(k, String(value[k]));
+        if (needKeys[k] != null) markNeeded(row, needKeys[k]);
+      });
+    }
+  }
+
+  /**
+   * The first marked value still left empty, as a problem to draw on this
+   * field — or null. Only what is present is checked: a row the person
+   * removed with × was removed on purpose.
+   */
+  function missingValue(value) {
+    if (mode === 'fields') {
+      const rows = Array.from(rowsBox.querySelectorAll('.mcp-field-row'));
+      for (let i = 0; i < rows.length; i += 1) {
+        const cells = rows[i].querySelectorAll('input');
+        const name = String((cells[0] && cells[0].value) || '').trim();
+        const hint = kind === 'env' ? needKeys[name] : rows[i].getAttribute('data-mcp-needs');
+        if (hint == null) continue;
+        const cell = kind === 'env' ? cells[1] : cells[0];
+        if (!cell || String(cell.value || '').trim()) continue;
+        return {
+          field: kind,
+          title: kind === 'env' ? `${name} needs your value` : `Argument ${i + 1} needs your value`,
+          detail: String(hint),
+          focus: cell,
+        };
+      }
+      return null;
+    }
+    if (kind !== 'env' || !value || typeof value !== 'object') return null;
+    for (const key of Object.keys(needKeys)) {
+      if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+      if (String(value[key] == null ? '' : value[key]).trim()) continue;
+      return { field: kind, title: `${key} needs your value`, detail: String(needKeys[key]) };
+    }
+    return null;
   }
 
   function currentValue() {
@@ -894,13 +954,30 @@ export function createMcpFieldEditor(spec) {
     mode: () => mode,
     setMode,
     onChange: (fn) => { if (typeof fn === 'function') listeners.push(fn); },
-    /** `{ok, value}` or `{ok:false, problem}` — never throws, never clears. */
-    read: () => (mode === 'fields' ? readRows() : parseJsonField(jsonBox.value, kind)),
+    /**
+     * `{ok, value}` or `{ok:false, problem}` — never throws, never clears. A
+     * value a preset marked as the person's (`P8-45`) and still left empty is
+     * a problem here, so the form refuses it before the post rather than
+     * saving a server that cannot sign in.
+     */
+    read: () => {
+      const result = mode === 'fields' ? readRows() : parseJsonField(jsonBox.value, kind);
+      if (!result.ok) return result;
+      const missing = missingValue(result.value);
+      return missing ? { ok: false, problem: missing } : result;
+    },
     /** Best-effort current value for the live command-line preview. */
     peek: currentValue,
-    setValue: (value) => {
+    /**
+     * Replace the value. `options.needs` marks what only the person has:
+     * `{KEY: hint}` for Environment, `{index: hint}` for Arguments.
+     */
+    setValue: (value, options) => {
+      const needs = options && options.needs && typeof options.needs === 'object'
+        ? options.needs : null;
+      needKeys = kind === 'env' && needs ? { ...needs } : {};
       if (mode === 'json') jsonBox.value = JSON.stringify(value, null, kind === 'env' ? 2 : 0);
-      else setRows(value);
+      else setRows(value, kind === 'args' ? needs : null);
       clearProblem();
       fire();
     },

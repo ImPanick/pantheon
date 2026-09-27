@@ -1119,7 +1119,11 @@ def test_mcp_oauth_config_sanitizes_paths_and_env(tmp_path, monkeypatch):
 
 
 def test_gmail_mcp_preset_uses_contained_oauth_paths():
-    src = Path(__file__).resolve().parents[1] / "static" / "js" / "admin.js"
+    # `P8-45` moved the preset catalogue out of `static/js/admin.js` into its
+    # one home, `static/js/settings/mcpPresets.js`, which both the Settings
+    # form's picker and admin.js import. The assertions are unchanged; the
+    # picker's own tests drive the same `oauth` block through `saveExtras`.
+    src = Path(__file__).resolve().parents[1] / "static" / "js" / "settings" / "mcpPresets.js"
     text = src.read_text()
     preset = text.split('{ name: "Gmail"', 1)[1].split('{ name: "Email (IMAP/SMTP)"', 1)[0]
 

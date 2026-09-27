@@ -16,6 +16,7 @@ import {
   describeServerRefusal,
   formatCommandLine,
 } from './settings/mcpFields.js';
+import { createMcpPresetPicker } from './settings/mcpPresets.js';
 import { bindSettingsSearch } from './settings/search.js';
 import { bindSettingsSidebar } from './settings/sidebar.js';
 import {
@@ -5675,6 +5676,11 @@ async function initUnifiedIntegrations() {
         <div class="admin-card" style="margin-top:8px">
           <h2 style="font-size:13px">Add MCP Server</h2>
           <div class="settings-col">
+            <!-- P8-45. "Start from" — the preset catalogue that sat unreachable
+                 in admin.js, filling the fields below rather than a second form
+                 (Law 14). Built by createMcpPresetPicker in
+                 static/js/settings/mcpPresets.js. -->
+            <div id="uf-mcp-preset-mount"></div>
             <div class="settings-row"><label class="settings-label">Name</label><input id="uf-mcp-name" class="settings-input" placeholder="Server name"></div>
             <div class="settings-row"><label class="settings-label">Transport</label><select id="uf-mcp-transport" class="settings-input"><option value="stdio">stdio</option><option value="sse">SSE</option><option value="http">Streamable HTTP</option></select></div>
             <div id="uf-mcp-stdio-fields" style="display:flex;flex-direction:column;gap:6px;">
@@ -5742,6 +5748,31 @@ async function initUnifiedIntegrations() {
         const urlInput = el('uf-mcp-url');
         if (urlInput) urlInput.placeholder = (v === 'http') ? 'https://mcp.example.com/mcp' : 'http://localhost:3001/sse';
       });
+      // `P8-45`. The picker fills THESE controls — the ones above, which the
+      // save below reads — and says in place what the person must supply and
+      // what this install makes of the command, asked of the server's own rule
+      // (`POST /api/mcp/check`) rather than restated here.
+      const presetPicker = createMcpPresetPicker({
+        fields: {
+          name: el('uf-mcp-name'),
+          transport: el('uf-mcp-transport'),
+          command: el('uf-mcp-cmd'),
+          args: argsField,
+          env: envField,
+        },
+        checkLaunch: async (registration) => {
+          const r = await fetch('/api/mcp/check', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(registration),
+          });
+          const data = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(describeServerRefusal(r.status, data).text);
+          return data;
+        },
+      });
+      el('uf-mcp-preset-mount').replaceChildren(presetPicker.element);
       el('uf-mcp-cancel').addEventListener('click', () => { formEl.style.display = 'none'; });
       el('uf-mcp-save').addEventListener('click', async () => {
         const transport = el('uf-mcp-transport').value;
@@ -5779,6 +5810,12 @@ async function initUnifiedIntegrations() {
           }
           fd.append('args', collected.args);
           fd.append('env', collected.env);
+          // `P8-45`. A preset that signs in with Google (Gmail) also sends
+          // what `add_server` writes the credentials file and the Authorize
+          // flow from — ported from the unreachable admin form, whose save
+          // was the only one that ever sent them.
+          const extras = presetPicker.saveExtras(JSON.parse(collected.env));
+          for (const [key, value] of Object.entries(extras)) fd.append(key, value);
         } else {
           fd.append('url', el('uf-mcp-url').value);
         }
@@ -5795,7 +5832,20 @@ async function initUnifiedIntegrations() {
             el('uf-mcp-msg').textContent = `Connected (${data.tool_count || 0} tools)`;
             formEl.style.display = 'none'; await renderList();
           } else if (r.ok) {
-            el('uf-mcp-msg').textContent = 'Saved'; formEl.style.display = 'none'; await renderList();
+            // `P8-45`. This said "Saved" and closed the form whatever state
+            // the server was left in, so a token the server rejected, an `npx`
+            // that is not installed, or a Gmail server waiting for Google's
+            // sign-in all read as done. The server's own page says which —
+            // "Error: …" with Reconnect, or "Needs authorization" with
+            // Authorize — so that is where the person lands.
+            await renderList();
+            await showMcpForm(data.id);
+            const note = el('uf-mcp-msg');
+            if (note) {
+              note.textContent = data.needs_oauth
+                ? 'Added. Press Authorize to sign in and connect it.'
+                : 'Added, but it is not connected yet — its state is above.';
+            }
           } else {
             // `P8-46`. This branch read `r.status` and discarded `data`, so
             // `add_server`'s own `detail` — *"args must be a JSON array, e.g.

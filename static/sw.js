@@ -117,6 +117,9 @@ const PRECACHE = [
   '/static/js/chat.js?v=20260927contextwheel1',
   '/static/js/planWindow.js',
   '/static/js/contextUsage.js',
+  // `P8-45`: the MCP preset catalogue and the Settings form's "Start from"
+  // picker. Imported by settings.js and admin.js.
+  '/static/js/settings/mcpPresets.js',
   // `B11`/`B13`. Two leaf tables on the critical path: what the plan window and
   // the todo card call themselves, and the word the six run statuses are shown
   // as. Imported by chat.js, chatRenderer.js, planWindow.js and tasks.js — so
