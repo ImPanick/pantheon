@@ -27,6 +27,8 @@ import { createStreamRenderer } from './streamingRenderer.js';
 import { applyAgentThreadNode, verifierCardOptions, blockedCardOptions,
          toolOutputPanesHtml, agentThreadContent, ensureThreadToggleAll,
          toggleThreadAll, syncThreadToggleAll, TOOL_LABELS } from './agentThread.js';
+// `P4-10`. The line that says why the agent stopped itself.
+import { renderAgentStop } from './agentStops.js';
 import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArrowUpRecall.js?v=20260714promptrecall';
 import {
   createIncrementalDisplayProjector,
@@ -5103,16 +5105,17 @@ import agentDrafts from './agentDrafts.js';   // H01
                 if (_isBg) continue;
                 _cancelThinkingTimer();
                 _removeThinkingSpinner();
-                const guardDiv = document.createElement('div');
-                guardDiv.className = 'stopped-indicator';
-                const guardLabel = document.createElement('span');
-                guardLabel.textContent = `[Agent guard: ${json.message || json.reason || 'internal stop'}]`;
-                guardDiv.appendChild(guardLabel);
-                const targetBody = roundHolder && roundHolder.querySelector('.body');
-                if (targetBody) targetBody.appendChild(guardDiv);
-                else {
-                  const chatBox = document.getElementById('chat-history');
-                  if (chatBox) chatBox.appendChild(guardDiv);
+                // `P4-10`. Which tool, how many times, with what — or the
+                // sentence it kept saying without acting — and what to do next.
+                // The line goes into the chat history, never into the round's
+                // bubble: the next `agent_step` hides a round that wrote
+                // nothing (a loop-breaker round writes nothing, by definition)
+                // along with whatever was inside it, and the end-of-stream
+                // render replaces the body's markup — the same reason
+                // `rounds_exhausted` above appends to the history. The old
+                // bracketed line lived in the bubble, flashed, and was gone.
+                if (renderAgentStop(document.getElementById('chat-history'), json)) {
+                  uiModule.scrollHistory();
                 }
 
               } else if (json.type === 'teacher_takeover') {

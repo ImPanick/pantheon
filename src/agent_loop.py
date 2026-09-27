@@ -65,6 +65,7 @@ from src.tool_approvals import (
     tool_approval_store,
 )
 from src.tool_utils import _truncate, get_mcp_manager
+from src.agent_stops import call_signature, loop_breaker_stop, unkept_promise_stop
 from src.agent_tools import (
     parse_tool_blocks,
     strip_tool_blocks,
@@ -4170,7 +4171,12 @@ def _detect_runaway_call(call_freq, threshold=15):
     legitimate batch of distinct calls to one tool (e.g. creating 18 calendar
     events at once) is NOT flagged. Returns ``None`` when nothing is runaway.
 
-    ``call_freq`` is a Counter keyed by ``"{tool_type}:{content[:120]}"``.
+    ``call_freq`` is a Counter keyed by ``call_signature(tool_type, content)``
+    (`src/agent_stops.py`): the tool, then a digest of the WHOLE argument text.
+    `P4-10`: it was ``"{tool_type}:{content[:120]}"``, so two calls differing
+    only after character 120 counted as identical — a long-argument batch was
+    aborted exactly as the short one above used to be. Only the part before the
+    first ``:`` is read here, so either key shape answers the same way.
     """
     sig = next((s for s, n in call_freq.items() if n >= threshold), None)
     return sig.split(":", 1)[0] if sig else None
@@ -5529,6 +5535,12 @@ async def stream_agent_loop(
     # that *can't* call the tool from looping forever.
     _intent_nudge_count = 0
     _MAX_INTENT_NUDGES = 2
+    # `P4-10`. Every action announced without a call this turn, in order, so
+    # the stop can quote what the model kept saying rather than a fixed line.
+    _intent_phrases: list = []
+    # `P4-10`. The guard stops this turn, for the metrics envelope — the same
+    # events the stream carried, so a reloaded thread says what the live one did.
+    _agent_stops: list = []
 
     # "I said I would, then didn't" detector. The pattern that breaks debug
     # loops on weak models (deepseek-v4-flash mid-2026): the model writes
@@ -6766,6 +6778,7 @@ async def stream_agent_loop(
             if _looks_like_promise and _intent_nudge_count < _MAX_INTENT_NUDGES:
                 _intent_nudge_count += 1
                 _matched_phrase = _intent_match.group(0).strip()
+                _intent_phrases.append(_matched_phrase)  # `P4-10`
                 logger.info(f"[agent] intent-without-action nudge #{_intent_nudge_count} on round {round_num}: {_matched_phrase!r}")
                 _lower_phrase = _matched_phrase.lower()
                 _cookbook_log_hint = ""
@@ -6794,28 +6807,23 @@ async def stream_agent_loop(
                 continue
             if _looks_like_promise:
                 _matched_phrase = _intent_match.group(0).strip()
-                _guard_message = (
-                    "The agent stopped because it repeatedly announced a tool "
-                    "action without making the tool call."
-                )
                 logger.warning(
                     "[agent] intent-without-action guard exhausted on round %d after %d nudges: %r",
                     round_num,
                     _intent_nudge_count,
                     _matched_phrase,
                 )
-                yield (
-                    "data: "
-                    + json.dumps({
-                        "type": "intent_nudge_exhausted",
-                        "reason": "intent_without_action_nudge_cap",
-                        "message": _guard_message,
-                        "round": round_num,
-                        "nudges": _intent_nudge_count,
-                        "matched": _matched_phrase,
-                    })
-                    + "\n\n"
+                # `P4-10`. The phrase was on this event as `matched` and the
+                # browser printed a fixed sentence instead. The stop now says
+                # what the model kept saying, how often, and what to do next;
+                # every key the event carried before is still on it.
+                _stop = unkept_promise_stop(
+                    round_num=round_num,
+                    phrases=[*_intent_phrases, _matched_phrase],
+                    nudges=_intent_nudge_count,
                 )
+                _agent_stops.append(_stop)
+                yield f"data: {json.dumps(_stop)}\n\n"
                 break
             break  # no tools — done
 
@@ -6830,11 +6838,14 @@ async def stream_agent_loop(
         # runaway backstop). On bail we don't give up — we force one
         # tool-free round so the model declares done or declares blocked,
         # mirroring Terminus's explicit-completion handshake.
-        _sig = "|".join(sorted(f"{b.tool_type}:{(b.content or '').strip()[:120]}" for b in tool_blocks))
+        # `P4-10`: a call's identity is `call_signature` — the tool and ALL of
+        # its arguments. Both counters keyed on the first 120 characters, so
+        # calls that differed after that were "identical" to the loop-breaker.
+        _sig = "|".join(sorted(call_signature(b.tool_type, b.content) for b in tool_blocks))
         _is_repeat = _sig in _recent_call_sigs
         _recent_call_sigs.append(_sig)
         for _b in tool_blocks:
-            _call_freq[f"{_b.tool_type}:{(_b.content or '').strip()[:120]}"] += 1
+            _call_freq[call_signature(_b.tool_type, _b.content)] += 1
         # "Real" answer text = round text minus <think> blocks. Empty-think
         # rounds (just "<think>\n\n</think>" + a tool call) must not read as
         # progress, so strip think before checking.
@@ -6852,29 +6863,29 @@ async def stream_agent_loop(
         if _stuck_rounds >= 4 or _runaway:
             reason = (f"calling {_runaway} with identical arguments over and over" if _runaway
                       else "repeating the same tool calls without new progress")
-            logger.warning(f"[agent] loop-breaker tripped on round {round_num} ({reason}); sig={_sig[:80]!r}")
-            yield (
-                "data: "
-                    + json.dumps({
-                    "type": "loop_breaker_triggered",
-                    "reason": "loop_breaker_stall",
-                    "message": (
-                        "The loop-breaker detected repeated tool calls without "
-                        "new progress, so the agent is being forced to stop "
-                        "using tools and give its best final answer."
-                    ),
-                    "round": round_num,
-                    "detail": reason,
-                })
-                + "\n\n"
+            _off = [t for t in ("web_search", "bash")
+                    if disabled_tools and t in disabled_tools]
+            # `P4-10`. Which tool, how many times, with what, and what to do
+            # next — instead of one fixed sentence for both conditions. The
+            # arguments are quoted only through `safe_arguments`, which
+            # withholds anything that may be a credential.
+            _stop = loop_breaker_stop(
+                round_num=round_num,
+                tool_blocks=tool_blocks,
+                call_freq=_call_freq,
+                runaway=bool(_runaway),
+                rounds_without_progress=_stuck_rounds,
+                detail=reason,
+                switched_off=_off,
             )
+            _agent_stops.append(_stop)
+            logger.warning(f"[agent] loop-breaker tripped on round {round_num} ({reason}): {_stop['message']}")
+            yield f"data: {json.dumps(_stop)}\n\n"
             # The model has been executing tools, so its results are already
             # in context. Force ONE tool-free round to converge: write the
             # answer from what it has, or state plainly what's blocking it.
             # The force-answer handler above salvages (grace synthesis) or
             # apologizes honestly if it still writes nothing.
-            _off = [t for t in ("web_search", "bash")
-                    if disabled_tools and t in disabled_tools]
             _off_note = (f" ({', '.join(_off)} is currently disabled — say so if "
                          f"you needed it.)" if _off else "")
             _force_answer = True
@@ -7789,6 +7800,12 @@ async def stream_agent_loop(
             _last_route_request_messages or messages, _last_sent_tool_schemas)
     except Exception as _breakdown_err:  # a meter never fails a turn
         logger.debug("context breakdown not measured: %s", _breakdown_err)
+
+    # `P4-10`. Why the agent stopped itself, on the envelope the reply is saved
+    # from — the events exactly as streamed, so the reloaded thread draws the
+    # same line in the same round. Absent when no guard fired.
+    if _agent_stops:
+        metrics["agent_stops"] = list(_agent_stops)
     metrics["requested_model"] = requested_model
     metrics["endpoint_id"] = actual_endpoint_id
     metrics["endpoint_label"] = actual_endpoint_label

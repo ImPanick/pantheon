@@ -5374,6 +5374,48 @@ body.bg-pattern-sparkles {
       flex-wrap:wrap;
     }
 
+/* `P4-10`. Why the agent stopped itself — drawn by `static/js/agentStops.js`
+   into the chat history, between the round that tripped the guard and the
+   answer it gave afterwards. A notice and not an error, so it is the muted
+   bordered surface the round-cap pill uses rather than `.stopped-indicator`'s
+   red: the guard did its job, and the headline says what it caught. Tokens
+   only, and no accent, so it reads the same on all sixteen palettes. */
+.agent-stop {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-sizing: border-box;
+  /* The inset and width `.msg-ai` uses, so it lines up with the bubbles. */
+  max-width: 85%;
+  margin: 10px auto 6px 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  color: var(--fg);
+  font-size: 0.85em;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.agent-stop-headline {
+  font-weight: 600;
+}
+.agent-stop-args {
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+/* What to do next is the part a person acts on (`Law 15`), so it stays at full
+   `--fg`; only the note that the arguments were withheld steps back. */
+.agent-stop-withheld {
+  color: color-mix(in srgb, var(--fg) 72%, transparent);
+}
+
     /* Message edit UI */
     .msg-edit-textarea {
       background:var(--bg);

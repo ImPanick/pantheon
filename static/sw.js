@@ -112,6 +112,9 @@ const PRECACHE = [
   // critical path via chat.js and chatRenderer.js.
   '/static/js/agentThread.js',
   '/static/js/trustLadder.js',
+  // `P4-10`: the line that says why the agent stopped itself. Imported by
+  // chat.js and chatRenderer.js, so it is on the same critical path.
+  '/static/js/agentStops.js',
   '/static/js/codeRunner.js',
   '/static/js/chatStream.js?v=20260927contextwheel1',
   '/static/js/chat.js?v=20260927contextwheel1',

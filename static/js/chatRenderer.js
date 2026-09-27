@@ -20,6 +20,8 @@ import { CHECKLIST_SURFACES, checklistProgress, stepChipClass } from './checklis
 // card it goes. It returns null unless the server has said it takes rules AND
 // the rung is the one that reads them — see the header of that module.
 import { buildAllowRuleChooser } from './trustLadder.js';
+// `P4-10`. Why the agent stopped itself — the same line the live stream draws.
+import { renderAgentStop } from './agentStops.js';
 import { applyAgentThreadNode, verifierCardOptions,
          blockedCardOptions, toolOutputPanesHtml } from './agentThread.js';
 
@@ -3749,6 +3751,9 @@ export function addMessage(role, content, modelName, metadata) {
       && (
         (Array.isArray(metadata.tool_events) && metadata.tool_events.length > 0)
         || (Array.isArray(metadata.round_texts) && metadata.round_texts.length > 1)
+        // `P4-10`. A stop is drawn only by this branch, so a reply that carries
+        // one must reach it even in the one-round case.
+        || (Array.isArray(metadata.agent_stops) && metadata.agent_stops.length > 0)
       )
     ) {
       const roundTexts = metadata.round_texts || [];
@@ -3756,6 +3761,7 @@ export function addMessage(role, content, modelName, metadata) {
       const roundEndpointIds = metadata.round_endpoint_ids || [];
       const roundEndpointLabels = metadata.round_endpoint_labels || [];
       const toolEvents = metadata.tool_events || [];
+      const agentStops = Array.isArray(metadata.agent_stops) ? metadata.agent_stops : [];
       let pendingAskUser = null;
       let lastWrap = null;
       let firstMsgAi = null;
@@ -3921,6 +3927,19 @@ export function addMessage(role, content, modelName, metadata) {
             }
           }
         }
+
+        // `P4-10`. A guard that stopped the agent in this round, after the
+        // round's own text and tools and before the next round's answer —
+        // where the live stream drew it, by the function that drew it.
+        for (const stop of agentStops) {
+          if (Number(stop?.round) === roundNum) renderAgentStop(box, stop);
+        }
+      }
+      // A stop whose round the loop never visited is still said, at the end,
+      // rather than dropped.
+      for (const stop of agentStops) {
+        const stopRound = Number(stop?.round);
+        if (!(stopRound >= firstRound && stopRound <= maxRound)) renderAgentStop(box, stop);
       }
 
       const firstWrap = lastMsgAi || lastWrap;
