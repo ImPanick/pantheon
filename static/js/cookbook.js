@@ -3222,7 +3222,7 @@ function _renderRecipes() {
 
 // ── Public API ──
 
-import * as Modals from './modalManager.js?v=20260927contextwheel1';
+import * as Modals from './modalManager.js?v=20260927agentwire1';
 import { chevronIcon, playIcon } from './icons.js';
 
 let _rendered = false;

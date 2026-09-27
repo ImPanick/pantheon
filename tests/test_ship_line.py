@@ -153,7 +153,8 @@ def test_the_blocking_set_is_the_size_the_proposal_states():
     stated = re.search(r"§?\s*3\.? The blocking set — (\w+) rows", body)
     assert stated, "§ 3's heading no longer states a count"
     words = {"ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
-             "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18}
+             "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
+             "nineteen": 19, "twenty": 20, "twenty-one": 21, "twenty-two": 22}
     assert words[stated.group(1)] == len(blocking) + len(landed), (
         f"§ 3 says {stated.group(1)} and the register holds {len(blocking)} blocking "
         f"+ {len(landed)} landed")

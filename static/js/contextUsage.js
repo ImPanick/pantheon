@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// static/js/contextUsage.js
 /**
  * `B892`. The context wheel, and the panel it opens.
  *

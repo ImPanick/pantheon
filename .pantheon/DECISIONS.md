@@ -2416,3 +2416,34 @@ bundling it into a label sweep is how a rename becomes a data-loss incident. Whe
 this product detects by name and serves. If the owner reopens `D-2026-08-26-05`, the label half is
 one rule re-run and the identifier half was never touched, which is the other reason to have kept
 them apart.
+
+## D-2026-09-27-01 — the MCP presets live inside the MCP form
+
+**Asked.** `P8-45` was blocked on `Law 14`: fifteen presets (fourteen with setup walkthroughs) sat
+in unreachable code in `static/js/admin.js`, while `static/js/settings.js` already shipped a working
+MCP form (`P8-46`). Should the presets feed that form, or get a surface of their own?
+
+**Decided by the owner, 2026-09-27: inside the MCP form.** A "Start from" picker in the existing
+Settings → MCP add-server form fills its own Name, Transport, Command, Arguments and Env and shows the
+preset's setup steps in place. One place to add a server, not two. The catalogue has one home
+(`static/js/settings/mcpPresets.js`), imported by both files that read it.
+
+**What it cost.** A person browsing for "what can I connect?" finds the catalogue only by opening the
+add-server form. A gallery would have been easier to discover and would have been a second way to add
+a server, which is the defect `Law 14` exists for.
+
+## D-2026-09-27-02 — `P8-48` is a description override; the schema editor is dropped
+
+**Asked.** `P8-48` shipped its annotation half and stopped at the schema editor on a measurement:
+`McpManager.call_tool` passes arguments straight to the server, which enforces its own `inputSchema`.
+
+**Decided by the owner, 2026-09-27: re-cut to a per-tool description override.** An admin can rewrite
+what the model is told a tool does, stored beside the per-tool `read_only` override, read by every
+channel that tells the model about a tool. The input-schema editor is dropped: an edited schema would
+change only what the model is told — narrowing refuses nothing the server accepts, widening produces a
+server error the operator cannot trace, and either way the product tells the model something false
+about a third party's tool. A test sends a tool arguments its own schema forbids and shows them
+arriving untouched; it goes red the day client-side validation exists, which is when this reopens.
+
+**What it cost.** An operator who wants to hide a parameter from the model cannot. They can say in the
+description not to use it.
